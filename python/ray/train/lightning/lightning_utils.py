@@ -3,6 +3,7 @@ import ray
 from ray.air import session
 from ray.air.constants import MODEL_KEY
 from ray.data.dataset import DataIterator
+from ray.util import PublicAPI
 from ray.train.lightning.lightning_checkpoint import LightningCheckpoint
 
 import logging
@@ -10,7 +11,7 @@ import shutil
 import torch
 import tempfile
 from packaging.version import Version
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, List
 from torch.utils.data import IterableDataset, DataLoader
 
 import pytorch_lightning as pl
@@ -18,21 +19,10 @@ from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.plugins.environments import LightningEnvironment
 from pytorch_lightning.strategies import DDPStrategy, DeepSpeedStrategy
 
-_LIGHTNING_GREATER_EQUAL_2_0 = Version(pl.__version__) >= Version("2.0.0")
-_TORCH_GREATER_EQUAL_1_12 = Version(torch.__version__) >= Version("1.12.0")
-_TORCH_FSDP_AVAILABLE = _TORCH_GREATER_EQUAL_1_12 and torch.distributed.is_available()
-
-if _LIGHTNING_GREATER_EQUAL_2_0:
+if Version(pl.__version__) >= Version("2.0.0"):
     from pytorch_lightning.strategies import FSDPStrategy
 else:
     from pytorch_lightning.strategies import DDPFullyShardedStrategy as FSDPStrategy
-
-if _TORCH_FSDP_AVAILABLE:
-    from torch.distributed.fsdp import (
-        FullStateDictConfig,
-        FullyShardedDataParallel,
-        StateDictType,
-    )
 
 
 logger = logging.getLogger(__name__)
@@ -48,7 +38,21 @@ def get_worker_root_device():
     else:
         return devices
 
+@PublicAPI(stability="alpha")
+def get_devices() -> Optional[List[int]]:
+    """Returns the device ID of the current Ray Train worker.
 
+    This method returns the device index of the current GPU Worker. Returns None 
+    if called in a CPU worker. Note that you can only call this method inside 
+    the training function of :class:`TorchTrainer <ray.train.torch.TorchTrainer>`.
+    """
+    device = get_worker_root_device()
+    if device.index:
+        return [device.index]
+    else:
+        return None
+
+@PublicAPI(stability="alpha")
 class RayDDPStrategy(DDPStrategy):
     """Subclass of DDPStrategy to ensure compatibility with Ray orchestration."""
 
@@ -63,7 +67,7 @@ class RayDDPStrategy(DDPStrategy):
             rank=self.global_rank,
         )
 
-
+@PublicAPI(stability="alpha")
 class RayFSDPStrategy(FSDPStrategy):
     """Subclass of FSDPStrategy to ensure compatibility with Ray orchestration."""
 
@@ -78,26 +82,7 @@ class RayFSDPStrategy(FSDPStrategy):
             rank=self.global_rank,
         )
 
-    def lightning_module_state_dict(self) -> Dict[str, Any]:
-        """Gathers the full state dict to rank 0 on CPU."""
-        assert self.model is not None, "Failed to get the state dict for a None model!"
-
-        if _LIGHTNING_GREATER_EQUAL_2_0 and _TORCH_FSDP_AVAILABLE:
-            with FullyShardedDataParallel.state_dict_type(
-                module=self.model,
-                state_dict_type=StateDictType.FULL_STATE_DICT,
-                state_dict_config=FullStateDictConfig(
-                    offload_to_cpu=True, rank0_only=True
-                ),
-            ):
-                state_dict = self.model.state_dict()
-                prefix_len = len("_forward_module.")
-                return {k[prefix_len:]: v for k, v in state_dict.items()}
-        else:
-            # Otherwise Lightning uses Fairscale FSDP, no need to unshard by ourself.
-            return super().lightning_module_state_dict()
-
-
+@PublicAPI(stability="alpha")
 class RayDeepSpeedStrategy(DeepSpeedStrategy):
     """Subclass of DeepSpeedStrategy to ensure compatibility with Ray orchestration."""
 
@@ -122,8 +107,8 @@ class RayDeepSpeedStrategy(DeepSpeedStrategy):
             rank=self.global_rank,
         )
 
-
-class RayEnvironment(LightningEnvironment):
+@PublicAPI(stability="alpha")
+class RayLightningEnvironment(LightningEnvironment):
     """Setup Lightning DDP training environment for Ray cluster."""
 
     def world_size(self) -> int:
@@ -188,7 +173,7 @@ class RayDataModule(pl.LightningDataModule):
         if val_dataset:
             self.val_dataloader = _val_dataloader
 
-
+@PublicAPI(stability="alpha")
 class RayModelCheckpoint(ModelCheckpoint):
     """
     AIR customized ModelCheckpoint callback.

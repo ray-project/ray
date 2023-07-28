@@ -14,10 +14,24 @@ from ray.train.lightning.lightning_trainer import (
     LightningTrainer,
     LightningConfigBuilder,
 )
+from ray.train.lightning.lightning_utils import (
+    get_devices,
+    RayDDPStrategy,
+    RayFSDPStrategy,
+    RayDeepSpeedStrategy,
+    RayLightningEnvironment,
+    RayModelCheckpoint,
+)
 
 __all__ = [
     "LightningTrainer",
     "LightningConfigBuilder",
     "LightningCheckpoint",
     "LightningPredictor",
+    "get_devices",
+    "RayDDPStrategy",
+    "RayFSDPStrategy",
+    "RayDeepSpeedStrategy",
+    "RayLightningEnvironment",
+    "RayModelCheckpoint",
 ]
