@@ -68,9 +68,7 @@ def setup_component_logger(
     Returns:
         the created or modified logger.
     """
-    ray_logger = logging.getLogger("ray")
-    ray_logger.propagate = True
-    ray_logger.handlers.clear()
+    ray._private.log.clear_logger("ray")
 
     logger = logging.getLogger(logger_name)
     if type(logging_level) is str:
