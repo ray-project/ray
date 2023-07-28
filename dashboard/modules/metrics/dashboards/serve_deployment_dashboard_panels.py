@@ -156,7 +156,7 @@ SERVE_DEPLOYMENT_GRAFANA_PANELS = [
         unit="models",
         targets=[
             Target(
-                expr="sum(serve_num_multiplexed_models{{{global_filters}}}) by (deployment, replica)",
+                expr="sum(ray_serve_num_multiplexed_models{{{global_filters}}}) by (deployment, replica)",
                 legend="{{replica}}",
             ),
         ],
@@ -171,7 +171,7 @@ SERVE_DEPLOYMENT_GRAFANA_PANELS = [
         unit="models",
         targets=[
             Target(
-                expr="sum(serve_multiplexed_models_load_counter{{{global_filters}}}) by (deployment, replica)",
+                expr="sum(ray_serve_multiplexed_models_load_counter{{{global_filters}}}) by (deployment, replica)",
                 legend="{{replica}}",
             ),
         ],
@@ -186,7 +186,7 @@ SERVE_DEPLOYMENT_GRAFANA_PANELS = [
         unit="models",
         targets=[
             Target(
-                expr="sum(serve_multiplexed_models_unload_counter{{{global_filters}}}) by (deployment, replica)",
+                expr="sum(ray_serve_multiplexed_models_unload_counter{{{global_filters}}}) by (deployment, replica)",
                 legend="{{replica}}",
             ),
         ],
@@ -201,7 +201,7 @@ SERVE_DEPLOYMENT_GRAFANA_PANELS = [
         unit="ms",
         targets=[
             Target(
-                expr="histogram_quantile(0.99, sum(rate(serve_multiplexed_model_load_latency_ms_bucket{{{global_filters}}}[5m])) by (deployment, replica, le))",
+                expr="histogram_quantile(0.99, sum(rate(ray_serve_multiplexed_model_load_latency_ms_bucket{{{global_filters}}}[5m])) by (deployment, replica, le))",
                 legend="{{replica}}",
             ),
         ],
@@ -216,7 +216,7 @@ SERVE_DEPLOYMENT_GRAFANA_PANELS = [
         unit="ms",
         targets=[
             Target(
-                expr="histogram_quantile(0.99, sum(rate(serve_multiplexed_model_unload_latency_ms_bucket{{{global_filters}}}[5m])) by (deployment, replica, le))",
+                expr="histogram_quantile(0.99, sum(rate(ray_serve_multiplexed_model_unload_latency_ms_bucket{{{global_filters}}}[5m])) by (deployment, replica, le))",
                 legend="{{replica}}",
             ),
         ],
