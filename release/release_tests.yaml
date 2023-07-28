@@ -1078,7 +1078,7 @@
   team: train
   cluster:
     byod:
-      type: cu117
+      type: cu118
     cluster_env: ../testing/cluster_envs/04_finetuning_llms_with_deepspeed.yaml
     cluster_compute: ../testing/compute_configs/04_finetuning_llms_with_deepspeed/aws_7b_or_13b.yaml
 
@@ -1106,7 +1106,7 @@
   team: train
   cluster:
     byod:
-      type: cu117
+      type: cu118
     cluster_env: ../testing/cluster_envs/04_finetuning_llms_with_deepspeed.yaml
     cluster_compute: ../testing/compute_configs/04_finetuning_llms_with_deepspeed/aws_7b_or_13b.yaml
 
