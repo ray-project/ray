@@ -166,21 +166,6 @@ SERVE_DEPLOYMENT_GRAFANA_PANELS = [
     ),
     Panel(
         id=11,
-        title="Number of multiplexed models per replica",
-        description="The number of multiplexed models for each replica.",
-        unit="models",
-        targets=[
-            Target(
-                expr="sum(serve_num_multiplexed_models{{{global_filters}}}) by (deployment, replica)",
-                legend="{{replica}}",
-            ),
-        ],
-        fill=0,
-        stack=False,
-        grid_pos=GridPos(0, 3, 8, 8),
-    ),
-    Panel(
-        id=12,
         title="Number of times of multiplexed models loaded per replica",
         description="The number of times of multiplexed models loaded for each replica.",
         unit="models",
@@ -195,7 +180,7 @@ SERVE_DEPLOYMENT_GRAFANA_PANELS = [
         grid_pos=GridPos(8, 3, 8, 8),
     ),
     Panel(
-        id=13,
+        id=12,
         title="Number of times of multiplexed models unloaded per replica",
         description="The number of times of multiplexed models unloaded for each replica.",
         unit="models",
@@ -210,7 +195,7 @@ SERVE_DEPLOYMENT_GRAFANA_PANELS = [
         grid_pos=GridPos(16, 3, 8, 8),
     ),
     Panel(
-        id=14,
+        id=13,
         title="P99 latency of mutliplexed model load per replica",
         description="P99 latency of mutliplexed model load per replica.",
         unit="ms",
@@ -225,7 +210,7 @@ SERVE_DEPLOYMENT_GRAFANA_PANELS = [
         grid_pos=GridPos(0, 4, 8, 8),
     ),
     Panel(
-        id=15,
+        id=14,
         title="P99 latency of mutliplexed model unload per replica",
         description="P99 latency of mutliplexed model unload per replica.",
         unit="ms",
