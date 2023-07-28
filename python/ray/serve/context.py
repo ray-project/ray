@@ -36,7 +36,7 @@ class ReplicaContext:
 
 @PublicAPI(stability="alpha")
 def get_global_client(
-    _health_check_controller: bool = False, raise_if_no_controller_running=True
+    _health_check_controller: bool = False, raise_if_no_controller_running: bool = True
 ) -> Optional[ServeControllerClient]:
     """Gets the global client, which stores the controller's handle.
 
@@ -92,7 +92,7 @@ def _set_internal_replica_context(
     )
 
 
-def _connect(raise_if_no_controller_running=True) -> ServeControllerClient:
+def _connect(raise_if_no_controller_running: bool = True) -> ServeControllerClient:
     """Connect to an existing Serve application on this Ray cluster.
 
     If calling from the driver program, the Serve app on this Ray cluster
@@ -129,7 +129,7 @@ def _connect(raise_if_no_controller_running=True) -> ServeControllerClient:
     except ValueError:
         if raise_if_no_controller_running:
             raise RayServeException(
-                "There is no "
+                "There is no Serve "
                 "instance running on this Ray cluster. Please "
                 "call `serve.start(detached=True) to start "
                 "one."
