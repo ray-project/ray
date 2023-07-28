@@ -67,7 +67,7 @@ botorch==0.8.5
 cached-property==1.5.2
 cachetools==5.3.1
 catboost==1.2
-certifi==2023.5.7
+certifi==2023.7.22
 cffi==1.15.1
 cfn-lint==0.77.10
 charset-normalizer==3.2.0
