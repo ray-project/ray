@@ -16,7 +16,7 @@ Basics
 
 Let's use a single Torch training workload as a running example. A very basic example of using Ray Data with TorchTrainer looks like this:
 
-.. literalinclude:: doc_code/data_ingest_torch_new.py
+.. literalinclude:: ../doc_code/data_ingest_torch_new.py
     :language: python
     :start-after: __basic__
     :end-before: __basic_end__
@@ -28,7 +28,7 @@ Splitting data across workers
 
 By default, Train will split the ``"train"`` dataset across workers using :meth:`Dataset.streaming_split <ray.data.Dataset.streaming_split>`. This means that each worker sees a disjoint subset of the data, instead of iterating over the entire dataset. To customize this, we can pass in a :class:`DataConfig <ray.train.DataConfig>` to the Trainer constructor. For example, the following splits dataset ``"a"`` but not ``"b"``.
 
-.. literalinclude:: doc_code/data_ingest_torch_new.py
+.. literalinclude:: ../doc_code/data_ingest_torch_new.py
     :language: python
     :start-after: __custom_split__
     :end-before: __custom_split_end__
@@ -43,7 +43,7 @@ Materializing your dataset
 
 Datasets are lazy and their execution is streamed, which means that on each epoch, all preprocessing operations will be re-run. If this loading / preprocessing is expensive, you may benefit from :meth:`materializing <ray.data.Dataset.materialize>` your dataset in memory. This tells Ray Data to compute all the blocks of the dataset fully and pin them in Ray object store memory. This means that when iterating over the dataset repeatedly, the preprocessing operations do not need to be re-run, greatly improving performance. However, the trade-off is that if the preprocessed data is too large to fit into Ray object store memory, this could slow things down because data needs to be spilled to disk.
 
-.. literalinclude:: doc_code/data_ingest_torch_new.py
+.. literalinclude:: ../doc_code/data_ingest_torch_new.py
     :language: python
     :start-after: __materialized__
     :end-before: __materialized_end__
@@ -60,7 +60,7 @@ Common options you may want to adjust:
 
 You can pass in custom execution options to the data config, which will apply to all data executions for the Trainer. For example, if you want to adjust the ingest memory size to 10GB per worker:
 
-.. literalinclude:: doc_code/data_ingest_torch_new.py
+.. literalinclude:: ../doc_code/data_ingest_torch_new.py
     :language: python
     :start-after: __options__
     :end-before: __options_end__
@@ -77,7 +77,7 @@ Custom data config (advanced)
 
 For use cases not covered by the default config class, you can also fully customize exactly how your input datasets are splitted. To do this, you need to define a custom ``DataConfig`` class (DeveloperAPI). The ``DataConfig`` class is responsible for that shared setup and splitting of data across nodes.
 
-.. literalinclude:: doc_code/data_ingest_torch_new.py
+.. literalinclude:: ../doc_code/data_ingest_torch_new.py
     :language: python
     :start-after: __custom__
     :end-before: __custom_end__
@@ -98,14 +98,14 @@ The main difference is that preprocessing is no longer part of the Trainer becau
 
 In the following example with the legacy ``DatasetConfig`` API, we pass two Datasets ("train" and "test") to the Trainer and apply an "add_noise" preprocessor per epoch to the "train" Dataset. Also, we will split the "train" Dataset, but not the "test" Dataset.
 
-.. literalinclude:: doc_code/data_ingest_torch_migration.py
+.. literalinclude:: ../doc_code/data_ingest_torch_migration.py
     :language: python
     :start-after: __legacy_api__
     :end-before: __legacy_api_end__
 
 To migrate this example to the new :class:`DatasetConfig <ray.air.config.DatasetConfig>` API, we apply the "add_noise" preprocesor to the "train" Dataset prior to passing it to the Trainer. Then, we use ``DataConfig(datasets_to_split=["train"])`` to specify which Datasets need to be split. Note that the ``datasets_to_split`` argument is optional. By default, only the "train" Dataset will be split. If you don't want to split the "train" Dataset either, use ``datasets_to_split=[]``.
 
-.. literalinclude:: doc_code/data_ingest_torch_migration.py
+.. literalinclude:: ../doc_code/data_ingest_torch_migration.py
     :language: python
     :start-after: __new_api__
     :end-before: __new_api_end__

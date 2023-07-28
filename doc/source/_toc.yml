@@ -69,12 +69,12 @@ parts:
               - file: train/distributed-pytorch/converting-existing-training-loop
               - file: train/distributed-pytorch/hf_trainers
               - file: train/distributed-pytorch/data-loading-preprocessing
-              - file: train/distributed-pytorch/configuring-scale
               - file: train/distributed-pytorch/using-gpus
               - file: train/distributed-pytorch/reporting-results
               - file: train/distributed-pytorch/checkpoints
               - file: train/distributed-pytorch/experiment-tracking
-              - file: train/distributed-pytorch/advanced
+              - file: train/train-with-tune
+                title: Hyperparameter optimization
           - file: train/distributed-tensorflow-keras
           - file: train/distributed-xgboost-lightgbm
           - file: train/horovod
@@ -88,8 +88,6 @@ parts:
             sections:
               - file: train/internals/architecture
               - file: train/internals/benchmarks
-              - file: train/train-with-tune
-                title: "Using Ray Train with Ray Tune"
               - file: train/predictors
           - file: train/examples
             title: "Examples"
