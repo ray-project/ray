@@ -64,7 +64,8 @@ if __name__ == "__main__":
 
     ray.init(
         runtime_env={
-            "env_vars": {"HF_HOME": "/mnt/local_storage/.cache/huggingface"}, "working_dir": "."
+            "env_vars": {"HF_HOME": "/mnt/local_storage/.cache/huggingface"},
+            "working_dir": ".",
         }
     )
 
