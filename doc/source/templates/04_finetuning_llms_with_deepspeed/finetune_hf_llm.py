@@ -560,7 +560,7 @@ def main():
             storage_path=storage_path,
             checkpoint_config=air.CheckpointConfig(
                 num_to_keep=args.num_checkpoints_to_keep,
-                checkpoint_score_attribute="preplexity",
+                checkpoint_score_attribute="perplexity",
                 checkpoint_score_order="min",
                 # Enable distributed checkpointing
                 _checkpoint_keep_all_ranks=True,
