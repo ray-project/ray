@@ -385,6 +385,11 @@ void PullManager::OnLocationChange(const ObjectID &object_id,
   }
   it->second.spilled_url = spilled_url;
   it->second.spilled_node_id = spilled_node_id;
+  if (!spilled_url.empty() && it->second.spilled_node_id.IsNil()) {
+    it->second.spilled_node_id = self_node_id_;
+  }
+  RAY_LOG(INFO) << "LOCATION CHANGE: " << it->second.spilled_url << "\t"
+                << it->second.spilled_node_id;
   it->second.pending_object_creation = pending_creation;
   if (!it->second.object_size_set) {
     it->second.object_size = object_size;
@@ -463,15 +468,19 @@ void PullManager::TryToMakeObjectLocal(const ObjectID &object_id) {
     UpdateRetryTimer(request, object_id);
     return;
   }
+  RAY_LOG(INFO) << "DBGGG: " << did_pull;
 
   // check if we can restore the object directly in the current raylet.
   // first check local spilled objects
   std::string direct_restore_url = get_locally_spilled_object_url_(object_id);
+
+  RAY_LOG(INFO) << "DBGGG: " << object_id << "\t" << direct_restore_url << "$";
   if (direct_restore_url.empty()) {
     if (!request.spilled_url.empty() && request.spilled_node_id.IsNil()) {
       direct_restore_url = request.spilled_url;
     }
   }
+  RAY_LOG(INFO) << "DBGGG2: " << object_id << "\t" << direct_restore_url << "$";
   if (!direct_restore_url.empty()) {
     // Select an url from the object directory update
     UpdateRetryTimer(request, object_id);

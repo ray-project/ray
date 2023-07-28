@@ -3169,10 +3169,10 @@ void CoreWorker::HandleExportObjectOwnership(rpc::ExportObjectOwnershipRequest r
   RAY_LOG(INFO) << "HandleExportObjectOwnership";
   auto dumpped_objects =
       reference_counter_->DumpOwnerInfo(options_.session_dir + "/drain_object_meta");
-  for(const auto& [node_id, object_ids] : dumpped_objects) {
-    auto* location = reply->add_locations();
+  for (const auto &[node_id, object_ids] : dumpped_objects) {
+    auto *location = reply->add_locations();
     location->set_node_id(node_id.Binary());
-    for(const auto& object_id : object_ids) {
+    for (const auto &object_id : object_ids) {
       location->add_object_ids(object_id.Binary());
     }
   }

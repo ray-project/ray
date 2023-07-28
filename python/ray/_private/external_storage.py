@@ -63,9 +63,14 @@ def parse_url_with_offset(url_with_offset: str) -> Tuple[str, int, int]:
     # Split by ? to remove the query from the url.
     base_url = parsed_result.geturl().split("?")[0]
     if "offset" not in query_dict or "size" not in query_dict:
-        raise ValueError(f"Failed to parse URL: {url_with_offset}")
-    offset = int(query_dict["offset"][0])
-    size = int(query_dict["size"][0])
+        import os
+
+        base_url = url_with_offset
+        offset = 0
+        size = os.path.getsize(base_url)
+    else:
+        offset = int(query_dict["offset"][0])
+        size = int(query_dict["size"][0])
     return ParsedURL(base_url=base_url, offset=offset, size=size)
 
 
@@ -299,10 +304,16 @@ class FileSystemStorage(ExternalStorage):
         )
         directory_path = self._directory_paths[self._current_directory_index]
 
-        filename = _get_unique_spill_filename(object_refs)
-        url = f"{os.path.join(directory_path, filename)}"
-        with open(url, "wb", buffering=self._buffer_size) as f:
-            return self._write_multiple_objects(f, object_refs, owner_addresses, url)
+        # filename = _get_unique_spill_filename(object_refs)
+        # url = f"{os.path.join(directory_path, filename)}"
+        rets = []
+        for obj in object_refs:
+            filename = os.path.join(directory_path, obj.hex())
+            with open(filename, "wb", buffering=self._buffer_size) as f:
+                rets += self._write_multiple_objects(
+                    f, [obj], owner_addresses, filename
+                )
+        return rets
 
     def restore_spilled_objects(
         self, object_refs: List[ObjectRef], url_with_offset_list: List[str]

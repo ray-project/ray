@@ -789,20 +789,17 @@ void NodeManager::HandleDrainObjectStore(rpc::DrainObjectStoreRequest request,
     return;
   }
 
-
   auto rpc_replied = std::make_shared<std::atomic<size_t>>(0);
   auto in_flight = std::make_shared<std::atomic<size_t>>(1);
   *in_flight += all_workers.size();
   bool all_dead = true;
-  auto send_reply = [rpc_replied, in_flight, send_reply_callback] () {
+  auto send_reply = [rpc_replied, in_flight, send_reply_callback]() {
     if (++*rpc_replied == *in_flight) {
       send_reply_callback(Status::OK(), nullptr, nullptr);
     }
   };
 
-  local_object_manager_.SpillPrimaryCopies([send_reply](const auto&){
-    send_reply();
-  });
+  local_object_manager_.SpillPrimaryCopies([send_reply](const auto &) { send_reply(); });
 
   for (const auto &worker : all_workers) {
     if (worker->IsDead()) {
@@ -813,36 +810,40 @@ void NodeManager::HandleDrainObjectStore(rpc::DrainObjectStoreRequest request,
 
     worker->rpc_client()->ExportObjectOwnership(
         rpc::ExportObjectOwnershipRequest(),
-        [this, in_flight, send_reply] (
-            const ray::Status &status, const rpc::ExportObjectOwnershipReply &reply) {
+        [this, in_flight, send_reply](const ray::Status &status,
+                                      const rpc::ExportObjectOwnershipReply &reply) {
           if (!status.ok()) {
             RAY_LOG(ERROR) << "Failed to send ExportObjectOwnership request: "
                            << status.ToString();
           }
-          for(const auto& location : reply.locations()) {
-            if(location.node_id() == self_node_id_.Binary()) {
+          for (const auto &location : reply.locations()) {
+            if (location.node_id() == self_node_id_.Binary()) {
               continue;
             }
-            if(auto iter = remote_node_manager_addresses_.find(NodeID::FromBinary(location.node_id())); iter != remote_node_manager_addresses_.end()) {
-              auto grpc_client =
-                  rpc::NodeManagerWorkerClient::make(iter->second.first, iter->second.second, client_call_manager_);
-              auto raylet_client = std::make_shared<raylet::RayletClient>(std::move(grpc_client));
+            if (auto iter = remote_node_manager_addresses_.find(
+                    NodeID::FromBinary(location.node_id()));
+                iter != remote_node_manager_addresses_.end()) {
+              auto grpc_client = rpc::NodeManagerWorkerClient::make(
+                  iter->second.first, iter->second.second, client_call_manager_);
+              auto raylet_client =
+                  std::make_shared<raylet::RayletClient>(std::move(grpc_client));
               std::vector<ObjectID> object_ids;
-              for(const auto& obj : location.object_ids()) {
+              for (const auto &obj : location.object_ids()) {
                 object_ids.emplace_back(ObjectID::FromBinary(obj));
               }
               ++*in_flight;
               raylet_client->RequestObjectSpillage(
-                  object_ids,
-                  [send_reply] (const ray::Status &status, const auto &reply) {
+                  object_ids, [send_reply](const ray::Status &status, const auto &reply) {
                     if (!status.ok()) {
-                      RAY_LOG(ERROR) << "Failed to send SpillObjects request: "
-                                     << status.ToString();
+                      RAY_LOG(ERROR)
+                          << "Failed to send SpillObjects request: " << status.ToString();
                     }
                     send_reply();
                   });
             } else {
-              RAY_LOG(ERROR) << "Can't find node: " << NodeID::FromBinary(location.node_id()) << " in remote node manager addresses.";
+              RAY_LOG(ERROR) << "Can't find node: "
+                             << NodeID::FromBinary(location.node_id())
+                             << " in remote node manager addresses.";
             }
           }
           send_reply();

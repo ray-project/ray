@@ -355,19 +355,12 @@ ray::Status OwnershipBasedObjectDirectory::SubscribeObjectLocations(
       const auto object_id = ObjectID::FromBinary(object_id_binary);
       rpc::WorkerObjectLocationsPubMessage location_info;
 
-      auto meta_path =
-          std::filesystem::path(::RayConfig::instance().prototype_session_dir()) /
-          "drain_object_meta" / object_id.Hex();
-
-      if (std::filesystem::exists(meta_path)) {
-        std::ifstream ifs(meta_path);
-        std::string node_id;
-        size_t object_size;
-        ifs >> node_id >> object_size;
-        auto location = NodeID::FromHex(node_id);
-        location_info.add_node_ids(location.Binary());
-        location_info.set_object_size(object_size);
-        location_info.set_primary_node_id(location.Binary());
+      auto spilled_url = "/tmp/ray/session_latest/ray_spilled_objects/" + object_id.Hex();
+      RAY_LOG(INFO) << "DBG:::: Subscribe to " << object_id
+                    << " failed. Check spilled url " << spilled_url << " "
+                    << std::filesystem::exists(spilled_url);
+      if (std::filesystem::exists(spilled_url)) {
+        location_info.set_spilled_url(spilled_url);
         ObjectLocationSubscriptionCallback(location_info,
                                            object_id,
                                            /*location_lookup_failed*/ false);
