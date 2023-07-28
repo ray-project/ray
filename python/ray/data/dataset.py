@@ -119,6 +119,7 @@ from ray.data.datasource import (
     JSONDatasource,
     NumpyDatasource,
     ParquetDatasource,
+    ORCDatasource,
     ReadTask,
     TFRecordDatasource,
     WriteResult,
@@ -2684,6 +2685,94 @@ class Dataset:
             block_path_provider=block_path_provider,
             write_args_fn=arrow_parquet_args_fn,
             **arrow_parquet_args,
+        )
+
+    @ConsumptionAPI
+    def write_orc(
+        self,
+        path: str,
+        *,
+        filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+        try_create_dir: bool = True,
+        arrow_open_stream_args: Optional[Dict[str, Any]] = None,
+        block_path_provider: BlockWritePathProvider = DefaultBlockWritePathProvider(),
+        arrow_orc_args_fn: Callable[[], Dict[str, Any]] = lambda: {},
+        ray_remote_args: Dict[str, Any] = None,
+        **arrow_orc_args,
+    ) -> None:
+        """Writes the :class:`~ray.data.Dataset` to orc files under the provided ``path``.
+
+        The number of files is determined by the number of blocks in the dataset.
+        To control the number of number of blocks, call
+        :meth:`~ray.data.Dataset.repartition`.
+
+        If pyarrow can't represent your data, this method errors.
+
+        By default, the format of the output files is ``{uuid}_{block_idx}.orc``,
+        where ``uuid`` is a unique
+        id for the dataset. To modify this behavior, implement a custom
+        :class:`~ray.data.datasource.BlockWritePathProvider`
+        and pass it in as the ``block_path_provider`` argument.
+
+        Examples:
+            >>> import ray
+            >>> ds = ray.data.range(100)
+            >>> ds.write_orc("local:///tmp/data/")
+
+        Time complexity: O(dataset size / parallelism)
+
+        Args:
+            path: The path to the destination root directory, where
+                parquet files are written to.
+            filesystem: The pyarrow filesystem implementation to write to.
+                These filesystems are specified in the
+                `pyarrow docs <https://arrow.apache.org/docs\
+                /python/api/filesystems.html#filesystem-implementations>`_.
+                Specify this if you need to provide specific configurations to the
+                filesystem. By default, the filesystem is automatically selected based
+                on the scheme of the paths. For example, if the path begins with
+                ``s3://``, the ``S3FileSystem`` is used.
+            try_create_dir: If ``True``, attempts to create all directories in the
+                destination path. Does nothing if all directories already
+                exist. Defaults to ``True``.
+            arrow_open_stream_args: kwargs passed to
+                `pyarrow.fs.FileSystem.open_output_stream <https://arrow.apache.org\
+                /docs/python/generated/pyarrow.fs.FileSystem.html\
+                #pyarrow.fs.FileSystem.open_output_stream>`_, which is used when
+                opening the file to write to.
+            block_path_provider: A
+                :class:`~ray.data.datasource.BlockWritePathProvider`
+                implementation specifying the filename structure for each output
+                parquet file. By default, the format of the output files is
+                ``{uuid}_{block_idx}.parquet``, where ``uuid`` is a unique id for the
+                dataset.
+            arrow_orc_args_fn: Callable that returns a dictionary of write
+                arguments that are provided to `pyarrow.orc.write_table() <https:/\
+                    /arrow.apache.org/docs/python/generated/\
+                        pyarrow.orc.write_table.html#pyarrow.orc.write_table>`_
+                when writing each block to a file. Overrides
+                any duplicate keys from ``arrow_orc_args``. Use this argument
+                instead of ``arrow_orc_args`` if any of your write arguments
+                can't pickled, or if you'd like to lazily resolve the write
+                arguments for each dataset block.
+            ray_remote_args: Kwargs passed to :meth:`~ray.remote` in the write tasks.
+            arrow_orc_args: Options to pass to
+                `pyarrow.orc.write_table() <https://arrow.apache.org/docs/python\
+                    /generated/pyarrow.orc.write_table.html\
+                        #pyarrow.orc.write_table>`_, which is used to write out each
+                block to a file.
+        """
+        self.write_datasource(
+            ORCDatasource(),
+            ray_remote_args=ray_remote_args,
+            path=path,
+            dataset_uuid=self._uuid,
+            filesystem=filesystem,
+            try_create_dir=try_create_dir,
+            open_stream_args=arrow_open_stream_args,
+            block_path_provider=block_path_provider,
+            write_args_fn=arrow_orc_args_fn,
+            **arrow_orc_args,
         )
 
     @ConsumptionAPI

@@ -335,6 +335,164 @@ class DefaultParquetMetadataProvider(ParquetMetadataProvider):
             return _fetch_metadata(pieces)
 
 
+@DeveloperAPI
+class ORCMetadataProvider(FileMetadataProvider):
+    """Abstract callable that provides block metadata for Arrow ORC file fragments.
+
+    All file fragments should belong to a single dataset block.
+
+    Supports optional pre-fetching of ordered metadata for all file fragments in
+    a single batch to help optimize metadata resolution.
+
+    Current subclasses:
+        - :class:`~ray.data.datasource.file_meta_provider.DefaultParquetMetadataProvider`
+    """  # noqa: E501
+
+    def _get_block_metadata(
+        self,
+        paths: List[str],
+        schema: Optional[Union[type, "pyarrow.lib.Schema"]],
+        *,
+        pieces: List,
+        prefetched_metadata: Optional[List[Any]],
+    ) -> BlockMetadata:
+        """Resolves and returns block metadata for files of a single dataset block.
+
+        Args:
+            paths: The file paths for a single dataset block.
+            schema: The user-provided or inferred schema for the given file
+                paths, if any.
+            pieces: The ORC file fragments derived from the input file paths.
+            prefetched_metadata: Metadata previously returned from
+                `prefetch_file_metadata()` for each file fragment, where
+                `prefetched_metadata[i]` contains the metadata for `pieces[i]`.
+
+        Returns:
+            BlockMetadata aggregated across the given file paths.
+        """
+        raise NotImplementedError
+
+    def prefetch_file_metadata(
+        self,
+        pieces: List,
+        **ray_remote_args,
+    ) -> Optional[List[Any]]:
+        """Pre-fetches file metadata for all ORC file fragments in a single batch.
+
+        Subsets of the metadata returned will be provided as input to
+        subsequent calls to :meth:`~FileMetadataProvider._get_block_metadata` together
+        with their corresponding ORC file fragments.
+
+        Implementations that don't support pre-fetching file metadata shouldn't
+        override this method.
+
+        Args:
+            pieces: The ORC file fragments to fetch metadata for.
+
+        Returns:
+            Metadata resolved for each input file fragment, or `None`. Metadata
+            must be returned in the same order as all input file fragments, such
+            that `metadata[i]` always contains the metadata for `pieces[i]`.
+        """
+        return None
+
+
+@DeveloperAPI
+class DefaultORCMetadataProvider(ORCMetadataProvider):
+    """The default file metadata provider for ParquetDatasource.
+
+    Aggregates total block bytes and number of rows using the ORC file metadata
+    associated with a list of Arrow ORC dataset file fragments.
+    """
+
+    def _get_block_metadata(
+        self,
+        paths: List[str],
+        schema: Optional[Union[type, "pyarrow.lib.Schema"]],
+        *,
+        pieces: List,
+        prefetched_metadata: Optional[List],
+    ) -> BlockMetadata:
+        if prefetched_metadata is not None and len(prefetched_metadata) == len(pieces):
+            # Piece metadata was available, construct a normal
+            # BlockMetadata.
+            block_metadata = BlockMetadata(
+                num_rows=sum(m.num_rows for m in prefetched_metadata),
+                size_bytes=sum(
+                    m.total_byte_size
+                    for m in prefetched_metadata
+                ),
+                schema=schema,
+                input_files=paths,
+                exec_stats=None,
+            )  # Exec stats filled in later.
+        else:
+            # Piece metadata was not available, construct an empty
+            # BlockMetadata.
+            block_metadata = BlockMetadata(
+                num_rows=None,
+                size_bytes=None,
+                schema=schema,
+                input_files=paths,
+                exec_stats=None,
+            )
+        return block_metadata
+
+    def prefetch_file_metadata(
+        self,
+        pieces: List,
+        **ray_remote_args,
+    ) -> Optional[List["pyarrow.parquet.FileMetaData"]]:
+        from ray.data.datasource.file_based_datasource import _fetch_metadata_parallel
+        from ray.data.datasource.orc_datasource import (
+            PARALLELIZE_META_FETCH_THRESHOLD,
+            PIECES_PER_META_FETCH,
+            _fetch_metadata,
+        )
+
+        if len(pieces) > PARALLELIZE_META_FETCH_THRESHOLD:
+            # Fetch Parquet metadata in parallel using Ray tasks.
+            return list(
+                _fetch_metadata_parallel(
+                    pieces,
+                    _fetch_metadata,
+                    PIECES_PER_META_FETCH,
+                    **ray_remote_args,
+                )
+            )
+        else:
+            return _fetch_metadata(pieces)
+
+    def expand_paths(
+        self,
+        paths: List[str],
+        filesystem: "pyarrow.fs.FileSystem",
+    ) -> Tuple[List[str], List[Optional[int]]]:
+        from pyarrow.fs import FileType
+        from ray.data.datasource.file_based_datasource import _expand_directory
+        if len(paths) > 1:
+            logger.warning(
+                f"Expanding {len(paths)} path(s). This may be a HIGH LATENCY "
+                f"operation on some cloud storage services. If the specified paths "
+                f"all point to files and never directories, try rerunning this read "
+                f"with `meta_provider=FastFileMetadataProvider()`."
+            )
+        expanded_paths = []
+        for path in paths:
+            try:
+                file_info = filesystem.get_file_info(path)
+            except OSError as e:
+                _handle_read_os_error(e, path)
+            if file_info.type == FileType.Directory:
+                paths, _ = _expand_directory(path, filesystem)
+                expanded_paths.extend(paths)
+            elif file_info.type == FileType.File:
+                expanded_paths.append(path)
+            else:
+                raise FileNotFoundError(path)
+        return expanded_paths
+
+
 def _handle_read_os_error(error: OSError, paths: Union[str, List[str]]) -> str:
     # NOTE: this is not comprehensive yet, and should be extended as more errors arise.
     # NOTE: The latter patterns are raised in Arrow 10+, while the former is raised in

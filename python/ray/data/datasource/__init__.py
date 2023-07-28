@@ -20,9 +20,11 @@ from ray.data.datasource.file_meta_provider import (
     BaseFileMetadataProvider,
     DefaultFileMetadataProvider,
     DefaultParquetMetadataProvider,
+    DefaultORCMetadataProvider,
     FastFileMetadataProvider,
     FileMetadataProvider,
     ParquetMetadataProvider,
+    ORCMetadataProvider,
 )
 from ray.data.datasource.image_datasource import ImageDatasource
 from ray.data.datasource.json_datasource import JSONDatasource
@@ -30,6 +32,8 @@ from ray.data.datasource.mongo_datasource import MongoDatasource
 from ray.data.datasource.numpy_datasource import NumpyDatasource
 from ray.data.datasource.parquet_base_datasource import ParquetBaseDatasource
 from ray.data.datasource.parquet_datasource import ParquetDatasource
+from ray.data.datasource.orc_base_datasource import ORCBaseDatasource
+from ray.data.datasource.orc_datasource import ORCDatasource
 from ray.data.datasource.partitioning import (
     Partitioning,
     PartitionStyle,
@@ -52,6 +56,7 @@ __all__ = [
     "DefaultBlockWritePathProvider",
     "DefaultFileMetadataProvider",
     "DefaultParquetMetadataProvider",
+    "DefaultORCMetadataProvider",
     "DummyOutputDatasource",
     "FastFileMetadataProvider",
     "FileBasedDatasource",
@@ -63,6 +68,9 @@ __all__ = [
     "ParquetBaseDatasource",
     "ParquetDatasource",
     "ParquetMetadataProvider",
+    "ORCBaseDatasource",
+    "ORCDatasource",
+    "ORCMetadataProvider",
     "PartitionStyle",
     "PathPartitionFilter",
     "PathPartitionParser",

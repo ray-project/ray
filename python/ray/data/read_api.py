@@ -51,6 +51,7 @@ from ray.data.datasource import (
     Datasource,
     DefaultFileMetadataProvider,
     DefaultParquetMetadataProvider,
+    DefaultORCMetadataProvider,
     FastFileMetadataProvider,
     ImageDatasource,
     JSONDatasource,
@@ -59,6 +60,8 @@ from ray.data.datasource import (
     ParquetBaseDatasource,
     ParquetDatasource,
     ParquetMetadataProvider,
+    ORCDatasource,
+    ORCMetadataProvider,
     PathPartitionFilter,
     RangeDatasource,
     ReadTask,
@@ -665,6 +668,138 @@ def read_parquet(
     )
     return read_datasource(
         ParquetDatasource(),
+        parallelism=parallelism,
+        paths=paths,
+        filesystem=filesystem,
+        columns=columns,
+        ray_remote_args=ray_remote_args,
+        meta_provider=meta_provider,
+        **arrow_parquet_args,
+    )
+
+
+@PublicAPI
+def read_orc(
+    paths: Union[str, List[str]],
+    *,
+    filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+    columns: Optional[List[str]] = None,
+    parallelism: int = -1,
+    ray_remote_args: Dict[str, Any] = None,
+    tensor_column_schema: Optional[Dict[str, Tuple[np.dtype, Tuple[int, ...]]]] = None,
+    meta_provider: ORCMetadataProvider = DefaultORCMetadataProvider(),
+    **arrow_parquet_args,
+) -> Dataset:
+    """Creates a :class:`~ray.data.Dataset` from parquet files.
+
+
+    Examples:
+        Read a file in remote storage.
+
+        >>> import ray
+        >>> ds = ray.data.read_orc("s3://anonymous@ray-example-data/iris.orc")
+        >>> ds.schema()
+        Column        Type
+        ------        ----
+        sepal.length  double
+        sepal.width   double
+        petal.length  double
+        petal.width   double
+        variety       string
+
+
+        Read a directory in remote storage.
+        >>> ds = ray.data.read_orc("s3://anonymous@ray-example-data/iris-orc/")
+
+        Read multiple local files.
+        >>> ray.data.read_orc(
+        ...    ["local:///path/to/file1", "local:///path/to/file2"]) # doctest: +SKIP
+
+        Specify a schema for the parquet file.
+        >>> import pyarrow as pa
+        >>> fields = [("sepal.length", pa.float32()),
+        ...           ("sepal.width", pa.float32()),
+        ...           ("petal.length", pa.float32()),
+        ...           ("petal.width", pa.float32()),
+        ...           ("variety", pa.string())]
+        >>> ds = ray.data.read_orc("s3://anonymous@ray-example-data/iris.orc",
+        ...     schema=pa.schema(fields))
+        >>> ds.schema()
+        Column        Type
+        ------        ----
+        sepal.length  float
+        sepal.width   float
+        petal.length  float
+        petal.width   float
+        variety       string
+
+
+        The ORC reader also supports column selection to be pushed down to the file scan.
+
+        .. testcode::
+
+            import pyarrow as pa
+
+            # Create a Dataset by reading a Parquet file, pushing column selection
+            # down to the file scan.
+            ds = ray.data.read_parquet(
+                "s3://anonymous@ray-example-data/iris.parquet",
+                columns=["sepal.length", "variety"],
+            )
+
+            ds.show(2)
+
+        .. testoutput::
+
+            {'sepal.length': 5.1, 'variety': 'Setosa'}
+            {'sepal.length': 5.4, 'variety': 'Setosa'}
+
+
+    Args:
+        paths: A single file path or directory, or a list of file paths. Multiple
+            directories are not supported.
+        filesystem: The PyArrow filesystem
+            implementation to read from. These filesystems are specified in the
+            `pyarrow docs <https://arrow.apache.org/docs/python/api/\
+            filesystems.html#filesystem-implementations>`_. Specify this parameter if
+            you need to provide specific configurations to the filesystem. By default,
+            the filesystem is automatically selected based on the scheme of the paths.
+            For example, if the path begins with ``s3://``, the ``S3FileSystem`` is
+            used.
+        columns: A list of column names to read. Only the specified columns are
+            read during the file scan.
+        parallelism: The amount of parallelism to use for the dataset. Defaults to -1,
+            which automatically determines the optimal parallelism for your
+            configuration. You should not need to manually set this value in most cases.
+            For details on how the parallelism is automatically determined and guidance
+            on how to tune it, see :ref:`Tuning read parallelism
+            <read_parallelism>`. Parallelism is upper bounded by the total number of
+            records in all the parquet files.
+        ray_remote_args: kwargs passed to :meth:`~ray.remote` in the read tasks.
+        tensor_column_schema: A dict of column name to PyArrow dtype and shape
+            mappings for converting a Parquet column containing serialized
+            tensors (ndarrays) as their elements to PyArrow tensors. This function
+            assumes that the tensors are serialized in the raw
+            NumPy array format in C-contiguous order (e.g., via
+            `arr.tobytes()`).
+        meta_provider: A :ref:`file metadata provider <metadata_provider>`. Custom
+            metadata providers may be able to resolve file metadata more quickly and/or
+            accurately. In most cases you do not need to set this parameter.
+        arrow_orc_args: Other parquet read options to pass to PyArrow. For the full
+            set of arguments, see the`PyArrow API <https://arrow.apache.org/docs/\
+                python/generated/pyarrow.orc.ORCFile.html\
+                    #pyarrow.orc.ORCFile.read_stripe>`_
+
+    Returns:
+        :class:`~ray.data.Dataset` producing records read from the specified parquet
+        files.
+    """
+    arrow_parquet_args = _resolve_parquet_args(
+        tensor_column_schema,
+        **arrow_parquet_args,
+    )
+    return read_datasource(
+        ORCDatasource(),
         parallelism=parallelism,
         paths=paths,
         filesystem=filesystem,
