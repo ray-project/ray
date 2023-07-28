@@ -165,9 +165,7 @@ class _ORCDatasourceReader(Reader):
         import pyarrow as pa
 
         paths, filesystem = _resolve_paths_and_filesystem(paths, filesystem)
-        paths = meta_provider.expand_paths(
-            paths, filesystem
-        )
+        paths = meta_provider.expand_paths(paths, filesystem)
 
         self._local_scheduling = None
         if local_uri:
@@ -180,9 +178,7 @@ class _ORCDatasourceReader(Reader):
 
         dataset_kwargs = reader_args.pop("dataset_kwargs", {})
         try:
-            orc_ds = _ORCDataset(
-                paths, **dataset_kwargs, filesystem=filesystem
-            )
+            orc_ds = _ORCDataset(paths, **dataset_kwargs, filesystem=filesystem)
         except OSError as e:
             _handle_read_os_error(e, paths)
         if schema is None:
@@ -297,12 +293,8 @@ class _ORCDatasourceReader(Reader):
         # TODO(ekl/cheng) take into account column pruning.
         num_files = len(self._orc_ds.pieces)
         num_samples = int(num_files * ORC_ENCODING_RATIO_ESTIMATE_SAMPLING_RATIO)
-        min_num_samples = min(
-            ORC_ENCODING_RATIO_ESTIMATE_MIN_NUM_SAMPLES, num_files
-        )
-        max_num_samples = min(
-            ORC_ENCODING_RATIO_ESTIMATE_MAX_NUM_SAMPLES, num_files
-        )
+        min_num_samples = min(ORC_ENCODING_RATIO_ESTIMATE_MIN_NUM_SAMPLES, num_files)
+        max_num_samples = min(ORC_ENCODING_RATIO_ESTIMATE_MAX_NUM_SAMPLES, num_files)
         num_samples = max(min(num_samples, max_num_samples), min_num_samples)
 
         # Evenly distributed to choose which file to sample, to avoid biased prediction
@@ -344,7 +336,6 @@ def _read_pieces(
 ) -> Iterator["pyarrow.Table"]:
     # This import is necessary to load the tensor extension type.
     from ray.data.extensions.tensor_extension import ArrowTensorType  # noqa
-
 
     # Ensure that we're reading at least one dataset fragment.
     assert len(pieces) > 0
@@ -418,7 +409,5 @@ def _sample_piece(
             ratio = in_memory_size / file_size
         else:
             ratio = ORC_ENCODING_RATIO_ESTIMATE_LOWER_BOUND
-    logger.debug(
-        f"Estimated ORC encoding ratio is {ratio} for piece {piece}"
-    )
+    logger.debug(f"Estimated ORC encoding ratio is {ratio} for piece {piece}")
     return ratio
