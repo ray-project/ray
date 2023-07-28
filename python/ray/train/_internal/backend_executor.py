@@ -518,12 +518,24 @@ class BackendExecutor:
 
         return results
 
-    def _set_checkpoint_uri(self, uri: str):
+    def _set_checkpoint_id(self, checkpoint_id: int):
+        """Update the checkpoint id in the StorageContext of all workers.
+
+        This determines the path that the next checkpoint will be saved to."""
+
+        def set_checkpoint_id():
+            session = _get_session("_set_checkpoint_id")
+            session.storage.current_checkpoint_id = checkpoint_id
+
+        futures = self.worker_group.execute_async(set_checkpoint_id)
+        self.get_with_failure_handling(futures)
+
+    def _set_legacy_checkpoint_uri(self, uri: str):
         """Tell remote sessions where to upload the chekcpoint."""
 
         def set_uri():
-            session = _get_session("_set_checkpoint_uri")
-            session._set_checkpoint_uri(uri)
+            session = _get_session("_set_legacy_checkpoint_uri")
+            session._set_legacy_checkpoint_uri(uri)
 
         futures = self.worker_group.execute_async(set_uri)
         self.get_with_failure_handling(futures)
