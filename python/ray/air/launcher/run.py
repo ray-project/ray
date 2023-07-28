@@ -14,7 +14,6 @@ from torch.distributed.elastic.rendezvous.utils import _parse_rendezvous_config
 from torch.distributed.elastic.utils import macros
 from torch.distributed.elastic.utils.logging import get_logger
 from torch.distributed.launcher.api import LaunchConfig
-from .api import elastic_launch
 
 
 log = get_logger(__name__)
@@ -357,7 +356,6 @@ def config_from_args(args) -> Tuple[LaunchConfig, Union[Callable, str], List[str
         redirects=Std.from_str(args.redirects),
         tee=Std.from_str(args.tee),
         log_dir=args.log_dir,
-        local_addr=args.local_addr,
     )
 
     with_python = not args.no_python
@@ -401,6 +399,7 @@ def run_script_path(training_script: str, *training_script_args: str):
 
 
 def run(args):
+    from ray.air.launcher.api import elastic_launch
     if args.standalone:
         args.rdzv_backend = "c10d"
         args.rdzv_endpoint = "localhost:29400"
@@ -422,7 +421,6 @@ def run(args):
     )(*cmd_args)
 
 
-@record
 def main(args=None):
     args = parse_args(args)
     run(args)

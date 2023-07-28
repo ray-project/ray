@@ -3,39 +3,10 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import subprocess
 
-import ray
-from ray import train
-from ray.air import session, Checkpoint
+from ray.air import session
 from ray.train.torch import TorchTrainer
 from ray.air.config import ScalingConfig
-from ray.air.config import RunConfig
-from ray.air.config import CheckpointConfig
 from torch.distributed.launcher.api import LaunchConfig
-
-# If using GPUs, set this to True.
-use_gpu = False
-
-# Define NN layers archicture, epochs, and number of workers
-num_workers = 2
-
-# Define your train worker loop
-def train_loop_per_worker():
-    subprocess.run(["python", "train.py"], check=True, capture_output=True)
-    # subprocess.run(["python", "-c", "'print(1)'"], check=True, capture_output=True)
-    session.report({"msg:": "Finished training!"})
-
-# Define scaling and run configs
-scaling_config = ScalingConfig(num_workers=num_workers, use_gpu=use_gpu)
-run_config = RunConfig(checkpoint_config=CheckpointConfig(num_to_keep=1))
-
-trainer = TorchTrainer(
-    train_loop_per_worker=train_loop_per_worker,
-    scaling_config=scaling_config
-)
-
-result = trainer.fit()
-
-print(result.metrics)
 
 
 class elastic_launch:
@@ -74,7 +45,7 @@ class elastic_launch:
         self._entrypoint = entrypoint
 
     def get_scaling_config(self) -> ScalingConfig:
-        return ScalingConfig(num_workers=num_workers, use_gpu=True)
+        return ScalingConfig(num_workers=self._config.min_nodes * self._config.nproc_per_node, use_gpu=False)
 
     def __call__(self, *args):
         def train_loop_per_worker():
@@ -82,7 +53,7 @@ class elastic_launch:
                 self._entrypoint(*args)
             else:
                 commands = [self._entrypoint] + list(args)
-                subprocess.run([commands], check=True, capture_output=True)
+                subprocess.run(commands, check=True, capture_output=True)
             session.report({"msg:": "Finished training!"})
 
         # Define scaling and run configs
