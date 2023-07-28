@@ -114,14 +114,16 @@ class TrainingIterator:
             # NOTE: Idea: this checkpoint dir name should be customizable
             # and created on the fly when the checkpoint is reported with metrics.
             # Ex: lambda metrics: f"checkpoint_iter={metrics['training_iteration']}"
-            storage.current_checkpoint_id = (
+            storage.current_checkpoint_index = (
                 self._checkpoint_manager._latest_checkpoint_id
             )
             logger.debug(
                 f"Setting next checkpoint path to: {storage.checkpoint_fs_path}"
             )
 
-            self._backend_executor._set_checkpoint_id(storage.current_checkpoint_id)
+            self._backend_executor._set_checkpoint_index(
+                storage.current_checkpoint_index
+            )
 
         elif self._checkpoint_strategy._checkpoint_upload_from_workers:
             self._backend_executor._set_legacy_checkpoint_uri(
