@@ -1,7 +1,9 @@
-Benchmarks
-==========
+.. _train-benchmarks:
 
-Below we document key performance benchmarks for common AIR tasks and workflows.
+Train Benchmarks
+================
+
+Below we document key performance benchmarks for common Ray Train tasks and workflows.
 
 Bulk Ingest
 -----------
@@ -46,34 +48,6 @@ For this benchmark, we configured the nodes to have reasonable disk size and thr
       - `python data_benchmark.py --dataset-size-gb=200 --num-workers=20`
 
 
-XGBoost Batch Prediction
-------------------------
-
-This task uses the BatchPredictor module to process different amounts of data
-using an XGBoost model.
-
-We test out the performance across different cluster sizes and data sizes.
-
-- `XGBoost Prediction Script`_
-- `XGBoost Cluster Configuration`_
-
-.. TODO: Add script for generating data and running the benchmark.
-
-.. list-table::
-
-    * - **Cluster Setup**
-      - **Data Size**
-      - **Performance**
-      - **Command**
-    * - 1 m5.4xlarge node (1 actor)
-      - 10 GB (26M rows)
-      - 275 s (94.5k rows/s)
-      - `python xgboost_benchmark.py --size 10GB`
-    * - 10 m5.4xlarge nodes (10 actors)
-      - 100 GB (260M rows)
-      - 331 s (786k rows/s)
-      - `python xgboost_benchmark.py --size 100GB`
-
 .. _xgboost-benchmark:
 
 XGBoost training
@@ -102,38 +76,6 @@ XGBoost parameters were kept as defaults for xgboost==1.6.1 this task.
       - 100 GB (260M rows)
       - 693 s
       - `python xgboost_benchmark.py --size 100GB`
-
-
-GPU image batch prediction
---------------------------
-
-This task uses the BatchPredictor module to process different amounts of data
-using a Pytorch pre-trained ResNet model.
-
-We test out the performance across different cluster sizes and data sizes.
-
-- `GPU image batch prediction script`_
-- `GPU prediction small cluster configuration`_
-- `GPU prediction large cluster configuration`_
-
-.. list-table::
-
-    * - **Cluster Setup**
-      - **Data Size**
-      - **Performance**
-      - **Command**
-    * - 1 g4dn.8xlarge node
-      - 1 GB (1623 images)
-      - 46.12 s (35.19 images/sec)
-      - `python gpu_batch_inference.py --data-directory=1G-image-data-synthetic-raw --data-format=raw`
-    * - 1 g4dn.8xlarge node
-      - 20 GB (32460 images)
-      - 285.2 s (113.81 images/sec)
-      - `python gpu_batch_inference.py --data-directory=20G-image-data-synthetic-raw --data-format=raw`
-    * - 4 g4dn.12xlarge nodes
-      - 100 GB (162300 images)
-      - 304.01 s (533.86 images/sec)
-      - `python gpu_batch_inference.py --data-directory=100G-image-data-synthetic-raw --data-format=raw`
 
 .. _pytorch_gpu_training_benchmark:
 
@@ -255,12 +197,8 @@ overhead of a few seconds for both methods that is negligible for longer trainin
 .. _`Bulk Ingest Script`: https://github.com/ray-project/ray/blob/a30bdf9ef34a45f973b589993f7707a763df6ebf/release/air_tests/air_benchmarks/workloads/data_benchmark.py#L25-L40
 .. _`Bulk Ingest Cluster Configuration`: https://github.com/ray-project/ray/blob/a30bdf9ef34a45f973b589993f7707a763df6ebf/release/air_tests/air_benchmarks/data_20_nodes.yaml#L6-L15
 .. _`XGBoost Training Script`: https://github.com/ray-project/ray/blob/a241e6a0f5a630d6ed5b84cce30c51963834d15b/release/air_tests/air_benchmarks/workloads/xgboost_benchmark.py#L40-L58
-.. _`XGBoost Prediction Script`: https://github.com/ray-project/ray/blob/a241e6a0f5a630d6ed5b84cce30c51963834d15b/release/air_tests/air_benchmarks/workloads/xgboost_benchmark.py#L63-L71
 .. _`XGBoost Cluster Configuration`: https://github.com/ray-project/ray/blob/a241e6a0f5a630d6ed5b84cce30c51963834d15b/release/air_tests/air_benchmarks/xgboost_compute_tpl.yaml#L6-L24
-.. _`GPU image batch prediction script`: https://github.com/ray-project/ray/blob/master/release/air_tests/air_benchmarks/workloads/gpu_batch_inference.py#L18-L49
 .. _`GPU image training script`: https://github.com/ray-project/ray/blob/cec82a1ced631525a4d115e4dc0c283fa4275a7f/release/air_tests/air_benchmarks/workloads/pytorch_training_e2e.py#L95-L106
-.. _`GPU prediction small cluster configuration`: https://github.com/ray-project/ray/blob/master/release/air_tests/air_benchmarks/compute_gpu_1_cpu_16_aws.yaml#L6-L15
-.. _`GPU prediction large cluster configuration`: https://github.com/ray-project/ray/blob/master/release/air_tests/air_benchmarks/compute_gpu_4x4_aws.yaml#L6-L15
 .. _`GPU training small cluster configuration`: https://github.com/ray-project/ray/blob/master/release/air_tests/air_benchmarks/compute_gpu_1_aws.yaml#L6-L24
 .. _`GPU training large cluster configuration`: https://github.com/ray-project/ray/blob/master/release/air_tests/air_benchmarks/compute_gpu_4x4_aws.yaml#L5-L25
 .. _`Pytorch comparison training script`: https://github.com/ray-project/ray/blob/master/release/air_tests/air_benchmarks/workloads/torch_benchmark.py

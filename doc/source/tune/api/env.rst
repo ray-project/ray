@@ -101,6 +101,15 @@ These are the environment variables Ray Tune currently considers:
   fails. Default is ``2``.
 * **TUNE_CHECKPOINT_CLOUD_RETRY_WAIT_TIME_S**: The amount of time in seconds spent on waiting between cloud checkpoint operation retries. Default is
   ``1``.
+* **RAY_AIR_FULL_TRACEBACKS**: If set to 1, will print full tracebacks for training functions,
+  including internal code paths. Otherwise, abbreviated tracebacks that only show user code
+  are printed. Defaults to 0 (disabled).
+* **RAY_AIR_NEW_OUTPUT**: If set to 0, this disables
+  the `experimental new console output <https://github.com/ray-project/ray/issues/36949>`_.
+* **RAY_AIR_RICH_LAYOUT**: If set to 1, this enables
+  the `stick table layout <https://github.com/ray-project/ray/issues/36949>`_.
+
+
 
 There are some environment variables that are mostly relevant for integrated libraries:
 
