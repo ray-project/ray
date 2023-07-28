@@ -251,6 +251,8 @@ For example, you can:
 
 See :class:`the Result docstring <ray.air.result.Result>` for more details.
 
+.. _train-huggingface:
+
 Hugging Face
 ------------
 

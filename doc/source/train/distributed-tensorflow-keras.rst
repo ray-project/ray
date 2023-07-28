@@ -2,12 +2,15 @@
 
 Distributed Tensorflow & Keras
 ==============================
+`TensorFlow <https://www.tensorflow.org/>`__ is a popular deep learning
+framework. Ray Train's TensorFlow integration enables you to scale your
+TensorFlow and Keras training loops to many machines and GPUs.
 
-Ray Train configures ``TF_CONFIG`` for you, allowing you to run
+On a technical level, Ray Train schedules your training workers
+and configures ``TF_CONFIG`` for you, allowing you to run
 your ``MultiWorkerMirroredStrategy`` training script. See `Distributed
 training with TensorFlow <https://www.tensorflow.org/guide/distributed_training>`_
 for more information.
-
 
 Most of the examples in this guide use Tensorflow with Keras, but
 Ray Train also works with vanilla Tensorflow.
