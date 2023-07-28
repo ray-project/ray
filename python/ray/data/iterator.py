@@ -174,6 +174,7 @@ class DataIterator(abc.ABC):
             ):
                 self.block_iterator_fn = block_iterator_fn
                 self.output_fn = None
+                self.iterator = None
 
             def _create_iterator(self) -> Iterator[DataBatch]:
                 (
@@ -243,6 +244,8 @@ class DataIterator(abc.ABC):
                 self.kwargs = kwargs
 
             def __next__(self):
+                if self.iterator is None:
+                    iter(self)
                 try:
                     next_batch = next(self.iterator)
                     if self.output_fn is not None:
