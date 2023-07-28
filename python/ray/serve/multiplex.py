@@ -206,7 +206,9 @@ class _ModelMultiplexWrapper:
                         f"Successfully loaded model '{model_id}' in {loaded_time}s."
                     )
                     self._model_load_tasks.discard(model_id)
-                    self.model_load_latency_s.set(time.time() - load_start_time)
+                    self.model_load_latency_ms.observe(
+                        (time.time() - load_start_time) * 1000.0
+                    )
                     return self.models[model_id]
                 except Exception as e:
                     logger.error(
@@ -232,5 +234,5 @@ class _ModelMultiplexWrapper:
                 await sync_to_async(model.__del__)()
             setattr(model, "__del__", lambda _: None)
         unloaded_time = time.time() - unload_start_time
-        self.model_unload_latency_s.set(unloaded_time)
+        self.model_unload_latency_ms.observe(unloaded_time * 1000.0)
         logger.info(f"Successfully unloaded model '{model_id}' in {unloaded_time}s.")
