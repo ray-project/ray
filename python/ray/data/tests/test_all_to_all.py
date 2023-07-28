@@ -245,7 +245,7 @@ def test_groupby_arrow(ray_start_regular_shared, use_push_based_shuffle):
 def test_groupby_errors(ray_start_regular_shared):
     ds = ray.data.range(100)
     ds.groupby(None).count().show()  # OK
-    with pytest.raises(NotImplementedError):
+    with pytest.raises(ValueError):
         ds.groupby(lambda x: x % 2).count().show()
     with pytest.raises(ValueError):
         ds.groupby("foo").count().show()

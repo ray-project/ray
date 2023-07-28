@@ -249,6 +249,7 @@ class DatasetStats:
         self.iter_next_batch_s: Timer = Timer()
         self.iter_format_batch_s: Timer = Timer()
         self.iter_collate_batch_s: Timer = Timer()
+        self.iter_finalize_batch_s: Timer = Timer()
         self.iter_total_blocked_s: Timer = Timer()
         self.iter_user_s: Timer = Timer()
         self.iter_total_s: Timer = Timer()
@@ -307,7 +308,6 @@ class DatasetStats:
             stages_stats.append(
                 StageStatsSummary.from_block_metadata(
                     metadata,
-                    self.time_total_s,
                     stage_name,
                     is_substage=is_substage,
                 )
@@ -320,6 +320,7 @@ class DatasetStats:
             self.iter_next_batch_s,
             self.iter_format_batch_s,
             self.iter_collate_batch_s,
+            self.iter_finalize_batch_s,
             self.iter_total_blocked_s,
             self.iter_user_s,
             self.iter_total_s,
@@ -485,7 +486,6 @@ class StageStatsSummary:
     def from_block_metadata(
         cls,
         block_metas: List[BlockMetadata],
-        time_total_s: float,
         stage_name: str,
         is_substage: bool,
     ) -> "StageStatsSummary":
@@ -494,24 +494,32 @@ class StageStatsSummary:
 
         Args:
             block_metas: List of `BlockMetadata` to calculate stats of
-            time_total_s: Total execution time of stage
             stage_name: Name of stage associated with `blocks`
             is_substage: Whether this set of blocks belongs to a substage.
         Returns:
             A `StageStatsSummary` object initialized with the calculated statistics
         """
         exec_stats = [m.exec_stats for m in block_metas if m.exec_stats is not None]
+        rounded_total = 0
+        time_total_s = 0
 
         if is_substage:
             exec_summary_str = "{}/{} blocks executed\n".format(
                 len(exec_stats), len(block_metas)
             )
         else:
-            rounded_total = round(time_total_s, 2)
-            if rounded_total <= 0:
-                # Handle -0.0 case.
-                rounded_total = 0
             if exec_stats:
+                # Calculate the total execution time of stage as
+                # the difference between the latest end time and
+                # the earliest start time of all blocks in the stage.
+                earliest_start_time = min(s.start_time_s for s in exec_stats)
+                latest_end_time = max(s.end_time_s for s in exec_stats)
+                time_total_s = latest_end_time - earliest_start_time
+
+                rounded_total = round(time_total_s, 2)
+                if rounded_total <= 0:
+                    # Handle -0.0 case.
+                    rounded_total = 0
                 exec_summary_str = "{}/{} blocks executed in {}s".format(
                     len(exec_stats), len(block_metas), rounded_total
                 )
@@ -726,6 +734,8 @@ class IterStatsSummary:
     format_time: Timer
     # Time spent in collate fn, in seconds
     collate_time: Timer
+    # Time spent in finalize_fn, in seconds
+    finalize_batch_time: Timer
     # Total time user thread is blocked by iter_batches
     block_time: Timer
     # Time spent in user code, in seconds
@@ -754,6 +764,7 @@ class IterStatsSummary:
             or self.next_time.get()
             or self.format_time.get()
             or self.collate_time.get()
+            or self.finalize_batch_time.get()
         ):
             out += "\nDataset iterator time breakdown:\n"
             if self.block_time.get():
@@ -807,6 +818,16 @@ class IterStatsSummary:
                     fmt(self.collate_time.max()),
                     fmt(self.collate_time.avg()),
                     fmt(self.collate_time.get()),
+                )
+            if self.finalize_batch_time.get():
+                format_str = (
+                    "   * In host->device transfer: {} min, {} max, {} avg, {} total\n"
+                )
+                out += format_str.format(
+                    fmt(self.finalize_batch_time.min()),
+                    fmt(self.finalize_batch_time.max()),
+                    fmt(self.finalize_batch_time.avg()),
+                    fmt(self.finalize_batch_time.get()),
                 )
 
         return out
@@ -875,6 +896,7 @@ class DatasetPipelineStats:
             "iter_next_batch_s": Timer(),
             "iter_format_batch_s": Timer(),
             "iter_collate_batch_s": Timer(),
+            "iter_finalize_batch_s": Timer(),
             "iter_user_s": Timer(),
             "iter_total_s": Timer(),
         }

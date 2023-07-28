@@ -125,7 +125,7 @@ ale-py==0.8.1 \
     --hash=sha256:f278036f9b6066062abcdf0987a0ec5a8e0f22a2c7cfac925e39378d4343d490
     # via
     #   -r release/ray_release/byod/requirements_ml_byod_3.8.in
-    #   shimmy
+    #   gymnasium
 anyio==3.7.0 \
     --hash=sha256:275d9973793619a5374e1c89a4f4ad3f4b0a5510a2b5b939444bee8f4c4d37ce \
     --hash=sha256:eddca883c4175f14df8aedce21054bfca3adb70ffe76a9f607aef9d7fa2ea7f0
@@ -532,10 +532,6 @@ exceptiongroup==1.1.1 \
     # via
     #   anyio
     #   pytest
-farama-notifications==0.0.4 \
-    --hash=sha256:13fceff2d14314cf80703c8266462ebf3733c7d165336eee998fc58e545efd18 \
-    --hash=sha256:14de931035a41961f7c056361dc7f980762a143d05791ef5794a751a2caf05ae
-    # via gymnasium
 fastapi==0.97.0 \
     --hash=sha256:95d757511c596409930bd20673358d4a4d709004edb85c5d24d6ffc48fabcbf2 \
     --hash=sha256:b53248ee45f64f19bb7600953696e3edf94b0f7de94df1e5433fc5c6136fa986
@@ -857,12 +853,14 @@ gym-notices==0.0.8 \
     --hash=sha256:ad25e200487cafa369728625fe064e88ada1346618526102659b4640f2b4b911 \
     --hash=sha256:e5f82e00823a166747b4c2a07de63b6560b1acb880638547e0cabf825a01e463
     # via gym
-gymnasium[atari,mujoco]==0.28.1 \
-    --hash=sha256:4c2c745808792c8f45c6e88ad0a5504774394e0c126f6e3db555e720d3da6f24 \
-    --hash=sha256:7bc9a5bce1022f997d1dbc152fc91d1ac977bad9cc7794cdc25437010867cabf
-    # via
-    #   -r release/ray_release/byod/requirements_ml_byod_3.8.in
-    #   shimmy
+gymnasium[atari,mujoco]==0.26.3 \
+    --hash=sha256:2a918e321fc0bb48f4ebf2936ccd8f20a049658f1509dea9c6e768b8030392ed \
+    --hash=sha256:4be0085252759c65b09c9fb83970ceedd02fab03b075024d8ba22eaa1a11eda1
+    # via -r release/ray_release/byod/requirements_ml_byod_3.8.in
+gymnasium-notices==0.0.1 \
+    --hash=sha256:3e8c868046f56dea84c949cc7e97383cccfab27152fc3f4968754e4c9c087ab9 \
+    --hash=sha256:be68c8399e88b554b6db1eb3c484b00f229cbe5c930f64f6ae9cd1a6e93db1c5
+    # via gymnasium
 h11==0.14.0 \
     --hash=sha256:8f19fbbe99e72420ff35c00b27a34cb9937e902a8b810e2c88300c6f0a3b699d \
     --hash=sha256:e3fe4ac4b851c468cc8363d500db52c2ead036020723024a109d37346efaa761
@@ -903,10 +901,6 @@ iniconfig==2.0.0 \
     --hash=sha256:2d91e135bf72d31a410b17c16da610a82cb55f6b0477d1a902134b24a455b8b3 \
     --hash=sha256:b6a85871a79d2e3b22d2d1b94ac2824226a63c6b741c88f7ae975f18b6778374
     # via pytest
-jax-jumpy==1.0.0 \
-    --hash=sha256:195fb955cc4c2b7f0b1453e3cb1fb1c414a51a407ffac7a51e69a73cb30d59ad \
-    --hash=sha256:ab7e01454bba462de3c4d098e3e585c302a8f06bc36d9182ab4e7e4aa7067c5e
-    # via gymnasium
 jinja2==3.1.2 \
     --hash=sha256:31351a702a408a9e7595a8fc6150fc3f43bb6bf7e319770cbc0db9df9437e852 \
     --hash=sha256:6088930bfe239f0e6710546ab9c19c9ef35e29792895fed6e6e31a023a182a61
@@ -1020,32 +1014,27 @@ mpmath==1.3.0 \
     --hash=sha256:7a28eb2a9774d00c7bc92411c19a89209d5da7c4c9a9e227be8330a23a25b91f \
     --hash=sha256:a0b2b9fe80bbcd81a6647ff13108738cfb482d481d826cc0e02f5b35e5c88d2c
     # via sympy
-mujoco==2.3.5 \
-    --hash=sha256:10aa8ff583b42966170b9a38d62c4fdad35351fca716d3d005887d45dbe69b95 \
-    --hash=sha256:121b551e65f5211e9c406be2c00f67d6a9a13e6c44d89fe46419542d0e2054b5 \
-    --hash=sha256:1ba3f282b0a537d7bd22e81488305ec104e55b18e48cae6718fa7cf820d18aed \
-    --hash=sha256:1c3ab3bf087255c535571ceeab4c2fb62d8f00dfbd3a0d2a5c1cc115c1144d79 \
-    --hash=sha256:1e2d45eaa76799681e61d2ef0a2d22a12a77b6ac4f4471deef862e80b3e7cbe2 \
-    --hash=sha256:223882a4b4c4becb57172a94255709060f58d5075c59ef7f2869b080d7199d84 \
-    --hash=sha256:27f8cd4e94d6e153c5477001f9ad8df4d44e2a45e4d76f1829af4204d9806701 \
-    --hash=sha256:32bf87cb5e17a993ce71f820ef2786a8c71f588e426a346d6de01cbf16843d14 \
-    --hash=sha256:39d966e6ec3cb9ed212de238de0c563ea9b4450f2c87043feff256089514aab4 \
-    --hash=sha256:3f411e1950fe6e7bc6266ae71749860c272e1a0865db2a865624407272710205 \
-    --hash=sha256:4d64445da3e091c4a63ceec0d2a181d981b89a2f3215cc4c78dd793815368f4e \
-    --hash=sha256:51909772a5289b183434ccc74ed26420255f5ff905bb1e030f982dabba2a4afc \
-    --hash=sha256:55a5f082acc156499c531f1c0a0b53aefa51dcadf5b3588edcadc71c5a8e646d \
-    --hash=sha256:8333cb49049e77f64d8ae944c05fa907a012fbcc19002ab752ab461a814ca17d \
-    --hash=sha256:8f4b1c431f454fda3237a54b48b75d7dc320836fbc2c386beadd498ff3b03aa0 \
-    --hash=sha256:962a7d94d8ad9fb5a16ca97f25f8dabe607a2b7ec0cdc84173b9614c132fc488 \
-    --hash=sha256:9cd73e6ead99b4f0baf1b42c5aa571da8818a7d1d72331b08bd190e5a0cea1ad \
-    --hash=sha256:b61e54e8618365c48395cb20bcc46a456dbb248b24a059729b2deb43646c4a80 \
-    --hash=sha256:c17b4a79b214a092fa561b9065e051ae3af4d6c6f138fd934bb6e82daec059df \
-    --hash=sha256:cbdc5a19f1006c50edbd97bff349e45f3f7b81b9058a185a02123c1b06397962 \
-    --hash=sha256:d621353d6be604a5e11bc015a52f76c594496d19f5a431df0c2beb9ee71bcd3d \
-    --hash=sha256:daae78b6fd7831bbc8510a02cfe34d2be641f8af2257df9b9b81f1f4abb00067 \
-    --hash=sha256:de6c544046b9f104c05c025daabc4c10370f9638094b352329314f0e36225714 \
-    --hash=sha256:e218455e52ea3309ae90b97f7344c98f01e5e54515e27794677d19d64722cad7 \
-    --hash=sha256:fffe7e3a8a13eb0ef9478d91ce16760db645b33da939db1935751d7e88893ed9
+mujoco==2.2 \
+    --hash=sha256:0d76ab6a13fd66d98f80a41e7b29f8410eac13ec1f9b1badc927270876afc266 \
+    --hash=sha256:103357863320fdd5b8ed3dc41dd719e7211efea3b3d675c10eb7d0aa26a8e2a2 \
+    --hash=sha256:1bb370365a10f3e76eee8a438c8eafcd0d2721e05c1c9bf602cded8223f819cf \
+    --hash=sha256:290c9c358d89cbc3bfec7077fd57d4a7983a17e85af9b8c373ca6a26c39b4697 \
+    --hash=sha256:3fdcf6b9092f0f74042c61fe0231bfa03f4fa9a044c216b8daab8bf691ac44e8 \
+    --hash=sha256:4c2e3505614c92debfdf4fa182473012cc634915e995ed13bfbf3724e86d9983 \
+    --hash=sha256:6fad79862c9d77bd8db7353e9184790dd5b78d2a100ff0583350ec03c65aa78b \
+    --hash=sha256:7b8d28f35cc4efdb284feb8d145cc2245fb08c9c68c4682464249933e015e9ad \
+    --hash=sha256:7da2485571c8e2c1a4b08b0a298ea7e2a68e4d994fd16f7842da0b7202790d03 \
+    --hash=sha256:7f3855256e880a7e5517c38d7aabc4b1dd6548723b1ba9ce0dfb0155cf667698 \
+    --hash=sha256:8698ba1e48c17b506c138408fb66a3b27e3930a2f2fad6eae1f2123500970013 \
+    --hash=sha256:8be58a89b2050d3db00d08117e08dcb354b9502a82ea2143c60f8a3c48a2cbca \
+    --hash=sha256:8c88ce6f7c0ecbd72826a6f24b19eacbedb1214ad0087361ff6aa44a4524023e \
+    --hash=sha256:969ca82382686707166451362f96f467da5602e44af3542fdd0ed4babb92a9f1 \
+    --hash=sha256:adb2e3dfef47648e3daf95cb40433653ef80eb97f22527906c13b47be2dd6c06 \
+    --hash=sha256:bc6de46a43089efdf7417a2efea932ec66bef2bca95c9fcf6b4d8ce198260743 \
+    --hash=sha256:cd4361a183bffc10e6d5520537a6657a5507398ab9df072b3cace3262af274b9 \
+    --hash=sha256:e65c0f891ea4cd47dbc1a54204b8cbb08711bd0cda1b4340fd31c0a718b683a8 \
+    --hash=sha256:ec1cfc369ebf574655731a2823ba05b46c268595eebdd960698f3e1dd965d893 \
+    --hash=sha256:f47d94afcd0081bd547a2e858af98e5efe31c647f824fc93a5edde656e078d55
     # via gymnasium
 mujoco-py==2.1.2.14 \
     --hash=sha256:37c0b41bc0153a8a0eb3663103a67c60f65467753f74e4ff6e68b879f3e3a71f \
@@ -1169,7 +1158,6 @@ numpy==1.24.3 \
     #   gym
     #   gymnasium
     #   imageio
-    #   jax-jumpy
     #   modin
     #   mujoco
     #   mujoco-py
@@ -1177,7 +1165,6 @@ numpy==1.24.3 \
     #   petastorm
     #   pyarrow
     #   scipy
-    #   shimmy
     #   tensorboardx
     #   torchtext
     #   torchvision
@@ -1798,10 +1785,6 @@ setproctitle==1.3.2 \
     --hash=sha256:fed18e44711c5af4b681c2b3b18f85e6f0f1b2370a28854c645d636d5305ccd8 \
     --hash=sha256:ffc61a388a5834a97953d6444a2888c24a05f2e333f9ed49f977a87bb1ad4761
     # via wandb
-shimmy[atari]==0.2.1 \
-    --hash=sha256:2d7d21c4ca679a64bb452e6a4232c6b0f5dba7589f5420454ddc1f0634334334 \
-    --hash=sha256:7b96915445ee5488dcb19ccf52ce5581d6f00cc5cf0e0dff36b16cd65bffcb75
-    # via gymnasium
 six==1.16.0 \
     --hash=sha256:1e61c37477a1626458e36f7b1d82aa5c9b094fa4802892072e49de9c60c4c926 \
     --hash=sha256:8abb2f1d86890a2dfb989f9a77cfcfd3e47c2a354b01111771326f8aa26e0254
@@ -1972,7 +1955,6 @@ typing-extensions==4.6.3 \
     --hash=sha256:d91d5919357fe7f681a9f2b5b4cb2a5f1ef0a1e9f59c4d8ff0d3491e05c0ffd5
     # via
     #   ale-py
-    #   gymnasium
     #   pydantic
     #   rich
     #   starlette

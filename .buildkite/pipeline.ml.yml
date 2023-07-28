@@ -425,7 +425,7 @@
     - sudo apt-get install -y mongodb
     - sudo rm -rf /var/lib/mongodb/mongod.lock
     - sudo service mongodb start
-    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=data_integration python/ray/data/...
+    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=data_integration,-doctest python/ray/data/...
     - sudo service mongodb stop
     - sudo apt-get purge -y mongodb*
 
@@ -435,10 +435,10 @@
   parallelism: 3
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - DATA_PROCESSING_TESTING=1 ARROW_VERSION=7.* ./ci/env/install-dependencies.sh
+    - DATA_PROCESSING_TESTING=1 ARROW_VERSION=12.* ./ci/env/install-dependencies.sh
     - ./ci/env/env_info.sh
-    - ./ci/run/run_bazel_test_with_sharding.sh --config=ci $(./ci/run/bazel_export_options) --action_env=RAY_DATA_USE_STREAMING_EXECUTOR=1 --build_tests_only --test_tag_filters=-data_integration python/ray/data/...
-    - ./ci/run/run_bazel_test_with_sharding.sh --config=ci $(./ci/run/bazel_export_options) --action_env=RAY_DATA_USE_STREAMING_EXECUTOR=1 --build_tests_only --test_tag_filters=ray_data python/ray/air/...
+    - ./ci/run/run_bazel_test_with_sharding.sh --config=ci $(./ci/run/bazel_export_options) --action_env=RAY_DATA_USE_STREAMING_EXECUTOR=1 --build_tests_only --test_tag_filters=-data_integration,-doctest python/ray/data/...
+    - ./ci/run/run_bazel_test_with_sharding.sh --config=ci $(./ci/run/bazel_export_options) --action_env=RAY_DATA_USE_STREAMING_EXECUTOR=1 --build_tests_only --test_tag_filters=ray_data,-doctest python/ray/air/...
 
 - label: "Data tests (Arrow nightly)"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_PYTHON_AFFECTED", "RAY_CI_DATA_AFFECTED"]
@@ -448,19 +448,19 @@
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - DATA_PROCESSING_TESTING=1 ARROW_VERSION=nightly ./ci/env/install-dependencies.sh
     - ./ci/env/env_info.sh
-    - ./ci/run/run_bazel_test_with_sharding.sh --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-data_integration python/ray/data/...
-    - ./ci/run/run_bazel_test_with_sharding.sh --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=ray_data python/ray/air/...
+    - ./ci/run/run_bazel_test_with_sharding.sh --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-data_integration,-doctest python/ray/data/...
+    - ./ci/run/run_bazel_test_with_sharding.sh --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=ray_data,-doctest python/ray/air/...
 
-- label: "Data tests (Arrow 11)"
+- label: "Data tests (Arrow 12)"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_PYTHON_AFFECTED", "RAY_CI_DATA_AFFECTED"]
   instance_size: medium
   parallelism: 3
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - DATA_PROCESSING_TESTING=1 ARROW_VERSION=11.* ./ci/env/install-dependencies.sh
+    - DATA_PROCESSING_TESTING=1 ARROW_VERSION=12.* ./ci/env/install-dependencies.sh
     - ./ci/env/env_info.sh
-    - ./ci/run/run_bazel_test_with_sharding.sh --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-data_integration python/ray/data/...
-    - ./ci/run/run_bazel_test_with_sharding.sh --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=ray_data python/ray/air/...
+    - ./ci/run/run_bazel_test_with_sharding.sh --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-data_integration,-doctest python/ray/data/...
+    - ./ci/run/run_bazel_test_with_sharding.sh --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=ray_data,-doctest python/ray/air/...
 
 - label: "Data tests (Arrow 6)"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_PYTHON_AFFECTED", "RAY_CI_DATA_AFFECTED"]
@@ -470,8 +470,8 @@
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - DATA_PROCESSING_TESTING=1 ARROW_VERSION=6.* ./ci/env/install-dependencies.sh
     - ./ci/env/env_info.sh
-    - ./ci/run/run_bazel_test_with_sharding.sh --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-data_integration python/ray/data/...
-    - ./ci/run/run_bazel_test_with_sharding.sh --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=ray_data python/ray/air/...
+    - ./ci/run/run_bazel_test_with_sharding.sh --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-data_integration,-doctest python/ray/data/...
+    - ./ci/run/run_bazel_test_with_sharding.sh --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=ray_data,-doctest python/ray/air/...
 
 - label: "Workflow tests"
   conditions: ["RAY_CI_PYTHON_AFFECTED", "RAY_CI_WORKFLOW_AFFECTED"]
@@ -490,6 +490,9 @@
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - DOC_TESTING=1 INSTALL_HOROVOD=1 ./ci/env/install-dependencies.sh
+    # TODO (shrekris-anyscale): Remove transformers after core transformer
+    # requirement is upgraded
+    - pip install "transformers==4.30.2"
     - ./ci/env/env_info.sh
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-timeseries_libs,-external,-ray_air,-gpu,-post_wheel_build,-doctest,-datasets_train,-highly_parallel doc/...
 
@@ -560,3 +563,30 @@
     - (cd rllib_contrib/maml && pip install -r requirements.txt && pip install -e .)
     - ./ci/env/env_info.sh
     - pytest rllib_contrib/maml/tests/test_maml.py
+
+- label: ":exploding_death_star: RLlib Contrib: A2C Tests"
+  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_CONTRIB_AFFECTED"]
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+    - (cd rllib_contrib/a2c && pip install -r requirements.txt && pip install -e .)
+    - ./ci/env/env_info.sh
+    - pytest rllib_contrib/a2c/tests/
+    - python rllib_contrib/a2c/examples/a2c_cartpole_v1.py --run-as-test
+
+- label: ":exploding_death_star: RLlib Contrib: R2D2 Tests"
+  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_CONTRIB_AFFECTED"]
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+    - (cd rllib_contrib/r2d2 && pip install -r requirements.txt && pip install -e .)
+    - ./ci/env/env_info.sh
+    - pytest rllib_contrib/r2d2/tests/
+    - python rllib_contrib/r2d2/examples/r2d2_stateless_cartpole.py --run-as-test
+
+- label: ":exploding_death_star: RLlib Contrib: DDPG Tests"
+  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_CONTRIB_AFFECTED"]
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+    - (cd rllib_contrib/ddpg && pip install -r requirements.txt && pip install -e .)
+    - ./ci/env/env_info.sh
+    - pytest rllib_contrib/ddpg/tests/
+    - python rllib_contrib/ddpg/examples/ddpg_pendulum_v1.py --run-as-test

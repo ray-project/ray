@@ -1,6 +1,7 @@
 from typing import List, Optional, Tuple, Union
 
 from ray.data._internal.planner.exchange.interfaces import ExchangeTaskSpec
+from ray.data._internal.sort import SortKey
 from ray.data._internal.table_block import TableBlockAccessor
 from ray.data.aggregate import AggregateFn, Count
 from ray.data.aggregate._aggregate import _AggregateOnKeyBase
@@ -46,33 +47,12 @@ class SortAggregateTaskSpec(ExchangeTaskSpec):
         stats = BlockExecStats.builder()
 
         block = SortAggregateTaskSpec._prune_unused_columns(block, key, aggs)
-
-        def make_key(
-            keys: Union[str, Tuple[str, str], List[str], List[Tuple[str, str]]]
-        ) -> List[Tuple[str, str]]:
-            if isinstance(keys, str):
-                return [(keys, "ascending")]
-
-            if isinstance(keys, tuple):
-                return keys
-
-            out_keys = []
-
-            for key in keys:
-                if isinstance(key, str):
-                    out_keys.append((key, "ascending"))
-                else:
-                    out_keys.append(key)
-
-            return out_keys
-
         if key is None:
             partitions = [block]
         else:
             partitions = BlockAccessor.for_block(block).sort_and_partition(
                 boundaries,
-                make_key(key),
-                descending=False,
+                SortKey(key),
             )
         parts = [BlockAccessor.for_block(p).combine(key, aggs) for p in partitions]
         meta = BlockAccessor.for_block(block).get_metadata(

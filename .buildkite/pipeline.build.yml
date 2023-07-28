@@ -1,9 +1,3 @@
-- label: ":book: Lint"
-  commands:
-    - export LINT=1
-    - ./ci/env/install-dependencies.sh
-    - ./ci/ci.sh lint
-
 - label: ":java: Java"
   conditions: ["RAY_CI_JAVA_AFFECTED"]
   instance_size: medium
@@ -189,8 +183,11 @@
     - bash ./ci/ci.sh prepare_docker
     - ./ci/env/env_info.sh
     - pip install ray[client]
-    - bazel test --config=ci $(./ci/run/bazel_export_options)
-      --test_tag_filters=client_tests,small_size_python_tests
+    - bazel test --config=ci $(./ci/run/bazel_export_options) 
+      --test_tag_filters=client_tests,small_size_python_tests 
+      -- $(yq -r .flaky_tests[] ci/v2/test/core.tests.yml)
+    - bazel test --config=ci $(./ci/run/bazel_export_options) 
+      --test_tag_filters=client_tests,small_size_python_tests,-team:core 
       -- python/ray/tests/...
     - bazel test --config=ci $(./ci/run/bazel_export_options)
       --test_tag_filters=ray_ha
@@ -219,7 +216,10 @@
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - ./ci/env/env_info.sh
     - bazel test --config=ci $(./ci/run/bazel_export_options)
-      --test_tag_filters=-kubernetes,medium_size_python_tests_a_to_j
+      --test_tag_filters=medium_size_python_tests_a_to_j
+      -- $(yq -r .flaky_tests[] ci/v2/test/core.tests.yml)
+    - bazel test --config=ci $(./ci/run/bazel_export_options)
+      --test_tag_filters=medium_size_python_tests_a_to_j,-team:core
       python/ray/tests/...
 
 - label: ":python: (Medium K-Z)"
@@ -229,7 +229,10 @@
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - DL=1 ./ci/env/install-dependencies.sh
     - bazel test --config=ci $(./ci/run/bazel_export_options)
-      --test_tag_filters=-kubernetes,medium_size_python_tests_k_to_z
+      --test_tag_filters=medium_size_python_tests_k_to_z
+      -- $(yq -r .flaky_tests[] ci/v2/test/core.tests.yml)
+    - bazel test --config=ci $(./ci/run/bazel_export_options)
+      --test_tag_filters=medium_size_python_tests_k_to_z,-team:core
       python/ray/tests/...
 
 - label: ":python: Debug Test"

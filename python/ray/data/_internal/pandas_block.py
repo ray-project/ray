@@ -18,7 +18,6 @@ import numpy as np
 
 from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.data._internal.table_block import TableBlockAccessor, TableBlockBuilder
-from ray.data.aggregate import AggregateFn
 from ray.data.block import (
     Block,
     BlockAccessor,
@@ -34,7 +33,8 @@ if TYPE_CHECKING:
     import pandas
     import pyarrow
 
-    from ray.data._internal.sort import SortKeyT
+    from ray.data._internal.sort import SortKey
+    from ray.data.aggregate import AggregateFn
 
 T = TypeVar("T")
 
@@ -276,8 +276,8 @@ class PandasBlockAccessor(TableBlockAccessor):
     def _empty_table() -> "pandas.DataFrame":
         return PandasBlockBuilder._empty_table()
 
-    def _sample(self, n_samples: int, key: "SortKeyT") -> "pandas.DataFrame":
-        return self._table[[k[0] for k in key]].sample(n_samples, ignore_index=True)
+    def _sample(self, n_samples: int, sort_key: "SortKey") -> "pandas.DataFrame":
+        return self._table[sort_key.get_columns()].sample(n_samples, ignore_index=True)
 
     def _apply_agg(
         self, agg_fn: Callable[["pandas.Series", bool], U], on: str
@@ -356,15 +356,15 @@ class PandasBlockAccessor(TableBlockAccessor):
         )
 
     def sort_and_partition(
-        self, boundaries: List[T], key: "SortKeyT", descending: bool
+        self, boundaries: List[T], sort_key: "SortKey"
     ) -> List[Block]:
         if self._table.shape[0] == 0:
             # If the pyarrow table is empty we may not have schema
             # so calling sort_indices() will raise an error.
             return [self._empty_table() for _ in range(len(boundaries) + 1)]
-
-        columns = [k[0] for k in key]
-        table = self._table.sort_values(by=columns, ascending=not descending)
+        
+        columns, ascending = sort_key.to_pandas_sort_args()
+        table = self._table.sort_values(by=columns, ascending=ascending)
         if len(boundaries) == 0:
             return [table]
 
@@ -377,7 +377,7 @@ class PandasBlockAccessor(TableBlockAccessor):
         # *greater than* the boundary value instead.
 
         records = list(table[columns].itertuples(index=False, name=None))
-        if descending:
+        if not ascending:
             bounds = [
                 len(records) - bisect.bisect_left(records[::-1], b) for b in boundaries
             ]
@@ -392,7 +392,7 @@ class PandasBlockAccessor(TableBlockAccessor):
         return partitions
 
     def combine(
-        self, key: Union[str, List[str]], aggs: Tuple[AggregateFn]
+        self, key: Union[str, List[str]], aggs: Tuple["AggregateFn"]
     ) -> "pandas.DataFrame":
         """Combine rows with the same key into an accumulator.
 
@@ -479,7 +479,7 @@ class PandasBlockAccessor(TableBlockAccessor):
 
     @staticmethod
     def merge_sorted_blocks(
-        blocks: List[Block], key: "SortKeyT", _descending: bool
+        blocks: List[Block], sort_key: "SortKey"
     ) -> Tuple["pandas.DataFrame", BlockMetadata]:
         pd = lazy_import_pandas()
         stats = BlockExecStats.builder()
@@ -488,10 +488,8 @@ class PandasBlockAccessor(TableBlockAccessor):
             ret = PandasBlockAccessor._empty_table()
         else:
             ret = pd.concat(blocks, ignore_index=True)
-            ret = ret.sort_values(
-                by=[k[0] for k in key] if isinstance(key, list) else key[0][0],
-                ascending=not _descending,
-            )
+            columns, ascending = sort_key.to_pandas_sort_args()
+            ret = ret.sort_values(by=columns, ascending=ascending)
         return ret, PandasBlockAccessor(ret).get_metadata(
             None, exec_stats=stats.build()
         )
@@ -500,7 +498,7 @@ class PandasBlockAccessor(TableBlockAccessor):
     def aggregate_combined_blocks(
         blocks: List["pandas.DataFrame"],
         key: Union[str, List[str]],
-        aggs: Tuple[AggregateFn],
+        aggs: Tuple["AggregateFn"],
         finalize: bool,
     ) -> Tuple["pandas.DataFrame", BlockMetadata]:
         """Aggregate sorted, partially combined blocks with the same key range.

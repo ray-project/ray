@@ -17,6 +17,8 @@ from typing import (
     Tuple,
 )
 
+import pyarrow.fs
+
 from ray._private.storage import _get_storage_uri
 from ray._private.thirdparty.tabulate.tabulate import tabulate
 from ray.air.constants import WILDCARD_KEY
@@ -296,7 +298,8 @@ class ScalingConfig:
 @dataclass
 @Deprecated(
     message="Use `ray.train.DataConfig` instead of DatasetConfig to "
-    "configure data ingest for training."
+    "configure data ingest for training. "
+    "See https://docs.ray.io/en/master/ray-air/check-ingest.html#migrating-from-the-legacy-datasetconfig-api for more details."  # noqa: E501
 )
 class DatasetConfig:
     """Configuration for ingest of a single Dataset.
@@ -749,6 +752,7 @@ class RunConfig:
 
     name: Optional[str] = None
     storage_path: Optional[str] = None
+    storage_filesystem: Optional[pyarrow.fs.FileSystem] = None
     callbacks: Optional[List["Callback"]] = None
     stop: Optional[Union[Mapping, "Stopper", Callable[[str, Mapping], bool]]] = None
     failure_config: Optional[FailureConfig] = None
