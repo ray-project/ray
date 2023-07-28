@@ -312,14 +312,11 @@ class HTTPProxy:
 
         self.prefix_router.update_routes(endpoints)
 
-    def _exit_if_drained(self):
-        assert self._is_draining()
-        drained = (not self._ongoing_requests) and (not self._draining_timer)
-        if drained:
-            logger.info(
-                f"The proxy actor on node {self._node_id} is drained. Exiting..."
-            )
-            ray.actor.exit_actor()
+    def is_drained(self):
+        if not self._is_draining():
+            return False
+
+        return (not self._ongoing_requests) and (not self._draining_timer)
 
     def _update_draining(self, http_proxy_nodes: Set[str]):
         """Update draining flag on http proxy.
@@ -332,12 +329,12 @@ class HTTPProxy:
 
         def draining_timer_callback():
             self._draining_timer = None
-            self._exit_if_drained()
 
         draining = self._node_id not in http_proxy_nodes
         if draining and (not self._is_draining()):
             logger.info(f"Start to drain the proxy actor on node {self._node_id}")
             self._draining_start_time = time.time()
+            assert not self._draining_timer
             self._draining_timer = get_or_create_event_loop().call_later(
                 PROXY_DRAINING_MIN_PERIOD_S, draining_timer_callback
             )
@@ -401,8 +398,6 @@ class HTTPProxy:
         signaling that the node can be downscaled safely.
         """
         self._ongoing_requests -= 1
-        if self._ongoing_requests == 0 and self._is_draining():
-            self._exit_if_drained()
 
     async def __call__(self, scope, receive, send):
         """Implements the ASGI protocol.
@@ -909,7 +904,6 @@ class HTTPProxyActor:
 
         self.setup_complete = asyncio.Event()
 
-        self.app = HTTPProxy(controller_name, node_id)
         self.app = HTTPProxy(
             controller_name=controller_name,
             node_id=node_id,
@@ -998,7 +992,11 @@ Please make sure your http-host and http-port are specified correctly."""
         """No-op method to check on the health of the HTTP Proxy.
         Make sure the async event loop is not blocked.
         """
-        pass
+        if self.app.is_drained():
+            logger.info(
+                f"The proxy actor on node {self.app._node_id} is drained. Exiting..."
+            )
+            ray.actor.exit_actor()
 
     async def receive_asgi_messages(self, request_id: str) -> bytes:
         return pickle.dumps(await self.app.receive_asgi_messages(request_id))
