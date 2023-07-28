@@ -30,6 +30,11 @@ class _MergeTaskSchedule:
         self.merge_partition_size = output_num_blocks // num_merge_tasks_per_round
         self._partitions_with_extra_task = output_num_blocks % num_merge_tasks_per_round
 
+        if self.merge_partition_size == 0:
+            self.num_merge_tasks_per_round = self._partitions_with_extra_task
+            self.merge_partition_size = 1
+            self._partitions_with_extra_task = 0
+
     def get_num_reducers_per_merge_idx(self, merge_idx: int) -> int:
         """
         Each intermediate merge task will produce outputs for a partition of P
@@ -43,7 +48,10 @@ class _MergeTaskSchedule:
         return partition_size
 
     def get_merge_idx_for_reducer_idx(self, reducer_idx: int) -> int:
-        if reducer_idx < self.merge_partition_size * self._partitions_with_extra_task:
+        if (
+            reducer_idx
+            < (self.merge_partition_size + 1) * self._partitions_with_extra_task
+        ):
             merge_idx = reducer_idx // (self.merge_partition_size + 1)
         else:
             reducer_idx -= (
@@ -99,7 +107,6 @@ class _PushBasedShuffleStage:
     ):
         self.num_rounds = num_rounds
         self.num_map_tasks_per_round = num_map_tasks_per_round
-        self.num_merge_tasks_per_round = len(merge_task_placement)
 
         node_strategies = {
             node_id: {
@@ -114,7 +121,7 @@ class _PushBasedShuffleStage:
         ]
 
         self.merge_schedule = _MergeTaskSchedule(
-            output_num_blocks, self.num_merge_tasks_per_round
+            output_num_blocks, len(merge_task_placement)
         )
 
     def get_merge_task_options(self, merge_idx):
@@ -234,7 +241,7 @@ class _MergeStageIterator:
         # (ObjectRefs). Each merge task index corresponds to a partition of P
         # final reduce tasks.
         self._all_merge_results = [
-            [] for _ in range(self._stage.num_merge_tasks_per_round)
+            [] for _ in range(self._stage.merge_schedule.num_merge_tasks_per_round)
         ]
 
     def __next__(self):
@@ -262,7 +269,7 @@ class _MergeStageIterator:
         del merge_result
 
         self._merge_idx += 1
-        self._merge_idx %= self._stage.num_merge_tasks_per_round
+        self._merge_idx %= self._stage.merge_schedule.num_merge_tasks_per_round
         return metadata_ref
 
     def pop_merge_results(self) -> List[List[ObjectRef]]:
@@ -423,7 +430,7 @@ class PushBasedShuffleTaskScheduler(ExchangeTaskScheduler):
         shuffle_map = cached_remote_fn(map_partition)
         shuffle_map = shuffle_map.options(
             **map_ray_remote_args,
-            num_returns=1 + stage.num_merge_tasks_per_round,
+            num_returns=1 + stage.merge_schedule.num_merge_tasks_per_round,
         )
 
         map_stage_iter = _MapStageIterator(
@@ -445,9 +452,10 @@ class PushBasedShuffleTaskScheduler(ExchangeTaskScheduler):
             map_stage_iter, shuffle_merge, stage, self._exchange_spec._reduce_args
         )
         merge_stage_executor = _PipelinedStageExecutor(
-            merge_stage_iter, stage.num_merge_tasks_per_round, max_concurrent_rounds=2
+            merge_stage_iter,
+            stage.merge_schedule.num_merge_tasks_per_round,
+            max_concurrent_rounds=2,
         )
-
         # Execute the map-merge stage. This submits tasks in rounds of M map
         # tasks and N merge tasks each. Task execution between map and merge is
         # pipelined, so that while executing merge for one round of inputs, we
