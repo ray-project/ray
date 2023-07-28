@@ -71,6 +71,10 @@ class TrainingIterator:
         # TrainingResult event. There's no need to do these one at a time.
         self._checkpoint_to_report = None
 
+        # TODO(justinvyu): Is this the best way to do this? Need to save this
+        # as part of checkpoint metadata and load it back on restore.
+        self._latest_checkpoint_id = 0
+
         self._start_training(
             train_func=train_func,
             run_dir=run_dir,
@@ -120,17 +124,15 @@ class TrainingIterator:
             # NOTE: Idea: this checkpoint dir name should be customizable
             # and created on the fly when the checkpoint is reported with metrics.
             # Ex: lambda metrics: f"checkpoint_iter={metrics['training_iteration']}"
-            storage.current_checkpoint_id = (
-                self._checkpoint_manager._latest_checkpoint_id
-            )
-            logger.debug(
-                f"Setting next checkpoint path to: {storage.checkpoint_fs_path}"
-            )
+            storage.current_checkpoint_id = self._latest_checkpoint_id
+            print(f"Setting next checkpoint path to: {storage.checkpoint_fs_path}")
 
             # TODO(justinvyu): This checkpoint_path is NOT a URI anymore.
             # It's just a path relative to the storage filesystem.
             # `session.report` needs to be updated to upload using pyarrow.fs.copy_files
-            self._backend_executor._set_checkpoint_uri(storage.checkpoint_fs_path)
+            self._backend_executor._set_checkpoint_uri(storage.current_checkpoint_id)
+
+            self._latest_checkpoint_id += 1
 
         elif self._checkpoint_strategy._checkpoint_upload_from_workers:
             self._backend_executor._set_checkpoint_uri(
@@ -201,6 +203,7 @@ class TrainingIterator:
         checkpoints = [
             checkpoint_result.data for checkpoint_result in checkpoint_results
         ]
+        print("TrainingIterator processed checkpoints: ", checkpoints)
         assert all(isinstance(checkpoint, NewCheckpoint) for checkpoint in checkpoints)
 
         # All we need to do is track which checkpoint to use for book-keeping.

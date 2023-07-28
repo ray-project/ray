@@ -434,6 +434,12 @@ class DataParallelTrainer(BaseTrainer):
                     and len(first_worker_results) == 2
                 )
                 metrics, checkpoint = first_worker_results
+                print(
+                    "Calling _StatusReporter.report with (metrics, checkpoint): ",
+                    metrics,
+                    "\n",
+                    checkpoint,
+                )
                 train.report(metrics, checkpoint=checkpoint)
             else:
                 tune.report(**first_worker_results)

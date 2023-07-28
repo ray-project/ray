@@ -967,15 +967,27 @@ class _TuneControllerBase:
         """
         logger.debug("Trial %s: Processing trial save.", trial)
 
+        from ray.train.checkpoint import Checkpoint as NewCheckpoint
+
         try:
-            trial.saving_to.dir_or_data = checkpoint_value
-            self._callbacks.on_checkpoint(
-                iteration=self._iteration,
-                trials=self._trials,
-                trial=trial,
-                checkpoint=trial.saving_to,
-            )
-            trial.on_checkpoint(trial.saving_to)
+            if _use_storage_context() and isinstance(checkpoint_value, NewCheckpoint):
+                self._callbacks.on_checkpoint(
+                    iteration=self._iteration,
+                    trials=self._trials,
+                    trial=trial,
+                    checkpoint=checkpoint_value,
+                )
+                trial.on_checkpoint(checkpoint_value)
+            else:
+                trial.saving_to.dir_or_data = checkpoint_value
+                self._callbacks.on_checkpoint(
+                    iteration=self._iteration,
+                    trials=self._trials,
+                    trial=trial,
+                    checkpoint=trial.saving_to,
+                )
+                trial.on_checkpoint(trial.saving_to)
+
             self._checkpoint_manager.on_trial_checkpoint(trial)
             if trial.checkpoint.storage_mode != CheckpointStorage.MEMORY:
                 self._mark_trial_to_checkpoint(trial)

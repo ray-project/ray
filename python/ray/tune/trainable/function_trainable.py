@@ -251,6 +251,7 @@ class _StatusReporter:
 
     def report(self, metrics: Dict, *, checkpoint: Optional[Checkpoint] = None) -> None:
         from ray.train._internal.storage import _use_storage_context
+        from ray.train.checkpoint import Checkpoint as NewCheckpoint
 
         # TODO(xwjiang): Tons of optimizations.
         self._air_session_has_reported = True
@@ -258,7 +259,12 @@ class _StatusReporter:
         # TODO(justinvyu): With a unified session, we'll still run into this doubled
         # report problem. This should be fixed by checking if the checkpoint has been
         # uploaded already (via some marker), then skipping the repeat upload.
-        if _use_storage_context():
+        if _use_storage_context() and isinstance(checkpoint, NewCheckpoint):
+            print(
+                "_StatusReporter.report called with checkpoint:\n",
+                checkpoint,
+            )
+            self._fresh_checkpoint = True
             self._last_checkpoint = checkpoint
         else:
             if checkpoint:
@@ -276,8 +282,9 @@ class _StatusReporter:
             from ray.train._internal.storage import _use_storage_context
             from ray.train.checkpoint import Checkpoint as NewCheckpoint
 
-            if _use_storage_context():
-                assert isinstance(self._last_checkpoint, NewCheckpoint)
+            if _use_storage_context() and isinstance(
+                self._last_checkpoint, NewCheckpoint
+            ):
                 return self._last_checkpoint
 
             assert isinstance(self._last_checkpoint, str)
@@ -480,6 +487,16 @@ class FunctionTrainable(Trainable):
             raise ValueError("Checkpoint dir should not be used with function API.")
 
         checkpoint = self._status_reporter.get_checkpoint()
+
+        from ray.train._internal.storage import _use_storage_context
+        from ray.train.checkpoint import Checkpoint as NewCheckpoint
+
+        if _use_storage_context() and isinstance(checkpoint, NewCheckpoint):
+            print(
+                "Returning checkpoint from FunctionTrainable.save_checkpoint:\n",
+                checkpoint,
+            )
+            return checkpoint
 
         if not checkpoint:
             # We drop a marker here to indicate that the checkpoint is empty

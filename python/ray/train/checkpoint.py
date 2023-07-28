@@ -6,7 +6,7 @@ import shutil
 import tempfile
 import traceback
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Dict, Iterator, Optional, Union
+from typing import Any, Dict, Iterator, Optional, Union
 
 import pyarrow.fs
 

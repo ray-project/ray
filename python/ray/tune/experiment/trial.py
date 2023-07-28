@@ -421,9 +421,7 @@ class Trial:
         # Set remote experiment path if upload_dir is set
         if self.sync_config.upload_dir:
             if remote_experiment_path:
-                if not remote_experiment_path.startswith(
-                    self.sync_config.upload_dir
-                ):
+                if not remote_experiment_path.startswith(self.sync_config.upload_dir):
                     raise ValueError(
                         f"Both a `SyncConfig.upload_dir` and an `experiment_path` "
                         f"pointing to remote storage were passed, but they do not "

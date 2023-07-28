@@ -434,7 +434,11 @@ class _TrainSession:
         Args:
             uri: URI to the location where next checkpoint should be saved.
         """
-        self.legacy_checkpoint_uri = uri
+        if _use_storage_context():
+            # TODO(justinvyu): Fix up the name.
+            self.storage.current_checkpoint_id = uri
+        else:
+            self.legacy_checkpoint_uri = uri
 
     def new_checkpoint(self, checkpoint: NewCheckpoint):
         import pyarrow.fs
@@ -443,6 +447,16 @@ class _TrainSession:
         assert isinstance(checkpoint.filesystem, pyarrow.fs.LocalFileSystem)
 
         # Upload checkpoint files.
+        print(
+            "Uploading checkpoint files to storage path:"
+            "\n{source}\n{destination}\n{source_fs}\n{dest_fs}".format(
+                source=checkpoint.path,
+                destination=self.storage.checkpoint_fs_path,
+                source_fs=checkpoint.filesystem,
+                dest_fs=self.storage.storage_filesystem,
+            )
+        )
+        self.storage.storage_filesystem.create_dir(self.storage.checkpoint_fs_path)
         pyarrow.fs.copy_files(
             source=checkpoint.path,
             destination=self.storage.checkpoint_fs_path,
