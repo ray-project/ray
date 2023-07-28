@@ -39,3 +39,11 @@ Ray Train User Guides
 
             Ray Train Architecture
 
+    .. grid-item-card::
+        :img-top: /ray-overview/images/ray_svg_logo.svg
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
+
+        .. button-ref:: train-benchmarks
+
+            Ray Train Benchmarks
+

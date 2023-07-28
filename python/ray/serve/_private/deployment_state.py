@@ -1279,7 +1279,10 @@ class DeploymentState:
         self._curr_status_info = DeploymentStatusInfo(
             self._name, DeploymentStatus.UPDATING
         )
-        logger.info(f"Deleting deployment {self._name}.")
+        logger.info(
+            f"Deleting deployment {self._name}.",
+            extra={"log_to_stderr": False},
+        )
 
     def _set_target_state(self, target_info: DeploymentInfo) -> None:
         """Set the target state for the deployment to the provided info."""
@@ -1422,7 +1425,7 @@ class DeploymentState:
 
         Args:
             max_to_stop: max number of replicas to stop, by default,
-            it will stop all replicas with wrong version.
+            it will stop all replicas with outdated version.
         """
         replicas_to_update = self._replicas.pop(
             exclude_version=self._target_state.version,
@@ -1478,7 +1481,7 @@ class DeploymentState:
 
         return replicas_changed
 
-    def _check_and_stop_wrong_version_replicas(self) -> bool:
+    def _check_and_stop_outdated_version_replicas(self) -> bool:
         """Stops replicas with outdated versions to implement rolling updates.
 
         This includes both explicit code version updates and changes to the
@@ -1543,7 +1546,7 @@ class DeploymentState:
         upscale = []
         downscale = None
 
-        self._check_and_stop_wrong_version_replicas()
+        self._check_and_stop_outdated_version_replicas()
 
         current_replicas = self._replicas.count(
             states=[ReplicaState.STARTING, ReplicaState.UPDATING, ReplicaState.RUNNING]
@@ -2283,6 +2286,16 @@ class DeploymentStateManager:
 
         # TODO(jiaodong): Need to add some logic to prevent new replicas
         # from being created once shutdown signal is sent.
+
+    def is_ready_for_shutdown(self) -> bool:
+        """Return whether all deployments are shutdown.
+
+        Check there are no deployment states and no checkpoints.
+        """
+        return (
+            len(self._deployment_states) == 0
+            and self._kv_store.get(CHECKPOINT_KEY) is None
+        )
 
     def _save_checkpoint_func(
         self, *, writeahead_checkpoints: Optional[Dict[str, Tuple]]

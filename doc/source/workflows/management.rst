@@ -27,9 +27,26 @@ SUCCESSFUL          The workflow has been executed successfully.
 Single workflow management APIs
 -------------------------------
 
-.. code-block:: python
+.. testcode::
+    :hide:
 
+    import tempfile
+    import ray
+
+    temp_dir = tempfile.TemporaryDirectory()
+
+    ray.init(storage=f"file://{temp_dir.name}")
+
+.. testcode::
+
+    import ray
     from ray import workflow
+
+    @ray.remote
+    def task():
+        return 3
+
+    workflow.run(task.bind(), workflow_id="workflow_id")
 
     # Get the status of a workflow.
     try:
@@ -37,7 +54,7 @@ Single workflow management APIs
         assert status in {
             "RUNNING", "RESUMABLE", "FAILED",
             "CANCELED", "SUCCESSFUL"}
-    except workflow.WorkflowNotFoundError:
+    except workflow.exceptions.WorkflowNotFoundError:
         print("Workflow doesn't exist.")
 
     # Resume a workflow.
@@ -50,30 +67,38 @@ Single workflow management APIs
     # Delete the workflow.
     workflow.delete(workflow_id="workflow_id")
 
+.. testoutput::
+
+    3
+
 Bulk workflow management APIs
 -----------------------------
 
-.. code-block:: python
+.. testcode::
 
     # List all running workflows.
     print(workflow.list_all("RUNNING"))
-    # [("workflow_id_1", "RUNNING"), ("workflow_id_2", "RUNNING")]
 
     # List RUNNING and CANCELED workflows.
     print(workflow.list_all({"RUNNING", "CANCELED"}))
-    # [("workflow_id_1", "RUNNING"), ("workflow_id_2", "CANCELED")]
 
     # List all workflows.
     print(workflow.list_all())
-    # [("workflow_id_1", "RUNNING"), ("workflow_id_2", "CANCELED")]
 
     # Resume all resumable workflows. This won't include failed workflow
     print(workflow.resume_all())
-    # [("workflow_id_1", ObjectRef), ("workflow_id_2", ObjectRef)]
 
     # To resume workflows including failed ones, use `include_failed=True`
     print(workflow.resume_all(include_failed=True))
-    # [("workflow_id_1", ObjectRef), ("workflow_id_3", ObjectRef)]
+
+.. testoutput::
+    :options: +MOCK
+
+    [("workflow_id_1", "RUNNING"), ("workflow_id_2", "RUNNING")]
+    [("workflow_id_1", "RUNNING"), ("workflow_id_2", "CANCELED")]
+    [("workflow_id_1", "RUNNING"), ("workflow_id_2", "CANCELED")]
+    [("workflow_id_1", ObjectRef), ("workflow_id_2", ObjectRef)]
+    [("workflow_id_1", ObjectRef), ("workflow_id_3", ObjectRef)]
 
 Recurring workflows
 -------------------

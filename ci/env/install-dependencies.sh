@@ -419,8 +419,8 @@ install_pip_packages() {
         pip install -U "torch==${TORCH_VERSION-1.9.0}" "torchvision==${TORCHVISION_VERSION-0.10.0}"
         # We won't add dl-cpu-requirements.txt as it would otherwise overwrite our custom
         # torch. Thus we have also have to install tensorflow manually.
-        TF_PACKAGE=$(grep "tensorflow==" "${WORKSPACE_DIR}/python/requirements/ml/dl-cpu-requirements.txt")
-        TFPROB_PACKAGE=$(grep "tensorflow-probability==" "${WORKSPACE_DIR}/python/requirements/ml/dl-cpu-requirements.txt")
+        TF_PACKAGE=$(grep -ohE "tensorflow==[^ ;]+" "${WORKSPACE_DIR}/python/requirements/ml/dl-cpu-requirements.txt" | head -n 1)
+        TFPROB_PACKAGE=$(grep -ohE "tensorflow-probability==[^ ;]+" "${WORKSPACE_DIR}/python/requirements/ml/dl-cpu-requirements.txt" | head -n 1)
 
         # %%;* deletes everything after ; to get rid of e.g. python version specifiers
         pip install -U "${TF_PACKAGE%%;*}" "${TFPROB_PACKAGE%%;*}"
@@ -428,8 +428,8 @@ install_pip_packages() {
         # Otherwise, use pinned default torch version.
         # Again, install right away, as some dependencies (e.g. torch-spline-conv) need
         # torch to be installed for their own install.
-        TORCH_PACKAGE=$(grep "torch==" "${WORKSPACE_DIR}/python/requirements/ml/dl-cpu-requirements.txt")
-        TORCHVISION_PACKAGE=$(grep "torchvision==" "${WORKSPACE_DIR}/python/requirements/ml/dl-cpu-requirements.txt")
+        TORCH_PACKAGE=$(grep -ohE "torch==[^ ;]+" "${WORKSPACE_DIR}/python/requirements/ml/dl-cpu-requirements.txt" | head -n 1)
+        TORCHVISION_PACKAGE=$(grep -ohE "torchvision==[^ ;]+" "${WORKSPACE_DIR}/python/requirements/ml/dl-cpu-requirements.txt" | head -n 1)
 
         # %%;* deletes everything after ; to get rid of e.g. python version specifiers
         pip install "${TORCH_PACKAGE%%;*}" "${TORCHVISION_PACKAGE%%;*}"
@@ -457,6 +457,16 @@ install_pip_packages() {
 
   # Generate the pip command with collected requirements files
   pip_cmd="pip install -U -c ${WORKSPACE_DIR}/python/requirements.txt"
+
+  if [[ -f "${WORKSPACE_DIR}/python/requirements_compiled.txt"  &&  "${PYTHON-}" != "3.7" && "${OSTYPE}" != msys ]]; then
+    # On Python 3.7, we don't, as the dependencies are compiled for 3.8+
+    # and we don't build ray-ml images. This means we don't have to keep
+    # consistency between CI and docker images.
+    # On Windows, some pinned dependencies are not built for win, so we
+    # skip this until we have a good wy to resolve cross-platform dependencies.
+    pip_cmd+=" -c ${WORKSPACE_DIR}/python/requirements_compiled.txt"
+  fi
+
   for file in "${requirements_files[@]}"; do
      pip_cmd+=" -r ${file}"
   done
