@@ -139,7 +139,7 @@ You can enable JSON-formatted logging in the Serve log file by setting the envir
 ```
 
 ### Set Request ID
-You can set a custom request ID for each HTTP request by including `RAY_SERVE_REQUEST_ID` in the request header and retrieve request ID from response. For example
+You can set a custom request ID for each HTTP request by including `X-Request-ID` in the request header and retrieve request ID from response. For example
 
 ```{literalinclude} doc_code/monitoring/request_id.py
 :language: python

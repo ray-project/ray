@@ -7,6 +7,7 @@ import pickle
 import socket
 import time
 from typing import Callable, Dict, List, Optional, Set, Tuple
+import uuid
 
 import uvicorn
 import starlette.responses
@@ -58,7 +59,6 @@ from ray.serve._private.logging_utils import (
 from ray.serve._private.utils import (
     calculate_remaining_timeout,
     call_function_from_import_path,
-    get_random_letters,
 )
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
@@ -482,10 +482,8 @@ class HTTPProxy:
                 scope["path"] = route_path.replace(route_prefix, "", 1)
                 scope["root_path"] = root_path + route_prefix
 
-            request_id = get_random_letters(10)
             request_context_info = {
                 "route": route_path,
-                "request_id": request_id,
                 "app_name": app_name,
             }
             start_time = time.time()
@@ -494,7 +492,13 @@ class HTTPProxy:
                     multiplexed_model_id = value.decode()
                     handle = handle.options(multiplexed_model_id=multiplexed_model_id)
                     request_context_info["multiplexed_model_id"] = multiplexed_model_id
-                if key.decode().upper() == RAY_SERVE_REQUEST_ID_HEADER:
+                if key.decode() == "x-request-id":
+                    request_context_info["request_id"] = value.decode()
+                if (
+                    key.decode() == RAY_SERVE_REQUEST_ID_HEADER.lower()
+                    and "request_id" not in request_context_info
+                ):
+                    # "x-request-id" has higher priority than "RAY_SERVE_REQUEST_ID".
                     request_context_info["request_id"] = value.decode()
             ray.serve.context._serve_request_context.set(
                 ray.serve.context.RequestContext(**request_context_info)
@@ -857,13 +861,30 @@ class RequestIdMiddleware:
         self.app = app
 
     async def __call__(self, scope, receive, send):
+
+        headers = MutableHeaders(scope=scope)
+        if RAY_SERVE_REQUEST_ID_HEADER not in headers and "x-request-id" not in headers:
+            # If X-Request-ID and RAY_SERVE_REQUEST_ID_HEADER are both not set, we
+            # generate a new request ID.
+            request_id = str(uuid.uuid4())
+            headers.append("x-request-id", request_id)
+            headers.append(RAY_SERVE_REQUEST_ID_HEADER, request_id)
+        elif "x-request-id" in headers:
+            request_id = headers["x-request-id"]
+        else:
+            # TODO(Sihan) Deprecate RAY_SERVE_REQUEST_ID_HEADER
+            request_id = headers[RAY_SERVE_REQUEST_ID_HEADER]
+
         async def send_with_request_id(message: Dict):
-            request_id = ray.serve.context._serve_request_context.get().request_id
             if message["type"] == "http.response.start":
                 headers = MutableHeaders(scope=message)
+                # TODO(Sihan) Deprecate RAY_SERVE_REQUEST_ID_HEADER
                 headers.append(RAY_SERVE_REQUEST_ID_HEADER, request_id)
+                headers.append("X-Request-ID", request_id)
             if message["type"] == "websocket.accept":
+                # TODO(Sihan) Deprecate RAY_SERVE_REQUEST_ID_HEADER
                 message[RAY_SERVE_REQUEST_ID_HEADER] = request_id
+                message["X-Request-ID"] = request_id
             await send(message)
 
         await self.app(scope, receive, send_with_request_id)
