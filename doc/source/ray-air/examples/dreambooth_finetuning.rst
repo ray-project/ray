@@ -23,7 +23,7 @@ This example fine-tunes both the ``text_encoder`` and ``unet`` models used in th
 
 
 .. image:: /templates/05_dreambooth_finetuning/dreambooth/images/dreambooth_example.png
-   :alt: DreamBooth example
+   :alt: DreamBooth overview
 
 The full code repository can be found here: `https://github.com/ray-project/ray/blob/master/python/ray/air/examples/dreambooth/ <https://github.com/ray-project/ray/blob/master/python/ray/air/examples/dreambooth/>`_
 
@@ -165,9 +165,7 @@ more workers and GPUs.
 
 
 .. image:: /templates/05_dreambooth_finetuning/dreambooth/images/dreambooth_training.png
-
    :alt: DreamBooth training times
-
 
 .. list-table::
    :header-rows: 1
