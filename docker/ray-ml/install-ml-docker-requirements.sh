@@ -61,3 +61,4 @@ mkdir -p ~/.mujoco
 mv mujoco210-linux-x86_64.tar.gz ~/.mujoco/.
 cd ~/.mujoco || exit
 tar -xf ~/.mujoco/mujoco210-linux-x86_64.tar.gz
+export LD_LIBRARY_PATH=${LD_LIBRARY_PATH:-}:/root/.mujoco/mujoco210/bin
