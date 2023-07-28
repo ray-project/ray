@@ -100,6 +100,7 @@ class ActorPoolMapOperator(MapOperator):
         self._next_task_idx = 0
         # Start time of when actors are requested.
         self._actors_requested_ts = None
+        self._min_actors_satisfied = False
 
     def get_init_fn(self) -> Callable[[], None]:
         return self._init_fn
@@ -133,27 +134,35 @@ class ActorPoolMapOperator(MapOperator):
     def notify_resource_usage(
         self, input_queue_size: int, under_resource_limits: bool
     ) -> None:
+        # If the minimum number of workers becomes satisfied at any time,
+        # we can stop checking for this condition afterwards.
+        if self._actor_pool.num_running_actors() >= self._autoscaling_policy.min_workers:
+            self._min_actors_satisfied = True
         free_slots = self._actor_pool.num_free_slots()
         if input_queue_size > free_slots and under_resource_limits:
             # The first time we request actors, we record the timestamp.
             if self._actors_requested_ts is None:
                 self._actors_requested_ts = time.time()
-
-            # If the minimum requested actors are not available in a timely manner,
-            # raise a timeout.
-            exceeds_timeout = (
-                time.time() - self._actors_requested_ts
-                > DEFAULT_WAIT_FOR_MIN_ACTORS_SEC
-            )
-            if (
-                exceeds_timeout
-                and self._actor_pool.num_running_actors()
-                < self._autoscaling_policy.min_workers
-            ):
-                raise TimeoutError(
-                    "Unable to create requested minimum actors "
-                    f"in {DEFAULT_WAIT_FOR_MIN_ACTORS_SEC} seconds.",
+            if not self._min_actors_satisfied:
+                # If the minimum requested actors are not available in a timely manner,
+                # raise a timeout.
+                exceeds_timeout = (
+                    time.time() - self._actors_requested_ts
+                    > DEFAULT_WAIT_FOR_MIN_ACTORS_SEC
                 )
+                is_requesting_actor = self._actor_pool.num_pending_actors() > 0
+                min_actors_satisfied = (
+                    self._actor_pool.num_running_actors() >= self._autoscaling_policy.min_workers # noqa: E501
+                )
+                if (
+                    is_requesting_actor and exceeds_timeout and not min_actors_satisfied
+                ):
+                    raise TimeoutError(
+                        f"Unable to create requested minimum "
+                        f"{self._autoscaling_policy.min_workers} actors "
+                        f"in {DEFAULT_WAIT_FOR_MIN_ACTORS_SEC} seconds. "
+                        "Check if cluster has enough resource to launch the actors."
+                    )
             # Try to scale up if work remains in the work queue.
             self._scale_up_if_needed()
         else:
