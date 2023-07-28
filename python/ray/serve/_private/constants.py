@@ -201,6 +201,7 @@ RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING = (
 
 # Request ID used for logging. Can be provided as a request
 # header and will always be returned as a response header.
+# DEPRECATED: use `X-Request-Id` instead
 RAY_SERVE_REQUEST_ID_HEADER = "RAY_SERVE_REQUEST_ID"
 
 # Feature flag to enable power of two choices routing.
