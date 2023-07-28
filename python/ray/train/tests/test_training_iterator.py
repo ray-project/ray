@@ -149,10 +149,13 @@ def test_run_iterator_error(ray_start_4_cpus):
 
     iterator = create_iterator(fail_train, config)
 
-    with pytest.raises(StartTraceback):
+    with pytest.raises(StartTraceback) as exc:
         next(iterator)
 
-    # TODO(justinvyu): Figure out why the exception string lost the traceback.
+    assert isinstance(exc.value.__cause__, NotImplementedError), (
+        exc.value,
+        exc.value.__cause__,
+    )
 
     assert iterator.get_final_results() is None
     assert iterator.is_finished()
