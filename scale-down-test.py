@@ -26,12 +26,10 @@ def f():
     return ray.put(os.getpid()), ray.put(b"x" * 1024 * 1024)
 
 
-
 @ray.remote(num_cpus=0, num_gpus=1)
 class A:
     def __init__(self):
         self.data = ray.put(b"x" * 1024 * 1024)
-
 
     def fetch(self):
         return self.data
