@@ -7,8 +7,7 @@ set -xe
 pushd dreambooth || true
 
 # Step 0 cont
-# TODO: Change this path to a shared directory (ex: NFS)
-# if running on a multi-node cluster
+# TODO: If running on multiple nodes, change this path to a shared directory (ex: NFS)
 export DATA_PREFIX="/tmp"
 export ORIG_MODEL_NAME="CompVis/stable-diffusion-v1-4"
 export ORIG_MODEL_HASH="b95be7d6f134c3a9e62ee616f310733567f069ce"

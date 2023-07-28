@@ -22,7 +22,7 @@ See the HuggingFace tutorial for useful explanations and suggestions on hyperpar
 This example fine-tunes both the ``text_encoder`` and ``unet`` models used in the Stable Diffusion process, with respect to a prior preserving loss.
 
 
-.. image:: images/dreambooth_example.png
+.. image:: /templates/05_dreambooth_finetuning/dreambooth/images/dreambooth_example.png
    :alt: DreamBooth example
 
 The full code repository can be found here: `https://github.com/ray-project/ray/blob/master/python/ray/air/examples/dreambooth/ <https://github.com/ray-project/ray/blob/master/python/ray/air/examples/dreambooth/>`_
@@ -164,7 +164,8 @@ We expect that the training time should benefit from scale and decreases when ru
 more workers and GPUs.
 
 
-.. image:: images/dreambooth_training.png
+.. image:: /templates/05_dreambooth_finetuning/dreambooth/images/dreambooth_training.png
+
    :alt: DreamBooth training times
 
 
