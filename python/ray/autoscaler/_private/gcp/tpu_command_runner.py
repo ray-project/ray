@@ -110,7 +110,7 @@ class TPUCommandRunner(CommandRunnerInterface):
             results = executor.map(
                 lambda i: self._command_runners[i].run(*args, **kwargs),
                 range(self._num_workers))
-        # This may not be the expected return result:
+        # Note: This may not be the expected return result
         return list(results)[0]
 
     def run_rsync_up(self, *args, **kwargs) -> None:
@@ -133,7 +133,7 @@ class TPUCommandRunner(CommandRunnerInterface):
 
     def remote_shell_command_str(self) -> str:
         """Return the command the user can use to open a shell."""
-        # This may not be the right expected return result
+        # Note: This may not be the right expected return result
         return self._command_runners[0].remote_shell_command_str()
 
     def run_init(self, *args, **kwargs) -> Optional[bool]:
@@ -151,5 +151,5 @@ class TPUCommandRunner(CommandRunnerInterface):
             results = executor.map(
                 lambda i: self._command_runners[i].run_init(*args, **kwargs),
                 range(self._num_workers))
-        # This may not be the right expected return result
+        # Note: This may not be the right expected return result
         return any(results)
