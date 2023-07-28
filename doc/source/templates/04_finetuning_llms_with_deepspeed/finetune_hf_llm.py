@@ -461,6 +461,15 @@ def parse_args():
     parser.add_argument(
         "--num-epochs", type=int, default=1, help="Number of epochs to train for."
     )
+    parser.add_argument(
+        "--num-checkpoints-to-keep",
+        type=int,
+        help=(
+            "Number of checkpoints to keep, if None, all checkpoints will be kept, "
+            "if set to n>=1, the top n checkpoint with min. evaluation perplexity "
+            "will be kept."
+        ),
+    )
     parser.add_argument("--lr", type=float, default=5e-6, help="Learning rate to use.")
 
     parser.add_argument(
@@ -550,7 +559,9 @@ def main():
             # sync_config=tune.SyncConfig(sync_artifacts=False),
             storage_path=storage_path,
             checkpoint_config=air.CheckpointConfig(
-                num_to_keep=1,
+                num_to_keep=args.num_checkpoints_to_keep,
+                checkpoint_score_attribute="perplexity",
+                checkpoint_score_order="min",
                 # Enable distributed checkpointing
                 _checkpoint_keep_all_ranks=True,
                 _checkpoint_upload_from_workers=True,
