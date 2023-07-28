@@ -30,6 +30,10 @@ logger = DatasetLogger(__name__)
 # fairly high since streaming backpressure prevents us from overloading actors.
 DEFAULT_MAX_TASKS_IN_FLIGHT = 4
 
+# The default time to wait for minimum requested actors
+# to start before raising a timeout, in seconds.
+DEFAULT_WAIT_FOR_MIN_ACTORS_SEC = 60 * 10
+
 
 class ActorPoolMapOperator(MapOperator):
     """A MapOperator implementation that executes tasks on an actor pool.
@@ -117,7 +121,7 @@ class ActorPoolMapOperator(MapOperator):
         logger.get_logger().info(
             f"{self._name}: Waiting for {len(refs)} pool actors to start..."
         )
-        ray.get(refs)
+        ray.get(refs, timeout=DEFAULT_WAIT_FOR_MIN_ACTORS_SEC)
 
     def should_add_input(self) -> bool:
         return self._actor_pool.num_free_slots() > 0
