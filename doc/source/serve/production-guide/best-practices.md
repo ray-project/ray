@@ -102,6 +102,8 @@ deployment_statuses:
 
 For Kubernetes deployments with KubeRay, tighter integrations of `serve status` with Kubernetes are available. See [Getting the status of Serve applications in Kubernetes](serve-getting-status-kubernetes).
 
+(serve-best-practices-http-requests)=
+
 ## Best practices for HTTP requests
 
 Most examples in these docs use straightforward `get` or `post` requests using Python's `requests` library, such as:
