@@ -38,12 +38,13 @@ def get_worker_root_device():
     else:
         return devices
 
+
 @PublicAPI(stability="alpha")
 def get_devices() -> Optional[List[int]]:
     """Returns the device ID of the current Ray Train worker.
 
-    This method returns the device index of the current GPU Worker. Returns None 
-    if called in a CPU worker. Note that you can only call this method inside 
+    This method returns the device index of the current GPU Worker. Returns None
+    if called in a CPU worker. Note that you can only call this method inside
     the training function of :class:`TorchTrainer <ray.train.torch.TorchTrainer>`.
     """
     device = get_worker_root_device()
@@ -51,6 +52,7 @@ def get_devices() -> Optional[List[int]]:
         return [device.index]
     else:
         return None
+
 
 @PublicAPI(stability="alpha")
 class RayDDPStrategy(DDPStrategy):
@@ -67,6 +69,7 @@ class RayDDPStrategy(DDPStrategy):
             rank=self.global_rank,
         )
 
+
 @PublicAPI(stability="alpha")
 class RayFSDPStrategy(FSDPStrategy):
     """Subclass of FSDPStrategy to ensure compatibility with Ray orchestration."""
@@ -81,6 +84,7 @@ class RayFSDPStrategy(FSDPStrategy):
             num_replicas=self.world_size,
             rank=self.global_rank,
         )
+
 
 @PublicAPI(stability="alpha")
 class RayDeepSpeedStrategy(DeepSpeedStrategy):
@@ -106,6 +110,7 @@ class RayDeepSpeedStrategy(DeepSpeedStrategy):
             num_replicas=self.world_size,
             rank=self.global_rank,
         )
+
 
 @PublicAPI(stability="alpha")
 class RayLightningEnvironment(LightningEnvironment):
@@ -172,6 +177,7 @@ class RayDataModule(pl.LightningDataModule):
         # setting, we only override this method when `val_dataset` is not `None`.
         if val_dataset:
             self.val_dataloader = _val_dataloader
+
 
 @PublicAPI(stability="alpha")
 class RayModelCheckpoint(ModelCheckpoint):
@@ -260,18 +266,38 @@ class RayModelCheckpoint(ModelCheckpoint):
         super().on_validation_end(trainer, *args, **kwargs)
         self._session_report(trainer=trainer, stage="validation_end")
 
+
 @PublicAPI(stability="alpha")
 def prepare_trainer(trainer: pl.Trainer) -> pl.Trainer:
+    # Check strategy class
     valid_strategy_class = [RayDDPStrategy, RayFSDPStrategy, RayFSDPStrategy]
 
     if not any(isinstance(trainer.strategy, cls) for cls in valid_strategy_class):
         raise RuntimeError(
             f"Invalid strategy class: {type(trainer.strategy)}. To use Lightning with Ray, "
-             "You have to provide one of [RayDDPStrategy, RayFSDPStrategy, RayDeepspeedStrategy] "
-             "or its subclass to `pytorch_lightning.Trainer(strategy=)`!"
-            )
+            "You have to provide one of [RayDDPStrategy, RayFSDPStrategy, RayDeepspeedStrategy] "
+            "or its subclass to `pytorch_lightning.Trainer(strategy=)`!"
+        )
 
-    
+    # Check cluster environment
+    cluster_environment = getattr(trainer.strategy, "cluster_environment", None)
+    if cluster_environment and not isinstance(
+        cluster_environment, RayLightningEnvironment
+    ):
+        raise RuntimeError(
+            "Invalid cluster environment plugin. The expected class is"
+            f"`ray.train.lightning.RayLightningEnvironment` but get {type(cluster_environment)}!"
+        )
+
+    # Check model callbacks
+    ray_checkpoint_callbacks = [
+        cb for cb in trainer.checkpoint_callbacks if isinstance(cb, RayModelCheckpoint)
+    ]
+    if len(ray_checkpoint_callbacks) > 1:
+        raise RuntimeError(
+            "You can provide at most one RayModelCheckpoint callbacks for Ray Train, but "
+            f"got {len(ray_checkpoint_callbacks)} here. For additional checkpoint callbacks, "
+            "please use the original `pl.callbacks.ModelCheckpoint` class instead!"
+        )
 
     return trainer
-
