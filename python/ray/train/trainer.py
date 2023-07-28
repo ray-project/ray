@@ -18,7 +18,8 @@ from ray.train._internal.backend_executor import (
 from ray.train._internal.checkpoint import (
     CheckpointManager,
 )
-from ray.train._internal.session import TrainingResultType
+from ray.train._internal.session import TrainingResult, TrainingResultType
+from ray.train.checkpoint import Checkpoint as NewCheckpoint
 
 # Ray Train should be usable even if Tune is not installed.
 from ray.train._internal.utils import ActorWrapper
@@ -65,6 +66,11 @@ class TrainingIterator:
         self._checkpoint_manager = checkpoint_manager
         self._checkpoint_strategy = checkpoint_strategy
         self._storage_path = storage_path
+
+        # TODO(justinvyu): report/checkpoint should be combined into a single
+        # TrainingResult event. There's no need to do these one at a time.
+        self._checkpoint_to_report = None
+
         self._start_training(
             train_func=train_func,
             run_dir=run_dir,
@@ -191,6 +197,16 @@ class TrainingIterator:
                 pass
             raise
 
+    def _process_checkpoint_results(self, checkpoint_results: List[TrainingResult]):
+        checkpoints = [
+            checkpoint_result.data for checkpoint_result in checkpoint_results
+        ]
+        assert all(isinstance(checkpoint, NewCheckpoint) for checkpoint in checkpoints)
+
+        # All we need to do is track which checkpoint to use for book-keeping.
+        # Let's use rank 0, and attach metadata about the other checkpoints.
+        self._checkpoint_to_report = checkpoints[0]
+
     def _fetch_next_result(self) -> Optional[List[Dict]]:
         """Fetch next results produced by ``session.report()`` from each worker.
 
@@ -210,12 +226,22 @@ class TrainingIterator:
             first_result = results[0]
             result_type = first_result.type
             if result_type is TrainingResultType.REPORT:
-                result_data = [r.data for r in results]
+                if _use_storage_context():
+                    # TODO(justinvyu): This tuple is what TrainingResult should be.
+                    result_data = [
+                        (r.data, None if rank > 0 else self._checkpoint_to_report)
+                        for rank, r in enumerate(results)
+                    ]
+                else:
+                    result_data = [r.data for r in results]
                 return result_data
             elif result_type is TrainingResultType.CHECKPOINT:
-                self._checkpoint_manager._process_checkpoints(
-                    results, decode_checkpoint_fn=self._backend._decode_data
-                )
+                if _use_storage_context():
+                    self._process_checkpoint_results(results)
+                else:
+                    self._checkpoint_manager._process_checkpoints(
+                        results, decode_checkpoint_fn=self._backend._decode_data
+                    )
 
                 # Note(jungong) : This is kinda funky. We update the cloud
                 # checkpoint dir on every distributed worker right after
