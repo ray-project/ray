@@ -165,7 +165,7 @@ def test_trainer(tmp_path):
 
         assert isinstance(train_session, _TrainSession)
         assert train_session.storage
-        assert train_session.checkpoint_uri.startswith(storage_path)
+        assert train_session.storage.checkpoint_fs_path
 
     trainer = DataParallelTrainer(
         dummy_train_fn,
