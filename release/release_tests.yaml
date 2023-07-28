@@ -1078,7 +1078,7 @@
   team: train
   cluster:
     byod:
-      type: cu118
+      type: cu117
     cluster_env: ../testing/cluster_envs/04_finetuning_llms_with_deepspeed.yaml
     cluster_compute: ../testing/compute_configs/04_finetuning_llms_with_deepspeed/aws_7b_or_13b.yaml
 
@@ -1105,9 +1105,9 @@
   team: train
   cluster:
     byod:
-      type: cu118
+      type: cu117
     cluster_env: ../testing/cluster_envs/04_finetuning_llms_with_deepspeed.yaml
-    cluster_compute: ../testing/compute_configs/04_finetuning_llms_with_deepspeed/gce_7b_or_13b.yaml
+    cluster_compute: ../testing/compute_configs/04_finetuning_llms_with_deepspeed/aws_7b_or_13b.yaml
 
   run:
     timeout: 1200
