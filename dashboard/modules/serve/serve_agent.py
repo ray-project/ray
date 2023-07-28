@@ -272,7 +272,7 @@ class ServeAgent(dashboard_utils.DashboardAgentModule):
         # Serve ignores HTTP options if it was already running when
         # serve_start_async() is called. We explicitly return an error response
         # here if Serve's HTTP options don't match the config's options.
-        for option, requested_value in full_http_options:
+        for option, requested_value in full_http_options.items():
             conflict_response = self.check_http_options(
                 option,
                 getattr(client.http_config, option),
