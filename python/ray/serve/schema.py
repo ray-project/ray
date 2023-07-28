@@ -618,6 +618,29 @@ class ServeDeploySchema(BaseModel, extra=Extra.forbid):
 
 
 @PublicAPI(stability="alpha")
+@dataclass
+class DeploymentStatusOverview:
+    status: DeploymentStatus
+    message: str
+
+
+@PublicAPI(stability="alpha")
+@dataclass
+class ApplicationStatusOverview:
+    status: ApplicationStatus
+    message: str
+    last_deployed_time_s: float
+    deployments: Dict[str, DeploymentStatusOverview]
+
+
+@PublicAPI(stability="alpha")
+@dataclass(eq=True)
+class ServeStatus:
+    http_proxies: Dict[str, HTTPProxyStatus] = field(default_factory=dict)
+    applications: Dict[str, ApplicationStatusOverview] = field(default_factory=dict)
+
+
+@PublicAPI(stability="alpha")
 class ServeActorDetails(BaseModel, frozen=True):
     node_id: Optional[str] = Field(
         description="ID of the node that the actor is running on."
@@ -812,7 +835,7 @@ class ServeInstanceDetails(BaseModel, extra=Extra.forbid):
             "applications": {},
         }
 
-    def _get_status(self) -> "ServeStatus":
+    def _get_status(self) -> ServeStatus:
         return ServeStatus(
             http_proxies={
                 node_id: proxy.status for node_id, proxy in self.http_proxies.items()
@@ -888,26 +911,3 @@ def serve_status_to_schema(serve_status: StatusOverview) -> ServeStatusSchema:
         app_status=serve_status.app_status,
         deployment_statuses=serve_status.deployment_statuses,
     )
-
-
-@PublicAPI(stability="alpha")
-@dataclass
-class DeploymentStatusOverview:
-    status: DeploymentStatus
-    message: str
-
-
-@PublicAPI(stability="alpha")
-@dataclass
-class ApplicationStatusOverview:
-    status: ApplicationStatus
-    message: str
-    last_deployed_time_s: float
-    deployments: Dict[str, DeploymentStatusOverview]
-
-
-@PublicAPI(stability="alpha")
-@dataclass(eq=True)
-class ServeStatus:
-    http_proxies: Dict[str, HTTPProxyStatus] = field(default_factory=dict)
-    applications: Dict[str, ApplicationStatusOverview] = field(default_factory=dict)
