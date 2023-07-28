@@ -1088,12 +1088,13 @@
 
   variations:
       - __suffix__: aws
-      - __suffix__: gce
-        env: gce
-        frequency: manual
-        cluster:
-          cluster_env: ../testing/cluster_envs/04_finetuning_llms_with_deepspeed.yaml
-          cluster_compute: ../testing/compute_configs/04_finetuning_llms_with_deepspeed/gce_7b_or_13b.yaml
+      # TODO (Kourosh): Enable once GCE is ready
+      # - __suffix__: gce
+      #   env: gce
+      #   frequency: manual
+      #   cluster:
+      #     cluster_env: ../testing/cluster_envs/04_finetuning_llms_with_deepspeed.yaml
+      #     cluster_compute: ../testing/compute_configs/04_finetuning_llms_with_deepspeed/gce_7b_or_13b.yaml
 
 
 
@@ -1115,12 +1116,13 @@
 
   variations:
       - __suffix__: aws
-      - __suffix__: gce
-        env: gce
-        frequency: manual
-        cluster:
-          cluster_env: ../testing/cluster_envs/04_finetuning_llms_with_deepspeed.yaml
-          cluster_compute: ../testing/compute_configs/04_finetuning_llms_with_deepspeed/gce_7b_or_13b.yaml
+      # TODO (Kourosh): Enable once GCE is ready
+      # - __suffix__: gce
+      #   env: gce
+      #   frequency: manual
+      #   cluster:
+      #     cluster_env: ../testing/cluster_envs/04_finetuning_llms_with_deepspeed.yaml
+      #     cluster_compute: ../testing/compute_configs/04_finetuning_llms_with_deepspeed/gce_7b_or_13b.yaml
 
 #######################
 # XGBoost release tests
