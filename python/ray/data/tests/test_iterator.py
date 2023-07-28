@@ -176,11 +176,11 @@ def test_torch_multi_use_iterator(ray_start_regular_shared):
     multiple times."""
     ds = ray.data.range(5)
     it = ds.iterator().iter_torch_batches()
-    it.iter_batches = MagicMock()
 
-    for batch in it:
-        assert isinstance(batch["id"], torch.Tensor)
-        assert batch["id"].tolist() == list(range(5))
+    for _ in range(2):
+        for batch in it:
+            assert isinstance(batch["id"], torch.Tensor)
+            assert batch["id"].tolist() == list(range(5))
 
 
 def test_torch_conversion_pipeline(ray_start_regular_shared):
