@@ -1085,12 +1085,7 @@ class Algorithm(Trainable, AlgorithmBase):
                             for batch in ma_batch.policy_batches.values():
                                 if not batch.is_terminated_or_truncated():
                                     raise ValueError(
-                                        "RLlib attempts to evaluate your policy per "
-                                        "episode, which is determined by the "
-                                        "evaluation config's "
-                                        "`evaluation_duration_unit`. However, "
-                                        "the evaluation batch is neither terminated "
-                                        "nor truncated."
+                                        "In your evaluation config you have specified evaluation_duration_unit="episodes". However, the evaluation batch is neither terminated nor truncated."
                                     )
                     # n timesteps per returned batch.
                     else:
