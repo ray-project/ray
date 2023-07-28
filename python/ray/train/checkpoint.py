@@ -12,6 +12,7 @@ import pyarrow.fs
 
 from ray import cloudpickle as pickle
 from ray.air._internal.filelock import TempFileLock
+from ray.train._internal.storage import _download_from_fs_path
 from ray.util.annotations import PublicAPI
 
 logger = logging.getLogger(__name__)
@@ -97,32 +98,33 @@ class Checkpoint:
         Returns:
             str: Directory containing checkpoint data.
         """
-        import pyarrow
-
         user_provided_path = path is not None
-        path = path if user_provided_path else self._get_temporary_checkpoint_dir()
-        path = os.path.normpath(str(path))
-        _make_dir(path, acquire_del_lock=not user_provided_path)
+        local_path = (
+            path if user_provided_path else self._get_temporary_checkpoint_dir()
+        )
+        local_path = os.path.normpath(str(local_path))
+        _make_dir(local_path, acquire_del_lock=not user_provided_path)
 
         try:
             # Timeout 0 means there will be only one attempt to acquire
-            # the file lock. If it cannot be aquired, a TimeoutError
-            # will be thrown.
-            with TempFileLock(f"{path}.lock", timeout=0):
-                pyarrow.fs.copy_files(self.path, path)
+            # the file lock. If it cannot be acquired, throw a TimeoutError
+            with TempFileLock(local_path, timeout=0):
+                _download_from_fs_path(
+                    fs=self.filesystem, fs_path=self.path, local_path=local_path
+                )
         except TimeoutError:
             # if the directory is already locked, then wait but do not do anything.
-            with TempFileLock(f"{path}.lock", timeout=-1):
+            with TempFileLock(local_path, timeout=-1):
                 pass
-            if not os.path.exists(path):
+            if not os.path.exists(local_path):
                 raise RuntimeError(
-                    f"Checkpoint directory {path} does not exist, "
+                    f"Checkpoint directory {local_path} does not exist, "
                     "even though it should have been created by "
                     "another process. Please raise an issue on GitHub: "
                     "https://github.com/ray-project/ray/issues"
                 )
 
-        return path
+        return local_path
 
     @contextlib.contextmanager
     def as_directory(self) -> Iterator[str]:
