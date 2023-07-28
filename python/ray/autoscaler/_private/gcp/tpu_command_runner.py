@@ -93,7 +93,7 @@ class TPUCommandRunner(CommandRunnerInterface):
                 return TPUVMSSHCommandRunner(**common_args)
 
         self._command_runners = []
-        self._num_workers = instance.get_num_workers()
+        self._num_workers = instance.num_workers
         for i in range(self._num_workers):
             self._command_runners.append(
                 create_command_runner(

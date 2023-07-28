@@ -196,7 +196,8 @@ class GCPTPUNode(GCPNode):
     def get_labels(self) -> dict:
         return self.get("labels", {})
 
-    def get_num_workers(self) -> int:
+    @property
+    def num_workers(self) -> int:
         return len(self.get("networkEndpoints", [{}]))
 
     def get_external_ips(self) -> List[str]:
