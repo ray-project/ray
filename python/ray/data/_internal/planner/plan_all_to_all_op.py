@@ -33,7 +33,7 @@ def _plan_all_to_all_op(
     elif isinstance(op, Repartition):
         fn = generate_repartition_fn(op._num_outputs, op._shuffle)
     elif isinstance(op, Sort):
-        fn = generate_sort_fn(op._key, op._descending)
+        fn = generate_sort_fn(op._sort_key)
     elif isinstance(op, Aggregate):
         fn = generate_aggregate_fn(op._key, op._aggs)
     else:

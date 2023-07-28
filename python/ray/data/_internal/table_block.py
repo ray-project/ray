@@ -11,7 +11,7 @@ from ray.data.block import Block, BlockAccessor
 from ray.data.row import TableRow
 
 if TYPE_CHECKING:
-    from ray.data._internal.sort import SortKeyT
+    from ray.data._internal.sort import SortKey
 
 
 T = TypeVar("T")
@@ -221,17 +221,17 @@ class TableBlockAccessor(BlockAccessor):
     def _empty_table() -> Any:
         raise NotImplementedError
 
-    def _sample(self, n_samples: int, key: "SortKeyT") -> Any:
+    def _sample(self, n_samples: int, sort_key: "SortKey") -> Any:
         raise NotImplementedError
 
-    def sample(self, n_samples: int, key: "SortKeyT") -> Any:
-        if key is None or callable(key):
+    def sample(self, n_samples: int, sort_key: "SortKey") -> Any:
+        if sort_key is None or callable(sort_key):
             raise NotImplementedError(
-                f"Table sort key must be a column name, was: {key}"
+                f"Table sort key must be a column name, was: {sort_key}"
             )
         if self.num_rows() == 0:
             # If the pyarrow table is empty we may not have schema
             # so calling table.select() will raise an error.
             return self._empty_table()
         k = min(n_samples, self.num_rows())
-        return self._sample(k, key)
+        return self._sample(k, sort_key)
