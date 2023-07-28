@@ -264,6 +264,10 @@ def test_streaming_split_invalid_iterator(ray_start_10_cpus_shared):
         )
 
 
+@pytest.mark.skip(
+    reason="Incomplete implementation of _validate_dag causes other errors, so we "
+    "remove DAG validation for now; see https://github.com/ray-project/ray/pull/37829"
+)
 def test_e2e_option_propagation(ray_start_10_cpus_shared, restore_data_context):
     DataContext.get_current().new_execution_backend = True
     DataContext.get_current().use_streaming_executor = True
