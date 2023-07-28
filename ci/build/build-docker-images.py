@@ -94,6 +94,10 @@ def _release_build():
     return branch and branch.startswith("releases/")
 
 
+def _pr_build():
+    return os.environ.get("BUILDKITE_PULL_REQUEST") != "false"
+
+
 def _valid_branch():
     return _get_branch() == "master" or _release_build()
 
@@ -491,7 +495,7 @@ def _docker_push(image, tag):
 def _tag_and_push(full_image_name, old_tag, new_tag, merge_build=False):
     # Do not tag release builds because they are no longer up to
     # date after the branch cut.
-    if "nightly" in new_tag and _release_build():
+    if "nightly" in new_tag and (_release_build() or _pr_build()):
         return
     if old_tag != new_tag:
         DOCKER_CLIENT.api.tag(
@@ -499,9 +503,9 @@ def _tag_and_push(full_image_name, old_tag, new_tag, merge_build=False):
             repository=full_image_name,
             tag=new_tag,
         )
-    if not merge_build:
+    if not merge_build and not _pr_build():
         print(
-            "This is a PR Build! On a merge build, we would normally push"
+            "This is neither a merge or pr build! Otherwise, we would normally push"
             f"to: {full_image_name}:{new_tag}"
         )
     else:
@@ -611,6 +615,10 @@ def push_and_tag_images(
         release_name = _get_branch()[len("releases/") :]
         date_tag = release_name + "." + date_tag
         sha_tag = release_name + "." + sha_tag
+    if _pr_build():
+        pr = f"pr-{os.environ.get('BUILDKITE_PULL_REQUEST')}"
+        date_tag = pr + "." + date_tag
+        sha_tag = pr + "." + sha_tag
 
     for image_name in image_list:
         full_image_name = f"rayproject/{image_name}"
