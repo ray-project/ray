@@ -278,7 +278,7 @@ class ServeAgent(dashboard_utils.DashboardAgentModule):
                 getattr(client.http_config, option),
                 requested_value,
             )
-            if conflict_response:
+            if conflict_response is not None:
                 return conflict_response
 
         try:
