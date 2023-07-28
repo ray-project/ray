@@ -820,6 +820,7 @@ setuptools.setup(
             "rllib=ray.rllib.scripts:cli [rllib]",
             "tune=ray.tune.cli.scripts:cli",
             "serve=ray.serve.scripts:cli",
+            "airrun=ray.air.launcher.run:main"
         ]
     },
     package_data={
