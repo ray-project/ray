@@ -120,6 +120,9 @@ class _ModelMultiplexWrapper:
     def _push_model_ids_info(self):
         """Push the multiplexed replica info to the controller."""
         try:
+
+            self.num_models.set(len(self.models))
+
             if self._push_multiplexed_replica_info:
                 get_global_client().record_multiplexed_replica_info(
                     MultiplexedReplicaInfo(
@@ -160,8 +163,6 @@ class _ModelMultiplexWrapper:
 
         if not model_id:
             raise ValueError("The model ID cannot be empty.")
-
-        self.num_models.set(len(self.models))
 
         if model_id in self.models:
             # Move the model to the end of the OrderedDict to ensure LRU caching.
