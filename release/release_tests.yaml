@@ -2958,44 +2958,6 @@
         cluster_env: app_config.yaml
         cluster_compute: tpl_cpu_1_gce.yaml
 
-- name: long_running_distributed_pytorch_pbt_failure
-  group: Long running tests
-  working_dir: long_running_distributed_tests
-
-  frequency: weekly
-  team: ml
-
-  cluster:
-    byod:
-      type: gpu
-    cluster_env: app_config.yaml
-    cluster_compute: compute_tpl.yaml
-
-  run:
-    timeout: 86400
-    script: python workloads/pytorch_pbt_failure.py
-    long_running: true
-
-  smoke_test:
-    frequency: manual
-    run:
-      timeout: 3600
-
-  alert: long_running_tests
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      smoke_test:
-        frequency: manual
-        run:
-          timeout: 3600
-      cluster:
-        cluster_env: app_config.yaml
-        cluster_compute: compute_tpl_gce.yaml
-
 ########################
 # Jobs tests
 ########################
