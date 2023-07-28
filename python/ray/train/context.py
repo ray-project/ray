@@ -27,10 +27,6 @@ def _copy_doc(copy_func):
 class TrainContext:
     """Context for Ray training executions."""
 
-    @_copy_doc(session.get_checkpoint)
-    def get_checkpoint(self) -> Optional[Checkpoint]:
-        return session.get_checkpoint()
-
     @_copy_doc(session.get_experiment_name)
     def get_experiment_name(self) -> str:
         return session.get_experiment_name()
