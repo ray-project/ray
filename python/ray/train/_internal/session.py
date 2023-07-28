@@ -37,6 +37,7 @@ from ray.train.constants import (
     TIME_TOTAL_S,
     LAZY_CHECKPOINT_MARKER_FILE,
 )
+from ray.train.checkpoint import Checkpoint as NewCheckpoint
 
 from ray.train.error import SessionMisuseError
 from ray.util.annotations import DeveloperAPI, PublicAPI
@@ -435,6 +436,56 @@ class _TrainSession:
         """
         self.legacy_checkpoint_uri = uri
 
+    def new_checkpoint(self, checkpoint: NewCheckpoint):
+        import pyarrow.fs
+
+        assert isinstance(checkpoint, NewCheckpoint)
+        assert isinstance(checkpoint.filesystem, pyarrow.fs.LocalFileSystem)
+
+        # Upload checkpoint files.
+        pyarrow.fs.copy_files(
+            source=checkpoint.path,
+            destination=self.storage.checkpoint_fs_path,
+            source_filesystem=checkpoint.filesystem,
+            destination_filesystem=self.storage.storage_filesystem,
+        )
+        # Delete local checkpoint files.
+        checkpoint.filesystem.delete_dir(checkpoint.path)
+
+        # Report the uploaded checkpoint location for internal book-keeping.
+        checkpoint_to_report = NewCheckpoint(
+            filesystem=self.storage.storage_filesystem,
+            path=self.storage.checkpoint_fs_path,
+        )
+
+        metadata = self._auto_fill_checkpoint_metrics({})
+
+        # Save the rank of the worker that created this checkpoint.
+        metadata.update({CHECKPOINT_RANK_KEY: self.world_rank})
+        checkpoint_to_report.set_metadata(metadata)
+
+        result = TrainingResult(
+            type=TrainingResultType.CHECKPOINT,
+            data=checkpoint_to_report,
+        )
+
+        # Add result to a thread-safe queue.
+        self.result_queue.put(result, block=True)
+
+        # Acquire lock to stop the training thread until
+        # checkpoint has been processed.
+        self.continue_lock.acquire()
+
+    def new_report(
+        self, metrics: Dict, checkpoint: Optional[NewCheckpoint] = None
+    ) -> None:
+        if checkpoint:
+            self.new_checkpoint(checkpoint)
+
+        # TODO(justinvyu): Unify checkpoint / report logic to just report a single
+        # (metrics, Checkpoint) result for the consumer to handle.
+        self._report_legacy(**metrics)
+
     def report(self, metrics: Dict, checkpoint: Optional[Checkpoint] = None) -> None:
         # TODO(xwjiang): tons of optimizations.
 
@@ -451,6 +502,9 @@ class _TrainSession:
                     "`checkpoint` argument of `ray.air.session.report` to "
                     "store your Torch objects."
                 )
+
+        if _use_storage_context():
+            return self.new_report(metrics, checkpoint=checkpoint)
 
         if checkpoint:
             self.checkpoint(checkpoint)
