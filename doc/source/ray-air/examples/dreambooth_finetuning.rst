@@ -20,9 +20,8 @@ See the HuggingFace tutorial for useful explanations and suggestions on hyperpar
 This example fine-tunes both the ``text_encoder`` and ``unet`` models used in the Stable Diffusion process, with respect to a prior preserving loss.
 
 
-.. image:: images/dreambooth_example.png
-   :target: images/dreambooth_example.png
-   :alt: DreamBooth example
+.. image:: /templates/05_dreambooth_finetuning/dreambooth/images/dreambooth_example.png
+   :alt: DreamBooth overview
 
 The full code repository can be found here: `https://github.com/ray-project/ray/blob/master/python/ray/air/examples/dreambooth/ <https://github.com/ray-project/ray/blob/master/python/ray/air/examples/dreambooth/>`_
 
@@ -45,7 +44,7 @@ We use Ray Data for data loading. The code has three interesting parts.
 
 First, we load two datasets using :func:`ray.data.read_images`:
 
-.. literalinclude:: ../../../../python/ray/air/examples/dreambooth/dataset.py
+.. literalinclude:: /templates/05_dreambooth_finetuning/dreambooth/dataset.py
   :language: python
   :start-at: instance_dataset = read
   :end-at: class_dataset = read
@@ -53,7 +52,7 @@ First, we load two datasets using :func:`ray.data.read_images`:
 
 Then, we tokenize the prompt that generated these images:
 
-.. literalinclude:: ../../../../python/ray/air/examples/dreambooth/dataset.py
+.. literalinclude:: /templates/05_dreambooth_finetuning/dreambooth/dataset.py
   :language: python
   :start-at: tokenizer = AutoTokenizer
   :end-at: instance_prompt_ids = _tokenize
@@ -62,7 +61,7 @@ Then, we tokenize the prompt that generated these images:
 
 And lastly, we apply a ``torchvision`` preprocessing pipeline to the images:
 
-.. literalinclude:: ../../../../python/ray/air/examples/dreambooth/dataset.py
+.. literalinclude:: /templates/05_dreambooth_finetuning/dreambooth/dataset.py
   :language: python
   :start-after: START: image preprocessing
   :end-before: END: image preprocessing
@@ -71,7 +70,7 @@ And lastly, we apply a ``torchvision`` preprocessing pipeline to the images:
 We apply all of this in final step:
 
 
-.. literalinclude:: ../../../../python/ray/air/examples/dreambooth/dataset.py
+.. literalinclude:: /templates/05_dreambooth_finetuning/dreambooth/dataset.py
   :language: python
   :start-after: START: Apply preprocessing
   :end-before: END: Apply preprocessing
@@ -103,7 +102,7 @@ Remember that we want to do data-parallel training for all our models.
 The code was compacted for brevity. The `full code <https://github.com/ray-project/ray/blob/master/python/ray/air/examples/dreambooth/train.py>`_ is more thoroughly annotated.
 
 
-.. literalinclude:: ../../../../python/ray/air/examples/dreambooth/train.py
+.. literalinclude:: /templates/05_dreambooth_finetuning/dreambooth/train.py
   :language: python
   :start-at: def train_fn(config)
   :end-before: END: Training loop
@@ -111,7 +110,7 @@ The code was compacted for brevity. The `full code <https://github.com/ray-proje
 We can then run this training loop with Ray AIR's TorchTrainer:
 
 
-.. literalinclude:: ../../../../python/ray/air/examples/dreambooth/train.py
+.. literalinclude:: /templates/05_dreambooth_finetuning/dreambooth/train.py
   :language: python
   :start-at: args = train_arguments
   :end-at: trainer.fit()
@@ -163,10 +162,8 @@ We expect that the training time should benefit from scale and decreases when ru
 more workers and GPUs.
 
 
-.. image:: images/dreambooth_training.png
-   :target: images/dreambooth_training.png
+.. image:: /templates/05_dreambooth_finetuning/dreambooth/images/dreambooth_training.png
    :alt: DreamBooth training times
-
 
 .. list-table::
    :header-rows: 1
@@ -222,7 +219,7 @@ Clone the Ray repository, go to the example directory, and install dependencies.
 
 Prepare some directories and environment variables.
 
-.. literalinclude:: ../../../../release/air_examples/dreambooth/dreambooth_run.sh
+.. literalinclude:: /templates/05_dreambooth_finetuning/dreambooth_run.sh
   :language: bash
   :start-after: Step 0 cont
   :end-at: export UNIQUE_TOKEN
@@ -236,7 +233,7 @@ of images, and specify the directory with the ``$INSTANCE_DIR`` environment vari
 
 Then, we copy these images to ``$IMAGES_OWN_DIR``.
 
-.. literalinclude:: ../../../../release/air_examples/dreambooth/dreambooth_run.sh
+.. literalinclude:: /templates/05_dreambooth_finetuning/dreambooth_run.sh
   :language: bash
   :start-after: Step 1
   :end-at: cp -rf $INSTANCE_DIR/*
@@ -251,7 +248,7 @@ Step 2: Download the pre-trained model
 
 Download and cache a pre-trained Stable-Diffusion model locally.
 
-.. literalinclude:: ../../../../release/air_examples/dreambooth/dreambooth_run.sh
+.. literalinclude:: /templates/05_dreambooth_finetuning/dreambooth_run.sh
   :language: bash
   :start-after: Step 2
   :end-at: python cache_model.py
@@ -266,7 +263,7 @@ Stable Diffusion model. This is used to regularize the fine-tuning by ensuring t
 the model still produces decent images for random images of the same class,
 rather than just optimize for producing good images of the subject.
 
-.. literalinclude:: ../../../../release/air_examples/dreambooth/dreambooth_run.sh
+.. literalinclude:: /templates/05_dreambooth_finetuning/dreambooth_run.sh
   :language: bash
   :start-at: Step 3: START
   :end-before: Step 3: END
@@ -279,7 +276,7 @@ Step 4: Fine-tune the model
 Save a few (4 to 5) images of the subject being fine-tuned
 in a local directory. Then launch the training job with:
 
-.. literalinclude:: ../../../../release/air_examples/dreambooth/dreambooth_run.sh
+.. literalinclude:: /templates/05_dreambooth_finetuning/dreambooth_run.sh
   :language: bash
   :start-after: Step 4: START
   :end-before: Step 4: END
@@ -290,7 +287,7 @@ Step 5: Generate images of our subject
 Try your model with the same command line as Step 2, but point
 to your own model this time!
 
-.. literalinclude:: ../../../../release/air_examples/dreambooth/dreambooth_run.sh
+.. literalinclude:: /templates/05_dreambooth_finetuning/dreambooth_run.sh
   :language: bash
   :start-after: Step 5: START
   :end-before: Step 5: END
