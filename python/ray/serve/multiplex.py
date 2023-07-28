@@ -67,17 +67,20 @@ class _ModelMultiplexWrapper:
             description="The time it takes to unload a model.",
             boundaries=DEFAULT_LATENCY_BUCKET_MS,
         )
-        self.num_models = metrics.Gauge(
+        self.num_models_gauge = metrics.Gauge(
             "serve_num_multiplexed_models",
             description="The number of models loaded on the current replica.",
         )
 
-        self.registered_models = metrics.Gauge(
+        self.registered_model_gauge = metrics.Gauge(
             "serve_registered_multiplexed_model_id",
             description="The model id registered on the current replica.",
             tag_keys=("model_id",),
         )
-
+        self.get_model_requests_counter = metrics.Counter(
+            "serve_multiplexed_get_model_requests_counter",
+            description="The counter for get model requests on the current replica.",
+        )
         self.models_unload_counter = metrics.Counter(
             "serve_multiplexed_models_unload_counter",
             description="The counter for unloaded models on the current replica.",
@@ -127,10 +130,10 @@ class _ModelMultiplexWrapper:
         """Push the multiplexed replica info to the controller."""
         try:
 
-            self.num_models.set(len(self.models))
+            self.num_models_gauge.set(len(self.models))
 
             for model_id in self.models:
-                self.registered_models.set(1, tags={"model_id": model_id})
+                self.registered_model_gauge.set(1, tags={"model_id": model_id})
 
             if self._push_multiplexed_replica_info:
                 get_global_client().record_multiplexed_replica_info(
@@ -172,6 +175,8 @@ class _ModelMultiplexWrapper:
 
         if not model_id:
             raise ValueError("The model ID cannot be empty.")
+
+        self.get_model_requests_counter.inc()
 
         if model_id in self.models:
             # Move the model to the end of the OrderedDict to ensure LRU caching.
@@ -246,4 +251,4 @@ class _ModelMultiplexWrapper:
         unloaded_time = time.time() - unload_start_time
         self.model_unload_latency_ms.observe(unloaded_time * 1000.0)
         logger.info(f"Successfully unloaded model '{model_id}' in {unloaded_time}s.")
-        self.registered_models.set(0, tags={"model_id": model_id})
+        self.registered_model_gauge.set(0, tags={"model_id": model_id})

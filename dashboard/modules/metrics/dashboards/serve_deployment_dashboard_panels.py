@@ -237,6 +237,19 @@ SERVE_DEPLOYMENT_GRAFANA_PANELS = [
         ],
         grid_pos=GridPos(16, 4, 8, 8),
     ),
+    Panel(
+        id=16,
+        title="Multiplexed model cache hit rate",
+        description="The cache hit rate of multiplexed models for the deployment.",
+        unit="%",
+        targets=[
+            Target(
+                expr="(1 - sum(rate(ray_serve_multiplexed_models_load_counter{{{global_filters}}}[5m]))/sum(rate(ray_serve_multiplexed_get_model_requests_counter{{{global_filters}}}[5m]))) by (deployment)",
+                legend="{{replica}}",
+            ),
+        ],
+        grid_pos=GridPos(0, 5, 8, 8),
+    ),
 ]
 
 ids = []
