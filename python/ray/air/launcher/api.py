@@ -73,9 +73,10 @@ class elastic_launch:
         self._config = config
         self._entrypoint = entrypoint
 
+    def get_scaling_config(self) -> ScalingConfig:
+        return ScalingConfig(num_workers=num_workers, use_gpu=True)
+
     def __call__(self, *args):
-        #return launch_agent(self._config, self._entrypoint, list(args))
-        # Define your train worker loop
         def train_loop_per_worker():
             if isinstance(self._entrypoint, Callable):
                 self._entrypoint(*args)
@@ -85,11 +86,9 @@ class elastic_launch:
             session.report({"msg:": "Finished training!"})
 
         # Define scaling and run configs
-        scaling_config = ScalingConfig(num_workers=num_workers, use_gpu=use_gpu)
-
         trainer = TorchTrainer(
             train_loop_per_worker=train_loop_per_worker,
-            scaling_config=scaling_config
+            scaling_config=self.get_scaling_config()
         )
 
         result = trainer.fit()
