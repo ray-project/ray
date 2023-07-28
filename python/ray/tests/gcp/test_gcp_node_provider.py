@@ -23,6 +23,7 @@ auth_config = {
     "ssh_private_key": "8265.pem",
 }
 
+
 def test_create_node_returns_dict():
     mock_node_config = {"machineType": "n2-standard-8"}
     mock_results = [({"dict": 1}, "instance_id1"), ({"dict": 2}, "instance_id2")]
@@ -133,7 +134,7 @@ def test_cpu_resource_returns_standard_command_runner():
         "node_id": "test-instance-compute",
         "auth_config": auth_config,
         "cluster_name": "test",
-        "process_runner": MockProcessRunner(), 
+        "process_runner": MockProcessRunner(),
         "use_internal_ip": True,
     }
     command_runner = node_provider.get_command_runner(**args)
@@ -159,7 +160,7 @@ def test_cpu_resource_returns_standard_command_runner_docker():
         "node_id": "test-instance-compute",
         "auth_config": auth_config,
         "cluster_name": "test",
-        "process_runner": MockProcessRunner(), 
+        "process_runner": MockProcessRunner(),
         "use_internal_ip": True,
     }
     command_runner = node_provider.get_command_runner(**args)
@@ -185,7 +186,7 @@ def test_tpu_resource_returns_tpu_command_runner():
         "node_id": "test-instance-tpu",
         "auth_config": auth_config,
         "cluster_name": "test",
-        "process_runner": MockProcessRunner(), 
+        "process_runner": MockProcessRunner(),
         "use_internal_ip": True,
     }
     command_runner = node_provider.get_command_runner(**args)

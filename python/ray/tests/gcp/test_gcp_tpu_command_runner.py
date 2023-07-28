@@ -13,13 +13,12 @@ auth_config = {
 
 
 class MockTpuInstance:
-
     def __init__(self, num_workers: int = 1):
         self.num_workers = num_workers
 
     def get_internal_ip(self, worker_index: int) -> str:
         return "0.0.0.{}".format(worker_index)
-    
+
     def get_external_ip(self, worker_index: int) -> str:
         return "0.0.0.{}".format(worker_index)
 
@@ -187,4 +186,3 @@ if __name__ == "__main__":
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
     else:
         sys.exit(pytest.main(["-sv", __file__]))
-

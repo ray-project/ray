@@ -11,20 +11,16 @@ To maintain feature completeness, we simply wrap the existing `SSHCommandRunner`
 `DockerCommandRunner` and run them as batched calls.
 
 """
-import ray
-
 from concurrent.futures import ThreadPoolExecutor
-
 from functools import partial
 from types import ModuleType
 from typing import Any, Dict, List, Optional, Tuple
 
-from ray.autoscaler.command_runner import CommandRunnerInterface
-from ray.autoscaler.node_provider import NodeProvider
-
+import ray
 from ray.autoscaler._private.command_runner import DockerCommandRunner, SSHCommandRunner
 from ray.autoscaler._private.gcp.node import GCPTPUNode
-
+from ray.autoscaler.command_runner import CommandRunnerInterface
+from ray.autoscaler.node_provider import NodeProvider
 
 # We see issues where too many concurrent connections may lead to failed SSH connections
 # when there are too many TPU hosts.
@@ -35,8 +31,7 @@ _MAX_NUM_CONCURRENT_ACTIVE_CONNECTIONS = 16
 class TPUVMSSHCommandRunner(SSHCommandRunner):
     """An SSH command runner with overwritten IP address calls."""
 
-    def __init__(
-        self, internal_ip: str, external_ip: str, *args, **kwargs):
+    def __init__(self, internal_ip: str, external_ip: str, *args, **kwargs):
         self._internal_ip = internal_ip
         self._external_ip = external_ip
         super().__init__(*args, **kwargs)
@@ -50,12 +45,18 @@ class TPUVMSSHCommandRunner(SSHCommandRunner):
 
 class TPUVMDockerCommandRunner(DockerCommandRunner):
     """A Docker command runner with overwritten IP addresses."""
+
     def __init__(
-        self, docker_config: Dict[str, Any], internal_ip: str, external_ip: str,
-        **common_args):
+        self,
+        docker_config: Dict[str, Any],
+        internal_ip: str,
+        external_ip: str,
+        **common_args
+    ):
         super().__init__(docker_config=docker_config, **common_args)
         self.ssh_command_runner = TPUVMSSHCommandRunner(
-            internal_ip=internal_ip, external_ip=external_ip, **common_args)
+            internal_ip=internal_ip, external_ip=external_ip, **common_args
+        )
 
 
 class TPUCommandRunner(CommandRunnerInterface):
@@ -71,10 +72,11 @@ class TPUCommandRunner(CommandRunnerInterface):
         cluster_name: str,
         process_runner: ModuleType,
         use_internal_ip: bool,
-        docker_config: Optional[Dict[str, Any]] = None):
-
+        docker_config: Optional[Dict[str, Any]] = None,
+    ):
         def create_command_runner(
-            worker_id: int, internal_ip: str, external_ip: str) -> CommandRunnerInterface:
+            worker_id: int, internal_ip: str, external_ip: str
+        ) -> CommandRunnerInterface:
             """Returns the correct base command runner."""
 
             common_args = {
@@ -89,7 +91,9 @@ class TPUCommandRunner(CommandRunnerInterface):
                 "use_internal_ip": use_internal_ip,
             }
             if docker_config and docker_config["container_name"] != "":
-                return TPUVMDockerCommandRunner(docker_config=docker_config, **common_args)
+                return TPUVMDockerCommandRunner(
+                    docker_config=docker_config, **common_args
+                )
             else:
                 return TPUVMSSHCommandRunner(**common_args)
 
@@ -100,17 +104,20 @@ class TPUCommandRunner(CommandRunnerInterface):
                 create_command_runner(
                     worker_id=i,
                     internal_ip=instance.get_internal_ip(i),
-                    external_ip=instance.get_external_ip(i)))
+                    external_ip=instance.get_external_ip(i),
+                )
+            )
 
     @property
     def num_connections(self) -> int:
         return min(self._num_workers, _MAX_NUM_CONCURRENT_ACTIVE_CONNECTIONS)
-                    
+
     def run(self, *args, **kwargs) -> str:
         with ThreadPoolExecutor(self.num_connections) as executor:
             results = executor.map(
                 lambda i: self._command_runners[i].run(*args, **kwargs),
-                range(self._num_workers))
+                range(self._num_workers),
+            )
         # Note: This may not be the expected return result
         return list(results)[0]
 
@@ -118,7 +125,8 @@ class TPUCommandRunner(CommandRunnerInterface):
         with ThreadPoolExecutor(self.num_connections) as executor:
             executor.map(
                 lambda i: self._command_runners[i].run_rsync_up(*args, **kwargs),
-                range(self._num_workers))
+                range(self._num_workers),
+            )
 
     def run_rsync_down(self, *args, **kwargs) -> None:
         """Rsync files down from the cluster node.
@@ -130,7 +138,8 @@ class TPUCommandRunner(CommandRunnerInterface):
         with ThreadPoolExecutor(self.num_connections) as executor:
             executor.map(
                 lambda i: self._command_runners[i].run_rsync_down(*args, **kwargs),
-                range(self._num_workers))
+                range(self._num_workers),
+            )
 
     def remote_shell_command_str(self) -> str:
         """Return the command the user can use to open a shell."""
@@ -151,6 +160,7 @@ class TPUCommandRunner(CommandRunnerInterface):
         with ThreadPoolExecutor(self.num_connections) as executor:
             results = executor.map(
                 lambda i: self._command_runners[i].run_init(*args, **kwargs),
-                range(self._num_workers))
+                range(self._num_workers),
+            )
         # Note: This may not be the right expected return result
         return any(results)

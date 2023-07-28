@@ -204,7 +204,8 @@ class GCPTPUNode(GCPNode):
         return self.get("networkEndpoints", [{}])
 
     def get_external_ip(self, worker_index: int = 0) -> str:
-        return (self.get_external_ips()[worker_index]
+        return (
+            self.get_external_ips()[worker_index]
             .get("accessConfig", {})
             .get("externalIp", None)
         )
@@ -213,9 +214,7 @@ class GCPTPUNode(GCPNode):
         return self.get("networkEndpoints", [{}])
 
     def get_internal_ip(self, worker_index: int = 0) -> str:
-        return (self.get_internal_ips()[worker_index]
-            .get("ipAddress", None)
-        )
+        return self.get_internal_ips()[worker_index].get("ipAddress", None)
 
 
 class GCPResource(metaclass=abc.ABCMeta):
@@ -384,8 +383,7 @@ class GCPCompute(GCPResource):
 
         # TPU VMs spawn accompanying Compute Instances that must be filtered out,
         # else this results in duplicated nodes.
-        tpu_negation_filter_expr = "(NOT labels.{label}:*)".format(
-            label="tpu_cores")
+        tpu_negation_filter_expr = "(NOT labels.{label}:*)".format(label="tpu_cores")
 
         not_empty_filters = [
             f

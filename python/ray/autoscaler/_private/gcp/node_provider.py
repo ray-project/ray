@@ -265,8 +265,10 @@ class GCPNodeProvider(NodeProvider):
             "process_runner": process_runner,
             "use_internal_ip": use_internal_ip,
         }
-        if GCPNodeType.TPU in self.resources and resource == self.resources[GCPNodeType.TPU]:
-            return TPUCommandRunner(
-                instance=instance, provider=self, **common_args)
+        if (
+            GCPNodeType.TPU in self.resources
+            and resource == self.resources[GCPNodeType.TPU]
+        ):
+            return TPUCommandRunner(instance=instance, provider=self, **common_args)
         else:
             return super().get_command_runner(**common_args)
