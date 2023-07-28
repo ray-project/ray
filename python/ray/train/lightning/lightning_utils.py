@@ -47,7 +47,7 @@ def get_devices() -> Optional[List[int]]:
     the training function of :class:`TorchTrainer <ray.train.torch.TorchTrainer>`.
     """
     device = get_worker_root_device()
-    if device.index:
+    if device.index is not None:
         return [device.index]
     else:
         return None
@@ -259,3 +259,19 @@ class RayModelCheckpoint(ModelCheckpoint):
     def on_validation_end(self, trainer: "pl.Trainer", *args, **kwargs) -> None:
         super().on_validation_end(trainer, *args, **kwargs)
         self._session_report(trainer=trainer, stage="validation_end")
+
+@PublicAPI(stability="alpha")
+def prepare_trainer(trainer: pl.Trainer) -> pl.Trainer:
+    valid_strategy_class = [RayDDPStrategy, RayFSDPStrategy, RayFSDPStrategy]
+
+    if not any(isinstance(trainer.strategy, cls) for cls in valid_strategy_class):
+        raise RuntimeError(
+            f"Invalid strategy class: {type(trainer.strategy)}. To use Lightning with Ray, "
+             "You have to provide one of [RayDDPStrategy, RayFSDPStrategy, RayDeepspeedStrategy] "
+             "or its subclass to `pytorch_lightning.Trainer(strategy=)`!"
+            )
+
+    
+
+    return trainer
+
