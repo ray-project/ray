@@ -11,3 +11,4 @@ libosmesa6-dev
 patchelf
 unzip
 zip
+libaio1

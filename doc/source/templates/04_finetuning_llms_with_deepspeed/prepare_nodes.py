@@ -63,7 +63,10 @@ def download_model_files_on_all_nodes(hf_model_id: str):
 if __name__ == "__main__":
 
     ray.init(
-        runtime_env={"env_vars": {"HF_HOME": "/mnt/local_storage/.cache/huggingface"}}
+        runtime_env={
+            "env_vars": {"HF_HOME": "/mnt/local_storage/.cache/huggingface"},
+            "working_dir": ".",
+        }
     )
 
     pargs = _parse_args()
