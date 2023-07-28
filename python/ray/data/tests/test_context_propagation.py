@@ -39,13 +39,6 @@ def test_context_saved_when_dataset_created(ray_start_regular_shared):
         list(d.streaming_split(1)[0].iter_batches())
 
     d1.context.execution_options.resource_limits.cpu = 0.1
-    # Incomplete implementation of _validate_dag causes other errors, so we remove
-    # DAG validation for now, which the following lines are checking.
-    # See https://github.com/ray-project/ray/pull/37829
-    # with pytest.raises(ValueError):
-    #     ray.get(check2.remote(d1))
-    # with pytest.raises(ValueError):
-    #     ray.get(check3.remote(d1))
     ray.get(check2.remote(d2))
     ray.get(check3.remote(d2))
 

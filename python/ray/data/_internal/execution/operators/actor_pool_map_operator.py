@@ -1,5 +1,4 @@
 import collections
-import time
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple, Union
 
@@ -31,8 +30,8 @@ logger = DatasetLogger(__name__)
 # fairly high since streaming backpressure prevents us from overloading actors.
 DEFAULT_MAX_TASKS_IN_FLIGHT = 4
 
-# The default time, in seconds, to wait for minimum requested actors
-# to start before raising a timeout.
+# The default time to wait for minimum requested actors
+# to start before raising a timeout, in seconds.
 DEFAULT_WAIT_FOR_MIN_ACTORS_SEC = 60 * 10
 
 
@@ -98,9 +97,6 @@ class ActorPoolMapOperator(MapOperator):
         # Whether no more submittable bundles will be added.
         self._inputs_done = False
         self._next_task_idx = 0
-        # Start time of when actors are requested.
-        self._actors_requested_ts = None
-        self._min_actors_satisfied = False
 
     def get_init_fn(self) -> Callable[[], None]:
         return self._init_fn
@@ -125,7 +121,7 @@ class ActorPoolMapOperator(MapOperator):
         logger.get_logger().info(
             f"{self._name}: Waiting for {len(refs)} pool actors to start..."
         )
-        ray.get(refs)
+        ray.get(refs, timeout=DEFAULT_WAIT_FOR_MIN_ACTORS_SEC)
 
     def should_add_input(self) -> bool:
         return self._actor_pool.num_free_slots() > 0
@@ -134,35 +130,8 @@ class ActorPoolMapOperator(MapOperator):
     def notify_resource_usage(
         self, input_queue_size: int, under_resource_limits: bool
     ) -> None:
-        # If the minimum number of workers becomes satisfied at any time,
-        # we can stop checking for this condition afterwards.
-        if self._actor_pool.num_running_actors() >= self._autoscaling_policy.min_workers:
-            self._min_actors_satisfied = True
         free_slots = self._actor_pool.num_free_slots()
         if input_queue_size > free_slots and under_resource_limits:
-            # The first time we request actors, we record the timestamp.
-            if self._actors_requested_ts is None:
-                self._actors_requested_ts = time.time()
-            if not self._min_actors_satisfied:
-                # If the minimum requested actors are not available in a timely manner,
-                # raise a timeout.
-                exceeds_timeout = (
-                    time.time() - self._actors_requested_ts
-                    > DEFAULT_WAIT_FOR_MIN_ACTORS_SEC
-                )
-                is_requesting_actor = self._actor_pool.num_pending_actors() > 0
-                min_actors_satisfied = (
-                    self._actor_pool.num_running_actors() >= self._autoscaling_policy.min_workers # noqa: E501
-                )
-                if (
-                    is_requesting_actor and exceeds_timeout and not min_actors_satisfied
-                ):
-                    raise TimeoutError(
-                        f"Unable to create requested minimum "
-                        f"{self._autoscaling_policy.min_workers} actors "
-                        f"in {DEFAULT_WAIT_FOR_MIN_ACTORS_SEC} seconds. "
-                        "Check if cluster has enough resource to launch the actors."
-                    )
             # Try to scale up if work remains in the work queue.
             self._scale_up_if_needed()
         else:
