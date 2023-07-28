@@ -1,7 +1,7 @@
 import logging
-from typing import TYPE_CHECKING, Callable, Iterator, List, Optional, Union
-from functools import cached_property
 from dataclasses import dataclass
+from functools import cached_property
+from typing import TYPE_CHECKING, Callable, Iterator, List, Optional, Union
 
 import numpy as np
 from pyarrow.orc import ORCFile

@@ -50,18 +50,18 @@ from ray.data.datasource import (
     CSVDatasource,
     Datasource,
     DefaultFileMetadataProvider,
-    DefaultParquetMetadataProvider,
     DefaultORCMetadataProvider,
+    DefaultParquetMetadataProvider,
     FastFileMetadataProvider,
     ImageDatasource,
     JSONDatasource,
     MongoDatasource,
     NumpyDatasource,
+    ORCDatasource,
+    ORCMetadataProvider,
     ParquetBaseDatasource,
     ParquetDatasource,
     ParquetMetadataProvider,
-    ORCDatasource,
-    ORCMetadataProvider,
     PathPartitionFilter,
     RangeDatasource,
     ReadTask,
@@ -734,7 +734,7 @@ def read_orc(
         variety       string
 
 
-        The ORC reader also supports column selection to be pushed down to the file scan.
+        The ORC reader supports column selection to be pushed down to the file scan.
 
         .. testcode::
 

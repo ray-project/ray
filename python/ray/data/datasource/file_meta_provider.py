@@ -418,10 +418,7 @@ class DefaultORCMetadataProvider(ORCMetadataProvider):
             # BlockMetadata.
             block_metadata = BlockMetadata(
                 num_rows=sum(m.num_rows for m in prefetched_metadata),
-                size_bytes=sum(
-                    m.total_byte_size
-                    for m in prefetched_metadata
-                ),
+                size_bytes=sum(m.total_byte_size for m in prefetched_metadata),
                 schema=schema,
                 input_files=paths,
                 exec_stats=None,
@@ -469,7 +466,9 @@ class DefaultORCMetadataProvider(ORCMetadataProvider):
         filesystem: "pyarrow.fs.FileSystem",
     ) -> Tuple[List[str], List[Optional[int]]]:
         from pyarrow.fs import FileType
+
         from ray.data.datasource.file_based_datasource import _expand_directory
+
         if len(paths) > 1:
             logger.warning(
                 f"Expanding {len(paths)} path(s). This may be a HIGH LATENCY "
