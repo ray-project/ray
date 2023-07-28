@@ -971,12 +971,8 @@ class _TuneControllerBase:
 
         try:
             if _use_storage_context() and isinstance(checkpoint_value, NewCheckpoint):
-                self._callbacks.on_checkpoint(
-                    iteration=self._iteration,
-                    trials=self._trials,
-                    trial=trial,
-                    checkpoint=checkpoint_value,
-                )
+                # TODO(justinvyu): Update callbacks to take in a new Checkpoint
+                # rather than a _TrackedCheckpoint, then call the on_checkpoint hook.
                 trial.on_checkpoint(checkpoint_value)
             else:
                 trial.saving_to.dir_or_data = checkpoint_value
