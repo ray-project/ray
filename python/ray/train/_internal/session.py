@@ -137,8 +137,8 @@ class _TrainSession:
         if trial_info:
             # Change the working directory to `logdir`.
             logdir = os.path.join(trial_info.logdir, f"rank_{self.world_rank}")
-            os.makedirs(logdir, exist_ok=True)
-            os.chdir(logdir)
+            # os.makedirs(logdir, exist_ok=True)
+            # os.chdir(logdir)
 
         # This lock is used to control the execution of the training thread.
         self.continue_lock = threading.Semaphore(0)
