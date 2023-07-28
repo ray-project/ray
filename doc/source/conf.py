@@ -62,6 +62,7 @@ extensions = [
     "sphinx_tabs.tabs",
     "sphinx_remove_toctrees",
     "sphinx_design",
+    "sphinx.ext.intersphinx",
 ]
 
 # Prune deep toc-trees on demand for smaller html and faster builds.
@@ -107,6 +108,9 @@ myst_enable_extensions = [
     "replacements",
 ]
 
+intersphinx_mapping = {
+    "sklearn": ("https://scikit-learn.org/stable/", None),
+}
 
 # Cache notebook outputs in _build/.jupyter_cache
 # To prevent notebook execution, set this to "off". To force re-execution, set this to "force".
