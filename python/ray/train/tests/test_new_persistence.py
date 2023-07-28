@@ -7,9 +7,10 @@ import time
 
 import pyarrow.fs
 
-from ray import air, train, tune
+from ray import train, tune
 from ray.air.tests.test_checkpoints import mock_s3_bucket_uri
 from ray.train._internal.storage import _download_from_fs_path
+from ray.train.checkpoint import Checkpoint as NewCheckpoint
 from ray.train.data_parallel_trainer import DataParallelTrainer
 
 
@@ -26,6 +27,17 @@ def enable_new_persistence_mode(monkeypatch):
 
 
 def train_fn(config):
+    in_trainer = config.get("in_trainer", False)
+    if in_trainer:
+        from ray.air._internal.session import _get_session
+        from ray.train._internal.session import _TrainSession
+
+        train_session = _get_session()
+
+        assert isinstance(train_session, _TrainSession)
+        assert train_session.storage
+        assert train_session.storage.checkpoint_fs_path
+
     start = 0
 
     checkpoint = train.get_context().get_checkpoint()
@@ -37,16 +49,23 @@ def train_fn(config):
         start = state["iter"] + 1
 
     for i in range(start, config.get("num_iterations", 5)):
-        time.sleep(0.5)
+        time.sleep(0.25)
 
-        with open(f"artifact-{i}.txt", "w") as f:
+        checkpoint_file_name = "dummy.pkl"
+        artifact_file_name = f"artifact-{i}.txt"
+        if in_trainer:
+            rank = train.get_context().get_world_rank()
+            checkpoint_file_name = f"dummy-{rank}.pkl"
+            artifact_file_name = f"artifact-{i}-{rank}.txt"
+
+        with open(artifact_file_name, "w") as f:
             f.write(f"{i}")
 
         temp_dir = tempfile.mkdtemp()
-        with open(os.path.join(temp_dir, "dummy.pkl"), "wb") as f:
+        with open(os.path.join(temp_dir, checkpoint_file_name), "wb") as f:
             pickle.dump({"iter": i}, f)
 
-        train.report({"iter": i}, checkpoint=air.Checkpoint.from_directory(temp_dir))
+        train.report({"iter": i}, checkpoint=NewCheckpoint.from_directory(temp_dir))
 
 
 @pytest.mark.parametrize("storage_path_type", [None, "nfs", "cloud", "custom_fs"])
@@ -151,31 +170,79 @@ def test_tuner(monkeypatch, storage_path_type, tmp_path):
     assert len(list(exp_dir.glob("tuner.pkl"))) == 1
 
 
-def test_trainer(tmp_path):
-    """For now, this is just a dummy test to inspect that the storage context
-    has been passed to the train workers properly."""
-    storage_path = str(tmp_path / "fake_nfs")
+@pytest.mark.parametrize("storage_path_type", [None])
+def test_trainer(tmp_path, monkeypatch, storage_path_type):
+    """
+    TODO(justinvyu): Test for these once implemented:
+    - artifacts
+    - restoration
+    - accessing checkpoints from Result object
+    - top k checkpoints (num_to_keep)
 
-    def dummy_train_fn(config):
-        from ray.air._internal.session import _get_session
-        from ray.train._internal.session import _TrainSession
+    trainer_new_persistence
+    ├── experiment_state-2023-07-28_10-00-38.json
+    ├── basic-variant-state-2023-07-28_10-00-38.json
+    ├── trainer.pkl
+    ├── tuner.pkl
+    └── DataParallelTrainer_46367_00000_0_...
+        ├── events.out.tfevents...
+        ├── params.json
+        ├── params.pkl
+        ├── progress.csv
+        ├── result.json
+        ├── checkpoint_000000
+        │   ├── dummy-0.pkl
+        │   └── dummy-1.pkl
+        ├── ...
+        ├── rank_0                  <- TODO: remove these rank folders?
+        │   ├── artifact-0-0.txt
+        │   ├── artifact-1-0.txt
+        │   └── ...
+        └── rank_1
+            ├── artifact-0-1.txt
+            ├── artifact-1-1.txt
+            └── ...
+    """
 
-        train_session = _get_session()
-        print(train_session.storage)
+    LOCAL_CACHE_DIR = tmp_path / "ray_results"
+    monkeypatch.setenv("RAY_AIR_LOCAL_CACHE_DIR", str(LOCAL_CACHE_DIR))
+    exp_name = "trainer_new_persistence"
 
-        assert isinstance(train_session, _TrainSession)
-        assert train_session.storage
-        assert train_session.checkpoint_uri.startswith(storage_path)
+    if storage_path_type is None:
+        storage_path = None
+    elif storage_path_type == "nfs":
+        storage_path = str(tmp_path / "fake_nfs")
 
     trainer = DataParallelTrainer(
-        dummy_train_fn,
+        train_fn,
+        train_loop_config={"in_trainer": True},
         scaling_config=train.ScalingConfig(num_workers=2),
-        run_config=train.RunConfig(
-            storage_path=storage_path,
-            name="trainer_new_persistence",
-        ),
+        run_config=train.RunConfig(storage_path=storage_path, name=exp_name, verbose=0),
     )
     trainer.fit()
+
+    local_inspect_dir = tmp_path / "inspect"
+    if storage_path:
+        # if storage_filesystem:
+        #     fs, fs_path = storage_filesystem, storage_path
+        # else:
+        fs, fs_path = pyarrow.fs.FileSystem.from_uri(storage_path)
+        _download_from_fs_path(
+            fs=fs, fs_path=fs_path, local_path=str(local_inspect_dir)
+        )
+    else:
+        local_inspect_dir = LOCAL_CACHE_DIR
+
+    assert len(list(local_inspect_dir.glob("*"))) == 1  # Only expect 1 experiment dir
+    exp_dir = local_inspect_dir / exp_name
+
+    # Files synced by the driver
+    assert len(list(exp_dir.glob("basic-variant-state-*"))) == 1
+    assert len(list(exp_dir.glob("experiment_state-*"))) == 1
+    assert len(list(exp_dir.glob("tuner.pkl"))) == 1
+    assert len(list(exp_dir.glob("trainer.pkl"))) == 1
+
+    # Files synced by the worker
 
 
 if __name__ == "__main__":
