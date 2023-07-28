@@ -1,12 +1,9 @@
-# See https://hub.docker.com/r/anyscale/ray for full list of
-# available Ray, Python, and CUDA versions.
-base_image: "anyscale/ray:2.6.1-py39-cu117"
+base_image: anyscale/ray:nightly-py39-cu118
 
 env_vars: {}
 
-debian_packages: [
-  libaio1
-]
+debian_packages:
+  - libaio1
 
 python:
   pip_packages: [
@@ -30,4 +27,7 @@ python:
   ]
   conda_packages: []
 
-post_build_cmds: []
+post_build_cmds:
+  # Install Ray
+  - pip3 uninstall -y ray || true && pip3 install -U {{ env["RAY_WHEELS"] | default("ray") }}
+  - {{ env["RAY_WHEELS_SANITY_CHECK"] | default("echo No Ray wheels sanity check") }}

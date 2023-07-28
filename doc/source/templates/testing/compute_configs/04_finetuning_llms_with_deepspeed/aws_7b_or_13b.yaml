@@ -1,0 +1,27 @@
+# 1 g5.16xlarge + 15 g5.4xlarge --> 16 GPUs, 256G RAM on trainer and 64G RAM on workers
+cloud_id: {{env["ANYSCALE_CLOUD_ID"]}}
+region: us-west-2
+
+head_node_type:
+    name: head_node
+    instance_type: g5.16xlarge
+    resources:
+      custom_resources: 
+        large_cpu_mem: 1
+
+worker_node_types:
+    - name: worker_node
+      instance_type: g5.4xlarge
+      min_workers: 15
+      max_workers: 15
+      use_spot: false
+      resources:
+        custom_resources: 
+          medium_cpu_mem: 1
+
+aws:
+  TagSpecifications:
+    - ResourceType: "instance"
+      Tags:
+        - Key: ttl-hours
+          Value: '24'
