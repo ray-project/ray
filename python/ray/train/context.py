@@ -1,7 +1,6 @@
 import threading
 from typing import TYPE_CHECKING, Optional
 
-from ray.air import Checkpoint
 from ray.train._internal import session
 from ray.util.annotations import PublicAPI
 
