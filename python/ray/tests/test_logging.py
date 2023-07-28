@@ -942,6 +942,15 @@ def test_log_level_settings(
         assert len(caplog.records) == 0, "Log message found where none are expected."
 
 
+def test_log_with_import():
+
+    logger = logging.getLogger(__name__)
+    assert not logger.disabled
+    ray.log.logger_initialized = False
+    ray.log.generate_logging_config()
+    assert not logger.disabled
+
+
 if __name__ == "__main__":
     import sys
 

@@ -58,12 +58,12 @@ clean:
 	rm -rf ./source/rllib/package_ref/doc*
 
 html:
-	SKIP_LOG_RESET=True $(SPHINXBUILD) -W --keep-going -b html $(ALLSPHINXOPTS) $(BUILDDIR)/html
+	$(SPHINXBUILD) -W --keep-going -b html $(ALLSPHINXOPTS) $(BUILDDIR)/html
 	@echo
 	@echo "Build finished. The HTML pages are in $(BUILDDIR)/html."
 
 develop:
-	SKIP_LOG_RESET=True FAST=True $(SPHINXBUILD) -b html $(ALLSPHINXOPTS) $(BUILDDIR)/html
+	FAST=True $(SPHINXBUILD) -b html $(ALLSPHINXOPTS) $(BUILDDIR)/html
 	@echo
 	@echo "Build finished. The HTML pages are in $(BUILDDIR)/html."
 	@echo "View the documentation by opening a browser and going to $(BUILDDIR)/html/index.html."
