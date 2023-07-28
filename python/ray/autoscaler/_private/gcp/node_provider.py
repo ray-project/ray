@@ -24,6 +24,7 @@ from ray.autoscaler._private.gcp.node import (
     GCPResource,
 )
 from ray.autoscaler._private.gcp.tpu_command_runner import TPUCommandRunner
+from ray.autoscaler.command_runner import CommandRunnerInterface
 from ray.autoscaler.node_provider import NodeProvider
 
 logger = logging.getLogger(__name__)
@@ -264,7 +265,7 @@ class GCPNodeProvider(NodeProvider):
             "process_runner": process_runner,
             "use_internal_ip": use_internal_ip,
         }
-        if resource == self.resources[GCPNodeType.TPU]:
+        if GCPNodeType.TPU in self.resources and resource == self.resources[GCPNodeType.TPU]:
             return TPUCommandRunner(
                 instance=instance, provider=self, **common_args)
         else:

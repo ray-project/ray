@@ -10,11 +10,18 @@ from ray.autoscaler._private.gcp.node import (
     GCPResource,
 )
 
+from ray.tests.test_autoscaler import MockProcessRunner
 from ray.autoscaler._private.gcp.node_provider import GCPNodeProvider
+from ray.autoscaler._private.gcp.tpu_command_runner import TPUCommandRunner
+from ray.autoscaler._private.command_runner import SSHCommandRunner, DockerCommandRunner
 
 _PROJECT_NAME = "project-one"
 _AZ = "us-west1-b"
 
+auth_config = {
+    "ssh_user": "ray",
+    "ssh_private_key": "8265.pem",
+}
 
 def test_create_node_returns_dict():
     mock_node_config = {"machineType": "n2-standard-8"}
@@ -106,6 +113,83 @@ def test_convert_resources_to_urls_accelerators(test_case):
     modified_config = gcp_compute._convert_resources_to_urls(base_config)
 
     assert modified_config["guestAccelerators"][0]["acceleratorType"] == result_accel
+
+
+def test_cpu_resource_returns_standard_command_runner():
+    mock_node_config = {"machineType": "n2-standard-8"}
+    mock_resource = MagicMock()
+
+    def __init__(self, provider_config: dict, cluster_name: str):
+        self.lock = RLock()
+        self.cached_nodes: Dict[str, GCPNode] = {}
+        self.resources: Dict[GCPNodeType, GCPResource] = {}
+        self.resources[GCPNodeType.COMPUTE] = mock_resource
+
+    with patch.object(GCPNodeProvider, "__init__", __init__):
+        node_provider = GCPNodeProvider({}, "")
+
+    args = {
+        "log_prefix": "test",
+        "node_id": "test-instance-compute",
+        "auth_config": auth_config,
+        "cluster_name": "test",
+        "process_runner": MockProcessRunner(), 
+        "use_internal_ip": True,
+    }
+    command_runner = node_provider.get_command_runner(**args)
+    assert isinstance(command_runner, SSHCommandRunner)
+
+
+def test_cpu_resource_returns_standard_command_runner_docker():
+    mock_node_config = {"machineType": "n2-standard-8"}
+    mock_resource = MagicMock()
+
+    def __init__(self, provider_config: dict, cluster_name: str):
+        self.lock = RLock()
+        self.cached_nodes: Dict[str, GCPNode] = {}
+        self.resources: Dict[GCPNodeType, GCPResource] = {}
+        self.resources[GCPNodeType.COMPUTE] = mock_resource
+
+    with patch.object(GCPNodeProvider, "__init__", __init__):
+        node_provider = GCPNodeProvider({}, "")
+
+    args = {
+        "docker_config": {"container_name": "container"},
+        "log_prefix": "test",
+        "node_id": "test-instance-compute",
+        "auth_config": auth_config,
+        "cluster_name": "test",
+        "process_runner": MockProcessRunner(), 
+        "use_internal_ip": True,
+    }
+    command_runner = node_provider.get_command_runner(**args)
+    assert isinstance(command_runner, DockerCommandRunner)
+
+
+def test_tpu_resource_returns_tpu_command_runner():
+    mock_node_config = {"machineType": "n2-standard-8"}
+    mock_resource = MagicMock()
+
+    def __init__(self, provider_config: dict, cluster_name: str):
+        self.lock = RLock()
+        self.cached_nodes: Dict[str, GCPNode] = {}
+        self.resources: Dict[GCPNodeType, GCPResource] = {}
+        self.resources[GCPNodeType.COMPUTE] = mock_resource
+        self.resources[GCPNodeType.TPU] = mock_resource
+
+    with patch.object(GCPNodeProvider, "__init__", __init__):
+        node_provider = GCPNodeProvider({}, "")
+
+    args = {
+        "log_prefix": "test",
+        "node_id": "test-instance-tpu",
+        "auth_config": auth_config,
+        "cluster_name": "test",
+        "process_runner": MockProcessRunner(), 
+        "use_internal_ip": True,
+    }
+    command_runner = node_provider.get_command_runner(**args)
+    assert isinstance(command_runner, TPUCommandRunner)
 
 
 if __name__ == "__main__":

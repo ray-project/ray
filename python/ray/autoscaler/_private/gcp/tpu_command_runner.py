@@ -51,10 +51,11 @@ class TPUVMSSHCommandRunner(SSHCommandRunner):
 class TPUVMDockerCommandRunner(DockerCommandRunner):
     """A Docker command runner with overwritten IP addresses."""
     def __init__(
-        self, internal_ip: str, external_ip: str,
-        docker_config: Dict[str, Any], **common_args):
-        super().__init__(docker_config, **common_args)
-        self.ssh_command_runner = TPUVMSSHCommandRunner(internal_ip, external_ip, **common_args)
+        self, docker_config: Dict[str, Any], internal_ip: str, external_ip: str,
+        **common_args):
+        super().__init__(docker_config=docker_config, **common_args)
+        self.ssh_command_runner = TPUVMSSHCommandRunner(
+            internal_ip=internal_ip, external_ip=external_ip, **common_args)
 
 
 class TPUCommandRunner(CommandRunnerInterface):
@@ -88,7 +89,7 @@ class TPUCommandRunner(CommandRunnerInterface):
                 "use_internal_ip": use_internal_ip,
             }
             if docker_config and docker_config["container_name"] != "":
-                return TPUVMDockerCommandRunner(docker_config, **common_args)
+                return TPUVMDockerCommandRunner(docker_config=docker_config, **common_args)
             else:
                 return TPUVMSSHCommandRunner(**common_args)
 
