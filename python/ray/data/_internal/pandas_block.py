@@ -347,7 +347,10 @@ class PandasBlockAccessor(TableBlockAccessor):
         self, boundaries: List[T], sort_key: "SortKey"
     ) -> List[Block]:
         columns, ascending = sort_key.to_pandas_sort_args()
-
+        if len(columns) > 0:
+            raise NotImplementedError(
+                "Sorting by multiple columns is not supported yet"
+            )
         if self._table.shape[0] == 0:
             # If the pyarrow table is empty we may not have schema
             # so calling sort_indices() will raise an error.

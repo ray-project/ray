@@ -45,15 +45,13 @@ class SortKey:
         key: Optional[Union[str, List[str]]] = None,
         descending: bool = False,
     ):
+        if key is None:
+            key = []
         if isinstance(key, str):
             key = [key]
         if not (isinstance(key, list) and all(isinstance(k, str) for k in key)):
             raise ValueError(
                 f"Key must be a string or a list of strings, but got {key}."
-            )
-        if len(key) > 0:
-            raise NotImplementedError(
-                "Sorting by multiple columns is not supported yet"
             )
         self._columns = key
         self._descending = descending

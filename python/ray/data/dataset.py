@@ -1730,7 +1730,8 @@ class Dataset:
 
         # Always allow None since groupby interprets that as grouping all
         # records into a single global group.
-        SortKey(key).validate_schema(self.schema(fetch_if_missing=True))
+        if key is not None:
+            SortKey(key).validate_schema(self.schema(fetch_if_missing=True))
 
         return GroupedData(self, key)
 
