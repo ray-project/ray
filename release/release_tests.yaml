@@ -1075,7 +1075,7 @@
   working_dir: workspace_templates/04_finetuning_llms_with_deepspeed
   python: "3.9"
   frequency: nightly-3x
-  team: train
+  team: ml
   cluster:
     byod:
       type: cu118
@@ -1103,7 +1103,7 @@
   working_dir: workspace_templates/04_finetuning_llms_with_deepspeed
   python: "3.9"
   frequency: nightly-3x
-  team: train
+  team: ml
   cluster:
     byod:
       type: cu118

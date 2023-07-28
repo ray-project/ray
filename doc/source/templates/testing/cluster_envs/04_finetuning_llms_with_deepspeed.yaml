@@ -1,4 +1,4 @@
-base_image: anyscale/ray:nightly-py39-cu117
+base_image: anyscale/ray:nightly-py39-cu118
 
 env_vars: {}
 
