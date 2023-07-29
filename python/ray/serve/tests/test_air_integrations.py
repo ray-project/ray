@@ -220,7 +220,7 @@ def test_batching(serve_instance):
             self.predictor = AdderPredictor.from_checkpoint(checkpoint)
 
         @serve.batch(max_batch_size=2, batch_wait_timeout_s=1000)
-        async def __call__(self, request: List[Request]):
+        async def __call__(self, requests: List[Request]):
             items = [await request.json() for request in requests]
             batch = np.concatenate([np.array(item["array"]) for item in items])
             return self.predictor.predict(batch)
