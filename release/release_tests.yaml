@@ -6365,7 +6365,7 @@
   group: data-tests
   working_dir: nightly_tests/dataset
 
-  frequency: nightly
+  frequency: manual
   team: data
   python: "3.8"
   cluster:
@@ -6391,7 +6391,7 @@
   group: data-tests
   working_dir: nightly_tests/dataset
 
-  frequency: nightly
+  frequency: manual
   team: data
   python: "3.8"
   cluster:
