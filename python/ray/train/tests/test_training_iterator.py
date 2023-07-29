@@ -14,7 +14,7 @@ from ray.air._internal.util import StartTraceback
 from ray.train.backend import BackendConfig
 
 from ray.train._internal.backend_executor import BackendExecutor
-from ray.train._internal.utils import ActorWrapper, construct_train_func
+from ray.train._internal.utils import construct_train_func
 from ray.train._internal.checkpoint import CheckpointManager
 from ray.train.examples.tf.tensorflow_mnist_example import (
     train_func as tensorflow_mnist_train_func,
@@ -70,21 +70,16 @@ def create_iterator(
     backend_config,
     *,
     num_workers=2,
-    backend_executor=BackendExecutor,
+    backend_executor_cls=BackendExecutor,
     init_hook=None,
 ):
     # Similar logic to the old Trainer.run_iterator().
 
     train_func = construct_train_func(train_func, None)
 
-    remote_executor = ray.remote(num_cpus=0)(backend_executor)
-
-    backend_executor_actor = remote_executor.remote(
-        backend_config=backend_config,
-        num_workers=num_workers,
+    backend_executor = backend_executor_cls(
+        backend_config=backend_config, num_workers=num_workers
     )
-
-    backend_executor = ActorWrapper(backend_executor_actor)
     backend_executor.start(init_hook)
 
     class _CheckpointConfig(CheckpointConfig):
@@ -156,7 +151,11 @@ def test_run_iterator_error(ray_start_4_cpus):
 
     with pytest.raises(StartTraceback) as exc:
         next(iterator)
-    assert "NotImplementedError" in str(exc.value)
+
+    assert isinstance(exc.value.__cause__, NotImplementedError), (
+        exc.value,
+        exc.value.__cause__,
+    )
 
     assert iterator.get_final_results() is None
     assert iterator.is_finished()
@@ -192,7 +191,7 @@ def test_worker_failure_1(ray_start_4_cpus):
     config = BackendConfig()
 
     iterator = create_iterator(
-        train_func, config, backend_executor=new_backend_executor_cls
+        train_func, config, backend_executor_cls=new_backend_executor_cls
     )
     output = iterator.get_final_results(force=True)
 
@@ -217,7 +216,7 @@ def test_worker_failure_2(ray_start_4_cpus):
     config = BackendConfig()
 
     iterator = create_iterator(
-        train_func, config, backend_executor=new_backend_executor_cls
+        train_func, config, backend_executor_cls=new_backend_executor_cls
     )
     output = iterator.get_final_results(force=True)
 
@@ -239,7 +238,7 @@ def test_worker_failure_local_rank(ray_start_4_cpus):
     config = BackendConfig()
 
     iterator = create_iterator(
-        train_func, config, backend_executor=new_backend_executor_cls
+        train_func, config, backend_executor_cls=new_backend_executor_cls
     )
     output = iterator.get_final_results(force=True)
 
@@ -266,7 +265,7 @@ def test_worker_start_failure(ray_start_4_cpus):
     iterator = create_iterator(
         lambda x: 1,
         config,
-        backend_executor=TestBackendExecutor,
+        backend_executor_cls=TestBackendExecutor,
         init_hook=init_hook_fail,
     )
     iterator.get_final_results(force=True)

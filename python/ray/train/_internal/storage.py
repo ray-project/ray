@@ -29,7 +29,6 @@ from ray.air._internal.filelock import TempFileLock
 from ray.air._internal.uri_utils import URI, is_uri
 from ray.tune.syncer import Syncer, SyncConfig, _BackgroundSyncer
 from ray.tune.result import _get_defaults_results_dir
-from ray.tune.trainable.util import TrainableUtil
 
 
 logger = logging.getLogger(__file__)
@@ -330,7 +329,7 @@ class StorageContext:
         >>> storage.trial_dir_name = "trial_dir"
         >>> storage.trial_fs_path
         'bucket/path/exp_name/trial_dir'
-        >>> storage.current_checkpoint_id = 1
+        >>> storage.current_checkpoint_index = 1
         >>> storage.checkpoint_fs_path
         'bucket/path/exp_name/trial_dir/checkpoint_000001'
 
@@ -373,7 +372,7 @@ class StorageContext:
         experiment_dir_name: str,
         storage_filesystem: Optional[pyarrow.fs.FileSystem] = None,
         trial_dir_name: Optional[str] = None,
-        current_checkpoint_id: Optional[int] = None,
+        current_checkpoint_index: Optional[int] = None,
     ):
         storage_path_provided = storage_path is not None
 
@@ -384,7 +383,7 @@ class StorageContext:
         self.storage_path = storage_path or self.storage_local_path
         self.experiment_dir_name = experiment_dir_name
         self.trial_dir_name = trial_dir_name
-        self.current_checkpoint_id = current_checkpoint_id
+        self.current_checkpoint_index = current_checkpoint_index
         self.sync_config = dataclasses.replace(sync_config)
 
         if storage_filesystem:
@@ -433,7 +432,7 @@ class StorageContext:
             "storage_fs_path",
             "experiment_dir_name",
             "trial_dir_name",
-            "current_checkpoint_id",
+            "current_checkpoint_index",
         ]
         attr_str = "\n".join([f"  {attr}={getattr(self, attr)}" for attr in attrs])
         return f"StorageContext<\n{attr_str}\n>"
@@ -504,15 +503,17 @@ class StorageContext:
     def checkpoint_fs_path(self) -> str:
         """The trial directory path on the `storage_filesystem`.
 
-        Raises a ValueError if `current_checkpoint_id` is not set beforehand.
+        Raises a ValueError if `current_checkpoint_index` is not set beforehand.
         """
-        if self.current_checkpoint_id is None:
+        from ray.tune.trainable.util import TrainableUtil
+
+        if self.current_checkpoint_index is None:
             raise RuntimeError(
                 "Should not access `checkpoint_fs_path` without setting "
-                "`current_checkpoint_id`"
+                "`current_checkpoint_index`"
             )
         checkpoint_dir_name = TrainableUtil._make_checkpoint_dir_name(
-            self.current_checkpoint_id
+            self.current_checkpoint_index
         )
         return os.path.join(self.trial_fs_path, checkpoint_dir_name)
 
