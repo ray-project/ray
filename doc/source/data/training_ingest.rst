@@ -383,7 +383,7 @@ Prefetching batches
 ###################
 While iterating over your dataset for training, you can increase ``prefetch_batches`` in :meth:`iter_batches <ray.data.DataIterator.iter_batches>` or :meth:`iter_torch_batches <ray.data.DataIterator.iter_torch_batches>` to further increase performance. While training on the current batch, this launches N background threads to fetch and process the next N batches.
 
-This can help if training is bottlenecked on cross-node data transfer or on last-mile preprocessing such as converting batches to tensors or executing ``collate_fn``. However, the tradeoff is that increasing ``prefetch_batches`` leads to more data that needs to be held in heap memory.
+This can help if training is bottlenecked on cross-node data transfer or on last-mile preprocessing such as converting batches to tensors or executing ``collate_fn``. However, the tradeoff is that increasing ``prefetch_batches`` leads to more data that needs to be held in heap memory. By default, ``prefetch_batches`` is set to 1.
 
 For example, the following code prefetches 10 batches at a time for each training worker:
 
@@ -423,7 +423,7 @@ Randomly shuffling data for each epoch can be important for model quality depend
 With Ray Data, there are 2 approaches to random shuffling:
 
 1. Shuffling data blocks & local shuffling on each training worker.
-2. Fully global shuffle, which is more expensive.
+2. Full global shuffle, which is more expensive.
 
 For most cases, option 1 will suffice. 
 
@@ -474,6 +474,7 @@ If your model is very dependent on shuffle quality, you can do a full global shu
     # Do a global shuffle of all rows in this dataset.
     ds = ds.random_shuffle()
 
+For more information on how to optimize shuffling, and which approach to choose, see the :ref:`Optimize shuffling guide <optimizing_shuffles>`.
 
 Reproducibility
 ~~~~~~~~~~~~~~~
