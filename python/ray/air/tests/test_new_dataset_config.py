@@ -104,7 +104,7 @@ def test_configure_execution_options_carryover_context(ray_start_4_cpus):
     ctx.execution_options.verbose_progress = True
 
     data_config = DataConfig()
-    ingest_options = data_config.default_ingest_options
+    ingest_options = data_config.default_ingest_options()
     assert ingest_options.preserve_order is True
     assert ingest_options.verbose_progress is True
 
