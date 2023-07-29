@@ -54,7 +54,7 @@ def test_autoshutdown_dangling_executors(ray_start_10_cpus_shared):
     initial = streaming_executor._num_shutdown
     for _ in range(num_runs):
         ds = ray.data.range(100).repartition(10)
-        it = ds.iter_batches(batch_size=10, prefetch_batches=0)
+        it = iter(ds.iter_batches(batch_size=10, prefetch_batches=0))
         while True:
             try:
                 next(it)
