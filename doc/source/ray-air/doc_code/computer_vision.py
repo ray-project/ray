@@ -356,32 +356,29 @@ def batch_predict_tensorflow(dataset, checkpoint):
 
 def online_predict_torch(checkpoint):
     # __torch_serve_start__
+    from io import BytesIO
+    import numpy as np
+    from PIL import Image
     from ray import serve
-    from ray.serve import PredictorDeployment
-    from ray.serve.http_adapters import json_to_ndarray
     from ray.train.torch import TorchPredictor
 
-    serve.run(
-        PredictorDeployment.bind(
-            TorchPredictor,
-            checkpoint,
-            http_adapter=json_to_ndarray,
-        )
-    )
+    @serve.deployment
+    class TorchDeployment:
+        def __init__(self, checkpoint):
+            self.predictor = TorchPredictor.from_checkpoint(checkpoint)
+
+        async def __call__(self, request):
+            image = Image.open(BytesIO(await request.body()))
+            return self.predictor.predict(np.array(image)[np.newaxis])
+
+    serve.run(TorchDeployment.bind(checkpoint))
     # __torch_serve_stop__
 
     # __torch_online_predict_start__
-    from io import BytesIO
-
-    import numpy as np
     import requests
-    from PIL import Image
 
     response = requests.get("http://placekitten.com/200/300")
-    image = Image.open(BytesIO(response.content))
-
-    payload = {"array": np.array(image).tolist(), "dtype": "float32"}
-    response = requests.post("http://localhost:8000/", json=payload)
+    response = requests.post("http://localhost:8000/", data=response.content)
     predictions = response.json()
     # __torch_online_predict_stop__
     predictions
@@ -389,35 +386,34 @@ def online_predict_torch(checkpoint):
 
 def online_predict_tensorflow(checkpoint):
     # __tensorflow_serve_start__
+    from io import BytesIO
+    import numpy as np
+    from PIL import Image
     import tensorflow as tf
 
     from ray import serve
-    from ray.serve import PredictorDeployment
-    from ray.serve.http_adapters import json_to_multi_ndarray
     from ray.train.tensorflow import TensorflowPredictor
 
-    serve.run(
-        PredictorDeployment.bind(
-            TensorflowPredictor,
-            checkpoint,
-            http_adapter=json_to_multi_ndarray,
-            model_definition=tf.keras.applications.resnet50.ResNet50,
-        )
-    )
+    @serve.deployment
+    class TensorflowDeployment:
+        def __init__(self, checkpoint):
+            self.predictor = TensorflowPredictor.from_checkpoint(
+                checkpoint,
+                model_definition=tf.keras.applications.resnet50.ResNet50,
+            )
+
+        async def __call__(self, request):
+            image = Image.open(BytesIO(await request.body()))
+            return self.predictor.predict({"image": np.array(image)[np.newaxis]})
+
+    serve.run(TensorflowDeployment.bind(checkpoint))
     # __tensorflow_serve_stop__
 
     # __tensorflow_online_predict_start__
-    from io import BytesIO
-
-    import numpy as np
     import requests
-    from PIL import Image
 
     response = requests.get("http://placekitten.com/200/300")
-    image = Image.open(BytesIO(response.content))
-
-    payload = {"image": {"array": np.array(image).tolist(), "dtype": "float32"}}
-    response = requests.post("http://localhost:8000/", json=payload)
+    response = requests.post("http://localhost:8000/", data=response.content)
     predictions = response.json()
     # __tensorflow_online_predict_stop__
     predictions
