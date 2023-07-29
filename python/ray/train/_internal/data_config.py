@@ -1,5 +1,6 @@
 from typing import Optional, Dict, List
 
+import ray
 from ray.actor import ActorHandle
 from ray.train.constants import TRAIN_DATASET_KEY
 from ray.train._internal.dataset_spec import DataParallelIngestSpec
@@ -93,9 +94,12 @@ class DataConfig:
         the node the data will be consumed. We also set the object store memory limit
         to a fixed smaller value, to avoid using too much memory per Train worker.
         """
+        ctx = ray.data.DataContext.get_current()
         return ExecutionOptions(
             locality_with_output=True,
             resource_limits=ExecutionResources(object_store_memory=2e9),
+            preserve_order=ctx.execution_options.preserve_order,
+            verbose_progress=ctx.execution_options.verbose_progress,
         )
 
     def _legacy_preprocessing(
