@@ -40,7 +40,7 @@ def test_basic_dataset(ray_start_regular_shared):
 
 
 def test_basic_dataset_multi_use_iterator(ray_start_regular_shared):
-    """Tests that the iterator outputted by `iter_batches` can be used
+    """Tests that the iterable outputted by `iter_batches` can be used
     multiple times."""
     ds = ray.data.range(100)
     it = ds.iterator().iter_batches()
@@ -50,6 +50,22 @@ def test_basic_dataset_multi_use_iterator(ray_start_regular_shared):
             batch = batch["id"]
             result += batch.tolist()
         assert result == list(range(100))
+
+
+def test_basic_dataset_preemption(ray_start_regular_shared):
+    """Tests that the iterable outputted by ``iter_batches``
+    can be used multiple times even if it is preempted during iteration."""
+
+    ds = ray.data.range(100, parallelism=2)
+    it = ds.iterator().iter_batches()
+    for _ in range(2):
+        result = []
+        for i, batch in enumerate(it):
+            batch = batch["id"]
+            result += batch.tolist()
+            if i > 0:
+                break
+        assert result == list(range(50))
 
 
 def test_basic_dataset_iter_rows(ray_start_regular_shared):
