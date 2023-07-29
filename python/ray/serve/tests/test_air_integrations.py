@@ -1,11 +1,12 @@
 import os
 import tempfile
-from typing import Optional
+from typing import List, Optional
 
 import numpy as np
 import pandas as pd
 import pytest
 import requests
+from starlette.requests import Request
 from fastapi import Depends, FastAPI
 
 import ray
@@ -161,10 +162,10 @@ def send_request(**requests_kargs):
 def test_simple_adder(serve_instance):
     @serve.deployment
     class AdderDeployment:
-        def __init__(self, checkpoint):
+        def __init__(self, checkpoint: Checkpoint):
             self.predictor = AdderPredictor.from_checkpoint(checkpoint)
 
-        async def __call__(self, request):
+        async def __call__(self, request: Request):
             data = await request.json()
             return self.predictor.predict(np.array(data["array"]))
 
@@ -178,10 +179,10 @@ def test_simple_adder(serve_instance):
 def test_predictor_kwargs(serve_instance):
     @serve.deployment
     class AdderDeployment:
-        def __init__(self, checkpoint):
+        def __init__(self, checkpoint: Checkpoint):
             self.predictor = AdderPredictor.from_checkpoint(checkpoint)
 
-        async def __call__(self, request):
+        async def __call__(self, request: Request):
             data = await request.json()
             return self.predictor.predict(
                 np.array(data["array"]), override_increment=100
@@ -198,10 +199,10 @@ def test_predictor_kwargs(serve_instance):
 def test_predictor_from_checkpoint_kwargs(serve_instance):
     @serve.deployment
     class AdderDeployment:
-        def __init__(self, checkpoint):
+        def __init__(self, checkpoint: Checkpoint):
             self.predictor = AdderPredictor.from_checkpoint(checkpoint, do_double=True)
 
-        async def __call__(self, request):
+        async def __call__(self, request: Request):
             data = await request.json()
             return self.predictor.predict(np.array(data["array"]))
 
@@ -215,11 +216,11 @@ def test_predictor_from_checkpoint_kwargs(serve_instance):
 def test_batching(serve_instance):
     @serve.deployment
     class AdderDeployment:
-        def __init__(self, checkpoint):
+        def __init__(self, checkpoint: Checkpoint):
             self.predictor = AdderPredictor.from_checkpoint(checkpoint)
 
         @serve.batch(max_batch_size=2, batch_wait_timeout_s=1000)
-        async def __call__(self, requests):
+        async def __call__(self, request: List[Request]):
             items = [await request.json() for request in requests]
             batch = np.concatenate([np.array(item["array"]) for item in items])
             return self.predictor.predict(batch)
@@ -254,7 +255,7 @@ def test_air_integrations_in_pipeline(serve_instance):
 
     @serve.deployment
     class AdderDeployment:
-        def __init__(self, checkpoint):
+        def __init__(self, checkpoint: Checkpoint):
             self.predictor = AdderPredictor.from_checkpoint(checkpoint)
 
         async def __call__(self, data):
@@ -282,7 +283,7 @@ def test_air_integrations_reconfigure(serve_instance):
 
     @serve.deployment
     class AdderDeployment:
-        def __init__(self, checkpoint):
+        def __init__(self, checkpoint: Checkpoint):
             self.predictor = AdderPredictor.from_checkpoint(checkpoint)
 
         def reconfigure(self, config):
