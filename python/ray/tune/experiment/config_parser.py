@@ -236,5 +236,6 @@ def _create_trial_from_spec(
         log_to_file=spec.get("log_to_file"),
         # str(None) doesn't create None
         max_failures=args.max_failures,
+        storage=spec.get("storage"),
         **trial_kwargs,
     )
