@@ -141,4 +141,5 @@ Please also see the :ref:`Ray Tune environment variables <tune-env-vars>`.
   including internal code paths. Otherwise, abbreviated tracebacks that only show user code
   are printed. Defaults to 0 (disabled).
 * **RAY_AIR_NEW_OUTPUT**: If set to 0, this disables
-  the `experimental new console output <https://github.com/ray*project/ray/issues/36949>`_.
+  the `experimental new console output <https://github.com/ray-project/ray/issues/36949>`_.
+
