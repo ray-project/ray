@@ -7,7 +7,6 @@ import numpy as np
 
 from ray.rllib.env.base_env import ASYNC_RESET_RETURN, BaseEnv
 from ray.rllib.env.external_env import ExternalEnvWrapper
-from ray.rllib.env.wrappers.atari_wrappers import MonitorEnv, get_wrapper_by_cls
 from ray.rllib.evaluation.collectors.simple_list_collector import _PolicyCollectorGroup
 from ray.rllib.policy.rnn_sequencing import pad_batch_to_sequences_of_same_size
 from ray.rllib.evaluation.episode_v2 import EpisodeV2
@@ -408,13 +407,6 @@ class EnvRunnerV2:
         self, episode: EpisodeV2, policy_map: Dict[str, Policy]
     ) -> List[RolloutMetrics]:
         """Get rollout metrics from completed episode."""
-        # TODO(jungong) : why do we need to handle atari metrics differently?
-        # Can we unify atari and normal env metrics?
-        atari_metrics: List[RolloutMetrics] = _fetch_atari_metrics(self._base_env)
-        if atari_metrics is not None:
-            for m in atari_metrics:
-                m._replace(custom_metrics=episode.custom_metrics)
-            return atari_metrics
         # Create connector metrics
         connector_metrics = {}
         active_agents = episode.get_agents()
@@ -1207,24 +1199,6 @@ class EnvRunnerV2:
             )
 
         self._perf_stats.incr("env_render_time", time.time() - t5)
-
-
-def _fetch_atari_metrics(base_env: BaseEnv) -> List[RolloutMetrics]:
-    """Atari games have multiple logical episodes, one per life.
-
-    However, for metrics reporting we count full episodes, all lives included.
-    """
-    sub_environments = base_env.get_sub_environments()
-    if not sub_environments:
-        return None
-    atari_out = []
-    for sub_env in sub_environments:
-        monitor = get_wrapper_by_cls(sub_env, MonitorEnv)
-        if not monitor:
-            return None
-        for eps_rew, eps_len in monitor.next_episode_results():
-            atari_out.append(RolloutMetrics(eps_len, eps_rew))
-    return atari_out
 
 
 def _get_or_raise(

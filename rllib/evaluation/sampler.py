@@ -26,7 +26,6 @@ from ray.rllib.evaluation.collectors.sample_collector import SampleCollector
 from ray.rllib.evaluation.collectors.simple_list_collector import SimpleListCollector
 from ray.rllib.evaluation.env_runner_v2 import (
     EnvRunnerV2,
-    _fetch_atari_metrics,
     _get_or_raise,
     _PerfStats,
 )
@@ -994,28 +993,18 @@ def _process_observations(
             # Now that all callbacks are done and users had the chance to add custom
             # metrics based on the last observation in the episode, finish up metrics
             # object and append to `outputs`.
-            atari_metrics: List[RolloutMetrics] = _fetch_atari_metrics(base_env)
             if not episode.is_faulty:
-                if atari_metrics is not None:
-                    for m in atari_metrics:
-                        outputs.append(
-                            m._replace(
-                                custom_metrics=episode.custom_metrics,
-                                hist_data=episode.hist_data,
-                            )
-                        )
-                else:
-                    outputs.append(
-                        RolloutMetrics(
-                            episode.length,
-                            episode.total_reward,
-                            dict(episode.agent_rewards),
-                            episode.custom_metrics,
-                            {},
-                            episode.hist_data,
-                            episode.media,
-                        )
+                outputs.append(
+                    RolloutMetrics(
+                        episode.length,
+                        episode.total_reward,
+                        dict(episode.agent_rewards),
+                        episode.custom_metrics,
+                        {},
+                        episode.hist_data,
+                        episode.media,
                     )
+                )
             else:
                 # Add metrics about a faulty episode.
                 outputs.append(RolloutMetrics(episode_faulty=True))

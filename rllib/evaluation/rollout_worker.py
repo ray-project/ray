@@ -4,6 +4,7 @@ import logging
 import os
 import platform
 import threading
+import gymnasium as gym
 from collections import defaultdict
 from types import FunctionType
 from typing import (
@@ -449,6 +450,21 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
 
             # Wrap env through the correct wrapper.
             self.env: EnvType = wrap(self.env)
+
+            if self.config.record:
+                folder = (
+                    self.config.video_folder
+                    if self.config.video_folder is not None
+                    else self.log_dir + "/videos"
+                )
+                logger.info(f"Recording videos to {folder}")
+                self.env = gym.wrappers.RecordVideo(
+                    env=self.env,
+                    video_folder=folder,
+                    episode_trigger=self.config.recording_schedule,
+                    name_prefix=f"RolloutWorker_{self.worker_index}_",
+                )
+
             # Ideally, we would use the same make_sub_env() function below
             # to create self.env, but wrap(env) and self.env has a cyclic
             # dependency on each other right now, so we would settle on

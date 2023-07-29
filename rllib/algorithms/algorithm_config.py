@@ -3,6 +3,7 @@ import logging
 import math
 import os
 import sys
+from gymnasium.wrappers import capped_cubic_video_schedule
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -308,6 +309,9 @@ class AlgorithmConfig(_Config):
         self.disable_env_checking = False
         self.auto_wrap_old_gym_envs = True
         self.action_mask_key = "action_mask"
+        self.record = False
+        self.video_folder = os.path.expanduser("~/ray_results")
+        self.recording_schedule = capped_cubic_video_schedule
         # Whether this env is an atari env (for atari-specific preprocessing).
         # If not specified, we will try to auto-detect this.
         self._is_atari = None
@@ -455,7 +459,6 @@ class AlgorithmConfig(_Config):
         #  have been removed.
         # === Deprecated keys ===
         self.simple_optimizer = DEPRECATED_VALUE
-        self.monitor = DEPRECATED_VALUE
         self.evaluation_num_episodes = DEPRECATED_VALUE
         self.metrics_smoothing_episodes = DEPRECATED_VALUE
         self.timesteps_per_iteration = DEPRECATED_VALUE
@@ -533,7 +536,6 @@ class AlgorithmConfig(_Config):
         # Simplify: Remove all deprecated keys that have as value `DEPRECATED_VALUE`.
         # These would be useless in the returned dict anyways.
         for dep_k in [
-            "monitor",
             "evaluation_num_episodes",
             "metrics_smoothing_episodes",
             "timesteps_per_iteration",
@@ -1334,6 +1336,9 @@ class AlgorithmConfig(_Config):
         is_atari: Optional[bool] = NotProvided,
         auto_wrap_old_gym_envs: Optional[bool] = NotProvided,
         action_mask_key: Optional[str] = NotProvided,
+        record: Optional[bool] = NotProvided,
+        video_folder: Optional[str] = NotProvided,
+        recording_schedule: Optional[Callable[[int], bool]] = NotProvided,
     ) -> "AlgorithmConfig":
         """Sets the config's RL-environment settings.
 
@@ -1385,9 +1390,18 @@ class AlgorithmConfig(_Config):
                 (gym.wrappers.EnvCompatibility). If False, RLlib will produce a
                 descriptive error on which steps to perform to upgrade to gymnasium
                 (or to switch this flag to True).
-             action_mask_key: If observation is a dictionary, expect the value by
+            action_mask_key: If observation is a dictionary, expect the value by
                 the key `action_mask_key` to contain a valid actions mask (`numpy.int8`
                 array of zeros and ones). Defaults to "action_mask".
+            record: Whether to record videos of the environment according to the
+                `recording_schedule` callable.
+            video_folder: Path to the directory where to save the recordings.
+                Defaults to "~/ray_results".
+            recording_schedule: A callable that takes the current episode index and
+                returns a boolean indicating whether to record the current episode.
+                By default, this is done in a capped cubic schedule
+                [cubic until 1000 episodes, every 1000 episodes thereafter]. You can
+                also define a recording schedule callable.
 
         Returns:
             This updated AlgorithmConfig object.
@@ -1422,6 +1436,12 @@ class AlgorithmConfig(_Config):
             self.auto_wrap_old_gym_envs = auto_wrap_old_gym_envs
         if action_mask_key is not NotProvided:
             self.action_mask_key = action_mask_key
+        if record is not NotProvided:
+            self.record = record
+        if recording_schedule is not NotProvided:
+            self.recording_schedule = recording_schedule
+        if video_folder is not NotProvided:
+            self.video_folder = video_folder
 
         return self
 

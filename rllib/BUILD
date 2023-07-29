@@ -4011,6 +4011,14 @@ py_test(
 )
 
 py_test(
+    name = "examples/record_videos",
+    main = "examples/record_videos.py",
+    tags = ["team:rllib", "examples"],
+    size = "small",
+    srcs = ["examples/record_videos.py"],
+)
+
+py_test(
     name = "examples/remote_envs_with_inference_done_on_main_node_tf",
     main = "examples/remote_envs_with_inference_done_on_main_node.py",
     tags = ["team:rllib", "exclusive", "examples"],

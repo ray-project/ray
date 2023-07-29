@@ -528,18 +528,15 @@ Debugging RLlib Experiments
 Gym Monitor
 ~~~~~~~~~~~
 
-The ``"monitor": true`` config can be used to save Gym episode videos to the result dir. For example:
+The ``"record": true`` config can be used to save videos of episodes to the result dir. For example:
 
 .. code-block:: bash
 
     rllib train --env=PongDeterministic-v4 \
-        --run=A2C --config '{"num_workers": 2, "monitor": true}'
+        --run=A2C --config '{"num_workers": 2, "record": true}'
 
-    # videos will be saved in the ~/ray_results/<experiment> dir, for example
-    openaigym.video.0.31401.video000000.meta.json
-    openaigym.video.0.31401.video000000.mp4
-    openaigym.video.0.31403.video000000.meta.json
-    openaigym.video.0.31403.video000000.mp4
+Videos will be saved in the ``~/ray_results/<experiment>`` directory.
+
 
 Eager Mode
 ~~~~~~~~~~
