@@ -30,6 +30,8 @@ from ray.train.base_trainer import (  # noqa: F401
 )
 from ray.tune.trainable.util import TrainableUtil
 from ray.util.annotations import DeveloperAPI
+from ray.train._internal.storage import _use_storage_context, get_storage_context
+
 
 T = TypeVar("T")
 S = TypeVar("S")
@@ -98,12 +100,33 @@ class TrainingIterator:
                 datasets=datasets,
                 data_config=data_config,
                 checkpoint=checkpoint,
+                # Workers need to start out with a path to write the first checkpoint to
+                on_session_init=self._send_next_checkpoint_path_to_workers,
             )
         )
 
-        # Session has started. Set current cloud checkpoint dir if necessary.
-        if self._checkpoint_strategy._checkpoint_upload_from_workers:
-            self._backend_executor._set_checkpoint_uri(
+    def _send_next_checkpoint_path_to_workers(self):
+        # NOTE: Always upload to storage from workers in the new persistence path
+        # (no need to check for the `checkpoint_upload_from_workers` flag)
+        if _use_storage_context():
+            storage = get_storage_context()
+
+            # NOTE: Idea: this checkpoint dir name should be customizable
+            # and created on the fly when the checkpoint is reported with metrics.
+            # Ex: lambda metrics: f"checkpoint_iter={metrics['training_iteration']}"
+            storage.current_checkpoint_index = (
+                self._checkpoint_manager._latest_checkpoint_id
+            )
+            logger.debug(
+                f"Setting next checkpoint path to: {storage.checkpoint_fs_path}"
+            )
+
+            self._backend_executor._set_checkpoint_index(
+                storage.current_checkpoint_index
+            )
+
+        elif self._checkpoint_strategy._checkpoint_upload_from_workers:
+            self._backend_executor._set_legacy_checkpoint_uri(
                 self.__get_cloud_checkpoint_dir()
             )
 
@@ -201,10 +224,7 @@ class TrainingIterator:
                 # TODO(jungong) : It would be nicer if we find a cleaner way
                 # to sync the current cloud checkpointing directory between
                 # Tuner, Trainable, and Trainers.
-                if self._checkpoint_strategy._checkpoint_upload_from_workers:
-                    self._backend_executor._set_checkpoint_uri(
-                        self.__get_cloud_checkpoint_dir()
-                    )
+                self._send_next_checkpoint_path_to_workers()
                 # Iterate until next REPORT call or training has finished.
             else:
                 raise TrainBackendError(
@@ -214,6 +234,7 @@ class TrainingIterator:
                     f"{[type in TrainingResultType]}"
                 )
 
+    # TODO(justinvyu): Remove unused code
     def _finish_checkpointing(self):
         while True:
             results = self._backend_executor.get_next_results()
@@ -225,11 +246,10 @@ class TrainingIterator:
                 self._checkpoint_manager._process_checkpoints(
                     results, decode_checkpoint_fn=self._backend._decode_data
                 )
-                if self._checkpoint_strategy._checkpoint_upload_from_workers:
-                    self._backend_executor._set_checkpoint_uri(
-                        self.__get_cloud_checkpoint_dir()
-                    )
+                # TODO: Is this needed? I don't think this is ever called...
+                self._send_next_checkpoint_path_to_workers()
 
+    # TODO(justinvyu): Remove unused code
     def _finish_training(self):
         """Finish training and return final results. Propagate any exceptions.
 
@@ -251,6 +271,7 @@ class TrainingIterator:
     def is_finished(self) -> bool:
         return self._finished_training
 
+    # TODO(justinvyu): Remove unused code
     def get_final_results(self, force: bool = False) -> List[T]:
         """Gets the training func return values from each worker.
 
@@ -281,12 +302,7 @@ class TrainingIterator:
 
         return self._final_results
 
-    # This is extremely hacky and fragile.
-    # TODO(jungong) : We should refactor things so Tuner, Trinable, and
-    # Trainers have a consistent view of the current cloud checkpointing
-    # directory.
-    # We should probably also refactor things so Syncer and SyncConfig
-    # are available everywhere session is available.
+    # TODO(justinvyu): Remove legacy path.
     def __get_cloud_checkpoint_dir(self):
         if not self._storage_path:
             # Can't run cloud upload if storage path is not set.
