@@ -1,7 +1,6 @@
 import threading
 from typing import TYPE_CHECKING, Optional
 
-from ray.air import Checkpoint
 from ray.train._internal import session
 from ray.util.annotations import PublicAPI
 
@@ -26,10 +25,6 @@ def _copy_doc(copy_func):
 @PublicAPI(stability="beta")
 class TrainContext:
     """Context for Ray training executions."""
-
-    @_copy_doc(session.get_checkpoint)
-    def get_checkpoint(self) -> Optional[Checkpoint]:
-        return session.get_checkpoint()
 
     @_copy_doc(session.get_experiment_name)
     def get_experiment_name(self) -> str:
