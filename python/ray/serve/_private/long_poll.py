@@ -44,8 +44,6 @@ class LongPollNamespace(Enum):
 
     RUNNING_REPLICAS = auto()
     ROUTE_TABLE = auto()
-    # Nodes where http proxy actors should run.
-    HTTP_PROXY_NODES = auto()
 
 
 @dataclass

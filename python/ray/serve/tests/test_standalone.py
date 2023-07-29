@@ -631,7 +631,7 @@ def test_fixed_number_proxies(monkeypatch, ray_cluster):
     )
 
     @serve.deployment(
-        num_replicas=2,
+        num_replicas=3,
         ray_actor_options={"num_cpus": 3},
     )
     class A:

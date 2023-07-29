@@ -42,7 +42,7 @@ from ray.serve._private.logging_utils import (
     configure_component_logger,
     get_component_logger_file_path,
 )
-from ray.serve._private.long_poll import LongPollHost, LongPollNamespace
+from ray.serve._private.long_poll import LongPollHost
 from ray.serve.exceptions import RayServeException
 from ray.serve.schema import (
     ServeApplicationSchema,
@@ -287,15 +287,10 @@ class ServeController:
 
         Controller decides where http proxy actors should run
         (head node and nodes with deployment replicas).
-        If the http proxy nodes set changes, it will notify the long poll client.
         """
         new_http_proxy_nodes = self.deployment_state_manager.get_active_node_ids()
         new_http_proxy_nodes.add(self._controller_node_id)
-        if self._http_proxy_nodes != new_http_proxy_nodes:
-            self._http_proxy_nodes = new_http_proxy_nodes
-            self.long_poll_host.notify_changed(
-                LongPollNamespace.HTTP_PROXY_NODES, self._http_proxy_nodes
-            )
+        self._http_proxy_nodes = new_http_proxy_nodes
 
     async def run_control_loop(self) -> None:
         # NOTE(edoakes): we catch all exceptions here and simply log them,

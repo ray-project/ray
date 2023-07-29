@@ -6,7 +6,7 @@ import logging
 import pickle
 import socket
 import time
-from typing import Callable, Dict, List, Optional, Set, Tuple
+from typing import Callable, Dict, List, Optional, Tuple, Any
 
 import uvicorn
 import starlette.responses
@@ -243,7 +243,6 @@ class HTTPProxy:
             ray.get_actor(controller_name, namespace=SERVE_NAMESPACE),
             {
                 LongPollNamespace.ROUTE_TABLE: self._update_routes,
-                LongPollNamespace.HTTP_PROXY_NODES: self._update_draining,
             },
             call_in_event_loop=get_or_create_event_loop(),
         )
@@ -317,7 +316,7 @@ class HTTPProxy:
             (time.time() - self._draining_start_time) > PROXY_MIN_DRAINING_PERIOD_S
         )
 
-    def _update_draining(self, http_proxy_nodes: Set[str]):
+    def update_draining(self, draining: bool):
         """Update draining flag on http proxy.
 
         This is a callback for when controller detects there being a change in active
@@ -326,7 +325,6 @@ class HTTPProxy:
         changed.
         """
 
-        draining = self._node_id not in http_proxy_nodes
         if draining and (not self._is_draining()):
             logger.info(f"Start to drain the proxy actor on node {self._node_id}")
             self._draining_start_time = time.time()
@@ -960,15 +958,30 @@ Please make sure your http-host and http-port are specified correctly."""
         self.setup_complete.set()
         await server.serve(sockets=[sock])
 
+    async def update_draining(self, draining: bool, _after: Optional[Any] = None):
+        """Update draining flag on http proxy.
+
+        Unused `_after` argument is for scheduling: passing an ObjectRef
+        allows delaying this call until after the `_after` call has returned.
+        """
+
+        self.app.update_draining(draining)
+
+    async def is_drained(self, _after: Optional[Any] = None):
+        """Check whether the proxy is drained or not.
+
+        Unused `_after` argument is for scheduling: passing an ObjectRef
+        allows delaying this call until after the `_after` call has returned.
+        """
+
+        return self.app.is_drained()
+
     async def check_health(self):
         """No-op method to check on the health of the HTTP Proxy.
         Make sure the async event loop is not blocked.
         """
-        if self.app.is_drained():
-            logger.info(
-                f"The proxy actor on node {self.app._node_id} is drained. Exiting..."
-            )
-            ray.actor.exit_actor()
+
+        pass
 
     async def receive_asgi_messages(self, request_id: str) -> bytes:
         return pickle.dumps(await self.app.receive_asgi_messages(request_id))
