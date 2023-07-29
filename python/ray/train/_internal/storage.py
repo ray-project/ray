@@ -233,6 +233,14 @@ def _list_at_fs_path(fs: pyarrow.fs.FileSystem, fs_path: str) -> List[str]:
     ]
 
 
+def _exists_at_fs_path(fs: pyarrow.fs.FileSystem, fs_path: str) -> bool:
+    """Returns True if (fs, fs_path) exists."""
+    assert not is_uri(fs_path), fs_path
+
+    valid = fs.get_file_info([fs_path])[0]
+    return valid.type != pyarrow.fs.FileType.NotFound
+
+
 def _is_directory(fs: pyarrow.fs.FileSystem, fs_path: str) -> bool:
     """Checks if (fs, fs_path) is a directory or a file.
 
@@ -451,8 +459,7 @@ class StorageContext:
     def _check_validation_file(self):
         """Checks that the validation file exists at the storage path."""
         valid_file = os.path.join(self.experiment_fs_path, ".validate_storage_marker")
-        valid = self.storage_filesystem.get_file_info([valid_file])[0]
-        if valid.type == pyarrow.fs.FileType.NotFound:
+        if not _exists_at_fs_path(fs=self.storage_filesystem, fs_path=valid_file):
             raise RuntimeError(
                 f"Unable to set up cluster storage at storage_path={self.storage_path}"
                 "\nCheck that all nodes in the cluster have read/write access "
