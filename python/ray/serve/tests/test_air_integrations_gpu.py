@@ -3,8 +3,10 @@ import pytest
 import requests
 
 import ray
+from ray import serve
+from ray.serve.drivers import DAGDriver
+from ray.serve.http_adapters import json_to_ndarray
 from ray.air.checkpoint import Checkpoint
-from ray.serve.air_integrations import PredictorDeployment
 from ray.train.predictor import Predictor
 
 
@@ -28,11 +30,24 @@ def test_automatic_enable_gpu(serve_instance):
                 raise ValueError("GPU not enabled")
             return [{"value": val} for val in data.tolist()]
 
-    _ = PredictorDeployment.options(
-        name="GPU", ray_actor_options={"num_gpus": 1}
-    ).deploy(predictor_cls=DummyGPUPredictor, checkpoint=Checkpoint.from_dict({"x": 1}))
+    @serve.deployment(ray_actor_options={"num_gpus": 1})
+    class DummyGPUDeployment:
+        def __init__(self, checkpoint):
+            self.predictor = DummyGPUPredictor.from_checkpoint(checkpoint, use_gpu=True)
 
-    assert ray.get(send_request.remote(json={"array": [40]})) == {"value": [40]}
+        async def __call__(self, data):
+            return self.predictor.predict(data)
+
+    serve.run(
+        DAGDriver.bind(
+            DummyGPUDeployment.options(name="GPU").bind(Checkpoint.from_dict({"x": 1})),
+            http_adapter=json_to_ndarray,
+        )
+    )
+
+    assert ray.get(send_request.remote(json={"array": [40], "dtype": "int64"})) == [
+        {"value": 40}
+    ]
 
 
 if __name__ == "__main__":

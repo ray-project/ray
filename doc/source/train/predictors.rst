@@ -22,8 +22,6 @@ What are predictors?
 
 Predictors are a class that loads models from `Checkpoint` to perform inference.
 
-Predictors are used by `BatchPredictor` and `PredictorDeployment` to do large-scale scoring or online inference.
-
 Let's walk through a basic usage of the Predictor. In the below example, we create `Checkpoint` object from a model definition.
 Checkpoints can be generated from a variety of different ways -- see the :ref:`Checkpoints <checkpoint-api-ref>` user guide for more details.
 
