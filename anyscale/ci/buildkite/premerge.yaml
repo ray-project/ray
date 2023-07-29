@@ -88,12 +88,36 @@ steps:
       retry:
         automatic:
           limit: 1
+
+  - name: "ci test base image"
+    key: "ci-test-base-image"
+    command:
+      - source anyscale/ci/setup-env.sh
+      - /bin/bash anyscale/ci/build-ci-test-base-image.sh
+    agents:
+      queue: "large"
+    retry:
+      automatic:
+        limit: 1
   
   - name: "ci build image"
     key: "ci-build-image"
+    depends_on: "ci-test-base-image"
     command:
       - source anyscale/ci/setup-env.sh
       - /bin/bash anyscale/ci/build-ci-build-image.sh
+    agents:
+      queue: "large"
+    retry:
+      automatic:
+        limit: 1
+
+  - name: "ci ml image"
+    key: "ci-ml-image"
+    depends_on: "ci-test-base-image"
+    command:
+      - source anyscale/ci/setup-env.sh
+      - /bin/bash anyscale/ci/build-ci-ml-image.sh
     agents:
       queue: "large"
     retry:
@@ -105,7 +129,18 @@ steps:
     soft_fail: true
     command:
       - source anyscale/ci/setup-env.sh
-      - /bin/bash anyscale/ci/run-serve-tests-in-docker.sh
+      - /bin/bash anyscale/ci/run-tests-in-docker.sh serve
+    agents:
+      queue: "large"
+    retry:
+      automatic:
+        limit: 1
+
+  - name: "data tests"
+    depends_on: "ci-ml-image"
+    command:
+      - source anyscale/ci/setup-env.sh
+      - /bin/bash anyscale/ci/run-tests-in-docker.sh data
     agents:
       queue: "large"
     retry:
