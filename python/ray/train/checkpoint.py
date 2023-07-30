@@ -1,4 +1,5 @@
 import contextlib
+import json
 import logging
 import os
 import platform
@@ -11,9 +12,8 @@ import uuid
 
 import pyarrow.fs
 
-from ray import cloudpickle as pickle
 from ray.air._internal.filelock import TempFileLock
-from ray.train._internal.storage import _download_from_fs_path
+from ray.train._internal.storage import _download_from_fs_path, _exists_at_fs_path
 from ray.util.annotations import PublicAPI
 
 logger = logging.getLogger(__name__)
@@ -91,21 +91,32 @@ class Checkpoint:
     def get_metadata(self) -> Dict[str, Any]:
         """Return the metadata dict stored with the checkpoint.
 
-        If no metadata is stored, an empty dict is returned."""
+        If no metadata is stored, an empty dict is returned.
+        """
+        metadata_path = os.path.join(self.path, _METADATA_FILE_NAME)
+        if not _exists_at_fs_path(self.filesystem, metadata_path):
+            return {}
 
-        path = os.path.join(self.path, _METADATA_FILE_NAME)
-        with self.filesystem.open_input_file(path) as f:
-            return pickle.loads(f.readall())
+        with self.filesystem.open_input_file(metadata_path) as f:
+            return json.loads(f.readall())
 
     def set_metadata(self, metadata: Dict[str, Any]) -> None:
-        """Update the metadata stored with this checkpoint.
+        """Set the metadata stored with this checkpoint.
 
         This will overwrite any existing metadata stored with this checkpoint.
         """
+        metadata_path = os.path.join(self.path, _METADATA_FILE_NAME)
+        with self.filesystem.open_output_stream(metadata_path) as f:
+            f.write(json.dumps(metadata))
 
-        path = os.path.join(self.path, _METADATA_FILE_NAME)
-        with self.filesystem.open_output_stream(path) as f:
-            f.write(pickle.dumps(metadata))
+    def update_metadata(self, metadata: Dict[str, Any]) -> None:
+        """Update the metadata stored with this checkpoint.
+
+        This will update any existing metadata stored with this checkpoint.
+        """
+        existing_metadata = self.get_metadata()
+        existing_metadata.update(metadata)
+        self.set_metadata(existing_metadata)
 
     @staticmethod
     def from_directory(path: Union[str, os.PathLike]) -> "Checkpoint":
