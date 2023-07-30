@@ -4,12 +4,7 @@ import pyarrow.fs
 import pytest
 
 from ray.train.checkpoint import _CHECKPOINT_DIR_PREFIX, Checkpoint
-from ray.train._internal.storage import (
-    _create_directory,
-    _list_at_fs_path,
-    _upload_to_fs_path,
-    _download_from_fs_path,
-)
+from ray.train._internal.storage import _upload_to_fs_path
 
 
 from ray.train.tests.test_new_persistence import _create_mock_custom_fs
@@ -93,8 +88,28 @@ def test_as_directory(checkpoint: Checkpoint):
         assert not checkpoint_path.exists()
 
 
-def test_metadata():
-    pass
+def test_metadata(checkpoint: Checkpoint):
+    assert checkpoint.get_metadata() == {}
+
+    checkpoint.update_metadata({"foo": "bar"})
+    assert checkpoint.get_metadata() == {"foo": "bar"}
+
+    checkpoint.update_metadata({"foo": "baz"})
+    assert checkpoint.get_metadata() == {"foo": "baz"}
+
+    checkpoint.update_metadata({"x": 1})
+    assert checkpoint.get_metadata() == {"foo": "baz", "x": 1}
+
+    # Set metadata completely resets the metadata.
+    checkpoint.set_metadata({"y": [1, 2, 3]})
+    assert checkpoint.get_metadata() == {"y": [1, 2, 3]}
+
+    # Non JSON serializable metadata should raise an error.
+    class Test:
+        pass
+
+    with pytest.raises(TypeError):
+        checkpoint.set_metadata({"non_json_serializable": Test()})
 
 
 if __name__ == "__main__":
