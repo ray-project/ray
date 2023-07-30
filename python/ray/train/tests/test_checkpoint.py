@@ -4,8 +4,12 @@ import pyarrow.fs
 import pytest
 
 import ray
-from ray.train.checkpoint import _CHECKPOINT_DIR_PREFIX, Checkpoint
-from ray.train._internal.storage import _upload_to_fs_path
+from ray.train.checkpoint import (
+    _CHECKPOINT_TEMP_DIR_PREFIX,
+    _METADATA_FILE_NAME,
+    Checkpoint,
+)
+from ray.train._internal.storage import _exists_at_fs_path, _upload_to_fs_path
 
 
 from ray.train.tests.test_new_persistence import _create_mock_custom_fs
@@ -50,7 +54,7 @@ def test_to_directory(checkpoint: Checkpoint):
     checkpoint_path = Path(checkpoint.to_directory())
 
     assert (checkpoint_path / _CHECKPOINT_CONTENT_FILE).exists()
-    assert _CHECKPOINT_DIR_PREFIX in checkpoint_path.name
+    assert _CHECKPOINT_TEMP_DIR_PREFIX in checkpoint_path.name
 
 
 def test_to_directory_with_user_specified_path(checkpoint: Checkpoint, tmp_path):
@@ -94,7 +98,7 @@ def test_as_directory(checkpoint: Checkpoint):
             assert str(checkpoint_path) == checkpoint.path
         else:
             # We should have downloaded to a temp dir.
-            assert _CHECKPOINT_DIR_PREFIX in checkpoint_path.name
+            assert _CHECKPOINT_TEMP_DIR_PREFIX in checkpoint_path.name
 
     if isinstance(checkpoint.filesystem, pyarrow.fs.LocalFileSystem):
         # Checkpoint should not be deleted, if we directly gave the local path.
@@ -106,6 +110,12 @@ def test_as_directory(checkpoint: Checkpoint):
 
 def test_metadata(checkpoint: Checkpoint):
     assert checkpoint.get_metadata() == {}
+
+    # No metadata file by default.
+    assert not _exists_at_fs_path(
+        fs=checkpoint.filesystem,
+        fs_path=str(Path(checkpoint.path) / _METADATA_FILE_NAME),
+    )
 
     checkpoint.update_metadata({"foo": "bar"})
     assert checkpoint.get_metadata() == {"foo": "bar"}
@@ -119,6 +129,12 @@ def test_metadata(checkpoint: Checkpoint):
     # Set metadata completely resets the metadata.
     checkpoint.set_metadata({"y": [1, 2, 3]})
     assert checkpoint.get_metadata() == {"y": [1, 2, 3]}
+
+    # There should be a metadata file in the checkpoint directory.
+    assert _exists_at_fs_path(
+        fs=checkpoint.filesystem,
+        fs_path=str(Path(checkpoint.path) / _METADATA_FILE_NAME),
+    )
 
     # Non JSON serializable metadata should raise an error.
     class Test:
