@@ -2,6 +2,8 @@ import os
 import evaluate
 import numpy as np
 from datasets import load_dataset
+from ray.train import RunConfig, ScalingConfig, CheckpointConfig
+from ray.train.torch import TorchTrainer
 from transformers import AutoTokenizer
 from transformers import (
     AutoModelForSequenceClassification,
@@ -10,7 +12,7 @@ from transformers import (
     Trainer,
 )
 
-from ray.train.huggingface.transformers import TransformersTrainer
+from ray.train.huggingface.transformers import prepare_trainer
 
 hf_ds = load_dataset("tweet_eval", "irony")
 tokenizer = AutoTokenizer.from_pretrained("bert-base-cased")
@@ -47,11 +49,11 @@ def train_loop_per_worker():
         learning_rate=1e-4,
         per_device_train_batch_size=32,
         per_device_eval_batch_size=32,
-        num_train_epochs=3,
+        num_train_epochs=4,
         weight_decay=0.01,
         evaluation_strategy="epoch",
         save_strategy="epoch",
-        logging_strategy="steps",
+        logging_strategy="epoch",  # It cannot be set to "steps", so rigid...
         logging_steps=10,
         push_to_hub=False,
         report_to="wandb",
@@ -68,11 +70,27 @@ def train_loop_per_worker():
         compute_metrics=compute_metrics,
     )
 
+    trainer = prepare_trainer(trainer)
+
     # Train your model
     trainer.train()
 
 if __name__ == "__main__":
+    ray_trainer = TorchTrainer(
+        train_loop_per_worker,
+        run_config=RunConfig(
+            name="exp",
+            checkpoint_config=CheckpointConfig(
+                num_to_keep=2,
+                checkpoint_score_attribute="eval_accuracy",
+                checkpoint_score_order="max",
+            )
+        ),
+        scaling_config=ScalingConfig(
+            num_workers=4,
+            use_gpu=True
+        )
+    )
 
-    
-
+    ray_trainer.fit()
    

@@ -2,7 +2,7 @@ import logging
 import warnings
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Iterator, Optional, Tuple, Type
-from torch.utils.data import DataLoader, Dataset
+from torch.utils.data import DataLoader, Dataset, IterableDataset
 from ray.train.torch import create_dataloader
 
 from transformers import Trainer
@@ -20,8 +20,6 @@ from ray.train.huggingface.transformers.transformers_checkpoint import (
 )
 from ray.util import PublicAPI
 
-if TYPE_CHECKING:
-    from torch.utils.data import IterableDataset
 
 logger = logging.getLogger(__name__)
 
@@ -219,6 +217,10 @@ class TrainReportCallback(TrainerCallback):
         }
         self._report()
 
+# TODO(yunxuanx) Remove this placeholder class
+class RayDataIterableDataset:
+    def __init__(self) -> None:
+        pass
 
 def _wrap_transformers_trainer(
     trainer: transformers.trainer.Trainer,
@@ -228,20 +230,20 @@ def _wrap_transformers_trainer(
 
     class RayTrainer(base_trainer_class):
         def get_train_dataloader(self):
-            # TODO(yunxuanx): replace this to isinstance(obj, RayIterableClass)
-            if isinstance(self.train_dataset, IterableDataset):
-                return super().get_train_dataloader()
-            else:
+            # TODO(yunxuanx): replace RayDataIterableDataset to the class returned by iter_torch_batches
+            if isinstance(self.train_dataset, RayDataIterableDataset):
                 return create_dataloader(self.train_dataset)
+            else:
+                return super().get_train_dataloader()
 
         def get_eval_dataloader(
             self, eval_dataset: Optional[Dataset] = None
         ) -> DataLoader:
-            # TODO(yunxuanx): replace this to isinstance(obj, RayIterableClass)
-            if not isinstance(eval_dataset, IterableDataset):
-                return super().get_eval_dataloader(eval_dataset)
-            else:
+            # TODO(yunxuanx): replace RayDataIterableDataset to the class returned by iter_torch_batches
+            if isinstance(eval_dataset, RayDataIterableDataset):
                 return create_dataloader(eval_dataset)
+            else:
+                return super().get_eval_dataloader(eval_dataset)
 
     trainer.__class__ = RayTrainer
     return trainer
