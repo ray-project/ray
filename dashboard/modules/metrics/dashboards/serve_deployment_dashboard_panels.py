@@ -232,7 +232,7 @@ SERVE_DEPLOYMENT_GRAFANA_PANELS = [
         targets=[
             Target(
                 expr="ray_serve_registered_multiplexed_model_id{{{global_filters}}}",
-                legend="{{model_Id}}",
+                legend="{{model_id}}",
             ),
         ],
         grid_pos=GridPos(16, 4, 8, 8),
