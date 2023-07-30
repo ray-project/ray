@@ -458,10 +458,12 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
                     else self.log_dir + "/videos"
                 )
                 logger.info(f"Recording videos to {folder}")
+
                 self.env = gym.wrappers.RecordVideo(
                     env=self.env,
                     video_folder=folder,
-                    episode_trigger=self.config.recording_schedule,
+                    # Defines when to capture an episode based on episode ID.
+                    episode_trigger=lambda e: e % self.config.recording_interval == 0,
                     name_prefix=f"RolloutWorker_{self.worker_index}_",
                 )
 

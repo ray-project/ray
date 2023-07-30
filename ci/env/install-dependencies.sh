@@ -354,6 +354,9 @@ install_pip_packages() {
     requirements_files+=("${WORKSPACE_DIR}/python/requirements/ml/rllib-test-requirements.txt")
     #TODO(amogkam): Add this back to rllib-requirements.txt once mlagents no longer pins torch<1.9.0 version.
     pip install --no-dependencies mlagents==0.28.0
+    pip install moviepy
+    sudo apt install ffmpeg
+    export IMAGEIO_FFMPEG_EXE=/usr/bin/ffmpeg
 
     # Install MuJoCo.
     sudo apt install libosmesa6-dev libgl1-mesa-glx libglfw3 patchelf -y

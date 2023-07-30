@@ -15,6 +15,7 @@ In order to run this example, please regard the following:
     this can be achieved by setting the render_mode to 'rgb_array' in the environment
     config.
 """
+
 # First, we create videos with default settings:
 from ray.rllib.algorithms.ppo import PPOConfig
 
@@ -25,17 +26,10 @@ config = PPOConfig().environment(
 # By default, videos will be saved to your experiment logs directory under
 # ~/ray_results.
 
+# Secondly, we create videos every 100 episodes::
+config.environment(recording_interval=100)
 algo = config.build()
 algo.train()
-
-
-# Secondly, we create videos with a custom recording_schedule:
-def custom_schedule(episode_id: int) -> bool:
-    # This will make it so that only every 10th episode is recorded.
-    return episode_id % 10 == 0
-
-
-config.environment(recording_schedule=custom_schedule)
 
 algo = config.build()
 algo.train()

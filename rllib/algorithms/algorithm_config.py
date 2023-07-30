@@ -3,7 +3,6 @@ import logging
 import math
 import os
 import sys
-from gymnasium.wrappers import capped_cubic_video_schedule
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -311,7 +310,7 @@ class AlgorithmConfig(_Config):
         self.action_mask_key = "action_mask"
         self.record = False
         self.video_folder = os.path.expanduser("~/ray_results")
-        self.recording_schedule = capped_cubic_video_schedule
+        self.recording_interval = 10
         # Whether this env is an atari env (for atari-specific preprocessing).
         # If not specified, we will try to auto-detect this.
         self._is_atari = None
@@ -1338,7 +1337,7 @@ class AlgorithmConfig(_Config):
         action_mask_key: Optional[str] = NotProvided,
         record: Optional[bool] = NotProvided,
         video_folder: Optional[str] = NotProvided,
-        recording_schedule: Optional[Callable[[int], bool]] = NotProvided,
+        recording_interval: Optional[int] = NotProvided,
     ) -> "AlgorithmConfig":
         """Sets the config's RL-environment settings.
 
@@ -1397,11 +1396,9 @@ class AlgorithmConfig(_Config):
                 `recording_schedule` callable.
             video_folder: Path to the directory where to save the recordings.
                 Defaults to "~/ray_results".
-            recording_schedule: A callable that takes the current episode index and
-                returns a boolean indicating whether to record the current episode.
-                By default, this is done in a capped cubic schedule
-                [cubic until 1000 episodes, every 1000 episodes thereafter]. You can
-                also define a recording schedule callable.
+            recording_interval: The interval between recordings. If you set
+                recording interval to any integer number, videos will be recorded every
+                `recording_interval` episodes. Defaults to 10.
 
         Returns:
             This updated AlgorithmConfig object.
@@ -1438,8 +1435,8 @@ class AlgorithmConfig(_Config):
             self.action_mask_key = action_mask_key
         if record is not NotProvided:
             self.record = record
-        if recording_schedule is not NotProvided:
-            self.recording_schedule = recording_schedule
+        if recording_interval is not NotProvided:
+            self.recording_interval = recording_interval
         if video_folder is not NotProvided:
             self.video_folder = video_folder
 
