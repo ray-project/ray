@@ -133,7 +133,7 @@ class Checkpoint:
         """
         return Checkpoint(path, filesystem=pyarrow.fs.LocalFileSystem())
 
-    def to_directory(self, path: Optional[str] = None) -> str:
+    def to_directory(self, path: Optional[Union[str, os.PathLike]] = None) -> str:
         """Write checkpoint data to directory.
 
         Args:
@@ -147,7 +147,7 @@ class Checkpoint:
         local_path = (
             path if user_provided_path else self._get_temporary_checkpoint_dir()
         )
-        local_path = os.path.normpath(str(local_path))
+        local_path = os.path.normpath(os.path.expanduser(str(local_path)))
         _make_dir(local_path, acquire_del_lock=not user_provided_path)
 
         try:
