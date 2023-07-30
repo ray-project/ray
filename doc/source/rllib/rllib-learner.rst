@@ -20,30 +20,30 @@ polyak averaging, etc.) The API is designed so that it can be distributed using 
 distributed parallel (DDP). The Learner achieves the following:
 
 
-(1) Facilitating gradient-based updates on `RLModule`.
-(2) Providing abstractions for non-gradient based updates such as polyak averaging, etc.
+(1) Facilitates gradient-based updates on `RLModule`.
+(2) Provides abstractions for non-gradient based updates such as polyak averaging, etc.
 (3) Reporting training statistics.
-(4) Checkpointing the modules and optimizer states for durable training.
+(4) Checkpoints the modules and optimizer states for durable training.
 
 The :py:class:`~ray.rllib.core.learner.learner.Learner` class supports data-distributed-
-parallel style training via the 
+parallel style training using the 
 :py:class:`~ray.rllib.core.learner.learner_group.LearnerGroup` API. Under this paradigm, 
 the :py:class:`~ray.rllib.core.learner.learner_group.LearnerGroup` maintains multiple 
 copies of the same :py:class:`~ray.rllib.core.learner.learner.Learner` with identical 
 parameters and hyperparameters. Each of these
-:py:class:`~ray.rllib.core.learner.learner.Learner` s computes the loss and gradients on a
+:py:class:`~ray.rllib.core.learner.learner.Learner` instances computes the loss and gradients on a
 shard of a sample batch and then accumulates the gradients across the 
-:py:class:`~ray.rllib.core.learner.learner.Learner` s. Learn more about data-distributed 
+:py:class:`~ray.rllib.core.learner.learner.Learner` instances. Learn more about data-distributed 
 parallel learning in 
 `this article. <https://pytorch.org/tutorials/intermediate/ddp_tutorial.html>`_
 
 :py:class:`~ray.rllib.core.learner.learner_group.LearnerGroup` also allows for 
 asynchronous training and (distributed) checkpointing for durability during training.
 
-How To Enable Learner API In RLlib Experiments
-==============================================
+Enabling Learner API in RLlib experiments
+=========================================
 
-You can adjust the amount of resources for training using the 
+Adjust the amount of resources for training using the 
 `num_gpus_per_learner_worker`, `num_cpus_per_learner_worker`, and `num_learner_workers`
 arguments in the `AlgorithmConfig`.
 
@@ -123,7 +123,6 @@ and `Learner` APIs via the RLlib algorithm config, then `Algorithm` will constru
     from ray.rllib.core.learner.learner import FrameworkHyperparameters, LearnerSpec
     from ray.rllib.core.learner.learner_group import LearnerGroup
     from ray.rllib.core.learner.scaling_config import LearnerGroupScalingConfig
-    ray.init(ignore_reinit_error=True)
 
 
 .. tab-set::
