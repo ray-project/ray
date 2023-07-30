@@ -152,7 +152,7 @@ class Checkpoint:
             path if user_provided_path else self._get_temporary_checkpoint_dir()
         )
         local_path = os.path.normpath(os.path.expanduser(str(local_path)))
-        _make_dir(local_path, acquire_del_lock=not user_provided_path)
+        os.makedirs(local_path, exist_ok=True)
 
         try:
             # Timeout 0 means there will be only one attempt to acquire
@@ -206,6 +206,8 @@ class Checkpoint:
         else:
             temp_dir = self.to_directory()
             del_lock_path = _get_del_lock_path(temp_dir)
+            open(del_lock_path, "a").close()
+
             yield temp_dir
 
             # Cleanup
