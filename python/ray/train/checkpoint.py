@@ -98,7 +98,7 @@ class Checkpoint:
             return {}
 
         with self.filesystem.open_input_file(metadata_path) as f:
-            return json.loads(f.readall())
+            return json.loads(f.readall().decode("utf-8"))
 
     def set_metadata(self, metadata: Dict[str, Any]) -> None:
         """Set the metadata stored with this checkpoint.
@@ -107,7 +107,7 @@ class Checkpoint:
         """
         metadata_path = os.path.join(self.path, _METADATA_FILE_NAME)
         with self.filesystem.open_output_stream(metadata_path) as f:
-            f.write(json.dumps(metadata))
+            f.write(json.dumps(metadata).encode("utf-8"))
 
     def update_metadata(self, metadata: Dict[str, Any]) -> None:
         """Update the metadata stored with this checkpoint.
