@@ -196,6 +196,7 @@ def _upload_to_fs_path(
         # (since we always create a directory at fs_path)
         _create_directory(fs=fs, fs_path=fs_path)
         _pyarrow_fs_copy_files(local_path, fs_path, destination_filesystem=fs)
+        return
 
     if not fsspec:
         # TODO(justinvyu): Make fsspec a hard requirement of Tune/Train.
