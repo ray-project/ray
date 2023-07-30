@@ -282,7 +282,7 @@ def prepare_trainer(trainer: Trainer) -> Trainer:
             stacklevel=2,
         )
 
-    # TODO(yunxuanx): override this method for new Ray Data
+    # TODO(yunxuanx): override this method for new Ray Data integration
     trainer = wrap_transformers_trainer(trainer)
 
     # TODO(ml-team): How to enable experiment tracking integration?
