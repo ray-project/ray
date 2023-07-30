@@ -60,6 +60,7 @@ def _is_module_trainable(module_id: ModuleID, batch: MultiAgentBatch) -> bool:
 
 class LearnerGroup:
     """Coordinator of Learners.
+
     Public API:
         .update(batch) -> updates the RLModule based on gradient descent algos.
         .additional_update() -> any additional non-gradient based updates will get
@@ -73,6 +74,7 @@ class LearnerGroup:
                          this LearnerGroup.
         .remove_module() -> remove an RLModule from the MultiAgentRLModule being trained
                             by this LearnerGroup.
+
     Args:
         learner_spec: The specification for constructing Learners.
         max_queue_len: The maximum number of batches to queue up if doing async_update

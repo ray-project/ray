@@ -50,7 +50,7 @@ arguments in the `AlgorithmConfig`.
 .. testcode::
 	:hide:
 
-	from ray.rllib.algorithms.ppo.ppo import PPOConfig
+    from ray.rllib.algorithms.ppo.ppo import PPOConfig
 
 .. testcode::
 
@@ -69,7 +69,9 @@ arguments in the `AlgorithmConfig`.
 .. testcode::
 	:hide:
 
-	config = config.environment("CartPole-v1")
+	from gymnasium.envs.classic_control.cartpole import CartPoleEnv
+
+	config = config.environment(env=CartPoleEnv)
 	config.build()  # test that the algorithm can be built with the given resources
 
 
