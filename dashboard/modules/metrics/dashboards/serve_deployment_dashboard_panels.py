@@ -168,7 +168,7 @@ SERVE_DEPLOYMENT_GRAFANA_PANELS = [
         id=11,
         title="Number of times of multiplexed models loaded per replica",
         description="The number of times of multiplexed models loaded for each replica.",
-        unit="counts",
+        unit="times",
         targets=[
             Target(
                 expr="sum(ray_serve_multiplexed_models_load_counter{{{global_filters}}}) by (deployment, replica)",
@@ -183,7 +183,7 @@ SERVE_DEPLOYMENT_GRAFANA_PANELS = [
         id=12,
         title="Number of times of multiplexed models unloaded per replica",
         description="The number of times of multiplexed models unloaded for each replica.",
-        unit="counts",
+        unit="times",
         targets=[
             Target(
                 expr="sum(ray_serve_multiplexed_models_unload_counter{{{global_filters}}}) by (deployment, replica)",
