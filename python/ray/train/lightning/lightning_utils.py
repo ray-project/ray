@@ -48,10 +48,7 @@ def get_devices() -> Optional[List[int]]:
     the training function of :class:`TorchTrainer <ray.train.torch.TorchTrainer>`.
     """
     device = get_worker_root_device()
-    if device.index is not None:
-        return [device.index]
-    else:
-        return None
+    return None if device.index is None else [device.index]
 
 
 @PublicAPI(stability="alpha")
