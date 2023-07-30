@@ -73,8 +73,24 @@ def test_multiprocess_to_directory():
     pass
 
 
-def test_as_directory():
-    pass
+def test_as_directory(checkpoint: Checkpoint):
+    with checkpoint.as_directory() as checkpoint_path:
+        checkpoint_path = Path(checkpoint_path)
+        assert (checkpoint_path / _CHECKPOINT_CONTENT_FILE).exists()
+
+        if isinstance(checkpoint.filesystem, pyarrow.fs.LocalFileSystem):
+            # We should have directly returned the local path
+            assert str(checkpoint_path) == checkpoint.path
+        else:
+            # We should have downloaded to a temp dir.
+            assert _CHECKPOINT_DIR_PREFIX in checkpoint_path.name
+
+    if isinstance(checkpoint.filesystem, pyarrow.fs.LocalFileSystem):
+        # Checkpoint should not be deleted, if we directly gave the local path.
+        assert (checkpoint_path / _CHECKPOINT_CONTENT_FILE).exists()
+    else:
+        # Should have been deleted, if the checkpoint downloaded to a temp dir.
+        assert not checkpoint_path.exists()
 
 
 def test_metadata():
