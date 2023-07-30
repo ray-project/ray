@@ -231,11 +231,12 @@ SERVE_DEPLOYMENT_GRAFANA_PANELS = [
         unit="model",
         targets=[
             Target(
-                expr="ray_serve_registered_multiplexed_model_id{{{global_filters}}} by (deployment, replica)",
-                legend="{{replica}}",
+                expr="ray_serve_registered_multiplexed_model_id{{{global_filters}}}",
+                legend="{{model_Id}}",
             ),
         ],
         grid_pos=GridPos(16, 4, 8, 8),
+        stack=False,
     ),
     Panel(
         id=16,
@@ -244,7 +245,7 @@ SERVE_DEPLOYMENT_GRAFANA_PANELS = [
         unit="%",
         targets=[
             Target(
-                expr="(1 - sum(rate(ray_serve_multiplexed_models_load_counter{{{global_filters}}}[5m]))/sum(rate(ray_serve_multiplexed_get_model_requests_counter{{{global_filters}}}[5m]))) by (deployment)",
+                expr="(1 - sum(rate(ray_serve_multiplexed_models_load_counter{{{global_filters}}}[5m]))/sum(rate(ray_serve_multiplexed_get_model_requests_counter{{{global_filters}}}[5m])))",
                 legend="{{replica}}",
             ),
         ],
