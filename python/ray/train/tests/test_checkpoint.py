@@ -3,6 +3,7 @@ from pathlib import Path
 import pyarrow.fs
 import pytest
 
+import ray
 from ray.train.checkpoint import _CHECKPOINT_DIR_PREFIX, Checkpoint
 from ray.train._internal.storage import _upload_to_fs_path
 
@@ -64,8 +65,23 @@ def test_to_directory_with_user_specified_path(checkpoint: Checkpoint, tmp_path)
     assert checkpoint_path.name == "special_dir"
 
 
-def test_multiprocess_to_directory():
-    pass
+def test_multiprocess_to_directory(checkpoint: Checkpoint):
+    """Test the case where multiple processes are trying to checkpoint.
+
+    Only one process should download the checkpoint, and the others should
+    wait until it's finished. In the end, a single checkpoint dir should be
+    shared by all processes.
+    """
+    if checkpoint.filesystem.type_name == "mock":
+        pytest.skip("Mock filesystem cannot be pickled for use with Ray.")
+
+    @ray.remote
+    def download_checkpoint(checkpoint: Checkpoint) -> str:
+        return checkpoint.to_directory()
+
+    paths = [ray.get(download_checkpoint.remote(checkpoint)) for _ in range(5)]
+    # Check that all the paths are the same (no duplicates).
+    assert len(set(paths)) == 1
 
 
 def test_as_directory(checkpoint: Checkpoint):
