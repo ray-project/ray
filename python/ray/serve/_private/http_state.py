@@ -225,7 +225,8 @@ class HTTPProxyState:
                 except ray.exceptions.RayActorError:
                     self.set_status(HTTPProxyStatus.UNHEALTHY)
                     logger.warning(
-                        f"The HTTP proxy on node {self._node_id} dies during starting."
+                        "Unexpected actor death when checking readiness of HTTP "
+                        f"Proxy on node {self._node_id}:\n{traceback.format_exc()}"
                     )
                 except Exception:
                     self.try_update_status(HTTPProxyStatus.UNHEALTHY)
