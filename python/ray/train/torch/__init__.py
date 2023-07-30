@@ -15,6 +15,7 @@ from ray.train.torch.torch_trainer import TorchTrainer
 from ray.train.torch.train_loop_utils import (
     accelerate,
     backward,
+    create_dataloader,
     enable_reproducibility,
     get_device,
     prepare_data_loader,
@@ -35,4 +36,5 @@ __all__ = [
     "enable_reproducibility",
     "TorchPredictor",
     "TorchDetectionPredictor",
+    "create_dataloader",
 ]

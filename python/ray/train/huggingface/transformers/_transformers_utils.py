@@ -2,6 +2,8 @@ import logging
 import warnings
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Iterator, Optional, Tuple, Type
+from torch.utils.data import DataLoader, Dataset
+from ray.train.torch import create_dataloader
 
 from transformers import Trainer
 import datasets.iterable_dataset
@@ -218,6 +220,33 @@ class TrainReportCallback(TrainerCallback):
         self._report()
 
 
+def _wrap_transformers_trainer(
+    trainer: transformers.trainer.Trainer,
+) -> transformers.trainer.Trainer:
+    """Change the class of trainer to a subclass implementing Ray-specific logic."""
+    base_trainer_class: Type[transformers.trainer.Trainer] = trainer.__class__
+
+    class RayTrainer(base_trainer_class):
+        def get_train_dataloader(self):
+            # TODO(yunxuanx): replace this to isinstance(obj, RayIterableClass)
+            if isinstance(self.train_dataset, IterableDataset):
+                return super().get_train_dataloader()
+            else:
+                return create_dataloader(self.train_dataset)
+
+        def get_eval_dataloader(
+            self, eval_dataset: Optional[Dataset] = None
+        ) -> DataLoader:
+            # TODO(yunxuanx): replace this to isinstance(obj, RayIterableClass)
+            if not isinstance(eval_dataset, IterableDataset):
+                return super().get_eval_dataloader(eval_dataset)
+            else:
+                return create_dataloader(eval_dataset)
+
+    trainer.__class__ = RayTrainer
+    return trainer
+
+
 @PublicAPI(stability="alpha")
 def prepare_trainer(trainer: Trainer) -> Trainer:
     """Prepare your HuggingFace Transformer Trainer for Ray Train."""
@@ -241,8 +270,8 @@ def prepare_trainer(trainer: Trainer) -> Trainer:
 
     # Check callback steps compatibility
     save_steps = trainer.args.save_steps
-    logging_steps = trainer.args.logging_steps
     eval_steps = trainer.args.eval_steps
+    logging_steps = trainer.args.logging_steps
 
     if save_strategy in ("steps", IntervalStrategy.STEPS):
         if save_steps < logging_steps or save_steps % logging_steps != 0:
@@ -282,8 +311,7 @@ def prepare_trainer(trainer: Trainer) -> Trainer:
             stacklevel=2,
         )
 
-    # TODO(yunxuanx): override this method for new Ray Data integration
-    trainer = wrap_transformers_trainer(trainer)
+    trainer = _wrap_transformers_trainer(trainer)
 
     # TODO(ml-team): How to enable experiment tracking integration?
     # ensure no HF logging callbacks are added
