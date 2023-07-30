@@ -38,7 +38,7 @@ config = {"a": {"x": tune.uniform(0, 10)}, "b": tune.choice([1, 2, 3])}
 # __conditional_spaces_start__
 config = {
     "a": tune.randint(5, 10),
-    "b": tune.sample_from(lambda spec: np.random.randint(0, spec.config.a)),
+    "b": tune.sample_from(lambda config: np.random.randint(0, config["a"])),
 }
 # __conditional_spaces_end__
 
@@ -375,7 +375,7 @@ ray.shutdown()
 
 # __grid_search_start__
 parameters = {
-    "qux": tune.sample_from(lambda spec: 2 + 2),
+    "qux": tune.sample_from(lambda _: 2 + 2),
     "bar": tune.grid_search([True, False]),
     "foo": tune.grid_search([1, 2, 3]),
     "baz": "asd",  # a constant value
@@ -394,7 +394,7 @@ tuner = tune.Tuner(
     ),
     param_space={
         "alpha": tune.uniform(100, 200),
-        "beta": tune.sample_from(lambda spec: spec.config.alpha * np.random.normal()),
+        "beta": tune.sample_from(lambda config: config["alpha"] * np.random.normal()),
         "nn_layers": [
             tune.grid_search([16, 64, 256]),
             tune.grid_search([16, 64, 256]),

@@ -421,8 +421,8 @@ class TrainableFunctionApiTest(unittest.TestCase):
                         ray._private.utils.get_user_temp_dir(), "logdir"
                     ),
                     "config": {
-                        "a" * 50: tune.sample_from(lambda spec: 5.0 / 7),
-                        "b" * 50: tune.sample_from(lambda spec: "long" * 40),
+                        "a" * 50: tune.sample_from(lambda _: 5.0 / 7),
+                        "b" * 50: tune.sample_from(lambda _: "long" * 40),
                     },
                 }
             }

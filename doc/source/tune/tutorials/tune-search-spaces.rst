@@ -114,10 +114,8 @@ for a total of 90 trials, each with randomly sampled values of ``alpha`` and ``b
         # num_samples will repeat the entire config 10 times.
         tune_config=tune.TuneConfig(num_samples=10),
         param_space={
-            # ``sample_from`` creates a generator to call the lambda once per trial.
-            "alpha": tune.sample_from(lambda spec: np.random.uniform(100)),
-            # ``sample_from`` also supports "conditional search spaces"
-            "beta": tune.sample_from(lambda spec: spec.config.alpha * np.random.normal()),
+            "alpha": tune.uniform(0, 1),
+            "beta": tune.randn(),
             "nn_layers": [
                 # tune.grid_search will make it so that all values are evaluated.
                 tune.grid_search([16, 64, 256]),
@@ -143,10 +141,9 @@ How to use Custom and Conditional Search Spaces in Tune?
 --------------------------------------------------------
 
 You'll often run into awkward search spaces (i.e., when one hyperparameter depends on another).
-Use ``tune.sample_from(func)`` to provide a **custom** callable function for generating a search space.
+Use :meth:`tune.sample_from(func) <ray.tune.sample_from>` to provide a **custom** callable function for generating a search space.
 
-The parameter ``func`` should take in a ``spec`` object, which has a ``config`` namespace
-from which you can access other hyperparameters.
+The parameter ``func`` should take in a ``config`` dict argument, from which you can access other resolved hyperparameters.
 This is useful for conditional distributions:
 
 .. code-block:: python
@@ -156,8 +153,8 @@ This is useful for conditional distributions:
         param_space={
             # A random function
             "alpha": tune.sample_from(lambda _: np.random.uniform(100)),
-            # Use the `spec.config` namespace to access other hyperparameters
-            "beta": tune.sample_from(lambda spec: spec.config.alpha * np.random.normal())
+            # Use the `config` parameter to access other resolved hyperparameters
+            "beta": tune.sample_from(lambda config: config["alpha"] * np.random.normal())
         }
     )
     tuner.fit()
@@ -165,7 +162,7 @@ This is useful for conditional distributions:
 Here's an example showing a grid search over two nested parameters combined with random sampling from
 two lambda functions, generating 9 different trials.
 Note that the value of ``beta`` depends on the value of ``alpha``,
-which is represented by referencing ``spec.config.alpha`` in the lambda function.
+which is represented by referencing ``config["alpha"]`` in the lambda function.
 This lets you specify conditional parameter distributions.
 
 .. code-block:: python
@@ -175,8 +172,8 @@ This lets you specify conditional parameter distributions.
         my_trainable,
         run_config=air.RunConfig(name="my_trainable"),
         param_space={
-            "alpha": tune.sample_from(lambda spec: np.random.uniform(100)),
-            "beta": tune.sample_from(lambda spec: spec.config.alpha * np.random.normal()),
+            "alpha": tune.sample_from(lambda _: np.random.uniform(100)),
+            "beta": tune.sample_from(lambda config: config["alpha"] * np.random.normal()),
             "nn_layers": [
                 tune.grid_search([16, 64, 256]),
                 tune.grid_search([16, 64, 256]),
@@ -190,6 +187,6 @@ This lets you specify conditional parameter distributions.
     and :ref:`Optuna <tune-optuna>`, handle conditional search spaces at all.
 
     In order to use conditional search spaces with :ref:`HyperOpt <tune-hyperopt>`,
-    a `Hyperopt search space <http://hyperopt.github.io/hyperopt/getting-started/search_spaces/>`_ isnecessary.
+    a `Hyperopt search space <http://hyperopt.github.io/hyperopt/getting-started/search_spaces/>`_ is necessary.
     :ref:`Optuna <tune-optuna>` supports conditional search spaces through its define-by-run
     interface (:doc:`/tune/examples/optuna_example`).

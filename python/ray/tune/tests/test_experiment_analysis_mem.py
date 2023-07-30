@@ -177,8 +177,8 @@ class AnalysisSuite(unittest.TestCase):
             stop={"training_iteration": 1},
             num_samples=self.num_samples,
             config={
-                "width": sample_from(lambda spec: 10 + int(90 * random.random())),
-                "height": sample_from(lambda spec: int(100 * random.random())),
+                "width": sample_from(lambda _: 10 + int(90 * random.random())),
+                "height": sample_from(lambda _: int(100 * random.random())),
             },
         )
 

@@ -156,10 +156,10 @@ if __name__ == "__main__":
         ),
         param_space={
             "netG_lr": tune.sample_from(
-                lambda spec: random.choice([0.0001, 0.0002, 0.0005])
+                lambda _: random.choice([0.0001, 0.0002, 0.0005])
             ),
             "netD_lr": tune.sample_from(
-                lambda spec: random.choice([0.0001, 0.0002, 0.0005])
+                lambda _: random.choice([0.0001, 0.0002, 0.0005])
             ),
             "mnist_model_ref": mnist_model_ref,
             "data_dir": args.data_dir,

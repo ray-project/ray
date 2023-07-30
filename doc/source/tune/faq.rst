@@ -139,7 +139,7 @@ The trial config will be nested exactly like the input config.
 Conditional spaces
 ''''''''''''''''''
 :ref:`Custom and conditional search spaces are explained in detail here <tune_custom-search>`.
-In short, you can pass custom functions to ``tune.sample_from()`` that can
+In short, you can pass custom functions to :meth:`~ray.tune.sample_from` that can
 return values that depend on other values:
 
 .. literalinclude:: doc_code/faq.py

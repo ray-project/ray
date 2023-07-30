@@ -45,7 +45,7 @@ def assertDictAlmostEqual(a, b):
 class SearchSpaceTest(unittest.TestCase):
     def setUp(self):
         self.config = {
-            "func": tune.sample_from(lambda spec: spec.config.uniform * 0.01),
+            "func": tune.sample_from(lambda config: config["uniform"] * 0.01),
             "uniform": tune.uniform(-5, -1),
             "quniform": tune.quniform(3.2, 5.4, 0.2),
             "loguniform": tune.loguniform(1e-4, 1e-2),
@@ -376,7 +376,7 @@ class SearchSpaceTest(unittest.TestCase):
         self.assertTrue(all(c in samples for c in categories))
 
     def testFunction(self):
-        def sample(spec):
+        def sample(config):
             return np.random.uniform(-4, 4)
 
         fnc = ray.tune.search.sample.Function(sample)
@@ -391,13 +391,13 @@ class SearchSpaceTest(unittest.TestCase):
         def sample_a():
             return 0
 
-        def sample_b(spec):
+        def sample_b(config):
             return 1
 
-        def sample_c(spec, b="ok"):
+        def sample_c(config, b="ok"):
             return 2
 
-        def sample_d_invalid(spec, b):
+        def sample_d_invalid(config, b):
             return 3
 
         sample_d_valid = partial(sample_d_invalid, b="ok")
@@ -1866,7 +1866,7 @@ class SearchSpaceTest(unittest.TestCase):
             "nested": {
                 "random": tune.uniform(2.0, 10.0),
                 "dependent": tune.sample_from(
-                    lambda spec: -1.0 * spec.config.nested.random
+                    lambda config: -1.0 * config["nested"]["random"]
                 ),
             },
         }
@@ -1998,8 +1998,8 @@ class SearchSpaceTest(unittest.TestCase):
         config = {
             "grid": tune.grid_search([1, 2, 3]),
             "rand": tune.uniform(0, 1000),
-            "dependent_rand": tune.sample_from(lambda spec: spec.config.rand / 10),
-            "dependent_grid": tune.sample_from(lambda spec: spec.config.grid / 10),
+            "dependent_rand": tune.sample_from(lambda config: config["rand"] / 10),
+            "dependent_grid": tune.sample_from(lambda config: config["grid"] / 10),
         }
 
         num_samples = 6

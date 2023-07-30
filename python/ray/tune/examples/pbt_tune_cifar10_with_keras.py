@@ -191,7 +191,7 @@ if __name__ == "__main__":
         "epochs": 1,
         "batch_size": 64,
         "lr": tune.grid_search([10**-4, 10**-5]),
-        "decay": tune.sample_from(lambda spec: spec.config.lr / 100.0),
+        "decay": tune.sample_from(lambda config: config["lr"] / 100.0),
         "dropout": tune.grid_search([0.25, 0.5]),
     }
     if args.smoke_test:

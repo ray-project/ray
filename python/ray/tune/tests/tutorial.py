@@ -116,7 +116,7 @@ def train_mnist(config):
 
 # __eval_func_begin__
 search_space = {
-    "lr": tune.sample_from(lambda spec: 10 ** (-10 * np.random.rand())),
+    "lr": tune.sample_from(lambda _: 10 ** (-10 * np.random.rand())),
     "momentum": tune.uniform(0.1, 0.9),
 }
 
@@ -202,7 +202,7 @@ from ray.tune.examples.mnist_pytorch_trainable import TrainMNIST
 
 # __trainable_run_begin__
 search_space = {
-    "lr": tune.sample_from(lambda spec: 10 ** (-10 * np.random.rand())),
+    "lr": tune.sample_from(lambda _: 10 ** (-10 * np.random.rand())),
     "momentum": tune.uniform(0.1, 0.9),
 }
 

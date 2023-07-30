@@ -1,5 +1,6 @@
-import os
 import numpy as np
+import os
+import pytest
 import random
 import unittest
 
@@ -23,7 +24,8 @@ class VariantGeneratorTest(unittest.TestCase):
         ray.shutdown()
         _register_all()  # re-register the evicted objects
 
-    def generate_trials(self, spec, name):
+    @staticmethod
+    def generate_trials(spec, name):
         suggester = BasicVariantGenerator()
         suggester.add_configurations({name: spec})
         trials = []
@@ -64,15 +66,16 @@ class VariantGeneratorTest(unittest.TestCase):
                 "run": "PPO",
                 "config": {
                     "foo": {"eval": "2 + 2"},
+                    "bar": {"eval": "config['foo']"},
                 },
             },
             "eval",
         )
         trials = list(trials)
         self.assertEqual(len(trials), 1)
-        self.assertEqual(trials[0].config, {"foo": 4})
-        self.assertEqual(trials[0].evaluated_params, {"foo": 4})
-        self.assertEqual(trials[0].experiment_tag, "0_foo=4")
+        self.assertEqual(trials[0].config, {"foo": 4, "bar": 4})
+        self.assertEqual(trials[0].evaluated_params, {"foo": 4, "bar": 4})
+        self.assertEqual(trials[0].experiment_tag, "0_bar=4,foo=4")
 
     def testGridSearch(self):
         trials = self.generate_trials(
@@ -191,7 +194,7 @@ class VariantGeneratorTest(unittest.TestCase):
             {
                 "run": "PPO",
                 "config": {
-                    "qux": tune.sample_from(lambda spec: 2 + 2),
+                    "qux": tune.sample_from(lambda _: 2 + 2),
                     "bar": grid_search([True, False]),
                     "foo": grid_search([1, 2, 3]),
                     "baz": "asd",
@@ -226,8 +229,8 @@ class VariantGeneratorTest(unittest.TestCase):
                 "run": "PPO",
                 "config": {
                     "x": 1,
-                    "y": tune.sample_from(lambda spec: spec.config.x + 1),
-                    "z": tune.sample_from(lambda spec: spec.config.y + 1),
+                    "y": tune.sample_from(lambda config: config["x"] + 1),
+                    "z": tune.sample_from(lambda config: config["y"] + 1),
                 },
             },
             "condition_resolution",
@@ -244,7 +247,7 @@ class VariantGeneratorTest(unittest.TestCase):
                 "run": "PPO",
                 "config": {
                     "x": grid_search([1, 2]),
-                    "y": tune.sample_from(lambda spec: spec.config.x * 100),
+                    "y": tune.sample_from(lambda config: config["x"] * 100),
                 },
             },
             "dependent_lambda",
@@ -261,11 +264,11 @@ class VariantGeneratorTest(unittest.TestCase):
                 "config": {
                     "x": grid_search(
                         [
-                            tune.sample_from(lambda spec: spec.config.y * 100),
-                            tune.sample_from(lambda spec: spec.config.y * 200),
+                            tune.sample_from(lambda config: config["y"] * 100),
+                            tune.sample_from(lambda config: config["y"] * 200),
                         ]
                     ),
-                    "y": tune.sample_from(lambda spec: 1),
+                    "y": tune.sample_from(lambda _: 1),
                 },
             },
             "dependent_grid_search",
@@ -306,9 +309,9 @@ class VariantGeneratorTest(unittest.TestCase):
             {
                 "run": "PPO",
                 "config": {
-                    "x": {"y": {"z": tune.sample_from(lambda spec: 1)}},
-                    "y": tune.sample_from(lambda spec: 12),
-                    "z": tune.sample_from(lambda spec: spec.config.x.y.z * 100),
+                    "x": {"y": {"z": tune.sample_from(lambda _: 1)}},
+                    "y": tune.sample_from(lambda _: 12),
+                    "z": tune.sample_from(lambda config: config["x"]["y"]["z"] * 100),
                 },
             },
             "nested_values",
@@ -346,9 +349,9 @@ class VariantGeneratorTest(unittest.TestCase):
             list(
                 self.generate_trials(
                     {
-                        "run": "PPO",
+                        "run": "__fake",
                         "config": {
-                            "foo": tune.sample_from(lambda spec: spec.config.foo),
+                            "foo": tune.sample_from(lambda config: config["foo"]),
                         },
                     },
                     "recursive_dep",
@@ -360,8 +363,30 @@ class VariantGeneratorTest(unittest.TestCase):
             raise
 
 
+# TODO(ml-team): [Deprecation - tune.sample_from(spec)]
+def test_sample_from_with_spec_deprecated():
+    with pytest.warns() as records:
+        list(
+            VariantGeneratorTest.generate_trials(
+                {
+                    "run": "__fake",
+                    "config": {
+                        "foo": tune.sample_from(lambda spec: spec.config.bar),
+                        "bar": 1,
+                    },
+                },
+                "deprecated_sample_from_spec",
+            )
+        )
+        assert any(
+            "`tune.sample_from` functions that take a `spec` are deprecated"
+            in str(record.message)
+            for record in records
+        )
+        print([record.message for record in records])
+
+
 if __name__ == "__main__":
-    import pytest
     import sys
 
     sys.exit(pytest.main(["-v", __file__]))
