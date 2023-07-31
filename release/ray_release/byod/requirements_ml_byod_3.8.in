@@ -11,6 +11,7 @@ gsutil
 gym
 gymnasium[atari,mujoco]==0.26.3
 memray
+mosaicml-streaming
 mujoco-py
 modin
 numpy
