@@ -173,9 +173,8 @@ greenlet==2.0.2
 grpcio==1.54.2
 gsutil==5.25
 gunicorn==20.1.0
-gym==0.26.2
 gym-notices==0.0.8
-gymnasium==0.26.3
+gymnasium==0.28.1
 gymnasium-notices==0.0.1
 h11==0.12.0
 h5py==3.7.0
@@ -277,8 +276,7 @@ msgpack==1.0.5
 msgpack-numpy==0.4.8
 msrest==0.7.1
 msrestazure==0.6.4
-mujoco==2.2.0
-mujoco-py==2.1.2.14
+mujoco==2.3.6
 multidict==6.0.4
 multipledispatch==1.0.0
 multiprocess==0.70.14
@@ -340,7 +338,7 @@ pathspec==0.11.1
 pathtools==0.1.2
 patsy==0.5.3
 pbr==5.11.1
-pettingzoo==1.22.1 ; python_version >= "3.7"
+pettingzoo==1.23.1 ; python_version >= "3.7"
 pexpect==4.8.0
 pickleshare==0.7.5
 pillow==9.2.0 ; platform_system != "Windows"
@@ -473,7 +471,7 @@ sshpubkeys==3.3.1
 stack-data==0.6.2
 starlette==0.27.0
 statsmodels==0.14.0
-supersuit==3.7.0 ; python_version >= "3.7"
+supersuit==3.8.0 ; python_version >= "3.7"
 sympy==1.12
 tabulate==0.9.0
 tblib==2.0.0

@@ -164,7 +164,7 @@ For example, for manipulating your env's observations or rewards, do:
 
 .. code-block:: python
 
-    import gym
+    import gymnasium as gym
     from ray.rllib.utils.numpy import one_hot
 
     class OneHotEnv(gym.core.ObservationWrapper):

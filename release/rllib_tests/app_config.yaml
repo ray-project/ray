@@ -13,12 +13,6 @@ debian_packages:
 
 python:
   pip_packages:
-  ## These dependencies should be handled by rllib-requirements.txt
-  ## and removed here
-  - gymnasium[atari,mujoco]==0.26.3
-  - ale-py==0.8.0
-  - gym==0.26.2
-  - mujoco-py<2.2,>=2.1
   # AutoROM downloads ROMs via torrent when they are built. The torrent is unreliable,
   # so we built it for py3 and use that instead. This wheel was tested for python 3.7, 3.8,
   # and 3.9.
@@ -32,7 +26,7 @@ post_build_cmds:
   # Clone the rl-experiments repo for offline-RL files.
   - git clone https://github.com/ray-project/rl-experiments.git
   - unzip rl-experiments/halfcheetah-sac/2022-12-17/halfcheetah_1500_mean_reward_sac.zip -d ~/.
-  
+
   - pip3 install torch==2.0.0+cu118 torchvision==0.15.1+cu118 --index-url https://download.pytorch.org/whl/cu118
 
   # TODO(sven): remove once nightly image gets gymnasium and the other new dependencies.

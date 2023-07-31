@@ -306,11 +306,11 @@ class AlgorithmConfig(_Config):
         self.normalize_actions = True
         self.clip_actions = False
         self.disable_env_checking = False
+        self.auto_wrap_old_gym_envs = True
+        self.action_mask_key = "action_mask"
         # Whether this env is an atari env (for atari-specific preprocessing).
         # If not specified, we will try to auto-detect this.
         self._is_atari = None
-        self.auto_wrap_old_gym_envs = True
-        self.action_mask_key = "action_mask"
 
         # `self.rollouts()`
         self.env_runner_cls = None
@@ -2675,10 +2675,7 @@ class AlgorithmConfig(_Config):
             if not type(self.env) == str:
                 return False
             try:
-                if self.env.startswith("ALE/"):
-                    env = gym.make("GymV26Environment-v0", env_id=self.env)
-                else:
-                    env = gym.make(self.env)
+                env = gym.make(self.env)
             # Any gymnasium error -> Cannot be an Atari env.
             except gym.error.Error:
                 return False
