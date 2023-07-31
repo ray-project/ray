@@ -10,6 +10,7 @@ from typing import (
     List,
     Optional,
     Tuple,
+    TypeVar,
     Union,
 )
 
@@ -39,6 +40,22 @@ if TYPE_CHECKING:
         TensorFlowTensorBatchType,
         TorchBatchType,
     )
+
+T = TypeVar("T")
+
+
+class _IterableFromIterator(Iterable[T]):
+    def __init__(self, iterator_gen: Callable[[], Iterator[T]]):
+        """Constructs an Iterable from an iterator generator.
+
+        Args:
+            iterator_gen: A function that returns an iterator each time it
+                is called. For example, this can be a generator function.
+        """
+        self.iterator_gen = iterator_gen
+
+    def __iter__(self):
+        return self.iterator_gen()
 
 
 @PublicAPI(stability="beta")
@@ -161,102 +178,67 @@ class DataIterator(abc.ABC):
 
         batch_format = _apply_strict_mode_batch_format(batch_format)
 
-        class _BatchIterable:
-            def __init__(
-                self,
-                block_iterator_fn: Callable[
-                    [],
-                    Tuple[
-                        Iterator[Tuple[ObjectRef[Block], BlockMetadata]],
-                        Optional[DatasetStats],
-                        bool,
-                    ],
-                ],
-            ):
-                self.block_iterator_fn = block_iterator_fn
-                self.output_fn = None
-                self.iterator = None
+        def _create_iterator() -> Iterator[DataBatch]:
+            time_start = time.perf_counter()
+            # Iterate through the dataset from the start each time
+            # _iterator_gen is called.
+            # This allows multiple iterations of the dataset without
+            # needing to explicitly call `iter_batches()` multiple times.
+            block_iterator, stats, blocks_owned_by_consumer = self._to_block_iterator()
 
-            def _create_iterator(self) -> Iterator[DataBatch]:
-                (
-                    block_iterator,
-                    self.stats,
-                    blocks_owned_by_consumer,
-                ) = self.block_iterator_fn()
+            if use_legacy:
+                # Legacy iter_batches does not use metadata.
+                def drop_metadata(block_iterator):
+                    for block_ref, metadata in block_iterator:
+                        yield block_ref
 
-                if use_legacy:
-                    # Legacy iter_batches does not use metadata.
-                    def drop_metadata(block_iterator):
-                        for block_ref, metadata in block_iterator:
-                            yield block_ref
+                # Legacy iter_batches does not have a distinction between
+                # collate_fn and finalize_fn since batches are not prefetched.
+                def collate_and_finalize(batch):
+                    if _collate_fn is not None:
+                        batch = _collate_fn(batch)
+                    if _finalize_fn is not None:
+                        batch = _finalize_fn(batch)
+                    return batch
 
-                    # Legacy iter_batches does not have a distinction between
-                    # collate_fn and finalize_fn since batches are not prefetched.
-                    def collate_and_finalize(batch):
-                        if _collate_fn is not None:
-                            batch = _collate_fn(batch)
-                        if _finalize_fn is not None:
-                            batch = _finalize_fn(batch)
-                        return batch
-
-                    return iter(
-                        batch_block_refs(
-                            drop_metadata(block_iterator),
-                            stats=self.stats,
-                            prefetch_blocks=prefetch_blocks,
-                            clear_block_after_read=blocks_owned_by_consumer,
-                            batch_size=batch_size,
-                            batch_format=batch_format,
-                            drop_last=drop_last,
-                            collate_fn=collate_and_finalize,
-                            shuffle_buffer_min_size=local_shuffle_buffer_size,
-                            shuffle_seed=local_shuffle_seed,
-                        )
+                iterator = iter(
+                    batch_block_refs(
+                        drop_metadata(block_iterator),
+                        stats=stats,
+                        prefetch_blocks=prefetch_blocks,
+                        clear_block_after_read=blocks_owned_by_consumer,
+                        batch_size=batch_size,
+                        batch_format=batch_format,
+                        drop_last=drop_last,
+                        collate_fn=collate_and_finalize,
+                        shuffle_buffer_min_size=local_shuffle_buffer_size,
+                        shuffle_seed=local_shuffle_seed,
                     )
-                else:
-                    return iter(
-                        iter_batches(
-                            block_iterator,
-                            stats=self.stats,
-                            clear_block_after_read=blocks_owned_by_consumer,
-                            batch_size=batch_size,
-                            batch_format=batch_format,
-                            drop_last=drop_last,
-                            collate_fn=_collate_fn,
-                            finalize_fn=_finalize_fn,
-                            shuffle_buffer_min_size=local_shuffle_buffer_size,
-                            shuffle_seed=local_shuffle_seed,
-                            prefetch_batches=prefetch_batches,
-                        )
+                )
+            else:
+                iterator = iter(
+                    iter_batches(
+                        block_iterator,
+                        stats=stats,
+                        clear_block_after_read=blocks_owned_by_consumer,
+                        batch_size=batch_size,
+                        batch_format=batch_format,
+                        drop_last=drop_last,
+                        collate_fn=_collate_fn,
+                        finalize_fn=_finalize_fn,
+                        shuffle_buffer_min_size=local_shuffle_buffer_size,
+                        shuffle_seed=local_shuffle_seed,
+                        prefetch_batches=prefetch_batches,
                     )
+                )
 
-            def __iter__(self):
-                # Iterate through the dataset from the start each time iter is
-                # called.
-                # This allows multiple iterations of the dataset without needing to
-                # explicitly call `iter_batches()` multiple times.
-                self.time_start = time.perf_counter()
-                iterator = self._create_iterator()
+            for batch in iterator:
+                yield batch
 
-                def _wrapped_iterator():
-                    for next_batch in iterator:
-                        if self.output_fn is not None:
-                            next_batch = self.output_fn(next_batch, **self.kwargs)
-                        yield next_batch
-                    if self.stats:
-                        self.stats.iter_total_s.add(
-                            time.perf_counter() - self.time_start
-                        )
+            if stats:
+                stats.iter_total_s.add(time.perf_counter() - time_start)
 
-                return _wrapped_iterator()
-
-            def set_output_fn(self, fn: Callable[[DataBatch], Any], **kwargs):
-                """Sets a fn to apply to each DataBatch before returning."""
-                self.output_fn = fn
-                self.kwargs = kwargs
-
-        block_iterator_fn = self._to_block_iterator
-        return _BatchIterable(block_iterator_fn)
+        return _IterableFromIterator(_create_iterator)
 
     def iter_rows(self, *, prefetch_blocks: int = 0) -> Iterable[Dict[str, Any]]:
         """Return a local row iterable over the dataset.
@@ -291,19 +273,13 @@ class DataIterator(abc.ABC):
 
         batch_iterable = self.iter_batches(**iter_batch_args)
 
-        class _RowIterable:
-            def __iter__(self):
-                def _wrapped_iterator():
-                    for batch in batch_iterable:
-                        batch = BlockAccessor.for_block(
-                            BlockAccessor.batch_to_block(batch)
-                        )
-                        for row in batch.iter_rows(public_row_format=True):
-                            yield row
+        def _wrapped_iterator():
+            for batch in batch_iterable:
+                batch = BlockAccessor.for_block(BlockAccessor.batch_to_block(batch))
+                for row in batch.iter_rows(public_row_format=True):
+                    yield row
 
-                return _wrapped_iterator()
-
-        return _RowIterable()
+        return _IterableFromIterator(_wrapped_iterator)
 
     @abc.abstractmethod
     def stats(self) -> str:
@@ -531,7 +507,7 @@ class DataIterator(abc.ABC):
             convert_ndarray_batch_to_tf_tensor_batch,
         )
 
-        batch_iterator = self.iter_batches(
+        batch_iterable = self.iter_batches(
             prefetch_batches=prefetch_batches,
             prefetch_blocks=prefetch_blocks,
             batch_size=batch_size,
@@ -539,10 +515,14 @@ class DataIterator(abc.ABC):
             local_shuffle_buffer_size=local_shuffle_buffer_size,
             local_shuffle_seed=local_shuffle_seed,
         )
-        batch_iterator.set_output_fn(
-            convert_ndarray_batch_to_tf_tensor_batch, dtypes=dtypes
+        mapped_iterable = map(
+            lambda batch: convert_ndarray_batch_to_tf_tensor_batch(
+                batch, dtypes=dtypes
+            ),
+            batch_iterable,
         )
-        return batch_iterator
+
+        return mapped_iterable
 
     def to_torch(
         self,
