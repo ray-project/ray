@@ -40,7 +40,7 @@ def train_fn(config):
 
     start = 0
 
-    checkpoint = train.get_context().get_checkpoint()
+    checkpoint = train.get_checkpoint()
     if checkpoint:
         with checkpoint.as_directory() as checkpoint_dir:
             with open(os.path.join(checkpoint_dir, "dummy.pkl"), "rb") as f:

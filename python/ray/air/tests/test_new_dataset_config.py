@@ -79,6 +79,10 @@ def test_basic(ray_start_4_cpus):
     test.fit()
 
 
+@pytest.mark.skip(
+    reason="Incomplete implementation of _validate_dag causes other errors, so we "
+    "remove DAG validation for now; see https://github.com/ray-project/ray/pull/37829"
+)
 def test_configure_execution_options(ray_start_4_cpus):
     ds = ray.data.range(10)
     # Resource limit is too low and will trigger an error.

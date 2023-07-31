@@ -672,7 +672,7 @@ def multiplexed(
                     )
                 multiplex_object = self
                 model_id = args[1]
-            multiplex_attr = f"__serve_multiplex_{func.__name__}"
+            multiplex_attr = "__serve_multiplex_wrapper"
             # If the multiplexed function is called for the first time,
             # create a model multiplex wrapper and cache it in the multiplex object.
             if not hasattr(multiplex_object, multiplex_attr):

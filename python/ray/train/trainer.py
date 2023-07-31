@@ -124,10 +124,12 @@ class TrainingIterator:
             # NOTE: Idea: this checkpoint dir name should be customizable
             # and created on the fly when the checkpoint is reported with metrics.
             # Ex: lambda metrics: f"checkpoint_iter={metrics['training_iteration']}"
-            storage.current_checkpoint_id = self._latest_checkpoint_id
+            storage.current_checkpoint_index = self._latest_checkpoint_id
             print(f"Setting next checkpoint path to: {storage.checkpoint_fs_path}")
 
-            self._backend_executor._set_checkpoint_id(storage.current_checkpoint_id)
+            self._backend_executor._set_checkpoint_index(
+                storage.current_checkpoint_index
+            )
 
             self._latest_checkpoint_id += 1
 
