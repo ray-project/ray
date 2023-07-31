@@ -687,8 +687,8 @@ void GcsServer::InitGcsAutoscalerStateManager() {
       *gcs_node_manager_,
       *gcs_placement_group_manager_);
 
-  autoscaler_state_service_.reset(
-      new rpc::AutoscalerStateGrpcService(main_service_, *gcs_autoscaler_state_manager_));
+  autoscaler_state_service_.reset(new rpc::autoscaler::AutoscalerStateGrpcService(
+      main_service_, *gcs_autoscaler_state_manager_));
 
   rpc_server_.RegisterService(*autoscaler_state_service_);
 }
