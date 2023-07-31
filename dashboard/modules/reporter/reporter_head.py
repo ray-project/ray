@@ -147,10 +147,11 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
         Retrieves the task IDs of running tasks associated with a specific worker.
 
         Args:
-            worker_id (str): The ID of the worker.
+            worker_id: The ID of the worker.
 
         Returns:
-            List[str]: A list containing the task IDs of all the running tasks associated with the worker.
+            List[str]: A list containing the task IDs
+            of all the running tasks associated with the worker.
         """
 
         option = ListApiOptions(
@@ -177,11 +178,12 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
         Retrieves worker details for a specific task and attempt number.
 
         Args:
-            task_id (str): The ID of the task.
-            attempt_number (int): The attempt number of the task.
+            task_id: The ID of the task.
+            attempt_number: The attempt number of the task.
 
         Returns:
-            Tuple[Optional[int], Optional[str]]: A tuple containing the worker's PID (process ID),
+            Tuple[Optional[int], Optional[str]]: A tuple
+            containing the worker's PID (process ID),
             and worker's ID.
 
         Raises:
@@ -217,19 +219,25 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
     async def get_task_traceback(self, req) -> aiohttp.web.Response:
         """
         Retrieves the traceback information for a specific task.
-        Note that one worker process works on one task at a time or one worker works on multiple async tasks.
+        Note that one worker process works on one task at a time
+        or one worker works on multiple async tasks.
 
         Args:
             req (aiohttp.web.Request): The HTTP request object.
 
         Returns:
-            aiohttp.web.Response: The HTTP response containing the traceback information.
+            aiohttp.web.Response: The HTTP response containing
+            the traceback information.
 
         Raises:
-            ValueError: If the "task_id" parameter is missing in the request query.
-            ValueError: If the "attempt_number" parameter is missing in the request query.
-            ValueError: If the worker begins working on another task during the traceback retrieval.
-            aiohttp.web.HTTPInternalServerError: If there is an internal server error during the traceback retrieval.
+            ValueError: If the "task_id" parameter
+            is missing in the request query.
+            ValueError: If the "attempt_number" parameter
+            is missing in the request query.
+            ValueError: If the worker begins working on
+            another task during the traceback retrieval.
+            aiohttp.web.HTTPInternalServerError: If there is
+            an internal server error during the traceback retrieval.
         """
 
         if "task_id" not in req.query:
@@ -268,10 +276,13 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
         )
 
         """
-            In order to truly confirm whether there are any other tasks running during the profiling,
-            we need to retrieve all tasks that are currently running or have finished,
-            and then parse the task events (i.e., their start and finish times) to check for any potential overlap.
-            However, this process can be quite extensive, so here we will make our best efforts to check for any overlapping tasks.
+            In order to truly confirm whether there are any other tasks
+            running during the profiling, we need to retrieve all tasks
+            that are currently running or have finished, and then parse
+            the task events (i.e., their start and finish times) to check
+            for any potential overlap. However, this process can be
+            quite extensive, so here we will make our best efforts
+            to check for any overlapping tasks.
             Therefore, we will check if the task is still running
         """
         try:
@@ -300,7 +311,8 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
     async def get_task_cpu_profile(self, req) -> aiohttp.web.Response:
         """
         Retrieves the CPU profile for a specific task.
-        Note that one worker process works on one task at a time or one worker works on multiple async tasks.
+        Note that one worker process works on one task at a time
+        or one worker works on multiple async tasks.
 
         Args:
             req (aiohttp.web.Request): The HTTP request object.
@@ -309,12 +321,17 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
             aiohttp.web.Response: The HTTP response containing the CPU profile data.
 
         Raises:
-            ValueError: If the "task_id" parameter is missing in the request query.
-            ValueError: If the "attempt_number" parameter is missing in the request query.
+            ValueError: If the "task_id" parameter is
+            missing in the request query.
+            ValueError: If the "attempt_number" parameter is
+            missing in the request query.
             ValueError: If the maximum duration allowed is exceeded.
-            ValueError: If the worker begins working on another task during the profile retrieval.
-            aiohttp.web.HTTPInternalServerError: If there is an internal server error during the profile retrieval.
-            aiohttp.web.HTTPInternalServerError: If the CPU Flame Graph information for the task is not found.
+            ValueError: If the worker begins working on
+            another task during the profile retrieval.
+            aiohttp.web.HTTPInternalServerError: If there is
+            an internal server error during the profile retrieval.
+            aiohttp.web.HTTPInternalServerError: If the CPU Flame
+            Graph information for the task is not found.
         """
         if "task_id" not in req.query:
             raise ValueError("task_id is required")
@@ -358,11 +375,14 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
         )
 
         """
-            In order to truly confirm whether there are any other tasks running during the profiling,
-            we need to retrieve all tasks that are currently running or have finished,
-            and then parse the task events (i.e., their start and finish times) to check for any potential overlap.
-            However, this process can be quite extensive, so here we will make our best efforts to check for any overlapping tasks.
-            Therefore, we will check if the task is still running
+            In order to truly confirm whether there are any other tasks
+            running during the profiling, we need to retrieve all tasks
+            that are currently running or have finished, and then parse
+            the task events (i.e., their start and finish times) to check
+            for any potential overlap. However, this process can be quite
+            extensive, so here we will make our best efforts to check
+            for any overlapping tasks. Therefore, we will check if
+            the task is still running
         """
         try:
             (_, worker_id) = await self.get_worker_details_for_running_task(
