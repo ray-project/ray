@@ -1975,7 +1975,7 @@ class TuneController:
             method_name=method_name,
             args=args,
             kwargs=kwargs,
-            on_result=self._on_restore_result,
+            on_result=self._on_restoring_result,
             on_error=self._trial_task_failure,
         )
         return True

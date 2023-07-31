@@ -623,7 +623,6 @@ class PopulationBasedTraining(FIFOScheduler):
         lower_quantile: List[Trial],
     ):
         """Checkpoint if in upper quantile, exploits if in lower."""
-        trial_executor = trial_runner.trial_executor
         state = self._trial_state[trial]
         if trial in upper_quantile:
             # The trial last result is only updated after the scheduler
@@ -634,7 +633,7 @@ class PopulationBasedTraining(FIFOScheduler):
                 # Paused trial will always have an in-memory checkpoint.
                 state.last_checkpoint = trial.checkpoint
             else:
-                state.last_checkpoint = trial_executor.save(
+                state.last_checkpoint = trial_runner._schedule_trial_save(
                     trial, CheckpointStorage.MEMORY, result=state.last_result
                 )
             self._num_checkpoints += 1
@@ -907,7 +906,7 @@ class PopulationBasedTraining(FIFOScheduler):
             if trial.status in [
                 Trial.PENDING,
                 Trial.PAUSED,
-            ] and trial_runner.trial_executor.has_resources_for_trial(trial):
+            ]:
                 if not self._synch:
                     candidates.append(trial)
                 elif (
@@ -1088,7 +1087,7 @@ class PopulationBasedTrainingReplay(FIFOScheduler):
             "Configuration will be changed to {}.".format(step, new_config)
         )
 
-        checkpoint = trial_runner.trial_executor.save(
+        checkpoint = trial_runner._schedule_trial_save(
             trial, CheckpointStorage.MEMORY, result=result
         )
 
