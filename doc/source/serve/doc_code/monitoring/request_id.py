@@ -10,8 +10,6 @@ class Model:
 
 
 serve.run(Model.bind())
-resp = requests.get(
-    "http://localhost:8000", headers={"RAY_SERVE_REQUEST_ID": "123-234"}
-)
+resp = requests.get("http://localhost:8000", headers={"X-Request-ID": "123-234"})
 
-print(resp.headers["RAY_SERVE_REQUEST_ID"])
+print(resp.headers["X-Request-ID"])

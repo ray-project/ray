@@ -1,6 +1,6 @@
 import unittest
 
-import gym
+import gymnasium as gym
 
 from ray.rllib.connectors.connector import Connector, ConnectorPipeline
 from ray.rllib.connectors.connector import ConnectorContext
