@@ -197,18 +197,21 @@ def training_function(kwargs: dict):
 
     if config["lora"]:
         # Apply LoRA
-        print(f"Modifying model to enable LoRA...")
         s = time.time()
         assert "lora" in config, "No LoRA config provided."
         lora_config = LoraConfig(**config["lora_config"])
 
         if config["as_test"]:
+            print(f"Modifying model to enable LoRA...")
             # If we execute this as a test, be more verbose about what we attempt to lora-ify
             print(f"Model has sub-models:\n {list(model.named_modules())}")
-            print(f"Attempting to apply LoRA to sub-models: {lora_config.target_modules}")
+            print(f"Attempting to apply LoRA config: {lora_config}")
 
         model = get_peft_model(model, lora_config)
-        print(f"LoRA-ification done in {time.time() - s} seconds.")
+        if config["as_test"]:
+            print(f"LoRA-ification done in {time.time() - s} seconds.")
+    
+    print(f"Number of trainable parameters: {model.num_parameters()}")
 
     model.resize_token_embeddings(len(tokenizer))
     print("Model initialized with pretrained weights. Training starting...")
@@ -263,7 +266,7 @@ def training_function(kwargs: dict):
     if accelerator.is_main_process:
         print("Starting training ...")
         print("Number of batches on main process", train_ds_len // batch_size)
-
+    
     avg_fwd_time, avg_bwd_time, avg_opt_step_time = 0, 0, 0
     for epoch in range(num_epochs):
         s_epoch = time.time()
@@ -306,9 +309,6 @@ def training_function(kwargs: dict):
                     f"loss: {loss.item()} step-time: {e_opt_step - s_fwd}"
                 )
 
-            if config["as_test"]:
-                break
-
             # as long as this is not the last step report here
             if step != (train_ds_len // batch_size - 1):
                 session.report(
@@ -325,6 +325,9 @@ def training_function(kwargs: dict):
                         "avg_bwd_time": avg_bwd_time / (step + 1),
                     },
                 )
+        
+        if config["as_test"]:
+            break
 
         e_epoch = time.time()
         accelerator.print("Train time per epoch: ", e_epoch - s_epoch)
@@ -413,6 +416,11 @@ def training_function(kwargs: dict):
         )
 
 
+        if perplex < args.stop_perplexity:
+            print(f"Perplexity reached {perplex} < {args.stop_perplexity}. Stopping.")
+            break
+
+
 def parse_args():
 
     parser = argparse.ArgumentParser(description="Simple example of training script.")
@@ -434,6 +442,8 @@ def parse_args():
         help="Batch size to use per device.",
     )
 
+    parser.add_argument("--stop-perplexity", default=0, type=float, help="Target perplexity to reach after which to stop training. Default is 0. If 0, training will not stop on perplexity.")
+
     parser.add_argument(
         "--eval-batch-size-per-device",
         type=int,
@@ -448,7 +458,9 @@ def parse_args():
         "--grad_accum", type=int, default=1, help="Gradient accumulation steps."
     )
     parser.add_argument("--train_path", type=str, help="Path to training jsonl file")
+    
     parser.add_argument("--test_path", type=str, help="Path to testing jsonl file")
+
     parser.add_argument(
         "--special_token_path", type=str, help="Path to token json file"
     )
@@ -458,6 +470,7 @@ def parse_args():
         help="If passed, will not use gradient checkpointing.",
     )
     parser.add_argument("--output_dir", type=str, help="Path to output directory.")
+
     parser.add_argument(
         "--model_name", default="meta-llama/Llama-2-7b-chat-hf", type=str
     )
