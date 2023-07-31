@@ -1,7 +1,7 @@
 import logging
 import warnings
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Iterator, Optional, Tuple, Type
+from typing import Any, Iterator, Optional, Tuple, Type
 from torch.utils.data import DataLoader, Dataset, IterableDataset
 from ray.train.torch import create_dataloader
 
@@ -226,6 +226,7 @@ class RayDataIterableDataset:
     def __iter__(self):
         return self.iterater.iter_torch_batches(**self.kwargs)
 
+
 def _wrap_transformers_trainer(
     trainer: transformers.trainer.Trainer,
 ) -> transformers.trainer.Trainer:
@@ -234,7 +235,8 @@ def _wrap_transformers_trainer(
 
     class RayTrainer(base_trainer_class):
         def get_train_dataloader(self):
-            # TODO(yunxuanx): replace RayDataIterableDataset to the class returned by iter_torch_batches
+            # TODO(yunxuanx): replace RayDataIterableDataset to the
+            # class type returned by iter_torch_batches
             if isinstance(self.train_dataset, RayDataIterableDataset):
                 return create_dataloader(self.train_dataset)
             else:
