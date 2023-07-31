@@ -129,6 +129,10 @@ def train_fn(config):
 
     global_step = 0
     for epoch in range(num_train_epochs):
+        if global_step >= config["max_train_steps"]:
+            print(f"Stopping training after reaching {global_step} steps...")
+            break
+
         for step, batch in enumerate(
             train_dataset.iter_torch_batches(
                 batch_size=config["train_batch_size"], device=cuda[1]
@@ -190,6 +194,10 @@ def train_fn(config):
             }
             session.report(results)
 
+            if global_step >= config["max_train_steps"]:
+                break
+    # END: Training loop
+
     # Create pipeline using the trained modules and save it.
     if session.get_world_rank() == 0:
         pipeline = DiffusionPipeline.from_pretrained(
@@ -215,9 +223,7 @@ if __name__ == "__main__":
         scaling_config=ScalingConfig(
             use_gpu=True,
             num_workers=args.num_workers,
-            resources_per_worker={
-                "GPU": 2,
-            },
+            resources_per_worker={"GPU": 2},
         ),
         datasets={
             "train": train_dataset,
