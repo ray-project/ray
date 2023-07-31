@@ -5349,7 +5349,7 @@
   group: core-daily-test
   working_dir: nightly_tests
 
-  python: "3.8"
+  python: "3.7"
   frequency: nightly
   team: core
   cluster:
