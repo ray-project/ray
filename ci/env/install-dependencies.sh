@@ -355,7 +355,7 @@ install_pip_packages() {
     #TODO(amogkam): Add this back to rllib-requirements.txt once mlagents no longer pins torch<1.9.0 version.
     pip install --no-dependencies mlagents==0.28.0
     pip install moviepy
-    sudo apt install ffmpeg
+    sudo apt install ffmpeg -y
     export IMAGEIO_FFMPEG_EXE=/usr/bin/ffmpeg
 
     # Install MuJoCo.
