@@ -948,11 +948,11 @@ class ExperimentAnalysis:
         return True
 
     def runner_data(self) -> Dict:
-        """Returns a dictionary of the TrialRunner data.
+        """Returns a dictionary of the TuneController data.
 
         If ``experiment_checkpoint_path`` pointed to a directory of
         experiments, the dict will be in the format of
-        ``{experiment_session_id: TrialRunner_data}``."""
+        ``{experiment_session_id: TuneController_data}``."""
         if len(self._experiment_states) == 1:
             return self._experiment_states[0]["runner_data"]
         else:

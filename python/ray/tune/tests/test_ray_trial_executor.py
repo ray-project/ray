@@ -243,12 +243,10 @@ class RayTrialExecutorTest(unittest.TestCase):
         trial = _make_trial("hanging")
 
         os.environ["TUNE_FORCE_TRIAL_CLEANUP_S"] = "1"
-        os.environ["TUNE_GET_EXECUTOR_EVENT_WAIT_S"] = "30"
 
         self.trial_executor = RayTrialExecutor()
 
         os.environ.pop("TUNE_FORCE_TRIAL_CLEANUP_S")
-        os.environ.pop("TUNE_GET_EXECUTOR_EVENT_WAIT_S")
 
         # Schedule trial PG
         ev = self.trial_executor.get_next_executor_event(
