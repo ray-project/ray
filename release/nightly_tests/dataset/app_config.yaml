@@ -4,6 +4,7 @@ python:
   pip_packages:
     - boto3
     - tqdm
+    - mosaicml-streaming
   conda_packages: []
 
 post_build_cmds:
