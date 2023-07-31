@@ -1,5 +1,5 @@
 import itertools
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 import ray
 from ray.data._internal.block_list import BlockList

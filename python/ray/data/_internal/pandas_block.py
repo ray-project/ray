@@ -362,7 +362,7 @@ class PandasBlockAccessor(TableBlockAccessor):
             # If the pyarrow table is empty we may not have schema
             # so calling sort_indices() will raise an error.
             return [self._empty_table() for _ in range(len(boundaries) + 1)]
-        
+
         columns, ascending = sort_key.to_pandas_sort_args()
         table = self._table.sort_values(by=columns, ascending=ascending)
         if len(boundaries) == 0:
