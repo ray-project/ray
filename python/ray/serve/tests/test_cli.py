@@ -640,7 +640,7 @@ def test_status_invalid_runtime_env(ray_start_stop):
             and "Failed to set up runtime environment" in cli_status["message"]
         )
 
-    wait_for_condition(check_for_failed_deployment)
+    wait_for_condition(check_for_failed_deployment, timeout=15)
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
