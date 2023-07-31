@@ -355,6 +355,7 @@ install_pip_packages() {
     #TODO(amogkam): Add this back to rllib-requirements.txt once mlagents no longer pins torch<1.9.0 version.
     pip install --no-dependencies mlagents==0.28.0
     pip install moviepy
+    pip install decorator==4.0.2 # Moviepy 1.0.3 will error on decorator==4.4.2 so we have to pin
     sudo apt install ffmpeg -y
     export IMAGEIO_FFMPEG_EXE=/usr/bin/ffmpeg
 
