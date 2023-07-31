@@ -73,6 +73,8 @@ DEFAULT_PYTHON_VERSION = "py38"
 
 IMAGE_NAMES = list(DOCKER_HUB_DESCRIPTION.keys())
 
+IS_PR_BUILD = os.environ.get("BUILDKITE_PULL_REQUEST") != "false"
+
 
 def _with_suffix(tag: str, suffix: Optional[str] = None):
     if suffix:
@@ -488,10 +490,16 @@ def _docker_push(image, tag):
             print(progress_line)
 
 
-def _tag_and_push(full_image_name, old_tag, new_tag, merge_build=False):
+def _tag_and_push(
+    full_image_name,
+    old_tag,
+    new_tag,
+    merge_build=False,
+    push_pr_build=False,
+):
     # Do not tag release builds because they are no longer up to
     # date after the branch cut.
-    if "nightly" in new_tag and _release_build():
+    if "nightly" in new_tag and (_release_build() or IS_PR_BUILD):
         return
     if old_tag != new_tag:
         DOCKER_CLIENT.api.tag(
@@ -499,10 +507,11 @@ def _tag_and_push(full_image_name, old_tag, new_tag, merge_build=False):
             repository=full_image_name,
             tag=new_tag,
         )
-    if not merge_build:
+    should_push = merge_build or (push_pr_build and IS_PR_BUILD)
+    if not should_push:
         print(
-            "This is a PR Build! On a merge build, we would normally push"
-            f"to: {full_image_name}:{new_tag}"
+            "Not pushing build. "
+            "Otherwise we would have pushed to: {full_image_name}:{new_tag}"
         )
     else:
         _docker_push(full_image_name, new_tag)
@@ -604,6 +613,7 @@ def push_and_tag_images(
     merge_build: bool = False,
     image_list: Optional[List[str]] = None,
     suffix: Optional[str] = None,
+    push_pr_build: bool = False,
 ):
     date_tag = datetime.datetime.now().strftime("%Y-%m-%d")
     sha_tag = _get_commit_sha()
@@ -611,6 +621,10 @@ def push_and_tag_images(
         release_name = _get_branch()[len("releases/") :]
         date_tag = release_name + "." + date_tag
         sha_tag = release_name + "." + sha_tag
+    if IS_PR_BUILD:
+        pr = f"pr-{os.environ['BUILDKITE_PULL_REQUEST']}"
+        date_tag = pr + "." + date_tag
+        sha_tag = pr + "." + sha_tag
 
     for image_name in image_list:
         full_image_name = f"rayproject/{image_name}"
@@ -709,6 +723,7 @@ def push_and_tag_images(
                     old_tag=old_tag,
                     new_tag=new_tag,
                     merge_build=merge_build,
+                    push_pr_build=push_pr_build,
                 )
 
 
@@ -800,6 +815,13 @@ BUILD_TYPES = [MERGE, HUMAN, PR, BUILDKITE, LOCAL]
     default=False,
     help="Whether only to build ray-worker-container",
 )
+@click.option(
+    "--push-pr-build",
+    is_flag=True,
+    show_default=True,
+    default=False,
+    help="Whether to push PR builds to Docker Hub",
+)
 def main(
     py_versions: Tuple[str],
     device_types: Tuple[str],
@@ -807,6 +829,7 @@ def main(
     suffix: Optional[str] = None,
     build_base: bool = True,
     only_build_worker_container: bool = False,
+    push_pr_build: bool = False,
 ):
     py_versions = (
         list(py_versions) if isinstance(py_versions, (list, tuple)) else [py_versions]
@@ -943,6 +966,7 @@ def main(
                     merge_build=valid_branch and is_merge,
                     image_list=images_to_tag_and_push,
                     suffix=suffix,
+                    push_pr_build=push_pr_build,
                 )
 
         # TODO(ilr) Re-Enable Push READMEs by using a normal password
