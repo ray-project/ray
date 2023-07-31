@@ -351,6 +351,13 @@ class HTTPProxy:
         )
         await response.send(scope, receive, send)
 
+    async def _timeout_response(self, scope, receive, send):
+        response = Response(
+            f"Request timeout after {self.request_timeout_s}s.",
+            status_code=408,
+        )
+        await response.send(scope, receive, send)
+
     async def receive_asgi_messages(self, request_id: str) -> List[Message]:
         queue = self.asgi_receive_queues.get(request_id, None)
         if queue is None:
@@ -815,6 +822,7 @@ class HTTPProxy:
                     f"Request {request_id} timed out after "
                     f"{self.request_timeout_s}s while waiting for assignment."
                 )
+                await self._timeout_response(scope, receive, send)
                 return TIMEOUT_ERROR_CODE
 
             try:
@@ -832,6 +840,7 @@ class HTTPProxy:
                     f"Request {request_id} timed out after "
                     f"{self.request_timeout_s}s while executing."
                 )
+                await self._timeout_response(scope, receive, send)
                 return TIMEOUT_ERROR_CODE
 
         except Exception as e:
