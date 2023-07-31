@@ -437,49 +437,26 @@ class _TrainSession:
         self.legacy_checkpoint_uri = uri
 
     def new_checkpoint(self, checkpoint: NewCheckpoint):
-        import pyarrow.fs
-
         if not isinstance(checkpoint, NewCheckpoint):
             raise ValueError(
                 "You must pass a `ray.train.checkpoint.Checkpoint` "
                 "object to `train.report`. `ray.air.Checkpoint` is deprecated."
             )
 
-        # Upload checkpoint files.
-        print(
-            "Uploading checkpoint files to storage path:"
-            "\n{source}\n{destination}\n{source_fs}\n{dest_fs}".format(
-                source=checkpoint.path,
-                destination=self.storage.checkpoint_fs_path,
-                source_fs=checkpoint.filesystem,
-                dest_fs=self.storage.storage_filesystem,
-            )
-        )
-        self.storage.storage_filesystem.create_dir(self.storage.checkpoint_fs_path)
-        pyarrow.fs.copy_files(
-            source=checkpoint.path,
-            destination=self.storage.checkpoint_fs_path,
-            source_filesystem=checkpoint.filesystem,
-            destination_filesystem=self.storage.storage_filesystem,
-        )
-        # Delete local checkpoint files.
-        checkpoint.filesystem.delete_dir(checkpoint.path)
+        # Persist the reported checkpoint files to storage.
+        persisted_checkpoint = self.storage.persist_current_checkpoint(checkpoint)
 
-        # Report the uploaded checkpoint location for internal book-keeping.
-        checkpoint_to_report = NewCheckpoint(
-            filesystem=self.storage.storage_filesystem,
-            path=self.storage.checkpoint_fs_path,
-        )
+        self.loaded_checkpoint = persisted_checkpoint
 
         metadata = self._auto_fill_checkpoint_metrics({})
 
         # Save the rank of the worker that created this checkpoint.
         metadata.update({CHECKPOINT_RANK_KEY: self.world_rank})
-        checkpoint_to_report.set_metadata(metadata)
+        persisted_checkpoint.set_metadata(metadata)
 
         result = TrainingResult(
             type=TrainingResultType.CHECKPOINT,
-            data=checkpoint_to_report,
+            data=persisted_checkpoint,
         )
 
         # Add result to a thread-safe queue.
