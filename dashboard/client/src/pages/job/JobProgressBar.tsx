@@ -1,4 +1,9 @@
-import { LinearProgress, makeStyles } from "@material-ui/core";
+import {
+  Checkbox,
+  FormControlLabel,
+  LinearProgress,
+  makeStyles,
+} from "@material-ui/core";
 import React, { useEffect, useState } from "react";
 import { UnifiedJob } from "../../type/job";
 import {
@@ -11,6 +16,9 @@ import { TaskProgressBar } from "./TaskProgressBar";
 const useStyles = makeStyles((theme) => ({
   advancedProgressBar: {
     marginTop: theme.spacing(0.5),
+  },
+  hideFinishedCheckbox: {
+    marginRight: 0,
   },
 }));
 
@@ -32,6 +40,8 @@ export const JobProgressBar = ({
   // Controls whether we continue to fetch the advanced progress bar data
   const [advancedProgressBarExpanded, setAdvancedProgressBarExpanded] =
     useState(false);
+
+  const [showFinishedTasks, setShowFinishedTasks] = useState(true);
 
   useEffect(() => {
     if (advancedProgressBarExpanded) {
@@ -55,6 +65,7 @@ export const JobProgressBar = ({
   } = useJobProgressByLineage(
     advancedProgressBarRendered ? jobId : undefined,
     !advancedProgressBarExpanded,
+    showFinishedTasks,
   );
 
   if (!driverExists) {
@@ -88,6 +99,21 @@ export const JobProgressBar = ({
         expanded={advancedProgressBarExpanded}
         onClick={() =>
           setAdvancedProgressBarExpanded(!advancedProgressBarExpanded)
+        }
+        controls={
+          <FormControlLabel
+            control={
+              <Checkbox
+                color="primary"
+                value={!showFinishedTasks}
+                onChange={({ target: { checked } }) => {
+                  setShowFinishedTasks(!checked);
+                }}
+              />
+            }
+            label="Hide finished"
+            className={classes.hideFinishedCheckbox}
+          />
         }
       />
       {advancedProgressBarExpanded && (
