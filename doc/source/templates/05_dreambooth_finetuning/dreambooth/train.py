@@ -223,9 +223,7 @@ if __name__ == "__main__":
         scaling_config=ScalingConfig(
             use_gpu=True,
             num_workers=args.num_workers,
-            resources_per_worker={
-                "GPU": 2,
-            },
+            resources_per_worker={"GPU": 2},
         ),
         datasets={
             "train": train_dataset,
