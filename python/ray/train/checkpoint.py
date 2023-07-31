@@ -267,7 +267,7 @@ class Checkpoint:
         )
 
 
-def _get_del_lock_path(path: str) -> str:
+def _get_del_lock_path(path: str, suffix: str = None) -> str:
     """Get the path to the deletion lock file for a file/directory at `path`.
 
     Example:
@@ -278,8 +278,10 @@ def _get_del_lock_path(path: str) -> str:
         '/tmp/checkpoint_tmp.del_lock_...
         >>> _get_del_lock_path("/tmp/checkpoint_tmp.txt")  # doctest: +ELLIPSIS
         '/tmp/checkpoint_tmp.txt.del_lock_...
+
     """
-    return f"{path.rstrip('/')}.del_lock_{os.getpid()}"
+    suffix = suffix if suffix is not None else str(os.getpid())
+    return f"{path.rstrip('/')}.del_lock_{suffix}"
 
 
 def _list_existing_del_locks(path: str) -> List[str]:
@@ -288,4 +290,4 @@ def _list_existing_del_locks(path: str) -> List[str]:
     For example, if 2 checkpoints are being read via `as_directory`,
     then this should return a list of 2 deletion lock files.
     """
-    return list(glob.glob(f"{_get_del_lock_path(path)}*"))
+    return list(glob.glob(f"{_get_del_lock_path(path, suffix='*')}"))
