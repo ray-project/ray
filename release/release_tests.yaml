@@ -2402,7 +2402,7 @@
   working_dir: long_running_tests
 
   frequency: weekly
-
+  python: "3.7"
   team: core
   cluster:
     byod:
@@ -2527,6 +2527,7 @@
   working_dir: long_running_tests
 
   frequency: weekly
+  python: "3.7"
 
   team: core
   cluster:
@@ -2566,6 +2567,7 @@
   working_dir: long_running_tests
 
   frequency: weekly
+  python: "3.7"
 
   team: core
   cluster:
@@ -2652,6 +2654,7 @@
   working_dir: long_running_tests
 
   frequency: weekly
+  python: "3.7"
 
   team: core
   cluster:
@@ -2691,6 +2694,7 @@
   working_dir: long_running_tests
 
   frequency: weekly
+  python: "3.7"
 
   team: core
   cluster:
@@ -2730,6 +2734,7 @@
   working_dir: long_running_tests
 
   frequency: weekly
+  python: "3.7"
 
   team: core
   cluster:
@@ -5096,6 +5101,7 @@
 
   frequency: nightly
   team: core
+  python: "3.7"
 
   cluster:
     byod:
@@ -5430,6 +5436,7 @@
   working_dir: air_tests
 
   stable: false
+  python: "3.7"
 
   frequency: nightly
   team: core
@@ -5451,6 +5458,8 @@
   working_dir: nightly_tests
 
   frequency: nightly-3x
+  python: "3.7"
+  
   team: core
 
   cluster:
@@ -6973,6 +6982,8 @@
 
   frequency: nightly
   team: core
+  python: "3.7"
+  
   cluster:
     byod:
       type: gpu
@@ -7068,7 +7079,7 @@
 
   frequency: manual
   team: core
-  python: "3.8"
+  python: "3.7"
   cluster:
     byod: {}
     cluster_env: aws/tests/aws_config.yaml
@@ -7118,7 +7129,6 @@
   stable: true
 
   env: gce
-  python: "3.8"
   frequency: nightly
   team: core
   cluster:
@@ -7193,7 +7203,7 @@
   stable: true
 
   env: gce
-  python: "3.8"
+  python: "3.7"
   frequency: manual
   team: core
   cluster:
