@@ -104,6 +104,15 @@ This script was tested across three model sizes on the following cluster configu
 | 70B        | `meta-llama/Llama-2-70b-hf`  | 4                     | 4x  `g5.24xlarge`| 32x A10G (24G) |                       |
 
 
+To launch a successful finetuning you can use the following command:
+
+```
+./run_llama_7b.sh --num-epochs=10
+```
+
+Note that the learning rate scales with the number of epochs.
+Hence, training with ```./run_llama_7b.sh --num-epochs=10``` for 5 epochs yields different results then ```./run_llama_7b.sh --num-epochs=5``` for 5 epochs.
+
 ### Launching LoRA fine-tuning
 
 You can utilize [LoRA](https://arxiv.org/abs/2106.09685) to achieve similar (or better) finetuning results than vanilla finetuning while using less compute during training and enabling quick swapping of finetuned parameters.
@@ -117,3 +126,9 @@ python finetune_hf_llm.py --as-test --lora
 
 When adapting `target_modules` in the LoRA config (at lora_configs/lora.json), be aware that different models have different names for the
 sub-models that can be tuned with LoRA. For example, LLaMa 2 requires {"target_modules": ["q_proj", "v_proj"]} and Falcon requires {"target_modules": ["query_key_value"]}. Running with `--as-test` will tell you what the submodules the model has.
+
+To launch a succesful LoRA finetuning, you can use the following command:
+
+```
+./run_llama_7b.sh --num-epochs=10 --lora
+```
