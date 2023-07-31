@@ -105,7 +105,7 @@ class GcsAutoscalerStateManagerTest : public ::testing::Test {
   }
 
   void RequestClusterResourceConstraint(
-      const rpc::ClusterResourceConstraint &constraint) {
+      const rpc::autoscaler::ClusterResourceConstraint &constraint) {
     rpc::autoscaler::RequestClusterResourceConstraintRequest request;
     request.mutable_cluster_resource_constraint()->CopyFrom(constraint);
     rpc::autoscaler::RequestClusterResourceConstraintReply reply;
