@@ -62,7 +62,7 @@ from ray.tune.search.ax import AxSearch
 from ray.tune.search.hyperopt import HyperOptSearch
 from ray.tune.syncer import Syncer
 from ray.tune.experiment import Trial
-from ray.tune.execution.trial_runner import TrialRunner
+from ray.tune.execution.tune_controller import TuneController
 from ray.tune.utils import flatten_dict
 from ray.tune.execution.placement_groups import PlacementGroupFactory
 
@@ -1807,7 +1807,7 @@ class ApiTestFast(unittest.TestCase):
     def testSearcherSchedulerStr(self):
         capture = {}
 
-        class MockTrialRunner(TrialRunner):
+        class MockTuneController(TuneController):
             def __init__(self, search_alg=None, scheduler=None, **kwargs):
                 # should be converted from strings at this case and not None
                 capture["search_alg"] = search_alg
@@ -1818,7 +1818,7 @@ class ApiTestFast(unittest.TestCase):
                     **kwargs,
                 )
 
-        with patch("ray.tune.tune.TrialRunner", MockTrialRunner), patch(
+        with patch("ray.tune.tune.TuneController", MockTuneController), patch(
             "os.environ", {"TUNE_NEW_EXECUTION": "0"}
         ):
             tune.run(
@@ -1856,7 +1856,7 @@ class MaxConcurrentTrialsTest(unittest.TestCase):
 
         capture = {}
 
-        class MockTrialRunner(TrialRunner):
+        class MockTuneController(TuneController):
             def __init__(self, search_alg=None, scheduler=None, **kwargs):
                 # should be converted from strings at this case and not None
                 capture["search_alg"] = search_alg
@@ -1867,7 +1867,7 @@ class MaxConcurrentTrialsTest(unittest.TestCase):
                     **kwargs,
                 )
 
-        with patch("ray.tune.tune.TrialRunner", MockTrialRunner), patch(
+        with patch("ray.tune.tune.TuneController", MockTuneController), patch(
             "os.environ", {"TUNE_NEW_EXECUTION": "0"}
         ):
             tune.run(
