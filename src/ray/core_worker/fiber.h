@@ -155,9 +155,8 @@ class FiberState {
     RAY_CHECK(op_status == boost::fibers::channel_op_status::success);
   }
 
-  void Stop() { channel_.close(); }
-
-  void Join() {
+  void Stop() {
+    channel_.close();
     fiber_stopped_event_.Wait();
     fiber_runner_thread_.detach();
   }
