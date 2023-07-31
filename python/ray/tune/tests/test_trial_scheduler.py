@@ -19,7 +19,6 @@ from ray.air._internal.checkpoint_manager import _TrackedCheckpoint, CheckpointS
 from ray.air.constants import TRAINING_ITERATION
 from ray.tune import Trainable, PlacementGroupFactory
 from ray.tune.execution.checkpoint_manager import _CheckpointManager
-from ray.tune.execution.ray_trial_executor import RayTrialExecutor
 from ray.tune.schedulers import (
     FIFOScheduler,
     HyperBandScheduler,
@@ -44,10 +43,10 @@ def result(t, rew):
     return dict(time_total_s=t, episode_reward_mean=rew, training_iteration=int(t))
 
 
-def mock_trial_runner(trials=None):
-    trial_runner = MagicMock()
-    trial_runner.get_trials.return_value = trials or []
-    return trial_runner
+def mock_tune_controller(trials=None):
+    tune_controller = MagicMock()
+    tune_controller.get_trials.return_value = trials or []
+    return tune_controller
 
 
 class EarlyStoppingSuite(unittest.TestCase):
@@ -61,7 +60,7 @@ class EarlyStoppingSuite(unittest.TestCase):
     def basicSetup(self, rule):
         t1 = Trial("PPO")  # mean is 450, max 900, t_max=10
         t2 = Trial("PPO")  # mean is 450, max 450, t_max=5
-        runner = mock_trial_runner()
+        runner = mock_tune_controller()
         for i in range(10):
             r1 = result(i, i * 100)
             print("basicSetup:", i)
@@ -83,7 +82,7 @@ class EarlyStoppingSuite(unittest.TestCase):
             min_samples_required=1,
         )
         t1, t2 = self.basicSetup(rule)
-        runner = mock_trial_runner()
+        runner = mock_tune_controller()
         rule.on_trial_complete(runner, t1, result(10, 1000))
         self.assertEqual(
             rule.on_trial_result(runner, t2, result(5, 450)), TrialScheduler.CONTINUE
@@ -103,7 +102,7 @@ class EarlyStoppingSuite(unittest.TestCase):
             min_samples_required=1,
         )
         t1, t2 = self.basicSetup(rule)
-        runner = mock_trial_runner()
+        runner = mock_tune_controller()
         self.assertEqual(
             rule.on_trial_result(runner, t2, result(100, 0)), TrialScheduler.CONTINUE
         )
@@ -120,7 +119,7 @@ class EarlyStoppingSuite(unittest.TestCase):
             min_samples_required=1,
         )
         t1, t2 = self.basicSetup(rule)
-        runner = mock_trial_runner()
+        runner = mock_tune_controller()
         rule.on_trial_complete(runner, t1, result(10, 1000))
         rule.on_trial_complete(runner, t2, result(10, 1000))
         t3 = Trial("PPO")
@@ -142,7 +141,7 @@ class EarlyStoppingSuite(unittest.TestCase):
             min_samples_required=2,
         )
         t1, t2 = self.basicSetup(rule)
-        runner = mock_trial_runner()
+        runner = mock_tune_controller()
         rule.on_trial_complete(runner, t1, result(10, 1000))
         t3 = Trial("PPO")
         # Insufficient samples to evaluate t3
@@ -163,7 +162,7 @@ class EarlyStoppingSuite(unittest.TestCase):
             min_samples_required=1,
         )
         t1, t2 = self.basicSetup(rule)
-        runner = mock_trial_runner()
+        runner = mock_tune_controller()
         rule.on_trial_complete(runner, t1, result(10, 1000))
         rule.on_trial_complete(runner, t2, result(10, 1000))
         t3 = Trial("PPO")
@@ -183,7 +182,7 @@ class EarlyStoppingSuite(unittest.TestCase):
             hard_stop=False,
         )
         t1, t2 = self.basicSetup(rule)
-        runner = mock_trial_runner()
+        runner = mock_tune_controller()
         rule.on_trial_complete(runner, t1, result(10, 1000))
         rule.on_trial_complete(runner, t2, result(10, 1000))
         t3 = Trial("PPO")
@@ -204,7 +203,7 @@ class EarlyStoppingSuite(unittest.TestCase):
         )
         t1 = Trial("PPO")  # mean is 450, max 900, t_max=10
         t2 = Trial("PPO")  # mean is 450, max 450, t_max=5
-        runner = mock_trial_runner()
+        runner = mock_tune_controller()
         for i in range(10):
             self.assertEqual(
                 rule.on_trial_result(runner, t1, result_func(i, i * 100)),
@@ -238,7 +237,7 @@ class EarlyStoppingSuite(unittest.TestCase):
 
 
 # Only barebone impl for start/stop_trial. No internal state maintained.
-class _MockTrialExecutor(RayTrialExecutor):
+class _MockTrialExecutor:
     def start_trial(self, trial, checkpoint_obj=None, train=True):
         trial.logger_running = True
         trial.restored_checkpoint = checkpoint_obj.dir_or_data
@@ -1976,7 +1975,7 @@ class PopulationBasedTestingSuite(unittest.TestCase):
                     tune.report(metric=i + config["x"])
 
         class MockScheduler(FIFOScheduler):
-            def on_trial_result(self, trial_runner, trial, result):
+            def on_trial_result(self, tune_controller, trial, result):
                 return TrialScheduler.STOP
 
         scheduler = MockScheduler()

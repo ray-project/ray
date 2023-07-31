@@ -1685,11 +1685,11 @@ class ApiTestFast(unittest.TestCase):
         class _MockScheduler(FIFOScheduler):
             results = []
 
-            def on_trial_result(self, trial_runner, trial, result):
+            def on_trial_result(self, tune_controller, trial, result):
                 self.results += [result]
                 return TrialScheduler.CONTINUE
 
-            def on_trial_complete(self, trial_runner, trial, result):
+            def on_trial_complete(self, tune_controller, trial, result):
                 self.complete_result = result
 
         def train(config, reporter):

@@ -27,7 +27,7 @@ def create_mock_components():
     class _MockScheduler(FIFOScheduler):
         errored_trials = []
 
-        def on_trial_error(self, trial_runner, trial):
+        def on_trial_error(self, tune_controller, trial):
             self.errored_trials += [trial]
 
     class _MockSearchAlg(BasicVariantGenerator):

@@ -1668,7 +1668,7 @@ class TuneController:
                     # non-training future (e.g. a save) was scheduled.
                     # We do not allow processing more results then.
                     if i < len(results) - 1:
-                        if log_once("trial_runner_buffer_checkpoint"):
+                        if log_once("tune_controller_buffer_checkpoint"):
                             logger.warning(
                                 f"Trial {trial} has a non-training future "
                                 f"scheduled but {len(results) - i} results "
@@ -2258,12 +2258,12 @@ class TrialRunnerWrapper:
 
     def __init__(
         self,
-        trial_runner: TuneController,
+        tune_controller: TuneController,
         trial_executor: Any,
         runner_whitelist_attr: Optional[set] = None,
         executor_whitelist_attr: Optional[set] = None,
     ):
-        self._trial_runner = trial_runner
+        self._tune_controller = tune_controller
         self._trial_executor = _TrialExecutorWrapper(
             trial_executor, executor_whitelist_attr
         )
@@ -2276,7 +2276,7 @@ class TrialRunnerWrapper:
         if attr == self._EXECUTOR_ATTR:
             return self._trial_executor
         if attr not in self._runner_whitelist_attr:
-            if log_once("restrict_accessing_trial_runner"):
+            if log_once("restrict_accessing_tune_controller"):
                 logger.warning(
                     f"You are trying to access {attr} interface of "
                     f"TrialRunner in TrialScheduler, which is being "
@@ -2286,7 +2286,7 @@ class TrialRunnerWrapper:
                     f"strict API access pattern would be enforced "
                     f"starting 1.12s.0"
                 )
-        return getattr(self._trial_runner, attr)
+        return getattr(self._tune_controller, attr)
 
 
 def _get_max_pending_trials(search_alg: SearchAlgorithm) -> int:
