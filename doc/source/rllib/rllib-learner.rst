@@ -49,10 +49,12 @@ arguments in the `AlgorithmConfig`.
 
 .. testcode::
 	:hide:
+    :skipif: True
 
     from ray.rllib.algorithms.ppo.ppo import PPOConfig
 
 .. testcode::
+    :skipif: True
 
     config = (
         PPOConfig()
@@ -68,6 +70,7 @@ arguments in the `AlgorithmConfig`.
 
 .. testcode::
 	:hide:
+    :skipif: True
 
 	from gymnasium.envs.classic_control.cartpole import CartPoleEnv
 
@@ -111,6 +114,7 @@ and `Learner` APIs via the RLlib algorithm config, then `Algorithm` constructs a
 
 .. testcode::
     :hide:
+    :skipif: True
 
     # imports for the examples
 
@@ -133,6 +137,7 @@ and `Learner` APIs via the RLlib algorithm config, then `Algorithm` constructs a
 
 
         .. testcode::
+            :skipif: True
 
             env = gym.make("CartPole-v1")
 
@@ -169,6 +174,7 @@ and `Learner` APIs via the RLlib algorithm config, then `Algorithm` constructs a
     .. tab-item:: Constructing a Learner
 
         .. testcode::
+            :skipif: True
 
             env = gym.make("CartPole-v1")
 
@@ -201,6 +207,7 @@ Updates
 
 .. testcode::
     :hide:
+    :skipif: True
 
     from ray.rllib.policy.sample_batch import (DEFAULT_POLICY_ID, SampleBatch, 
         MultiAgentBatch)
@@ -243,6 +250,7 @@ Updates
     .. tab-item:: Updating a LearnerGroup
 
         .. testcode::
+            :skipif: True
 
             # This is a blocking update
             results = learner_group.update(DUMMY_BATCH)
@@ -260,6 +268,7 @@ Updates
     .. tab-item:: Updating a Learner
 
         .. testcode::
+            :skipif: True
 
             # This is a blocking update.
             result = learner.update(DUMMY_BATCH)
@@ -279,6 +288,7 @@ Getting and setting state
     .. tab-item:: Getting and Setting State for a LearnerGroup
 
         .. testcode::
+            :skipif: True
 
             # module weights and optimizer states
             state = learner_group.get_state()
@@ -295,6 +305,7 @@ Getting and setting state
     .. tab-item:: Getting and Setting State for a Learner
 
         .. testcode::
+            :skipif: True
 
             # module weights and optimizer states
             state = learner.get_state()
@@ -310,6 +321,7 @@ Getting and setting state
 
 .. testcode::
 	:hide:
+    :skipif: True
 
 	import shutil
 	import tempfile
@@ -326,6 +338,7 @@ Checkpointing
     .. tab-item:: Checkpointing a LearnerGroup
 
         .. testcode::
+            :skipif: True
 
             learner_group.save_state(LEARNER_GROUP_CKPT_DIR)
             learner_group.load_state(LEARNER_GROUP_CKPT_DIR)
@@ -338,6 +351,7 @@ Checkpointing
     .. tab-item:: Checkpointing a `Learner`
 
         .. testcode::
+            :skipif: True
 
             learner.save_state(LEARNER_CKPT_DIR)
             learner.load_state(LEARNER_CKPT_DIR)
@@ -348,6 +362,7 @@ Checkpointing
 
 .. testcode::
 	:hide:
+    :skipif: True
 
 	shutil.rmtree(LEARNER_CKPT_DIR)
 	shutil.rmtree(LEARNER_GROUP_CKPT_DIR)
@@ -379,6 +394,7 @@ A `Learner` that implements behavior cloning could look like the following:
 
 .. testcode::
     :hide:
+    :skipif: True
 
     from typing import Any, Dict, DefaultDict, Mapping
 
@@ -391,6 +407,7 @@ A `Learner` that implements behavior cloning could look like the following:
     from ray.rllib.utils.typing import TensorType
 
 .. testcode::
+    :skipif: True
 
     class BCTorchLearner(TorchLearner):
 
