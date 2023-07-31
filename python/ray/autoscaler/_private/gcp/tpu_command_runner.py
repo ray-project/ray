@@ -12,9 +12,8 @@ To maintain feature completeness, we simply wrap the existing `SSHCommandRunner`
 
 """
 from concurrent.futures import ThreadPoolExecutor
-from functools import partial
 from types import ModuleType
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, Optional
 
 import ray
 from ray.autoscaler._private.command_runner import DockerCommandRunner, SSHCommandRunner

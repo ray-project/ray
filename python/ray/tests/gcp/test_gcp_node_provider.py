@@ -117,7 +117,6 @@ def test_convert_resources_to_urls_accelerators(test_case):
 
 
 def test_cpu_resource_returns_standard_command_runner():
-    mock_node_config = {"machineType": "n2-standard-8"}
     mock_resource = MagicMock()
 
     def __init__(self, provider_config: dict, cluster_name: str):
@@ -142,7 +141,6 @@ def test_cpu_resource_returns_standard_command_runner():
 
 
 def test_cpu_resource_returns_standard_command_runner_docker():
-    mock_node_config = {"machineType": "n2-standard-8"}
     mock_resource = MagicMock()
 
     def __init__(self, provider_config: dict, cluster_name: str):
@@ -168,7 +166,6 @@ def test_cpu_resource_returns_standard_command_runner_docker():
 
 
 def test_tpu_resource_returns_tpu_command_runner():
-    mock_node_config = {"machineType": "n2-standard-8"}
     mock_resource = MagicMock()
 
     def __init__(self, provider_config: dict, cluster_name: str):

@@ -1,6 +1,5 @@
 import pytest
 
-from typing import List
 from ray.tests.test_autoscaler import MockProvider, MockProcessRunner
 from ray.autoscaler._private.gcp.tpu_command_runner import TPUCommandRunner
 from getpass import getuser
@@ -17,10 +16,10 @@ class MockTpuInstance:
         self.num_workers = num_workers
 
     def get_internal_ip(self, worker_index: int) -> str:
-        return "0.0.0.{}".format(worker_index)
+        return "0.0.0.0"
 
     def get_external_ip(self, worker_index: int) -> str:
-        return "0.0.0.{}".format(worker_index)
+        return "0.0.0.0"
 
 
 def test_tpu_ssh_command_runner():
@@ -51,41 +50,40 @@ def test_tpu_ssh_command_runner():
         "echo helloo", port_forward=[(8265, 8265)], environment_variables=env_vars
     )
 
-    def get_expected(worker_id: int) -> List[str]:
-        return [
-            "ssh",
-            "-tt",
-            "-L",
-            "8265:localhost:8265",
-            "-i",
-            "8265.pem",
-            "-o",
-            "StrictHostKeyChecking=no",
-            "-o",
-            "UserKnownHostsFile=/dev/null",
-            "-o",
-            "IdentitiesOnly=yes",
-            "-o",
-            "ExitOnForwardFailure=yes",
-            "-o",
-            "ServerAliveInterval=5",
-            "-o",
-            "ServerAliveCountMax=3",
-            "-o",
-            "ControlMaster=auto",
-            "-o",
-            "ControlPath={}/%C".format(ssh_control_path),
-            "-o",
-            "ControlPersist=10s",
-            "-o",
-            "ConnectTimeout=120s",
-            "ray@0.0.0.{}".format(worker_id),
-            "bash",
-            "--login",
-            "-c",
-            "-i",
-            """'source ~/.bashrc; export OMP_NUM_THREADS=1 PYTHONWARNINGS=ignore && (export var1='"'"'"quote between this \\" and this"'"'"';export var2='"'"'"123"'"'"';echo helloo)'""",  # noqa: E501
-        ]
+    expected = [
+        "ssh",
+        "-tt",
+        "-L",
+        "8265:localhost:8265",
+        "-i",
+        "8265.pem",
+        "-o",
+        "StrictHostKeyChecking=no",
+        "-o",
+        "UserKnownHostsFile=/dev/null",
+        "-o",
+        "IdentitiesOnly=yes",
+        "-o",
+        "ExitOnForwardFailure=yes",
+        "-o",
+        "ServerAliveInterval=5",
+        "-o",
+        "ServerAliveCountMax=3",
+        "-o",
+        "ControlMaster=auto",
+        "-o",
+        "ControlPath={}/%C".format(ssh_control_path),
+        "-o",
+        "ControlPersist=10s",
+        "-o",
+        "ConnectTimeout=120s",
+        "ray@0.0.0.0",
+        "bash",
+        "--login",
+        "-c",
+        "-i",
+        """'source ~/.bashrc; export OMP_NUM_THREADS=1 PYTHONWARNINGS=ignore && (export var1='"'"'"quote between this \\" and this"'"'"';export var2='"'"'"123"'"'"';echo helloo)'""",  # noqa: E501
+    ]
 
     calls = process_runner.calls
 
@@ -93,7 +91,6 @@ def test_tpu_ssh_command_runner():
 
     # Much easier to debug this loop than the function call.
     for i in range(num_workers):
-        expected = get_expected(i)
         for x, y in zip(calls[i], expected):
             assert x == y
         process_runner.assert_has_call("1.2.3.4", exact=expected)
@@ -133,46 +130,44 @@ def test_tpu_docker_command_runner():
     # important and somewhat difficult to get right for environment variables.
     cmd = """'source ~/.bashrc; export OMP_NUM_THREADS=1 PYTHONWARNINGS=ignore && (docker exec -it  container /bin/bash -c '"'"'bash --login -c -i '"'"'"'"'"'"'"'"'source ~/.bashrc; export OMP_NUM_THREADS=1 PYTHONWARNINGS=ignore && (export var1='"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"quote between this \\" and this"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"';export var2='"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"123"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"';echo hello)'"'"'"'"'"'"'"'"''"'"' )'"""  # noqa: E501
 
-    def get_expected(worker_id: int) -> List[str]:
-        return [
-            "ssh",
-            "-tt",
-            "-i",
-            "8265.pem",
-            "-o",
-            "StrictHostKeyChecking=no",
-            "-o",
-            "UserKnownHostsFile=/dev/null",
-            "-o",
-            "IdentitiesOnly=yes",
-            "-o",
-            "ExitOnForwardFailure=yes",
-            "-o",
-            "ServerAliveInterval=5",
-            "-o",
-            "ServerAliveCountMax=3",
-            "-o",
-            "ControlMaster=auto",
-            "-o",
-            "ControlPath={}/%C".format(ssh_control_path),
-            "-o",
-            "ControlPersist=10s",
-            "-o",
-            "ConnectTimeout=120s",
-            "ray@0.0.0.{}".format(worker_id),
-            "bash",
-            "--login",
-            "-c",
-            "-i",
-            cmd,
-        ]
+    expected = [
+        "ssh",
+        "-tt",
+        "-i",
+        "8265.pem",
+        "-o",
+        "StrictHostKeyChecking=no",
+        "-o",
+        "UserKnownHostsFile=/dev/null",
+        "-o",
+        "IdentitiesOnly=yes",
+        "-o",
+        "ExitOnForwardFailure=yes",
+        "-o",
+        "ServerAliveInterval=5",
+        "-o",
+        "ServerAliveCountMax=3",
+        "-o",
+        "ControlMaster=auto",
+        "-o",
+        "ControlPath={}/%C".format(ssh_control_path),
+        "-o",
+        "ControlPersist=10s",
+        "-o",
+        "ConnectTimeout=120s",
+        "ray@0.0.0.0",
+        "bash",
+        "--login",
+        "-c",
+        "-i",
+        cmd,
+    ]
 
     calls = process_runner.calls
     assert len(process_runner.calls) == num_workers
 
     # Much easier to debug this loop than the function call.
     for i in range(num_workers):
-        expected = get_expected(i)
         for x, y in zip(calls[i], expected):
             assert x == y
         process_runner.assert_has_call("1.2.3.4", exact=expected)
