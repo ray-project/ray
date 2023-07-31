@@ -303,7 +303,7 @@ nbdime==3.2.1
 nbformat==5.9.0 ; python_version >= "3.8"
 nest-asyncio==1.5.6
 netifaces==0.11.0
-networkx==2.6.3
+networkx==2.6.3 ; python_version < "3.11"
 nevergrad==0.4.3.post7
 ninja==1.11.1
 notebook==6.5.4
@@ -451,7 +451,7 @@ s3transfer==0.6.1
 safetensors==0.3.1
 sarif-om==1.0.4
 scikit-image==0.19.3 ; python_version < "3.11"
-scikit-image>=0.20.0 ; python_version >= "3.11"
+scikit-image==0.21.0 ; python_version >= "3.11"
 scikit-learn==1.0.2 ; python_version < "3.11"
 scikit-optimize==0.9.0 ; python_version >= "3.8" and python_version < "3.11"
 scipy==1.10.1 ; python_version >= "3.8" and python_version < "3.11"
