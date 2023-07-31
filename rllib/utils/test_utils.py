@@ -492,11 +492,7 @@ def check_inference_w_connectors(policy, env_name, max_steps: int = 100):
     # Avoids circular import
     from ray.rllib.utils.policy import local_policy_inference
 
-    # TODO(sven): Remove this if-block once gymnasium fully supports Atari envs.
-    if env_name.startswith("ALE/"):
-        env = gym.make("GymV26Environment-v0", env_id=env_name)
-    else:
-        env = gym.make(env_name)
+    env = gym.make(env_name)
 
     # Potentially wrap the env like we do in RolloutWorker
     if is_atari(env):
