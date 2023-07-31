@@ -217,11 +217,14 @@ class TrainReportCallback(TrainerCallback):
         }
         self._report()
 
-
-# TODO(yunxuanx) Remove this placeholder class
+# TODO(yunxuan): remove this wrapper after iter_torch_batches returns an iterable
 class RayDataIterableDataset:
-    def __init__(self) -> None:
-        pass
+    def __init__(self, iterator, **kwargs) -> None:
+        self.iterater = iterator
+        self.kwargs = kwargs
+    
+    def __iter__(self):
+        return self.iterater.iter_torch_batches(**self.kwargs)
 
 
 def _wrap_transformers_trainer(
@@ -242,8 +245,8 @@ def _wrap_transformers_trainer(
         def get_eval_dataloader(
             self, eval_dataset: Optional[Dataset] = None
         ) -> DataLoader:
-            # TODO(yunxuanx): replace RayDataIterableDataset to the
-            # class type returned by iter_torch_batches
+            # TODO(yunxuanx): replace RayDataIterableDataset to the class returned by iter_torch_batches
+            eval_dataset = eval_dataset if eval_dataset is not None else self.eval_dataset
             if isinstance(eval_dataset, RayDataIterableDataset):
                 return create_dataloader(eval_dataset)
             else:
