@@ -923,8 +923,8 @@ class Router:
             tag_keys=("deployment", "route", "application"),
         )
         self.num_router_requests.set_default_tags({"deployment": deployment_name})
-
-        self.num_queued_queries = defaultdict(int)
+        # Key is application name, value is the number of queued queries.
+        self.num_queued_queries: DefaultDict[str, int] = defaultdict(int)
         self.num_queued_queries_gauge = metrics.Gauge(
             "serve_deployment_queued_queries",
             description=(
@@ -971,7 +971,7 @@ class Router:
     def _collect_handle_queue_metrics(self) -> Dict[str, int]:
         for app_name, num_queued_queries in self.num_queued_queries.items():
             self.num_queued_queries_gauge.set(
-                self.num_queued_queries,
+                num_queued_queries,
                 tags={
                     "application": app_name,
                 },
