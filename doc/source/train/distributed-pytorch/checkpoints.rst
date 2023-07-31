@@ -89,6 +89,8 @@ By default, checkpoints will be persisted to local disk in the :ref:`log
 directory <train-log-dir>` of each run.
 
 
+.. _train-dl-configure-checkpoints:
+
 Configuring checkpoints
 -----------------------
 

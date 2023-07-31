@@ -2,9 +2,8 @@
 
 Distributed Tensorflow & Keras
 ==============================
-`TensorFlow <https://www.tensorflow.org/>`__ is a popular deep learning
-framework. Ray Train's TensorFlow integration enables you to scale your
-TensorFlow and Keras training loops to many machines and GPUs.
+Ray Train's `TensorFlow <https://www.tensorflow.org/>`__ integration enables you
+to scale your TensorFlow and Keras training loops to many machines and GPUs.
 
 On a technical level, Ray Train schedules your training workers
 and configures ``TF_CONFIG`` for you, allowing you to run
@@ -14,7 +13,6 @@ for more information.
 
 Most of the examples in this guide use Tensorflow with Keras, but
 Ray Train also works with vanilla Tensorflow.
-
 
 Updating your training function
 -------------------------------
@@ -117,18 +115,100 @@ ready to start training!
 
 Data loading and preprocessing
 ------------------------------
+Tensorflow per default uses its own internal dataset sharding policy, as described
+`in the guide <https://www.tensorflow.org/tutorials/distribute/multi_worker_with_keras#dataset_sharding>`__.
+If your tensorflow dataset is compatible with distributed loading, you don't need to
+change anything.
+
+If you require more advanced preprocessing, you may want to consider using Ray Data
+for distributed data ingest.
+
+There is a guide for using :ref:`Ray Data with Ray Train <data-ingest-torch>`
+in our PyTorch guide. Since Ray Data is an independent library, most concepts can
+be directly applied to TensorFlow.
+
+The main difference is that you may want to convert your Ray Data dataset shard to
+a TensorFlow dataset in your training function so that you can use the Keras
+API for model training.
+
+`Here's a full example you can refer to <https://github.com/ray-project/ray/blob/master/python/ray/train/examples/tf/tune_tensorflow_autoencoder_example.py>`__
+for distributed data loading. The relevant parts are:
+
+.. code-block:: python
+
+    import tensorflow as tf
+    from ray.air import session
+    from ray.train.tensorflow import prepare_dataset_shard
+
+    def train_func(config: dict):
+        # ...
+
+        # Get dataset shard from Ray Train
+        dataset_shard = session.get_dataset_shard("train")
+
+        # Define a helper function to build a TensorFlow dataset
+        def to_tf_dataset(dataset, batch_size):
+            def to_tensor_iterator():
+                for batch in dataset.iter_tf_batches(
+                    batch_size=batch_size, dtypes=tf.float32
+                ):
+                    yield batch["image"], batch["label"]
+
+            output_signature = (
+                tf.TensorSpec(shape=(None, 784), dtype=tf.float32),
+                tf.TensorSpec(shape=(None, 784), dtype=tf.float32),
+            )
+            tf_dataset = tf.data.Dataset.from_generator(
+                to_tensor_iterator, output_signature=output_signature
+            )
+            # Call prepare_dataset_shard to disable automatic sharding
+            # (since the dataset is already sharded)
+            return prepare_dataset_shard(tf_dataset)
+
+        for epoch in range(epochs):
+            # Call our helper function to build the dataset
+            tf_dataset = to_tf_dataset(
+                dataset=dataset_shard,
+                batch_size=64,
+            )
+            history = multi_worker_model.fit(tf_dataset)
+
+
 
 Reporting results
 -----------------
+During training, the training loop should report intermediate results and checkpoints
+to Ray Train. This will log the results to the console output and append them to
+local log files. It can also be used to report results to
+:ref:`experiment tracking services <train-monitoring>` and it will trigger
+:ref:`checkpoint bookkeeping <train-dl-configure-checkpoints>`.
 
+The easiest way to report your results with Keras is by using the
+:class:`~air.integrations.keras.ReportCheckpointCallback`:
+
+.. code-block:: python
+
+    from ray.air.integrations.keras import ReportCheckpointCallback
+
+    def train_func(config: dict):
+        # ...
+        for epoch in range(epochs):
+            model.fit(dataset, callbacks=[ReportCheckpointCallback()])
+
+
+This callback will automatically forward all results and checkpoints from the
+Keras training loop to Ray Train.
+
+
+Aggregating results
+~~~~~~~~~~~~~~~~~~~
 
 TensorFlow Keras automatically aggregates metrics from all workers. If you wish to have more
-control over that, consider implementing a `custom training loop <https://www.tensorflow.org/tutorials/distribute/custom_training>`_.
+control over that, consider implementing a `custom training loop <https://www.tensorflow.org/tutorials/distribute/custom_training>`__.
 
 
 Saving and loading checkpoints
 ------------------------------
-
 
 :ref:`Checkpoints <checkpoint-api-ref>` can be saved by calling ``session.report(metrics, checkpoint=Checkpoint(...))`` in the
 training function. This will cause the checkpoint state from the distributed
@@ -252,3 +332,16 @@ Loading checkpoints
     #    [-0.8839263 ],
     #    [-1.0043601 ],
     #    [-0.61634773]], dtype=float32), array([0.01889327], dtype=float32)], '_timestamp': 1656108446, '_preprocessor': None, '_current_checkpoint_id': 3}
+
+
+Further reading
+---------------
+We explore more topics in our :ref:`PyTorch guide <train-pytorch-overview>`.
+Ray Train is a generic library and the concepts explained there are applicable
+to TensorFlow, too.
+
+You may want to look into:
+
+- :ref:`Experiment tracking and callbacks <train-monitoring>`
+- :ref:`Fault tolerance and training on spot instances <train-fault-tolerance>`
+- :ref:`Hyperparameter optimization <train-tune>`
