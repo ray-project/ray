@@ -922,7 +922,7 @@ def test_status_basic(serve_instance):
     assert all(d.status == "HEALTHY" for d in app_status["plus"].deployments.values())
     assert all(d.status == "HEALTHY" for d in app_status["plus"].deployments.values())
 
-    proxy_status = serve.status().http_proxies
+    proxy_status = serve.status().proxies
     assert all(p == "HEALTHY" for p in proxy_status.values())
 
 

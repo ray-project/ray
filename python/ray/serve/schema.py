@@ -636,7 +636,7 @@ class ApplicationStatusOverview:
 @PublicAPI(stability="alpha")
 @dataclass(eq=True)
 class ServeStatus:
-    http_proxies: Dict[str, HTTPProxyStatus] = field(default_factory=dict)
+    proxies: Dict[str, HTTPProxyStatus] = field(default_factory=dict)
     applications: Dict[str, ApplicationStatusOverview] = field(default_factory=dict)
 
 
@@ -837,7 +837,7 @@ class ServeInstanceDetails(BaseModel, extra=Extra.forbid):
 
     def _get_status(self) -> ServeStatus:
         return ServeStatus(
-            http_proxies={
+            proxies={
                 node_id: proxy.status for node_id, proxy in self.http_proxies.items()
             },
             applications={
