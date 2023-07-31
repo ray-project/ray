@@ -141,6 +141,7 @@ Configuring a LearnerGroup
 
 .. autosummary::
     :toctree: doc/
+    :noindex:
 
     LearnerGroupScalingConfig
 

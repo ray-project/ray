@@ -60,23 +60,27 @@ def _is_module_trainable(module_id: ModuleID, batch: MultiAgentBatch) -> bool:
 
 class LearnerGroup:
     """Coordinator of Learners.
+
     Public API:
-        .update(batch) -> updates the RLModule based on gradient descent algos.
-        .additional_update() -> any additional non-gradient based updates will get
-                                called from this entry point.
-        .get_state() -> returns the state of the RLModule and RLOptimizer from
-                        all of the Learners.
-        .set_state() -> sets the state of all the Learners.
-        .get_weights() -> returns the weights of the RLModule from the Learner(s).
-        .set_weights() -> sets the weights of the RLModule in the Learner(s).
-        .add_module() -> add a new RLModule to the MultiAgentRLModule being trained by
-                         this LearnerGroup.
-        .remove_module() -> remove an RLModule from the MultiAgentRLModule being trained
-                            by this LearnerGroup.
+
+    .update(batch) -> updates the RLModule based on gradient descent algos.
+    .additional_update() -> any additional non-gradient based updates will get
+                            called from this entry point.
+    .get_state() -> returns the state of the RLModule and RLOptimizer from
+                    all of the Learners.
+    .set_state() -> sets the state of all the Learners.
+    .get_weights() -> returns the weights of the RLModule from the Learner(s).
+    .set_weights() -> sets the weights of the RLModule in the Learner(s).
+    .add_module() -> add a new RLModule to the MultiAgentRLModule being trained by
+                        this LearnerGroup.
+    .remove_module() -> remove an RLModule from the MultiAgentRLModule being trained
+                        by this LearnerGroup.
+
     Args:
         learner_spec: The specification for constructing Learners.
         max_queue_len: The maximum number of batches to queue up if doing async_update
             If the queue is full itwill evict the oldest batch first.
+
     """
 
     def __init__(
