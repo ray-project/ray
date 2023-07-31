@@ -1,10 +1,39 @@
 .. _train-config:
 
-Ray Train Configuration User Guide
-==================================
+Common configuration
+====================
 
 The following overviews how to configure scale-out, run options, and fault-tolerance for Train.
-For more details on how to configure data ingest, also refer to :ref:`air-ingest`.
+For more details on how to configure data ingest, also refer to :ref:`data-ingest-torch`.
+
+.. _train-log-dir:
+
+Persistent storage
+------------------
+Ray Train saves results and checkpoints at a persistent storage location.
+Per default, this is a local directory in ``~/ray_results``.
+
+This default setup is sufficient for single-node setups or distributed
+training without :ref:`fault tolerance <train-fault-tolerance>`.
+When you want to utilize fault tolerance, require access to shared data,
+or are training on spot instances, it is recommended to set up
+a remote persistent storage location.
+
+The persistent storage location can be defined by passing a
+``storage_path`` to the :ref:`RunConfig <train-run-config>`. This path
+can be a location on remote storage (e.g. S3), or it can be a shared
+network device, such as NFS.
+
+.. code-block:: python
+
+    # Remote storage location
+    run_config = RunConfig(storage_path="s3://my_bucket/train_results")
+
+    # Shared network filesystem
+    run_config = RunConfig(storage_path="/mnt/cluster_storage/train_results")
+
+When configuring a persistent storage path, it is important that all nodes have
+access to the location.
 
 Scaling Configurations in Train (``ScalingConfig``)
 ---------------------------------------------------
@@ -14,7 +43,7 @@ resources per worker.
 
 The properties of the scaling configuration are :ref:`tunable <tune-search-space-tutorial>`.
 
-.. literalinclude:: doc_code/key_concepts.py
+.. literalinclude:: ../doc_code/key_concepts.py
     :language: python
     :start-after: __scaling_config_start__
     :end-before: __scaling_config_end__
@@ -40,7 +69,7 @@ the ``RunConfig``. The following sub-sections contain descriptions of these conf
 
 The properties of the run configuration are :ref:`not tunable <tune-search-space-tutorial>`.
 
-.. literalinclude:: doc_code/key_concepts.py
+.. literalinclude:: ../doc_code/key_concepts.py
     :language: python
     :start-after: __run_config_start__
     :end-before: __run_config_end__
@@ -61,7 +90,7 @@ As part of the RunConfig, the properties of the failure configuration
 are :ref:`not tunable <tune-search-space-tutorial>`.
 
 
-.. literalinclude:: doc_code/key_concepts.py
+.. literalinclude:: ../doc_code/key_concepts.py
     :language: python
     :start-after: __failure_config_start__
     :end-before: __failure_config_end__
@@ -80,7 +109,7 @@ and how many checkpoints to keep.
 As part of the RunConfig, the properties of the checkpoint configuration
 are :ref:`not tunable <tune-search-space-tutorial>`.
 
-.. literalinclude:: doc_code/key_concepts.py
+.. literalinclude:: ../doc_code/key_concepts.py
     :language: python
     :start-after: __checkpoint_config_start__
     :end-before: __checkpoint_config_end__
@@ -90,7 +119,7 @@ Trainers of certain frameworks including :class:`~ray.train.xgboost.XGBoostTrain
 implement checkpointing out of the box. For these trainers, checkpointing can be
 enabled by setting the checkpoint frequency within the :class:`~ray.air.CheckpointConfig`.
 
-.. literalinclude:: doc_code/key_concepts.py
+.. literalinclude:: ../doc_code/key_concepts.py
     :language: python
     :start-after: __checkpoint_config_ckpt_freq_start__
     :end-before: __checkpoint_config_ckpt_freq_end__

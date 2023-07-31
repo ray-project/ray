@@ -24,8 +24,8 @@ Intro to Ray Train
 for common machine learning frameworks such as XGBoost, Pytorch, and Tensorflow.
 There are three broad categories of Trainers that Train offers:
 
-* :ref:`Deep Learning Trainers <train-dl-guide>` (Pytorch, Tensorflow, Horovod)
-* :ref:`Tree-based Trainers <train-gbdt-guide>` (XGboost, LightGBM)
+* Deep Learning Trainers (:doc:`PyTorch </train/distributed-pytorch>`, :doc:`TensorFlow </train/distributed-tensorflow-keras>`, :doc:`Horovod </train/horovod>`)
+* :doc:`Tree-based Trainers </train/distributed-xgboost-lightgbm>` (XGboost, LightGBM)
 * Other ML frameworks (HuggingFace, Scikit-Learn, RLlib)
 
 **Built for ML practitioners**: Train supports standard ML tools and features that practitioners love:
@@ -125,7 +125,8 @@ Next steps
 
 * :ref:`Getting Started <train-getting-started>`
 * :ref:`Key Concepts for Ray Train <train-key-concepts>`
-* :ref:`User Guide for Deep Learning Trainers <train-dl-guide>`
-* :ref:`User Guide for Tree-Based Trainers <train-gbdt-guide>`
+* :doc:`User Guide for distributed PyTorch </train/distributed-pytorch>`
+* :doc:`User Guide for distributed TensorFlow </train/distributed-tensorflow-keras>`
+* :doc:`User Guide for Tree-Based Trainers </train/distributed-xgboost-lightgbm>`
 
 .. include:: /_includes/train/announcement_bottom.rst

@@ -63,25 +63,29 @@ parts:
             title: "Getting Started"
           - file: train/key-concepts
             title: "Key Concepts"
-          - file: train/user-guides
-            title: "User Guides"
+          - file: train/distributed-pytorch
             sections:
-              - file: train/config_guide
-                title: "Configuring Ray Train"
-              - file: train/dl_guide
-                title: "Deep Learning Guide"
-              - file: train/hf_trainers
-                title: "Hugging Face Trainers"
-              - file: train/gbdt
-                title: "XGBoost/LightGBM guide"
-              - file: train/architecture
-                title: "Ray Train Architecture"
-              - file: train/train-with-tune
-                title: "Using Ray Train with Ray Tune"
-              - file: train/check-ingest
-                title: "Configuring Training Datasets"
+              - file: train/distributed-pytorch/quickstart
+              - file: train/distributed-pytorch/converting-existing-training-loop
+              - file: train/distributed-pytorch/configuration
+              - file: train/distributed-pytorch/data-loading-preprocessing
+              - file: train/distributed-pytorch/using-gpus
+              - file: train/distributed-pytorch/reporting-results
+              - file: train/distributed-pytorch/checkpoints
+              - file: train/distributed-pytorch/experiment-tracking-callbacks
+              - file: train/distributed-pytorch/fault-tolerance
+              - file: train/distributed-pytorch/hyperparameter-optimization
+                title: Hyperparameter optimization
+              - file: train/distributed-pytorch/advanced
+          - file: train/distributed-tensorflow-keras
+          - file: train/distributed-xgboost-lightgbm
+          - file: train/horovod
+          - file: train/internals/index
+            title: "Ray Train internals and advanced usage"
+            sections:
+              - file: train/internals/architecture
+              - file: train/internals/benchmarks
               - file: train/predictors
-              - file: train/benchmarks
           - file: train/examples
             title: "Examples"
             sections:
