@@ -3,6 +3,7 @@ import ray
 from ray.air import session
 from ray.air.constants import MODEL_KEY
 from ray.data.dataset import DataIterator
+from ray.util import PublicAPI
 from ray.train.lightning.lightning_checkpoint import LightningCheckpoint
 
 import logging
@@ -10,7 +11,7 @@ import shutil
 import torch
 import tempfile
 from packaging.version import Version
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, List
 from torch.utils.data import IterableDataset, DataLoader
 
 import pytorch_lightning as pl
@@ -49,6 +50,19 @@ def get_worker_root_device():
         return devices
 
 
+@PublicAPI(stability="alpha")
+def get_devices() -> Optional[List[int]]:
+    """Returns the device ID of the current Ray Train worker.
+
+    This method returns the device index of the current GPU Worker. Returns None
+    if called in a CPU worker. Note that you can only call this method inside
+    the training function of :class:`TorchTrainer <ray.train.torch.TorchTrainer>`.
+    """
+    device = get_worker_root_device()
+    return None if device.index is None else [device.index]
+
+
+@PublicAPI(stability="alpha")
 class RayDDPStrategy(DDPStrategy):
     """Subclass of DDPStrategy to ensure compatibility with Ray orchestration."""
 
@@ -64,6 +78,7 @@ class RayDDPStrategy(DDPStrategy):
         )
 
 
+@PublicAPI(stability="alpha")
 class RayFSDPStrategy(FSDPStrategy):
     """Subclass of FSDPStrategy to ensure compatibility with Ray orchestration."""
 
@@ -98,6 +113,7 @@ class RayFSDPStrategy(FSDPStrategy):
             return super().lightning_module_state_dict()
 
 
+@PublicAPI(stability="alpha")
 class RayDeepSpeedStrategy(DeepSpeedStrategy):
     """Subclass of DeepSpeedStrategy to ensure compatibility with Ray orchestration."""
 
@@ -123,7 +139,8 @@ class RayDeepSpeedStrategy(DeepSpeedStrategy):
         )
 
 
-class RayEnvironment(LightningEnvironment):
+@PublicAPI(stability="alpha")
+class RayLightningEnvironment(LightningEnvironment):
     """Setup Lightning DDP training environment for Ray cluster."""
 
     def world_size(self) -> int:
@@ -189,6 +206,7 @@ class RayDataModule(pl.LightningDataModule):
             self.val_dataloader = _val_dataloader
 
 
+@PublicAPI(stability="alpha")
 class RayModelCheckpoint(ModelCheckpoint):
     """
     AIR customized ModelCheckpoint callback.
@@ -274,3 +292,42 @@ class RayModelCheckpoint(ModelCheckpoint):
     def on_validation_end(self, trainer: "pl.Trainer", *args, **kwargs) -> None:
         super().on_validation_end(trainer, *args, **kwargs)
         self._session_report(trainer=trainer, stage="validation_end")
+
+
+@PublicAPI(stability="alpha")
+def prepare_trainer(trainer: pl.Trainer) -> pl.Trainer:
+    # Check strategy class
+    valid_strategy_class = [RayDDPStrategy, RayFSDPStrategy, RayFSDPStrategy]
+
+    if not any(isinstance(trainer.strategy, cls) for cls in valid_strategy_class):
+        raise RuntimeError(
+            f"Invalid strategy class: {type(trainer.strategy)}. To use "
+            "PyTorch Lightning with Ray, the strategy object should be one of "
+            "[RayDDPStrategy, RayFSDPStrategy, RayDeepspeedStrategy] class "
+            "or its subclass."
+        )
+
+    # Check cluster environment
+    cluster_environment = getattr(trainer.strategy, "cluster_environment", None)
+    if cluster_environment and not isinstance(
+        cluster_environment, RayLightningEnvironment
+    ):
+        raise RuntimeError(
+            "Invalid cluster environment plugin. The expected class is"
+            "`ray.train.lightning.RayLightningEnvironment` "
+            f"but got {type(cluster_environment)}!"
+        )
+
+    # Check model callbacks
+    ray_checkpoint_callbacks = [
+        cb for cb in trainer.checkpoint_callbacks if isinstance(cb, RayModelCheckpoint)
+    ]
+    if len(ray_checkpoint_callbacks) > 1:
+        raise RuntimeError(
+            "You can provide at most one RayModelCheckpoint callbacks for Ray Train, "
+            f"but got {len(ray_checkpoint_callbacks)} here. For additional checkpoint "
+            "callbacks, please provide the original `pl.callbacks.ModelCheckpoint` "
+            "objects instead!"
+        )
+
+    return trainer

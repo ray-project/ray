@@ -5,7 +5,7 @@ import types
 import collections
 from packaging.version import Version
 
-from typing import Any, Dict, List, Optional, Callable, Union
+from typing import Any, Dict, List, Optional, Callable, Union, Iterator
 
 from ray.train._internal import session
 from ray.train._internal.accelerator import Accelerator
@@ -504,7 +504,6 @@ class _WrappedDataLoader(DataLoader):
     def __init__(
         self, base_dataloader: DataLoader, device: torch.device, auto_transfer: bool
     ):
-
         self.__dict__.update(getattr(base_dataloader, "__dict__", {}))
         self._dataloader = base_dataloader
         self.dataloader_iter = None
@@ -638,3 +637,18 @@ class _WrappedOptimizer(Optimizer):
             self.scaler.update()
         else:
             self.optimizer.step(closure)
+
+
+class RayDataTorchIterableDataset(IterableDataset):
+    def __init__(self, data_iterable) -> None:
+        super().__init__()
+        self.data_iterable = data_iterable
+
+    def __iter__(self) -> Iterator:
+        return iter(self.data_iterable)
+
+
+# TODO(yunxuanx): add typing for data_iterable
+def create_dataloader(data_iterable) -> DataLoader:
+    torch_dataset = RayDataTorchIterableDataset(data_iterable)
+    return DataLoader(torch_dataset, batch_size=1, collate_fn=lambda x: x[0])

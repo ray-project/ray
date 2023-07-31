@@ -1,7 +1,11 @@
 import logging
+import warnings
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Iterator, Optional, Tuple, Type
+from typing import Any, Iterator, Optional, Tuple, Type
+from torch.utils.data import DataLoader, Dataset, IterableDataset
+from ray.train.torch import create_dataloader
 
+from transformers import Trainer
 import datasets.iterable_dataset
 import transformers.trainer
 from transformers.trainer_callback import TrainerCallback
@@ -14,9 +18,8 @@ from ray.data._internal.iterator.stream_split_iterator import StreamSplitDataIte
 from ray.train.huggingface.transformers.transformers_checkpoint import (
     TransformersCheckpoint,
 )
+from ray.util import PublicAPI
 
-if TYPE_CHECKING:
-    from torch.utils.data import IterableDataset
 
 logger = logging.getLogger(__name__)
 
@@ -213,3 +216,119 @@ class TrainReportCallback(TrainerCallback):
             **self.delayed_report["metrics"],
         }
         self._report()
+
+
+# TODO(yunxuanx) Remove this placeholder class
+class RayDataIterableDataset:
+    def __init__(self) -> None:
+        pass
+
+
+def _wrap_transformers_trainer(
+    trainer: transformers.trainer.Trainer,
+) -> transformers.trainer.Trainer:
+    """Change the class of trainer to a subclass implementing Ray-specific logic."""
+    base_trainer_class: Type[transformers.trainer.Trainer] = trainer.__class__
+
+    class RayTrainer(base_trainer_class):
+        def get_train_dataloader(self):
+            # TODO(yunxuanx): replace RayDataIterableDataset to the
+            # class type returned by iter_torch_batches
+            if isinstance(self.train_dataset, RayDataIterableDataset):
+                return create_dataloader(self.train_dataset)
+            else:
+                return super().get_train_dataloader()
+
+        def get_eval_dataloader(
+            self, eval_dataset: Optional[Dataset] = None
+        ) -> DataLoader:
+            # TODO(yunxuanx): replace RayDataIterableDataset to the
+            # class type returned by iter_torch_batches
+            if isinstance(eval_dataset, RayDataIterableDataset):
+                return create_dataloader(eval_dataset)
+            else:
+                return super().get_eval_dataloader(eval_dataset)
+
+    trainer.__class__ = RayTrainer
+    return trainer
+
+
+@PublicAPI(stability="alpha")
+def prepare_trainer(trainer: Trainer) -> Trainer:
+    """Prepare your HuggingFace Transformer Trainer for Ray Train."""
+
+    # Check callback strategies compatibility
+    save_strategy = trainer.args.save_strategy
+    logging_strategy = trainer.args.logging_strategy
+    evaluation_strategy = trainer.args.evaluation_strategy
+
+    for strategy in [save_strategy, evaluation_strategy]:
+        if strategy in ("no", IntervalStrategy.NO):
+            continue
+        if strategy != logging_strategy:
+            raise ValueError(
+                "When using Ray Train, `evaluation_strategy` and `save_strategy` "
+                " must be 'no' or the same as `logging_strategy`. Got: \n"
+                f"`logging_strategy`={trainer.args.logging_strategy}\n"
+                f"`save_strategy`={trainer.args.save_strategy}\n"
+                f"`evaluation_strategy`={trainer.args.evaluation_strategy}"
+            )
+
+    # Check callback steps compatibility
+    save_steps = trainer.args.save_steps
+    eval_steps = trainer.args.eval_steps
+    logging_steps = trainer.args.logging_steps
+
+    if save_strategy in ("steps", IntervalStrategy.STEPS):
+        if save_steps < logging_steps or save_steps % logging_steps != 0:
+            raise ValueError(
+                "When `save_strategy == 'steps'`, `save_steps` must be a multiple of "
+                "`logging_steps`, so that saving and logging happens at the same time."
+                f"Got `save_steps`={trainer.args.save_steps}, "
+                f"`logging_steps`={trainer.args.logging_steps}."
+            )
+
+    if evaluation_strategy in ("steps", IntervalStrategy.STEPS):
+        if logging_steps != eval_steps:
+            raise ValueError(
+                "`logging_steps` must be equal to `eval_steps`. "
+                f"Got `logging_steps`={trainer.args.logging_steps}, "
+                f"`eval_steps`={trainer.args.eval_steps}"
+            )
+
+    if trainer.args.load_best_model_at_end:
+        raise ValueError(
+            "As Ray Train replaces Transformers checkpointing, "
+            "`load_best_model_at_end` must be set to False.\n"
+            "You can obtain the Ray Train Checkpoint with "
+            "`Result.checkpoint` returned by the `fit()` method "
+            "of this Trainer, and the model itself by calling "
+            "`Checkpoint.get_model()`.\n"
+            "You can configure the checkpointing by setting "
+            "`run_config.checkpoint_config`."
+        )
+
+    if trainer.args.push_to_hub and not trainer.args.hub_token:
+        warnings.warn(
+            "You have set `push_to_hub=True` but didn't specify `hub_token`. "
+            "Pushing to hub will most likely fail, as the credentials will not "
+            "be automatically propagated from the local enviroment to the Ray Actors. "
+            "If that happens, specify `hub_token` in `TrainingArguments`.",
+            stacklevel=2,
+        )
+
+    trainer = _wrap_transformers_trainer(trainer)
+
+    # TODO(ml-team): How to enable experiment tracking integration?
+    # ensure no HF logging callbacks are added
+    # aside from doubling functionality with our callbacks,
+    # the Wandb callbacks causes training to freeze
+    integration_callbacks = transformers.trainer.get_reporting_integration_callbacks(
+        trainer.args.report_to
+    )
+    for callback in integration_callbacks:
+        trainer.pop_callback(callback)
+
+    trainer.add_callback(TrainReportCallback)
+
+    return trainer
