@@ -7,6 +7,7 @@ import subprocess
 import sys
 import time
 
+from ray_release.byod.build_ray import build_ray
 from ray_release.config import RELEASE_PACKAGE_DIR
 from ray_release.configs.global_config import get_global_config
 from ray_release.logger import logger
@@ -105,6 +106,7 @@ def build_anyscale_base_byod_images(tests: List[Test]) -> None:
     """
     Builds the Anyscale BYOD images for the given tests.
     """
+    build_ray()
     _download_dataplane_build_file()
     to_be_built = {}
     built = set()
