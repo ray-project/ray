@@ -351,7 +351,7 @@ class ModelCatalog:
                 "Unsupported args: {} {}".format(action_space, dist_type)
             )
 
-        return dist_cls, dist_cls.required_model_output_shape(action_space, config)
+        return dist_cls, int(dist_cls.required_model_output_shape(action_space, config))
 
     @staticmethod
     @DeveloperAPI

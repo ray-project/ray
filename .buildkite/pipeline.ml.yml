@@ -551,15 +551,7 @@
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
 
-    # Install mujoco necessary for the testing environments
-    - sudo apt install libosmesa6-dev libgl1-mesa-glx libglfw3 patchelf -y
-    - wget https://mujoco.org/download/mujoco210-linux-x86_64.tar.gz
-    - mkdir /root/.mujoco
-    - mv mujoco210-linux-x86_64.tar.gz /root/.mujoco/.
-    - (cd /root/.mujoco && tar -xf /root/.mujoco/mujoco210-linux-x86_64.tar.gz)
-    - echo 'export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/root/.mujoco/mujoco210/bin' >> /root/.bashrc
     - source /root/.bashrc
-
     - (cd rllib_contrib/maml && pip install -r requirements.txt && pip install -e .)
     - ./ci/env/env_info.sh
     - pytest rllib_contrib/maml/tests/test_maml.py
