@@ -100,7 +100,7 @@ class TuneServerSuite(unittest.TestCase):
     def testStopTrial(self):
         """Check if Stop Trial works."""
         runner, client = self.basicSetup()
-        for i in range(2):
+        while not any(t.status == Trial.RUNNING for t in runner.get_trials()):
             runner.step()
         all_trials = client.get_all_trials()["trials"]
         self.assertEqual(
@@ -119,7 +119,7 @@ class TuneServerSuite(unittest.TestCase):
     def testStopExperiment(self):
         """Check if stop_experiment works."""
         runner, client = self.basicSetup()
-        for i in range(2):
+        while not any(t.status == Trial.RUNNING for t in runner.get_trials()):
             runner.step()
         all_trials = client.get_all_trials()["trials"]
         self.assertEqual(
