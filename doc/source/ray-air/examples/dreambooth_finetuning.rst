@@ -25,7 +25,7 @@ This example fine-tunes both the ``text_encoder`` and ``unet`` models used in th
 .. image:: /templates/05_dreambooth_finetuning/dreambooth/images/dreambooth_example.png
    :alt: DreamBooth overview
 
-The full code repository can be found here: `https://github.com/ray-project/ray/blob/master/python/ray/air/examples/dreambooth/ <https://github.com/ray-project/ray/blob/master/python/ray/air/examples/dreambooth/>`_
+The full code repository can be found here: `https://github.com/ray-project/ray/tree/master/doc/source/templates/05_dreambooth_finetuning <https://github.com/ray-project/ray/tree/master/doc/source/templates/05_dreambooth_finetuning>`_
 
 
 How it works
@@ -37,7 +37,7 @@ Data loading
 ^^^^^^^^^^^^
 
 .. note::
-    You can find the latest version of the code here: `dataset.py <https://github.com/ray-project/ray/blob/master/python/ray/air/examples/dreambooth/dataset.py>`_
+    You can find the latest version of the code here: `dataset.py <https://github.com/ray-project/ray/tree/master/doc/source/templates/05_dreambooth_finetuning/dreambooth/dataset.py>`_
 
     The latest version might differ slightly from the code presented here.
 
@@ -85,7 +85,7 @@ Distributed training
 
 
 .. note::
-    You can find the latest version of the code here: `train.py <https://github.com/ray-project/ray/blob/master/python/ray/air/examples/dreambooth/train.py>`_
+    You can find the latest version of the code here: `train.py <https://github.com/ray-project/ray/tree/master/doc/source/templates/05_dreambooth_finetuning/dreambooth/train.py>`_
 
     The latest version might differ slightly from the code presented here.
 
@@ -101,7 +101,7 @@ Remember that we want to do data-parallel training for all our models.
 #. We iterate over the dataset with train_dataset.iter_torch_batches()
 #. We report results to Ray AIR with session.report(results)
 
-The code was compacted for brevity. The `full code <https://github.com/ray-project/ray/blob/master/python/ray/air/examples/dreambooth/train.py>`_ is more thoroughly annotated.
+The code was compacted for brevity. The `full code <https://github.com/ray-project/ray/tree/master/doc/source/templates/05_dreambooth_finetuning/dreambooth/train.py>`_ is more thoroughly annotated.
 
 
 .. literalinclude:: /templates/05_dreambooth_finetuning/dreambooth/train.py
