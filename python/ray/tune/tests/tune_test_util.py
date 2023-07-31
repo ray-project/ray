@@ -28,7 +28,7 @@ class TrialResultObserver(Callback):
 
 def create_tune_experiment_checkpoint(trials: list, **runner_kwargs) -> str:
     experiment_dir = tempfile.mkdtemp()
-    runner_kwargs.setdefault("local_checkpoint_dir", experiment_dir)
+    runner_kwargs.setdefault("experiment_path", experiment_dir)
 
     # Update environment
     orig_env = os.environ.copy()

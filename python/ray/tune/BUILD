@@ -16,7 +16,6 @@ doctest(
             "config_parser.py",
             "function_runner.py",
             "insufficient_resources_manager.py",
-            "ray_trial_executor.py",
             "sample.py",
             "session.py",
             "trial.py",
@@ -215,14 +214,6 @@ py_test(
     name = "test_resource_updater",
     size = "small",
     srcs = ["tests/test_resource_updater.py"],
-    deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive"],
-)
-
-py_test(
-    name = "test_ray_trial_executor",
-    size = "large",
-    srcs = ["tests/test_ray_trial_executor.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive"],
 )
