@@ -6,7 +6,6 @@ from unittest.mock import MagicMock
 import random
 import sys
 from dataclasses import asdict
-from typing import List
 
 from ray.util.state import (
     summarize_tasks,
