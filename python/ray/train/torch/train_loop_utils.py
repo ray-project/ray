@@ -16,7 +16,6 @@ from ray.util.annotations import PublicAPI, Deprecated
 import numpy as np
 
 import torch
-from torch.utils.data import IterableDataset, DataLoader
 from torch.cuda.amp import autocast, GradScaler
 from torch.nn.parallel import DistributedDataParallel
 

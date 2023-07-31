@@ -1,4 +1,3 @@
-import os
 import evaluate
 import numpy as np
 from datasets import load_dataset
@@ -17,6 +16,7 @@ from ray.train.huggingface.transformers import prepare_trainer
 hf_ds = load_dataset("tweet_eval", "irony")
 tokenizer = AutoTokenizer.from_pretrained("bert-base-cased")
 
+
 def tokenize(examples):
     return tokenizer(
         examples["text"],
@@ -25,10 +25,12 @@ def tokenize(examples):
         padding="max_length",
     )
 
+
 train_ds = hf_ds["train"].map(tokenize, batched=True)
 test_ds = hf_ds["test"].map(tokenize, batched=True)
 
 data_collator = DataCollatorWithPadding(tokenizer=tokenizer)
+
 
 def train_loop_per_worker():
     accuracy = evaluate.load("accuracy")
@@ -75,6 +77,7 @@ def train_loop_per_worker():
     # Train your model
     trainer.train()
 
+
 if __name__ == "__main__":
     ray_trainer = TorchTrainer(
         train_loop_per_worker,
@@ -84,13 +87,9 @@ if __name__ == "__main__":
                 num_to_keep=2,
                 checkpoint_score_attribute="eval_accuracy",
                 checkpoint_score_order="max",
-            )
+            ),
         ),
-        scaling_config=ScalingConfig(
-            num_workers=4,
-            use_gpu=True
-        )
+        scaling_config=ScalingConfig(num_workers=4, use_gpu=True),
     )
 
     ray_trainer.fit()
-   
