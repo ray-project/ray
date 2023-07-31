@@ -285,7 +285,7 @@ enum DrainNodeReason {
 }
 
 message DrainNodeRequest {
-  // The id of the node to be drained.
+  // The binary format id of the node to be drained.
   bytes node_id = 1;
   // The reason why the node will be drained.
   // This information will be used to
