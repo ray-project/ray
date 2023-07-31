@@ -94,6 +94,11 @@ if os.environ.get("SERVE_REQUEST_PROCESSING_TIMEOUT_S") is not None:
     )
 
 
+INITIAL_BACKOFF_PERIOD_SEC = 0.05
+MAX_BACKOFF_PERIOD_SEC = 5
+BACKOFF_FACTOR = 2
+
+
 class LongestPrefixRouter:
     """Router that performs longest prefix matches on incoming routes."""
 
@@ -588,12 +593,11 @@ class HTTPProxy:
         request = pickle.dumps(request)
 
         retries = 0
-        backoff_time_s = 0.05
-        backoff = False
         loop = get_or_create_event_loop()
         # We have received all the http request conent. The next `receive`
         # call might never arrive; if it does, it can only be `http.disconnect`.
         while retries < HTTP_REQUEST_MAX_RETRIES + 1:
+            should_backoff = False
             assignment_task: asyncio.Task = handle.remote(request)
             client_disconnection_task = loop.create_task(receive())
             done, _ = await asyncio.wait(
@@ -636,7 +640,7 @@ class HTTPProxy:
                         'by setting "request_timeout_s" in your Serve config\'s '
                         "`http_options` field."
                     )
-                    backoff = True
+                    should_backoff = True
                 else:
                     result = await object_ref
                     break
@@ -656,15 +660,14 @@ class HTTPProxy:
                     f"{HTTP_REQUEST_MAX_RETRIES - retries} retries "
                     "remaining."
                 )
-                backoff = True
-            if backoff:
-                await asyncio.sleep(backoff_time_s)
-                # Be careful about the expotential backoff scaling here.
-                # Assuming 10 retries, 1.5x scaling means the last retry is 38x the
-                # initial backoff time, while 2x scaling means 512x the initial.
-                backoff_time_s *= 1.5
+                should_backoff = True
+
+            if should_backoff:
+                backoff_period = min(
+                    INITIAL_BACKOFF_PERIOD_SEC * pow(2, retries), MAX_BACKOFF_PERIOD_SEC
+                )
                 retries += 1
-                backoff = False
+                await asyncio.sleep(backoff_period)
         else:
             error_message = f"Task failed with {HTTP_REQUEST_MAX_RETRIES} retries."
             await Response(error_message, status_code=500).send(scope, receive, send)
