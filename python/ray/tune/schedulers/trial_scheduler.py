@@ -66,12 +66,12 @@ class TrialScheduler:
 
         return True
 
-    def on_trial_add(self, trial_runner: "TuneController", trial: Trial):
+    def on_trial_add(self, tune_controller: "TuneController", trial: Trial):
         """Called when a new trial is added to the trial runner."""
 
         raise NotImplementedError
 
-    def on_trial_error(self, trial_runner: "TuneController", trial: Trial):
+    def on_trial_error(self, tune_controller: "TuneController", trial: Trial):
         """Notification for the error of trial.
 
         This will only be called when the trial is in the RUNNING state."""
@@ -79,7 +79,7 @@ class TrialScheduler:
         raise NotImplementedError
 
     def on_trial_result(
-        self, trial_runner: "TuneController", trial: Trial, result: Dict
+        self, tune_controller: "TuneController", trial: Trial, result: Dict
     ) -> str:
         """Called on each intermediate result returned by a trial.
 
@@ -90,7 +90,7 @@ class TrialScheduler:
         raise NotImplementedError
 
     def on_trial_complete(
-        self, trial_runner: "TuneController", trial: Trial, result: Dict
+        self, tune_controller: "TuneController", trial: Trial, result: Dict
     ):
         """Notification for the completion of trial.
 
@@ -99,7 +99,7 @@ class TrialScheduler:
 
         raise NotImplementedError
 
-    def on_trial_remove(self, trial_runner: "TuneController", trial: Trial):
+    def on_trial_remove(self, tune_controller: "TuneController", trial: Trial):
         """Called to remove trial.
 
         This is called when the trial is in PAUSED or PENDING state. Otherwise,
@@ -107,10 +107,10 @@ class TrialScheduler:
 
         raise NotImplementedError
 
-    def choose_trial_to_run(self, trial_runner: "TuneController") -> Optional[Trial]:
+    def choose_trial_to_run(self, tune_controller: "TuneController") -> Optional[Trial]:
         """Called to choose a new trial to run.
 
-        This should return one of the trials in trial_runner that is in
+        This should return one of the trials in tune_controller that is in
         the PENDING or PAUSED state. This function must be idempotent.
 
         If no trial is ready, return None."""
@@ -138,37 +138,31 @@ class FIFOScheduler(TrialScheduler):
     def __init__(self):
         super().__init__()
 
-    def on_trial_add(self, trial_runner: "TuneController", trial: Trial):
+    def on_trial_add(self, tune_controller: "TuneController", trial: Trial):
         pass
 
-    def on_trial_error(self, trial_runner: "TuneController", trial: Trial):
+    def on_trial_error(self, tune_controller: "TuneController", trial: Trial):
         pass
 
     def on_trial_result(
-        self, trial_runner: "TuneController", trial: Trial, result: Dict
+        self, tune_controller: "TuneController", trial: Trial, result: Dict
     ) -> str:
         return TrialScheduler.CONTINUE
 
     def on_trial_complete(
-        self, trial_runner: "TuneController", trial: Trial, result: Dict
+        self, tune_controller: "TuneController", trial: Trial, result: Dict
     ):
         pass
 
-    def on_trial_remove(self, trial_runner: "TuneController", trial: Trial):
+    def on_trial_remove(self, tune_controller: "TuneController", trial: Trial):
         pass
 
-    def choose_trial_to_run(self, trial_runner: "TuneController") -> Optional[Trial]:
-        for trial in trial_runner.get_trials():
-            if (
-                trial.status == Trial.PENDING
-                and trial_runner.trial_executor.has_resources_for_trial(trial)
-            ):
+    def choose_trial_to_run(self, tune_controller: "TuneController") -> Optional[Trial]:
+        for trial in tune_controller.get_trials():
+            if trial.status == Trial.PENDING:
                 return trial
-        for trial in trial_runner.get_trials():
-            if (
-                trial.status == Trial.PAUSED
-                and trial_runner.trial_executor.has_resources_for_trial(trial)
-            ):
+        for trial in tune_controller.get_trials():
+            if trial.status == Trial.PAUSED:
                 return trial
         return None
 

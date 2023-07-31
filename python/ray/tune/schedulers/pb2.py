@@ -401,11 +401,11 @@ class PB2(PopulationBasedTraining):
         #           are already in or scheduled to be in the next round.
         self.current = None
 
-    def on_trial_add(self, trial_runner: "TuneController", trial: Trial):
+    def on_trial_add(self, tune_controller: "TuneController", trial: Trial):
         filled_hyperparams = _fill_config(trial.config, self._hyperparam_bounds)
         # Make sure that the params we sampled show up in the CLI output
         trial.evaluated_params.update(flatten_dict(filled_hyperparams))
-        super().on_trial_add(trial_runner, trial)
+        super().on_trial_add(tune_controller, trial)
 
     def _validate_hyperparam_bounds(self, hyperparam_bounds: dict):
         """Check that each hyperparam bound is of the form [low, high].
