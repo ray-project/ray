@@ -34,7 +34,7 @@ TEST(ConcurrencyGroupManagerTest, TestEmptyConcurrencyGroupManager) {
   // boost fiber doesn't have tsan support yet
   // https://github.com/boostorg/context/issues/124
   static auto empty = std::make_shared<ray::EmptyFunctionDescriptor>();
-  ConcurrencyGroupManager<FiberState> manager;
+  ConcurrencyGroupManager<BoundedExecutor> manager;
   auto executor = manager.GetExecutor("", empty);
   ASSERT_EQ(manager.GetDefaultExecutor(), executor);
   manager.Stop();

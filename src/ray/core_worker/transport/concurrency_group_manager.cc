@@ -14,7 +14,6 @@
 
 #include "ray/core_worker/transport/concurrency_group_manager.h"
 
-#include "ray/core_worker/fiber.h"
 #include "ray/core_worker/transport/thread_pool.h"
 
 namespace ray {
@@ -95,7 +94,6 @@ void ConcurrencyGroupManager<ExecutorType>::Stop() {
   }
 }
 
-template class ConcurrencyGroupManager<FiberState>;
 template class ConcurrencyGroupManager<BoundedExecutor>;
 
 }  // namespace core

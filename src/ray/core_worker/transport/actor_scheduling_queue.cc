@@ -39,8 +39,8 @@ ActorSchedulingQueue::ActorSchedulingQueue(
       ss << "\t" << concurrency_group.name << " : " << concurrency_group.max_concurrency;
     }
     RAY_LOG(INFO) << ss.str();
-    fiber_state_manager_ = std::make_unique<ConcurrencyGroupManager<FiberState>>(
-        concurrency_groups, fiber_max_concurrency);
+    fiber_state_ =
+        std::make_unique<FiberState>(concurrency_groups, fiber_max_concurrency);
   }
 }
 
@@ -48,8 +48,8 @@ void ActorSchedulingQueue::Stop() {
   if (pool_manager_) {
     pool_manager_->Stop();
   }
-  if (fiber_state_manager_) {
-    fiber_state_manager_->Stop();
+  if (fiber_state_) {
+    fiber_state_->Stop();
   }
 }
 
@@ -139,9 +139,9 @@ void ActorSchedulingQueue::ScheduleRequests() {
 
     if (is_asyncio_) {
       // Process async actor task.
-      auto fiber = fiber_state_manager_->GetExecutor(request.ConcurrencyGroupName(),
-                                                     request.FunctionDescriptor());
-      fiber->EnqueueFiber([request]() mutable { request.Accept(); });
+      fiber_state_->EnqueueFiber(request.ConcurrencyGroupName(),
+                                 request.FunctionDescriptor(),
+                                 [request]() mutable { request.Accept(); });
     } else {
       // Process actor tasks.
       RAY_CHECK(pool_manager_ != nullptr);

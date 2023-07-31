@@ -83,7 +83,7 @@ class OutOfOrderActorSchedulingQueue : public SchedulingQueue {
   bool is_asyncio_ = false;
   /// Manage the running fiber states of actors in this worker. It works with
   /// python asyncio if this is an asyncio actor.
-  std::unique_ptr<ConcurrencyGroupManager<FiberState>> fiber_state_manager_;
+  std::unique_ptr<FiberState> fiber_state_;
 
   friend class SchedulingQueueTest;
 };
