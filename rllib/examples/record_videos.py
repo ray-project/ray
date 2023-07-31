@@ -13,7 +13,7 @@ In order to run this example, please regard the following:
 - moviepy must find ffmpeg -> https://github.com/Zulko/moviepy/issues/1158.
 - An environment can only be recorded if it can be rendered. For most environments,
     this can be achieved by setting the render_mode to 'rgb_array' in the environment
-    config.
+    config. See the gymnasium API for more information.
 """
 
 # First, we create videos with default settings:
