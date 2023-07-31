@@ -586,7 +586,7 @@ def test_status_basic(ray_start_stop):
         status_response = subprocess.check_output(
             ["serve", "status", "-a", "http://localhost:52365/"]
         )
-        proxy_status = yaml.safe_load(status_response)["http_proxies"]
+        proxy_status = yaml.safe_load(status_response)["proxies"]
         return len(proxy_status) and all(p == "HEALTHY" for p in proxy_status.values())
 
     wait_for_condition(proxy_healthy)
