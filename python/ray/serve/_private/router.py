@@ -924,7 +924,7 @@ class Router:
         )
         self.num_router_requests.set_default_tags({"deployment": deployment_name})
 
-        self.num_queued_queries = 0
+        self.num_queued_queries = defaultdict(int)
         self.num_queued_queries_gauge = metrics.Gauge(
             "serve_deployment_queued_queries",
             description=(
@@ -952,18 +952,30 @@ class Router:
             ray.get(controller_handle.get_deployment_info.remote(self.deployment_name))
         )
         deployment_info = DeploymentInfo.from_proto(deployment_route.deployment_info)
-        self.metrics_pusher = None
+
+        self.metrics_pusher = MetricsPusher()
         if deployment_info.deployment_config.autoscaling_config:
-            self.metrics_pusher = MetricsPusher()
             self.metrics_pusher.register_task(
                 self._collect_handle_queue_metrics,
                 HANDLE_METRIC_PUSH_INTERVAL_S,
                 controller_handle.record_handle_metrics.remote,
             )
+        else:
+            self.metrics_pusher.register_task(
+                self._collect_handle_queue_metrics,
+                HANDLE_METRIC_PUSH_INTERVAL_S,
+            )
 
-            self.metrics_pusher.start()
+        self.metrics_pusher.start()
 
     def _collect_handle_queue_metrics(self) -> Dict[str, int]:
+        for app_name, num_queued_queries in self.num_queued_queries.items():
+            self.num_queued_queries_gauge.set(
+                self.num_queued_queries,
+                tags={
+                    "application": app_name,
+                },
+            )
         return {self.deployment_name: self.num_queued_queries}
 
     async def assign_request(
@@ -977,13 +989,8 @@ class Router:
         self.num_router_requests.inc(
             tags={"route": request_meta.route, "application": request_meta.app_name}
         )
-        self.num_queued_queries += 1
-        self.num_queued_queries_gauge.set(
-            self.num_queued_queries,
-            tags={
-                "application": request_meta.app_name,
-            },
-        )
+
+        self.num_queued_queries[request_meta.app_name] += 1
 
         query = Query(
             args=list(request_args),
@@ -995,12 +1002,6 @@ class Router:
         result = await self._replica_scheduler.assign_replica(query)
 
         self.num_queued_queries -= 1
-        self.num_queued_queries_gauge.set(
-            self.num_queued_queries,
-            tags={
-                "application": request_meta.app_name,
-            },
-        )
 
         return result
 
