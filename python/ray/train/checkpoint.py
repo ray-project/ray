@@ -1,4 +1,5 @@
 import contextlib
+import glob
 import json
 import logging
 import os
@@ -7,7 +8,7 @@ import shutil
 import tempfile
 import traceback
 from pathlib import Path
-from typing import Any, Dict, Iterator, Optional, Union
+from typing import Any, Dict, Iterator, List, Optional, Union
 import uuid
 
 import pyarrow.fs
@@ -223,13 +224,11 @@ class Checkpoint:
             # we do not remove the directory at all.
             # Since it's in /tmp, this is not that big of a deal.
             # check if any lock files are remaining
-            temp_dir_base_name = Path(temp_dir).name
-            if not list(
-                Path(temp_dir).parent.glob(_get_del_lock_path(temp_dir_base_name, "*"))
-            ):
+            remaining_locks = _list_existing_del_locks(temp_dir)
+            if not remaining_locks:
                 try:
                     # Timeout 0 means there will be only one attempt to acquire
-                    # the file lock. If it cannot be aquired, a TimeoutError
+                    # the file lock. If it cannot be acquired, a TimeoutError
                     # will be thrown.
                     with TempFileLock(f"{temp_dir}.lock", timeout=0):
                         shutil.rmtree(temp_dir, ignore_errors=True)
@@ -267,19 +266,25 @@ class Checkpoint:
         )
 
 
-def _make_dir(path: str, acquire_del_lock: bool = False) -> None:
-    """Create the temporary checkpoint dir in ``path``."""
-    if acquire_del_lock:
-        # Each process drops a deletion lock file it then cleans up.
-        # If there are no lock files left, the last process
-        # will remove the entire directory.
-        del_lock_path = _get_del_lock_path(path)
-        open(del_lock_path, "a").close()
+def _get_del_lock_path(path: str) -> str:
+    """Get the path to the deletion lock file for a file/directory at `path`.
 
-    os.makedirs(path, exist_ok=True)
+    Example:
+
+        >>> _get_del_lock_path("/tmp/checkpoint_tmp")  # doctest: +ELLIPSIS
+        '/tmp/checkpoint_tmp.del_lock_...
+        >>> _get_del_lock_path("/tmp/checkpoint_tmp/")  # doctest: +ELLIPSIS
+        '/tmp/checkpoint_tmp.del_lock_...
+        >>> _get_del_lock_path("/tmp/checkpoint_tmp.txt")  # doctest: +ELLIPSIS
+        '/tmp/checkpoint_tmp.txt.del_lock_...
+    """
+    return f"{path.rstrip('/')}.del_lock_{os.getpid()}"
 
 
-def _get_del_lock_path(path: str, pid: str = None) -> str:
-    """Get the path to the deletion lock file."""
-    pid = pid if pid is not None else os.getpid()
-    return f"{path}.del_lock_{pid}"
+def _list_existing_del_locks(path: str) -> List[str]:
+    """List all the deletion lock files for a file/directory at `path`.
+
+    For example, if 2 checkpoints are being read via `as_directory`,
+    then this should return a list of 2 deletion lock files.
+    """
+    return list(glob.glob(f"{_get_del_lock_path(path)}*"))
