@@ -202,7 +202,7 @@ imageio==2.31.1
 imageio-ffmpeg==0.4.5
 imagesize==1.4.1
 importlib-metadata==4.10.0
-importlib-resources==5.13.0
+importlib-resources==5.13.0 ; python_version >= "3.8"
 iniconfig==2.0.0
 ipykernel==6.16.2 ; python_version < "3.8"
 ipykernel==6.24.0 ; python_version >= "3.8"
@@ -451,6 +451,7 @@ s3transfer==0.6.1
 safetensors==0.3.1
 sarif-om==1.0.4
 scikit-image==0.19.3 ; python_version < "3.11"
+scikit-image>=0.20.0 ; python_version >= "3.11"
 scikit-learn==1.0.2 ; python_version < "3.11"
 scikit-optimize==0.9.0 ; python_version >= "3.8" and python_version < "3.11"
 scipy==1.10.1 ; python_version >= "3.8" and python_version < "3.11"
