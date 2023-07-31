@@ -902,7 +902,7 @@
 
   run:
     timeout: 1800
-    script: bash dreambooth_run.sh
+    script: pip install -Ur dreambooth/requirements.txt && bash dreambooth_run.sh
     artifact_path: /tmp/artifacts/example_out.jpg
 
   # variations: A10G not available on GCE, yet.
@@ -1070,6 +1070,59 @@
           cluster_env: ../testing/cluster_envs/03_serving_stable_diffusion.yaml
           cluster_compute: ../testing/compute_configs/gpu/gce.yaml
 
+- name: workspace_template_finetuning_llms_with_deepspeed_llama_2_7b
+  group: Workspace templates
+  working_dir: workspace_templates/04_finetuning_llms_with_deepspeed
+  python: "3.9"
+  frequency: nightly-3x
+  team: ml
+  cluster:
+    byod:
+      type: cu118
+    cluster_env: ../testing/cluster_envs/04_finetuning_llms_with_deepspeed.yaml
+    cluster_compute: ../testing/compute_configs/04_finetuning_llms_with_deepspeed/aws_7b_or_13b.yaml
+
+  run:
+    timeout: 600
+    script: chmod +x ./run_llama_ft.sh && ./run_llama_ft.sh --size=7b --as-test
+
+  variations:
+      - __suffix__: aws
+      # TODO (Kourosh): Enable once GCE is ready
+      # - __suffix__: gce
+      #   env: gce
+      #   frequency: manual
+      #   cluster:
+      #     cluster_env: ../testing/cluster_envs/04_finetuning_llms_with_deepspeed.yaml
+      #     cluster_compute: ../testing/compute_configs/04_finetuning_llms_with_deepspeed/gce_7b_or_13b.yaml
+
+
+
+- name: workspace_template_finetuning_llms_with_deepspeed_llama_2_13b
+  group: Workspace templates
+  working_dir: workspace_templates/04_finetuning_llms_with_deepspeed
+  python: "3.9"
+  frequency: nightly-3x
+  team: ml
+  cluster:
+    byod:
+      type: cu118
+    cluster_env: ../testing/cluster_envs/04_finetuning_llms_with_deepspeed.yaml
+    cluster_compute: ../testing/compute_configs/04_finetuning_llms_with_deepspeed/aws_7b_or_13b.yaml
+
+  run:
+    timeout: 1200
+    script: chmod +x ./run_llama_ft.sh && ./run_llama_ft.sh --size=13b --as-test
+
+  variations:
+      - __suffix__: aws
+      # TODO (Kourosh): Enable once GCE is ready
+      # - __suffix__: gce
+      #   env: gce
+      #   frequency: manual
+      #   cluster:
+      #     cluster_env: ../testing/cluster_envs/04_finetuning_llms_with_deepspeed.yaml
+      #     cluster_compute: ../testing/compute_configs/04_finetuning_llms_with_deepspeed/gce_7b_or_13b.yaml
 
 #######################
 # XGBoost release tests
@@ -6282,7 +6335,7 @@
         cluster_env: app_config.yaml
         cluster_compute: single_node_benchmark_compute_gce.yaml
 
-- name: read_images_train_4_cpu
+- name: read_preprocessed_images_comparison_microbenchmark_single_node
   group: data-tests
   working_dir: nightly_tests/dataset
 
@@ -6293,11 +6346,37 @@
     byod:
       type: gpu
     cluster_env: app_config.yaml
+    cluster_compute: single_node_benchmark_compute.yaml
+
+  run:
+    timeout: 1800
+    script: bash run_preprocessed_image_loader_microbenchmark.sh
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: single_node_benchmark_compute_gce.yaml
+
+- name: read_images_train_4_gpu
+  group: data-tests
+  working_dir: nightly_tests/dataset
+
+  frequency: manual
+  team: data
+  python: "3.8"
+  cluster:
+    byod:
+      type: gpu
+    cluster_env: app_config.yaml
     cluster_compute: ../../air_tests/air_benchmarks/compute_gpu_2x2_aws.yaml
 
   run:
-    timeout: 600
-    script: python image_train_benchmark.py --num-workers 4
+    timeout: 1800
+    script: python multi_node_train_benchmark.py --num-workers 4 --file-type image
 
   variations:
     - __suffix__: aws
@@ -6308,11 +6387,11 @@
         cluster_env: app_config.yaml
         cluster_compute: ../../air_tests/air_benchmarks/compute_gpu_2x2_gce.yaml
 
-- name: read_images_train_16_cpu
+- name: read_images_train_16_gpu
   group: data-tests
   working_dir: nightly_tests/dataset
 
-  frequency: nightly
+  frequency: manual
   team: data
   python: "3.8"
   cluster:
@@ -6322,8 +6401,86 @@
     cluster_compute: ../../air_tests/air_benchmarks/compute_gpu_4x4_aws.yaml
 
   run:
-    timeout: 600
-    script: python image_train_benchmark.py --num-workers 16
+    timeout: 1800
+    script: python multi_node_train_benchmark.py --num-workers 16 --file-type image
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: ../../air_tests/air_benchmarks/compute_gpu_4x4_gce.yaml
+
+- name: read_images_train_16_gpu_preserve_order
+  group: data-tests
+  working_dir: nightly_tests/dataset
+
+  frequency: manual
+  team: data
+  python: "3.8"
+  cluster:
+    byod:
+      type: gpu
+    cluster_env: app_config.yaml
+    cluster_compute: ../../air_tests/air_benchmarks/compute_gpu_4x4_aws.yaml
+
+  run:
+    timeout: 1800
+    script: python multi_node_train_benchmark.py --num-workers 16 --file-type image --preserve-order
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: ../../air_tests/air_benchmarks/compute_gpu_4x4_gce.yaml
+
+- name: read_parquet_train_4_gpu
+  group: data-tests
+  working_dir: nightly_tests/dataset
+
+  frequency: manual
+  team: data
+  python: "3.8"
+  cluster:
+    byod:
+      type: gpu
+    cluster_env: app_config.yaml
+    cluster_compute: ../../air_tests/air_benchmarks/compute_gpu_2x2_aws.yaml
+
+  run:
+    timeout: 1800
+    script: python multi_node_train_benchmark.py --num-workers 4 --file-type parquet
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: ../../air_tests/air_benchmarks/compute_gpu_2x2_gce.yaml
+
+- name: read_parquet_train_16_gpu
+  group: data-tests
+  working_dir: nightly_tests/dataset
+
+  frequency: manual
+  team: data
+  python: "3.8"
+  cluster:
+    byod:
+      type: gpu
+    cluster_env: app_config.yaml
+    cluster_compute: ../../air_tests/air_benchmarks/compute_gpu_4x4_aws.yaml
+
+  run:
+    timeout: 1800
+    script: python multi_node_train_benchmark.py --num-workers 16 --file-type parquet
 
   variations:
     - __suffix__: aws

@@ -148,8 +148,11 @@ def test_cluster_status_parser_cluster_resource_state():
                 {
                     "min_bundles": [
                         {
-                            "resources_bundle": {"GPU": 2, "CPU": 100},
-                            "placement_constraints": [],
+                            "request": {
+                                "resources_bundle": {"GPU": 2, "CPU": 100},
+                                "placement_constraints": [],
+                            },
+                            "count": 1,
                         },
                     ]
                 }
@@ -510,7 +513,7 @@ Pending:
  127.0.0.3: worker_node, starting ray
 Recent failures:
  worker_node: LaunchFailed (latest_attempt: 02:46:40) - Insufficient capacity
- worker_node: RayletUnexpectedlyDied (ip: 127.0.0.5)
+ worker_node: NodeTerminated (ip: 127.0.0.5)
 
 Resources
 --------------------------------------------------------
