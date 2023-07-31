@@ -439,8 +439,11 @@ class _TrainSession:
     def new_checkpoint(self, checkpoint: NewCheckpoint):
         import pyarrow.fs
 
-        assert isinstance(checkpoint, NewCheckpoint)
-        assert isinstance(checkpoint.filesystem, pyarrow.fs.LocalFileSystem)
+        if not isinstance(checkpoint, NewCheckpoint):
+            raise ValueError(
+                "You must pass a `ray.train.checkpoint.Checkpoint` "
+                "object to `train.report`. `ray.air.Checkpoint` is deprecated."
+            )
 
         # Upload checkpoint files.
         print(
