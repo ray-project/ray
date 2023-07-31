@@ -236,7 +236,9 @@ class Checkpoint:
                     pass
 
     def _get_temporary_checkpoint_dir(self) -> str:
-        """Return the name for the temporary checkpoint dir."""
+        """Return the name for the temporary checkpoint dir that this checkpoint
+        will get downloaded to, if accessing via `to_directory` or `as_directory`.
+        """
         tmp_dir_path = tempfile.gettempdir()
         checkpoint_dir_name = _CHECKPOINT_TEMP_DIR_PREFIX + self._uuid.hex
         if platform.system() == "Windows":
