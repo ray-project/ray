@@ -1,6 +1,6 @@
 from numpy import float32
 from pettingzoo.butterfly import pistonball_v6
-from pettingzoo.mpe import simple_spread_v2
+from pettingzoo.mpe import simple_spread_v3
 from supersuit import (
     color_reduction_v0,
     dtype_v0,
@@ -78,7 +78,7 @@ class TestPettingZooEnv(unittest.TestCase):
         algo.stop()
 
     def test_pettingzoo_env(self):
-        register_env("simple_spread", lambda _: PettingZooEnv(simple_spread_v2.env()))
+        register_env("simple_spread", lambda _: PettingZooEnv(simple_spread_v3.env()))
 
         config = (
             PPOConfig()
