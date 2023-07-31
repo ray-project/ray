@@ -12,11 +12,11 @@
 
 
 Learner (Alpha)
-==================
+===============
 
 :py:class:`~ray.rllib.core.learner.learner.Learner` allows you to abstract the training 
 logic of RLModules. It supports both gradient-based and non-gradient-based updates (e.g.
-polyak averaging, etc.) The API is designed so that it can be distributed using data-
+polyak averaging, etc.) The API enables you to distribute the Learner using data-
 distributed parallel (DDP). The Learner achieves the following:
 
 
@@ -57,9 +57,9 @@ arguments in the `AlgorithmConfig`.
     config = (
         PPOConfig()
         .resources(
-        num_gpus_per_learner_worker=0,  # Set this to 1 to enable GPU training.
-        num_cpus_per_learner_worker=1,
-        num_learner_workers=0  # Set this to greater than 0 to allow for DDP style 
+            num_gpus_per_learner_worker=0,  # Set this to 1 to enable GPU training.
+            num_cpus_per_learner_worker=1,
+            num_learner_workers=0  # Set this to greater than 0 to allow for DDP style 
                                # updates.
         )
         .training(_enable_learner_api=True)
@@ -77,12 +77,12 @@ arguments in the `AlgorithmConfig`.
 
 .. note::
     
-    This features is in beta. If you migrate to this algorithm, enable the feature by 
+    This features is in alpha. If you migrate to this algorithm, enable the feature by 
     setting `_enable_learner_api` and `_enable_rl_module_api` flags in the 
     `AlgorithmConfig`.
 
     The following algorithms support `Learner` out of the box. Implement
-    an algorithm with a custom `Learner` to leverage this API for other Algorithms.
+    an algorithm with a custom `Learner` to leverage this API for other algorithms.
 
     .. list-table::
        :header-rows: 1
@@ -107,7 +107,7 @@ Construction
 ------------
 
 If you enable the `RLModule`
-and `Learner` APIs via the RLlib algorithm config, then `Algorithm` will construct a `LearnerGroup` for you, but if you’re using these APIs standalone, you can construct the `LearnerGroup` as follows.
+and `Learner` APIs via the RLlib algorithm config, then `Algorithm` constructs a `LearnerGroup` for you, but if you’re using these APIs standalone, you can construct the `LearnerGroup` as follows.
 
 .. testcode::
     :hide:
@@ -129,7 +129,7 @@ and `Learner` APIs via the RLlib algorithm config, then `Algorithm` will constru
 
 .. tab-set::
     
-    .. tab-item:: Contstructing a `LearnerGroup`
+    .. tab-item:: Contstructing a LearnerGroup
 
 
         .. testcode::
@@ -144,14 +144,15 @@ and `Learner` APIs via the RLlib algorithm config, then `Algorithm` will constru
                             catalog_class=PPOCatalog
                         )
 
-            hparams = PPOLearnerHyperparameters(use_kl_loss=True, 
-                                                kl_coeff=0.01,
-                                                kl_target=0.05, 
-                                                clip_param=0.2, 
-                                                vf_clip_param=0.2, 
-                                                entropy_coeff=0.05,
-                                                vf_loss_coeff=0.5
-                        )
+            hparams = PPOLearnerHyperparameters(
+                use_kl_loss=True, 
+                kl_coeff=0.01,
+                kl_target=0.05, 
+                clip_param=0.2, 
+                vf_clip_param=0.2, 
+                entropy_coeff=0.05,
+                vf_loss_coeff=0.5
+            )
 
             scaling_config = LearnerGroupScalingConfig(num_workers=1)
 
@@ -165,7 +166,7 @@ and `Learner` APIs via the RLlib algorithm config, then `Algorithm` will constru
 
             learner_group = LearnerGroup(learner_spec)
 
-    .. tab-item:: Constructing a `Learner`
+    .. tab-item:: Constructing a Learner
 
         .. testcode::
 
@@ -179,19 +180,21 @@ and `Learner` APIs via the RLlib algorithm config, then `Algorithm` will constru
                             catalog_class=PPOCatalog
                         )
 
-            hparams = PPOLearnerHyperparameters(use_kl_loss=True, 
-                                                kl_coeff=0.01,
-                                                kl_target=0.05, 
-                                                clip_param=0.2, 
-                                                vf_clip_param=0.2, 
-                                                entropy_coeff=0.05,
-                                                vf_loss_coeff=0.5
-                        )
+            hparams = PPOLearnerHyperparameters(
+                use_kl_loss=True, 
+                kl_coeff=0.01,
+                kl_target=0.05, 
+                clip_param=0.2, 
+                vf_clip_param=0.2, 
+                entropy_coeff=0.05,
+                vf_loss_coeff=0.5
+            )
 
-            learner = PPOTorchLearner(module_spec=module_spec, 
-                                      learner_hyperparameters=hparams,
-                                      framework_hyperparameters=FrameworkHyperparameters()
-                                      )
+            learner = PPOTorchLearner(
+                module_spec=module_spec, 
+                learner_hyperparameters=hparams,
+                framework_hyperparameters=FrameworkHyperparameters()
+            )
 
 Updates
 -------
@@ -237,43 +240,43 @@ Updates
 
 .. tab-set::
         
-    .. tab-item:: Updating a `LearnerGroup`
+    .. tab-item:: Updating a LearnerGroup
 
         .. testcode::
 
-            # this is a blocking update
+            # This is a blocking update
             results = learner_group.update(DUMMY_BATCH)
 
-            # This is a non-blocking update. The results will be returned in a future
+            # This is a non-blocking update. The results are returned in a future
             # call to `async_update`
             results = learner_group.async_update(DUMMY_BATCH)
 
-            # This is an additional non-gradient based update
+            # This is an additional non-gradient based update.
             learner_group.additional_update(**ADDITIONAL_UPDATE_KWARGS)
 
         When updating a `LearnerGroup` you can perform blocking or async updates on batches of data. Async updates are necessary for implementing async algorithms such as APPO/IMPALA.
         You can perform non-gradient based updates using `additional_update`.
 
-    .. tab-item:: Updating a `Learner`
+    .. tab-item:: Updating a Learner
 
         .. testcode::
 
-            # this is a blocking update
+            # This is a blocking update.
             result = learner.update(DUMMY_BATCH)
 
-            # This is an additional non-gradient based update
+            # This is an additional non-gradient based update.
             learner_group.additional_update(**ADDITIONAL_UPDATE_KWARGS)
 
         When updating a `Learner` you can only perform blocking updates on batches of data.
         You can perform non-gradient based updates using `additional_update`.
     
 
-Getting and Setting State
+Getting and setting state
 -------------------------
 
 .. tab-set::
     
-    .. tab-item:: Getting and Setting State for a `LearnerGroup`
+    .. tab-item:: Getting and Setting State for a LearnerGroup
 
         .. testcode::
 
@@ -281,7 +284,7 @@ Getting and Setting State
             state = learner_group.get_state()
             learner_group.set_state(state)
 
-            # Just module weights
+            # just module weights
             weights = learner_group.get_weights()
             learner_group.set_weights(weights)
 
@@ -289,7 +292,7 @@ Getting and Setting State
         `get_state`. This includes all states including both neural network weights, 
         and optimizer states on each learner.
     
-    .. tab-item:: Getting and Setting State for a `Learner`
+    .. tab-item:: Getting and Setting State for a Learner
 
         .. testcode::
 
@@ -301,8 +304,8 @@ Getting and Setting State
             weights = learner.module.get_state()
             learner.module.set_state(weights)
 
-        You can set and get the weights of a `Learner` via `set_state` and `get_state`
-        For setting / getting only RLModule weights (without optimizer states), use `set_weight` or `get_weight` API.
+        You can set and get the weights of a `Learner` using `set_state` and `get_state` .
+        For setting or getting only RLModule weights (without optimizer states), use `set_weight` or `get_weight` API.
 
 
 .. testcode::
@@ -320,7 +323,7 @@ Checkpointing
 
 .. tab-set::
     
-    .. tab-item:: Checkpointing a `LearnerGroup`
+    .. tab-item:: Checkpointing a LearnerGroup
 
         .. testcode::
 
