@@ -63,18 +63,21 @@ class LearnerGroup:
 
     Public API:
 
-    .update(batch) -> updates the RLModule based on gradient descent algos.
-    .additional_update() -> any additional non-gradient based updates will get
-                            called from this entry point.
-    .get_state() -> returns the state of the RLModule and RLOptimizer from
-                    all of the Learners.
-    .set_state() -> sets the state of all the Learners.
-    .get_weights() -> returns the weights of the RLModule from the Learner(s).
-    .set_weights() -> sets the weights of the RLModule in the Learner(s).
-    .add_module() -> add a new RLModule to the MultiAgentRLModule being trained by
-                        this LearnerGroup.
-    .remove_module() -> remove an RLModule from the MultiAgentRLModule being trained
-                        by this LearnerGroup.
+    .. testcode::
+        :skipif: True
+
+        .update(batch) -> updates the RLModule based on gradient descent algos.
+        .additional_update() -> any additional non-gradient based updates will get
+                                called from this entry point.
+        .get_state() -> returns the state of the RLModule and RLOptimizer from
+                        all of the Learners.
+        .set_state() -> sets the state of all the Learners.
+        .get_weights() -> returns the weights of the RLModule from the Learner(s).
+        .set_weights() -> sets the weights of the RLModule in the Learner(s).
+        .add_module() -> add a new RLModule to the MultiAgentRLModule being trained by
+                            this LearnerGroup.
+        .remove_module() -> remove an RLModule from the MultiAgentRLModule being trained
+                            by this LearnerGroup.
 
     Args:
         learner_spec: The specification for constructing Learners.

@@ -137,13 +137,6 @@ Configuring a LearnerGroup
 
     LearnerSpec
 
-.. currentmodule:: ray.rllib.core.learner.scaling_config
-
-.. autosummary::
-    :toctree: doc/
-
-    LearnerGroupScalingConfig
-
 .. currentmodule:: ray.rllib.core.learner.learner_group
     
 .. autosummary::
