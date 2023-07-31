@@ -7,7 +7,6 @@ import platform
 import shutil
 import tempfile
 import traceback
-from pathlib import Path
 from typing import Any, Dict, Iterator, List, Optional, Union
 import uuid
 
@@ -257,7 +256,7 @@ class Checkpoint:
             if not checkpoint_dir_name.startswith(_CHECKPOINT_TEMP_DIR_PREFIX):
                 raise RuntimeError(
                     "Couldn't create checkpoint directory due to length "
-                    "constraints. Try specifing a shorter checkpoint path."
+                    "constraints. Try specifying a shorter checkpoint path."
                 )
         return os.path.join(tmp_dir_path, checkpoint_dir_name)
 
