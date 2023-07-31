@@ -1,11 +1,13 @@
 import logging
-from typing import Dict, Optional
+from typing import Dict, Optional, TYPE_CHECKING
 
-from ray.tune.execution import trial_runner
 from ray.tune.schedulers.trial_scheduler import TrialScheduler
 from ray.tune.schedulers.hyperband import HyperBandScheduler
 from ray.tune.experiment import Trial
 from ray.util import PublicAPI
+
+if TYPE_CHECKING:
+    from ray.tune.execution.tune_controller import TuneController
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +28,7 @@ class HyperBandForBOHB(HyperBandScheduler):
     See ray.tune.schedulers.HyperBandScheduler for parameter docstring.
     """
 
-    def on_trial_add(self, trial_runner: "trial_runner.TrialRunner", trial: Trial):
+    def on_trial_add(self, trial_runner: "TuneController", trial: Trial):
         """Adds new trial.
 
         On a new trial add, if current bracket is not filled, add to current
@@ -72,7 +74,7 @@ class HyperBandForBOHB(HyperBandScheduler):
         self._trial_info[trial] = cur_bracket, self._state["band_idx"]
 
     def on_trial_result(
-        self, trial_runner: "trial_runner.TrialRunner", trial: Trial, result: Dict
+        self, trial_runner: "TuneController", trial: Trial, result: Dict
     ) -> str:
         """If bracket is finished, all trials will be stopped.
 
@@ -118,12 +120,12 @@ class HyperBandForBOHB(HyperBandScheduler):
             trial_runner.search_alg.searcher.on_pause(trial.trial_id)
         return action
 
-    def _unpause_trial(self, trial_runner: "trial_runner.TrialRunner", trial: Trial):
+    def _unpause_trial(self, trial_runner: "TuneController", trial: Trial):
         # Hack. See comment in on_trial_result
         trial_runner.search_alg.searcher.on_unpause(trial.trial_id)
 
     def choose_trial_to_run(
-        self, trial_runner: "trial_runner.TrialRunner", allow_recurse: bool = True
+        self, trial_runner: "TuneController", allow_recurse: bool = True
     ) -> Optional[Trial]:
         """Fair scheduling within iteration by completion percentage.
 

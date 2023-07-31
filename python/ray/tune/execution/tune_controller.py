@@ -25,12 +25,12 @@ from ray.air.execution._internal import RayActorManager, TrackedActor
 from ray.train._internal.storage import StorageContext, _use_storage_context
 from ray.exceptions import RayActorError, RayTaskError
 from ray.tune.error import _AbortTrialExecution, _TuneStopTrialError, _TuneRestoreError
+from ray.tune.execution.class_cache import _ActorClassCache
 from ray.tune.execution.experiment_state import (
     _ExperimentCheckpointManager,
     _experiment_checkpoint_exists,
     _find_newest_experiment_checkpoint,
 )
-from ray.tune.execution.ray_trial_executor import _class_cache
 from ray.tune.experiment.trial import (
     _change_working_directory,
     _noop_logger_creator,
@@ -78,6 +78,9 @@ logger = logging.getLogger(__name__)
 
 @DeveloperAPI
 class TuneController:
+    CKPT_FILE_TMPL = "experiment_state-{}.json"
+    RAISE = "RAISE"
+
     def __init__(
         self,
         *,
@@ -108,7 +111,7 @@ class TuneController:
 
         self._actor_manager = RayActorManager(resource_manager=resource_manager)
 
-        self._class_cache = _class_cache
+        self._class_cache = _ActorClassCache()
 
         # Resource status
         self._resource_updater = _ResourceUpdater(None)

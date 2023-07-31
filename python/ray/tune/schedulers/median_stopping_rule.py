@@ -1,14 +1,16 @@
 import collections
 import logging
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, TYPE_CHECKING
 
 import numpy as np
 
-from ray.tune.execution import trial_runner
 from ray.tune.result import DEFAULT_METRIC
 from ray.tune.experiment import Trial
 from ray.tune.schedulers.trial_scheduler import FIFOScheduler, TrialScheduler
 from ray.util.annotations import PublicAPI
+
+if TYPE_CHECKING:
+    from ray.tune.execution.tune_controller import TuneController
 
 logger = logging.getLogger(__name__)
 
@@ -97,7 +99,7 @@ class MedianStoppingRule(FIFOScheduler):
 
         return True
 
-    def on_trial_add(self, trial_runner: "trial_runner.TrialRunner", trial: Trial):
+    def on_trial_add(self, trial_runner: "TuneController", trial: Trial):
         if not self._metric or not self._worst or not self._compare_op:
             raise ValueError(
                 "{} has been instantiated without a valid `metric` ({}) or "
@@ -111,7 +113,7 @@ class MedianStoppingRule(FIFOScheduler):
         super(MedianStoppingRule, self).on_trial_add(trial_runner, trial)
 
     def on_trial_result(
-        self, trial_runner: "trial_runner.TrialRunner", trial: Trial, result: Dict
+        self, trial_runner: "TuneController", trial: Trial, result: Dict
     ) -> str:
         """Callback for early stopping.
 
@@ -170,7 +172,7 @@ class MedianStoppingRule(FIFOScheduler):
             return TrialScheduler.CONTINUE
 
     def on_trial_complete(
-        self, trial_runner: "trial_runner.TrialRunner", trial: Trial, result: Dict
+        self, trial_runner: "TuneController", trial: Trial, result: Dict
     ):
         self._results[trial].append(result)
 
@@ -180,7 +182,7 @@ class MedianStoppingRule(FIFOScheduler):
         )
 
     def _on_insufficient_samples(
-        self, trial_runner: "trial_runner.TrialRunner", trial: Trial, time: float
+        self, trial_runner: "TuneController", trial: Trial, time: float
     ) -> str:
         pause = time - self._last_pause[trial] > self._min_time_slice
         pause = pause and [
