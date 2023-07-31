@@ -73,7 +73,7 @@ class TrainingIterator:
 
         # TODO(justinvyu): Is this the best way to do this? Need to save this
         # as part of checkpoint metadata and load it back on restore.
-        self._latest_checkpoint_id = 0
+        self._latest_checkpoint_index = 0
 
         self._start_training(
             train_func=train_func,
@@ -124,14 +124,14 @@ class TrainingIterator:
             # NOTE: Idea: this checkpoint dir name should be customizable
             # and created on the fly when the checkpoint is reported with metrics.
             # Ex: lambda metrics: f"checkpoint_iter={metrics['training_iteration']}"
-            storage.current_checkpoint_index = self._latest_checkpoint_id
+            storage.current_checkpoint_index = self._latest_checkpoint_index
             print(f"Setting next checkpoint path to: {storage.checkpoint_fs_path}")
 
             self._backend_executor._set_checkpoint_index(
                 storage.current_checkpoint_index
             )
 
-            self._latest_checkpoint_id += 1
+            self._latest_checkpoint_index += 1
 
         elif self._checkpoint_strategy._checkpoint_upload_from_workers:
             self._backend_executor._set_legacy_checkpoint_uri(
