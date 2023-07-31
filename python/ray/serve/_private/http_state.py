@@ -253,6 +253,7 @@ class HTTPProxyState:
             return
 
         if (self._status == HTTPProxyStatus.HEALTHY) and draining:
+            logger.info(f"Start to drain the proxy actor on node {self._node_id}")
             self.set_status(HTTPProxyStatus.DRAINING)
             # All the update_draining calls are ordered via `_after`.
             self._update_draining_obj_ref = self._actor_handle.update_draining.remote(
@@ -263,6 +264,7 @@ class HTTPProxyState:
             self._last_drain_check_time = time.time()
 
         if (self._status == HTTPProxyStatus.DRAINING) and not draining:
+            logger.info(f"Stop draining the proxy actor on node {self._node_id}")
             self.set_status(HTTPProxyStatus.HEALTHY)
             self._update_draining_obj_ref = self._actor_handle.update_draining.remote(
                 False, _after=self._update_draining_obj_ref

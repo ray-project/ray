@@ -876,6 +876,10 @@ class HTTPProxyActor:
         configure_component_logger(
             component_name="http_proxy", component_id=node_ip_address
         )
+        logger.info(
+            f"Start the http proxy actor {ray.get_runtime_context().get_actor_id()} "
+            f"on node {node_id}"
+        )
         if http_middlewares is None:
             http_middlewares = [Middleware(RequestIdMiddleware)]
         else:
