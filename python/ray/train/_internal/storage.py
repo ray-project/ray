@@ -493,6 +493,12 @@ class StorageContext:
             destination_filesystem=self.storage_filesystem,
         )
 
+        # Drop a marker file to indicate that the checkpoint is completely uploaded.
+        # TODO(justinvyu): This may make more sense to do in session.report
+        uploaded_marker_file = os.path.join(self.checkpoint_fs_path, ".is_checkpoint")
+        with self.storage_filesystem.open_output_stream(uploaded_marker_file):
+            pass
+
         # Delete local checkpoint files.
         # TODO(justinvyu): What if checkpoint.path == self.checkpoint_fs_path?
         # TODO(justinvyu): What if users don't want to delete the local checkpoint?
