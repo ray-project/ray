@@ -1,4 +1,4 @@
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, TYPE_CHECKING
 import sklearn.datasets
 import sklearn.metrics
 import os
@@ -13,8 +13,10 @@ from ray.tune.schedulers import ResourceChangingScheduler, ASHAScheduler
 from ray.tune import Trainable
 from ray.tune.execution.placement_groups import PlacementGroupFactory
 from ray.tune.experiment import Trial
-from ray.tune.execution import trial_runner
 from ray.tune.integration.xgboost import TuneReportCheckpointCallback
+
+if TYPE_CHECKING:
+    from ray.tune.execution.tune_controller import TuneController
 
 CHECKPOINT_FILENAME = "model.xgb"
 
@@ -162,7 +164,7 @@ def tune_xgboost(use_class_trainable=True):
     )
 
     def example_resources_allocation_function(
-        trial_runner: "trial_runner.TrialRunner",
+        trial_runner: "TuneController",
         trial: Trial,
         result: Dict[str, Any],
         scheduler: "ResourceChangingScheduler",

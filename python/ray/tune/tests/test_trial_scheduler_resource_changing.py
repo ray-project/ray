@@ -34,7 +34,7 @@ class MockTrialExecutor:
         return True
 
 
-class MockTrialRunner:
+class MockTuneController:
     def __init__(self, cpu, gpu) -> None:
         self.trial_executor = MockTrialExecutor(cpu, gpu)
         self.trials = set()
@@ -58,7 +58,7 @@ class MockTrial(Trial):
 
 class TestUniformResourceAllocation(unittest.TestCase):
     def setUp(self):
-        self.trial_runner = MockTrialRunner(8, 8)
+        self.tune_controller = MockTuneController(8, 8)
 
     def _prepareTrials(self, scheduler, base_pgf):
         trial1 = MockTrial("mock", config=dict(num=1), stub=True)
@@ -70,12 +70,12 @@ class TestUniformResourceAllocation(unittest.TestCase):
         trial4 = MockTrial("mock", config=dict(num=4), stub=True)
         trial4.placement_group_factory = base_pgf
 
-        self.trial_runner.trials = {trial1, trial2, trial3, trial4}
+        self.tune_controller.trials = {trial1, trial2, trial3, trial4}
 
-        scheduler.on_trial_add(self.trial_runner, trial1)
-        scheduler.on_trial_add(self.trial_runner, trial2)
-        scheduler.on_trial_add(self.trial_runner, trial3)
-        scheduler.on_trial_add(self.trial_runner, trial4)
+        scheduler.on_trial_add(self.tune_controller, trial1)
+        scheduler.on_trial_add(self.tune_controller, trial2)
+        scheduler.on_trial_add(self.tune_controller, trial3)
+        scheduler.on_trial_add(self.tune_controller, trial4)
 
         trial1.status = Trial.RUNNING
         trial2.status = Trial.RUNNING
@@ -86,10 +86,10 @@ class TestUniformResourceAllocation(unittest.TestCase):
     def _allocateAndAssertNewResources(self, trial, scheduler, target_pgf, metric=1):
         result = {"metric": metric, "training_iteration": 4}
         trial.last_result = result
-        decision = scheduler.on_trial_result(self.trial_runner, trial, result)
+        decision = scheduler.on_trial_result(self.tune_controller, trial, result)
         assert decision == TrialScheduler.PAUSE
         trial.status = Trial.PENDING
-        scheduler.choose_trial_to_run(self.trial_runner)
+        scheduler.choose_trial_to_run(self.tune_controller)
         assert trial.placement_group_factory == target_pgf
         trial.status = Trial.RUNNING
 
@@ -137,7 +137,7 @@ class TestUniformResourceAllocation(unittest.TestCase):
         trial1, trial2, trial3, trial4 = self._prepareTrials(scheduler, base_pgf)
 
         decision = scheduler.on_trial_result(
-            self.trial_runner, trial1, {"metric": 1, "training_iteration": 4}
+            self.tune_controller, trial1, {"metric": 1, "training_iteration": 4}
         )
         assert decision == TrialScheduler.CONTINUE
 
@@ -170,7 +170,7 @@ class TestUniformResourceAllocation(unittest.TestCase):
         trial1, trial2, trial3, trial4 = self._prepareTrials(scheduler, base_pgf)
 
         decision = scheduler.on_trial_result(
-            self.trial_runner, trial1, {"metric": 1, "training_iteration": 4}
+            self.tune_controller, trial1, {"metric": 1, "training_iteration": 4}
         )
         assert decision == TrialScheduler.CONTINUE
 
@@ -254,7 +254,7 @@ class TestUniformResourceAllocationAddBundles(TestUniformResourceAllocation):
         trial1, trial2, trial3, trial4 = self._prepareTrials(scheduler, base_pgf)
 
         decision = scheduler.on_trial_result(
-            self.trial_runner, trial1, {"metric": 1, "training_iteration": 4}
+            self.tune_controller, trial1, {"metric": 1, "training_iteration": 4}
         )
         assert decision == TrialScheduler.CONTINUE
 
@@ -287,7 +287,7 @@ class TestUniformResourceAllocationAddBundles(TestUniformResourceAllocation):
         trial1, trial2, trial3, trial4 = self._prepareTrials(scheduler, base_pgf)
 
         decision = scheduler.on_trial_result(
-            self.trial_runner, trial1, {"metric": 1, "training_iteration": 4}
+            self.tune_controller, trial1, {"metric": 1, "training_iteration": 4}
         )
         assert decision == TrialScheduler.CONTINUE
 
@@ -348,7 +348,7 @@ class TestTopJobResourceAllocation(TestUniformResourceAllocation):
         trial1, trial2, trial3, trial4 = self._prepareTrials(scheduler, base_pgf)
 
         decision = scheduler.on_trial_result(
-            self.trial_runner, trial2, {"metric": 0.9, "training_iteration": 4}
+            self.tune_controller, trial2, {"metric": 0.9, "training_iteration": 4}
         )
         assert decision == TrialScheduler.CONTINUE
 
@@ -356,7 +356,7 @@ class TestTopJobResourceAllocation(TestUniformResourceAllocation):
             trial1, scheduler, PlacementGroupFactory([{"CPU": 5}])
         )
         decision = scheduler.on_trial_result(
-            self.trial_runner, trial2, {"metric": 1.1, "training_iteration": 4}
+            self.tune_controller, trial2, {"metric": 1.1, "training_iteration": 4}
         )
         assert decision == TrialScheduler.CONTINUE
         trial4.status = Trial.TERMINATED
@@ -390,12 +390,12 @@ class TestTopJobResourceAllocation(TestUniformResourceAllocation):
         trial1, trial2, trial3, trial4 = self._prepareTrials(scheduler, base_pgf)
 
         decision = scheduler.on_trial_result(
-            self.trial_runner, trial2, {"metric": 0.9, "training_iteration": 4}
+            self.tune_controller, trial2, {"metric": 0.9, "training_iteration": 4}
         )
         assert decision == TrialScheduler.CONTINUE
 
         decision = scheduler.on_trial_result(
-            self.trial_runner, trial1, {"metric": 1.0, "training_iteration": 4}
+            self.tune_controller, trial1, {"metric": 1.0, "training_iteration": 4}
         )
         assert decision == TrialScheduler.CONTINUE
 
@@ -405,7 +405,7 @@ class TestTopJobResourceAllocation(TestUniformResourceAllocation):
             trial1, scheduler, PlacementGroupFactory([{"CPU": 4, "GPU": 4}])
         )
         decision = scheduler.on_trial_result(
-            self.trial_runner, trial2, {"metric": 1.1, "training_iteration": 4}
+            self.tune_controller, trial2, {"metric": 1.1, "training_iteration": 4}
         )
         assert decision == TrialScheduler.CONTINUE
         trial3.status = Trial.TERMINATED
@@ -434,12 +434,12 @@ class TestTopJobResourceAllocation(TestUniformResourceAllocation):
         trial1, trial2, trial3, trial4 = self._prepareTrials(scheduler, base_pgf)
 
         decision = scheduler.on_trial_result(
-            self.trial_runner, trial2, {"metric": 0.9, "training_iteration": 4}
+            self.tune_controller, trial2, {"metric": 0.9, "training_iteration": 4}
         )
         assert decision == TrialScheduler.CONTINUE
 
         decision = scheduler.on_trial_result(
-            self.trial_runner, trial1, {"metric": 1.0, "training_iteration": 4}
+            self.tune_controller, trial1, {"metric": 1.0, "training_iteration": 4}
         )
         assert decision == TrialScheduler.CONTINUE
 
@@ -449,7 +449,7 @@ class TestTopJobResourceAllocation(TestUniformResourceAllocation):
             trial1, scheduler, PlacementGroupFactory([{"CPU": 1, "GPU": 4}])
         )
         decision = scheduler.on_trial_result(
-            self.trial_runner, trial2, {"metric": 1.1, "training_iteration": 4}
+            self.tune_controller, trial2, {"metric": 1.1, "training_iteration": 4}
         )
         assert decision == TrialScheduler.CONTINUE
         trial3.status = Trial.TERMINATED
@@ -492,7 +492,7 @@ class TestTopJobResourceAllocationAddBundles(TestTopJobResourceAllocation):
         trial1, trial2, trial3, trial4 = self._prepareTrials(scheduler, base_pgf)
 
         decision = scheduler.on_trial_result(
-            self.trial_runner, trial2, {"metric": 0.9, "training_iteration": 4}
+            self.tune_controller, trial2, {"metric": 0.9, "training_iteration": 4}
         )
         assert decision == TrialScheduler.CONTINUE
 
@@ -500,7 +500,7 @@ class TestTopJobResourceAllocationAddBundles(TestTopJobResourceAllocation):
             trial1, scheduler, PlacementGroupFactory([{"CPU": 1}] * 5)
         )
         decision = scheduler.on_trial_result(
-            self.trial_runner, trial2, {"metric": 1.1, "training_iteration": 4}
+            self.tune_controller, trial2, {"metric": 1.1, "training_iteration": 4}
         )
         assert decision == TrialScheduler.CONTINUE
         trial4.status = Trial.TERMINATED
@@ -534,12 +534,12 @@ class TestTopJobResourceAllocationAddBundles(TestTopJobResourceAllocation):
         trial1, trial2, trial3, trial4 = self._prepareTrials(scheduler, base_pgf)
 
         decision = scheduler.on_trial_result(
-            self.trial_runner, trial2, {"metric": 0.9, "training_iteration": 4}
+            self.tune_controller, trial2, {"metric": 0.9, "training_iteration": 4}
         )
         assert decision == TrialScheduler.CONTINUE
 
         decision = scheduler.on_trial_result(
-            self.trial_runner, trial1, {"metric": 1.0, "training_iteration": 4}
+            self.tune_controller, trial1, {"metric": 1.0, "training_iteration": 4}
         )
         assert decision == TrialScheduler.CONTINUE
 
@@ -549,7 +549,7 @@ class TestTopJobResourceAllocationAddBundles(TestTopJobResourceAllocation):
             trial1, scheduler, PlacementGroupFactory([{}] + [{"CPU": 2, "GPU": 2}] * 2)
         )
         decision = scheduler.on_trial_result(
-            self.trial_runner, trial2, {"metric": 1.1, "training_iteration": 4}
+            self.tune_controller, trial2, {"metric": 1.1, "training_iteration": 4}
         )
         assert decision == TrialScheduler.CONTINUE
         trial3.status = Trial.TERMINATED
@@ -584,12 +584,12 @@ class TestTopJobResourceAllocationAddBundles(TestTopJobResourceAllocation):
         trial1, trial2, trial3, trial4 = self._prepareTrials(scheduler, base_pgf)
 
         decision = scheduler.on_trial_result(
-            self.trial_runner, trial2, {"metric": 0.9, "training_iteration": 4}
+            self.tune_controller, trial2, {"metric": 0.9, "training_iteration": 4}
         )
         assert decision == TrialScheduler.CONTINUE
 
         decision = scheduler.on_trial_result(
-            self.trial_runner, trial1, {"metric": 1.0, "training_iteration": 4}
+            self.tune_controller, trial1, {"metric": 1.0, "training_iteration": 4}
         )
         assert decision == TrialScheduler.CONTINUE
 
@@ -599,7 +599,7 @@ class TestTopJobResourceAllocationAddBundles(TestTopJobResourceAllocation):
             trial1, scheduler, PlacementGroupFactory([{"CPU": 1}] + [{"GPU": 2}] * 2)
         )
         decision = scheduler.on_trial_result(
-            self.trial_runner, trial2, {"metric": 1.1, "training_iteration": 4}
+            self.tune_controller, trial2, {"metric": 1.1, "training_iteration": 4}
         )
         assert decision == TrialScheduler.CONTINUE
         trial3.status = Trial.TERMINATED

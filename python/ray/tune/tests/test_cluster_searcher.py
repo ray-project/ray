@@ -8,7 +8,7 @@ import sys
 import ray
 from ray.cluster_utils import Cluster
 from ray.tune.experiment import Trial
-from ray.tune.execution.trial_runner import TrialRunner
+from ray.tune.execution.tune_controller import TuneController
 from ray.tune.utils.mock_trainable import MyTrainableClass
 
 
@@ -42,7 +42,7 @@ def start_connected_cluster():
 @pytest.mark.skipif(
     os.environ.get("TUNE_NEW_EXECUTION") != "0",
     reason=(
-        "This test uses the TrialRunner directly and needs to be rewritten "
+        "This test uses the TuneController directly and needs to be rewritten "
         "for the new execution backend."
     ),
 )
@@ -81,9 +81,9 @@ def test_cluster_interrupt_searcher(start_connected_cluster, tmpdir, searcher):
     # the checkpoint.
     trials = []
     for i in range(100):
-        if TrialRunner.checkpoint_exists(local_checkpoint_dir):
-            # Inspect the internal trialrunner
-            runner = TrialRunner(
+        if TuneController.checkpoint_exists(local_checkpoint_dir):
+            # Inspect the internal TuneController
+            runner = TuneController(
                 resume="LOCAL", local_checkpoint_dir=local_checkpoint_dir
             )
             trials = runner.get_trials()
@@ -93,7 +93,7 @@ def test_cluster_interrupt_searcher(start_connected_cluster, tmpdir, searcher):
     else:
         raise ValueError(f"Didn't generate enough trials: {len(trials)}")
 
-    if not TrialRunner.checkpoint_exists(local_checkpoint_dir):
+    if not TuneController.checkpoint_exists(local_checkpoint_dir):
         raise RuntimeError(
             f"Checkpoint file didn't appear in {local_checkpoint_dir}. "
             f"Current list: {os.listdir(local_checkpoint_dir)}."
@@ -110,9 +110,9 @@ def test_cluster_interrupt_searcher(start_connected_cluster, tmpdir, searcher):
     register_trainable("trainable", MyTrainableClass)
     reached = False
     for i in range(100):
-        if TrialRunner.checkpoint_exists(local_checkpoint_dir):
-            # Inspect the internal trialrunner
-            runner = TrialRunner(
+        if TuneController.checkpoint_exists(local_checkpoint_dir):
+            # Inspect the internal TuneController
+            runner = TuneController(
                 resume="LOCAL", local_checkpoint_dir=local_checkpoint_dir
             )
             trials = runner.get_trials()

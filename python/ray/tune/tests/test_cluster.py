@@ -17,7 +17,7 @@ from ray.tune.error import TuneError
 from ray.tune.search import BasicVariantGenerator
 from ray.tune.syncer import SyncerCallback
 from ray.tune.experiment import Trial
-from ray.tune.execution.trial_runner import TrialRunner
+from ray.tune.execution.tune_controller import TuneController
 
 
 def _check_trial_running(trial):
@@ -86,7 +86,7 @@ def test_counting_resources(start_connected_cluster):
     cluster = start_connected_cluster
     nodes = []
     assert ray.cluster_resources()["CPU"] == 1
-    runner = TrialRunner(search_alg=BasicVariantGenerator())
+    runner = TuneController(search_alg=BasicVariantGenerator())
     kwargs = {"stopping_criterion": {"training_iteration": 10}}
 
     trials = [Trial("__fake", **kwargs), Trial("__fake", **kwargs)]
@@ -127,7 +127,7 @@ def test_trial_processed_after_node_failure(start_connected_emptyhead_cluster):
     node = cluster.add_node(num_cpus=1)
     cluster.wait_for_nodes()
 
-    runner = TrialRunner(search_alg=BasicVariantGenerator())
+    runner = TuneController(search_alg=BasicVariantGenerator())
     mock_process_failure = MagicMock(side_effect=runner._process_trial_failure)
     runner._process_trial_failure = mock_process_failure
 
@@ -149,7 +149,7 @@ def test_remove_node_before_result(start_connected_emptyhead_cluster):
     node = cluster.add_node(num_cpus=1)
     cluster.wait_for_nodes()
 
-    runner = TrialRunner(search_alg=BasicVariantGenerator())
+    runner = TuneController(search_alg=BasicVariantGenerator())
     kwargs = {
         "stopping_criterion": {"training_iteration": 3},
         "checkpoint_config": CheckpointConfig(checkpoint_frequency=2),
@@ -211,7 +211,7 @@ def test_trial_migration(start_connected_emptyhead_cluster, tmpdir, durable):
         experiment_path = None
         syncer_callback = custom_driver_logdir_callback(str(tmpdir))
 
-    runner = TrialRunner(
+    runner = TuneController(
         search_alg=BasicVariantGenerator(), callbacks=[syncer_callback]
     )
     kwargs = {
@@ -298,7 +298,7 @@ def test_trial_requeue(start_connected_emptyhead_cluster, tmpdir, durable):
         experiment_path = None
         syncer_callback = custom_driver_logdir_callback(str(tmpdir))
 
-    runner = TrialRunner(
+    runner = TuneController(
         search_alg=BasicVariantGenerator(), callbacks=[syncer_callback]
     )  # noqa
     kwargs = {
@@ -344,7 +344,7 @@ def test_migration_checkpoint_removal(
         experiment_path = None
         syncer_callback = custom_driver_logdir_callback(str(tmpdir))
 
-    runner = TrialRunner(
+    runner = TuneController(
         search_alg=BasicVariantGenerator(), callbacks=[syncer_callback]
     )
     kwargs = {
@@ -480,9 +480,9 @@ tune.run(
     # the checkpoint.
     local_checkpoint_dir = os.path.join(dirpath, "experiment")
     for i in range(100):
-        if TrialRunner.checkpoint_exists(local_checkpoint_dir):
-            # Inspect the internal trialrunner
-            runner = TrialRunner(
+        if TuneController.checkpoint_exists(local_checkpoint_dir):
+            # Inspect the internal TuneController
+            runner = TuneController(
                 resume="LOCAL", local_checkpoint_dir=local_checkpoint_dir
             )
             trials = runner.get_trials()
@@ -491,7 +491,7 @@ tune.run(
                 break
         time.sleep(0.3)
 
-    if not TrialRunner.checkpoint_exists(local_checkpoint_dir):
+    if not TuneController.checkpoint_exists(local_checkpoint_dir):
         raise RuntimeError("Checkpoint file didn't appear.")
 
     ray.shutdown()
@@ -582,9 +582,9 @@ tune.run(
     # the checkpoint.
     local_checkpoint_dir = os.path.join(dirpath, "experiment")
     for i in range(50):
-        if TrialRunner.checkpoint_exists(local_checkpoint_dir):
-            # Inspect the internal trialrunner
-            runner = TrialRunner(
+        if TuneController.checkpoint_exists(local_checkpoint_dir):
+            # Inspect the internal TuneController
+            runner = TuneController(
                 resume="LOCAL", local_checkpoint_dir=local_checkpoint_dir
             )
             trials = runner.get_trials()
@@ -593,7 +593,7 @@ tune.run(
                 break
         time.sleep(0.2)
 
-    if not TrialRunner.checkpoint_exists(local_checkpoint_dir):
+    if not TuneController.checkpoint_exists(local_checkpoint_dir):
         raise RuntimeError("Checkpoint file didn't appear.")
 
     ray.shutdown()
@@ -601,8 +601,8 @@ tune.run(
     cluster = _start_new_cluster()
     Experiment.register_if_needed(_Mock)
 
-    # Inspect the internal trialrunner
-    runner = TrialRunner(resume="LOCAL", local_checkpoint_dir=local_checkpoint_dir)
+    # Inspect the internal TuneController
+    runner = TuneController(resume="LOCAL", local_checkpoint_dir=local_checkpoint_dir)
     trials = runner.get_trials()
     assert trials[0].last_result["training_iteration"] == 3
     assert trials[0].status == Trial.PENDING
