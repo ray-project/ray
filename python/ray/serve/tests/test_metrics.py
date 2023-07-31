@@ -871,6 +871,51 @@ def test_multiplexed_metrics(serve_start_shutdown):
     )
 
 
+def test_deployment_queued_metrics(serve_start_shutdown):
+    """Tests deployment queued metrics set and clear properly"""
+    signal = SignalActor.remote()
+
+    @serve.deployment
+    class Model:
+        async def __call__(self):
+            await signal.wait.remote()
+            return "hello"
+
+    @ray.remote
+    def fn():
+        requests.get("http://localhost:8000/app")
+
+    serve.run(Model.bind(), name="app", route_prefix="/app")
+    num_requests = 3
+    resp_ref = []
+    for _ in range(num_requests):
+        resp_ref.append(fn.remote())
+
+    def check_metrics(metric_val):
+        resp = requests.get("http://127.0.0.1:9999").text
+        resp = resp.split("\n")
+        for metrics in resp:
+            if "# HELP" in metrics or "# TYPE" in metrics:
+                continue
+            if "serve_deployment_queued_queries" in metrics:
+                assert "2.0" in metrics
+        return True
+
+    wait_for_condition(
+        check_metrics,
+        metric_val="2.0",
+        timeout=40,
+    )
+
+    signal.send.remote()
+
+    wait_for_condition(
+        check_metrics,
+        metric_val="0.0",
+        timeout=40,
+    )
+
+
 def test_actor_summary(serve_instance):
     @serve.deployment
     def f():
