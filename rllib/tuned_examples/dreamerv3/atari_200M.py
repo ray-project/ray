@@ -19,16 +19,14 @@ num_gpus = 1
 
 config = (
     DreamerV3Config()
-    # Switch on eager_tracing by default.
-    .framework("tf2", eager_tracing=True)
     .resources(
         num_learner_workers=0 if num_gpus == 1 else num_gpus,
         num_gpus_per_learner_worker=1 if num_gpus else 0,
         num_cpus_for_local_worker=1,
     )
-    # TODO (sven): concretize this: If you use >1 GPU and increase the batch size
-    #  accordingly, you might also want to increase the number of envs per worker
     .rollouts(
+        # If we use >1 GPU and increase the batch size accordingly, we should also
+        # increase the number of envs per worker.
         num_envs_per_worker=8 * (num_gpus or 1),
         remote_worker_envs=True,
     )
@@ -60,7 +58,6 @@ config = (
         model_size="XL",
         training_ratio=64,
         batch_size_B=16 * (num_gpus or 1),
-        # TODO
         model={
             "batch_length_T": 64,
             "horizon_H": 15,

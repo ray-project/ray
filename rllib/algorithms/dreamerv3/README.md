@@ -1,7 +1,7 @@
 # DreamerV3
 
 ## Overview
-An RLlib-based implementation for TensorFlow and Keras of the "DreamerV3" model-based reinforcement
+An RLlib-based implementation for TensorFlow/Keras of the "DreamerV3" model-based reinforcement
 learning algorithm by D. Hafner et al. (Google DeepMind) 2023
 
 The implementation is based on RLlib's new Learner- and RLModule APIs and therefore allows
@@ -22,25 +22,46 @@ predict a correct value function (based on the world model-predicted rewards), w
 the actor tries to come up with good actions to take for maximizing accumulated rewards
 over time.
 In other words, the actual RL components of the model (actor and critic) are never
-trained on actual environment data, but on such dreamed trajectories only.
+trained on real environment data, but on dreamed trajectories only.
 
 ## Note on Hyperparameter Tuning for DreamerV3
 DreamerV3 is an extremely versatile and stable algorithm that not only works well on
 different action- and observation spaces, including discrete and continuous actions, as well
-as image and vector observations, but also almost needs to hyperparameter tuning, except for
-a simple model-size setting (from "XS" to "XL") and a value for the training ratio (how many
-steps to replay from the buffer for a training update vs how many steps to take in the
-actual environment).
+as image and vector observations, but also almost needs no hyperparameter tuning, except for
+a simple "model size" setting (from "XS" to "XL") and a value for the training ratio, which
+specifies how many steps to replay from the buffer for a training update vs how many
+steps to take in the actual environment.
+
 
 ## Note on multi-GPU Training with DreamerV3
 We found that when using multiple GPUs for DreamerV3 training, the following simple
 adjustments should be made to the standard config.
+- Multiply the original batch size (B=16) by the number of GPUs you are using.
+- Multiply the number of environments you sample from in parallel by the number of GPUs you are using.
+- Use a learning rate schedule for all learning rates (world model, actor, critic) with "priming".
+  - In particular, the first 10k timesteps should use low rates of `0.4` times of the published rates
+    (i.e. world model: `4e-5`, critic and actor: `1.2e-5`). 
+  - Over the course of the next 10k timesteps, linearly increase all rates to
+    n times their published values, where `n=max(4, [num GPUs])`.
+
 
 ## Example Configs and Command Lines
 Use the config examples and templates in
 [the tuned_examples folder here](https://github.com/ray-project/ray/tree/master/rllib/tuned_examples/dreamerv3)
-in combination with the in order to run RLlib's DreamerV3 algorithm in your experiments.
+in combination with the following scripts and command lines in order to run RLlib's DreamerV3 algorithm in your experiments:
 
+### Atari100k
+```shell
+$ cd ray/rllib/tests
+$ python run_regression_tests.py --dir ../tuned_examples/dreamerv3/atari_100k.py --env ALE/Pong-v5 
+```
+
+### DeepMind Control Suite (vision)
+```shell
+$ cd ray/rllib/tests
+$ python run_regression_tests.py --dir ../tuned_examples/dreamerv3/dm_control_suite_vision.py --env DMC/cartpole/swingup 
+```
+Other `--env` options are `--env DMC/hopper/hop`, `--env DMC/walker/walk`, etc.. 
 
 
 ## Results

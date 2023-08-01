@@ -41,7 +41,12 @@ config = (
         num_gpus_per_learner_worker=1 if num_gpus else 0,
         num_cpus_for_local_worker=1,
     )
-    .rollouts(num_envs_per_worker=(num_gpus or 1), remote_worker_envs=True)
+    .rollouts(
+        # If we use >1 GPU and increase the batch size accordingly, we should also
+        # increase the number of envs per worker.
+        num_envs_per_worker=(num_gpus or 1),
+        remote_worker_envs=True,
+    )
     .reporting(
         metrics_num_episodes_for_smoothing=(num_gpus or 1),
         report_images_and_videos=False,
@@ -53,7 +58,6 @@ config = (
         model_size="S",
         training_ratio=1024,
         batch_size_B=16 * (num_gpus or 1),
-        # TODO
         model={
             "batch_length_T": 64,
             "horizon_H": 15,
