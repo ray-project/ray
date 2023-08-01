@@ -240,15 +240,15 @@ def training_function(kwargs: dict):
     ):
         lr_scheduler = get_linear_schedule_with_warmup(
             optimizer=optimizer,
-            num_warmup_steps=100,
-            num_training_steps=(train_ds_len * num_epochs)
+            num_warmup_steps=10 * batch_size,
+            num_training_steps=(train_ds_len * num_epochs * batch_size)
             // gradient_accumulation_steps,
         )
     else:
         lr_scheduler = DummyScheduler(
             optimizer,
-            total_num_steps=(train_ds_len * num_epochs) // gradient_accumulation_steps,
-            warmup_num_steps=100,
+            total_num_steps=(train_ds_len * num_epochs * batch_size) // gradient_accumulation_steps,
+            warmup_num_steps=10 * batch_size,
         )
 
     # Prepare everything
@@ -262,9 +262,9 @@ def training_function(kwargs: dict):
     if accelerator.is_main_process:
         print("Starting training ...")
         print("Number of batches on main process", train_ds_len // batch_size)
-
-    avg_fwd_time, avg_bwd_time, avg_opt_step_time = 0, 0, 0
+    
     for epoch in range(num_epochs):
+        avg_fwd_time, avg_bwd_time, avg_opt_step_time = 0, 0, 0
         s_epoch = time.time()
         model.train()
         loss_sum = torch.tensor(0.0).to(accelerator.device)
@@ -314,7 +314,8 @@ def training_function(kwargs: dict):
                     {
                         "epoch": epoch,
                         "iteration": step,
-                        "train_loss": loss_sum.item() / (step + 1),
+                        "train_loss": loss.item(),
+                        "epoch_average_loss": None,
                         "eval_loss": None,
                         "perplexity": None,
                         "num_iterations": step + 1,
@@ -322,6 +323,7 @@ def training_function(kwargs: dict):
                         "eval_time_per_epoch": None,
                         "avg_fwd_time": avg_fwd_time / (step + 1),
                         "avg_bwd_time": avg_bwd_time / (step + 1),
+                        "lr": lr_scheduler.get_lr()[0],
                     },
                 )
 
@@ -388,7 +390,8 @@ def training_function(kwargs: dict):
             {
                 "epoch": epoch,
                 "iteration": step,
-                "train_loss": loss_sum.item() / (step + 1),
+                "train_loss": loss.item(),
+                "epoch_average_loss": loss_sum.item() / (step + 1),
                 "eval_loss": eloss,
                 "perplexity": perplex,
                 "num_iterations": step + 1,
@@ -396,6 +399,7 @@ def training_function(kwargs: dict):
                 "eval_time_per_epoch": eval_e_epoch - eval_s_epoch,
                 "avg_fwd_time": avg_fwd_time / (step + 1),
                 "avg_bwd_time": avg_bwd_time / (step + 1),
+                "lr": lr_scheduler.get_lr()[0],
             },
             # We do not need to explictly call report(checkpoint).
             # This is because the checkpointing is not on all distributed workers, it's
