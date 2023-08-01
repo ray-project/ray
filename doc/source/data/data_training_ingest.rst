@@ -1,0 +1,1 @@
+.. include:: ../train/training_ingest.rst
