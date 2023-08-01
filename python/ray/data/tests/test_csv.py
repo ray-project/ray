@@ -777,7 +777,7 @@ def test_csv_write_block_path_provider(
     ds.write_csv(
         data_path, filesystem=fs, block_path_provider=test_block_write_path_provider
     )
-    file_path = os.path.join(data_path, "000000_03_data.test.csv")
+    file_path = os.path.join(data_path, "000000_data.test.csv")
     assert df1.equals(pd.read_csv(file_path, storage_options=storage_options))
 
     # Two blocks.
@@ -787,7 +787,7 @@ def test_csv_write_block_path_provider(
     ds.write_csv(
         data_path, filesystem=fs, block_path_provider=test_block_write_path_provider
     )
-    file_path2 = os.path.join(data_path, "000001_03_data.test.csv")
+    file_path2 = os.path.join(data_path, "000001_data.test.csv")
     df = pd.concat([df1, df2])
     ds_df = pd.concat(
         [
