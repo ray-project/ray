@@ -251,6 +251,7 @@ Status TaskExecutor::ExecuteTask(
         total,
         meta_buffer,
         std::vector<ray::ObjectID>(),
+        caller_address,
         &task_output_inlined_bytes,
         result_ptr));
 
@@ -277,7 +278,8 @@ Status TaskExecutor::ExecuteTask(
     RAY_CHECK_OK(CoreWorkerProcess::GetCoreWorker().SealReturnObject(
         result_id,
         result,
-        /*generator_id=*/ObjectID::Nil()));
+        /*generator_id=*/ObjectID::Nil(),
+        caller_address));
   } else {
     if (!status.ok()) {
       return ray::Status::CreationTaskError("");
