@@ -439,7 +439,7 @@ class StateDataSourceClient:
             else:
                 raise DataSourceUnavailable(
                     "Failed to query the runtime env agent for get_runtime_envs_info. "
-                    "It is either there's a network issue, or the source is down. "
+                    "Either there's a network issue, or the source is down. "
                     f"Response is {resp.status}, reason {resp.reason}"
                 )
 
