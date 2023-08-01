@@ -1,14 +1,16 @@
 import heapq
 import logging
 import numbers
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple, TYPE_CHECKING
 
 from ray._private.dict import flatten_dict
 from ray.air.config import MAX
 from ray.air._internal.util import is_nan
-from ray.train import CheckpointConfig
 from ray.train._internal.storage import _delete_fs_path
 from ray.train.checkpoint import Checkpoint
+
+if TYPE_CHECKING:
+    from ray.train import CheckpointConfig
 
 
 logger = logging.getLogger(__name__)
@@ -57,9 +59,11 @@ class _CheckpointManager:
 
     def __init__(
         self,
-        checkpoint_config: Optional[CheckpointConfig],
+        checkpoint_config: Optional["CheckpointConfig"],
         latest_checkpoint_index: int = 0,
     ):
+        from ray.train import CheckpointConfig
+
         self._checkpoint_config = checkpoint_config or CheckpointConfig()
 
         # Incremental unique checkpoint ID of this run.

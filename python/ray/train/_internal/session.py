@@ -37,7 +37,6 @@ from ray.train.constants import (
     TIME_TOTAL_S,
     LAZY_CHECKPOINT_MARKER_FILE,
 )
-from ray.train.checkpoint import Checkpoint as NewCheckpoint
 
 from ray.train.error import SessionMisuseError
 from ray.util.annotations import DeveloperAPI, PublicAPI
@@ -436,7 +435,9 @@ class _TrainSession:
         """
         self.legacy_checkpoint_uri = uri
 
-    def new_checkpoint(self, checkpoint: NewCheckpoint):
+    def new_checkpoint(self, checkpoint):
+        from ray.train.checkpoint import Checkpoint as NewCheckpoint
+
         if not isinstance(checkpoint, NewCheckpoint):
             raise ValueError(
                 "You must pass a `ray.train.checkpoint.Checkpoint` "
@@ -466,9 +467,7 @@ class _TrainSession:
         # checkpoint has been processed.
         self.continue_lock.acquire()
 
-    def new_report(
-        self, metrics: Dict, checkpoint: Optional[NewCheckpoint] = None
-    ) -> None:
+    def new_report(self, metrics: Dict, checkpoint=None) -> None:
         if checkpoint:
             self.new_checkpoint(checkpoint)
 

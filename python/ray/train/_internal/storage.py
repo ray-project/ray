@@ -4,7 +4,7 @@ import logging
 import os
 from pathlib import Path
 import shutil
-from typing import Callable, Dict, List, Optional, Tuple
+from typing import Callable, Dict, List, Optional, Tuple, TYPE_CHECKING
 
 try:
     import fsspec
@@ -27,9 +27,11 @@ except (ImportError, ModuleNotFoundError) as e:
 
 from ray.air._internal.filelock import TempFileLock
 from ray.air._internal.uri_utils import URI, is_uri
-from ray.train.checkpoint import Checkpoint
 from ray.tune.syncer import Syncer, SyncConfig, _BackgroundSyncer
 from ray.tune.result import _get_defaults_results_dir
+
+if TYPE_CHECKING:
+    from ray.train.checkpoint import Checkpoint
 
 
 logger = logging.getLogger(__file__)
@@ -467,7 +469,7 @@ class StorageContext:
                 "to the configured storage path."
             )
 
-    def persist_current_checkpoint(self, checkpoint: Checkpoint) -> Checkpoint:
+    def persist_current_checkpoint(self, checkpoint: "Checkpoint") -> "Checkpoint":
         """Persists a given checkpoint to the current checkpoint path on the filesystem.
 
         "Current" is defined by the `current_checkpoint_index` attribute of the
@@ -484,6 +486,9 @@ class StorageContext:
         Returns:
             Checkpoint: A Checkpoint pointing to the persisted checkpoint location.
         """
+        # TODO(justinvyu): Fix this cyclical import.
+        from ray.train.checkpoint import Checkpoint
+
         logger.debug(
             "Copying checkpoint files to storage path:\n"
             "({source_fs}, {source}) -> ({dest_fs}, {destination})".format(
