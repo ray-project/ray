@@ -181,8 +181,8 @@ def test_nested_get_checkpoint_score(metrics):
         )
     )
 
-    tracked_checkpoint = _TrackedCheckpoint(checkpoint=None, metrics=metrics, index=3)
-    assert manager._get_checkpoint_score(tracked_checkpoint) == (True, 5.0, 3)
+    tracked_checkpoint = _TrackedCheckpoint(checkpoint=None, metrics=metrics)
+    assert manager._get_checkpoint_score(tracked_checkpoint) == (True, 5.0)
 
 
 if __name__ == "__main__":
