@@ -155,9 +155,10 @@ class RayIterableDataset(IterableDataset):
         super().__init__()
         self.dataset = dataset
         self.config = config
+        self.torch_iterable = self.dataset.iter_torch_batches(**self.config)
 
     def __iter__(self):
-        return self.dataset.iter_torch_batches(**self.config)
+        return iter(self.torch_iterable)
 
 
 class RayDataModule(pl.LightningDataModule):

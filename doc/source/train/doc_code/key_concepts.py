@@ -37,7 +37,7 @@ def train_fn(config):
             # Local worker rank on the current machine
             "local_rank": session.get_local_rank(),
             # Data
-            "data_shard": next(dataset_shard.iter_batches(batch_format="pandas")),
+            "data_shard": next(iter(dataset_shard.iter_batches(batch_format="pandas"))),
         }
     )
 
