@@ -73,7 +73,7 @@ class BlockWritePathProvider:
         *,
         filesystem: Optional["pyarrow.fs.FileSystem"] = None,
         dataset_uuid: Optional[str] = None,
-        block: Optional[Block] = None,
+        task_index: Optional[int] = None,
         block_index: Optional[int] = None,
         file_format: Optional[str] = None,
     ) -> str:
@@ -91,8 +91,10 @@ class BlockWritePathProvider:
             dataset_uuid: Unique identifier for the dataset that this block
                 belongs to.
             block: The block to write.
-            block_index: Ordered index of the block to write within its parent
+            task_index: Ordered index of the write task within its parent
                 dataset.
+            block_index: Ordered index of the block to write within its parent
+                write task.
             file_format: File format string for the block that can be used as
                 the file extension in the write path returned.
 
@@ -107,7 +109,7 @@ class BlockWritePathProvider:
         *,
         filesystem: Optional["pyarrow.fs.FileSystem"] = None,
         dataset_uuid: Optional[str] = None,
-        block: Optional[Block] = None,
+        task_index: Optional[int] = None,
         block_index: Optional[int] = None,
         file_format: Optional[str] = None,
     ) -> str:
@@ -115,7 +117,7 @@ class BlockWritePathProvider:
             base_path,
             filesystem=filesystem,
             dataset_uuid=dataset_uuid,
-            block=block,
+            task_index=task_index,
             block_index=block_index,
             file_format=file_format,
         )
@@ -125,7 +127,7 @@ class BlockWritePathProvider:
 class DefaultBlockWritePathProvider(BlockWritePathProvider):
     """Default block write path provider implementation that writes each
     dataset block out to a file of the form:
-    {base_path}/{dataset_uuid}_{block_index}.{file_format}
+    {base_path}/{dataset_uuid}_{task_index}_{block_index}.{file_format}
     """
 
     def _get_write_path_for_block(
@@ -134,11 +136,14 @@ class DefaultBlockWritePathProvider(BlockWritePathProvider):
         *,
         filesystem: Optional["pyarrow.fs.FileSystem"] = None,
         dataset_uuid: Optional[str] = None,
-        block: Optional[ObjectRef[Block]] = None,
+        task_index: Optional[int] = None,
         block_index: Optional[int] = None,
         file_format: Optional[str] = None,
     ) -> str:
-        suffix = f"{dataset_uuid}_{block_index:06}.{file_format}"
+        if block_index is not None:
+            suffix = f"{dataset_uuid}_{task_index:06}_{block_index:06}.{file_format}"
+        else:
+            suffix = f"{dataset_uuid}_{task_index:06}.{file_format}"
         # Uses POSIX path for cross-filesystem compatibility, since PyArrow
         # FileSystem paths are always forward slash separated, see:
         # https://arrow.apache.org/docs/python/filesystems.html
@@ -269,18 +274,6 @@ class FileBasedDatasource(Datasource):
         if isinstance(file_format, list):
             file_format = file_format[0]
 
-        builder = DelegatingBlockBuilder()
-        for block in blocks:
-            builder.add_block(block)
-        block = builder.build()
-
-        total_num_rows = BlockAccessor.for_block(block).num_rows()
-        if total_num_rows == 0:
-            logger.get_logger().warning(
-                f"Skipping writing empty dataset with UUID {dataset_uuid} at {path}",
-            )
-            return "skip"
-
         path, filesystem = _resolve_paths_and_filesystem(path, filesystem)
         path = path[0]
         if try_create_dir:
@@ -295,14 +288,30 @@ class FileBasedDatasource(Datasource):
         if open_stream_args is None:
             open_stream_args = {}
 
-        def write_block(write_path: str, block: Block):
+        if not block_path_provider:
+            block_path_provider = DefaultBlockWritePathProvider()
+
+        num_rows_written = 0
+        block_idx = 0
+        for block in blocks:
+            write_path = block_path_provider(
+                path,
+                filesystem=filesystem,
+                dataset_uuid=dataset_uuid,
+                task_index=ctx.task_idx,
+                block_index=block_idx,
+                file_format=file_format,
+            )
+
             logger.get_logger().debug(f"Writing {write_path} file.")
-            fs = _unwrap_s3_serialization_workaround(filesystem)
             if _block_udf is not None:
                 block = _block_udf(block)
 
             block = BlockAccessor.for_block(block)
-            assert block.num_rows() > 0, "Cannot write an empty block."
+            if block.num_rows() == 0:
+                continue
+
+            fs = _unwrap_s3_serialization_workaround(filesystem)
             with fs.open_output_stream(write_path, **open_stream_args) as f:
                 _write_block_to_file(
                     f,
@@ -310,21 +319,19 @@ class FileBasedDatasource(Datasource):
                     writer_args_fn=write_args_fn,
                     **write_args,
                 )
-            # TODO: decide if we want to return richer object when the task
-            # succeeds.
-            return "ok"
 
-        if not block_path_provider:
-            block_path_provider = DefaultBlockWritePathProvider()
-        write_path = block_path_provider(
-            path,
-            filesystem=filesystem,
-            dataset_uuid=dataset_uuid,
-            block=block,
-            block_index=ctx.task_idx,
-            file_format=file_format,
-        )
-        return write_block(write_path, block)
+            num_rows_written += block.num_rows()
+            block_idx += 1
+
+        if num_rows_written == 0:
+            logger.get_logger().warning(
+                f"Skipping writing empty dataset with UUID {dataset_uuid} at {path}",
+            )
+            return "skip"
+
+        # TODO: decide if we want to return richer object when the task
+        # succeeds.
+        return "ok"
 
     def _write_block(
         self,
