@@ -848,7 +848,7 @@ class HTTPProxy:
                 # We should only send timeout response if we have not sent
                 # any messages to the client yet. Header (including status code)
                 # messages can only be sent once.
-                if str(is_first_message) == str(False):
+                if str(is_first_message) == str(True):
                     await self._timeout_response(scope, receive, send)
                 return TIMEOUT_ERROR_CODE
 
