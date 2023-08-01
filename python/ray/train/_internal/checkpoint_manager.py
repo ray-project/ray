@@ -1,4 +1,3 @@
-from dataclasses import dataclass
 import heapq
 import logging
 import numbers
@@ -15,13 +14,15 @@ from ray.train.checkpoint import Checkpoint
 logger = logging.getLogger(__name__)
 
 
-@dataclass
 class _TrackedCheckpoint:
     """Checkpoint tracked by a checkpoint manager."""
 
-    checkpoint: Checkpoint
-    metrics: Dict[str, Any]
-    index: int = -1
+    def __init__(
+        self, checkpoint: Checkpoint, metrics: Dict[str, Any], index: int = -1
+    ):
+        self.checkpoint = checkpoint
+        self.metrics = metrics
+        self.index = index
 
 
 class _HeapCheckpointWrapper:
@@ -34,7 +35,7 @@ class _HeapCheckpointWrapper:
         self.priority = priority
         self.tracked_checkpoint = tracked_checkpoint
 
-    def __lt__(self, other):
+    def __lt__(self, other: "_HeapCheckpointWrapper") -> bool:
         return self.priority < other.priority
 
     def __repr__(self) -> str:
@@ -50,7 +51,7 @@ class _CheckpointManager:
 
     Args:
         checkpoint_config: Defines how many and which checkpoints to keep.
-        latest_checkpoint_id: First checkpoint ID to use (e.g., in case we
+        latest_checkpoint_index: First checkpoint ID to use (e.g., in case we
             resume an existing experiment).
     """
 
@@ -65,12 +66,17 @@ class _CheckpointManager:
         self._latest_checkpoint_index = latest_checkpoint_index
 
         # A heap that tracks the top K checkpoints.
-        self._top_k_checkpoints: List[_TrackedCheckpoint] = []
+        self._top_k_checkpoints: List[_HeapCheckpointWrapper] = []
 
         # The most recently registered checkpoint.
         # The latest checkpoint should never be deleted immediately,
         # even if it's the worst checkpoint.
         self._latest_checkpoint: Optional[_TrackedCheckpoint] = None
+
+        # The best checkpoint seen so far.
+        # Since _top_k_checkpoints is a min-heap (to know who to evict),
+        # we still need to keep track of the best checkpoint independently.
+        self._best_checkpoint: Optional[_HeapCheckpointWrapper] = None
 
         # Deletion of some checkpoints should be deferred. Specifically, if the
         # latest persisted checkpoint should be deleted, we will only delete it
@@ -102,6 +108,13 @@ class _CheckpointManager:
         )
         heapq.heappush(self._top_k_checkpoints, wrapped_checkpoint)
 
+        # Update best checkpoint.
+        if (
+            self._best_checkpoint is None
+            or wrapped_checkpoint.priority >= self._best_checkpoint.priority
+        ):
+            self._best_checkpoint = wrapped_checkpoint
+
         # Delete the worst checkpoint if we're over the `num_to_keep` limit.
         if (
             self._checkpoint_config.num_to_keep is not None
@@ -113,7 +126,7 @@ class _CheckpointManager:
         # Delete any checkpoints that were deferred.
         self._cleanup_checkpoints()
 
-        self._latest_checkpoint_id += 1
+        self._latest_checkpoint_index += 1
 
     def _get_checkpoint_score(
         self, checkpoint: _TrackedCheckpoint
@@ -167,7 +180,7 @@ class _CheckpointManager:
 
     def _maybe_delete_checkpoint(self, tracked_checkpoint: _TrackedCheckpoint):
         """Delete a checkpoint as long as it's not the most recent one."""
-        if tracked_checkpoint == self._latest_persisted_checkpoint:
+        if tracked_checkpoint == self._latest_checkpoint:
             self._checkpoints_to_clean_up.add(tracked_checkpoint)
         else:
             self._delete_checkpoint(tracked_checkpoint)
@@ -181,6 +194,25 @@ class _CheckpointManager:
         """Delete any checkpoints that were deferred for deletion."""
         for tracked_checkpoint in list(self._checkpoints_to_clean_up):
             self._maybe_delete_checkpoint(tracked_checkpoint)
+
+    @property
+    def best_checkpoint(self) -> Optional[_TrackedCheckpoint]:
+        return (
+            None
+            if self._best_checkpoint is None
+            else self._best_checkpoint.tracked_checkpoint
+        )
+
+    @property
+    def latest_checkpoint(self) -> Optional[_TrackedCheckpoint]:
+        return self._latest_checkpoint
+
+    @property
+    def best_checkpoints(self) -> List[_TrackedCheckpoint]:
+        return [
+            wrapped_checkpoint.tracked_checkpoint
+            for wrapped_checkpoint in self._top_k_checkpoints
+        ]
 
     def __del__(self):
         self._cleanup_checkpoints()
