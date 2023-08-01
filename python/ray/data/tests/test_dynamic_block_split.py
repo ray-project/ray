@@ -379,7 +379,9 @@ def test_read_large_data(ray_start_cluster, enable_dynamic_block_splitting):
     assert ds.count() == num_blocks_per_task
 
 
-def _test_write_large_data(tmp_path, ext, write_fn, read_fn, use_bytes):
+def _test_write_large_data(
+    tmp_path, ext, write_fn, read_fn, use_bytes, write_kwargs=None
+):
     # Test 2G input with single task
     num_blocks_per_task = 200
     block_size = 10 * 1024 * 1024
@@ -395,7 +397,8 @@ def _test_write_large_data(tmp_path, ext, write_fn, read_fn, use_bytes):
     # This should succeed without OOM.
     # https://github.com/ray-project/ray/pull/37966.
     out_dir = os.path.join(tmp_path, ext)
-    write_fn(ds, out_dir)
+    write_kwargs = {} if write_kwargs is None else write_kwargs
+    write_fn(ds, out_dir, **write_kwargs)
 
     max_heap_memory = ds._write_ds._get_stats_summary().get_max_heap_memory()
     assert max_heap_memory < (num_blocks_per_task * block_size / 2), (
@@ -409,7 +412,6 @@ def _test_write_large_data(tmp_path, ext, write_fn, read_fn, use_bytes):
 
 
 def test_write_large_data_parquet(shutdown_only, tmp_path):
-    # TODO(swang): Parquet doesn't support streaming read yet.
     _test_write_large_data(
         tmp_path,
         "parquet",
@@ -420,8 +422,20 @@ def test_write_large_data_parquet(shutdown_only, tmp_path):
 
 
 def test_write_large_data_json(shutdown_only, tmp_path):
-    # TODO(swang): JSON doesn't support streaming read yet.
-    _test_write_large_data(tmp_path, "json", Dataset.write_json, None, use_bytes=False)
+    _test_write_large_data(
+        tmp_path, "json", Dataset.write_json, ray.data.read_json, use_bytes=False
+    )
+
+
+def test_write_large_data_numpy(shutdown_only, tmp_path):
+    _test_write_large_data(
+        tmp_path,
+        "numpy",
+        Dataset.write_numpy,
+        ray.data.read_numpy,
+        use_bytes=False,
+        write_kwargs={"column": "one"},
+    )
 
 
 def test_write_large_data_csv(shutdown_only, tmp_path):
