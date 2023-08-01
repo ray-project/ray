@@ -358,7 +358,7 @@ class HTTPProxy:
 
     async def _timeout_response(self, scope, receive, send):
         response = Response(
-            f"Request timeout after {self.request_timeout_s}s.",
+            f"Request time out after {self.request_timeout_s}s.",
             status_code=408,
         )
         await response.send(scope, receive, send)
@@ -677,8 +677,8 @@ class HTTPProxy:
                 await asyncio.sleep(backoff_period)
         else:
             error_message = f"Task failed with {HTTP_REQUEST_MAX_RETRIES} retries."
-            await Response(error_message, status_code=500).send(scope, receive, send)
-            return "500"
+            await Response(error_message, status_code=408).send(scope, receive, send)
+            return "408"
 
         if isinstance(result, (starlette.responses.Response, RawASGIResponse)):
             await result(scope, receive, send)
@@ -758,6 +758,7 @@ class HTTPProxy:
         """
         status_code = ""
         start = time.time()
+        is_first_message = False
         while True:
             try:
                 obj_ref = await obj_ref_generator._next_async(
@@ -768,7 +769,7 @@ class HTTPProxy:
                     )
                 )
                 if obj_ref.is_nil():
-                    raise TimeoutError
+                    raise TimeoutError(is_first_message)
 
                 asgi_messages: List[Message] = pickle.loads(await obj_ref)
                 for asgi_message in asgi_messages:
@@ -781,6 +782,7 @@ class HTTPProxy:
                         status_code = str(asgi_message["code"])
 
                     await send(asgi_message)
+                    is_first_message = True
             except StopAsyncIteration:
                 break
 
@@ -838,12 +840,16 @@ class HTTPProxy:
                         curr_time_s=time.time(),
                     ),
                 )
-            except TimeoutError:
+            except TimeoutError as is_first_message:
                 logger.warning(
                     f"Request {request_id} timed out after "
                     f"{self.request_timeout_s}s while executing."
                 )
-                await self._timeout_response(scope, receive, send)
+                # We should only send timeout response if we have not sent
+                # any messages to the client yet. Header (including status code)
+                # messages can only be sent once.
+                if str(is_first_message) == str(False):
+                    await self._timeout_response(scope, receive, send)
                 return TIMEOUT_ERROR_CODE
 
         except Exception as e:
