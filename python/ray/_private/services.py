@@ -1426,7 +1426,7 @@ def start_raylet(
         metrics_agent_port: The port where metrics agent is bound to.
         metrics_export_port: The port at which metrics are exposed to.
         dashboard_agent_listen_port: The port at which the dashboard agent
-            listens to for http.
+            listens to for HTTP.
         runtime_env_agent_port: The port at which the runtime env agent
             listens to for HTTP.
         use_valgrind: True if the raylet should be started inside
