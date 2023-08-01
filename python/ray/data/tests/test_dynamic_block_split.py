@@ -411,7 +411,11 @@ def _test_write_large_data(tmp_path, ext, write_fn, read_fn, use_bytes):
 def test_write_large_data_parquet(shutdown_only, tmp_path):
     # TODO(swang): Parquet doesn't support streaming read yet.
     _test_write_large_data(
-        tmp_path, "parquet", Dataset.write_parquet, None, use_bytes=True
+        tmp_path,
+        "parquet",
+        Dataset.write_parquet,
+        ray.data.read_parquet,
+        use_bytes=True,
     )
 
 
