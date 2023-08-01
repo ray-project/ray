@@ -353,10 +353,10 @@ class ServeController:
             loop_duration = time.time() - loop_start_time
             if loop_duration > 60:
                 logger.warning(
-                    "The last control loop took a while to run "
-                    f"({loop_duration}s). This is likely caused by running a "
-                    "large number of replicas in a single Ray cluster. "
-                    "Consider running your deployments on multiple Ray clusters."
+                    f"The last control loop was slow (took {loop_duration}s). "
+                    "This is likely caused by running a large number of "
+                    "replicas in a single Ray cluster. Consider using "
+                    "multiple Ray clusters."
                 )
             await asyncio.sleep(CONTROL_LOOP_PERIOD_S)
 
