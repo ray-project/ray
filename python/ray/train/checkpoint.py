@@ -1,30 +1,53 @@
 import contextlib
+import glob
+import json
 import logging
 import os
 import platform
 import shutil
 import tempfile
 import traceback
-from pathlib import Path
-from typing import Any, Dict, Iterator, Optional, Union
+from typing import Any, Dict, Iterator, List, Optional, Union
+import uuid
 
 import pyarrow.fs
 
-from ray import cloudpickle as pickle
 from ray.air._internal.filelock import TempFileLock
+from ray.train._internal.storage import _download_from_fs_path, _exists_at_fs_path
 from ray.util.annotations import PublicAPI
 
 logger = logging.getLogger(__name__)
 
-_METADATA_FILE_NAME = ".metadata.pkl"
-_CHECKPOINT_DIR_PREFIX = "checkpoint_tmp_"
+# The filename of the file that stores user metadata set on the checkpoint.
+_METADATA_FILE_NAME = ".metadata.json"
+
+# The prefix of the temp checkpoint directory that `to_directory` downloads to
+# on the local filesystem.
+_CHECKPOINT_TEMP_DIR_PREFIX = "checkpoint_tmp_"
 
 
 @PublicAPI(stability="beta")
 class Checkpoint:
-    """A reference to data persisted in local or remote storage.
+    """A reference to data persisted as a directory in local or remote storage.
 
     Access checkpoint contents locally using `checkpoint.to_directory()`.
+
+    Example creating a checkpoint using `Checkpoint.from_directory`:
+
+        >>> from ray.train.checkpoint import Checkpoint
+        >>> checkpoint = Checkpoint.from_directory("/tmp/example_checkpoint_dir")
+        >>> checkpoint.filesystem  # doctest: +ELLIPSIS
+        <pyarrow._fs.LocalFileSystem object...
+        >>> checkpoint.path
+        '/tmp/example_checkpoint_dir'
+
+    Example creating a checkpoint from a remote URI:
+
+        >>> checkpoint = Checkpoint("s3://bucket/path/to/checkpoint")
+        >>> checkpoint.filesystem  # doctest: +ELLIPSIS
+        <pyarrow._s3fs.S3FileSystem object...
+        >>> checkpoint.path
+        'bucket/path/to/checkpoint'
 
     Attributes:
         path: A path on the filesystem containing the checkpoint contents.
@@ -45,11 +68,21 @@ class Checkpoint:
             filesystem: PyArrow FileSystem to use to access data at the path.
                 If not specified, this is inferred from the URI scheme.
         """
-        self.path = path
+        self.path = str(path)
         self.filesystem = filesystem
 
         if path and not filesystem:
             self.filesystem, self.path = pyarrow.fs.FileSystem.from_uri(path)
+
+        # This random UUID is used to create a temporary directory name on the
+        # local filesystem, which will be used for downloading checkpoint data.
+        # This ensures that if multiple processes download the same checkpoint object
+        # only one process performs the actual download while the others wait.
+        # This prevents duplicated download efforts and data.
+        # NOTE: Calling `to_directory` from multiple `Checkpoint` objects
+        # that point to the same (fs, path) will still download the data multiple times.
+        # This only ensures a canonical temp directory name for a single `Checkpoint`.
+        self._uuid = uuid.uuid4()
 
     def __repr__(self):
         return f"Checkpoint(filesystem={self.filesystem}, path={self.path})"
@@ -57,37 +90,49 @@ class Checkpoint:
     def get_metadata(self) -> Dict[str, Any]:
         """Return the metadata dict stored with the checkpoint.
 
-        If no metadata is stored, an empty dict is returned."""
+        If no metadata is stored, an empty dict is returned.
+        """
+        metadata_path = os.path.join(self.path, _METADATA_FILE_NAME)
+        if not _exists_at_fs_path(self.filesystem, metadata_path):
+            return {}
 
-        path = os.path.join(self.path, _METADATA_FILE_NAME)
-        with self.filesystem.open_input_file(path) as f:
-            return pickle.loads(f.readall())
+        with self.filesystem.open_input_file(metadata_path) as f:
+            return json.loads(f.readall().decode("utf-8"))
 
     def set_metadata(self, metadata: Dict[str, Any]) -> None:
-        """Update the metadata stored with this checkpoint.
+        """Set the metadata stored with this checkpoint.
 
         This will overwrite any existing metadata stored with this checkpoint.
         """
+        metadata_path = os.path.join(self.path, _METADATA_FILE_NAME)
+        with self.filesystem.open_output_stream(metadata_path) as f:
+            f.write(json.dumps(metadata).encode("utf-8"))
 
-        path = os.path.join(self.path, _METADATA_FILE_NAME)
-        with self.filesystem.open_output_stream(path) as f:
-            f.write(pickle.dumps(metadata))
+    def update_metadata(self, metadata: Dict[str, Any]) -> None:
+        """Update the metadata stored with this checkpoint.
+
+        This will update any existing metadata stored with this checkpoint.
+        """
+        existing_metadata = self.get_metadata()
+        existing_metadata.update(metadata)
+        self.set_metadata(existing_metadata)
 
     @staticmethod
     def from_directory(path: Union[str, os.PathLike]) -> "Checkpoint":
         """Create checkpoint object from a local directory.
 
         Args:
-            path: Directory containing checkpoint data. The caller promises to
-                not delete the directory (gifts ownership of the directory to this
-                Checkpoint).
+            path: Local directory containing checkpoint data. The caller should not
+                modify the contents of this directory after creating the Checkpoint.
+                If passing this checkpoint to `train.report`, Ray will take control
+                of the checkpoint directory.
 
         Returns:
             Checkpoint: checkpoint object.
         """
         return Checkpoint(path, filesystem=pyarrow.fs.LocalFileSystem())
 
-    def to_directory(self, path: Optional[str] = None) -> str:
+    def to_directory(self, path: Optional[Union[str, os.PathLike]] = None) -> str:
         """Write checkpoint data to directory.
 
         Args:
@@ -97,32 +142,33 @@ class Checkpoint:
         Returns:
             str: Directory containing checkpoint data.
         """
-        import pyarrow
-
         user_provided_path = path is not None
-        path = path if user_provided_path else self._get_temporary_checkpoint_dir()
-        path = os.path.normpath(str(path))
-        _make_dir(path, acquire_del_lock=not user_provided_path)
+        local_path = (
+            path if user_provided_path else self._get_temporary_checkpoint_dir()
+        )
+        local_path = os.path.normpath(os.path.expanduser(str(local_path)))
+        os.makedirs(local_path, exist_ok=True)
 
         try:
             # Timeout 0 means there will be only one attempt to acquire
-            # the file lock. If it cannot be aquired, a TimeoutError
-            # will be thrown.
-            with TempFileLock(f"{path}.lock", timeout=0):
-                pyarrow.fs.copy_files(self.path, path)
+            # the file lock. If it cannot be acquired, throw a TimeoutError
+            with TempFileLock(local_path, timeout=0):
+                _download_from_fs_path(
+                    fs=self.filesystem, fs_path=self.path, local_path=local_path
+                )
         except TimeoutError:
             # if the directory is already locked, then wait but do not do anything.
-            with TempFileLock(f"{path}.lock", timeout=-1):
+            with TempFileLock(local_path, timeout=-1):
                 pass
-            if not os.path.exists(path):
+            if not os.path.exists(local_path):
                 raise RuntimeError(
-                    f"Checkpoint directory {path} does not exist, "
+                    f"Checkpoint directory {local_path} does not exist, "
                     "even though it should have been created by "
                     "another process. Please raise an issue on GitHub: "
                     "https://github.com/ray-project/ray/issues"
                 )
 
-        return path
+        return local_path
 
     @contextlib.contextmanager
     def as_directory(self) -> Iterator[str]:
@@ -150,13 +196,13 @@ class Checkpoint:
             # been deleted.
 
         """
-        import pyarrow
-
-        if isinstance(self.path, pyarrow.fs.LocalFileSystem):
-            yield self._local_path
+        if isinstance(self.filesystem, pyarrow.fs.LocalFileSystem):
+            yield self.path
         else:
             temp_dir = self.to_directory()
             del_lock_path = _get_del_lock_path(temp_dir)
+            open(del_lock_path, "a").close()
+
             yield temp_dir
 
             # Cleanup
@@ -172,13 +218,11 @@ class Checkpoint:
             # we do not remove the directory at all.
             # Since it's in /tmp, this is not that big of a deal.
             # check if any lock files are remaining
-            temp_dir_base_name = Path(temp_dir).name
-            if not list(
-                Path(temp_dir).parent.glob(_get_del_lock_path(temp_dir_base_name, "*"))
-            ):
+            remaining_locks = _list_existing_del_locks(temp_dir)
+            if not remaining_locks:
                 try:
                     # Timeout 0 means there will be only one attempt to acquire
-                    # the file lock. If it cannot be aquired, a TimeoutError
+                    # the file lock. If it cannot be acquired, a TimeoutError
                     # will be thrown.
                     with TempFileLock(f"{temp_dir}.lock", timeout=0):
                         shutil.rmtree(temp_dir, ignore_errors=True)
@@ -186,26 +230,28 @@ class Checkpoint:
                     pass
 
     def _get_temporary_checkpoint_dir(self) -> str:
-        """Return the name for the temporary checkpoint dir."""
+        """Return the name for the temporary checkpoint dir that this checkpoint
+        will get downloaded to, if accessing via `to_directory` or `as_directory`.
+        """
         tmp_dir_path = tempfile.gettempdir()
-        checkpoint_dir_name = _CHECKPOINT_DIR_PREFIX + self._uuid.hex
+        checkpoint_dir_name = _CHECKPOINT_TEMP_DIR_PREFIX + self._uuid.hex
         if platform.system() == "Windows":
             # Max path on Windows is 260 chars, -1 for joining \
             # Also leave a little for the del lock
             del_lock_name = _get_del_lock_path("")
             checkpoint_dir_name = (
-                _CHECKPOINT_DIR_PREFIX
+                _CHECKPOINT_TEMP_DIR_PREFIX
                 + self._uuid.hex[
                     -259
-                    + len(_CHECKPOINT_DIR_PREFIX)
+                    + len(_CHECKPOINT_TEMP_DIR_PREFIX)
                     + len(tmp_dir_path)
                     + len(del_lock_name) :
                 ]
             )
-            if not checkpoint_dir_name.startswith(_CHECKPOINT_DIR_PREFIX):
+            if not checkpoint_dir_name.startswith(_CHECKPOINT_TEMP_DIR_PREFIX):
                 raise RuntimeError(
                     "Couldn't create checkpoint directory due to length "
-                    "constraints. Try specifing a shorter checkpoint path."
+                    "constraints. Try specifying a shorter checkpoint path."
                 )
         return os.path.join(tmp_dir_path, checkpoint_dir_name)
 
@@ -216,19 +262,27 @@ class Checkpoint:
         )
 
 
-def _make_dir(path: str, acquire_del_lock: bool = False) -> None:
-    """Create the temporary checkpoint dir in ``path``."""
-    if acquire_del_lock:
-        # Each process drops a deletion lock file it then cleans up.
-        # If there are no lock files left, the last process
-        # will remove the entire directory.
-        del_lock_path = _get_del_lock_path(path)
-        open(del_lock_path, "a").close()
+def _get_del_lock_path(path: str, suffix: str = None) -> str:
+    """Get the path to the deletion lock file for a file/directory at `path`.
 
-    os.makedirs(path, exist_ok=True)
+    Example:
+
+        >>> _get_del_lock_path("/tmp/checkpoint_tmp")  # doctest: +ELLIPSIS
+        '/tmp/checkpoint_tmp.del_lock_...
+        >>> _get_del_lock_path("/tmp/checkpoint_tmp/")  # doctest: +ELLIPSIS
+        '/tmp/checkpoint_tmp.del_lock_...
+        >>> _get_del_lock_path("/tmp/checkpoint_tmp.txt")  # doctest: +ELLIPSIS
+        '/tmp/checkpoint_tmp.txt.del_lock_...
+
+    """
+    suffix = suffix if suffix is not None else str(os.getpid())
+    return f"{path.rstrip('/')}.del_lock_{suffix}"
 
 
-def _get_del_lock_path(path: str, pid: str = None) -> str:
-    """Get the path to the deletion lock file."""
-    pid = pid if pid is not None else os.getpid()
-    return f"{path}.del_lock_{pid}"
+def _list_existing_del_locks(path: str) -> List[str]:
+    """List all the deletion lock files for a file/directory at `path`.
+
+    For example, if 2 checkpoints are being read via `as_directory`,
+    then this should return a list of 2 deletion lock files.
+    """
+    return list(glob.glob(f"{_get_del_lock_path(path, suffix='*')}"))
