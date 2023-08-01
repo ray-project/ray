@@ -59,8 +59,6 @@ parts:
       - file: train/train
         title: Ray Train
         sections:
-          - file: train/getting-started
-            title: "Getting Started"
           - file: train/key-concepts
             title: "Key Concepts"
           - file: train/distributed-pytorch
@@ -77,15 +75,16 @@ parts:
               - file: train/distributed-pytorch/hyperparameter-optimization
                 title: Hyperparameter optimization
               - file: train/distributed-pytorch/advanced
-          - file: train/distributed-tensorflow-keras
-          - file: train/distributed-xgboost-lightgbm
-          - file: train/horovod
+          - file: train/more-libraries
+            sections:
+            - file: train/distributed-tensorflow-keras
+            - file: train/distributed-xgboost-lightgbm
+            - file: train/horovod
           - file: train/internals/index
-            title: "Ray Train internals and advanced usage"
+            title: "Ray Train internals"
             sections:
               - file: train/internals/architecture
               - file: train/internals/benchmarks
-              - file: train/predictors
           - file: train/examples
             title: "Examples"
             sections:
