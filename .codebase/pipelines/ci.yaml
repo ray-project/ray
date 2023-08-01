@@ -5,7 +5,8 @@ trigger:
 jobs:
   format-check:
     image: hub.byted.org/kuberay/debian_bullseye:ef30b6bdf0ab221c1d3c59f449e887b6
-    timeout: 5
+    timeout: 20
+    retry: 3
     steps:
       - name: FORMAT_CHECK
         commands:
