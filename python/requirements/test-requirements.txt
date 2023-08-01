@@ -28,6 +28,19 @@ freezegun==1.1.0
 google-api-python-client==2.65.0
 google-cloud-storage==2.5.0
 gradio==3.11; platform_system != "Windows"
+
+#Test: to see whether this is passing CI tests ...
+#TODO (sven): remove/adjust this block
+gymnasium==0.28.1
+ale_py==0.8.1
+mujoco==2.3.6
+dm_control==1.0.12
+pettingzoo==1.23.1; python_version >= '3.7'
+supersuit==3.8.0; python_version >= '3.7'
+tinyscaler==1.2.6
+shimmy
+#END: Test
+
 websockets==11.0.3
 joblib==1.2.0
 jsonpatch==1.32
