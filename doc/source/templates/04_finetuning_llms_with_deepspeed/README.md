@@ -18,7 +18,7 @@ For 7B- or 13B-parameter models, set up a cluster on AWS with the following sett
 And launch the following script to finetune LLaMA 2 7B:
 
 ```
-./run_llama_7b_chat.sh --as-test
+./run_llama_ft.sh --size=7b --as-test
 ```
 
 The flag `--as-test` is for demo / testing purposes as it runs through only one forward and backward pass of the model. The model loading, and remote checkpointing would still run. 
@@ -108,7 +108,7 @@ This script was tested across three model sizes on the following cluster configu
 To launch a successful finetuning you can use the following command:
 
 ```
-./run_llama_7b.sh --num-epochs=10
+./run_llama_ft.sh --size=7b --num-epochs=10
 ```
 
 Note that the learning rate schedule scales with the number of epochs.
@@ -131,7 +131,7 @@ sub-models that can be tuned with LoRA. For example, LLaMa 2 requires {"target_m
 To launch a succesful LoRA finetuning, you can use the following command:
 
 ```
-./run_llama_7b.sh --num-epochs=10 --lora
+./run_llama_ft.sh --size=7b --num-epochs=10 --lora
 ```
 
 ### Guideline on how to pick node instances when A100s are not available.
