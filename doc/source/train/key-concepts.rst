@@ -92,34 +92,3 @@ Checkpoints have the following purposes:
 * They can be passed to a Trainer to resume training from the given model state.
 * They can be used to create a Predictor / BatchPredictor for scalable batch prediction.
 * They can be deployed with Ray Serve.
-
-.. _train-key-concepts-predictors:
-
-Train Predictors
-----------------
-
-Predictors are the counterpart to Trainers. A Trainer trains a model on a dataset, and a predictor
-uses the resulting model and performs inference on it.
-
-Each Trainer has a respective Predictor implementation that is compatible with its generated checkpoints.
-
-.. dropdown:: Example: :class:`XGBoostPredictor <ray.train.xgboost.XGBoostPredictor>`
-
-    .. literalinclude:: /train/doc_code/xgboost_train_predict.py
-        :language: python
-        :start-after: __train_predict_start__
-        :end-before: __train_predict_end__
-
-
-A predictor can be passed into a :class:`BatchPredictor <ray.train.batch_predictor.BatchPredictor>`
-is used to scale up prediction over a Ray cluster.
-It takes a Dataset as input.
-
-.. dropdown:: Example: Batch prediction with :class:`XGBoostPredictor <ray.train.xgboost.XGBoostPredictor>`
-
-    .. literalinclude:: /train/doc_code/xgboost_train_predict.py
-        :language: python
-        :start-after: __batch_predict_start__
-        :end-before: __batch_predict_end__
-
-See :ref:`the Predictors user guide <air-predictors>` for more information and examples.

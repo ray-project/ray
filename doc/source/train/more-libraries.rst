@@ -1,5 +1,8 @@
 .. _train-more-libraries:
 
+More libraries
+==============
+
 .. grid:: 1 2 3 4
     :gutter: 1
     :class-container: container pb-3

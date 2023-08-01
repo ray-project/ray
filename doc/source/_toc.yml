@@ -63,7 +63,6 @@ parts:
             title: "Key Concepts"
           - file: train/distributed-pytorch
             sections:
-              - file: train/distributed-pytorch/quickstart
               - file: train/distributed-pytorch/converting-existing-training-loop
               - file: train/distributed-pytorch/configuration
               - file: train/distributed-pytorch/data-loading-preprocessing
@@ -77,9 +76,9 @@ parts:
               - file: train/distributed-pytorch/advanced
           - file: train/more-libraries
             sections:
-            - file: train/distributed-tensorflow-keras
-            - file: train/distributed-xgboost-lightgbm
-            - file: train/horovod
+              - file: train/distributed-tensorflow-keras
+              - file: train/distributed-xgboost-lightgbm
+              - file: train/horovod
           - file: train/internals/index
             title: "Ray Train internals"
             sections:

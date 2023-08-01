@@ -18,16 +18,6 @@ Distributed Overview <https://pytorch.org/tutorials/beginner/dist_overview.html>
 on their official documentation for reference.
 
 .. grid:: 1 2 3 4
-    :gutter: 1
-    :class-container: container pb-3
-
-    .. grid-item-card::
-        :img-top: /ray-overview/images/ray_svg_logo.svg
-        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
-
-        .. button-ref:: distributed-pytorch/quickstart
-
-            Quick start example
 
     .. grid-item-card::
         :img-top: /ray-overview/images/ray_svg_logo.svg

@@ -123,7 +123,6 @@ classes that ship out of the box with Train:
 Next steps
 ----------
 
-* :ref:`Getting Started <train-getting-started>`
 * :ref:`Key Concepts for Ray Train <train-key-concepts>`
 * :doc:`User Guide for distributed PyTorch </train/distributed-pytorch>`
 * :doc:`User Guide for distributed TensorFlow </train/distributed-tensorflow-keras>`
