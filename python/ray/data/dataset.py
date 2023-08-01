@@ -1831,7 +1831,8 @@ class Dataset:
         Time complexity: O(dataset size * log(dataset size / parallelism))
 
         Args:
-            key: A column name. If this is ``None``, place all rows in a single group.
+            key: A column name or list of column names.
+            If this is ``None``, place all rows in a single group.
 
         Returns:
             A lazy :class:`~ray.data.grouped_data.GroupedData`.
