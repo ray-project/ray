@@ -1,7 +1,7 @@
 from typing import TYPE_CHECKING, Any, Callable, Dict, Iterator
 
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
-from ray.data.block import Block
+from ray.data.block import Block, BlockAccessor
 from ray.data.datasource.file_based_datasource import (
     FileBasedDatasource,
     _resolve_kwargs,
@@ -54,4 +54,5 @@ class JSONDatasource(FileBasedDatasource):
         # TODO(swang): We should add an out-of-memory warning if the block size
         # exceeds the max block size in the DataContext.
         block = builder.build()
+        block = BlockAccessor.for_block(block)
         block.to_pandas().to_json(f, orient=orient, lines=lines, **writer_args)

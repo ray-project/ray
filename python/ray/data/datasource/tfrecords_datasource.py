@@ -60,7 +60,7 @@ class TFRecordDatasource(FileBasedDatasource):
     ) -> None:
         _check_import(self, module="crc32c", package="crc32c")
         for block in blocks:
-            arrow_table = block.to_arrow()
+            arrow_table = BlockAccessor.for_block(block).to_arrow()
 
             # It seems like TFRecords are typically row-based,
             # https://www.tensorflow.org/tutorials/load_data/tfrecord#writing_a_tfrecord_file_2

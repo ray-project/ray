@@ -80,4 +80,5 @@ class CSVDatasource(FileBasedDatasource):
             if writer is None:
                 writer = csv.CSVWriter(f, block.schema, **writer_args)
             writer.write_table(block, max_chunksize=max_chunksize)
-        writer.close()
+        if writer is not None:
+            writer.close()

@@ -62,4 +62,5 @@ class ParquetBaseDatasource(FileBasedDatasource):
             if writer is None:
                 writer = pq.ParquetWriter(f, block.schema, **writer_args)
             writer.write_table(block, row_group_size=row_group_size)
-        writer.close()
+        if writer is not None:
+            writer.close()

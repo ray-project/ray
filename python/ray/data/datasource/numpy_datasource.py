@@ -53,5 +53,5 @@ class NumpyDatasource(FileBasedDatasource):
         # TODO(swang): We should add an out-of-memory warning if the block size
         # exceeds the max block size in the DataContext.
         block = builder.build()
-        value = block.to_numpy(column)
+        value = BlockAccessor.for_block(block).to_numpy(column)
         np.save(f, value)

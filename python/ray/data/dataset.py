@@ -2802,7 +2802,7 @@ class Dataset:
         block_path_provider: BlockWritePathProvider = DefaultBlockWritePathProvider(),
         arrow_csv_args_fn: Callable[[], Dict[str, Any]] = lambda: {},
         ray_remote_args: Dict[str, Any] = None,
-        arrow_csv_maxchunk_size: int = None,
+        arrow_csv_max_chunksize: int = None,
         **arrow_csv_args,
     ) -> None:
         """Writes the :class:`~ray.data.Dataset` to CSV files.
@@ -2869,7 +2869,7 @@ class Dataset:
                 arguments cannot be pickled, or if you'd like to lazily resolve the
                 write arguments for each dataset block.
             ray_remote_args: kwargs passed to :meth:`~ray.remote` in the write tasks.
-            arrow_csv_maxchunk_size: Option to pass to
+            arrow_csv_max_chunksize: Option to pass to
                 `pyarrow.csv.CSVWriter.write_table <https://arrow.apache.org\
                         /docs/python/generated/pyarrow.csv.CSVWriter.html
                         #pyarrow.csv.CSVWriter.write_table>`_, which is used to
@@ -2889,7 +2889,7 @@ class Dataset:
             open_stream_args=arrow_open_stream_args,
             block_path_provider=block_path_provider,
             write_args_fn=arrow_csv_args_fn,
-            maxchunk_size=arrow_csv_maxchunk_size,
+            max_chunksize=arrow_csv_max_chunksize,
             **arrow_csv_args,
         )
 

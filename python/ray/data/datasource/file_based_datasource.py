@@ -72,7 +72,6 @@ class BlockWritePathProvider:
         *,
         filesystem: Optional["pyarrow.fs.FileSystem"] = None,
         dataset_uuid: Optional[str] = None,
-        block: Optional[Block] = None,
         block_index: Optional[int] = None,
         file_format: Optional[str] = None,
     ) -> str:
@@ -89,7 +88,6 @@ class BlockWritePathProvider:
                 write a file out to the write path returned.
             dataset_uuid: Unique identifier for the dataset that this block
                 belongs to.
-            block: The block to write.
             block_index: Ordered index of the block to write within its parent
                 dataset.
             file_format: File format string for the block that can be used as
@@ -106,7 +104,6 @@ class BlockWritePathProvider:
         *,
         filesystem: Optional["pyarrow.fs.FileSystem"] = None,
         dataset_uuid: Optional[str] = None,
-        block: Optional[Block] = None,
         block_index: Optional[int] = None,
         file_format: Optional[str] = None,
     ) -> str:
@@ -114,7 +111,6 @@ class BlockWritePathProvider:
             base_path,
             filesystem=filesystem,
             dataset_uuid=dataset_uuid,
-            block=block,
             block_index=block_index,
             file_format=file_format,
         )
@@ -133,7 +129,6 @@ class DefaultBlockWritePathProvider(BlockWritePathProvider):
         *,
         filesystem: Optional["pyarrow.fs.FileSystem"] = None,
         dataset_uuid: Optional[str] = None,
-        block: Optional[ObjectRef[Block]] = None,
         block_index: Optional[int] = None,
         file_format: Optional[str] = None,
     ) -> str:
@@ -325,7 +320,6 @@ class FileBasedDatasource(Datasource):
             path,
             filesystem=filesystem,
             dataset_uuid=dataset_uuid,
-            block=None,
             block_index=ctx.task_idx,
             file_format=file_format,
         )

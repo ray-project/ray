@@ -300,6 +300,7 @@ def _make_iterable(blocks: BlockAccessor):
         Iterable[Dict[str,Any]]: Iterable of samples
     """
     for block in blocks:
+        block = BlockAccessor.for_block(block)
         yield from block.iter_rows(public_row_format=False)
 
 
@@ -351,7 +352,7 @@ class WebDatasetDatasource(FileBasedDatasource):
                 sample = _apply_list(decoder, sample, default=_default_decoder)
             yield pd.DataFrame({k: [v] for k, v in sample.items()})
 
-    def _write_block(
+    def _write_blocks(
         self,
         f: "pyarrow.NativeFile",
         blocks: Iterator[Block],
