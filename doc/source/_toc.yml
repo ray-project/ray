@@ -80,7 +80,6 @@ parts:
               - file: train/distributed-xgboost-lightgbm
               - file: train/horovod
           - file: train/internals/index
-            title: "Ray Train internals"
             sections:
               - file: train/internals/architecture
               - file: train/internals/benchmarks
