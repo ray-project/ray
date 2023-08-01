@@ -15,7 +15,6 @@ from concurrent.futures import ThreadPoolExecutor
 from types import ModuleType
 from typing import Any, Dict, Optional
 
-import ray
 from ray.autoscaler._private.command_runner import DockerCommandRunner, SSHCommandRunner
 from ray.autoscaler._private.gcp.node import GCPTPUNode
 from ray.autoscaler.command_runner import CommandRunnerInterface

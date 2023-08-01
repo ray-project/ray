@@ -3,7 +3,7 @@ import time
 from functools import wraps
 from threading import RLock
 from types import ModuleType
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import googleapiclient
 
