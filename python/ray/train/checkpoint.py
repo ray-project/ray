@@ -186,7 +186,19 @@ class Checkpoint:
 
         Example:
 
-        .. code-block:: python
+        .. testcode::
+            :hide:
+
+            from pathlib import Path
+            import tempfile
+
+            from ray.train.checkpoint import Checkpoint
+
+            temp_dir = tempfile.mkdtemp()
+            (Path(temp_dir) / "example.txt").write_text("example checkpoint data")
+            checkpoint = Checkpoint.from_directory(temp_dir)
+
+        .. testcode::
 
             with checkpoint.as_directory() as checkpoint_dir:
                 # Do some read-only processing of files within checkpoint_dir
