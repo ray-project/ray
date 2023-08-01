@@ -2473,7 +2473,7 @@
   working_dir: long_running_tests
 
   frequency: weekly
-  python: "3.7"
+  python: "3.8"
   team: core
   cluster:
     byod:
@@ -2601,7 +2601,7 @@
   working_dir: long_running_tests
 
   frequency: weekly
-  python: "3.7"
+  python: "3.8"
 
   team: core
   cluster:
@@ -2642,7 +2642,7 @@
   working_dir: long_running_tests
 
   frequency: weekly
-  python: "3.7"
+  python: "3.8"
 
   team: core
   cluster:
@@ -2731,7 +2731,7 @@
   working_dir: long_running_tests
 
   frequency: weekly
-  python: "3.7"
+  python: "3.8"
 
   team: core
   cluster:
@@ -2772,7 +2772,7 @@
   working_dir: long_running_tests
 
   frequency: weekly
-  python: "3.7"
+  python: "3.8"
 
   team: core
   cluster:
@@ -2813,7 +2813,7 @@
   working_dir: long_running_tests
 
   frequency: weekly
-  python: "3.7"
+  python: "3.8"
 
   team: core
   cluster:
@@ -5253,7 +5253,7 @@
 
   frequency: nightly
   team: core
-  python: "3.7"
+  python: "3.8"
 
   cluster:
     byod:
@@ -5508,7 +5508,7 @@
   group: core-daily-test
   working_dir: nightly_tests
 
-  python: "3.7"
+  python: "3.8"
   frequency: nightly
   team: core
   cluster:
@@ -5597,7 +5597,7 @@
   working_dir: air_tests
 
   stable: false
-  python: "3.7"
+  python: "3.8"
 
   frequency: nightly
   team: core
@@ -5620,8 +5620,8 @@
   working_dir: nightly_tests
 
   frequency: nightly-3x
-  python: "3.7"
-  
+  python: "3.8"
+
   team: core
 
   cluster:
@@ -7115,7 +7115,7 @@
 
   frequency: nightly
   team: core
-  python: "3.7"
+  python: "3.8"
   
   cluster:
     byod:
@@ -7215,7 +7215,7 @@
 
   frequency: manual
   team: core
-  python: "3.7"
+  python: "3.8"
   cluster:
     byod: {}
     cluster_env: aws/tests/aws_config.yaml
