@@ -692,13 +692,16 @@ class _TuneControllerBase:
         if trial.status == Trial.RUNNING:
             if trial.should_recover():
                 self._try_recover(trial, exc=exception)
+                self._callbacks.on_trial_recover(
+                    iteration=self._iteration, trials=self._trials, trial=trial
+                )
             else:
                 self._scheduler_alg.on_trial_error(self, trial)
                 self._search_alg.on_trial_complete(trial.trial_id, error=True)
+                self._schedule_trial_stop(trial, exception=exception)
                 self._callbacks.on_trial_error(
                     iteration=self._iteration, trials=self._trials, trial=trial
                 )
-                self._schedule_trial_stop(trial, exception=exception)
 
     ###
     # STOP
