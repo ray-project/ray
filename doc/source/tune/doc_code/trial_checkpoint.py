@@ -96,7 +96,7 @@ from ray.train import Checkpoint
 def train_func(config):
     epochs = config.get("epochs", 2)
     start = 0
-    loaded_checkpoint = train.get_context().get_checkpoint()
+    loaded_checkpoint = train.get_checkpoint()
     if loaded_checkpoint:
         last_step = loaded_checkpoint.to_dict()["step"]
         start = last_step + 1
@@ -142,8 +142,8 @@ def get_epoch_from_dir(dir_path: str) -> int:
 
 def train_func(config):
     start = 1
-    if train.get_context().get_checkpoint() is not None:
-        loaded_checkpoint = train.get_context().get_checkpoint()
+    if train.get_checkpoint() is not None:
+        loaded_checkpoint = train.get_checkpoint()
         with loaded_checkpoint.as_directory() as loaded_checkpoint_path:
             start = get_epoch_from_dir(loaded_checkpoint_path) + 1
 

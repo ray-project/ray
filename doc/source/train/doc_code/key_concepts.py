@@ -61,7 +61,7 @@ from ray.train.data_parallel_trainer import DataParallelTrainer
 
 
 def train_fn(config):
-    checkpoint = train.get_context().get_checkpoint()
+    checkpoint = train.get_checkpoint()
 
     if checkpoint:
         state = checkpoint.to_dict()

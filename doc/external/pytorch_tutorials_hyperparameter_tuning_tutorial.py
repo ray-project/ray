@@ -125,7 +125,7 @@ class Net(nn.Module):
 #
 #     net = Net(config["l1"], config["l2"])
 #
-#     checkpoint = ray.train.get_context().get_checkpoint()
+#     checkpoint = ray.train.get_checkpoint()
 #
 #     if checkpoint:
 #         checkpoint_state = checkpoint.to_dict()
@@ -226,7 +226,7 @@ def train_cifar(config, data_dir=None):
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.SGD(net.parameters(), lr=config["lr"], momentum=0.9)
 
-    checkpoint = train.get_context().get_checkpoint()
+    checkpoint = train.get_checkpoint()
 
     if checkpoint:
         checkpoint_state = checkpoint.to_dict()

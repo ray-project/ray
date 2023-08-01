@@ -94,7 +94,7 @@ def test_tensorflow_e2e(ray_start_4_cpus):
 
 def test_report_and_load_using_ml_session(ray_start_4_cpus):
     def train_func():
-        checkpoint = train.get_context().get_checkpoint()
+        checkpoint = train.get_checkpoint()
         if checkpoint:
             with checkpoint.as_directory() as checkpoint_dir:
                 import tensorflow as tf

@@ -38,8 +38,8 @@ def pbt_function(config):
 
     # NOTE: See below why step is initialized to 1
     step = 1
-    if train.get_context().get_checkpoint():
-        state = train.get_context().get_checkpoint().to_dict()
+    if train.get_checkpoint():
+        state = train.get_checkpoint().to_dict()
         accuracy = state["acc"]
         last_step = state["step"]
         # Current step should be 1 more than the last checkpoint step

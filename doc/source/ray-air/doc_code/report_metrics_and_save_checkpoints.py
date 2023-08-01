@@ -21,7 +21,7 @@ def build_model() -> tf.keras.Model:
 
 
 def train_func():
-    ckpt = train.get_context().get_checkpoint()
+    ckpt = train.get_checkpoint()
     if ckpt:
         with ckpt.as_directory() as loaded_checkpoint_dir:
             import tensorflow as tf

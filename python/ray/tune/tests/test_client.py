@@ -53,7 +53,7 @@ def test_tuner_client_get_results(
     tmp_path, legacy_progress_reporter, start_client_server_2_cpus
 ):
     def train_fn(config):
-        checkpoint = train.get_context().get_checkpoint()
+        checkpoint = train.get_checkpoint()
         id = int(bool(checkpoint))
         train.report({"id": id}, checkpoint=Checkpoint.from_dict({"id": id}))
         raise RuntimeError

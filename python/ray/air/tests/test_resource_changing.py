@@ -29,7 +29,7 @@ def train_fn(config):
     start_epoch = 0
 
     print(train.get_context().get_trial_resources())
-    checkpoint = train.get_context().get_checkpoint()
+    checkpoint = train.get_checkpoint()
     if checkpoint:
         # assume that we have run the train.report() example
         # and successfully save some model weights

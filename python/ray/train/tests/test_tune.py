@@ -157,7 +157,7 @@ def test_tune_checkpoint(ray_start_4_cpus):
 def test_reuse_checkpoint(ray_start_4_cpus):
     def train_func(config):
         itr = 0
-        ckpt = train.get_context().get_checkpoint()
+        ckpt = train.get_checkpoint()
         if ckpt is not None:
             ckpt = ckpt.to_dict()
             itr = ckpt["iter"] + 1
@@ -195,7 +195,7 @@ def test_retry_with_max_failures(ray_start_4_cpus):
     """Tests trainer retry with max_failures > 0 when integrating with Tune."""
 
     def train_func():
-        ckpt = train.get_context().get_checkpoint()
+        ckpt = train.get_checkpoint()
         restored = bool(ckpt)  # Does a previous checkpoint exist?
         itr = 0
         if ckpt:

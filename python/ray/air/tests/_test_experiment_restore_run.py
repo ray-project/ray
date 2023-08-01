@@ -82,7 +82,7 @@ class StatefulSearcher(tune.search.Searcher):
 
 
 def train_fn(config: dict, data: Optional[dict] = None):
-    checkpoint = train.get_context().get_checkpoint()
+    checkpoint = train.get_checkpoint()
     start = checkpoint.to_dict()["iteration"] + 1 if checkpoint else 1
 
     training_started_marker = Path(

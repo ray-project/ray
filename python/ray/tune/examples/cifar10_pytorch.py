@@ -79,8 +79,8 @@ def train_cifar(config):
     optimizer = optim.SGD(net.parameters(), lr=config["lr"], momentum=0.9)
 
     # Load existing checkpoint through `get_checkpoint()` API.
-    if train.get_context().get_checkpoint():
-        loaded_checkpoint = train.get_context().get_checkpoint()
+    if train.get_checkpoint():
+        loaded_checkpoint = train.get_checkpoint()
         with loaded_checkpoint.as_directory() as loaded_checkpoint_dir:
             model_state, optimizer_state = torch.load(os.path.join(loaded_checkpoint_dir, "checkpoint.pt"))
             net.load_state_dict(model_state)

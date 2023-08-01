@@ -17,8 +17,8 @@ def train_func(config):
     step = 0
     width, height = config["width"], config["height"]
 
-    if train.get_context().get_checkpoint():
-        loaded_checkpoint = train.get_context().get_checkpoint()
+    if train.get_checkpoint():
+        loaded_checkpoint = train.get_checkpoint()
         step = loaded_checkpoint.to_dict()["step"] + 1
 
     for step in range(step, 100):

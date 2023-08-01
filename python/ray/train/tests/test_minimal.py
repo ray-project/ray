@@ -38,7 +38,7 @@ def test_run(ray_start_4_cpus):
     config = TestConfig()
 
     def train_func():
-        checkpoint = train.get_context().get_checkpoint()
+        checkpoint = train.get_checkpoint()
         train.report(metrics=checkpoint.to_dict(), checkpoint=checkpoint)
         return checkpoint.to_dict()[key]
 

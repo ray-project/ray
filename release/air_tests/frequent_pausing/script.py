@@ -25,8 +25,8 @@ from ray.tune.tuner import Tuner
 
 def func(config):
     starting_epoch = 0
-    if train.get_context().get_checkpoint():
-        checkpoint_dict = train.get_context().get_checkpoint().to_dict()
+    if train.get_checkpoint():
+        checkpoint_dict = train..get_checkpoint().to_dict()
 
         checkpoint_epoch = checkpoint_dict["epoch"]
         starting_epoch = checkpoint_epoch + 1

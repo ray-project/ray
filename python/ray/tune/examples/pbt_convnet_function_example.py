@@ -30,9 +30,9 @@ def train_convnet(config):
 
     # If `get_checkpoint()` is not None, then we are resuming from a checkpoint.
     # Load model state and iteration step from checkpoint.
-    if train.get_context().get_checkpoint():
+    if train.get_checkpoint():
         print("Loading from checkpoint.")
-        loaded_checkpoint = train.get_context().get_checkpoint()
+        loaded_checkpoint = train.get_checkpoint()
         with loaded_checkpoint.as_directory() as loaded_checkpoint_dir:
             path = os.path.join(loaded_checkpoint_dir, "checkpoint.pt")
             checkpoint = torch.load(path)

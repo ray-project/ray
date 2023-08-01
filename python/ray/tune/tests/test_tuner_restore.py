@@ -95,7 +95,7 @@ def _train_fn_sometimes_failing(config):
     # Hangs if hanging is set and marker file exists.
     failing, hanging = config["failing_hanging"]
 
-    checkpoint = train.get_context().get_checkpoint()
+    checkpoint = train.get_checkpoint()
     if checkpoint:
         checkpoint_dict = checkpoint.to_dict()
         state = {"it": checkpoint_dict["it"]}
@@ -633,7 +633,7 @@ def test_restore_overwrite_trainable(ray_start_2_cpus, tmpdir):
 
     # Can't overwrite with a different Trainable name
     def train_func_2(config):
-        checkpoint = train.get_context().get_checkpoint()
+        checkpoint = train.get_checkpoint()
         assert checkpoint and checkpoint.to_dict()["data"] == config["data"]
 
     with pytest.raises(ValueError):
@@ -645,7 +645,7 @@ def test_restore_overwrite_trainable(ray_start_2_cpus, tmpdir):
 
     # Can technically change trainable code (not recommended!)
     def train_func_1(config):
-        checkpoint = train.get_context().get_checkpoint()
+        checkpoint = train.get_checkpoint()
         assert checkpoint and checkpoint.to_dict()["data"] == config["data"]
 
     tuner = Tuner.restore(

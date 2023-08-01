@@ -363,7 +363,7 @@ def test_worker_kill(ray_start_4_cpus, backend):
 
 def test_worker_kill_checkpoint(ray_start_4_cpus):
     def train_func():
-        checkpoint = train.get_context().get_checkpoint()
+        checkpoint = train.get_checkpoint()
         if checkpoint:
             epoch = checkpoint.to_dict()["epoch"]
         else:

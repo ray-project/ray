@@ -44,7 +44,7 @@ def train_loop_per_worker(config):
     )
     epoch = 0
 
-    checkpoint = train.get_context().get_checkpoint()
+    checkpoint = train.get_checkpoint()
     if checkpoint:
         checkpoint_dict = checkpoint.to_dict()
         model_state = checkpoint_dict["model_state"]

@@ -15,7 +15,7 @@ from run_cloud_test import ARTIFACT_FILENAME
 
 
 def fn_trainable(config):
-    checkpoint = train.get_context().get_checkpoint()
+    checkpoint = train.get_checkpoint()
     if checkpoint:
         state = {"internal_iter": checkpoint.to_dict()["internal_iter"] + 1}
     else:

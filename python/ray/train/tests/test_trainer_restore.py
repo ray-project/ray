@@ -52,7 +52,7 @@ class _TestSpecificError(RuntimeError):
 
 
 def _failing_train_fn(config):
-    checkpoint = train.get_context().get_checkpoint()
+    checkpoint = train.get_checkpoint()
     it = 1
     if checkpoint:
         it = checkpoint.to_dict()["it"] + 1
@@ -470,7 +470,7 @@ def test_retry_with_max_failures(ray_start_4_cpus, eventual_success):
     final_iter = 10
 
     def train_func():
-        ckpt = train.get_context().get_checkpoint()
+        ckpt = train.get_checkpoint()
         itr = 1
         restore_count = 0
         if ckpt:
@@ -525,7 +525,7 @@ def test_clear_lazy_ckpt_markers(ray_start_4_cpus):
         # We should always have this lazy checkpoint marker in single node training
         assert Path(train.get_context().get_trial_dir(), LAZY_CHECKPOINT_MARKER_FILE).exists()
 
-        if not train.get_context().get_checkpoint():
+        if not train.get_checkpoint():
             train.report(
                 metrics={"a": 1}, checkpoint=TorchCheckpoint.from_dict({"a": 1})
             )

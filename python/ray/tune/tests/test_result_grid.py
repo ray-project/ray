@@ -363,8 +363,8 @@ def test_num_errors_terminated(tmpdir):
 def test_result_grid_moved_experiment_path(ray_start_2_cpus, tmpdir):
     def train_func(config):
         data = {"it": 0}
-        if train.get_context().get_checkpoint():
-            data = train.get_context().get_checkpoint().to_dict()
+        if train.get_checkpoint():
+            data = train.get_checkpoint().to_dict()
 
         while True:
             data["it"] += 1

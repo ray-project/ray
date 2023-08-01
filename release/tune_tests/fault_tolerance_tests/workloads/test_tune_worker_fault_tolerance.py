@@ -41,7 +41,7 @@ WARMUP_TIME_S = 45
 
 def objective(config):
     start_iteration = 0
-    checkpoint = train.get_context().get_checkpoint()
+    checkpoint = train.get_checkpoint()
     # Ensure that after the node killer warmup time, we always have
     # a checkpoint to restore from.
     if (time.monotonic() - config["start_time"]) >= config["warmup_time_s"]:

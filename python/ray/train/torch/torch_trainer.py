@@ -60,7 +60,7 @@ class TorchTrainer(DataParallelTrainer):
             train.get_dataset_shard("my_dataset")
 
             # Get dict of last saved checkpoint.
-            train.get_context().get_checkpoint()
+            train.get_checkpoint()
 
             # Get the total number of workers executing training.
             train.get_context().get_world_size()

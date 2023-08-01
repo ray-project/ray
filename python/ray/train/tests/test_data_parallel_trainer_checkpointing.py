@@ -135,7 +135,7 @@ def test_resume_from_checkpoint(ray_start_4_cpus, tmpdir):
     """
 
     def train_func():
-        checkpoint = train.get_context().get_checkpoint()
+        checkpoint = train.get_checkpoint()
         if checkpoint:
             epoch = checkpoint.to_dict()["epoch"]
         else:

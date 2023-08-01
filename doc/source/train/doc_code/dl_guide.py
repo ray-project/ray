@@ -18,7 +18,7 @@ def train_loop_per_worker(config: dict):
     from torchvision.models import resnet18
 
     # Checkpoint loading
-    checkpoint: Optional[TorchCheckpoint] = train.get_context().get_checkpoint()
+    checkpoint: Optional[TorchCheckpoint] = train.get_checkpoint()
     model = checkpoint.get_model() if checkpoint else resnet18()
     ray.train.torch.prepare_model(model)
 

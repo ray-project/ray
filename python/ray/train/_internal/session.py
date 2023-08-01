@@ -669,7 +669,7 @@ def get_checkpoint() -> Optional[Checkpoint]:
         from ray.train.tensorflow import TensorflowTrainer
 
         def train_func():
-            ckpt = train.get_context().get_checkpoint()
+            ckpt = train.get_checkpoint()
             if ckpt:
                 with ckpt.as_directory() as loaded_checkpoint_dir:
                     model = tf.keras.models.load_model(loaded_checkpoint_dir)

@@ -50,8 +50,8 @@ def dcgan_train(config):
         dataloader = get_data_loader()
 
     step = 1
-    if train.get_context().get_checkpoint():
-        checkpoint_dict = train.get_context().get_checkpoint().to_dict()
+    if train.get_checkpoint():
+        checkpoint_dict = train.get_checkpoint().to_dict()
         netD.load_state_dict(checkpoint_dict["netDmodel"])
         netG.load_state_dict(checkpoint_dict["netGmodel"])
         optimizerD.load_state_dict(checkpoint_dict["optimD"])

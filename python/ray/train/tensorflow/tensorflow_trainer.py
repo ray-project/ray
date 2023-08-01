@@ -65,7 +65,7 @@ class TensorflowTrainer(DataParallelTrainer):
             train.report(...)
 
             # Returns dict of last saved checkpoint.
-            train.get_context().get_checkpoint()
+            train.get_checkpoint()
 
             # Returns the Dataset shard for the given key.
             train.get_dataset_shard("my_dataset")

@@ -749,7 +749,7 @@ Checkpoints can be loaded into the training function in 2 steps:
                 optimizer = Adam(model.parameters(), lr=3e-4)
                 start_epoch = 0
 
-                checkpoint = train.get_context().get_checkpoint()
+                checkpoint = train.get_checkpoint()
                 if checkpoint:
                     # assume that we have run the train.report() example
                     # and successfully save some model weights
@@ -819,7 +819,7 @@ Checkpoints can be loaded into the training function in 2 steps:
                 with strategy.scope():
                     # toy neural network : 1-layer
                     model = tf.keras.Sequential([tf.keras.layers.Dense(1, activation="linear", input_shape=(4,))])
-                    checkpoint = train.get_context().get_checkpoint()
+                    checkpoint = train.get_checkpoint()
                     if checkpoint:
                         # assume that we have run the train.report() example
                         # and successfully save some model weights
