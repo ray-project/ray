@@ -245,6 +245,22 @@ class Callback(metaclass=_CallbackMeta):
         """
         pass
 
+    def on_trial_recover(
+        self, iteration: int, trials: List["Trial"], trial: "Trial", **info
+    ):
+        """Called after a trial instance failed (errored) but the trial is scheduled
+        for retry.
+
+        The search algorithm and scheduler are not notified.
+
+        Arguments:
+            iteration: Number of iterations of the tuning loop.
+            trials: List of trials.
+            trial: Trial that just has errored.
+            **info: Kwargs dict for forward compatibility.
+        """
+        pass
+
     def on_trial_error(
         self, iteration: int, trials: List["Trial"], trial: "Trial", **info
     ):
@@ -398,6 +414,10 @@ class CallbackList(Callback):
     def on_trial_complete(self, **info):
         for callback in self._callbacks:
             callback.on_trial_complete(**info)
+
+    def on_trial_recover(self, **info):
+        for callback in self._callbacks:
+            callback.on_trial_recover(**info)
 
     def on_trial_error(self, **info):
         for callback in self._callbacks:
