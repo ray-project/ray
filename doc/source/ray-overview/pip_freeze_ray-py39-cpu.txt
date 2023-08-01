@@ -54,7 +54,7 @@ google-oauth==1.0.1
 googleapis-common-protos==1.59.1
 gpustat==1.1
 grpcio==1.50.0
-Gymnasium==0.26.3
+Gymnasium==0.29.0
 gymnasium-notices==0.0.1
 h11==0.14.0
 httplib2==0.22.0

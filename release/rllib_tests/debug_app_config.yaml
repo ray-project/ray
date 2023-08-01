@@ -15,7 +15,7 @@ python:
   pip_packages:
   ## These dependencies should be handled by rllib-requirements.txt
   ## and removed here
-  - gymnasium==0.28.1
+  - gymnasium==0.29.0
   - imageio==2.31.1
   - ale-py==0.8.1
   - mujoco==2.3.6
