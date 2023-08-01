@@ -302,6 +302,7 @@ class ServeController:
         recovering_timeout = RECOVERING_LONG_POLL_BROADCAST_TIMEOUT_S
         start_time = time.time()
         while True:
+            loop_start_time = time.time()
             if self._shutting_down:
                 try:
                     self.shutdown()
@@ -349,6 +350,14 @@ class ServeController:
                 self._put_serve_snapshot()
             except Exception:
                 logger.exception("Exception putting serve snapshot.")
+            loop_duration = time.time() - loop_start_time
+            if loop_duration > 60:
+                logger.warning(
+                    "The last control loop took a while to run "
+                    f"({loop_duration}s). This is likely caused by running a "
+                    "large number of replicas in a single Ray cluster. "
+                    "Consider running your deployments on multiple Ray clusters."
+                )
             await asyncio.sleep(CONTROL_LOOP_PERIOD_S)
 
     def _put_serve_snapshot(self) -> None:
