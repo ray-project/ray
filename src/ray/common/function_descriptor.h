@@ -220,6 +220,66 @@ class PythonFunctionDescriptor : public FunctionDescriptorInterface {
   const rpc::PythonFunctionDescriptor *typed_message_;
 };
 
+class JuliaFunctionDescriptor : public FunctionDescriptorInterface {
+ public:
+  /// Construct from a protobuf message object.
+  /// The input message will be **copied** into this object.
+  ///
+  /// \param message The protobuf message.
+  explicit JuliaFunctionDescriptor(rpc::FunctionDescriptor message)
+      : FunctionDescriptorInterface(std::move(message)) {
+    RAY_CHECK(message_->function_descriptor_case() ==
+              ray::FunctionDescriptorType::kJuliaFunctionDescriptor);
+    typed_message_ = &(message_->python_function_descriptor());
+  }
+
+  virtual size_t Hash() const {
+    return std::hash<int>()(ray::FunctionDescriptorType::kJuliaFunctionDescriptor) ^
+           std::hash<std::string>()(typed_message_->module_name()) ^
+           std::hash<std::string>()(typed_message_->function_name()) ^
+           std::hash<std::string>()(typed_message_->function_hash());
+  }
+
+  inline bool operator==(const JuliaFunctionDescriptor &other) const {
+    if (this == &other) {
+      return true;
+    }
+    return this->ModuleName() == other.ModuleName() &&
+           this->FunctionName() == other.FunctionName() &&
+           this->FunctionHash() == other.FunctionHash();
+  }
+
+  inline bool operator!=(const JuliaFunctionDescriptor &other) const {
+    return !(*this == other);
+  }
+
+  virtual std::string ToString() const {
+    return "{type=JuliaFunctionDescriptor, module_name=" +
+           typed_message_->module_name() +
+           ", function_name=" + typed_message_->function_name() +
+           ", function_hash=" + typed_message_->function_hash() + "}";
+  }
+
+  /// TODO: implement this?
+  // virtual std::string CallSiteString() const {
+  // }
+
+  virtual std::string CallString() const {
+    const std::string &module_name = typed_message_->module_name();
+    const std::string &function_name = typed_message_->function_name();
+    return module_name.empty() ? function_name : module_name + "." + function_name;
+  }
+
+  const std::string &ModuleName() const { return typed_message_->module_name(); }
+
+  const std::string &FunctionName() const { return typed_message_->function_name(); }
+
+  const std::string &FunctionHash() const { return typed_message_->function_hash(); }
+
+ private:
+  const rpc::JuliaFunctionDescriptor *typed_message_;
+};
+
 class CppFunctionDescriptor : public FunctionDescriptorInterface {
  public:
   /// Construct from a protobuf message object.
@@ -328,6 +388,13 @@ class FunctionDescriptorBuilder {
                                         const std::string &class_name,
                                         const std::string &function_name,
                                         const std::string &function_hash);
+
+  /// Build a JuliaFunctionDescriptor.
+  ///
+  /// \return a ray::JuliaFunctionDescriptor
+  static FunctionDescriptor BuildJulia(const std::string &module_name,
+                                       const std::string &function_name,
+                                       const std::string &function_hash);
 
   /// Build a CppFunctionDescriptor.
   ///
