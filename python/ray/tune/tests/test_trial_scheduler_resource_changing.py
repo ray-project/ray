@@ -1,7 +1,10 @@
+import shutil
+import tempfile
 import unittest
 
 from ray.air._internal.checkpoint_manager import _TrackedCheckpoint, CheckpointStorage
 from ray.tune import PlacementGroupFactory
+from ray.tune.execution.tune_controller import TuneController
 from ray.tune.schedulers.trial_scheduler import TrialScheduler
 from ray.tune.experiment import Trial
 from ray.tune.schedulers.resource_changing_scheduler import (
@@ -9,41 +12,12 @@ from ray.tune.schedulers.resource_changing_scheduler import (
     DistributeResources,
     DistributeResourcesToTopJob,
 )
+from ray.tune.tests.execution.utils import create_execution_test_objects
 
 
-class MockResourceUpdater:
-    def __init__(self, num_cpus, num_gpus):
-        self._num_cpus = num_cpus
-        self._num_gpus = num_gpus
-
-    def get_num_cpus(self) -> int:
-        return self._num_cpus
-
-    def get_num_gpus(self) -> int:
-        return self._num_gpus
-
-
-class MockTrialExecutor:
-    def __init__(self, cpu: float, gpu: float) -> None:
-        self._resource_updater = MockResourceUpdater(cpu, gpu)
-
-    def force_reconcilation_on_next_step_end(self):
-        return
-
-    def has_resources_for_trial(self, trial):
-        return True
-
-
-class MockTuneController:
-    def __init__(self, cpu, gpu) -> None:
-        self.trial_executor = MockTrialExecutor(cpu, gpu)
-        self.trials = set()
-
+class MockTuneController(TuneController):
     def get_live_trials(self):
-        return [t for t in self.trials if t.status != Trial.TERMINATED]
-
-    def get_trials(self):
-        return list(self.trials)
+        return [t for t in self._trials if t.status != "TERMINATED"]
 
 
 class MockTrial(Trial):
@@ -58,7 +32,16 @@ class MockTrial(Trial):
 
 class TestUniformResourceAllocation(unittest.TestCase):
     def setUp(self):
-        self.tune_controller = MockTuneController(8, 8)
+        self.tmpdir = tempfile.mkdtemp()
+        self.tune_controller, *_ = create_execution_test_objects(
+            self.tmpdir,
+            resources={"CPU": 8, "GPU": 8},
+            reuse_actors=False,
+            tune_controller_cls=MockTuneController,
+        )
+
+    def tearDown(self) -> None:
+        shutil.rmtree(self.tmpdir)
 
     def _prepareTrials(self, scheduler, base_pgf):
         trial1 = MockTrial("mock", config=dict(num=1), stub=True)
@@ -70,7 +53,7 @@ class TestUniformResourceAllocation(unittest.TestCase):
         trial4 = MockTrial("mock", config=dict(num=4), stub=True)
         trial4.placement_group_factory = base_pgf
 
-        self.tune_controller.trials = {trial1, trial2, trial3, trial4}
+        self.tune_controller._trials = [trial1, trial2, trial3, trial4]
 
         scheduler.on_trial_add(self.tune_controller, trial1)
         scheduler.on_trial_add(self.tune_controller, trial2)
