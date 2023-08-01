@@ -216,7 +216,6 @@ class StateDataSourceClient:
         self._id_id_map.put(node_id, address)
 
     def unregister_agent_client(self, node_id: str):
-        self._runtime_env_agent_stub.pop(node_id)
         self._log_agent_stub.pop(node_id)
         self._id_id_map.pop(node_id)
 
