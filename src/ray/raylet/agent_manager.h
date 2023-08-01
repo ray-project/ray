@@ -49,7 +49,7 @@ class AgentManager {
     // Commands to start the agent. Note we append extra arguments:
     // --agent-id $AGENT_ID # A random string of int
     std::vector<std::string> agent_commands;
-    // If true: the started process fate-shares with the raylet. i.e. when the process
+    // If true: the started process fate-shares with the raylet. i.e., when the process
     // fails to start or exits, we SIGTERM the raylet.
     bool fate_shares;
   };
