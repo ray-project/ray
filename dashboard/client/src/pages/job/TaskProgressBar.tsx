@@ -10,6 +10,7 @@ export type TaskProgressBarProps = TaskProgress & {
   expanded?: boolean;
   onClick?: () => void;
   total?: number;
+  controls?: JSX.Element;
 };
 
 export const TaskProgressBar = ({
@@ -25,6 +26,7 @@ export const TaskProgressBar = ({
   expanded,
   onClick,
   total,
+  controls,
 }: TaskProgressBarProps) => {
   const theme = useTheme<Theme>();
   const progress: ProgressBarSegment[] = [
@@ -67,6 +69,7 @@ export const TaskProgressBar = ({
       onClick={onClick}
       showTotalProgress={numFinished}
       total={total}
+      controls={controls}
     />
   );
 };
