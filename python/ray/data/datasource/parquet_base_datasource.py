@@ -57,9 +57,9 @@ class ParquetBaseDatasource(FileBasedDatasource):
 
         writer = None
         for block in blocks:
-            block = BlockAccessor.for_block(block)
-            assert block.num_rows() > 0, "Cannot write an empty block."
+            block = BlockAccessor.for_block(block).to_arrow()
+            assert block.num_rows > 0, "Cannot write an empty block."
             if writer is None:
-                writer = pq.ParquetWriter(f, block.schema(), **writer_args)
-            writer.write_table(block.to_arrow(), row_group_size=row_group_size)
+                writer = pq.ParquetWriter(f, block.schema, **writer_args)
+            writer.write_table(block, row_group_size=row_group_size)
         writer.close()

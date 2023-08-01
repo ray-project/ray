@@ -75,9 +75,9 @@ class CSVDatasource(FileBasedDatasource):
         writer_args = _resolve_kwargs(writer_args_fn, **writer_args)
         writer = None
         for block in blocks:
-            block = BlockAccessor.for_block(block)
-            assert block.num_rows() > 0, "Cannot write an empty block."
+            block = BlockAccessor.for_block(block).to_arrow()
+            assert block.num_rows > 0, "Cannot write an empty block."
             if writer is None:
-                writer = csv.CSVWriter(f, block.schema(), **writer_args)
-            writer.write_table(block.to_arrow(), max_chunksize=max_chunksize)
+                writer = csv.CSVWriter(f, block.schema, **writer_args)
+            writer.write_table(block, max_chunksize=max_chunksize)
         writer.close()

@@ -369,6 +369,29 @@ def test_read_large_data(ray_start_cluster, enable_dynamic_block_splitting):
     assert ds.count() == num_blocks_per_task
 
 
+def test_write_large_data(shutdown_only, tmp_path):
+    # Test 2G input with single task
+    num_blocks_per_task = 200
+    block_size = 10 * 1024 * 1024
+
+    def foo(batch):
+        return pd.DataFrame({"one": [1]})
+
+    ds = ray.data.read_datasource(
+        RandomBytesDatasource(),
+        parallelism=1,
+        num_blocks_per_task=num_blocks_per_task,
+        block_size=block_size,
+    )
+
+    # This should succeed without OOM.
+    # https://github.com/ray-project/ray/pull/37966.
+    ds.write_parquet(tmp_path)
+
+    max_heap_memory = ds._write_ds._get_stats_summary().get_max_heap_memory()
+    assert max_heap_memory < (num_blocks_per_task * block_size / 2), max_heap_memory
+
+
 if __name__ == "__main__":
     import sys
 
