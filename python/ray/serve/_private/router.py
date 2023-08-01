@@ -413,9 +413,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
             # If model id in the multiplexed model id to replica ids map,
             # then we prioritize replicas that have the model id.
             if model_id in self._multiplexed_model_id_to_replica_ids:
-                candidates = self._multiplexed_model_id_to_replica_ids[
-                    model_id
-                ].difference(blacklist_replica_ids)
+                candidates = self._multiplexed_model_id_to_replica_ids[model_id]
                 if len(candidates) > 0:
                     return candidates
             first_check = False
