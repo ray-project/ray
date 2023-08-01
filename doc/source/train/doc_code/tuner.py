@@ -205,7 +205,6 @@ for result in result_grid:
 # __result_grid_inspection_end__
 
 # __run_config_start__
-from ray import 
 from ray.train import CheckpointConfig, RunConfig
 
 run_config = RunConfig(

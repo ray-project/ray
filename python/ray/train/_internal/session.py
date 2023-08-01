@@ -813,7 +813,7 @@ def get_world_rank() -> int:
         from ray.train.tensorflow import TensorflowTrainer
 
         def train_loop_per_worker(config):
-            if session.get_world_rank() == 0:
+            if train.get_context().get_world_rank() == 0:
                 print("Worker 0")
 
         train_dataset = ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv")
@@ -935,7 +935,7 @@ def get_node_rank() -> int:
             from ray.train.torch import TorchTrainer
 
             def train_loop_per_worker():
-                print(session.get_node_rank())
+                print(train.get_context().get_node_rank())
 
             train_dataset = ray.data.from_items(
                 [{"x": x, "y": x + 1} for x in range(32)])
