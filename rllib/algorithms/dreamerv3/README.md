@@ -61,22 +61,33 @@ $ python run_regression_tests.py --dir ../tuned_examples/dreamerv3/atari_100k.py
 $ cd ray/rllib/tests
 $ python run_regression_tests.py --dir ../tuned_examples/dreamerv3/dm_control_suite_vision.py --env DMC/cartpole/swingup 
 ```
-Other `--env` options are `--env DMC/hopper/hop`, `--env DMC/walker/walk`, etc.. 
+Other `--env` options for the DM Control Suite would be `--env DMC/hopper/hop`, `--env DMC/walker/walk`, etc..
+Note that you can also switch on WandB logging with the above script via the options
+`--wandb-key=[your WandB API key] --wandb-project=[some project name] --wandb-run-name=[some run name]`
 
 
 ## Results
 Our results on the Atari 100k and (visual) DeepMind Control Suite benchmarks match those
 reported in the paper.
 
+### Pong-v5 (100k) 1GPU vs 2GPUs vs 4GPUs
+<img src="https://github.com/ray-project/ray/tree/master/doc/source/rllib/images/dreamerv3/pong_1_2_and_4gpus.svg">
+
+### Atari 100k
+<img src="https://github.com/ray-project/ray/tree/master/doc/source/rllib/images/dreamerv3/atari100k_1_vs_4gpus.svg">
+
+### DeepMind Control Suite (vision)
+<img src="https://github.com/ray-project/ray/tree/master/doc/source/rllib/images/dreamerv3/dmc_1_vs_4gpus.svg">
+
 
 ## References
-For more algorithm details, see:
+For more algorithm details, see the original Dreamer-V3 paper:
 
 [1] Mastering Diverse Domains through World Models - 2023
 D. Hafner, J. Pasukonis, J. Ba, T. Lillicrap
 https://arxiv.org/pdf/2301.04104v1.pdf
 
-.. and the "DreamerV2" paper:
+.. and the Dreamer-V2 paper:
 
 [2] Mastering Atari with Discrete World Models - 2021
 D. Hafner, T. Lillicrap, M. Norouzi, J. Ba
