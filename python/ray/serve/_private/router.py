@@ -443,7 +443,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
                 replica_ids_attempted, request_metadata
             )
             chosen_ids = random.sample(
-                candidate_replica_ids, k=min(2, len(candidate_replica_ids))
+                list(candidate_replica_ids), k=min(2, len(candidate_replica_ids))
             )
             yield [self._replicas[chosen_id] for chosen_id in chosen_ids]
 
@@ -952,6 +952,7 @@ class Router:
             ray.get(controller_handle.get_deployment_info.remote(self.deployment_name))
         )
         deployment_info = DeploymentInfo.from_proto(deployment_route.deployment_info)
+        self.metrics_pusher = None
         if deployment_info.deployment_config.autoscaling_config:
             self.metrics_pusher = MetricsPusher()
             self.metrics_pusher.register_task(
@@ -1002,3 +1003,11 @@ class Router:
         )
 
         return result
+
+    def shutdown(self):
+        """Shutdown router gracefully.
+
+        The metrics_pusher needs to be shutdown separately.
+        """
+        if self.metrics_pusher:
+            self.metrics_pusher.shutdown()
