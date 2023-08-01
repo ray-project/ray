@@ -976,7 +976,7 @@ class Router:
                     "application": app_name,
                 },
             )
-        # The dictionary should only has one entry in the self.num_queued_queries 
+        # The dictionary should only has one entry in the self.num_queued_queries
         # for the deployment queued metrics.
         return {self.deployment_name: sum(self.num_queued_queries.values())}
 
