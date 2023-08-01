@@ -9,6 +9,8 @@ doctest(
             # GPU tests
             "tensorflow/tensorflow_trainer.py",
             "huggingface/transformers/transformers_trainer.py",
+            "_internal/session.py",
+            "context.py"
         ]
     ),
     size = "large",
@@ -19,7 +21,10 @@ doctest(
     files = [
         "tensorflow/tensorflow_trainer.py",
         "huggingface/transformers/transformers_trainer.py",
+        "_internal/session.py",
+        "context.py"
     ],
+    size = "large",
     tags = ["team:ml"],
     gpu = True
 )
@@ -242,15 +247,6 @@ py_test(
 # --------------------------------------------------------------------
 
 py_test(
-    name = "pytorch_pbt_failure",
-    size = "small",
-    srcs = ["tests/pytorch_pbt_failure.py"],
-    tags = ["team:ml", "exlusive", "no_main"],
-    deps = [":train_lib"],
-    args = ["--smoke-test"]
-)
-
-py_test(
     name = "test_accelerate_trainer_gpu",
     size = "large",
     srcs = ["tests/test_accelerate_trainer_gpu.py"],
@@ -287,6 +283,14 @@ py_test(
     size = "medium",
     srcs = ["tests/test_batchpredictor_runtime.py"],
     tags = ["team:ml", "exclusive", "ray_air"],
+    deps = [":train_lib"]
+)
+
+py_test(
+    name = "test_checkpoint",
+    size = "small",
+    srcs = ["tests/test_checkpoint.py"],
+    tags = ["team:ml", "exclusive"],
     deps = [":train_lib"]
 )
 
@@ -448,6 +452,14 @@ py_test(
     srcs = ["tests/test_minimal.py"],
     tags = ["team:ml", "exclusive", "minimal"],
     deps = [":train_lib"]
+)
+
+py_test(
+    name = "test_new_persistence",
+    size = "small",
+    srcs = ["tests/test_new_persistence.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":train_lib", ":conftest"]
 )
 
 py_test(

@@ -636,10 +636,17 @@ class WandbLoggerCallback(LoggerCallback):
                 num_cpus=0,
                 **_force_on_current_node(),
                 runtime_env={"env_vars": env_vars},
+                max_restarts=-1,
+                max_task_retries=-1,
             )(self._logger_actor_cls)
 
         self._trial_queues[trial] = Queue(
-            actor_options={"num_cpus": 0, **_force_on_current_node()}
+            actor_options={
+                "num_cpus": 0,
+                **_force_on_current_node(),
+                "max_restarts": -1,
+                "max_task_retries": -1,
+            }
         )
         self._trial_logging_actors[trial] = self._remote_logger_class.remote(
             logdir=trial.local_path,

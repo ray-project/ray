@@ -41,7 +41,7 @@ from ray.train.constants import (
 from ray.train.error import SessionMisuseError
 from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.util.debug import log_once
-
+from ray.train._internal.storage import _use_storage_context, StorageContext
 
 if TYPE_CHECKING:
     from ray.data import DataIterator
@@ -106,6 +106,7 @@ class _TrainSession:
         enable_lazy_checkpointing: bool = True,
         checkpoint_keep_all_ranks: bool = False,
         checkpoint_upload_from_workers: bool = False,
+        storage: Optional[StorageContext] = None,
     ):
 
         self.dataset_shard = dataset_shard
@@ -121,8 +122,16 @@ class _TrainSession:
         self.enable_lazy_checkpointing = enable_lazy_checkpointing
         self.checkpoint_keep_all_ranks = checkpoint_keep_all_ranks
         self.checkpoint_upload_from_workers = checkpoint_upload_from_workers
+
+        if _use_storage_context():
+            assert storage
+            logger.debug(f"StorageContext on TRAIN WORKER {world_rank}:\n{storage}")
+            storage._check_validation_file()
+
+        self.storage = storage
+
         # Only used if checkpoint_upload_from_workers is True.
-        self.checkpoint_uri = None
+        self.legacy_checkpoint_uri = None
 
         # Function to encode checkpoint dict before sending to the driver.
         if not encode_data_fn:
@@ -367,18 +376,18 @@ class _TrainSession:
         upload_from_workers = (
             checkpoint_type == "local_path"
             and self.checkpoint_upload_from_workers
-            and self.checkpoint_uri
+            and self.legacy_checkpoint_uri
         )
         if upload_from_workers:
             self._create_checkpoint_file_list(checkpoint)
             logger.info(
                 f"Uploading checkpoint files from worker rank {self.world_rank} "
-                f"to cloud URI {self.checkpoint_uri}."
+                f"to cloud URI {self.legacy_checkpoint_uri}."
             )
             # We want to upload the files directly to cloud storage,
             # so that they won't need to be shipped to the driver node
             # via object store.
-            checkpoint.to_uri(self.checkpoint_uri)
+            checkpoint.to_uri(self.legacy_checkpoint_uri)
             logger.info("Done uploading checkpoint files.")
             self._remove_uploaded_checkpoint_files(checkpoint)
 
@@ -418,13 +427,13 @@ class _TrainSession:
         # checkpoint has been processed.
         self.continue_lock.acquire()
 
-    def _set_checkpoint_uri(self, uri: str):
+    def _set_legacy_checkpoint_uri(self, uri: str):
         """Tell session where to save the next directory checkpoint on the cloud.
 
         Args:
             uri: URI to the location where next checkpoint should be saved.
         """
-        self.checkpoint_uri = uri
+        self.legacy_checkpoint_uri = uri
 
     def report(self, metrics: Dict, checkpoint: Optional[Checkpoint] = None) -> None:
         # TODO(xwjiang): tons of optimizations.
@@ -599,18 +608,21 @@ def report(metrics: Dict, *, checkpoint: Optional[Checkpoint] = None) -> None:
     longer be accessible to the caller after the report call.
 
     Example:
-        .. code-block: python
+        .. testcode::
+
+            import tensorflow as tf
 
             from ray import train
             from ray.train import Checkpoint, ScalingConfig
+            from ray.train.tensorflow import TensorflowTrainer
 
             ######## Using it in the *per worker* train loop (TrainSession) #######
             def train_func():
-                model = build_model()
+                model = tf.keras.applications.resnet50.ResNet50()
                 model.save("my_model", overwrite=True)
                 train.report(
                     metrics={"foo": "bar"},
-                    checkpoint=Checkpoint.from_directory(temp_dir.name)
+                    checkpoint=Checkpoint.from_directory("my_model")
                 )
                 # Air guarantees by this point, you can safely write new stuff to
                 # "my_model" directory.
@@ -621,9 +633,14 @@ def report(metrics: Dict, *, checkpoint: Optional[Checkpoint] = None) -> None:
             )
             result = trainer.fit()
             # If you navigate to result.checkpoint's path, you will find the
-            content of ``model.save()`` under it.
+            # content of ``model.save()`` under it.
             # If you have `SyncConfig` configured, the content should also
             # show up in the corresponding cloud storage path.
+
+        .. testoutput::
+            :hide:
+
+            ...
 
     Args:
         metrics: The metrics you want to report.
@@ -642,21 +659,22 @@ def get_checkpoint() -> Optional[Checkpoint]:
         Checkpoint object if the session is currently being resumed.
             Otherwise, return None.
 
-    .. code-block:: python
+    .. testcode::
+
+        import tensorflow as tf
 
         ######## Using it in the *per worker* train loop (TrainSession) ######
         from ray import train
         from ray.train import Checkpoint, ScalingConfig
+        from ray.train.tensorflow import TensorflowTrainer
 
         def train_func():
             ckpt = train.get_context().get_checkpoint()
             if ckpt:
                 with ckpt.as_directory() as loaded_checkpoint_dir:
-                    import tensorflow as tf
-
                     model = tf.keras.models.load_model(loaded_checkpoint_dir)
             else:
-                model = build_model()
+                model = tf.keras.applications.resnet50.ResNet50()
 
             model.save("my_model", overwrite=True)
             train.report(
@@ -679,6 +697,11 @@ def get_checkpoint() -> Optional[Checkpoint]:
             resume_from_checkpoint=result.checkpoint,
         )
         result2 = trainer2.fit()
+
+    .. testoutput::
+        :hide:
+
+        ...
     """
 
     return _get_session().loaded_checkpoint
@@ -719,17 +742,20 @@ def get_trial_dir() -> str:
     If calling from a Train session, this will give the trial directory of its parent
     Tune session.
 
-    .. code-block:: python
+    .. testcode::
 
         from ray import train, tune
 
-        def train_func():
-            # Example:
-            # >>> train.get_context().get_trial_dir()
-            # ~/ray_results/<exp-name>/<trial-dir>
+        def train_func(config):
+            print(train.get_context().get_trial_dir())
 
         tuner = tune.Tuner(train_func)
         tuner.fit()
+
+    .. testoutput::
+        :options: +MOCK
+
+        /Users/root/ray_results/train_func_2023-07-19_15-01-37/train_func_d620c_00000_0_2023-07-19_15-01-40
     """
     return _get_session().trial_dir
 
@@ -739,21 +765,30 @@ def get_trial_dir() -> str:
 def get_world_size() -> int:
     """Get the current world size (i.e. total number of workers) for this run.
 
-    .. code-block:: python
+    .. testcode::
 
-        import time
+        import ray
         from ray import train
         from ray.train import ScalingConfig
+        from ray.train.tensorflow import TensorflowTrainer
+
+        NUM_WORKERS = 2
 
         def train_loop_per_worker(config):
-            assert train.get_context().get_world_size() == 4
+            assert session.get_world_size() == NUM_WORKERS
 
-        train_dataset = ray.data.from_items(
-            [{"x": x, "y": x + 1} for x in range(32)])
-        trainer = TensorflowTrainer(train_loop_per_worker,
-            scaling_config=ScalingConfig(num_workers=1),
-            datasets={"train": train_dataset})
+        train_dataset = ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv")
+        trainer = TensorflowTrainer(
+            train_loop_per_worker,
+            scaling_config=ScalingConfig(num_workers=NUM_WORKERS),
+            datasets={"train": train_dataset}
+        )
         trainer.fit()
+
+    .. testoutput::
+        :hide:
+
+        ...
     """
     session = _get_session()
     if not hasattr(session, "world_size"):
@@ -770,24 +805,29 @@ def get_world_size() -> int:
 def get_world_rank() -> int:
     """Get the world rank of this worker.
 
-    .. code-block:: python
+    .. testcode::
 
-        import time
+        import ray
         from ray import train
         from ray.train import ScalingConfig
+        from ray.train.tensorflow import TensorflowTrainer
 
-        def train_loop_per_worker():
-            for iter in range(100):
-                time.sleep(1)
-                if train.get_context().get_world_rank() == 0:
-                    print("Worker 0")
+        def train_loop_per_worker(config):
+            if session.get_world_rank() == 0:
+                print("Worker 0")
 
-        train_dataset = ray.data.from_items(
-            [{"x": x, "y": x + 1} for x in range(32)])
-        trainer = TensorflowTrainer(train_loop_per_worker,
-            scaling_config=ScalingConfig(num_workers=1),
-            datasets={"train": train_dataset})
+        train_dataset = ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv")
+        trainer = TensorflowTrainer(
+            train_loop_per_worker,
+            scaling_config=ScalingConfig(num_workers=2),
+            datasets={"train": train_dataset}
+        )
         trainer.fit()
+
+    .. testoutput::
+        :hide:
+
+        ...
     """
     session = _get_session()
     if not hasattr(session, "world_rank"):
@@ -804,23 +844,32 @@ def get_world_rank() -> int:
 def get_local_rank() -> int:
     """Get the local rank of this worker (rank of the worker on its node).
 
-    .. code-block:: python
+    .. testcode::
 
-        import time
+        import torch
+
+        import ray
         from ray import train
         from ray.train import ScalingConfig
+        from ray.train.torch import TorchTrainer
 
-        def train_loop_per_worker():
+        def train_loop_per_worker(config):
             if torch.cuda.is_available():
                 torch.cuda.set_device(session.get_local_rank())
             ...
 
-        train_dataset = ray.data.from_items(
-            [{"x": x, "y": x + 1} for x in range(32)])
-        trainer = TensorflowTrainer(train_loop_per_worker,
-            scaling_config=ScalingConfig(num_workers=1),
-            datasets={"train": train_dataset})
+        train_dataset = ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv")
+        trainer = TorchTrainer(
+            train_loop_per_worker,
+            scaling_config=ScalingConfig(num_workers=2, use_gpu=True),
+            datasets={"train": train_dataset}
+        )
         trainer.fit()
+
+    .. testoutput::
+        :hide:
+
+        ...
     """
     session = _get_session()
     if not hasattr(session, "local_rank"):
@@ -838,20 +887,28 @@ def get_local_world_size() -> int:
     """Get the local world size of this node (i.e. number of workers on this node).
 
     Example:
-        >>> import ray
-        >>> from ray import train
-        >>> from ray.train import ScalingConfig
-        >>> from ray.train.torch import TorchTrainer
-        >>>
-        >>> def train_loop_per_worker():
-        ...     return train.get_context().get_local_world_size()
-        >>>
-        >>> train_dataset = ray.data.from_items(
-        ...     [{"x": x, "y": x + 1} for x in range(32)])
-        >>> trainer = TorchTrainer(train_loop_per_worker,
-        ...     scaling_config=ScalingConfig(num_workers=1),
-        ...     datasets={"train": train_dataset})
-        >>> trainer.fit() # doctest: +SKIP
+
+        .. testcode::
+
+            import ray
+            from ray import train
+            from ray.train import ScalingConfig
+            from ray.train.torch import TorchTrainer
+
+            def train_loop_per_worker():
+                print(session.get_local_world_size())
+
+            train_dataset = ray.data.from_items(
+                [{"x": x, "y": x + 1} for x in range(32)])
+            trainer = TorchTrainer(train_loop_per_worker,
+                scaling_config=ScalingConfig(num_workers=1),
+                datasets={"train": train_dataset})
+            trainer.fit()
+
+        .. testoutput::
+            :hide:
+
+            ...
     """
     session = _get_session()
     if not hasattr(session, "local_world_size"):
@@ -869,20 +926,28 @@ def get_node_rank() -> int:
     """Get the rank of this node.
 
     Example:
-        >>> import ray
-        >>> from ray import train
-        >>> from ray.train import ScalingConfig
-        >>> from ray.train.torch import TorchTrainer
-        >>>
-        >>> def train_loop_per_worker():
-        ...     return train.get_context().get_node_rank()
-        >>>
-        >>> train_dataset = ray.data.from_items(
-        ...     [{"x": x, "y": x + 1} for x in range(32)])
-        >>> trainer = TorchTrainer(train_loop_per_worker,
-        ...     scaling_config=ScalingConfig(num_workers=1),
-        ...     datasets={"train": train_dataset})
-        >>> trainer.fit() # doctest: +SKIP
+
+        .. testcode::
+
+            import ray
+            from ray import train
+            from ray.train import ScalingConfig
+            from ray.train.torch import TorchTrainer
+
+            def train_loop_per_worker():
+                print(session.get_node_rank())
+
+            train_dataset = ray.data.from_items(
+                [{"x": x, "y": x + 1} for x in range(32)])
+            trainer = TorchTrainer(train_loop_per_worker,
+                scaling_config=ScalingConfig(num_workers=1),
+                datasets={"train": train_dataset})
+            trainer.fit()
+
+        .. testoutput::
+            :hide:
+
+            ...
     """
     session = _get_session()
     if not hasattr(session, "node_rank"):
@@ -905,27 +970,33 @@ def get_dataset_shard(
     :meth:`~ray.data.DataIterator.to_tf` on this shard to convert it to the
     appropriate framework-specific data type.
 
-    .. code-block:: python
+    .. testcode::
 
         import ray
         from ray import train
         from ray.train import ScalingConfig
+        from ray.train.torch import TorchTrainer
 
-        def train_loop_per_worker():
-            model = Net()
-            for iter in range(100):
+        def train_loop_per_worker(config):
+            ...
+            for epoch in range(2):
                 # Trainer will automatically handle sharding.
                 data_shard = train.get_dataset_shard("train")
                 for batch in data_shard.iter_torch_batches():
-                    # ...
-            return model
+                    ...
 
-        train_dataset = ray.data.from_items(
-            [{"x": x, "y": x + 1} for x in range(32)])
-        trainer = TorchTrainer(train_loop_per_worker,
+        train_dataset = ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv")
+        trainer = TorchTrainer(
+            train_loop_per_worker,
             scaling_config=ScalingConfig(num_workers=2),
-            datasets={"train": train_dataset})
+            datasets={"train": train_dataset}
+        )
         trainer.fit()
+
+    .. testoutput::
+        :hide:
+
+        ...
 
     Args:
         dataset_name: If a Dictionary of Datasets was passed to ``Trainer``, then

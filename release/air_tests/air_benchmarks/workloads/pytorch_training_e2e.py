@@ -14,7 +14,7 @@ import ray
 from ray.train.torch import TorchCheckpoint
 from ray.data.preprocessors import BatchMapper, Chain, TorchVisionPreprocessor
 from ray import train
-from ray.train import ScalingConfig
+from ray.train import RunConfig, ScalingConfig
 from ray.train.torch import TorchTrainer
 
 
@@ -107,6 +107,7 @@ def main(data_size_gb: int, num_epochs=2, num_workers=1, smoke_test: bool = Fals
         scaling_config=ScalingConfig(
             num_workers=num_workers, use_gpu=int(not smoke_test)
         ),
+        run_config=RunConfig(storage_path="/mnt/cluster_storage"),
     )
     trainer.fit()
 

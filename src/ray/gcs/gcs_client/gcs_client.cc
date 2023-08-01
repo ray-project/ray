@@ -81,43 +81,11 @@ void GcsSubscriberClient::PubsubCommandBatch(
 GcsClient::GcsClient(const GcsClientOptions &options, UniqueID gcs_client_id)
     : options_(options), gcs_client_id_(gcs_client_id) {}
 
-Status GcsClient::Connect(instrumented_io_context &io_service,
-                          const ClusterID &cluster_id) {
+Status GcsClient::Connect(instrumented_io_context &io_service) {
   // Connect to gcs service.
   client_call_manager_ = std::make_unique<rpc::ClientCallManager>(io_service);
   gcs_rpc_client_ = std::make_shared<rpc::GcsRpcClient>(
       options_.gcs_address_, options_.gcs_port_, *client_call_manager_);
-
-  if (cluster_id.IsNil()) {
-    rpc::GetClusterIdReply reply;
-    std::promise<void> cluster_known;
-    std::atomic<bool> stop_io_service{false};
-    gcs_rpc_client_->GetClusterId(
-        rpc::GetClusterIdRequest(),
-        [this, &cluster_known, &stop_io_service, &io_service](
-            const Status &status, const rpc::GetClusterIdReply &reply) {
-          RAY_CHECK(status.ok()) << "Failed to get Cluster ID! Status: " << status;
-          auto cluster_id = ClusterID::FromBinary(reply.cluster_id());
-          RAY_LOG(DEBUG) << "Setting cluster ID to " << cluster_id;
-          client_call_manager_->SetClusterId(cluster_id);
-          if (stop_io_service.load()) {
-            io_service.stop_without_lock();
-          } else {
-            cluster_known.set_value();
-          }
-        });
-    // Run the IO service here to make the above call synchronous.
-    // If it is already running, then wait for our particular callback
-    // to be processed.
-    io_service.run_if_not_running([&stop_io_service]() { stop_io_service.store(true); });
-    if (stop_io_service.load()) {
-      io_service.restart();
-    } else {
-      cluster_known.get_future().get();
-    }
-  } else {
-    client_call_manager_->SetClusterId(cluster_id);
-  }
 
   resubscribe_func_ = [this]() {
     job_accessor_->AsyncResubscribe();
@@ -431,18 +399,24 @@ Status PythonGcsClient::GetAllJobInfo(int64_t timeout_ms,
 
 Status PythonGcsClient::RequestClusterResourceConstraint(
     int64_t timeout_ms,
-    const std::vector<std::unordered_map<std::string, double>> &bundles) {
+    const std::vector<std::unordered_map<std::string, double>> &bundles,
+    const std::vector<int64_t> &count_array) {
   grpc::ClientContext context;
   GrpcClientContextWithTimeoutMs(context, timeout_ms);
 
   rpc::autoscaler::RequestClusterResourceConstraintRequest request;
   rpc::autoscaler::RequestClusterResourceConstraintReply reply;
+  RAY_CHECK(bundles.size() == count_array.size());
+  for (size_t i = 0; i < bundles.size(); ++i) {
+    const auto &bundle = bundles[i];
+    auto count = count_array[i];
 
-  for (auto bundle : bundles) {
-    request.mutable_cluster_resource_constraint()
-        ->add_min_bundles()
-        ->mutable_resources_bundle()
-        ->insert(bundle.begin(), bundle.end());
+    auto new_resource_requests_by_count =
+        request.mutable_cluster_resource_constraint()->add_min_bundles();
+
+    new_resource_requests_by_count->mutable_request()->mutable_resources_bundle()->insert(
+        bundle.begin(), bundle.end());
+    new_resource_requests_by_count->set_count(count);
   }
 
   grpc::Status status =
