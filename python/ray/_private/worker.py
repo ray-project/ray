@@ -1126,6 +1126,7 @@ def init(
     namespace: Optional[str] = None,
     runtime_env: Optional[Union[Dict[str, Any], "RuntimeEnv"]] = None,  # noqa: F821
     storage: Optional[str] = None,
+    no_gcs: bool = False,
     **kwargs,
 ) -> BaseContext:
     """
@@ -1429,6 +1430,8 @@ def init(
     if bootstrap_address is not None:
         gcs_address = bootstrap_address
         logger.info("Connecting to existing Ray cluster at address: %s...", gcs_address)
+    else:
+        assert not no_gcs
 
     if _node_ip_address is not None:
         node_ip_address = services.resolve_ip_for_localhost(_node_ip_address)
@@ -1572,6 +1575,7 @@ def init(
             _system_config=_system_config,
             enable_object_reconstruction=_enable_object_reconstruction,
             metrics_export_port=_metrics_export_port,
+            no_gcs=no_gcs,
         )
         try:
             _global_node = ray._private.node.Node(
