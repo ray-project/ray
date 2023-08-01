@@ -3,7 +3,7 @@ torchvision==0.15.1
 torchaudio==2.0.1
 deepspeed
 fairscale
-transformers
+transformers>=4.31.0
 dataset
 accelerate
 evaluate
