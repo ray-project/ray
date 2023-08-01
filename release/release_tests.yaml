@@ -7125,7 +7125,7 @@
   group: cluster-launcher-test
   working_dir: ../python/ray/autoscaler/
 
-  python: "3.7"
+  python: "3.8"
 
   stable: true
 
@@ -7204,7 +7204,7 @@
   stable: true
 
   env: gce
-  python: "3.7"
+  python: "3.8"
   frequency: manual
   team: core
   cluster:
