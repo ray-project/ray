@@ -886,6 +886,7 @@ def main(
         _configure_human_version()
     if (
         build_type in {HUMAN, MERGE, BUILDKITE, LOCAL}
+        or (build_type == PR and push_pr_build)
         or _check_if_docker_files_modified()
         or only_build_worker_container
     ):
