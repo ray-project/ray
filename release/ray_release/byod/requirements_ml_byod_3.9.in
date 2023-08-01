@@ -9,7 +9,7 @@ ipywidgets
 matplotlib
 numpy
 statsforecast
-transformers
+transformers>4.30
 torch
 torchtext
 torchvision

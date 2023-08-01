@@ -2344,9 +2344,9 @@ traitlets==5.9.0 \
     #   jupyter-client
     #   jupyter-core
     #   matplotlib-inline
-transformers==4.30.2 \
-    --hash=sha256:c332e3a3097f9ed89ce556b403251235931c00237b8bc2d7adaa19d226c13f1d \
-    --hash=sha256:f4a8aac4e1baffab4033f4a345b0d7dc7957d12a4f1ba969afea08205a513045
+transformers==4.31.0 \
+    --hash=sha256:4302fba920a1c24d3a429a29efff6a63eac03f3f3cf55b55927fc795d01cb273 \
+    --hash=sha256:8487aab0195ce1c2a5ae189305118b9720daddbc7b688edb09ccd79e3b149f6b
     # via
     #   -r release/ray_release/byod/requirements_ml_byod_3.9.in
     #   lm-eval
