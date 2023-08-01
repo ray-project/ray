@@ -974,7 +974,7 @@ class Router:
     ) -> Union[ray.ObjectRef, "ray._raylet.StreamingObjectRefGenerator"]:
         """Assign a query to a replica and return the resulting object_ref."""
 
-        incremented_request = False
+        incremented_queue_metric = False
         try:
             self.num_router_requests.inc(
                 tags={"route": request_meta.route, "application": request_meta.app_name}
@@ -986,7 +986,7 @@ class Router:
                     "application": request_meta.app_name,
                 },
             )
-            incremented_request += True
+            incremented_queue_metric += True
 
             query = Query(
                 args=list(request_args),
@@ -1007,13 +1007,14 @@ class Router:
 
             return result
         except asyncio.CancelledError:
-            self.num_queued_queries -= 1
-            self.num_queued_queries_gauge.set(
-                self.num_queued_queries,
-                tags={
-                    "application": request_meta.app_name,
-                },
-            )
+            if incremented_queue_metric:
+                self.num_queued_queries -= 1
+                self.num_queued_queries_gauge.set(
+                    self.num_queued_queries,
+                    tags={
+                        "application": request_meta.app_name,
+                    },
+                )
             raise
 
     def shutdown(self):
