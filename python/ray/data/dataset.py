@@ -2609,6 +2609,7 @@ class Dataset:
         block_path_provider: BlockWritePathProvider = DefaultBlockWritePathProvider(),
         arrow_parquet_args_fn: Callable[[], Dict[str, Any]] = lambda: {},
         ray_remote_args: Dict[str, Any] = None,
+        arrow_parquet_row_group_size: int = None,
         **arrow_parquet_args,
     ) -> None:
         """Writes the :class:`~ray.data.Dataset` to parquet files under the provided ``path``.
@@ -2667,11 +2668,16 @@ class Dataset:
                 can't pickled, or if you'd like to lazily resolve the write
                 arguments for each dataset block.
             ray_remote_args: Kwargs passed to :meth:`~ray.remote` in the write tasks.
+            arrow_parquet_row_group_size: Option to pass to
+                `pyarrow.parquet.ParquetWriter.write_table <https://arrow.apache.org\
+                        /docs/python/generated/pyarrow.parquet.ParquetWriter.html\
+                        #pyarrow.parquet.ParquetWriter.write_table>`_, which is
+                used to write out each block to a file.
             arrow_parquet_args: Options to pass to
-                `pyarrow.parquet.write_table() <https://arrow.apache.org/docs/python\
-                    /generated/pyarrow.parquet.write_table.html\
-                        #pyarrow.parquet.write_table>`_, which is used to write out each
-                block to a file.
+                `pyarrow.parquet.ParquetWriter() <https://arrow.apache.org/docs/python\
+                        /generated/pyarrow.parquet.ParquetWriter.html\
+                        #pyarrow-parquet-parquetwriter>`_, which is created to
+                write out each block to a file.
         """
         self.write_datasource(
             ParquetDatasource(),
@@ -2683,6 +2689,7 @@ class Dataset:
             open_stream_args=arrow_open_stream_args,
             block_path_provider=block_path_provider,
             write_args_fn=arrow_parquet_args_fn,
+            row_group_size=arrow_parquet_row_group_size,
             **arrow_parquet_args,
         )
 
@@ -2795,6 +2802,7 @@ class Dataset:
         block_path_provider: BlockWritePathProvider = DefaultBlockWritePathProvider(),
         arrow_csv_args_fn: Callable[[], Dict[str, Any]] = lambda: {},
         ray_remote_args: Dict[str, Any] = None,
+        arrow_csv_maxchunk_size: int = None,
         **arrow_csv_args,
     ) -> None:
         """Writes the :class:`~ray.data.Dataset` to CSV files.
@@ -2861,10 +2869,15 @@ class Dataset:
                 arguments cannot be pickled, or if you'd like to lazily resolve the
                 write arguments for each dataset block.
             ray_remote_args: kwargs passed to :meth:`~ray.remote` in the write tasks.
-            arrow_csv_args: Options to pass to `pyarrow.write.write_csv <https://\
-                arrow.apache.org/docs/python/generated/pyarrow.csv.write_csv.html\
-                    #pyarrow.csv.write_csv>`_
-                when writing each block to a file.
+            arrow_csv_maxchunk_size: Option to pass to
+                `pyarrow.csv.CSVWriter.write_table <https://arrow.apache.org\
+                        /docs/python/generated/pyarrow.csv.CSVWriter.html
+                        #pyarrow.csv.CSVWriter.write_table>`_, which is used to
+                write each block to a file.
+            arrow_csv_args: Options to pass to `pyarrow.csv.CSVWriter() <https://\
+                    arrow.apache.org/docs/python/generated/pyarrow.csv.CSVWriter.html\
+                    #pyarrow.csv.CSVWriter>`_, which is created to write blocks
+                to a file.
         """
         self.write_datasource(
             CSVDatasource(),
@@ -2876,6 +2889,7 @@ class Dataset:
             open_stream_args=arrow_open_stream_args,
             block_path_provider=block_path_provider,
             write_args_fn=arrow_csv_args_fn,
+            maxchunk_size=arrow_csv_maxchunk_size,
             **arrow_csv_args,
         )
 

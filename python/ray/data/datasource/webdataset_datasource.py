@@ -8,9 +8,9 @@ import tarfile
 import time
 import uuid
 from functools import partial
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Union
+from typing import TYPE_CHECKING, Any, Callable, Dict, Iterator, List, Optional, Union
 
-from ray.data.block import BlockAccessor
+from ray.data.block import Block, BlockAccessor
 from ray.data.datasource.file_based_datasource import FileBasedDatasource
 from ray.util.annotations import PublicAPI
 
@@ -288,7 +288,7 @@ def _default_encoder(sample: Dict[str, Any], format: Optional[Union[str, bool]] 
     return sample
 
 
-def _make_iterable(block: BlockAccessor):
+def _make_iterable(blocks: BlockAccessor):
     """Make a block iterable.
 
     This is a placeholder for dealing with more complex blocks.
@@ -299,7 +299,8 @@ def _make_iterable(block: BlockAccessor):
     Returns:
         Iterable[Dict[str,Any]]: Iterable of samples
     """
-    return block.iter_rows(public_row_format=False)
+    for block in blocks:
+        yield from block.iter_rows(public_row_format=False)
 
 
 @PublicAPI(stability="alpha")
@@ -353,10 +354,9 @@ class WebDatasetDatasource(FileBasedDatasource):
     def _write_block(
         self,
         f: "pyarrow.NativeFile",
-        block: BlockAccessor,
+        blocks: Iterator[Block],
         writer_args_fn: Callable[[], Dict[str, Any]] = lambda: {},
         encoder: Optional[Union[bool, str, callable, list]] = True,
-        **kw,
     ):
         """Encode and write samples to a stream.
 
@@ -368,7 +368,7 @@ class WebDatasetDatasource(FileBasedDatasource):
         """
 
         stream = tarfile.open(fileobj=f, mode="w|")
-        samples = _make_iterable(block)
+        samples = _make_iterable(blocks)
         for sample in samples:
             if not isinstance(sample, dict):
                 sample = sample.as_pydict()

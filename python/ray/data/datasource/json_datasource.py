@@ -1,6 +1,7 @@
-from typing import TYPE_CHECKING, Any, Callable, Dict
+from typing import TYPE_CHECKING, Any, Callable, Dict, Iterator
 
-from ray.data.block import BlockAccessor
+from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
+from ray.data.block import Block
 from ray.data.datasource.file_based_datasource import (
     FileBasedDatasource,
     _resolve_kwargs,
@@ -35,14 +36,22 @@ class JSONDatasource(FileBasedDatasource):
         )
         return json.read_json(f, read_options=read_options, **reader_args)
 
-    def _write_block(
+    def _write_blocks(
         self,
         f: "pyarrow.NativeFile",
-        block: BlockAccessor,
+        blocks: Iterator[Block],
         writer_args_fn: Callable[[], Dict[str, Any]] = lambda: {},
         **writer_args,
     ):
         writer_args = _resolve_kwargs(writer_args_fn, **writer_args)
         orient = writer_args.pop("orient", "records")
         lines = writer_args.pop("lines", True)
+
+        # NOTE(swang): JSON does not have a streaming/append interface.
+        builder = DelegatingBlockBuilder()
+        for block in blocks:
+            builder.add_block(block)
+        # TODO(swang): We should add an out-of-memory warning if the block size
+        # exceeds the max block size in the DataContext.
+        block = builder.build()
         block.to_pandas().to_json(f, orient=orient, lines=lines, **writer_args)

@@ -22,7 +22,6 @@ import numpy as np
 from ray._private.utils import _add_creatable_buckets_param_if_s3_uri
 from ray.air._internal.remote_storage import _is_local_windows_path
 from ray.data._internal.dataset_logger import DatasetLogger
-from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.output_buffer import BlockOutputBuffer
 from ray.data._internal.progress_bar import ProgressBar
@@ -269,18 +268,6 @@ class FileBasedDatasource(Datasource):
         if isinstance(file_format, list):
             file_format = file_format[0]
 
-        builder = DelegatingBlockBuilder()
-        for block in blocks:
-            builder.add_block(block)
-        block = builder.build()
-
-        total_num_rows = BlockAccessor.for_block(block).num_rows()
-        if total_num_rows == 0:
-            logger.get_logger().warning(
-                f"Skipping writing empty dataset with UUID {dataset_uuid} at {path}",
-            )
-            return "skip"
-
         path, filesystem = _resolve_paths_and_filesystem(path, filesystem)
         path = path[0]
         if try_create_dir:
@@ -290,26 +277,44 @@ class FileBasedDatasource(Datasource):
             filesystem.create_dir(tmp, recursive=True)
         filesystem = _wrap_s3_serialization_workaround(filesystem)
 
-        _write_block_to_file = self._write_block
+        _write_blocks_to_file = self._write_blocks
 
         if open_stream_args is None:
             open_stream_args = {}
 
-        def write_block(write_path: str, block: Block):
+        def write_block(write_path: str, blocks: Iterator[Block]):
             logger.get_logger().debug(f"Writing {write_path} file.")
             fs = _unwrap_s3_serialization_workaround(filesystem)
-            if _block_udf is not None:
-                block = _block_udf(block)
 
-            block = BlockAccessor.for_block(block)
-            assert block.num_rows() > 0, "Cannot write an empty block."
+            num_rows_written_ptr = [0]
+
+            def block_iterator(blocks, num_rows_written_ptr):
+                for block in blocks:
+                    num_rows = BlockAccessor.for_block(block).num_rows()
+                    if num_rows == 0:
+                        continue
+                    num_rows_written_ptr[0] += num_rows
+
+                    if _block_udf is not None:
+                        block = _block_udf(block)
+                    yield block
+
             with fs.open_output_stream(write_path, **open_stream_args) as f:
-                _write_block_to_file(
+                _write_blocks_to_file(
                     f,
-                    block,
+                    block_iterator(blocks, num_rows_written_ptr),
                     writer_args_fn=write_args_fn,
                     **write_args,
                 )
+
+            if num_rows_written_ptr[0] == 0:
+                fs.delete_file(write_path)
+                logger.get_logger().warning(
+                    "Skipping writing empty dataset with UUID "
+                    f"{dataset_uuid} at {path}",
+                )
+                return "skip"
+
             # TODO: decide if we want to return richer object when the task
             # succeeds.
             return "ok"
@@ -320,11 +325,11 @@ class FileBasedDatasource(Datasource):
             path,
             filesystem=filesystem,
             dataset_uuid=dataset_uuid,
-            block=block,
+            block=None,
             block_index=ctx.task_idx,
             file_format=file_format,
         )
-        return write_block(write_path, block)
+        return write_block(write_path, blocks)
 
     def _write_block(
         self,

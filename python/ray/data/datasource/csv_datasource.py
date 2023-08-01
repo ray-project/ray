@@ -62,15 +62,22 @@ class CSVDatasource(FileBasedDatasource):
                 "more details."
             ) from e
 
-    def _write_block(
+    def _write_blocks(
         self,
         f: "pyarrow.NativeFile",
-        block: BlockAccessor,
+        blocks: Iterator[Block],
         writer_args_fn: Callable[[], Dict[str, Any]] = lambda: {},
+        max_chunksize=None,
         **writer_args,
     ):
         from pyarrow import csv
 
         writer_args = _resolve_kwargs(writer_args_fn, **writer_args)
-        write_options = writer_args.pop("write_options", None)
-        csv.write_csv(block.to_arrow(), f, write_options, **writer_args)
+        writer = None
+        for block in blocks:
+            block = BlockAccessor.for_block(block)
+            assert block.num_rows() > 0, "Cannot write an empty block."
+            if writer is None:
+                writer = csv.CSVWriter(f, block.schema(), **writer_args)
+            writer.write_table(block.to_arrow(), max_chunksize=max_chunksize)
+        writer.close()

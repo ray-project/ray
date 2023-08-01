@@ -1,7 +1,7 @@
 import logging
-from typing import TYPE_CHECKING, Any, Callable, Dict
+from typing import TYPE_CHECKING, Any, Callable, Dict, Iterator
 
-from ray.data.block import BlockAccessor
+from ray.data.block import Block, BlockAccessor
 from ray.data.datasource.file_based_datasource import (
     FileBasedDatasource,
     _resolve_kwargs,
@@ -43,14 +43,23 @@ class ParquetBaseDatasource(FileBasedDatasource):
         # Parquet requires `open_input_file` due to random access reads
         return filesystem.open_input_file(path, **open_args)
 
-    def _write_block(
+    def _write_blocks(
         self,
         f: "pyarrow.NativeFile",
-        block: BlockAccessor,
+        blocks: Iterator[Block],
         writer_args_fn: Callable[[], Dict[str, Any]] = lambda: {},
+        row_group_size=None,
         **writer_args,
     ):
         import pyarrow.parquet as pq
 
         writer_args = _resolve_kwargs(writer_args_fn, **writer_args)
-        pq.write_table(block.to_arrow(), f, **writer_args)
+
+        writer = None
+        for block in blocks:
+            block = BlockAccessor.for_block(block)
+            assert block.num_rows() > 0, "Cannot write an empty block."
+            if writer is None:
+                writer = pq.ParquetWriter(f, block.schema(), **writer_args)
+            writer.write_table(block.to_arrow(), row_group_size=row_group_size)
+        writer.close()

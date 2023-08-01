@@ -13,7 +13,7 @@ from typing import (
 import numpy as np
 
 from ray.data._internal.util import _check_import
-from ray.data.block import Block, BlockAccessor
+from ray.data.block import Block
 from ray.data.datasource.file_based_datasource import FileBasedDatasource
 from ray.util.annotations import PublicAPI
 
@@ -51,28 +51,27 @@ class TFRecordDatasource(FileBasedDatasource):
 
             yield pa.Table.from_pydict(_convert_example_to_dict(example, tf_schema))
 
-    def _write_block(
+    def _write_blocks(
         self,
         f: "pyarrow.NativeFile",
-        block: BlockAccessor,
+        blocks: Iterator[Block],
         writer_args_fn: Callable[[], Dict[str, Any]] = lambda: {},
         tf_schema: Optional["schema_pb2.Schema"] = None,
-        **writer_args,
     ) -> None:
         _check_import(self, module="crc32c", package="crc32c")
+        for block in blocks:
+            arrow_table = block.to_arrow()
 
-        arrow_table = block.to_arrow()
+            # It seems like TFRecords are typically row-based,
+            # https://www.tensorflow.org/tutorials/load_data/tfrecord#writing_a_tfrecord_file_2
+            # so we must iterate through the rows of the block,
+            # serialize to tf.train.Example proto, and write to file.
 
-        # It seems like TFRecords are typically row-based,
-        # https://www.tensorflow.org/tutorials/load_data/tfrecord#writing_a_tfrecord_file_2
-        # so we must iterate through the rows of the block,
-        # serialize to tf.train.Example proto, and write to file.
+            examples = _convert_arrow_table_to_examples(arrow_table, tf_schema)
 
-        examples = _convert_arrow_table_to_examples(arrow_table, tf_schema)
-
-        # Write each example to the arrow file in the TFRecord format.
-        for example in examples:
-            _write_record(f, example)
+            # Write each example to the arrow file in the TFRecord format.
+            for example in examples:
+                _write_record(f, example)
 
 
 def _convert_example_to_dict(

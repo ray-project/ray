@@ -1,9 +1,10 @@
 from io import BytesIO
-from typing import TYPE_CHECKING, Any, Callable, Dict
+from typing import TYPE_CHECKING, Any, Callable, Dict, Iterator
 
 import numpy as np
 
-from ray.data.block import BlockAccessor
+from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
+from ray.data.block import Block, BlockAccessor
 from ray.data.datasource.file_based_datasource import FileBasedDatasource
 from ray.util.annotations import PublicAPI
 
@@ -37,13 +38,20 @@ class NumpyDatasource(FileBasedDatasource):
         buf.seek(0)
         return BlockAccessor.batch_to_block({"data": np.load(buf, allow_pickle=True)})
 
-    def _write_block(
+    def _write_blocks(
         self,
         f: "pyarrow.NativeFile",
-        block: BlockAccessor,
+        blocks: Iterator[Block],
         column: str,
         writer_args_fn: Callable[[], Dict[str, Any]] = lambda: {},
         **writer_args,
     ):
+        # NOTE(swang): numpy does not have a streaming/append interface.
+        builder = DelegatingBlockBuilder()
+        for block in blocks:
+            builder.add_block(block)
+        # TODO(swang): We should add an out-of-memory warning if the block size
+        # exceeds the max block size in the DataContext.
+        block = builder.build()
         value = block.to_numpy(column)
         np.save(f, value)
