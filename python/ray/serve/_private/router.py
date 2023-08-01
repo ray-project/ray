@@ -497,9 +497,9 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
             # If another iteration occurrs, the chosen replicas did not accept the
             # request. Blacklist them until we've attempted all replicas.
             replica_ids_attempted.update(chosen_ids)
-
             if replica_ids_attempted.issuperset(self._replica_id_set):
                 replica_ids_attempted.clear()
+
             await asyncio.sleep(self.backoff_sequence_s[backoff_index])
             backoff_index = min(backoff_index + 1, len(self.backoff_sequence_s) - 1)
 
