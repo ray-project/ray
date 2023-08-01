@@ -758,7 +758,7 @@ class HTTPProxy:
         """
         status_code = ""
         start = time.time()
-        is_first_message = False
+        is_first_message = True
         while True:
             try:
                 obj_ref = await obj_ref_generator._next_async(
@@ -782,7 +782,7 @@ class HTTPProxy:
                         status_code = str(asgi_message["code"])
 
                     await send(asgi_message)
-                    is_first_message = True
+                    is_first_message = False
             except StopAsyncIteration:
                 break
 

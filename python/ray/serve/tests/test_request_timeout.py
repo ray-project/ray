@@ -231,8 +231,8 @@ def test_streaming_request_already_sent_and_timed_out(ray_instance, shutdown_ser
             self.sleep_s = sleep_s
 
         def generate_numbers(self) -> Generator[str, None, None]:
-            for i in range(3):
-                yield str(i)
+            for i in range(2):
+                yield f"generated {i}"
                 time.sleep(self.sleep_s)
 
         def __call__(self, request: Request) -> StreamingResponse:
@@ -246,10 +246,10 @@ def test_streaming_request_already_sent_and_timed_out(ray_instance, shutdown_ser
         iterator = r.iter_content(chunk_size=None, decode_unicode=True)
 
         # The first chunk should be received successfully.
-        iterator.__next__()
+        assert iterator.__next__() == "generated 0"
         assert r.status_code == 200
 
-        # The second chunk should timed out and raise error.
+        # The second chunk should time out and raise error.
         with pytest.raises(requests.exceptions.ChunkedEncodingError) as request_error:
             iterator.__next__()
         assert "Connection broken" in str(request_error.value)
