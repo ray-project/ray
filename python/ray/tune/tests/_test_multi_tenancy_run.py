@@ -57,7 +57,7 @@ trainer = DataParallelTrainer(
     train_loop_config={
         "fixed": FIXED_VAL,
     },
-    scaling_config=air.ScalingConfig(
+    scaling_config=train.ScalingConfig(
         num_workers=1, trainer_resources={"CPU": 0}, resources_per_worker={"CPU": 2}
     ),
 )

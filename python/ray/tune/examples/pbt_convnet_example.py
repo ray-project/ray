@@ -14,7 +14,7 @@ from ray.tune.examples.mnist_pytorch import train_func, test_func, ConvNet,\
     get_data_loaders
 
 import ray
-from ray import air, tune
+from ray import train, tune
 from ray.tune.schedulers import PopulationBasedTraining
 from ray.tune.utils import validate_save_restore
 # __tutorial_imports_end__
@@ -104,11 +104,11 @@ if __name__ == "__main__":
 
     tuner = tune.Tuner(
         PytorchTrainable,
-        run_config=air.RunConfig(
+        run_config=train.RunConfig(
             name="pbt_test",
             stop=stopper,
             verbose=1,
-            checkpoint_config=air.CheckpointConfig(
+            checkpoint_config=train.CheckpointConfig(
                 checkpoint_score_attribute="mean_accuracy",
                 checkpoint_frequency=5,
                 num_to_keep=4,

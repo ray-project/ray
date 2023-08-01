@@ -403,7 +403,7 @@ def training_function(kwargs: dict):
             # will include the checkpoint files created by the Rank_0.
             # Note that this will not delete the checkpoints from the previous
             # iterations.
-            checkpoint=air.Checkpoint.from_directory(ckpt_path_epoch),
+            checkpoint=train.Checkpoint.from_directory(ckpt_path_epoch),
         )
 
         print("Checkpointing time: ", time.time() - checkpointing_time_s)
@@ -551,13 +551,13 @@ def main():
             "args": vars(args),
             "special_tokens": special_tokens,
         },
-        run_config=air.RunConfig(
+        run_config=train.RunConfig(
             # Turn off syncing artifact as as of 2.6 it introduces a resource
             # contention between checkpoint syncronizer and artifact syncronizer that
             # can sometimes result in failed checkpoint syncing
             # sync_config=tune.SyncConfig(sync_artifacts=False),
             storage_path=storage_path,
-            checkpoint_config=air.CheckpointConfig(
+            checkpoint_config=train.CheckpointConfig(
                 num_to_keep=args.num_checkpoints_to_keep,
                 checkpoint_score_attribute="perplexity",
                 checkpoint_score_order="min",
@@ -566,7 +566,7 @@ def main():
                 _checkpoint_upload_from_workers=True,
             ),
         ),
-        scaling_config=air.ScalingConfig(
+        scaling_config=train.ScalingConfig(
             # This forces the trainer + Rank 0 worker to get scheduled on the large cpu
             # RAM instance, making the checkpointing easier.
             # "large_cpu_mem" is the tag used to identify this machine type in the

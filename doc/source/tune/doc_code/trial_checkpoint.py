@@ -5,7 +5,7 @@ import os
 import torch
 from torch import nn
 
-from ray import air, tune
+from ray import train, tune
 
 
 class MyTrainableClass(tune.Trainable):
@@ -30,9 +30,9 @@ class MyTrainableClass(tune.Trainable):
 tuner = tune.Tuner(
     MyTrainableClass,
     param_space={"input_size": 64},
-    run_config=air.RunConfig(
+    run_config=train.RunConfig(
         stop={"training_iteration": 2},
-        checkpoint_config=air.CheckpointConfig(checkpoint_frequency=2),
+        checkpoint_config=train.CheckpointConfig(checkpoint_frequency=2),
     ),
 )
 tuner.fit()
@@ -63,9 +63,9 @@ def train_func(self):
 
 tuner = tune.Tuner(
     MyTrainableClass,
-    run_config=air.RunConfig(
+    run_config=train.RunConfig(
         stop={"training_iteration": 2},
-        checkpoint_config=air.CheckpointConfig(checkpoint_frequency=10),
+        checkpoint_config=train.CheckpointConfig(checkpoint_frequency=10),
     ),
 )
 tuner.fit()
@@ -76,9 +76,9 @@ tuner.fit()
 # __class_api_end_checkpointing_start__
 tuner = tune.Tuner(
     MyTrainableClass,
-    run_config=air.RunConfig(
+    run_config=train.RunConfig(
         stop={"training_iteration": 2},
-        checkpoint_config=air.CheckpointConfig(
+        checkpoint_config=train.CheckpointConfig(
             checkpoint_frequency=10, checkpoint_at_end=True
         ),
     ),

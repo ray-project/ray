@@ -26,7 +26,7 @@ class ResultGrid:
     .. testcode::
 
         import random
-        from ray import air, tune
+        from ray import train, tune
         def random_error_trainable(config):
             if random.random() < 0.5:
                 return {"loss": 0.0}
@@ -34,7 +34,7 @@ class ResultGrid:
                 raise ValueError("This is an error")
         tuner = tune.Tuner(
             random_error_trainable,
-            run_config=air.RunConfig(name="example-experiment"),
+            run_config=train.RunConfig(name="example-experiment"),
             tune_config=tune.TuneConfig(num_samples=10),
         )
         try:

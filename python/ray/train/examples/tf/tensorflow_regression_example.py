@@ -6,7 +6,6 @@ import ray
 from ray import train
 from ray.train import Result, ScalingConfig
 from ray.air.integrations.keras import ReportCheckpointCallback
-from ray.data import Dataset
 from ray.data.preprocessors import Concatenator
 from ray.train.tensorflow import TensorflowTrainer
 

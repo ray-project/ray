@@ -364,7 +364,7 @@ class _TrainSession:
             if log_once("keep_all_ranks_dict_checkpoint"):
                 logger.warning(
                     "Saving checkpoints from all ranks does not work with "
-                    "dictionary checkpoints. Set `ray.air.CheckpointConfig"
+                    "dictionary checkpoints. Set `ray.train.CheckpointConfig"
                     "(_checkpoint_keep_all_ranks=False)`, or write checkpoints "
                     "to a directory and report directory checkpoints that "
                     "contain unique files per worker rank. For example, "

@@ -58,7 +58,7 @@ class TrainingFailedError(RuntimeError):
 
     _FAILURE_CONFIG_MSG = (
         "To start a new run that will retry on training failures, set "
-        "`air.RunConfig(failure_config=air.FailureConfig(max_failures))` "
+        "`train.RunConfig(failure_config=train.FailureConfig(max_failures))` "
         "in the Trainer's `run_config` with `max_failures > 0`, or `max_failures = -1` "
         "for unlimited retries."
     )
@@ -232,7 +232,7 @@ class BaseTrainer(abc.ABC):
 
             import os
             import ray
-            from ray import air
+            from ray import train
             from ray.data.preprocessors import BatchMapper
             from ray.train.trainer import BaseTrainer
 
@@ -257,12 +257,12 @@ class BaseTrainer(abc.ABC):
                 trainer = CustomTrainer(
                     datasets=datasets,
                     preprocessor=preprocessor,
-                    run_config=air.RunConfig(
+                    run_config=train.RunConfig(
                         name=experiment_name,
                         local_dir=local_dir,
                         # Tip: You can also enable retries on failure for
                         # worker-level fault tolerance
-                        failure_config=air.FailureConfig(max_failures=3),
+                        failure_config=train.FailureConfig(max_failures=3),
                     ),
                 )
 
@@ -407,7 +407,7 @@ class BaseTrainer(abc.ABC):
         # Run config
         if not isinstance(self.run_config, RunConfig):
             raise ValueError(
-                f"`run_config` should be an instance of `ray.air.RunConfig`, "
+                f"`run_config` should be an instance of `ray.train.RunConfig`, "
                 f"found {type(self.run_config)} with value `{self.run_config}`."
             )
         # Scaling config
@@ -457,7 +457,7 @@ class BaseTrainer(abc.ABC):
         ):
             raise ValueError(
                 f"`resume_from_checkpoint` should be an instance of "
-                f"`ray.air.Checkpoint`, found {type(self.resume_from_checkpoint)} "
+                f"`ray.train.Checkpoint`, found {type(self.resume_from_checkpoint)} "
                 f"with value `{self.resume_from_checkpoint}`."
             )
 

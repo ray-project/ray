@@ -56,7 +56,7 @@ class TorchTrainer(DataParallelTrainer):
             # checkpoint data.
             train.report(...)
 
-            # Session returns the Dataset shard for the given key.
+            # Get the Dataset shard for the given key.
             train.get_dataset_shard("my_dataset")
 
             # Get dict of last saved checkpoint.
