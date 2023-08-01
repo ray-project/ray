@@ -47,12 +47,18 @@ class JSONDatasource(FileBasedDatasource):
         orient = writer_args.pop("orient", "records")
         lines = writer_args.pop("lines", True)
 
-        # NOTE(swang): JSON does not have a streaming/append interface.
-        builder = DelegatingBlockBuilder()
-        for block in blocks:
-            builder.add_block(block)
-        # TODO(swang): We should add an out-of-memory warning if the block size
-        # exceeds the max block size in the DataContext.
-        block = builder.build()
-        block = BlockAccessor.for_block(block)
-        block.to_pandas().to_json(f, orient=orient, lines=lines, **writer_args)
+        if orient == "records" and lines:
+            # If we are writing record-by-record and records are delimited by
+            # line, then it is safe to append.
+            for block in blocks:
+                block = BlockAccessor.for_block(block)
+                block.to_pandas().to_json(f, orient=orient, lines=lines, **writer_args)
+        else:
+            builder = DelegatingBlockBuilder()
+            for block in blocks:
+                builder.add_block(block)
+            # TODO(swang): We should add an out-of-memory warning if the block size
+            # exceeds the max block size in the DataContext.
+            block = builder.build()
+            block = BlockAccessor.for_block(block)
+            block.to_pandas().to_json(f, orient=orient, lines=lines, **writer_args)
