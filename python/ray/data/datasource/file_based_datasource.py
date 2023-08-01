@@ -39,7 +39,6 @@ from ray.data.datasource.partitioning import (
     PathPartitionFilter,
     PathPartitionParser,
 )
-from ray.types import ObjectRef
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
 if TYPE_CHECKING:

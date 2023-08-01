@@ -12,7 +12,7 @@ import ray
 from ray._private.utils import _get_pyarrow_version
 from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.air.util.tensor_extensions.arrow import ArrowTensorArray
-from ray.data.block import BlockAccessor, BlockExecStats, BlockMetadata
+from ray.data.block import BlockExecStats, BlockMetadata
 from ray.data.datasource.file_based_datasource import BlockWritePathProvider
 from ray.data.tests.mock_server import *  # noqa
 
