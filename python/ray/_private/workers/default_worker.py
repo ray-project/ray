@@ -103,7 +103,7 @@ parser.add_argument(
     required=True,
     type=int,
     default=None,
-    help="The port on which the runtime env agent will receive HTTP requests.",
+    help="The port on which the runtime env agent receives HTTP requests.",
 )
 parser.add_argument(
     "--object-spilling-config",
