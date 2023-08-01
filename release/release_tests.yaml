@@ -90,7 +90,6 @@
 
   cluster:
     byod: {}
-    cluster_env: app_config.yaml
     cluster_compute: cpt_autoscaling_1-3_aws.yaml
 
   run:
@@ -125,7 +124,6 @@
   cluster:
     byod:
       type: gpu
-    cluster_env: app_config.yaml
     cluster_compute: compute_gpu_1_cpu_16_aws.yaml
   
   run:
@@ -154,7 +152,6 @@
   cluster:
     byod:
       type: gpu
-    cluster_env: app_config.yaml
     cluster_compute: compute_gpu_1_cpu_16_aws.yaml
   
   run:
@@ -185,7 +182,6 @@
   cluster:
     byod:
       type: gpu
-    cluster_env: app_config.yaml
     cluster_compute: compute_gpu_4x4_aws.yaml
 
   run:
@@ -219,7 +215,6 @@
   cluster:
     byod:
       type: gpu
-    cluster_env: app_config.yaml
     cluster_compute: compute_gpu_4x4_aws.yaml
 
   run:
@@ -252,7 +247,6 @@
   cluster:
     byod:
       type: gpu
-    cluster_env: app_config.yaml
     cluster_compute: compute_hetero_10x10_aws.yaml
 
   run:
@@ -280,7 +274,6 @@
       runtime_env:
         - RAY_memory_usage_threshold=0.5
         - automatic_object_spilling_enabled=0
-    cluster_env: frequent_pausing/app_config.yaml
     cluster_compute: frequent_pausing/compute_config_aws.yaml
 
   run:
@@ -311,7 +304,6 @@
     byod:
       type: gpu
       post_build_script: byod_horovod_master_test.sh
-    cluster_env: horovod/app_config_master.yaml
     cluster_compute: horovod/compute_tpl_aws.yaml
 
   variations:
@@ -349,7 +341,6 @@
   cluster:
     byod:
       type: gpu
-    cluster_env: app_config.yaml
     cluster_compute: compute_data_20_nodes_aws.yaml
 
   run:
@@ -381,7 +372,6 @@
     byod:
       type: gpu
       post_build_script: byod_xgboost_cuj_test.sh
-    cluster_env: xgboost_app_config.yaml
     cluster_compute: compute_xgboost_aws.yaml
 
   run:
@@ -419,7 +409,6 @@
   cluster:
     byod:
       type: gpu
-    cluster_env: app_config.yaml
     cluster_compute: compute_cpu_4_aws.yaml
 
   run:
@@ -450,7 +439,6 @@
   cluster:
     byod:
       type: gpu
-    cluster_env: app_config.yaml
     cluster_compute: compute_gpu_4x4_aws.yaml
 
   run:
@@ -497,7 +485,6 @@
   cluster:
     byod:
       type: gpu
-    cluster_env: app_config.yaml
     cluster_compute: compute_cpu_1_aws.yaml
 
   run:
@@ -526,7 +513,6 @@
   cluster:
     byod:
       type: gpu
-    cluster_env: app_config.yaml
     cluster_compute: compute_cpu_4_aws.yaml
 
   run:
@@ -557,7 +543,6 @@
   cluster:
     byod:
       type: gpu
-    cluster_env: app_config.yaml
     cluster_compute: compute_cpu_8_aws.yaml
 
   run:
@@ -588,7 +573,6 @@
   cluster:
     byod:
       type: gpu
-    cluster_env: app_config.yaml
     cluster_compute: compute_gpu_4x4_aws.yaml
 
   run:
@@ -620,7 +604,6 @@
   cluster:
     byod:
       type: gpu
-    cluster_env: app_config.yaml
     cluster_compute: compute_cpu_4_aws.yaml
 
   run:
@@ -652,7 +635,6 @@
   cluster:
     byod:
       type: gpu
-    cluster_env: app_config.yaml
     cluster_compute: compute_cpu_1_aws.yaml
 
   run:
@@ -683,7 +665,6 @@
   cluster:
     byod:
       type: gpu
-    cluster_env: app_config.yaml
     cluster_compute: compute_cpu_4_aws.yaml
 
   run:
@@ -717,7 +698,6 @@
   cluster:
     byod:
       type: gpu
-    cluster_env: app_config.yaml
     cluster_compute: compute_gpu_4x4_aws.yaml
 
   run:
@@ -762,7 +742,6 @@
   cluster:
     byod:
       type: gpu
-    cluster_env: app_config.yaml
     cluster_compute: compute_gpu_1_aws.yaml
 
   run:
@@ -793,7 +772,6 @@
   cluster:
     byod:
       type: gpu
-    cluster_env: app_config.yaml
     cluster_compute: compute_gpu_4x4_aws.yaml
 
   run:
@@ -831,7 +809,6 @@
       runtime_env:
         - RAY_task_oom_retries=50
         - RAY_min_memory_free_bytes=1000000000
-    cluster_env: app_config_oom.yaml
     cluster_compute: compute_cpu_16.yaml
 
   run:
@@ -863,7 +840,6 @@
       runtime_env:
         - RAY_task_oom_retries=50
         - RAY_min_memory_free_bytes=1000000000
-    cluster_env: app_config_oom.yaml
     cluster_compute: compute_cpu_16.yaml
 
   run:
@@ -897,7 +873,6 @@
   cluster:
     byod:
       type: gpu
-    cluster_env: dreambooth_env.yaml
     cluster_compute: dreambooth_compute_aws.yaml
 
   run:
@@ -923,7 +898,6 @@
         - myst-parser==0.15.2
         - myst-nb==0.13.1
         - jupytext==1.13.6
-    cluster_env: gptj_deepspeed_env.yaml
     cluster_compute: gptj_deepspeed_compute_aws.yaml
 
   run:
@@ -958,7 +932,6 @@
         - myst-nb==0.13.1
         - jupytext==1.13.6
       post_build_script: byod_dolly_test.sh
-    cluster_env: dolly_v2_fsdp_env.yaml
     cluster_compute: dolly_v2_fsdp_compute_aws.yaml
 
   run:
@@ -982,7 +955,6 @@
         - myst-parser==0.15.2
         - myst-nb==0.13.1
         - jupytext==1.13.6
-    cluster_env: vicuna_13b_deepspeed_env.yaml
     cluster_compute: vicuna_13b_deepspeed_compute_aws.yaml
 
   run:
@@ -1002,7 +974,6 @@
   cluster:
     byod:
       type: gpu
-    cluster_env: ../testing/cluster_envs/default_cluster_env_nightly_ml_py39.yaml
     cluster_compute: ../testing/compute_configs/gpu/aws.yaml
 
   run:
@@ -1028,7 +999,6 @@
   cluster:
     byod:
       type: gpu
-    cluster_env: ../testing/cluster_envs/02_many_model_training.yaml
     cluster_compute: ../testing/compute_configs/cpu/aws.yaml
 
   run:
@@ -1054,7 +1024,6 @@
   cluster:
     byod:
       type: cu118
-    cluster_env: ../testing/cluster_envs/03_serving_stable_diffusion.yaml
     cluster_compute: ../testing/compute_configs/gpu/aws.yaml
 
   run:
@@ -1079,7 +1048,6 @@
   cluster:
     byod:
       type: cu118
-    cluster_env: ../testing/cluster_envs/04_finetuning_llms_with_deepspeed.yaml
     cluster_compute: ../testing/compute_configs/04_finetuning_llms_with_deepspeed/aws_7b_or_13b.yaml
 
   run:
@@ -1107,7 +1075,6 @@
   cluster:
     byod:
       type: cu118
-    cluster_env: ../testing/cluster_envs/04_finetuning_llms_with_deepspeed.yaml
     cluster_compute: ../testing/compute_configs/04_finetuning_llms_with_deepspeed/aws_7b_or_13b.yaml
 
   run:
@@ -1161,7 +1128,6 @@
   cluster:
     byod:
       post_build_script: byod_xgboost_test.sh
-    cluster_env: app_config.yaml
     cluster_compute: tpl_cpu_moderate_aws.yaml
 
   run:
@@ -1195,7 +1161,6 @@
       runtime_env:
         - NCCL_SOCKET_IFNAME=ens
       post_build_script: byod_xgboost_test.sh
-    cluster_env: app_config_gpu.yaml
     cluster_compute: tpl_gpu_small_aws.yaml
 
   run:
@@ -1226,7 +1191,6 @@
   cluster:
     byod:
       post_build_script: byod_xgboost_test.sh
-    cluster_env: app_config.yaml
     cluster_compute: tpl_cpu_small_aws.yaml
 
   run:
@@ -1257,7 +1221,6 @@
   cluster:
     byod:
       post_build_script: byod_xgboost_test.sh
-    cluster_env: app_config.yaml
     cluster_compute: tpl_cpu_small_aws.yaml
 
   run:
@@ -1288,7 +1251,6 @@
   cluster:
     byod:
       post_build_script: byod_xgboost_test.sh
-    cluster_env: app_config.yaml
     cluster_compute: tpl_cpu_small_aws.yaml
 
   run:
@@ -1319,7 +1281,6 @@
   cluster:
     byod:
       post_build_script: byod_xgboost_test.sh
-    cluster_env: app_config.yaml
     cluster_compute: tpl_cpu_small_aws.yaml
 
   run:
@@ -1351,7 +1312,6 @@
   cluster:
     byod:
       post_build_script: byod_xgboost_test.sh
-    cluster_env: app_config.yaml
     cluster_compute: tpl_cpu_moderate_aws.yaml
 
   run:
@@ -1383,7 +1343,6 @@
   cluster:
     byod:
       post_build_script: byod_xgboost_test.sh
-    cluster_env: app_config.yaml
     cluster_compute: tpl_cpu_moderate_aws.yaml
 
   run:
@@ -1442,7 +1401,6 @@
       post_build_script: byod_xgboost_test.sh
       pip:
         - lightgbm_ray
-    cluster_env: app_config.yaml
     cluster_compute: tpl_cpu_moderate_aws.yaml
 
   run:
@@ -1475,7 +1433,6 @@
       post_build_script: byod_xgboost_test.sh
       pip:
         - lightgbm_ray
-    cluster_env: app_config.yaml
     cluster_compute: tpl_cpu_small_aws.yaml
 
   run:
@@ -1508,7 +1465,6 @@
       post_build_script: byod_xgboost_test.sh
       pip:
         - lightgbm_ray
-    cluster_env: app_config.yaml
     cluster_compute: tpl_cpu_small_aws.yaml
 
   run:
@@ -1539,7 +1495,6 @@
   cluster:
     byod:
       post_build_script: byod_xgboost_test.sh
-    cluster_env: app_config.yaml
     cluster_compute: tpl_cpu_small_aws.yaml
 
   run:
@@ -1569,7 +1524,6 @@
   cluster:
     byod:
       post_build_script: byod_xgboost_test.sh
-    cluster_env: app_config.yaml
     cluster_compute: tpl_cpu_moderate_aws.yaml
 
   run:
@@ -1599,7 +1553,6 @@
   cluster:
     byod:
       post_build_script: byod_xgboost_test.sh
-    cluster_env: app_config.yaml
     cluster_compute: tpl_cpu_moderate_aws.yaml
 
   run:
@@ -1635,7 +1588,6 @@
   cluster:
     byod:
       type: gpu
-    cluster_env: app_config.yaml
     cluster_compute: compute_tpl_aws.yaml
 
   run:
@@ -1665,7 +1617,6 @@
   cluster:
     byod:
       type: gpu
-    cluster_env: app_config.yaml
     cluster_compute: compute_tpl_aws.yaml
 
   run:
@@ -1699,7 +1650,6 @@
     byod:
       type: gpu
       post_build_script: byod_horovod_test.sh
-    cluster_env: horovod/app_config.yaml
     cluster_compute: horovod/compute_tpl_aws.yaml
 
   run:
@@ -1730,7 +1680,6 @@
     byod:
       type: gpu
       post_build_script: byod_horovod_master_test.sh
-    cluster_env: horovod/app_config_master.yaml
     cluster_compute: horovod/compute_tpl_aws.yaml
 
   run:
@@ -1762,7 +1711,6 @@
       runtime_env:
         - TRAIN_PLACEMENT_GROUP_TIMEOUT_S=2000
       type: gpu
-    cluster_env: train/app_config.yaml
     cluster_compute: train/compute_tpl_aws.yaml
 
   run:
@@ -1794,7 +1742,6 @@
       runtime_env:
         - TRAIN_PLACEMENT_GROUP_TIMEOUT_S=2000
       type: gpu
-    cluster_env: train/app_config.yaml
     cluster_compute: train/compute_tpl_aws.yaml
 
   run:
@@ -1825,7 +1772,6 @@
     byod:
       type: gpu
       post_build_script: byod_xgboost_test.sh
-    cluster_env: xgboost/app_config_gpu.yaml
     cluster_compute: xgboost/tpl_gpu_small_scaling_aws.yaml
 
   run:
@@ -1856,7 +1802,6 @@
     byod:
       type: gpu
       post_build_script: byod_xgboost_master_test.sh
-    cluster_env: xgboost/app_config_gpu_master.yaml
     cluster_compute: xgboost/tpl_gpu_small_scaling_aws.yaml
 
   run:
@@ -1890,7 +1835,6 @@
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
         - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
-    cluster_env: ../rllib_tests/app_config.yaml
     cluster_compute: tune_rllib/compute_tpl_aws.yaml
 
   run:
@@ -1921,7 +1865,6 @@
 
   cluster:
     byod: {}
-    cluster_env: app_config.yaml
     cluster_compute: tpl_aws_4x2.yaml
 
   run:
@@ -1949,7 +1892,6 @@
 
   cluster:
     byod: {}
-    cluster_env: app_config.yaml
     cluster_compute: tpl_aws_4x2.yaml
 
   run:
@@ -1977,7 +1919,6 @@
 
   cluster:
     byod: {}
-    cluster_env: app_config.yaml
     cluster_compute: tpl_aws_4x2.yaml
 
   run:
@@ -2015,7 +1956,6 @@
   cluster:
     byod:
       type: gpu
-    cluster_env: app_config_ml.yaml
     cluster_compute: tpl_aws_4x2.yaml
 
   run:
@@ -2057,7 +1997,6 @@
   cluster:
     byod:
       type: gpu
-    cluster_env: app_config_ml.yaml
     cluster_compute: tpl_aws_4x2.yaml
 
   run:
@@ -2094,7 +2033,6 @@
 
   cluster:
     byod: {}
-    cluster_env: app_config.yaml
     cluster_compute: tpl_aws_1x4.yaml
 
   run:
@@ -2133,7 +2071,6 @@
 
   cluster:
     byod: {}
-    cluster_env: app_config.yaml
     cluster_compute: tpl_1x16.yaml
 
   run:
@@ -2160,7 +2097,6 @@
 
   cluster:
     byod: {}
-    cluster_env: app_config.yaml
     cluster_compute: tpl_16x2.yaml
 
   run:
@@ -2195,7 +2131,6 @@
 
   cluster:
     byod: {}
-    cluster_env: app_config.yaml
     cluster_compute: tpl_16x2.yaml
 
   run:
@@ -2229,7 +2164,6 @@
 
   cluster:
     byod: {}
-    cluster_env: app_config.yaml
     cluster_compute: tpl_1x32_hd.yaml
 
   run:
@@ -2265,7 +2199,6 @@
 
   cluster:
     byod: {}
-    cluster_env: app_config.yaml
     cluster_compute: tpl_100x2.yaml
 
   run:
@@ -2306,7 +2239,6 @@
 
   cluster:
     byod: {}
-    cluster_env: app_config.yaml
     cluster_compute: tpl_16x64.yaml
 
   run:
@@ -2336,7 +2268,6 @@
 
   cluster:
     byod: {}
-    cluster_env: app_config.yaml
     cluster_compute: tpl_1x96.yaml
 
   run:
@@ -2367,7 +2298,6 @@
   cluster:
     byod:
       post_build_script: byod_xgboost_tune_test.sh
-    cluster_env: app_config_data.yaml
     cluster_compute: tpl_16x64.yaml
 
   run:
@@ -2404,7 +2334,6 @@
 
   cluster:
     byod: {}
-    cluster_env: app_config.yaml
     cluster_compute: tpl_aws_16x1.yaml
 
   run:
@@ -2443,7 +2372,6 @@
   cluster:
     byod:
       type: gpu
-    cluster_env: torch_tune_serve_app_config.yaml
     cluster_compute: gpu_tpl_aws.yaml
 
   run:
@@ -2480,7 +2408,6 @@
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
         - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
-    cluster_env: app_config.yaml
     cluster_compute: tpl_cpu_1.yaml
 
   run:
@@ -2521,7 +2448,6 @@
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
         - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
-    cluster_env: ../rllib_tests/app_config.yaml
     cluster_compute: tpl_cpu_3.yaml
 
   run:
@@ -2567,7 +2493,6 @@
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
         - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
-    cluster_env: ../rllib_tests/app_config.yaml
     cluster_compute: tpl_cpu_1_large.yaml
 
   run:
@@ -2607,7 +2532,6 @@
     byod:
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
-    cluster_env: app_config.yaml
     cluster_compute: tpl_cpu_1.yaml
 
   run:
@@ -2647,7 +2571,6 @@
     byod:
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
-    cluster_env: app_config.yaml
     cluster_compute: tpl_cpu_1.yaml
 
   run:
@@ -2692,7 +2615,6 @@
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
         - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
-    cluster_env: ../rllib_tests/app_config.yaml
     cluster_compute: many_ppo.yaml
 
   run:
@@ -2735,7 +2657,6 @@
     byod:
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
-    cluster_env: app_config.yaml
     cluster_compute: tpl_cpu_1.yaml
 
   run:
@@ -2775,7 +2696,6 @@
     byod:
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
-    cluster_env: app_config.yaml
     cluster_compute: tpl_cpu_1.yaml
 
   run:
@@ -2815,7 +2735,6 @@
     byod:
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
-    cluster_env: app_config.yaml
     cluster_compute: tpl_cpu_1.yaml
 
   run:
@@ -2858,7 +2777,6 @@
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
         - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
-    cluster_env: ../rllib_tests/app_config.yaml
     cluster_compute: tpl_cpu_1.yaml
 
   run:
@@ -2898,7 +2816,6 @@
     byod:
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
-    cluster_env: app_config.yaml
     cluster_compute: tpl_cpu_1.yaml
 
   run:
@@ -2940,7 +2857,6 @@
     byod:
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
-    cluster_env: app_config.yaml
     cluster_compute: tpl_cpu_1_c5.yaml
 
   run:
@@ -2982,7 +2898,6 @@
     byod:
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
-    cluster_env: app_config.yaml
     cluster_compute: tpl_cpu_1.yaml
 
   run:
@@ -3021,7 +2936,6 @@
   cluster:
     byod:
       type: gpu
-    cluster_env: app_config.yaml
     cluster_compute: compute_tpl.yaml
 
   run:
@@ -3063,7 +2977,6 @@
   cluster:
     byod:
       type: gpu
-    cluster_env: app_config.yaml
     cluster_compute: compute_tpl_4_xlarge.yaml
 
   run:
@@ -3094,7 +3007,6 @@
   cluster:
     byod:
       type: gpu
-    cluster_env: app_config.yaml
     cluster_compute: compute_tpl_4_xlarge.yaml
 
   run:
@@ -3124,7 +3036,6 @@
   cluster:
     byod:
       type: gpu
-    cluster_env: app_config.yaml
     cluster_compute: compute_tpl_4_xlarge.yaml
   run:
     timeout: 600
@@ -3150,7 +3061,6 @@
   cluster:
     byod:
       type: gpu
-    cluster_env: app_config.yaml
     cluster_compute: compute_tpl_gpu_node.yaml
   run:
     timeout: 600
@@ -3176,7 +3086,6 @@
   cluster:
     byod:
       type: gpu
-    cluster_env: app_config.yaml
     cluster_compute: compute_tpl_gpu_worker.yaml
   run:
     timeout: 600
@@ -3205,7 +3114,6 @@
 
   cluster:
     byod: {}
-    cluster_env: app_config.yaml
     cluster_compute: rte_small.yaml
 
   run:
@@ -3235,7 +3143,6 @@
 
   cluster:
     byod: {}
-    cluster_env: app_config.yaml
     cluster_compute: rte_minimal.yaml
 
   run:
@@ -3291,7 +3198,6 @@
 
   cluster:
     byod: {}
-    cluster_env: app_config.yaml
     cluster_compute: compute_tpl_32_cpu.yaml
 
   run:
@@ -3319,7 +3225,6 @@
 
   cluster:
     byod: {}
-    cluster_env: app_config.yaml
     cluster_compute: compute_tpl_32_cpu.yaml
 
   run:
@@ -3347,7 +3252,6 @@
 
   cluster:
     byod: {}
-    cluster_env: app_config.yaml
     cluster_compute: compute_tpl_8_cpu_autoscaling.yaml
 
   run:
@@ -3375,7 +3279,6 @@
 
   cluster:
     byod: {}
-    cluster_env: app_config.yaml
     cluster_compute: compute_tpl_32_cpu_autoscaling.yaml
 
   run:
@@ -3403,7 +3306,6 @@
 
   cluster:
     byod: {}
-    cluster_env: app_config.yaml
     cluster_compute: compute_tpl_single_node.yaml
 
   run:
@@ -3451,7 +3353,6 @@
 
   cluster:
     byod: {}
-    cluster_env: app_config.yaml
     cluster_compute: compute_tpl_single_node_32_cpu.yaml
 
   run:
@@ -3480,7 +3381,6 @@
 
   cluster:
     byod: {}
-    cluster_env: app_config.yaml
     cluster_compute: compute_tpl_single_node_32_cpu.yaml
 
   run:
@@ -3509,7 +3409,6 @@
 
   cluster:
     byod: {}
-    cluster_env: app_config.yaml
     cluster_compute: compute_tpl_single_node_32_cpu.yaml
 
   run:
@@ -3538,7 +3437,6 @@
 
   cluster:
     byod: {}
-    cluster_env: app_config.yaml
     cluster_compute: compute_tpl_single_node_32_cpu.yaml
 
   run:
@@ -3568,7 +3466,6 @@
 
   cluster:
     byod: {}
-    cluster_env: app_config.yaml
     cluster_compute: compute_tpl_single_node.yaml
 
   run:
@@ -3596,7 +3493,6 @@
 
   cluster:
     byod: {}
-    cluster_env: app_config.yaml
     cluster_compute: compute_tpl_single_node.yaml
 
   run:
@@ -3626,7 +3522,6 @@
   cluster:
     byod:
       type: gpu
-    cluster_env: gpu_app_config.yaml
     cluster_compute: compute_tpl_gpu_node.yaml
 
   run:
@@ -3660,7 +3555,6 @@
     byod:
       type: gpu
       post_build_script: byod_horovod_test.sh
-    cluster_env: app_config.yaml
     cluster_compute: compute_tpl_aws.yaml
 
   run:
@@ -3696,7 +3590,6 @@
     byod:
       type: gpu
       post_build_script: byod_alpa_test.sh
-    cluster_env: app_config.yaml
     cluster_compute: gpu_2x4_t4_aws.yaml
 
   run:
@@ -3734,7 +3627,6 @@
     byod:
       type: gpu
       post_build_script: byod_alpa_test.sh
-    cluster_env: app_config.yaml
     cluster_compute: gpu_1x8_v100_aws.yaml
 
   run:
@@ -3779,7 +3671,6 @@
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
         - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
-    cluster_env: app_config.yaml
     cluster_compute: multi_node_checkpointing_compute_config.yaml
 
   run:
@@ -3814,7 +3705,6 @@
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
         - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
-    cluster_env: app_config.yaml
     cluster_compute: multi_node_checkpointing_compute_config.yaml
 
   run:
@@ -3886,7 +3776,6 @@
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
         - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
-    cluster_env: app_config.yaml
     cluster_compute: 1gpu_16cpus.yaml
 
   run:
@@ -3918,7 +3807,6 @@
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
         - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
-    cluster_env: app_config.yaml
     cluster_compute: 1gpu_16cpus.yaml
 
   run:
@@ -3950,7 +3838,6 @@
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
         - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
-    cluster_env: app_config.yaml
     cluster_compute: 32cpus.yaml
 
   run:
@@ -3985,7 +3872,6 @@
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
         - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
-    cluster_env: app_config.yaml
     cluster_compute: 1gpu_24cpus.yaml
 
   run:
@@ -4017,7 +3903,6 @@
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
         - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
-    cluster_env: app_config.yaml
     cluster_compute: 1gpu_24cpus.yaml
 
   run:
@@ -4049,7 +3934,6 @@
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
         - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
-    cluster_env: app_config.yaml
     cluster_compute: 4gpus_64cpus.yaml
 
   run:
@@ -4084,7 +3968,6 @@
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
         - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
-    cluster_env: app_config.yaml
     cluster_compute: 4gpus_64cpus.yaml
 
   run:
@@ -4117,7 +4000,6 @@
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
         - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
-    cluster_env: app_config.yaml
     cluster_compute: 2gpus_32cpus.yaml
 
   run:
@@ -4153,7 +4035,6 @@
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
         - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
-    cluster_env: app_config.yaml
     cluster_compute: 2gpus_32cpus.yaml
 
   run:
@@ -4185,7 +4066,6 @@
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
         - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
-    cluster_env: app_config.yaml
     cluster_compute: 1gpu_16cpus.yaml
 
   run:
@@ -4217,7 +4097,6 @@
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
         - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
-    cluster_env: app_config.yaml
     cluster_compute: 1gpu_16cpus.yaml
 
   run:
@@ -4252,7 +4131,6 @@
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
         - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
-    cluster_env: app_config.yaml
     cluster_compute: 1gpu_16cpus.yaml
 
   run:
@@ -4287,7 +4165,6 @@
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
         - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
-    cluster_env: app_config.yaml
     cluster_compute: 1gpu_16cpus.yaml
 
   run:
@@ -4319,7 +4196,6 @@
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
         - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
-    cluster_env: app_config.yaml
     cluster_compute: 1gpu_16cpus.yaml
 
   run:
@@ -4351,7 +4227,6 @@
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
         - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
-    cluster_env: app_config.yaml
     cluster_compute: 1gpu_16cpus.yaml
 
   run:
@@ -4383,7 +4258,6 @@
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
         - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
-    cluster_env: app_config.yaml
     cluster_compute: 1gpu_32cpus.yaml
 
   run:
@@ -4418,7 +4292,6 @@
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
         - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
-    cluster_env: app_config.yaml
     cluster_compute: 1gpu_16cpus.yaml
 
   run:
@@ -4450,7 +4323,6 @@
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
         - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
-    cluster_env: app_config.yaml
     cluster_compute: 2gpus_64cpus.yaml
 
   run:
@@ -4482,7 +4354,6 @@
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
         - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
-    cluster_env: app_config.yaml
     cluster_compute: 2gpus_64cpus.yaml
 
   run:
@@ -4514,7 +4385,6 @@
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
         - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
-    cluster_env: app_config.yaml
     cluster_compute: 1gpu_16cpus.yaml
 
   run:
@@ -4546,7 +4416,6 @@
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
         - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
-    cluster_env: app_config.yaml
     cluster_compute: 1gpu_16cpus.yaml
 
   run:
@@ -4581,7 +4450,6 @@
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
         - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
-    cluster_env: app_config.yaml
     cluster_compute: 1gpu_16cpus.yaml
 
   run:
@@ -4616,7 +4484,6 @@
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
         - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
-    cluster_env: app_config.yaml
     cluster_compute: 1gpu_16cpus.yaml
 
   run:
@@ -4648,7 +4515,6 @@
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
         - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
-    cluster_env: app_config.yaml
     cluster_compute: 4gpus_64cpus.yaml
 
   run:
@@ -4683,7 +4549,6 @@
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
         - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
-    cluster_env: app_config.yaml
     cluster_compute: 4gpus_64cpus.yaml
 
   run:
@@ -4716,7 +4581,6 @@
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
         - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
-    cluster_env: app_config.yaml
     cluster_compute: 2gpus_32cpus.yaml
 
   run:
@@ -4752,7 +4616,6 @@
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
         - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
-    cluster_env: app_config.yaml
     cluster_compute: 2gpus_32cpus.yaml
 
   run:
@@ -4784,7 +4647,6 @@
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
         - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
-    cluster_env: app_config.yaml
     cluster_compute: 1gpu_16cpus.yaml
 
   run:
@@ -4816,7 +4678,6 @@
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
         - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
-    cluster_env: app_config.yaml
     cluster_compute: 1gpu_16cpus.yaml
 
   run:
@@ -4848,7 +4709,6 @@
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
         - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
-    cluster_env: app_config.yaml
     cluster_compute: 1gpu_16cpus.yaml
 
   run:
@@ -4883,7 +4743,6 @@
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
         - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
-    cluster_env: app_config.yaml
     cluster_compute: 1gpu_16cpus.yaml
 
   run:
@@ -4915,7 +4774,6 @@
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
         - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
-    cluster_env: app_config.yaml
     cluster_compute: 1gpu_16cpus.yaml
 
   run:
@@ -4947,7 +4805,6 @@
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
         - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
-    cluster_env: app_config.yaml
     cluster_compute: 1gpu_16cpus.yaml
 
   run:
@@ -4979,7 +4836,6 @@
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
         - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
-    cluster_env: app_config.yaml
     cluster_compute: 8gpus_96cpus.yaml
 
   run:
@@ -5011,7 +4867,6 @@
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
         - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
-    cluster_env: app_config.yaml
     cluster_compute: 8gpus_96cpus.yaml
 
   run:
@@ -5043,7 +4898,6 @@
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
         - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
-    cluster_env: app_config.yaml
     cluster_compute: 8gpus_96cpus.yaml
 
   run:
@@ -5078,7 +4932,6 @@
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
         - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
-    cluster_env: app_config.yaml
     cluster_compute: 4gpus_544_cpus.yaml
 
   run:
@@ -5125,7 +4978,6 @@
     byod:
       runtime_env:
         - RAY_worker_killing_policy=retriable_lifo
-    cluster_env: shuffle/shuffle_app_config.yaml
     cluster_compute: shuffle/shuffle_compute_multi.yaml
 
   run:
@@ -5153,7 +5005,6 @@
   team: core
   cluster:
     byod: {}
-    cluster_env: stress_tests/stress_tests_app_config.yaml
     cluster_compute: stress_tests/placement_group_tests_compute.yaml
 
   run:
@@ -5178,7 +5029,6 @@
   team: core
   cluster:
     byod: {}
-    cluster_env: decision_tree/decision_tree_app_config.yaml
     cluster_compute: decision_tree/autoscaling_compute.yaml
 
   run:
@@ -5205,7 +5055,6 @@
     byod:
       runtime_env:
         - RAY_worker_killing_policy=retriable_lifo
-    cluster_env: shuffle/shuffle_app_config.yaml
     cluster_compute: shuffle/shuffle_compute_autoscaling.yaml
 
   run:
@@ -5230,7 +5079,6 @@
 
   cluster:
     byod: {}
-    cluster_env: app_config.yaml
     cluster_compute: tpl_64.yaml
 
   run:
@@ -5259,7 +5107,6 @@
   cluster:
     byod:
       type: gpu
-    cluster_env: app_config_gpu.yaml
     cluster_compute: only_head_node_1gpu_64cpu.yaml
 
   run:
@@ -5291,7 +5138,6 @@
       runtime_env:
         - RAY_worker_killing_policy=retriable_lifo
       post_build_script: byod_dask_test.sh
-    cluster_env: dask_on_ray/dask_on_ray_app_config.yaml
     cluster_compute: dask_on_ray/dask_on_ray_sort_compute_template.yaml
 
   run:
@@ -5321,7 +5167,6 @@
       runtime_env:
         - RAY_worker_killing_policy=retriable_lifo
       post_build_script: byod_dask_test.sh
-    cluster_env: dask_on_ray/large_scale_dask_on_ray_app_config.yaml
     cluster_compute: dask_on_ray/dask_on_ray_stress_compute.yaml
 
   run:
@@ -5360,7 +5205,6 @@
       runtime_env:
         - RAY_MAX_LIMIT_FROM_API_SERVER=1000000000
         - RAY_MAX_LIMIT_FROM_DATA_SOURCE=1000000000
-    cluster_env: stress_tests/state_api_app_config.yaml
     cluster_compute: stress_tests/stress_tests_compute_large.yaml
 
   run:
@@ -5404,7 +5248,6 @@
       runtime_env:
         - RAY_MAX_LIMIT_FROM_API_SERVER=1000000000
         - RAY_MAX_LIMIT_FROM_DATA_SOURCE=1000000000
-    cluster_env: shuffle/shuffle_with_state_api_app_config.yaml
     cluster_compute: shuffle/shuffle_compute_single.yaml
 
   run:
@@ -5429,7 +5272,6 @@
   team: core
   cluster:
     byod: {}
-    cluster_env: stress_tests/stress_tests_app_config.yaml
     cluster_compute: stress_tests/stress_tests_compute.yaml
 
   run:
@@ -5470,7 +5312,6 @@
   team: core
   cluster:
     byod: {}
-    cluster_env: stress_tests/stress_tests_app_config.yaml
     cluster_compute: stress_tests/stress_tests_compute.yaml
 
   run:
@@ -5514,7 +5355,6 @@
   team: core
   cluster:
     byod: {}
-    cluster_env: stress_tests/stress_tests_app_config.yaml
     cluster_compute: stress_tests/smoke_test_compute.yaml
 
   run:
@@ -5576,7 +5416,6 @@
   team: core
   cluster:
     byod: {}
-    cluster_env: stress_tests/stress_tests_single_node_oom_app_config.yaml
     cluster_compute: stress_tests/stress_tests_single_node_oom_compute.yaml
 
   run:
@@ -5607,7 +5446,6 @@
       runtime_env:
         - RAY_memory_usage_threshold=0.7
         - RAY_task_oom_retries=-1
-    cluster_env: oom/stress_tests_tune_air_oom_app_config.yaml
     cluster_compute: oom/stress_tests_tune_air_oom_compute.yaml
 
   run:
@@ -5627,7 +5465,6 @@
       runtime_env:
         - RAY_worker_killing_policy=retriable_lifo
       post_build_script: byod_dask_test.sh
-    cluster_env: dask_on_ray/dask_on_ray_app_config.yaml
     cluster_compute: dask_on_ray/1tb_sort_compute.yaml
 
   run:
@@ -5647,7 +5484,6 @@
   team: core
   cluster:
     byod: {}
-    cluster_env: distributed/many_nodes_tests/app_config.yaml
     cluster_compute: distributed/many_nodes_tests/compute_config.yaml
 
   run:
@@ -5692,7 +5528,6 @@
   team: core
   cluster:
     byod: {}
-    cluster_env: placement_group_tests/app_config.yaml
     cluster_compute: placement_group_tests/compute.yaml
 
   run:
@@ -5716,7 +5551,6 @@
   team: core
   cluster:
     byod: {}
-    cluster_env: placement_group_tests/app_config.yaml
     cluster_compute: placement_group_tests/pg_perf_test_compute.yaml
 
   run:
@@ -5750,7 +5584,6 @@
       type: gpu
       runtime_env:
         - LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so
-    cluster_env: app_config.yaml
     cluster_compute: single_node.yaml
 
   run:
@@ -5778,7 +5611,6 @@
       type: gpu
       runtime_env:
         - LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so
-    cluster_env: app_config.yaml
     cluster_compute: object_store.yaml
 
   run:
@@ -5807,7 +5639,6 @@
       type: gpu
       runtime_env:
         - LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so
-    cluster_env: app_config.yaml
     cluster_compute: distributed.yaml
 
   run:
@@ -5836,7 +5667,6 @@
       type: gpu
       runtime_env:
         - LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so
-    cluster_env: app_config.yaml
     cluster_compute: distributed_smoke_test.yaml
 
   run:
@@ -5886,7 +5716,6 @@
       type: gpu
       runtime_env:
         - LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so
-    cluster_env: app_config.yaml
     cluster_compute: distributed.yaml
 
   run:
@@ -5916,7 +5745,6 @@
       type: gpu
       runtime_env:
         - LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so
-    cluster_env: app_config.yaml
     cluster_compute: distributed_smoke_test.yaml
 
   run:
@@ -5969,7 +5797,6 @@
       type: gpu
       runtime_env:
         - LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so
-    cluster_env: app_config.yaml
     cluster_compute: scheduling.yaml
 
   run:
@@ -6046,7 +5873,6 @@
   cluster:
     byod:
       type: gpu
-    cluster_env: app_config.yaml
     cluster_compute: inference.yaml
 
   run:
@@ -6074,7 +5900,6 @@
   cluster:
     byod:
       type: gpu
-    cluster_env: shuffle_app_config.yaml
     cluster_compute: shuffle_compute.yaml
 
   run:
@@ -6132,7 +5957,6 @@
       type: gpu
       pip:
         - git+https://github.com/ray-project/ray_shuffling_data_loader.git@add-embedding-model
-    cluster_env: pipelined_training_app.yaml
     cluster_compute: pipelined_training_compute.yaml
 
   run:
@@ -6160,7 +5984,6 @@
   cluster:
     byod:
       type: gpu
-    cluster_env: app_config.yaml
     cluster_compute: data_ingest_benchmark_compute.yaml
 
   run:
@@ -6188,7 +6011,6 @@
   cluster:
     byod:
       type: gpu
-    cluster_env: app_config.yaml
     cluster_compute: data_ingest_benchmark_compute.yaml
 
   run:
@@ -6216,7 +6038,6 @@
   cluster:
     byod:
       type: gpu
-    cluster_env: app_config.yaml
     cluster_compute: data_ingest_benchmark_compute_gpu.yaml
 
   run:
@@ -6249,7 +6070,6 @@
   cluster:
     byod:
       type: gpu
-    cluster_env: app_config.yaml
     cluster_compute: data_ingest_benchmark_compute_gpu.yaml
 
   run:
@@ -6277,7 +6097,6 @@
   cluster:
     byod:
       type: gpu
-    cluster_env: app_config.yaml
     cluster_compute: single_node_benchmark_compute.yaml
 
   run:
@@ -6303,7 +6122,6 @@
   cluster:
     byod:
       type: gpu
-    cluster_env: app_config.yaml
     cluster_compute: single_node_benchmark_compute.yaml
 
   run:
@@ -6330,7 +6148,6 @@
   cluster:
     byod:
       type: gpu
-    cluster_env: app_config.yaml
     cluster_compute: single_node_benchmark_compute.yaml
 
   run:
@@ -6356,7 +6173,6 @@
   cluster:
     byod:
       type: gpu
-    cluster_env: app_config.yaml
     cluster_compute: single_node_benchmark_compute.yaml
 
   run:
@@ -6382,7 +6198,6 @@
   cluster:
     byod:
       type: gpu
-    cluster_env: app_config.yaml
     cluster_compute: single_node_benchmark_compute.yaml
 
   run:
@@ -6398,22 +6213,21 @@
         cluster_env: app_config.yaml
         cluster_compute: single_node_benchmark_compute_gce.yaml
 
-- name: read_images_train_4_cpu
+- name: read_images_train_4_gpu
   group: data-tests
   working_dir: nightly_tests/dataset
 
-  frequency: nightly
+  frequency: manual
   team: data
   python: "3.8"
   cluster:
     byod:
       type: gpu
-    cluster_env: app_config.yaml
     cluster_compute: ../../air_tests/air_benchmarks/compute_gpu_2x2_aws.yaml
 
   run:
-    timeout: 600
-    script: python image_train_benchmark.py --num-workers 4
+    timeout: 1800
+    script: python multi_node_train_benchmark.py --num-workers 4 --file-type image
 
   variations:
     - __suffix__: aws
@@ -6424,22 +6238,96 @@
         cluster_env: app_config.yaml
         cluster_compute: ../../air_tests/air_benchmarks/compute_gpu_2x2_gce.yaml
 
-- name: read_images_train_16_cpu
+- name: read_images_train_16_gpu
   group: data-tests
   working_dir: nightly_tests/dataset
 
-  frequency: nightly
+  frequency: manual
   team: data
   python: "3.8"
   cluster:
     byod:
       type: gpu
-    cluster_env: app_config.yaml
     cluster_compute: ../../air_tests/air_benchmarks/compute_gpu_4x4_aws.yaml
 
   run:
-    timeout: 600
-    script: python image_train_benchmark.py --num-workers 16
+    timeout: 1800
+    script: python multi_node_train_benchmark.py --num-workers 16 --file-type image
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: ../../air_tests/air_benchmarks/compute_gpu_4x4_gce.yaml
+
+- name: read_images_train_16_gpu_preserve_order
+  group: data-tests
+  working_dir: nightly_tests/dataset
+
+  frequency: manual
+  team: data
+  python: "3.8"
+  cluster:
+    byod:
+      type: gpu
+    cluster_compute: ../../air_tests/air_benchmarks/compute_gpu_4x4_aws.yaml
+
+  run:
+    timeout: 1800
+    script: python multi_node_train_benchmark.py --num-workers 16 --file-type image --preserve-order
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: ../../air_tests/air_benchmarks/compute_gpu_4x4_gce.yaml
+
+- name: read_parquet_train_4_gpu
+  group: data-tests
+  working_dir: nightly_tests/dataset
+
+  frequency: manual
+  team: data
+  python: "3.8"
+  cluster:
+    byod:
+      type: gpu
+    cluster_compute: ../../air_tests/air_benchmarks/compute_gpu_2x2_aws.yaml
+
+  run:
+    timeout: 1800
+    script: python multi_node_train_benchmark.py --num-workers 4 --file-type parquet
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: ../../air_tests/air_benchmarks/compute_gpu_2x2_gce.yaml
+
+- name: read_parquet_train_16_gpu
+  group: data-tests
+  working_dir: nightly_tests/dataset
+
+  frequency: manual
+  team: data
+  python: "3.8"
+  cluster:
+    byod:
+      type: gpu
+    cluster_compute: ../../air_tests/air_benchmarks/compute_gpu_4x4_aws.yaml
+
+  run:
+    timeout: 1800
+    script: python multi_node_train_benchmark.py --num-workers 16 --file-type parquet
 
   variations:
     - __suffix__: aws
@@ -6460,7 +6348,6 @@
   cluster:
     byod:
       type: gpu
-    cluster_env: read_tfrecords_benchmark_app.yaml
     cluster_compute: single_node_benchmark_compute.yaml
 
   run:
@@ -6487,7 +6374,6 @@
   cluster:
     byod:
       type: gpu
-    cluster_env: app_config.yaml
     cluster_compute: single_node_benchmark_compute.yaml
 
   run:
@@ -6514,7 +6400,6 @@
   cluster:
     byod:
       type: gpu
-    cluster_env: app_config.yaml
     cluster_compute: single_node_benchmark_compute.yaml
 
   run:
@@ -6541,7 +6426,6 @@
   cluster:
     byod:
       type: gpu
-    cluster_env: app_config.yaml
     cluster_compute: multi_node_benchmark_compute.yaml
 
   run:
@@ -6568,7 +6452,6 @@
   cluster:
     byod:
       type: gpu
-    cluster_env: app_config.yaml
     cluster_compute: single_node_benchmark_compute.yaml
 
   run:
@@ -6596,7 +6479,6 @@
     byod:
       type: gpu
       post_build_script: byod_data_pipelined_test.sh
-    cluster_env: pipelined_training_app.yaml
     cluster_compute: pipelined_training_compute.yaml
 
   run:
@@ -6628,7 +6510,6 @@
         - RAY_lineage_pinning_enabled=1
         - RAY_record_ref_creation_sites=1
       post_build_script: byod_data_pipelined_test.sh
-    cluster_env: pipelined_ingestion_app.yaml
     cluster_compute: pipelined_ingestion_compute.yaml
 
   run:
@@ -6661,7 +6542,6 @@
         - RAY_worker_killing_policy=retriable_lifo
       pip:
         - ray[default]
-    cluster_env: shuffle/shuffle_app_config.yaml
     cluster_compute: shuffle/datasets_large_scale_compute_small_instances.yaml
 
   run:
@@ -6692,7 +6572,6 @@
         - RAY_worker_killing_policy=retriable_lifo
       pip:
         - ray[default]
-    cluster_env: shuffle/shuffle_app_config.yaml
     cluster_compute: shuffle/datasets_large_scale_compute_small_instances.yaml
 
   run:
@@ -6725,7 +6604,6 @@
         - RAY_worker_killing_policy=retriable_lifo
       pip:
         - ray[default]
-    cluster_env: shuffle/shuffle_app_config.yaml
     cluster_compute: shuffle/datasets_large_scale_compute_small_instances.yaml
 
   run:
@@ -6756,7 +6634,6 @@
         - RAY_worker_killing_policy=retriable_lifo
       pip:
         - ray[default]
-    cluster_env: shuffle/shuffle_app_config.yaml
     cluster_compute: shuffle/datasets_large_scale_compute_small_instances.yaml
 
   run:
@@ -6788,7 +6665,6 @@
       runtime_env:
         - RAY_object_spilling_config={"type":"filesystem","params":{"directory_path":["/tmp/data0","/tmp/data1"]}}
       post_build_script: byod_dataset_shuffle.sh
-    cluster_env: shuffle/100tb_shuffle_app_config.yaml
     cluster_compute: shuffle/100tb_shuffle_compute.yaml
 
   run:
@@ -6823,7 +6699,6 @@
   team: core
   cluster:
     byod: {}
-    cluster_env: chaos_test/app_config.yaml
     cluster_compute: chaos_test/compute_template.yaml
 
   run:
@@ -6850,7 +6725,6 @@
   team: core
   cluster:
     byod: {}
-    cluster_env: chaos_test/app_config.yaml
     cluster_compute: chaos_test/compute_template.yaml
 
   run:
@@ -6882,7 +6756,6 @@
       runtime_env:
         - RAY_lineage_pinning_enabled=1
       post_build_script: byod_dask_test.sh
-    cluster_env: chaos_test/dask_on_ray_app_config_reconstruction.yaml
     cluster_compute: dask_on_ray/chaos_dask_on_ray_stress_compute.yaml
 
   run:
@@ -6914,7 +6787,6 @@
       runtime_env:
         - RAY_lineage_pinning_enabled=1
       post_build_script: byod_dask_test.sh
-    cluster_env: chaos_test/dask_on_ray_app_config_reconstruction.yaml
     cluster_compute: dask_on_ray/dask_on_ray_stress_compute.yaml
 
   run:
@@ -6950,7 +6822,6 @@
         - RAY_lineage_pinning_enabled=1
         - RAY_record_ref_creation_sites=1
       post_build_script: byod_data_pipelined_test.sh
-    cluster_env: dataset/pipelined_ingestion_app.yaml
     cluster_compute: dataset/pipelined_ingestion_compute.yaml
 
   run:
@@ -6985,7 +6856,6 @@
         - RAY_worker_killing_policy=retriable_lifo
       pip:
         - ray[default]
-    cluster_env: shuffle/shuffle_app_config.yaml
     cluster_compute: shuffle/datasets_large_scale_compute_small_instances.yaml
 
   run:
@@ -7017,7 +6887,6 @@
     byod:
       runtime_env:
         - RAY_memory_monitor_refresh_ms=0
-    cluster_env: shuffle/shuffle_app_config_oom_disabled.yaml
     cluster_compute: shuffle/datasets_large_scale_compute_small_instances.yaml
 
   run:
@@ -7052,7 +6921,6 @@
         - RAY_memory_monitor_refresh_ms=0
       pip:
         - ray[default]
-    cluster_env: shuffle/shuffle_app_config_oom_disabled.yaml
     cluster_compute: shuffle/datasets_large_scale_compute_small_instances.yaml
 
   run:
@@ -7085,7 +6953,6 @@
     byod:
       runtime_env:
         - RAY_memory_monitor_refresh_ms=0
-    cluster_env: shuffle/shuffle_app_config_oom_disabled.yaml
     cluster_compute: shuffle/datasets_large_scale_compute_small_instances.yaml
 
   run:
@@ -7119,7 +6986,6 @@
       runtime_env:
         - RAY_INTERNAL_MEM_PROFILE_COMPONENTS=dashboard_agent
       post_build_script: byod_agent_stress_test.sh
-    cluster_env: agent_stress_app_config.yaml
     cluster_compute: agent_stress_compute.yaml
 
   run:
@@ -7163,7 +7029,6 @@
 
   cluster:
     byod: {}
-    cluster_env: aws/tests/aws_config.yaml
     cluster_compute: aws/tests/aws_compute.yaml
 
   run:
@@ -7197,7 +7062,6 @@
   python: "3.8"
   cluster:
     byod: {}
-    cluster_env: aws/tests/aws_config.yaml
     cluster_compute: aws/tests/aws_compute.yaml
 
   run:
@@ -7231,7 +7095,6 @@
   team: core
   cluster:
     byod: {}
-    cluster_env: aws/tests/aws_config.yaml
     cluster_compute: aws/tests/aws_compute.yaml
 
   run:
