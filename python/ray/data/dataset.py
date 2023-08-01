@@ -2296,8 +2296,12 @@ class Dataset:
         batch_format = _apply_strict_mode_batch_format(batch_format)
         try:
             res = next(
-                self.iter_batches(
-                    batch_size=batch_size, prefetch_batches=0, batch_format=batch_format
+                iter(
+                    self.iter_batches(
+                        batch_size=batch_size,
+                        prefetch_batches=0,
+                        batch_format=batch_format,
+                    )
                 )
             )
         except StopIteration:
