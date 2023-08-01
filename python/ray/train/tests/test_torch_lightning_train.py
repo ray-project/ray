@@ -34,6 +34,8 @@ def ray_start_6_cpus_2_gpus():
 def test_trainer_with_native_dataloader(
     ray_start_6_cpus_2_gpus, strategy_name, accelerator, datasource
 ):
+    """Test basic ddp and fsdp training with dataloader and datamodule. """
+
     if accelerator == "cpu" and strategy_name == "fsdp":
         return
 
@@ -86,6 +88,8 @@ def test_trainer_with_native_dataloader(
 @pytest.mark.parametrize("strategy_name", ["ddp", "fsdp"])
 @pytest.mark.parametrize("accelerator", ["cpu", "gpu"])
 def test_trainer_with_ray_data(ray_start_6_cpus_2_gpus, strategy_name, accelerator):
+    """Test Data integration with ddp and fsdp. """
+
     if accelerator == "cpu" and strategy_name == "fsdp":
         return
 

@@ -52,11 +52,11 @@ def get_worker_root_device():
 
 @PublicAPI(stability="alpha")
 def get_devices() -> Optional[Union[List[int], str]]:
-    """Returns the device ID of the current Ray Train worker.
+    """Returns the parallel devices for Lightning Trainer on each Ray Train worker.
 
-    This method returns the device index of the current GPU Worker. Returns "auto"
-    if it's called in a CPU worker. Note that you can only call this method inside
-    the training function of :class:`TorchTrainer <ray.train.torch.TorchTrainer>`.
+    This method returns the list of CUDA device indexes of a GPU worker, and returns 
+    "auto" if called inside a CPU worker. Note that you can only call this method within 
+    the training function of the :class:`TorchTrainer <ray.train.torch.TorchTrainer>` class.
 
     Example:
         .. testcode::
@@ -71,7 +71,7 @@ def get_devices() -> Optional[Union[List[int], str]]:
 
                 trainer = pl.Trainer(
                     ...,
-                    device=devices
+                    devices=devices
                 )
 
     """
@@ -186,6 +186,8 @@ class RayLightningEnvironment(LightningEnvironment):
 
 @PublicAPI(stability="alpha")
 def prepare_trainer(trainer: pl.Trainer) -> pl.Trainer:
+    """Prepare the PyTorch Lightning Trainer for distributed execution."""
+
     # Check strategy class
     valid_strategy_class = [RayDDPStrategy, RayFSDPStrategy, RayDeepSpeedStrategy]
 
