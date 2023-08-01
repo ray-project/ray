@@ -57,6 +57,8 @@ platform(
     visibility = ["//visibility:private"],
 )
 
+# C/C++ toolchain constraint configs.
+
 config_setting(
     name = "msvc-cl",
     flag_values = {"@bazel_tools//tools/cpp:compiler": "msvc-cl"},
