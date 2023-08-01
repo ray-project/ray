@@ -98,7 +98,7 @@ class RayParams:
             listens to for HTTP.
         plasma_store_socket_name: If provided, it specifies the socket
             name used by the plasma store.
-        raylet_socket_name: If provided, it will specify the socket path
+        raylet_socket_name: If provided, it specifies the socket path
             used by the raylet process.
         temp_dir: If provided, it will specify the root temporary
             directory for the Ray process. Must be an absolute path.
