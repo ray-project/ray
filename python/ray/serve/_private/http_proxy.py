@@ -303,6 +303,7 @@ class HTTPProxy:
         self._draining_start_time: Optional[float] = None
 
     def _is_draining(self) -> bool:
+        """Whether is proxy actor is in the draining status or not."""
         return self._draining_start_time is not None
 
     def _update_routes(self, endpoints: Dict[EndpointTag, EndpointInfo]) -> None:
@@ -314,6 +315,12 @@ class HTTPProxy:
         self.prefix_router.update_routes(endpoints)
 
     def is_drained(self):
+        """Check whether the proxy actor is drained or not.
+
+        A proxy actor is drained if it has no ongoing requests
+        AND it has been draining for more than
+        `PROXY_MIN_DRAINING_PERIOD_S` seconds.
+        """
         if not self._is_draining():
             return False
 
@@ -322,19 +329,17 @@ class HTTPProxy:
         )
 
     def update_draining(self, draining: bool):
-        """Update draining flag on http proxy.
+        """Update the draining status of the http proxy.
 
-        This is a callback for when controller detects there being a change in active
-        nodes. Each http proxy will check if it's nodes is still active and set
-        draining flag accordingly. Also, log a message when the draining flag is
-        changed.
+        This is called by the http proxy state manager
+        to drain or un-drain the proxy actor.
         """
 
         if draining and (not self._is_draining()):
-            logger.info(f"Start to drain the proxy actor on node {self._node_id}")
+            logger.info(f"Start to drain the proxy actor on node {self._node_id}.")
             self._draining_start_time = time.time()
         if (not draining) and self._is_draining():
-            logger.info(f"Stop draining the proxy actor on node {self._node_id}")
+            logger.info(f"Stop draining the proxy actor on node {self._node_id}.")
             self._draining_start_time = None
 
     async def _not_found(self, scope, receive, send):
@@ -880,8 +885,8 @@ class HTTPProxyActor:
             component_name="http_proxy", component_id=node_ip_address
         )
         logger.info(
-            f"Start the http proxy actor {ray.get_runtime_context().get_actor_id()} "
-            f"on node {node_id}"
+            f"Proxy actor {ray.get_runtime_context().get_actor_id()} "
+            f"starting on node {node_id}."
         )
         if http_middlewares is None:
             http_middlewares = [Middleware(RequestIdMiddleware)]
@@ -987,7 +992,7 @@ Please make sure your http-host and http-port are specified correctly."""
         await server.serve(sockets=[sock])
 
     async def update_draining(self, draining: bool, _after: Optional[Any] = None):
-        """Update draining flag on http proxy.
+        """Update the draining status of the http proxy.
 
         Unused `_after` argument is for scheduling: passing an ObjectRef
         allows delaying this call until after the `_after` call has returned.

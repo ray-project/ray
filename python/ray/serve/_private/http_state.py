@@ -173,7 +173,7 @@ class HTTPProxyState:
                         self.set_status(HTTPProxyStatus.DRAINED)
                 except Exception as e:
                     logger.warning(
-                        f"Drain check for HTTP proxy {self._actor_name} failed: {e}"
+                        f"Drain check for HTTP proxy {self._actor_name} failed: {e}."
                     )
         elif time.time() - self._last_drain_check_time > PROXY_DRAIN_CHECK_PERIOD_S:
             self._last_drain_check_time = time.time()
