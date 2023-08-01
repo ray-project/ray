@@ -1,10 +1,16 @@
+import os
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import pytorch_lightning as pl
+
+from pytorch_lightning.callbacks import Callback
+from tempfile import TemporaryDirectory
 from torch.utils.data import DataLoader
 from torchmetrics import Accuracy
-from ray.air import session
+
+import ray
+from ray.air import session, Checkpoint
 
 
 class LinearModule(pl.LightningModule):
@@ -167,3 +173,23 @@ class LightningMNISTClassifier(pl.LightningModule):
         x = batch
         logits = self.forward(x)
         return torch.argmax(logits, dim=-1)
+
+
+class RayTrainReportCallback(Callback):
+    def on_train_epoch_end(self, trainer, pl_module) -> None:
+        with TemporaryDirectory() as tmpdir:
+            # Fetch metrics
+            metrics = trainer.callback_metrics
+            metrics = {k: v.item() for k, v in metrics.items()}
+
+            # (Optional) Add customized metrics
+            metrics["epoch"] = trainer.current_epoch
+            metrics["steps"] = trainer.global_step
+
+            # Save checkpoint to local
+            ckpt_path = os.path.join(tmpdir, f"ckpt_epoch_{trainer.current_epoch}.pth")
+            trainer.save_checkpoint(ckpt_path, weights_only=False)
+
+            # Report to train session
+            checkpoint = Checkpoint.from_directory(tmpdir)
+            ray.train.report(metrics=metrics, checkpoint=checkpoint)

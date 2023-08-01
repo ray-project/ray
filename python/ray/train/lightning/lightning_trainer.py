@@ -16,11 +16,11 @@ from ray.train.trainer import GenDataset
 from ray.train.torch import TorchTrainer
 from ray.train.torch.config import TorchConfig
 from ray.util import PublicAPI
-from ray.train.lightning._lightning_utils import (
+from ray.train.lightning.lightning_utils import (
     RayDDPStrategy,
     RayFSDPStrategy,
     RayDeepSpeedStrategy,
-    RayEnvironment,
+    RayLightningEnvironment,
     RayDataModule,
     RayModelCheckpoint,
     get_worker_root_device,
@@ -580,7 +580,7 @@ def _lightning_train_loop_per_worker(config):
         for plugin in trainer_config.get("plugins", [])
         if not isinstance(plugin, ClusterEnvironment)
     ]
-    trainer_config["plugins"].append(RayEnvironment())
+    trainer_config["plugins"].append(RayLightningEnvironment())
 
     # Setup ddp strategy for ray orchestration
     if "strategy" in trainer_config:
