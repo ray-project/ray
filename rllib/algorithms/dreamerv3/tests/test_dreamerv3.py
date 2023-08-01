@@ -37,13 +37,10 @@ class TestDreamerV3(unittest.TestCase):
         # Build a DreamerV3Config object.
         config = (
             dreamerv3.DreamerV3Config()
-            .framework(eager_tracing=True)
             .training(
                 # Keep things simple. Especially the long dream rollouts seem
                 # to take an enormous amount of time (initially).
                 batch_size_B=2 * 2,  # shared w/ model AND learner AND env runner
-                batch_length_T=16,
-                horizon_H=5,
                 # TODO (sven): Fix having to provide this.
                 #  Should be compiled automatically as `RLModuleConfig` by
                 #  AlgorithmConfig (see comment below)?
@@ -141,7 +138,6 @@ class TestDreamerV3(unittest.TestCase):
 
         config = (
             dreamerv3.DreamerV3Config()
-            .framework("tf2", eager_tracing=True)
             .training(
                 model={
                     "batch_length_T": 16,

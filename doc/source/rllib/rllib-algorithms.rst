@@ -628,7 +628,7 @@ Tuned examples: `Atari 100k <https://github.com/ray-project/ray/blob/master/rlli
 
 **Atari 100k results (1 vs 4 GPUs)**:
 
-.. figure:: images/dreamerv3/atari100k_1_vs_1gpus.svg
+.. figure:: images/dreamerv3/atari100k_1_vs_4gpus.svg
 
     Episode mean rewards for various Atari 100k tasks on 1 vs 4 GPUs.
     **Left**: Episode reward over environment timesteps sampled.
@@ -637,7 +637,7 @@ Tuned examples: `Atari 100k <https://github.com/ray-project/ray/blob/master/rlli
 
 **DeepMind Control Suite (vision) results (1 vs 4 GPUs)**:
 
-.. figure:: images/dreamerv3/dmc_1_vs_1gpus.svg
+.. figure:: images/dreamerv3/dmc_1_vs_4gpus.svg
 
     Episode mean rewards for various Atari 100k tasks on 1 vs 4 GPUs.
     **Left**: Episode reward over environment timesteps sampled.

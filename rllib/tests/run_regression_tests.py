@@ -197,13 +197,16 @@ if __name__ == "__main__":
         if args.wandb_key is not None:
             project = args.wandb_project or (
                 exp["run"].lower() + "-" + re.sub("\\W+", "-", exp["env"].lower())
-                if config_is_python else list(experiments.keys())[0]
+                if config_is_python
+                else list(experiments.keys())[0]
             )
-            callbacks = [WandbLoggerCallback(
-                api_key=args.wandb_key,
-                project=project,
-                **({"name": args.wandb_run_name} if args.wandb_run_name else {}),
-            )]
+            callbacks = [
+                WandbLoggerCallback(
+                    api_key=args.wandb_key,
+                    project=project,
+                    **({"name": args.wandb_run_name} if args.wandb_run_name else {}),
+                )
+            ]
 
         # Try running each test 3 times and make sure it reaches the given
         # reward.

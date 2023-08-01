@@ -77,7 +77,8 @@ class DreamerV3RLModule(RLModule, abc.ABC):
             test_actions = np.tile(
                 np.expand_dims(
                     one_hot(
-                        self.config.action_space.sample(), depth=self.config.action_space.n
+                        self.config.action_space.sample(),
+                        depth=self.config.action_space.n,
                     ),
                     (0, 1),
                 ),

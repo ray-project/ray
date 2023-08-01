@@ -901,12 +901,16 @@ class Learner:
                 }
             )
             # Report registered optimizers' learning rates.
-            module_learner_stats[module_id].update({
-                f"{optim_name}_lr": convert_to_numpy(self._get_optimizer_lr(optimizer))
-                for optim_name, optimizer in (
-                    self.get_optimizers_for_module(module_id=module_id)
-                )
-            })
+            module_learner_stats[module_id].update(
+                {
+                    f"{optim_name}_lr": convert_to_numpy(
+                        self._get_optimizer_lr(optimizer)
+                    )
+                    for optim_name, optimizer in (
+                        self.get_optimizers_for_module(module_id=module_id)
+                    )
+                }
+            )
 
         return dict(module_learner_stats)
 
