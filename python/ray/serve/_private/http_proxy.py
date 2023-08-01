@@ -55,11 +55,12 @@ from ray.serve._private.logging_utils import (
     configure_component_logger,
     get_component_logger_file_path,
 )
-
 from ray.serve._private.utils import (
     calculate_remaining_timeout,
     call_function_from_import_path,
 )
+from ray.serve.exceptions import RayServeTimeout
+
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -356,6 +357,13 @@ class HTTPProxy:
         )
         await response.send(scope, receive, send)
 
+    async def _timeout_response(self, scope, receive, send, request_id):
+        response = Response(
+            f"Request {request_id} timed out after {self.request_timeout_s}s.",
+            status_code=408,
+        )
+        await response.send(scope, receive, send)
+
     async def receive_asgi_messages(self, request_id: str) -> List[Message]:
         queue = self.asgi_receive_queues.get(request_id, None)
         if queue is None:
@@ -594,7 +602,7 @@ class HTTPProxy:
 
         retries = 0
         loop = get_or_create_event_loop()
-        # We have received all the http request conent. The next `receive`
+        # We have received all the http request content. The next `receive`
         # call might never arrive; if it does, it can only be `http.disconnect`.
         while retries < HTTP_REQUEST_MAX_RETRIES + 1:
             should_backoff = False
@@ -751,6 +759,7 @@ class HTTPProxy:
         """
         status_code = ""
         start = time.time()
+        is_first_message = True
         while True:
             try:
                 obj_ref = await obj_ref_generator._next_async(
@@ -761,7 +770,7 @@ class HTTPProxy:
                     )
                 )
                 if obj_ref.is_nil():
-                    raise TimeoutError
+                    raise RayServeTimeout(is_first_message=is_first_message)
 
                 asgi_messages: List[Message] = pickle.loads(await obj_ref)
                 for asgi_message in asgi_messages:
@@ -774,6 +783,7 @@ class HTTPProxy:
                         status_code = str(asgi_message["code"])
 
                     await send(asgi_message)
+                    is_first_message = False
             except StopAsyncIteration:
                 break
 
@@ -818,6 +828,7 @@ class HTTPProxy:
                     f"Request {request_id} timed out after "
                     f"{self.request_timeout_s}s while waiting for assignment."
                 )
+                await self._timeout_response(scope, receive, send, request_id)
                 return TIMEOUT_ERROR_CODE
 
             try:
@@ -830,11 +841,16 @@ class HTTPProxy:
                         curr_time_s=time.time(),
                     ),
                 )
-            except TimeoutError:
+            except RayServeTimeout as serve_timeout_error:
                 logger.warning(
                     f"Request {request_id} timed out after "
                     f"{self.request_timeout_s}s while executing."
                 )
+                # We should only send timeout response if we have not sent
+                # any messages to the client yet. Header (including status code)
+                # messages can only be sent once.
+                if serve_timeout_error.is_first_message:
+                    await self._timeout_response(scope, receive, send, request_id)
                 return TIMEOUT_ERROR_CODE
 
         except Exception as e:
