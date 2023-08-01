@@ -236,64 +236,11 @@ class EarlyStoppingSuite(unittest.TestCase):
         self._test_metrics(result2, "mean_loss", "min")
 
 
-# Only barebone impl for start/stop_trial. No internal state maintained.
-class _MockTrialExecutor:
-    def start_trial(self, trial, checkpoint_obj=None, train=True):
-        trial.logger_running = True
-        trial.restored_checkpoint = checkpoint_obj.dir_or_data
-        trial.status = Trial.RUNNING
-        return True
-
-    def stop_trial(self, trial, error=False, error_msg=None):
-        trial.status = Trial.ERROR if error else Trial.TERMINATED
-
-    def restore(self, trial, checkpoint=None, block=False):
-        pass
-
-    def save(self, trial, type=CheckpointStorage.PERSISTENT, result=None):
-        if type == CheckpointStorage.MEMORY:
-            checkpoint = _TrackedCheckpoint(
-                dir_or_data={"data": trial.trainable_name},
-                storage_mode=CheckpointStorage.MEMORY,
-                metrics=result,
-            )
-            trial.on_checkpoint(checkpoint)
-            return checkpoint
-        else:
-            return _TrackedCheckpoint(
-                dir_or_data=trial.trainable_name,
-                storage_mode=CheckpointStorage.PERSISTENT,
-                metrics=result,
-            )
-
-    def reset_trial(self, trial, new_config, new_experiment_tag):
-        return False
-
-    def debug_string(self):
-        return "This is a mock TrialExecutor."
-
-    def export_trial_if_needed(self):
-        return {}
-
-    def fetch_result(self):
-        return []
-
-    def get_next_available_trial(self):
-        return None
-
-    def get_running_trials(self):
-        return []
-
-    def has_resources_for_trial(self, trial: Trial):
-        return True
-
-
 class _MockTrialRunner:
     def __init__(self, scheduler):
         self._scheduler_alg = scheduler
         self.search_alg = None
         self.trials = []
-        self.trial_executor = _MockTrialExecutor()
 
     def process_action(self, trial, action):
         if action == TrialScheduler.CONTINUE:
@@ -301,20 +248,22 @@ class _MockTrialRunner:
         elif action == TrialScheduler.PAUSE:
             self.pause_trial(trial)
         elif action == TrialScheduler.STOP:
-            self.trial_executor.stop_trial(trial)
+            self.stop_trial(trial)
 
     def pause_trial(self, trial, should_checkpoint: bool = True):
         if should_checkpoint:
-            self.trial_executor.save(trial, CheckpointStorage.MEMORY, None)
+            self._schedule_trial_save(trial, CheckpointStorage.MEMORY, None)
         trial.status = Trial.PAUSED
 
-    def stop_trial(self, trial):
+    def stop_trial(self, trial, error=False, error_msg=None):
         if trial.status in [Trial.ERROR, Trial.TERMINATED]:
             return
         elif trial.status in [Trial.PENDING, Trial.PAUSED]:
             self._scheduler_alg.on_trial_remove(self, trial)
         else:
             self._scheduler_alg.on_trial_complete(self, trial, result(100, 10))
+
+        trial.status = Trial.ERROR if error else Trial.TERMINATED
 
     def add_trial(self, trial):
         self.trials.append(trial)
@@ -331,6 +280,33 @@ class _MockTrialRunner:
 
     def _set_trial_status(self, trial, status):
         trial.status = status
+
+    def start_trial(self, trial, checkpoint_obj=None, train=True):
+        trial.logger_running = True
+        trial.restored_checkpoint = checkpoint_obj.dir_or_data
+        trial.status = Trial.RUNNING
+        return True
+
+    def _schedule_trial_restore(self, trial):
+        pass
+
+    def _schedule_trial_save(
+        self, trial, type=CheckpointStorage.PERSISTENT, result=None
+    ):
+        if type == CheckpointStorage.MEMORY:
+            checkpoint = _TrackedCheckpoint(
+                dir_or_data={"data": trial.trainable_name},
+                storage_mode=CheckpointStorage.MEMORY,
+                metrics=result,
+            )
+            trial.on_checkpoint(checkpoint)
+            return checkpoint
+        else:
+            return _TrackedCheckpoint(
+                dir_or_data=trial.trainable_name,
+                storage_mode=CheckpointStorage.PERSISTENT,
+                metrics=result,
+            )
 
 
 class HyperbandSuite(unittest.TestCase):
@@ -1933,7 +1909,7 @@ class PopulationBasedTestingSuite(unittest.TestCase):
         )
         self.assertEqual(pbt._num_checkpoints, 1)
 
-        pbt._exploit(runner.trial_executor, trials[1], trials[2])
+        pbt._exploit(runner, trials[1], trials[2])
         shutil.rmtree(tmpdir)
 
     @pytest.mark.skipif(
