@@ -566,8 +566,9 @@ void GcsServer::InitFunctionManager() {
 }
 
 void GcsServer::InitUsageStatsClient() {
+  bool is_ipv6 = std::getenv("BYTED_RAY_POD_IP") != nullptr;
   usage_stats_client_ = std::make_unique<UsageStatsClient>(
-      "127.0.0.1:" + std::to_string(GetPort()), main_service_);
+      (is_ipv6 ? "[::]:" : "127.0.0.1:") + std::to_string(GetPort()), main_service_);
 }
 
 void GcsServer::InitKVManager() {

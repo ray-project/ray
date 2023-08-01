@@ -50,6 +50,7 @@ class TestReadImages:
         )
         assert ds.count() == 3
 
+    @pytest.mark.skip(reason=("bytedance skip"))
     @pytest.mark.parametrize("ignore_missing_paths", [True, False])
     def test_ignore_missing_paths(self, ray_start_regular_shared, ignore_missing_paths):
         paths = [

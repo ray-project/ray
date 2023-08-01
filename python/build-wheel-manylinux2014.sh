@@ -65,8 +65,7 @@ nvm use "$NODE_VERSION"
 
 # Build the dashboard so its static assets can be included in the wheel.
 # TODO(mfitton): switch this back when deleting old dashboard code.
-(
-  cd python/ray/dashboard/client
+pushd python/ray/dashboard/client
   npm ci
   BUILD_PATH=build npm run build
 popd
@@ -80,12 +79,13 @@ git config --global --add safe.directory /ray
 mkdir -p .whl
 IFS=',' read -r -a array <<< "$1"
 for ((i=0; i<${#PYTHON_NUMPYS[@]}; ++i)); do
-  PYTHON="$(echo "${PYTHON_NUMPY}" | cut -d' ' -f2)"
-  NUMPY_VERSION="$(echo "${PYTHON_NUMPY}" | cut -d' ' -f3)"
+  PYTHON_NUMPY_TMP=${PYTHON_NUMPYS[i]}
+  PYTHON="$(echo "${PYTHON_NUMPY_TMP}" | cut -d' ' -f2)"
+  NUMPY_VERSION="$(echo "${PYTHON_NUMPY_TMP}" | cut -d' ' -f3)"
 
   find_in_input=false
   for element in "${array[@]}"; do
-    if [ ${PYTHONS[i]} == $element ]; then
+    if [ ${PYTHON} == $element ]; then
       find_in_input=true
       break 1
     fi

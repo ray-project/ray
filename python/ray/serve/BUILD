@@ -550,7 +550,7 @@ py_test(
     main = "test_myst_doc.py",
     args = ["--path", "doc/source/serve/tutorials/rllib.md"],
     data = ["//doc/source/serve/tutorials:markdowns"],
-    tags = ["exclusive", "team:serve", "no_main"],
+    tags = ["exclusive", "team:serve", "no_main", "bytedance_exclude"],
 )
 
 py_test(

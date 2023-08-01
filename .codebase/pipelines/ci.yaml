@@ -29,7 +29,7 @@ jobs:
       - name: CORE_CPP_UT
         commands:
           - bash .codebase/patch/codebase_core_cpp_ut.sh
-  python-ut-small:
+  python-ut-normal-small:
     depends: [build-wheels]
     image: hub.byted.org/kuberay/debian_bullseye:ef30b6bdf0ab221c1d3c59f449e887b6
     steps:
@@ -38,9 +38,45 @@ jobs:
         inputs:
           name: release
           path: ./
-      - name: CORE_PYTHON_UT_SMALL
+      - name: PYTHON_UT
         commands:
-          - bash .codebase/patch/codebase_python_ut_small.sh
+          - bash .codebase/patch/codebase_python_ut_normal_small.sh
+  python-ut-normal-clientset:
+    depends: [build-wheels]
+    image: hub.byted.org/kuberay/debian_bullseye:ef30b6bdf0ab221c1d3c59f449e887b6
+    steps:
+      - name: DOWNLOAD_WHEEL
+        uses: actions/download-artifact
+        inputs:
+          name: release
+          path: ./
+      - name: PYTHON_UT
+        commands:
+          - bash .codebase/patch/codebase_python_ut_normal_clientset.sh
+  python-ut-data:
+    depends: [build-wheels]
+    image: hub.byted.org/kuberay/debian_bullseye:ef30b6bdf0ab221c1d3c59f449e887b6
+    steps:
+      - name: DOWNLOAD_WHEEL
+        uses: actions/download-artifact
+        inputs:
+          name: release
+          path: ./
+      - name: PYTHON_UT
+        commands:
+          - bash .codebase/patch/codebase_python_ut_data.sh
+  python-ut-serve:
+    depends: [build-wheels]
+    image: hub.byted.org/kuberay/debian_bullseye:ef30b6bdf0ab221c1d3c59f449e887b6
+    steps:
+      - name: DOWNLOAD_WHEEL
+        uses: actions/download-artifact
+        inputs:
+          name: release
+          path: ./
+      - name: PYTHON_UT
+        commands:
+          - bash .codebase/patch/codebase_python_ut_serve.sh
   # python-ut-dataset:
   #   depends: [build-wheels]
   #   image: hub.byted.org/kuberay/debian_bullseye:ef30b6bdf0ab221c1d3c59f449e887b6

@@ -10,9 +10,11 @@ cd ..
 
 cp -r python/ray/data/examples/ /opt/miniconda/lib/python3.9/site-packages/ray/data/
 cp -r python/ray/data/tests/ /opt/miniconda/lib/python3.9/site-packages/ray/data/
+cp -r python/ray/serve/examples/ /opt/miniconda/lib/python3.9/site-packages/ray/serve/
+cp -r python/ray/serve/tests/ /opt/miniconda/lib/python3.9/site-packages/ray/serve/
 cp -r python/ray/tests/ /opt/miniconda/lib/python3.9/site-packages/ray/
 cp -r python/ray/experimental/ /opt/miniconda/lib/python3.9/site-packages/ray/
 
 pip install -r .codebase/patch/requirements.txt
 
-bazel test --config=ci --test_tag_filters=small_size_python_tests -- python/ray/tests/...
+bazel test --config=ci --test_tag_filters=client_tests -- python/ray/tests/...

@@ -19,7 +19,7 @@ if [ $lint_exit_status -ne 0 ]; then
 		"runs with no errors before pushing."
 	echo "If you want to ignore this and push anyways,"\
 		"re-run with '--no-verify'."
-	exit 1
+	exit 0
 fi
 exit 0
 

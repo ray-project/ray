@@ -416,10 +416,10 @@ def run(
     _blocking: bool = True,
     host: str = DEFAULT_HTTP_HOST,
     port: int = DEFAULT_HTTP_PORT,
-    name: str = "",
-    route_prefix: str = "/",
+    name: str = SERVE_DEFAULT_APP_NAME,
+    route_prefix: str = DEFAULT.VALUE,
     http_locations: str = "EveryNode",
-) -> Optional[RayServeHandle]:
+) -> Optional[RayServeSyncHandle]:
     """Run a Serve application and return a ServeHandle to the ingress.
 
         handle = serve.run(MyDeployment.bind())

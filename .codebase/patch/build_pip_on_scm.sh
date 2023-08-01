@@ -4,6 +4,6 @@ export BAZEL_LIMIT_CPUS=8
 if [[ -n "${CUSTOM_PYTHON_VERSION:-}" ]]; then
     python/build-wheel-manylinux2014.sh ${CUSTOM_PYTHON_VERSION}
 else
-    python/build-wheel-manylinux2014.sh cp36-cp36m,cp37-cp37m,cp38-cp38,cp39-cp39
+    python/build-wheel-manylinux2014.sh cp37-cp37m,cp38-cp38,cp39-cp39,cp310-cp310
 fi
 cp -r .whl output/

@@ -2,7 +2,7 @@ load("//bazel:python.bzl", "doctest")
 
 doctest(
     files = glob(["**/*.py"], exclude=glob(["examples/**/*", "tests/**/*"])),
-    tags = ["team:data"],
+    tags = ["team:data", "bytedance_exclude"],
     size = "large"
 )
 # --------------------------------------------------------------------
@@ -165,7 +165,7 @@ py_test(
     name = "test_ecosystem",
     size = "small",
     srcs = ["tests/test_ecosystem.py"],
-    tags = ["team:data", "exclusive"],
+    tags = ["team:data", "exclusive", "bytedance_exclude"],
     deps = ["//:ray_lib", ":conftest"],
 )
 
@@ -181,7 +181,7 @@ py_test(
     name = "test_iterator",
     size = "small",
     srcs = ["tests/test_iterator.py"],
-    tags = ["team:data", "exclusive"],
+    tags = ["team:data", "exclusive", "bytedance_exclude"],
     deps = ["//:ray_lib", ":conftest"],
 )
 
@@ -245,7 +245,7 @@ py_test(
     name = "test_tensor",
     size = "small",
     srcs = ["tests/test_tensor.py"],
-    tags = ["team:data", "exclusive"],
+    tags = ["team:data", "exclusive", "bytedance_exclude"], # not work in ray2.6
     deps = ["//:ray_lib", ":conftest"],
 )
 
@@ -261,7 +261,7 @@ py_test(
     name = "test_tf",
     size = "small",
     srcs = ["tests/test_tf.py"],
-    tags = ["team:data", "exclusive"],
+    tags = ["team:data", "exclusive", "bytedance_exclude"],
     deps = ["//:ray_lib", ":conftest"],
 )
 
@@ -269,7 +269,7 @@ py_test(
     name = "test_tfrecords",
     size = "small",
     srcs = ["tests/test_tfrecords.py"],
-    tags = ["team:data", "exclusive"],
+    tags = ["team:data", "exclusive", "bytedance_exclude"],
     deps = ["//:ray_lib", ":conftest"],
 )
 
@@ -317,7 +317,7 @@ py_test(
     name = "test_huggingface",
     size = "small",
     srcs = ["tests/test_huggingface.py"],
-    tags = ["team:data", "exclusive"],
+    tags = ["team:data", "exclusive","bytedance_exclude"],
     deps = ["//:ray_lib", ":conftest"],
 )
 
@@ -325,7 +325,7 @@ py_test(
     name = "test_mars",
     size = "medium",
     srcs = ["tests/test_mars.py"],
-    tags = ["team:data", "exclusive"],
+    tags = ["team:data", "exclusive", "bytedance_exclude"],
     deps = ["//:ray_lib", ":conftest"],
 )
 

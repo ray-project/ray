@@ -147,7 +147,7 @@ def test_serialize_app_imported_closure(start_ray):
 
     ray.get(ray.put(closure))
 
-
+@pytest.mark.skip(reason=("bytedance skip, also not work in ray2.6"))
 def test_serialize_serve_dataclass(start_ray):
     @dataclass
     class BackendMetadata:

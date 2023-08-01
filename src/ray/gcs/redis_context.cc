@@ -519,7 +519,7 @@ Status RedisContext::Connect(const std::string &address,
     std::vector<std::string> parts = absl::StrSplit(error_msg, " ");
     RAY_CHECK(parts[0] == "MOVED" && parts.size() == 3)
         << "Setup Redis cluster failed in the dummy deletion: " << error_msg;
-    std::vector<std::string> ip_port = absl::StrSplit(parts[2], ":");
+    std::vector<std::string> ip_port = SplitIpPort(parts[2]);
     RAY_CHECK(ip_port.size() == 2);
 
     Disconnect();
