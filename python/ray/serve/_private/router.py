@@ -391,17 +391,19 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         self,
         blacklist_replica_ids: Set[str],
     ) -> Set[str]:
-        """Get candidates from the current replica set excluding the blacklist.
-
-        If a model ID is present in request_metadata, any replicas that have it are
-        prioritized.
-        """
+        """Get candidates from the current replica set excluding the blacklist."""
 
         return self._replica_id_set.difference(blacklist_replica_ids)
 
     async def _get_candidate_replica_ids_for_multiplexed_model_id(
         self, blacklist_replica_ids: Set[str], model_id: str
     ) -> Set[str]:
+        """Get multiplexed model candidates from the current replica set excluding the blacklist
+
+        we will prioritize replicas that have the model id, if there are no replicas with the model id,
+        we will choose from all replicas, and we will choose all replicas with the least number of
+        multiplexed model ids.
+        """
 
         start = time.time()
         multiplexed_matching_timeout = (
