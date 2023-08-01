@@ -887,8 +887,11 @@ def test_queued_queries_disconnected(serve_start_shutdown):
 
     serve.run(hang_on_first_request.bind())
 
+    print("Deployed hang_on_first_request deployment.")
+
     def queue_size() -> float:
         metrics = requests.get("http://127.0.0.1:9999").text
+        queue_size = -1
         for line in metrics.split("\n"):
             if "ray_serve_deployment_queued_queries" in line:
                 queue_size = line.split(" ")[-1]
@@ -908,16 +911,23 @@ def test_queued_queries_disconnected(serve_start_shutdown):
     # Make a request to block the deployment from accepting other requests
     fut = pool.apply_async(partial(requests.get, url))
     wait_for_condition(lambda: first_request_executing(fut), timeout=5)
+    print("Executed first request.")
 
     num_requests = 5
     for _ in range(num_requests):
         pool.apply_async(partial(requests.get, url))
+    print(f"Executed {num_requests} more requests.")
 
     # First request should be processing. All others should be queued.
     wait_for_condition(lambda: queue_size() == num_requests, timeout=15)
+    print("ray_serve_deployment_queued_queries updated successfully.")
+
+    # Disconnect all requests by terminating the process pool.
     pool.terminate()
+    print("Terminated all requests.")
 
     wait_for_condition(lambda: queue_size() == 0, timeout=15)
+    print("ray_serve_deployment_queued_queries updated successfully.")
 
 
 def test_actor_summary(serve_instance):
