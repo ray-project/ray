@@ -1010,7 +1010,8 @@ class TaskSummaries:
         Step 2: Put the tasks in a tree structure based on ownership
         Step 3: Merge together siblings in the tree if there are more
         than one with the same name.
-        Step 4: Total the children
+        Step 4: Sort by running and then errored and then successful tasks
+        Step 5: Total the children
 
         This can probably be more efficient if we merge together some steps to
         reduce the amount of iterations but this algorithm produces very easy to
@@ -1237,11 +1238,32 @@ class TaskSummaries:
         # Step 3
         summary, _ = merge_sibings_for_task_group(summary)
 
+        def get_running_tasks_count(task_group: NestedTaskSummary) -> int:
+            return (
+                task_group.state_counts.get("RUNNING", 0)
+                + task_group.state_counts.get("RUNNING_IN_RAY_GET", 0)
+                + task_group.state_counts.get("RUNNING_IN_RAY_WAIT", 0)
+            )
+
+        def get_pending_tasks_count(task_group: NestedTaskSummary) -> int:
+            return (
+                task_group.state_counts.get("PENDING_ARGS_AVAIL", 0)
+                + task_group.state_counts.get("PENDING_NODE_ASSIGNMENT", 0)
+                + task_group.state_counts.get("PENDING_OBJ_STORE_MEM_AVAIL", 0)
+                + task_group.state_counts.get("PENDING_ARGS_FETCH", 0)
+            )
+
         def sort_task_groups(task_groups: List[NestedTaskSummary]) -> None:
-            # Sort by timestamp
+            # Sort by running tasks, pending tasks, failed tasks, timestamp,
+            # and actor_creation_task
             # Put actor creation tasks above other tasks with the same timestamp
             task_groups.sort(key=lambda x: 0 if x.type == "ACTOR_CREATION_TASK" else 1)
             task_groups.sort(key=lambda x: x.timestamp or sys.maxsize)
+            task_groups.sort(
+                key=lambda x: x.state_counts.get("FAIELD", 0), reverse=True
+            )
+            task_groups.sort(key=get_pending_tasks_count, reverse=True)
+            task_groups.sort(key=get_running_tasks_count, reverse=True)
 
         def calc_total_for_task_group(
             task_group: NestedTaskSummary,

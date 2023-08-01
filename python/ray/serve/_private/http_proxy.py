@@ -7,6 +7,7 @@ import pickle
 import socket
 import time
 from typing import Callable, Dict, List, Optional, Set, Tuple
+import uuid
 
 import uvicorn
 import starlette.responses
@@ -58,7 +59,6 @@ from ray.serve._private.logging_utils import (
 from ray.serve._private.utils import (
     calculate_remaining_timeout,
     call_function_from_import_path,
-    get_random_letters,
 )
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
@@ -92,6 +92,11 @@ if os.environ.get("SERVE_REQUEST_PROCESSING_TIMEOUT_S") is not None:
         "pi/doc/ray.serve.schema.HTTPOptionsSchema.html#ray.serve.schema.HTTPOptionsSch"
         "ema.request_timeout_s"
     )
+
+
+INITIAL_BACKOFF_PERIOD_SEC = 0.05
+MAX_BACKOFF_PERIOD_SEC = 5
+BACKOFF_FACTOR = 2
 
 
 class LongestPrefixRouter:
@@ -482,10 +487,8 @@ class HTTPProxy:
                 scope["path"] = route_path.replace(route_prefix, "", 1)
                 scope["root_path"] = root_path + route_prefix
 
-            request_id = get_random_letters(10)
             request_context_info = {
                 "route": route_path,
-                "request_id": request_id,
                 "app_name": app_name,
             }
             start_time = time.time()
@@ -494,7 +497,13 @@ class HTTPProxy:
                     multiplexed_model_id = value.decode()
                     handle = handle.options(multiplexed_model_id=multiplexed_model_id)
                     request_context_info["multiplexed_model_id"] = multiplexed_model_id
-                if key.decode().upper() == RAY_SERVE_REQUEST_ID_HEADER:
+                if key.decode() == "x-request-id":
+                    request_context_info["request_id"] = value.decode()
+                if (
+                    key.decode() == RAY_SERVE_REQUEST_ID_HEADER.lower()
+                    and "request_id" not in request_context_info
+                ):
+                    # "x-request-id" has higher priority than "RAY_SERVE_REQUEST_ID".
                     request_context_info["request_id"] = value.decode()
             ray.serve.context._serve_request_context.set(
                 ray.serve.context.RequestContext(**request_context_info)
@@ -584,12 +593,11 @@ class HTTPProxy:
         request = pickle.dumps(request)
 
         retries = 0
-        backoff_time_s = 0.05
-        backoff = False
         loop = get_or_create_event_loop()
         # We have received all the http request conent. The next `receive`
         # call might never arrive; if it does, it can only be `http.disconnect`.
         while retries < HTTP_REQUEST_MAX_RETRIES + 1:
+            should_backoff = False
             assignment_task: asyncio.Task = handle.remote(request)
             client_disconnection_task = loop.create_task(receive())
             done, _ = await asyncio.wait(
@@ -632,7 +640,7 @@ class HTTPProxy:
                         'by setting "request_timeout_s" in your Serve config\'s '
                         "`http_options` field."
                     )
-                    backoff = True
+                    should_backoff = True
                 else:
                     result = await object_ref
                     break
@@ -652,15 +660,14 @@ class HTTPProxy:
                     f"{HTTP_REQUEST_MAX_RETRIES - retries} retries "
                     "remaining."
                 )
-                backoff = True
-            if backoff:
-                await asyncio.sleep(backoff_time_s)
-                # Be careful about the expotential backoff scaling here.
-                # Assuming 10 retries, 1.5x scaling means the last retry is 38x the
-                # initial backoff time, while 2x scaling means 512x the initial.
-                backoff_time_s *= 1.5
+                should_backoff = True
+
+            if should_backoff:
+                backoff_period = min(
+                    INITIAL_BACKOFF_PERIOD_SEC * pow(2, retries), MAX_BACKOFF_PERIOD_SEC
+                )
                 retries += 1
-                backoff = False
+                await asyncio.sleep(backoff_period)
         else:
             error_message = f"Task failed with {HTTP_REQUEST_MAX_RETRIES} retries."
             await Response(error_message, status_code=500).send(scope, receive, send)
@@ -857,13 +864,30 @@ class RequestIdMiddleware:
         self.app = app
 
     async def __call__(self, scope, receive, send):
+
+        headers = MutableHeaders(scope=scope)
+        if RAY_SERVE_REQUEST_ID_HEADER not in headers and "x-request-id" not in headers:
+            # If X-Request-ID and RAY_SERVE_REQUEST_ID_HEADER are both not set, we
+            # generate a new request ID.
+            request_id = str(uuid.uuid4())
+            headers.append("x-request-id", request_id)
+            headers.append(RAY_SERVE_REQUEST_ID_HEADER, request_id)
+        elif "x-request-id" in headers:
+            request_id = headers["x-request-id"]
+        else:
+            # TODO(Sihan) Deprecate RAY_SERVE_REQUEST_ID_HEADER
+            request_id = headers[RAY_SERVE_REQUEST_ID_HEADER]
+
         async def send_with_request_id(message: Dict):
-            request_id = ray.serve.context._serve_request_context.get().request_id
             if message["type"] == "http.response.start":
                 headers = MutableHeaders(scope=message)
+                # TODO(Sihan) Deprecate RAY_SERVE_REQUEST_ID_HEADER
                 headers.append(RAY_SERVE_REQUEST_ID_HEADER, request_id)
+                headers.append("X-Request-ID", request_id)
             if message["type"] == "websocket.accept":
+                # TODO(Sihan) Deprecate RAY_SERVE_REQUEST_ID_HEADER
                 message[RAY_SERVE_REQUEST_ID_HEADER] = request_id
+                message["X-Request-ID"] = request_id
             await send(message)
 
         await self.app(scope, receive, send_with_request_id)
