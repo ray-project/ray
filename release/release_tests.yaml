@@ -3760,8 +3760,6 @@
         cluster_env: app_config.yaml
         cluster_compute: multi_node_ckpt_training_compute_config_gce.yaml
 
- name: rllib_multi_node_e2e_training_smoke_test
-
 - name: rllib_learning_tests_a2c_tf
   group: RLlib tests
   working_dir: rllib_tests
