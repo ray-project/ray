@@ -14,6 +14,7 @@ from ray._private.ray_logging import (
 from ray._private.utils import (
     get_or_create_event_loop,
 )
+from ray._private.process_watcher import create_check_raylet_task
 
 
 def import_libs():
@@ -189,9 +190,32 @@ if __name__ == "__main__":
     )
     app.router.add_post("/get_runtime_envs_info", get_runtime_envs_info)
 
-    web.run_app(
-        app,
-        host=args.node_ip_address,
-        port=args.runtime_env_agent_port,
-        loop=get_or_create_event_loop(),
-    )
+    loop = get_or_create_event_loop()
+    check_raylet_task = None
+    if sys.platform not in ["win32", "cygwin"]:
+
+        def parent_dead_callback():
+            agent._logger.info(
+                "Raylet is dead! Exiting Runtime Env Agent. "
+                f"addr: {args.node_ip_address}, "
+                f"port: {args.runtime_env_agent_port}"
+            )
+
+        # No need to await this task.
+        check_raylet_task = create_check_raylet_task(
+            args.log_dir, args.gcs_address, parent_dead_callback, loop
+        )
+    try:
+        web.run_app(
+            app,
+            host=args.node_ip_address,
+            port=args.runtime_env_agent_port,
+            loop=loop,
+        )
+    except SystemExit as e:
+        agent._logger.info(f"SystemExit! {e}")
+        # We have to poke the task exception, or there's an error message
+        # "task exception was never retrieved".
+        if check_raylet_task is not None:
+            check_raylet_task.exception()
+        sys.exit(e.code)
