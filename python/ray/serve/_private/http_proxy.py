@@ -601,7 +601,7 @@ class HTTPProxy:
 
         retries = 0
         loop = get_or_create_event_loop()
-        # We have received all the http request conent. The next `receive`
+        # We have received all the http request content. The next `receive`
         # call might never arrive; if it does, it can only be `http.disconnect`.
         while retries < HTTP_REQUEST_MAX_RETRIES + 1:
             should_backoff = False
@@ -677,8 +677,8 @@ class HTTPProxy:
                 await asyncio.sleep(backoff_period)
         else:
             error_message = f"Task failed with {HTTP_REQUEST_MAX_RETRIES} retries."
-            await Response(error_message, status_code=408).send(scope, receive, send)
-            return "408"
+            await Response(error_message, status_code=500).send(scope, receive, send)
+            return "500"
 
         if isinstance(result, (starlette.responses.Response, RawASGIResponse)):
             await result(scope, receive, send)
