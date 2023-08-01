@@ -5,10 +5,12 @@ from typing import (
     Any,
     Callable,
     Dict,
+    Iterable,
     Iterator,
     List,
     Optional,
     Tuple,
+    TypeVar,
     Union,
 )
 
@@ -38,6 +40,22 @@ if TYPE_CHECKING:
         TensorFlowTensorBatchType,
         TorchBatchType,
     )
+
+T = TypeVar("T")
+
+
+class _IterableFromIterator(Iterable[T]):
+    def __init__(self, iterator_gen: Callable[[], Iterator[T]]):
+        """Constructs an Iterable from an iterator generator.
+
+        Args:
+            iterator_gen: A function that returns an iterator each time it
+                is called. For example, this can be a generator function.
+        """
+        self.iterator_gen = iterator_gen
+
+    def __iter__(self):
+        return self.iterator_gen()
 
 
 @PublicAPI(stability="beta")
@@ -101,8 +119,8 @@ class DataIterator(abc.ABC):
         _finalize_fn: Optional[Callable[[Any], Any]] = None,
         # Deprecated.
         prefetch_blocks: int = 0,
-    ) -> Iterator[DataBatch]:
-        """Return a batched iterator over the dataset.
+    ) -> Iterable[DataBatch]:
+        """Return a batched iterable over the dataset.
 
         Examples:
             >>> import ray
@@ -158,57 +176,72 @@ class DataIterator(abc.ABC):
                 "to True in the DataContext."
             )
 
-        time_start = time.perf_counter()
-
-        block_iterator, stats, blocks_owned_by_consumer = self._to_block_iterator()
         batch_format = _apply_strict_mode_batch_format(batch_format)
-        if use_legacy:
-            # Legacy iter_batches does not use metadata.
-            def drop_metadata(block_iterator):
-                for block_ref, metadata in block_iterator:
-                    yield block_ref
 
-            # Legacy iter_batches does not have a distinction between
-            # collate_fn and finalize_fn since batches are not prefetched.
-            def collate_and_finalize(batch):
-                if _collate_fn is not None:
-                    batch = _collate_fn(batch)
-                if _finalize_fn is not None:
-                    batch = _finalize_fn(batch)
-                return batch
+        def _create_iterator() -> Iterator[DataBatch]:
+            time_start = time.perf_counter()
+            # Iterate through the dataset from the start each time
+            # _iterator_gen is called.
+            # This allows multiple iterations of the dataset without
+            # needing to explicitly call `iter_batches()` multiple times.
+            block_iterator, stats, blocks_owned_by_consumer = self._to_block_iterator()
 
-            yield from batch_block_refs(
-                drop_metadata(block_iterator),
-                stats=stats,
-                prefetch_blocks=prefetch_blocks,
-                clear_block_after_read=blocks_owned_by_consumer,
-                batch_size=batch_size,
-                batch_format=batch_format,
-                drop_last=drop_last,
-                collate_fn=collate_and_finalize,
-                shuffle_buffer_min_size=local_shuffle_buffer_size,
-                shuffle_seed=local_shuffle_seed,
-            )
-        else:
-            yield from iter_batches(
-                block_iterator,
-                stats=stats,
-                clear_block_after_read=blocks_owned_by_consumer,
-                batch_size=batch_size,
-                batch_format=batch_format,
-                drop_last=drop_last,
-                collate_fn=_collate_fn,
-                finalize_fn=_finalize_fn,
-                shuffle_buffer_min_size=local_shuffle_buffer_size,
-                shuffle_seed=local_shuffle_seed,
-                prefetch_batches=prefetch_batches,
-            )
+            if use_legacy:
+                # Legacy iter_batches does not use metadata.
+                def drop_metadata(block_iterator):
+                    for block_ref, metadata in block_iterator:
+                        yield block_ref
 
-        if stats:
-            stats.iter_total_s.add(time.perf_counter() - time_start)
+                # Legacy iter_batches does not have a distinction between
+                # collate_fn and finalize_fn since batches are not prefetched.
+                def collate_and_finalize(batch):
+                    if _collate_fn is not None:
+                        batch = _collate_fn(batch)
+                    if _finalize_fn is not None:
+                        batch = _finalize_fn(batch)
+                    return batch
 
-    def iter_rows(self, *, prefetch_blocks: int = 0) -> Iterator[Dict[str, Any]]:
-        """Return a local row iterator over the dataset.
+                iterator = iter(
+                    batch_block_refs(
+                        drop_metadata(block_iterator),
+                        stats=stats,
+                        prefetch_blocks=prefetch_blocks,
+                        clear_block_after_read=blocks_owned_by_consumer,
+                        batch_size=batch_size,
+                        batch_format=batch_format,
+                        drop_last=drop_last,
+                        collate_fn=collate_and_finalize,
+                        shuffle_buffer_min_size=local_shuffle_buffer_size,
+                        shuffle_seed=local_shuffle_seed,
+                    )
+                )
+            else:
+                iterator = iter(
+                    iter_batches(
+                        block_iterator,
+                        stats=stats,
+                        clear_block_after_read=blocks_owned_by_consumer,
+                        batch_size=batch_size,
+                        batch_format=batch_format,
+                        drop_last=drop_last,
+                        collate_fn=_collate_fn,
+                        finalize_fn=_finalize_fn,
+                        shuffle_buffer_min_size=local_shuffle_buffer_size,
+                        shuffle_seed=local_shuffle_seed,
+                        prefetch_batches=prefetch_batches,
+                    )
+                )
+
+            for batch in iterator:
+                yield batch
+
+            if stats:
+                stats.iter_total_s.add(time.perf_counter() - time_start)
+
+        return _IterableFromIterator(_create_iterator)
+
+    def iter_rows(self, *, prefetch_blocks: int = 0) -> Iterable[Dict[str, Any]]:
+        """Return a local row iterable over the dataset.
 
         If the dataset is a tabular dataset (Arrow/Pandas blocks), dicts
         are yielded for each row by the iterator. If the dataset is not tabular,
@@ -238,10 +271,15 @@ class DataIterator(abc.ABC):
             # Since batch_size is None, 1 block is exactly 1 batch.
             iter_batch_args["prefetch_batches"] = prefetch_blocks
 
-        for batch in self.iter_batches(**iter_batch_args):
-            batch = BlockAccessor.for_block(BlockAccessor.batch_to_block(batch))
-            for row in batch.iter_rows(public_row_format=True):
-                yield row
+        batch_iterable = self.iter_batches(**iter_batch_args)
+
+        def _wrapped_iterator():
+            for batch in batch_iterable:
+                batch = BlockAccessor.for_block(BlockAccessor.batch_to_block(batch))
+                for row in batch.iter_rows(public_row_format=True):
+                    yield row
+
+        return _IterableFromIterator(_wrapped_iterator)
 
     @abc.abstractmethod
     def stats(self) -> str:
@@ -266,8 +304,8 @@ class DataIterator(abc.ABC):
         local_shuffle_seed: Optional[int] = None,
         # Deprecated.
         prefetch_blocks: int = 0,
-    ) -> Iterator["TorchBatchType"]:
-        """Return a batched iterator of Torch Tensors over the dataset.
+    ) -> Iterable["TorchBatchType"]:
+        """Return a batched iterable of Torch Tensors over the dataset.
 
         This iterator yields a dictionary of column-tensors. If you are looking for
         more flexibility in the tensor conversion (e.g. casting dtypes) or the batch
@@ -392,7 +430,7 @@ class DataIterator(abc.ABC):
         else:
             finalize_fn = None
 
-        yield from self.iter_batches(
+        return self.iter_batches(
             prefetch_batches=prefetch_batches,
             prefetch_blocks=prefetch_blocks,
             batch_size=batch_size,
@@ -414,8 +452,8 @@ class DataIterator(abc.ABC):
         local_shuffle_seed: Optional[int] = None,
         # Deprecated.
         prefetch_blocks: int = 0,
-    ) -> Iterator["TensorFlowTensorBatchType"]:
-        """Return a batched iterator of TensorFlow Tensors over the dataset.
+    ) -> Iterable["TensorFlowTensorBatchType"]:
+        """Return a batched iterable of TensorFlow Tensors over the dataset.
 
         This iterator will yield single-tensor batches of the underlying dataset
         consists of a single column; otherwise, it will yield a dictionary of
@@ -469,15 +507,22 @@ class DataIterator(abc.ABC):
             convert_ndarray_batch_to_tf_tensor_batch,
         )
 
-        for batch in self.iter_batches(
+        batch_iterable = self.iter_batches(
             prefetch_batches=prefetch_batches,
             prefetch_blocks=prefetch_blocks,
             batch_size=batch_size,
             drop_last=drop_last,
             local_shuffle_buffer_size=local_shuffle_buffer_size,
             local_shuffle_seed=local_shuffle_seed,
-        ):
-            yield convert_ndarray_batch_to_tf_tensor_batch(batch, dtypes=dtypes)
+        )
+        mapped_iterable = map(
+            lambda batch: convert_ndarray_batch_to_tf_tensor_batch(
+                batch, dtypes=dtypes
+            ),
+            batch_iterable,
+        )
+
+        return mapped_iterable
 
     def to_torch(
         self,
