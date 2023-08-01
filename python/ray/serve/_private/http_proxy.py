@@ -55,11 +55,12 @@ from ray.serve._private.logging_utils import (
     configure_component_logger,
     get_component_logger_file_path,
 )
-
 from ray.serve._private.utils import (
     calculate_remaining_timeout,
     call_function_from_import_path,
 )
+from ray.serve.exceptions import RayServeTimeout
+
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -356,9 +357,9 @@ class HTTPProxy:
         )
         await response.send(scope, receive, send)
 
-    async def _timeout_response(self, scope, receive, send):
+    async def _timeout_response(self, scope, receive, send, request_id):
         response = Response(
-            f"Request time out after {self.request_timeout_s}s.",
+            f"Request {request_id} timed out after {self.request_timeout_s}s.",
             status_code=408,
         )
         await response.send(scope, receive, send)
@@ -769,7 +770,7 @@ class HTTPProxy:
                     )
                 )
                 if obj_ref.is_nil():
-                    raise TimeoutError(is_first_message)
+                    raise RayServeTimeout(is_first_message=is_first_message)
 
                 asgi_messages: List[Message] = pickle.loads(await obj_ref)
                 for asgi_message in asgi_messages:
@@ -827,7 +828,7 @@ class HTTPProxy:
                     f"Request {request_id} timed out after "
                     f"{self.request_timeout_s}s while waiting for assignment."
                 )
-                await self._timeout_response(scope, receive, send)
+                await self._timeout_response(scope, receive, send, request_id)
                 return TIMEOUT_ERROR_CODE
 
             try:
@@ -840,7 +841,7 @@ class HTTPProxy:
                         curr_time_s=time.time(),
                     ),
                 )
-            except TimeoutError as is_first_message:
+            except RayServeTimeout as serve_timeout_error:
                 logger.warning(
                     f"Request {request_id} timed out after "
                     f"{self.request_timeout_s}s while executing."
@@ -848,8 +849,8 @@ class HTTPProxy:
                 # We should only send timeout response if we have not sent
                 # any messages to the client yet. Header (including status code)
                 # messages can only be sent once.
-                if str(is_first_message) == str(True):
-                    await self._timeout_response(scope, receive, send)
+                if serve_timeout_error.is_first_message:
+                    await self._timeout_response(scope, receive, send, request_id)
                 return TIMEOUT_ERROR_CODE
 
         except Exception as e:
