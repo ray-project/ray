@@ -210,7 +210,7 @@ class TensorflowCheckpoint(Checkpoint):
                     ])
                 model.save("my_model")
                 checkpoint = TensorflowCheckpoint.from_saved_model("my_model")
-                session.report({"my_metric": 1}, checkpoint=checkpoint)
+                train.report({"my_metric": 1}, checkpoint=checkpoint)
 
             trainer = TensorflowTrainer(
                 train_loop_per_worker=train_fn,

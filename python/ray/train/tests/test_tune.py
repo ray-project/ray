@@ -241,7 +241,7 @@ def test_restore_with_new_trainer(ray_start_4_cpus, tmpdir, propagate_logs, capl
     assert results.errors
 
     def train_func(config):
-        dataset = train.get_context().get_dataset_shard("train")
+        dataset = train.get_dataset_shard("train")
         assert train.get_context().get_world_size() == 2
         rows = 0
         for _ in dataset.iter_rows():

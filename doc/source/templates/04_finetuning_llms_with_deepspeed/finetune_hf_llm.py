@@ -25,8 +25,7 @@ from transformers import (
 
 
 import ray
-from ray import air
-from ray.air import session
+from ray import train
 from ray.train.torch import TorchTrainer
 import ray.util.scheduling_strategies
 
@@ -180,8 +179,8 @@ def training_function(kwargs: dict):
     set_seed(seed)
 
     # train_ds is the local shard for this model
-    train_ds = session.get_dataset_shard("train")
-    valid_ds = session.get_dataset_shard("valid")
+    train_ds = train.get_dataset_shard("train")
+    valid_ds = train.get_dataset_shard("valid")
 
     train_ds_len = len(list(train_ds.iter_batches(batch_size=1)))
 
@@ -310,7 +309,7 @@ def training_function(kwargs: dict):
 
             # as long as this is not the last step report here
             if step != (train_ds_len // batch_size - 1):
-                session.report(
+                train.report(
                     {
                         "epoch": epoch,
                         "iteration": step,
@@ -384,7 +383,7 @@ def training_function(kwargs: dict):
         # Note: After the following call, in the case of remote storage, the checkpoint
         # directoy will get synced to the remote storage and then deleted from the
         # local directory. This will open up local disk.
-        session.report(
+        train.report(
             {
                 "epoch": epoch,
                 "iteration": step,

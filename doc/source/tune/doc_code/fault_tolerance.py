@@ -1,20 +1,20 @@
 # flake8: noqa
 
 # __ft_initial_run_start__
-from ray import air, tune
-from ray.air import Checkpoint, session
+from ray import train, tune
+from ray.train import Checkpoint
 
 
 def trainable(config):
     # Checkpoint loading
-    checkpoint = session.get_checkpoint()
+    checkpoint = train.get_checkpoint()
     start = 1 if not checkpoint else checkpoint.to_dict()["epoch"] + 1
 
     for epoch in range(start, config["num_epochs"]):
         # Do some training...
 
         # Checkpoint saving
-        session.report(
+        train.report(
             {"epoch": epoch}, checkpoint=Checkpoint.from_dict({"epoch": epoch})
         )
 

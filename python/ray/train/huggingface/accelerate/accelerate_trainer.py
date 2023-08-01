@@ -63,9 +63,9 @@ class AccelerateTrainer(TorchTrainer):
             train.report(...)
 
             # Get dict of last saved checkpoint.
-            train..get_checkpoint()
+            train.get_checkpoint()
 
-            # Session returns the Dataset shard for the given key.
+            # Get the Dataset shard for the given key.
             train.get_dataset_shard("my_dataset")
 
             # Get the total number of workers executing training.
