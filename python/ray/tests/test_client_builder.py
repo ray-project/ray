@@ -320,6 +320,7 @@ def has_client_deprecation_warn(warning: Warning, expected_replacement: str) -> 
         return False
     return True
 
+
 @pytest.mark.skip(reason=("bytedance skip"))
 @pytest.mark.skipif(
     sys.platform == "win32", reason="pip not supported in Windows runtime envs."

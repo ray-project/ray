@@ -15,9 +15,9 @@
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
 
 #include "absl/strings/str_cat.h"
-#include "ray/util/util.h"
 #include "ray/rpc/gcs_server/gcs_rpc_client.h"
 #include "ray/rpc/grpc_client.h"
+#include "ray/util/util.h"
 
 namespace ray {
 namespace gcs {

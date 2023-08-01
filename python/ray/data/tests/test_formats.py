@@ -161,6 +161,7 @@ def test_write_datasource(ray_start_regular_shared):
     assert output.num_failed == 1
     assert ray.get(output.data_sink.get_rows_written.remote()) == 10
 
+
 @pytest.mark.skip(reason=("bytedance skip"))
 def test_from_tf(ray_start_regular_shared):
     import tensorflow as tf

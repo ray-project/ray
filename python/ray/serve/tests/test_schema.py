@@ -721,6 +721,7 @@ class TestServeStatusSchema:
 def global_f():
     return "Hello world!"
 
+
 @pytest.mark.skip(reason=("bytedance skip"))
 def test_deployment_to_schema_to_deployment():
     @serve.deployment(

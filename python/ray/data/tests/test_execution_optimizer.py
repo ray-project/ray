@@ -1073,6 +1073,7 @@ def test_zip_e2e(ray_start_regular_shared, enable_optimizer, num_blocks1, num_bl
     assert ds.take() == named_values(["id", "id_1"], zip(range(n), range(1, n + 1)))
     _check_usage_record(["ReadRange", "Zip"])
 
+
 @pytest.mark.skip(reason=("bytedance skip"))
 def test_from_dask_e2e(ray_start_regular_shared, enable_optimizer):
     import dask.dataframe as dd
@@ -1090,6 +1091,7 @@ def test_from_dask_e2e(ray_start_regular_shared, enable_optimizer):
     assert "FromPandas" in ds.stats()
     assert ds._plan._logical_plan.dag.name == "FromPandas"
     _check_usage_record(["FromPandas"])
+
 
 @pytest.mark.skip(reason=("bytedance skip"))
 @pytest.mark.skipif(sys.version_info < (3, 8), reason="requires python3.8 or higher")
@@ -1216,6 +1218,7 @@ def test_from_arrow_refs_e2e(ray_start_regular_shared, enable_optimizer):
     assert ds._plan._logical_plan.dag.name == "FromArrow"
     _check_usage_record(["FromArrow"])
 
+
 @pytest.mark.skip(reason=("bytedance skip"))
 def test_from_huggingface_e2e(ray_start_regular_shared, enable_optimizer):
     import datasets
@@ -1246,6 +1249,7 @@ def test_from_huggingface_e2e(ray_start_regular_shared, enable_optimizer):
     assert ray_dataset._plan._logical_plan.dag.name == "FromArrow"
     assert ray.get(ray_dataset.to_arrow_refs())[0].equals(data["train"].data.table)
     _check_usage_record(["FromArrow"])
+
 
 @pytest.mark.skip(reason=("bytedance skip"))
 def test_from_tf_e2e(ray_start_regular_shared, enable_optimizer):

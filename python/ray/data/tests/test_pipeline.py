@@ -415,6 +415,7 @@ def test_to_torch(ray_start_regular_shared):
     batches = list(pipe.to_torch(batch_size=None))
     assert len(batches) == 20
 
+
 @pytest.mark.skip(reason=("bytedance TODO"))
 def test_to_tf(ray_start_regular_shared):
     ds = ray.data.range_tensor(10, shape=(1, 1, 1), parallelism=10)
@@ -430,6 +431,7 @@ def test_iter_torch_batches(ray_start_regular_shared):
     pipe = ray.data.range(10).repeat(2)
     batches = list(pipe.iter_torch_batches(batch_size=1))
     assert len(batches) == 20
+
 
 @pytest.mark.skip(reason=("bytedance TODO"))
 def test_iter_tf_batches(ray_start_regular_shared):

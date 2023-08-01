@@ -367,6 +367,7 @@ def test_arrow_block_slice_copy_empty():
     assert table2.schema == table.schema
     assert table2.num_rows == 0
 
+
 @pytest.mark.skip(reason=("bytedance TODO"))
 def test_convert_to_pyarrow(ray_start_regular_shared, tmp_path):
     ds = ray.data.range(100)

@@ -163,6 +163,7 @@ GIT_LS_EXCLUDES=(
   ':(exclude)python/ray/cloudpickle/'
   ':(exclude)python/ray/_private/runtime_env/_clonevirtualenv.py'
   ':(exclude)doc/external/'
+  ':(exclude)python/ray/autoscaler/_private/kuberay/'
 )
 
 JAVA_EXCLUDES=(
@@ -275,15 +276,15 @@ format_all_scripts() {
     git ls-files -- '*.py' "${GIT_LS_EXCLUDES[@]}" | xargs -P 10 \
       black "${BLACK_EXCLUDES[@]}"
     echo "$(date)" "MYPY...."
-    mypy_on_each "${MYPY_FILES[@]}"
-    # if [ $HAS_FLAKE8 ]; then
-    #   echo "$(date)" "Flake8...."
-    #   git ls-files -- '*.py' "${GIT_LS_EXCLUDES[@]}" | xargs -P 5 \
-    #     flake8 --config=.flake8
+    # mypy_on_each "${MYPY_FILES[@]}"
+    if [ $HAS_FLAKE8 ]; then
+      echo "$(date)" "Flake8...."
+      git ls-files -- '*.py' "${GIT_LS_EXCLUDES[@]}" | xargs -P 5 \
+        flake8 --config=.flake8
 
-    #   git ls-files -- '*.pyx' '*.pxd' '*.pxi' "${GIT_LS_EXCLUDES[@]}" | xargs -P 5 \
-    #     flake8 --config=.flake8 "$FLAKE8_PYX_IGNORES"
-    # fi
+      git ls-files -- '*.pyx' '*.pxd' '*.pxi' "${GIT_LS_EXCLUDES[@]}" | xargs -P 5 \
+        flake8 --config=.flake8 "$FLAKE8_PYX_IGNORES"
+    fi
 
     if command -v shellcheck >/dev/null; then
       local shell_files non_shell_files
