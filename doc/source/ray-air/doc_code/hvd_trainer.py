@@ -1,12 +1,11 @@
-import ray
-import ray.train as train
-import ray.train.torch  # Need this to use `train.torch.get_device()`
 import horovod.torch as hvd
-import torch
-import torch.nn as nn
+import ray
 from ray import train
 from ray.train import Checkpoint, ScalingConfig
+import ray.train.torch  # Need this to use `train.torch.get_device()`
 from ray.train.horovod import HorovodTrainer
+import torch
+import torch.nn as nn
 
 # If using GPUs, set this to True.
 use_gpu = False

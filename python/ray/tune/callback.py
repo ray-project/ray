@@ -93,12 +93,12 @@ class Callback(metaclass=_CallbackMeta):
                 print(f"Got result: {result['metric']}")
 
 
-        def train(config):
+        def train_func(config):
             for i in range(10):
                 tune.report(metric=i)
 
         tuner = tune.Tuner(
-            train,
+            train_func,
             run_config=train.RunConfig(
                 callbacks=[MyCallback()]
             )
