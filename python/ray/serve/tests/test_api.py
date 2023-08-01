@@ -971,6 +971,28 @@ def test_get_app_handle_within_deployment_sync(serve_instance):
     assert ray.get(handle.remote(7)) == "The answer is 9"
 
 
+def test_get_deployment_handle_basic(serve_instance):
+    @serve.deployment(ray_actor_options={"num_cpus": 0.1})
+    def f():
+        return "hello world"
+
+    @serve.deployment(ray_actor_options={"num_cpus": 0.1})
+    class MyDriver:
+        def __init__(self, dag: RayServeDAGHandle):
+            self.dag = dag
+
+        async def __call__(self):
+            return f"{await (await self.dag.remote())}!!"
+
+    serve.run(MyDriver.bind(f.bind()))
+
+    handle = serve.get_deployment_handle("f", "default")
+    assert ray.get(handle.remote()) == "hello world"
+
+    app_handle = serve.get_app_handle("default")
+    assert ray.get(app_handle.remote()) == "hello world!!"
+
+
 if __name__ == "__main__":
     import sys
 
