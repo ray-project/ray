@@ -25,7 +25,7 @@ def all_node_ids():
 
 def create_file_and_assert_n_times(n):
     """
-    Prepares a working dir that only contains 1 python ray job file.
+    Prepares a working dir that only contains 1 Python Ray job file.
     Then in each step:
     - create n.txt
     - submit the job with runtime_env to assert the file content matches and the number
