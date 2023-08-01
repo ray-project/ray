@@ -39,13 +39,6 @@ def start_connected_cluster():
     cluster.shutdown()
 
 
-@pytest.mark.skipif(
-    os.environ.get("TUNE_NEW_EXECUTION") != "0",
-    reason=(
-        "This test uses the TuneController directly and needs to be rewritten "
-        "for the new execution backend."
-    ),
-)
 @pytest.mark.parametrize("searcher", ["hyperopt", "skopt", "bayesopt"])
 def test_cluster_interrupt_searcher(start_connected_cluster, tmpdir, searcher):
     """Tests restoration of HyperOptSearch experiment on cluster shutdown
@@ -57,7 +50,7 @@ def test_cluster_interrupt_searcher(start_connected_cluster, tmpdir, searcher):
     """
     cluster = start_connected_cluster
     dirpath = str(tmpdir)
-    local_checkpoint_dir = os.path.join(dirpath, "experiment")
+    experiment_path = os.path.join(dirpath, "experiment")
     from ray.tune import register_trainable
 
     register_trainable("trainable", MyTrainableClass)
@@ -81,11 +74,9 @@ def test_cluster_interrupt_searcher(start_connected_cluster, tmpdir, searcher):
     # the checkpoint.
     trials = []
     for i in range(100):
-        if TuneController.checkpoint_exists(local_checkpoint_dir):
+        if TuneController.checkpoint_exists(experiment_path):
             # Inspect the internal TuneController
-            runner = TuneController(
-                resume="LOCAL", local_checkpoint_dir=local_checkpoint_dir
-            )
+            runner = TuneController(resume="LOCAL", experiment_path=experiment_path)
             trials = runner.get_trials()
             if trials and len(trials) >= 10:
                 break
@@ -93,10 +84,10 @@ def test_cluster_interrupt_searcher(start_connected_cluster, tmpdir, searcher):
     else:
         raise ValueError(f"Didn't generate enough trials: {len(trials)}")
 
-    if not TuneController.checkpoint_exists(local_checkpoint_dir):
+    if not TuneController.checkpoint_exists(experiment_path):
         raise RuntimeError(
-            f"Checkpoint file didn't appear in {local_checkpoint_dir}. "
-            f"Current list: {os.listdir(local_checkpoint_dir)}."
+            f"Checkpoint file didn't appear in {experiment_path}. "
+            f"Current list: {os.listdir(experiment_path)}."
         )
 
     ray.shutdown()
@@ -110,11 +101,9 @@ def test_cluster_interrupt_searcher(start_connected_cluster, tmpdir, searcher):
     register_trainable("trainable", MyTrainableClass)
     reached = False
     for i in range(100):
-        if TuneController.checkpoint_exists(local_checkpoint_dir):
+        if TuneController.checkpoint_exists(experiment_path):
             # Inspect the internal TuneController
-            runner = TuneController(
-                resume="LOCAL", local_checkpoint_dir=local_checkpoint_dir
-            )
+            runner = TuneController(resume="LOCAL", experiment_path=experiment_path)
             trials = runner.get_trials()
 
             if len(trials) == 0:
@@ -126,7 +115,7 @@ def test_cluster_interrupt_searcher(start_connected_cluster, tmpdir, searcher):
             if len(trials) == 20:
                 break
             else:
-                stop_fn = runner.trial_executor.stop_trial
+                stop_fn = runner.stop_trial
                 [stop_fn(t) for t in trials if t.status is not Trial.ERROR]
         time.sleep(0.5)
     assert reached is True

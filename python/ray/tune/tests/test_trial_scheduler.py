@@ -1912,8 +1912,7 @@ class PopulationBasedTestingSuite(unittest.TestCase):
         pbt._exploit(runner, trials[1], trials[2])
         shutil.rmtree(tmpdir)
 
-    @pytest.mark.skipif(
-        os.environ.get("TUNE_NEW_EXECUTION") != "0",
+    @pytest.mark.skip(
         reason=(
             "This test is generally flaky: The print after writing `Cleanup` "
             "to the file is printed, but the data is not always written. "
