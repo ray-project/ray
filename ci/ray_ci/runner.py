@@ -12,8 +12,8 @@ bazel_workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")
 
 
 @click.command()
-@click.argument("targets", required=True, type=str)
-@click.argument("team", required=True, type=str)
+@click.argument("targets", required=True, type=str, nargs=-1)
+@click.argument("team", required=True, type=str, nargs=1)
 @click.option(
     "--concurrency",
     default=3,
@@ -26,10 +26,9 @@ bazel_workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")
     type=int,
     help=("Index of the concurrent shard to run."),
 )
-def main(targets: str, team: str, concurrency: int, shard: int) -> None:
+def main(targets: List[str], team: str, concurrency: int, shard: int) -> None:
     if not bazel_workspace_dir:
         raise Exception("Please use `bazelisk run //ci/ray_ci`")
-
     os.chdir(bazel_workspace_dir)
 
     test_targets = _get_test_targets(targets, team, concurrency, shard)
@@ -50,13 +49,7 @@ def _run_tests(test_targets: List[str]) -> None:
         .split()
     )
     subprocess.check_call(
-        [
-            "bazel",
-            "test",
-            "--config=ci",
-        ]
-        + bazel_options
-        + test_targets
+        ["bazel", "test", "--config=ci"] + bazel_options + test_targets
     )
 
 
@@ -84,6 +77,16 @@ def _chunk_into_n(list: List[str], n: int):
     return [list[x * size : x * size + size] for x in range(n)]
 
 
+def _get_all_test_query(targets: List[str], team: str) -> str:
+    test_query = " union ".join([f"tests({target})" for target in targets])
+    team_query = f"attr(tags, team:{team}, {test_query})"
+    size_query = " union ".join(
+        [f"attr(size, {s}, {test_query})" for s in ["small", "medium"]]
+    )
+
+    return f"{team_query} intersect ({size_query})"
+
+
 def _get_all_test_targets(targets: str, team: str, yaml_dir: str) -> List[str]:
     """
     Get all test targets that are not flaky
@@ -91,16 +94,7 @@ def _get_all_test_targets(targets: str, team: str, yaml_dir: str) -> List[str]:
 
     test_targets = (
         subprocess.check_output(
-            [
-                "bazel",
-                "query",
-                f"attr(tags, team:{team}, tests({targets})) intersect ("
-                # TODO(can): Remove this once we have a better way
-                # to filter out test size
-                f"attr(size, small, tests({targets})) union "
-                f"attr(size, medium, tests({targets}))"
-                ")",
-            ]
+            ["bazel", "query", _get_all_test_query(targets, team)],
         )
         .decode("utf-8")
         .split("\n")

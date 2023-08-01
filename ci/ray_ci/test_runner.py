@@ -8,6 +8,7 @@ import pytest
 
 from ci.ray_ci.runner import (
     _get_all_test_targets,
+    _get_all_test_query,
     _get_test_targets,
     _run_tests,
     _chunk_into_n,
@@ -65,6 +66,14 @@ def test_get_test_targets() -> None:
                 "//python/ray/tests:good_test_01",
                 "//python/ray/tests:good_test_02",
             ]
+
+
+def test_get_all_test_query() -> None:
+    assert _get_all_test_query(["a", "b"], "core") == (
+        "attr(tags, team:core, tests(a) union tests(b)) intersect "
+        "(attr(size, small, tests(a) union tests(b)) union "
+        "attr(size, medium, tests(a) union tests(b)))"
+    )
 
 
 if __name__ == "__main__":

@@ -8,4 +8,4 @@
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - DL=1 ./ci/env/install-dependencies.sh
     - ./ci/env/env_info.sh
-    - bazel run //ci/ray_ci -- //python/ray/tests/... core --concurrency "$${BUILDKITE_PARALLEL_JOB_COUNT}" --shard "$${BUILDKITE_PARALLEL_JOB}"
+    - bazel run //ci/ray_ci -- //python/ray/tests/... //python/ray/dag/... core --concurrency "$${BUILDKITE_PARALLEL_JOB_COUNT}" --shard "$${BUILDKITE_PARALLEL_JOB}"
