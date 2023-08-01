@@ -163,6 +163,9 @@ cdef extern from "ray/common/id.h" namespace "ray" nogil:
         CClusterID FromHex(const c_string &hex_str)
 
         @staticmethod
+        CClusterID FromRandom()
+
+        @staticmethod
         const CClusterID Nil()
 
     cdef cppclass CWorkerID "ray::WorkerID"(CUniqueID):

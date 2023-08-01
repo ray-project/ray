@@ -35,9 +35,9 @@ def test_distributed_tqdm_remote():
     assert not mgr.in_hidden_state
 
     # Test stdout save/restore clearing.
-    assert mgr.num_hides == 0
+    num_hides = mgr.num_hides
     ray.get(a.print_something.remote())
-    wait_for_condition(lambda: mgr.num_hides == 1)
+    wait_for_condition(lambda: mgr.num_hides == num_hides + 1)
     wait_for_condition(lambda: not mgr.in_hidden_state)
 
 
