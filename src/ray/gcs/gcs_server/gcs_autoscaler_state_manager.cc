@@ -273,5 +273,10 @@ void GcsAutoscalerStateManager::GetNodeStates(
   });
 }
 
+void GcsAutoscalerStateManager::HandleDrainNode(
+    rpc::autoscaler::DrainNodeRequest request,
+    rpc::autoscaler::DrainNodeReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {}
+
 }  // namespace gcs
 }  // namespace ray

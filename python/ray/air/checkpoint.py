@@ -108,8 +108,7 @@ class Checkpoint:
         # It is guaranteed that the original data has been recovered
         assert recovered_data == checkpoint_data
 
-    Checkpoints can be used to instantiate a :class:`Predictor`,
-    :class:`BatchPredictor`, or :class:`PredictorDeployment` class.
+    Checkpoints can be used to instantiate a :class:`Predictor`.
 
     The constructor is a private API, instead the ``from_`` methods should
     be used to create checkpoint objects

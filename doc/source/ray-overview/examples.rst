@@ -867,7 +867,7 @@ Ray Examples
 
     .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item rl rllib
-        :link: https://github.com/ray-project/ray/blob/master/rllib/examples/custom_loss.py
+        :link: https://github.com/ray-project/ray/blob/master/rllib/examples/custom_model_loss_and_metrics.py
 
         Example of defining and registering a custom model with a supervised loss.
 

@@ -29,7 +29,6 @@ from ray.air._internal.filelock import TempFileLock
 from ray.air._internal.uri_utils import URI, is_uri
 from ray.tune.syncer import Syncer, SyncConfig, _BackgroundSyncer
 from ray.tune.result import _get_defaults_results_dir
-from ray.tune.trainable.util import TrainableUtil
 
 
 logger = logging.getLogger(__file__)
@@ -196,6 +195,7 @@ def _upload_to_fs_path(
         # (since we always create a directory at fs_path)
         _create_directory(fs=fs, fs_path=fs_path)
         _pyarrow_fs_copy_files(local_path, fs_path, destination_filesystem=fs)
+        return
 
     if not fsspec:
         # TODO(justinvyu): Make fsspec a hard requirement of Tune/Train.
@@ -231,6 +231,14 @@ def _list_at_fs_path(fs: pyarrow.fs.FileSystem, fs_path: str) -> List[str]:
         os.path.relpath(file_info.path.lstrip("/"), start=fs_path.lstrip("/"))
         for file_info in fs.get_file_info(selector)
     ]
+
+
+def _exists_at_fs_path(fs: pyarrow.fs.FileSystem, fs_path: str) -> bool:
+    """Returns True if (fs, fs_path) exists."""
+    assert not is_uri(fs_path), fs_path
+
+    valid = fs.get_file_info([fs_path])[0]
+    return valid.type != pyarrow.fs.FileType.NotFound
 
 
 def _is_directory(fs: pyarrow.fs.FileSystem, fs_path: str) -> bool:
@@ -330,7 +338,7 @@ class StorageContext:
         >>> storage.trial_dir_name = "trial_dir"
         >>> storage.trial_fs_path
         'bucket/path/exp_name/trial_dir'
-        >>> storage.current_checkpoint_id = 1
+        >>> storage.current_checkpoint_index = 1
         >>> storage.checkpoint_fs_path
         'bucket/path/exp_name/trial_dir/checkpoint_000001'
 
@@ -373,7 +381,7 @@ class StorageContext:
         experiment_dir_name: str,
         storage_filesystem: Optional[pyarrow.fs.FileSystem] = None,
         trial_dir_name: Optional[str] = None,
-        current_checkpoint_id: Optional[int] = None,
+        current_checkpoint_index: Optional[int] = None,
     ):
         storage_path_provided = storage_path is not None
 
@@ -384,7 +392,7 @@ class StorageContext:
         self.storage_path = storage_path or self.storage_local_path
         self.experiment_dir_name = experiment_dir_name
         self.trial_dir_name = trial_dir_name
-        self.current_checkpoint_id = current_checkpoint_id
+        self.current_checkpoint_index = current_checkpoint_index
         self.sync_config = dataclasses.replace(sync_config)
 
         if storage_filesystem:
@@ -433,7 +441,7 @@ class StorageContext:
             "storage_fs_path",
             "experiment_dir_name",
             "trial_dir_name",
-            "current_checkpoint_id",
+            "current_checkpoint_index",
         ]
         attr_str = "\n".join([f"  {attr}={getattr(self, attr)}" for attr in attrs])
         return f"StorageContext<\n{attr_str}\n>"
@@ -451,8 +459,7 @@ class StorageContext:
     def _check_validation_file(self):
         """Checks that the validation file exists at the storage path."""
         valid_file = os.path.join(self.experiment_fs_path, ".validate_storage_marker")
-        valid = self.storage_filesystem.get_file_info([valid_file])[0]
-        if valid.type == pyarrow.fs.FileType.NotFound:
+        if not _exists_at_fs_path(fs=self.storage_filesystem, fs_path=valid_file):
             raise RuntimeError(
                 f"Unable to set up cluster storage at storage_path={self.storage_path}"
                 "\nCheck that all nodes in the cluster have read/write access "
@@ -504,15 +511,17 @@ class StorageContext:
     def checkpoint_fs_path(self) -> str:
         """The trial directory path on the `storage_filesystem`.
 
-        Raises a ValueError if `current_checkpoint_id` is not set beforehand.
+        Raises a ValueError if `current_checkpoint_index` is not set beforehand.
         """
-        if self.current_checkpoint_id is None:
+        from ray.tune.trainable.util import TrainableUtil
+
+        if self.current_checkpoint_index is None:
             raise RuntimeError(
                 "Should not access `checkpoint_fs_path` without setting "
-                "`current_checkpoint_id`"
+                "`current_checkpoint_index`"
             )
         checkpoint_dir_name = TrainableUtil._make_checkpoint_dir_name(
-            self.current_checkpoint_id
+            self.current_checkpoint_index
         )
         return os.path.join(self.trial_fs_path, checkpoint_dir_name)
 
