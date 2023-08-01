@@ -974,35 +974,47 @@ class Router:
     ) -> Union[ray.ObjectRef, "ray._raylet.StreamingObjectRefGenerator"]:
         """Assign a query to a replica and return the resulting object_ref."""
 
-        self.num_router_requests.inc(
-            tags={"route": request_meta.route, "application": request_meta.app_name}
-        )
-        self.num_queued_queries += 1
-        self.num_queued_queries_gauge.set(
-            self.num_queued_queries,
-            tags={
-                "application": request_meta.app_name,
-            },
-        )
+        incremented_request = False
+        try:
+            self.num_router_requests.inc(
+                tags={"route": request_meta.route, "application": request_meta.app_name}
+            )
+            self.num_queued_queries += 1
+            self.num_queued_queries_gauge.set(
+                self.num_queued_queries,
+                tags={
+                    "application": request_meta.app_name,
+                },
+            )
+            incremented_request += True
 
-        query = Query(
-            args=list(request_args),
-            kwargs=request_kwargs,
-            metadata=request_meta,
-        )
-        await query.resolve_async_tasks()
-        await query.buffer_starlette_requests_and_warn()
-        result = await self._replica_scheduler.assign_replica(query)
+            query = Query(
+                args=list(request_args),
+                kwargs=request_kwargs,
+                metadata=request_meta,
+            )
+            await query.resolve_async_tasks()
+            await query.buffer_starlette_requests_and_warn()
+            result = await self._replica_scheduler.assign_replica(query)
 
-        self.num_queued_queries -= 1
-        self.num_queued_queries_gauge.set(
-            self.num_queued_queries,
-            tags={
-                "application": request_meta.app_name,
-            },
-        )
+            self.num_queued_queries -= 1
+            self.num_queued_queries_gauge.set(
+                self.num_queued_queries,
+                tags={
+                    "application": request_meta.app_name,
+                },
+            )
 
-        return result
+            return result
+        except asyncio.CancelledError:
+            self.num_queued_queries -= 1
+            self.num_queued_queries_gauge.set(
+                self.num_queued_queries,
+                tags={
+                    "application": request_meta.app_name,
+                },
+            )
+            raise
 
     def shutdown(self):
         """Shutdown router gracefully.
