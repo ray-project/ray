@@ -21,7 +21,10 @@ from ray._private.test_utils import wait_for_condition
 from ray import serve
 from ray.serve.tests.conftest import check_ray_stop
 from ray.serve.deployment_graph import RayServeDAGHandle
-from ray.serve._private.constants import SERVE_NAMESPACE
+from ray.serve._private.constants import (
+    SERVE_NAMESPACE,
+    RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING,
+)
 
 
 CONNECTION_ERROR_MSG = "connection error"
@@ -780,7 +783,9 @@ def test_run_config_request_timeout():
     # the 0.1 request_timeout_s set in in the config yaml
     wait_for_condition(
         lambda: requests.get("http://localhost:8000/app1?sleep_s=0.11").status_code
-        == 500,
+        == 408
+        if RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING
+        else 500,
     )
 
     # Ensure the http request returned the correct response when the deployment runs
