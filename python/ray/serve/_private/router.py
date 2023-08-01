@@ -1001,7 +1001,7 @@ class Router:
         await query.buffer_starlette_requests_and_warn()
         result = await self._replica_scheduler.assign_replica(query)
 
-        self.num_queued_queries -= 1
+        self.num_queued_queries[request_meta.app_name] -= 1
 
         return result
 
