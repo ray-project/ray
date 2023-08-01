@@ -1428,7 +1428,7 @@ def start_raylet(
         dashboard_agent_listen_port: The port at which the dashboard agent
             listens to for http.
         runtime_env_agent_port: The port at which the runtime env agent
-            listens to for http.
+            listens to for HTTP.
         use_valgrind: True if the raylet should be started inside
             of valgrind. If this is True, use_profiler must be False.
         use_profiler: True if the raylet should be started inside
