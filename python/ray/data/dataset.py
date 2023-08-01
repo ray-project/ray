@@ -2153,9 +2153,16 @@ class Dataset:
         return self._aggregate_result(ret)
 
     def sort(
-        self, key: Union[str, List[str], None] = None, descending: bool = False
+        self,
+        key: Union[str, List[str], None] = None,
+        descending: Union[bool, List[bool]] = False,
     ) -> "Dataset":
         """Sort the dataset by the specified key column or key function.
+
+        .. note::
+            The `descending` parameter must be a boolean, or a list of booleans.
+            If it is a list, all items in the list must share the same direction.
+            Multi-directional sort is not supported yet.
 
         Examples:
             >>> import ray
@@ -2166,9 +2173,9 @@ class Dataset:
         Time complexity: O(dataset size * log(dataset size / parallelism))
 
         Args:
-            key: The column to sort by. To sort by multiple columns, call
-                :meth:`Dataset.map` and generate a new column to sort by.
-            descending: Whether to sort in descending order.
+            key: The column or a list of columns to sort by.
+            descending: Whether to sort in descending order. Must be a boolean or a list
+                of booleans matching the number of the colunns.
 
         Returns:
             A new, sorted :class:`Dataset`.

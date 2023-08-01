@@ -43,7 +43,7 @@ class SortKey:
     def __init__(
         self,
         key: Optional[Union[str, List[str]]] = None,
-        descending: bool = False,
+        descending: Union[bool, List[bool]] = False,
     ):
         if key is None:
             key = []
@@ -53,6 +53,16 @@ class SortKey:
             raise ValueError(
                 f"Key must be a string or a list of strings, but got {key}."
             )
+        if isinstance(descending, bool):
+            descending = [descending for _ in key]
+        elif isinstance(descending, list):
+            if len(descending) != len(key):
+                raise ValueError(
+                    f"Descending must be a boolean or a list of booleans, "
+                    f"but got {descending}."
+                )
+            if len(set(descending)) != 1:
+                raise ValueError("Sorting with mixed key orders not supported yet.")
         self._columns = key
         self._descending = descending
 
@@ -60,16 +70,16 @@ class SortKey:
         return self._columns
 
     def get_descending(self) -> bool:
-        return self._descending
+        return self._descending[0]
 
     def to_arrow_sort_args(self) -> List[Tuple[str, str]]:
         return [
-            (key, "descending" if self._descending else "ascending")
+            (key, "descending" if self._descending[0] else "ascending")
             for key in self._columns
         ]
 
     def to_pandas_sort_args(self) -> Tuple[List[str], bool]:
-        return self._columns, not self._descending
+        return self._columns, not self._descending[0]
 
     def validate_schema(self, schema: Optional[Union[type, "pyarrow.lib.Schema"]]):
         """Check the key function is valid on the given schema."""
