@@ -436,6 +436,9 @@ def test_drain_and_undrain_http_proxy_actors(
         proxy_status_to_count={HTTPProxyStatus.HEALTHY: 2},
     )
 
+    # Clean up serve.
+    serve.shutdown()
+
 
 def test_healthz_and_routes_on_head_and_worker_nodes(
     shutdown_ray, call_ray_stop_only  # noqa: F811
