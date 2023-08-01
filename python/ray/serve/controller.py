@@ -876,7 +876,13 @@ class ServeController:
         Currently, this is the OpenAPI docs path for FastAPI-integrated applications."""
         return self.application_state_manager.get_docs_path(name)
 
-    def get_ingress_deployment(self, app_name: str) -> str:
+    def get_ingress_deployment(self, app_name: str) -> Optional[str]:
+        """Name of the ingress deployment in an application.
+
+        Returns:
+            Ingress deployment name (str): if the application exists.
+            None: if the application does not exist.
+        """
         return self.application_state_manager.get_ingress_deployment(app_name)
 
     def delete_apps(self, names: Iterable[str]):

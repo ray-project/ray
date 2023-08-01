@@ -908,6 +908,15 @@ def test_get_app_handle_basic(serve_instance):
     assert ray.get(handle.remote()) == "hello world"
 
 
+def test_get_app_handle_dne(serve_instance):
+    """Test getting app handle to an app that doesn't exist."""
+
+    with pytest.raises(RayServeException) as e:
+        serve.get_app_handle("random")
+
+    assert "Application 'random' does not exist" in str(e.value)
+
+
 def test_get_app_handle_within_deployment_async(serve_instance):
     @serve.deployment()
     class a:

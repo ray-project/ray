@@ -174,7 +174,7 @@ class ApplicationState:
         return list(self._target_state.deployment_infos.keys())
 
     @property
-    def ingress_deployment(self) -> str:
+    def ingress_deployment(self) -> Optional[str]:
         return self._ingress_deployment
 
     def recover_target_state_from_checkpoint(
@@ -777,6 +777,9 @@ class ApplicationStateManager:
         return self._application_states[name].route_prefix
 
     def get_ingress_deployment(self, name: str) -> Optional[str]:
+        if name not in self._application_states:
+            return None
+
         return self._application_states[name].ingress_deployment
 
     def list_app_statuses(self) -> Dict[str, ApplicationStatusInfo]:
