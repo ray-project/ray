@@ -91,7 +91,7 @@ class DataConfig:
         """The default Ray Data options used for data ingest.
 
         We enable output locality, which means that Ray Data will try to place tasks on
-        the node the data will be consumed. We also set the object store memory limit
+        the node the data is consumed. We also set the object store memory limit
         to a fixed smaller value, to avoid using too much memory per Train worker.
         """
         ctx = ray.data.DataContext.get_current()

@@ -4,7 +4,7 @@ Ray Train Configuration User Guide
 ==================================
 
 The following overviews how to configure scale-out, run options, and fault-tolerance for Train.
-For more details on how to configure data ingest if you are using :ref:`Ray Data <data>`, refer to the :ref:`training_ingest_home` guide.
+For more details on how to configure data ingest if you're using :ref:`Ray Data <data>`, refer to the :ref:`training_ingest_home` guide.
 
 Scaling Configurations in Train (``ScalingConfig``)
 ---------------------------------------------------

@@ -449,7 +449,7 @@ Here's a simple code overview of the Ray Data integration:
     )
     trainer.fit()
 
-For more details on how to configure data ingest for Train, please refer to the :ref:`Data Loading for ML training <training_ingest_home>` guide.
+For more details on how to configure data ingest for Train, see :ref:`Data Loading for ML training <training_ingest_home>`.
 
 .. TODO link to Training Run Iterator API as a 3rd option for logging.
 

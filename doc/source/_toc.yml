@@ -78,6 +78,8 @@ parts:
                 title: "Ray Train Architecture"
               - file: train/train-with-tune
                 title: "Using Ray Train with Ray Tune"
+              - file: train/training_ingest
+                title: "Configuring Training Datasets"
               - file: train/predictors
               - file: train/benchmarks
           - file: train/examples
