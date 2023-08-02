@@ -10,6 +10,7 @@ from ci.ray_ci.runner import (
     _get_all_test_targets,
     _get_all_test_query,
     _get_test_targets,
+    _get_flaky_test_targets,
     _run_tests,
     _chunk_into_n,
 )
@@ -75,6 +76,15 @@ def test_get_all_test_query() -> None:
         "attr(tags, asan_tests, tests(a) union tests(b)) union "
         "attr(tags, ray_ha, tests(a) union tests(b)))"
     )
+
+
+def test_get_flaky_test_targets() -> None:
+    _TEST_YAML = "flaky_tests: [//target]"
+
+    with TemporaryDirectory() as tmp:
+        with open(os.path.join(tmp, "core.tests.yml"), "w") as f:
+            f.write(_TEST_YAML)
+        assert _get_flaky_test_targets("core", yaml_dir=tmp) == ["//target"]
 
 
 if __name__ == "__main__":
