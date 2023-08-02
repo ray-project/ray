@@ -84,7 +84,7 @@ training.
 
             -    model = model.to(device)
             -    model = DistributedDataParallel(model,
-            -        device_ids=[train.get_local_rank()] if torch.cuda.is_available() else None)
+            -        device_ids=[train.get_context().get_local_rank()] if torch.cuda.is_available() else None)
 
             +    model = train.torch.prepare_model(model)
 
