@@ -389,52 +389,44 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
 
     def _get_candidate_replica_ids(
         self,
-        blacklist_replica_ids: Set[str],
     ) -> Set[str]:
-        """Get candidates from the current replica set excluding the blacklist."""
+        """Get candidates from the current replica set."""
 
-        return self._replica_id_set.difference(blacklist_replica_ids)
+        return self._replica_id_set
 
-    async def _get_candidate_replica_ids_for_multiplexed_model_id(
-        self, blacklist_replica_ids: Set[str], model_id: str
+    def _get_candidate_replica_ids_for_multiplexed_model_id(
+        self,
+        model_id: str,
+        fallback_to_all_replicas: bool = False,
     ) -> Set[str]:
-        """Get multiplexed model candidates from the current replica set excluding the blacklist
+        """Get multiplexed model candidates from the current replica.
 
-        we will prioritize replicas that have the model id, if there are no
-        replicas with the model id,
-        we will choose from all replicas, and we will choose all replicas with the
-        least number of multiplexed model ids.
+        By default, we will only choose from replicas that have the requested
+        multiplexed model id, if not matched, the function will return an empty set.
+
+        If fallback_to_all_replicas is True, we will choose from all replicas,
+        and we will choose all replicas with the least number of multiplexed model
+        ids.
+
         """
 
-        start = time.time()
-        multiplexed_matching_timeout = (
-            RAY_SERVE_MULTIPLEXED_MODEL_ID_MATCHING_TIMEOUT_S * random.random()
-        )
         candidates = set()
-        first_check = True
-        while first_check or time.time() - start < multiplexed_matching_timeout:
-            # If model id in the multiplexed model id to replica ids map,
-            # then we prioritize replicas that have the model id.
+
+        if not fallback_to_all_replicas:
             if model_id in self._multiplexed_model_id_to_replica_ids:
                 candidates = self._multiplexed_model_id_to_replica_ids[model_id]
                 if len(candidates) > 0:
-                    return candidates.difference(blacklist_replica_ids)
-            first_check = False
-            await asyncio.sleep(0.1)
+                    return candidates
+            return candidates
 
-        # Sort the replicas by the number of multiplexed model ids they have, and filter
-        # out replicas from the blacklist.
+        # Sort the replicas by the number of multiplexed model ids they have.
         # Choose all replicas with the least number of multiplexed model ids.
         sorted_replicas = sorted(
             self._replicas.values(), key=lambda x: len(x.multiplexed_model_ids)
         )
         least_num_multiplexed_model_ids = math.inf
         for replica in sorted_replicas:
-            if (
-                replica.replica_id not in blacklist_replica_ids
-                and len(replica.multiplexed_model_ids)
-                <= least_num_multiplexed_model_ids
-            ):
+            if len(replica.multiplexed_model_ids) <= least_num_multiplexed_model_ids:
                 candidates.add(replica.replica_id)
                 least_num_multiplexed_model_ids = len(replica.multiplexed_model_ids)
             else:
@@ -459,7 +451,12 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         """
 
         backoff_index = 0
-        replica_ids_attempted = set()
+        multiplexed_start_matching_time = None
+        multiplexed_matching_timeout = random.uniform(
+            RAY_SERVE_MULTIPLEXED_MODEL_ID_MATCHING_TIMEOUT_S,
+            RAY_SERVE_MULTIPLEXED_MODEL_ID_MATCHING_TIMEOUT_S * 2,
+        )
+
         while True:
             # If no replicas are available, wait until `update_replicas` is called.
             while len(self._replicas) == 0:
@@ -476,32 +473,41 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
                     extra={"log_to_stderr": False},
                 )
 
+            if multiplexed_start_matching_time is None:
+                multiplexed_start_matching_time = time.time()
+
             candidate_replica_ids = set()
-            # Get candidates for multiplexed model ID.
             if request_metadata is not None and request_metadata.multiplexed_model_id:
-                candidate_replica_ids = (
-                    await self._get_candidate_replica_ids_for_multiplexed_model_id(
-                        replica_ids_attempted, request_metadata.multiplexed_model_id
+                # Get candidates for multiplexed model ID.
+                if (
+                    time.time() - multiplexed_start_matching_time
+                    < multiplexed_matching_timeout
+                ):
+                    candidate_replica_ids = (
+                        self._get_candidate_replica_ids_for_multiplexed_model_id(
+                            request_metadata.multiplexed_model_id
+                        )
                     )
-                )
-
+                else:
+                    # If we have waited longer than the timeout, fallback to
+                    # all replicas.
+                    candidate_replica_ids = (
+                        self._get_candidate_replica_ids_for_multiplexed_model_id(
+                            request_metadata.multiplexed_model_id,
+                            fallback_to_all_replicas=True,
+                        )
+                    )
+                    logger.info(f"debug_fallback {str(candidate_replica_ids)}")
             else:
-                # Get candidates to sample from; this will exclude replicas used in a
-                # previous iteration until all replicas have been tried.
-                candidate_replica_ids = self._get_candidate_replica_ids(
-                    replica_ids_attempted
+                # non-multiplexed use case
+                candidate_replica_ids = self._get_candidate_replica_ids()
+
+            if candidate_replica_ids:
+                chosen_ids = random.sample(
+                    list(candidate_replica_ids), k=min(2, len(candidate_replica_ids))
                 )
-
-            chosen_ids = random.sample(
-                list(candidate_replica_ids), k=min(2, len(candidate_replica_ids))
-            )
-            yield [self._replicas[chosen_id] for chosen_id in chosen_ids]
-
-            # If another iteration occurrs, the chosen replicas did not accept the
-            # request. Blacklist them until we've attempted all replicas.
-            replica_ids_attempted.update(chosen_ids)
-            if replica_ids_attempted.issuperset(self._replica_id_set):
-                replica_ids_attempted.clear()
+                logger.info(f"chosen ids: {str(chosen_ids)}")
+                yield [self._replicas[chosen_id] for chosen_id in chosen_ids]
 
             await asyncio.sleep(self.backoff_sequence_s[backoff_index])
             backoff_index = min(backoff_index + 1, len(self.backoff_sequence_s) - 1)

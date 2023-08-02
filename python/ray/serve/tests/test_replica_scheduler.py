@@ -1,11 +1,12 @@
 import asyncio
+import importlib
+import os
 import time
 from typing import Set, Optional, Tuple, Union
 
 import pytest
 
 import ray
-from ray.exceptions import RayActorError
 from ray._private.utils import get_or_create_event_loop
 
 from ray.serve._private.router import (
@@ -80,6 +81,12 @@ def pow_2_scheduler() -> PowerOfTwoChoicesReplicaScheduler:
         get_or_create_event_loop(),
         "TEST_DEPLOYMENT",
     )
+
+    # Update the RAY_SERVE_MULTIPLEXED_MODEL_ID_MATCHING_TIMEOUT_S
+    # to 0.1s to speed up the test.
+    os.environ.update({"RAY_SERVE_MULTIPLEXED_MODEL_ID_MATCHING_TIMEOUT_S": "0.1"})
+    importlib.reload(ray.serve._private.constants)
+    importlib.reload(ray.serve._private.router)
 
     yield s
 
@@ -466,71 +473,6 @@ async def test_replica_responds_after_being_removed(pow_2_scheduler, fake_query)
     # Set the new replica to accept, it should be scheduled.
     r2.set_queue_state_response(0, accepted=True)
     assert (await task) == r2
-
-
-@pytest.mark.asyncio
-async def test_replica_blacklisted_after_actor_error(pow_2_scheduler, fake_query):
-    """
-    Verify that a replica is removed from the set if it returns a RayActorError.
-    Subsequent requests should not be sent to it.
-    """
-    s = pow_2_scheduler
-    loop = get_or_create_event_loop()
-
-    r1 = FakeReplicaWrapper("r1")
-    s.update_replicas([r1])
-
-    r1.set_queue_state_response(0, accepted=True)
-    assert await s.choose_replica_for_query(fake_query) == r1
-
-    # Set the replica to raise a RayActorError, we should not be able to schedule
-    # the request.
-    r1.set_queue_state_response(0, exception=RayActorError())
-
-    task = loop.create_task(s.choose_replica_for_query(fake_query))
-    done, _ = await asyncio.wait([task], timeout=0.1)
-    assert len(done) == 0
-
-    # The replica shouldn't be considered at all.
-    r1.set_queue_state_response(0, accepted=True)
-    done, _ = await asyncio.wait([task], timeout=0.1)
-    assert len(done) == 0
-
-    # Now add a new replica, the request should be scheduled to it.
-    r2 = FakeReplicaWrapper("r2")
-    r2.set_queue_state_response(0, accepted=True)
-    s.update_replicas([r2])
-
-    assert await task == r2
-
-
-@pytest.mark.asyncio
-async def test_replica_not_blacklisted_after_unexpected_error(
-    pow_2_scheduler, fake_query
-):
-    """
-    Verify that if a replica is not removed from the set if it returns an unexpected
-    error. This should go through the normal backoff/retry logic.
-    """
-    s = pow_2_scheduler
-    loop = get_or_create_event_loop()
-
-    r1 = FakeReplicaWrapper("r1")
-    s.update_replicas([r1])
-
-    r1.set_queue_state_response(0, accepted=True)
-    assert await s.choose_replica_for_query(fake_query) == r1
-
-    # Set the replica to raise an unknown exception, it shouldn't be scheduled.
-    r1.set_queue_state_response(0, exception=RuntimeError("oopsies"))
-    task = loop.create_task(s.choose_replica_for_query(fake_query))
-    done, _ = await asyncio.wait([task], timeout=0.1)
-    assert len(done) == 0
-
-    # Set the replica to no longer return the exception, the request should be
-    # scheduled to it.
-    r1.set_queue_state_response(0, accepted=True)
-    assert await task == r1
 
 
 @pytest.mark.asyncio
