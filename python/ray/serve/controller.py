@@ -325,7 +325,7 @@ class ServeController:
             # are more consistent.
             node_update_start_time = time.time()
             self._update_active_nodes()
-            self.node_update_duration_gauge.set(time.time() - node_update_start_time)
+            self.node_update_duration_gauge_s.set(time.time() - node_update_start_time)
 
             # Don't update http_state until after the done recovering event is set,
             # otherwise we may start a new HTTP proxy but not broadcast it any
@@ -336,7 +336,7 @@ class ServeController:
                     self.http_proxy_state_manager.update(
                         active_nodes=self._active_nodes
                     )
-                    self.proxy_update_duration_gauge.set(
+                    self.proxy_update_duration_gauge_s.set(
                         time.time() - proxy_update_start_time
                     )
                 except Exception:
@@ -345,7 +345,9 @@ class ServeController:
             try:
                 dsm_update_start_time = time.time()
                 any_recovering = self.deployment_state_manager.update()
-                self.dsm_update_duration_gauge.set(time.time() - dsm_update_start_time)
+                self.dsm_update_duration_gauge_s.set(
+                    time.time() - dsm_update_start_time
+                )
                 if not self.done_recovering_event.is_set() and not any_recovering:
                     self.done_recovering_event.set()
             except Exception:
@@ -354,14 +356,16 @@ class ServeController:
             try:
                 asm_update_start_time = time.time()
                 self.application_state_manager.update()
-                self.asm_update_duration_gauge.set(time.time() - asm_update_start_time)
+                self.asm_update_duration_gauge_s.set(
+                    time.time() - asm_update_start_time
+                )
             except Exception:
                 logger.exception("Exception updating application state.")
 
             try:
                 snapshot_start_time = time.time()
                 self._put_serve_snapshot()
-                self.snapshot_duration_gauge.set(time.time() - snapshot_start_time)
+                self.snapshot_duration_gauge_s.set(time.time() - snapshot_start_time)
             except Exception:
                 logger.exception("Exception putting serve snapshot.")
             loop_duration = time.time() - loop_start_time
@@ -372,32 +376,32 @@ class ServeController:
                     "replicas in a single Ray cluster. Consider using "
                     "multiple Ray clusters."
                 )
-            self.control_loop_gauge.set(loop_duration)
+            self.control_loop_gauge_s.set(loop_duration)
             await asyncio.sleep(CONTROL_LOOP_PERIOD_S)
 
     def _create_control_loop_metrics(self):
-        self.node_update_duration_gauge = metrics.Gauge(
-            "serve_controller_node_update_duration",
+        self.node_update_duration_gauge_s = metrics.Gauge(
+            "serve_controller_node_update_duration_s",
             description="The control loop time spent on collecting active node info.",
         )
-        self.proxy_update_duration_gauge = metrics.Gauge(
-            "serve_controller_proxy_state_update_duration",
+        self.proxy_update_duration_gauge_s = metrics.Gauge(
+            "serve_controller_proxy_state_update_duration_s",
             description="The control loop time spent on updating proxy state.",
         )
-        self.dsm_update_duration_gauge = metrics.Gauge(
-            "serve_controller_deployment_state_update_duration",
+        self.dsm_update_duration_gauge_s = metrics.Gauge(
+            "serve_controller_deployment_state_update_duration_s",
             description="The control loop time spent on updating deployment state.",
         )
-        self.asm_update_duration_gauge = metrics.Gauge(
-            "serve_controller_application_state_update_duration",
+        self.asm_update_duration_gauge_s = metrics.Gauge(
+            "serve_controller_application_state_update_duration_s",
             description="The control loop time spent on updating application state.",
         )
-        self.snapshot_duration_gauge = metrics.Gauge(
-            "serve_controller_application_state_update_duration",
+        self.snapshot_duration_gauge_s = metrics.Gauge(
+            "serve_controller_application_state_update_duration_s",
             description="The control loop time spent on putting the Serve snapshot.",
         )
-        self.control_loop_gauge = metrics.Gauge(
-            "serve_controller_control_loop_duration",
+        self.control_loop_gauge_s = metrics.Gauge(
+            "serve_controller_control_loop_duration_s",
             description="The duration of the last control loop.",
         )
 
