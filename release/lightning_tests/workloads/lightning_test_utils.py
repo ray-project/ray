@@ -46,6 +46,7 @@ class MNISTClassifier(pl.LightningModule):
         avg_acc = torch.stack(
             [x["val_accuracy"] for x in self.validation_step_outputs]
         ).mean()
+        self.validation_step_outputs.clear()
 
         # TODO(yunxuanx): change this back to ptl/val_loss after
         # we resolved the metric unpacking issue
