@@ -62,7 +62,7 @@ def test_trainer_with_native_dataloader(
 
         trainer = pl.Trainer(
             max_epochs=num_epochs,
-            devices=-1,
+            devices="auto",
             accelerator=accelerator,
             strategy=strategy,
             plugins=[RayLightningEnvironment()],
@@ -120,7 +120,7 @@ def test_trainer_with_ray_data(ray_start_6_cpus_2_gpus, strategy_name, accelerat
 
         trainer = pl.Trainer(
             max_epochs=num_epochs,
-            devices=-1,
+            devices="auto",
             accelerator=accelerator,
             strategy=strategy,
             plugins=[RayLightningEnvironment()],
@@ -169,7 +169,7 @@ def test_deepspeed_zero_stages(ray_start_6_cpus_4_gpus, tmpdir, stage):
 
         trainer = pl.Trainer(
             max_epochs=num_epochs,
-            devices=-1,
+            devices="auto",
             accelerator="gpu",
             strategy=strategy,
             plugins=[RayLightningEnvironment()],
