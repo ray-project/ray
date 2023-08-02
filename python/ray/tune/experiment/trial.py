@@ -29,7 +29,6 @@ import ray.cloudpickle as cloudpickle
 from ray.exceptions import RayActorError, RayTaskError
 from ray.train._internal.storage import _use_storage_context, StorageContext
 from ray.train._internal.checkpoint_manager import (
-    _TrackedCheckpoint as _NewTrackedCheckpoint,
     _CheckpointManager as _NewCheckpointManager,
 )
 from ray.tune import TuneError
