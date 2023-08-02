@@ -7,7 +7,7 @@ import pytest
 from ray.train import CheckpointConfig
 from ray.train._internal.checkpoint_manager import (
     _CheckpointManager,
-    _TrackedCheckpoint,
+    _TrainingResult,
 )
 from ray.train.checkpoint import Checkpoint
 
@@ -29,13 +29,13 @@ def test_unlimited_checkpoints(checkpoint_paths: List[str]):
 
     for i in range(10):
         manager.register_checkpoint(
-            _TrackedCheckpoint(
+            _TrainingResult(
                 checkpoint=Checkpoint.from_directory(checkpoint_paths[i]),
                 metrics={"iter": i},
             )
         )
 
-    assert len(manager.best_checkpoints) == 10
+    assert len(manager.best_checkpoint_results) == 10
 
 
 def test_limited_checkpoints(checkpoint_paths: List[str]):
@@ -43,18 +43,18 @@ def test_limited_checkpoints(checkpoint_paths: List[str]):
 
     for i in range(10):
         manager.register_checkpoint(
-            _TrackedCheckpoint(
+            _TrainingResult(
                 checkpoint=Checkpoint.from_directory(checkpoint_paths[i]),
                 metrics={"iter": i},
             )
         )
 
-    assert len(manager.best_checkpoints) == 2
+    assert len(manager.best_checkpoint_results) == 2
 
     # Keep the latest checkpoints if no metric is given.
     assert {
         tracked_checkpoint.metrics["iter"]
-        for tracked_checkpoint in manager.best_checkpoints
+        for tracked_checkpoint in manager.best_checkpoint_results
     } == {8, 9}
 
     # The first 8 checkpoints should be deleted.
@@ -82,7 +82,7 @@ def test_keep_checkpoints_by_score(order, checkpoint_paths):
     for i in range(10):
         score = random.random()
         manager.register_checkpoint(
-            _TrackedCheckpoint(
+            _TrainingResult(
                 checkpoint=Checkpoint.from_directory(checkpoint_paths[i]),
                 metrics={"iter": i, score_attribute: score},
             )
@@ -92,13 +92,13 @@ def test_keep_checkpoints_by_score(order, checkpoint_paths):
     sorted_scores = sorted(scores, reverse=order == "max")
     assert set(sorted_scores[:num_to_keep]) == {
         tracked_checkpoint.metrics[score_attribute]
-        for tracked_checkpoint in manager.best_checkpoints
+        for tracked_checkpoint in manager.best_checkpoint_results
     }
 
     # Make sure the bottom checkpoints are deleted.
     best_checkpoint_iters = {
         tracked_checkpoint.metrics["iter"]
-        for tracked_checkpoint in manager.best_checkpoints
+        for tracked_checkpoint in manager.best_checkpoint_results
     }
     for i, checkpoint_path in enumerate(checkpoint_paths):
         if i in best_checkpoint_iters or i == 9:
@@ -118,34 +118,34 @@ def test_keep_latest_checkpoint(checkpoint_paths):
     )
 
     manager.register_checkpoint(
-        _TrackedCheckpoint(
+        _TrainingResult(
             checkpoint=Checkpoint.from_directory(checkpoint_paths[0]),
             metrics={"score": 3.0},
         )
     )
     manager.register_checkpoint(
-        _TrackedCheckpoint(
+        _TrainingResult(
             checkpoint=Checkpoint.from_directory(checkpoint_paths[1]),
             metrics={"score": 2.0},
         )
     )
     manager.register_checkpoint(
-        _TrackedCheckpoint(
+        _TrainingResult(
             checkpoint=Checkpoint.from_directory(checkpoint_paths[2]),
             metrics={"score": 1.0},
         )
     )
 
-    assert len(manager.best_checkpoints) == 2
+    assert len(manager.best_checkpoint_results) == 2
 
     # The latest checkpoint with the lowest score should not be deleted yet.
-    assert manager.latest_checkpoint.metrics["score"] == 1.0
+    assert manager.latest_checkpoint_result.metrics["score"] == 1.0
 
     # The latest checkpoint with the lowest score should not be deleted yet.
     assert Path(checkpoint_paths[2]).exists()
 
     manager.register_checkpoint(
-        _TrackedCheckpoint(
+        _TrainingResult(
             checkpoint=Checkpoint.from_directory(checkpoint_paths[3]),
             metrics={"score": 0.0},
         )
@@ -155,7 +155,7 @@ def test_keep_latest_checkpoint(checkpoint_paths):
     assert not Path(checkpoint_paths[2]).exists()
 
     # Quick sanity check to make sure that the new checkpoint is kept.
-    assert manager.latest_checkpoint.metrics["score"] == 0.0
+    assert manager.latest_checkpoint_result.metrics["score"] == 0.0
     assert Path(checkpoint_paths[3]).exists()
 
     # The original 2 checkpoints should still exist
@@ -181,8 +181,8 @@ def test_nested_get_checkpoint_score(metrics):
         )
     )
 
-    tracked_checkpoint = _TrackedCheckpoint(checkpoint=None, metrics=metrics, index=3)
-    assert manager._get_checkpoint_score(tracked_checkpoint) == (True, 5.0, 3)
+    tracked_checkpoint = _TrainingResult(checkpoint=None, metrics=metrics)
+    assert manager._get_checkpoint_score(tracked_checkpoint) == (True, 5.0)
 
 
 if __name__ == "__main__":
