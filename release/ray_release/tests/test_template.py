@@ -6,14 +6,14 @@ from ray_release.exception import ReleaseTestConfigError
 from ray_release.template import populate_cluster_env_variables, render_yaml_template
 
 TEST_APP_CONFIG_CPU = """
-base_image: {{ env["RAY_IMAGE_NIGHTLY_CPU"] | default("anyscale/ray:nightly-py37") }}
+base_image: {{ env["RAY_IMAGE_NIGHTLY_CPU"] }}
 env_vars: {}
 debian_packages:
   - curl
 """
 
 TEST_APP_CONFIG_GPU = """
-base_image: {{ env["RAY_IMAGE_ML_NIGHTLY_GPU"] | default("anyscale/ray-ml:nightly-py37-gpu") }}
+base_image: {{ env["RAY_IMAGE_ML_NIGHTLY_GPU"] }}
 env_vars: {}
 debian_packages:
   - curl
