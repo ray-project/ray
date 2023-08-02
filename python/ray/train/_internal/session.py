@@ -458,11 +458,11 @@ class _TrainSession:
 
         # Save the rank of the worker that created this checkpoint.
         metadata.update({CHECKPOINT_RANK_KEY: self.world_rank})
-        persisted_checkpoint.set_metadata(metadata)
 
         result = TrainingResult(
             type=TrainingResultType.CHECKPOINT,
             data=persisted_checkpoint,
+            metadata=metadata,
         )
 
         # Add result to a thread-safe queue.
