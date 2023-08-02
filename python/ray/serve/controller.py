@@ -8,6 +8,7 @@ from collections import defaultdict
 from typing import Any, Dict, Iterable, List, Optional, Tuple, Union
 
 import ray
+from ray.util import metrics
 from ray._private.utils import run_background_task
 from ray.actor import ActorHandle
 from ray._private.resource_spec import HEAD_NODE_RESOURCE_NAME
@@ -183,6 +184,7 @@ class ServeController:
         self._shutdown = asyncio.Event()
         self._shutdown_start_time = None
 
+        self._create_control_loop_metrics()
         run_background_task(self.run_control_loop())
 
         self._recover_config_from_checkpoint()
@@ -299,6 +301,7 @@ class ServeController:
         recovering_timeout = RECOVERING_LONG_POLL_BROADCAST_TIMEOUT_S
         start_time = time.time()
         while True:
+            loop_start_time = time.time()
             if self._shutting_down:
                 try:
                     self.shutdown()
@@ -316,37 +319,95 @@ class ServeController:
                 self.done_recovering_event.set()
 
             try:
+                dsm_update_start_time = time.time()
                 any_recovering = self.deployment_state_manager.update()
+                self.dsm_update_duration_gauge_s.set(
+                    time.time() - dsm_update_start_time
+                )
                 if not self.done_recovering_event.is_set() and not any_recovering:
                     self.done_recovering_event.set()
             except Exception:
                 logger.exception("Exception updating deployment state.")
 
             try:
+                asm_update_start_time = time.time()
                 self.application_state_manager.update()
+                self.asm_update_duration_gauge_s.set(
+                    time.time() - asm_update_start_time
+                )
             except Exception:
                 logger.exception("Exception updating application state.")
 
             # Update the http proxy nodes set before updating the HTTP proxy states,
             # so they are more consistent.
+            node_update_start_time = time.time()
             self._update_http_proxy_nodes()
+            self.node_update_duration_gauge_s.set(time.time() - node_update_start_time)
 
             # Don't update http_state until after the done recovering event is set,
             # otherwise we may start a new HTTP proxy but not broadcast it any
             # info about available deployments & their replicas.
             if self.http_proxy_state_manager and self.done_recovering_event.is_set():
                 try:
+                    proxy_update_start_time = time.time()
                     self.http_proxy_state_manager.update(
                         http_proxy_nodes=self._http_proxy_nodes
+                    )
+                    self.proxy_update_duration_gauge_s.set(
+                        time.time() - proxy_update_start_time
                     )
                 except Exception:
                     logger.exception("Exception updating HTTP state.")
 
             try:
+                snapshot_start_time = time.time()
                 self._put_serve_snapshot()
+                self.snapshot_duration_gauge_s.set(time.time() - snapshot_start_time)
             except Exception:
                 logger.exception("Exception putting serve snapshot.")
+            loop_duration = time.time() - loop_start_time
+            if loop_duration > 10:
+                logger.warning(
+                    f"The last control loop was slow (took {loop_duration}s). "
+                    "This is likely caused by running a large number of "
+                    "replicas in a single Ray cluster. Consider using "
+                    "multiple Ray clusters."
+                )
+            self.control_loop_gauge_s.set(loop_duration)
+
+            sleep_start_time = time.time()
             await asyncio.sleep(CONTROL_LOOP_PERIOD_S)
+            self.sleep_duration_gauge_s.set(time.time() - sleep_start_time)
+
+    def _create_control_loop_metrics(self):
+        self.node_update_duration_gauge_s = metrics.Gauge(
+            "serve_controller_node_update_duration_s",
+            description="The control loop time spent on collecting proxy node info.",
+        )
+        self.proxy_update_duration_gauge_s = metrics.Gauge(
+            "serve_controller_proxy_state_update_duration_s",
+            description="The control loop time spent on updating proxy state.",
+        )
+        self.dsm_update_duration_gauge_s = metrics.Gauge(
+            "serve_controller_deployment_state_update_duration_s",
+            description="The control loop time spent on updating deployment state.",
+        )
+        self.asm_update_duration_gauge_s = metrics.Gauge(
+            "serve_controller_application_state_update_duration_s",
+            description="The control loop time spent on updating application state.",
+        )
+        self.snapshot_duration_gauge_s = metrics.Gauge(
+            "serve_controller_application_state_update_duration_s",
+            description="The control loop time spent on putting the Serve snapshot.",
+        )
+        self.sleep_duration_gauge_s = metrics.Gauge(
+            "serve_controller_sleep_duration_s",
+            description="The duration of the last control loop's sleep.",
+        )
+        self.control_loop_gauge_s = metrics.Gauge(
+            "serve_controller_control_loop_duration_s",
+            description="The duration of the last control loop.",
+        )
 
     def _put_serve_snapshot(self) -> None:
         val = dict()
