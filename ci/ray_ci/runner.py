@@ -51,7 +51,7 @@ def _run_tests(test_targets: List[str]) -> None:
     )
     subprocess.check_call(
         [
-            "bazelisk",
+            "bazel",
             "test",
             "--config=ci",
         ]
@@ -92,7 +92,7 @@ def _get_all_test_targets(targets: str, team: str, yaml_dir: str) -> List[str]:
     test_targets = (
         subprocess.check_output(
             [
-                "bazelisk",
+                "bazel",
                 "query",
                 f"attr(tags, team:{team}, tests({targets})) intersect ("
                 # TODO(can): Remove this once we have a better way
