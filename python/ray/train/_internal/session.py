@@ -448,7 +448,7 @@ class _TrainSession:
                     "is not supported as it will throw an exception on "
                     "deserialization. You can either convert the tensors "
                     "to Python objects or use a `TorchCheckpoint` as the "
-                    "`checkpoint` argument of `ray.air.session.report` to "
+                    "`checkpoint` argument of `ray.train.report` to "
                     "store your Torch objects."
                 )
 
@@ -693,7 +693,7 @@ def get_checkpoint() -> Optional[Checkpoint]:
             train_loop_per_worker=train_func,
             scaling_config=scaling_config,
             # this is ultimately what is accessed through
-            # ``Session.get_checkpoint()``
+            # ``ray.train.get_checkpoint()``
             resume_from_checkpoint=result.checkpoint,
         )
         result2 = trainer2.fit()
@@ -775,7 +775,7 @@ def get_world_size() -> int:
         NUM_WORKERS = 2
 
         def train_loop_per_worker(config):
-            assert session.get_world_size() == NUM_WORKERS
+            assert train.get_context().get_world_size() == NUM_WORKERS
 
         train_dataset = ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv")
         trainer = TensorflowTrainer(
@@ -855,7 +855,7 @@ def get_local_rank() -> int:
 
         def train_loop_per_worker(config):
             if torch.cuda.is_available():
-                torch.cuda.set_device(session.get_local_rank())
+                torch.cuda.set_device(train.get_context().get_local_rank())
             ...
 
         train_dataset = ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv")
@@ -896,7 +896,7 @@ def get_local_world_size() -> int:
             from ray.train.torch import TorchTrainer
 
             def train_loop_per_worker():
-                print(session.get_local_world_size())
+                print(train.get_context().get_local_world_size())
 
             train_dataset = ray.data.from_items(
                 [{"x": x, "y": x + 1} for x in range(32)])
