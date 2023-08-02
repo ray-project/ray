@@ -712,7 +712,7 @@ Loading checkpoints
 
 Checkpoints can be loaded into the training function in 2 steps:
 
-1. From the training function, :func:`train.get_context().get_checkpoint` can be used to access
+1. From the training function, :func:`ray.train.TrainContext.get_checkpoint` can be used to access
    the most recently saved :py:class:`~ray.air.checkpoint.Checkpoint`. This is useful to continue training even
    if there's a worker failure.
 2. The checkpoint to start training with can be bootstrapped by passing in a
