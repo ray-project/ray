@@ -80,6 +80,9 @@ def train_fn(config):
         assert train_session.storage
         assert train_session.storage.checkpoint_fs_path
 
+        # Check that the working dir for each worker is the shared trial dir.
+        assert os.getcwd() == train_session.storage.trial_local_path
+
     start = 0
 
     checkpoint = train.get_checkpoint()
