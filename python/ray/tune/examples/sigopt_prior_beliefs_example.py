@@ -6,8 +6,7 @@ Requires the SigOpt library to be installed (`pip install sigopt`).
 import sys
 
 import numpy as np
-from ray import air, tune
-from ray.air import session
+from ray import train, tune
 
 from ray.tune.search.sigopt import SigOptSearch
 
@@ -35,7 +34,7 @@ def easy_objective(config):
         w3 = 1 - total
 
     average, std = evaluate(w1, w2, w3)
-    session.report({"average": average, "std": std})
+    train.report({"average": average, "std": std})
 
 
 if __name__ == "__main__":
@@ -96,7 +95,7 @@ if __name__ == "__main__":
 
     tuner = tune.Tuner(
         easy_objective,
-        run_config=air.RunConfig(
+        run_config=train.RunConfig(
             name="my_exp",
         ),
         tune_config=tune.TuneConfig(search_alg=algo, num_samples=samples),

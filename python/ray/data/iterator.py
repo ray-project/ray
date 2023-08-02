@@ -69,8 +69,8 @@ class DataIterator(abc.ABC):
     the original Dataset, instead of a window (if ``.window()`` was used).
 
     If using Ray AIR, each trainer actor should get its own iterator by calling
-    :meth:`session.get_dataset_shard("train")
-    <ray.air.session.get_dataset_shard>`.
+    :meth:`ray.train.get_dataset_shard("train")
+    <ray.train.get_dataset_shard>`.
 
     Examples:
         >>> import ray
@@ -902,7 +902,7 @@ class DataIterator(abc.ABC):
 
     def iter_epochs(self, max_epoch: int = -1) -> None:
         raise DeprecationWarning(
-            "If you are using AIR, note that session.get_dataset_shard() "
+            "If you are using AIR, note that ray.train.get_dataset_shard() "
             "returns a ray.data.DataIterator instead of a "
             "DatasetPipeline as of Ray 2.3. "
             "To iterate over one epoch of data, use iter_batches(), "

@@ -21,7 +21,7 @@ Let's use a single Torch training workload as a running example. A very basic ex
     :start-after: __basic__
     :end-before: __basic_end__
 
-In this basic example, the `train_ds` object is created in your Ray script before the Trainer is even instantiated. The `train_ds` object is passed to the Trainer via the `datasets` argument, and is accessible to the `train_loop_per_worker` function via the :meth:`session.get_dataset_shard <ray.air.session.get_dataset_shard>` method.
+In this basic example, the `train_ds` object is created in your Ray script before the Trainer is even instantiated. The `train_ds` object is passed to the Trainer via the `datasets` argument, and is accessible to the `train_loop_per_worker` function via the :meth:`train.get_dataset_shard <ray.train.get_dataset_shard>` method.
 
 Splitting data across workers
 -----------------------------

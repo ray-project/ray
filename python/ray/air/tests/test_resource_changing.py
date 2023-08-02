@@ -1,6 +1,5 @@
-from ray.air import session
-from ray.air.checkpoint import Checkpoint
-from ray.air.config import FailureConfig, RunConfig, ScalingConfig
+from ray import train
+from ray.train import Checkpoint, FailureConfig, RunConfig, ScalingConfig
 from ray.air.constants import TRAIN_DATASET_KEY
 from ray.tune.tune_config import TuneConfig
 from ray.tune.tuner import Tuner
@@ -29,10 +28,10 @@ def ray_start_8_cpus():
 def train_fn(config):
     start_epoch = 0
 
-    print(session.get_trial_resources())
-    checkpoint = session.get_checkpoint()
+    print(train.get_context().get_trial_resources())
+    checkpoint = train.get_checkpoint()
     if checkpoint:
-        # assume that we have run the session.report() example
+        # assume that we have run the train.report() example
         # and successfully save some model weights
         checkpoint_dict = checkpoint.to_dict()
         start_epoch = checkpoint_dict.get("epoch", -1) + 1
@@ -40,11 +39,13 @@ def train_fn(config):
     # wrap the model in DDP
     for epoch in range(start_epoch, config["num_epochs"]):
         checkpoint = Checkpoint.from_dict(dict(epoch=epoch))
-        session.report(
+        train.report(
             {
                 "metric": config["metric"] * epoch,
                 "epoch": epoch,
-                "num_cpus": session.get_trial_resources().required_resources["CPU"],
+                "num_cpus": train.get_context()
+                .get_trial_resources()
+                .required_resources["CPU"],
             },
             checkpoint=checkpoint,
         )
@@ -54,7 +55,7 @@ class AssertingDataParallelTrainer(DataParallelTrainer):
     def training_loop(self) -> None:
         scaling_config = self._validate_scaling_config(self.scaling_config)
         pgf = scaling_config.as_placement_group_factory()
-        tr = session.get_trial_resources()
+        tr = train.get_context().get_trial_resources()
         # Ensure that strategy attribute didn't get dropped.
         assert pgf.strategy == "SPREAD"
         assert pgf == tr, (pgf, tr)
@@ -66,7 +67,7 @@ class AssertingXGBoostTrainer(XGBoostTrainer):
     def _ray_params(self):
         scaling_config = self._validate_scaling_config(self.scaling_config)
         pgf = scaling_config.as_placement_group_factory()
-        tr = session.get_trial_resources()
+        tr = train.get_context().get_trial_resources()
         # Ensure that strategy attribute didn't get dropped.
         assert pgf.strategy == "SPREAD"
         assert pgf == tr, (scaling_config, pgf, tr)

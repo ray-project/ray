@@ -132,7 +132,7 @@ main/en/main_classes/trainer#transformers.TrainingArguments>`__.
 
             import ray
             from ray.train.huggingface import TransformersTrainer
-            from ray.air.config import ScalingConfig
+            from ray.train import ScalingConfig
 
             # If using GPUs, set this to True.
             use_gpu = True

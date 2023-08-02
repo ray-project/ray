@@ -11,7 +11,7 @@ from statsmodels.base.model import Results
 from statsmodels.regression.linear_model import OLSResults
 
 import ray
-from ray.air import Checkpoint
+from ray.train import Checkpoint
 from ray.data.preprocessor import Preprocessor
 from ray.train.batch_predictor import BatchPredictor
 from ray.train.predictor import Predictor

@@ -61,7 +61,7 @@ def train_breast_cancer_cv(config: dict):
     )
 
 
-def get_best_model_checkpoint(best_result: "ray.air.Result"):
+def get_best_model_checkpoint(best_result: "ray.train.Result"):
     best_bst = xgb.Booster()
     with best_result.checkpoint.as_directory() as checkpoint_dir:
         best_bst.load_model(os.path.join(checkpoint_dir, "model.xgb"))

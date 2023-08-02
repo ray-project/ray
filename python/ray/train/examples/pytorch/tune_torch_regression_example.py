@@ -3,7 +3,7 @@ import argparse
 import ray
 from ray import tune
 from ray.train.torch import TorchTrainer
-from ray.air.config import ScalingConfig
+from ray.train import ScalingConfig
 from ray.tune.tune_config import TuneConfig
 from ray.tune.tuner import Tuner
 

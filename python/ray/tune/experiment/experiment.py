@@ -51,7 +51,7 @@ logger = logging.getLogger(__name__)
 
 
 def _validate_log_to_file(log_to_file):
-    """Validate ``air.RunConfig``'s ``log_to_file`` parameter. Return
+    """Validate ``train.RunConfig``'s ``log_to_file`` parameter. Return
     validated relative stdout and stderr filenames."""
     if not log_to_file:
         stdout_file = stderr_file = None
@@ -222,15 +222,15 @@ class Experiment:
                 raise ValueError(
                     "'checkpoint_at_end' cannot be used with a function trainable. "
                     "You should include one last call to "
-                    "`ray.air.session.report(metrics=..., checkpoint=...)` at the end "
-                    "of your training loop to get this behavior."
+                    "`ray.train.report(metrics=..., checkpoint=...)` "
+                    "at the end of your training loop to get this behavior."
                 )
             if checkpoint_config.checkpoint_frequency:
                 raise ValueError(
                     "'checkpoint_frequency' cannot be set for a function trainable. "
                     "You will need to report a checkpoint every "
                     "`checkpoint_frequency` iterations within your training loop using "
-                    "`ray.air.session.report(metrics=..., checkpoint=...)` "
+                    "`ray.train.report(metrics=..., checkpoint=...)` "
                     "to get this behavior."
                 )
         try:
@@ -265,7 +265,7 @@ class Experiment:
                 stopper_types = [type(s) for s in stop]
                 raise ValueError(
                     "If you pass a list as the `stop` argument to "
-                    "`air.RunConfig()`, each element must be an instance of "
+                    "`train.RunConfig()`, each element must be an instance of "
                     f"`tune.stopper.Stopper`. Got {stopper_types}."
                 )
             self._stopper = CombinedStopper(*stop)

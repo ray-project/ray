@@ -63,7 +63,7 @@ class TuneConfig:
             If set to `False`, files are accessible with paths relative to the
             original working directory. However, all workers on the same node now
             share the same working directory, so be sure to use
-            `session.get_trial_dir()` as the path to save any outputs.
+            `ray.train.get_context().get_trial_dir()` as the path to save any outputs.
     """
 
     # Currently this is not at feature parity with `tune.run`, nor should it be.

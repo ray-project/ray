@@ -17,7 +17,7 @@ from ray.train.huggingface import (
     TransformersCheckpoint,
 )
 from ray.train.trainer import TrainingFailedError
-from ray.air.config import ScalingConfig
+from ray.train import ScalingConfig
 from ray.train.tests._huggingface_data import train_data, validation_data
 from ray import tune
 from ray.tune import Tuner

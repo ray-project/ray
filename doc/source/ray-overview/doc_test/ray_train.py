@@ -1,8 +1,8 @@
 import torch
 
 import ray.train as train
+from ray.train import ScalingConfig
 from ray.train.torch import TorchTrainer, TorchCheckpoint
-from ray.air import ScalingConfig, session
 
 
 def train_func():
@@ -27,9 +27,9 @@ def train_func():
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
-            session.report({"loss": loss.item()})
+            train.report({"loss": loss.item()})
 
-    session.report({}, checkpoint=TorchCheckpoint.from_model(model))
+    train.report({}, checkpoint=TorchCheckpoint.from_model(model))
 
 
 trainer = TorchTrainer(train_func, scaling_config=ScalingConfig(num_workers=4))

@@ -110,13 +110,13 @@ class TestCheckpointTypeCasting:
             StubCheckpoint.from_uri(uri)
 
     def test_e2e(self):
-        from ray.air import session
-        from ray.air.config import ScalingConfig
+        from ray import train
+        from ray.train import ScalingConfig
         from ray.train.torch import TorchTrainer
 
         def train_loop_per_worker():
             checkpoint = StubCheckpoint.from_dict({"spam": "ham"})
-            session.report({}, checkpoint=checkpoint)
+            train.report({}, checkpoint=checkpoint)
 
         trainer = TorchTrainer(
             train_loop_per_worker=train_loop_per_worker,
@@ -199,15 +199,15 @@ class TestCheckpointSerializedAttrs:
         assert recovered_checkpoint.foo == "bar"
 
     def test_e2e(self):
-        from ray.air import session
-        from ray.air.config import ScalingConfig
+        from ray import train
+        from ray.train import ScalingConfig
         from ray.train.torch import TorchTrainer
 
         def train_loop_per_worker():
             checkpoint = StubCheckpoint.from_dict({"spam": "ham"})
             assert "foo" in checkpoint._SERIALIZED_ATTRS
             checkpoint.foo = "bar"
-            session.report({}, checkpoint=checkpoint)
+            train.report({}, checkpoint=checkpoint)
 
         trainer = TorchTrainer(
             train_loop_per_worker=train_loop_per_worker,

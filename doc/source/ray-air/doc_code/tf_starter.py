@@ -5,10 +5,10 @@
 import ray
 import tensorflow as tf
 
-from ray.air import session
+from ray import train
+from ray.train import ScalingConfig
 from ray.air.integrations.keras import ReportCheckpointCallback
 from ray.train.tensorflow import TensorflowTrainer
-from ray.air.config import ScalingConfig
 
 
 # If using GPUs, set this to True.
@@ -46,7 +46,7 @@ def train_func(config: dict):
             metrics=[tf.keras.metrics.mean_squared_error],
         )
 
-    dataset = session.get_dataset_shard("train")
+    dataset = train.get_dataset_shard("train")
 
     results = []
     for _ in range(epochs):

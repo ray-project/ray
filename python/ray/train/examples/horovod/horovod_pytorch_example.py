@@ -8,8 +8,8 @@ import torch.optim as optim
 import torch.utils.data.distributed
 from torchvision import datasets, transforms
 
-from ray.air import session
-from ray.air.config import ScalingConfig
+from ray import train
+from ray.train import ScalingConfig
 from ray.train.horovod import HorovodTrainer
 from ray.train.torch.torch_checkpoint import TorchCheckpoint
 import ray.train.torch
@@ -156,7 +156,7 @@ def train_func(config):
         else:
             checkpoint = TorchCheckpoint.from_model(model)
         results.append(loss)
-        session.report(dict(loss=loss), checkpoint=checkpoint)
+        train.report(dict(loss=loss), checkpoint=checkpoint)
 
     # Only used for testing.
     return results

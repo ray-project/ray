@@ -17,7 +17,7 @@ from ray.train.huggingface import (
     TransformersTrainer,
 )
 from ray.train.trainer import TrainingFailedError
-from ray.air.config import ScalingConfig
+from ray.train import ScalingConfig
 from ray.train.tests._huggingface_data import train_data, validation_data
 
 # 16 first rows of tokenized wikitext-2-raw-v1 training & validation

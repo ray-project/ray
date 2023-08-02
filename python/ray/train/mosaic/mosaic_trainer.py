@@ -48,9 +48,8 @@ class MosaicTrainer(TorchTrainer):
         from composer.algorithms import LabelSmoothing
 
         import ray
-        from ray.air.config import ScalingConfig
         import ray.train as train
-        from ray.air import session
+        from ray.train import ScalingConfig
         from ray.train.mosaic import MosaicTrainer
 
         def trainer_init_per_worker(config):

@@ -4,7 +4,7 @@ import pytorch_lightning as pl
 from pytorch_lightning.callbacks import ModelCheckpoint
 
 import ray
-from ray.air import RunConfig, CheckpointConfig
+from ray.train import RunConfig, CheckpointConfig
 from ray.air.util.data_batch_conversion import _convert_batch_type_to_pandas
 from ray.train.constants import MODEL_KEY
 from ray.train.trainer import TrainingFailedError
@@ -72,7 +72,7 @@ def test_native_trainer_restore(ray_start_4_cpus_2_gpus):
 
     lightning_config = config_builder.build()
 
-    scaling_config = ray.air.ScalingConfig(num_workers=num_workers, use_gpu=True)
+    scaling_config = ray.train.ScalingConfig(num_workers=num_workers, use_gpu=True)
 
     trainer = LightningTrainer(
         lightning_config=lightning_config,
@@ -144,7 +144,7 @@ def test_air_trainer_restore(ray_start_6_cpus, tmpdir, resume_from_ckpt_path):
         pl_trainer.fit(pl_model, train_dataloaders=train_loader)
         lightning_config.fit_params(ckpt_path=f"{ckpt_dir}/last.ckpt")
 
-    scaling_config = ray.air.ScalingConfig(num_workers=2, use_gpu=False)
+    scaling_config = ray.train.ScalingConfig(num_workers=2, use_gpu=False)
 
     trainer = LightningTrainer(
         lightning_config=lightning_config.build(),

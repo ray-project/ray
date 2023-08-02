@@ -532,7 +532,7 @@ class JupyterNotebookReporter(TuneReporterBase, RemoteReporterMixin):
                 "If this leads to unformatted output (e.g. like "
                 "<IPython.core.display.HTML object>), consider passing "
                 "a `CLIReporter` as the `progress_reporter` argument "
-                "to `air.RunConfig()` instead."
+                "to `train.RunConfig()` instead."
             )
 
         self._overwrite = overwrite

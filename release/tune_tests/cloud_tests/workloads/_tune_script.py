@@ -5,8 +5,8 @@ import os
 import time
 
 import ray
-from ray import tune
-from ray.air import Checkpoint, session
+from ray import train, tune
+from ray.train import Checkpoint
 from ray.air.constants import REENABLE_DEPRECATED_SYNC_TO_HEAD_NODE
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.algorithms.ppo import PPO
@@ -15,11 +15,11 @@ from run_cloud_test import ARTIFACT_FILENAME
 
 
 def fn_trainable(config):
-    checkpoint = session.get_checkpoint()
+    checkpoint = train.get_checkpoint()
     if checkpoint:
         state = {"internal_iter": checkpoint.to_dict()["internal_iter"] + 1}
     else:
-        # NOTE: Need to 1 index because `session.report`
+        # NOTE: Need to 1 index because `train.report`
         # will save checkpoints w/ 1-indexing.
         state = {"internal_iter": 1}
 
@@ -32,7 +32,7 @@ def fn_trainable(config):
             checkpoint = Checkpoint.from_dict({"internal_iter": i})
 
         # Log artifacts to the trial dir.
-        trial_dir = session.get_trial_dir()
+        trial_dir = train.get_context().get_trial_dir()
         with open(os.path.join(trial_dir, ARTIFACT_FILENAME), "a") as f:
             f.write(f"{config['id']},")
 
@@ -41,7 +41,7 @@ def fn_trainable(config):
             internal_iter=state["internal_iter"],
         )
 
-        session.report(metrics, checkpoint=checkpoint)
+        train.report(metrics, checkpoint=checkpoint)
 
 
 class RLlibCallback(DefaultCallbacks):

@@ -7,7 +7,8 @@ from diffusers import (
     UNet2DConditionModel,
 )
 from diffusers.utils.import_utils import is_xformers_available
-from ray.air import session, ScalingConfig
+from ray import train
+from ray.train import ScalingConfig
 from ray.train.torch import TorchTrainer
 import torch
 import torch.nn.functional as F
@@ -97,7 +98,7 @@ def load_models(config, cuda):
 
 def get_cuda_devices():
     devices = [f"cuda:{i}" for i in range(torch.cuda.device_count())]
-    local_rank = session.get_local_rank()
+    local_rank = train.get_context().get_local_rank()
     assert len(devices) >= 2, "Require at least 2 GPU devices to work."
     return devices[(local_rank * 2) : ((local_rank * 2) + 2)]
 
@@ -120,7 +121,7 @@ def train_fn(config):
         lr=config["lr"],
     )
 
-    train_dataset = session.get_dataset_shard("train")
+    train_dataset = train.get_dataset_shard("train")
 
     # Train!
     num_train_epochs = config["num_epochs"]
@@ -192,14 +193,14 @@ def train_fn(config):
                 "step": global_step,
                 "loss": loss.detach().item(),
             }
-            session.report(results)
+            train.report(results)
 
             if global_step >= config["max_train_steps"]:
                 break
     # END: Training loop
 
     # Create pipeline using the trained modules and save it.
-    if session.get_world_rank() == 0:
+    if train.get_context().get_world_rank() == 0:
         pipeline = DiffusionPipeline.from_pretrained(
             config["model_dir"],
             text_encoder=text_encoder.module,

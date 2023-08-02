@@ -6,7 +6,7 @@ import pandas as pd
 import numpy as np
 
 import ray
-from ray.air.checkpoint import Checkpoint
+from ray.train import Checkpoint
 from ray.air.constants import PREPROCESSOR_KEY, TENSOR_COLUMN_NAME
 from ray.air.util.data_batch_conversion import BatchFormat
 from ray.data import Preprocessor

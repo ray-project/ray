@@ -12,7 +12,7 @@ from unittest.mock import MagicMock
 
 import ray
 from ray import cloudpickle, tune
-from ray.air import Checkpoint
+from ray.train import Checkpoint
 from ray.air._internal.checkpoint_manager import _TrackedCheckpoint, CheckpointStorage
 from ray.air.config import FailureConfig, RunConfig, CheckpointConfig
 from ray.tune import Trainable

@@ -1,6 +1,6 @@
 import ray
-from ray import tune
-from ray.air import ScalingConfig, session
+from ray import train, tune
+from ray.train import ScalingConfig
 from ray.data.preprocessors import Concatenator, Chain, StandardScaler
 from ray.train.horovod import HorovodTrainer
 from ray.tune import Tuner, TuneConfig
@@ -38,7 +38,7 @@ def torch_train_loop(config):
 
     torch.set_num_threads(1)
 
-    dataset = session.get_dataset_shard("train")
+    dataset = train.get_dataset_shard("train")
 
     model = create_model(num_features)
 
@@ -63,7 +63,7 @@ def torch_train_loop(config):
             train_loss.backward()
             optimizer.step()
         loss = train_loss.item()
-        session.report({"loss": loss}, checkpoint=TorchCheckpoint.from_model(model))
+        train.report({"loss": loss}, checkpoint=TorchCheckpoint.from_model(model))
 
 
 def tune_horovod_torch(num_workers, num_samples, use_gpu):

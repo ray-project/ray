@@ -93,7 +93,7 @@ if __name__ == "__main__":
 
     # __torch_trainer_begin__
     from ray.train.torch import TorchTrainer
-    from ray.air.config import ScalingConfig
+    from ray.train import ScalingConfig
 
     # For GPU Training, set `use_gpu` to True.
     use_gpu = False

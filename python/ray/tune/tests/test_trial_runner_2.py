@@ -6,7 +6,7 @@ import tempfile
 import unittest
 
 import ray
-from ray.air import CheckpointConfig
+from ray.train import CheckpointConfig
 from ray.air._internal.checkpoint_manager import _TrackedCheckpoint, CheckpointStorage
 from ray.air.execution import PlacementGroupResourceManager, FixedResourceManager
 from ray.rllib import _register_all

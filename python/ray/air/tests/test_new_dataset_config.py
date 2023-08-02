@@ -4,10 +4,9 @@ import random
 import pytest
 
 import ray
-from ray.air import session
-from ray.air.config import ScalingConfig
+from ray import train
+from ray.train import DataConfig, ScalingConfig
 from ray.data import DataIterator
-from ray.train import DataConfig
 from ray.train.data_parallel_trainer import DataParallelTrainer
 
 
@@ -23,10 +22,10 @@ class TestBasic(DataParallelTrainer):
         self, num_workers: int, expect_ds: bool, expect_sizes: Optional[dict], **kwargs
     ):
         def train_loop_per_worker():
-            data_shard = session.get_dataset_shard("train")
+            data_shard = train.get_dataset_shard("train")
             assert isinstance(data_shard, DataIterator), data_shard
             for k, v in expect_sizes.items():
-                shard = session.get_dataset_shard(k)
+                shard = train.get_dataset_shard(k)
                 if v == -1:
                     assert shard is None, shard
                 else:
@@ -124,7 +123,7 @@ def test_custom_config_subclass(ray_start_4_cpus):
 class TestRandom(DataParallelTrainer):
     def __init__(self, num_workers: int, expect_random: bool, **kwargs):
         def train_loop_per_worker():
-            data_shard = session.get_dataset_shard("train")
+            data_shard = train.get_dataset_shard("train")
             assert isinstance(data_shard, DataIterator), data_shard
             epoch1 = list(data_shard.iter_rows())
             epoch2 = list(data_shard.iter_rows())

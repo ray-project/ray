@@ -9,7 +9,7 @@ import numpy as np
 import pytest
 
 import ray
-from ray.air.checkpoint import Checkpoint
+from ray.train import Checkpoint
 from ray.train.batch_predictor import BatchPredictor
 from ray.train.predictor import Predictor
 

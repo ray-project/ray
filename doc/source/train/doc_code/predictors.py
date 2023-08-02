@@ -116,7 +116,7 @@ predictions = batch_predictor.predict(
 # __pipelined_prediction_start__
 import pandas as pd
 import ray
-from ray.air import Checkpoint
+from ray.train import Checkpoint
 from ray.train.predictor import Predictor
 from ray.train.batch_predictor import BatchPredictor
 
