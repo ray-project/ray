@@ -246,8 +246,10 @@ def _value_to_feature(
                 "the tensorflow-metadata package."
             )
         specified_feature_type = {
-            "bytes": schema_feature_type == schema_pb2.FeatureType.BYTES,
-            "string": schema_feature_type == schema_pb2.FeatureType.BYTES,
+            "bytes": schema_feature_type == schema_pb2.FeatureType.BYTES
+            and not underlying_value_type["string"],
+            "string": schema_feature_type == schema_pb2.FeatureType.BYTES
+            and underlying_value_type["string"],
             "float": schema_feature_type == schema_pb2.FeatureType.FLOAT,
             "int": schema_feature_type == schema_pb2.FeatureType.INT,
         }
