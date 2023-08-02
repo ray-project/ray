@@ -954,7 +954,8 @@
       pip:
         - myst-parser==0.15.2
         - myst-nb==0.13.1
-        - jupytext==1.13.6
+      post_build_script: byod_vicuna_test.sh
+    cluster_env: vicuna_13b_deepspeed_env.yaml
     cluster_compute: vicuna_13b_deepspeed_compute_aws.yaml
 
   run:
