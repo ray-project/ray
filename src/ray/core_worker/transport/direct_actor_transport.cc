@@ -166,8 +166,10 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
         RAY_CHECK((!pool_manager_) && (!fiber_state_manager_));
         pool_manager_ = std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>(
             task_spec.ConcurrencyGroups(), default_max_concurrency);
-        fiber_state_manager_ = std::make_shared<ConcurrencyGroupManager<FiberState>>(
-            task_spec.ConcurrencyGroups(), fiber_max_concurrency_);
+        if (task_spec.IsAsyncioActor()) {
+          fiber_state_manager_ = std::make_shared<ConcurrencyGroupManager<FiberState>>(
+              task_spec.ConcurrencyGroups(), fiber_max_concurrency_);
+        }
         concurrency_groups_cache_[task_spec.TaskId().ActorId()] =
             task_spec.ConcurrencyGroups();
         // Tell raylet that an actor creation task has finished execution, so that

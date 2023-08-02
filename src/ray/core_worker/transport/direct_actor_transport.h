@@ -141,6 +141,7 @@ class CoreWorkerDirectTaskReceiver {
   /// If concurrent calls are allowed, holds the pools for executing these tasks.
   std::shared_ptr<ConcurrencyGroupManager<BoundedExecutor>> pool_manager_;
   /// If async calls are allowed, holds the fibers for executing async tasks.
+  /// Only populated if this actor is async.
   std::shared_ptr<ConcurrencyGroupManager<FiberState>> fiber_state_manager_;
   /// Whether this actor use asyncio for concurrency.
   bool is_asyncio_ = false;

@@ -77,8 +77,6 @@ def test_async_actor_have_bounded_num_of_threads(shutdown_only):
 
 
 if __name__ == "__main__":
-
-    # Test suite is timing out. Disable on windows for now.
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
     else:
