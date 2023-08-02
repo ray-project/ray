@@ -2402,7 +2402,7 @@
   working_dir: long_running_tests
 
   frequency: weekly
-  python: "3.8"
+
   team: core
   cluster:
     byod:
@@ -2527,7 +2527,6 @@
   working_dir: long_running_tests
 
   frequency: weekly
-  python: "3.8"
 
   team: core
   cluster:
@@ -2567,7 +2566,6 @@
   working_dir: long_running_tests
 
   frequency: weekly
-  python: "3.8"
 
   team: core
   cluster:
@@ -2654,7 +2652,6 @@
   working_dir: long_running_tests
 
   frequency: weekly
-  python: "3.8"
 
   team: core
   cluster:
@@ -2694,7 +2691,6 @@
   working_dir: long_running_tests
 
   frequency: weekly
-  python: "3.8"
 
   team: core
   cluster:
@@ -2734,7 +2730,6 @@
   working_dir: long_running_tests
 
   frequency: weekly
-  python: "3.8"
 
   team: core
   cluster:
@@ -5101,7 +5096,6 @@
 
   frequency: nightly
   team: core
-  python: "3.8"
 
   cluster:
     byod:
@@ -5344,36 +5338,6 @@
         cluster_env: stress_tests/stress_tests_app_config.yaml
         cluster_compute: stress_tests/smoke_test_compute_gce.yaml
 
-
-- name: stress_test_many_runtime_envs
-  group: core-daily-test
-  working_dir: nightly_tests
-
-  python: "3.8"
-  frequency: nightly
-  team: core
-  cluster:
-    byod: {}
-    cluster_env: stress_tests/stress_tests_app_config.yaml
-    cluster_compute: stress_tests/smoke_test_compute.yaml
-
-  run:
-    timeout: 14400
-    wait_for_nodes:
-      num_nodes: 5
-    script: python stress_tests/test_many_runtime_envs_runner.py --num_runtime_envs=10000
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_env: stress_tests/stress_tests_app_config.yaml
-        cluster_compute: stress_tests/smoke_test_compute_gce.yaml
-      smoke_test:
-        frequency: manual
-
 # - name: threaded_actors_stress_test
 #   group: core-daily-test
 #   working_dir: nightly_tests
@@ -5408,6 +5372,33 @@
 #         num_nodes: 5
 #         timeout: 600
 
+- name: stress_test_many_runtime_envs
+  group: core-daily-test
+  working_dir: nightly_tests
+
+  python: "3.8"
+  frequency: nightly
+  team: core
+  cluster:
+    byod: {}
+    cluster_compute: stress_tests/smoke_test_compute.yaml
+
+  run:
+    timeout: 14400
+    wait_for_nodes:
+      num_nodes: 5
+    script: python stress_tests/test_many_runtime_envs_runner.py --num_runtime_envs=10000
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: stress_tests/smoke_test_compute_gce.yaml
+      smoke_test:
+        frequency: manual
+
 - name: single_node_oom
   group: core-daily-test
   working_dir: nightly_tests
@@ -5437,7 +5428,6 @@
   working_dir: air_tests
 
   stable: false
-  python: "3.8"
 
   frequency: nightly
   team: core
@@ -5459,8 +5449,6 @@
   working_dir: nightly_tests
 
   frequency: nightly-3x
-  python: "3.8"
-
   team: core
 
   cluster:
@@ -6983,8 +6971,6 @@
 
   frequency: nightly
   team: core
-  python: "3.8"
-  
   cluster:
     byod:
       type: gpu
@@ -7125,11 +7111,12 @@
   group: cluster-launcher-test
   working_dir: ../python/ray/autoscaler/
 
-  python: "3.8"
+  python: "3.7"
 
   stable: true
 
   env: gce
+  python: "3.8"
   frequency: nightly
   team: core
   cluster:
