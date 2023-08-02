@@ -400,9 +400,10 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
     ) -> Set[str]:
         """Get multiplexed model candidates from the current replica set excluding the blacklist
 
-        we will prioritize replicas that have the model id, if there are no replicas with the model id,
-        we will choose from all replicas, and we will choose all replicas with the least number of
-        multiplexed model ids.
+        we will prioritize replicas that have the model id, if there are no
+        replicas with the model id,
+        we will choose from all replicas, and we will choose all replicas with the
+        least number of multiplexed model ids.
         """
 
         start = time.time()
@@ -417,7 +418,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
             if model_id in self._multiplexed_model_id_to_replica_ids:
                 candidates = self._multiplexed_model_id_to_replica_ids[model_id]
                 if len(candidates) > 0:
-                    return candidates
+                    return candidates.difference(blacklist_replica_ids)
             first_check = False
             await asyncio.sleep(0.1)
 
