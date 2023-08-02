@@ -276,8 +276,8 @@ def test_numpy_write(ray_start_regular_shared, fs, data_path, endpoint_url):
     ds = ray.data.range_tensor(10, parallelism=2)
     ds._set_uuid("data")
     ds.write_numpy(data_path, filesystem=fs, column="data")
-    file_path1 = os.path.join(data_path, "data_000000.npy")
-    file_path2 = os.path.join(data_path, "data_000001.npy")
+    file_path1 = os.path.join(data_path, "data_000000_000000.npy")
+    file_path2 = os.path.join(data_path, "data_000001_000000.npy")
     if endpoint_url is None:
         arr1 = np.load(file_path1)
         arr2 = np.load(file_path2)

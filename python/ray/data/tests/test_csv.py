@@ -726,7 +726,7 @@ def test_csv_roundtrip(ray_start_regular_shared, fs, data_path):
     ds = ray.data.from_pandas([df])
     ds._set_uuid("data")
     ds.write_csv(data_path, filesystem=fs)
-    file_path = os.path.join(data_path, "data_000000.csv")
+    file_path = os.path.join(data_path, "data_000000_000000.csv")
     ds2 = ray.data.read_csv([file_path], filesystem=fs)
     ds2df = ds2.to_pandas()
     assert ds2df.equals(df)
