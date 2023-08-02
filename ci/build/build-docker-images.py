@@ -73,7 +73,7 @@ DEFAULT_PYTHON_VERSION = "py38"
 
 IMAGE_NAMES = list(DOCKER_HUB_DESCRIPTION.keys())
 
-IS_PR_BUILD = os.environ.get("BUILDKITE_PULL_REQUEST") != "false"
+RELEASE_PR_PIPELINE_ID = "d912884a-5198-497d-9ac3-178420500b6e"
 
 
 def _with_suffix(tag: str, suffix: Optional[str] = None):
@@ -495,11 +495,11 @@ def _tag_and_push(
     old_tag,
     new_tag,
     merge_build=False,
-    push_pr_build=False,
+    release_pr_build=False,
 ):
     # Do not tag release builds because they are no longer up to
     # date after the branch cut.
-    if "nightly" in new_tag and (_release_build() or IS_PR_BUILD):
+    if "nightly" in new_tag and (_release_build() or release_pr_build):
         return
     if old_tag != new_tag:
         DOCKER_CLIENT.api.tag(
@@ -507,8 +507,7 @@ def _tag_and_push(
             repository=full_image_name,
             tag=new_tag,
         )
-    should_push = merge_build or (push_pr_build and IS_PR_BUILD)
-    if not should_push:
+    if not merge_build and not release_pr_build:
         print(
             "Not pushing build. "
             "Otherwise we would have pushed to: {full_image_name}:{new_tag}"
@@ -611,9 +610,9 @@ def push_and_tag_images(
     py_versions: List[str],
     image_types: List[str],
     merge_build: bool = False,
+    release_pr_build: bool = False,
     image_list: Optional[List[str]] = None,
     suffix: Optional[str] = None,
-    push_pr_build: bool = False,
 ):
     date_tag = datetime.datetime.now().strftime("%Y-%m-%d")
     sha_tag = _get_commit_sha()
@@ -621,7 +620,7 @@ def push_and_tag_images(
         release_name = _get_branch()[len("releases/") :]
         date_tag = release_name + "." + date_tag
         sha_tag = release_name + "." + sha_tag
-    if IS_PR_BUILD:
+    if release_pr_build:
         pr = f"pr-{os.environ['BUILDKITE_PULL_REQUEST']}"
         date_tag = pr + "." + date_tag
         sha_tag = pr + "." + sha_tag
@@ -723,7 +722,7 @@ def push_and_tag_images(
                     old_tag=old_tag,
                     new_tag=new_tag,
                     merge_build=merge_build,
-                    push_pr_build=push_pr_build,
+                    release_pr_build=release_pr_build,
                 )
 
 
@@ -770,9 +769,10 @@ def push_readmes(merge_build: bool):
 MERGE = "MERGE"
 HUMAN = "HUMAN"
 PR = "PR"
+RELEASE_PR = "RELEASE_PR"
 BUILDKITE = "BUILDKITE"
 LOCAL = "LOCAL"
-BUILD_TYPES = [MERGE, HUMAN, PR, BUILDKITE, LOCAL]
+BUILD_TYPES = [MERGE, HUMAN, PR, RELEASE_PR, BUILDKITE, LOCAL]
 
 
 @click.command()
@@ -815,13 +815,6 @@ BUILD_TYPES = [MERGE, HUMAN, PR, BUILDKITE, LOCAL]
     default=False,
     help="Whether only to build ray-worker-container",
 )
-@click.option(
-    "--push-pr-build",
-    is_flag=True,
-    show_default=True,
-    default=False,
-    help="Whether to push PR builds to Docker Hub",
-)
 def main(
     py_versions: Tuple[str],
     device_types: Tuple[str],
@@ -829,7 +822,6 @@ def main(
     suffix: Optional[str] = None,
     build_base: bool = True,
     only_build_worker_container: bool = False,
-    push_pr_build: bool = False,
 ):
     py_versions = (
         list(py_versions) if isinstance(py_versions, (list, tuple)) else [py_versions]
@@ -878,6 +870,8 @@ def main(
     if build_type == BUILDKITE:
         if os.environ.get("BUILDKITE_PULL_REQUEST", "") == "false":
             build_type = MERGE
+        elif os.environ.get("BUILDKITE_PIPELINE_ID", "") == RELEASE_PR_PIPELINE_ID:
+            build_type = RELEASE_PR
         else:
             build_type = PR
 
@@ -885,7 +879,7 @@ def main(
         # If manually triggered, request user for branch and SHA value to use.
         _configure_human_version()
     if (
-        build_type in {HUMAN, MERGE, BUILDKITE, LOCAL}
+        build_type in {HUMAN, MERGE, BUILDKITE, LOCAL, RELEASE_PR}
         or _check_if_docker_files_modified()
         or only_build_worker_container
     ):
@@ -956,7 +950,7 @@ def main(
                     all_tagged_images, target_dir="/artifact-mount/.image-info"
                 )
 
-            if build_type in {MERGE, PR}:
+            if build_type in {MERGE, RELEASE_PR}:
                 valid_branch = _valid_branch()
                 if (not valid_branch) and is_merge:
                     print(f"Invalid Branch found: {_get_branch()}")
@@ -964,9 +958,9 @@ def main(
                     py_versions,
                     image_types,
                     merge_build=valid_branch and is_merge,
+                    release_pr_build=build_type == RELEASE_PR,
                     image_list=images_to_tag_and_push,
                     suffix=suffix,
-                    push_pr_build=push_pr_build,
                 )
 
         # TODO(ilr) Re-Enable Push READMEs by using a normal password
