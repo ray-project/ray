@@ -66,7 +66,7 @@ def _get_build(py_version: str) -> Dict[str, Any]:
     ]
     return {
         "label": py_version,
-        "agents": {"queue": "release_queue_small"},
+        "agents": {"queue": "runner_queue_medium_branch"},
         "commands": cmd,
         "plugins": [
             {
