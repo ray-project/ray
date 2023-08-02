@@ -50,7 +50,7 @@ from ray.rllib.utils.metrics import (
     SYNCH_WORKER_WEIGHTS_TIMER,
 )
 from ray.rllib.utils.replay_buffers.episode_replay_buffer import EpisodeReplayBuffer
-from ray.rllib.utils.typing import ResultDict
+from ray.rllib.utils.typing import LearningRateOrSchedule, ResultDict
 
 
 logger = logging.getLogger(__name__)
@@ -172,6 +172,9 @@ class DreamerV3Config(AlgorithmConfig):
         train_critic: Optional[bool] = NotProvided,
         train_actor: Optional[bool] = NotProvided,
         intrinsic_rewards_scale: Optional[float] = NotProvided,
+        world_model_lr: Optional[LearningRateOrSchedule] = NotProvided,
+        actor_lr: Optional[LearningRateOrSchedule] = NotProvided,
+        critic_lr: Optional[LearningRateOrSchedule] = NotProvided,
         world_model_grad_clip_by_global_norm: Optional[float] = NotProvided,
         critic_grad_clip_by_global_norm: Optional[float] = NotProvided,
         actor_grad_clip_by_global_norm: Optional[float] = NotProvided,
@@ -225,6 +228,9 @@ class DreamerV3Config(AlgorithmConfig):
                 must also be True (cannot train actor w/o training the critic).
             intrinsic_rewards_scale: The factor to multiply intrinsic rewards with
                 before adding them to the extrinsic (environment) rewards.
+            world_model_lr: The learning rate or schedule for the world model optimizer.
+            actor_lr: The learning rate or schedule for the actor optimizer.
+            critic_lr: The learning rate or schedule for the critic optimizer.
             world_model_grad_clip_by_global_norm: World model grad clipping value
                 (by global norm).
             critic_grad_clip_by_global_norm: Critic grad clipping value
@@ -271,6 +277,12 @@ class DreamerV3Config(AlgorithmConfig):
             self.train_actor = train_actor
         if intrinsic_rewards_scale is not NotProvided:
             self.intrinsic_rewards_scale = intrinsic_rewards_scale
+        if world_model_lr is not NotProvided:
+            self.world_model_lr = world_model_lr
+        if actor_lr is not NotProvided:
+            self.actor_lr = actor_lr
+        if critic_lr is not NotProvided:
+            self.critic_lr = critic_lr
         if world_model_grad_clip_by_global_norm is not NotProvided:
             self.world_model_grad_clip_by_global_norm = (
                 world_model_grad_clip_by_global_norm

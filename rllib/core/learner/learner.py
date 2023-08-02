@@ -893,12 +893,25 @@ class Learner:
         loss_per_module_numpy = convert_to_numpy(loss_per_module)
 
         for module_id in list(batch.policy_batches.keys()) + [ALL_MODULES]:
+            # Report total loss per module and other registered metrics.
             module_learner_stats[module_id].update(
                 {
                     self.TOTAL_LOSS_KEY: loss_per_module_numpy[module_id],
                     **convert_to_numpy(metrics_per_module[module_id]),
                 }
             )
+            # Report registered optimizers' learning rates.
+            module_learner_stats[module_id].update(
+                {
+                    f"{optim_name}_lr": convert_to_numpy(
+                        self._get_optimizer_lr(optimizer)
+                    )
+                    for optim_name, optimizer in (
+                        self.get_optimizers_for_module(module_id=module_id)
+                    )
+                }
+            )
+
         return dict(module_learner_stats)
 
     @OverrideToImplementCustomLogic_CallToSuperRecommended
@@ -1634,6 +1647,18 @@ class Learner:
         Returns:
             The framework specific tensor variable of the given initial value,
             dtype and trainable/requires_grad property.
+        """
+
+    @staticmethod
+    @abc.abstractmethod
+    def _get_optimizer_lr(optimizer: Optimizer) -> float:
+        """Returns the current learning rate of the given local optimizer.
+
+        Args:
+            optimizer: The local optimizer to get the current learning rate for.
+
+        Returns:
+            The learning rate value (float) of the given optimizer.
         """
 
     @staticmethod
