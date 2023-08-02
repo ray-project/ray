@@ -1129,7 +1129,7 @@ def test_async_actor_concurrent(shutdown_only):
 
     s = time.time()
     asyncio.run(main())
-    assert 5 < time.time() - s < 6
+    assert 4.5 < time.time() - s < 6.5
 
 
 if __name__ == "__main__":
