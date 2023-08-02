@@ -3,11 +3,10 @@ import tempfile
 from typing import Dict
 from unittest.mock import ANY, patch
 
+import numpy as np
 import pyarrow as pa
 import pytest
 from fsspec.implementations.local import LocalFileSystem
-
-import numpy as np
 
 import ray
 from ray.data.datasource import Partitioning, PathPartitionFilter
