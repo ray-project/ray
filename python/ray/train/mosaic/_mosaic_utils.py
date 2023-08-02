@@ -5,7 +5,7 @@ from composer.loggers import Logger
 from composer.loggers.logger_destination import LoggerDestination
 from composer.core.state import State
 
-import ray
+import ray.train
 
 
 class RayLogger(LoggerDestination):
