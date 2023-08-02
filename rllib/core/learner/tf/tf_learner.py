@@ -462,11 +462,6 @@ class TfLearner(Learner):
 
     @staticmethod
     @override(Learner)
-    def _get_optimizer_lr(optimizer: "tf.Optimizer") -> float:
-        return optimizer.lr
-
-    @staticmethod
-    @override(Learner)
     def _set_optimizer_lr(optimizer: "tf.Optimizer", lr: float) -> None:
         # When tf creates the optimizer, it seems to detach the optimizer's lr value
         # from the given tf variable.
