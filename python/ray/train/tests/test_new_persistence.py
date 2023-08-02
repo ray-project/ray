@@ -88,7 +88,7 @@ def train_fn(config):
     checkpoint = train.get_checkpoint()
     if checkpoint:
         with checkpoint.as_directory() as checkpoint_dir:
-            with open(os.path.join(checkpoint_dir, "dummy.pkl"), "rb") as f:
+            with open(os.path.join(checkpoint_dir, "checkpoint.pkl"), "rb") as f:
                 state = pickle.load(f)
         print("Loaded back state from checkpoint:", state)
         start = state["iter"] + 1
@@ -96,12 +96,12 @@ def train_fn(config):
     for i in range(start, config.get("num_iterations", 5)):
         time.sleep(0.25)
 
-        checkpoint_file_name = "dummy.pkl"
-        artifact_file_name = f"artifact-{i}.txt"
+        checkpoint_file_name = "checkpoint.pkl"
+        artifact_file_name = f"artifact-iter={i}.txt"
         if in_trainer:
             rank = train.get_context().get_world_rank()
-            checkpoint_file_name = f"dummy-{rank}.pkl"
-            artifact_file_name = f"artifact-{i}-{rank}.txt"
+            checkpoint_file_name = f"checkpoint_shard-rank={rank}.pkl"
+            artifact_file_name = f"artifact-rank={rank}-iter={i}.txt"
 
         with open(artifact_file_name, "w") as f:
             f.write(f"{i}")
@@ -133,10 +133,10 @@ def test_tuner(monkeypatch, storage_path_type, tmp_path):
     ├── basic-variant-state.json
     ├── experiment_state.json
     ├── train_fn_a2b9e_00000_0_...
-    │   ├── artifact-0.txt          <- Trial artifacts
+    │   ├── artifact-iter=0.txt     <- Trial artifacts
     │   ├── ...
     │   ├── checkpoint_000000       <- Trial checkpoints
-    │   │   └── dummy.pkl
+    │   │   └── checkpoint.pkl
     │   ├── ...
     │   ├── events.out.tfevents...  <- Driver artifacts (trial results)
     │   ├── params.json
@@ -217,9 +217,8 @@ def test_trainer(
     TODO(justinvyu): Test for these once implemented:
     - artifacts
     - restoration, train.get_checkpoint
-    - accessing checkpoints from Result object
 
-    trainer_new_persistence
+    {storage_path}/{exp_name}
     ├── experiment_state-2023-07-28_10-00-38.json
     ├── basic-variant-state-2023-07-28_10-00-38.json
     ├── trainer.pkl
@@ -231,17 +230,15 @@ def test_trainer(
         ├── progress.csv
         ├── result.json
         ├── checkpoint_000000
-        │   ├── dummy-0.pkl
-        │   └── dummy-1.pkl
+        │   ├── checkpoint_shard-rank=0.pkl                  <- Worker checkpoint shards
+        │   └── checkpoint_shard-rank=1.pkl
         ├── ...
-        ├── rank_0                  <- TODO: remove these rank folders?
-        │   ├── artifact-0-0.txt
-        │   ├── artifact-1-0.txt
-        │   └── ...
-        └── rank_1
-            ├── artifact-0-1.txt
-            ├── artifact-1-1.txt
-            └── ...
+        ├── artifact-rank=0-iter=0.txt            <- Worker artifacts
+        ├── artifact-rank=1-iter=0.txt
+        ├── ...
+        ├── artifact-rank=0-iter=1.txt
+        ├── artifact-rank=1-iter=1.txt
+        └── ...
     """
     LOCAL_CACHE_DIR = tmp_path / "ray_results"
     monkeypatch.setenv("RAY_AIR_LOCAL_CACHE_DIR", str(LOCAL_CACHE_DIR))
@@ -310,7 +307,9 @@ def test_trainer(
         assert len(list(trial_dir.glob("checkpoint_*"))) == expected_num_checkpoints
         for checkpoint_dir in trial_dir.glob("checkpoint_*"):
             # 1 checkpoint shard per worker.
-            assert len(list(checkpoint_dir.glob("dummy-*.pkl"))) == NUM_WORKERS
+            assert (
+                len(list(checkpoint_dir.glob("checkpoint_shard-*.pkl"))) == NUM_WORKERS
+            )
 
         # NOTE: These next 2 are technically synced by the driver.
         # TODO(justinvyu): In a follow-up PR, artifacts will be synced by the workers.
