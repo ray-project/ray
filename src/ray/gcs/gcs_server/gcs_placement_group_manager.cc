@@ -906,7 +906,7 @@ std::shared_ptr<rpc::PlacementGroupLoad> GcsPlacementGroupManager::GetPlacementG
 void GcsPlacementGroupManager::UpdatePlacementGroupLoad() {
   // TODO(rickyx): We should remove this, no other callers other than autoscaler
   // use this info.
-  gcs_resource_manager_.UpdatePlacementGroupLoad(std::move(GetPlacementGroupLoad()));
+  gcs_resource_manager_.UpdatePlacementGroupLoad(GetPlacementGroupLoad());
 }
 
 void GcsPlacementGroupManager::Initialize(const GcsInitData &gcs_init_data) {
@@ -1056,13 +1056,13 @@ bool GcsPlacementGroupManager::RescheduleIfStillHasUnplacedBundles(
 
 const absl::btree_multimap<
     int64_t,
-    std::pair<ExponentialBackOff, std::shared_ptr<GcsPlacementGroup>>>
-    &GcsPlacementGroupManager::GetPendingPlacementGroups() const {
+    std::pair<ExponentialBackOff, std::shared_ptr<GcsPlacementGroup>>> &
+GcsPlacementGroupManager::GetPendingPlacementGroups() const {
   return pending_placement_groups_;
 }
 
-const std::deque<std::shared_ptr<GcsPlacementGroup>>
-    &GcsPlacementGroupManager::GetInfeasiblePlacementGroups() const {
+const std::deque<std::shared_ptr<GcsPlacementGroup>> &
+GcsPlacementGroupManager::GetInfeasiblePlacementGroups() const {
   return infeasible_placement_groups_;
 }
 
