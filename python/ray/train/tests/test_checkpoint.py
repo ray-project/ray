@@ -6,7 +6,7 @@ import pytest
 
 import ray
 from ray.train._internal.storage import _exists_at_fs_path, _upload_to_fs_path
-from ray.train.checkpoint import (
+from ray.train._checkpoint import (
     _CHECKPOINT_TEMP_DIR_PREFIX,
     _METADATA_FILE_NAME,
     _get_del_lock_path,
