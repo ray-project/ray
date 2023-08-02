@@ -1021,8 +1021,8 @@ cc_test(
 
 
 cc_test(
-    name = "fiber_state_test",
-    srcs = ["src/ray/core_worker/test/fiber_state_test.cc"],
+    name = "fiber_thread_test",
+    srcs = ["src/ray/core_worker/test/fiber_thread_test.cc"],
     copts = COPTS,
     tags = ["team:core"],
     deps = [

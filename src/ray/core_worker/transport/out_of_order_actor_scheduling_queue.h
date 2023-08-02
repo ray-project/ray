@@ -39,10 +39,9 @@ class OutOfOrderActorSchedulingQueue : public SchedulingQueue {
   OutOfOrderActorSchedulingQueue(
       instrumented_io_context &main_io_service,
       DependencyWaiter &waiter,
-      std::shared_ptr<ConcurrencyGroupManager<BoundedExecutor>> pool_manager =
-          std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>(),
+      std::shared_ptr<ConcurrencyGroupManager<BoundedExecutor>> pool_manager,
+      std::shared_ptr<FiberThread> fiber_thread,
       bool is_asyncio = false,
-      int fiber_max_concurrency = 1,
       const std::vector<ConcurrencyGroup> &concurrency_groups = {});
 
   void Stop() override;
@@ -78,12 +77,12 @@ class OutOfOrderActorSchedulingQueue : public SchedulingQueue {
   DependencyWaiter &waiter_;
   /// If concurrent calls are allowed, holds the pools for executing these tasks.
   std::shared_ptr<ConcurrencyGroupManager<BoundedExecutor>> pool_manager_;
+  /// Manage the running fiber states of actors in this worker. It works with
+  /// python asyncio if this is an asyncio actor.
+  std::shared_ptr<FiberThread> fiber_thread_;
   /// Whether we should enqueue requests into asyncio pool. Setting this to true
   /// will instantiate all tasks as fibers that can be yielded.
   bool is_asyncio_ = false;
-  /// Manage the running fiber states of actors in this worker. It works with
-  /// python asyncio if this is an asyncio actor.
-  std::unique_ptr<FiberState> fiber_state_;
 
   friend class SchedulingQueueTest;
 };

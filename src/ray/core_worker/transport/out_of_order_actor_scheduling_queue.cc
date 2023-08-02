@@ -21,23 +21,23 @@ OutOfOrderActorSchedulingQueue::OutOfOrderActorSchedulingQueue(
     instrumented_io_context &main_io_service,
     DependencyWaiter &waiter,
     std::shared_ptr<ConcurrencyGroupManager<BoundedExecutor>> pool_manager,
+    std::shared_ptr<FiberThread> fiber_thread,
     bool is_asyncio,
-    int fiber_max_concurrency,
     const std::vector<ConcurrencyGroup> &concurrency_groups)
     : main_thread_id_(boost::this_thread::get_id()),
       waiter_(waiter),
       pool_manager_(pool_manager),
+      fiber_thread_(fiber_thread),
       is_asyncio_(is_asyncio) {
   if (is_asyncio_) {
     std::stringstream ss;
-    ss << "Setting actor as asyncio with max_concurrency=" << fiber_max_concurrency
+    ss << "Setting actor as asyncio with default max_concurrency="
+       << fiber_thread->max_concurrency_for_default_concurrency_group_
        << ", and defined concurrency groups are:" << std::endl;
     for (const auto &concurrency_group : concurrency_groups) {
       ss << "\t" << concurrency_group.name << " : " << concurrency_group.max_concurrency;
     }
     RAY_LOG(INFO) << ss.str();
-    fiber_state_ =
-        std::make_unique<FiberState>(concurrency_groups, fiber_max_concurrency);
   }
 }
 
@@ -45,8 +45,8 @@ void OutOfOrderActorSchedulingQueue::Stop() {
   if (pool_manager_) {
     pool_manager_->Stop();
   }
-  if (fiber_state_) {
-    fiber_state_->Stop();
+  if (fiber_thread_) {
+    fiber_thread_->Stop();
   }
 }
 
@@ -104,9 +104,9 @@ void OutOfOrderActorSchedulingQueue::ScheduleRequests() {
     auto request = pending_actor_tasks_.front();
     if (is_asyncio_) {
       // Process async actor task.
-      fiber_state_->EnqueueFiber(request.ConcurrencyGroupName(),
-                                 request.FunctionDescriptor(),
-                                 [request]() mutable { request.Accept(); });
+      fiber_thread_->EnqueueFiber(request.ConcurrencyGroupName(),
+                                  request.FunctionDescriptor(),
+                                  [request]() mutable { request.Accept(); });
     } else {
       // Process actor tasks.
       RAY_CHECK(pool_manager_ != nullptr);

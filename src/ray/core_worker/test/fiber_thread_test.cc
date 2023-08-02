@@ -22,15 +22,15 @@
 namespace ray {
 namespace core {
 
-TEST(FiberStateTest, Empty) {
+TEST(FiberThreadTest, Empty) {
   std::vector<ConcurrencyGroup> concurrency_groups{
       {"cg1",
        1,
        {FunctionDescriptorBuilder::BuildPython(
            "module_name", "class_name", "function_name", "function_hash")}},
       {"cg5", 5, {}}};
-  FiberState fiber_state(concurrency_groups, 2);
-  fiber_state.Stop();
+  FiberThread fiber_thread(concurrency_groups, 2);
+  fiber_thread.Stop();
 }
 
 class ConcurrencyCounter {
@@ -64,13 +64,13 @@ class TotalCounter {
   }
 };
 
-TEST(FiberStateTest, CanStopInfiniteTasks) {
-  FiberState fiber_state({}, 2);
+TEST(FiberThreadTest, CanStopInfiniteTasks) {
+  FiberThread fiber_thread({}, 2);
 
   FunctionDescriptor fd = FunctionDescriptorBuilder::BuildPython(
       "module_name", "class_name", "function_name", "function_hash");
 
-  fiber_state.EnqueueFiber("", fd, [&]() {
+  fiber_thread.EnqueueFiber("", fd, [&]() {
     while (true) {
       boost::this_fiber::sleep_for(std::chrono::milliseconds(10));
       boost::this_fiber::yield();
@@ -78,12 +78,12 @@ TEST(FiberStateTest, CanStopInfiniteTasks) {
   });
 
   boost::this_fiber::sleep_for(std::chrono::seconds(1));
-  fiber_state.Stop();
+  fiber_thread.Stop();
   // Can exit normally even if the fiber did not stop.
 }
 
-TEST(FiberStateTest, RespectsDefaultLimit) {
-  FiberState fiber_state({}, 2);
+TEST(FiberThreadTest, RespectsDefaultLimit) {
+  FiberThread fiber_thread({}, 2);
   TotalCounter total_counter;
 
   FunctionDescriptor fd = FunctionDescriptorBuilder::BuildPython(
@@ -91,7 +91,7 @@ TEST(FiberStateTest, RespectsDefaultLimit) {
   ConcurrencyCounter counter;
 
   for (int i = 0; i < 100; ++i) {
-    fiber_state.EnqueueFiber("", fd, [&]() {
+    fiber_thread.EnqueueFiber("", fd, [&]() {
       counter.inc_yield_dec();
       total_counter.increment();
     });
@@ -100,12 +100,12 @@ TEST(FiberStateTest, RespectsDefaultLimit) {
   total_counter.wait_for(100);
   EXPECT_EQ(counter.max_concurrency_, 2);
 
-  fiber_state.Stop();
+  fiber_thread.Stop();
 }
 
-TEST(FiberStateTest, RespectsConcurrencyGroups) {
+TEST(FiberThreadTest, RespectsConcurrencyGroups) {
   std::vector<ConcurrencyGroup> concurrency_groups{{"cg1", 1, {}}, {"cg5", 5, {}}};
-  FiberState fiber_state(concurrency_groups, 2);
+  FiberThread fiber_thread(concurrency_groups, 2);
   TotalCounter total_counter;
 
   FunctionDescriptor fd = FunctionDescriptorBuilder::BuildPython(
@@ -113,19 +113,19 @@ TEST(FiberStateTest, RespectsConcurrencyGroups) {
   ConcurrencyCounter counter1, counter2, counter5;
 
   for (int i = 0; i < 100; ++i) {
-    fiber_state.EnqueueFiber("cg1", fd, [&]() {
+    fiber_thread.EnqueueFiber("cg1", fd, [&]() {
       counter1.inc_yield_dec();
       total_counter.increment();
     });
   }
   for (int i = 0; i < 500; ++i) {
-    fiber_state.EnqueueFiber("cg5", fd, [&]() {
+    fiber_thread.EnqueueFiber("cg5", fd, [&]() {
       counter5.inc_yield_dec();
       total_counter.increment();
     });
   }
   for (int i = 0; i < 1000; ++i) {
-    fiber_state.EnqueueFiber("", fd, [&]() {
+    fiber_thread.EnqueueFiber("", fd, [&]() {
       counter2.inc_yield_dec();
       total_counter.increment();
     });
@@ -135,29 +135,29 @@ TEST(FiberStateTest, RespectsConcurrencyGroups) {
   EXPECT_EQ(counter2.max_concurrency_, 2);
   EXPECT_EQ(counter5.max_concurrency_, 5);
 
-  fiber_state.Stop();
+  fiber_thread.Stop();
 }
 
 // A function descriptor shares rate limiter with its concurrency group, even if in
 // scheduling time the concurreny group is not set.
-TEST(FiberStateTest, FunctionSharesRateLimiterWithConcurrencyGroup) {
+TEST(FiberThreadTest, FunctionSharesRateLimiterWithConcurrencyGroup) {
   FunctionDescriptor fd = FunctionDescriptorBuilder::BuildPython(
       "module_name", "class_name", "function_name", "function_hash");
   FunctionDescriptor fd2 = FunctionDescriptorBuilder::BuildPython(
       "module_name", "class_name", "function_name2", "function_hash2");
   std::vector<ConcurrencyGroup> concurrency_groups{{"cg3", 3, {fd}}, {"cg5", 5, {}}};
-  FiberState fiber_state(concurrency_groups, 2);
+  FiberThread fiber_thread(concurrency_groups, 2);
   TotalCounter total_counter;
 
   ConcurrencyCounter counter3;
 
   for (int i = 0; i < 200; ++i) {
-    fiber_state.EnqueueFiber("cg3", fd2, [&]() {
+    fiber_thread.EnqueueFiber("cg3", fd2, [&]() {
       counter3.inc_yield_dec();
       total_counter.increment();
     });
 
-    fiber_state.EnqueueFiber("", fd, [&]() {
+    fiber_thread.EnqueueFiber("", fd, [&]() {
       counter3.inc_yield_dec();
       total_counter.increment();
     });
@@ -166,7 +166,7 @@ TEST(FiberStateTest, FunctionSharesRateLimiterWithConcurrencyGroup) {
   total_counter.wait_for(400);
   EXPECT_EQ(counter3.max_concurrency_, 3);
 
-  fiber_state.Stop();
+  fiber_thread.Stop();
 }
 
 }  // namespace core

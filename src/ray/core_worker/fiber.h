@@ -84,14 +84,16 @@ class FiberRateLimiter {
 
 using FiberChannel = boost::fibers::unbuffered_channel<std::function<void()>>;
 
-// FiberState uses 1 thread to run all asyncio tasks. The tasks are executed in a round
+// FiberThread uses 1 thread to run all asyncio tasks. The tasks are executed in a round
 // robin manner, subject to a list of rate limiters for each concurrent group, each
 // function in those concurrent groups, and a default rate limiter.
-class FiberState {
+class FiberThread {
  public:
-  FiberState(const std::vector<ConcurrencyGroup> &concurrency_groups,
-             const int32_t max_concurrency_for_default_concurrency_group)
-      : default_rate_limiter_(max_concurrency_for_default_concurrency_group) {
+  FiberThread(const std::vector<ConcurrencyGroup> &concurrency_groups,
+              const int32_t max_concurrency_for_default_concurrency_group)
+      : max_concurrency_for_default_concurrency_group_(
+            max_concurrency_for_default_concurrency_group),
+        default_rate_limiter_(max_concurrency_for_default_concurrency_group) {
     for (const auto &group : concurrency_groups) {
       auto rate_limiter = std::make_shared<FiberRateLimiter>(group.max_concurrency);
       concurrency_group_rate_limiters_[group.name] = rate_limiter;
@@ -145,7 +147,7 @@ class FiberState {
                     std::function<void()> &&callback) {
     // Note we are doing dangerous trick of passing a reference of rate limiter to the
     // fiber function. This is safe because the *_rate_limiters_ member variables live as
-    // long as the FiberState object, and is never modified.
+    // long as the FiberThread object, and is never modified.
     FiberRateLimiter &rate_limiter = GetRateLimiter(concurrency_group_name, fd);
     auto op_status = channel_.push([&rate_limiter, callback]() {
       rate_limiter.Acquire();
@@ -161,6 +163,8 @@ class FiberState {
     fiber_runner_thread_.detach();
   }
 
+  const int32_t max_concurrency_for_default_concurrency_group_;
+
  private:
   /// The fiber channel used to send task between the submitter thread
   /// (main direct_actor_trasnport thread) and the fiber_runner_thread_ (defined below)
@@ -175,6 +179,7 @@ class FiberState {
   absl::flat_hash_map<std::string, std::shared_ptr<FiberRateLimiter>>
       function_rate_limiters_;
   FiberRateLimiter default_rate_limiter_;
+
   /// The fiber event used to notify that all worker fibers are stopped running.
   FiberEvent fiber_stopped_event_;
   /// The thread that runs all asyncio fibers. is_asyncio_ must be true.
