@@ -1084,15 +1084,21 @@ class DatasetPipeline:
         """Call
         :py:meth:`Dataset.iter_tf_batches <ray.data.Dataset.iter_tf_batches>`
         over the stream of output batches from the pipeline."""
+        from ray.air._internal.tensorflow_utils import (
+            convert_ndarray_batch_to_tf_tensor_batch,
+        )
+
         batch_format = _apply_strict_mode_batch_format(batch_format)
-        return DataIterator.iter_tf_batches(
-            self,
+
+        for batch in self.iter_batches(
             prefetch_blocks=prefetch_blocks,
             batch_size=batch_size,
             drop_last=drop_last,
             local_shuffle_buffer_size=local_shuffle_buffer_size,
             local_shuffle_seed=local_shuffle_seed,
-        )
+        ):
+
+            yield convert_ndarray_batch_to_tf_tensor_batch(batch)
 
     def iter_torch_batches(
         self,

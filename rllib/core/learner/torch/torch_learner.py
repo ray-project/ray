@@ -448,6 +448,12 @@ class TorchLearner(Learner):
 
     @staticmethod
     @override(Learner)
+    def _get_optimizer_lr(optimizer: "torch.optim.Optimizer") -> float:
+        for g in optimizer.param_groups:
+            return g["lr"]
+
+    @staticmethod
+    @override(Learner)
     def _set_optimizer_lr(optimizer: "torch.optim.Optimizer", lr: float) -> None:
         for g in optimizer.param_groups:
             g["lr"] = lr
