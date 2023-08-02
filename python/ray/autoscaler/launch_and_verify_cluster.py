@@ -307,7 +307,10 @@ if __name__ == "__main__":
             f"Injecting GCP project '{project_id}' into cluster configuration file..."
         )
         config_yaml["provider"]["project_id"] = project_id
-    elif provider_type != "vsphere":
+    elif provider_type == "vsphere":
+        print("======================================")
+        print("VSPHERE provider detected.")
+    else:
         print("======================================")
         print("Provider type not recognized. Exiting script.")
         sys.exit(1)
