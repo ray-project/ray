@@ -264,10 +264,7 @@ class _StatusReporter:
         # report problem. This should be fixed by checking if the checkpoint has been
         # uploaded already (via some marker), then skipping the repeat upload.
         if _use_storage_context() and isinstance(checkpoint, NewCheckpoint):
-            print(
-                "_StatusReporter.report called with checkpoint:\n",
-                checkpoint,
-            )
+            logger.debug(f"Checkpoint received by the Tune session: {checkpoint}")
             self._fresh_checkpoint = True
             # TODO(justinvyu): `metrics` doesn't include the autofilled metrics
             # like `training_iteration` and `time_total_s`.
@@ -501,10 +498,6 @@ class FunctionTrainable(Trainable):
         from ray.train._internal.checkpoint_manager import _TrainingResult
 
         if _use_storage_context() and isinstance(checkpoint, _TrainingResult):
-            print(
-                "Returning checkpoint from FunctionTrainable.save_checkpoint:\n",
-                checkpoint,
-            )
             return checkpoint
 
         if not checkpoint:

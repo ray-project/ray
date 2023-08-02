@@ -434,11 +434,9 @@ class DataParallelTrainer(BaseTrainer):
                     and len(first_worker_results) == 2
                 )
                 metrics, checkpoint = first_worker_results
-                print(
-                    "Calling _StatusReporter.report with (metrics, checkpoint): ",
-                    metrics,
-                    "\n",
-                    checkpoint,
+                logger.debug(
+                    "Report (metrics, checkpoint) to the Tune session:\n"
+                    f"  metrics={metrics}\n  checkpoint={checkpoint}"
                 )
                 train.report(metrics, checkpoint=checkpoint)
             else:

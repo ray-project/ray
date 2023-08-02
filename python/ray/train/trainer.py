@@ -202,11 +202,11 @@ class TrainingIterator:
         checkpoints = [
             checkpoint_result.data for checkpoint_result in checkpoint_results
         ]
-        print("TrainingIterator processed checkpoints: ", checkpoints)
         assert all(isinstance(checkpoint, NewCheckpoint) for checkpoint in checkpoints)
 
-        # All we need to do is track which checkpoint to use for book-keeping.
-        # Let's use rank 0, and attach metadata about the other checkpoints.
+        # We need to track one of the checkpoints for book-keeping.
+        # Let's use the rank 0 checkpoint.
+        # (They should all point to the same checkpoint path anyways.)
         self._checkpoint_to_report = checkpoints[0]
 
     def _fetch_next_result(self) -> Optional[List[Dict]]:
@@ -229,7 +229,7 @@ class TrainingIterator:
             result_type = first_result.type
             if result_type is TrainingResultType.REPORT:
                 if _use_storage_context():
-                    # TODO(justinvyu): This tuple is what TrainingResult should be.
+                    # TODO(justinvyu): Use the new _TrainingResult instead.
                     result_data = [
                         (r.data, None if rank > 0 else self._checkpoint_to_report)
                         for rank, r in enumerate(results)
