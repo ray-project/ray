@@ -518,9 +518,11 @@ class Trial:
 
         # Checkpoint config
         checkpoint_config = checkpoint_config or CheckpointConfig()
-        checkpoint_config.checkpoint_score_attribute = (
-            checkpoint_config.checkpoint_score_attribute or TRAINING_ITERATION
-        )
+        if not _use_storage_context():
+            # TODO(justinvyu): Why is this needed?
+            checkpoint_config.checkpoint_score_attribute = (
+                checkpoint_config.checkpoint_score_attribute or TRAINING_ITERATION
+            )
 
         self.checkpoint_config = checkpoint_config
 
