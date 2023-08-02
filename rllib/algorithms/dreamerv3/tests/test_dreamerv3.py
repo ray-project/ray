@@ -136,16 +136,13 @@ class TestDreamerV3(unittest.TestCase):
             "XL_atari": 9708799,
         }
 
-        config = (
-            dreamerv3.DreamerV3Config()
-            .training(
-                model={
-                    "batch_length_T": 16,
-                    "horizon_H": 5,
-                    "gamma": 0.997,
-                    "symlog_obs": True,
-                }
-            )
+        config = dreamerv3.DreamerV3Config().training(
+            model={
+                "batch_length_T": 16,
+                "horizon_H": 5,
+                "gamma": 0.997,
+                "symlog_obs": True,
+            }
         )
 
         # Check all model_sizes described in the paper ([1]) on matching the number
