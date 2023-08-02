@@ -27,7 +27,7 @@ class DreamerV3Catalog(Catalog):
             model_config_dict=model_config_dict,
         )
 
-        self.model_size = self._model_config_dict["model_size"]
+        self.model_size = self.model_config_dict["model_size"]
         self.is_img_space = len(self.observation_space.shape) in [2, 3]
         self.is_gray_scale = (
             self.is_img_space and len(self.observation_space.shape) == 2
