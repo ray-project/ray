@@ -17,7 +17,7 @@ boto3==1.26.76; python_version >= '3.8'
 # Todo: investigate if we can get rid of this and exchange for ray.cloudpickle
 cloudpickle==2.2.0
 # Keep in sync with `ci/build/upload_build_info.sh`
-cryptography==38.0.1
+cryptography==41.0.3
 cython==0.29.32
 dataclasses; python_version < '3.7'
 fastapi[all]==0.99.1
