@@ -45,7 +45,7 @@ python_register_toolchains(
     register_toolchains = False,
 )
 
-load("@python3_9//:defs.bzl", bk_python = "interpreter")
+load("@python3_9//:defs.bzl", python39 = "interpreter")
 load("@rules_python//python/pip_install:repositories.bzl", "pip_install_dependencies")
 
 pip_install_dependencies()
@@ -54,17 +54,26 @@ load("@rules_python//python:pip.bzl", "pip_parse")
 
 pip_parse(
     name = "py_deps_buildkite",
-    python_interpreter_target = bk_python,
+    python_interpreter_target = python39,
+    requirements_lock = "//release:requirements_buildkite.txt",
+)
+
+pip_parse(
+    name = "py_deps_ray_ci",
+    python_interpreter_target = python39,
     requirements_lock = "//release:requirements_buildkite.txt",
 )
 
 load("@py_deps_buildkite//:requirements.bzl", install_py_deps_buildkite = "install_deps")
+load("@py_deps_ray_ci//:requirements.bzl", install_py_deps_ray_ci = "install_deps")
 
 install_py_deps_buildkite()
 
-register_toolchains("//release:python_toolchain")
+install_py_deps_ray_ci()
+
+register_toolchains("//:python_toolchain")
 
 register_execution_platforms(
     "@local_config_platform//:host",
-    "//release:hermetic_python_platform",
+    "//:hermetic_python_platform",
 )
