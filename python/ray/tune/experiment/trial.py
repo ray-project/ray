@@ -789,7 +789,8 @@ class Trial:
         is returned.
         """
         if _use_storage_context():
-            return self.checkpoint_manager.latest_checkpoint
+            return self.checkpoint_manager.latest_checkpoint_result
+
         if self.status == Trial.ERROR:
             checkpoint = self.checkpoint_manager.newest_persistent_checkpoint
         else:
@@ -1016,11 +1017,9 @@ class Trial:
             checkpoint: Checkpoint taken.
         """
         if _use_storage_context():
-            from ray.train._internal.checkpoint_manager import (
-                _TrackedCheckpoint as _NewTrackedCheckpoint,
-            )
+            from ray.train._internal.checkpoint_manager import _TrainingResult
 
-            assert isinstance(checkpoint, _NewTrackedCheckpoint)
+            assert isinstance(checkpoint, _TrainingResult)
             self.checkpoint_manager.register_checkpoint(checkpoint)
         else:
             self.checkpoint_manager.on_checkpoint(checkpoint)

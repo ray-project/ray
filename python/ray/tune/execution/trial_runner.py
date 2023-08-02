@@ -970,15 +970,11 @@ class _TuneControllerBase:
         """
         logger.debug("Trial %s: Processing trial save.", trial)
 
-        from ray.train._internal.checkpoint_manager import (
-            _TrackedCheckpoint as _NewTrackedCheckpoint,
-        )
+        from ray.train._internal.checkpoint_manager import _TrainingResult
 
         try:
-            if _use_storage_context() and isinstance(
-                checkpoint_value, _NewTrackedCheckpoint
-            ):
-                # TODO(justinvyu): Update callbacks to take in a _NewTrackedCheckpoint
+            if _use_storage_context() and isinstance(checkpoint_value, _TrainingResult):
+                # TODO(justinvyu): Update callbacks to take in a _TrainingResult
                 trial.on_checkpoint(checkpoint_value)
 
                 self._checkpoint_manager.on_trial_checkpoint(trial)
