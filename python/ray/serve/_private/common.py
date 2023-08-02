@@ -398,13 +398,17 @@ class ServeDeployMode(str, Enum):
     MULTI_APP = "MULTI_APP"
 
 
-# Keep in sync with ServeHTTPProxyStatus in
+# Keep in sync with ServeSystemActorStatus in
 # python/ray/dashboard/client/src/type/serve.ts
 class HTTPProxyStatus(str, Enum):
     STARTING = "STARTING"
     HEALTHY = "HEALTHY"
     UNHEALTHY = "UNHEALTHY"
     DRAINING = "DRAINING"
+    # The DRAINED status is a momentary state
+    # just before the proxy is removed
+    # so this status won't show up on the dashboard.
+    DRAINED = "DRAINED"
 
 
 class ServeComponentType(str, Enum):

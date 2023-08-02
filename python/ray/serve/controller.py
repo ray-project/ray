@@ -42,7 +42,7 @@ from ray.serve._private.logging_utils import (
     configure_component_logger,
     get_component_logger_file_path,
 )
-from ray.serve._private.long_poll import LongPollHost, LongPollNamespace
+from ray.serve._private.long_poll import LongPollHost
 from ray.serve.exceptions import RayServeException
 from ray.serve.schema import (
     ServeApplicationSchema,
@@ -186,8 +186,9 @@ class ServeController:
         run_background_task(self.run_control_loop())
 
         self._recover_config_from_checkpoint()
-        self._active_nodes = set()
-        self._update_active_nodes()
+        # Nodes where http proxy actors should run.
+        self._http_proxy_nodes = set()
+        self._update_http_proxy_nodes()
 
     def check_alive(self) -> None:
         """No-op to check if this controller is alive."""
@@ -281,19 +282,15 @@ class ServeController:
         )
         return actor_name_list.SerializeToString()
 
-    def _update_active_nodes(self):
-        """Update the active nodes set.
+    def _update_http_proxy_nodes(self):
+        """Update the nodes set where http proxy actors should run.
 
-        Controller keeps the state of active nodes (head node and nodes with deployment
-        replicas). If the active nodes set changes, it will notify the long poll client.
+        Controller decides where http proxy actors should run
+        (head node and nodes with deployment replicas).
         """
-        new_active_nodes = self.deployment_state_manager.get_active_node_ids()
-        new_active_nodes.add(self._controller_node_id)
-        if self._active_nodes != new_active_nodes:
-            self._active_nodes = new_active_nodes
-            self.long_poll_host.notify_changed(
-                LongPollNamespace.ACTIVE_NODES, self._active_nodes
-            )
+        new_http_proxy_nodes = self.deployment_state_manager.get_active_node_ids()
+        new_http_proxy_nodes.add(self._controller_node_id)
+        self._http_proxy_nodes = new_http_proxy_nodes
 
     async def run_control_loop(self) -> None:
         # NOTE(edoakes): we catch all exceptions here and simply log them,
@@ -318,21 +315,6 @@ class ServeController:
                 )
                 self.done_recovering_event.set()
 
-            # Update the active nodes set before updating the HTTP states, so they
-            # are more consistent.
-            self._update_active_nodes()
-
-            # Don't update http_state until after the done recovering event is set,
-            # otherwise we may start a new HTTP proxy but not broadcast it any
-            # info about available deployments & their replicas.
-            if self.http_proxy_state_manager and self.done_recovering_event.is_set():
-                try:
-                    self.http_proxy_state_manager.update(
-                        active_nodes=self._active_nodes
-                    )
-                except Exception:
-                    logger.exception("Exception updating HTTP state.")
-
             try:
                 any_recovering = self.deployment_state_manager.update()
                 if not self.done_recovering_event.is_set() and not any_recovering:
@@ -344,6 +326,21 @@ class ServeController:
                 self.application_state_manager.update()
             except Exception:
                 logger.exception("Exception updating application state.")
+
+            # Update the http proxy nodes set before updating the HTTP proxy states,
+            # so they are more consistent.
+            self._update_http_proxy_nodes()
+
+            # Don't update http_state until after the done recovering event is set,
+            # otherwise we may start a new HTTP proxy but not broadcast it any
+            # info about available deployments & their replicas.
+            if self.http_proxy_state_manager and self.done_recovering_event.is_set():
+                try:
+                    self.http_proxy_state_manager.update(
+                        http_proxy_nodes=self._http_proxy_nodes
+                    )
+                except Exception:
+                    logger.exception("Exception updating HTTP state.")
 
             try:
                 self._put_serve_snapshot()
