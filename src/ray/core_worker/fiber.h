@@ -18,6 +18,8 @@
 #include <chrono>
 
 #include "ray/util/logging.h"
+#include "ray/util/macros.h"
+
 namespace ray {
 namespace core {
 

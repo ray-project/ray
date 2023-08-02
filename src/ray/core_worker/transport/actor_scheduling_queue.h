@@ -44,9 +44,9 @@ class ActorSchedulingQueue : public SchedulingQueue {
       DependencyWaiter &waiter,
       std::shared_ptr<ConcurrencyGroupManager<BoundedExecutor>> pool_manager,
       std::shared_ptr<ConcurrencyGroupManager<FiberState>> fiber_state_manager,
-      bool is_asyncio = false,
-      int fiber_max_concurrency = 1,
-      const std::vector<ConcurrencyGroup> &concurrency_groups = {},
+      bool is_asyncio,
+      int fiber_max_concurrency,
+      const std::vector<ConcurrencyGroup> &concurrency_groups,
       int64_t reorder_wait_seconds = kMaxReorderWaitSeconds);
 
   void Stop() override;
