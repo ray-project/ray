@@ -7,7 +7,13 @@ import torchvision.transforms as transforms
 from torchvision.models import resnet18
 
 import ray
-from ray.train import Checkpoint, CheckpointConfig, FailureConfig, RunConfig, ScalingConfig
+from ray.train import (
+    Checkpoint,
+    CheckpointConfig,
+    FailureConfig,
+    RunConfig,
+    ScalingConfig,
+)
 import ray.train.torch
 from ray.train.horovod import HorovodTrainer
 from ray import train, tune

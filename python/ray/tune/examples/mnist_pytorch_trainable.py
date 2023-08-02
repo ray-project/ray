@@ -10,7 +10,12 @@ import torch.optim as optim
 import ray
 from ray import train, tune
 from ray.tune.schedulers import ASHAScheduler
-from ray.tune.examples.mnist_pytorch import train_func, test_func, get_data_loaders, ConvNet
+from ray.tune.examples.mnist_pytorch import (
+    train_func,
+    test_func,
+    get_data_loaders,
+    ConvNet,
+)
 
 # Change these values if you want the training to run quicker or slower.
 EPOCH_SIZE = 512

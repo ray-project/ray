@@ -156,9 +156,7 @@ def train_func(config):
         # some function to write model to directory
         write_model_to_dir(my_model, "my_model")
         write_epoch_to_dir(epoch, "my_model")
-        train.report(
-            metrics=metrics, checkpoint=Checkpoint.from_directory("my_model")
-        )
+        train.report(metrics=metrics, checkpoint=Checkpoint.from_directory("my_model"))
 
 
 # __function_api_checkpointing_from_dir_end__

@@ -12,8 +12,7 @@ def train_fn(config):
 
 
 trainer = DataParallelTrainer(
-    train_loop_per_worker=train_fn,
-    scaling_config=train.ScalingConfig(num_workers=1)
+    train_loop_per_worker=train_fn, scaling_config=train.ScalingConfig(num_workers=1)
 )
 trainer.fit()
 

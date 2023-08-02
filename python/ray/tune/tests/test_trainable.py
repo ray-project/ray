@@ -85,9 +85,7 @@ class SavingTrainable(tune.Trainable):
 
 
 def function_trainable_dict(config):
-    train.report(
-        {"metric": 2}, checkpoint=Checkpoint.from_dict({"checkpoint_data": 3})
-    )
+    train.report({"metric": 2}, checkpoint=Checkpoint.from_dict({"checkpoint_data": 3}))
 
 
 def function_trainable_directory(config):

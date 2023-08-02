@@ -5,8 +5,8 @@ import tensorflow as tf
 
 import ray
 from ray import train
-from ray.train import ScalingConfig
 from ray.data.preprocessors import Concatenator
+from ray.train import ScalingConfig
 from ray.train.tensorflow import TensorflowTrainer
 
 

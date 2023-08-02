@@ -523,7 +523,9 @@ def test_clear_lazy_ckpt_markers(ray_start_4_cpus):
 
     def train_func():
         # We should always have this lazy checkpoint marker in single node training
-        assert Path(train.get_context().get_trial_dir(), LAZY_CHECKPOINT_MARKER_FILE).exists()
+        assert Path(
+            train.get_context().get_trial_dir(), LAZY_CHECKPOINT_MARKER_FILE
+        ).exists()
 
         if not train.get_checkpoint():
             train.report(

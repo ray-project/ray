@@ -64,9 +64,9 @@ def train_loop_per_worker(train_loop_config):
 
     data = dataset[0]
     train_idx = data.train_mask.nonzero(as_tuple=False).view(-1)
-    train_idx = train_idx.split(train_idx.size(0) // train.get_context().get_world_size())[
-        train.get_context().get_world_rank()
-    ]
+    train_idx = train_idx.split(
+        train_idx.size(0) // train.get_context().get_world_size()
+    )[train.get_context().get_world_rank()]
 
     train_loader = NeighborSampler(
         data.edge_index,

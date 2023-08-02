@@ -95,9 +95,7 @@ def test_torch_e2e_state_dict(ray_start_4_cpus, prepare_model):
         model = torch.nn.Linear(3, 1)
         if prepare_model:
             model = train.torch.prepare_model(model)
-        train.report(
-            {}, checkpoint=TorchCheckpoint.from_state_dict(model.state_dict())
-        )
+        train.report({}, checkpoint=TorchCheckpoint.from_state_dict(model.state_dict()))
 
     scaling_config = ScalingConfig(num_workers=2)
     trainer = TorchTrainer(

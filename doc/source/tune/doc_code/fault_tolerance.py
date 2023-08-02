@@ -105,7 +105,9 @@ tuner = tune.Tuner(
     train_fn,
     # Tune over the object references!
     param_space={"model_ref": tune.grid_search(model_refs)},
-    run_config=train.RunConfig(storage_path="~/ray_results", name="restore_object_refs"),
+    run_config=train.RunConfig(
+        storage_path="~/ray_results", name="restore_object_refs"
+    ),
 )
 tuner.fit()
 # __ft_restore_objrefs_initial_end__

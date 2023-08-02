@@ -43,7 +43,9 @@ def train_fn(config):
             {
                 "metric": config["metric"] * epoch,
                 "epoch": epoch,
-                "num_cpus": train.get_context().get_trial_resources().required_resources["CPU"],
+                "num_cpus": train.get_context()
+                .get_trial_resources()
+                .required_resources["CPU"],
             },
             checkpoint=checkpoint,
         )

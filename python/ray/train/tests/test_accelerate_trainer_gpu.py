@@ -265,7 +265,9 @@ def test_accelerate_linear(ray_2_node_2_gpu, accelerate_config_file_contents, tm
         assert accelerator.device == train.torch.get_device()
         assert accelerator.process_index == train.get_context().get_world_rank()
         if accelerator.device.type != "cpu":
-            assert accelerator.local_process_index == train.get_context().get_local_rank()
+            assert (
+                accelerator.local_process_index == train.get_context().get_local_rank()
+            )
         result = linear_train_func(accelerator, config)
         assert len(result) == epochs
         assert result[-1]["loss"] < result[0]["loss"]

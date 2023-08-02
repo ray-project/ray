@@ -31,9 +31,7 @@ def train_func():
         model = build_model()
 
     model.save("my_model", overwrite=True)
-    train.report(
-        metrics={"iter": 1}, checkpoint=Checkpoint.from_directory("my_model")
-    )
+    train.report(metrics={"iter": 1}, checkpoint=Checkpoint.from_directory("my_model"))
 
 
 scaling_config = ScalingConfig(num_workers=2)
