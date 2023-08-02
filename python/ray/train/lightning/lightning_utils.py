@@ -10,12 +10,14 @@ import logging
 import shutil
 import torch
 import tempfile
+from tempfile import TemporaryDirectory
+from ray.train import Checkpoint
 from packaging.version import Version
 from typing import Any, Dict, Optional, List, Union
 from torch.utils.data import IterableDataset, DataLoader
 
 import pytorch_lightning as pl
-from pytorch_lightning.callbacks import ModelCheckpoint
+from pytorch_lightning.callbacks import ModelCheckpoint, Callback
 from pytorch_lightning.plugins.environments import LightningEnvironment
 from pytorch_lightning.strategies import DDPStrategy, DeepSpeedStrategy
 
@@ -48,35 +50,6 @@ def get_worker_root_device():
         return devices[0]
     else:
         return devices
-
-
-@PublicAPI(stability="alpha")
-def get_devices() -> Optional[Union[List[int], str]]:
-    """Returns the parallel devices for Lightning Trainer on each Ray Train worker.
-
-    This method returns the list of CUDA device indexes of a GPU worker, and returns 
-    "auto" if called inside a CPU worker. Note that you can only call this method within 
-    the training function of the :class:`TorchTrainer <ray.train.torch.TorchTrainer>` class.
-
-    Example:
-        .. testcode::
-
-            import ray
-            import pytorch_lightning as pl
-
-            def train_loop_per_worker():
-                devices = ray.train.lightning.get_devices()
-                # devices == [deivce_id] in GPU workers
-                # devices == "auto" in CPU workers
-
-                trainer = pl.Trainer(
-                    ...,
-                    devices=devices
-                )
-
-    """
-    device = get_worker_root_device()
-    return [device.index] if device.index else "auto"
 
 
 @PublicAPI(stability="alpha")
@@ -201,6 +174,29 @@ def prepare_trainer(trainer: pl.Trainer) -> pl.Trainer:
         )
 
     return trainer
+
+
+@PublicAPI(stability="alpha")
+class RayTrainReportCallback(Callback):
+    """A simple callback that reports checkpoints to Ray on train epoch end."""
+
+    def on_train_epoch_end(self, trainer, pl_module) -> None:
+        with TemporaryDirectory() as tmpdir:
+            # Fetch metrics
+            metrics = trainer.callback_metrics
+            metrics = {k: v.item() for k, v in metrics.items()}
+
+            # (Optional) Add customized metrics
+            metrics["epoch"] = trainer.current_epoch
+            metrics["steps"] = trainer.global_step
+
+            # Save checkpoint to local
+            ckpt_path = os.path.join(tmpdir, f"ckpt_epoch_{trainer.current_epoch}")
+            trainer.save_checkpoint(ckpt_path, weights_only=False)
+
+            # Report to train session
+            checkpoint = Checkpoint.from_directory(tmpdir)
+            ray.train.report(metrics=metrics, checkpoint=checkpoint)
 
 
 class RayIterableDataset(IterableDataset):

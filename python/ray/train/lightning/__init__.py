@@ -15,13 +15,12 @@ from ray.train.lightning.lightning_trainer import (
 from ray.train.lightning.lightning_checkpoint import LightningCheckpoint
 from ray.train.lightning.lightning_predictor import LightningPredictor
 from ray.train.lightning.lightning_utils import (
-    get_devices,
     prepare_trainer,
     RayDDPStrategy,
     RayFSDPStrategy,
     RayDeepSpeedStrategy,
     RayLightningEnvironment,
-    RayModelCheckpoint,
+    RayTrainReportCallback,
 )
 
 __all__ = [
@@ -29,11 +28,10 @@ __all__ = [
     "LightningConfigBuilder",
     "LightningCheckpoint",
     "LightningPredictor",
-    "get_devices",
     "prepare_trainer",
     "RayDDPStrategy",
     "RayFSDPStrategy",
     "RayDeepSpeedStrategy",
     "RayLightningEnvironment",
-    "RayModelCheckpoint",
+    "RayTrainReportCallback",
 ]

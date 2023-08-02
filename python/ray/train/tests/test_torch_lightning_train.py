@@ -9,6 +9,7 @@ from ray.train.lightning import (
     RayDDPStrategy,
     RayFSDPStrategy,
     RayLightningEnvironment,
+    RayTrainReportCallback
 )
 
 from ray.air import session
@@ -16,7 +17,6 @@ from ray.air.config import ScalingConfig
 from ray.train.tests.lightning_test_utils import (
     LinearModule,
     DummyDataModule,
-    RayTrainReportCallback,
 )
 import pytorch_lightning as pl
 
