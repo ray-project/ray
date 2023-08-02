@@ -5,14 +5,20 @@ import pickle
 import pytest
 import tempfile
 import time
+from typing import Optional, Tuple
 
 import pyarrow.fs
 
 from ray import train, tune
-from ray.air.tests.test_checkpoints import mock_s3_bucket_uri
+from ray.air.constants import EXPR_RESULT_FILE
 from ray.train._internal.storage import _download_from_fs_path
 from ray.train.checkpoint import Checkpoint as NewCheckpoint
 from ray.train.data_parallel_trainer import DataParallelTrainer
+
+from ray.air.tests.test_checkpoints import mock_s3_bucket_uri
+
+
+_SCORE_KEY = "score"
 
 
 @contextmanager
@@ -38,6 +44,28 @@ def _create_mock_custom_fs(custom_fs_root_dir: Path) -> pyarrow.fs.FileSystem:
         )
     )
     return storage_filesystem
+
+
+@contextmanager
+def _resolve_storage_type(
+    storage_path_type: str, tmp_path: Path
+) -> Tuple[str, Optional[pyarrow.fs.FileSystem]]:
+    storage_path, storage_filesystem = None, None
+
+    context_manager = (
+        mock_s3_bucket_uri if storage_path_type == "cloud" else dummy_context_manager
+    )
+
+    with context_manager() as cloud_storage_path:
+        if storage_path_type == "nfs":
+            storage_path = str(tmp_path / "fake_nfs")
+        elif storage_path_type == "cloud":
+            storage_path = str(cloud_storage_path)
+        elif storage_path_type == "custom_fs":
+            storage_path = "mock_bucket"
+            storage_filesystem = _create_mock_custom_fs(tmp_path / "custom_fs")
+
+        yield storage_path, storage_filesystem
 
 
 def train_fn(config):
@@ -79,7 +107,10 @@ def train_fn(config):
         with open(os.path.join(temp_dir, checkpoint_file_name), "wb") as f:
             pickle.dump({"iter": i}, f)
 
-        train.report({"iter": i}, checkpoint=NewCheckpoint.from_directory(temp_dir))
+        train.report(
+            {"iter": i, _SCORE_KEY: i},
+            checkpoint=NewCheckpoint.from_directory(temp_dir),
+        )
 
 
 @pytest.mark.parametrize("storage_path_type", [None, "nfs", "cloud", "custom_fs"])
@@ -117,24 +148,12 @@ def test_tuner(monkeypatch, storage_path_type, tmp_path):
     LOCAL_CACHE_DIR = tmp_path / "ray_results"
     monkeypatch.setenv("RAY_AIR_LOCAL_CACHE_DIR", str(LOCAL_CACHE_DIR))
 
-    context_manager = (
-        mock_s3_bucket_uri if storage_path_type == "cloud" else dummy_context_manager
-    )
-
     exp_name = "simple_persistence_test"
 
-    with context_manager() as cloud_storage_path:
-        storage_filesystem = None
-        if storage_path_type is None:
-            storage_path = None
-        elif storage_path_type == "nfs":
-            storage_path = str(tmp_path / "fake_nfs")
-        elif storage_path_type == "cloud":
-            storage_path = str(cloud_storage_path)
-        elif storage_path_type == "custom_fs":
-            storage_path = "mock_bucket"
-            storage_filesystem = _create_mock_custom_fs(tmp_path / "custom_fs")
-
+    with _resolve_storage_type(storage_path_type, tmp_path) as (
+        storage_path,
+        storage_filesystem,
+    ):
         NUM_ITERATIONS = 6  # == num_checkpoints == num_artifacts
         NUM_TRIALS = 2
         tuner = tune.Tuner(
@@ -175,14 +194,27 @@ def test_tuner(monkeypatch, storage_path_type, tmp_path):
     assert len(list(exp_dir.glob("tuner.pkl"))) == 1
 
 
-@pytest.mark.parametrize("storage_path_type", [None])
-def test_trainer(tmp_path, monkeypatch, storage_path_type):
+@pytest.mark.parametrize("storage_path_type", [None, "nfs", "cloud", "custom_fs"])
+@pytest.mark.parametrize(
+    "checkpoint_config",
+    [
+        train.CheckpointConfig(),
+        train.CheckpointConfig(num_to_keep=2),
+        train.CheckpointConfig(
+            num_to_keep=1,
+            checkpoint_score_attribute=_SCORE_KEY,
+            checkpoint_score_order="max",
+        ),
+    ],
+)
+def test_trainer(
+    tmp_path, monkeypatch, storage_path_type, checkpoint_config: train.CheckpointConfig
+):
     """
     TODO(justinvyu): Test for these once implemented:
     - artifacts
-    - restoration
+    - restoration, train.get_checkpoint
     - accessing checkpoints from Result object
-    - top k checkpoints (num_to_keep)
 
     trainer_new_persistence
     ├── experiment_state-2023-07-28_10-00-38.json
@@ -208,36 +240,55 @@ def test_trainer(tmp_path, monkeypatch, storage_path_type):
             ├── artifact-1-1.txt
             └── ...
     """
-
     LOCAL_CACHE_DIR = tmp_path / "ray_results"
     monkeypatch.setenv("RAY_AIR_LOCAL_CACHE_DIR", str(LOCAL_CACHE_DIR))
     exp_name = "trainer_new_persistence"
 
-    if storage_path_type is None:
-        storage_path = None
-    elif storage_path_type == "nfs":
-        storage_path = str(tmp_path / "fake_nfs")
-
-    trainer = DataParallelTrainer(
-        train_fn,
-        train_loop_config={"in_trainer": True},
-        scaling_config=train.ScalingConfig(num_workers=2),
-        run_config=train.RunConfig(storage_path=storage_path, name=exp_name, verbose=0),
-    )
-    trainer.fit()
-
-    local_inspect_dir = tmp_path / "inspect"
-    if storage_path:
-        # if storage_filesystem:
-        #     fs, fs_path = storage_filesystem, storage_path
-        # else:
-        fs, fs_path = pyarrow.fs.FileSystem.from_uri(storage_path)
-        _download_from_fs_path(
-            fs=fs, fs_path=fs_path, local_path=str(local_inspect_dir)
+    with _resolve_storage_type(storage_path_type, tmp_path) as (
+        storage_path,
+        storage_filesystem,
+    ):
+        NUM_ITERATIONS = 6
+        NUM_WORKERS = 2
+        trainer = DataParallelTrainer(
+            train_fn,
+            train_loop_config={"in_trainer": True, "num_iterations": NUM_ITERATIONS},
+            scaling_config=train.ScalingConfig(num_workers=2),
+            run_config=train.RunConfig(
+                storage_path=storage_path,
+                storage_filesystem=storage_filesystem,
+                name=exp_name,
+                verbose=0,
+                checkpoint_config=checkpoint_config,
+            ),
         )
-    else:
-        local_inspect_dir = LOCAL_CACHE_DIR
+        result = trainer.fit()
 
+        local_inspect_dir = tmp_path / "inspect"
+        if storage_path:
+            if storage_filesystem:
+                fs, storage_fs_path = storage_filesystem, storage_path
+            else:
+                fs, storage_fs_path = pyarrow.fs.FileSystem.from_uri(storage_path)
+            _download_from_fs_path(
+                fs=fs, fs_path=storage_fs_path, local_path=str(local_inspect_dir)
+            )
+        else:
+            fs, storage_fs_path = pyarrow.fs.LocalFileSystem(), str(LOCAL_CACHE_DIR)
+            local_inspect_dir = LOCAL_CACHE_DIR
+
+    # First, inspect that the result object returns the correct paths.
+    # TODO(justinvyu): [custom_fs_path_expansion]
+    # This doesn't work for the `custom_fs` case right now
+    # because Result.path <- Trial.remote_path/local_path <- Experiment.path,
+    # which expands the storage path to an absolute path.
+    # We shouldn't expand the storage path to an absolute path if a custom fs is passed.
+    if not storage_filesystem:
+        _, trial_fs_path = pyarrow.fs.FileSystem.from_uri(result.path)
+        assert trial_fs_path.startswith(storage_fs_path)
+        assert result.checkpoint.path.startswith(trial_fs_path)
+
+    # Second, inspect the contents of the storage path
     assert len(list(local_inspect_dir.glob("*"))) == 1  # Only expect 1 experiment dir
     exp_dir = local_inspect_dir / exp_name
 
@@ -248,6 +299,26 @@ def test_trainer(tmp_path, monkeypatch, storage_path_type):
     assert len(list(exp_dir.glob("trainer.pkl"))) == 1
 
     # Files synced by the worker
+    assert len(list(exp_dir.glob("DataParallelTrainer_*"))) == 1
+    for trial_dir in exp_dir.glob("DataParallelTrainer_*"):
+        # If set, expect num_to_keep. Otherwise, expect to see all of them.
+        expected_num_checkpoints = checkpoint_config.num_to_keep or NUM_ITERATIONS
+
+        assert len(list(trial_dir.glob("checkpoint_*"))) == expected_num_checkpoints
+        for checkpoint_dir in trial_dir.glob("checkpoint_*"):
+            # 1 checkpoint shard per worker.
+            assert len(list(checkpoint_dir.glob("dummy-*.pkl"))) == NUM_WORKERS
+
+        # NOTE: These next 2 are technically synced by the driver.
+        # TODO(justinvyu): In a follow-up PR, artifacts will be synced by the workers.
+        # TODO(justinvyu): In a follow-up PR, the rank folders will be removed.
+        # TODO(justinvyu): [custom_fs_path_expansion] Same issue as above.
+        if not storage_filesystem:
+            assert (
+                len(list(trial_dir.glob("rank_*/artifact-*")))
+                == NUM_ITERATIONS * NUM_WORKERS
+            )
+            assert len(list(trial_dir.glob(EXPR_RESULT_FILE))) == 1
 
 
 if __name__ == "__main__":
