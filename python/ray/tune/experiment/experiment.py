@@ -222,7 +222,7 @@ class Experiment:
                 raise ValueError(
                     "'checkpoint_at_end' cannot be used with a function trainable. "
                     "You should include one last call to "
-                    "`ray.train.session.report(metrics=..., checkpoint=...)` "
+                    "`ray.train.report(metrics=..., checkpoint=...)` "
                     "at the end of your training loop to get this behavior."
                 )
             if checkpoint_config.checkpoint_frequency:
