@@ -629,7 +629,7 @@ class TunerInternal:
                     "custom training loop, you will need to "
                     "report a checkpoint every `checkpoint_frequency` iterations "
                     "within your training loop using "
-                    "`ray.train.session.report(metrics=..., checkpoint=...)` "
+                    "`ray.train.report(metrics=..., checkpoint=...)` "
                     "to get this behavior."
                 )
             elif handle_checkpoint_freq is True:
