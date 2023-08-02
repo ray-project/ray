@@ -243,6 +243,9 @@ class _StatusReporter:
         return self._fresh_checkpoint
 
     def get_checkpoint(self):
+        # NOTE: This is not the same as `train.get_checkpoint`.
+        # This is used internally by `FunctionTrainable.save_checkpoint`.
+        # `loaded_checkpoint` is the checkpoint accessible by the user.
         self._fresh_checkpoint = False
         return self._last_checkpoint
 
@@ -251,6 +254,9 @@ class _StatusReporter:
 
     def report(self, metrics: Dict, *, checkpoint: Optional[Checkpoint] = None) -> None:
         from ray.train._internal.storage import _use_storage_context
+        from ray.train._internal.checkpoint_manager import (
+            _TrackedCheckpoint as _NewTrackedCheckpoint,
+        )
         from ray.train.checkpoint import Checkpoint as NewCheckpoint
 
         # TODO(xwjiang): Tons of optimizations.
@@ -265,7 +271,12 @@ class _StatusReporter:
                 checkpoint,
             )
             self._fresh_checkpoint = True
-            self._last_checkpoint = checkpoint
+            # TODO(justinvyu): `metrics` doesn't include the autofilled metrics
+            # like `training_iteration` and `time_total_s`.
+            # Should the session be the source of truth for these metrics?
+            self._last_checkpoint = _NewTrackedCheckpoint(
+                checkpoint=checkpoint, metrics=metrics
+            )
         else:
             if checkpoint:
                 training_iteration = self._get_training_iteration()
@@ -280,12 +291,14 @@ class _StatusReporter:
     def loaded_checkpoint(self) -> Optional[Checkpoint]:
         if self._last_checkpoint:
             from ray.train._internal.storage import _use_storage_context
-            from ray.train.checkpoint import Checkpoint as NewCheckpoint
+            from ray.train._internal.checkpoint_manager import (
+                _TrackedCheckpoint as _NewTrackedCheckpoint,
+            )
 
             if _use_storage_context() and isinstance(
-                self._last_checkpoint, NewCheckpoint
+                self._last_checkpoint, _NewTrackedCheckpoint
             ):
-                return self._last_checkpoint
+                return self._last_checkpoint.checkpoint
 
             assert isinstance(self._last_checkpoint, str)
             return Checkpoint.from_directory(self._last_checkpoint)
@@ -489,9 +502,11 @@ class FunctionTrainable(Trainable):
         checkpoint = self._status_reporter.get_checkpoint()
 
         from ray.train._internal.storage import _use_storage_context
-        from ray.train.checkpoint import Checkpoint as NewCheckpoint
+        from ray.train._internal.checkpoint_manager import (
+            _TrackedCheckpoint as _NewTrackedCheckpoint,
+        )
 
-        if _use_storage_context() and isinstance(checkpoint, NewCheckpoint):
+        if _use_storage_context() and isinstance(checkpoint, _NewTrackedCheckpoint):
             print(
                 "Returning checkpoint from FunctionTrainable.save_checkpoint:\n",
                 checkpoint,

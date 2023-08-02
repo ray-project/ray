@@ -14,7 +14,7 @@ from ray.air.config import CheckpointConfig
 from ray.air._internal.checkpoint_manager import CheckpointStorage, _TrackedCheckpoint
 from ray.air.execution import ResourceManager, PlacementGroupResourceManager
 from ray.air.execution._internal import RayActorManager, TrackedActor
-from ray.train._internal.storage import StorageContext
+from ray.train._internal.storage import _use_storage_context, StorageContext
 from ray.exceptions import RayActorError
 from ray.tune.error import _AbortTrialExecution
 from ray.tune.execution.ray_trial_executor import _class_cache
@@ -1026,6 +1026,19 @@ class TuneController(_TuneControllerBase):
 
         result = result or trial.last_result
 
+        if _use_storage_context():
+            assert (
+                storage == CheckpointStorage.PERSISTENT
+            ), "Memory checkpoints are no longer supported in the new persistence mode."
+            self._schedule_trial_task(
+                trial=trial,
+                method_name="save",
+                on_result=self._on_saving_result,
+                on_error=self._trial_task_failure,
+            )
+            # TODO(justinvyu): Remove the return value?
+            return
+
         if storage == CheckpointStorage.MEMORY:
             future = self._schedule_trial_task(
                 trial=trial,
@@ -1059,6 +1072,10 @@ class TuneController(_TuneControllerBase):
     # RESTORE
     def _schedule_trial_restore(self, trial: Trial) -> bool:
         checkpoint = trial.checkpoint
+
+        if _use_storage_context():
+            # TODO(justinvyu): Skipping restoration altogether for now.
+            return False
 
         if checkpoint.dir_or_data is None:
             logger.debug(f"Not restoring trial {trial}: No checkpoint found.")

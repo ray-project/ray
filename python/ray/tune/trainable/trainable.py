@@ -501,10 +501,12 @@ class Trainable:
         # User saves checkpoint
         checkpoint_dict_or_path = self.save_checkpoint(checkpoint_dir)
 
-        from ray.train.checkpoint import Checkpoint as NewCheckpoint
+        from ray.train._internal.checkpoint_manager import (
+            _TrackedCheckpoint as _NewTrackedCheckpoint,
+        )
 
         if _use_storage_context() and isinstance(
-            checkpoint_dict_or_path, NewCheckpoint
+            checkpoint_dict_or_path, _NewTrackedCheckpoint
         ):
             return checkpoint_dict_or_path
 

@@ -970,13 +970,19 @@ class _TuneControllerBase:
         """
         logger.debug("Trial %s: Processing trial save.", trial)
 
-        from ray.train.checkpoint import Checkpoint as NewCheckpoint
+        from ray.train._internal.checkpoint_manager import (
+            _TrackedCheckpoint as _NewTrackedCheckpoint,
+        )
 
         try:
-            if _use_storage_context() and isinstance(checkpoint_value, NewCheckpoint):
-                # TODO(justinvyu): Update callbacks to take in a new Checkpoint
-                # rather than a _TrackedCheckpoint, then call the on_checkpoint hook.
+            if _use_storage_context() and isinstance(
+                checkpoint_value, _NewTrackedCheckpoint
+            ):
+                # TODO(justinvyu): Update callbacks to take in a _NewTrackedCheckpoint
                 trial.on_checkpoint(checkpoint_value)
+
+                self._checkpoint_manager.on_trial_checkpoint(trial)
+                self._mark_trial_to_checkpoint(trial)
             else:
                 trial.saving_to.dir_or_data = checkpoint_value
                 self._callbacks.on_checkpoint(
@@ -987,9 +993,9 @@ class _TuneControllerBase:
                 )
                 trial.on_checkpoint(trial.saving_to)
 
-            self._checkpoint_manager.on_trial_checkpoint(trial)
-            if trial.checkpoint.storage_mode != CheckpointStorage.MEMORY:
-                self._mark_trial_to_checkpoint(trial)
+                self._checkpoint_manager.on_trial_checkpoint(trial)
+                if trial.checkpoint.storage_mode != CheckpointStorage.MEMORY:
+                    self._mark_trial_to_checkpoint(trial)
         except Exception as e:
             if (
                 isinstance(e, _HeadNodeSyncDeprecationWarning)

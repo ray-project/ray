@@ -51,20 +51,8 @@ class _CheckpointManager(CommonCheckpointManager):
             )
             self._process_persistent_checkpoint(checkpoint)
 
-    def new_handle_checkpoint(self, checkpoint):
-        # TODO(justinvyu): Support checkpoint book-keeping for the new checkpoint API.
-        # (keeping track of the top k heap, getting the latest checkpoint, etc.)
-        print("Trial checkpoint manager handling the checkpoint:\n", checkpoint)
-        pass
-
     def on_checkpoint(self, checkpoint: _TrackedCheckpoint):
         """Ray Tune's entry point to handle a checkpoint."""
-        from ray.train._internal.storage import _use_storage_context
-        from ray.train.checkpoint import Checkpoint as NewCheckpoint
-
-        if _use_storage_context() and isinstance(checkpoint, NewCheckpoint):
-            return self.new_handle_checkpoint(checkpoint)
-
         # Todo (krfricke): Replace with handle_checkpoint.
         self.handle_checkpoint(checkpoint)
 
