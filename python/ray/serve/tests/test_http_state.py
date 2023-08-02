@@ -714,6 +714,73 @@ def test_update_draining(
     )
 
 
+@patch("ray.serve._private.http_state.PROXY_HEALTH_CHECK_PERIOD_S", 1)
+@patch("ray.serve._private.http_state.PROXY_DRAIN_CHECK_PERIOD_S", 0.1)
+@pytest.mark.parametrize("number_of_worker_nodes", [1])
+def test_proxy_actor_unhealthy_during_draining(
+    mock_get_all_node_ids, all_nodes, setup_controller, number_of_worker_nodes
+):
+    """Test the state transition from DRAINING to UNHEALTHY for the proxy actor."""
+    manager = _make_http_proxy_state_manager(
+        HTTPOptions(location=DeploymentMode.EveryNode)
+    )
+
+    worker_node_id = None
+    for node_id, node_ip_address in all_nodes:
+        manager._proxy_states[node_id] = _create_http_proxy_state(
+            proxy_actor_class=HTTPProxyActor,
+            status=HTTPProxyStatus.STARTING,
+            node_id=node_id,
+            host="localhost",
+            port=8000,
+            root_path="/",
+            controller_name=SERVE_CONTROLLER_NAME,
+            node_ip_address=node_ip_address,
+        )
+        if node_id != HEAD_NODE_ID:
+            worker_node_id = node_id
+
+    node_ids = [node_id for node_id, _ in all_nodes]
+
+    # All nodes are target proxy nodes
+    http_proxy_nodes = set(node_ids)
+    wait_for_condition(
+        condition_predictor=_update_and_check_http_proxy_state_manager,
+        timeout=20,
+        http_proxy_state_manager=manager,
+        node_ids=node_ids,
+        statuses=[HTTPProxyStatus.HEALTHY] * (number_of_worker_nodes + 1),
+        http_proxy_nodes=http_proxy_nodes,
+    )
+
+    # No target proxy nodes
+    http_proxy_nodes = set()
+
+    # Head node proxy should continue to be HEALTHY.
+    # Worker node proxy should turn DRAINING.
+    wait_for_condition(
+        condition_predictor=_update_and_check_http_proxy_state_manager,
+        timeout=20,
+        http_proxy_state_manager=manager,
+        node_ids=node_ids,
+        statuses=[HTTPProxyStatus.HEALTHY]
+        + [HTTPProxyStatus.DRAINING] * number_of_worker_nodes,
+        http_proxy_nodes=http_proxy_nodes,
+    )
+
+    # Kill the draining proxy actor
+    ray.kill(manager._proxy_states[worker_node_id]._actor_handle, no_restart=True)
+
+    def check_worker_node_proxy_actor_is_removed():
+        manager.update(http_proxy_nodes=http_proxy_nodes)
+        return len(manager._proxy_states) == 1
+
+    wait_for_condition(
+        condition_predictor=check_worker_node_proxy_actor_is_removed, timeout=5
+    )
+    assert manager._proxy_states[HEAD_NODE_ID].status == HTTPProxyStatus.HEALTHY
+
+
 def test_is_ready_for_shutdown(mock_get_all_node_ids, all_nodes):
     """Test `is_ready_for_shutdown()` returns True the correct state.
 
