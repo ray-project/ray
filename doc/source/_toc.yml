@@ -64,7 +64,8 @@ parts:
           - file: train/distributed-pytorch
             sections:
               - file: train/distributed-pytorch/converting-existing-training-loop
-              - file: train/distributed-pytorch/configuration
+              - file: train/distributed-pytorch/persistent-storage
+                title: Configuring Persistent Storage
               - file: train/distributed-pytorch/data-loading-preprocessing
               - file: train/distributed-pytorch/using-gpus
               - file: train/distributed-pytorch/monitoring-logging
@@ -86,6 +87,7 @@ parts:
             sections:
               - file: train/internals/architecture
               - file: train/internals/benchmarks
+              - file: train/internals/environment-variables
           - file: train/examples
             title: "Examples"
             sections:

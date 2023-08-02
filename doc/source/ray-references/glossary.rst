@@ -603,7 +603,7 @@ documentation, sorted alphabetically.
         (e.g., for sharing computed gradients).
 
     Trainer configuration
-        :ref:`A Trainer can be configured in various ways<train-config>`. Some
+        A Trainer can be configured in various ways. Some
         configurations are shared across all trainers, like the RunConfig, which
         configures things like the experiment storage, and ScalingConfig, which
         configures the number of training workers as well as resources needed per

@@ -6,6 +6,24 @@ be done in a few lines of code.
 The main interface for configuring scale and resources
 is the :class:`~ray.air.config.ScalingConfig`.
 
+Scaling Configurations in Train (``ScalingConfig``)
+---------------------------------------------------
+
+The scaling configuration specifies distributed training properties like the number of workers or the
+resources per worker.
+
+The properties of the scaling configuration are :ref:`tunable <tune-search-space-tutorial>`.
+
+.. literalinclude:: ../doc_code/key_concepts.py
+    :language: python
+    :start-after: __scaling_config_start__
+    :end-before: __scaling_config_end__
+
+.. seealso::
+
+    See the :class:`~ray.air.ScalingConfig` API reference.
+
+
 Increasing the number of workers
 --------------------------------
 The main interface to control parallelism in your training code is to set the

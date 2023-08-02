@@ -14,6 +14,8 @@ for more information.
 Most of the examples in this guide use Tensorflow with Keras, but
 Ray Train also works with vanilla Tensorflow.
 
+.. _air-convert-tf-to-air:
+
 Updating your training function
 -------------------------------
 

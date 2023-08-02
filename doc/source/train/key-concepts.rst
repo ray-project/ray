@@ -76,8 +76,6 @@ the :class:`ScalingConfig <ray.air.config.ScalingConfig>` and the :class:`RunCon
 The latter contains subconfigurations, such as the :class:`FailureConfig <ray.air.config.FailureConfig>`,
 :class:`SyncConfig <ray.tune.syncer.SyncConfig>` and :class:`CheckpointConfig <ray.air.config.CheckpointConfig>`.
 
-Check out the :ref:`Configurations User Guide <train-config>` for an in-depth guide on using these configurations.
-
 .. _train-key-concepts-results:
 
 Train Checkpoints
