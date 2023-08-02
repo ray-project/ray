@@ -150,7 +150,8 @@ class Monitor:
             gcs_channel
         )
         worker = ray._private.worker.global_worker
-        gcs_client = GcsClient(address=self.gcs_address)
+        # TODO: eventually plumb ClusterID through to here
+        gcs_client = GcsClient(address=self.gcs_address, no_gcs=True)
 
         if monitor_ip:
             monitor_addr = f"{monitor_ip}:{AUTOSCALER_METRIC_PORT}"

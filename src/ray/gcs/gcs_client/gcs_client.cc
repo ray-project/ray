@@ -146,7 +146,15 @@ std::pair<std::string, int> GcsClient::GetGcsServerAddress() const {
   return gcs_rpc_client_->GetAddress();
 }
 
-PythonGcsClient::PythonGcsClient(const GcsClientOptions &options) : options_(options) {}
+PythonGcsClient::PythonGcsClient(const GcsClientOptions &options) : options_(options) {
+  channel_ =
+      rpc::GcsRpcClient::CreateGcsChannel(options_.gcs_address_, options_.gcs_port_);
+  kv_stub_ = rpc::InternalKVGcsService::NewStub(channel_);
+  runtime_env_stub_ = rpc::RuntimeEnvGcsService::NewStub(channel_);
+  node_info_stub_ = rpc::NodeInfoGcsService::NewStub(channel_);
+  job_info_stub_ = rpc::JobInfoGcsService::NewStub(channel_);
+  autoscaler_stub_ = rpc::autoscaler::AutoscalerStateService::NewStub(channel_);
+}
 
 namespace {
 Status HandleGcsError(rpc::GcsStatus status) {
@@ -159,18 +167,10 @@ Status HandleGcsError(rpc::GcsStatus status) {
 Status PythonGcsClient::Connect(const ClusterID &cluster_id,
                                 int64_t timeout_ms,
                                 size_t num_retries) {
-  channel_ =
-      rpc::GcsRpcClient::CreateGcsChannel(options_.gcs_address_, options_.gcs_port_);
-  kv_stub_ = rpc::InternalKVGcsService::NewStub(channel_);
-  runtime_env_stub_ = rpc::RuntimeEnvGcsService::NewStub(channel_);
-  node_info_stub_ = rpc::NodeInfoGcsService::NewStub(channel_);
-  job_info_stub_ = rpc::JobInfoGcsService::NewStub(channel_);
-  autoscaler_stub_ = rpc::autoscaler::AutoscalerStateService::NewStub(channel_);
-
-  size_t tries = num_retries + 1;
-  RAY_CHECK(tries > 0) << "Expected positive retries, but got " << tries;
-
   if (cluster_id.IsNil()) {
+    size_t tries = num_retries + 1;
+    RAY_CHECK(tries > 0) << "Expected positive retries, but got " << tries;
+
     RAY_LOG(INFO) << "Retrieving cluster ID from GCS server.";
     rpc::GetClusterIdRequest request;
     rpc::GetClusterIdReply reply;

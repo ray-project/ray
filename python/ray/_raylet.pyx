@@ -2349,9 +2349,8 @@ cdef class GcsClient:
         else:
             c_cluster_id = cluster_id
             self.cluster_id = CClusterID.FromHex(c_cluster_id)
-        if no_gcs:
-            self.cluster_id = CClusterID.FromRandom()
-        self._connect()
+        if not no_gcs:
+            self._connect()
 
     def _connect(self, timeout=None):
         cdef:
@@ -2360,10 +2359,10 @@ cdef class GcsClient:
         with nogil:
             status = self.inner.get().Connect(self.cluster_id, timeout_ms, num_retries)
 
+        check_status(status)
         if self.cluster_id.IsNil():
             self.cluster_id = self.inner.get().GetClusterId()
             assert not self.cluster_id.IsNil()
-        check_status(status)
 
     def get_cluster_id(self):
         return self.cluster_id.Hex().decode()
