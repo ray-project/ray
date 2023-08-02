@@ -324,6 +324,17 @@ def _features_to_schema(features: "tf.train.Features") -> "schema_pb2.Schema":
 
 
 def _ds_eq_streaming(ds_expected, ds_actual) -> bool:
+    # Casting the strings to bytes for comparing string features
+    def _str2bytes(d):
+        for k, v in d.items():
+            if "string" in k:
+                if isinstance(v, list):
+                    d[k] = [vv.encode() for vv in v]
+                elif isinstance(v, str):
+                    d[k] = v.encode()
+        return d
+
+    ds_expected = ds_expected.map(_str2bytes)
     assert ds_expected.take() == ds_actual.take()
 
 
