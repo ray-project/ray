@@ -36,6 +36,11 @@ message Event {
     WARNING = 1;
     ERROR = 2;
     FATAL = 3;
+    // Ideally we would want these to be smaller numerically than INFO, but
+    // unfortunately the original rpc enum comes without such, and to be backward
+    // compatible we have to keep the same values for INFO.
+    DEBUG = 4;
+    TRACE = 5;
   }
 
   // event_id is the unique ID of this event
