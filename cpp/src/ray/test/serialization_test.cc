@@ -15,9 +15,38 @@
 #include <gtest/gtest.h>
 #include <ray/api.h>
 
+bool IsAnyEqual(const std::any &lhs, const std::any &rhs) {
+  if (lhs.type() != rhs.type()) {
+    return false;
+  }
+  if (lhs.type() == typeid(uint64_t)) {
+    return std::any_cast<uint64_t>(lhs) == std::any_cast<uint64_t>(rhs);
+  } else if (lhs.type() == typeid(int64_t)) {
+    return std::any_cast<int64_t>(lhs) == std::any_cast<int64_t>(rhs);
+  } else if (lhs.type() == typeid(bool)) {
+    return std::any_cast<bool>(lhs) == std::any_cast<bool>(rhs);
+  } else if (lhs.type() == typeid(float)) {
+    return std::any_cast<float>(lhs) == std::any_cast<float>(rhs);
+  } else if (lhs.type() == typeid(double)) {
+    return std::any_cast<double>(lhs) == std::any_cast<double>(rhs);
+  } else if (lhs.type() == typeid(std::string)) {
+    return std::any_cast<std::string>(lhs) == std::any_cast<std::string>(rhs);
+  } else if (lhs.type() == typeid(std::vector<char>)) {
+    return std::any_cast<std::vector<char>>(lhs) == std::any_cast<std::vector<char>>(rhs);
+  } else {
+    return false;
+  }
+}
+
 TEST(SerializationTest, TypeHybridTest) {
   uint32_t in_arg1 = 123456789, out_arg1;
   std::string in_arg2 = "123567ABC", out_arg2;
+  double in_arg3 = 1.1;
+  float in_arg4 = 1.2;
+  uint64_t in_arg5 = 100;
+  int64_t in_arg6 = -100;
+  bool in_arg7 = false;
+  std::vector<char> in_arg8 = {'a', 'b'};
 
   // 1 arg
   // marshall
@@ -40,6 +69,37 @@ TEST(SerializationTest, TypeHybridTest) {
 
   EXPECT_EQ(in_arg1, out_arg1);
   EXPECT_EQ(in_arg2, out_arg2);
+
+  // Test std::any
+  msgpack::sbuffer buffer3 = ray::internal::Serializer::Serialize(std::make_tuple(
+      in_arg1, in_arg2, in_arg3, in_arg4, in_arg5, in_arg6, in_arg7, in_arg8));
+
+  std::vector<std::any> result =
+      ray::internal::Serializer::Deserialize<std::vector<std::any>>(buffer3.data(),
+                                                                    buffer3.size());
+  EXPECT_TRUE(result[0].type() == typeid(uint64_t));
+  EXPECT_EQ(std::any_cast<uint64_t>(result[0]), in_arg1);
+  EXPECT_TRUE(result[1].type() == typeid(std::string));
+  EXPECT_EQ(std::any_cast<std::string>(result[1]), in_arg2);
+  EXPECT_TRUE(result[2].type() == typeid(double));
+  EXPECT_EQ(std::any_cast<double>(result[2]), in_arg3);
+  EXPECT_TRUE(result[3].type() == typeid(double));
+  EXPECT_EQ(std::any_cast<double>(result[3]), in_arg4);
+  EXPECT_TRUE(result[4].type() == typeid(uint64_t));
+  EXPECT_EQ(std::any_cast<uint64_t>(result[4]), in_arg5);
+  EXPECT_TRUE(result[5].type() == typeid(int64_t));
+  EXPECT_EQ(std::any_cast<int64_t>(result[5]), in_arg6);
+  EXPECT_TRUE(result[6].type() == typeid(bool));
+  EXPECT_EQ(std::any_cast<bool>(result[6]), in_arg7);
+  EXPECT_TRUE(result[7].type() == typeid(std::vector<char>));
+  EXPECT_EQ(std::any_cast<std::vector<char>>(result[7]), in_arg8);
+
+  msgpack::sbuffer buffer4 = ray::internal::Serializer::Serialize(result);
+
+  std::vector<std::any> result_2 =
+      ray::internal::Serializer::Deserialize<std::vector<std::any>>(buffer4.data(),
+                                                                    buffer4.size());
+  EXPECT_TRUE(std::equal(result.begin(), result.end(), result_2.begin(), IsAnyEqual));
 }
 
 TEST(SerializationTest, BoundaryValueTest) {
