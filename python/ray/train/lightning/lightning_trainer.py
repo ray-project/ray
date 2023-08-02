@@ -517,13 +517,19 @@ class LightningTrainer(TorchTrainer):
 
 def _lightning_train_loop_per_worker(config):
     """Per-worker training loop for a Lightning Trainer."""
-    # Change the working directory for all workers to the same directory.
-    # This aligns with Lightning's settings and avoids inconsistency. Otherwise,
-    # each worker will have a different log and checkpoint directory if they are
-    # using relative paths.
-    working_dir = os.path.join(session.get_trial_dir(), "rank_all")
-    os.makedirs(working_dir, exist_ok=True)
-    os.chdir(working_dir)
+    from ray.train._internal.storage import _use_storage_context
+
+    # TODO(justinvyu)/NOTE: This is no longer needed, because we do not switch to
+    # a rank-specific working directory in the new persistence mode.
+    # Lightning requires each worker to be in the same working directory.
+    if not _use_storage_context():
+        # Change the working directory for all workers to the same directory.
+        # This aligns with Lightning's settings and avoids inconsistency. Otherwise,
+        # each worker will have a different log and checkpoint directory if they are
+        # using relative paths.
+        working_dir = os.path.join(session.get_trial_dir(), "rank_all")
+        os.makedirs(working_dir, exist_ok=True)
+        os.chdir(working_dir)
 
     if not config["lightning_config"]:
         raise RuntimeError("'lightning_config' not specified in LightningTrainer!")
