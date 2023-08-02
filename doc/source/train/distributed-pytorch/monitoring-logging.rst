@@ -1,5 +1,5 @@
-Reporting results to Ray Train
-==============================
+Monitoring and Logging
+======================
 
 Ray AIR provides a *Session* API for reporting intermediate
 results and checkpoints from the training function (run on distributed workers) up to the

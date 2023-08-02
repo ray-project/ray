@@ -16,13 +16,3 @@ you to run your ``DistributedDataParallel`` training script.
 For more information on the technical details, see the `PyTorch
 Distributed Overview <https://pytorch.org/tutorials/beginner/dist_overview.html>`_
 on their official documentation for reference.
-
-.. grid:: 1 2 3 4
-
-    .. grid-item-card::
-        :img-top: /ray-overview/images/ray_svg_logo.svg
-        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
-
-        .. button-ref:: distributed-pytorch/converting-existing-training-loop
-
-            Convert an existing training loop

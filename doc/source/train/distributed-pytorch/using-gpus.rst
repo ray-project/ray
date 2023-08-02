@@ -1,4 +1,4 @@
-Configuring scale and GPUs
+Configuring Scale and GPUs
 ==========================
 Increasing the scale of a Ray Train training run is simple and can often
 be done in a few lines of code.

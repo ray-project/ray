@@ -1,2 +1,2 @@
-Ray Train internals
+Ray Train Internals
 ===================

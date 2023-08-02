@@ -1,6 +1,6 @@
 .. _train-porting-code:
 
-Converting an existing training loop
+Converting an Existing Training Loop
 ====================================
 
 The following instructions assume you have a training function

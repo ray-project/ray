@@ -1,6 +1,6 @@
 .. _train-monitoring:
 
-Experiment tracking and Callbacks
+Experiment Tracking and Callbacks
 =================================
 
 Ray Train has mechanisms to easily collect intermediate results from the training workers during the training run

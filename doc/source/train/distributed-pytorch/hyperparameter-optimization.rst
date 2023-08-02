@@ -1,6 +1,6 @@
 .. _train-tune:
 
-Hyperparameter tuning with Ray Tune
+Hyperparameter Tuning with Ray Tune
 ===================================
 
 Hyperparameter tuning with :ref:`Ray Tune <tune-main>` is natively supported

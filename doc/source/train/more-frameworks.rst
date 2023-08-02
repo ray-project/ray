@@ -1,7 +1,7 @@
-.. _train-more-libraries:
+.. _train-more-frameworks:
 
-More libraries
-==============
+More Frameworks
+===============
 
 .. grid:: 1 2 3 4
     :gutter: 1

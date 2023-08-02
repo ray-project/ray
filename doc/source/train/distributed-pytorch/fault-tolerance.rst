@@ -2,8 +2,8 @@
 
 .. _train-fault-tolerance:
 
-Fault tolerance/training on spot instances
-==========================================
+Handling Failures and Node Preemption
+=====================================
 
 Automatically Recover from Train Worker Failures
 ------------------------------------------------

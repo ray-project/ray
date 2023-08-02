@@ -3,12 +3,11 @@
 Key Concepts of Ray Train
 =========================
 
-There are four main concepts in the Ray Train library.
+There are three main concepts in the Ray Train library.
 
 1. ``Trainers`` execute distributed training.
 2. ``Configuration`` objects are used to configure training.
 3. ``Checkpoints`` are returned as the result of training.
-4. ``Predictors`` can be used for inference and batch prediction.
 
 .. https://docs.google.com/drawings/d/1FezcdrXJuxLZzo6Rjz1CHyJzseH8nPFZp6IUepdn3N4/edit
 

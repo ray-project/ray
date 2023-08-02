@@ -1,6 +1,6 @@
 .. _data-ingest-torch:
 
-Data loading and preprocessing
+Data Loading and Preprocessing
 ==============================
 
 This guide covers how to leverage :ref:`Ray Data <data>` to load data for distributed training jobs. You may want to use Ray Data for training over framework built-in data loading utilities for a few reasons:

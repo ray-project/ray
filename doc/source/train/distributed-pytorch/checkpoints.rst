@@ -1,6 +1,6 @@
 .. _train-checkpointing:
 
-Saving and loading checkpoints
+Saving and Loading Checkpoints
 ==============================
 
 Ray Train provides a way to save :ref:`Checkpoints <checkpoint-api-ref>` during the training process. This is
