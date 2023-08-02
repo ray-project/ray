@@ -369,7 +369,7 @@ class ServeController:
             except Exception:
                 logger.exception("Exception putting serve snapshot.")
             loop_duration = time.time() - loop_start_time
-            if loop_duration > 60:
+            if loop_duration > 10:
                 logger.warning(
                     f"The last control loop was slow (took {loop_duration}s). "
                     "This is likely caused by running a large number of "
