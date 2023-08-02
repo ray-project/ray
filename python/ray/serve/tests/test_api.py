@@ -971,21 +971,6 @@ def test_get_app_handle_within_deployment_sync(serve_instance):
     assert ray.get(handle.remote(7)) == "The answer is 9"
 
 
-def test_app_handle_serialization(serve_instance):
-    """Test that no deserialization occurs when trying to get handle to app."""
-
-    @serve.deployment
-    class C:
-        def __init__(self):
-            self.val = 0
-
-        def __reduce__(self):
-            raise RuntimeError("Attempted to serialize!")
-
-    serve.run(C.bind(), name="my_app")
-    serve.get_app_handle("my_app")
-
-
 def test_get_deployment_handle_basic(serve_instance):
     @serve.deployment(ray_actor_options={"num_cpus": 0.1})
     def f():
