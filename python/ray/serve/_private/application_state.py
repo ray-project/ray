@@ -121,9 +121,9 @@ class ApplicationState:
         self._status_msg = ""
         self._deployment_state_manager = deployment_state_manager
         self._endpoint_state = endpoint_state
-        self._route_prefix = None
-        self._docs_path = None
-        self._ingress_deployment = None
+        self._route_prefix: Optional[str] = None
+        self._docs_path: Optional[str] = None
+        self._ingress_deployment_name: str = None
 
         self._status: ApplicationStatus = ApplicationStatus.DEPLOYING
         self._deployment_timestamp = time.time()
@@ -175,7 +175,7 @@ class ApplicationState:
 
     @property
     def ingress_deployment(self) -> Optional[str]:
-        return self._ingress_deployment
+        return self._ingress_deployment_name
 
     def recover_target_state_from_checkpoint(
         self, checkpoint_data: ApplicationTargetState
@@ -317,7 +317,7 @@ class ApplicationState:
             if params["docs_path"] is not None:
                 self._docs_path = params["docs_path"]
             if params["ingress"]:
-                self._ingress_deployment = params["deployment_name"]
+                self._ingress_deployment_name = params["deployment_name"]
 
         deployment_infos = {
             params["deployment_name"]: deploy_args_to_deployment_info(**params)
@@ -776,7 +776,7 @@ class ApplicationStateManager:
     def get_route_prefix(self, name: str) -> Optional[str]:
         return self._application_states[name].route_prefix
 
-    def get_ingress_deployment(self, name: str) -> Optional[str]:
+    def get_ingress_deployment_name(self, name: str) -> Optional[str]:
         if name not in self._application_states:
             return None
 

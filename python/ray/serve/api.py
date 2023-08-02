@@ -766,7 +766,7 @@ def get_app_handle(
     """
 
     client = get_global_client()
-    ingress = ray.get(client._controller.get_ingress_deployment.remote(name))
+    ingress = ray.get(client._controller.get_ingress_deployment_name.remote(name))
     if ingress is None:
         raise RayServeException(f"Application '{name}' does not exist.")
 
