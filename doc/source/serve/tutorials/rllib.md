@@ -24,7 +24,7 @@ In particular, we show:
 Check out the [Key Concepts](serve-key-concepts) page to learn more general information about Ray Serve.
 ```
 
-We will train and checkpoint a simple PPO model with the `CartPole-v0` environment from `gym`.
+We will train and checkpoint a simple PPO model with the `CartPole-v1` environment from `gymnasium`.
 In this tutorial we simply write to local disk, but in production you might want to consider using a cloud
 storage solution like S3 or a shared file system.
 
@@ -83,7 +83,7 @@ class ServePPOModel:
             .framework("torch")\
             .rollouts(num_rollout_workers=0)
         # Build the Algorithm instance using the config.
-        self.algorithm = config.build(env="CartPole-v0")
+        self.algorithm = config.build(env="CartPole-v1")
         # Restore the algo's state from the checkpoint.
         self.algorithm.restore(checkpoint_path)
 

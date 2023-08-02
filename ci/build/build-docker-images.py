@@ -73,6 +73,8 @@ DEFAULT_PYTHON_VERSION = "py38"
 
 IMAGE_NAMES = list(DOCKER_HUB_DESCRIPTION.keys())
 
+RELEASE_PR_PIPELINE_ID = "d912884a-5198-497d-9ac3-178420500b6e"
+
 
 def _with_suffix(tag: str, suffix: Optional[str] = None):
     if suffix:
@@ -488,10 +490,16 @@ def _docker_push(image, tag):
             print(progress_line)
 
 
-def _tag_and_push(full_image_name, old_tag, new_tag, merge_build=False):
+def _tag_and_push(
+    full_image_name,
+    old_tag,
+    new_tag,
+    merge_build=False,
+    release_pr_build=False,
+):
     # Do not tag release builds because they are no longer up to
     # date after the branch cut.
-    if "nightly" in new_tag and _release_build():
+    if "nightly" in new_tag and (_release_build() or release_pr_build):
         return
     if old_tag != new_tag:
         DOCKER_CLIENT.api.tag(
@@ -499,10 +507,10 @@ def _tag_and_push(full_image_name, old_tag, new_tag, merge_build=False):
             repository=full_image_name,
             tag=new_tag,
         )
-    if not merge_build:
+    if not merge_build and not release_pr_build:
         print(
-            "This is a PR Build! On a merge build, we would normally push"
-            f"to: {full_image_name}:{new_tag}"
+            "Not pushing build. "
+            "Otherwise we would have pushed to: {full_image_name}:{new_tag}"
         )
     else:
         _docker_push(full_image_name, new_tag)
@@ -602,6 +610,7 @@ def push_and_tag_images(
     py_versions: List[str],
     image_types: List[str],
     merge_build: bool = False,
+    release_pr_build: bool = False,
     image_list: Optional[List[str]] = None,
     suffix: Optional[str] = None,
 ):
@@ -611,6 +620,10 @@ def push_and_tag_images(
         release_name = _get_branch()[len("releases/") :]
         date_tag = release_name + "." + date_tag
         sha_tag = release_name + "." + sha_tag
+    if release_pr_build:
+        pr = f"pr-{os.environ['BUILDKITE_PULL_REQUEST']}"
+        date_tag = pr + "." + date_tag
+        sha_tag = pr + "." + sha_tag
 
     for image_name in image_list:
         full_image_name = f"rayproject/{image_name}"
@@ -709,6 +722,7 @@ def push_and_tag_images(
                     old_tag=old_tag,
                     new_tag=new_tag,
                     merge_build=merge_build,
+                    release_pr_build=release_pr_build,
                 )
 
 
@@ -755,9 +769,10 @@ def push_readmes(merge_build: bool):
 MERGE = "MERGE"
 HUMAN = "HUMAN"
 PR = "PR"
+RELEASE_PR = "RELEASE_PR"
 BUILDKITE = "BUILDKITE"
 LOCAL = "LOCAL"
-BUILD_TYPES = [MERGE, HUMAN, PR, BUILDKITE, LOCAL]
+BUILD_TYPES = [MERGE, HUMAN, PR, RELEASE_PR, BUILDKITE, LOCAL]
 
 
 @click.command()
@@ -855,6 +870,8 @@ def main(
     if build_type == BUILDKITE:
         if os.environ.get("BUILDKITE_PULL_REQUEST", "") == "false":
             build_type = MERGE
+        elif os.environ.get("BUILDKITE_PIPELINE_ID", "") == RELEASE_PR_PIPELINE_ID:
+            build_type = RELEASE_PR
         else:
             build_type = PR
 
@@ -862,7 +879,7 @@ def main(
         # If manually triggered, request user for branch and SHA value to use.
         _configure_human_version()
     if (
-        build_type in {HUMAN, MERGE, BUILDKITE, LOCAL}
+        build_type in {HUMAN, MERGE, BUILDKITE, LOCAL, RELEASE_PR}
         or _check_if_docker_files_modified()
         or only_build_worker_container
     ):
@@ -933,7 +950,7 @@ def main(
                     all_tagged_images, target_dir="/artifact-mount/.image-info"
                 )
 
-            if build_type in {MERGE, PR}:
+            if build_type in {MERGE, RELEASE_PR}:
                 valid_branch = _valid_branch()
                 if (not valid_branch) and is_merge:
                     print(f"Invalid Branch found: {_get_branch()}")
@@ -941,6 +958,7 @@ def main(
                     py_versions,
                     image_types,
                     merge_build=valid_branch and is_merge,
+                    release_pr_build=build_type == RELEASE_PR,
                     image_list=images_to_tag_and_push,
                     suffix=suffix,
                 )

@@ -7,6 +7,7 @@ import pickle
 import socket
 import time
 from typing import Callable, Dict, List, Optional, Set, Tuple
+import uuid
 
 import uvicorn
 import starlette.responses
@@ -54,12 +55,12 @@ from ray.serve._private.logging_utils import (
     configure_component_logger,
     get_component_logger_file_path,
 )
-
 from ray.serve._private.utils import (
     calculate_remaining_timeout,
     call_function_from_import_path,
-    get_random_letters,
 )
+from ray.serve.exceptions import RayServeTimeout
+
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -92,6 +93,11 @@ if os.environ.get("SERVE_REQUEST_PROCESSING_TIMEOUT_S") is not None:
         "pi/doc/ray.serve.schema.HTTPOptionsSchema.html#ray.serve.schema.HTTPOptionsSch"
         "ema.request_timeout_s"
     )
+
+
+INITIAL_BACKOFF_PERIOD_SEC = 0.05
+MAX_BACKOFF_PERIOD_SEC = 5
+BACKOFF_FACTOR = 2
 
 
 class LongestPrefixRouter:
@@ -351,6 +357,13 @@ class HTTPProxy:
         )
         await response.send(scope, receive, send)
 
+    async def _timeout_response(self, scope, receive, send, request_id):
+        response = Response(
+            f"Request {request_id} timed out after {self.request_timeout_s}s.",
+            status_code=408,
+        )
+        await response.send(scope, receive, send)
+
     async def receive_asgi_messages(self, request_id: str) -> List[Message]:
         queue = self.asgi_receive_queues.get(request_id, None)
         if queue is None:
@@ -482,10 +495,8 @@ class HTTPProxy:
                 scope["path"] = route_path.replace(route_prefix, "", 1)
                 scope["root_path"] = root_path + route_prefix
 
-            request_id = get_random_letters(10)
             request_context_info = {
                 "route": route_path,
-                "request_id": request_id,
                 "app_name": app_name,
             }
             start_time = time.time()
@@ -494,7 +505,13 @@ class HTTPProxy:
                     multiplexed_model_id = value.decode()
                     handle = handle.options(multiplexed_model_id=multiplexed_model_id)
                     request_context_info["multiplexed_model_id"] = multiplexed_model_id
-                if key.decode().upper() == RAY_SERVE_REQUEST_ID_HEADER:
+                if key.decode() == "x-request-id":
+                    request_context_info["request_id"] = value.decode()
+                if (
+                    key.decode() == RAY_SERVE_REQUEST_ID_HEADER.lower()
+                    and "request_id" not in request_context_info
+                ):
+                    # "x-request-id" has higher priority than "RAY_SERVE_REQUEST_ID".
                     request_context_info["request_id"] = value.decode()
             ray.serve.context._serve_request_context.set(
                 ray.serve.context.RequestContext(**request_context_info)
@@ -584,12 +601,11 @@ class HTTPProxy:
         request = pickle.dumps(request)
 
         retries = 0
-        backoff_time_s = 0.05
-        backoff = False
         loop = get_or_create_event_loop()
-        # We have received all the http request conent. The next `receive`
+        # We have received all the http request content. The next `receive`
         # call might never arrive; if it does, it can only be `http.disconnect`.
         while retries < HTTP_REQUEST_MAX_RETRIES + 1:
+            should_backoff = False
             assignment_task: asyncio.Task = handle.remote(request)
             client_disconnection_task = loop.create_task(receive())
             done, _ = await asyncio.wait(
@@ -632,7 +648,7 @@ class HTTPProxy:
                         'by setting "request_timeout_s" in your Serve config\'s '
                         "`http_options` field."
                     )
-                    backoff = True
+                    should_backoff = True
                 else:
                     result = await object_ref
                     break
@@ -652,15 +668,14 @@ class HTTPProxy:
                     f"{HTTP_REQUEST_MAX_RETRIES - retries} retries "
                     "remaining."
                 )
-                backoff = True
-            if backoff:
-                await asyncio.sleep(backoff_time_s)
-                # Be careful about the expotential backoff scaling here.
-                # Assuming 10 retries, 1.5x scaling means the last retry is 38x the
-                # initial backoff time, while 2x scaling means 512x the initial.
-                backoff_time_s *= 1.5
+                should_backoff = True
+
+            if should_backoff:
+                backoff_period = min(
+                    INITIAL_BACKOFF_PERIOD_SEC * pow(2, retries), MAX_BACKOFF_PERIOD_SEC
+                )
                 retries += 1
-                backoff = False
+                await asyncio.sleep(backoff_period)
         else:
             error_message = f"Task failed with {HTTP_REQUEST_MAX_RETRIES} retries."
             await Response(error_message, status_code=500).send(scope, receive, send)
@@ -744,6 +759,7 @@ class HTTPProxy:
         """
         status_code = ""
         start = time.time()
+        is_first_message = True
         while True:
             try:
                 obj_ref = await obj_ref_generator._next_async(
@@ -754,7 +770,7 @@ class HTTPProxy:
                     )
                 )
                 if obj_ref.is_nil():
-                    raise TimeoutError
+                    raise RayServeTimeout(is_first_message=is_first_message)
 
                 asgi_messages: List[Message] = pickle.loads(await obj_ref)
                 for asgi_message in asgi_messages:
@@ -767,6 +783,7 @@ class HTTPProxy:
                         status_code = str(asgi_message["code"])
 
                     await send(asgi_message)
+                    is_first_message = False
             except StopAsyncIteration:
                 break
 
@@ -811,6 +828,7 @@ class HTTPProxy:
                     f"Request {request_id} timed out after "
                     f"{self.request_timeout_s}s while waiting for assignment."
                 )
+                await self._timeout_response(scope, receive, send, request_id)
                 return TIMEOUT_ERROR_CODE
 
             try:
@@ -823,11 +841,16 @@ class HTTPProxy:
                         curr_time_s=time.time(),
                     ),
                 )
-            except TimeoutError:
+            except RayServeTimeout as serve_timeout_error:
                 logger.warning(
                     f"Request {request_id} timed out after "
                     f"{self.request_timeout_s}s while executing."
                 )
+                # We should only send timeout response if we have not sent
+                # any messages to the client yet. Header (including status code)
+                # messages can only be sent once.
+                if serve_timeout_error.is_first_message:
+                    await self._timeout_response(scope, receive, send, request_id)
                 return TIMEOUT_ERROR_CODE
 
         except Exception as e:
@@ -857,13 +880,30 @@ class RequestIdMiddleware:
         self.app = app
 
     async def __call__(self, scope, receive, send):
+
+        headers = MutableHeaders(scope=scope)
+        if RAY_SERVE_REQUEST_ID_HEADER not in headers and "x-request-id" not in headers:
+            # If X-Request-ID and RAY_SERVE_REQUEST_ID_HEADER are both not set, we
+            # generate a new request ID.
+            request_id = str(uuid.uuid4())
+            headers.append("x-request-id", request_id)
+            headers.append(RAY_SERVE_REQUEST_ID_HEADER, request_id)
+        elif "x-request-id" in headers:
+            request_id = headers["x-request-id"]
+        else:
+            # TODO(Sihan) Deprecate RAY_SERVE_REQUEST_ID_HEADER
+            request_id = headers[RAY_SERVE_REQUEST_ID_HEADER]
+
         async def send_with_request_id(message: Dict):
-            request_id = ray.serve.context._serve_request_context.get().request_id
             if message["type"] == "http.response.start":
                 headers = MutableHeaders(scope=message)
+                # TODO(Sihan) Deprecate RAY_SERVE_REQUEST_ID_HEADER
                 headers.append(RAY_SERVE_REQUEST_ID_HEADER, request_id)
+                headers.append("X-Request-ID", request_id)
             if message["type"] == "websocket.accept":
+                # TODO(Sihan) Deprecate RAY_SERVE_REQUEST_ID_HEADER
                 message[RAY_SERVE_REQUEST_ID_HEADER] = request_id
+                message["X-Request-ID"] = request_id
             await send(message)
 
         await self.app(scope, receive, send_with_request_id)

@@ -1,3 +1,5 @@
+from typing import Tuple
+
 import torch
 import argparse
 import json
@@ -45,7 +47,7 @@ def get_number_of_params(model: nn.Module):
 def collate_fn(batch, tokenizer, block_size, device):
     out_batch = tokenizer(
         list(batch["input"]),
-        padding="longest",
+        padding="max_length",
         max_length=block_size,
         truncation=True,
         return_tensors="pt",
@@ -66,7 +68,8 @@ def get_pretrained_path(model_id: str):
 def get_tokenizer(model_name, special_tokens):
 
     pretrained_path = get_pretrained_path(model_name)
-    tokenizer = AutoTokenizer.from_pretrained(pretrained_path)
+    # Context for legacy=True: https://github.com/huggingface/transformers/issues/25176
+    tokenizer = AutoTokenizer.from_pretrained(pretrained_path, legacy=True)
     tokenizer.pad_token = tokenizer.eos_token
     tokenizer.add_tokens(special_tokens, special_tokens=True)
 
@@ -88,29 +91,50 @@ def create_ray_dataset(path):
 
 
 def evaluate(
-    model, eval_dataset_len, eval_dataloader, accelerator, bsize, as_test: bool = False
-):
+    *, model, eval_ds, accelerator, bsize, ds_kwargs, as_test: bool = False
+) -> Tuple[float, float]:
     model.eval()
     losses = []
+
+    eval_dataloader = eval_ds.iter_torch_batches(batch_size=bsize, **ds_kwargs)
+    eval_ds_len = len(list(eval_ds.iter_batches(batch_size=1)))
     for step, batch in tqdm.tqdm(
-        enumerate(eval_dataloader), total=eval_dataset_len // (bsize + 1)
+        enumerate(eval_dataloader), total=eval_ds_len // (bsize + 1)
     ):
         with torch.no_grad():
             outputs = model(**batch)
 
         loss = outputs.loss
-        losses.append(accelerator.gather(loss.repeat(bsize)))
+        # The tensors are gathered by concatenating them on the first dimension, so we
+        # add a new dimension to the scalar loss to get a tensor of shape (K,) for K
+        # workers.
+        losses.append(accelerator.gather(loss[None]))
 
         if as_test:
             break
 
-    losses = torch.cat(losses)
+    # We stack losses so that we have a tensor of shape (T, K) where T is the number of
+    # steps and K is the number of workers.
+    losses = torch.stack(losses)
     try:
-        eval_loss = torch.mean(losses)
+        eval_loss = torch.mean(losses).item()
         perplexity = math.exp(eval_loss)
     except OverflowError:
         perplexity = float("inf")
     return perplexity, eval_loss
+
+
+def _test_tokenizer(model_name):
+    # This function tests that adding special tokens does not
+    # result in un-expected tokenization
+    # Context: https://github.com/huggingface/transformers/issues/25176
+    tokenizer = get_tokenizer(model_name=model_name, special_tokens=["<REPR_END>"])
+    testoutput = tokenizer("<REPR_END>inform")["input_ids"]
+    expected = tokenizer("inform")["input_ids"]
+    assert testoutput[-1] == expected[-1], (
+        "The tokenizer is not working as expected with special tokens, "
+        f"testoutput={testoutput}, expected={expected}"
+    )
 
 
 def checkpoint_model(
@@ -136,6 +160,13 @@ def checkpoint_model(
 
 def training_function(kwargs: dict):
     print("training_function called")
+
+    # Train has a bug somewhere that causes ACCELERATE_TORCH_DEVICE to not be set
+    # properly on multi-gpu nodes
+    cuda_visible_device = os.environ["CUDA_VISIBLE_DEVICES"].split(",")
+    local_rank = int(os.environ["LOCAL_RANK"])
+    device_id = cuda_visible_device[local_rank]
+    os.environ["ACCELERATE_TORCH_DEVICE"] = f"cuda:{device_id}"
 
     config = kwargs["config"]
     args = argparse.Namespace(**kwargs["args"])
@@ -167,8 +198,8 @@ def training_function(kwargs: dict):
     valid_ds = session.get_dataset_shard("valid")
 
     train_ds_len = len(list(train_ds.iter_batches(batch_size=1)))
-    valid_ds_len = len(list(valid_ds.iter_batches(batch_size=1)))
 
+    _test_tokenizer(args.model_name)
     tokenizer = get_tokenizer(model_name=args.model_name, special_tokens=special_tokens)
     collate_partial = functools.partial(
         collate_fn,
@@ -180,7 +211,7 @@ def training_function(kwargs: dict):
     # Get the trial directory from Ray Train
     # This will be local to every node (and will get synced to remote storage if
     # provided.)
-    ckpt_path = tempfile.mkdtemp()
+    ckpt_path = tempfile.mkdtemp(dir=config["output_dir"])
 
     pretrained_path = get_pretrained_path(model_id)
     print(f"Loading model from {pretrained_path} ...")
@@ -247,7 +278,7 @@ def training_function(kwargs: dict):
         print("Starting training ...")
         print("Number of batches on main process", train_ds_len // batch_size)
 
-    avg_fwd_time, avg_bwd_time, avg_opt_step_time = 0, 0, 0
+    fwd_time_sum, bwd_time_sum, optim_step_time_sum = 0, 0, 0
     for epoch in range(num_epochs):
         s_epoch = time.time()
         model.train()
@@ -270,18 +301,20 @@ def training_function(kwargs: dict):
                 loss = outputs.loss
                 loss_sum += loss
                 e_fwd = time.time()
-                avg_fwd_time += e_fwd - s_fwd
+                fwd_time = e_fwd - s_fwd
+                fwd_time_sum += fwd_time
                 s_bwd = time.time()
                 accelerator.backward(loss)
                 e_bwd = time.time()
-                avg_bwd_time += e_bwd - s_bwd
+                bwd_time = e_bwd - s_bwd
+                bwd_time_sum += bwd_time
 
                 s_opt_step = time.time()
                 optimizer.step()
                 lr_scheduler.step()
                 optimizer.zero_grad()
                 e_opt_step = time.time()
-                avg_opt_step_time += e_opt_step - s_opt_step
+                optim_step_time_sum += e_opt_step - s_opt_step
 
             if accelerator.is_main_process:
                 accelerator.print(
@@ -294,37 +327,37 @@ def training_function(kwargs: dict):
 
             # as long as this is not the last step report here
             if step != (train_ds_len // batch_size - 1):
+                aggregated_loss = torch.mean(accelerator.gather(loss[None])).item()
                 session.report(
                     {
                         "epoch": epoch,
                         "iteration": step,
-                        "train_loss": loss_sum.item() / (step + 1),
+                        "train_loss_batch": aggregated_loss,
+                        "avg_train_loss_epoch": None,
                         "eval_loss": None,
                         "perplexity": None,
                         "num_iterations": step + 1,
                         "train_time_per_epoch": None,
                         "eval_time_per_epoch": None,
-                        "avg_fwd_time": avg_fwd_time / (step + 1),
-                        "avg_bwd_time": avg_bwd_time / (step + 1),
-                    },
+                        "fwd_time": fwd_time,
+                        "bwd_time": bwd_time,
+                        "avg_fwd_time_per_epoch": None,
+                        "avg_bwd_time_per_epoch": None,
+                        "learning_rate": lr_scheduler.get_lr()[0],
+                    }
                 )
 
         e_epoch = time.time()
         accelerator.print("Train time per epoch: ", e_epoch - s_epoch)
 
         eval_s_epoch = time.time()
-        valid_dataloader = valid_ds.iter_torch_batches(
-            batch_size=batch_size,
-            collate_fn=collate_partial,
-        )
-
         print("Running evaluation ...")
         perplex, eloss = evaluate(
-            model,
-            valid_ds_len,
-            valid_dataloader,
-            accelerator,
+            model=model,
+            eval_ds=valid_ds,
+            accelerator=accelerator,
             bsize=config["eval_batch_size"],
+            ds_kwargs={"collate_fn": collate_partial},
             as_test=config["as_test"],
         )
         accelerator.print("Eval result loss", eloss)
@@ -332,9 +365,9 @@ def training_function(kwargs: dict):
 
         eval_e_epoch = time.time()
         accelerator.print("Eval time per epoch: ", eval_e_epoch - eval_s_epoch)
-        accelerator.print("avg fwd time: ", avg_fwd_time / (step + 1))
-        accelerator.print("avg bwd time: ", avg_bwd_time / (step + 1))
-        accelerator.print("avg opt step time: ", avg_opt_step_time / (step + 1))
+        accelerator.print("avg fwd time: ", fwd_time_sum / (step + 1))
+        accelerator.print("avg bwd time: ", bwd_time_sum / (step + 1))
+        accelerator.print("avg opt step time: ", optim_step_time_sum / (step + 1))
 
         accelerator.print(f"Saving the model in {ckpt_path}")
         accelerator.wait_for_everyone()
@@ -348,6 +381,7 @@ def training_function(kwargs: dict):
 
         accelerator.wait_for_everyone()
 
+        checkpointing_time_s = time.time()
         # This checkpointing method makes deepspeed checkpoints on each node and then
         # Ray Train will aggregate them to a central s3 bucket.
         # It should be done on all processes (not just the Rank 0)
@@ -372,19 +406,25 @@ def training_function(kwargs: dict):
         # Note: After the following call, in the case of remote storage, the checkpoint
         # directoy will get synced to the remote storage and then deleted from the
         # local directory. This will open up local disk.
+        metrics = {
+            "epoch": epoch,
+            "iteration": step,
+            "train_loss_batch": loss.item(),
+            "avg_train_loss_epoch": loss_sum.item() / (step + 1),
+            "eval_loss": eloss,
+            "perplexity": perplex,
+            "num_iterations": step + 1,
+            "train_time_per_epoch": e_epoch - s_epoch,
+            "eval_time_per_epoch": eval_e_epoch - eval_s_epoch,
+            "fwd_time": fwd_time,
+            "bwd_time": bwd_time,
+            "avg_fwd_time_per_epoch": fwd_time_sum / (step + 1),
+            "avg_bwd_time_per_epoch": bwd_time_sum / (step + 1),
+            "learning_rate": lr_scheduler.get_lr()[0],
+        }
+
         session.report(
-            {
-                "epoch": epoch,
-                "iteration": step,
-                "train_loss": loss_sum.item() / (step + 1),
-                "eval_loss": eloss.item(),
-                "perplexity": perplex,
-                "num_iterations": step + 1,
-                "train_time_per_epoch": e_epoch - s_epoch,
-                "eval_time_per_epoch": eval_e_epoch - eval_s_epoch,
-                "avg_fwd_time": avg_fwd_time / (step + 1),
-                "avg_bwd_time": avg_bwd_time / (step + 1),
-            },
+            metrics,
             # We do not need to explictly call report(checkpoint).
             # This is because the checkpointing is not on all distributed workers, it's
             # only done on rank_0 which is forced to be co-located with the trainer
@@ -394,6 +434,7 @@ def training_function(kwargs: dict):
             # iterations.
             checkpoint=air.Checkpoint.from_directory(ckpt_path_epoch),
         )
+        print("Checkpointing time: ", time.time() - checkpointing_time_s)
 
 
 def parse_args():
@@ -446,6 +487,15 @@ def parse_args():
     )
     parser.add_argument(
         "--num-epochs", type=int, default=1, help="Number of epochs to train for."
+    )
+    parser.add_argument(
+        "--num-checkpoints-to-keep",
+        type=int,
+        help=(
+            "Number of checkpoints to keep, if None, all checkpoints will be kept, "
+            "if set to n>=1, the top n checkpoint with min. evaluation perplexity "
+            "will be kept."
+        ),
     )
     parser.add_argument("--lr", type=float, default=5e-6, help="Learning rate to use.")
 
@@ -503,7 +553,8 @@ def main():
             "env_vars": {
                 "HF_HOME": "/mnt/local_storage/.cache/huggingface",
                 "TUNE_RESULT_DIR": os.environ["TUNE_RESULT_DIR"],
-            }
+            },
+            "working_dir": ".",
         }
     )
 
@@ -517,8 +568,10 @@ def main():
     with open(args.special_token_path, "r") as json_file:
         special_tokens = json.load(json_file)["tokens"]
 
+    artifact_storage = os.environ["ANYSCALE_ARTIFACT_STORAGE"]
+    user_name = os.environ["ANYSCALE_USERNAME"]
     storage_path = (
-        f"{os.environ['ANYSCALE_ARTIFACT_STORAGE']}/finetuning_llms_with_deepspeed"
+        f"{artifact_storage}/{user_name}/ft_llms_with_deepspeed/{args.model_name}"
     )
 
     trainer = TorchTrainer(
@@ -535,7 +588,9 @@ def main():
             # sync_config=tune.SyncConfig(sync_artifacts=False),
             storage_path=storage_path,
             checkpoint_config=air.CheckpointConfig(
-                num_to_keep=1,
+                num_to_keep=args.num_checkpoints_to_keep,
+                checkpoint_score_attribute="perplexity",
+                checkpoint_score_order="min",
                 # Enable distributed checkpointing
                 _checkpoint_keep_all_ranks=True,
                 _checkpoint_upload_from_workers=True,
@@ -555,17 +610,19 @@ def main():
             "train": train_ds,
             "valid": valid_ds,
         },
-        # # Make sure both datasets are sharded, so that we can maximally use our GPUs.
-        # (un-comment on 2.6)
-        # dataset_config=ray.train.DataConfig(
-        #     datasets_to_split=["train", "valid"],
-        # ),
+        dataset_config=ray.train.DataConfig(
+            datasets_to_split=["train", "valid"],
+        ),
     )
 
     results = trainer.fit()
+    best_checkpoint = results.best_checkpoints[0]
 
-    print("results are stored in:")
-    print(results.checkpoint.uri)
+    print("Results are stored in:")
+    print(results.path)
+    print("Best checkpoint is stored in:")
+    print(best_checkpoint[0].uri)
+    print(f"With perplexity: {best_checkpoint[1]['perplexity']}")
 
 
 if __name__ == "__main__":
