@@ -77,7 +77,7 @@ py_test(
     name = "test_deployment_class",
     size = "small",
     srcs = serve_tests_srcs,
-    tags = ["exclusive", "team:serve"],
+    tags = ["exclusive", "team:serve", "bytedance_exclude"],
     deps = [":serve_lib"],
 )
 
