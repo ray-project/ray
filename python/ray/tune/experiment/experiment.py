@@ -230,7 +230,7 @@ class Experiment:
                     "'checkpoint_frequency' cannot be set for a function trainable. "
                     "You will need to report a checkpoint every "
                     "`checkpoint_frequency` iterations within your training loop using "
-                    "`ray.train.session.report(metrics=..., checkpoint=...)` "
+                    "`ray.train.report(metrics=..., checkpoint=...)` "
                     "to get this behavior."
                 )
         try:
