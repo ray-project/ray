@@ -217,10 +217,7 @@ class ReadTask(Callable[[], Iterable[Block]]):
             for block in result:
                 yield from self._do_additional_splits(block)
         else:
-            builder = DelegatingBlockBuilder()
-            for block in result:
-                builder.add_block(block)
-            yield builder.build()
+            yield from result
 
     def _set_additional_split_factor(self, k: int) -> None:
         self._additional_output_splits = k
