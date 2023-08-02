@@ -62,7 +62,7 @@ class _CheckpointManager:
         checkpoint_config: Defines how many and which checkpoints to keep.
     """
 
-    def __init__(self, checkpoint_config: CheckpointConfig):
+    def __init__(self, checkpoint_config: Optional[CheckpointConfig]):
         self._checkpoint_config = checkpoint_config or CheckpointConfig()
 
         # List of checkpoints ordered by ascending score.
