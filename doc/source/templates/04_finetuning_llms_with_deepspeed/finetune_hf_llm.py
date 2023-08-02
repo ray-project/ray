@@ -68,7 +68,7 @@ def get_pretrained_path(model_id: str):
 def get_tokenizer(model_name, special_tokens):
 
     pretrained_path = get_pretrained_path(model_name)
-    # Context for legacy=True: https://github.com/huggingface/transformers/issues/25176 
+    # Context for legacy=True: https://github.com/huggingface/transformers/issues/25176
     tokenizer = AutoTokenizer.from_pretrained(pretrained_path, legacy=True)
     tokenizer.pad_token = tokenizer.eos_token
     tokenizer.add_tokens(special_tokens, special_tokens=True)
@@ -123,17 +123,19 @@ def evaluate(
         perplexity = float("inf")
     return perplexity, eval_loss
 
+
 def _test_tokenizer(model_name):
-    # This function tests that adding special tokens does not 
+    # This function tests that adding special tokens does not
     # result in un-expected tokenization
-    # Context: https://github.com/huggingface/transformers/issues/25176 
-    tokenizer = get_tokenizer(model_name=model_name, special_tokens=['<REPR_END>'])
-    testoutput = tokenizer('<REPR_END>inform')['input_ids']
+    # Context: https://github.com/huggingface/transformers/issues/25176
+    tokenizer = get_tokenizer(model_name=model_name, special_tokens=["<REPR_END>"])
+    testoutput = tokenizer("<REPR_END>inform")["input_ids"]
     expected = tokenizer("inform")["input_ids"]
     assert testoutput[-1] == expected[-1], (
         "The tokenizer is not working as expected with special tokens, "
         f"testoutput={testoutput}, expected={expected}"
     )
+
 
 def checkpoint_model(
     checkpoint_folder, ckpt_id, model, epoch, last_global_step, **kwargs
@@ -420,7 +422,7 @@ def training_function(kwargs: dict):
             "avg_bwd_time_per_epoch": bwd_time_sum / (step + 1),
             "learning_rate": lr_scheduler.get_lr()[0],
         }
-        
+
         session.report(
             metrics,
             # We do not need to explictly call report(checkpoint).
@@ -565,9 +567,9 @@ def main():
     # json file
     with open(args.special_token_path, "r") as json_file:
         special_tokens = json.load(json_file)["tokens"]
-    
-    artifact_storage = os.environ['ANYSCALE_ARTIFACT_STORAGE']
-    user_name = os.environ['ANYSCALE_USERNAME'] 
+
+    artifact_storage = os.environ["ANYSCALE_ARTIFACT_STORAGE"]
+    user_name = os.environ["ANYSCALE_USERNAME"]
     storage_path = (
         f"{artifact_storage}/{user_name}/ft_llms_with_deepspeed/{args.model_name}"
     )
