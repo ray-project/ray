@@ -125,7 +125,6 @@ class TrainingIterator:
             # and created on the fly when the checkpoint is reported with metrics.
             # Ex: lambda metrics: f"checkpoint_iter={metrics['training_iteration']}"
             storage.current_checkpoint_index = self._latest_checkpoint_index
-            print(f"Setting next checkpoint path to: {storage.checkpoint_fs_path}")
 
             self._backend_executor._set_checkpoint_index(
                 storage.current_checkpoint_index
