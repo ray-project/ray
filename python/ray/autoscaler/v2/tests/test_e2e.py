@@ -1,11 +1,13 @@
-import pytest
 import os
 import sys
+
+import pytest
+
 import ray
 from ray._private.test_utils import run_string_as_driver_nonblocking, wait_for_condition
 from ray.autoscaler.v2.sdk import get_cluster_status
-from ray.util.state.api import list_placement_groups
 from ray.cluster_utils import AutoscalingCluster
+from ray.util.state.api import list_placement_groups
 
 
 def test_placement_group_consistent(shutdown_only):
@@ -47,7 +49,6 @@ while True:
     time.sleep(0.5)
     remove_placement_group(pg)
     time.sleep(0.5)
-    
 """
     run_string_as_driver_nonblocking(driver_script)
 
