@@ -976,7 +976,7 @@ class JobManager:
                 )
             except ray.exceptions.GetTimeoutError:
                 logger.warning(
-                    f"Wait for JobSupervisor exit timed out, kill JobSupervisor actor by force."
+                    "Wait for JobSupervisor exit timed out, kill JobSupervisor actor by force."
                 )
                 ray.kill(job_supervisor_actor)
             return True

@@ -337,6 +337,7 @@ def deployment(
     if min_replicas != 0:
         min_replicas = min(min_replicas, num_replicas)
         import os
+
         os.environ["BYTED_RAY_SERVE_MIN_REPLICA"] = str(min_replicas)
 
     if version is not DEFAULT.VALUE:

@@ -18,7 +18,7 @@ from ray._private.runtime_env.constants import (
 from ray.util.annotations import DeveloperAPI
 from ray._private.utils import import_attr
 
-from ray._private.runtime_env.packaging import Protocol, parse_uri
+from ray._private.runtime_env.packaging import parse_uri
 
 default_logger = logging.getLogger(__name__)
 byted_create_locks: Dict[str, asyncio.Lock] = {}

@@ -1753,10 +1753,11 @@ cdef execute_task_with_cancellation_handler(
             )
             stub = reporter_pb2_grpc.ReporterServiceStub(channel)
             reply = stub.RegisterActor(reporter_pb2.RegisterActorToMetircAgentRequest(
-                pid=os.getpid(), actor_id=core_worker.get_actor_id().hex(), submission_id=os.getenv("BYTED_SUBMISSION_ID")))
+                pid=os.getpid(), actor_id=core_worker.get_actor_id().hex(),
+                submission_id=os.getenv("BYTED_SUBMISSION_ID")))
         except Exception as err:
             exception_str = (
-                "An unexpected error occurred while registering the actor to metric agent: {}".format(err))
+                "Error occurred while register actor to metric agent: {}".format(err))
             logger.exception(exception_str)
     # BYTEDANCE LEAVE
 

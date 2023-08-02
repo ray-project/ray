@@ -6,7 +6,10 @@ pip install flake8==3.9.1
 pip install black==22.10.0
 pip install mypy==0.982
 pip install isort==5.10.1
-
+pip install types-PyYAML==6.0.12.2
+pip install flake8-comprehensions==3.10.1
+pip install flake8-quotes==2.0.0
+pip install flake8-bugbear==21.9.2
 echo "Linting changes as part of pre-push hook"
 echo "ci/lint/format.sh:"
 scripts/format.sh --all
