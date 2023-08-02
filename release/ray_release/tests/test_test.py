@@ -37,7 +37,7 @@ def test_is_byod_cluster():
     assert _stub_test({"cluster": {"byod": {}}}).is_byod_cluster()
     assert _stub_test({"cluster": {"byod": {"type": "gpu"}}}).is_byod_cluster()
     with mock.patch.dict(os.environ, {"BUILDKITE_PULL_REQUEST": "1"}):
-        assert not _stub_test({"cluster": {"byod": {}}}).is_byod_cluster()
+        assert _stub_test({"cluster": {"byod": {}}}).is_byod_cluster()
     with mock.patch.dict(os.environ, {"BUILDKITE_PULL_REQUEST": "false"}):
         assert _stub_test({"cluster": {"byod": {}}}).is_byod_cluster()
 
@@ -86,6 +86,11 @@ def test_get_ray_image():
         _stub_test({"cluster": {"byod": {}}}).get_ray_image()
         == "rayproject/ray:1.0.0.123456-py38-cpu"
     )
+    with mock.patch.dict(os.environ, {"BUILDKITE_PULL_REQUEST": "123"}):
+        assert (
+            _stub_test({"cluster": {"byod": {}}}).get_ray_image()
+            == "rayproject/ray:pr-123.123456-py38-cpu"
+        )
 
 
 def test_get_anyscale_byod_image():
