@@ -9,7 +9,7 @@ from ray.train._internal.checkpoint_manager import (
     _CheckpointManager,
     _TrainingResult,
 )
-from ray.train.checkpoint import Checkpoint
+from ray.train._checkpoint import Checkpoint
 
 
 @pytest.fixture
