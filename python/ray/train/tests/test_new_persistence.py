@@ -311,12 +311,10 @@ def test_trainer(
 
         # NOTE: These next 2 are technically synced by the driver.
         # TODO(justinvyu): In a follow-up PR, artifacts will be synced by the workers.
-        # TODO(justinvyu): In a follow-up PR, the rank folders will be removed.
         # TODO(justinvyu): [custom_fs_path_expansion] Same issue as above.
         if not storage_filesystem:
             assert (
-                len(list(trial_dir.glob("rank_*/artifact-*")))
-                == NUM_ITERATIONS * NUM_WORKERS
+                len(list(trial_dir.glob("artifact-*"))) == NUM_ITERATIONS * NUM_WORKERS
             )
             assert len(list(trial_dir.glob(EXPR_RESULT_FILE))) == 1
 
