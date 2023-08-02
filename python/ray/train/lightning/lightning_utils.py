@@ -195,7 +195,7 @@ def prepare_trainer(trainer: pl.Trainer) -> pl.Trainer:
         raise RuntimeError(
             f"Invalid strategy class: {type(trainer.strategy)}. To use "
             "PyTorch Lightning with Ray, the strategy object should be one of "
-            "[RayDDPStrategy, RayFSDPStrategy, RayDeepspeedStrategy] class "
+            f"{[cls.__name__ for cls in valid_strategy_class]} class "
             "or its subclass."
         )
 
