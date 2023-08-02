@@ -725,17 +725,19 @@ class RayServeReplica:
         ):
             user_method = self.get_runner_method(request_metadata)
             method_to_call = sync_to_async(user_method)
-            user_request = request.grpc_user_request
+            # TODO (genesu): dynamically casting request type
+            user_request = TestIn()
+            request.grpc_user_request.Unpack(user_request)
             result_generator = method_to_call(user_request)
             if inspect.iscoroutine(result_generator):
                 result_generator = await result_generator
 
             if inspect.isgenerator(result_generator):
                 for result in result_generator:
-                    yield result
+                    yield result.SerializeToString()
             elif inspect.isasyncgen(result_generator):
                 async for result in result_generator:
-                    yield result
+                    yield result.SerializeToString()
             else:
                 raise TypeError(
                     "When using `stream=True`, the called method must be a generator "
@@ -745,9 +747,6 @@ class RayServeReplica:
     async def call_user_method_grpc_unary(self, request_metadata, request) -> bytes:
         async with self.wrap_user_method_call(request_metadata):
             # TODO (genesu): dynamically casting request type
-            # user_request = TestIn()
-            # user_request.ParseFromString(request.grpc_user_request)
-            # user_request = request.grpc_user_request
             user_request = TestIn()
             request.grpc_user_request.Unpack(user_request)
 

@@ -839,6 +839,8 @@ class GRPCProxy(GenericProxy):
             stream=True,
         )
         serve_response = await self.proxy_request(serve_request=serve_request)
+        request_id = ray.serve.context._serve_request_context.get().request_id
+        context.set_trailing_metadata([("request_id", request_id)])
         async for response in serve_response.streaming_response:
             yield response
 
@@ -885,10 +887,16 @@ class GRPCProxy(GenericProxy):
         while True:
             try:
                 obj_ref = await obj_ref_generator._next_async()
-                response = await obj_ref
-                yield serve_pb2.RayServeResponse(
-                    user_response=response,
-                )
+                user_response_bytes = await obj_ref
+                # TODO (genesu): dynamically cast the response to the correct type
+                user_response = TestOut()
+                user_response.ParseFromString(user_response_bytes)
+                print("_consume_generator_unary user_response is ", user_response)
+                response = AnyProto()
+                response.Pack(user_response)
+
+                print("_consume_generator_unary response is ", response)
+                yield response
             except StopAsyncIteration:
                 break
 

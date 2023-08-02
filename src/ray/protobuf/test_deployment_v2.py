@@ -1,3 +1,6 @@
+import time
+from typing import Generator
+
 from ray import serve
 from ray.serve.generated import serve_pb2
 from ray.serve.generated.serve_pb2 import TestIn, TestOut
@@ -27,6 +30,18 @@ class GrpcDeployment:
         greeting = "This is from method2"
         output = serve_pb2.TestOut(greeting=greeting)
         return output
+
+    def streaming(self, request: "TestIn") -> Generator["TestOut", None, None]:
+        for i in range(10):
+            greeting = f"{i}: Hello {request.name} from {request.foo}"
+            num_x2 = request.num * 2 + i
+            output = serve_pb2.TestOut(
+                greeting=greeting,
+                num_x2=num_x2,
+            )
+            yield output
+
+            time.sleep(0.1)
 
 
 g = GrpcDeployment.options(name="grpc-deployment").bind()
