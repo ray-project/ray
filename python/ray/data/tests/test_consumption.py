@@ -1164,7 +1164,9 @@ def test_global_tabular_min(ray_start_regular_shared, ds_format, num_parts):
     assert ds.min("A") == 0
 
     # Test empty dataset
-    ds = ray.data.range(10)
+    # Note: we explicitly set parallelism here to ensure there are no empty
+    # input blocks.
+    ds = ray.data.range(10, parallelism=10)
     if ds_format == "pandas":
         ds = _to_pandas(ds)
     assert ds.filter(lambda r: r["id"] > 10).min("id") is None
@@ -1205,7 +1207,9 @@ def test_global_tabular_max(ray_start_regular_shared, ds_format, num_parts):
     assert ds.max("A") == 99
 
     # Test empty dataset
-    ds = ray.data.range(10)
+    # Note: we explicitly set parallelism here to ensure there are no empty
+    # input blocks.
+    ds = ray.data.range(10, parallelism=10)
     if ds_format == "pandas":
         ds = _to_pandas(ds)
     assert ds.filter(lambda r: r["id"] > 10).max("id") is None
@@ -1246,7 +1250,9 @@ def test_global_tabular_mean(ray_start_regular_shared, ds_format, num_parts):
     assert ds.mean("A") == 49.5
 
     # Test empty dataset
-    ds = ray.data.range(10)
+    # Note: we explicitly set parallelism here to ensure there are no empty
+    # input blocks.
+    ds = ray.data.range(10, parallelism=10)
     if ds_format == "pandas":
         ds = _to_pandas(ds)
     assert ds.filter(lambda r: r["id"] > 10).mean("id") is None
