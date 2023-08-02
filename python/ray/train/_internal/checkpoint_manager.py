@@ -1,6 +1,6 @@
 import logging
 import numbers
-from typing import Any, Callable, Dict, List, Optional, Tuple, TYPE_CHECKING
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from ray._private.dict import flatten_dict
 from ray.air.config import MAX
