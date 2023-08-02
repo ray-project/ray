@@ -3,11 +3,11 @@ import pandas as pd
 
 import ray
 from ray import tune
-from ray.air.checkpoint import Checkpoint
+from ray.train import Checkpoint
 from ray.train.constants import TRAIN_DATASET_KEY
 
 from ray.train.sklearn import SklearnCheckpoint, SklearnTrainer
-from ray.air.config import ScalingConfig
+from ray.train import ScalingConfig
 from ray.data.preprocessor import Preprocessor
 
 from sklearn.datasets import load_breast_cancer

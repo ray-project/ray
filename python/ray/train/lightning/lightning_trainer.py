@@ -183,17 +183,17 @@ class LightningConfigBuilder:
         with the kwargs. It handles checkpointing and metrics logging logics.
 
         Specifically, the callback periodically reports the latest metrics
-        and checkpoint to the AIR session via
-        :meth:`session.report() <ray.air.session.report>`.
+        and checkpoint via
+        :meth:`ray.train.report() <ray.train.report>`.
         The report frequency matches the checkpointing frequency here.
         You have to make sure that the target metrics (e.g. metrics defined in
         :class:`TuneConfig <ray.tune.TuneConfig>` or
-        :class:`CheckpointConfig <ray.air.config.CheckpointConfig>`)
+        :class:`CheckpointConfig <ray.train.CheckpointConfig>`)
         are ready when a new checkpoint is being saved.
 
         Note that this method is not a replacement for the
-        ``ray.air.configs.CheckpointConfig``. You still need to specify your
-        AIR checkpointing strategy in ``CheckpointConfig``. Otherwise, AIR stores
+        ``ray.train.CheckpointConfig``. You still need to specify your
+        checkpointing strategy in ``CheckpointConfig``. Otherwise, AIR stores
         all the reported checkpoints by default.
 
         Args:
@@ -243,8 +243,8 @@ class LightningTrainer(TorchTrainer):
 
     The trainer also creates a ModelCheckpoint callback based on the configuration
     provided in ``LightningConfigBuilder.checkpointing()``. In addition to
-    checkpointing, this callback also calls ``session.report()`` to report the
-    latest metrics along with the checkpoint to the AIR session.
+    checkpointing, this callback also calls ``train.report()`` to report the
+    latest metrics along with the checkpoint.
 
     For logging, users can continue to use Lightning's native loggers, such as
     WandbLogger, TensorboardLogger, etc. LightningTrainer will also log the latest
