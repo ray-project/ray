@@ -126,6 +126,7 @@ def evaluate(
 def _test_tokenizer(model_name):
     # This function tests that adding special tokens does not 
     # result in un-expected tokenization
+    # Context: https://github.com/huggingface/transformers/issues/25176 
     tokenizer = get_tokenizer(model_name=model_name, special_tokens=['<REPR_END>'])
     testoutput = tokenizer('<REPR_END>inform')['input_ids']
     expected = tokenizer("inform")["input_ids"]
@@ -613,9 +614,13 @@ def main():
     )
 
     results = trainer.fit()
+    best_checkpoint = results.best_checkpoints[0]
 
-    print("results are stored in:")
-    print(results.checkpoint.uri)
+    print("Results are stored in:")
+    print(results.path)
+    print("Best checkpoint is stored in:")
+    print(best_checkpoint[0].uri)
+    print(f"With perplexity: {best_checkpoint[1]['perplexity']}")
 
 
 if __name__ == "__main__":
