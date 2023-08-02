@@ -43,8 +43,9 @@ class ActorSchedulingQueue : public SchedulingQueue {
       instrumented_io_context &main_io_service,
       DependencyWaiter &waiter,
       std::shared_ptr<ConcurrencyGroupManager<BoundedExecutor>> pool_manager,
-      std::shared_ptr<FiberThread> fiber_thread,
+      std::shared_ptr<ConcurrencyGroupManager<FiberState>> fiber_state_manager,
       bool is_asyncio = false,
+      int fiber_max_concurrency = 1,
       const std::vector<ConcurrencyGroup> &concurrency_groups = {},
       int64_t reorder_wait_seconds = kMaxReorderWaitSeconds);
 
@@ -92,7 +93,7 @@ class ActorSchedulingQueue : public SchedulingQueue {
   std::shared_ptr<ConcurrencyGroupManager<BoundedExecutor>> pool_manager_;
   /// Manage the running fiber states of actors in this worker. It works with
   /// python asyncio if this is an asyncio actor.
-  std::shared_ptr<FiberThread> fiber_thread_;
+  std::shared_ptr<ConcurrencyGroupManager<FiberState>> fiber_state_manager_;
   /// Whether we should enqueue requests into asyncio pool. Setting this to true
   /// will instantiate all tasks as fibers that can be yielded.
   bool is_asyncio_ = false;

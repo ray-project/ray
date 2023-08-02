@@ -17,9 +17,7 @@
 #include <boost/fiber/all.hpp>
 #include <chrono>
 
-#include "ray/common/task/task_spec.h"
 #include "ray/util/logging.h"
-
 namespace ray {
 namespace core {
 
@@ -55,7 +53,7 @@ class FiberEvent {
 /// semaphore data structure.
 class FiberRateLimiter {
  public:
-  FiberRateLimiter(int32_t num) : num_(num) {}
+  FiberRateLimiter(int num) : num_(num) {}
 
   // Enter the semaphore. Wait for the value to be > 0 and decrement the value.
   void Acquire() {
@@ -79,29 +77,20 @@ class FiberRateLimiter {
  private:
   boost::fibers::condition_variable cond_;
   boost::fibers::mutex mutex_;
-  int32_t num_ = 1;
+  int num_ = 1;
 };
 
 using FiberChannel = boost::fibers::unbuffered_channel<std::function<void()>>;
 
-// FiberThread uses 1 thread to run all asyncio tasks. The tasks are executed in a round
-// robin manner, subject to a list of rate limiters for each concurrent group, each
-// function in those concurrent groups, and a default rate limiter.
-class FiberThread {
+class FiberState {
  public:
-  FiberThread(const std::vector<ConcurrencyGroup> &concurrency_groups,
-              const int32_t max_concurrency_for_default_concurrency_group)
-      : max_concurrency_for_default_concurrency_group_(
-            max_concurrency_for_default_concurrency_group),
-        default_rate_limiter_(max_concurrency_for_default_concurrency_group) {
-    for (const auto &group : concurrency_groups) {
-      auto rate_limiter = std::make_shared<FiberRateLimiter>(group.max_concurrency);
-      concurrency_group_rate_limiters_[group.name] = rate_limiter;
-      for (const auto &fd : group.function_descriptors) {
-        function_rate_limiters_[fd->ToString()] = rate_limiter;
-      }
-    }
+  static bool NeedDefaultExecutor(int32_t max_concurrency_in_default_group) {
+    RAY_UNUSED(max_concurrency_in_default_group);
+    /// asycio mode always need a default executor.
+    return true;
+  }
 
+  FiberState(int max_concurrency) : rate_limiter_(max_concurrency) {
     fiber_runner_thread_ =
         std::thread(
             [&]() {
@@ -142,68 +131,33 @@ class FiberThread {
             });
   }
 
-  void EnqueueFiber(const std::string &concurrency_group_name,
-                    const ray::FunctionDescriptor &fd,
-                    std::function<void()> &&callback) {
-    // Note we are doing dangerous trick of passing a reference of rate limiter to the
-    // fiber function. This is safe because the *_rate_limiters_ member variables live as
-    // long as the FiberThread object, and is never modified.
-    FiberRateLimiter &rate_limiter = GetRateLimiter(concurrency_group_name, fd);
-    auto op_status = channel_.push([&rate_limiter, callback]() {
-      rate_limiter.Acquire();
+  void EnqueueFiber(std::function<void()> &&callback) {
+    auto op_status = channel_.push([this, callback]() {
+      rate_limiter_.Acquire();
       callback();
-      rate_limiter.Release();
+      rate_limiter_.Release();
     });
     RAY_CHECK(op_status == boost::fibers::channel_op_status::success);
   }
 
-  void Stop() {
-    channel_.close();
+  void Stop() { channel_.close(); }
+
+  void Join() {
     fiber_stopped_event_.Wait();
     fiber_runner_thread_.detach();
   }
-
-  const int32_t max_concurrency_for_default_concurrency_group_;
 
  private:
   /// The fiber channel used to send task between the submitter thread
   /// (main direct_actor_trasnport thread) and the fiber_runner_thread_ (defined below)
   FiberChannel channel_;
   /// The fiber semaphore used to limit the number of concurrent fibers
-  /// running at once for a concurrency group. Using shared_ptr because a same rate
-  /// limiter can be shared between 1 concurrency group and multiple functions.
-  absl::flat_hash_map<std::string, std::shared_ptr<FiberRateLimiter>>
-      concurrency_group_rate_limiters_;
-  /// The fiber semaphore used to limit the number of concurrent fibers
-  /// running at once for a function.
-  absl::flat_hash_map<std::string, std::shared_ptr<FiberRateLimiter>>
-      function_rate_limiters_;
-  FiberRateLimiter default_rate_limiter_;
-
+  /// running at once.
+  FiberRateLimiter rate_limiter_;
   /// The fiber event used to notify that all worker fibers are stopped running.
   FiberEvent fiber_stopped_event_;
   /// The thread that runs all asyncio fibers. is_asyncio_ must be true.
   std::thread fiber_runner_thread_;
-
-  FiberRateLimiter &GetRateLimiter(const std::string &concurrency_group_name,
-                                   const ray::FunctionDescriptor &fd) {
-    if (!concurrency_group_name.empty()) {
-      auto it = concurrency_group_rate_limiters_.find(concurrency_group_name);
-      /// TODO(qwang): Fail the user task.
-      RAY_CHECK(it != concurrency_group_rate_limiters_.end())
-          << "Failed to look up the executor of the given concurrency group "
-          << concurrency_group_name << " . It might be that you didn't define "
-          << "the concurrency group " << concurrency_group_name;
-      return *it->second;
-    }
-    /// Code path of that this task wasn't specified in a concurrency group addtionally.
-    /// Use the predefined concurrency group.
-    auto it = function_rate_limiters_.find(fd->ToString());
-    if (it != function_rate_limiters_.end()) {
-      return *it->second;
-    }
-    return default_rate_limiter_;
-  }
 };
 
 }  // namespace core

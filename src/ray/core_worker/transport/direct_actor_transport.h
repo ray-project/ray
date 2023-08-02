@@ -72,7 +72,7 @@ class CoreWorkerDirectTaskReceiver {
         task_main_io_service_(main_io_service),
         task_done_(task_done),
         pool_manager_(nullptr),
-        fiber_thread_(nullptr) {}
+        fiber_state_manager_(nullptr) {}
 
   /// Initialize this receiver. This must be called prior to use.
   void Init(std::shared_ptr<rpc::CoreWorkerClientPool>,
@@ -141,7 +141,7 @@ class CoreWorkerDirectTaskReceiver {
   /// If concurrent calls are allowed, holds the pools for executing these tasks.
   std::shared_ptr<ConcurrencyGroupManager<BoundedExecutor>> pool_manager_;
   /// If async calls are allowed, holds the fibers for executing async tasks.
-  std::shared_ptr<FiberThread> fiber_thread_;
+  std::shared_ptr<ConcurrencyGroupManager<FiberState>> fiber_state_manager_;
   /// Whether this actor use asyncio for concurrency.
   bool is_asyncio_ = false;
   /// Whether this actor executes tasks out of order with respect to client submission
