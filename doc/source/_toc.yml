@@ -64,11 +64,11 @@ parts:
           - file: train/distributed-pytorch
             sections:
               - file: train/distributed-pytorch/converting-existing-training-loop
-              - file: train/distributed-pytorch/persistent-storage
-                title: Configuring Persistent Storage
               - file: train/distributed-pytorch/data-loading-preprocessing
               - file: train/distributed-pytorch/using-gpus
               - file: train/distributed-pytorch/monitoring-logging
+              - file: train/distributed-pytorch/persistent-storage
+                title: Configuring Persistent Storage
               - file: train/distributed-pytorch/checkpoints
               - file: train/distributed-pytorch/experiment-tracking
               - file: train/distributed-pytorch/fault-tolerance

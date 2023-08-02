@@ -6,6 +6,12 @@ server for you, allowing you to run your ``DistributedOptimizer`` training
 script. See `Horovod documentation <https://horovod.readthedocs.io/en/stable/index.html>`_
 for more information.
 
+Quick start
+-----------
+.. literalinclude:: /ray-air/doc_code/hvd_trainer.py
+  :language: python
+
+
 
 Updating your training function
 -------------------------------

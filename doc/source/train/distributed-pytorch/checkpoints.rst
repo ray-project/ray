@@ -18,7 +18,7 @@ directory <train-log-dir>` of each run.
 .. _train-dl-saving-checkpoints:
 
 Saving checkpoints
-~~~~~~~~~~~~~~~~~~
+------------------
 
 :ref:`Checkpoints <checkpoint-api-ref>` can be saved by calling ``session.report(metrics, checkpoint=Checkpoint(...))`` in the
 training function. This will cause the checkpoint state from the distributed
