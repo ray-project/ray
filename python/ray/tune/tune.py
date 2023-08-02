@@ -468,7 +468,7 @@ def run(
             If set to `False`, files are accessible with paths relative to the
             original working directory. However, all workers on the same node now
             share the same working directory, so be sure to use
-            `session.get_trial_dir()` as the path to save any outputs.
+            `ray.train.get_context().get_trial_dir()` as the path to save any outputs.
         sync_config: Configuration object for syncing. See
             tune.SyncConfig.
         export_formats: List of formats that exported at the end of

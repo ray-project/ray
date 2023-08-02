@@ -966,7 +966,7 @@ class PopulationBasedTrainingReplay(FIFOScheduler):
     .. code-block:: python
 
         # Replaying a result from ray.tune.examples.pbt_convnet_example
-        from ray import air, tune
+        from ray import train, tune
 
         from ray.tune.examples.pbt_convnet_example import PytorchTrainable
         from ray.tune.schedulers import PopulationBasedTrainingReplay
@@ -976,7 +976,7 @@ class PopulationBasedTrainingReplay(FIFOScheduler):
 
         tuner = tune.Tuner(
             PytorchTrainable,
-            run_config=air.RunConfig(
+            run_config=train.RunConfig(
                 stop={"training_iteration": 100}
             ),
             tune_config=tune.TuneConfig(

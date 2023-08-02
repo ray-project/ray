@@ -1000,7 +1000,7 @@ class TuneController(_TuneControllerBase):
             if log_once("trial_executor_buffer_checkpoint"):
                 logger.warning(
                     "Disabling buffered training as you passed "
-                    "`checkpoint_at_end` to `air.CheckpointConfig()`."
+                    "`checkpoint_at_end` to `train.CheckpointConfig()`."
                 )
             return 1, buffer_time_s
 

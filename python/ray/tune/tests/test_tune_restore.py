@@ -18,7 +18,7 @@ import ray
 from ray import tune
 from ray._private.test_utils import recursive_fnmatch, run_string_as_driver
 from ray.air._internal.checkpoint_manager import _TrackedCheckpoint, CheckpointStorage
-from ray.air.config import CheckpointConfig
+from ray.train import CheckpointConfig
 from ray.exceptions import RayTaskError
 from ray.rllib import _register_all
 from ray.tune import TuneError

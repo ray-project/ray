@@ -15,7 +15,7 @@ from ray.train.xgboost import (
     XGBoostPredictor,
 )
 from ray.train.batch_predictor import BatchPredictor
-from ray.air.config import RunConfig, ScalingConfig
+from ray.train import RunConfig, ScalingConfig
 
 _XGB_MODEL_PATH = "model.json"
 _TRAINING_TIME_THRESHOLD = 1000

@@ -186,12 +186,11 @@ def train_torch_model(dataset, preprocessor, per_epoch_preprocessor):
     from torchvision import models
 
     from ray import train
-    from ray.air import session
-    from ray.air.config import ScalingConfig
+    from ray.train import ScalingConfig
     from ray.train.torch import TorchCheckpoint, TorchTrainer
 
     def train_one_epoch(model, *, criterion, optimizer, batch_size, epoch):
-        dataset_shard = session.get_dataset_shard("train")
+        dataset_shard = train.get_dataset_shard("train")
 
         running_loss = 0
         for i, batch in enumerate(
@@ -210,7 +209,7 @@ def train_torch_model(dataset, preprocessor, per_epoch_preprocessor):
 
             running_loss += loss.item()
             if i % 2000 == 1999:
-                session.report(
+                train.report(
                     metrics={
                         "epoch": epoch,
                         "batch": i,
@@ -254,13 +253,13 @@ def train_tensorflow_model(dataset, preprocessor, per_epoch_preprocessor):
     # __tensorflow_training_loop_start__
     import tensorflow as tf
 
-    from ray.air import session
+    from ray import train
     from ray.air.integrations.keras import ReportCheckpointCallback
 
     def train_loop_per_worker(config):
         strategy = tf.distribute.experimental.MultiWorkerMirroredStrategy()
 
-        train_shard = session.get_dataset_shard("train")
+        train_shard = train.get_dataset_shard("train")
         train_dataset = train_shard.to_tf(
             "image",
             "label",
@@ -286,7 +285,7 @@ def train_tensorflow_model(dataset, preprocessor, per_epoch_preprocessor):
     # __tensorflow_training_loop_stop__
 
     # __tensorflow_trainer_start__
-    from ray.air import ScalingConfig
+    from ray.train import ScalingConfig
     from ray.train.tensorflow import TensorflowTrainer
 
     # The following transform operation is lazy.

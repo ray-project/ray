@@ -2,8 +2,7 @@ from pathlib import Path
 import os
 import time
 
-from ray import air, tune
-from ray.air import session
+from ray import train, tune
 from ray.train.data_parallel_trainer import DataParallelTrainer
 
 from ray.tune.search import BasicVariantGenerator
@@ -50,7 +49,7 @@ def train_func(config):
         time.sleep(0.1)
 
     # Finish trial
-    session.report({"param": config["param"], "fixed": config["fixed"]})
+    train.report({"param": config["param"], "fixed": config["fixed"]})
 
 
 trainer = DataParallelTrainer(
@@ -58,7 +57,7 @@ trainer = DataParallelTrainer(
     train_loop_config={
         "fixed": FIXED_VAL,
     },
-    scaling_config=air.ScalingConfig(
+    scaling_config=train.ScalingConfig(
         num_workers=1, trainer_resources={"CPU": 0}, resources_per_worker={"CPU": 2}
     ),
 )

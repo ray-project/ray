@@ -207,13 +207,13 @@ Training vision models
 Creating checkpoints
 --------------------
 
-:class:`Checkpoints <ray.air.checkpoint.Checkpoint>` are required for batch inference and model
+:class:`Checkpoints <ray.train.Checkpoint>` are required for batch inference and model
 serving. They contain model state and optionally a preprocessor.
 
 If you're going from training to prediction, don't create a new checkpoint.
 :meth:`Trainer.fit() <ray.train.trainer.BaseTrainer.fit>` returns a
-:class:`~ray.air.result.Result` object. Use
-:attr:`Result.checkpoint <ray.air.result.Result.checkpoint>` instead.
+:class:`~ray.train.Result` object. Use
+:attr:`Result.checkpoint <ray.train.Result.checkpoint>` instead.
 
 .. tab-set::
 

@@ -72,6 +72,25 @@ Ray Train Loop
     ~train.report
 
 
+Ray Train Checkpoints
+---------------------
+
+.. autosummary::
+    :toctree: doc/
+
+    ~train.Checkpoint
+
+
+Ray Train Context
+-----------------
+
+.. autosummary::
+    :toctree: doc/
+
+    ~train.get_context
+    ~train.context.TrainContext
+
+
 .. _train-integration-api:
 .. _train-framework-specific-ckpts:
 

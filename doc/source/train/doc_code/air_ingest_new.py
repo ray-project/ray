@@ -3,8 +3,8 @@
 
 # __basic__
 import ray
-from ray.air import session
-from ray.air.config import ScalingConfig
+from ray import train
+from ray.train import ScalingConfig
 from ray.train.torch import TorchTrainer
 
 import numpy as np
@@ -32,7 +32,7 @@ train_ds = train_ds.map_batches(normalize_length)
 
 def train_loop_per_worker():
     # Get an iterator to the dataset we passed in below.
-    it = session.get_dataset_shard("train")
+    it = train.get_dataset_shard("train")
 
     # Train for 10 epochs over the data. We'll use a shuffle buffer size
     # of 10k elements, and prefetch up to 10 batches of size 128 each.
