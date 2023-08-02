@@ -68,7 +68,8 @@ def get_pretrained_path(model_id: str):
 def get_tokenizer(model_name, special_tokens):
 
     pretrained_path = get_pretrained_path(model_name)
-    tokenizer = AutoTokenizer.from_pretrained(pretrained_path)
+    # Context for legacy=True: https://github.com/huggingface/transformers/issues/25176
+    tokenizer = AutoTokenizer.from_pretrained(pretrained_path, legacy=True)
     tokenizer.pad_token = tokenizer.eos_token
     tokenizer.add_tokens(special_tokens, special_tokens=True)
 
@@ -121,6 +122,19 @@ def evaluate(
     except OverflowError:
         perplexity = float("inf")
     return perplexity, eval_loss
+
+
+def _test_tokenizer(model_name):
+    # This function tests that adding special tokens does not
+    # result in un-expected tokenization
+    # Context: https://github.com/huggingface/transformers/issues/25176
+    tokenizer = get_tokenizer(model_name=model_name, special_tokens=["<REPR_END>"])
+    testoutput = tokenizer("<REPR_END>inform")["input_ids"]
+    expected = tokenizer("inform")["input_ids"]
+    assert testoutput[-1] == expected[-1], (
+        "The tokenizer is not working as expected with special tokens, "
+        f"testoutput={testoutput}, expected={expected}"
+    )
 
 
 def checkpoint_model(
@@ -185,6 +199,7 @@ def training_function(kwargs: dict):
 
     train_ds_len = len(list(train_ds.iter_batches(batch_size=1)))
 
+    _test_tokenizer(args.model_name)
     tokenizer = get_tokenizer(model_name=args.model_name, special_tokens=special_tokens)
     collate_partial = functools.partial(
         collate_fn,
@@ -263,7 +278,7 @@ def training_function(kwargs: dict):
         print("Starting training ...")
         print("Number of batches on main process", train_ds_len // batch_size)
 
-    avg_fwd_time, avg_bwd_time, avg_opt_step_time = 0, 0, 0
+    fwd_time_sum, bwd_time_sum, optim_step_time_sum = 0, 0, 0
     for epoch in range(num_epochs):
         s_epoch = time.time()
         model.train()
@@ -286,18 +301,20 @@ def training_function(kwargs: dict):
                 loss = outputs.loss
                 loss_sum += loss
                 e_fwd = time.time()
-                avg_fwd_time += e_fwd - s_fwd
+                fwd_time = e_fwd - s_fwd
+                fwd_time_sum += fwd_time
                 s_bwd = time.time()
                 accelerator.backward(loss)
                 e_bwd = time.time()
-                avg_bwd_time += e_bwd - s_bwd
+                bwd_time = e_bwd - s_bwd
+                bwd_time_sum += bwd_time
 
                 s_opt_step = time.time()
                 optimizer.step()
                 lr_scheduler.step()
                 optimizer.zero_grad()
                 e_opt_step = time.time()
-                avg_opt_step_time += e_opt_step - s_opt_step
+                optim_step_time_sum += e_opt_step - s_opt_step
 
             if accelerator.is_main_process:
                 accelerator.print(
@@ -310,19 +327,24 @@ def training_function(kwargs: dict):
 
             # as long as this is not the last step report here
             if step != (train_ds_len // batch_size - 1):
+                aggregated_loss = torch.mean(accelerator.gather(loss[None])).item()
                 session.report(
                     {
                         "epoch": epoch,
                         "iteration": step,
-                        "train_loss": loss_sum.item() / (step + 1),
+                        "train_loss_batch": aggregated_loss,
+                        "avg_train_loss_epoch": None,
                         "eval_loss": None,
                         "perplexity": None,
                         "num_iterations": step + 1,
                         "train_time_per_epoch": None,
                         "eval_time_per_epoch": None,
-                        "avg_fwd_time": avg_fwd_time / (step + 1),
-                        "avg_bwd_time": avg_bwd_time / (step + 1),
-                    },
+                        "fwd_time": fwd_time,
+                        "bwd_time": bwd_time,
+                        "avg_fwd_time_per_epoch": None,
+                        "avg_bwd_time_per_epoch": None,
+                        "learning_rate": lr_scheduler.get_lr()[0],
+                    }
                 )
 
         e_epoch = time.time()
@@ -343,9 +365,9 @@ def training_function(kwargs: dict):
 
         eval_e_epoch = time.time()
         accelerator.print("Eval time per epoch: ", eval_e_epoch - eval_s_epoch)
-        accelerator.print("avg fwd time: ", avg_fwd_time / (step + 1))
-        accelerator.print("avg bwd time: ", avg_bwd_time / (step + 1))
-        accelerator.print("avg opt step time: ", avg_opt_step_time / (step + 1))
+        accelerator.print("avg fwd time: ", fwd_time_sum / (step + 1))
+        accelerator.print("avg bwd time: ", bwd_time_sum / (step + 1))
+        accelerator.print("avg opt step time: ", optim_step_time_sum / (step + 1))
 
         accelerator.print(f"Saving the model in {ckpt_path}")
         accelerator.wait_for_everyone()
@@ -384,19 +406,25 @@ def training_function(kwargs: dict):
         # Note: After the following call, in the case of remote storage, the checkpoint
         # directoy will get synced to the remote storage and then deleted from the
         # local directory. This will open up local disk.
+        metrics = {
+            "epoch": epoch,
+            "iteration": step,
+            "train_loss_batch": loss.item(),
+            "avg_train_loss_epoch": loss_sum.item() / (step + 1),
+            "eval_loss": eloss,
+            "perplexity": perplex,
+            "num_iterations": step + 1,
+            "train_time_per_epoch": e_epoch - s_epoch,
+            "eval_time_per_epoch": eval_e_epoch - eval_s_epoch,
+            "fwd_time": fwd_time,
+            "bwd_time": bwd_time,
+            "avg_fwd_time_per_epoch": fwd_time_sum / (step + 1),
+            "avg_bwd_time_per_epoch": bwd_time_sum / (step + 1),
+            "learning_rate": lr_scheduler.get_lr()[0],
+        }
+
         session.report(
-            {
-                "epoch": epoch,
-                "iteration": step,
-                "train_loss": loss_sum.item() / (step + 1),
-                "eval_loss": eloss,
-                "perplexity": perplex,
-                "num_iterations": step + 1,
-                "train_time_per_epoch": e_epoch - s_epoch,
-                "eval_time_per_epoch": eval_e_epoch - eval_s_epoch,
-                "avg_fwd_time": avg_fwd_time / (step + 1),
-                "avg_bwd_time": avg_bwd_time / (step + 1),
-            },
+            metrics,
             # We do not need to explictly call report(checkpoint).
             # This is because the checkpointing is not on all distributed workers, it's
             # only done on rank_0 which is forced to be co-located with the trainer
@@ -406,7 +434,6 @@ def training_function(kwargs: dict):
             # iterations.
             checkpoint=air.Checkpoint.from_directory(ckpt_path_epoch),
         )
-
         print("Checkpointing time: ", time.time() - checkpointing_time_s)
 
 
@@ -541,8 +568,10 @@ def main():
     with open(args.special_token_path, "r") as json_file:
         special_tokens = json.load(json_file)["tokens"]
 
+    artifact_storage = os.environ["ANYSCALE_ARTIFACT_STORAGE"]
+    user_name = os.environ["ANYSCALE_USERNAME"]
     storage_path = (
-        f"{os.environ['ANYSCALE_ARTIFACT_STORAGE']}/finetuning_llms_with_deepspeed"
+        f"{artifact_storage}/{user_name}/ft_llms_with_deepspeed/{args.model_name}"
     )
 
     trainer = TorchTrainer(
@@ -587,9 +616,13 @@ def main():
     )
 
     results = trainer.fit()
+    best_checkpoint = results.best_checkpoints[0]
 
-    print("results are stored in:")
-    print(results.checkpoint.uri)
+    print("Results are stored in:")
+    print(results.path)
+    print("Best checkpoint is stored in:")
+    print(best_checkpoint[0].uri)
+    print(f"With perplexity: {best_checkpoint[1]['perplexity']}")
 
 
 if __name__ == "__main__":
