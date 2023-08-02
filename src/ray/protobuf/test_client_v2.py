@@ -18,11 +18,13 @@ test_in = TestIn(
 test_in_any = AnyProto()
 test_in_any.Pack(test_in)
 metadata = [
-    ("application", "default_grpc-deployment"),
+    ("route_path", "/"),
+    ("method_name", "method1"),
+    # ("application", "default_grpc-deployment"),
     # ("request_id", "123"),
     # ("multiplexed_model_id", "456"),
 ]
-response, call = stub.Predict.with_call(request=test_in, metadata=metadata)
+response, call = stub.Predict.with_call(request=test_in_any, metadata=metadata)
 print(call.trailing_metadata())
 print("Time taken:", time.time() - start_time)
 print("Output type:", type(response))

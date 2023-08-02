@@ -745,8 +745,11 @@ class RayServeReplica:
     async def call_user_method_grpc_unary(self, request_metadata, request) -> bytes:
         async with self.wrap_user_method_call(request_metadata):
             # TODO (genesu): dynamically casting request type
+            # user_request = TestIn()
+            # user_request.ParseFromString(request.grpc_user_request)
+            # user_request = request.grpc_user_request
             user_request = TestIn()
-            user_request.ParseFromString(request.grpc_user_request)
+            request.grpc_user_request.Unpack(user_request)
 
             runner_method = self.get_runner_method(request_metadata)
             if inspect.isgeneratorfunction(runner_method) or inspect.isasyncgenfunction(
@@ -761,7 +764,7 @@ class RayServeReplica:
             method_to_call = sync_to_async(runner_method)
 
             result = await method_to_call(user_request)
-            print("result", result, type(result))
+            print("call_user_method_grpc_unary result", result, type(result))
             return result.SerializeToString()
 
     async def call_user_method(

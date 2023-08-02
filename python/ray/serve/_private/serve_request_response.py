@@ -64,20 +64,28 @@ class GRPCServeRequest(ServeRequest):
         match_target: Callable[[str], Optional[str]],
         stream: bool,
     ):
-        self.request = request.SerializeToString()
+        # Any proto can be serialized by pickle so no need to call SerializeToString()
+        self.request = request  # .SerializeToString()
         self.stream = stream
         self.app_name = None
         self.route_path = None
         self.request_id = None
+        self.method_name = "__call__"
         self.multiplexed_model_id = DEFAULT.VALUE
         for key, value in context.invocation_metadata():
             if key == "application":
                 self.app_name = value
-                self.route_path = match_target(self.app_name)
             elif key == "request_id":
                 self.request_id = value
             elif key == "multiplexed_model_id":
                 self.multiplexed_model_id = value
+            elif key == "route_path":
+                self.route_path = value
+            elif key == "method_name":
+                self.method_name = value
+
+        if not self.route_path:
+            self.route_path = match_target(self.app_name)
 
     @property
     def user_request(self) -> bytes:

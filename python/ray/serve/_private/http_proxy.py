@@ -808,6 +808,7 @@ class GRPCProxy(GenericProxy):
         value is protobuf RayServeResponse object.
         """
         print("in predict, request:", request)
+        print("request type:", type(request))
         print("context is ", context)
         print("invocation_metadata is ", context.invocation_metadata())
 
@@ -862,6 +863,7 @@ class GRPCProxy(GenericProxy):
             stream=serve_request.stream,
             serve_grpc_request=True,
             multiplexed_model_id=multiplexed_model_id,
+            method_name=serve_request.method_name,
         )
 
         request_context_info = {
@@ -905,10 +907,13 @@ class GRPCProxy(GenericProxy):
     ) -> ServeResponse:
         user_response_bytes = await obj_ref
         print("_consume_generator_unary user_response is ", user_response_bytes)
+        # TODO (genesu): dynamically cast the response to the correct type
         user_response = TestOut()
         user_response.ParseFromString(user_response_bytes)
+        print("_consume_generator_unary user_response is ", user_response)
         response = AnyProto()
         response.Pack(user_response)
+        print("_consume_generator_unary response is ", response)
 
         return ServeResponse(status_code="200", response=response)
 
