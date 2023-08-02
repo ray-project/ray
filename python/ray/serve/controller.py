@@ -377,7 +377,10 @@ class ServeController:
                     "multiple Ray clusters."
                 )
             self.control_loop_gauge_s.set(loop_duration)
+
+            sleep_start_time = time.time()
             await asyncio.sleep(CONTROL_LOOP_PERIOD_S)
+            self.sleep_duration_gauge_s.set(time.time() - sleep_start_time)
 
     def _create_control_loop_metrics(self):
         self.node_update_duration_gauge_s = metrics.Gauge(
@@ -399,6 +402,10 @@ class ServeController:
         self.snapshot_duration_gauge_s = metrics.Gauge(
             "serve_controller_application_state_update_duration_s",
             description="The control loop time spent on putting the Serve snapshot.",
+        )
+        self.sleep_duration_gauge_s = metrics.Gauge(
+            "serve_controller_sleep_duration_s",
+            description="The duration of the last control loop's sleep.",
         )
         self.control_loop_gauge_s = metrics.Gauge(
             "serve_controller_control_loop_duration_s",
