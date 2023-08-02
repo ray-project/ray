@@ -1,10 +1,11 @@
 import pytest
 import numpy as np
+import os
 
 import ray
 from ray.train.torch import TorchTrainer
 from ray.train.lightning import (
-    get_devices,
+    RayDeepSpeedStrategy,
     RayDDPStrategy,
     RayFSDPStrategy,
     RayLightningEnvironment,
@@ -28,13 +29,21 @@ def ray_start_6_cpus_2_gpus():
     ray.shutdown()
 
 
+@pytest.fixture
+def ray_start_6_cpus_4_gpus():
+    address_info = ray.init(num_cpus=6, num_gpus=4)
+    yield address_info
+    # The code after the yield will run as teardown code.
+    ray.shutdown()
+
+
 @pytest.mark.parametrize("strategy_name", ["ddp", "fsdp"])
 @pytest.mark.parametrize("accelerator", ["cpu", "gpu"])
 @pytest.mark.parametrize("datasource", ["dataloader", "datamodule"])
 def test_trainer_with_native_dataloader(
     ray_start_6_cpus_2_gpus, strategy_name, accelerator, datasource
 ):
-    """Test basic ddp and fsdp training with dataloader and datamodule. """
+    """Test basic ddp and fsdp training with dataloader and datamodule."""
 
     if accelerator == "cpu" and strategy_name == "fsdp":
         return
@@ -53,7 +62,7 @@ def test_trainer_with_native_dataloader(
 
         trainer = pl.Trainer(
             max_epochs=num_epochs,
-            devices=get_devices(),
+            devices=-1,
             accelerator=accelerator,
             strategy=strategy,
             plugins=[RayLightningEnvironment()],
@@ -88,7 +97,7 @@ def test_trainer_with_native_dataloader(
 @pytest.mark.parametrize("strategy_name", ["ddp", "fsdp"])
 @pytest.mark.parametrize("accelerator", ["cpu", "gpu"])
 def test_trainer_with_ray_data(ray_start_6_cpus_2_gpus, strategy_name, accelerator):
-    """Test Data integration with ddp and fsdp. """
+    """Test Data integration with ddp and fsdp."""
 
     if accelerator == "cpu" and strategy_name == "fsdp":
         return
@@ -111,7 +120,7 @@ def test_trainer_with_ray_data(ray_start_6_cpus_2_gpus, strategy_name, accelerat
 
         trainer = pl.Trainer(
             max_epochs=num_epochs,
-            devices=get_devices(),
+            devices=-1,
             accelerator=accelerator,
             strategy=strategy,
             plugins=[RayLightningEnvironment()],
@@ -140,10 +149,64 @@ def test_trainer_with_ray_data(ray_start_6_cpus_2_gpus, strategy_name, accelerat
     results = trainer.fit()
     assert results.metrics["epoch"] == num_epochs - 1
     assert (
-        results.metrics["step"] == num_epochs * dataset_size / num_workers / batch_size
+        results.metrics["steps"] == num_epochs * dataset_size / num_workers / batch_size
     )
     assert "loss" in results.metrics
     assert "val_loss" in results.metrics
+
+
+@pytest.mark.parametrize("stage", [1, 2, 3])
+def test_deepspeed_zero_stages(ray_start_6_cpus_4_gpus, tmpdir, stage):
+    num_epochs = 5
+    batch_size = 8
+    num_workers = 4
+    dataset_size = 256
+
+    def train_loop():
+        model = LinearModule(input_dim=32, output_dim=4, strategy="deepspeed")
+
+        strategy = RayDeepSpeedStrategy(stage=stage)
+
+        trainer = pl.Trainer(
+            max_epochs=num_epochs,
+            devices=-1,
+            accelerator="gpu",
+            strategy=strategy,
+            plugins=[RayLightningEnvironment()],
+            callbacks=[RayTrainReportCallback()],
+        )
+
+        datamodule = DummyDataModule(batch_size, dataset_size)
+        trainer.fit(model, datamodule=datamodule)
+
+    trainer = TorchTrainer(
+        train_loop_per_worker=train_loop,
+        scaling_config=ScalingConfig(num_workers=num_workers, use_gpu=True),
+    )
+
+    result = trainer.fit()
+
+    # Check all deepspeed model/optimizer shards are saved
+    all_files = os.listdir(
+        f"{result.checkpoint.path}/ckpt_epoch_{num_epochs-1}/checkpoint"
+    )
+    for rank in range(num_workers):
+        full_model = "mp_rank_00_model_states.pt"
+        model_shard = f"zero_pp_rank_{rank}_mp_rank_00_model_states.pt"
+        optim_shard = f"zero_pp_rank_{rank}_mp_rank_00_optim_states.pt"
+
+        assert (
+            optim_shard in all_files
+        ), f"[stage-{stage}] Optimizer states `{optim_shard}` doesn't exist!"
+
+        if stage == 3:
+            assert (
+                model_shard in all_files
+            ), f"[stage-{stage}] Model states {model_shard} doesn't exist!"
+        else:
+            assert (
+                full_model in all_files
+            ), f"[stage-{stage}] Model states {full_model} doesn't exist!"
 
 
 if __name__ == "__main__":
