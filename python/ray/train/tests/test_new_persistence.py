@@ -12,7 +12,7 @@ import pyarrow.fs
 from ray import train, tune
 from ray.air.constants import EXPR_RESULT_FILE
 from ray.train._internal.storage import _download_from_fs_path
-from ray.train.checkpoint import Checkpoint as NewCheckpoint
+from ray.train._checkpoint import Checkpoint as NewCheckpoint
 from ray.train.data_parallel_trainer import DataParallelTrainer
 
 from ray.air.tests.test_checkpoints import mock_s3_bucket_uri

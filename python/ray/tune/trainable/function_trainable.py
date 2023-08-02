@@ -255,7 +255,7 @@ class _StatusReporter:
     def report(self, metrics: Dict, *, checkpoint: Optional[Checkpoint] = None) -> None:
         from ray.train._internal.storage import _use_storage_context
         from ray.train._internal.checkpoint_manager import _TrainingResult
-        from ray.train.checkpoint import Checkpoint as NewCheckpoint
+        from ray.train._checkpoint import Checkpoint as NewCheckpoint
 
         # TODO(xwjiang): Tons of optimizations.
         self._air_session_has_reported = True

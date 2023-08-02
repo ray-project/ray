@@ -441,7 +441,7 @@ class _TrainSession:
         self.legacy_checkpoint_uri = uri
 
     def new_checkpoint(self, checkpoint):
-        from ray.train.checkpoint import Checkpoint as NewCheckpoint
+        from ray.train._checkpoint import Checkpoint as NewCheckpoint
 
         if not isinstance(checkpoint, NewCheckpoint):
             raise ValueError(

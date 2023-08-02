@@ -31,7 +31,7 @@ from ray.tune.syncer import Syncer, SyncConfig, _BackgroundSyncer
 from ray.tune.result import _get_defaults_results_dir
 
 if TYPE_CHECKING:
-    from ray.train.checkpoint import Checkpoint
+    from ray.train._checkpoint import Checkpoint
 
 
 logger = logging.getLogger(__file__)
@@ -493,7 +493,7 @@ class StorageContext:
             Checkpoint: A Checkpoint pointing to the persisted checkpoint location.
         """
         # TODO(justinvyu): Fix this cyclical import.
-        from ray.train.checkpoint import Checkpoint
+        from ray.train._checkpoint import Checkpoint
 
         logger.debug(
             "Copying checkpoint files to storage path:\n"
