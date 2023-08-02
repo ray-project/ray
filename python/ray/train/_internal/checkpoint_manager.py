@@ -5,11 +5,9 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, TYPE_CHECKING
 from ray._private.dict import flatten_dict
 from ray.air.config import MAX
 from ray.air._internal.util import is_nan
+from ray.train import CheckpointConfig
 from ray.train._internal.storage import _delete_fs_path
 from ray.train.checkpoint import Checkpoint
-
-if TYPE_CHECKING:
-    from ray.train import CheckpointConfig
 
 
 logger = logging.getLogger(__name__)
@@ -64,10 +62,7 @@ class _CheckpointManager:
         checkpoint_config: Defines how many and which checkpoints to keep.
     """
 
-    def __init__(self, checkpoint_config: Optional["CheckpointConfig"]):
-        # TODO(justinvyu): Fix this circular dependency.
-        from ray.train import CheckpointConfig
-
+    def __init__(self, checkpoint_config: CheckpointConfig):
         self._checkpoint_config = checkpoint_config or CheckpointConfig()
 
         # List of checkpoints ordered by ascending score.

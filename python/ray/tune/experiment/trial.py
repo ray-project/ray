@@ -28,9 +28,6 @@ from ray.air.constants import (
 import ray.cloudpickle as cloudpickle
 from ray.exceptions import RayActorError, RayTaskError
 from ray.train._internal.storage import _use_storage_context, StorageContext
-from ray.train._internal.checkpoint_manager import (
-    _CheckpointManager as _NewCheckpointManager,
-)
 from ray.tune import TuneError
 from ray.tune.error import _TuneRestoreError
 from ray.tune.execution.checkpoint_manager import _CheckpointManager
@@ -527,6 +524,10 @@ class Trial:
         self.checkpoint_config = checkpoint_config
 
         if _use_storage_context():
+            from ray.train._internal.checkpoint_manager import (
+                _CheckpointManager as _NewCheckpointManager,
+            )
+
             self.checkpoint_manager = _NewCheckpointManager(
                 checkpoint_config=self.checkpoint_config
             )
