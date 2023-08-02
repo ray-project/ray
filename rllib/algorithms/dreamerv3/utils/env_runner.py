@@ -13,6 +13,7 @@ from typing import List, Tuple
 
 import gymnasium as gym
 import numpy as np
+from supersuit.generic_wrappers import resize_v1
 import tree  # pip install dm_tree
 
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
@@ -48,11 +49,6 @@ class DreamerV3EnvRunner(EnvRunner):
         # Create the gym.vector.Env object.
         # Atari env.
         if self.config.env.startswith("ALE/"):
-            # TODO (sven): This import currently causes a Tune test to fail. Either way,
-            #  we need to figure out how to properly setup the CI environment with
-            #  the correct versions of all gymnasium-related packages.
-            from supersuit.generic_wrappers import resize_v1
-
             # [2]: "We down-scale the 84 × 84 grayscale images to 64 × 64 pixels so that
             # we can apply the convolutional architecture of DreamerV1."
             # ...
