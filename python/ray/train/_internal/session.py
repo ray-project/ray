@@ -142,12 +142,17 @@ class _TrainSession:
             encode_data_fn = noop
         self._encode_data_fn = encode_data_fn
 
-        # TODO(xwjiang): Legacy Ray Train trainer clean up!
-        if trial_info:
-            # Change the working directory to `logdir`.
-            logdir = os.path.join(trial_info.logdir, f"rank_{self.world_rank}")
-            os.makedirs(logdir, exist_ok=True)
-            os.chdir(logdir)
+        if _use_storage_context():
+            # Change the working directory to the local trial directory.
+            # -> All workers on the same node share a working directory.
+            os.makedirs(storage.trial_local_path, exist_ok=True)
+            os.chdir(storage.trial_local_path)
+        else:
+            if trial_info:
+                # Change the working directory to `logdir`.
+                logdir = os.path.join(trial_info.logdir, f"rank_{self.world_rank}")
+                os.makedirs(logdir, exist_ok=True)
+                os.chdir(logdir)
 
         # This lock is used to control the execution of the training thread.
         self.continue_lock = threading.Semaphore(0)
