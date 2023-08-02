@@ -140,6 +140,10 @@ def file(
     vv: bool = cli.VV,
     framework: FrameworkEnum = cli.Framework,
     trace: bool = cli.Trace,
+    # WandB options.
+    wandb_key: Optional[str] = None,
+    wandb_project: Optional[str] = None,
+    wandb_run_name: Optional[str] = None,
     # Ray cluster options.
     local_mode: bool = cli.LocalMode,
     ray_address: Optional[str] = cli.RayAddress,
@@ -184,7 +188,23 @@ def file(
         config_file, file_type, stop, checkpoint_config
     )
     exp_name = list(experiments.keys())[0]
-    algo = experiments[exp_name]["run"]
+    experiment = experiments[exp_name]
+    algo = experiment["run"]
+
+    callbacks = None
+    if wandb_key is not None:
+        project = wandb_project or (
+            algo.lower() + "-" + re.sub("\\W+", "-", experiment["env"].lower())
+            if file_type == SupportedFileType.python
+            else exp_name
+        )
+        callbacks = [
+            WandbLoggerCallback(
+                api_key=wandb_key,
+                project=project,
+                **({"name": wandb_run_name} if wandb_run_name is not None else {}),
+            )
+        ]
 
     # if we had to download the config file, remove the temp file.
     if temp_file:
@@ -207,6 +227,7 @@ def file(
         scheduler=scheduler,
         scheduler_config=scheduler_config,
         algo=algo,
+        callbacks=callbacks,
     )
 
 
@@ -328,6 +349,7 @@ def run_rllib_experiments(
     scheduler: cli.Scheduler,
     scheduler_config: cli.SchedulerConfig,
     algo: cli.Algo,
+    callbacks=None,
 ):
     """Main training function for the RLlib CLI, whether you've loaded your
     experiments from a config file or from command line options."""
@@ -393,6 +415,7 @@ def run_rllib_experiments(
         resume=resume,
         verbose=verbose,
         concurrent=True,
+        callbacks=callbacks,
     )
     ray.shutdown()
 
