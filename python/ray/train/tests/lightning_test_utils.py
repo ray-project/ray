@@ -10,7 +10,8 @@ from torch.utils.data import DataLoader
 from torchmetrics import Accuracy
 
 import ray
-from ray.air import session, Checkpoint
+from ray import train
+from ray.train import Checkpoint
 
 
 class LinearModule(pl.LightningModule):
@@ -19,7 +20,7 @@ class LinearModule(pl.LightningModule):
         self.linear = nn.Linear(input_dim, output_dim)
         self.loss = []
         self.strategy = strategy
-        self.restored = session.get_checkpoint() is not None
+        self.restored = train.get_checkpoint() is not None
         self.fail_epoch = fail_epoch
 
     def forward(self, input):

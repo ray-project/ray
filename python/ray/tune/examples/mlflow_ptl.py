@@ -7,7 +7,7 @@ import pytorch_lightning as pl
 
 import mlflow
 
-from ray import air, tune
+from ray import train, tune
 from ray.air.integrations.mlflow import setup_mlflow
 from ray.tune.integration.pytorch_lightning import TuneReportCallback
 from ray.tune.examples.mnist_ptl_mini import LightningMNISTClassifier, MNISTDataModule
@@ -75,7 +75,7 @@ def tune_mnist(
             mode="min",
             num_samples=num_samples,
         ),
-        run_config=air.RunConfig(
+        run_config=train.RunConfig(
             name="tune_mnist",
         ),
         param_space=config,

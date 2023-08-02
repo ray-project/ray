@@ -27,7 +27,7 @@ import torch.optim as optim
 
 import ray
 from ray import train
-from ray.air import session, Checkpoint, RunConfig
+from ray.train import Checkpoint, RunConfig
 from ray.data.aggregate import Mean, Std
 from ray.air.integrations.mlflow import MLflowLoggerCallback
 
@@ -407,8 +407,8 @@ def train_func(config):
     print(f"Device: {device}")
 
     # Setup data.
-    train_dataset_iterator = session.get_dataset_shard("train")
-    test_dataset_iterator = session.get_dataset_shard("test")
+    train_dataset_iterator = train.get_dataset_shard("train")
+    test_dataset_iterator = train.get_dataset_shard("test")
 
     def to_torch_dataset(torch_batch_iterator):
         for batch in torch_batch_iterator:
@@ -468,8 +468,8 @@ def train_func(config):
         checkpoint = Checkpoint.from_dict(dict(model=net.state_dict()))
 
         # Record and log stats.
-        print(f"session report on {session.get_world_rank()}")
-        session.report(
+        print(f"train report on {train.get_context().get_world_rank()}")
+        train.report(
             dict(
                 train_acc=train_acc,
                 train_loss=train_running_loss,

@@ -9,7 +9,7 @@ from unittest.mock import MagicMock
 
 import ray
 from ray import tune
-from ray.air import CheckpointConfig
+from ray.train import CheckpointConfig
 from ray.cluster_utils import Cluster
 from ray._private.test_utils import run_string_as_driver_nonblocking
 from ray.tune.experiment import Experiment
@@ -455,7 +455,7 @@ def test_cluster_rllib_restore(start_connected_cluster, tmpdir):
 import time
 import ray
 from ray import tune
-from ray.air import CheckpointConfig
+from ray.train import CheckpointConfig
 
 
 ray.init(address="{address}")
@@ -553,7 +553,7 @@ import os
 import time
 import ray
 from ray import tune
-from ray.air import CheckpointConfig
+from ray.train import CheckpointConfig
 
 os.environ["TUNE_GLOBAL_CHECKPOINT_S"] = "0"
 
