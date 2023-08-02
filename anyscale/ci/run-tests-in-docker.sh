@@ -2,12 +2,12 @@
 
 set -euo pipefail
 
-SCRIPT_ROOT="anyscale/ci"
+SCRIPT_ROOT="./anyscale/ci"
 if [[ "$1" == "serve" ]]; then
   TEST_SCRIPT="${SCRIPT_ROOT}/run-serve-tests.sh"
   IMAGE_SUFFIX="ci-build"
 elif [[ "$1" == "data" ]]; then
-  TEST_SCRIPT="${SCRIPT_ROOT}/run-data-tests.sh"
+  TEST_SCRIPT="${SCRIPT_ROOT}/run-data-tests.sh '$2'"
   IMAGE_SUFFIX="ci-ml"
 else
   echo "Usage: $0 [serve|data]"
@@ -35,4 +35,4 @@ docker run --rm -ti \
   --shm-size=2.5gb \
   -v /var/run/docker.sock:/var/run/docker.sock \
   "${IMAGE_CI_BUILD}" \
-  /bin/bash "${TEST_SCRIPT}"
+  /bin/bash -ecil "${TEST_SCRIPT}"

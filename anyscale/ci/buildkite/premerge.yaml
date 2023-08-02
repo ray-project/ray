@@ -136,13 +136,28 @@ steps:
       automatic:
         limit: 1
 
-  - name: "data tests"
-    depends_on: "ci-ml-image"
-    command:
-      - source anyscale/ci/setup-env.sh
-      - /bin/bash anyscale/ci/run-tests-in-docker.sh data
-    agents:
-      queue: "large"
-    retry:
-      automatic:
-        limit: 1
+  - group: "data tests"
+    steps:
+    - name: "Data tests (Arrow 6)"
+      depends_on: "ci-ml-image"
+      parallelism: 3
+      command:
+        - source anyscale/ci/setup-env.sh
+        - /bin/bash anyscale/ci/run-tests-in-docker.sh data "6.0.1"
+      agents:
+        queue: "large"
+      retry:
+        automatic:
+          limit: 1
+    - name: "Data tests (Arrow 12)"
+      depends_on: "ci-ml-image"
+      parallelism: 3
+      command:
+        - source anyscale/ci/setup-env.sh
+        - /bin/bash anyscale/ci/run-tests-in-docker.sh data "12"
+      agents:
+        queue: "large"
+      retry:
+        automatic:
+          limit: 1
+    
