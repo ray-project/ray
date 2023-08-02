@@ -1,7 +1,6 @@
 import io
 import logging
 import time
-import warnings
 from typing import TYPE_CHECKING, List, Optional, Tuple, Union
 
 import numpy as np
