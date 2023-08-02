@@ -231,6 +231,7 @@ def _value_to_feature(
 
     underlying_value_type = {
         "bytes": pa.types.is_binary(value_type),
+        "string": pa.types.is_string(value_type),
         "float": pa.types.is_floating(value_type),
         "int": pa.types.is_integer(value_type),
     }
@@ -245,7 +246,10 @@ def _value_to_feature(
                 "the tensorflow-metadata package."
             )
         specified_feature_type = {
-            "bytes": schema_feature_type == schema_pb2.FeatureType.BYTES,
+            "bytes": schema_feature_type == schema_pb2.FeatureType.BYTES
+            and not underlying_value_type["string"],
+            "string": schema_feature_type == schema_pb2.FeatureType.BYTES
+            and underlying_value_type["string"],
             "float": schema_feature_type == schema_pb2.FeatureType.FLOAT,
             "int": schema_feature_type == schema_pb2.FeatureType.INT,
         }
@@ -265,6 +269,9 @@ def _value_to_feature(
     if underlying_value_type["float"]:
         return tf.train.Feature(float_list=tf.train.FloatList(value=value))
     if underlying_value_type["bytes"]:
+        return tf.train.Feature(bytes_list=tf.train.BytesList(value=value))
+    if underlying_value_type["string"]:
+        value = [v.encode() for v in value]  # casting to bytes
         return tf.train.Feature(bytes_list=tf.train.BytesList(value=value))
     if pa.types.is_null(value_type):
         raise ValueError(
