@@ -4,9 +4,11 @@
 
 set -exo pipefail
 
-echo "sudo lsblk -f" >> ~/.bashrc
-echo "yes N | sudo mkfs -t ext4 /dev/nvme1n1 || true" >> ~/.bashrc
-echo "mkdir -p /mnt/local_storage" >> ~/.bashrc
-echo "sudo chmod 0777 /mnt/local_storage" >> ~/.bashrc
-echo "sudo mount /dev/nvme1n1 /mnt/local_storage || true" >> ~/.bashrc
+cat >> ~/.bashrc <<EOF
+sudo lsblk -f
+yes N | sudo mkfs -t ext4 /dev/nvme1n1 || true
+mkdir -p /mnt/local_storage
+sudo chmod 0777 /mnt/local_storage
+sudo mount /dev/nvme1n1 /mnt/local_storage || true
+EOF
 pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
