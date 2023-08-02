@@ -230,7 +230,7 @@ class JuliaFunctionDescriptor : public FunctionDescriptorInterface {
       : FunctionDescriptorInterface(std::move(message)) {
     RAY_CHECK(message_->function_descriptor_case() ==
               ray::FunctionDescriptorType::kJuliaFunctionDescriptor);
-    typed_message_ = &(message_->python_function_descriptor());
+    typed_message_ = &(message_->julia_function_descriptor());
   }
 
   virtual size_t Hash() const {
@@ -269,6 +269,8 @@ class JuliaFunctionDescriptor : public FunctionDescriptorInterface {
     const std::string &function_name = typed_message_->function_name();
     return module_name.empty() ? function_name : module_name + "." + function_name;
   }
+
+  virtual std::string ClassName() const { return ""; }
 
   const std::string &ModuleName() const { return typed_message_->module_name(); }
 
