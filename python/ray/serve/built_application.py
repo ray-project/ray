@@ -55,7 +55,11 @@ class BuiltApplication:
         self._deployments = ImmutableDeploymentDict(deployment_dict)
 
         if ingress not in self._deployments:
-            raise ValueError("Invalid ingress deployment.")
+            raise ValueError(
+                f"Requested ingress deployment '{ingress}' was not found in the "
+                f"deployments passed in: {self._deployments.keys()}. Ingress must be "
+                "one of the deployments passed in."
+            )
 
         self._ingress = ingress
 

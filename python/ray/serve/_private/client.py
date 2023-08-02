@@ -481,7 +481,7 @@ class ServeControllerClient:
             if cached_handle._is_same_loop:
                 return cached_handle
 
-        all_deployments = self.list_deployments()
+        all_deployments = ray.get(self._controller.list_deployment_names.remote())
         if not missing_ok and deployment_name not in all_deployments:
             raise KeyError(f"Deployment '{deployment_name}' does not exist.")
 

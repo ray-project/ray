@@ -766,6 +766,10 @@ class ServeController:
             )
         return deployment_route_list.SerializeToString()
 
+    def list_deployment_names(self) -> List[str]:
+        """Gets the current list of all deployments names."""
+        return self.deployment_state_manager._deployment_states.keys()
+
     def get_serve_instance_details(self) -> Dict:
         """Gets details on all applications on the cluster and system-level info.
 

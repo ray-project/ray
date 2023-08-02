@@ -734,9 +734,9 @@ def get_app_handle(
 ) -> Optional[Union[RayServeHandle, RayServeSyncHandle]]:
     """Get a handle to the application's ingress deployment by name.
 
-    This handle will send requests to the deployment across application
-    versions if an upgrade occurs, so the ingress deployment must handle
-    interface compatibility.
+    This handle will send requests to the ingress deployment across
+    application versions if an upgrade occurs, so the ingress deployment
+    must handle interface compatibility.
 
     When called from within a deployment `sync` will default to `False`.
     When called from outside a deployment `sync` will default to `True`.
