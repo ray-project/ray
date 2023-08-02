@@ -230,13 +230,12 @@ def with_parameters(trainable: Union[Type["Trainable"], Callable], **kwargs):
 
     .. code-block:: python
 
-        from ray import tune
-        from ray.air import session
+        from ray import train, tune
 
         def train(config, data=None):
             for sample in data:
                 loss = update_model(sample)
-                session.report(loss=loss)
+                train.report(loss=loss)
 
         data = HugeDataset(download=True)
 

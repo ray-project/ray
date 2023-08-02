@@ -11,7 +11,7 @@ import pytest
 
 # import ray
 
-from ray.air.checkpoint import Checkpoint
+from ray.train import Checkpoint
 
 # from ray.air.constants import MAX_REPR_LENGTH
 # from ray.air.util.data_batch_conversion import (

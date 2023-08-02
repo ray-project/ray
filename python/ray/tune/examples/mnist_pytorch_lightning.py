@@ -16,7 +16,7 @@ import os
 
 # __import_tune_begin__
 from pytorch_lightning.loggers import TensorBoardLogger
-from ray import air, tune
+from ray import train, tune
 from ray.tune import CLIReporter
 from ray.tune.schedulers import ASHAScheduler, PopulationBasedTraining
 from ray.tune.integration.pytorch_lightning import TuneReportCallback, \
@@ -225,7 +225,7 @@ def tune_mnist_asha(num_samples=10, num_epochs=10, gpus_per_trial=0, data_dir="~
         tune_config=tune.TuneConfig(metric="loss",
         mode="min", num_samples=num_samples,
         scheduler=scheduler,),
-        run_config=air.RunConfig(name="tune_mnist_asha", progress_reporter=reporter,),
+        run_config=train.RunConfig(name="tune_mnist_asha", progress_reporter=reporter,),
 
         param_space=config,
 
@@ -272,7 +272,7 @@ def tune_mnist_pbt(num_samples=10, num_epochs=10, gpus_per_trial=0, data_dir="~/
         tune_config=tune.TuneConfig(metric="loss",
         mode="min", num_samples=num_samples,
         scheduler=scheduler,),
-        run_config=air.RunConfig(name="tune_mnist_pbt", progress_reporter=reporter,),
+        run_config=train.RunConfig(name="tune_mnist_pbt", progress_reporter=reporter,),
 
         param_space=config,
 

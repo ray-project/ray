@@ -19,8 +19,8 @@ import gc
 import pytest
 
 import ray
-from ray import tune
-from ray.air import Checkpoint, FailureConfig, RunConfig, ScalingConfig, session
+from ray import train, tune
+from ray.train import Checkpoint, FailureConfig, RunConfig, ScalingConfig
 from ray.train.data_parallel_trainer import DataParallelTrainer
 from ray.train.trainer import BaseTrainer, TrainingFailedError
 from ray.tune import Tuner, TuneConfig, TuneError
@@ -62,7 +62,7 @@ class FailingTrainer(BaseTrainer):
 
 def passing_fn(config):
     # Trigger all the driver events (on_checkpoint, on_trial_save, etc.)
-    session.report({"score": 1}, checkpoint=Checkpoint.from_dict({"score": 1}))
+    train.report({"score": 1}, checkpoint=Checkpoint.from_dict({"score": 1}))
 
 
 def failing_fn(config):

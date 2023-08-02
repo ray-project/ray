@@ -380,7 +380,7 @@ class ExperimentAnalysis:
         `get_best_checkpoint(trial, metric, mode)` instead.
 
         Returns:
-            :class:`Checkpoint <ray.air.Checkpoint>` object.
+            :class:`Checkpoint <ray.train.Checkpoint>` object.
         """
         if not self.default_metric or not self.default_mode:
             raise ValueError(
@@ -608,7 +608,7 @@ class ExperimentAnalysis:
                 (client) node. Can also contain a cloud URI.
 
         Returns:
-            :class:`Checkpoint <ray.air.Checkpoint>` object or string
+            :class:`Checkpoint <ray.train.Checkpoint>` object or string
             if ``return_path=True``.
         """
         metric = metric or self.default_metric or TRAINING_ITERATION

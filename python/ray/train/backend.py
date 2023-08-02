@@ -14,8 +14,8 @@ logger = logging.getLogger(__name__)
 # This is used in several places to print a warning.
 _encode_decode_deprecation_message = (
     "``encode_data`` and ``decode_data`` are deprecated in favor of "
-    "framework-specific ``ray.air.Checkpoint`` subclasses (reported "
-    "using ``ray.air.session.report()``) which can implement "
+    "framework-specific ``ray.train.Checkpoint`` subclasses (reported "
+    "using ``ray.train.report()``) which can implement "
     "encoding and decoding logic."
 )
 
@@ -99,7 +99,7 @@ class Backend(metaclass=Singleton):
         """Logic to encode a data dict before sending to the driver.
 
         This function will be called on the workers for any data that is
-        sent to the driver via ``session.report()``.
+        sent to the driver via ``ray.train.report()``.
         """
 
         return data_dict

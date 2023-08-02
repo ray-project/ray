@@ -6,9 +6,8 @@ import torch.nn as nn
 from ray.train.examples.pytorch.torch_linear_example import LinearDataset
 from ray.train.batch_predictor import BatchPredictor
 from ray.train.torch import TorchPredictor
-from ray.air.config import ScalingConfig
+from ray.train import ScalingConfig
 import ray.train as train
-from ray.air import session
 from ray.train.tests.dummy_preprocessor import DummyPreprocessor
 from ray.train.torch.torch_checkpoint import TorchCheckpoint
 from ray.train.huggingface import AccelerateTrainer
@@ -243,7 +242,7 @@ def linear_train_func(accelerator: Accelerator, config):
 
         result = dict(loss=loss)
         results.append(result)
-        session.report(result, checkpoint=TorchCheckpoint.from_state_dict(state_dict))
+        train.report(result, checkpoint=TorchCheckpoint.from_state_dict(state_dict))
 
     return results
 
@@ -264,9 +263,11 @@ def test_accelerate_linear(ray_2_node_2_gpu, accelerate_config_file_contents, tm
     def train_func(config):
         accelerator = Accelerator()
         assert accelerator.device == train.torch.get_device()
-        assert accelerator.process_index == session.get_world_rank()
+        assert accelerator.process_index == train.get_context().get_world_rank()
         if accelerator.device.type != "cpu":
-            assert accelerator.local_process_index == session.get_local_rank()
+            assert (
+                accelerator.local_process_index == train.get_context().get_local_rank()
+            )
         result = linear_train_func(accelerator, config)
         assert len(result) == epochs
         assert result[-1]["loss"] < result[0]["loss"]
@@ -304,10 +305,10 @@ def test_accelerate_e2e(ray_start_4_cpus, num_workers):
     def train_func():
         accelerator = Accelerator()
         assert accelerator.device == train.torch.get_device()
-        assert accelerator.process_index == session.get_world_rank()
+        assert accelerator.process_index == train.get_context().get_world_rank()
         model = torch.nn.Linear(3, 1)
         model = accelerator.prepare(model)
-        session.report({}, checkpoint=TorchCheckpoint.from_model(model))
+        train.report({}, checkpoint=TorchCheckpoint.from_model(model))
 
     scaling_config = ScalingConfig(num_workers=num_workers)
     trainer = AccelerateTrainer(

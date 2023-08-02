@@ -1,12 +1,11 @@
 import pytest
 
 import ray
-from ray.air import session
-from ray.air.checkpoint import Checkpoint
+from ray import train
+from ray.train import Checkpoint, ScalingConfig
 from ray.train._internal.worker_group import WorkerGroup
 from ray.train.backend import Backend, BackendConfig
 from ray.train.data_parallel_trainer import DataParallelTrainer
-from ray.air.config import ScalingConfig
 
 
 @pytest.fixture
@@ -39,8 +38,8 @@ def test_run(ray_start_4_cpus):
     config = TestConfig()
 
     def train_func():
-        checkpoint = session.get_checkpoint()
-        session.report(metrics=checkpoint.to_dict(), checkpoint=checkpoint)
+        checkpoint = train.get_checkpoint()
+        train.report(metrics=checkpoint.to_dict(), checkpoint=checkpoint)
         return checkpoint.to_dict()[key]
 
     checkpoint = Checkpoint.from_dict(

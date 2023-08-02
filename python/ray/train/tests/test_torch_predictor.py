@@ -7,7 +7,7 @@ import pytest
 import ray
 import torch
 
-from ray.air.checkpoint import Checkpoint
+from ray.train import Checkpoint
 from ray.air.constants import MAX_REPR_LENGTH, MODEL_KEY, PREPROCESSOR_KEY
 from ray.air.util.data_batch_conversion import (
     _convert_pandas_to_batch_type,

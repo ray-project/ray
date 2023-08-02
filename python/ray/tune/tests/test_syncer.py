@@ -16,9 +16,8 @@ import pytest
 
 import ray
 import ray.cloudpickle as pickle
-from ray import tune
-from ray.air import session, Checkpoint, RunConfig
-from ray.air.config import CheckpointConfig, ScalingConfig
+from ray import train, tune
+from ray.train import Checkpoint, CheckpointConfig, RunConfig, ScalingConfig
 from ray.air._internal.remote_storage import (
     upload_to_uri,
     download_from_uri,
@@ -889,7 +888,7 @@ def test_final_experiment_checkpoint_sync(ray_start_2_cpus, tmpdir):
 
     def train_func(config):
         for i in range(8):
-            session.report({"score": i})
+            train.report({"score": i})
             time.sleep(0.5)
 
     tuner = tune.Tuner(
@@ -981,7 +980,7 @@ def test_e2e_sync_to_s3(ray_start_4_cpus, mock_s3_bucket_uri, tmp_path):
     exp_name = "test_e2e_sync_to_s3"
 
     def train_fn(config):
-        session.report({"score": 1}, checkpoint=Checkpoint.from_dict({"data": 1}))
+        train.report({"score": 1}, checkpoint=Checkpoint.from_dict({"data": 1}))
         raise RuntimeError
 
     tuner = tune.Tuner(
@@ -1039,7 +1038,7 @@ def test_distributed_checkpointing_to_s3(
     local_dir = os.path.join(tmp_path, "local_dir")
 
     def train_fn(config):
-        world_rank = session.get_world_rank()
+        world_rank = train.get_context().get_world_rank()
         for step in range(config["num_steps"]):
             time.sleep(0.1)
             checkpoint = None
@@ -1067,7 +1066,7 @@ def test_distributed_checkpointing_to_s3(
                         )
                     )
                 checkpoint = Checkpoint.from_directory(checkpoint_dir)
-            session.report({"score": step}, checkpoint=checkpoint)
+            train.report({"score": step}, checkpoint=checkpoint)
 
     def _check_dir_content(checkpoint_dir, exist=True):
         # Double check local checkpoint dir.

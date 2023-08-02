@@ -10,7 +10,7 @@ from ray.train.examples.horovod.horovod_pytorch_example import Net
 from ray.train.examples.horovod.horovod_pytorch_example import (
     train_func as hvd_train_func,
 )
-from ray.air.config import ScalingConfig
+from ray.train import ScalingConfig
 from ray.train.horovod import HorovodTrainer
 from ray.train.torch import TorchPredictor
 

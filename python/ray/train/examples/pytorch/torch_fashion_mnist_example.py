@@ -1,6 +1,5 @@
 import argparse
 from typing import Dict
-from ray.air import session
 
 import torch
 from torch import nn
@@ -9,8 +8,8 @@ from torchvision import datasets
 from torchvision.transforms import ToTensor
 
 import ray.train as train
+from ray.train import ScalingConfig
 from ray.train.torch import TorchTrainer
-from ray.air.config import ScalingConfig
 
 # Download training data from open datasets.
 training_data = datasets.FashionMNIST(
@@ -50,7 +49,7 @@ class NeuralNetwork(nn.Module):
 
 
 def train_epoch(dataloader, model, loss_fn, optimizer):
-    size = len(dataloader.dataset) // session.get_world_size()
+    size = len(dataloader.dataset) // train.get_context().get_world_size()
     model.train()
     for batch, (X, y) in enumerate(dataloader):
         # Compute prediction error
@@ -68,7 +67,7 @@ def train_epoch(dataloader, model, loss_fn, optimizer):
 
 
 def validate_epoch(dataloader, model, loss_fn):
-    size = len(dataloader.dataset) // session.get_world_size()
+    size = len(dataloader.dataset) // train.get_context().get_world_size()
     num_batches = len(dataloader)
     model.eval()
     test_loss, correct = 0, 0
@@ -92,7 +91,7 @@ def train_func(config: Dict):
     lr = config["lr"]
     epochs = config["epochs"]
 
-    worker_batch_size = batch_size // session.get_world_size()
+    worker_batch_size = batch_size // train.get_context().get_world_size()
 
     # Create data loaders.
     train_dataloader = DataLoader(training_data, batch_size=worker_batch_size)
@@ -111,7 +110,7 @@ def train_func(config: Dict):
     for _ in range(epochs):
         train_epoch(train_dataloader, model, loss_fn, optimizer)
         loss = validate_epoch(test_dataloader, model, loss_fn)
-        session.report(dict(loss=loss))
+        train.report(dict(loss=loss))
 
 
 def train_fashion_mnist(num_workers=2, use_gpu=False):

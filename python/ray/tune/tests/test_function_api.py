@@ -6,7 +6,7 @@ import tempfile
 import unittest
 
 import ray
-from ray.air.config import CheckpointConfig
+from ray.train import CheckpointConfig
 from ray.air.constants import TRAINING_ITERATION
 from ray.rllib import _register_all
 

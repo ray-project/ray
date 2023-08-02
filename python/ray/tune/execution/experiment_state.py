@@ -557,7 +557,7 @@ class _ExperimentCheckpointManager:
                     f'a new experiment, use `resume="AUTO"` or '
                     f"`resume=None`. If you expected an experiment to "
                     f"already exist, check if you supplied the correct "
-                    f"`local_dir` to `air.RunConfig()`."
+                    f"`local_dir` to `train.RunConfig()`."
                 )
             elif resume_type == "PROMPT":
                 if click.confirm(

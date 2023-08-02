@@ -3,9 +3,8 @@ import torch.nn as nn
 
 import ray
 from ray import train
-from ray.air import session, Checkpoint
+from ray.train import Checkpoint, ScalingConfig
 from ray.train.torch import TorchTrainer
-from ray.air.config import ScalingConfig
 
 
 # If using GPUs, set this to True.
@@ -30,7 +29,7 @@ class NeuralNetwork(nn.Module):
 
 
 def train_loop_per_worker():
-    dataset_shard = session.get_dataset_shard("train")
+    dataset_shard = train.get_dataset_shard("train")
     model = NeuralNetwork()
     loss_fn = nn.MSELoss()
     optimizer = torch.optim.SGD(model.parameters(), lr=0.1)
@@ -49,7 +48,7 @@ def train_loop_per_worker():
             optimizer.step()
             print(f"epoch: {epoch}, loss: {loss.item()}")
 
-        session.report(
+        train.report(
             {},
             checkpoint=Checkpoint.from_dict(
                 dict(epoch=epoch, model=model.state_dict())

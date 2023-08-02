@@ -12,7 +12,7 @@ from sklearn.ensemble import RandomForestClassifier
 
 import ray
 import ray.cloudpickle as cpickle
-from ray.air.checkpoint import Checkpoint
+from ray.train import Checkpoint
 from ray.air.constants import MAX_REPR_LENGTH, MODEL_KEY
 from ray.data.preprocessor import Preprocessor
 from ray.train.batch_predictor import BatchPredictor
