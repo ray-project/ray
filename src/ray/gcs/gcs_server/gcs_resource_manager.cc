@@ -142,8 +142,8 @@ void GcsResourceManager::UpdateResourceLoads(const rpc::ResourcesData &data) {
   }
 }
 
-const absl::flat_hash_map<NodeID, rpc::ResourcesData>
-    &GcsResourceManager::NodeResourceReportView() const {
+const absl::flat_hash_map<NodeID, rpc::ResourcesData> &
+GcsResourceManager::NodeResourceReportView() const {
   return node_resource_usages_;
 }
 
@@ -317,6 +317,7 @@ void GcsResourceManager::OnNodeDead(const NodeID &node_id) {
 
 void GcsResourceManager::UpdatePlacementGroupLoad(
     const std::shared_ptr<rpc::PlacementGroupLoad> placement_group_load) {
+  RAY_CHECK(placement_group_load != nullptr);
   placement_group_load_ = absl::make_optional(placement_group_load);
 }
 
