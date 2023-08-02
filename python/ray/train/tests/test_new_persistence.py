@@ -172,6 +172,8 @@ def test_trainer(tmp_path):
         assert train_session.storage
         assert train_session.storage.checkpoint_fs_path
 
+        assert os.getcwd() == train_session.storage.trial_local_path
+
     trainer = DataParallelTrainer(
         dummy_train_fn,
         scaling_config=train.ScalingConfig(num_workers=2),
