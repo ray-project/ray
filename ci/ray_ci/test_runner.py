@@ -27,35 +27,16 @@ def test_run_tests() -> None:
         for test_target in test_targets:
             assert test_target in input
 
-    with mock.patch(
-        "subprocess.check_call",
-        side_effect=_mock_check_call,
-    ), mock.patch(
+    with mock.patch("subprocess.check_call", side_effect=_mock_check_call), mock.patch(
         "subprocess.check_output",
         return_value=b"-v",
     ):
         _run_tests(test_targets)
 
 
-_TEST_YAML = """
-flaky_tests:
-  - //python/ray/tests:test_runtime_env_working_dir_3
-  - //python/ray/tests:test_placement_group_3
-  - //python/ray/tests:test_memory_pressure
-  - //python/ray/tests:test_placement_group_5
-  - //python/ray/tests:test_runtime_env_2
-  - //python/ray/tests:test_gcs_fault_tolerance
-  - //python/ray/tests:test_gcs_ha_e2e
-  - //python/ray/tests:test_plasma_unlimited
-  - //python/ray/tests:test_scheduling_performance
-  - //python/ray/tests:test_object_manager
-  - //python/ray/tests:test_tensorflow
-  - //python/ray/tests:test_threaded_actor
-  - //python/ray/tests:test_unhandled_error
-"""
-
-
 def test_get_test_targets() -> None:
+    _TEST_YAML = "flaky_tests: [//python/ray/tests:flaky_test_01]"
+
     with TemporaryDirectory() as tmp:
         with open(os.path.join(tmp, "core.tests.yml"), "w") as f:
             f.write(_TEST_YAML)
@@ -64,7 +45,7 @@ def test_get_test_targets() -> None:
             "//python/ray/tests:good_test_01",
             "//python/ray/tests:good_test_02",
             "//python/ray/tests:good_test_03",
-            "//python/ray/tests:test_runtime_env_2",
+            "//python/ray/tests:flaky_test_01",
             "",
         ]
         targets = "python/ray/tests"
