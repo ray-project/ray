@@ -1,11 +1,12 @@
+import grpc
 import logging
 
 from starlette.types import Receive, Scope, Send
-from typing import List, Generator, Optional, Tuple
+from typing import Callable, List, Generator, Optional, Tuple
 
 from ray.serve._private.constants import SERVE_LOGGER_NAME
-from ray.serve.generated import serve_pb2
 from ray.serve._private.utils import DEFAULT
+from google.protobuf.any_pb2 import Any as AnyProto
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -57,15 +58,30 @@ class ASGIServeRequest(ServeRequest):
 
 class GRPCServeRequest(ServeRequest):
     def __init__(
-        self, request: serve_pb2.RayServeRequest, route_path: str, stream: bool
+        self,
+        request: AnyProto,
+        context: "grpc._cython.cygrpc._ServicerContext",
+        match_target: Callable[[str], Optional[str]],
+        stream: bool,
     ):
-        self.request = request
-        self.route_path = route_path
+        self.request = request.SerializeToString()
         self.stream = stream
+        self.app_name = None
+        self.route_path = None
+        self.request_id = None
+        self.multiplexed_model_id = DEFAULT.VALUE
+        for key, value in context.invocation_metadata():
+            if key == "application":
+                self.app_name = value
+                self.route_path = match_target(self.app_name)
+            elif key == "request_id":
+                self.request_id = value
+            elif key == "multiplexed_model_id":
+                self.multiplexed_model_id = value
 
     @property
     def user_request(self) -> bytes:
-        return self.request.user_request
+        return self.request
 
     @property
     def request_type(self) -> str:
@@ -75,29 +91,13 @@ class GRPCServeRequest(ServeRequest):
     def method(self) -> str:
         return "GRPC"
 
-    @property
-    def multiplexed_model_id(self) -> str:
-        if self.request.multiplexed_model_id:
-            return self.request.multiplexed_model_id
-
-        return DEFAULT.VALUE
-
-    @property
-    def request_id(self) -> str:
-        return self.request.request_id
-
-    def set_request_id(self, request_id: str):
-        self.request.request_id = request_id
-
 
 class ServeResponse:
     def __init__(
         self,
         status_code: str,
-        response: Optional[serve_pb2.RayServeResponse] = None,
-        streaming_response: Optional[
-            Generator[serve_pb2.RayServeResponse, None, None]
-        ] = None,
+        response: Optional[AnyProto] = None,
+        streaming_response: Optional[Generator[AnyProto, None, None]] = None,
     ):
         self.status_code = status_code
         self.response = response

@@ -70,6 +70,8 @@ from ray.serve._private.utils import (
     call_function_from_import_path,
     get_random_letters,
 )
+from google.protobuf.any_pb2 import Any as AnyProto
+from ray.serve.generated.serve_pb2 import TestOut
 
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
@@ -201,19 +203,22 @@ class LongestPrefixRouter:
 
         return None
 
-    def match_target(self, target: str) -> Optional[Tuple[str, RayServeHandle]]:
+    def match_target(self, target: str) -> Optional[str]:
         """Return the route and handle from the target.
 
         Args:
             target: the target to match against endpoint.
 
         Returns:
-            (route, handle) if found, else None.
+            route if found, else None.
         """
+        if target is None:
+            return None
+
         for route, endpoint_and_app_name in self.route_info.items():
             endpoint, app_name = endpoint_and_app_name
             if target.endswith(endpoint):
-                return route, self.handles[endpoint]
+                return route
 
         return None
 
@@ -794,7 +799,7 @@ class GRPCProxy(GenericProxy):
     """
 
     async def Predict(
-        self, request: serve_pb2.RayServeRequest, context
+        self, request: AnyProto, context: "grpc._cython.cygrpc._ServicerContext"
     ) -> serve_pb2.RayServeResponse:
         """Entry point of the gRPC proxy.
 
@@ -803,19 +808,22 @@ class GRPCProxy(GenericProxy):
         value is protobuf RayServeResponse object.
         """
         print("in predict, request:", request)
-        print("multiplexed_model_id is ", request.multiplexed_model_id)
-        app_name = request.application
-        route_path, handle = self.prefix_router.match_target(app_name)
+        print("context is ", context)
+        print("invocation_metadata is ", context.invocation_metadata())
+
         serve_request = GRPCServeRequest(
             request=request,
-            route_path=route_path,
+            context=context,
+            match_target=self.prefix_router.match_target,
             stream=False,
         )
         serve_response = await self.proxy_request(serve_request=serve_request)
+        request_id = ray.serve.context._serve_request_context.get().request_id
+        context.set_trailing_metadata([("request_id", request_id)])
         return serve_response.response
 
     async def PredictStreaming(
-        self, request: serve_pb2.RayServeRequest, context
+        self, request: AnyProto, context: "grpc._cython.cygrpc._ServicerContext"
     ) -> Generator[serve_pb2.RayServeResponse, None, None]:
         """Entry point of the gRPC proxy.
 
@@ -823,11 +831,10 @@ class GRPCProxy(GenericProxy):
         wraps the request in a ServeRequest object and calls proxy_request. The return
         value is protobuf RayServeResponse object.
         """
-        app_name = request.application
-        route_path, handle = self.prefix_router.match_target(app_name)
         serve_request = GRPCServeRequest(
             request=request,
-            route_path=route_path,
+            context=context,
+            match_target=self.prefix_router.match_target,
             stream=True,
         )
         serve_response = await self.proxy_request(serve_request=serve_request)
@@ -849,7 +856,7 @@ class GRPCProxy(GenericProxy):
         request_id = serve_request.request_id
         if not request_id:
             request_id = self.generate_request_id()
-            serve_request.set_request_id(request_id)
+            serve_request.request_id = request_id
 
         handle = handle.options(
             stream=serve_request.stream,
@@ -879,7 +886,6 @@ class GRPCProxy(GenericProxy):
                 response = await obj_ref
                 yield serve_pb2.RayServeResponse(
                     user_response=response,
-                    request_id=request_id,
                 )
             except StopAsyncIteration:
                 break
@@ -897,11 +903,12 @@ class GRPCProxy(GenericProxy):
         obj_ref: ray.ObjectRef,
         request_id: str,
     ) -> ServeResponse:
-        user_response = await obj_ref
-        response = serve_pb2.RayServeResponse(
-            user_response=user_response,
-            request_id=request_id,
-        )
+        user_response_bytes = await obj_ref
+        print("_consume_generator_unary user_response is ", user_response_bytes)
+        user_response = TestOut()
+        user_response.ParseFromString(user_response_bytes)
+        response = AnyProto()
+        response.Pack(user_response)
 
         return ServeResponse(status_code="200", response=response)
 

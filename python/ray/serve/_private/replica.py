@@ -63,7 +63,7 @@ from ray.serve._private.utils import (
     MetricsPusher,
 )
 from ray.serve._private.version import DeploymentVersion
-
+from ray.serve.generated.serve_pb2 import TestIn
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -744,7 +744,9 @@ class RayServeReplica:
 
     async def call_user_method_grpc_unary(self, request_metadata, request) -> bytes:
         async with self.wrap_user_method_call(request_metadata):
-            user_request = request.grpc_user_request
+            # TODO (genesu): dynamically casting request type
+            user_request = TestIn()
+            user_request.ParseFromString(request.grpc_user_request)
 
             runner_method = self.get_runner_method(request_metadata)
             if inspect.isgeneratorfunction(runner_method) or inspect.isasyncgenfunction(
@@ -759,7 +761,8 @@ class RayServeReplica:
             method_to_call = sync_to_async(runner_method)
 
             result = await method_to_call(user_request)
-            return result
+            print("result", result, type(result))
+            return result.SerializeToString()
 
     async def call_user_method(
         self,
