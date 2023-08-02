@@ -13,8 +13,8 @@ from ray.train.checkpoint import Checkpoint
 logger = logging.getLogger(__name__)
 
 
-class _TrackedCheckpoint:
-    """Checkpoint tracked by a checkpoint manager."""
+class _TrainingResult:
+    """A (checkpoint, metrics) result reported by the user."""
 
     def __init__(self, checkpoint: Checkpoint, metrics: Dict[str, Any]):
         self.checkpoint = checkpoint
@@ -52,8 +52,11 @@ def _insert_into_sorted_list(list: List[Any], item: Any, key: Callable[[Any], An
 class _CheckpointManager:
     """Checkpoint manager that handles checkpoint book-keeping for a trial.
 
-    Main purpose of this abstraction is to keep the top K checkpoints based on
+    The main purpose of this abstraction is to keep the top K checkpoints based on
     recency/a user-provided metric.
+
+    NOTE: This class interacts with `_TrainingResult` objects, which are
+    (checkpoint, metrics) pairs. This is to order checkpoints by metrics.
 
     Args:
         checkpoint_config: Defines how many and which checkpoints to keep.
@@ -63,12 +66,12 @@ class _CheckpointManager:
         self._checkpoint_config = checkpoint_config or CheckpointConfig()
 
         # List of checkpoints ordered by ascending score.
-        self._checkpoints: List[_TrackedCheckpoint] = []
+        self._checkpoint_results: List[_TrainingResult] = []
 
         # The latest registered checkpoint.
         # This should never be immediately deleted upon registration,
         # even if it's not in the top K checkpoints, based on score.
-        self._latest_checkpoint: _TrackedCheckpoint = None
+        self._latest_checkpoint_result: _TrainingResult = None
 
         if (
             self._checkpoint_config.num_to_keep is not None
@@ -79,7 +82,7 @@ class _CheckpointManager:
                 f"{self._checkpoint_config.num_to_keep}"
             )
 
-    def register_checkpoint(self, tracked_checkpoint: _TrackedCheckpoint):
+    def register_checkpoint(self, checkpoint_result: _TrainingResult):
         """Register new checkpoint and add to bookkeeping.
 
         This method will register a new checkpoint and add it to the internal
@@ -90,39 +93,42 @@ class _CheckpointManager:
         Args:
             checkpoint: Tracked checkpoint object to add to bookkeeping.
         """
-        self._latest_checkpoint = tracked_checkpoint
+        self._latest_checkpoint_result = checkpoint_result
 
         if self._checkpoint_config.checkpoint_score_attribute is not None:
             # If we're ordering by a score, insert the checkpoint
             # so that the list remains sorted.
             _insert_into_sorted_list(
-                self._checkpoints, tracked_checkpoint, key=self._get_checkpoint_score
+                self._checkpoint_results,
+                checkpoint_result,
+                key=self._get_checkpoint_score,
             )
         else:
             # If no metric is provided, just append (ordering by time of registration).
-            self._checkpoints.append(tracked_checkpoint)
+            self._checkpoint_results.append(checkpoint_result)
 
         if self._checkpoint_config.num_to_keep is not None:
             # Delete the bottom (N - K) checkpoints
-            worst_checkpoints = set(
-                self._checkpoints[: -self._checkpoint_config.num_to_keep]
+            worst_results = set(
+                self._checkpoint_results[: -self._checkpoint_config.num_to_keep]
             )
             # Except for the latest checkpoint.
-            checkpoints_to_delete = worst_checkpoints - {self._latest_checkpoint}
+            results_to_delete = worst_results - {self._latest_checkpoint_result}
 
             # Update internal state before actually deleting them.
-            self._checkpoints = [
-                tracked_checkpoint
-                for tracked_checkpoint in self._checkpoints
-                if tracked_checkpoint not in checkpoints_to_delete
+            self._checkpoint_results = [
+                checkpoint_result
+                for checkpoint_result in self._checkpoint_results
+                if checkpoint_result not in results_to_delete
             ]
 
-            for checkpoint_to_delete in checkpoints_to_delete:
-                checkpoint = checkpoint_to_delete.checkpoint
+            for checkpoint_result in results_to_delete:
+                checkpoint = checkpoint_result.checkpoint
+                logger.debug("Deleting checkpoint: ", checkpoint)
                 _delete_fs_path(fs=checkpoint.filesystem, fs_path=checkpoint.path)
 
     def _get_checkpoint_score(
-        self, checkpoint: _TrackedCheckpoint
+        self, checkpoint: _TrainingResult
     ) -> Tuple[bool, numbers.Number]:
         """Get the score for a checkpoint, according to checkpoint config.
 
@@ -170,15 +176,15 @@ class _CheckpointManager:
         )
 
     @property
-    def best_checkpoint(self) -> Optional[_TrackedCheckpoint]:
-        return self._checkpoints[-1] if self._checkpoints else None
+    def best_checkpoint_result(self) -> Optional[_TrainingResult]:
+        return self._checkpoint_results[-1] if self._checkpoint_results else None
 
     @property
-    def latest_checkpoint(self) -> Optional[_TrackedCheckpoint]:
-        return self._latest_checkpoint
+    def latest_checkpoint_result(self) -> Optional[_TrainingResult]:
+        return self._latest_checkpoint_result
 
     @property
-    def best_checkpoints(self) -> List[_TrackedCheckpoint]:
+    def best_checkpoint_results(self) -> List[_TrainingResult]:
         if self._checkpoint_config.num_to_keep is None:
-            return self._checkpoints
-        return self._checkpoints[-self._checkpoint_config.num_to_keep :]
+            return self._checkpoint_results
+        return self._checkpoint_results[-self._checkpoint_config.num_to_keep :]
