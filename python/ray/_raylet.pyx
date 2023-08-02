@@ -23,7 +23,15 @@ import time
 import traceback
 import _thread
 import typing
-from typing import Union, Awaitable, Callable, Any, Optional
+from typing import (
+    Union,
+    Awaitable,
+    Callable,
+    Any,
+    Optional,
+    Generator,
+    AsyncGenerator
+)
 
 from libc.stdint cimport (
     int32_t,
@@ -882,6 +890,9 @@ cdef store_task_errors(
 cdef class StreamingGeneratorExecutionContext:
     """The context to execute streaming generator function.
 
+    Make sure you always call `initialize` API before
+    accessing any fields.
+
     Args:
         generator: The generator to run.
         generator_id: The object ref id of the generator task.
@@ -922,6 +933,8 @@ cdef class StreamingGeneratorExecutionContext:
         # The index of the generator. E.g., if it never calls
         # next(), it is index 0. If it calls next() once, it is 1.
         object generator_index
+        # True if `initialize` API has been called. False otherwise.
+        object _is_initialized
         # -- Arguments that are passed. See the docstring for details --
         object generator
         CObjectID generator_id
@@ -942,34 +955,16 @@ cdef class StreamingGeneratorExecutionContext:
         c_bool *is_retryable_error
         c_string *application_error
 
-    def __init__(
-        self,
-        # generator,
-        function_name,
-        function_descriptor,
-        title,
-        actor,
-        actor_id,
-        name_of_concurrency_group_to_execute,
-        return_size,
-    ):
-        self.generator_index = 0
-        # self.is_async = inspect.isasyncgen(generator)
-        # self.generator = generator
-        self.function_name = function_name
-        self.function_descriptor = function_descriptor
-        self.title = title
-        self.actor = actor
-        self.actor_id = actor_id
-        self.name_of_concurrency_group_to_execute = name_of_concurrency_group_to_execute
-        self.return_size = return_size
-
-    def set_generator(self, generator):
+    def initialize(self, generator: Union[Generator, AsyncGenerator]):
+        # We couldn't make this a part of `make` method because
+        # It looks like we cannot pass generator to cdef
+        # function (`make`) in Cython.
         self.generator = generator
         self.is_async = inspect.isasyncgen(generator)
+        self._is_initialized = True
 
-    def get_generator(self):
-        return self.generator
+    def is_initialized(self):
+        return self._is_initialized
 
     @staticmethod
     cdef make(
@@ -978,13 +973,13 @@ cdef class StreamingGeneratorExecutionContext:
         const CAddress &caller_address,
         TaskID task_id,
         const c_string &serialized_retry_exception_allowlist,
-        function_name,
-        function_descriptor,
-        title,
-        actor,
-        actor_id,
-        name_of_concurrency_group_to_execute,
-        return_size,
+        function_name: str,
+        function_descriptor: FunctionDescriptor,
+        title: str,
+        actor: object,
+        actor_id: ActorID,
+        name_of_concurrency_group_to_execute: str,
+        return_size: int,
         uint64_t attempt_number,
         c_bool should_retry_exceptions,
         c_vector[c_pair[CObjectID, c_bool]] *streaming_generator_returns,
@@ -992,15 +987,16 @@ cdef class StreamingGeneratorExecutionContext:
         c_string *application_error,
     ):
         cdef StreamingGeneratorExecutionContext self = (
-            StreamingGeneratorExecutionContext(
-                # generator,
-                function_name,
-                function_descriptor,
-                title,
-                actor,
-                actor_id,
-                name_of_concurrency_group_to_execute,
-                return_size))
+            StreamingGeneratorExecutionContext())
+        self.generator_index = 0
+        self.function_name = function_name
+        self.function_descriptor = function_descriptor
+        self.title = title
+        self.actor = actor
+        self.actor_id = actor_id
+        self.name_of_concurrency_group_to_execute = name_of_concurrency_group_to_execute
+        self.return_size = return_size
+        self._is_initialized = False
         self.generator_id = generator_id
         self.task_type = task_type
         self.caller_address = caller_address
@@ -1014,31 +1010,36 @@ cdef class StreamingGeneratorExecutionContext:
         return self
 
 
-async def execute_streaming_generator_async(context):
-    # from ray._raylet import report_streaming_generator_output
-    gen = context.get_generator()
-    while True:
-        try:
-            output = await gen.__anext__()
-        except Exception as e:
-            output = e
-        done = report_streaming_generator_output(output, context)
-        if done:
-            break
-
-
 cpdef report_streaming_generator_output(
-        output,
+        output_or_exception: Union[object, Exception],
         StreamingGeneratorExecutionContext context):
+    """Report a given generator output to a caller.
+
+    If a generator produces an exception, it should be
+    passed as an output to report. The API will return
+    False if the generator should keep executing.
+    True otherwise.
+
+    Args:
+        output_or_exception: The output yielded from a
+            generator or raised as an exception.
+        context: The execution context.
+
+    Returns:
+        True if a generator that produced the output
+            shouldn't resume anymore (i.e., if the
+            generator is done being used). False otherwise.
+    """
     worker = ray._private.worker.global_worker
 
     cdef:
         CoreWorker core_worker = worker.core_worker
+        # Ray Object created from an output.
         c_pair[CObjectID, shared_ptr[CRayObject]] return_obj
 
     try:
-        if isinstance(output, Exception):
-            raise output
+        if isinstance(output_or_exception, Exception):
+            raise output_or_exception
     except AsyncioActorExit:
         # Make the task handle this exception.
         raise
@@ -1084,7 +1085,7 @@ cpdef report_streaming_generator_output(
     else:
         # Report the intermediate result if there was no error.
         create_generator_return_obj(
-            output,
+            output_or_exception,
             context.generator_id,
             worker,
             context.caller_address,
@@ -1095,7 +1096,7 @@ cpdef report_streaming_generator_output(
             &return_obj)
         # Del output here so that we can GC the memory
         # usage asap.
-        del output
+        del output_or_exception
 
         context.streaming_generator_returns[0].push_back(
             c_pair[CObjectID, c_bool](
@@ -1130,26 +1131,58 @@ cdef execute_streaming_generator_sync(StreamingGeneratorExecutionContext context
     Args:
         context: The context to execute streaming generator.
     """
-    worker = ray._private.worker.global_worker
+    assert context.is_initialized()
     # Generator task should only have 1 return object ref,
     # which contains None or exceptions (if system error occurs).
     assert context.return_size == 1
 
-    cdef:
-        CoreWorker core_worker = worker.core_worker
-
+    gen = context.generator
     while True:
         try:
-            # if context.is_async:
-            #     output = core_worker.run_async_func_or_coro_in_event_loop(
-            #         context.generator.__anext__(),
-            #         context.function_descriptor,
-            #         context.name_of_concurrency_group_to_execute)
-            # else:
-            output = next(context.generator)
+            output_or_exception = next(gen)
         except Exception as e:
-            output = e
-        done = report_streaming_generator_output(output, context)
+            output_or_exception = e
+        done = report_streaming_generator_output(output_or_exception, context)
+        if done:
+            break
+
+
+async def execute_streaming_generator_async(
+        context: StreamingGeneratorExecutionContext):
+    """Execute a given generator and streaming-report the
+        result to the given caller_address.
+
+    This method is same as `execute_streaming_generator_sync`,
+    but it should be used inside an async event loop.
+
+    NOTE: when this function is run inside an event loop,
+    some of core worker APIs could be executed inside
+    a separate thread (because we run event loop in a differnt).
+
+    E.g., core_worker.SealOwned can be called.
+
+    At this time, if we access worker_context_ API from core worker,
+    it can cause problems because worker_context_ is configured
+    per thread (it is a bug & tech debt).
+
+    Args:
+        context: The context to execute streaming generator.
+    """
+    assert context.is_initialized()
+    # Generator task should only have 1 return object ref,
+    # which contains None or exceptions (if system error occurs).
+    assert context.return_size == 1
+
+    gen = context.generator
+    while True:
+        try:
+            output_or_exception = await gen.__anext__()
+        except Exception as e:
+            output_or_exception = e
+        # TODO(sang): This method involves in serializing the output.
+        # Ideally, we don't want to run this inside an event loop.
+        done = report_streaming_generator_output(
+            output_or_exception, context)
         if done:
             break
 
@@ -1194,7 +1227,6 @@ cdef create_generator_return_obj(
     intermediate_result.push_back(
             c_pair[CObjectID, shared_ptr[CRayObject]](
                 return_id, shared_ptr[CRayObject]()))
-    intermediate_result.size()
     core_worker.store_task_outputs(
         worker, [output],
         caller_address,
@@ -1570,7 +1602,6 @@ cdef void execute_task(
                                     "@ray.remote(num_returns=\"streaming\" "
                                     "must return a generator")
                         context = StreamingGeneratorExecutionContext.make(
-                                # outputs,
                                 returns[0][0].first,  # generator object ID.
                                 task_type,
                                 caller_address,
@@ -1590,15 +1621,18 @@ cdef void execute_task(
                                 application_error)
                         # We cannot pass generator to cdef in Cython for some reasons.
                         # It is a workaround.
-                        context.set_generator(outputs)
+                        context.initialize(outputs)
 
                         if is_async_gen:
+                            # Note that the report RPCs are called inside an
+                            # event loop thread.
                             core_worker.run_async_func_or_coro_in_event_loop(
                                 execute_streaming_generator_async(context),
                                 function_descriptor,
                                 name_of_concurrency_group_to_execute)
                         else:
                             execute_streaming_generator_sync(context)
+
                         # Streaming generator output is not used, so set it to None.
                         outputs = None
 
@@ -1623,7 +1657,6 @@ cdef void execute_task(
                 except AsyncioActorExit as e:
                     exit_current_actor_if_asyncio()
                 except Exception as e:
-                    # logger.exception(e)
                     is_retryable_error[0] = determine_if_retryable(
                         e,
                         serialized_retry_exception_allowlist,
