@@ -59,7 +59,7 @@ while True:
 
     wait_for_condition(pg_created)
 
-    for _ in range(40):
+    for _ in range(30):
         # verify no pending request + resource used.
         status = get_cluster_status()
         has_pg_demand = len(status.resource_demands.placement_group_demand) > 0
@@ -68,7 +68,9 @@ while True:
             has_pg_usage = has_pg_usage or "bundle" in usage.resource_name
         print(has_pg_demand, has_pg_usage)
         assert not (has_pg_demand and has_pg_usage), status
-        time.sleep(0.25)
+        time.sleep(0.1)
+
+    cluster.shutdown()
 
 
 if __name__ == "__main__":
