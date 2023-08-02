@@ -185,7 +185,7 @@
     - pip install ray[client]
     - bazel test --config=ci $(./ci/run/bazel_export_options) 
       --test_tag_filters=client_tests,small_size_python_tests 
-      -- $(yq -r .flaky_tests[] ci/v2/test/core.tests.yml)
+      -- $(yq -r .flaky_tests[] ci/ray_ci/core.tests.yml)
     - bazel test --config=ci $(./ci/run/bazel_export_options) 
       --test_tag_filters=client_tests,small_size_python_tests,-team:core 
       -- python/ray/tests/...
@@ -217,7 +217,7 @@
     - ./ci/env/env_info.sh
     - bazel test --config=ci $(./ci/run/bazel_export_options)
       --test_tag_filters=medium_size_python_tests_a_to_j
-      -- $(yq -r .flaky_tests[] ci/v2/test/core.tests.yml)
+      -- $(yq -r .flaky_tests[] ci/ray_ci/core.tests.yml)
     - bazel test --config=ci $(./ci/run/bazel_export_options)
       --test_tag_filters=medium_size_python_tests_a_to_j,-team:core
       python/ray/tests/...
@@ -230,7 +230,7 @@
     - DL=1 ./ci/env/install-dependencies.sh
     - bazel test --config=ci $(./ci/run/bazel_export_options)
       --test_tag_filters=medium_size_python_tests_k_to_z
-      -- $(yq -r .flaky_tests[] ci/v2/test/core.tests.yml)
+      -- $(yq -r .flaky_tests[] ci/ray_ci/core.tests.yml)
     - bazel test --config=ci $(./ci/run/bazel_export_options)
       --test_tag_filters=medium_size_python_tests_k_to_z,-team:core
       python/ray/tests/...
