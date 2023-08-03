@@ -19,7 +19,7 @@ class TorchTrainer(DataParallelTrainer):
     At a high level, this Trainer does the following:
 
     1. Launches multiple workers as defined by the ``scaling_config``.
-    2. Sets up a PyTorch Distributed environment
+    2. Sets up a distributed PyTorch environment
        on these workers as defined by the ``torch_config``.
     3. Ingests the input ``datasets`` based on the ``dataset_config``.
     4. Runs the input ``train_loop_per_worker(train_loop_config)``
@@ -43,7 +43,8 @@ class TorchTrainer(DataParallelTrainer):
             from ray.train.torch import TorchTrainer
 
             # If using GPUs, set this to True.
-            use_gpu = True
+            use_gpu = False
+            # Number of processes to run training on.
             num_workers = 4
 
             # Define your network structure.
@@ -68,7 +69,7 @@ class TorchTrainer(DataParallelTrainer):
                 # Fetch training dataset.
                 train_dataset_shard = ray.train.get_dataset_shard("train")
 
-                # Setup model.
+                # Instantiate and prepare model for training.
                 model = NeuralNetwork()
                 model = ray.train.torch.prepare_model(model)
 
