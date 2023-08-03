@@ -4,6 +4,7 @@ import time
 import json
 import copy
 import logging
+from typing import Any
 import requests
 import asyncio
 import random
@@ -21,6 +22,7 @@ from ray.util.state import list_cluster_events
 from ray._private.utils import binary_to_hex
 from ray.cluster_utils import AutoscalingCluster
 from ray._private.event.event_logger import get_event_logger
+from ray.core.generated.event_pb2 import Event
 from ray.dashboard.tests.conftest import *  # noqa
 from ray.dashboard.modules.event import event_consts
 from ray.core.generated import event_pb2
@@ -33,6 +35,7 @@ from ray.dashboard.modules.event.event_utils import (
     monitor_events,
 )
 from ray.job_submission import JobSubmissionClient
+from ray.util import inspect_serializability
 
 logger = logging.getLogger(__name__)
 
@@ -485,6 +488,49 @@ def test_core_events(shutdown_only):
 
     wait_for_condition(verify)
     pprint(list_cluster_events())
+
+
+def test_actors_events(shutdown_only):
+    ray.init(ignore_reinit_error=True)
+
+    @ray.remote
+    class Counter:
+        def __init__(self):
+            self.value = 0
+            self.event_logger = get_event_logger(
+                Event.SourceType.CORE_WORKER, "test actor event logger"
+            )
+
+        def increment(self):
+            self.value += 1
+            self.event_logger.info("increment", "")
+            return self.value
+
+        def get_counter(self):
+            return self.value
+
+        def __reduce__(self):
+            constructor = self.__class__
+            return constructor, ()
+
+        # Create 10 actors
+
+    inspect_serializability(Counter, "debug actor serializability")
+    actors = [Counter.remote() for _ in range(10)]
+
+    # Increment the count for each actor asynchronously
+    increment_results = [actor.increment.remote() for actor in actors]
+
+    # Wait for all the increments to finish (you can add sleep here if necessary)
+    ray.get(increment_results)
+
+    # Get the counts from all the actors and print them
+    counts = ray.get([actor.get_counter.remote() for actor in actors])
+    print("Counts:")
+    for i, count in enumerate(counts, start=1):
+        print(f"Actor {i}: {count}")
+
+    ray.shutdown()
 
 
 def test_cluster_events_retention(monkeypatch, shutdown_only):
