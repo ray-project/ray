@@ -205,16 +205,12 @@ def configure_component_logger(
     if backup_count is None:
         backup_count = ray._private.worker._global_node.backup_count
 
-    # For DEPLOYMENT component type, we want to log the deployment name
-    # instead of adding the component type to the component name.
-    component_log_file_name = component_name
-    if component_type is not None:
-        component_log_file_name = f"{component_type}_{component_name}"
-        if component_type != ServeComponentType.DEPLOYMENT:
-            component_name = f"{component_type}_{component_name}"
-    log_file_name = LOG_FILE_FMT.format(
-        component_name=component_log_file_name, component_id=component_id
+    log_file_name = get_component_log_file_name(
+        component_name=component_name,
+        component_type=component_type,
+        component_id=component_id,
     )
+
     file_handler = logging.handlers.RotatingFileHandler(
         os.path.join(logs_dir, log_file_name),
         maxBytes=max_bytes,
@@ -227,6 +223,24 @@ def configure_component_logger(
     else:
         file_handler.setFormatter(ServeFormatter(component_name, component_id))
     logger.addHandler(file_handler)
+
+
+def get_component_log_file_name(
+    component_name: str, component_type: Optional[ServeComponentType], component_id: str
+):
+    """Get the component's log file name."""
+
+    # For DEPLOYMENT component type, we want to log the deployment name
+    # instead of adding the component type to the component name.
+    component_log_file_name = component_name
+    if component_type is not None:
+        component_log_file_name = f"{component_type}_{component_name}"
+        if component_type != ServeComponentType.DEPLOYMENT:
+            component_name = f"{component_type}_{component_name}"
+    log_file_name = LOG_FILE_FMT.format(
+        component_name=component_log_file_name, component_id=component_id
+    )
+    return log_file_name
 
 
 class LoggingContext:

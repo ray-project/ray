@@ -904,6 +904,13 @@ class HTTPProxyActor:
             f"Proxy actor {ray.get_runtime_context().get_actor_id()} "
             f"starting on node {node_id}."
         )
+
+        import memray
+
+        memray.Tracker(
+            f"/tmp/ray/session_latest/logs/serve/http_proxy_{node_ip_address}.bin"
+        ).__enter__()
+
         if http_middlewares is None:
             http_middlewares = [Middleware(RequestIdMiddleware)]
         else:
