@@ -162,13 +162,15 @@ class DreamerV3Config(AlgorithmConfig):
     @property
     def model(self):
         model = copy.deepcopy(MODEL_DEFAULTS)
-        model.update({
-            "batch_length_T": self.batch_length_T,
-            "gamma": self.gamma,
-            "horizon_H": self.horizon_H,
-            "model_size": self.model_size,
-            "symlog_obs": self.symlog_obs,
-        })
+        model.update(
+            {
+                "batch_length_T": self.batch_length_T,
+                "gamma": self.gamma,
+                "horizon_H": self.horizon_H,
+                "model_size": self.model_size,
+                "symlog_obs": self.symlog_obs,
+            }
+        )
         return model
 
     @override(AlgorithmConfig)
