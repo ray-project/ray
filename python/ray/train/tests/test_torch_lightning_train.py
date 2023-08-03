@@ -12,8 +12,7 @@ from ray.train.lightning import (
     RayTrainReportCallback,
 )
 
-from ray.air import session
-from ray.air.config import ScalingConfig
+from ray.train import ScalingConfig
 from ray.train.tests.lightning_test_utils import (
     LinearModule,
     DummyDataModule,
@@ -127,10 +126,10 @@ def test_trainer_with_ray_data(ray_start_6_cpus_2_gpus, strategy_name, accelerat
             callbacks=[RayTrainReportCallback()],
         )
 
-        train_data_iterable = session.get_dataset_shard("train").iter_torch_batches(
+        train_data_iterable = ray.train.get_dataset_shard("train").iter_torch_batches(
             batch_size=batch_size
         )
-        val_data_iterable = session.get_dataset_shard("val").iter_torch_batches(
+        val_data_iterable = ray.train.get_dataset_shard("val").iter_torch_batches(
             batch_size=batch_size
         )
 
