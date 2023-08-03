@@ -1155,9 +1155,9 @@ async def execute_streaming_generator_async(
     This method is same as `execute_streaming_generator_sync`,
     but it should be used inside an async event loop.
 
-    NOTE: when this function is run inside an event loop,
-    some of core worker APIs could be executed inside
-    a separate thread (because we run event loop in a differnt).
+    NOTE: since this function runs inside an event loop thread,
+    some of core worker APIs will be executed inside
+    the event loop thread as well.
 
     E.g., core_worker.SealOwned can be called.
 
