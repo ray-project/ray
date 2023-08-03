@@ -14,6 +14,9 @@ export type ClusterMetadataResponse = {
     sessionId: string;
     gitCommit: string;
     os: string;
+    clientPort?: string;
+    dashboardPort?: string;
+    clusterName?: string;
   };
 };
 

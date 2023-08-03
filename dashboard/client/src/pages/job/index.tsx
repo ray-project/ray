@@ -94,6 +94,10 @@ const JobList = () => {
             onChange={(value) => changeFilter("job_id", value)}
           />
           <SearchInput
+            label="Submission ID"
+            onChange={(value) => changeFilter("submission_id", value)}
+          />
+          <SearchInput
             label="Page Size"
             onChange={(value) =>
               setPage("pageSize", Math.min(Number(value), 500) || 10)

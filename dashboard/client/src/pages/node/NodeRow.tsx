@@ -176,15 +176,15 @@ export const NodeRow = ({
         <NodeGRAM node={node} />
       </TableCell>
       <TableCell>
-        {webShellUrl && (<React.Fragment> <a target='_blank' href={webShellUrl}>
+        {webShellUrl && (<React.Fragment> <a target='_blank' href={webShellUrl}  rel="noreferrer">
           Webshell
         </a>
         <br /> </React.Fragment>)}
-        {metricCpu && (<React.Fragment> <a target='_blank' href={metricCpu}>
+        {metricCpu && (<React.Fragment> <a target='_blank' href={metricCpu}  rel="noreferrer">
           MetricCPU
         </a>
         <br /> </React.Fragment>)}
-        {metricGpu && (<React.Fragment> <a target='_blank' href={metricGpu}>
+        {metricGpu && (<React.Fragment> <a target='_blank' href={metricGpu}  rel="noreferrer">
           MetricGPU
         </a>
         <br /> </React.Fragment>)}

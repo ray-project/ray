@@ -97,6 +97,33 @@ export const ClusterDetailInfoPage = () => {
                   }
                 : { value: "-" },
             },
+            {
+              label: "Bytedance Ray Client Port",
+              content: clusterDetail.data.clientPort
+                ? {
+                    value: clusterDetail.data.clientPort,
+                    copyableValue: clusterDetail.data.clientPort,
+                  }
+                : { value: "-" },
+            },
+            {
+              label: "Bytedance Ray Job Submit Port",
+              content: clusterDetail.data.dashboardPort
+                ? {
+                    value: clusterDetail.data.dashboardPort,
+                    copyableValue: clusterDetail.data.dashboardPort,
+                  }
+                : { value: "-" },
+            },
+            {
+              label: "Bytedance Ray Cluster Name",
+              content: clusterDetail.data.clusterName
+                ? {
+                    value: clusterDetail.data.clusterName,
+                    copyableValue: clusterDetail.data.clusterName,
+                  }
+                : { value: "-" },
+            }
           ]}
         />
       </TitleCard>

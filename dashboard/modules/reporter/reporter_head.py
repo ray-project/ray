@@ -70,6 +70,28 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
         self._gcs_aio_client = dashboard_head.gcs_aio_client
         self._state_api = None
 
+        import os
+
+        if os.environ.get("BYTED_RAY_POD_IP") is not None \
+            and os.environ.get("BYTED_RAY_UNDERLAY_NETWORK") is None:
+            self._bytedance_client_mode = (
+                "ray://["
+                + os.environ.get("BYTED_RAY_POD_IP")
+                + "]:"
+                + os.environ.get("PORT2")
+            )
+            self._bytedance_dashboard_mode = (
+                "http://["
+                + os.environ.get("BYTED_RAY_POD_IP")
+                + "]:"
+                + os.environ.get("PORT1")
+            )
+            self._bytedance_cluster_name = os.environ.get("BYTED_RAY_CLUSTER", "")
+        else:
+            self._bytedance_client_mode = ""
+            self._bytedance_dashboard_mode = ""
+            self._bytedance_cluster_name = ""
+
     async def _update_stubs(self, change):
         if change.old:
             node_id, port = change.old
@@ -492,6 +514,9 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
             namespace=KV_NAMESPACE_CLUSTER,
         )
         self.cluster_metadata = json.loads(cluster_metadata.decode("utf-8"))
+        self.cluster_metadata["clientPort"] = self._bytedance_client_mode
+        self.cluster_metadata["dashboardPort"] = self._bytedance_dashboard_mode
+        self.cluster_metadata["clusterName"] = self._bytedance_cluster_name
 
         while True:
             try:
