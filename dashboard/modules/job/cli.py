@@ -25,21 +25,31 @@ def _get_sdk_client(
     headers: Optional[str] = None,
     verify: Union[bool, str] = True,
 ) -> JobSubmissionClient:
-    client = JobSubmissionClient(address, create_cluster_if_needed, headers=_handle_headers(headers), verify=verify)
+    client = JobSubmissionClient(
+        address,
+        create_cluster_if_needed,
+        headers=_handle_headers(headers),
+        verify=verify,
+    )
     client_address = client.get_address()
     cli_logger.labeled_value(
         "Job submission server address", redact_url_password(client_address)
     )
     return client
 
-def _handle_headers(headers: Optional[str]) ->  Optional[Dict[str, Any]]:
+
+def _handle_headers(headers: Optional[str]) -> Optional[Dict[str, Any]]:
     if headers is None and "RAY_JOB_HEADERS" in os.environ:
         headers = os.environ["RAY_JOB_HEADERS"]
     if headers is not None:
         try:
             return json.loads(headers)
         except:
-            raise ValueError("Failed to parse headers into JSON. Expected format: {\"KEY\": \"VALUE\"}, got %s".format(headers))
+            raise ValueError(
+                'Failed to parse headers into JSON. Expected format: {"KEY": "VALUE"}, got %s'.format(
+                    headers
+                )
+            )
 
 
 def _log_big_success_msg(success_msg):
@@ -233,7 +243,9 @@ def submit(
             no_wait=no_wait,
         )
 
-    client = _get_sdk_client(address, create_cluster_if_needed=True, headers=headers, verify=verify)
+    client = _get_sdk_client(
+        address, create_cluster_if_needed=True, headers=headers, verify=verify
+    )
 
     final_runtime_env = parse_runtime_env_args(
         runtime_env=runtime_env,
@@ -297,7 +309,12 @@ def submit(
 @add_common_job_options
 @add_click_logging_options
 @PublicAPI(stability="stable")
-def status(address: Optional[str], job_id: str, headers: Optional[str], verify: Union[bool, str]):
+def status(
+    address: Optional[str],
+    job_id: str,
+    headers: Optional[str],
+    verify: Union[bool, str],
+):
     """Queries for the current status of a job.
 
     Example:
@@ -329,7 +346,13 @@ def status(address: Optional[str], job_id: str, headers: Optional[str], verify: 
 @add_common_job_options
 @add_click_logging_options
 @PublicAPI(stability="stable")
-def stop(address: Optional[str], no_wait: bool, job_id: str, headers: Optional[str], verify: Union[bool, str]):
+def stop(
+    address: Optional[str],
+    no_wait: bool,
+    job_id: str,
+    headers: Optional[str],
+    verify: Union[bool, str],
+):
     """Attempts to stop a job.
 
     Example:
@@ -371,7 +394,12 @@ def stop(address: Optional[str], no_wait: bool, job_id: str, headers: Optional[s
 @add_common_job_options
 @add_click_logging_options
 @PublicAPI(stability="alpha")
-def delete(address: Optional[str], job_id: str, headers: Optional[str], verify: Union[bool, str]):
+def delete(
+    address: Optional[str],
+    job_id: str,
+    headers: Optional[str],
+    verify: Union[bool, str],
+):
     """Deletes a stopped job and its associated data from memory.
 
     Only supported for jobs that are already in a terminal state.
@@ -411,7 +439,13 @@ def delete(address: Optional[str], job_id: str, headers: Optional[str], verify: 
 @add_common_job_options
 @add_click_logging_options
 @PublicAPI(stability="stable")
-def logs(address: Optional[str], job_id: str, follow: bool, headers: Optional[str], verify: Union[bool, str]):
+def logs(
+    address: Optional[str],
+    job_id: str,
+    follow: bool,
+    headers: Optional[str],
+    verify: Union[bool, str],
+):
     """Gets the logs of a job.
 
     Example:

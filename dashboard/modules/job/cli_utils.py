@@ -40,15 +40,15 @@ def add_common_job_options(func):
         ),
     )
     @click.option(
-    "--headers",
-    required=False,
-    type=str,
-    default=None,
-    help=(
-        "Used to pass headers through http/s to the Ray Cluster."
-        "please follow JSON formatting formatting {\"key\": \"value\"}"
-    ),
-)
+        "--headers",
+        required=False,
+        type=str,
+        default=None,
+        help=(
+            "Used to pass headers through http/s to the Ray Cluster."
+            'please follow JSON formatting formatting {"key": "value"}'
+        ),
+    )
     @functools.wraps(func)
     def wrapper(*args, **kwargs):
         return func(*args, **kwargs)
