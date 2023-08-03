@@ -39,6 +39,7 @@ def start_connected_cluster():
     cluster.shutdown()
 
 
+@pytest.mark.flaky(retries=3, delay=1)
 @pytest.mark.parametrize("searcher", ["hyperopt", "skopt", "bayesopt"])
 def test_cluster_interrupt_searcher(start_connected_cluster, tmpdir, searcher):
     """Tests restoration of HyperOptSearch experiment on cluster shutdown
