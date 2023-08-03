@@ -46,11 +46,12 @@ adjustments should be made on top of the default config.
   For example, for 4 GPUs and a default environment count of 8 (the single-GPU default for
   this setting depends on the benchmark you are running), use 32 parallel environments instead.
 - Use a learning rate schedule for all learning rates (world model, actor, critic) with "priming".
-  - In particular, the first 10k timesteps should use low rates of `0.4` times of the published rates
-    (i.e. world model: `4e-5`, critic and actor: `1.2e-5`). 
-  - Over the course of the next 10k timesteps, linearly increase all rates to
+  - In particular, the first ~10% of total env step needed for the experiment should use low
+    rates of `0.4` times of the published rates (i.e. world model: `4e-5`, critic and actor: `1.2e-5`). 
+  - Over the course of the next ~10% of total env steps, linearly increase all rates to
     n times their published values, where `n=max(4, [num GPUs])`.
   - For examples on how to set these LR-schedules within your `DreamerV3Config`, see below.
+  - [See here](https://aws.amazon.com/blogs/machine-learning/the-importance-of-hyperparameter-tuning-for-scaling-deep-learning-training-to-multiple-gpus/) for more details on learning rate "priming".
 
 
 ## Example Configs and Command Lines
