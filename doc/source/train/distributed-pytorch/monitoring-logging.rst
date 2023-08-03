@@ -1,16 +1,16 @@
 Monitoring and Logging
 ======================
 
-Ray AIR provides a *Session* API for reporting intermediate
+Ray AIR provides an API for reporting intermediate
 results and checkpoints from the training function (run on distributed workers) up to the
-``Trainer`` (where your python script is executed) by calling ``session.report(metrics)``.
+``Trainer`` (where your python script is executed) by calling ``train.report(metrics)``.
 The results will be collected from the distributed workers and passed to the driver to
 be logged and displayed.
 
 .. warning::
 
     Only the results from rank 0 worker will be used. However, in order to ensure
-    consistency, ``session.report()`` has to be called on each worker. If you
+    consistency, ``train.report()`` has to be called on each worker. If you
     want to aggregate results from multiple workers, see :ref:`train-aggregating-results`.
 
 The primary use-case for reporting is for metrics (accuracy, loss, etc.) at
@@ -18,13 +18,13 @@ the end of each training epoch.
 
 .. code-block:: python
 
-    from ray.air import session
+    from ray import train
 
     def train_func():
         ...
         for i in range(num_epochs):
             result = model.train(...)
-            session.report({"result": result})
+            train.report({"result": result})
 
 The session concept exists on several levels: The execution layer (called `Tune Session`) and the Data Parallel training layer
 (called `Train Session`).

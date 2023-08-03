@@ -39,7 +39,7 @@ training.
 
 
              def train_func():
-            -    device = torch.device(f"cuda:{session.get_local_rank()}" if
+            -    device = torch.device(f"cuda:{train.get_context().get_local_rank()}" if
             -        torch.cuda.is_available() else "cpu")
             -    torch.cuda.set_device(device)
 
@@ -48,7 +48,7 @@ training.
 
             -    model = model.to(device)
             -    model = DistributedDataParallel(model,
-            -        device_ids=[session.get_local_rank()] if torch.cuda.is_available() else None)
+            -        device_ids=[train.get_context().get_local_rank()] if torch.cuda.is_available() else None)
 
             +    model = train.torch.prepare_model(model)
 
@@ -64,13 +64,12 @@ training.
 
              import torch
              from torch.utils.data import DataLoader, DistributedSampler
-            +from ray.air import session
             +from ray import train
             +import ray.train.torch
 
 
              def train_func():
-            -    device = torch.device(f"cuda:{session.get_local_rank()}" if
+            -    device = torch.device(f"cuda:{train.get_context().get_local_rank()}" if
             -        torch.cuda.is_available() else "cpu")
             -    torch.cuda.set_device(device)
 
@@ -91,7 +90,7 @@ training.
 
             .. code-block:: python
 
-                global_batch_size = worker_batch_size * session.get_world_size()
+                global_batch_size = worker_batch_size * train.get_context().get_world_size()
 
 Creating a :class:`~ray.train.torch.TorchTrainer`
 -------------------------------------------------
@@ -169,12 +168,13 @@ configurations. As an example:
 
 .. code-block:: python
 
-    from ray.air import session, ScalingConfig
+    from ray import train
+    from ray.air import ScalingConfig
     from ray.train.torch import TorchTrainer
 
     def train_func(config):
         for i in range(config["num_epochs"]):
-            session.report({"epoch": i})
+            train.report({"epoch": i})
 
     trainer = TorchTrainer(
         train_func,
@@ -297,7 +297,7 @@ just as you would if you were running Accelerate without Ray.
     API reference for more details.
 
 Aside from Accelerate support, the usage is identical to :class:`TorchTrainer <ray.train.torch.TorchTrainer>`, meaning you define your own training function
-and use the :ref:`Session <air-session-ref>` API to report metrics, save checkpoints etc.
+and use the :func:`~ray.train.report` API to report metrics, save checkpoints etc.
 
 
 .. dropdown:: Code example

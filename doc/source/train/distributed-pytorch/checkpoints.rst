@@ -20,7 +20,7 @@ directory <train-log-dir>` of each run.
 Saving checkpoints
 ------------------
 
-:ref:`Checkpoints <checkpoint-api-ref>` can be saved by calling ``session.report(metrics, checkpoint=Checkpoint(...))`` in the
+:ref:`Checkpoints <checkpoint-api-ref>` can be saved by calling ``train.report(metrics, checkpoint=Checkpoint(...))`` in the
 training function. This will cause the checkpoint state from the distributed
 workers to be saved on the ``Trainer`` (where your python script is executed).
 
@@ -40,7 +40,8 @@ appropriately in distributed training.
             :emphasize-lines: 36, 37, 38, 39, 40, 41
 
             import ray.train.torch
-            from ray.air import session, Checkpoint, ScalingConfig
+            from ray import train
+            from ray.air import Checkpoint, ScalingConfig
             from ray.train.torch import TorchTrainer
 
             import torch
@@ -73,7 +74,7 @@ appropriately in distributed training.
                     checkpoint = Checkpoint.from_dict(
                         dict(epoch=epoch, model_weights=state_dict)
                     )
-                    session.report({}, checkpoint=checkpoint)
+                    train.report({}, checkpoint=checkpoint)
 
             trainer = TorchTrainer(
                 train_func,
@@ -122,7 +123,7 @@ Loading checkpoints
 
 Checkpoints can be loaded into the training function in 2 steps:
 
-1. From the training function, :func:`ray.air.session.get_checkpoint` can be used to access
+1. From the training function, :func:`ray.train.get_checkpoint` can be used to access
    the most recently saved :py:class:`~ray.air.checkpoint.Checkpoint`. This is useful to continue training even
    if there's a worker failure.
 2. The checkpoint to start training with can be bootstrapped by passing in a
@@ -137,7 +138,8 @@ Checkpoints can be loaded into the training function in 2 steps:
             :emphasize-lines: 23, 25, 26, 29, 30, 31, 35
 
             import ray.train.torch
-            from ray.air import session, Checkpoint, ScalingConfig
+            from ray import train
+            from ray.air import Checkpoint, ScalingConfig
             from ray.train.torch import TorchTrainer
 
             import torch
@@ -159,9 +161,9 @@ Checkpoints can be loaded into the training function in 2 steps:
                 optimizer = Adam(model.parameters(), lr=3e-4)
                 start_epoch = 0
 
-                checkpoint = session.get_checkpoint()
+                checkpoint = train.get_checkpoint()
                 if checkpoint:
-                    # assume that we have run the session.report() example
+                    # assume that we have run the train.report() example
                     # and successfully save some model weights
                     checkpoint_dict = checkpoint.to_dict()
                     model.load_state_dict(checkpoint_dict.get("model_weights"))
@@ -181,7 +183,7 @@ Checkpoints can be loaded into the training function in 2 steps:
                     checkpoint = Checkpoint.from_dict(
                         dict(epoch=epoch, model_weights=state_dict)
                     )
-                    session.report({}, checkpoint=checkpoint)
+                    train.report({}, checkpoint=checkpoint)
 
             trainer = TorchTrainer(
                 train_func,

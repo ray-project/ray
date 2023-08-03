@@ -63,7 +63,7 @@ set appropriately.
 .. code-block:: diff
 
     -batch_size = worker_batch_size
-    +batch_size = worker_batch_size * session.get_world_size()
+    +batch_size = worker_batch_size * train.get_context().get_world_size()
 
 
 .. warning::
@@ -146,14 +146,14 @@ for distributed data loading. The relevant parts are:
 .. code-block:: python
 
     import tensorflow as tf
-    from ray.air import session
+    from ray import train
     from ray.train.tensorflow import prepare_dataset_shard
 
     def train_func(config: dict):
         # ...
 
         # Get dataset shard from Ray Train
-        dataset_shard = session.get_dataset_shard("train")
+        dataset_shard = train.get_context().get_dataset_shard("train")
 
         # Define a helper function to build a TensorFlow dataset
         def to_tf_dataset(dataset, batch_size):
@@ -219,7 +219,7 @@ control over that, consider implementing a `custom training loop <https://www.te
 Saving and loading checkpoints
 ------------------------------
 
-:ref:`Checkpoints <checkpoint-api-ref>` can be saved by calling ``session.report(metrics, checkpoint=Checkpoint(...))`` in the
+:ref:`Checkpoints <checkpoint-api-ref>` can be saved by calling ``train.report(metrics, checkpoint=Checkpoint(...))`` in the
 training function. This will cause the checkpoint state from the distributed
 workers to be saved on the ``Trainer`` (where your python script is executed).
 
@@ -234,7 +234,8 @@ appropriately in distributed training.
 .. code-block:: python
     :emphasize-lines: 23
 
-    from ray.air import session, Checkpoint, ScalingConfig
+    from ray import train
+    from ray.air import Checkpoint, ScalingConfig
     from ray.train.tensorflow import TensorflowTrainer
 
     import numpy as np
@@ -259,7 +260,7 @@ appropriately in distributed training.
             checkpoint = Checkpoint.from_dict(
                 dict(epoch=epoch, model_weights=model.get_weights())
             )
-            session.report({}, checkpoint=checkpoint)
+            train.report({}, checkpoint=checkpoint)
 
     trainer = TensorflowTrainer(
         train_func,
@@ -283,7 +284,8 @@ Loading checkpoints
 .. code-block:: python
     :emphasize-lines: 15, 21, 22, 25, 26, 27, 30
 
-    from ray.air import session, Checkpoint, ScalingConfig
+    from ray import train
+    from ray.air import Checkpoint, ScalingConfig
     from ray.train.tensorflow import TensorflowTrainer
 
     import numpy as np
@@ -303,9 +305,9 @@ Loading checkpoints
         with strategy.scope():
             # toy neural network : 1-layer
             model = tf.keras.Sequential([tf.keras.layers.Dense(1, activation="linear", input_shape=(4,))])
-            checkpoint = session.get_checkpoint()
+            checkpoint = train.get_checkpoint()
             if checkpoint:
-                # assume that we have run the session.report() example
+                # assume that we have run the train.report() example
                 # and successfully save some model weights
                 checkpoint_dict = checkpoint.to_dict()
                 model.set_weights(checkpoint_dict.get("model_weights"))
@@ -317,7 +319,7 @@ Loading checkpoints
             checkpoint = Checkpoint.from_dict(
                 dict(epoch=epoch, model_weights=model.get_weights())
             )
-            session.report({}, checkpoint=checkpoint)
+            train.report({}, checkpoint=checkpoint)
 
     trainer = TensorflowTrainer(
         train_func,

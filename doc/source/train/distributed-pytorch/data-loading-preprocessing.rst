@@ -16,17 +16,17 @@ Overview
 To get started, pass in one or more datasets under the ``datasets`` keyword argument for Trainer (e.g., ``Trainer(datasets={...})``).
 
 In a nutshell, datasets passed to your :class:`Trainer <ray.train.trainer.BaseTrainer>`
-can be accessed from the training function with :meth:`session.get_dataset_shard("train")
-<ray.air.session.get_dataset_shard>` like this:
+can be accessed from the training function with :meth:`train.get_dataset_shard("train")
+<ray.train.get_dataset_shard>` like this:
 
 .. code-block:: python
 
-    from ray.air import session
+    from ray import train
 
     # Datasets can be accessed in your train_func via ``get_dataset_shard``.
     def train_func(config):
-        train_data_shard = session.get_dataset_shard("train")
-        validation_data_shard = session.get_dataset_shard("validation")
+        train_data_shard = train.get_dataset_shard("train")
+        validation_data_shard = train.get_dataset_shard("validation")
         ...
 
     # Random split the dataset into 80% training data and 20% validation data.
