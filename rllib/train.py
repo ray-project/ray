@@ -3,6 +3,7 @@ import importlib
 import json
 import os
 from pathlib import Path
+import re
 import sys
 import typer
 from typing import Optional
@@ -10,6 +11,7 @@ import uuid
 import yaml
 
 import ray
+from ray.air.integrations.wandb import WandbLoggerCallback
 from ray.tune.resources import resources_to_json, json_to_resources
 from ray.tune.tune import run_experiments
 from ray.tune.schedulers import create_scheduler
