@@ -206,6 +206,7 @@ class Experiment:
             self._remote_storage_path = None
             self.sync_config = None
             self.dir_name = None
+            self.name = None
         else:
             if isinstance(sync_config, dict):
                 sync_config = SyncConfig(**sync_config)
