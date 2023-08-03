@@ -160,7 +160,7 @@ def continue_debug_session(live_jobs: Set[str]):
                 continue
 
             print("Continuing pdb session in different process...")
-            key = b"RAY_PDB_" + active_session[len("RAY_PDB_CONTINUE_") :]
+            key = b"RAY_PDB_" + active_session[len("RAY_PDB_CONTINUE_"):]
             while True:
                 data = ray.experimental.internal_kv._internal_kv_get(
                     key, namespace=ray_constants.KV_NAMESPACE_PDB
@@ -1113,6 +1113,13 @@ def stop(force: bool, grace_period: int):
         psutil.wait_procs(alive, timeout=2)
         return total_found, total_stopped, alive
 
+    # Process killing procedure: we put processes into 3 buckets.
+    # Bucket 1: raylet
+    # Bucket 2: all other processes, e.g. dashboard, runtime env agents
+    # Bucket 3: gcs_server.
+    #
+    # For each bucket, we send sigterm to all processes, then wait for 30s, then if
+    # they are still alive, send sigkill.
     processes_to_kill = RAY_PROCESSES
     # Raylet should exit before all other processes exit.
     # Otherwise, fate-sharing agents will complain and suicide.
@@ -1123,13 +1130,11 @@ def stop(force: bool, grace_period: int):
     # exit code which breaks ray start --block.
     assert processes_to_kill[-1][0] == "gcs_server"
 
-    grace_period_to_kill_gcs = int(grace_period / 2)
-    grace_period_to_kill_components = grace_period - grace_period_to_kill_gcs
+    buckets = [[processes_to_kill[0]], processes_to_kill[1:-1], [processes_to_kill[-1]]]
 
-    # Kill evertyhing in order, one kind at a time.
-    for process in processes_to_kill:
+    for bucket in buckets:
         found, stopped, alive = kill_procs(
-            force, grace_period_to_kill_components, [process]
+            force, grace_period / len(buckets), bucket
         )
         total_procs_found += found
         total_procs_stopped += stopped
