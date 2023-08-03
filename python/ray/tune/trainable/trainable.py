@@ -501,6 +501,13 @@ class Trainable:
         # User saves checkpoint
         checkpoint_dict_or_path = self.save_checkpoint(checkpoint_dir)
 
+        from ray.train._internal.checkpoint_manager import _TrainingResult
+
+        if _use_storage_context() and isinstance(
+            checkpoint_dict_or_path, _TrainingResult
+        ):
+            return checkpoint_dict_or_path
+
         if checkpoint_dict_or_path is None:
             # checkpoint_dict_or_path can only be None in class trainables.
             # In that case the default is to use the root checkpoint directory.
@@ -510,7 +517,7 @@ class Trainable:
             # checkpoint_dir is only None in function trainables. In that case,
             # checkpoint_dict_or_path points to the already saved checkpoint dir.
             # This will be considered the root dir.
-            assert isinstance(checkpoint_dict_or_path, str)
+            assert isinstance(checkpoint_dict_or_path, str), checkpoint_dict_or_path
             checkpoint_dir = checkpoint_dict_or_path
 
         # Get trainable metadata
