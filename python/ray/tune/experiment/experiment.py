@@ -298,6 +298,17 @@ class Experiment:
 
         stdout_file, stderr_file = _validate_log_to_file(log_to_file)
 
+        self.storage = None
+        if _use_storage_context():
+            storage = StorageContext(
+                storage_path=storage_path,
+                storage_filesystem=storage_filesystem,
+                sync_config=sync_config,
+                experiment_dir_name=self.dir_name,
+            )
+            self.storage = storage
+            logger.debug(f"StorageContext on the DRIVER:\n{storage}")
+
         spec = {
             "run": self._run_identifier,
             "stop": stopping_criteria,
@@ -317,19 +328,8 @@ class Experiment:
             "restore": os.path.abspath(os.path.expanduser(restore))
             if restore
             else None,
+            "storage": self.storage,
         }
-
-        self.storage = None
-        if _use_storage_context():
-            storage = StorageContext(
-                storage_path=storage_path,
-                storage_filesystem=storage_filesystem,
-                sync_config=sync_config,
-                experiment_dir_name=self.dir_name,
-            )
-            self.storage = spec["storage"] = storage
-            logger.debug(f"StorageContext on the DRIVER:\n{storage}")
-
         self.spec = spec
 
     @classmethod
@@ -487,6 +487,9 @@ class Experiment:
 
     @property
     def local_path(self) -> Optional[str]:
+        if _use_storage_context():
+            return self.storage.experiment_local_path
+
         if not self._local_storage_path:
             return None
         return str(Path(self._local_storage_path) / self.dir_name)
@@ -499,6 +502,9 @@ class Experiment:
 
     @property
     def remote_path(self) -> Optional[str]:
+        if _use_storage_context():
+            return self.storage.experiment_path
+
         if not self._remote_storage_path:
             return None
         return str(URI(self._remote_storage_path) / self.dir_name)
