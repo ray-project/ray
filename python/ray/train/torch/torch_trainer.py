@@ -46,7 +46,7 @@ class TorchTrainer(DataParallelTrainer):
             use_gpu = True
             num_workers = 4
 
-            # Define your network structure
+            # Define your network structure.
             class NeuralNetwork(nn.Module):
                 def __init__(self):
                     super(NeuralNetwork, self).__init__()
@@ -153,7 +153,9 @@ class TorchTrainer(DataParallelTrainer):
         scaling_config: The configuration for how to scale data parallel training.
             ``num_workers`` determines how many Python processes are used for training,
             and ``use_gpu`` determines whether or not each process should use GPUs.
+            See :py:class:`ScalingConfig <ray.train.ScalingConfig>` for more info.
         run_config: The configuration for the execution of the training run.
+        See :py:class:`RunConfig <ray.train.RunConfig>` for more info.
         datasets: The Ray Datasets to ingest for training.
             Datasets are keyed by name (``{name: dataset}``).
             Each dataset can be accessed from within the ``train_loop_per_worker``
@@ -163,8 +165,8 @@ class TorchTrainer(DataParallelTrainer):
         dataset_config: The configuration for ingesting the input ``datasets``.
             By default:
 
-            - The ``"train"`` Dataset will be split equally across workers.
-            - All other Datasets will **not** be split.
+            - The ``"train"`` Dataset is split equally across workers.
+            - All other Datasets are **not** split.
         resume_from_checkpoint: A checkpoint to resume training from.
             This checkpoint can be accessed from within ``train_loop_per_worker``
             by calling ``ray.train.get_checkpoint()``.
