@@ -64,7 +64,7 @@ class ExperimentAnalysisInMemorySuite(unittest.TestCase):
         )
         trial.status = Trial.TERMINATED
         trial.relative_logdir = "MockTrainable_0_id=3_2020-07-12"
-        create_tune_experiment_checkpoint([trial], local_checkpoint_dir=self.test_dir)
+        create_tune_experiment_checkpoint([trial], experiment_path=self.test_dir)
 
         experiment_analysis = ExperimentAnalysis(self.test_dir)
         self.assertEqual(len(experiment_analysis._checkpoints_and_paths), 1)

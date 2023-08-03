@@ -378,7 +378,7 @@ class FunctionTrainable(Trainable):
         If the RunnerThread finishes without reporting "done",
         Tune will automatically provide a magic keyword __duplicate__
         along with a result with "done=True". The TrialRunner will handle the
-        result accordingly (see tune/trial_runner.py).
+        result accordingly (see tune/tune_controller.py).
         """
         if self._runner and self._runner.is_alive():
             # if started and alive, inform the reporter to continue and
@@ -673,7 +673,7 @@ def wrap_function(
 
             # If train_func returns, we need to notify the main event loop
             # of the last result while avoiding double logging. This is done
-            # with the keyword RESULT_DUPLICATE -- see tune/trial_runner.py.
+            # with the keyword RESULT_DUPLICATE -- see tune/tune_controller.py.
             reporter(**{RESULT_DUPLICATE: True})
             return output
 

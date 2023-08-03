@@ -21,7 +21,6 @@ These are the environment variables Ray Tune currently considers:
 * **TUNE_DISABLE_DATED_SUBDIR**: Ray Tune automatically adds a date string to experiment
   directories when the name is not specified explicitly or the trainable isn't passed
   as a string. Setting this environment variable to ``1`` disables adding these date strings.
-* **TUNE_NEW_EXECUTION**: Disable `Ray Tune's new execution engine <https://github.com/ray-project/ray/issues/36949>`_.
 * **TUNE_DISABLE_STRICT_METRIC_CHECKING**: When you report metrics to Tune via
   ``session.report()`` and passed a ``metric`` parameter to ``Tuner()``, a scheduler,
   or a search algorithm, Tune will error
@@ -39,8 +38,6 @@ These are the environment variables Ray Tune currently considers:
   letting them finish the current training step and any user-defined cleanup.
   Setting this variable to a non-zero, positive integer will cause trials to be forcefully
   terminated after a grace period of that many seconds. Defaults to ``600`` (seconds).
-* **TUNE_GET_EXECUTOR_EVENT_WAIT_S**: The time that TrialRunner waits for the
-  next ExecutorEvent in a blocking fashion. Defaults to ``5``.
 * **TUNE_FUNCTION_THREAD_TIMEOUT_S**: Time in seconds the function API waits
   for threads to finish after instructing them to complete. Defaults to ``2``.
 * **TUNE_GLOBAL_CHECKPOINT_S**: Time in seconds that limits how often Tune's
