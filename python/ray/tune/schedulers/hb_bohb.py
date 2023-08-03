@@ -1,11 +1,13 @@
 import logging
-from typing import Dict, Optional
+from typing import Dict, Optional, TYPE_CHECKING
 
-from ray.tune.execution import trial_runner
 from ray.tune.schedulers.trial_scheduler import TrialScheduler
 from ray.tune.schedulers.hyperband import HyperBandScheduler
 from ray.tune.experiment import Trial
 from ray.util import PublicAPI
+
+if TYPE_CHECKING:
+    from ray.tune.execution.tune_controller import TuneController
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +28,7 @@ class HyperBandForBOHB(HyperBandScheduler):
     See ray.tune.schedulers.HyperBandScheduler for parameter docstring.
     """
 
-    def on_trial_add(self, trial_runner: "trial_runner.TrialRunner", trial: Trial):
+    def on_trial_add(self, tune_controller: "TuneController", trial: Trial):
         """Adds new trial.
 
         On a new trial add, if current bracket is not filled, add to current
@@ -72,7 +74,7 @@ class HyperBandForBOHB(HyperBandScheduler):
         self._trial_info[trial] = cur_bracket, self._state["band_idx"]
 
     def on_trial_result(
-        self, trial_runner: "trial_runner.TrialRunner", trial: Trial, result: Dict
+        self, tune_controller: "TuneController", trial: Trial, result: Dict
     ) -> str:
         """If bracket is finished, all trials will be stopped.
 
@@ -109,21 +111,21 @@ class HyperBandForBOHB(HyperBandScheduler):
             # as intended.
             # There should be a better API for this.
             # TODO(team-ml): Refactor alongside HyperBandForBOHB
-            trial_runner.search_alg.searcher.on_pause(trial.trial_id)
+            tune_controller.search_alg.searcher.on_pause(trial.trial_id)
             return TrialScheduler.PAUSE
 
         logger.debug(f"Processing bracket after trial {trial} result")
-        action = self._process_bracket(trial_runner, bracket)
+        action = self._process_bracket(tune_controller, bracket)
         if action == TrialScheduler.PAUSE:
-            trial_runner.search_alg.searcher.on_pause(trial.trial_id)
+            tune_controller.search_alg.searcher.on_pause(trial.trial_id)
         return action
 
-    def _unpause_trial(self, trial_runner: "trial_runner.TrialRunner", trial: Trial):
+    def _unpause_trial(self, tune_controller: "TuneController", trial: Trial):
         # Hack. See comment in on_trial_result
-        trial_runner.search_alg.searcher.on_unpause(trial.trial_id)
+        tune_controller.search_alg.searcher.on_unpause(trial.trial_id)
 
     def choose_trial_to_run(
-        self, trial_runner: "trial_runner.TrialRunner", allow_recurse: bool = True
+        self, tune_controller: "TuneController", allow_recurse: bool = True
     ) -> Optional[Trial]:
         """Fair scheduling within iteration by completion percentage.
 
@@ -138,13 +140,10 @@ class HyperBandForBOHB(HyperBandScheduler):
             scrubbed = [b for b in hyperband if b is not None]
             for bracket in scrubbed:
                 for trial in bracket.current_trials():
-                    if (
-                        trial.status == Trial.PENDING
-                        and trial_runner.trial_executor.has_resources_for_trial(trial)
-                    ):
+                    if trial.status == Trial.PENDING:
                         return trial
         # MAIN CHANGE HERE!
-        if not any(t.status == Trial.RUNNING for t in trial_runner.get_trials()):
+        if not any(t.status == Trial.RUNNING for t in tune_controller.get_trials()):
             for hyperband in self._hyperbands:
                 for bracket in hyperband:
                     if bracket and any(
@@ -153,7 +152,7 @@ class HyperBandForBOHB(HyperBandScheduler):
                     ):
                         # This will change the trial state
                         logger.debug("Processing bracket since no trial is running.")
-                        self._process_bracket(trial_runner, bracket)
+                        self._process_bracket(tune_controller, bracket)
 
                         # If there are pending trials now, suggest one.
                         # This is because there might be both PENDING and
@@ -164,7 +163,7 @@ class HyperBandForBOHB(HyperBandScheduler):
                             for trial in bracket.current_trials()
                         ):
                             return self.choose_trial_to_run(
-                                trial_runner, allow_recurse=False
+                                tune_controller, allow_recurse=False
                             )
         # MAIN CHANGE HERE!
         return None
