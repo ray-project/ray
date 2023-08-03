@@ -127,6 +127,35 @@ In addition to the standard Python logger, Serve supports custom logging. Custom
 
 For a detailed overview of logging in Ray, see [Ray Logging](configure-logging).
 
+### JSON logging format
+You can enable JSON-formatted logging in the Serve log file by setting the environment variable `RAY_SERVE_ENABLE_JSON_LOGGING=1`. After setting this environment variable, the logs have the following format:
+```json
+{"levelname": "INFO", "asctime": "2023-07-17 10:34:25,425", "deployment": "default_api", "replica": "default_api#bFDOnw", "request_id": "OGIVJJJPRb", "route": "/app1", "application": "default", "message": "replica.py:664 - Started executing request OGIVJJJPRb"}
+{"levelname": "INFO", "asctime": "2023-07-17 10:34:25,425", "deployment": "default_api", "replica": "default_api#bFDOnw", "request_id": "OGIVJJJPRb", "route": "/app1", "application": "default", "message": "replica.py:691 - __CALL__ OK 0.1ms"}
+{"levelname": "INFO", "asctime": "2023-07-17 10:34:25,433", "deployment": "default_api", "replica": "default_api#bFDOnw", "request_id": "BULmoMIYRD", "route": "/app1", "application": "default", "message": "replica.py:664 - Started executing request BULmoMIYRD"}
+{"levelname": "INFO", "asctime": "2023-07-17 10:34:25,433", "deployment": "default_api", "replica": "default_api#bFDOnw", "request_id": "BULmoMIYRD", "route": "/app1", "application": "default", "message": "replica.py:691 - __CALL__ OK 0.2ms"}
+{"levelname": "INFO", "asctime": "2023-07-17 10:34:25,440", "deployment": "default_api", "replica": "default_api#bFDOnw", "request_id": "jLTczxOqme", "route": "/app1", "application": "default", "message": "replica.py:664 - Started executing request jLTczxOqme"}
+{"levelname": "INFO", "asctime": "2023-07-17 10:34:25,441", "deployment": "default_api", "replica": "default_api#bFDOnw", "request_id": "jLTczxOqme", "route": "/app1", "application": "default", "message": "replica.py:691 - __CALL__ OK 0.1ms"}
+```
+
+### Set Request ID
+You can set a custom request ID for each HTTP request by including `X-Request-ID` in the request header and retrieve request ID from response. For example
+
+```{literalinclude} doc_code/monitoring/request_id.py
+:language: python
+```
+The custom request ID `123-234` can be seen in the access logs that are printed to the HTTP Proxy log files and deployment log files.
+
+HTTP proxy log file:
+```
+INFO 2023-07-20 13:47:54,221 http_proxy 127.0.0.1 123-234 / default http_proxy.py:538 - GET 200 8.9ms
+```
+
+Deployment log file:
+```
+(ServeReplica:default_Model pid=84006) INFO 2023-07-20 13:47:54,218 default_Model default_Model#yptKoo 123-234 / default replica.py:691 - __CALL__ OK 0.2ms
+```
+
 (serve-logging-loki)=
 ### Filtering logs with Loki
 

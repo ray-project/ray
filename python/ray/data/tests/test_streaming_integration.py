@@ -54,7 +54,7 @@ def test_autoshutdown_dangling_executors(ray_start_10_cpus_shared):
     initial = streaming_executor._num_shutdown
     for _ in range(num_runs):
         ds = ray.data.range(100).repartition(10)
-        it = ds.iter_batches(batch_size=10, prefetch_batches=0)
+        it = iter(ds.iter_batches(batch_size=10, prefetch_batches=0))
         while True:
             try:
                 next(it)
@@ -67,7 +67,7 @@ def test_autoshutdown_dangling_executors(ray_start_10_cpus_shared):
     initial = streaming_executor._num_shutdown
     for _ in range(num_runs):
         ds = ray.data.range(100).repartition(10)
-        it = ds.iter_batches(batch_size=10, prefetch_batches=0)
+        it = iter(ds.iter_batches(batch_size=10, prefetch_batches=0))
         next(it)
         del it
         del ds
@@ -264,6 +264,10 @@ def test_streaming_split_invalid_iterator(ray_start_10_cpus_shared):
         )
 
 
+@pytest.mark.skip(
+    reason="Incomplete implementation of _validate_dag causes other errors, so we "
+    "remove DAG validation for now; see https://github.com/ray-project/ray/pull/37829"
+)
 def test_e2e_option_propagation(ray_start_10_cpus_shared, restore_data_context):
     DataContext.get_current().new_execution_backend = True
     DataContext.get_current().use_streaming_executor = True
@@ -498,7 +502,7 @@ def test_can_pickle(ray_start_10_cpus_shared, restore_data_context):
     DataContext.get_current().use_streaming_executor = True
 
     ds = ray.data.range(1000000)
-    it = ds.iter_batches()
+    it = iter(ds.iter_batches())
     next(it)
 
     # Should work even if a streaming exec is in progress.

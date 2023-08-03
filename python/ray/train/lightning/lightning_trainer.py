@@ -7,10 +7,11 @@ from typing import Any, Dict, Optional, Type
 from pytorch_lightning.plugins.environments import ClusterEnvironment
 
 from ray.air import session
-from ray.air.config import CheckpointConfig, DatasetConfig, RunConfig, ScalingConfig
+from ray.air.config import CheckpointConfig, RunConfig, ScalingConfig
 from ray.air.constants import MODEL_KEY
 from ray.air.checkpoint import Checkpoint
 from ray.data.preprocessor import Preprocessor
+from ray.train import DataConfig
 from ray.train.trainer import GenDataset
 from ray.train.torch import TorchTrainer
 from ray.train.torch.config import TorchConfig
@@ -182,17 +183,17 @@ class LightningConfigBuilder:
         with the kwargs. It handles checkpointing and metrics logging logics.
 
         Specifically, the callback periodically reports the latest metrics
-        and checkpoint to the AIR session via
-        :meth:`session.report() <ray.air.session.report>`.
+        and checkpoint via
+        :meth:`ray.train.report() <ray.train.report>`.
         The report frequency matches the checkpointing frequency here.
         You have to make sure that the target metrics (e.g. metrics defined in
         :class:`TuneConfig <ray.tune.TuneConfig>` or
-        :class:`CheckpointConfig <ray.air.config.CheckpointConfig>`)
+        :class:`CheckpointConfig <ray.train.CheckpointConfig>`)
         are ready when a new checkpoint is being saved.
 
         Note that this method is not a replacement for the
-        ``ray.air.configs.CheckpointConfig``. You still need to specify your
-        AIR checkpointing strategy in ``CheckpointConfig``. Otherwise, AIR stores
+        ``ray.train.CheckpointConfig``. You still need to specify your
+        checkpointing strategy in ``CheckpointConfig``. Otherwise, AIR stores
         all the reported checkpoints by default.
 
         Args:
@@ -242,8 +243,8 @@ class LightningTrainer(TorchTrainer):
 
     The trainer also creates a ModelCheckpoint callback based on the configuration
     provided in ``LightningConfigBuilder.checkpointing()``. In addition to
-    checkpointing, this callback also calls ``session.report()`` to report the
-    latest metrics along with the checkpoint to the AIR session.
+    checkpointing, this callback also calls ``train.report()`` to report the
+    latest metrics along with the checkpoint.
 
     For logging, users can continue to use Lightning's native loggers, such as
     WandbLogger, TensorboardLogger, etc. LightningTrainer will also log the latest
@@ -395,7 +396,7 @@ class LightningTrainer(TorchTrainer):
         *,
         torch_config: Optional[TorchConfig] = None,
         scaling_config: Optional[ScalingConfig] = None,
-        dataset_config: Optional[Dict[str, DatasetConfig]] = None,
+        dataset_config: Optional[DataConfig] = None,
         run_config: Optional[RunConfig] = None,
         datasets: Optional[Dict[str, GenDataset]] = None,
         datasets_iter_config: Optional[Dict[str, Any]] = None,
@@ -516,13 +517,19 @@ class LightningTrainer(TorchTrainer):
 
 def _lightning_train_loop_per_worker(config):
     """Per-worker training loop for a Lightning Trainer."""
-    # Change the working directory for all workers to the same directory.
-    # This aligns with Lightning's settings and avoids inconsistency. Otherwise,
-    # each worker will have a different log and checkpoint directory if they are
-    # using relative paths.
-    working_dir = os.path.join(session.get_trial_dir(), "rank_all")
-    os.makedirs(working_dir, exist_ok=True)
-    os.chdir(working_dir)
+    from ray.train._internal.storage import _use_storage_context
+
+    # TODO(justinvyu)/NOTE: This is no longer needed, because we do not switch to
+    # a rank-specific working directory in the new persistence mode.
+    # Lightning requires each worker to be in the same working directory.
+    if not _use_storage_context():
+        # Change the working directory for all workers to the same directory.
+        # This aligns with Lightning's settings and avoids inconsistency. Otherwise,
+        # each worker will have a different log and checkpoint directory if they are
+        # using relative paths.
+        working_dir = os.path.join(session.get_trial_dir(), "rank_all")
+        os.makedirs(working_dir, exist_ok=True)
+        os.chdir(working_dir)
 
     if not config["lightning_config"]:
         raise RuntimeError("'lightning_config' not specified in LightningTrainer!")

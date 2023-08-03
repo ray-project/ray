@@ -27,6 +27,7 @@ from ray.air.constants import (
 
 import ray.cloudpickle as cloudpickle
 from ray.exceptions import RayActorError, RayTaskError
+from ray.train._internal.storage import _use_storage_context, StorageContext
 from ray.tune import TuneError
 from ray.tune.error import _TuneRestoreError
 from ray.tune.execution.checkpoint_manager import _CheckpointManager
@@ -60,6 +61,7 @@ from ray.tune.utils.util import _split_remote_local_path
 from ray.util.annotations import DeveloperAPI, Deprecated
 from ray.util.debug import log_once
 from ray._private.utils import binary_to_hex, hex_to_binary
+
 
 DEBUG_PRINT_INTERVAL = 5
 _DEFAULT_WIN_MAX_PATH_LENGTH = 260
@@ -247,6 +249,11 @@ def _get_trainable_kwargs(
         "logger_creator": logger_creator,
     }
 
+    if _use_storage_context():
+        assert trial.storage
+        assert trial.storage.trial_dir_name
+        kwargs["storage"] = trial.storage
+
     if trial.uses_cloud_checkpointing:
         # We keep these kwargs separate for backwards compatibility
         # with trainables that don't provide these keyword arguments
@@ -327,6 +334,7 @@ class Trial:
         *,
         config: Optional[Dict] = None,
         trial_id: Optional[str] = None,
+        storage: Optional[StorageContext] = None,
         experiment_path: Optional[str] = None,
         experiment_dir_name: Optional[str] = None,
         evaluated_params: Optional[Dict] = None,
@@ -368,12 +376,20 @@ class Trial:
         self.trainable_name = trainable_name
         self.trial_id = Trial.generate_id() if trial_id is None else trial_id
 
-        # Sync config
-        self.sync_config = sync_config or SyncConfig()
-
         # Set to pass through on `Trial.reset()`
         self._orig_experiment_path = experiment_path
         self._orig_experiment_dir_name = experiment_dir_name
+
+        # Create a copy, since `init_local_path` updates the context with the
+        # generated trial dirname.
+        self.storage = copy.copy(storage)
+
+        # TODO(justinvyu): For now, explicitly avoid using the storage context
+        # to replace the Trial path handling. This should be re-worked
+        # when adding new persistence mode support for Tune Trainables.
+
+        # Sync config
+        self.sync_config = sync_config or SyncConfig()
 
         local_experiment_path, remote_experiment_path = _split_remote_local_path(
             experiment_path, None
@@ -839,6 +855,11 @@ class Trial:
                 f"Path: {logdir_path}"
             )
         logdir_path.mkdir(parents=True, exist_ok=True)
+
+        if _use_storage_context():
+            # Populate the storage context with the trial dir name we just generated.
+            assert self.storage
+            self.storage.trial_dir_name = self.relative_logdir
 
         self.invalidate_json_state()
 

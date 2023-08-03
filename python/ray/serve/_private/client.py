@@ -94,16 +94,23 @@ class ServeControllerClient:
     def __reduce__(self):
         raise RayServeException(("Ray Serve client cannot be serialized."))
 
+    def shutdown_cached_handles(self):
+        """Shuts down all cached handles.
+
+        Remove the reference to the cached handles so that they can be
+        garbage collected.
+        """
+        for cache_key in list(self.handle_cache):
+            self.handle_cache[cache_key].shutdown()
+            del self.handle_cache[cache_key]
+
     def shutdown(self, timeout_s: float = 30.0) -> None:
         """Completely shut down the connected Serve instance.
 
         Shuts down all processes and deletes all state associated with the
         instance.
         """
-
-        # Shut down handles
-        for k in list(self.handle_cache):
-            del self.handle_cache[k]
+        self.shutdown_cached_handles()
 
         if ray.is_initialized() and not self._shutdown:
             try:
@@ -469,7 +476,7 @@ class ServeControllerClient:
         cache_key = (deployment_name, missing_ok, sync)
         if cache_key in self.handle_cache:
             cached_handle = self.handle_cache[cache_key]
-            if cached_handle._is_polling and cached_handle._is_same_loop:
+            if cached_handle._is_same_loop:
                 return cached_handle
 
         all_endpoints = ray.get(self._controller.get_all_endpoints.remote())
@@ -478,13 +485,11 @@ class ServeControllerClient:
 
         if sync:
             handle = RayServeSyncHandle(
-                self._controller,
                 deployment_name,
                 _is_for_http_requests=_is_for_http_requests,
             )
         else:
             handle = RayServeHandle(
-                self._controller,
                 deployment_name,
                 _is_for_http_requests=_is_for_http_requests,
             )
