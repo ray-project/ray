@@ -474,7 +474,7 @@ class _TuneControllerBase:
             # ATTN: Set `local_experiment_path` to update trial checkpoints!
             trial.local_experiment_path = self._legacy_local_experiment_path
             trial.remote_experiment_path = self._legacy_remote_experiment_path
-            trial.sync_config = self._legacy_sync_config
+            trial.legacy_sync_config = self._legacy_sync_config
             trial.experiment_dir_name = self._legacy_experiment_dir_name
 
             # Avoid creating logdir in client mode for returned trial results,

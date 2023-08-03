@@ -258,7 +258,7 @@ def _get_trainable_kwargs(
         # We keep these kwargs separate for backwards compatibility
         # with trainables that don't provide these keyword arguments
         kwargs["remote_checkpoint_dir"] = trial.remote_path
-        kwargs["sync_config"] = trial.sync_config
+        kwargs["sync_config"] = trial.legacy_sync_config
 
     return kwargs
 
@@ -384,21 +384,21 @@ class Trial:
             assert self.storage
 
             # TODO(justinvyu): Rename these to legacy.
-            self._orig_experiment_path = None
-            self._orig_experiment_dir_name = None
-            self._local_experiment_path = None
-            self._remote_experiment_path = None
-            self.experiment_dir_name = None
-            self.sync_config = None
+            self._legacy_orig_experiment_path = None
+            self._legacy_orig_experiment_dir_name = None
+            self._legacy_local_experiment_path = None
+            self._legacy_remote_experiment_path = None
+            self._legacy_experiment_dir_name = None
+            self.legacy_sync_config = None
         else:
             # Set to pass through on `Trial.reset()`
-            self._orig_experiment_path = experiment_path
-            self._orig_experiment_dir_name = experiment_dir_name
+            self._legacy_orig_experiment_path = experiment_path
+            self._legacy_orig_experiment_dir_name = experiment_dir_name
 
-            self.experiment_dir_name = experiment_dir_name
+            self._legacy_experiment_dir_name = experiment_dir_name
 
             # Sync config
-            self.sync_config = sync_config or SyncConfig()
+            self.legacy_sync_config = sync_config or SyncConfig()
 
             local_experiment_path, remote_experiment_path = _split_remote_local_path(
                 experiment_path, None
@@ -428,17 +428,18 @@ class Trial:
                 os.makedirs(local_experiment_path, exist_ok=True)
 
             # Set remote experiment path if upload_dir is set
-            if self.sync_config.upload_dir:
+            if self.legacy_sync_config.upload_dir:
                 if remote_experiment_path:
                     if not remote_experiment_path.startswith(
-                        self.sync_config.upload_dir
+                        self.legacy_sync_config.upload_dir
                     ):
                         raise ValueError(
                             f"Both a `SyncConfig.upload_dir` and an `experiment_path` "
                             f"pointing to remote storage were passed, but they do not "
                             f"point to the same location. Got: "
                             f"`experiment_path={experiment_path}` and "
-                            f"`SyncConfig.upload_dir={self.sync_config.upload_dir}`. "
+                            "`SyncConfig.upload_dir="
+                            f"{self.legacy_sync_config.upload_dir}`. "
                         )
                     warnings.warn(
                         "If `experiment_path` points to a remote storage location, "
@@ -447,12 +448,12 @@ class Trial:
                     )
                 else:
                     remote_experiment_path = str(
-                        URI(self.sync_config.upload_dir) / experiment_dir_name
+                        URI(self.legacy_sync_config.upload_dir) / experiment_dir_name
                     )
 
             # Finally, set properties
-            self._local_experiment_path = local_experiment_path
-            self._remote_experiment_path = remote_experiment_path
+            self._legacy_local_experiment_path = local_experiment_path
+            self._legacy_remote_experiment_path = remote_experiment_path
 
         self.config = config or {}
         # Save a copy of the original unresolved config so that we can swap
@@ -679,25 +680,39 @@ class Trial:
         return self.local_experiment_path
 
     @property
+    def experiment_dir_name(self):
+        if _use_storage_context():
+            return self.storage.experiment_dir_name
+
+        return self._legacy_experiment_dir_name
+
+    @experiment_dir_name.setter
+    def experiment_dir_name(self, name: str):
+        if _use_storage_context():
+            raise RuntimeError("Set storage.experiment_dir_name instead.")
+
+        self._legacy_experiment_dir_name = name
+
+    @property
     def remote_experiment_path(self) -> str:
         if _use_storage_context():
             return self.storage.experiment_path
 
-        return str(self._remote_experiment_path)
+        return str(self._legacy_remote_experiment_path)
 
     @remote_experiment_path.setter
     def remote_experiment_path(self, remote_path: str):
         if _use_storage_context():
             raise RuntimeError("Set storage.experiment_dir_name instead.")
 
-        self._remote_experiment_path = remote_path
+        self._legacy_remote_experiment_path = remote_path
 
     @property
     def local_experiment_path(self) -> str:
         if _use_storage_context():
             return self.storage.experiment_local_path
 
-        return str(self._local_experiment_path)
+        return str(self._legacy_local_experiment_path)
 
     @local_experiment_path.setter
     def local_experiment_path(self, local_path: str):
@@ -722,9 +737,9 @@ class Trial:
                     os.path.relpath(checkpoint_dir, self.local_path)
                 )
 
-        # Update the underlying `_local_experiment_path`,
+        # Update the underlying `_legacy_local_experiment_path`,
         # which also updates the trial `local_path`
-        self._local_experiment_path = local_path
+        self._legacy_local_experiment_path = local_path
 
         if self.local_path:
             for checkpoint, relative_checkpoint_dir in zip(
@@ -783,9 +798,9 @@ class Trial:
         if _use_storage_context():
             return self.path
 
-        if not self._remote_experiment_path or not self.relative_logdir:
+        if not self._legacy_remote_experiment_path or not self.relative_logdir:
             return None
-        uri = URI(self._remote_experiment_path)
+        uri = URI(self._legacy_remote_experiment_path)
         return str(uri / self.relative_logdir)
 
     @property
@@ -808,7 +823,7 @@ class Trial:
         if _use_storage_context():
             return self.storage.sync_config.sync_on_checkpoint
 
-        return self.sync_config.sync_on_checkpoint
+        return self.legacy_sync_config.sync_on_checkpoint
 
     @property
     def checkpoint_at_end(self):
@@ -870,13 +885,13 @@ class Trial:
             self.trainable_name,
             config=self.config,
             trial_id=None,
-            experiment_path=self._orig_experiment_path,
-            experiment_dir_name=self._orig_experiment_dir_name,
+            experiment_path=self._legacy_orig_experiment_path,
+            experiment_dir_name=self._legacy_orig_experiment_dir_name,
             evaluated_params=self.evaluated_params,
             experiment_tag=self.experiment_tag,
             placement_group_factory=placement_group_factory,
             stopping_criterion=self.stopping_criterion,
-            sync_config=self.sync_config,
+            sync_config=self.legacy_sync_config,
             checkpoint_config=self.checkpoint_config,
             export_formats=self.export_formats,
             restore_path=self.restore_path,
