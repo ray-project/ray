@@ -17,6 +17,8 @@ from typing import (
     Tuple,
 )
 
+import pyarrow.fs
+
 from ray._private.storage import _get_storage_uri
 from ray._private.thirdparty.tabulate.tabulate import tabulate
 from ray.air.constants import WILDCARD_KEY
@@ -297,7 +299,7 @@ class ScalingConfig:
 @Deprecated(
     message="Use `ray.train.DataConfig` instead of DatasetConfig to "
     "configure data ingest for training. "
-    "See https://docs.ray.io/en/master/ray-air/check-ingest.html for more details."
+    "See https://docs.ray.io/en/master/ray-air/check-ingest.html#migrating-from-the-legacy-datasetconfig-api for more details."  # noqa: E501
 )
 class DatasetConfig:
     """Configuration for ingest of a single Dataset.
@@ -546,7 +548,7 @@ class FailureConfig:
         if self.fail_fast and self.max_failures != 0:
             raise ValueError("max_failures must be 0 if fail_fast=True.")
 
-        # Same check as in TrialRunner
+        # Same check as in TuneController
         if not (isinstance(self.fail_fast, bool) or self.fail_fast.upper() == "RAISE"):
             raise ValueError(
                 "fail_fast must be one of {bool, 'raise'}. " f"Got {self.fail_fast}."
@@ -750,6 +752,7 @@ class RunConfig:
 
     name: Optional[str] = None
     storage_path: Optional[str] = None
+    storage_filesystem: Optional[pyarrow.fs.FileSystem] = None
     callbacks: Optional[List["Callback"]] = None
     stop: Optional[Union[Mapping, "Stopper", Callable[[str, Mapping], bool]]] = None
     failure_config: Optional[FailureConfig] = None

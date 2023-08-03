@@ -6,8 +6,8 @@ import pytest
 import time
 
 import ray
+from ray import train
 from ray.air._internal.util import StartTraceback
-from ray.air import session
 
 # Trigger pytest hook to automatically zip test cluster logs to archive dir on failure
 from ray.tests.conftest import pytest_runtest_makereport  # noqa
@@ -18,7 +18,7 @@ from ray.train._internal.backend_executor import (
     TrainingWorkerError,
 )
 
-from ray.train.data_config import DataConfig
+from ray.train import DataConfig
 from ray.train._internal.worker_group import WorkerGroup, WorkerMetadata
 from ray.train.backend import Backend, BackendConfig
 from ray.train.constants import (
@@ -134,7 +134,7 @@ def test_local_ranks(ray_start_2_cpus):
     e.start()
 
     def train_func():
-        return session.get_local_rank()
+        return train.get_context().get_local_rank()
 
     e.start_training(train_func, datasets={}, data_config=DataConfig())
     assert set(e.finish_training()) == {0, 1}
@@ -147,7 +147,7 @@ def test_local_world_size(ray_2_node_2_cpu):
         e.start()
 
         def train_func():
-            return session.get_local_world_size()
+            return train.get_context().get_local_world_size()
 
         e.start_training(train_func, datasets={}, data_config=DataConfig())
         assert list(e.finish_training()) == [2, 1, 2]
@@ -160,7 +160,7 @@ def test_node_ranks(ray_2_node_2_cpu):
         e.start()
 
         def train_func():
-            return session.get_node_rank()
+            return train.get_context().get_node_rank()
 
         e.start_training(train_func, datasets={}, data_config=DataConfig())
         assert list(e.finish_training()) == [0, 1, 0]
@@ -199,7 +199,7 @@ def test_train_single_worker_failure(ray_start_2_cpus):
     e.start()
 
     def single_worker_fail():
-        if session.get_world_rank() == 0:
+        if train.get_context().get_world_rank() == 0:
             raise ValueError
         else:
             time.sleep(1000000)

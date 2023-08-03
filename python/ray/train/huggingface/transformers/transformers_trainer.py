@@ -15,7 +15,7 @@ from ray.train.constants import (
     EVALUATION_DATASET_KEY,
     TRAIN_DATASET_KEY,
 )
-from ray.train.data_config import DataConfig
+from ray.train import DataConfig
 from ray.train.data_parallel_trainer import DataParallelTrainer
 from ray.train.torch import TorchConfig, TorchTrainer
 from ray.train.trainer import GenDataset
@@ -132,7 +132,7 @@ main/en/main_classes/trainer#transformers.TrainingArguments>`__.
 
             import ray
             from ray.train.huggingface import TransformersTrainer
-            from ray.air.config import ScalingConfig
+            from ray.train import ScalingConfig
 
             # If using GPUs, set this to True.
             use_gpu = True

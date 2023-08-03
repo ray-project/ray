@@ -8,10 +8,8 @@ from collections import defaultdict
 from typing import Any, Dict, Iterable, List, Optional, Tuple, Union
 
 import ray
-from ray._private.utils import (
-    import_attr,
-    run_background_task,
-)
+from ray.util import metrics
+from ray._private.utils import run_background_task
 from ray.actor import ActorHandle
 from ray._private.resource_spec import HEAD_NODE_RESOURCE_NAME
 from ray._raylet import GcsClient
@@ -34,22 +32,18 @@ from ray.serve._private.constants import (
     SERVE_NAMESPACE,
     RECOVERING_LONG_POLL_BROADCAST_TIMEOUT_S,
     SERVE_DEFAULT_APP_NAME,
-    DEPLOYMENT_NAME_PREFIX_SEPARATOR,
     MULTI_APP_MIGRATION_MESSAGE,
     RAY_SERVE_CONTROLLER_CALLBACK_IMPORT_PATH,
 )
-from ray.serve._private.deploy_utils import (
-    deploy_args_to_deployment_info,
-    get_app_code_version,
-)
+from ray.serve._private.deploy_utils import deploy_args_to_deployment_info
 from ray.serve._private.deployment_state import DeploymentStateManager, ReplicaState
 from ray.serve._private.endpoint_state import EndpointState
-from ray.serve._private.http_state import HTTPState
+from ray.serve._private.http_state import HTTPProxyStateManager
 from ray.serve._private.logging_utils import (
     configure_component_logger,
     get_component_logger_file_path,
 )
-from ray.serve._private.long_poll import LongPollHost, LongPollNamespace
+from ray.serve._private.long_poll import LongPollHost
 from ray.serve.exceptions import RayServeException
 from ray.serve.schema import (
     ServeApplicationSchema,
@@ -61,10 +55,9 @@ from ray.serve.schema import (
 )
 from ray.serve._private.storage.kv_store import RayInternalKVStore
 from ray.serve._private.utils import (
-    DEFAULT,
-    override_runtime_envs_except_env_vars,
     call_function_from_import_path,
     get_head_node_id,
+    record_serve_tag,
 )
 from ray.serve._private.application_state import ApplicationStateManager
 
@@ -142,9 +135,9 @@ class ServeController:
         self.done_recovering_event = asyncio.Event()
 
         if _disable_http_proxy:
-            self.http_state = None
+            self.http_proxy_state_manager = None
         else:
-            self.http_state = HTTPState(
+            self.http_proxy_state_manager = HTTPProxyStateManager(
                 controller_name,
                 detached,
                 http_config,
@@ -191,11 +184,13 @@ class ServeController:
         self._shutdown = asyncio.Event()
         self._shutdown_start_time = None
 
+        self._create_control_loop_metrics()
         run_background_task(self.run_control_loop())
 
         self._recover_config_from_checkpoint()
-        self._active_nodes = set()
-        self._update_active_nodes()
+        # Nodes where http proxy actors should run.
+        self._http_proxy_nodes = set()
+        self._update_http_proxy_nodes()
 
     def check_alive(self) -> None:
         """No-op to check if this controller is alive."""
@@ -273,35 +268,31 @@ class ServeController:
 
     def get_http_proxies(self) -> Dict[NodeId, ActorHandle]:
         """Returns a dictionary of node ID to http_proxy actor handles."""
-        if self.http_state is None:
+        if self.http_proxy_state_manager is None:
             return {}
-        return self.http_state.get_http_proxy_handles()
+        return self.http_proxy_state_manager.get_http_proxy_handles()
 
     def get_http_proxy_names(self) -> bytes:
         """Returns the http_proxy actor name list serialized by protobuf."""
-        if self.http_state is None:
+        if self.http_proxy_state_manager is None:
             return None
 
         from ray.serve.generated.serve_pb2 import ActorNameList
 
         actor_name_list = ActorNameList(
-            names=self.http_state.get_http_proxy_names().values()
+            names=self.http_proxy_state_manager.get_http_proxy_names().values()
         )
         return actor_name_list.SerializeToString()
 
-    def _update_active_nodes(self):
-        """Update the active nodes set.
+    def _update_http_proxy_nodes(self):
+        """Update the nodes set where http proxy actors should run.
 
-        Controller keeps the state of active nodes (head node and nodes with deployment
-        replicas). If the active nodes set changes, it will notify the long poll client.
+        Controller decides where http proxy actors should run
+        (head node and nodes with deployment replicas).
         """
-        new_active_nodes = self.deployment_state_manager.get_active_node_ids()
-        new_active_nodes.add(self._controller_node_id)
-        if self._active_nodes != new_active_nodes:
-            self._active_nodes = new_active_nodes
-            self.long_poll_host.notify_changed(
-                LongPollNamespace.ACTIVE_NODES, self._active_nodes
-            )
+        new_http_proxy_nodes = self.deployment_state_manager.get_active_node_ids()
+        new_http_proxy_nodes.add(self._controller_node_id)
+        self._http_proxy_nodes = new_http_proxy_nodes
 
     async def run_control_loop(self) -> None:
         # NOTE(edoakes): we catch all exceptions here and simply log them,
@@ -310,6 +301,7 @@ class ServeController:
         recovering_timeout = RECOVERING_LONG_POLL_BROADCAST_TIMEOUT_S
         start_time = time.time()
         while True:
+            loop_start_time = time.time()
             if self._shutting_down:
                 try:
                     self.shutdown()
@@ -326,36 +318,96 @@ class ServeController:
                 )
                 self.done_recovering_event.set()
 
-            # Update the active nodes set before updating the HTTP states, so they
-            # are more consistent.
-            self._update_active_nodes()
-
-            # Don't update http_state until after the done recovering event is set,
-            # otherwise we may start a new HTTP proxy but not broadcast it any
-            # info about available deployments & their replicas.
-            if self.http_state and self.done_recovering_event.is_set():
-                try:
-                    self.http_state.update(active_nodes=self._active_nodes)
-                except Exception:
-                    logger.exception("Exception updating HTTP state.")
-
             try:
+                dsm_update_start_time = time.time()
                 any_recovering = self.deployment_state_manager.update()
+                self.dsm_update_duration_gauge_s.set(
+                    time.time() - dsm_update_start_time
+                )
                 if not self.done_recovering_event.is_set() and not any_recovering:
                     self.done_recovering_event.set()
             except Exception:
                 logger.exception("Exception updating deployment state.")
 
             try:
+                asm_update_start_time = time.time()
                 self.application_state_manager.update()
+                self.asm_update_duration_gauge_s.set(
+                    time.time() - asm_update_start_time
+                )
             except Exception:
                 logger.exception("Exception updating application state.")
 
+            # Update the http proxy nodes set before updating the HTTP proxy states,
+            # so they are more consistent.
+            node_update_start_time = time.time()
+            self._update_http_proxy_nodes()
+            self.node_update_duration_gauge_s.set(time.time() - node_update_start_time)
+
+            # Don't update http_state until after the done recovering event is set,
+            # otherwise we may start a new HTTP proxy but not broadcast it any
+            # info about available deployments & their replicas.
+            if self.http_proxy_state_manager and self.done_recovering_event.is_set():
+                try:
+                    proxy_update_start_time = time.time()
+                    self.http_proxy_state_manager.update(
+                        http_proxy_nodes=self._http_proxy_nodes
+                    )
+                    self.proxy_update_duration_gauge_s.set(
+                        time.time() - proxy_update_start_time
+                    )
+                except Exception:
+                    logger.exception("Exception updating HTTP state.")
+
             try:
+                snapshot_start_time = time.time()
                 self._put_serve_snapshot()
+                self.snapshot_duration_gauge_s.set(time.time() - snapshot_start_time)
             except Exception:
                 logger.exception("Exception putting serve snapshot.")
+            loop_duration = time.time() - loop_start_time
+            if loop_duration > 10:
+                logger.warning(
+                    f"The last control loop was slow (took {loop_duration}s). "
+                    "This is likely caused by running a large number of "
+                    "replicas in a single Ray cluster. Consider using "
+                    "multiple Ray clusters."
+                )
+            self.control_loop_gauge_s.set(loop_duration)
+
+            sleep_start_time = time.time()
             await asyncio.sleep(CONTROL_LOOP_PERIOD_S)
+            self.sleep_duration_gauge_s.set(time.time() - sleep_start_time)
+
+    def _create_control_loop_metrics(self):
+        self.node_update_duration_gauge_s = metrics.Gauge(
+            "serve_controller_node_update_duration_s",
+            description="The control loop time spent on collecting proxy node info.",
+        )
+        self.proxy_update_duration_gauge_s = metrics.Gauge(
+            "serve_controller_proxy_state_update_duration_s",
+            description="The control loop time spent on updating proxy state.",
+        )
+        self.dsm_update_duration_gauge_s = metrics.Gauge(
+            "serve_controller_deployment_state_update_duration_s",
+            description="The control loop time spent on updating deployment state.",
+        )
+        self.asm_update_duration_gauge_s = metrics.Gauge(
+            "serve_controller_application_state_update_duration_s",
+            description="The control loop time spent on updating application state.",
+        )
+        self.snapshot_duration_gauge_s = metrics.Gauge(
+            "serve_controller_application_state_update_duration_s",
+            description="The control loop time spent on putting the Serve snapshot.",
+        )
+        self.sleep_duration_gauge_s = metrics.Gauge(
+            "serve_controller_sleep_duration_s",
+            description="The duration of the last control loop's sleep.",
+        )
+        self.control_loop_gauge_s = metrics.Gauge(
+            "serve_controller_control_loop_duration_s",
+            description="The duration of the last control loop.",
+        )
 
     def _put_serve_snapshot(self) -> None:
         val = dict()
@@ -429,13 +481,13 @@ class ServeController:
 
     def get_http_config(self):
         """Return the HTTP proxy configuration."""
-        if self.http_state is None:
+        if self.http_proxy_state_manager is None:
             return None
-        return self.http_state.get_config()
+        return self.http_proxy_state_manager.get_config()
 
     def get_root_url(self):
         """Return the root url for the serve instance."""
-        if self.http_state is None:
+        if self.http_proxy_state_manager is None:
             return None
         http_config = self.get_http_config()
         if http_config.root_url == "":
@@ -475,15 +527,16 @@ class ServeController:
         self.application_state_manager.shutdown()
         self.deployment_state_manager.shutdown()
         self.endpoint_state.shutdown()
-        if self.http_state:
-            self.http_state.shutdown()
+        if self.http_proxy_state_manager:
+            self.http_proxy_state_manager.shutdown()
 
         config_checkpoint_deleted = self.config_checkpoint_deleted()
         application_is_shutdown = self.application_state_manager.is_ready_for_shutdown()
         deployment_is_shutdown = self.deployment_state_manager.is_ready_for_shutdown()
         endpoint_is_shutdown = self.endpoint_state.is_ready_for_shutdown()
         http_state_is_shutdown = (
-            self.http_state is None or self.http_state.is_ready_for_shutdown()
+            self.http_proxy_state_manager is None
+            or self.http_proxy_state_manager.is_ready_for_shutdown()
         )
         if (
             config_checkpoint_deleted
@@ -557,6 +610,7 @@ class ServeController:
             replica_config_proto_bytes=replica_config_proto_bytes,
             deployer_job_id=deployer_job_id,
             route_prefix=route_prefix,
+            docs_path=docs_path,
             is_driver_deployment=is_driver_deployment,
             app_name=app_name,
         )
@@ -616,6 +670,7 @@ class ServeController:
             deployment_time: set deployment_timestamp. If not provided, time.time() is
                 used to indicate the deployment time.
         """
+        record_serve_tag("SERVE_API_VERSION", "v2")
         # TODO (zcin): We should still support single-app mode, i.e.
         # ServeApplicationSchema. Eventually, after migration is complete, we should
         # deprecate such usage.
@@ -662,30 +717,12 @@ class ServeController:
         new_config_checkpoint = {}
 
         for app_config in applications:
-            code_version = get_app_code_version(app_config)
-
             app_config_dict = app_config.dict(exclude_unset=True)
             new_config_checkpoint[app_config.name] = app_config_dict
 
-            logger.info(
-                "Starting deploy_serve_application "
-                f"task for application {app_config.name}."
-            )
-            deploy_obj_ref = deploy_serve_application.options(
-                runtime_env=app_config.runtime_env
-            ).remote(
-                app_config.import_path,
-                app_config.runtime_env,
-                app_config_dict.get("deployments", []),
-                code_version,
-                app_config_dict.get("route_prefix", DEFAULT.VALUE),
+            self.application_state_manager.deploy_config(
                 app_config.name,
-                app_config.args,
-            )
-
-            self.application_state_manager.create_application_state(
-                app_config.name,
-                deploy_obj_ref=deploy_obj_ref,
+                app_config,
                 deployment_time=deployment_time,
             )
 
@@ -834,8 +871,8 @@ class ServeController:
                 port=http_config.port,
                 request_timeout_s=http_config.request_timeout_s,
             ),
-            http_proxies=self.http_state.get_http_proxy_details()
-            if self.http_state
+            http_proxies=self.http_proxy_state_manager.get_http_proxy_details()
+            if self.http_proxy_state_manager
             else None,
             deploy_mode=self.deploy_mode,
             applications=applications,
@@ -926,92 +963,6 @@ class ServeController:
             return
 
         await self._shutdown.wait()
-
-
-@ray.remote(num_cpus=0, max_calls=1)
-def deploy_serve_application(
-    import_path: str,
-    runtime_env: Dict,
-    deployment_override_options: List[Dict],
-    code_version: str,
-    route_prefix: str,
-    name: str,
-    args: Dict,
-) -> Optional[str]:
-    """Deploy Serve application from a user-provided config.
-
-    Args:
-        import_path: import path to top-level bound deployment.
-        runtime_env: runtime_env for the application.
-        deployment_override_options: Dictionary of options that overrides
-            deployment options set in the graph's code itself.
-        deployment_versions: Versions of each deployment, each of which is
-            the same as the last deployment if it is a config update or
-            a new randomly generated version if it is a code update
-        name: application name. If specified, application will be deployed
-            without removing existing applications.
-        route_prefix: route_prefix. Define the route path for the application.
-    Returns:
-        Returns None if no error is raised. Otherwise, returns error message.
-    """
-    try:
-        from ray import serve
-        from ray.serve.api import build
-        from ray.serve._private.api import call_app_builder_with_args_if_necessary
-
-        # Import and build the application.
-        app = call_app_builder_with_args_if_necessary(import_attr(import_path), args)
-        app = build(app, name)
-
-        # Override options for each deployment listed in the config.
-        for options in deployment_override_options:
-            deployment_name = options["name"]
-            unique_deployment_name = (
-                (name + DEPLOYMENT_NAME_PREFIX_SEPARATOR) if len(name) else ""
-            ) + deployment_name
-
-            if unique_deployment_name not in app.deployments:
-                raise KeyError(
-                    f'There is no deployment named "{deployment_name}" in the '
-                    f'application "{name}".'
-                )
-
-            # Merge app-level and deployment-level runtime_envs.
-            if "ray_actor_options" in options:
-                # If specified, get ray_actor_options from config
-                ray_actor_options = options["ray_actor_options"] or {}
-            else:
-                # Otherwise, get options from application code (and default to {}
-                # if the code sets options to None).
-                ray_actor_options = (
-                    app.deployments[unique_deployment_name].ray_actor_options or {}
-                )
-            deployment_env = ray_actor_options.get("runtime_env", {})
-            merged_env = override_runtime_envs_except_env_vars(
-                runtime_env, deployment_env
-            )
-            ray_actor_options.update({"runtime_env": merged_env})
-            options["ray_actor_options"] = ray_actor_options
-            options["name"] = unique_deployment_name
-            # Update the deployment's options
-            app.deployments[unique_deployment_name].set_options(
-                **options, _internal=True
-            )
-
-        # Set code version for each deployment
-        for deployment_name in app.deployments:
-            app.deployments[deployment_name].set_options(
-                version=code_version, _internal=True
-            )
-
-        # Run the application locally on the cluster.
-        serve.run(app, name=name, route_prefix=route_prefix, _blocking=False)
-    except KeyboardInterrupt:
-        # Error is raised when this task is canceled with ray.cancel(), which
-        # happens when deploy_apps() is called.
-        logger.debug("Existing config deployment request terminated.")
-    except Exception as e:
-        return repr(e)
 
 
 @ray.remote(num_cpus=0)

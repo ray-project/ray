@@ -164,7 +164,8 @@ or remote filesystems.
     print(os.listdir("/tmp/iris"))
 
 .. testoutput::
-
+    :options: +MOCK
+    
     ['..._000000.parquet', '..._000001.parquet']
 
 
