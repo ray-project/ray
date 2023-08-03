@@ -408,7 +408,7 @@ def create_and_get_archive_from_remote_node(
             else ["--no-proccesses-verbose"]
         )
 
-    cmd += ["/bin/bash", "-c", _wrap(collect_cmd, quotes='"')]
+    cmd += ["bash", "-c", _wrap(collect_cmd, quotes='"')]
 
     cat = "node" if not remote_node.is_head else "head"
 

@@ -582,7 +582,7 @@ class DockerCommandRunner(CommandRunnerInterface):
             .replace("ssh", "ssh -tt", 1)
             .strip("\n")
         )
-        return inner_str + " {} exec -it {} /bin/bash\n".format(
+        return inner_str + " {} exec -it {} bash\n".format(
             self.docker_cmd, self.container_name
         )
 
