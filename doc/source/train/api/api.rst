@@ -59,6 +59,7 @@ Ray Train Config
 
     ~ray.train.DataConfig
 
+.. _train-loop-api:
 
 Ray Train Loop
 --------------
