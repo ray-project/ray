@@ -13,11 +13,3 @@ DEFAULT_IMAGE_META_PROVIDER = _ImageFileMetadataProvider()
 DEFAULT_PARQUET_BULK_META_PROVIDER = FastFileMetadataProvider()
 # Used by all other file-based `read_*` APIs
 DEFAULT_GENERIC_META_PROVIDER = DefaultFileMetadataProvider()
-
-
-__all__ = [
-    "DEFAULT_PARQUET_META_PROVIDER",
-    "DEFAULT_IMAGE_META_PROVIDER",
-    "DEFAULT_PARQUET_BULK_META_PROVIDER",
-    "DEFAULT_GENERIC_META_PROVIDER",
-]

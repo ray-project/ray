@@ -4,7 +4,12 @@ from typing import TYPE_CHECKING, Optional
 
 import ray
 from ray._private.ray_constants import env_integer
-from ray.data.datasource._default_metadata_providers import *
+from ray.data.datasource._default_metadata_providers import (
+    DEFAULT_GENERIC_META_PROVIDER,
+    DEFAULT_IMAGE_META_PROVIDER,
+    DEFAULT_PARQUET_BULK_META_PROVIDER,
+    DEFAULT_PARQUET_META_PROVIDER,
+)
 from ray.util.annotations import DeveloperAPI
 from ray.util.scheduling_strategies import SchedulingStrategyT
 
