@@ -39,16 +39,6 @@ class EventLoggerAdapter:
         # {str -> str} typed dict
         self.global_context = {}
 
-    def __reduce__(self):
-        # Define a helper function to recreate the EventLoggerAdapter instance
-        def create_event_logger_adapter(source, logger):
-            adapter = EventLoggerAdapter(source, logger)
-            adapter.set_global_context(self.global_context)
-            return adapter
-
-        # Return a tuple with the function to create the instance and its arguments
-        return create_event_logger_adapter, (self.source, self.logger)
-
     def set_global_context(self, global_context: Dict[str, str] = None):
         """Set the global metadata.
 
