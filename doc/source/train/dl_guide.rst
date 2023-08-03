@@ -70,13 +70,12 @@ training.
 
              import torch
              from torch.nn.parallel import DistributedDataParallel
-            +from ray.air import session
             +from ray import train
             +import ray.train.torch
 
 
              def train_func():
-            -    device = torch.device(f"cuda:{session.get_local_rank()}" if
+            -    device = torch.device(f"cuda:{train.get_context().get_local_rank()}" if
             -        torch.cuda.is_available() else "cpu")
             -    torch.cuda.set_device(device)
 
@@ -85,7 +84,7 @@ training.
 
             -    model = model.to(device)
             -    model = DistributedDataParallel(model,
-            -        device_ids=[session.get_local_rank()] if torch.cuda.is_available() else None)
+            -        device_ids=[train.get_context().get_local_rank()] if torch.cuda.is_available() else None)
 
             +    model = train.torch.prepare_model(model)
 
@@ -101,13 +100,12 @@ training.
 
              import torch
              from torch.utils.data import DataLoader, DistributedSampler
-            +from ray.air import session
             +from ray import train
             +import ray.train.torch
 
 
              def train_func():
-            -    device = torch.device(f"cuda:{session.get_local_rank()}" if
+            -    device = torch.device(f"cuda:{train.get_context().get_local_rank()}" if
             -        torch.cuda.is_available() else "cpu")
             -    torch.cuda.set_device(device)
 
@@ -128,7 +126,7 @@ training.
 
             .. code-block:: python
 
-                global_batch_size = worker_batch_size * session.get_world_size()
+                global_batch_size = worker_batch_size * train.get_context().get_world_size()
 
     .. tab-item:: TensorFlow
 
@@ -165,7 +163,7 @@ training.
         .. code-block:: diff
 
             -batch_size = worker_batch_size
-            +batch_size = worker_batch_size * session.get_world_size()
+            +batch_size = worker_batch_size * train.get_context().get_world_size()
 
     .. tab-item:: Horovod
 
@@ -318,12 +316,13 @@ configurations. As an example:
 
 .. code-block:: python
 
-    from ray.air import session, ScalingConfig
+    from ray import train
+    from ray.train import ScalingConfig
     from ray.train.torch import TorchTrainer
 
     def train_func(config):
         for i in range(config["num_epochs"]):
-            session.report({"epoch": i})
+            train.report({"epoch": i})
 
     trainer = TorchTrainer(
         train_func,
@@ -428,12 +427,12 @@ Here's a simple code overview of the Ray Data integration:
 
 .. code-block:: python
 
-    from ray.air import session
+    from ray import train
 
     # Datasets can be accessed in your train_func via ``get_dataset_shard``.
     def train_func(config):
-        train_data_shard = session.get_dataset_shard("train")
-        validation_data_shard = session.get_dataset_shard("validation")
+        train_data_shard = train.get_dataset_shard("train")
+        validation_data_shard = train.get_dataset_shard("validation")
         ...
 
     # Random split the dataset into 80% training data and 20% validation data.
@@ -480,14 +479,14 @@ Reporting intermediate results and handling checkpoints
 
 Ray AIR provides a *Session* API for reporting intermediate
 results and checkpoints from the training function (run on distributed workers) up to the
-``Trainer`` (where your python script is executed) by calling ``session.report(metrics)``.
+``Trainer`` (where your python script is executed) by calling ``train.report(metrics)``.
 The results will be collected from the distributed workers and passed to the driver to
 be logged and displayed.
 
 .. warning::
 
     Only the results from rank 0 worker will be used. However, in order to ensure
-    consistency, ``session.report()`` has to be called on each worker. If you
+    consistency, ``train.report()`` has to be called on each worker. If you
     want to aggregate results from multiple workers, see :ref:`train-aggregating-results`.
 
 The primary use-case for reporting is for metrics (accuracy, loss, etc.) at
@@ -495,13 +494,13 @@ the end of each training epoch.
 
 .. code-block:: python
 
-    from ray.air import session
+    from ray import train
 
     def train_func():
         ...
         for i in range(num_epochs):
             result = model.train(...)
-            session.report({"result": result})
+            train.report({"result": result})
 
 The session concept exists on several levels: The execution layer (called `Tune Session`) and the Data Parallel training layer
 (called `Train Session`).
@@ -519,7 +518,7 @@ The following figure shows how these two sessions look like in a Data Parallel t
 Saving checkpoints
 ++++++++++++++++++
 
-:ref:`Checkpoints <checkpoint-api-ref>` can be saved by calling ``session.report(metrics, checkpoint=Checkpoint(...))`` in the
+:ref:`Checkpoints <checkpoint-api-ref>` can be saved by calling ``train.report(metrics, checkpoint=Checkpoint(...))`` in the
 training function. This will cause the checkpoint state from the distributed
 workers to be saved on the ``Trainer`` (where your python script is executed).
 
@@ -538,7 +537,8 @@ appropriately in distributed training.
             :emphasize-lines: 36, 37, 38, 39, 40, 41
 
             import ray.train.torch
-            from ray.air import session, Checkpoint, ScalingConfig
+            from ray import train
+            from ray.train import Checkpoint, ScalingConfig
             from ray.train.torch import TorchTrainer
 
             import torch
@@ -571,7 +571,7 @@ appropriately in distributed training.
                     checkpoint = Checkpoint.from_dict(
                         dict(epoch=epoch, model_weights=state_dict)
                     )
-                    session.report({}, checkpoint=checkpoint)
+                    train.report({}, checkpoint=checkpoint)
 
             trainer = TorchTrainer(
                 train_func,
@@ -587,9 +587,10 @@ appropriately in distributed training.
     .. tab-item:: TensorFlow
 
         .. code-block:: python
-            :emphasize-lines: 23
+            :emphasize-lines: 24
 
-            from ray.air import session, Checkpoint, ScalingConfig
+            from ray import train
+            from ray.train import Checkpoint, ScalingConfig
             from ray.train.tensorflow import TensorflowTrainer
 
             import numpy as np
@@ -614,7 +615,7 @@ appropriately in distributed training.
                     checkpoint = Checkpoint.from_dict(
                         dict(epoch=epoch, model_weights=model.get_weights())
                     )
-                    session.report({}, checkpoint=checkpoint)
+                    train.report({}, checkpoint=checkpoint)
 
             trainer = TensorflowTrainer(
                 train_func,
@@ -648,15 +649,16 @@ checkpoints to disk), a :py:class:`~ray.air.config.CheckpointConfig` can be pass
 As an example, to completely disable writing checkpoints to disk:
 
 .. code-block:: python
-    :emphasize-lines: 9,14
+    :emphasize-lines: 10,15
 
-    from ray.air import session, RunConfig, CheckpointConfig, ScalingConfig
+    from ray import train
+    from ray.air import RunConfig, CheckpointConfig, ScalingConfig
     from ray.train.torch import TorchTrainer
 
     def train_func():
         for epoch in range(3):
             checkpoint = Checkpoint.from_dict(dict(epoch=epoch))
-            session.report({}, checkpoint=checkpoint)
+            train.report({}, checkpoint=checkpoint)
 
     checkpoint_config = CheckpointConfig(num_to_keep=0)
 
@@ -672,18 +674,19 @@ You may also config ``CheckpointConfig`` to keep the "N best" checkpoints persis
 
 .. code-block:: python
 
-    from ray.air import session, Checkpoint, RunConfig, CheckpointConfig, ScalingConfig
+    from ray import train
+    from ray.train import Checkpoint, RunConfig, CheckpointConfig, ScalingConfig
     from ray.train.torch import TorchTrainer
 
     def train_func():
         # first checkpoint
-        session.report(dict(loss=2), checkpoint=Checkpoint.from_dict(dict(loss=2)))
+        train.report(dict(loss=2), checkpoint=Checkpoint.from_dict(dict(loss=2)))
         # second checkpoint
-        session.report(dict(loss=2), checkpoint=Checkpoint.from_dict(dict(loss=4)))
+        train.report(dict(loss=2), checkpoint=Checkpoint.from_dict(dict(loss=4)))
         # third checkpoint
-        session.report(dict(loss=2), checkpoint=Checkpoint.from_dict(dict(loss=1)))
+        train.report(dict(loss=2), checkpoint=Checkpoint.from_dict(dict(loss=1)))
         # fourth checkpoint
-        session.report(dict(loss=2), checkpoint=Checkpoint.from_dict(dict(loss=3)))
+        train.report(dict(loss=2), checkpoint=Checkpoint.from_dict(dict(loss=3)))
 
     # Keep the 2 checkpoints with the smallest "loss" value.
     checkpoint_config = CheckpointConfig(
@@ -709,7 +712,7 @@ Loading checkpoints
 
 Checkpoints can be loaded into the training function in 2 steps:
 
-1. From the training function, :func:`ray.air.session.get_checkpoint` can be used to access
+1. From the training function, :func:`ray.train.TrainContext.get_checkpoint` can be used to access
    the most recently saved :py:class:`~ray.air.checkpoint.Checkpoint`. This is useful to continue training even
    if there's a worker failure.
 2. The checkpoint to start training with can be bootstrapped by passing in a
@@ -723,7 +726,8 @@ Checkpoints can be loaded into the training function in 2 steps:
             :emphasize-lines: 23, 25, 26, 29, 30, 31, 35
 
             import ray.train.torch
-            from ray.air import session, Checkpoint, ScalingConfig
+            from ray import train
+            from ray.train import Checkpoint, ScalingConfig
             from ray.train.torch import TorchTrainer
 
             import torch
@@ -745,9 +749,9 @@ Checkpoints can be loaded into the training function in 2 steps:
                 optimizer = Adam(model.parameters(), lr=3e-4)
                 start_epoch = 0
 
-                checkpoint = session.get_checkpoint()
+                checkpoint = train.get_checkpoint()
                 if checkpoint:
-                    # assume that we have run the session.report() example
+                    # assume that we have run the train.report() example
                     # and successfully save some model weights
                     checkpoint_dict = checkpoint.to_dict()
                     model.load_state_dict(checkpoint_dict.get("model_weights"))
@@ -767,7 +771,7 @@ Checkpoints can be loaded into the training function in 2 steps:
                     checkpoint = Checkpoint.from_dict(
                         dict(epoch=epoch, model_weights=state_dict)
                     )
-                    session.report({}, checkpoint=checkpoint)
+                    train.report({}, checkpoint=checkpoint)
 
             trainer = TorchTrainer(
                 train_func,
@@ -794,7 +798,8 @@ Checkpoints can be loaded into the training function in 2 steps:
         .. code-block:: python
             :emphasize-lines: 15, 21, 22, 25, 26, 27, 30
 
-            from ray.air import session, Checkpoint, ScalingConfig
+            from ray import train
+            from ray.air import Checkpoint, ScalingConfig
             from ray.train.tensorflow import TensorflowTrainer
 
             import numpy as np
@@ -814,9 +819,9 @@ Checkpoints can be loaded into the training function in 2 steps:
                 with strategy.scope():
                     # toy neural network : 1-layer
                     model = tf.keras.Sequential([tf.keras.layers.Dense(1, activation="linear", input_shape=(4,))])
-                    checkpoint = session.get_checkpoint()
+                    checkpoint = train.get_checkpoint()
                     if checkpoint:
-                        # assume that we have run the session.report() example
+                        # assume that we have run the train.report() example
                         # and successfully save some model weights
                         checkpoint_dict = checkpoint.to_dict()
                         model.set_weights(checkpoint_dict.get("model_weights"))
@@ -828,7 +833,7 @@ Checkpoints can be loaded into the training function in 2 steps:
                     checkpoint = Checkpoint.from_dict(
                         dict(epoch=epoch, model_weights=model.get_weights())
                     )
-                    session.report({}, checkpoint=checkpoint)
+                    train.report({}, checkpoint=checkpoint)
 
             trainer = TensorflowTrainer(
                 train_func,
@@ -860,7 +865,7 @@ Callbacks
 
 You may want to plug in your training code with your favorite experiment management framework.
 Ray AIR provides an interface to fetch intermediate results and callbacks to process/log your intermediate results
-(the values passed into :func:`ray.air.session.report`).
+(the values passed into :func:`ray.train.report`).
 
 Ray AIR contains :ref:`built-in callbacks <air-builtin-callbacks>` for popular tracking frameworks, or you can implement your own callback via the :ref:`Callback <tune-callbacks-docs>` interface.
 
@@ -895,7 +900,8 @@ A simple example for creating a callback that will print out results:
 
     from typing import List, Dict
 
-    from ray.air import session, RunConfig, ScalingConfig
+    from ray import train
+    from ray.train import RunConfig, ScalingConfig
     from ray.train.torch import TorchTrainer
     from ray.tune.logger import LoggerCallback
 
@@ -909,7 +915,7 @@ A simple example for creating a callback that will print out results:
 
     def train_func():
         for i in range(3):
-            session.report({"epoch": i})
+            train.report({"epoch": i})
 
     callback = LoggingCallback()
     trainer = TorchTrainer(
