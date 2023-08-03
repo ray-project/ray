@@ -1589,6 +1589,8 @@
   cluster:
     byod:
       type: gpu
+      pip:
+        - pytorch-lightning==1.6.5
     cluster_compute: compute_tpl_aws.yaml
 
   run:
@@ -1618,6 +1620,8 @@
   cluster:
     byod:
       type: gpu
+      pip:
+        - pytorch-lightning==1.6.5
     cluster_compute: compute_tpl_aws.yaml
 
   run:
