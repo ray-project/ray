@@ -10,7 +10,7 @@ from collections import Counter
 from functools import partial
 from unittest.mock import patch
 
-import gymnasium as gym
+import gym
 import numpy as np
 import pytest
 import ray

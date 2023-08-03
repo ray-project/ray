@@ -1,4 +1,4 @@
-import gymnasium as gym
+import gym
 from typing import Type
 import unittest
 
@@ -158,8 +158,9 @@ class TestAlgorithmConfig(unittest.TestCase):
 
         config = AlgorithmConfig().environment(
             env=lambda ctx: gym.make(
-                "ALE/Breakout-v5",
-                frameskip=1,
+                "GymV26Environment-v0",
+                env_id="ALE/Breakout-v5",
+                make_kwargs={"frameskip": 1},
             )
         )
         # We do not auto-detect callable env makers for Atari envs.

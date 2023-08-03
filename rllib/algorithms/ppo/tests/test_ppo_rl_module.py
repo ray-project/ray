@@ -151,7 +151,10 @@ class TestPPO(unittest.TestCase):
                 # LSTM not implemented in TF2 yet
                 continue
             print(f"[FW={fw} | [ENV={env_name}] | [FWD={fwd_fn}] | LSTM" f"={lstm}")
-            env = gym.make(env_name)
+            if env_name.startswith("ALE/"):
+                env = gym.make("GymV26Environment-v0", env_id=env_name)
+            else:
+                env = gym.make(env_name)
 
             preprocessor_cls = get_preprocessor(env.observation_space)
             preprocessor = preprocessor_cls(env.observation_space)
@@ -188,7 +191,11 @@ class TestPPO(unittest.TestCase):
         for config in itertools.product(*config_combinations):
             fw, env_name, lstm = config
             print(f"[FW={fw} | [ENV={env_name}] | LSTM={lstm}")
-            env = gym.make(env_name)
+            # TODO(Artur): Figure out why this is needed and fix it.
+            if env_name.startswith("ALE/"):
+                env = gym.make("GymV26Environment-v0", env_id=env_name)
+            else:
+                env = gym.make(env_name)
 
             preprocessor_cls = get_preprocessor(env.observation_space)
             preprocessor = preprocessor_cls(env.observation_space)
