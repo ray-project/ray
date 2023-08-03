@@ -162,6 +162,14 @@ class TestJobSubmit:
         assert "hello" in stdout
         assert "succeeded" in stdout
 
+    def test_header(self, ray_start_stop):
+        cmd = "echo hello"
+        stdout, _ = _run_cmd(
+            f"ray job submit --header='User-Agent: Ray Job CLI' -- {cmd}"
+        )
+        assert "hello" in stdout
+        assert "succeeded" in stdout
+
 
 class TestRuntimeEnv:
     def test_bad_runtime_env(self, ray_start_stop):
