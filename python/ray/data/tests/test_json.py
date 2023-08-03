@@ -582,7 +582,7 @@ def test_json_write_block_path_provider(
     ds.write_json(
         data_path, filesystem=fs, block_path_provider=test_block_write_path_provider
     )
-    file_path = os.path.join(data_path, "000000_03_data.test.json")
+    file_path = os.path.join(data_path, "000000_000000_data.test.json")
     assert df1.equals(
         pd.read_json(
             file_path, orient="records", lines=True, storage_options=storage_options
@@ -596,7 +596,7 @@ def test_json_write_block_path_provider(
     ds.write_json(
         data_path, filesystem=fs, block_path_provider=test_block_write_path_provider
     )
-    file_path2 = os.path.join(data_path, "000001_03_data.test.json")
+    file_path2 = os.path.join(data_path, "000001_000000_data.test.json")
     df = pd.concat([df1, df2])
     ds_df = pd.concat(
         [

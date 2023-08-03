@@ -318,8 +318,8 @@ def test_numpy_write_block_path_provider(
         block_path_provider=test_block_write_path_provider,
         column="data",
     )
-    file_path1 = os.path.join(data_path, "000000_05_data.test.npy")
-    file_path2 = os.path.join(data_path, "000001_05_data.test.npy")
+    file_path1 = os.path.join(data_path, "000000_000000_data.test.npy")
+    file_path2 = os.path.join(data_path, "000001_000000_data.test.npy")
     if endpoint_url is None:
         arr1 = np.load(file_path1)
         arr2 = np.load(file_path2)

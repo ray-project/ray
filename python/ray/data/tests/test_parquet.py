@@ -854,7 +854,9 @@ def test_parquet_write_create_dir(
         # Only files for the non-empty blocks should be created.
         file_list = os.listdir(some_empty_path)
         file_list.sort()
-        assert file_list == [f"{some_empty_key}_00000{i}_000000.parquet" for i in range(2)]
+        assert file_list == [
+            f"{some_empty_key}_00000{i}_000000.parquet" for i in range(2)
+        ]
     else:
         assert (
             fs.get_file_info(_unwrap_protocol(all_empty_path)).type
