@@ -18,7 +18,7 @@
 #include "ray/common/id.h"
 #include "ray/rpc/grpc_server.h"
 #include "ray/rpc/server_call.h"
-#include "src/ray/protobuf/experimental/autoscaler.grpc.pb.h"
+#include "src/ray/protobuf/autoscaler.grpc.pb.h"
 #include "src/ray/protobuf/gcs_service.grpc.pb.h"
 #include "src/ray/protobuf/monitor.grpc.pb.h"
 

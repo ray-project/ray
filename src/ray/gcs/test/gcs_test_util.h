@@ -25,7 +25,7 @@
 #include "ray/common/task/task_util.h"
 #include "ray/common/test_util.h"
 #include "ray/gcs/pb_util.h"
-#include "src/ray/protobuf/experimental/autoscaler.grpc.pb.h"
+#include "src/ray/protobuf/autoscaler.grpc.pb.h"
 #include "src/ray/protobuf/gcs_service.grpc.pb.h"
 
 namespace ray {

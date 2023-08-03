@@ -31,7 +31,7 @@
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
 #include "ray/rpc/gcs_server/gcs_rpc_client.h"
 #include "ray/util/logging.h"
-#include "src/ray/protobuf/experimental/autoscaler.grpc.pb.h"
+#include "src/ray/protobuf/autoscaler.grpc.pb.h"
 
 namespace ray {
 

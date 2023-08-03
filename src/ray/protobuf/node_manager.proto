@@ -19,6 +19,7 @@ package ray.rpc;
 
 import "src/ray/protobuf/common.proto";
 import "src/ray/protobuf/gcs.proto";
+import "src/ray/protobuf/autoscaler.proto";
 
 message WorkerBacklogReport {
   // TaskSpec indicating the scheduling class.
@@ -375,6 +376,7 @@ service NodeManagerService {
       returns (ReleaseUnusedWorkersReply);
   /// Shutdown the raylet (node manager) gracefully.
   rpc ShutdownRaylet(ShutdownRayletRequest) returns (ShutdownRayletReply);
+  rpc DrainNode(ray.rpc.autoscaler.DrainNodeRequest) returns (ray.rpc.autoscaler.DrainNodeReply);
   // Request a raylet to lock resources for a bundle.
   // This is the first phase of 2PC protocol for atomic placement group creation.
   rpc PrepareBundleResources(PrepareBundleResourcesRequest)

@@ -473,6 +473,8 @@ std::optional<syncer::RaySyncMessage> LocalResourceManager::CreateSyncMessage(
   resources_data.set_idle_duration_ms(
       absl::ToInt64Milliseconds(now - GetResourceIdleTime().value_or(now)));
 
+  resources_data.set_is_draining(IsLocalNodeDraining());
+
   msg.set_node_id(local_node_id_.Binary());
   msg.set_version(version_);
   msg.set_message_type(message_type);

@@ -55,6 +55,8 @@ LocalTaskManager::LocalTaskManager(
       sched_cls_cap_max_ms_(RayConfig::instance().worker_cap_max_backoff_delay_ms()) {}
 
 void LocalTaskManager::QueueAndScheduleTask(std::shared_ptr<internal::Work> work) {
+  ASSERT_FALSE(
+      cluster_resource_scheduler_->GetLocalResourceManager().IsLocalNodeDraining());
   WaitForTaskArgsRequests(work);
   ScheduleAndDispatchTasks();
 }
@@ -222,6 +224,7 @@ void LocalTaskManager::DispatchScheduledTasksToWorkers() {
       // took a long time.
       auto allocated_instances = std::make_shared<TaskResourceInstances>();
       bool schedulable =
+          !cluster_resource_scheduler_->GetLocalResourceManager().IsLocalNodeDraining() &&
           cluster_resource_scheduler_->GetLocalResourceManager()
               .AllocateLocalTaskResources(spec.GetRequiredResources().GetResourceMap(),
                                           allocated_instances);

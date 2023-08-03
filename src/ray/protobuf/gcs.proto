@@ -18,6 +18,7 @@ option cc_enable_arenas = true;
 package ray.rpc;
 
 import "src/ray/protobuf/common.proto";
+import "src/ray/protobuf/autoscaler.proto";
 
 option java_package = "io.ray.runtime.generated";
 
@@ -535,9 +536,10 @@ message ResourcesData {
   // Whether this node has detected a resource deadlock (full of actors).
   bool cluster_full_of_actors_detected = 14;
   // The duration in ms during which all the node's resources are idle. If the
-  // node currently has any resource being used, this will 0.
+  // node currently has any resource being used, this will be 0.
   int64 idle_duration_ms = 15;
-  // Last unused = 16
+  bool is_draining = 16;
+  // Last unused = 17
 }
 
 message ResourceUsageBatchData {

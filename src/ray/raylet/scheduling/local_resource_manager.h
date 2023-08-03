@@ -153,6 +153,15 @@ class LocalResourceManager : public syncer::ReporterInterface {
   /// Record the metrics.
   void RecordMetrics() const;
 
+  bool IsLocalNodeIdle() const { return GetResourceIdleTime() != absl::nullopt; }
+
+  void SetLocalNodeDraining() {
+    is_local_node_draining_ = true;
+    OnResourceChanged();
+  }
+
+  bool IsLocalNodeDraining() const { return is_local_node_draining_; }
+
  private:
   struct ResourceUsage {
     double avail;
@@ -281,6 +290,8 @@ class LocalResourceManager : public syncer::ReporterInterface {
 
   // Version of this resource. It will incr by one whenever the state changed.
   int64_t version_ = 0;
+
+  bool is_local_node_draining_ = false;
 
   FRIEND_TEST(ClusterResourceSchedulerTest, SchedulingUpdateTotalResourcesTest);
   FRIEND_TEST(ClusterResourceSchedulerTest, AvailableResourceInstancesOpsTest);

@@ -95,8 +95,6 @@ enum NodeStatus {
   IDLE = 3;
   // Node is being drained.
   DRAINING = 4;
-  // Node is drained.
-  DRAINED = 5;
 }
 
 message NodeState {

@@ -439,6 +439,8 @@ class NodeResources {
   // The idle duration of the node from resources reported by raylet.
   int64_t idle_resource_duration_ms = 0;
 
+  bool is_draining = false;
+
   // The timestamp of the last resource update if there was a resource report.
   absl::optional<absl::Time> last_resource_update_time = absl::nullopt;
 
