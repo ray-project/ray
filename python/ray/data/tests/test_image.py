@@ -260,7 +260,7 @@ class TestReadImages:
     def test_unidentified_image_error(ray_start_regular_shared):
         with tempfile.NamedTemporaryFile(suffix=".png") as file:
             with pytest.raises(ValueError):
-                ray.data.read_images(paths=file.name)
+                ray.data.read_images(paths=file.name).materialize()
 
 
 if __name__ == "__main__":
