@@ -202,18 +202,18 @@ class Experiment:
             logger.debug(f"StorageContext on the DRIVER:\n{self.storage}")
 
             # TODO(justinvyu): Rename these to legacy.
-            self._local_storage_path = None
-            self._remote_storage_path = None
-            self.sync_config = None
-            self.dir_name = None
-            self.name = None
+            self._legacy_local_storage_path = None
+            self._legacy_remote_storage_path = None
+            self.legacy_sync_config = None
+            self.legacy_dir_name = None
+            self.legacy_name = None
         else:
             if isinstance(sync_config, dict):
                 sync_config = SyncConfig(**sync_config)
             else:
                 sync_config = sync_config or SyncConfig()
 
-            self.sync_config = sync_config
+            self.legacy_sync_config = sync_config
 
             # Resolve storage_path
             local_storage_path, remote_storage_path = _resolve_storage_path(
@@ -248,19 +248,19 @@ class Experiment:
                     str(list(experiment_checkpoint_dir_path.parents)),
                 )
                 # `dir_name` is set by `_experiment_checkpoint_dir` indirectly.
-                self.dir_name = os.path.relpath(
+                self.legacy_dir_name = os.path.relpath(
                     _experiment_checkpoint_dir, full_local_storage_path
                 )
 
-            self._local_storage_path = full_local_storage_path
-            self._remote_storage_path = remote_storage_path
+            self._legacy_local_storage_path = full_local_storage_path
+            self._legacy_remote_storage_path = remote_storage_path
 
-            self.name = name or self._run_identifier
+            self.legacy_name = name or self._run_identifier
 
             if not _experiment_checkpoint_dir:
-                self.dir_name = _get_dir_name(run, name, self.name)
+                self.legacy_dir_name = _get_dir_name(run, name, self.legacy_name)
 
-            assert self.dir_name
+            assert self.legacy_dir_name
 
         config = config or {}
 
@@ -320,8 +320,8 @@ class Experiment:
             "resources_per_trial": resources_per_trial,
             "num_samples": num_samples,
             "experiment_path": self.path,
-            "experiment_dir_name": self.dir_name,
-            "sync_config": sync_config,
+            "experiment_dir_name": self.legacy_dir_name,
+            "sync_config": self.legacy_sync_config,
             "checkpoint_config": checkpoint_config,
             "trial_name_creator": trial_name_creator,
             "trial_dirname_creator": trial_dirname_creator,
@@ -507,9 +507,9 @@ class Experiment:
         if _use_storage_context():
             return self.storage.experiment_local_path
 
-        if not self._local_storage_path:
+        if not self._legacy_local_storage_path:
             return None
-        return str(Path(self._local_storage_path) / self.dir_name)
+        return str(Path(self._legacy_local_storage_path) / self.legacy_dir_name)
 
     @property
     @Deprecated("Replaced by `local_path`")
@@ -522,9 +522,9 @@ class Experiment:
         if _use_storage_context():
             return self.storage.experiment_path
 
-        if not self._remote_storage_path:
+        if not self._legacy_remote_storage_path:
             return None
-        return str(URI(self._remote_storage_path) / self.dir_name)
+        return str(URI(self._legacy_remote_storage_path) / self.legacy_dir_name)
 
     @property
     def path(self) -> Optional[str]:

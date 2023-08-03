@@ -199,21 +199,7 @@ def _create_trial_from_spec(
         trial_kwargs["placement_group_factory"] = resources
 
     experiment_dir_name = spec.get("experiment_dir_name") or output_path
-
     sync_config = spec.get("sync_config", SyncConfig())
-    if (
-        sync_config.syncer is not None
-        and sync_config.syncer != "auto"
-        and not isinstance(sync_config.syncer, Syncer)
-    ):
-        raise ValueError(
-            f"Unknown syncer type passed in SyncConfig: {type(sync_config.syncer)}. "
-            f"Note that custom sync functions and templates have been deprecated. "
-            f"Instead you can implement you own `Syncer` class. "
-            f"Please leave a comment on GitHub if you run into any issues with this: "
-            f"https://github.com/ray-project/ray/issues"
-        )
-
     checkpoint_config = spec.get("checkpoint_config", CheckpointConfig())
 
     return Trial(
