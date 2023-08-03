@@ -72,7 +72,7 @@ class TestDreamerV3(unittest.TestCase):
 
         num_iterations = 2
 
-        for _ in framework_iterator(config, frameworks=("torch")):#"tf2", "torch")):
+        for _ in framework_iterator(config, frameworks=("torch")):  # "tf2", "torch")):
             for env in ["ALE/MsPacman-v5", "FrozenLake-v1", "CartPole-v1"]:
                 print("Env={}".format(env))
                 config.environment(env)

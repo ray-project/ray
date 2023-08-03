@@ -148,7 +148,6 @@ class DreamerV3TorchLearner(DreamerV3Learner, TorchLearner):
 
         grads = {}
         for component in ["world_model", "actor", "critic"]:
-            #print(f"component={component}")
             self._metrics[DEFAULT_POLICY_ID][component.upper() + "_L_total"].backward(
                 retain_graph=True
             )
@@ -210,9 +209,9 @@ class DreamerV3TorchLearner(DreamerV3Learner, TorchLearner):
         self.register_metrics(
             module_id=module_id,
             metrics_dict={
-                "WORLD_MODEL_learned_initial_h": self.module[
-                    module_id
-                ].unwrapped().world_model.initial_h,
+                "WORLD_MODEL_learned_initial_h": self.module[module_id]
+                .unwrapped()
+                .world_model.initial_h,
                 # Prediction losses.
                 # Decoder (obs) loss.
                 "WORLD_MODEL_L_decoder": prediction_losses["L_decoder"],
@@ -251,14 +250,18 @@ class DreamerV3TorchLearner(DreamerV3Learner, TorchLearner):
         # Everything goes in as BxT: We are starting a new dream trajectory at every
         # actually encountered timestep in the batch, so we are creating B*T
         # trajectories of len `horizon_H`.
-        dream_data = self.module[module_id].unwrapped().dreamer_model.dream_trajectory(
-            start_states={
-                "h": fwd_out["h_states_BxT"],
-                "z": fwd_out["z_posterior_states_BxT"],
-            },
-            start_is_terminated=batch["is_terminated"].reshape(-1),  # -> BxT
-            timesteps_H=hps.horizon_H,
-            gamma=hps.gamma,
+        dream_data = (
+            self.module[module_id]
+            .unwrapped()
+            .dreamer_model.dream_trajectory(
+                start_states={
+                    "h": fwd_out["h_states_BxT"],
+                    "z": fwd_out["z_posterior_states_BxT"],
+                },
+                start_is_terminated=batch["is_terminated"].reshape(-1),  # -> BxT
+                timesteps_H=hps.horizon_H,
+                gamma=hps.gamma,
+            )
         )
         if hps.report_dream_data:
             # To reduce this massive amount of data a little, slice out a T=1 piece
