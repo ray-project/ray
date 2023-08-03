@@ -533,13 +533,8 @@ wait_for_condition(
 
     print(out_str, err_str)
 
-    def check_output(blob):
-        for line in blob.splitlines():
-            if "(raylet)" in line:
-                assert "cluster ID" in line
-
-    check_output(out_str)
-    check_output(err_str)
+    assert "(raylet)" not in out_str
+    assert "(raylet)" not in err_str
 
 
 @pytest.mark.asyncio

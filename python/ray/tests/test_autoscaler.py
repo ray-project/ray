@@ -3514,6 +3514,8 @@ class AutoscalingTest(unittest.TestCase):
             def __init__(self, *args, **kwargs):
                 raise AutoscalerInitFailException
 
+        os.environ["RAY_GCS_SERVER_PORT"] = "12345"
+        ray.init()
         with patch("ray._private.utils.publish_error_to_driver") as mock_publish:
             with patch.multiple(
                 "ray.autoscaler._private.monitor",
@@ -3521,7 +3523,9 @@ class AutoscalingTest(unittest.TestCase):
                 _internal_kv_initialized=Mock(return_value=False),
             ):
                 monitor = Monitor(
-                    address="here:12345", autoscaling_config="", log_dir=self.tmpdir
+                    address="localhost:12345",
+                    autoscaling_config="",
+                    log_dir=self.tmpdir,
                 )
                 with pytest.raises(AutoscalerInitFailException):
                     monitor.run()
