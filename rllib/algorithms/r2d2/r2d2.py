@@ -177,19 +177,26 @@ class R2D2Config(DQNConfig):
         # Call super's validation method.
         super().validate()
 
+        # Current replay sequence length
+        replay_sequence_length = (
+            self.replay_buffer_config["replay_burn_in"] + self.model["max_seq_len"]
+        )
+
         if (
             not self.in_evaluation
-            and self.replay_buffer_config.get("replay_sequence_length", -1) != -1
+            and self.replay_buffer_config.get("replay_sequence_length", -1) not in (
+            -1, replay_sequence_length)
         ):
             raise ValueError(
-                "`replay_sequence_length` is calculated automatically to be "
-                "model->max_seq_len + burn_in!"
+                f"`replay_sequence_length` is calculated automatically to be "
+                f"model->max_seq_len + burn_in! Either set it to -1 or to the value "
+                f"calculated by RLlib (If you are having issues restoring a "
+                f"checkpoint). The value caluclated by RLlib is"
+                f" {replay_sequence_length}."
             )
         # Add the `burn_in` to the Model's max_seq_len.
         # Set the replay sequence length to the max_seq_len of the model.
-        self.replay_buffer_config["replay_sequence_length"] = (
-            self.replay_buffer_config["replay_burn_in"] + self.model["max_seq_len"]
-        )
+        self.replay_buffer_config["replay_sequence_length"] = replay_sequence_length
 
         if self.batch_mode != "complete_episodes":
             raise ValueError("`batch_mode` must be 'complete_episodes'!")
