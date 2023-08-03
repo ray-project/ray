@@ -71,7 +71,7 @@ class CoreWorkerDirectTaskReceiver {
         task_handler_(task_handler),
         task_main_io_service_(main_io_service),
         task_done_(task_done),
-        pool_manager_(nullptr),
+        pool_manager_(std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>()),
         fiber_state_manager_(nullptr) {}
 
   /// Initialize this receiver. This must be called prior to use.
