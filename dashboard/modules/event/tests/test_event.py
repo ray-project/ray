@@ -10,7 +10,8 @@ import asyncio
 import random
 import tempfile
 import socket
-
+from ray._private.event.event_logger import get_event_logger
+from ray import serve
 from pprint import pprint
 from datetime import datetime
 
@@ -21,8 +22,6 @@ import ray
 from ray.util.state import list_cluster_events
 from ray._private.utils import binary_to_hex
 from ray.cluster_utils import AutoscalingCluster
-from ray._private.event.event_logger import get_event_logger
-from ray.core.generated.event_pb2 import Event
 from ray.dashboard.tests.conftest import *  # noqa
 from ray.dashboard.modules.event import event_consts
 from ray.core.generated import event_pb2
@@ -497,23 +496,15 @@ def test_actors_events(shutdown_only):
     class Counter:
         def __init__(self):
             self.value = 0
-            self.event_logger = get_event_logger(
-                Event.SourceType.CORE_WORKER, "test actor event logger"
-            )
+            self.event_logger = get_event_logger("CORE_WORKER", "")
 
         def increment(self):
             self.value += 1
-            self.event_logger.info("increment", "")
+            self.event_logger.info("increment")
             return self.value
 
         def get_counter(self):
             return self.value
-
-        def __reduce__(self):
-            constructor = self.__class__
-            return constructor, ()
-
-        # Create 10 actors
 
     inspect_serializability(Counter, "debug actor serializability")
     actors = [Counter.remote() for _ in range(10)]
@@ -531,6 +522,48 @@ def test_actors_events(shutdown_only):
         print(f"Actor {i}: {count}")
 
     ray.shutdown()
+
+
+def test_tasks_events(shutdown_only):
+    # Initialize Ray
+    ray.init(ignore_reinit_error=True)
+
+    @ray.remote
+    def my_task(task_id):
+        logger = get_event_logger("CORE_WORKER", "")
+        logger.info(f"task start id ={task_id}")
+
+        print(f"Running task {task_id}")
+        time.sleep(1000)
+        return f"Task {task_id} completed successfully"
+
+    # Create and submit 10 tasks
+    tasks = [my_task.remote(i) for i in range(10)]
+
+    # Wait for all tasks to complete and collect the results
+    results = ray.get(tasks)
+
+    # Print the results
+    for result in results:
+        print(result)
+
+
+def test_serve_events(shutdown_only):
+    @serve.deployment(num_replicas=5)
+    class MyFirstDeployment:
+        # Take the message to return as an argument to the constructor.
+        def __init__(self, msg):
+            self.event_logger = get_event_logger("CORE_WORKER", "")
+            self.msg = msg
+
+        def __call__(self):
+            self.event_logger.info("replica start")
+            return self.msg
+
+    my_first_deployment = MyFirstDeployment.bind("Hello world!")
+    handle = serve.run(my_first_deployment)
+    print(ray.get(handle.remote()))  # "Hello world!"
+    print(ray.get(handle.remote()))  # "Hello world!"
 
 
 def test_cluster_events_retention(monkeypatch, shutdown_only):
