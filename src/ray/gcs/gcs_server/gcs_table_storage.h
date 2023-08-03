@@ -205,14 +205,6 @@ class GcsNodeTable : public GcsTable<NodeID, GcsNodeInfo> {
   }
 };
 
-class GcsNodeResourceTable : public GcsTable<NodeID, ResourceMap> {
- public:
-  explicit GcsNodeResourceTable(std::shared_ptr<StoreClient> store_client)
-      : GcsTable(std::move(store_client)) {
-    table_name_ = TablePrefix_Name(TablePrefix::NODE_RESOURCE);
-  }
-};
-
 class GcsPlacementGroupScheduleTable : public GcsTable<PlacementGroupID, ScheduleData> {
  public:
   explicit GcsPlacementGroupScheduleTable(std::shared_ptr<StoreClient> store_client)
