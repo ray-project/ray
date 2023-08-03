@@ -130,7 +130,7 @@ Learn more about the Tune library with the following talks and user guides.
 Distributed Training
 --------------------
 
-The :ref:`Ray Train <train-userguides>` library integrates many distributed training frameworks under a simple Trainer API,
+The :ref:`Ray Train <train-docs>` library integrates many distributed training frameworks under a simple Trainer API,
 providing distributed orchestration and management capabilities out of the box.
 
 In contrast to training many models, model parallelism partitions a large model across many machines for training. Ray Train has built-in abstractions for distributing shards of models and running training in parallel.

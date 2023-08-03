@@ -1,13 +1,47 @@
-.. _air-ingest:
+.. _data-ingest-torch:
 
-Configuring Training Datasets
-=============================
+Data Loading and Preprocessing
+==============================
 
 This guide covers how to leverage :ref:`Ray Data <data>` to load data for distributed training jobs. You may want to use Ray Data for training over framework built-in data loading utilities for a few reasons:
 
 1. To leverage the full Ray cluster to speed up preprocessing of your data.
 2. To make data loading agnostic of the underlying framework.
 3. Advanced Ray Data features such as global shuffles.
+
+Overview
+--------
+
+:ref:`Ray Data <data>` is the recommended way to work with large datasets in Ray Train. Ray Data provides automatic loading, sharding, and streamed ingest of Data across multiple Train workers.
+To get started, pass in one or more datasets under the ``datasets`` keyword argument for Trainer (e.g., ``Trainer(datasets={...})``).
+
+In a nutshell, datasets passed to your :class:`Trainer <ray.train.trainer.BaseTrainer>`
+can be accessed from the training function with :meth:`train.get_dataset_shard("train")
+<ray.train.get_dataset_shard>` like this:
+
+.. code-block:: python
+
+    from ray import train
+
+    # Datasets can be accessed in your train_func via ``get_dataset_shard``.
+    def train_func(config):
+        train_data_shard = train.get_dataset_shard("train")
+        validation_data_shard = train.get_dataset_shard("validation")
+        ...
+
+    # Random split the dataset into 80% training data and 20% validation data.
+    dataset = ray.data.read_csv("...")
+    train_dataset, validation_dataset = dataset.train_test_split(
+        test_size=0.2, shuffle=True,
+    )
+
+    trainer = TorchTrainer(
+        train_func,
+        datasets={"train": train_dataset, "validation": validation_dataset},
+        scaling_config=ScalingConfig(num_workers=8),
+    )
+    trainer.fit()
+
 
 Basics
 ------
@@ -16,7 +50,7 @@ Basics
 
 Let's use a single Torch training workload as a running example. A very basic example of using Ray Data with TorchTrainer looks like this:
 
-.. literalinclude:: doc_code/air_ingest_new.py
+.. literalinclude:: ../doc_code/data_ingest_torch_new.py
     :language: python
     :start-after: __basic__
     :end-before: __basic_end__
@@ -28,7 +62,7 @@ Splitting data across workers
 
 By default, Train will split the ``"train"`` dataset across workers using :meth:`Dataset.streaming_split <ray.data.Dataset.streaming_split>`. This means that each worker sees a disjoint subset of the data, instead of iterating over the entire dataset. To customize this, we can pass in a :class:`DataConfig <ray.train.DataConfig>` to the Trainer constructor. For example, the following splits dataset ``"a"`` but not ``"b"``.
 
-.. literalinclude:: doc_code/air_ingest_new.py
+.. literalinclude:: ../doc_code/data_ingest_torch_new.py
     :language: python
     :start-after: __custom_split__
     :end-before: __custom_split_end__
@@ -43,7 +77,7 @@ Materializing your dataset
 
 Datasets are lazy and their execution is streamed, which means that on each epoch, all preprocessing operations will be re-run. If this loading / preprocessing is expensive, you may benefit from :meth:`materializing <ray.data.Dataset.materialize>` your dataset in memory. This tells Ray Data to compute all the blocks of the dataset fully and pin them in Ray object store memory. This means that when iterating over the dataset repeatedly, the preprocessing operations do not need to be re-run, greatly improving performance. However, the trade-off is that if the preprocessed data is too large to fit into Ray object store memory, this could slow things down because data needs to be spilled to disk.
 
-.. literalinclude:: doc_code/air_ingest_new.py
+.. literalinclude:: ../doc_code/data_ingest_torch_new.py
     :language: python
     :start-after: __materialized__
     :end-before: __materialized_end__
@@ -60,7 +94,7 @@ Common options you may want to adjust:
 
 You can pass in custom execution options to the data config, which will apply to all data executions for the Trainer. For example, if you want to adjust the ingest memory size to 10GB per worker:
 
-.. literalinclude:: doc_code/air_ingest_new.py
+.. literalinclude:: ../doc_code/data_ingest_torch_new.py
     :language: python
     :start-after: __options__
     :end-before: __options_end__
@@ -77,7 +111,7 @@ Custom data config (advanced)
 
 For use cases not covered by the default config class, you can also fully customize exactly how your input datasets are splitted. To do this, you need to define a custom ``DataConfig`` class (DeveloperAPI). The ``DataConfig`` class is responsible for that shared setup and splitting of data across nodes.
 
-.. literalinclude:: doc_code/air_ingest_new.py
+.. literalinclude:: ../doc_code/data_ingest_torch_new.py
     :language: python
     :start-after: __custom__
     :end-before: __custom_end__
@@ -98,14 +132,14 @@ The main difference is that preprocessing is no longer part of the Trainer becau
 
 In the following example with the legacy ``DatasetConfig`` API, we pass two Datasets ("train" and "test") to the Trainer and apply an "add_noise" preprocessor per epoch to the "train" Dataset. Also, we will split the "train" Dataset, but not the "test" Dataset.
 
-.. literalinclude:: doc_code/air_ingest_migration.py
+.. literalinclude:: ../doc_code/data_ingest_torch_migration.py
     :language: python
     :start-after: __legacy_api__
     :end-before: __legacy_api_end__
 
 To migrate this example to the new :class:`DatasetConfig <ray.air.config.DatasetConfig>` API, we apply the "add_noise" preprocesor to the "train" Dataset prior to passing it to the Trainer. Then, we use ``DataConfig(datasets_to_split=["train"])`` to specify which Datasets need to be split. Note that the ``datasets_to_split`` argument is optional. By default, only the "train" Dataset will be split. If you don't want to split the "train" Dataset either, use ``datasets_to_split=[]``.
 
-.. literalinclude:: doc_code/air_ingest_migration.py
+.. literalinclude:: ../doc_code/data_ingest_torch_migration.py
     :language: python
     :start-after: __new_api__
     :end-before: __new_api_end__

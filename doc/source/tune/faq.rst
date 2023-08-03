@@ -280,7 +280,7 @@ on other nodes as well. Please refer to the
 :ref:`placement groups documentation <ray-placement-group-doc-ref>` to learn more
 about these placement strategies.
 
-You can also use the :ref:`ScalingConfig <train-config>` to achieve the same results:
+You can also use the :class:`~ray.tune.ScalingConfig` to achieve the same results:
 
 .. literalinclude:: doc_code/faq.py
     :dedent:

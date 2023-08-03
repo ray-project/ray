@@ -65,6 +65,9 @@ from ray._private.utils import binary_to_hex, hex_to_binary
 
 DEBUG_PRINT_INTERVAL = 5
 _DEFAULT_WIN_MAX_PATH_LENGTH = 260
+TRIAL_STATE_FILENAME = "trial_metadata.json"
+
+
 logger = logging.getLogger(__name__)
 
 
@@ -1165,6 +1168,19 @@ class Trial:
         new_trial.__setstate__(trial_state)
 
         return new_trial
+
+    @classmethod
+    def from_directory(
+        cls, path: Union[str, os.PathLike], stub: bool = False
+    ) -> "Trial":
+        metadata_path = os.path.join(path, TRIAL_STATE_FILENAME)
+        if not os.path.exists(metadata_path):
+            raise FileNotFoundError(
+                f"Can't restore trial from path: File `{metadata_path}` not found."
+            )
+
+        json_state = Path(metadata_path).read_text()
+        return cls.from_json_state(json_state, stub=stub)
 
     def __getstate__(self):
         """Memento generator for Trial.
