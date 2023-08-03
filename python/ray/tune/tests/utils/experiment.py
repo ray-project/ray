@@ -7,7 +7,7 @@ from typing import Any, Dict, Optional, Type
 from ray.air._internal.checkpoint_manager import _TrackedCheckpoint, CheckpointStorage
 from ray.tune import SyncConfig
 from ray.tune.callback import CallbackList
-from ray.tune.execution.trial_runner import TrialRunner, _TuneControllerBase
+from ray.tune.execution.tune_controller import TuneController
 from ray.tune.experiment import Trial
 from ray.tune.utils.callback import _create_default_callbacks
 
@@ -15,7 +15,7 @@ from ray.tune.utils.callback import _create_default_callbacks
 class _ExperimentCheckpointCreator:
     def __init__(
         self,
-        runner_cls: Type[_TuneControllerBase],
+        runner_cls: Type[TuneController],
         experiment_path: str,
         experiment_name: str = "test_experiment",
     ):
@@ -102,7 +102,7 @@ class _ExperimentCheckpointCreator:
 @contextmanager
 def create_test_experiment_checkpoint(
     local_experiment_path: Optional[str] = None,
-    tune_runner_cls: Type[_TuneControllerBase] = TrialRunner,
+    tune_runner_cls: Type[TuneController] = TuneController,
 ):
     local_experiment_path = local_experiment_path or tempfile.mkdtemp()
 

@@ -26,7 +26,7 @@ from ray.air._internal.remote_storage import (
 )
 from ray.train.data_parallel_trainer import DataParallelTrainer
 from ray.tune import Callback, Trainable
-from ray.tune.execution.trial_runner import _find_newest_experiment_checkpoint
+from ray.tune.execution.experiment_state import _find_newest_experiment_checkpoint
 from ray.tune.experiment import Trial
 from ray.tune.result_grid import ResultGrid
 from ray.tune.schedulers.async_hyperband import ASHAScheduler

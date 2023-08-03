@@ -39,7 +39,7 @@ def ray_start_4_cpus_extra():
 
 
 class FrequentPausesScheduler(FIFOScheduler):
-    def on_trial_result(self, trial_runner, trial, result):
+    def on_trial_result(self, tune_controller, trial, result):
         return TrialScheduler.PAUSE
 
 
