@@ -9,7 +9,7 @@ from ray.train.lightning import (
     RayDDPStrategy,
     RayFSDPStrategy,
     RayLightningEnvironment,
-    RayTrainReportCallback
+    RayTrainReportCallback,
 )
 
 from ray.air import session

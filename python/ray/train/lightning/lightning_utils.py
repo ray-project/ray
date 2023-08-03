@@ -13,7 +13,7 @@ import tempfile
 from tempfile import TemporaryDirectory
 from ray.train import Checkpoint
 from packaging.version import Version
-from typing import Any, Dict, Optional, List, Union
+from typing import Any, Dict, Optional
 from torch.utils.data import IterableDataset, DataLoader
 
 import pytorch_lightning as pl
