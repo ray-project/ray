@@ -1,0 +1,11 @@
+2021-04-06 01:53:15,926 INFO tune.py:549 -- Total run time: 3186.96 seconds (3181.20 seconds for the tuning loop).
+Traceback (most recent call last):
+  File "workloads/test_xgboost_sweep.py", line 99, in <module>
+    main()
+  File "workloads/test_xgboost_sweep.py", line 86, in main
+    f"The {name} test took {time_taken:.2f} seconds, but should not " \
+AssertionError: The large xgboost sweep test took 3187.07 seconds, but should not have exceeded 2600.00 seconds. Test failed. 
+
+--- FAILED: LARGE XGBOOST SWEEP ::: 3187.07 <= 2600.00 ---
+
+Note: Target retrospecitvely adjusted to 3500, so test passed.

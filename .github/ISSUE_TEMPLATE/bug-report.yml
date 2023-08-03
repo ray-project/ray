@@ -1,0 +1,62 @@
+name: Bug report
+title: "[<Ray component: Core|RLlib|etc...>] "
+description: Problems and issues with code of Ray
+labels: [bug, triage]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for reporting the problem!
+        Please make sure what you are reporting is a bug with reproducible steps. To ask questions
+        or share ideas, please post on our [Discussion page](https://discuss.ray.io/) instead.
+
+  - type: textarea
+    attributes:
+      label: What happened + What you expected to happen
+      description: Describe 1. the bug 2. expected behavior 3. useful information (e.g., logs)
+      placeholder: >
+        Please provide the context in which the problem occurred and explain what happened. Further,
+        please also explain why you think the behaviour is erroneous. It is extremely helpful if you can
+        copy and paste the fragment of logs showing the exact error messages or wrong behaviour here.
+
+        **NOTE**: please copy and paste texts instead of taking screenshots of them for easy future search.
+    validations:
+      required: true
+
+  - type: textarea
+    attributes:
+      label: Versions / Dependencies
+      description: Please specify the versions of Ray, Python, OS, and other libraries that are used.
+      placeholder: >
+        Please specify the versions of dependencies.
+    validations:
+      required: true
+
+  - type: textarea
+    attributes:
+      label: Reproduction script
+      description: >
+        Please provide a reproducible script. Providing a narrow reproduction (minimal / no external dependencies) will
+        help us triage and address issues in the timely manner!
+      placeholder: >
+        Please provide a short code snippet (less than 50 lines if possible) that can be copy-pasted to
+        reproduce the issue. The snippet should have **no external library dependencies**
+        (i.e., use fake or mock data / environments).
+
+        **NOTE**: If the code snippet cannot be run by itself, the issue will be marked as "needs-repro-script"
+        until the repro instruction is updated.
+    validations:
+      required: true
+
+  - type: dropdown
+    attributes:
+      label: Issue Severity
+      description: |
+        How does this issue affect your experience as a Ray user?
+      multiple: false
+      options:
+          - "Low: It annoys or frustrates me."
+          - "Medium: It is a significant difficulty but I can work around it."
+          - "High: It blocks me from completing my task."
+    validations:
+        required: false

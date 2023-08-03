@@ -1,0 +1,5 @@
+name: example_package
+description: This is the example YAML for my package.
+interface_file: my_pkg/stubs.py
+runtime_env:
+    docker: anyscale-ml/ray-ml:nightly-py38-cpu

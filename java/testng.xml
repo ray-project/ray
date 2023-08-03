@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE suite SYSTEM "https://testng.org/testng-1.0.dtd">
+<suite name="RAY suite" verbose="2" configfailurepolicy="continue">
+    <test name = "RAY test">
+        <packages>
+            <package name = "io.ray.runtime.*" />
+            <package name = "io.ray.test.*" />
+            <package name = "io.ray.serve.*" />
+        </packages>
+    </test>
+    <listeners>
+        <listener class-name="io.ray.test.RayAlterSuiteListener" />
+        <listener class-name="io.ray.test.TestProgressListener" />
+        <listener class-name="io.ray.test.SystemPropertyListener" />
+        <listener class-name="io.ray.test.AnnotationTransformer" />
+    </listeners>
+</suite>

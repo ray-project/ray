@@ -1,0 +1,29 @@
+# An unique identifier for the head node and workers of this cluster.
+cluster_name: minimal
+hi: 1
+# The maximum number of workers nodes to launch in addition to the head
+# node. This takes precedence over min_workers. min_workers default to 0.
+min_workers: 0
+max_workers: 0
+
+provider:
+    type: aws
+    region: us-west-2
+    availability_zone: us-west-2b
+
+# How Ray will authenticate with newly launched nodes.
+auth:
+    ssh_user: ubuntu
+
+head_node:
+    InstanceType: m4.10xlarge
+    ImageId: ami-3b6bce43  # Amazon Deep Learning AMI (Ubuntu)
+
+setup_commands:
+    - error me
+    #     - echo 'export PATH="$HOME/anaconda3/envs/tensorflow_p36/bin:$PATH"' >> ~/.bashrc
+
+# # Command to start ray on the head node. You don't need to change this.
+head_start_ray_commands:
+    - ray stop
+    - ray start --head --port=6379 --object-manager-port=8076 --autoscaling-config=~/ray_bootstrap_config.yaml

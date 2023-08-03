@@ -1,0 +1,25 @@
+#!/bin/bash
+# This script is executed by Buildkite on the host machine.
+# In contrast, our build jobs are run in Docker containers.
+# This means that even though our build jobs write to
+# `/artifact-mount`, the directory on the host machine is
+# actually `/tmp/artifacts`.
+# Here, we cat all text files in artifact-mount/test-summaries
+# and upload them as a Buildkite annotation.
+# These files contain a condensed summary of all failing pytest
+# tests to make it easy for users to see which tests are failing.
+# Because we upload them to Buildkite, we don't need to
+# upload them as artifacts and delete them afterwards.
+set -e
+if [ -d "/tmp/artifacts/test-summaries" ] && [ "$(ls -A /tmp/artifacts/test-summaries)" ]; then
+    # Only upload annotations if there are at least 2 files in the directory:
+    # 1 header and 1 failed test.
+    if [ "$(find /tmp/artifacts/test-summaries -maxdepth 1 -name '*.txt' | wc -l)" -ge 2 ]; then
+      cat /tmp/artifacts/test-summaries/*.txt | buildkite-agent annotate --job "${BUILDKITE_JOB_ID}" --append --style error --context "${BUILDKITE_JOB_ID}"
+    fi
+
+    # Remove test summaries files (don't actually upload as artifacts)
+    # This has to be done with docker to avoid permission issues
+    echo "--- Cleaning up"
+    docker run --rm -v /tmp/artifacts:/artifact-mount alpine:latest /bin/sh -c 'rm -rf /artifact-mount/test-summaries' || true
+fi

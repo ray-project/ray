@@ -1,0 +1,21 @@
+# An unique identifier for the head node and workers of this cluster.
+cluster_name: minimal
+
+# The maximum number of workers nodes to launch in addition to the head
+# node. min_workers default to 0.
+max_workers: 1
+
+# Cloud-provider specific configuration.
+provider:
+    type: azure
+    location: westus2
+    resource_group: ray-cluster
+
+# How Ray will authenticate with newly launched nodes.
+auth:
+    ssh_user: ubuntu
+    # you must specify paths to matching private and public key pair files
+    # use `ssh-keygen -t rsa -b 4096` to generate a new ssh key pair
+    ssh_private_key: ~/.ssh/id_rsa
+    # changes to this should match what is specified in file_mounts
+    ssh_public_key: ~/.ssh/id_rsa.pub

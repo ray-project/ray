@@ -1,0 +1,10 @@
+{
+  "tasks_per_second": 3.0336276080942604,
+  "num_tasks": 1000,
+  "time": 629.6383502483368,
+  "success": "1",
+  "_runtime": 641.4714171886444,
+  "_session_url": "https://beta.anyscale.com/o/anyscale-internal/projects/prj_2xR6uT6t7jJuu1aCwWMsle/clusters/ses_ADWRtxdqXwYxU462XnnBmHxr",
+  "_commit_url": "https://s3-us-west-2.amazonaws.com/ray-wheels/releases/1.9.0/ebd189758eec941abe202b55040d349e8f3e36e6/ray-1.9.0-cp37-cp37m-manylinux2014_x86_64.whl",
+  "_stable": true
+}

@@ -1,0 +1,7 @@
+# An unique identifier for the head node and workers of this cluster.
+cluster_name: aws-example-minimal
+
+# Cloud-provider specific configuration.
+provider:
+    type: aws
+    region: us-west-2

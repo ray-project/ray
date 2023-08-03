@@ -1,0 +1,89 @@
+# This is a RayCluster configuration for exploration of the 100Gi Ray AIR XGBoostTrainer benchmark.
+
+# This configuration here modifies the file xgboost-benchmark.yaml in this directory
+# to demonstrate autoscaling.
+#
+# See the discussion in xgboost-benchmark.yaml for further details.
+---
+apiVersion: ray.io/v1alpha1
+kind: RayCluster
+metadata:
+  labels:
+    controller-tools.k8s.io: "1.0"
+  name: raycluster-xgboost-benchmark
+spec:
+  # The KubeRay operator will insert the Ray autoscaler sidecar
+  # into the Ray head node's pod config:
+  enableInTreeAutoscaling: true
+  # The version of Ray you are using. Make sure all Ray containers are running this version of Ray.
+  rayVersion: '2.0.0'
+  headGroupSpec:
+    serviceType: ClusterIP
+    rayStartParams:
+      dashboard-host: '0.0.0.0'
+      block: 'true'
+    template:
+      spec:
+        containers:
+        # The Ray head container
+        - name: ray-head
+          image: rayproject/ray-ml:2.0.0
+          imagePullPolicy: Always
+          # Optimal resource allocation will depend on your Kubernetes infrastructure and might
+          # require some experimentation.
+          # Setting requests=limits is recommended with Ray. K8s limits are used for Ray-internal
+          # resource accounting. K8s requests are not used by Ray.
+          resources:
+            limits:
+              cpu: "14"
+              memory: "54Gi"
+              # The node that hosts this pod should have at least 1000Gi disk space,
+              # for data set storage.
+              ephemeral-storage: "700Gi"
+            requests:
+              cpu: "14"
+              memory: "54Gi"
+              ephemeral-storage: "700Gi"
+          lifecycle:
+            preStop:
+              exec:
+                command: ["/bin/sh","-c","ray stop"]
+  workerGroupSpecs:
+  # Start with 0 workers. Allow scaling up to 9 workers.
+  - replicas: 0
+    minReplicas: 0
+    maxReplicas: 9
+    groupName: large-group
+    # the following params are used to complete the ray start: ray start --block --node-ip-address= ...
+    rayStartParams:
+      block: 'true'
+    template:
+      spec:
+        containers:
+        - name: machine-learning # must consist of lower case alphanumeric characters or '-', and must start and end with an alphanumeric character (e.g. 'my-name',  or '123-abc')
+          image: rayproject/ray-ml:2.0.0
+          # Optimal resource allocation will depend on your Kubernetes infrastructure and might
+          # require some experimentation.
+          # Setting requests=limits is recommended with Ray. K8s limits are used for Ray-internal
+          # resource accounting. K8s requests are not used by Ray.
+          resources:
+            limits:
+              cpu: "14"
+              memory: "54Gi"
+              # The node that hosts this pod should have at least 1000Gi disk space,
+              # for data set storage.
+              ephemeral-storage: "700Gi"
+            requests:
+              cpu: "14"
+              memory: "54Gi"
+              ephemeral-storage: "700Gi"
+          lifecycle:
+            preStop:
+              exec:
+                command: ["/bin/sh","-c","ray stop"]
+        # Waits for availability of the Ray head's GCS service.
+        initContainers:
+        # the env var $RAY_IP is set by the operator, with the value of the head service name
+        - name: init-myservice
+          image: busybox:1.28
+          command: ['sh', '-c', "until nslookup $RAY_IP.$(cat /var/run/secrets/kubernetes.io/serviceaccount/namespace).svc.cluster.local; do echo waiting for myservice; sleep 2; done"]

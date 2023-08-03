@@ -1,0 +1,12 @@
+{
+  "tasks_per_second": 27.679832855914693,
+  "num_tasks": 10000,
+  "time": 661.273857831955,
+  "success": "1",
+  "_peak_memory": 4.93,
+  "_peak_process_memory": "PID\tMEM\tCOMMAND\n4288\t0.65GiB\tpython distributed/test_many_tasks.py --num-tasks=10000\n168\t0.52GiB\t/home/ray/anaconda3/lib/python3.7/site-packages/ray/core/src/ray/thirdparty/redis/src/redis-server *\n178\t0.49GiB\t/home/ray/anaconda3/lib/python3.7/site-packages/ray/core/src/ray/gcs/gcs_server --redis_address=172.\n202\t0.4GiB\t/home/ray/anaconda3/bin/python -u /home/ray/anaconda3/lib/python3.7/site-packages/ray/dashboard/dash\n62\t0.11GiB\t/home/ray/anaconda3/bin/python /home/ray/anaconda3/bin/anyscale session web_terminal_server --deploy\n278\t0.11GiB\t/home/ray/anaconda3/bin/python -u /home/ray/anaconda3/lib/python3.7/site-packages/ray/dashboard/agen\n432\t0.11GiB\t/home/ray/anaconda3/bin/python /home/ray/anaconda3/bin/anyscale session auth_start\n4327\t0.05GiB\tray::MemoryMonitorActor.run()\n392\t0.05GiB\t/home/ray/anaconda3/bin/python /home/ray/anaconda3/bin/jupyter-notebook --NotebookApp.token=27b2b1e4\n63\t0.05GiB\t/home/ray/anaconda3/bin/python /home/ray/anaconda3/bin/jupyter-notebook --NotebookApp.token=27b2b1e4",
+  "_runtime": 679.0291292667389,
+  "_session_url": "https://beta.anyscale.com/o/anyscale-internal/projects/prj_2xR6uT6t7jJuu1aCwWMsle/clusters/ses_xFphzaGBKCkgCe7SFkSNvv8B",
+  "_commit_url": "https://s3-us-west-2.amazonaws.com/ray-wheels/releases/1.10.0/5ea565317a8104c04ae7892bb9bb41c6d72f12df/ray-1.10.0-cp37-cp37m-manylinux2014_x86_64.whl",
+  "_stable": true
+}

@@ -1,0 +1,50 @@
+[2m[36m(pid=3615, ip=172.31.66.245)[0m   File "python/ray/_raylet.pyx", line 486, in ray._raylet.execute_task.function_executor
+[2m[36m(pid=3615, ip=172.31.66.245)[0m   File "/home/ray/anaconda3/lib/python3.7/site-packages/ray/_private/function_manager.py", line 563, in actor_method_executor
+[2m[36m(pid=3615, ip=172.31.66.245)[0m     return method(__ray_actor, *args, **kwargs)
+[2m[36m(pid=3615, ip=172.31.66.245)[0m   File "stress_tests/test_dead_actors.py", line 28, in ping
+[2m[36m(pid=3615, ip=172.31.66.245)[0m SystemExit: -1
+2021-08-25 00:26:11,358	WARNING worker.py:1215 -- A worker died or was killed while executing a task by an unexpected system error. To troubleshoot the problem, check the logs for the dead worker. RayTask ID: ffffffffffffffffd8b5032c3d4f7a82841bf0d701000000 Worker ID: 4aae639cb0517941ee6a76f510cf203cc3e6238c1a4959133b94e75f Node ID: 2cda12d8ae2a084551458cb2a351fcbef83cbbc299b1ef080a474133 Worker IP address: 172.31.82.117 Worker port: 10124 Worker PID: 3021
+[2m[36m(pid=3021, ip=172.31.82.117)[0m 2021-08-25 00:26:11,349	ERROR worker.py:428 -- SystemExit was raised from the worker
+[2m[36m(pid=3021, ip=172.31.82.117)[0m Traceback (most recent call last):
+[2m[36m(pid=3021, ip=172.31.82.117)[0m   File "python/ray/_raylet.pyx", line 640, in ray._raylet.task_execution_handler
+[2m[36m(pid=3021, ip=172.31.82.117)[0m   File "python/ray/_raylet.pyx", line 488, in ray._raylet.execute_task
+[2m[36m(pid=3021, ip=172.31.82.117)[0m   File "python/ray/_raylet.pyx", line 525, in ray._raylet.execute_task
+[2m[36m(pid=3021, ip=172.31.82.117)[0m   File "python/ray/_raylet.pyx", line 532, in ray._raylet.execute_task
+[2m[36m(pid=3021, ip=172.31.82.117)[0m   File "python/ray/_raylet.pyx", line 536, in ray._raylet.execute_task
+[2m[36m(pid=3021, ip=172.31.82.117)[0m   File "python/ray/_raylet.pyx", line 486, in ray._raylet.execute_task.function_executor
+[2m[36m(pid=3021, ip=172.31.82.117)[0m   File "/home/ray/anaconda3/lib/python3.7/site-packages/ray/_private/function_manager.py", line 563, in actor_method_executor
+[2m[36m(pid=3021, ip=172.31.82.117)[0m     return method(__ray_actor, *args, **kwargs)
+[2m[36m(pid=3021, ip=172.31.82.117)[0m   File "stress_tests/test_dead_actors.py", line 28, in ping
+[2m[36m(pid=3021, ip=172.31.82.117)[0m SystemExit: -1
+2021-08-25 00:26:12,652	WARNING worker.py:1215 -- A worker died or was killed while executing a task by an unexpected system error. To troubleshoot the problem, check the logs for the dead worker. RayTask ID: ffffffffffffffff0a017da19802a9ca28988a1701000000 Worker ID: 6de11bdd1e48682d0df1414a30306ab5962f1a811762f6483b213245 Node ID: c4c0d6c36c195a2df56f8aa08332c20e3303df4e348de0163d987741 Worker IP address: 172.31.66.245 Worker port: 10154 Worker PID: 3657
+[2m[36m(pid=3657, ip=172.31.66.245)[0m 2021-08-25 00:26:12,647	ERROR worker.py:428 -- SystemExit was raised from the worker
+[2m[36m(pid=3657, ip=172.31.66.245)[0m Traceback (most recent call last):
+[2m[36m(pid=3657, ip=172.31.66.245)[0m   File "python/ray/_raylet.pyx", line 640, in ray._raylet.task_execution_handler
+[2m[36m(pid=3657, ip=172.31.66.245)[0m   File "python/ray/_raylet.pyx", line 488, in ray._raylet.execute_task
+[2m[36m(pid=3657, ip=172.31.66.245)[0m   File "python/ray/_raylet.pyx", line 525, in ray._raylet.execute_task
+[2m[36m(pid=3657, ip=172.31.66.245)[0m   File "python/ray/_raylet.pyx", line 532, in ray._raylet.execute_task
+[2m[36m(pid=3657, ip=172.31.66.245)[0m   File "python/ray/_raylet.pyx", line 536, in ray._raylet.execute_task
+[2m[36m(pid=3657, ip=172.31.66.245)[0m   File "python/ray/_raylet.pyx", line 486, in ray._raylet.execute_task.function_executor
+[2m[36m(pid=3657, ip=172.31.66.245)[0m   File "/home/ray/anaconda3/lib/python3.7/site-packages/ray/_private/function_manager.py", line 563, in actor_method_executor
+[2m[36m(pid=3657, ip=172.31.66.245)[0m     return method(__ray_actor, *args, **kwargs)
+[2m[36m(pid=3657, ip=172.31.66.245)[0m   File "stress_tests/test_dead_actors.py", line 28, in ping
+[2m[36m(pid=3657, ip=172.31.66.245)[0m SystemExit: -1
+2021-08-25 00:26:13,907	WARNING worker.py:1215 -- A worker died or was killed while executing a task by an unexpected system error. To troubleshoot the problem, check the logs for the dead worker. RayTask ID: ffffffffffffffffe62057dbd62605f076de5d3301000000 Worker ID: 8bcf9d4ecc267670d785b6c406cee8853f9d62f40d8fe4d83b23b7c0 Node ID: c4c0d6c36c195a2df56f8aa08332c20e3303df4e348de0163d987741 Worker IP address: 172.31.66.245 Worker port: 10155 Worker PID: 3702
+INFO:__main__:Finished trial 99
+Finished in: 141.16861081123352s
+Average iteration time: 1.411683669090271s
+Max iteration time: 3.7091996669769287s
+Min iteration time: 0.027825593948364258s
+PASSED.
+[2m[36m(pid=3702, ip=172.31.66.245)[0m 2021-08-25 00:26:13,898	ERROR worker.py:428 -- SystemExit was raised from the worker
+[2m[36m(pid=3702, ip=172.31.66.245)[0m Traceback (most recent call last):
+[2m[36m(pid=3702, ip=172.31.66.245)[0m   File "python/ray/_raylet.pyx", line 640, in ray._raylet.task_execution_handler
+[2m[36m(pid=3702, ip=172.31.66.245)[0m   File "python/ray/_raylet.pyx", line 488, in ray._raylet.execute_task
+[2m[36m(pid=3702, ip=172.31.66.245)[0m   File "python/ray/_raylet.pyx", line 525, in ray._raylet.execute_task
+[2m[36m(pid=3702, ip=172.31.66.245)[0m   File "python/ray/_raylet.pyx", line 532, in ray._raylet.execute_task
+[2m[36m(pid=3702, ip=172.31.66.245)[0m   File "python/ray/_raylet.pyx", line 536, in ray._raylet.execute_task
+[2m[36m(pid=3702, ip=172.31.66.245)[0m   File "python/ray/_raylet.pyx", line 486, in ray._raylet.execute_task.function_executor
+[2m[36m(pid=3702, ip=172.31.66.245)[0m   File "/home/ray/anaconda3/lib/python3.7/site-packages/ray/_private/function_manager.py", line 563, in actor_method_executor
+[2m[36m(pid=3702, ip=172.31.66.245)[0m     return method(__ray_actor, *args, **kwargs)
+[2m[36m(pid=3702, ip=172.31.66.245)[0m   File "stress_tests/test_dead_actors.py", line 28, in ping
+[2m[36m(pid=3702, ip=172.31.66.245)[0m SystemExit: -1

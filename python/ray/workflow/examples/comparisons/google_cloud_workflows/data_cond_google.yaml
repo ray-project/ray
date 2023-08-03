@@ -1,0 +1,54 @@
+# https://github.com/GoogleCloudPlatform/workflows-samples/blob/main/src/step_conditional_jump.workflows.json
+[
+  {
+    "firstStep": {
+      "call": "http.get",
+      "args": {
+        "url": "https://www.example.com/callA"
+      },
+      "result": "firstResult"
+    }
+  },
+  {
+    "whereToJump": {
+      "switch": [
+        {
+          "condition": "${firstResult.body.SomeField < 10}",
+          "next": "small"
+        },
+        {
+          "condition": "${firstResult.body.SomeField < 100}",
+          "next": "medium"
+        }
+      ],
+      "next": "large"
+    }
+  },
+  {
+    "small": {
+      "call": "http.get",
+      "args": {
+        "url": "https://www.example.com/SmallFunc"
+      },
+      "next": "end"
+    }
+  },
+  {
+    "medium": {
+      "call": "http.get",
+      "args": {
+        "url": "https://www.example.com/MediumFunc"
+      },
+      "next": "end"
+    }
+  },
+  {
+    "large": {
+      "call": "http.get",
+      "args": {
+        "url": "https://www.example.com/LargeFunc"
+      },
+      "next": "end"
+    }
+  }
+]

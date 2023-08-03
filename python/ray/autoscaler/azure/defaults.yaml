@@ -1,0 +1,152 @@
+# An unique identifier for the head node and workers of this cluster.
+cluster_name: default
+
+# The maximum number of workers nodes to launch in addition to the head
+# node.
+max_workers: 2
+
+# The autoscaler will scale up the cluster faster with higher upscaling speed.
+# E.g., if the task requires adding more nodes then autoscaler will gradually
+# scale up the cluster in chunks of upscaling_speed*currently_running_nodes.
+# This number should be > 0.
+upscaling_speed: 1.0
+
+# This executes all commands on all nodes in the docker container,
+# and opens all the necessary ports to support the Ray cluster.
+# Empty object means disabled.
+docker: {}
+
+# If a node is idle for this many minutes, it will be removed.
+idle_timeout_minutes: 5
+
+# Cloud-provider specific configuration.
+provider:
+    type: azure
+    # https://azure.microsoft.com/en-us/global-infrastructure/locations
+    location: westus2
+    resource_group: ray-cluster
+    # set subscription id otherwise the default from az cli will be used
+    # subscription_id: 00000000-0000-0000-0000-000000000000
+    # set unique subnet mask or a random mask will be used
+    # subnet_mask: 10.0.0.0/16
+    # set unique id for resources in this cluster
+    # if not set a default id will be generated based on the resource group and cluster name
+    # unique_id: RAY1
+
+# How Ray will authenticate with newly launched nodes.
+auth:
+    ssh_user: ubuntu
+    # you must specify paths to matching private and public key pair files
+    # use `ssh-keygen -t rsa -b 4096` to generate a new ssh key pair
+    ssh_private_key: ~/.ssh/id_rsa
+    # changes to this should match what is specified in file_mounts
+    ssh_public_key: ~/.ssh/id_rsa.pub
+
+# More specific customization to node configurations can be made using the ARM template azure-vm-template.json file
+# See documentation here: https://docs.microsoft.com/en-us/azure/templates/microsoft.compute/2019-03-01/virtualmachines
+# Changes to the local file will be used during deployment of the head node, however worker nodes deployment occurs
+# on the head node, so changes to the template must be included in the wheel file used in setup_commands section below
+
+# Tell the autoscaler the allowed node types and the resources they provide.
+# The key is the name of the node type, which is just for debugging purposes.
+# The node config specifies the launch config and physical instance type.
+available_node_types:
+    ray.head.default:
+        resources: {"CPU": 2}
+        # Provider-specific config, e.g. instance type.
+        node_config:
+            azure_arm_parameters:
+                vmSize: Standard_D2s_v3
+                # List images https://docs.microsoft.com/en-us/azure/virtual-machines/linux/cli-ps-findimage
+                imagePublisher: microsoft-dsvm
+                imageOffer: ubuntu-1804
+                imageSku: 1804-gen2
+                imageVersion: latest
+
+    ray.worker.default:
+        # The minimum number of nodes of this type to launch.
+        # This number should be >= 0.
+        min_workers: 0
+        # The resources provided by this node type.
+        resources: {"CPU": 2}
+        # Provider-specific config, e.g. instance type.
+        node_config:
+            azure_arm_parameters:
+                vmSize: Standard_D2s_v3
+                # List images https://docs.microsoft.com/en-us/azure/virtual-machines/linux/cli-ps-findimage
+                imagePublisher: microsoft-dsvm
+                imageOffer: ubuntu-1804
+                imageSku: 1804-gen2
+                imageVersion: latest
+                # comment lines below to not use Spot instances
+                priority: Spot
+                # set a maximum price for spot instances if desired
+                # billingProfile:
+                #     maxPrice: -1
+
+# Specify the node type of the head node (as configured above).
+head_node_type: ray.head.default
+
+# Files or directories to copy to the head and worker nodes. The format is a
+# dictionary from REMOTE_PATH: LOCAL_PATH, e.g.
+file_mounts: {
+#    "/path1/on/remote/machine": "/path1/on/local/machine",
+#    "/path2/on/remote/machine": "/path2/on/local/machine",
+     "~/.ssh/id_rsa.pub": "~/.ssh/id_rsa.pub"
+}
+
+# Files or directories to copy from the head node to the worker nodes. The format is a
+# list of paths. The same path on the head node will be copied to the worker node.
+# This behavior is a subset of the file_mounts behavior. In the vast majority of cases
+# you should just use file_mounts. Only use this if you know what you're doing!
+cluster_synced_files: []
+
+# Whether changes to directories in file_mounts or cluster_synced_files in the head node
+# should sync to the worker node continuously
+file_mounts_sync_continuously: False
+
+# Patterns for files to exclude when running rsync up or rsync down
+rsync_exclude: []
+
+# Pattern files to use for filtering out files when running rsync up or rsync down. The file is searched for
+# in the source directory and recursively through all subdirectories. For example, if .gitignore is provided
+# as a value, the behavior will match git's behavior for finding and using .gitignore files.
+rsync_filter: []
+
+# List of commands that will be run before `setup_commands`. If docker is
+# enabled, these commands will run outside the container and before docker
+# is setup.
+initialization_commands:
+    # get rid of annoying Ubuntu message
+    - touch ~/.sudo_as_admin_successful
+
+# List of shell commands to run to set up nodes.
+setup_commands:
+    # Note: if you're developing Ray, you probably want to create an AMI that
+    # has your Ray repo pre-cloned. Then, you can replace the pip installs
+    # below with a git checkout <your_sha> (and possibly a recompile).
+    - (which conda && echo 'eval "$(conda shell.bash hook)"' >> ~/.bashrc) || true
+    # - (conda activate py38_pytorch &> /dev/null && echo 'conda activate py38_pytorch' >> ~/.bashrc) || true
+    - (conda activate py38_tensorflow &> /dev/null && echo 'conda activate py38_tensorflow' >> ~/.bashrc) || true
+    - which ray || pip install -U "ray[default] @ https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp38-cp38-manylinux2014_x86_64.whl"
+    # Consider uncommenting these if you also want to run apt-get commands during setup
+    # - sudo pkill -9 apt-get || true
+    # - sudo pkill -9 dpkg || true
+    # - sudo dpkg --configure -a
+
+# Custom commands that will be run on the head node after common setup.
+head_setup_commands:
+    - pip install -U azure-cli-core==2.29.1 azure-identity==1.7.0 azure-mgmt-compute==23.1.0 azure-mgmt-network==19.0.0 azure-mgmt-resource==20.0.0 msrestazure==0.6.4
+
+# Custom commands that will be run on worker nodes after common setup.
+worker_setup_commands: []
+
+# Command to start ray on the head node. You don't need to change this.
+head_start_ray_commands:
+    - ray stop
+    - ulimit -n 65536; ray start --head --port=6379 --object-manager-port=8076 --autoscaling-config=~/ray_bootstrap_config.yaml --dashboard-host=0.0.0.0
+
+# Command to start ray on worker nodes. You don't need to change this.
+worker_start_ray_commands:
+    - ray stop
+    - ulimit -n 65536; ray start --address=$RAY_HEAD_IP:6379 --object-manager-port=8076

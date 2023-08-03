@@ -1,0 +1,48 @@
+# This is a Ray cluster configuration for exploration of the 100Gi Ray AIR XGBoostTrainer benchmark.
+
+# The configuration includes 1 Ray head node and 9 worker nodes.
+
+cluster_name: ray-cluster-xgboost-benchmark
+
+# The maximum number of worker nodes to launch in addition to the head
+# node.
+max_workers: 9
+
+docker:
+  image: "rayproject/ray-ml:2.0.0"
+  container_name: "ray_container"
+
+provider:
+  type: aws
+  region: us-west-2
+  availability_zone: us-west-2a
+
+auth:
+  ssh_user: ubuntu
+
+available_node_types:
+  # Configurations for the head node.
+  head:
+    node_config:
+      InstanceType: m5.4xlarge
+      ImageId: latest_dlami
+      BlockDeviceMappings:
+        - DeviceName: /dev/sda1
+          Ebs:
+            VolumeSize: 1000
+
+  # Configurations for the worker nodes.
+  worker:
+    # To experiment with autoscaling, set min_workers to 0.
+    # min_workers: 0
+    min_workers: 9
+    max_workers: 9
+    node_config:
+      InstanceType: m5.4xlarge
+      ImageId: latest_dlami
+      BlockDeviceMappings:
+        - DeviceName: /dev/sda1
+          Ebs:
+            VolumeSize: 1000
+
+head_node_type: head

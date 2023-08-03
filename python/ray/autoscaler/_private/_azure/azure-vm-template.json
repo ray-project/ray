@@ -1,0 +1,277 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {
+        "vmName": {
+            "type": "string",
+            "metadata": {
+                "description": "The name of you Virtual Machine."
+            }
+        },
+        "adminUsername": {
+            "type": "string",
+            "metadata": {
+                "description": "Username for the Virtual Machine."
+            }
+        },
+        "publicKey": {
+            "type": "securestring",
+            "metadata": {
+                "description": "SSH Key for the Virtual Machine"
+            }
+        },
+        "imagePublisher": {
+            "type": "string",
+            "metadata": {
+                "description": "The publisher of the VM image"
+            }
+        },
+        "imageOffer": {
+            "type": "string",
+            "metadata": {
+                "description": "The offer of the VM image"
+            }
+        },
+        "imageSku": {
+            "type": "string",
+            "metadata": {
+                "description": "The sku of the VM image"
+            }
+        },
+        "imageVersion": {
+            "type": "string",
+            "metadata": {
+                "description": "The version of the VM image"
+            }
+        },
+        "vmSize": {
+            "type": "string",
+            "metadata": {
+                "description": "The size of the VM"
+            }
+        },
+        "vmTags": { 
+            "type": "object",
+            "metadata": {
+                "description": "Tags for the VM"
+            }
+        },
+        "vmCount": {
+            "type": "int",
+            "metadata": {
+                "description": "Number of VMs to deploy"
+            }
+        },
+        "provisionPublicIp": {
+            "type": "bool",
+            "defaultValue": true,
+            "metadata": {
+                "description": "If true creates a public ip"
+            }
+        },
+        "priority": {
+            "type": "string",
+            "defaultValue": "Regular",
+            "metadata": {
+                "description": "Specifies the priority for the virtual machine."
+            }
+        },
+        "billingProfile": {
+            "type": "object",
+            "defaultValue": {},
+            "metadata": {
+                "description": "Specifies the maximum price to pay for Azure Spot VM."
+            }
+        },
+        "msi": {
+            "type": "string",
+            "metadata": {
+                "description": "Managed service identity resource id."
+            }
+        },
+        "nsg": {
+            "type": "string",
+            "metadata": {
+                "description": "Network security group resource id."
+            }
+        },
+        "subnet": {
+            "type": "string",
+            "metadata": {
+                "descriptions": "Subnet resource id."
+            }
+        }
+    },
+    "variables": {
+        "location": "[resourceGroup().location]",
+        "networkInterfaceNamePrivate": "[concat(parameters('vmName'), '-nic')]",
+        "networkInterfaceNamePublic": "[concat(parameters('vmName'), '-nic-public')]",
+        "networkInterfaceName": "[if(parameters('provisionPublicIp'), variables('networkInterfaceNamePublic'), variables('networkInterfaceNamePrivate'))]",
+        "networkIpConfig": "[guid(resourceGroup().id, parameters('vmName'))]",
+        "osDiskType": "Standard_LRS",
+        "publicIpAddressName": "[concat(parameters('vmName'), '-ip')]"
+    },
+    "resources": [
+        {
+            "type": "Microsoft.Network/networkInterfaces",
+            "apiVersion": "2020-06-01",
+            "name": "[concat(variables('networkInterfaceNamePublic'), copyIndex())]",
+            "location": "[variables('location')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/publicIpAddresses/', concat(variables('publicIpAddressName'), copyIndex()))]"
+            ],
+            "copy": {
+                "name": "NICPublicCopy",
+                "count": "[parameters('vmCount')]"
+            },
+            "properties": {
+                "ipConfigurations": [
+                    {
+                        "name": "[variables('networkIpConfig')]",
+                        "properties": {
+                            "subnet": {
+                                "id": "[parameters('subnet')]"
+                            },
+                            "privateIPAllocationMethod": "Dynamic",
+                            "publicIpAddress": {
+                                "id": "[resourceId('Microsoft.Network/publicIPAddresses', concat(variables('publicIPAddressName'), copyIndex()))]"
+                            }
+                        }
+                    }
+                ],
+                "networkSecurityGroup": {
+                    "id": "[parameters('nsg')]"
+                }
+            },
+            "condition": "[parameters('provisionPublicIp')]"
+        },
+        {
+            "type": "Microsoft.Network/networkInterfaces",
+            "apiVersion": "2020-06-01",
+            "name": "[concat(variables('networkInterfaceNamePrivate'), copyIndex())]",
+            "location": "[variables('location')]",
+            "copy": {
+                "name": "NICPrivateCopy",
+                "count": "[parameters('vmCount')]"
+            },
+            "properties": {
+                "ipConfigurations": [
+                    {
+                        "name": "[variables('networkIpConfig')]",
+                        "properties": {
+                            "subnet": {
+                                "id": "[parameters('subnet')]"
+                            },
+                            "privateIPAllocationMethod": "Dynamic"
+                        }
+                    }
+                ],
+                "networkSecurityGroup": {
+                    "id": "[parameters('nsg')]"
+                }
+            },
+            "condition": "[not(parameters('provisionPublicIp'))]"
+        },
+        {
+            "type": "Microsoft.Network/publicIpAddresses",
+            "apiVersion": "2019-02-01",
+            "name": "[concat(variables('publicIpAddressName'), copyIndex())]",
+            "location": "[variables('location')]",
+            "properties": {
+                "publicIpAllocationMethod": "Static",
+                "publicIPAddressVersion": "IPv4"
+            },
+            "copy": {
+                "name": "PublicIpCopy",
+                "count": "[parameters('vmCount')]"
+            },
+            "sku": {
+                "name": "Basic",
+                "tier": "Regional"
+            },
+            "condition": "[parameters('provisionPublicIp')]"
+        },
+        {
+            "type": "Microsoft.Compute/virtualMachines",
+            "apiVersion": "2019-03-01",
+            "name": "[concat(parameters('vmName'), copyIndex())]",
+            "location": "[variables('location')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/networkInterfaces/', concat(variables('networkInterfaceName'), copyIndex()))]"
+            ],
+            "copy": {
+                "name": "VmCopy",
+                "count": "[parameters('vmCount')]"
+            },
+            "tags": "[parameters('vmTags')]",
+            "properties": {
+                "hardwareProfile": {
+                    "vmSize": "[parameters('vmSize')]"
+                },
+                "storageProfile": {
+                    "osDisk": {
+                        "createOption": "fromImage",
+                        "managedDisk": {
+                            "storageAccountType": "[variables('osDiskType')]"
+                        }
+                    },
+                    "imageReference": {
+                        "publisher": "[parameters('imagePublisher')]",
+                        "offer": "[parameters('imageOffer')]",
+                        "sku": "[parameters('imageSku')]",
+                        "version": "[parameters('imageVersion')]"
+                    }
+                },
+                "networkProfile": {
+                    "networkInterfaces": [
+                        {
+                            "id": "[resourceId('Microsoft.Network/networkInterfaces', concat(variables('networkInterfaceName'), copyIndex()))]"
+                        }
+                    ]
+                },
+                "osProfile": {
+                    "computerName": "[concat(parameters('vmName'), copyIndex())]",
+                    "adminUsername": "[parameters('adminUsername')]",
+                    "adminPassword": "[parameters('publicKey')]",
+                    "linuxConfiguration": {
+                        "disablePasswordAuthentication": true,
+                        "ssh": {
+                            "publicKeys": [
+                                {
+                                    "path": "[concat('/home/', parameters('adminUsername'), '/.ssh/authorized_keys')]",
+                                    "keyData": "[parameters('publicKey')]"
+                                }
+                            ]
+                        }
+                    }
+                },
+                "priority": "[parameters('priority')]",
+                "billingProfile": "[parameters('billingProfile')]"
+            },
+            "identity": {
+                "type": "UserAssigned",
+                "userAssignedIdentities": {
+                    "[parameters('msi')]": {
+                    }
+                }
+            }
+        }
+    ],
+    "outputs": {
+        "publicIp": {
+            "type": "array",
+            "copy": {
+                "count": "[parameters('vmCount')]",
+                "input": "[reference(concat(variables('publicIpAddressName'), copyIndex())).ipAddress]"
+            },
+            "condition": "[parameters('provisionPublicIp')]"
+        },
+        "privateIp": {
+            "type": "array",
+            "copy": {
+                "count": "[parameters('vmCount')]",
+                "input": "[reference(concat(variables('networkInterfaceName'), copyIndex())).ipConfigurations[0].properties.privateIPAddress]"
+            }
+        }
+    }
+}

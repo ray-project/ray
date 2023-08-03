@@ -1,0 +1,114 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {
+        "clusterId": {
+            "type": "string",
+            "metadata": {
+                "description": "Unique string appended to resource names to isolate resources from different ray clusters."
+            }
+        },
+        "subnet": {
+            "type": "string",
+            "metadata": {
+                "description": "Subnet parameters."
+            }
+        }
+    },
+    "variables": {
+        "contributor": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'b24988ac-6180-42a0-ab88-20f7382dd24c')]",
+        "location": "[resourceGroup().location]",
+        "msiName": "[concat('ray-', parameters('clusterId'), '-msi')]",
+        "roleAssignmentName": "[concat('ray-', parameters('clusterId'), '-ra')]",
+        "nsgName": "[concat('ray-', parameters('clusterId'), '-nsg')]",
+        "nsg": "[resourceId('Microsoft.Network/networkSecurityGroups', variables('nsgName'))]",
+        "vnetName": "[concat('ray-', parameters('clusterId'), '-vnet')]",
+        "subnetName": "[concat('ray-', parameters('clusterId'), '-subnet')]"
+    },
+    "resources": [
+       {
+            "type": "Microsoft.ManagedIdentity/userAssignedIdentities",
+            "apiVersion": "2018-11-30",
+            "location": "[variables('location')]",
+            "name": "[variables('msiName')]"
+        },
+        {
+            "type": "Microsoft.Authorization/roleAssignments",
+            "apiVersion": "2020-08-01-preview",
+            "name": "[guid(variables('roleAssignmentName'))]",
+            "properties": {
+                "principalId": "[reference(variables('msiName')).principalId]",
+                "roleDefinitionId": "[variables('contributor')]",
+                "scope": "[resourceGroup().id]",
+                "principalType": "ServicePrincipal"
+            },
+            "dependsOn": [
+                "[variables('msiName')]"
+            ]
+        },
+        {
+            "type": "Microsoft.Network/networkSecurityGroups",
+            "apiVersion": "2019-02-01",
+            "name": "[variables('nsgName')]",
+            "location": "[variables('location')]",
+            "properties": {
+                "securityRules": [
+                    {
+                        "name": "SSH",
+                        "properties": {
+                            "priority": 1000,
+                            "protocol": "TCP",
+                            "access": "Allow",
+                            "direction": "Inbound",
+                            "sourceAddressPrefix": "*",
+                            "sourcePortRange": "*",
+                            "destinationAddressPrefix": "*",
+                            "destinationPortRange": "22"
+                        }
+                    }
+                ]
+            }
+        },
+        {
+            "type": "Microsoft.Network/virtualNetworks",
+            "apiVersion": "2019-11-01",
+            "name": "[variables('vnetName')]",
+            "location": "[variables('location')]",
+            "properties": {
+                "addressSpace": {
+                    "addressPrefixes": [
+                        "[parameters('subnet')]"
+                    ]
+                },
+                "subnets": [
+                    {
+                        "name": "[variables('subnetName')]",
+                        "properties": {
+                            "addressPrefix": "[parameters('subnet')]",
+                            "networkSecurityGroup": {
+                                "id": "[variables('nsg')]"
+                              }
+                        }
+                    }
+                ]
+            },
+            "dependsOn": [
+                "[variables('nsg')]"
+            ]
+        }
+    ],
+    "outputs": {
+        "subnet": {
+            "type": "string",
+            "value": "[resourceId('Microsoft.Network/virtualNetworks/subnets', variables('vnetName'), variables('subnetName'))]"
+        },
+        "nsg": {
+            "type": "string",
+            "value": "[variables('nsg')]"
+        },
+        "msi": {
+            "type": "string",
+            "value": "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('msiName'))]"
+        }
+    }
+}

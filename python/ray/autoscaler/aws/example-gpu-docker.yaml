@@ -1,0 +1,136 @@
+# An unique identifier for the head node and workers of this cluster.
+cluster_name: gpu-docker
+
+# The maximum number of workers nodes to launch in addition to the head
+# node.
+max_workers: 2
+
+# The autoscaler will scale up the cluster faster with higher upscaling speed.
+# E.g., if the task requires adding more nodes then autoscaler will gradually
+# scale up the cluster in chunks of upscaling_speed*currently_running_nodes.
+# This number should be > 0.
+upscaling_speed: 1.0
+
+# This executes all commands on all nodes in the docker container,
+# and opens all the necessary ports to support the Ray cluster.
+# Empty string means disabled.
+docker:
+    image: "rayproject/ray-ml:latest-gpu"
+    # image: rayproject/ray:latest-gpu   # use this one if you don't need ML dependencies, it's faster to pull
+    container_name: "ray_nvidia_docker" # e.g. ray_docker
+
+
+# If a node is idle for this many minutes, it will be removed.
+idle_timeout_minutes: 5
+
+# Cloud-provider specific configuration.
+provider:
+    type: aws
+    region: us-west-2
+    # Availability zone(s), comma-separated, that nodes may be launched in.
+    # Nodes will be launched in the first listed availability zone and will
+    # be tried in the subsequent availability zones if launching fails.
+    availability_zone: us-west-2a,us-west-2b
+
+# How Ray will authenticate with newly launched nodes.
+auth:
+    ssh_user: ubuntu
+# By default Ray creates a new private keypair, but you can also use your own.
+# If you do so, make sure to also set "KeyName" in the head and worker node
+# configurations below.
+#    ssh_private_key: /path/to/your/key.pem
+
+# Tell the autoscaler the allowed node types and the resources they provide.
+# The key is the name of the node type, which is just for debugging purposes.
+# The node config specifies the launch config and physical instance type.
+available_node_types:
+    # GPU head node.
+    ray.head.gpu:
+        # worker_image: rayproject/ray:latest-gpu   # use this one if you don't need ML dependencies, it's faster to pull
+        # The node type's CPU and GPU resources are auto-detected based on AWS instance type.
+        # If desired, you can override the autodetected CPU and GPU resources advertised to the autoscaler.
+        # You can also set custom resources.
+        # For example, to mark a node type as having 1 CPU, 1 GPU, and 5 units of a resource called "custom", set
+        # resources: {"CPU": 1, "GPU": 1, "custom": 5}
+        resources: {}
+        # Provider-specific config for this node type, e.g. instance type. By default
+        # Ray will auto-configure unspecified fields such as SubnetId and KeyName.
+        # For more documentation on available fields, see:
+        # http://boto3.readthedocs.io/en/latest/reference/services/ec2.html#EC2.ServiceResource.create_instances
+        node_config:
+            InstanceType: p2.xlarge
+            # Default AMI. Uncomment to use a different AMI.
+            # ImageId:
+            # You can provision additional disk space with a conf as follows
+            BlockDeviceMappings:
+                - DeviceName: /dev/sda1
+                  Ebs:
+                      VolumeSize: 140
+            # Additional options in the boto docs.
+    # CPU workers.
+    ray.worker.default:
+        # Override global docker setting.
+        # This node type will run a CPU image,
+        # rather than the GPU image specified in the global docker settings.
+        docker:
+            worker_image: "rayproject/ray-ml:latest-cpu"
+        # The minimum number of nodes of this type to launch.
+        # This number should be >= 0.
+        min_workers: 1
+        # The maximum number of workers nodes of this type to launch.
+        # This takes precedence over min_workers.
+        max_workers: 2
+        # The node type's CPU and GPU resources are auto-detected based on AWS instance type.
+        # If desired, you can override the autodetected CPU and GPU resources advertised to the autoscaler.
+        # You can also set custom resources.
+        # For example, to mark a node type as having 1 CPU, 1 GPU, and 5 units of a resource called "custom", set
+        # resources: {"CPU": 1, "GPU": 1, "custom": 5}
+        resources: {}
+        # Provider-specific config for this node type, e.g. instance type. By default
+        # Ray will auto-configure unspecified fields such as SubnetId and KeyName.
+        # For more documentation on available fields, see:
+        # http://boto3.readthedocs.io/en/latest/reference/services/ec2.html#EC2.ServiceResource.create_instances
+        node_config:
+            InstanceType: m5.large
+            # Default AMI. Uncomment to use a different AMI.
+            # ImageId:
+            # Run workers on spot by default. Comment this out to use on-demand.
+            InstanceMarketOptions:
+                MarketType: spot
+                # Additional options can be found in the boto docs, e.g.
+                #   SpotOptions:
+                #       MaxPrice: MAX_HOURLY_PRICE
+            # Additional options in the boto docs.
+
+# Specify the node type of the head node (as configured above).
+head_node_type: ray.head.gpu
+
+# Files or directories to copy to the head and worker nodes. The format is a
+# dictionary from REMOTE_PATH: LOCAL_PATH, e.g.
+file_mounts: {
+#    "/path1/on/remote/machine": "/path1/on/local/machine",
+#    "/path2/on/remote/machine": "/path2/on/local/machine",
+}
+
+# List of shell commands to run to set up nodes.
+# NOTE: rayproject/ray:latest has ray latest bundled
+setup_commands: []
+    # - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp37-cp37m-manylinux2014_x86_64.whl
+    # - pip install -U "ray[default] @ https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp37-cp37m-manylinux2014_x86_64.whl"
+
+# Custom commands that will be run on the head node after common setup.
+head_setup_commands:
+    - pip install boto3>=1.4.8  # 1.4.8 adds InstanceMarketOptions
+
+# Custom commands that will be run on worker nodes after common setup.
+worker_setup_commands: []
+
+# Command to start ray on the head node. You don't need to change this.
+head_start_ray_commands:
+    - ray stop
+    - ulimit -n 65536; ray start --head --port=6379 --object-manager-port=8076 --autoscaling-config=~/ray_bootstrap_config.yaml
+
+# Command to start ray on worker nodes. You don't need to change this.
+worker_start_ray_commands:
+    - ray stop
+    - ulimit -n 65536; ray start --address=$RAY_HEAD_IP:6379 --object-manager-port=8076

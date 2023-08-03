@@ -1,0 +1,11 @@
+import_path: "dir.subdir.a.add_and_sub.serve_dag"
+
+runtime_env:
+  working_dir: "https://github.com/ray-project/test_dag/archive/40d61c141b9c37853a7014b8659fc7f23c1d04f6.zip"
+
+deployments:
+  - name: "Subtract"
+    ray_actor_options:
+      runtime_env:
+        py_modules:
+          - "https://github.com/ray-project/test_module/archive/aa6f366f7daa78c98408c27d917a983caa9f888b.zip"

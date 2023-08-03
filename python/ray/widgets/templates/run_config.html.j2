@@ -1,0 +1,18 @@
+<div class="runConfig">
+  <div class="generalSettings">
+    {{ settings }}
+  </div>
+  <div class="sideBySide">
+    {{ subconfigs }}
+  </div>
+</div>
+<style>
+.sideBySide {
+  display: flex;
+  flex-direction: row;
+  gap: 1em;
+}
+.generalSettings {
+  border-bottom: var(--jp-border-width) solid var(--jp-border-color0);
+}
+</style>

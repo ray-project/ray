@@ -1,0 +1,31 @@
+# __check_ingest_2b__
+(TrainTrainable pid=3536, ip=172.31.82.250) Starting dataset preprocessing
+== Status ==
+Current time: 2022-05-17 15:46:23 (running for 00:00:08.24)
+Memory usage on this node: 15.7/62.0 GiB
+Using FIFO scheduling algorithm.
+Resources requested: 2.0/48 CPUs, 0/0 GPUs, 0.0/126.13 GiB heap, 0.0/54.94 GiB objects
+Result logdir: /home/ray/ray_results/DummyTrainer_2022-05-17_15-46-14
+Number of trials: 1/1 (1 RUNNING)
+
+
+(TrainTrainable pid=3536, ip=172.31.82.250) Preprocessed datasets in 6.874227493000035 seconds
+(TrainTrainable pid=3536, ip=172.31.82.250) Preprocessor Chain(preprocessors=(BatchMapper(fn=<lambda>), BatchMapper(fn=<lambda>)))
+(TrainTrainable pid=3536, ip=172.31.82.250) Preprocessor transform stats:
+(TrainTrainable pid=3536, ip=172.31.82.250) 
+(TrainTrainable pid=3536, ip=172.31.82.250) Stage 1 read->map_batches: 100/100 blocks executed in 4.57s
+(TrainTrainable pid=3536, ip=172.31.82.250) * Remote wall time: 120.68ms min, 522.36ms max, 251.53ms mean, 25.15s total
+(TrainTrainable pid=3536, ip=172.31.82.250) * Remote cpu time: 116.55ms min, 278.08ms max, 216.38ms mean, 21.64s total
+(TrainTrainable pid=3536, ip=172.31.82.250) * Output num rows: 500 min, 500 max, 500 mean, 50000 total
+(TrainTrainable pid=3536, ip=172.31.82.250) * Output size bytes: 102400128 min, 102400128 max, 102400128 mean, 10240012800 total
+(TrainTrainable pid=3536, ip=172.31.82.250) * Tasks per node: 16 min, 48 max, 33 mean; 3 nodes used
+(TrainTrainable pid=3536, ip=172.31.82.250) 
+(TrainTrainable pid=3536, ip=172.31.82.250) Stage 2 map_batches: 100/100 blocks executed in 2.22s
+(TrainTrainable pid=3536, ip=172.31.82.250) * Remote wall time: 89.07ms min, 302.71ms max, 175.12ms mean, 17.51s total
+(TrainTrainable pid=3536, ip=172.31.82.250) * Remote cpu time: 89.22ms min, 207.53ms max, 137.5ms mean, 13.75s total
+(TrainTrainable pid=3536, ip=172.31.82.250) * Output num rows: 500 min, 500 max, 500 mean, 50000 total
+(TrainTrainable pid=3536, ip=172.31.82.250) * Output size bytes: 102400128 min, 102400128 max, 102400128 mean, 10240012800 total
+(TrainTrainable pid=3536, ip=172.31.82.250) * Tasks per node: 30 min, 37 max, 33 mean; 3 nodes used
+(TrainTrainable pid=3536, ip=172.31.82.250) 
+Trial DummyTrainer_28252_00000 reported bytes_read=102400128,num_batches=1,num_epochs=1,batch_delay=0.00807777500000384,_timestamp=1652827586,_time_this_iter_s=0.012177705764770508,_training_iteration=1 with parameters={}.
+# __check_ingest_2b_end__

@@ -1,0 +1,33 @@
+# https://github.com/GoogleCloudPlatform/workflows-samples/blob/main/src/subworkflow.workflows.json
+{
+  "main": {
+    "steps": [
+      {
+        "first": {
+          "call": "hello",
+          "args": {
+            "input": "Kristof"
+          },
+          "result": "someOutput"
+        }
+      },
+      {
+        "second": {
+          "return": "${someOutput}"
+        }
+      }
+    ]
+  },
+  "hello": {
+    "params": [
+      "input"
+    ],
+    "steps": [
+      {
+        "first": {
+          "return": "${\"Hello \"+input}"
+        }
+      }
+    ]
+  }
+}

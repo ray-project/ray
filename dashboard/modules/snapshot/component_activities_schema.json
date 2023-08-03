@@ -1,0 +1,26 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "http://github.com/ray-project/ray/dashboard/modules/snapshot/component_activities_schema.json",
+  "type": "object",
+  "patternProperties": {
+    "[0-9a-f]*": {
+      "type": "object",
+      "properties": {
+        "is_active": {
+          "type": "string",
+          "enum": ["ACTIVE", "INACTIVE", "ERROR"]
+        },
+        "reason": {
+          "type": ["string", "null"]
+        },
+        "timestamp": {
+          "type": ["number"]
+        },
+        "last_activity_at": {
+          "type": ["number", "null"]
+        }
+      },
+      "required": ["is_active"]
+    }
+  }
+}

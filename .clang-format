@@ -1,1 +1,7 @@
-/home/ubuntu/ray-dev/.clang-format
+BasedOnStyle: Google
+ColumnLimit: 90
+DerivePointerAlignment: false
+IndentCaseLabels: false
+PointerAlignment: Right
+BinPackArguments: false
+BinPackParameters: false

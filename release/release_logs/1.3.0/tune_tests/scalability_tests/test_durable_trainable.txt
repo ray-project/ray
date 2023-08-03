@@ -1,0 +1,4 @@
+2021-04-06 03:27:21,932 INFO tune.py:549 -- Total run time: 393.52 seconds (391.87 seconds for the tuning loop).
+The durable trainable test took 393.67 seconds, which is below the budget of 500.00 seconds. Test successful.
+
+--- PASSED: DURABLE TRAINABLE ::: 393.67 <= 500.00 ---

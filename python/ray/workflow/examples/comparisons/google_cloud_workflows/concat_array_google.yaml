@@ -1,0 +1,53 @@
+# https://github.com/GoogleCloudPlatform/workflows-samples/blob/main/src/array.workflows.json
+[
+  {
+    "define": {
+      "assign": [
+        {
+          "array": [
+            "foo",
+            "ba",
+            "r"
+          ]
+        },
+        {
+          "result": ""
+        },
+        {
+          "i": 0
+        }
+      ]
+    }
+  },
+  {
+    "check_condition": {
+      "switch": [
+        {
+          "condition": "${len(array) > i}",
+          "next": "iterate"
+        }
+      ],
+      "next": "exit_loop"
+    }
+  },
+  {
+    "iterate": {
+      "assign": [
+        {
+          "result": "${result + array[i]}"
+        },
+        {
+          "i": "${i+1}"
+        }
+      ],
+      "next": "check_condition"
+    }
+  },
+  {
+    "exit_loop": {
+      "return": {
+        "concat_result": "${result}"
+      }
+    }
+  }
+]

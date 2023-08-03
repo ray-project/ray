@@ -1,0 +1,14 @@
+base_image: {{ env["RAY_IMAGE_ML_NIGHTLY_GPU"] | default("anyscale/ray-ml:nightly-py37-gpu") }}
+env_vars: {}
+debian_packages:
+  - curl
+
+python:
+  pip_packages:
+    - pytest
+  conda_packages: []
+
+post_build_cmds:
+  - pip3 uninstall ray -y || true && pip3 install -U {{ env["RAY_WHEELS"] | default("ray") }}
+  - pip3 install crc32c
+  - {{ env["RAY_WHEELS_SANITY_CHECK"] | default("echo No Ray wheels sanity check") }}
