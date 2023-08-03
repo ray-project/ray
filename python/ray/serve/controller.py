@@ -299,6 +299,7 @@ class ServeController:
         # because an unhandled exception would cause the main control loop to
         # halt, which should *never* happen.
         recovering_timeout = RECOVERING_LONG_POLL_BROADCAST_TIMEOUT_S
+        num_loops = 0
         start_time = time.time()
         while True:
             loop_start_time = time.time()
@@ -373,9 +374,10 @@ class ServeController:
                     "replicas in a single Ray cluster. Consider using "
                     "multiple Ray clusters."
                 )
-            self.control_loop_gauge_s.set(loop_duration)
+            self.control_loop_duration_gauge_s.set(loop_duration)
 
-            self.control_loop_counter.inc()
+            num_loops += 1
+            self.num_control_loops_gauge.set(num_loops)
 
             sleep_start_time = time.time()
             await asyncio.sleep(CONTROL_LOOP_PERIOD_S)
@@ -406,13 +408,16 @@ class ServeController:
             "serve_controller_sleep_duration_s",
             description="The duration of the last control loop's sleep.",
         )
-        self.control_loop_gauge_s = metrics.Gauge(
+        self.control_loop_duration_gauge_s = metrics.Gauge(
             "serve_controller_control_loop_duration_s",
             description="The duration of the last control loop.",
         )
-        self.control_loop_counter = metrics.Counter(
-            "serve_controller_control_loop_counter",
-            description="The number of control loops performed by the controller.",
+        self.num_control_loops_gauge = metrics.Gauge(
+            "serve_controller_num_control_loops",
+            description=(
+                "The number of control loops performed by the controller. "
+                "Increases monotonically over the controller's lifetime."
+            ),
         )
 
     def _put_serve_snapshot(self) -> None:
