@@ -24,11 +24,13 @@ namespace ray {
 namespace gcs {
 
 GcsAutoscalerStateManager::GcsAutoscalerStateManager(
+    const std::string &session_name,
     const ClusterResourceManager &cluster_resource_manager,
     const GcsResourceManager &gcs_resource_manager,
     const GcsNodeManager &gcs_node_manager,
     const GcsPlacementGroupManager &gcs_placement_group_manager)
-    : cluster_resource_manager_(cluster_resource_manager),
+    : session_name_(session_name),
+      cluster_resource_manager_(cluster_resource_manager),
       gcs_node_manager_(gcs_node_manager),
       gcs_resource_manager_(gcs_resource_manager),
       gcs_placement_group_manager_(gcs_placement_group_manager),
@@ -41,15 +43,9 @@ void GcsAutoscalerStateManager::HandleGetClusterResourceState(
     rpc::SendReplyCallback send_reply_callback) {
   RAY_CHECK(request.last_seen_cluster_resource_state_version() <=
             last_cluster_resource_state_version_);
-  auto state = reply->mutable_cluster_resource_state();
-  state->set_last_seen_autoscaler_state_version(last_seen_autoscaler_state_version_);
-  state->set_cluster_resource_state_version(
-      IncrementAndGetNextClusterResourceStateVersion());
 
-  GetNodeStates(state);
-  GetPendingResourceRequests(state);
-  GetPendingGangResourceRequests(state);
-  GetClusterResourceConstraints(state);
+  auto state = reply->mutable_cluster_resource_state();
+  MakeClusterResourceStateInternal(state);
 
   // We are not using GCS_RPC_SEND_REPLY like other GCS managers to avoid the client
   // having to parse the gcs status code embedded.
@@ -104,8 +100,26 @@ void GcsAutoscalerStateManager::HandleGetClusterStatus(
     rpc::autoscaler::GetClusterStatusRequest request,
     rpc::autoscaler::GetClusterStatusReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
-  // TODO
-  throw std::runtime_error("Unimplemented");
+  auto ray_resource_state = reply->mutable_cluster_resource_state();
+  MakeClusterResourceStateInternal(ray_resource_state);
+
+  if (autoscaling_state_) {
+    reply->mutable_autoscaling_state()->CopyFrom(*autoscaling_state_);
+  }
+  send_reply_callback(ray::Status::OK(), nullptr, nullptr);
+}
+
+void GcsAutoscalerStateManager::MakeClusterResourceStateInternal(
+    rpc::autoscaler::ClusterResourceState *state) {
+  state->set_last_seen_autoscaler_state_version(last_seen_autoscaler_state_version_);
+  state->set_cluster_resource_state_version(
+      IncrementAndGetNextClusterResourceStateVersion());
+  state->set_cluster_session_name(session_name_);
+
+  GetNodeStates(state);
+  GetPendingResourceRequests(state);
+  GetPendingGangResourceRequests(state);
+  GetClusterResourceConstraints(state);
 }
 
 void GcsAutoscalerStateManager::GetPendingGangResourceRequests(
@@ -258,6 +272,11 @@ void GcsAutoscalerStateManager::GetNodeStates(
     populate_node_state(*gcs_node_info.second);
   });
 }
+
+void GcsAutoscalerStateManager::HandleDrainNode(
+    rpc::autoscaler::DrainNodeRequest request,
+    rpc::autoscaler::DrainNodeReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {}
 
 }  // namespace gcs
 }  // namespace ray
