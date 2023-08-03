@@ -651,7 +651,6 @@ class Node:
                 client = GcsClient(
                     address=gcs_address,
                     cluster_id=self._ray_params.cluster_id,
-                    no_gcs=self._ray_params.no_gcs,
                 )
                 self.cluster_id = client.get_cluster_id()
                 if self.head:

@@ -171,7 +171,7 @@ Status PythonGcsClient::Connect(const ClusterID &cluster_id,
     size_t tries = num_retries + 1;
     RAY_CHECK(tries > 0) << "Expected positive retries, but got " << tries;
 
-    RAY_LOG(INFO) << "Retrieving cluster ID from GCS server.";
+    RAY_LOG(DEBUG) << "Retrieving cluster ID from GCS server.";
     rpc::GetClusterIdRequest request;
     rpc::GetClusterIdReply reply;
 
@@ -184,7 +184,7 @@ Status PythonGcsClient::Connect(const ClusterID &cluster_id,
 
       if (connect_status.ok()) {
         cluster_id_ = ClusterID::FromBinary(reply.cluster_id());
-        RAY_LOG(INFO) << "Received cluster ID from GCS server: " << cluster_id_;
+        RAY_LOG(DEBUG) << "Received cluster ID from GCS server: " << cluster_id_;
         RAY_CHECK(!cluster_id_.IsNil());
         break;
       } else if (!connect_status.IsGrpcError()) {
@@ -195,7 +195,7 @@ Status PythonGcsClient::Connect(const ClusterID &cluster_id,
     RAY_RETURN_NOT_OK(connect_status);
   } else {
     cluster_id_ = cluster_id;
-    RAY_LOG(INFO) << "Client initialized with provided cluster ID: " << cluster_id_;
+    RAY_LOG(DEBUG) << "Client initialized with provided cluster ID: " << cluster_id_;
   }
 
   RAY_CHECK(!cluster_id_.IsNil()) << "Unexpected nil cluster ID.";

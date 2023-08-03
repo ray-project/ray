@@ -2338,7 +2338,7 @@ cdef class GcsClient:
         object _nums_reconnect_retry
         CClusterID cluster_id
 
-    def __cinit__(self, address, nums_reconnect_retry=5, cluster_id=None, no_gcs=False):
+    def __cinit__(self, address, nums_reconnect_retry=5, cluster_id=None):
         cdef GcsClientOptions gcs_options = GcsClientOptions.from_gcs_address(address)
         self.inner.reset(new CPythonGcsClient(dereference(gcs_options.native())))
         self.address = address
@@ -2349,12 +2349,11 @@ cdef class GcsClient:
         else:
             c_cluster_id = cluster_id
             self.cluster_id = CClusterID.FromHex(c_cluster_id)
-        if not no_gcs:
-            self._connect()
+        self._connect(5)
 
-    def _connect(self, timeout=None):
+    def _connect(self, timeout_s=None):
         cdef:
-            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
+            int64_t timeout_ms = round(1000 * timeout_s) if timeout_s else -1
             size_t num_retries = self._nums_reconnect_retry
         with nogil:
             status = self.inner.get().Connect(self.cluster_id, timeout_ms, num_retries)
