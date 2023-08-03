@@ -134,6 +134,9 @@ compile_pip_dependencies() {
   # ray, xgboost-ray, lightgbm-ray, tune-sklearn
   sed -i "/^ray==/d;/^xgboost-ray==/d;/^lightgbm-ray==/d;/^tune-sklearn==/d" "${WORKSPACE_DIR}/python/$TARGET"
 
+  # Remove +cpu and +pt20cpu suffixes e.g. for torch dependencies
+  sed -iE 's/==([\.0-9]+)\+[^\b]*cpu/==\1/g' "${WORKSPACE_DIR}/python/$TARGET"
+
   cat "${WORKSPACE_DIR}/python/$TARGET"
 
   if [ "$HAS_TORCH" -eq 0 ]; then
