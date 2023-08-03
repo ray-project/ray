@@ -26,7 +26,7 @@ class ResultGrid:
     .. testcode::
 
         import random
-        from ray import air, tune
+        from ray import train, tune
         def random_error_trainable(config):
             if random.random() < 0.5:
                 return {"loss": 0.0}
@@ -34,7 +34,7 @@ class ResultGrid:
                 raise ValueError("This is an error")
         tuner = tune.Tuner(
             random_error_trainable,
-            run_config=air.RunConfig(name="example-experiment"),
+            run_config=train.RunConfig(name="example-experiment"),
             tune_config=tune.TuneConfig(num_samples=10),
         )
         try:
@@ -189,12 +189,12 @@ class ResultGrid:
 
             .. testcode::
 
-                from ray.air import session
-                from ray.air.config import RunConfig
+                from ray import train
+                from ray.train import RunConfig
                 from ray.tune import Tuner
 
                 def training_loop_per_worker(config):
-                    session.report({"accuracy": 0.8})
+                    train.report({"accuracy": 0.8})
 
                 result_grid = Tuner(
                     trainable=training_loop_per_worker,

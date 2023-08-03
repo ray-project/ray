@@ -84,34 +84,36 @@ class DataParallelTrainer(BaseTrainer):
 
     If the ``datasets`` dict contains a training dataset (denoted by
     the "train" key), then it will be split into multiple dataset
-    shards that can then be accessed by ``session.get_dataset_shard("train")`` inside
+    shards that can then be accessed by ``train.get_dataset_shard("train")`` inside
     ``train_loop_per_worker``. All the other datasets will not be split and
-    ``session.get_dataset_shard(...)`` will return the the entire Dataset.
+    ``train.get_dataset_shard(...)`` will return the the entire Dataset.
 
     Inside the ``train_loop_per_worker`` function, you can use any of the
     :ref:`Ray AIR session methods <air-session-ref>`.
 
     .. testcode::
 
+        from ray import train
+
         def train_loop_per_worker():
             # Report intermediate results for callbacks or logging and
             # checkpoint data.
-            session.report(...)
+            train.report(...)
 
             # Returns dict of last saved checkpoint.
-            session.get_checkpoint()
+            train.get_checkpoint()
 
             # Returns the Dataset shard for the given key.
-            session.get_dataset_shard("my_dataset")
+            train.get_dataset_shard("my_dataset")
 
             # Returns the total number of workers executing training.
-            session.get_world_size()
+            train.get_context().get_world_size()
 
             # Returns the rank of this worker.
-            session.get_world_rank()
+            train.get_context().get_world_rank()
 
             # Returns the rank of the worker on the current node.
-            session.get_local_rank()
+            train.get_context().get_local_rank()
 
     Any returns from the ``train_loop_per_worker`` will be discarded and not
     used or persisted anywhere.
@@ -123,12 +125,12 @@ class DataParallelTrainer(BaseTrainer):
     .. testcode::
 
         import ray
-        from ray.air import session
-        from ray.air.config import ScalingConfig
+        from ray import train
+        from ray.train import ScalingConfig
         from ray.train.data_parallel_trainer import DataParallelTrainer
 
         def train_loop_for_worker():
-            dataset_shard_for_this_worker = session.get_dataset_shard("train")
+            dataset_shard_for_this_worker = train.get_dataset_shard("train")
 
             # 3 items for 3 workers, each worker gets 1 item
             batches = list(dataset_shard_for_this_worker.iter_batches(batch_size=1))
