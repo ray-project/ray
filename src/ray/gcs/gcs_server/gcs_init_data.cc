@@ -31,8 +31,6 @@ void GcsInitData::AsyncLoad(const EmptyCallback &on_done) {
 
   AsyncLoadNodeTableData(on_load_finished);
 
-  AsyncLoadResourceTableData(on_load_finished);
-
   AsyncLoadActorTableData(on_load_finished);
 
   AsyncLoadActorTaskSpecTableData(on_load_finished);
@@ -62,19 +60,6 @@ void GcsInitData::AsyncLoadNodeTableData(const EmptyCallback &on_done) {
         on_done();
       };
   RAY_CHECK_OK(gcs_table_storage_->NodeTable().GetAll(load_node_table_data_callback));
-}
-
-void GcsInitData::AsyncLoadResourceTableData(const EmptyCallback &on_done) {
-  RAY_LOG(INFO) << "Loading cluster resources table data.";
-  auto load_resource_table_data_callback =
-      [this, on_done](absl::flat_hash_map<NodeID, rpc::ResourceMap> &&result) {
-        resource_table_data_ = std::move(result);
-        RAY_LOG(INFO) << "Finished loading cluster resources table data, size = "
-                      << resource_table_data_.size();
-        on_done();
-      };
-  RAY_CHECK_OK(
-      gcs_table_storage_->NodeResourceTable().GetAll(load_resource_table_data_callback));
 }
 
 void GcsInitData::AsyncLoadPlacementGroupTableData(const EmptyCallback &on_done) {
