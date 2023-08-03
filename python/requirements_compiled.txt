@@ -185,7 +185,6 @@ greenlet==2.0.2
 grpcio==1.56.2 ; sys_platform != "darwin"
 gsutil==5.25
 gunicorn==20.1.0
-gym==0.25.2
 gym-notices==0.0.8
 gymnasium==0.28.1
 h11==0.12.0
