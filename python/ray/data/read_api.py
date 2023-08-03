@@ -41,7 +41,14 @@ from ray.data._internal.util import (
     pandas_df_to_arrow_block,
 )
 from ray.data.block import Block, BlockAccessor, BlockExecStats, BlockMetadata
-from ray.data.context import WARN_PREFIX, DataContext
+from ray.data.context import (
+    DEFAULT_BULK_PARQUET_METADATA_PROVIDER,
+    DEFAULT_GENERIC_METADATA_PROVIDER,
+    DEFAULT_IMAGE_METADATA_PROVIDER,
+    DEFAULT_PARQUET_METADATA_PROVIDER,
+    WARN_PREFIX,
+    DataContext,
+)
 from ray.data.dataset import Dataset, MaterializedDataset
 from ray.data.datasource import (
     BaseFileMetadataProvider,
@@ -69,12 +76,6 @@ from ray.data.datasource.file_based_datasource import (
     _wrap_arrow_serialization_workaround,
 )
 from ray.data.datasource.partitioning import Partitioning
-from ray.data.default_impl import (
-    DEFAULT_BULK_PARQUET_METADATA_PROVIDER,
-    DEFAULT_GENERIC_METADATA_PROVIDER,
-    DEFAULT_IMAGE_METADATA_PROVIDER,
-    DEFAULT_PARQUET_METADATA_PROVIDER,
-)
 from ray.types import ObjectRef
 from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
 from ray.util.placement_group import PlacementGroup

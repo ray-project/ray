@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING, Optional
 
 import ray
 from ray._private.ray_constants import env_integer
+from ray.data.datasource._default_metadata_providers import *
 from ray.util.annotations import DeveloperAPI
 from ray.util.scheduling_strategies import SchedulingStrategyT
 
