@@ -42,7 +42,7 @@ def _create_mock_custom_fs(custom_fs_root_dir: Path) -> pyarrow.fs.FileSystem:
 def train_fn(config):
     start = 0
 
-    checkpoint = train.get_context().get_checkpoint()
+    checkpoint = train.get_checkpoint()
     if checkpoint:
         with checkpoint.as_directory() as checkpoint_dir:
             with open(os.path.join(checkpoint_dir, "dummy.pkl"), "rb") as f:
@@ -171,6 +171,8 @@ def test_trainer(tmp_path):
         assert isinstance(train_session, _TrainSession)
         assert train_session.storage
         assert train_session.storage.checkpoint_fs_path
+
+        assert os.getcwd() == train_session.storage.trial_local_path
 
     trainer = DataParallelTrainer(
         dummy_train_fn,

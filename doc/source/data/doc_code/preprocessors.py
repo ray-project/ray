@@ -50,7 +50,7 @@ import ray
 
 from ray.data.preprocessors import MinMaxScaler
 from ray.train.xgboost import XGBoostTrainer
-from ray.air.config import ScalingConfig
+from ray.train import ScalingConfig
 
 train_dataset = ray.data.from_items([{"x": x, "y": 2 * x} for x in range(0, 32, 3)])
 valid_dataset = ray.data.from_items([{"x": x, "y": 2 * x} for x in range(1, 32, 3)])

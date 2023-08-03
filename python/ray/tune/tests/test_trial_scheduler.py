@@ -14,7 +14,7 @@ from unittest.mock import MagicMock
 
 import ray
 from ray import tune
-from ray.air import CheckpointConfig
+from ray.train import CheckpointConfig
 from ray.air._internal.checkpoint_manager import _TrackedCheckpoint, CheckpointStorage
 from ray.air.constants import TRAINING_ITERATION
 from ray.tune import Trainable, PlacementGroupFactory

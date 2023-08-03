@@ -7,7 +7,7 @@ import time
 
 import ray
 from ray import tune, logger
-from ray.air.config import CheckpointConfig
+from ray.train import CheckpointConfig
 from ray.tune import Trainable, run_experiments, register_trainable
 from ray.tune.error import TuneError
 from ray.tune.result_grid import ResultGrid

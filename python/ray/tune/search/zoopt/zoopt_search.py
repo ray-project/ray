@@ -46,7 +46,7 @@ class ZOOptSearch(Searcher):
 
     .. code-block:: python
 
-        from ray import tune
+        from ray import train, tune
         from ray.tune.search.zoopt import ZOOptSearch
 
         "config": {
@@ -74,7 +74,7 @@ class ZOOptSearch(Searcher):
                 search_alg=zoopt_search,
                 num_samples=20
             ),
-            run_config=air.RunConfig(
+            run_config=train.RunConfig(
                 name="zoopt_search",
                 stop={"timesteps_total": 10}
             ),
@@ -87,7 +87,7 @@ class ZOOptSearch(Searcher):
 
     .. code-block:: python
 
-        from ray import tune
+        from ray import train, tune
         from ray.tune.search.zoopt import ZOOptSearch
         from zoopt import ValueType
 
@@ -120,7 +120,7 @@ class ZOOptSearch(Searcher):
                 search_alg=zoopt_search,
                 num_samples=20
             ),
-            run_config=air.RunConfig(
+            run_config=train.RunConfig(
                 name="zoopt_search",
                 stop={"timesteps_total": 10}
             ),

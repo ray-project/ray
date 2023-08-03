@@ -618,11 +618,11 @@ def wrap_function(
                     "`checkpoint_dir` in `func(config, checkpoint_dir)` is "
                     "being deprecated. "
                     "To save and load checkpoint in trainable functions, "
-                    "please use the `ray.air.session` API:\n\n"
-                    "from ray.air import session\n\n"
+                    "please use the `report` API:\n\n"
+                    "from ray import train\n\n"
                     "def train(config):\n"
                     "    # ...\n"
-                    '    session.report({"metric": metric}, checkpoint=checkpoint)\n\n'
+                    '    train.report({"metric": metric}, checkpoint=checkpoint)\n\n'
                     "For more information please see "
                     "https://docs.ray.io/en/latest/tune/api/trainable.html\n"
                 )

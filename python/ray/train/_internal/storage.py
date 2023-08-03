@@ -338,6 +338,8 @@ class StorageContext:
         >>> storage.trial_dir_name = "trial_dir"
         >>> storage.trial_fs_path
         'bucket/path/exp_name/trial_dir'
+        >>> storage.trial_local_path
+        '/tmp/ray_results/exp_name/trial_dir'
         >>> storage.current_checkpoint_index = 1
         >>> storage.checkpoint_fs_path
         'bucket/path/exp_name/trial_dir/checkpoint_000001'
@@ -357,6 +359,10 @@ class StorageContext:
         >>> storage.storage_local_path
         '/tmp/ray_results'
         >>> storage.experiment_path
+        '/tmp/ray_results/exp_name'
+        >>> storage.experiment_local_path
+        '/tmp/ray_results/exp_name'
+        >>> storage.experiment_fs_path
         '/tmp/ray_results/exp_name'
         >>> storage.syncer is None
         True
@@ -494,6 +500,18 @@ class StorageContext:
         syncing them to the `storage_path` on the `storage_filesystem`.
         """
         return os.path.join(self.storage_local_path, self.experiment_dir_name)
+
+    @property
+    def trial_local_path(self) -> str:
+        """The local filesystem path to the trial directory.
+
+        Raises a ValueError if `trial_dir_name` is not set beforehand.
+        """
+        if self.trial_dir_name is None:
+            raise RuntimeError(
+                "Should not access `trial_local_path` without setting `trial_dir_name`"
+            )
+        return os.path.join(self.experiment_local_path, self.trial_dir_name)
 
     @property
     def trial_fs_path(self) -> str:
