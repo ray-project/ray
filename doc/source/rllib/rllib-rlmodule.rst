@@ -13,6 +13,8 @@
     :width: 16
 
 
+.. _rlmodule-guide:
+
 RL Modules (Alpha)
 ==================
 

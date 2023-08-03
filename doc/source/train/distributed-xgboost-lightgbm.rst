@@ -1,9 +1,29 @@
 .. _train-gbdt-guide:
 
-XGBoost & LightGBM User Guide for Ray Train
-===========================================
+Distributed XGBoost and LightGBM
+================================
 
 Ray Train has built-in support for XGBoost and LightGBM.
+
+
+Quickstart
+-----------
+.. tab-set::
+
+    .. tab-item:: XGBoost
+
+        .. literalinclude:: doc_code/gbdt_user_guide.py
+           :language: python
+           :start-after: __xgboost_start__
+           :end-before: __xgboost_end__
+
+    .. tab-item:: LightGBM
+
+        .. literalinclude:: doc_code/gbdt_user_guide.py
+           :language: python
+           :start-after: __lightgbm_start__
+           :end-before: __lightgbm_end__
+
 
 Basic Training with Tree-Based Models in Train
 ----------------------------------------------
@@ -41,7 +61,9 @@ Saving and Loading XGBoost and LightGBM Checkpoints
 When a new tree is trained on every boosting round,
 it's possible to save a checkpoint to snapshot the training progress so far.
 :class:`~ray.train.xgboost.XGBoostTrainer` and :class:`~ray.train.lightgbm.LightGBMTrainer`
-both implement checkpointing out of the box.
+both implement checkpointing out of the box and will create 
+:class:`~ray.train.xgboost.XGBoostCheckpoint`\s and :class:`~ray.train.lightgbm.LightGBMCheckpoint`\s
+respectively.
 
 The only required change is to configure :class:`~ray.air.CheckpointConfig` to set
 the checkpointing frequency. For example, the following configuration will
