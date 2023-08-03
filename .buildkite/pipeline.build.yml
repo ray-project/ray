@@ -184,9 +184,6 @@
     - ./ci/env/env_info.sh
     - pip install ray[client]
     - bazel test --config=ci $(./ci/run/bazel_export_options) 
-      --test_tag_filters=client_tests,small_size_python_tests 
-      -- $(yq -r .flaky_tests[] ci/ray_ci/core.tests.yml)
-    - bazel test --config=ci $(./ci/run/bazel_export_options) 
       --test_tag_filters=client_tests,small_size_python_tests,-team:core 
       -- python/ray/tests/...
     - bazel test --config=ci $(./ci/run/bazel_export_options)
@@ -202,12 +199,14 @@
 - label: ":python: (Large)"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
   instance_size: large
-  parallelism: 3
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - DL=1 ./ci/env/install-dependencies.sh
     - ./ci/env/env_info.sh
-    - ./ci/ci.sh test_large
+    - bazel test --config=ci $(./ci/run/bazel_export_options) --test_env=CONDA_EXE --test_env=CONDA_PYTHON_EXE
+      --test_env=CONDA_SHLVL --test_env=CONDA_PREFIX --test_env=CONDA_DEFAULT_ENV --test_env=CONDA_PROMPT_MODIFIER
+      --test_env=CI --test_tag_filters="large_size_python_tests_shard_0,large_size_python_tests_shard_1,large_size_python_tests_shard_2,-team:core"
+      -- python/ray/tests/...
 
 - label: ":python: (Medium A-J)"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
@@ -215,9 +214,6 @@
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - ./ci/env/env_info.sh
-    - bazel test --config=ci $(./ci/run/bazel_export_options)
-      --test_tag_filters=medium_size_python_tests_a_to_j
-      -- $(yq -r .flaky_tests[] ci/ray_ci/core.tests.yml)
     - bazel test --config=ci $(./ci/run/bazel_export_options)
       --test_tag_filters=medium_size_python_tests_a_to_j,-team:core
       python/ray/tests/...
@@ -228,9 +224,6 @@
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - DL=1 ./ci/env/install-dependencies.sh
-    - bazel test --config=ci $(./ci/run/bazel_export_options)
-      --test_tag_filters=medium_size_python_tests_k_to_z
-      -- $(yq -r .flaky_tests[] ci/ray_ci/core.tests.yml)
     - bazel test --config=ci $(./ci/run/bazel_export_options)
       --test_tag_filters=medium_size_python_tests_k_to_z,-team:core
       python/ray/tests/...
