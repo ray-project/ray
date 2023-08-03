@@ -1,45 +1,47 @@
 import time
 from typing import Generator
 
+from user_defined_protos_pb2 import UserDefinedMessage, UserDefinedResponse
+
 from ray import serve
-from ray.serve.generated import serve_pb2
-from ray.serve.generated.serve_pb2 import TestIn, TestOut
 
 
 @serve.deployment
 class GrpcDeployment:
-    def __call__(self, request: "TestIn") -> "TestOut":
-        greeting = f"Hello {request.name} from {request.foo}"
-        num_x2 = request.num * 2
-        output = serve_pb2.TestOut(
+    def __call__(self, user_message: UserDefinedMessage) -> UserDefinedResponse:
+        greeting = f"Hello {user_message.name} from {user_message.foo}"
+        num_x2 = user_message.num * 2
+        user_response = UserDefinedResponse(
             greeting=greeting,
             num_x2=num_x2,
         )
-        return output
+        return user_response
 
-    def method1(self, request: "TestIn") -> "TestOut":
-        greeting = f"Hello {request.foo} from method1"
-        num_x2 = request.num * 3
-        output = serve_pb2.TestOut(
+    def method1(self, user_message: UserDefinedMessage) -> UserDefinedResponse:
+        greeting = f"Hello {user_message.foo} from method1"
+        num_x2 = user_message.num * 3
+        user_response = UserDefinedResponse(
             greeting=greeting,
             num_x2=num_x2,
         )
-        return output
+        return user_response
 
-    def method2(self, request: "TestIn") -> "TestOut":
+    def method2(self, user_message: UserDefinedMessage) -> UserDefinedResponse:
         greeting = "This is from method2"
-        output = serve_pb2.TestOut(greeting=greeting)
-        return output
+        user_response = UserDefinedResponse(greeting=greeting)
+        return user_response
 
-    def streaming(self, request: "TestIn") -> Generator["TestOut", None, None]:
+    def streaming(
+        self, user_message: UserDefinedMessage
+    ) -> Generator[UserDefinedResponse, None, None]:
         for i in range(10):
-            greeting = f"{i}: Hello {request.name} from {request.foo}"
-            num_x2 = request.num * 2 + i
-            output = serve_pb2.TestOut(
+            greeting = f"{i}: Hello {user_message.name} from {user_message.foo}"
+            num_x2 = user_message.num * 2 + i
+            user_response = UserDefinedResponse(
                 greeting=greeting,
                 num_x2=num_x2,
             )
-            yield output
+            yield user_response
 
             time.sleep(0.1)
 

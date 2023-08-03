@@ -6,7 +6,6 @@ from typing import Callable, List, Generator, Optional, Tuple
 
 from ray.serve._private.constants import SERVE_LOGGER_NAME
 from ray.serve._private.utils import DEFAULT
-from google.protobuf.any_pb2 import Any as AnyProto
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -59,13 +58,14 @@ class ASGIServeRequest(ServeRequest):
 class GRPCServeRequest(ServeRequest):
     def __init__(
         self,
-        request: AnyProto,
+        request: bytes,
         context: "grpc._cython.cygrpc._ServicerContext",
         match_target: Callable[[str], Optional[str]],
         stream: bool,
     ):
         # Any proto can be serialized by pickle so no need to call SerializeToString()
         self.request = request  # .SerializeToString()
+        self.context = context
         self.stream = stream
         self.app_name = None
         self.route_path = None
@@ -99,13 +99,16 @@ class GRPCServeRequest(ServeRequest):
     def method(self) -> str:
         return "GRPC"
 
+    def send_request_id(self, request_id: str):
+        self.context.set_trailing_metadata([("request_id", request_id)])
+
 
 class ServeResponse:
     def __init__(
         self,
         status_code: str,
-        response: Optional[AnyProto] = None,
-        streaming_response: Optional[Generator[AnyProto, None, None]] = None,
+        response: Optional[bytes] = None,
+        streaming_response: Optional[Generator[bytes, None, None]] = None,
     ):
         self.status_code = status_code
         self.response = response

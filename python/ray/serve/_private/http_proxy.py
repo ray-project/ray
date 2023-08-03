@@ -8,7 +8,6 @@ import socket
 import time
 from typing import Callable, Dict, List, Generator, Optional, Set, Tuple
 import grpc
-from ray.serve.generated import serve_pb2, serve_pb2_grpc
 
 import uvicorn
 import starlette.responses
@@ -25,6 +24,7 @@ from ray._raylet import StreamingObjectRefGenerator
 
 from ray import serve
 from ray.serve.handle import RayServeHandle
+from ray.serve._private.grpc_util import add_RayServeServiceServicer_to_server
 from ray.serve._private.http_util import (
     ASGIMessageQueue,
     HTTPRequestWrapper,
@@ -70,8 +70,6 @@ from ray.serve._private.utils import (
     call_function_from_import_path,
     get_random_letters,
 )
-from google.protobuf.any_pb2 import Any as AnyProto
-from ray.serve.generated.serve_pb2 import TestOut
 
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
@@ -793,14 +791,14 @@ class GRPCProxy(GenericProxy):
     >>> import grpc
     >>> controller_name = ... # doctest: +SKIP
     >>> grpc_server = grpc.aio.server() # doctest: +SKIP
-    >>> serve_pb2_grpc.add_RayServeServiceServicer_to_server( # doctest: +SKIP
+    >>> add_RayServeServiceServicer_to_server( # doctest: +SKIP
     >>>     self.grpc_proxy, grpc_server # doctest: +SKIP
     >>> ) # doctest: +SKIP
     """
 
     async def Predict(
-        self, request: AnyProto, context: "grpc._cython.cygrpc._ServicerContext"
-    ) -> serve_pb2.RayServeResponse:
+        self, request: bytes, context: "grpc._cython.cygrpc._ServicerContext"
+    ) -> bytes:
         """Entry point of the gRPC proxy.
 
         This method is called by the gRPC server when a request is received. It
@@ -811,7 +809,6 @@ class GRPCProxy(GenericProxy):
         print("request type:", type(request))
         print("context is ", context)
         print("invocation_metadata is ", context.invocation_metadata())
-
         serve_request = GRPCServeRequest(
             request=request,
             context=context,
@@ -819,13 +816,12 @@ class GRPCProxy(GenericProxy):
             stream=False,
         )
         serve_response = await self.proxy_request(serve_request=serve_request)
-        request_id = ray.serve.context._serve_request_context.get().request_id
-        context.set_trailing_metadata([("request_id", request_id)])
+        print("in predict serve_response is ", serve_response.response)
         return serve_response.response
 
     async def PredictStreaming(
-        self, request: AnyProto, context: "grpc._cython.cygrpc._ServicerContext"
-    ) -> Generator[serve_pb2.RayServeResponse, None, None]:
+        self, request: bytes, context: "grpc._cython.cygrpc._ServicerContext"
+    ) -> Generator[bytes, None, None]:
         """Entry point of the gRPC proxy.
 
         This method is called by the gRPC server when a request is received. It
@@ -839,8 +835,6 @@ class GRPCProxy(GenericProxy):
             stream=True,
         )
         serve_response = await self.proxy_request(serve_request=serve_request)
-        request_id = ray.serve.context._serve_request_context.get().request_id
-        context.set_trailing_metadata([("request_id", request_id)])
         async for response in serve_response.streaming_response:
             yield response
 
@@ -877,53 +871,35 @@ class GRPCProxy(GenericProxy):
         ray.serve.context._serve_request_context.set(
             ray.serve.context.RequestContext(**request_context_info)
         )
+        serve_request.send_request_id(request_id=request_id)
         return handle, request_id
 
     async def _streaming_generator_helper(
         self,
         obj_ref_generator: StreamingObjectRefGenerator,
-        request_id: str,
-    ) -> Generator[serve_pb2.RayServeResponse, None, None]:
+    ) -> Generator[bytes, None, None]:
         while True:
             try:
                 obj_ref = await obj_ref_generator._next_async()
                 user_response_bytes = await obj_ref
-                # TODO (genesu): dynamically cast the response to the correct type
-                user_response = TestOut()
-                user_response.ParseFromString(user_response_bytes)
-                print("_consume_generator_unary user_response is ", user_response)
-                response = AnyProto()
-                response.Pack(user_response)
-
-                print("_consume_generator_unary response is ", response)
-                yield response
+                yield user_response_bytes
             except StopAsyncIteration:
                 break
 
     async def _consume_generator_stream(
         self,
         obj_ref: StreamingObjectRefGenerator,
-        request_id: str,
     ) -> ServeResponse:
-        streaming_response = self._streaming_generator_helper(obj_ref, request_id)
+        streaming_response = self._streaming_generator_helper(obj_ref)
         return ServeResponse(status_code="200", streaming_response=streaming_response)
 
     async def _consume_generator_unary(
         self,
         obj_ref: ray.ObjectRef,
-        request_id: str,
     ) -> ServeResponse:
         user_response_bytes = await obj_ref
         print("_consume_generator_unary user_response is ", user_response_bytes)
-        # TODO (genesu): dynamically cast the response to the correct type
-        user_response = TestOut()
-        user_response.ParseFromString(user_response_bytes)
-        print("_consume_generator_unary user_response is ", user_response)
-        response = AnyProto()
-        response.Pack(user_response)
-        print("_consume_generator_unary response is ", response)
-
-        return ServeResponse(status_code="200", response=response)
+        return ServeResponse(status_code="200", response=user_response_bytes)
 
     async def send_request_to_replica_streaming(
         self,
@@ -953,13 +929,9 @@ class GRPCProxy(GenericProxy):
                 return TIMEOUT_ERROR_CODE, None
 
             if serve_request.stream:
-                return await self._consume_generator_stream(
-                    obj_ref=obj_ref, request_id=request_id
-                )
+                return await self._consume_generator_stream(obj_ref=obj_ref)
             else:
-                return await self._consume_generator_unary(
-                    obj_ref=obj_ref, request_id=request_id
-                )
+                return await self._consume_generator_unary(obj_ref=obj_ref)
 
         except Exception as e:
             logger.exception(e)
@@ -1355,9 +1327,7 @@ class HTTPProxyActor:
     async def run_grpc_server(self):
         grpc_server = grpc.aio.server()
         grpc_server.add_insecure_port(f"[::]:{self.grpc_port}")
-        serve_pb2_grpc.add_RayServeServiceServicer_to_server(
-            self.grpc_proxy, grpc_server
-        )
+        add_RayServeServiceServicer_to_server(self.grpc_proxy, grpc_server)
         await grpc_server.start()
         logger.info(
             "Starting gRPC server with on node: "

@@ -1,0 +1,23 @@
+// User defined proto file to use Ray Serve gRPC proxy
+// generate python code:
+// cd <to the upper directory of this file>
+// python -m grpc_tools.protoc -I./protos --python_out=. --pyi_out=. --grpc_python_out=. ./protos/user_defined_protos.proto
+
+syntax = "proto3";
+
+option java_multiple_files = true;
+option java_package = "io.ray.examples.user_defined_protos";
+option java_outer_classname = "UserDefinedProtos";
+
+package userdefinedprotos;
+
+message UserDefinedMessage {
+  string name = 1;
+  string foo = 2;
+  int64 num = 3;
+}
+
+message UserDefinedResponse {
+  string greeting = 1;
+  int64 num_x2 = 2;
+}
