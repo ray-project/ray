@@ -1,7 +1,7 @@
 .. _training_ingest_home:
 
-End-to-end: Data Loading for ML Training
-========================================
+Loading & Configuring Training Datasets
+=======================================
 
 Data loading and preprocessing is an important step for ML model training. The process involves loading raw data from storage, processing it to the appropriate format, sharding it among training workers, and moving each shard to GPU devices for training.   
 
@@ -13,8 +13,8 @@ For more advantages with using Ray Data to ingest data for training, and compari
 
 .. _ingest_quickstart:
 
-Quickstart
-----------
+Basics
+------
 Install Ray Data and Ray Train:
 
 .. code-block:: bash
@@ -224,7 +224,8 @@ Using Ray Data and Ray Train for distributed training on large datasets involves
 Related resources
 -----------------
 
-* For more in-depth examples for your use case, see :ref:`our distributed training examples<data_train_examples>`.
+* For more in-depth examples for your use case, see :ref:`our distributed training examples <data_train_examples>`.
+* For more information on how to use Ray Datasets, see :ref:`the Ray Data user guides <data-user-guide>`.
 * For how to configure Ray Datasets for training, see :ref:`the configuration guide <train_datasets_configuration>`.
 * For more information on how to configure Ray Train in general, see :ref:`the Ray Train user guides <train-userguides>`
 
