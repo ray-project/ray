@@ -250,6 +250,7 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
                 node_id,
                 node_info["nodeManagerAddress"],
                 int(node_info["nodeManagerPort"]),
+                int(node_info["runtimeEnvAgentPort"]),
             )
 
     async def _update_agent_stubs(self, change: Change):

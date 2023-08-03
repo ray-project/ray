@@ -137,6 +137,7 @@ def test_log_file_exists(shutdown_only):
     log_rotating_component = [
         (ray_constants.PROCESS_TYPE_DASHBOARD, [".log", ".err"]),
         (ray_constants.PROCESS_TYPE_DASHBOARD_AGENT, [".log"]),
+        (ray_constants.PROCESS_TYPE_RUNTIME_ENV_AGENT, [".log", ".out", ".err"]),
         (ray_constants.PROCESS_TYPE_LOG_MONITOR, [".log", ".err"]),
         (ray_constants.PROCESS_TYPE_MONITOR, [".log", ".out", ".err"]),
         (ray_constants.PROCESS_TYPE_PYTHON_CORE_WORKER_DRIVER, [".log"]),

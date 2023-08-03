@@ -5372,6 +5372,33 @@
 #         num_nodes: 5
 #         timeout: 600
 
+- name: stress_test_many_runtime_envs
+  group: core-daily-test
+  working_dir: nightly_tests
+
+  python: "3.8"
+  frequency: nightly
+  team: core
+  cluster:
+    byod: {}
+    cluster_compute: stress_tests/smoke_test_compute.yaml
+
+  run:
+    timeout: 14400
+    wait_for_nodes:
+      num_nodes: 5
+    script: python stress_tests/test_many_runtime_envs_runner.py --num_runtime_envs=10000
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: stress_tests/smoke_test_compute_gce.yaml
+      smoke_test:
+        frequency: manual
+
 - name: single_node_oom
   group: core-daily-test
   working_dir: nightly_tests

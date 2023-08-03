@@ -262,11 +262,16 @@ class Node:
             "dashboard_agent_listen_port",
             default_port=ray_params.dashboard_agent_listen_port,
         )
+        self._runtime_env_agent_port = self._get_cached_port(
+            "runtime_env_agent_port",
+            default_port=ray_params.runtime_env_agent_port,
+        )
 
         ray_params.update_if_absent(
             metrics_agent_port=self.metrics_agent_port,
             metrics_export_port=self._metrics_export_port,
             dashboard_agent_listen_port=self._dashboard_agent_listen_port,
+            runtime_env_agent_port=self._runtime_env_agent_port,
         )
 
         # Pick a GCS server port.
@@ -576,6 +581,16 @@ class Node:
     def metrics_export_port(self):
         """Get the port that exposes metrics"""
         return self._metrics_export_port
+
+    @property
+    def runtime_env_agent_port(self):
+        """Get the port that exposes runtime env agent as http"""
+        return self._runtime_env_agent_port
+
+    @property
+    def runtime_env_agent_address(self):
+        """Get the address that exposes runtime env agent as http"""
+        return f"http://{self._raylet_ip_address}:{self._runtime_env_agent_port}"
 
     @property
     def dashboard_agent_listen_port(self):
@@ -1067,6 +1082,7 @@ class Node:
             object_manager_port=self._ray_params.object_manager_port,
             redis_password=self._ray_params.redis_password,
             metrics_agent_port=self._ray_params.metrics_agent_port,
+            runtime_env_agent_port=self._ray_params.runtime_env_agent_port,
             metrics_export_port=self._metrics_export_port,
             dashboard_agent_listen_port=self._ray_params.dashboard_agent_listen_port,
             use_valgrind=use_valgrind,
@@ -1127,7 +1143,7 @@ class Node:
             stderr_file=stderr_file,
             redis_password=self._ray_params.redis_password,
             fate_share=self.kernel_fate_share,
-            metrics_agent_port=self._ray_params.metrics_agent_port,
+            runtime_env_agent_address=self.runtime_env_agent_address,
         )
         assert ray_constants.PROCESS_TYPE_RAY_CLIENT_SERVER not in self.all_processes
         self.all_processes[ray_constants.PROCESS_TYPE_RAY_CLIENT_SERVER] = [
