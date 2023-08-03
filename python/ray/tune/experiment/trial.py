@@ -383,7 +383,6 @@ class Trial:
         if _use_storage_context():
             assert self.storage
 
-            # TODO(justinvyu): Rename these to legacy.
             self._legacy_orig_experiment_path = None
             self._legacy_orig_experiment_dir_name = None
             self._legacy_local_experiment_path = None
