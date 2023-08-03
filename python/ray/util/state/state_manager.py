@@ -5,6 +5,7 @@ from collections import defaultdict
 from functools import wraps
 from typing import List, Optional, Tuple
 
+import aiohttp
 import grpc
 from grpc.aio._call import UnaryStreamCall
 
@@ -45,7 +46,6 @@ from ray.core.generated.runtime_env_agent_pb2 import (
     GetRuntimeEnvsInfoReply,
     GetRuntimeEnvsInfoRequest,
 )
-from ray.core.generated.runtime_env_agent_pb2_grpc import RuntimeEnvServiceStub
 from ray.dashboard.datacenter import DataSource
 from ray.dashboard.modules.job.common import JobInfoStorageClient
 from ray.dashboard.modules.job.pydantic_models import JobDetails, JobType
@@ -156,11 +156,12 @@ class StateDataSourceClient:
     def __init__(self, gcs_channel: grpc.aio.Channel, gcs_aio_client: GcsAioClient):
         self.register_gcs_client(gcs_channel)
         self._raylet_stubs = {}
-        self._runtime_env_agent_stub = {}
+        self._runtime_env_agent_addresses = {}  # {node_id -> url}
         self._log_agent_stub = {}
         self._job_client = JobInfoStorageClient(gcs_aio_client)
         self._id_id_map = IdToIpMap()
         self._gcs_aio_client = gcs_aio_client
+        self._client_session = aiohttp.ClientSession()
 
     def register_gcs_client(self, gcs_channel: grpc.aio.Channel):
         self._gcs_actor_info_stub = gcs_service_pb2_grpc.ActorInfoGcsServiceStub(
@@ -179,17 +180,31 @@ class StateDataSourceClient:
             gcs_channel
         )
 
-    def register_raylet_client(self, node_id: str, address: str, port: int):
+    def register_raylet_client(
+        self, node_id: str, address: str, port: int, runtime_env_agent_port: int
+    ):
         full_addr = f"{address}:{port}"
         options = _STATE_MANAGER_GRPC_OPTIONS
         channel = ray._private.utils.init_grpc_channel(
             full_addr, options, asynchronous=True
         )
         self._raylet_stubs[node_id] = NodeManagerServiceStub(channel)
+        # TODO(ryw): runtime env agent is on the raylet's address, not node manager's.
+        # So the correct way is to use
+        # f"http://{raylet_ip_address}:{runtime_env_agent_port}".
+        # However we don't have a good way to get *all* node's raylet_ip_address, as
+        # this value is not exposed in GcsNodeInfo and hence isn't available via
+        # GetClusterInfo. In practice, this should not matter a lot until we see a
+        # raylet ip != node manager ip case, which should break more thing than just
+        # runtime env agent connectivity.
+        self._runtime_env_agent_addresses[
+            node_id
+        ] = f"http://{address}:{runtime_env_agent_port}"
         self._id_id_map.put(node_id, address)
 
     def unregister_raylet_client(self, node_id: str):
         self._raylet_stubs.pop(node_id)
+        self._runtime_env_agent_addresses.pop(node_id)
         self._id_id_map.pop(node_id)
 
     def register_agent_client(self, node_id, address: str, port: int):
@@ -197,21 +212,23 @@ class StateDataSourceClient:
         channel = ray._private.utils.init_grpc_channel(
             f"{address}:{port}", options=options, asynchronous=True
         )
-        self._runtime_env_agent_stub[node_id] = RuntimeEnvServiceStub(channel)
         self._log_agent_stub[node_id] = LogServiceStub(channel)
         self._id_id_map.put(node_id, address)
 
     def unregister_agent_client(self, node_id: str):
-        self._runtime_env_agent_stub.pop(node_id)
         self._log_agent_stub.pop(node_id)
         self._id_id_map.pop(node_id)
 
     def get_all_registered_raylet_ids(self) -> List[str]:
         return self._raylet_stubs.keys()
 
-    def get_all_registered_agent_ids(self) -> List[str]:
-        assert len(self._log_agent_stub) == len(self._runtime_env_agent_stub)
-        return self._runtime_env_agent_stub.keys()
+    # Returns all node_ids who has runtime_env_agent listening.
+    def get_all_registered_runtime_env_agent_ids(self) -> List[str]:
+        return self._runtime_env_agent_addresses.keys()
+
+    # Returns all nod_ids which registered their log_agent_stub.
+    def get_all_registered_log_agent_ids(self) -> List[str]:
+        return self._log_agent_stub.keys()
 
     def ip_to_node_id(self, ip: Optional[str]) -> Optional[str]:
         """Return the node id that corresponds to the given ip.
@@ -397,22 +414,33 @@ class StateDataSourceClient:
         )
         return reply
 
-    @handle_grpc_network_errors
     async def get_runtime_envs_info(
         self, node_id: str, timeout: int = None, limit: int = None
     ) -> Optional[GetRuntimeEnvsInfoReply]:
         if not limit:
             limit = RAY_MAX_LIMIT_FROM_DATA_SOURCE
 
-        stub = self._runtime_env_agent_stub.get(node_id)
-        if not stub:
-            raise ValueError(f"Agent for a node id, {node_id} doesn't exist.")
-
-        reply = await stub.GetRuntimeEnvsInfo(
-            GetRuntimeEnvsInfoRequest(limit=limit),
-            timeout=timeout,
-        )
-        return reply
+        address = self._runtime_env_agent_addresses.get(node_id)
+        if not address:
+            raise ValueError(
+                f"Runtime Env Agent for a node id, {node_id} doesn't exist."
+            )
+        timeout = aiohttp.ClientTimeout(total=timeout)
+        url = f"{address}/get_runtime_envs_info"
+        request = GetRuntimeEnvsInfoRequest(limit=limit)
+        data = request.SerializeToString()
+        async with self._client_session.post(url, data=data, timeout=timeout) as resp:
+            if resp.status >= 200 and resp.status < 300:
+                response_data = await resp.read()
+                reply = GetRuntimeEnvsInfoReply()
+                reply.ParseFromString(response_data)
+                return reply
+            else:
+                raise DataSourceUnavailable(
+                    "Failed to query the runtime env agent for get_runtime_envs_info. "
+                    "Either there's a network issue, or the source is down. "
+                    f"Response is {resp.status}, reason {resp.reason}"
+                )
 
     @handle_grpc_network_errors
     async def list_logs(

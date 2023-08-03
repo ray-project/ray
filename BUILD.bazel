@@ -255,58 +255,6 @@ cc_library(
     ],
 )
 
-# Agent manager.
-cc_grpc_library(
-    name = "agent_manager_cc_grpc",
-    srcs = ["//src/ray/protobuf:agent_manager_proto"],
-    grpc_only = True,
-    deps = ["//src/ray/protobuf:agent_manager_cc_proto"],
-)
-
-cc_library(
-    name = "agent_manager_rpc",
-    hdrs = glob([
-        "src/ray/rpc/agent_manager/*.h",
-    ]),
-    copts = COPTS,
-    strip_include_prefix = "src",
-    deps = [
-        ":agent_manager_cc_grpc",
-        ":grpc_common_lib",
-        ":ray_common",
-        "@boost//:asio",
-        "@com_github_grpc_grpc//:grpc++",
-    ],
-)
-
-# runtime env.
-cc_grpc_library(
-    name = "runtime_env_cc_grpc",
-    srcs = ["//src/ray/protobuf:runtime_env_agent_proto"],
-    grpc_only = True,
-    deps = [
-        "//src/ray/protobuf:agent_manager_cc_proto",
-        "//src/ray/protobuf:common_cc_proto",
-        "//src/ray/protobuf:runtime_env_agent_cc_proto",
-    ],
-)
-
-cc_library(
-    name = "runtime_env_rpc",
-    hdrs = glob([
-        "src/ray/rpc/runtime_env/*.h",
-    ]),
-    copts = COPTS,
-    strip_include_prefix = "src",
-    deps = [
-        ":grpc_common_lib",
-        ":ray_common",
-        ":runtime_env_cc_grpc",
-        "@boost//:asio",
-        "@com_github_grpc_grpc//:grpc++",
-    ],
-)
-
 # pubsub.
 cc_grpc_library(
     name = "pubsub_cc_grpc",
@@ -581,7 +529,6 @@ cc_library(
     copts = COPTS,
     strip_include_prefix = "src",
     deps = [
-        ":agent_manager_rpc",
         ":autoscaler_rpc",
         ":gcs",
         ":gcs_pub_sub_lib",
@@ -595,6 +542,7 @@ cc_library(
         ":raylet_client_lib",
         ":scheduler",
         ":worker_rpc",
+        "//src/ray/protobuf:agent_manager_cc_proto",
         "@boost//:bimap",
         "@com_github_grpc_grpc//src/proto/grpc/health/v1:health_proto",
         "@com_google_absl//absl/container:btree",
@@ -774,7 +722,6 @@ cc_library(
     strip_include_prefix = "src",
     visibility = ["//visibility:public"],
     deps = [
-        ":agent_manager_rpc",
         ":gcs",
         ":gcs_client_lib",
         ":node_manager_fbs",
@@ -783,7 +730,6 @@ cc_library(
         ":plasma_client",
         ":pubsub_lib",
         ":ray_common",
-        ":runtime_env_rpc",
         ":scheduler",
         ":stats_lib",
         ":worker_rpc",
@@ -825,7 +771,6 @@ cc_library(
     strip_include_prefix = "src",
     visibility = ["//visibility:public"],
     deps = [
-        ":agent_manager_rpc",
         ":node_manager_fbs",
         ":node_manager_rpc",
         ":ray_common",
@@ -2480,12 +2425,12 @@ cc_library(
     copts = COPTS,
     strip_include_prefix = "src",
     deps = [
-        ":agent_manager_rpc",
         ":hiredis",
         ":node_manager_fbs",
         ":node_manager_rpc",
         ":ray_common",
         ":stats_lib",
+        "//src/ray/protobuf:agent_manager_cc_proto",
         "//src/ray/protobuf:gcs_cc_proto",
         "//src/ray/protobuf:gcs_service_cc_proto",
         "//src/ray/util",

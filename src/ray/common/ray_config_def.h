@@ -528,8 +528,8 @@ RAY_CONFIG(uint32_t, agent_register_timeout_ms, 100 * 1000)
 RAY_CONFIG(uint32_t, agent_register_timeout_ms, 30 * 1000)
 #endif
 
-/// If the agent manager fails to communicate with the dashboard agent, we will retry
-/// after this interval.
+/// If the agent manager fails to communicate with the dashboard agent or the runtime env
+/// agent, we will retry after this interval.
 RAY_CONFIG(uint32_t, agent_manager_retry_interval_ms, 1000)
 
 /// The maximum number of resource shapes included in the resource

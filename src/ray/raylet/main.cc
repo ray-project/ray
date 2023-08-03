@@ -34,6 +34,7 @@ DEFINE_int32(object_manager_port, -1, "The port of object manager.");
 DEFINE_int32(node_manager_port, -1, "The port of node manager.");
 DEFINE_int32(metrics_agent_port, -1, "The port of metrics agent.");
 DEFINE_int32(metrics_export_port, 1, "The port at which metrics are exposed.");
+DEFINE_int32(runtime_env_agent_port, 1, "The port of runtime env agent.");
 DEFINE_string(node_ip_address, "", "The ip address of this node.");
 DEFINE_string(gcs_address, "", "The address of the GCS server, including IP and port.");
 DEFINE_int32(min_worker_port,
@@ -53,7 +54,8 @@ DEFINE_int32(maximum_startup_concurrency, 1, "Maximum startup concurrency.");
 DEFINE_string(static_resource_list, "", "The static resource list of this node.");
 DEFINE_string(python_worker_command, "", "Python worker command.");
 DEFINE_string(java_worker_command, "", "Java worker command.");
-DEFINE_string(agent_command, "", "Dashboard agent command.");
+DEFINE_string(dashboard_agent_command, "", "Dashboard agent command.");
+DEFINE_string(runtime_env_agent_command, "", "Runtime env agent command.");
 DEFINE_string(cpp_worker_command, "", "CPP worker command.");
 DEFINE_string(native_library_path,
               "",
@@ -123,6 +125,7 @@ int main(int argc, char *argv[]) {
   const int object_manager_port = static_cast<int>(FLAGS_object_manager_port);
   const int node_manager_port = static_cast<int>(FLAGS_node_manager_port);
   const int metrics_agent_port = static_cast<int>(FLAGS_metrics_agent_port);
+  const int runtime_env_agent_port = static_cast<int>(FLAGS_runtime_env_agent_port);
   const std::string node_ip_address = FLAGS_node_ip_address;
   const int min_worker_port = static_cast<int>(FLAGS_min_worker_port);
   const int max_worker_port = static_cast<int>(FLAGS_max_worker_port);
@@ -134,7 +137,8 @@ int main(int argc, char *argv[]) {
   const std::string static_resource_list = FLAGS_static_resource_list;
   const std::string python_worker_command = FLAGS_python_worker_command;
   const std::string java_worker_command = FLAGS_java_worker_command;
-  const std::string agent_command = FLAGS_agent_command;
+  const std::string dashboard_agent_command = FLAGS_dashboard_agent_command;
+  const std::string runtime_env_agent_command = FLAGS_runtime_env_agent_command;
   const std::string cpp_worker_command = FLAGS_cpp_worker_command;
   const std::string native_library_path = FLAGS_native_library_path;
   const std::string temp_dir = FLAGS_temp_dir;
@@ -211,6 +215,7 @@ int main(int argc, char *argv[]) {
             RayConfig::instance().num_workers_soft_limit();
         node_manager_config.num_prestart_python_workers = num_prestart_python_workers;
         node_manager_config.maximum_startup_concurrency = maximum_startup_concurrency;
+        node_manager_config.runtime_env_agent_port = runtime_env_agent_port;
         node_manager_config.min_worker_port = min_worker_port;
         node_manager_config.max_worker_port = max_worker_port;
         node_manager_config.worker_ports = worker_ports;
@@ -234,11 +239,15 @@ int main(int argc, char *argv[]) {
           RAY_LOG(FATAL) << "At least one of Python/Java/CPP worker command "
                          << "should be provided";
         }
-        if (!agent_command.empty()) {
-          node_manager_config.agent_command = agent_command;
-        } else {
-          RAY_LOG(DEBUG) << "Agent command is empty. Not starting agent.";
+        if (dashboard_agent_command.empty()) {
+          RAY_LOG(FATAL) << "Dashboard agent command must be non empty";
         }
+        node_manager_config.dashboard_agent_command = dashboard_agent_command;
+
+        if (runtime_env_agent_command.empty()) {
+          RAY_LOG(FATAL) << "Runtime env agent command must be non empty";
+        }
+        node_manager_config.runtime_env_agent_command = runtime_env_agent_command;
 
         node_manager_config.report_resources_period_ms =
             RayConfig::instance().raylet_report_resources_period_milliseconds();
