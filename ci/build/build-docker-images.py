@@ -209,6 +209,13 @@ def _build_docker_image(
     # I.e. "py310"[3:] == 10
     build_args["PYTHON_MINOR_VERSION"] = py_version[3:]
 
+    if py_version == "py37":
+        constraints_file = "requirements_compiled_py37.txt"
+    else:
+        constraints_file = "requirements_compiled.txt"
+
+    build_args["CONSTRAINTS_FILE"] = constraints_file
+
     if platform.processor() in ADDITIONAL_PLATFORMS:
         build_args["HOSTTYPE"] = platform.processor()
 
@@ -425,6 +432,7 @@ def prep_ray_base():
     root_dir = _get_root_dir()
     requirements_files = [
         "python/requirements_compiled.txt",
+        "python/requirements_compiled_py37.txt",
     ]
     for requirement_file in requirements_files:
         shutil.copy(
