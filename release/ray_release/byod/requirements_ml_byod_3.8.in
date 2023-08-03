@@ -13,7 +13,7 @@ filelock
 gcsfs
 gsutil
 gym
-gymnasium[atari,mujoco]==0.26.3
+gymnasium[atari,mujoco]==0.28.1
 jupytext
 memray
 mosaicml-streaming
