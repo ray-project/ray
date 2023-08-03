@@ -129,16 +129,13 @@ class TestPreprocessors(unittest.TestCase):
         p2 = ModelCatalog.get_preprocessor(gym.make("FrozenLake-v1"))
         self.assertEqual(type(p2), OneHotPreprocessor)
 
-        p3 = ModelCatalog.get_preprocessor(
-            gym.make("GymV26Environment-v0", env_id="ALE/MsPacman-ram-v5")
-        )
+        p3 = ModelCatalog.get_preprocessor(gym.make("ALE/MsPacman-ram-v5"))
         self.assertEqual(type(p3), AtariRamPreprocessor)
 
         p4 = ModelCatalog.get_preprocessor(
             gym.make(
-                "GymV26Environment-v0",
-                env_id="ALE/MsPacman-v5",
-                make_kwargs={"frameskip": 1},
+                "ALE/MsPacman-v5",
+                frameskip=1,
             )
         )
         self.assertEqual(type(p4), GenericPixelPreprocessor)
