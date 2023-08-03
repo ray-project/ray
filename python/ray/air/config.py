@@ -106,7 +106,7 @@ class ScalingConfig:
             argument.
         resources_per_worker: If specified, the resources
             defined in this Dict will be reserved for each worker. The
-            ``CPU`` and ``GPU`` keys (case-sensitive) can be defined to
+            ``"CPU"`` and ``"GPU"`` keys (case-sensitive) can be defined to
             override the number of CPU/GPUs used by each worker.
         placement_strategy: The placement strategy to use for the
             placement group of the Ray actors. See :ref:`Placement Group
