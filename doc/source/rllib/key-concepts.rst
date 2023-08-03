@@ -2,6 +2,8 @@
 
 .. include:: /_includes/rllib/we_are_hiring.rst
 
+.. include:: /_includes/rllib/rlm_learner_migration_banner.rst
+
 .. TODO: We need algorithms, environments, policies, models here. Likely in that order.
     Execution plans are not a "core" concept for users. Sample batches should probably also be left out.
 
@@ -44,6 +46,7 @@ The model that tries to maximize the expected sum over all future rewards is cal
 The RL simulation feedback loop repeatedly collects data, for one (single-agent case) or multiple (multi-agent case) policies, trains the policies on these collected data, and makes sure the policies' weights are kept in sync. Thereby, the collected environment data contains observations, taken actions, received rewards and so-called **done** flags, indicating the boundaries of different episodes the agents play through in the simulation.
 
 The simulation iterations of action -> reward -> next state -> train -> repeat, until the end state, is called an **episode**, or in RLlib, a **rollout**.
+The most common API to define environments is the `Farama-Foundation Gymnasium <rllib-env.html#gymnasium>`__ API, which we also use in most of our examples.
 
 .. _algorithms:
 
@@ -115,40 +118,32 @@ You can `configure the parallelism <rllib-training.html#specifying-resources>`__
 Check out our `scaling guide <rllib-training.html#scaling-guide>`__ for more details here.
 
 
-Policies
---------
+RL Modules
+----------
 
-`Policies <rllib-concepts.html#policies>`__ are a core concept in RLlib. In a nutshell, policies are
-Python classes that define how an agent acts in an environment.
-`Rollout workers <rllib-concepts.html#policy-evaluation>`__ query the policy to determine agent actions.
-In a `Farama-Foundation Gymnasium <rllib-env.html#gymnasium>`__ environment, there is a single agent and policy.
-In `vector envs <rllib-env.html#vectorized>`__, policy inference is for multiple agents at once,
-and in `multi-agent <rllib-env.html#multi-agent-and-hierarchical>`__, there may be multiple policies,
-each controlling one or more agents:
+`RLModules <rllib-rlmodule.html>`__ are framework-specific neural network containers.
+In a nutshell, they carry the neural networks and define how to use them during three phases that occur in
+reinforcement learning: Exploration, inference and training.
+A minimal RL Module can contain a single neural network and define its exploration-, inference- and
+training logic to only map observations to actions. Since RL Modules can map observations to actions, they naturally
+implement reinforcement learning policies in RLlib and can therefore be found in the :py:class:`~ray.rllib.evaluation.rollout_worker.RolloutWorker`,
+where their exploration and inference logic is used to sample from an environment.
+The second place in RLlib where RL Modules commonly occur is the :py:class:`~ray.rllib.core.learner.learner.Learner`,
+where their training logic is used in training the neural network.
+RL Modules extend to the multi-agent case, where a single :py:class:`~ray.rllib.core.rl_module.marl_module.MultiAgentRLModule`
+contains multiple RL Modules. The following figure is a rough sketch of how the above can look in practice:
 
-.. image:: images/multi-flat.svg
+.. image:: images/rllib-concepts-rlmodules-sketch.png
 
-Policies can be implemented using `any framework <https://github.com/ray-project/ray/blob/master/rllib/policy/policy.py>`__.
-However, for TensorFlow and PyTorch, RLlib has
-`build_tf_policy <rllib-concepts.html#building-policies-in-tensorflow>`__ and
-`build_torch_policy <rllib-concepts.html#building-policies-in-pytorch>`__ helper functions that let you
-define a trainable policy with a functional-style API, for example:
 
-.. TODO: test this code snippet
+.. note::
 
-.. code-block:: python
+    RL Modules are currently in alpha stage. They are wrapped in legacy :py:class:`~ray.rllib.policy.Policy` objects
+    to be used in :py:class:`~ray.rllib.evaluation.rollout_worker.RolloutWorker` for sampling.
+    This should be transparent to the user, but the following
+    `Policy Evaluation <key-concepts.html#policy-evaluation>`__ section still refers to these legacy Policy objects.
 
-  def policy_gradient_loss(policy, model, dist_class, train_batch):
-      logits, _ = model.from_batch(train_batch)
-      action_dist = dist_class(logits, model)
-      return -tf.reduce_mean(
-          action_dist.logp(train_batch["actions"]) * train_batch["rewards"])
-
-  # <class 'ray.rllib.policy.tf_policy_template.MyTFPolicy'>
-  MyTFPolicy = build_tf_policy(
-      name="MyTFPolicy",
-      loss_fn=policy_gradient_loss)
-
+.. policy-evaluation:
 
 Policy Evaluation
 -----------------

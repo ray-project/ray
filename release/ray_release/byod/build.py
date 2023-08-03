@@ -7,18 +7,19 @@ import subprocess
 import sys
 import time
 
+from ray_release.byod.build_ray import build_ray
 from ray_release.config import RELEASE_PACKAGE_DIR
+from ray_release.configs.global_config import get_global_config
 from ray_release.logger import logger
 from ray_release.test import (
     Test,
-    DATAPLANE_ECR,
     DATAPLANE_ECR_REPO,
     DATAPLANE_ECR_ML_REPO,
 )
 
 DATAPLANE_S3_BUCKET = "ray-release-automation-results"
-DATAPLANE_FILENAME = "dataplane_20230622.tgz"
-DATAPLANE_DIGEST = "141788597b798e407f6131d10f34d09bbae4648b3acd91d776e3e8ef013b64bb"
+DATAPLANE_FILENAME = "dataplane_20230718.tgz"
+DATAPLANE_DIGEST = "a3ad426b05f5cf1981fe684ccbffc1dded5e1071a99184d1072b7fc7b4daf8bc"
 BASE_IMAGE_WAIT_TIMEOUT = 7200
 BASE_IMAGE_WAIT_DURATION = 30
 RELEASE_BYOD_DIR = os.path.join(RELEASE_PACKAGE_DIR, "ray_release/byod")
@@ -41,13 +42,13 @@ def build_champagne_image(
     if image_type == "cpu":
         ray_project = "ray"
         anyscale_repo = DATAPLANE_ECR_REPO
-        image_suffix = ""
     else:
         ray_project = "ray-ml"
         anyscale_repo = DATAPLANE_ECR_ML_REPO
-        image_suffix = f"-{image_type}"
-    ray_image = f"rayproject/{ray_project}:{ray_version}-{python_version}{image_suffix}"
-    anyscale_image = f"{DATAPLANE_ECR}/{anyscale_repo}:champagne-{ray_version}"
+    ray_image = f"rayproject/{ray_project}:{ray_version}-{python_version}-{image_type}"
+    anyscale_image = (
+        f"{get_global_config()['byod_ecr']}/{anyscale_repo}:champagne-{ray_version}"
+    )
 
     logger.info(f"Building champagne anyscale image from {ray_image}")
     with open(DATAPLANE_FILENAME, "rb") as build_file:
@@ -105,6 +106,7 @@ def build_anyscale_base_byod_images(tests: List[Test]) -> None:
     """
     Builds the Anyscale BYOD images for the given tests.
     """
+    build_ray()
     _download_dataplane_build_file()
     to_be_built = {}
     built = set()

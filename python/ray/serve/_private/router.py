@@ -19,6 +19,9 @@ from typing import (
     Tuple,
     Union,
 )
+import warnings
+
+from starlette.requests import Request
 
 import ray
 from ray.actor import ActorHandle
@@ -32,6 +35,7 @@ from ray.serve._private.constants import (
     SERVE_LOGGER_NAME,
     HANDLE_METRIC_PUSH_INTERVAL_S,
 )
+from ray.serve._private.http_util import make_buffered_asgi_receive
 from ray.serve._private.long_poll import LongPollClient, LongPollNamespace
 from ray.serve._private.utils import (
     compute_iterable_delta,
@@ -44,6 +48,9 @@ from ray.serve.generated.serve_pb2 import (
 )
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
+
+# Used to only print a single warning when users pass starlette requests via handle.
+WARNED_ABOUT_STARLETTE_REQUESTS_ONCE = False
 
 
 @dataclass
@@ -77,15 +84,49 @@ class Query:
     async def resolve_async_tasks(self):
         """Find all unresolved asyncio.Task and gather them all at once."""
         scanner = _PyObjScanner(source_type=asyncio.Task)
-        tasks = scanner.find_nodes((self.args, self.kwargs))
 
-        if len(tasks) > 0:
-            resolved = await asyncio.gather(*tasks)
-            replacement_table = dict(zip(tasks, resolved))
-            self.args, self.kwargs = scanner.replace_nodes(replacement_table)
+        try:
+            tasks = scanner.find_nodes((self.args, self.kwargs))
 
-        # Make the scanner GCable to avoid memory leak
-        scanner.clear()
+            if len(tasks) > 0:
+                resolved = await asyncio.gather(*tasks)
+                replacement_table = dict(zip(tasks, resolved))
+                self.args, self.kwargs = scanner.replace_nodes(replacement_table)
+        finally:
+            # Make the scanner GC-able to avoid memory leaks.
+            scanner.clear()
+
+    async def buffer_starlette_requests_and_warn(self):
+        """Buffer any `starlette.request.Requests` objects to make them serializable.
+
+        This is an anti-pattern because the requests will not be fully functional, so
+        warn the user. We may fully disallow it in the future.
+        """
+        global WARNED_ABOUT_STARLETTE_REQUESTS_ONCE
+        scanner = _PyObjScanner(source_type=Request)
+
+        try:
+            requests = scanner.find_nodes((self.args, self.kwargs))
+            if len(requests) > 0 and not WARNED_ABOUT_STARLETTE_REQUESTS_ONCE:
+                WARNED_ABOUT_STARLETTE_REQUESTS_ONCE = True
+                # TODO(edoakes): fully disallow this in the future.
+                warnings.warn(
+                    "`starlette.Request` objects should not be directly passed via "
+                    "`ServeHandle` calls. Not all functionality is guaranteed to work "
+                    "(e.g., detecting disconnects) and this may be disallowed in a "
+                    "future release."
+                )
+
+            for request in requests:
+
+                async def empty_send():
+                    pass
+
+                request._send = empty_send
+                request._receive = make_buffered_asgi_receive(await request.body())
+        finally:
+            # Make the scanner GC-able to avoid memory leaks.
+            scanner.clear()
 
 
 class ReplicaWrapper(ABC):
@@ -104,8 +145,8 @@ class ReplicaWrapper(ABC):
         """Set of model IDs on this replica."""
         pass
 
-    async def get_queue_state(self) -> Tuple[str, int, bool]:
-        """Returns tuple of (replica_id, queue_len, accepted)."""
+    async def get_queue_state(self) -> Tuple[int, bool]:
+        """Returns tuple of (queue_len, accepted)."""
         pass
 
     def send_query(
@@ -133,13 +174,13 @@ class ActorReplicaWrapper:
     def multiplexed_model_ids(self) -> Set[str]:
         return self._multiplexed_model_ids
 
-    async def get_queue_state(self) -> Tuple[str, int, bool]:
+    async def get_queue_state(self) -> Tuple[int, bool]:
         # NOTE(edoakes): the `get_num_ongoing_requests` method name is shared by
         # the Python and Java replica implementations. If you change it, you need to
         # change both (or introduce a branch here).
         queue_len = await self._actor_handle.get_num_ongoing_requests.remote()
         accepted = queue_len < self._replica_info.max_concurrent_queries
-        return self.replica_id, queue_len, accepted
+        return queue_len, accepted
 
     def _send_query_java(self, query: Query) -> ray.ObjectRef:
         """Send the query to a Java replica.
@@ -402,7 +443,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
                 replica_ids_attempted, request_metadata
             )
             chosen_ids = random.sample(
-                candidate_replica_ids, k=min(2, len(candidate_replica_ids))
+                list(candidate_replica_ids), k=min(2, len(candidate_replica_ids))
             )
             yield [self._replicas[chosen_id] for chosen_id in chosen_ids]
 
@@ -429,7 +470,12 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         Among replicas that respond within the deadline and accept the request (don't
         have full queues), the one with the lowest queue length is chosen.
         """
-        get_queue_state_tasks = [c.get_queue_state() for c in candidates]
+        get_queue_state_tasks = []
+        for c in candidates:
+            t = self._loop.create_task(c.get_queue_state())
+            t.replica_id = c.replica_id
+            get_queue_state_tasks.append(t)
+
         done, pending = await asyncio.wait(
             get_queue_state_tasks,
             timeout=self.queue_len_response_deadline_s,
@@ -440,15 +486,25 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
 
         chosen_replica_id = None
         lowest_queue_len = math.inf
-        for task in done:
-            if task.exception() is not None:
-                logger.warning(
-                    f"Failed to fetch queue length for replica: {task.exception()}"
+        for t in done:
+            if t.exception() is not None:
+                msg = (
+                    "Failed to fetch queue length for "
+                    f"replica {t.replica_id}: '{t.exception()}'"
                 )
+                # If we get a RayActorError, it means the replica actor has died. This
+                # is not recoverable (the controller will start a new replica in its
+                # place), so we should no longer consider it for requests.
+                if isinstance(t.exception(), RayActorError):
+                    self._replicas.pop(t.replica_id, None)
+                    self._replica_id_set.discard(t.replica_id)
+                    msg += " This replica will no longer be considered for requests."
+
+                logger.warning(msg)
             else:
-                replica_id, queue_len, accepted = task.result()
+                queue_len, accepted = t.result()
                 if accepted and queue_len < lowest_queue_len:
-                    chosen_replica_id = replica_id
+                    chosen_replica_id = t.replica_id
                     lowest_queue_len = queue_len
 
         if chosen_replica_id is None:
@@ -806,7 +862,6 @@ class RoundRobinReplicaScheduler(ReplicaScheduler):
         if query.metadata.is_streaming:
             raise NotImplementedError("Streaming requires new routing to be enabled.")
 
-        await query.resolve_async_tasks()
         assigned_ref = self._try_assign_replica(query)
         while assigned_ref is None:  # Can't assign a replica right now.
             logger.debug(
@@ -897,6 +952,7 @@ class Router:
             ray.get(controller_handle.get_deployment_info.remote(self.deployment_name))
         )
         deployment_info = DeploymentInfo.from_proto(deployment_route.deployment_info)
+        self.metrics_pusher = None
         if deployment_info.deployment_config.autoscaling_config:
             self.metrics_pusher = MetricsPusher()
             self.metrics_pusher.register_task(
@@ -929,20 +985,34 @@ class Router:
             },
         )
 
-        query = Query(
-            args=list(request_args),
-            kwargs=request_kwargs,
-            metadata=request_meta,
-        )
-        await query.resolve_async_tasks()
-        result = await self._replica_scheduler.assign_replica(query)
+        try:
+            query = Query(
+                args=list(request_args),
+                kwargs=request_kwargs,
+                metadata=request_meta,
+            )
+            await query.resolve_async_tasks()
+            await query.buffer_starlette_requests_and_warn()
+            result = await self._replica_scheduler.assign_replica(query)
 
-        self.num_queued_queries -= 1
-        self.num_queued_queries_gauge.set(
-            self.num_queued_queries,
-            tags={
-                "application": request_meta.app_name,
-            },
-        )
+            return result
+        finally:
+            # If the query is disconnected before assignment, this coroutine
+            # gets cancelled by the caller and an asyncio.CancelledError is
+            # raised. The finally block ensures that num_queued_queries
+            # is correctly decremented in this case.
+            self.num_queued_queries -= 1
+            self.num_queued_queries_gauge.set(
+                self.num_queued_queries,
+                tags={
+                    "application": request_meta.app_name,
+                },
+            )
 
-        return result
+    def shutdown(self):
+        """Shutdown router gracefully.
+
+        The metrics_pusher needs to be shutdown separately.
+        """
+        if self.metrics_pusher:
+            self.metrics_pusher.shutdown()

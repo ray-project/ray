@@ -78,6 +78,14 @@ from ray.includes.common cimport (
     CSchedulingStrategy,
     CPlacementGroupSchedulingStrategy,
     CNodeAffinitySchedulingStrategy,
+    CNodeLabelSchedulingStrategy,
+    CLabelMatchExpressions,
+    CLabelMatchExpression,
+    CLabelIn,
+    CLabelNotIn,
+    CLabelExists,
+    CLabelDoesNotExist,
+    CLabelOperator,
     CRayFunction,
     CWorkerType,
     CJobConfig,
@@ -150,11 +158,17 @@ from ray.exceptions import (
     AsyncioActorExit,
     PendingCallsLimitExceeded,
     RpcError,
+    ObjectRefStreamEndOfStreamError,
 )
 from ray._private import external_storage
 from ray.util.scheduling_strategies import (
     PlacementGroupSchedulingStrategy,
     NodeAffinitySchedulingStrategy,
+    NodeLabelSchedulingStrategy,
+    In,
+    NotIn,
+    Exists,
+    DoesNotExist,
 )
 import ray._private.ray_constants as ray_constants
 import ray.cloudpickle as ray_pickle
@@ -218,10 +232,6 @@ class ObjectRefGenerator:
 
     def __len__(self):
         return len(self._refs)
-
-
-class ObjectRefStreamEndOfStreamError(RayError):
-    pass
 
 
 class StreamingObjectRefGenerator:
@@ -323,6 +333,16 @@ class StreamingObjectRefGenerator:
                 raise StopIteration
         return ref
 
+    async def suppress_exceptions(self, ref: ObjectRef):
+        # Wrap a streamed ref to avoid asyncio warnings about not retrieving
+        # the exception when we are just waiting for the ref to become ready.
+        # The exception will get returned (or warned) to the user once they
+        # actually await the ref.
+        try:
+            await ref
+        except Exception:
+            pass
+
     async def _next_async(
             self,
             timeout_s: Optional[float] = None,
@@ -334,7 +354,8 @@ class StreamingObjectRefGenerator:
         ref = core_worker.peek_object_ref_stream(
             self._generator_ref)
         # TODO(swang): Avoid fetching the value.
-        ready, unready = await asyncio.wait([ref], timeout=timeout_s)
+        ready, unready = await asyncio.wait([self.suppress_exceptions(ref)],
+                                            timeout=timeout_s)
         if len(unready) > 0:
             return ObjectRef.nil()
 
@@ -2311,12 +2332,26 @@ cdef class GcsClient:
     def request_cluster_resource_constraint(
             self,
             bundles: c_vector[unordered_map[c_string, double]],
-            timeout=None):
+            count_array: c_vector[int64_t],
+            timeout_s=None):
         cdef:
-            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
+            int64_t timeout_ms = round(1000 * timeout_s) if timeout_s else -1
         with nogil:
             check_status(self.inner.get().RequestClusterResourceConstraint(
-                timeout_ms, bundles))
+                timeout_ms, bundles, count_array))
+
+    @_auto_reconnect
+    def get_cluster_status(
+            self,
+            timeout_s=None):
+        cdef:
+            int64_t timeout_ms = round(1000 * timeout_s) if timeout_s else -1
+            c_string serialized_reply
+        with nogil:
+            check_status(self.inner.get().GetClusterStatus(timeout_ms,
+                         serialized_reply))
+
+        return serialized_reply
 
     #############################################################
     # Interface for rpc::autoscaler::AutoscalerStateService ends
@@ -3038,6 +3073,31 @@ cdef class CoreWorker:
         logger.warning("Local object store memory usage:\n{}\n".format(
             message.decode("utf-8")))
 
+    cdef python_label_match_expressions_to_c(
+            self, python_expressions,
+            CLabelMatchExpressions *c_expressions):
+        cdef:
+            CLabelMatchExpression* c_expression
+            CLabelIn * c_label_in
+            CLabelNotIn * c_label_not_in
+
+        for expression in python_expressions:
+            c_expression = c_expressions[0].add_expressions()
+            c_expression.set_key(expression.key)
+            if isinstance(expression.operator, In):
+                c_label_in = c_expression.mutable_operator_()[0].mutable_label_in()
+                for value in expression.operator.values:
+                    c_label_in[0].add_values(value)
+            elif isinstance(expression.operator, NotIn):
+                c_label_not_in = \
+                    c_expression.mutable_operator_()[0].mutable_label_not_in()
+                for value in expression.operator.values:
+                    c_label_not_in[0].add_values(value)
+            elif isinstance(expression.operator, Exists):
+                c_expression.mutable_operator_()[0].mutable_label_exists()
+            elif isinstance(expression.operator, DoesNotExist):
+                c_expression.mutable_operator_()[0].mutable_label_does_not_exist()
+
     cdef python_scheduling_strategy_to_c(
             self, python_scheduling_strategy,
             CSchedulingStrategy *c_scheduling_strategy):
@@ -3045,6 +3105,7 @@ cdef class CoreWorker:
             CPlacementGroupSchedulingStrategy \
                 *c_placement_group_scheduling_strategy
             CNodeAffinitySchedulingStrategy *c_node_affinity_scheduling_strategy
+            CNodeLabelSchedulingStrategy *c_node_label_scheduling_strategy
         assert python_scheduling_strategy is not None
         if python_scheduling_strategy == "DEFAULT":
             c_scheduling_strategy[0].mutable_default_scheduling_strategy()
@@ -3078,6 +3139,17 @@ cdef class CoreWorker:
                 python_scheduling_strategy._spill_on_unavailable)
             c_node_affinity_scheduling_strategy[0].set_fail_on_unavailable(
                 python_scheduling_strategy._fail_on_unavailable)
+        elif isinstance(python_scheduling_strategy,
+                        NodeLabelSchedulingStrategy):
+            c_node_label_scheduling_strategy = \
+                c_scheduling_strategy[0] \
+                .mutable_node_label_scheduling_strategy()
+            self.python_label_match_expressions_to_c(
+                python_scheduling_strategy.hard,
+                c_node_label_scheduling_strategy[0].mutable_hard())
+            self.python_label_match_expressions_to_c(
+                python_scheduling_strategy.soft,
+                c_node_label_scheduling_strategy[0].mutable_soft())
         else:
             raise ValueError(
                 f"Invalid scheduling_strategy value "

@@ -24,6 +24,11 @@ from ray.air.constants import (
     TIME_THIS_ITER_S,
     TRAINING_ITERATION,
 )
+from ray.train._internal.storage import (
+    _use_storage_context,
+    StorageContext,
+    init_shared_storage_context,
+)
 from ray.tune.result import (
     DEBUG_METRICS,
     DEFAULT_RESULTS_DIR,
@@ -112,6 +117,7 @@ class Trainable:
         logger_creator: Callable[[Dict[str, Any]], "Logger"] = None,  # Deprecated (2.7)
         remote_checkpoint_dir: Optional[str] = None,
         sync_config: Optional[SyncConfig] = None,
+        storage: Optional[StorageContext] = None,
     ):
         """Initialize a Trainable.
 
@@ -178,6 +184,18 @@ class Trainable:
         log_sys_usage = self.config.get("log_sys_usage", False)
         self._monitor = UtilMonitor(start=log_sys_usage)
 
+        self._storage = storage
+
+        if _use_storage_context():
+            assert storage
+            assert storage.trial_fs_path
+            logger.debug(f"StorageContext on the TRAINABLE:\n{storage}")
+            storage._check_validation_file()
+
+            # Set a globally accessible storage context on the remote Trainable process
+            # This is accessible from the training loop thread for FunctionTrainable's
+            init_shared_storage_context(storage)
+
         self.remote_checkpoint_dir = remote_checkpoint_dir
         # If no sync_config is provided, but we save to a remote_checkpoint_dir,
         # then provide a default syncer. `upload_dir` here is just a dummy directory
@@ -192,7 +210,7 @@ class Trainable:
             self.sync_config, self.remote_checkpoint_dir
         )
 
-        self.sync_num_retries = int(os.getenv("TUNE_CHECKPOINT_CLOUD_RETRY_NUM", "3"))
+        self.sync_num_retries = int(os.getenv("TUNE_CHECKPOINT_CLOUD_RETRY_NUM", "2"))
         self.sync_sleep_time = float(
             os.getenv("TUNE_CHECKPOINT_CLOUD_RETRY_WAIT_TIME_S", "1")
         )
@@ -604,6 +622,9 @@ class Trainable:
         return bool(artifact_files)
 
     def _maybe_save_artifacts_to_cloud(self) -> bool:
+        if _use_storage_context():
+            return False
+
         if not self._should_upload_artifacts:
             return False
 
@@ -638,6 +659,9 @@ class Trainable:
         Returns:
             bool: True if (successfully) saved to cloud
         """
+        if _use_storage_context():
+            return False
+
         if not self.uses_cloud_checkpointing:
             return False
 
@@ -652,15 +676,16 @@ class Trainable:
                 max_retries=self.sync_num_retries,
                 backoff_s=self.sync_sleep_time,
             )
-        except TuneError:
+        except TuneError as e:
             num_retries = self.sync_num_retries
             logger.error(
                 f"Could not upload checkpoint to {checkpoint_uri} even after "
-                f"{num_retries} retries."
+                f"{num_retries} retries. "
                 f"Please check if the credentials expired and that the remote "
                 f"filesystem is supported. For large checkpoints or artifacts, "
                 f"consider increasing `SyncConfig(sync_timeout)` "
-                f"(current value: {self.sync_config.sync_timeout} seconds)."
+                f"(current value: {self.sync_config.sync_timeout} seconds). "
+                f"See the full error details below:\n{e}"
             )
             return False
         return True
@@ -678,6 +703,9 @@ class Trainable:
         Return:
             bool: True if the checkpoint was synced down successfully from cloud.
         """
+        if _use_storage_context():
+            return False
+
         if os.path.exists(checkpoint_path):
             try:
                 TrainableUtil.find_checkpoint_dir(checkpoint_path)
@@ -707,6 +735,9 @@ class Trainable:
         return success
 
     def _maybe_load_artifacts_from_cloud(self) -> bool:
+        if _use_storage_context():
+            return False
+
         if not self.sync_config.sync_artifacts:
             return False
 
@@ -734,6 +765,9 @@ class Trainable:
     def _maybe_load_from_cloud(
         self, remote_dir: str, local_dir: str, exclude: List[str] = None
     ) -> bool:
+        if _use_storage_context():
+            return False
+
         if not self.uses_cloud_checkpointing or not list_at_uri(remote_dir):
             return False
 
