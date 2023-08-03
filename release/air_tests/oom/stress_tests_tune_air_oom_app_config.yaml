@@ -1,4 +1,4 @@
-base_image: {{ env["RAY_IMAGE_NIGHTLY_CPU"] | default("anyscale/ray:nightly-py37") }}
+base_image: {{ env["RAY_IMAGE_NIGHTLY_CPU"] }}
 debian_packages: []
 # Lower the threshold to trigger memory pressure.
 # TODO: turn on infinite retry by default when we switch to new policy.
