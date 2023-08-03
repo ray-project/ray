@@ -6,7 +6,7 @@ Distributed XGBoost and LightGBM
 Ray Train has built-in support for XGBoost and LightGBM.
 
 
-Quick start
+Quickstart
 -----------
 .. tab-set::
 

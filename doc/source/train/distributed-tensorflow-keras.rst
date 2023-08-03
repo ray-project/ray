@@ -15,7 +15,7 @@ Most of the examples in this guide use Tensorflow with Keras, but
 Ray Train also works with vanilla Tensorflow.
 
 
-Quick start
+Quickstart
 -----------
 .. literalinclude:: /ray-air/doc_code/tf_starter.py
   :language: python

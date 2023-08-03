@@ -43,6 +43,7 @@ document.addEventListener("DOMContentLoaded", function() {
             "Applications Guide", "Ray Cluster Management API",
             // Ray AIR
             "Ray AIR API",
+            // Ray Data
             "Ray Data", "Ray Data API", "Integrations",
             // Ray Train
             "Ray Train", "Ray Train API",

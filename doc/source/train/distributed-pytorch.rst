@@ -17,7 +17,7 @@ For more information on the technical details, see the `PyTorch
 Distributed Overview <https://pytorch.org/tutorials/beginner/dist_overview.html>`_
 on their official documentation for reference.
 
-Quick start
+Quickstart
 -----------
 
 .. literalinclude:: /ray-air/doc_code/torch_trainer.py
