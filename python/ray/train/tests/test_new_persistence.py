@@ -287,7 +287,7 @@ def test_trainer(
         ├── progress.csv
         ├── result.json
         ├── checkpoint_000000
-        │   ├── checkpoint_shard-rank=0.pkl                  <- Worker checkpoint shards
+        │   ├── checkpoint_shard-rank=0.pkl       <- Worker checkpoint shards
         │   └── checkpoint_shard-rank=1.pkl
         ├── ...
         ├── artifact-rank=0-iter=0.txt            <- Worker artifacts
