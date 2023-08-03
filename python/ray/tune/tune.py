@@ -49,7 +49,6 @@ from ray.tune.progress_reporter import (
     _prepare_progress_reporter_for_ray_client,
     _stream_client_output,
 )
-from ray.tune.execution.ray_trial_executor import RayTrialExecutor
 from ray.tune.registry import get_trainable_cls, is_function_trainable
 from ray.tune.result import _get_defaults_results_dir
 
@@ -80,7 +79,6 @@ from ray.tune.search.variant_generator import _has_unresolved_values
 from ray.tune.syncer import SyncConfig
 from ray.tune.trainable import Trainable
 from ray.tune.experiment import Trial
-from ray.tune.execution.trial_runner import TrialRunner
 from ray.tune.utils.callback import _create_default_callbacks
 from ray.tune.utils.log import (
     Verbosity,
@@ -160,7 +158,7 @@ def _check_gpus_in_resources(
 
 
 def _report_progress(
-    runner: TrialRunner, reporter: ProgressReporter, done: bool = False
+    runner: TuneController, reporter: ProgressReporter, done: bool = False
 ):
     """Reports experiment progress.
 
@@ -177,7 +175,7 @@ def _report_progress(
 
 
 def _report_air_progress(
-    runner: TrialRunner, reporter: "AirProgressReporter", force: bool = False
+    runner: TuneController, reporter: "AirProgressReporter", force: bool = False
 ):
     trials = runner.get_trials()
     reporter_args = []
@@ -334,7 +332,6 @@ def run(
     checkpoint_at_end: bool = False,  # Deprecated (2.7)
     checkpoint_keep_all_ranks: bool = False,  # Deprecated (2.7)
     checkpoint_upload_from_workers: bool = False,  # Deprecated (2.7)
-    trial_executor: Optional[RayTrialExecutor] = None,
     local_dir: Optional[str] = None,
     # == internal only ==
     _experiment_checkpoint_dir: Optional[str] = None,
@@ -577,15 +574,6 @@ def run(
 
     if _remote is None:
         _remote = ray.util.client.ray.is_connected()
-
-    if _remote is True and trial_executor:
-        raise ValueError("cannot use custom trial executor")
-    elif trial_executor:
-        warnings.warn(
-            "Passing a custom `trial_executor` is deprecated and will be removed "
-            "in the future.",
-            DeprecationWarning,
-        )
 
     if verbose is None:
         # Default `verbose` value. For new output engine, this is AirVerbosity.VERBOSE.
@@ -1015,11 +1003,6 @@ def run(
     if air_verbosity is None:
         progress_reporter = progress_reporter or _detect_reporter()
 
-    trial_executor = trial_executor or RayTrialExecutor(
-        reuse_actors=reuse_actors,
-        result_buffer_length=result_buffer_length,
-        chdir_to_trial_dir=chdir_to_trial_dir,
-    )
     runner_kwargs = dict(
         search_alg=search_alg,
         placeholder_resolvers=placeholder_resolvers,
@@ -1031,27 +1014,16 @@ def run(
         resume=resume,
         server_port=server_port,
         fail_fast=fail_fast,
-        trial_executor=trial_executor,
         callbacks=callbacks,
         metric=metric,
         trial_checkpoint_config=experiments[0].checkpoint_config,
+        reuse_actors=reuse_actors,
+        chdir_to_trial_dir=chdir_to_trial_dir,
+        storage=experiments[0].storage,
         _trainer_api=_entrypoint == AirEntrypoint.TRAINER,
     )
 
-    if bool(int(os.environ.get("TUNE_NEW_EXECUTION", "1"))):
-        trial_runner_cls = TuneController
-        runner_kwargs.pop("trial_executor")
-        runner_kwargs["reuse_actors"] = reuse_actors
-        runner_kwargs["chdir_to_trial_dir"] = chdir_to_trial_dir
-        runner_kwargs["storage"] = experiments[0].storage
-    else:
-        trial_runner_cls = TrialRunner
-        if _use_storage_context():
-            raise ValueError(
-                "The old execution path does not support the new persistence mode."
-            )
-
-    runner = trial_runner_cls(**runner_kwargs)
+    runner = TuneController(**runner_kwargs)
 
     if not runner.resumed:
         for exp in experiments:
@@ -1218,7 +1190,6 @@ def run_experiments(
     progress_reporter: Optional[ProgressReporter] = None,
     resume: Union[bool, str] = False,
     reuse_actors: Optional[bool] = None,
-    trial_executor: Optional[RayTrialExecutor] = None,
     raise_on_failed_trial: bool = True,
     concurrent: bool = True,
     callbacks: Optional[Sequence[Callback]] = None,
@@ -1242,11 +1213,7 @@ def run_experiments(
     if _remote is None:
         _remote = ray.util.client.ray.is_connected()
 
-    if _remote is True and trial_executor:
-        raise ValueError("cannot use custom trial executor")
-
-    if not trial_executor or isinstance(trial_executor, RayTrialExecutor):
-        _ray_auto_init(entrypoint="tune.run_experiments(...)")
+    _ray_auto_init(entrypoint="tune.run_experiments(...)")
 
     if verbose is None:
         # Default `verbose` value. For new output engine, this is AirVerbosity.VERBOSE.
@@ -1275,7 +1242,6 @@ def run_experiments(
                 progress_reporter,
                 resume,
                 reuse_actors,
-                trial_executor,
                 raise_on_failed_trial,
                 concurrent,
                 callbacks,
@@ -1296,7 +1262,6 @@ def run_experiments(
             progress_reporter=progress_reporter,
             resume=resume,
             reuse_actors=reuse_actors,
-            trial_executor=trial_executor,
             raise_on_failed_trial=raise_on_failed_trial,
             scheduler=scheduler,
             callbacks=callbacks,
@@ -1312,7 +1277,6 @@ def run_experiments(
                 progress_reporter=progress_reporter,
                 resume=resume,
                 reuse_actors=reuse_actors,
-                trial_executor=trial_executor,
                 raise_on_failed_trial=raise_on_failed_trial,
                 scheduler=scheduler,
                 callbacks=callbacks,

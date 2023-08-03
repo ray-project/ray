@@ -1,4 +1,4 @@
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, TYPE_CHECKING
 import sklearn.datasets
 import sklearn.metrics
 import os
@@ -13,8 +13,10 @@ from ray.tune.schedulers import ResourceChangingScheduler, ASHAScheduler
 from ray.tune import Trainable
 from ray.tune.execution.placement_groups import PlacementGroupFactory
 from ray.tune.experiment import Trial
-from ray.tune.execution import trial_runner
 from ray.tune.integration.xgboost import TuneReportCheckpointCallback
+
+if TYPE_CHECKING:
+    from ray.tune.execution.tune_controller import TuneController
 
 CHECKPOINT_FILENAME = "model.xgb"
 
@@ -162,7 +164,7 @@ def tune_xgboost(use_class_trainable=True):
     )
 
     def example_resources_allocation_function(
-        trial_runner: "trial_runner.TrialRunner",
+        tune_controller: "TuneController",
         trial: Trial,
         result: Dict[str, Any],
         scheduler: "ResourceChangingScheduler",
@@ -181,7 +183,7 @@ def tune_xgboost(use_class_trainable=True):
         robust approach.
 
         Args:
-            trial_runner: Trial runner for this Tune run.
+            tune_controller: Trial runner for this Tune run.
                 Can be used to obtain information about other trials.
             trial: The trial to allocate new resources to.
             result: The latest results of trial.
@@ -205,13 +207,11 @@ def tune_xgboost(use_class_trainable=True):
         min_cpu = base_trial_resource.required_resources.get("CPU", 0)
 
         # Get the number of CPUs available in total (not just free)
-        total_available_cpus = (
-            trial_runner.trial_executor._resource_updater.get_num_cpus()
-        )
+        total_available_cpus = tune_controller._resource_updater.get_num_cpus()
 
         # Divide the free CPUs among all live trials
         cpu_to_use = max(
-            min_cpu, total_available_cpus // len(trial_runner.get_live_trials())
+            min_cpu, total_available_cpus // len(tune_controller.get_live_trials())
         )
 
         # Assign new CPUs to the trial in a PlacementGroupFactory
