@@ -2982,7 +2982,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "examples"],
     size = "small",
     srcs = ["examples/action_masking.py"],
-    args = ["--stop-iter=2", "--framework=tf"]
+    args = ["--stop-iter=2", "--framework=tf", "--no-tune"] # If we used tune, errors would not be raised
 )
 
 py_test(
@@ -2991,7 +2991,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "examples"],
     size = "small",
     srcs = ["examples/action_masking.py"],
-    args = ["--stop-iter=2", "--framework=torch"]
+    args = ["--stop-iter=2", "--framework=torch",  "--no-tune"] # If we used tune, errors would not be raised
 )
 
 py_test(
