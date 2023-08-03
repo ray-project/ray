@@ -9,7 +9,7 @@ imageio-ffmpeg==0.4.5
 onnx==1.12.0; sys_platform != 'darwin' or platform_machine != 'arm64'
 onnxruntime==1.14.1; sys_platform != 'darwin' or platform_machine != 'arm64'
 tf2onnx==1.13.0; sys_platform != 'darwin' or platform_machine != 'arm64'
-rich==12.0.1
+rich==12.6.0
 # Msgpack checkpoint stuff.
 msgpack
 msgpack_numpy

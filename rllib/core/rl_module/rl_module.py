@@ -232,42 +232,104 @@ class RLModule(abc.ABC):
     Subclasses should call super().__init__(config) in their __init__ method.
     Here is the pseudocode for how the forward methods are called:
 
-    During Training (acting in env from each rollout worker):
+    Example for creating a sampling loop:
 
-    .. code-block:: python
+    .. testcode::
 
-        module = RLModule(...)
+        from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import (
+            PPOTorchRLModule
+        )
+        from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
+        import gymnasium as gym
+        import torch
+
+        env = gym.make("CartPole-v1")
+
+        # Create a single agent RL module spec.
+        module_spec = SingleAgentRLModuleSpec(
+            module_class=PPOTorchRLModule,
+            observation_space=env.observation_space,
+            action_space=env.action_space,
+            model_config_dict = {"hidden": [128, 128]},
+            catalog_class = PPOCatalog,
+        )
+        module = module_spec.build()
+        action_dist_class = module.get_inference_action_dist_cls()
         obs, info = env.reset()
+        terminated = False
 
-        while not env.terminated:
-            fwd_outputs = module.forward_exploration({"obs": obs})
+        while not terminated:
+            fwd_ins = {"obs": torch.Tensor([obs])}
+            fwd_outputs = module.forward_exploration(fwd_ins)
             # this can be either deterministic or stochastic distribution
-            action = fwd_outputs["action_dist"].sample()
+            action_dist = action_dist_class.from_logits(
+                fwd_outputs["action_dist_inputs"]
+            )
+            action = action_dist.sample()[0].numpy()
             obs, reward, terminated, truncated, info = env.step(action)
 
 
+    Example for training:
 
-    During Training (learning the policy)
+    .. testcode::
 
-    .. code-block:: python
+        from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import (
+            PPOTorchRLModule
+        )
+        from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
+        import gymnasium as gym
+        import torch
 
-        module = RLModule(...)
-        fwd_ins = {"obs": obs, "action": action, "reward": reward, "next_obs": next_obs}
+        env = gym.make("CartPole-v1")
+
+        # Create a single agent RL module spec.
+        module_spec = SingleAgentRLModuleSpec(
+            module_class=PPOTorchRLModule,
+            observation_space=env.observation_space,
+            action_space=env.action_space,
+            model_config_dict = {"hidden": [128, 128]},
+            catalog_class = PPOCatalog,
+        )
+        module = module_spec.build()
+
+        fwd_ins = {"obs": torch.Tensor([obs])}
         fwd_outputs = module.forward_train(fwd_ins)
-        loss = compute_loss(fwd_outputs, fwd_ins)
-        update_params(module, loss)
+        # loss = compute_loss(fwd_outputs, fwd_ins)
+        # update_params(module, loss)
 
-    During Inference (acting in env during evaluation)
+    Example for inference:
 
-    .. code-block:: python
+    .. testcode::
 
-        module = RLModule(...)
-        obs, info = env.reset()
+        from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import (
+            PPOTorchRLModule
+        )
+        from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
+        import gymnasium as gym
+        import torch
 
-        while not env.terminated:
-            fwd_outputs = module.forward_inference({"obs": obs})
-            action = fwd_outputs["action_dist"].sample()
+        env = gym.make("CartPole-v1")
+
+        # Create a single agent RL module spec.
+        module_spec = SingleAgentRLModuleSpec(
+            module_class=PPOTorchRLModule,
+            observation_space=env.observation_space,
+            action_space=env.action_space,
+            model_config_dict = {"hidden": [128, 128]},
+            catalog_class = PPOCatalog,
+        )
+        module = module_spec.build()
+
+        while not terminated:
+            fwd_ins = {"obs": torch.Tensor([obs])}
+            fwd_outputs = module.forward_inference(fwd_ins)
+            # this can be either deterministic or stochastic distribution
+            action_dist = action_dist_class.from_logits(
+                fwd_outputs["action_dist_inputs"]
+            )
+            action = action_dist.sample()[0].numpy()
             obs, reward, terminated, truncated, info = env.step(action)
+
 
     Args:
         config: The config for the RLModule.

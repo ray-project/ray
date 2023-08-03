@@ -6,8 +6,9 @@ import logging
 import pickle
 import socket
 import time
-from typing import Callable, Dict, List, Generator, Optional, Set, Tuple
 import grpc
+from typing import Callable, Dict, List, Generator, Optional, Tuple, Any
+import uuid
 
 import uvicorn
 import starlette.responses
@@ -48,6 +49,7 @@ from ray.serve._private.constants import (
     SERVE_NAMESPACE,
     DEFAULT_LATENCY_BUCKET_MS,
     DEFAULT_GRPC_PORT,
+    PROXY_MIN_DRAINING_PERIOD_S,
     RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING,
     RAY_SERVE_REQUEST_ID_HEADER,
     RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH,
@@ -58,7 +60,6 @@ from ray.serve._private.logging_utils import (
     configure_component_logger,
     get_component_logger_file_path,
 )
-
 from ray.serve._private.serve_request_response import (
     ASGIServeRequest,
     GRPCServeRequest,
@@ -68,8 +69,8 @@ from ray.serve._private.serve_request_response import (
 from ray.serve._private.utils import (
     calculate_remaining_timeout,
     call_function_from_import_path,
-    get_random_letters,
 )
+from ray.serve.exceptions import RayServeTimeout
 
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
@@ -103,6 +104,11 @@ if os.environ.get("SERVE_REQUEST_PROCESSING_TIMEOUT_S") is not None:
         "pi/doc/ray.serve.schema.HTTPOptionsSchema.html#ray.serve.schema.HTTPOptionsSch"
         "ema.request_timeout_s"
     )
+
+
+INITIAL_BACKOFF_PERIOD_SEC = 0.05
+MAX_BACKOFF_PERIOD_SEC = 5
+BACKOFF_FACTOR = 2
 
 
 class LongestPrefixRouter:
@@ -272,7 +278,6 @@ class GenericProxy:
             ray.get_actor(controller_name, namespace=SERVE_NAMESPACE),
             {
                 LongPollNamespace.ROUTE_TABLE: self._update_routes,
-                LongPollNamespace.ACTIVE_NODES: self._update_draining,
             },
             call_in_event_loop=get_or_create_event_loop(),
         )
@@ -319,14 +324,18 @@ class GenericProxy:
                 "status_code",
             ),
         )
-        # `self._ongoing_requests` is used to count the number of ongoing requests
-        # and determine whether to set/unset `self._prevent_node_downscale_ref`
-        self._ongoing_requests = 0
         # `self._prevent_node_downscale_ref` is used to prevent the node from being
         # downscaled when there are ongoing requests
-        self._prevent_node_downscale_ref = None
-        # `self._draining` is used to indicate whether the node is the draining state.
-        self._draining = False
+        self._prevent_node_downscale_ref = ray.put("prevent_node_downscale_object")
+        # `self._ongoing_requests` is used to count the number of ongoing requests
+        self._ongoing_requests = 0
+        # The time when the node starts to drain.
+        # The node is not draining if it's None.
+        self._draining_start_time: Optional[float] = None
+
+    def _is_draining(self) -> bool:
+        """Whether is proxy actor is in the draining status or not."""
+        return self._draining_start_time is not None
 
     def _update_routes(self, endpoints: Dict[EndpointTag, EndpointInfo]) -> None:
         self.route_info: Dict[str, Tuple[EndpointTag, List[str]]] = dict()
@@ -336,35 +345,33 @@ class GenericProxy:
 
         self.prefix_router.update_routes(endpoints)
 
-    def _update_draining(self, active_nodes: Set[str]):
-        """Update draining flag on http proxy.
+    def is_drained(self):
+        """Check whether the proxy actor is drained or not.
 
-        This is a callback for when controller detects there being a change in active
-        nodes. Each http proxy will check if it's nodes is still active and set
-        draining flag accordingly. Also, log a message when the draining flag is
-        changed.
+        A proxy actor is drained if it has no ongoing requests
+        AND it has been draining for more than
+        `PROXY_MIN_DRAINING_PERIOD_S` seconds.
         """
-        draining = self._node_id not in active_nodes
-        if draining != self._draining:
-            logger.info(f"Setting draining flag on node {self._node_id} to {draining}.")
-            self._draining = draining
+        if not self._is_draining():
+            return False
 
-            # Since the draining flag is changed, we need to check if
-            # `self._prevent_node_downscale_ref` is set to prevent the node from being
-            # downscaled when there are ongoing requests.
-            self._try_set_prevent_downscale_ref()
+        return (not self._ongoing_requests) and (
+            (time.time() - self._draining_start_time) > PROXY_MIN_DRAINING_PERIOD_S
+        )
 
-    async def block_until_endpoint_exists(
-        self, endpoint: EndpointTag, timeout_s: float
-    ):
-        start = time.time()
-        while True:
-            if time.time() - start > timeout_s:
-                raise TimeoutError(f"Waited {timeout_s} for {endpoint} to propagate.")
-            for existing_endpoint in self.route_info.values():
-                if existing_endpoint == endpoint:
-                    return
-            await asyncio.sleep(0.2)
+    def update_draining(self, draining: bool):
+        """Update the draining status of the http proxy.
+
+        This is called by the http proxy state manager
+        to drain or un-drain the proxy actor.
+        """
+
+        if draining and (not self._is_draining()):
+            logger.info(f"Start to drain the proxy actor on node {self._node_id}.")
+            self._draining_start_time = time.time()
+        if (not draining) and self._is_draining():
+            logger.info(f"Stop draining the proxy actor on node {self._node_id}.")
+            self._draining_start_time = None
 
     async def _not_found(self, serve_request: ServeRequest):
         current_path = serve_request.path
@@ -386,22 +393,14 @@ class GenericProxy:
             serve_request.scope, serve_request.receive, serve_request.send
         )
 
-    def _try_set_prevent_downscale_ref(self):
-        """Try to set put a primary copy of object in the object store to prevent node
-        from downscale.
-
-        The only time we need to put the object store is when there are ongoing
-        requests, the node is not draining, and the object reference is not set yet.
-        This should be checked when either `self._ongoing_requests` or `self._draining`
-        is changed. Also, log when the object reference is set.
-        """
-        if (
-            self._ongoing_requests > 0
-            and self._draining
-            and self._prevent_node_downscale_ref is None
-        ):
-            logger.info("Putting keep alive object reference to prevent downscaling.")
-            self._prevent_node_downscale_ref = ray.put("ongoing_requests")
+    async def _timeout_response(self, serve_request: ServeRequest, request_id: str):
+        response = Response(
+            f"Request {request_id} timed out after {self.request_timeout_s}s.",
+            status_code=408,
+        )
+        await response.send(
+            serve_request.scope, serve_request.receive, serve_request.send
+        )
 
     def _ongoing_requests_start(self):
         """Ongoing requests start.
@@ -412,10 +411,6 @@ class GenericProxy:
         alive while draining requests, so they are not dropped unintentionally.
         """
         self._ongoing_requests += 1
-        # Since the ongoing request is changed, we need to check if
-        # `self._prevent_node_downscale_ref` is set to prevent the node from being
-        # downscaled when the draining flag is true.
-        self._try_set_prevent_downscale_ref()
 
     def _ongoing_requests_end(self):
         """Ongoing requests end.
@@ -424,12 +419,6 @@ class GenericProxy:
         signaling that the node can be downscaled safely.
         """
         self._ongoing_requests -= 1
-        if self._ongoing_requests == 0:
-            logger.info(
-                "Dropping keep alive object reference to allow downscaling.",
-                extra={"log_to_stderr": False},
-            )
-            self._prevent_node_downscale_ref = None
 
     async def proxy_request(self, serve_request: ServeRequest) -> ServeResponse:
         """Wrapper for proxy request.
@@ -448,7 +437,7 @@ class GenericProxy:
         route_path = serve_request.route_path
 
         if route_path == "/-/routes":
-            if self._draining:
+            if self._is_draining():
                 return await self._draining_response(serve_request=serve_request)
 
             self.request_counter.inc(
@@ -464,7 +453,7 @@ class GenericProxy:
             )
 
         if route_path == "/-/healthz":
-            if self._draining:
+            if self._is_draining():
                 return await self._draining_response(serve_request=serve_request)
 
             self.request_counter.inc(
@@ -603,12 +592,11 @@ class GenericProxy:
         request = pickle.dumps(request)
 
         retries = 0
-        backoff_time_s = 0.05
-        backoff = False
         loop = get_or_create_event_loop()
-        # We have received all the http request conent. The next `receive`
+        # We have received all the http request content. The next `receive`
         # call might never arrive; if it does, it can only be `http.disconnect`.
         while retries < HTTP_REQUEST_MAX_RETRIES + 1:
+            should_backoff = False
             assignment_task: asyncio.Task = handle.remote(request)
             client_disconnection_task = loop.create_task(serve_request.receive())
             done, _ = await asyncio.wait(
@@ -651,7 +639,7 @@ class GenericProxy:
                         'by setting "request_timeout_s" in your Serve config\'s '
                         "`http_options` field."
                     )
-                    backoff = True
+                    should_backoff = True
                 else:
                     result = await object_ref
                     break
@@ -671,15 +659,14 @@ class GenericProxy:
                     f"{HTTP_REQUEST_MAX_RETRIES - retries} retries "
                     "remaining."
                 )
-                backoff = True
-            if backoff:
-                await asyncio.sleep(backoff_time_s)
-                # Be careful about the expotential backoff scaling here.
-                # Assuming 10 retries, 1.5x scaling means the last retry is 38x the
-                # initial backoff time, while 2x scaling means 512x the initial.
-                backoff_time_s *= 1.5
+                should_backoff = True
+
+            if should_backoff:
+                backoff_period = min(
+                    INITIAL_BACKOFF_PERIOD_SEC * pow(2, retries), MAX_BACKOFF_PERIOD_SEC
+                )
                 retries += 1
-                backoff = False
+                await asyncio.sleep(backoff_period)
         else:
             error_message = f"Task failed with {HTTP_REQUEST_MAX_RETRIES} retries."
             await Response(error_message, status_code=500).send(
@@ -747,7 +734,7 @@ class GenericProxy:
             raise TimeoutError()
 
     def generate_request_id(self) -> str:
-        return get_random_letters(10)
+        return str(uuid.uuid4())
 
     @property
     def proxy_name(self) -> str:
@@ -960,10 +947,8 @@ class HTTPProxy(GenericProxy):
         handle: RayServeHandle,
         app_name: str,
     ) -> Tuple[RayServeHandle, str]:
-        request_id = self.generate_request_id()
         request_context_info = {
             "route": route_path,
-            "request_id": request_id,
             "app_name": app_name,
         }
         for key, value in serve_request.headers:
@@ -971,12 +956,18 @@ class HTTPProxy(GenericProxy):
                 multiplexed_model_id = value.decode()
                 handle = handle.options(multiplexed_model_id=multiplexed_model_id)
                 request_context_info["multiplexed_model_id"] = multiplexed_model_id
-            if key.decode().upper() == RAY_SERVE_REQUEST_ID_HEADER:
+            if key.decode() == "x-request-id":
+                request_context_info["request_id"] = value.decode()
+            if (
+                key.decode() == RAY_SERVE_REQUEST_ID_HEADER.lower()
+                and "request_id" not in request_context_info
+            ):
+                # "x-request-id" has higher priority than "RAY_SERVE_REQUEST_ID".
                 request_context_info["request_id"] = value.decode()
         ray.serve.context._serve_request_context.set(
             ray.serve.context.RequestContext(**request_context_info)
         )
-        return handle, request_id
+        return handle, request_context_info["request_id"]
 
     async def receive_asgi_messages(self, request_id: str) -> List[Message]:
         queue = self.asgi_receive_queues.get(request_id, None)
@@ -1025,6 +1016,7 @@ class HTTPProxy(GenericProxy):
         """
         status_code = ""
         start = time.time()
+        is_first_message = True
         while True:
             try:
                 obj_ref = await obj_ref_generator._next_async(
@@ -1035,7 +1027,7 @@ class HTTPProxy(GenericProxy):
                     )
                 )
                 if obj_ref.is_nil():
-                    raise TimeoutError
+                    raise RayServeTimeout(is_first_message=is_first_message)
 
                 asgi_messages: List[Message] = pickle.loads(await obj_ref)
                 for asgi_message in asgi_messages:
@@ -1048,6 +1040,7 @@ class HTTPProxy(GenericProxy):
                         status_code = str(asgi_message["code"])
 
                     await send(asgi_message)
+                    is_first_message = False
             except StopAsyncIteration:
                 break
 
@@ -1090,6 +1083,9 @@ class HTTPProxy(GenericProxy):
                     f"Request {request_id} timed out after "
                     f"{self.request_timeout_s}s while waiting for assignment."
                 )
+                await self._timeout_response(
+                    serve_request=serve_request, request_id=request_id
+                )
                 return ServeResponse(status_code=TIMEOUT_ERROR_CODE)
 
             try:
@@ -1102,11 +1098,18 @@ class HTTPProxy(GenericProxy):
                         curr_time_s=time.time(),
                     ),
                 )
-            except TimeoutError:
+            except RayServeTimeout as serve_timeout_error:
                 logger.warning(
                     f"Request {request_id} timed out after "
                     f"{self.request_timeout_s}s while executing."
                 )
+                # We should only send timeout response if we have not sent
+                # any messages to the client yet. Header (including status code)
+                # messages can only be sent once.
+                if serve_timeout_error.is_first_message:
+                    await self._timeout_response(
+                        serve_request=serve_request, request_id=request_id
+                    )
                 return ServeResponse(status_code=TIMEOUT_ERROR_CODE)
 
         except Exception as e:
@@ -1136,13 +1139,30 @@ class RequestIdMiddleware:
         self.app = app
 
     async def __call__(self, scope, receive, send):
+
+        headers = MutableHeaders(scope=scope)
+        if RAY_SERVE_REQUEST_ID_HEADER not in headers and "x-request-id" not in headers:
+            # If X-Request-ID and RAY_SERVE_REQUEST_ID_HEADER are both not set, we
+            # generate a new request ID.
+            request_id = self.app.generate_request_id()
+            headers.append("x-request-id", request_id)
+            headers.append(RAY_SERVE_REQUEST_ID_HEADER, request_id)
+        elif "x-request-id" in headers:
+            request_id = headers["x-request-id"]
+        else:
+            # TODO(Sihan) Deprecate RAY_SERVE_REQUEST_ID_HEADER
+            request_id = headers[RAY_SERVE_REQUEST_ID_HEADER]
+
         async def send_with_request_id(message: Dict):
-            request_id = ray.serve.context._serve_request_context.get().request_id
             if message["type"] == "http.response.start":
                 headers = MutableHeaders(scope=message)
+                # TODO(Sihan) Deprecate RAY_SERVE_REQUEST_ID_HEADER
                 headers.append(RAY_SERVE_REQUEST_ID_HEADER, request_id)
+                headers.append("X-Request-ID", request_id)
             if message["type"] == "websocket.accept":
+                # TODO(Sihan) Deprecate RAY_SERVE_REQUEST_ID_HEADER
                 message[RAY_SERVE_REQUEST_ID_HEADER] = request_id
+                message["X-Request-ID"] = request_id
             await send(message)
 
         await self.app(scope, receive, send_with_request_id)
@@ -1163,6 +1183,10 @@ class HTTPProxyActor:
     ):  # noqa: F821
         configure_component_logger(
             component_name="http_proxy", component_id=node_ip_address
+        )
+        logger.info(
+            f"Proxy actor {ray.get_runtime_context().get_actor_id()} "
+            f"starting on node {node_id}."
         )
         if http_middlewares is None:
             http_middlewares = [Middleware(RequestIdMiddleware)]
@@ -1331,10 +1355,29 @@ class HTTPProxyActor:
         self.grpc_setup_complete.set()
         await grpc_server.wait_for_termination()
 
+    async def update_draining(self, draining: bool, _after: Optional[Any] = None):
+        """Update the draining status of the http proxy.
+
+        Unused `_after` argument is for scheduling: passing an ObjectRef
+        allows delaying this call until after the `_after` call has returned.
+        """
+
+        self.app.update_draining(draining)
+
+    async def is_drained(self, _after: Optional[Any] = None):
+        """Check whether the proxy is drained or not.
+
+        Unused `_after` argument is for scheduling: passing an ObjectRef
+        allows delaying this call until after the `_after` call has returned.
+        """
+
+        return self.app.is_drained()
+
     async def check_health(self):
         """No-op method to check on the health of the HTTP Proxy.
         Make sure the async event loop is not blocked.
         """
+
         pass
 
     async def receive_asgi_messages(self, request_id: str) -> bytes:

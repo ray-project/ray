@@ -7,7 +7,7 @@ import pyarrow as pa
 import pytest
 import ray
 
-from ray.air.checkpoint import Checkpoint
+from ray.train import Checkpoint
 from ray.air.constants import MAX_REPR_LENGTH
 from ray.air.util.data_batch_conversion import _convert_pandas_to_batch_type
 from ray.data.preprocessor import Preprocessor

@@ -4,7 +4,7 @@ import json
 from pytorch_lightning.loggers.csv_logs import CSVLogger
 
 import ray
-from ray.air.config import ScalingConfig
+from ray.train import RunConfig, ScalingConfig
 from ray.train.lightning import LightningTrainer, LightningConfigBuilder
 
 from lightning_test_utils import MNISTClassifier, MNISTDataModule
@@ -34,6 +34,7 @@ if __name__ == "__main__":
     trainer = LightningTrainer(
         lightning_config=lightning_config,
         scaling_config=scaling_config,
+        run_config=RunConfig(storage_path="/mnt/cluster_storage"),
     )
 
     result = trainer.fit()

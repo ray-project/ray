@@ -306,11 +306,11 @@ class AlgorithmConfig(_Config):
         self.normalize_actions = True
         self.clip_actions = False
         self.disable_env_checking = False
+        self.auto_wrap_old_gym_envs = True
+        self.action_mask_key = "action_mask"
         # Whether this env is an atari env (for atari-specific preprocessing).
         # If not specified, we will try to auto-detect this.
         self._is_atari = None
-        self.auto_wrap_old_gym_envs = True
-        self.action_mask_key = "action_mask"
 
         # `self.rollouts()`
         self.env_runner_cls = None
@@ -339,7 +339,23 @@ class AlgorithmConfig(_Config):
         self.grad_clip = None
         self.grad_clip_by = "global_norm"
         self.train_batch_size = 32
-        self.model = copy.deepcopy(MODEL_DEFAULTS)
+        # TODO (sven): Unsolved problem with RLModules sometimes requiring settings from
+        #  the main AlgorithmConfig. We should not require the user to provide those
+        #  settings in both, the AlgorithmConfig (as property) AND the model config
+        #  dict. We should generally move to a world, in which there exists an
+        #  AlgorithmConfig that a) has-a user provided model config object and b)
+        #  is given a chance to compile a final model config (dict or object) that is
+        #  then passed into the RLModule/Catalog. This design would then match our
+        #  "compilation" pattern, where we compile automatically those settings that
+        #  should NOT be touched by the user.
+        #  In case, an Algorithm already uses the above described pattern (and has
+        #  `self.model` as a @property, ignore AttributeError (for trying to set this
+        #  property).
+        try:
+            self.model = copy.deepcopy(MODEL_DEFAULTS)
+        except AttributeError:
+            pass
+
         self.optimizer = {}
         self.max_requests_in_flight_per_sampler_worker = 2
         self._learner_class = None
@@ -1010,6 +1026,30 @@ class AlgorithmConfig(_Config):
                         )
             else:
                 self.rl_module_spec = default_rl_module_spec
+
+            not_compatible_w_rlm_msg = (
+                "Cannot use `{}` option with RLModule API. `{"
+                "}` is part of the ModelV2 API and Policy API,"
+                " which are not compatible with the RLModule "
+                "API. You can either deactivate the RLModule "
+                "API by setting `config.rl_module( "
+                "_enable_rl_module_api=False)` and "
+                "`config.training(_enable_learner_api=False)` ,"
+                "or use the RLModule API and implement your "
+                "custom model as an RLModule."
+            )
+
+            if self.model["custom_model"] is not None:
+                raise ValueError(
+                    not_compatible_w_rlm_msg.format("custom_model", "custom_model")
+                )
+
+            if self.model["custom_model_config"] != {}:
+                raise ValueError(
+                    not_compatible_w_rlm_msg.format(
+                        "custom_model_config", "custom_model_config"
+                    )
+                )
 
             if self.exploration_config:
                 # This is not compatible with RLModules, which have a method
@@ -2651,10 +2691,7 @@ class AlgorithmConfig(_Config):
             if not type(self.env) == str:
                 return False
             try:
-                if self.env.startswith("ALE/"):
-                    env = gym.make("GymV26Environment-v0", env_id=self.env)
-                else:
-                    env = gym.make(self.env)
+                env = gym.make(self.env)
             # Any gymnasium error -> Cannot be an Atari env.
             except gym.error.Error:
                 return False
