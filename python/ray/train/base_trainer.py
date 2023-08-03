@@ -598,7 +598,7 @@ class BaseTrainer(abc.ABC):
                 _entrypoint=AirEntrypoint.TRAINER,
             )
 
-        experiment_path = Path(
+        experiment_path, _ = Path(
             TunerInternal.setup_create_experiment_checkpoint_dir(
                 trainable, self.run_config
             )
