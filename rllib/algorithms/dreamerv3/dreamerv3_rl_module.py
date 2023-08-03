@@ -4,6 +4,7 @@ This file holds framework-agnostic components for DreamerV3's RLModule.
 
 import abc
 
+import gymnasium as gym
 import numpy as np
 
 from ray.rllib.algorithms.dreamerv3.utils import do_symlog_obs
@@ -72,15 +73,23 @@ class DreamerV3RLModule(RLModule, abc.ABC):
             np.expand_dims(self.config.observation_space.sample(), (0, 1)),
             reps=(B, T) + (1,) * len(self.config.observation_space.shape),
         )
-        test_actions = np.tile(
-            np.expand_dims(
-                one_hot(
-                    self.config.action_space.sample(), depth=self.config.action_space.n
+        if isinstance(self.config.action_space, gym.spaces.Discrete):
+            test_actions = np.tile(
+                np.expand_dims(
+                    one_hot(
+                        self.config.action_space.sample(),
+                        depth=self.config.action_space.n,
+                    ),
+                    (0, 1),
                 ),
-                (0, 1),
-            ),
-            reps=(B, T, 1),
-        )
+                reps=(B, T, 1),
+            )
+        else:
+            test_actions = np.tile(
+                np.expand_dims(self.config.action_space.sample(), (0, 1)),
+                reps=(B, T, 1),
+            )
+
         self.dreamer_model(
             inputs=_convert_to_tf(test_obs),
             actions=_convert_to_tf(test_actions.astype(np.float32)),
