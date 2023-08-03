@@ -375,6 +375,8 @@ class ServeController:
                 )
             self.control_loop_gauge_s.set(loop_duration)
 
+            self.control_loop_counter.inc()
+
             sleep_start_time = time.time()
             await asyncio.sleep(CONTROL_LOOP_PERIOD_S)
             self.sleep_duration_gauge_s.set(time.time() - sleep_start_time)
@@ -407,6 +409,10 @@ class ServeController:
         self.control_loop_gauge_s = metrics.Gauge(
             "serve_controller_control_loop_duration_s",
             description="The duration of the last control loop.",
+        )
+        self.control_loop_counter = metrics.Counter(
+            "serve_controller_control_loop_counter",
+            description="The number of control loops performed by the controller.",
         )
 
     def _put_serve_snapshot(self) -> None:
