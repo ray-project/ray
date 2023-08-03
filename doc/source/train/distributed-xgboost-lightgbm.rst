@@ -1,9 +1,29 @@
 .. _train-gbdt-guide:
 
-XGBoost & LightGBM User Guide for Ray Train
-===========================================
+Distributed XGBoost and LightGBM
+================================
 
 Ray Train has built-in support for XGBoost and LightGBM.
+
+
+Quickstart
+-----------
+.. tab-set::
+
+    .. tab-item:: XGBoost
+
+        .. literalinclude:: doc_code/gbdt_user_guide.py
+           :language: python
+           :start-after: __xgboost_start__
+           :end-before: __xgboost_end__
+
+    .. tab-item:: LightGBM
+
+        .. literalinclude:: doc_code/gbdt_user_guide.py
+           :language: python
+           :start-after: __lightgbm_start__
+           :end-before: __lightgbm_end__
+
 
 Basic Training with Tree-Based Models in Train
 ----------------------------------------------

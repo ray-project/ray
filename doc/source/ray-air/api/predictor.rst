@@ -1,11 +1,6 @@
 Predictor
 =========
 
-.. seealso::
-
-    See this :ref:`user guide on performing model inference <air-predictors>` in
-    AIR for usage examples.
-
 .. currentmodule:: ray.train
 
 Predictor Interface

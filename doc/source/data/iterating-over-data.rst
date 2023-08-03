@@ -273,7 +273,7 @@ into disjoint shards.
 
   If you're using :ref:`Ray Train <train-docs>`, you don't need to split the dataset.
   Ray Train automatically splits your dataset for you. To learn more, see
-  :ref:`Configuring training datasets <air-ingest>`.
+  :ref:`Configuring training datasets <data-ingest-torch>`.
 
 .. testcode::
 
