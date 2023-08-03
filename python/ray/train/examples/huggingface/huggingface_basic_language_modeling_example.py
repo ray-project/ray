@@ -19,7 +19,7 @@ from transformers import (
 import ray
 import ray.data
 from ray.train.huggingface import TransformersTrainer
-from ray.air.config import ScalingConfig
+from ray.train import ScalingConfig
 
 
 def main(
