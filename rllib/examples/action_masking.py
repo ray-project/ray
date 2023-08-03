@@ -41,10 +41,10 @@ import os
 
 from gymnasium.spaces import Box, Discrete
 import ray
-from ray import air, tune
 from ray.rllib.algorithms import ppo
 from ray.rllib.examples.env.action_mask_env import ActionMaskEnv
-from ray.rllib.examples.rl_module.action_masking import TorchActionMaskRLM, TFActionMaskRLM
+from ray.rllib.examples.rl_module.action_masking_rlm import TorchActionMaskRLM, \
+    TFActionMaskRLM
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 
 from ray.tune.logger import pretty_print
@@ -93,8 +93,10 @@ if __name__ == "__main__":
 
     if args.framework == "torch":
         rlm_class = TorchActionMaskRLM
-    else:
+    elif args.framework == "tf2":
         rlm_class = TFActionMaskRLM
+    else:
+        raise ValueError(f"Unsupported framework: {args.framework}")
 
     rlm_spec = SingleAgentRLModuleSpec(module_class=rlm_class)
 

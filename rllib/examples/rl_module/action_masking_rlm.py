@@ -4,10 +4,12 @@ from ray.rllib.algorithms.ppo.tf.ppo_tf_rl_module import PPOTfRLModule
 from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import PPOTorchRLModule
 from ray.rllib.core.rl_module.rl_module import RLModule, RLModuleConfig
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.utils.framework import try_import_torch, try_import_tf
 from ray.rllib.utils.torch_utils import FLOAT_MIN
 
 torch, nn = try_import_torch()
+_, tf, _ = try_import_tf()
+
 
 
 def _check_batch(batch):
@@ -67,7 +69,8 @@ def mask_forward_fn_tf(forward_fn, batch, **kwargs):
     # Mask logits
     logits = outputs[SampleBatch.ACTION_DIST_INPUTS]
     # Convert action_mask into a [0.0 || -inf]-type mask.
-    inf_mask = torch.clamp(torch.log(action_mask), min=FLOAT_MIN)
+    log_mask = tf.math.log(action_mask)
+    inf_mask = tf.clip_by_value(log_mask, clip_value_min=FLOAT_MIN, clip_value_max=0.0)
     masked_logits = logits + inf_mask
 
     # Replace original values with masked values.
