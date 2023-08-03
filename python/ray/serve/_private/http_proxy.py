@@ -805,10 +805,6 @@ class GRPCProxy(GenericProxy):
         wraps the request in a ServeRequest object and calls proxy_request. The return
         value is protobuf RayServeResponse object.
         """
-        print("in predict, request:", request)
-        print("request type:", type(request))
-        print("context is ", context)
-        print("invocation_metadata is ", context.invocation_metadata())
         serve_request = GRPCServeRequest(
             request=request,
             context=context,
@@ -816,7 +812,6 @@ class GRPCProxy(GenericProxy):
             stream=False,
         )
         serve_response = await self.proxy_request(serve_request=serve_request)
-        print("in predict serve_response is ", serve_response.response)
         return serve_response.response
 
     async def PredictStreaming(
@@ -898,7 +893,6 @@ class GRPCProxy(GenericProxy):
         obj_ref: ray.ObjectRef,
     ) -> ServeResponse:
         user_response_bytes = await obj_ref
-        print("_consume_generator_unary user_response is ", user_response_bytes)
         return ServeResponse(status_code="200", response=user_response_bytes)
 
     async def send_request_to_replica_streaming(

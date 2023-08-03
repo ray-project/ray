@@ -758,7 +758,6 @@ class RayServeReplica:
             method_to_call = sync_to_async(runner_method)
 
             result = await method_to_call(user_request)
-            print("call_user_method_grpc_unary result", result, type(result))
             return result.SerializeToString()
 
     async def call_user_method(
