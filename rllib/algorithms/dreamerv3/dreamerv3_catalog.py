@@ -34,7 +34,7 @@ class DreamerV3Catalog(Catalog):
             model_config_dict=model_config_dict,
         )
 
-        self.model_size = self.model_config_dict["model_size"]
+        self.model_size = self._model_config_dict["model_size"]
         self.is_img_space = len(self.observation_space.shape) in [2, 3]
         self.is_gray_scale = (
             self.is_img_space and len(self.observation_space.shape) == 2
@@ -144,7 +144,7 @@ class DreamerV3Catalog(Catalog):
     def build_world_model(self, framework: str, *, encoder, decoder) -> Model:
         symlog_obs = do_symlog_obs(
             self.observation_space,
-            self.model_config_dict.get("symlog_obs", "auto"),
+            self._model_config_dict.get("symlog_obs", "auto"),
         )
 
         if framework == "torch":
@@ -161,7 +161,7 @@ class DreamerV3Catalog(Catalog):
         return WorldModel(
             model_size=self.model_size,
             action_space=self.action_space,
-            batch_length_T=self.model_config_dict["batch_length_T"],
+            batch_length_T=self._model_config_dict["batch_length_T"],
             encoder=encoder,
             decoder=decoder,
             symlog_obs=symlog_obs,

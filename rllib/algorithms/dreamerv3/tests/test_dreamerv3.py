@@ -179,18 +179,18 @@ class TestDreamerV3(unittest.TestCase):
                     # paper's reported numbers ([1] and [3]).
                     if fw == "torch":
                         num_params_world_model = sum(
-                            np.prod(v.shape.as_list())
-                            for v in rl_module.world_model.parameters().values()
+                            np.prod(v.shape)
+                            for v in rl_module.world_model.parameters()
                             if v.requires_grad
                         )
                         num_params_actor = sum(
-                            np.prod(v.shape.as_list())
-                            for v in rl_module.actor.parameters().values()
+                            np.prod(v.shape)
+                            for v in rl_module.actor.parameters()
                             if v.requires_grad
                         )
                         num_params_critic = sum(
-                            np.prod(v.shape.as_list())
-                            for v in rl_module.critic.parameters().values()
+                            np.prod(v.shape)
+                            for v in rl_module.critic.parameters()
                             if v.requires_grad
                         )
                     else:
