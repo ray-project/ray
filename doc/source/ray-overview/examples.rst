@@ -50,7 +50,7 @@ Ray Examples
 
     .. grid-item-card:: :bdg-primary:`Blog`
         :class-item: gallery-item training serving huggingface llm
-        :link: https://www.anyscale.com/blog/how-to-fine-tune-and-serve-llms-simply-quickly-and-cost-effectively-using
+        :link: https://www.anyscale.com/blog/how-to-fine-tune-and-serve-llms
 
         How to fine tune and serve LLMs simply, quickly and cost effectively using Ray + DeepSpeed + HuggingFace
 
