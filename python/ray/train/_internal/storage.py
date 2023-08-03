@@ -320,6 +320,14 @@ class StorageContext:
     For example, on the driver, the storage context is initialized, only knowing
     the experiment path. On the Trainable actor, the trial_dir_name is accessible.
 
+    There are 3 path concepts:
+    1. *_path: A path or URI. This is the same format as the `storage_path` specified
+        by the user. This may need to be URI-joined.
+    2. *_fs_path: A path relative to the storage filesystem. This is a regular path
+        that can be joined with `os.path.join`.
+    3. *_local_path: The path on the local filesystem where results are saved to
+       before persisting to storage.
+
     Example with storage_path="mock:///bucket/path":
 
         >>> from ray.train._internal.storage import StorageContext
@@ -552,6 +560,16 @@ class StorageContext:
         syncing them to the `storage_path` on the `storage_filesystem`.
         """
         return os.path.join(self.storage_local_path, self.experiment_dir_name)
+
+    @property
+    def trial_path(self) -> str:
+        """The path the experiment directory, where the format matches the
+        original `storage_path` format specified by the user.
+
+        Ex: If the user passed in storage_path="s3://bucket/path?param=1", then
+        this property returns "s3://bucket/path/exp_name?param=1".
+        """
+        return str(URI(self.experiment_path) / self.trial_dir_name)
 
     @property
     def trial_local_path(self) -> str:
