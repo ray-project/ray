@@ -8,7 +8,6 @@ ENV LC_ALL=C.UTF-8
 ENV LANG=C.UTF-8
 COPY requirements_compiled.txt ./
 COPY requirements_compiled_py37.txt ./
-COPY requirements_compiled_py311.txt ./
 COPY $WHEEL_PATH .
 COPY $FIND_LINKS_PATH $FIND_LINKS_PATH
 
