@@ -384,6 +384,7 @@ void ReferenceCounter::RemoveLocalReference(const ObjectID &object_id,
   if (object_id.IsNil()) {
     return;
   }
+  RAY_LOG(ERROR) << "Remove local reference for obj id: " << object_id;
   absl::MutexLock lock(&mutex_);
   RemoveLocalReferenceInternal(object_id, deleted);
 }
@@ -407,6 +408,7 @@ void ReferenceCounter::RemoveLocalReferenceInternal(const ObjectID &object_id,
   RAY_LOG(DEBUG) << "Remove local reference " << object_id;
   PRINT_REF_COUNT(it);
   if (it->second.RefCount() == 0) {
+    RAY_LOG(ERROR) << "Ref count for obj id dropped to zero: " << object_id;
     DeleteReferenceInternal(it, deleted);
   } else {
     PRINT_REF_COUNT(it);
@@ -644,9 +646,11 @@ void ReferenceCounter::DeleteReferenceInternal(ReferenceTable::iterator it,
   const ObjectID id = it->first;
   RAY_LOG(DEBUG) << "Attempting to delete object " << id;
   if (it->second.RefCount() == 0 && it->second.on_ref_removed) {
-    RAY_LOG(DEBUG) << "Calling on_ref_removed for object " << id;
+    RAY_LOG(ERROR) << "Calling on_ref_removed for object " << id;
     it->second.on_ref_removed(id);
     it->second.on_ref_removed = nullptr;
+  } else if (it->second.RefCount() == 0 && !it->second.on_ref_removed) { 
+    RAY_LOG(ERROR) << "No on_ref_removed callback for object" << id;
   }
   PRINT_REF_COUNT(it);
 
@@ -734,9 +738,11 @@ int64_t ReferenceCounter::EvictLineage(int64_t min_bytes_to_evict) {
 
 void ReferenceCounter::ReleasePlasmaObject(ReferenceTable::iterator it) {
   if (it->second.on_delete) {
-    RAY_LOG(DEBUG) << "Calling on_delete for object " << it->first;
+    RAY_LOG(ERROR) << "Calling on_delete for object " << it->first;
     it->second.on_delete(it->first);
     it->second.on_delete = nullptr;
+  } else {
+    RAY_LOG(ERROR) << "THERE IS NO on_delete for object " << it->first;
   }
   it->second.pinned_at_raylet_id.reset();
   if (it->second.spilled && !it->second.spilled_node_id.IsNil()) {

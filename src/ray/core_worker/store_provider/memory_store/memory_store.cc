@@ -199,6 +199,7 @@ std::shared_ptr<RayObject> CoreWorkerMemoryStore::GetIfExists(const ObjectID &ob
 bool CoreWorkerMemoryStore::Put(const RayObject &object, const ObjectID &object_id) {
   std::vector<std::function<void(std::shared_ptr<RayObject>)>> async_callbacks;
   RAY_LOG(DEBUG) << "Putting object into memory store. objectid is " << object_id;
+  RAY_LOG(ERROR) << "TOTAL NUMBER OF OBJECTS: " << Size();
   std::shared_ptr<RayObject> object_entry = nullptr;
   if (object_allocator_ != nullptr) {
     object_entry = object_allocator_(object, object_id);
@@ -477,6 +478,7 @@ void CoreWorkerMemoryStore::Delete(const absl::flat_hash_set<ObjectID> &object_i
                                    absl::flat_hash_set<ObjectID> *plasma_ids_to_delete) {
   absl::MutexLock lock(&mu_);
   for (const auto &object_id : object_ids) {
+    RAY_LOG(ERROR) << "DELETE OBJECT ID: " << object_id;
     auto it = objects_.find(object_id);
     if (it != objects_.end()) {
       if (it->second->IsInPlasmaError()) {
@@ -492,6 +494,7 @@ void CoreWorkerMemoryStore::Delete(const absl::flat_hash_set<ObjectID> &object_i
 void CoreWorkerMemoryStore::Delete(const std::vector<ObjectID> &object_ids) {
   absl::MutexLock lock(&mu_);
   for (const auto &object_id : object_ids) {
+    RAY_LOG(ERROR) << "DELETE OBJECT ID: " << object_id;
     auto it = objects_.find(object_id);
     if (it != objects_.end()) {
       OnDelete(it->second);
