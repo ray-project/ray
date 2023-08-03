@@ -20,14 +20,16 @@ import argparse
 import os
 from pathlib import Path
 import sys
+import re
 import yaml
 
 import ray
-from ray.tune import run_experiments
+from ray.air.integrations.wandb import WandbLoggerCallback
 from ray.rllib import _register_all
 from ray.rllib.common import SupportedFileType
 from ray.rllib.train import load_experiments_from_file
 from ray.rllib.utils.deprecation import deprecation_warning
+from ray.tune import run_experiments
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
@@ -68,10 +70,33 @@ parser.add_argument(
     type=float,
     default=0.0,
     help=(
-        "Override "
-        "the mean reward specified by the yaml file in the stopping criteria. This "
-        "is particularly useful for timed tests."
+        "Override the mean reward specified by the yaml file in the stopping criteria. "
+        "This is particularly useful for timed tests."
     ),
+)
+parser.add_argument(
+    "--verbose",
+    type=int,
+    default=2,
+    help="The verbosity level for the main `tune.run_experiments()` call.",
+)
+parser.add_argument(
+    "--wandb-key",
+    type=str,
+    default=None,
+    help="The WandB API key to use for uploading results.",
+)
+parser.add_argument(
+    "--wandb-project",
+    type=str,
+    default=None,
+    help="The WandB project name to use.",
+)
+parser.add_argument(
+    "--wandb-run-name",
+    type=str,
+    default=None,
+    help="The WandB run name to use.",
 )
 
 # Obsoleted arg, use --dir instead.
@@ -168,6 +193,21 @@ if __name__ == "__main__":
             print("== Test config ==")
             print(yaml.dump(experiments))
 
+        callbacks = None
+        if args.wandb_key is not None:
+            project = args.wandb_project or (
+                exp["run"].lower() + "-" + re.sub("\\W+", "-", exp["env"].lower())
+                if config_is_python
+                else list(experiments.keys())[0]
+            )
+            callbacks = [
+                WandbLoggerCallback(
+                    api_key=args.wandb_key,
+                    project=project,
+                    **({"name": args.wandb_run_name} if args.wandb_run_name else {}),
+                )
+            ]
+
         # Try running each test 3 times and make sure it reaches the given
         # reward.
         passed = False
@@ -180,7 +220,12 @@ if __name__ == "__main__":
                 ray.init()
             else:
                 try:
-                    trials = run_experiments(experiments, resume=False, verbose=2)
+                    trials = run_experiments(
+                        experiments,
+                        resume=False,
+                        verbose=args.verbose,
+                        callbacks=callbacks,
+                    )
                 finally:
                     ray.shutdown()
                     _register_all()
