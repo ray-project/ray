@@ -278,15 +278,14 @@ def test_trainer(
             local_inspect_dir = LOCAL_CACHE_DIR
 
     # First, inspect that the result object returns the correct paths.
-    # TODO(justinvyu): [custom_fs_path_expansion]
-    # This doesn't work for the `custom_fs` case right now
-    # because Result.path <- Trial.remote_path/local_path <- Experiment.path,
-    # which expands the storage path to an absolute path.
-    # We shouldn't expand the storage path to an absolute path if a custom fs is passed.
-    if not storage_filesystem:
+    if storage_filesystem:
+        trial_fs_path = result.path
+    else:
         _, trial_fs_path = pyarrow.fs.FileSystem.from_uri(result.path)
-        assert trial_fs_path.startswith(storage_fs_path)
-        assert result.checkpoint.path.startswith(trial_fs_path)
+
+    assert trial_fs_path.startswith(storage_fs_path)
+    for checkpoint, _ in result.best_checkpoints:
+        assert checkpoint.path.startswith(trial_fs_path)
 
     # Second, inspect the contents of the storage path
     assert len(list(local_inspect_dir.glob("*"))) == 1  # Only expect 1 experiment dir
@@ -313,12 +312,8 @@ def test_trainer(
 
         # NOTE: These next 2 are technically synced by the driver.
         # TODO(justinvyu): In a follow-up PR, artifacts will be synced by the workers.
-        # TODO(justinvyu): [custom_fs_path_expansion] Same issue as above.
-        if not storage_filesystem:
-            assert (
-                len(list(trial_dir.glob("artifact-*"))) == NUM_ITERATIONS * NUM_WORKERS
-            )
-            assert len(list(trial_dir.glob(EXPR_RESULT_FILE))) == 1
+        assert len(list(trial_dir.glob("artifact-*"))) == NUM_ITERATIONS * NUM_WORKERS
+        assert len(list(trial_dir.glob(EXPR_RESULT_FILE))) == 1
 
 
 if __name__ == "__main__":
