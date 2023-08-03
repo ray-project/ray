@@ -25,6 +25,8 @@ metadata = (
     # ("multiplexed_model_id", "456"),  # Optional, feature parity w/ http proxy
 )
 
+# PredictStreaming method is defined by Serve's gRPC service use to return
+# streaming response
 responses = stub.PredictStreaming(test_in, metadata=metadata)
 
 for response in responses:

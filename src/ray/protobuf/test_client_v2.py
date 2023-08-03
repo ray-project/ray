@@ -24,7 +24,10 @@ metadata = (
     # ("request_id", "123"),  # Optional, feature parity w/ http proxy
     # ("multiplexed_model_id", "456"),  # Optional, feature parity w/ http proxy
 )
+
+# Predict method is defined by Serve's gRPC service use to return unary response
 response, call = stub.Predict.with_call(request=test_in, metadata=metadata)
+
 print(call.trailing_metadata())  # Request id is returned in the trailing metadata
 print("Output type:", type(response))  # Response is a type of UserDefinedResponse
 print("Full output:", response)

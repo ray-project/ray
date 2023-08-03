@@ -321,7 +321,6 @@ def test_delete_deployment_group(serve_instance, blocking):
         for _ in range(2):
 
             serve_instance.delete_deployments(["f", "g"], blocking=blocking)
-
             wait_for_condition(
                 lambda: requests.get("http://127.0.0.1:8000/f").status_code == 404,
                 timeout=5,

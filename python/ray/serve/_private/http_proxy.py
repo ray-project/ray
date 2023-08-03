@@ -488,9 +488,7 @@ class GenericProxy:
                         "status_code": "404",
                     }
                 )
-                return await self._not_found(
-                    serve_request.scope, serve_request.receive, serve_request.send
-                )
+                return await self._not_found(serve_request=serve_request)
 
             route_prefix, handle, app_name, app_is_cross_language = matched_route
 
