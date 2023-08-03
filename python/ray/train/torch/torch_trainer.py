@@ -25,7 +25,8 @@ class TorchTrainer(DataParallelTrainer):
     4. Runs the input ``train_loop_per_worker(train_loop_config)``
        on all workers.
 
-    For more details, see the :ref:`Torch User Guide <train-dl-guide>`.
+    For more details, see the
+    :ref:`Distributed PyTorch User Guides <train-pytorch-overview>`.
 
     Example:
 
