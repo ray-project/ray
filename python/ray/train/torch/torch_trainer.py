@@ -155,9 +155,9 @@ class TorchTrainer(DataParallelTrainer):
         scaling_config: The configuration for how to scale data parallel training.
             ``num_workers`` determines how many Python processes are used for training,
             and ``use_gpu`` determines whether or not each process should use GPUs.
-            See :py:class:`ScalingConfig <ray.train.ScalingConfig>` for more info.
+            See :class:`~ray.air.ScalingConfig` for more info.
         run_config: The configuration for the execution of the training run.
-            See :py:class:`RunConfig <ray.train.RunConfig>` for more info.
+            See :class:`~ray.air.RunConfig` for more info.
         datasets: The Ray Datasets to ingest for training.
             Datasets are keyed by name (``{name: dataset}``).
             Each dataset can be accessed from within the ``train_loop_per_worker``
