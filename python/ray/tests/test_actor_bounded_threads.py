@@ -81,7 +81,6 @@ def test_async_actor_cg_have_bounded_num_of_threads(shutdown_only):
 
     @ray.remote(concurrency_groups={"io": 2, "compute": 4})
     class A:
-
         async def my_number_of_threads(self):
             pid = os.getpid()
             return psutil.Process(pid).num_threads()
