@@ -49,7 +49,7 @@ import ray.cloudpickle as pickle
 from ray import train, tune
 from ray.train import Checkpoint
 from ray.tune import TuneError
-from ray.tune.execution.trial_runner import _find_newest_experiment_checkpoint
+from ray.tune.execution.experiment_state import _find_newest_experiment_checkpoint
 from ray.tune.utils.serialization import TuneFunctionDecoder
 
 TUNE_SCRIPT = os.path.join(os.path.dirname(__file__), "_tune_script.py")
