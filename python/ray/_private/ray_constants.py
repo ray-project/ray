@@ -220,6 +220,7 @@ PROCESS_TYPE_LOG_MONITOR = "log_monitor"
 PROCESS_TYPE_REPORTER = "reporter"
 PROCESS_TYPE_DASHBOARD = "dashboard"
 PROCESS_TYPE_DASHBOARD_AGENT = "dashboard_agent"
+PROCESS_TYPE_RUNTIME_ENV_AGENT = "runtime_env_agent"
 PROCESS_TYPE_WORKER = "worker"
 PROCESS_TYPE_RAYLET = "raylet"
 PROCESS_TYPE_REDIS_SERVER = "redis_server"
@@ -434,6 +435,7 @@ RAY_ALLOWED_CACHED_PORTS = {
     "metrics_agent_port",
     "metrics_export_port",
     "dashboard_agent_listen_port",
+    "runtime_env_agent_port",
     "gcs_server_port",  # the `port` option for gcs port.
 }
 
