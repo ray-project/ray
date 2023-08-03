@@ -87,13 +87,18 @@ def test_counting_resources(start_connected_cluster):
     nodes = []
     assert ray.cluster_resources()["CPU"] == 1
     runner = TuneController(search_alg=BasicVariantGenerator())
-    kwargs = {"stopping_criterion": {"training_iteration": 10}}
+    kwargs = {
+        "stopping_criterion": {"training_iteration": 10},
+        "config": {"sleep": 1.5},
+    }
 
     trials = [Trial("__fake", **kwargs), Trial("__fake", **kwargs)]
     for t in trials:
         runner.add_trial(t)
 
-    runner.step()
+    while not any(t.status == Trial.RUNNING for t in trials):
+        runner.step()
+
     running_trials = _get_running_trials(runner)
     assert len(running_trials) == 1
     assert _check_trial_running(running_trials[0])
@@ -104,7 +109,10 @@ def test_counting_resources(start_connected_cluster):
     cluster.remove_node(nodes.pop())
     cluster.wait_for_nodes()
     assert ray.cluster_resources()["CPU"] == 1
-    runner.step()
+
+    while not any(t.status == Trial.RUNNING for t in trials):
+        runner.step()
+
     # Only 1 trial can be running due to resource limitation.
     assert sum(t.status == Trial.RUNNING for t in runner.get_trials()) == 1
 
@@ -113,12 +121,11 @@ def test_counting_resources(start_connected_cluster):
     cluster.wait_for_nodes()
     assert ray.cluster_resources()["CPU"] == 6
 
-    # This is to make sure that pg is ready for the previous pending trial,
-    # so that when runner.step() is called next, the trial can be started in
-    # the same event loop.
-    time.sleep(5)
-    runner.step()
-    assert sum(t.status == Trial.RUNNING for t in runner.get_trials()) == 2
+    while any(t.status == Trial.PENDING for t in trials):
+        runner.step()
+    assert sum(t.status == Trial.RUNNING for t in runner.get_trials()) == 2, [
+        t.status for t in trials
+    ]
 
 
 def test_trial_processed_after_node_failure(start_connected_emptyhead_cluster):
@@ -130,15 +137,19 @@ def test_trial_processed_after_node_failure(start_connected_emptyhead_cluster):
     runner = TuneController(search_alg=BasicVariantGenerator())
     mock_process_failure = MagicMock(side_effect=runner._process_trial_failure)
     runner._process_trial_failure = mock_process_failure
+    # Disable recursion in magic mock when saving experiment state
+    runner.save_to_dir = lambda *args, **kwargs: None
 
     runner.add_trial(Trial("__fake"))
-    runner.step()
-    runner.step()
+    trial = runner.get_trials()[0]
+
+    while trial.status != Trial.RUNNING:
+        runner.step()
+
     assert not mock_process_failure.called
 
     cluster.remove_node(node)
-    runner.step()
-    if not mock_process_failure.called:
+    while not mock_process_failure.called:
         runner.step()
     assert mock_process_failure.called
 
@@ -158,7 +169,8 @@ def test_remove_node_before_result(start_connected_emptyhead_cluster):
     trial = Trial("__fake", **kwargs)
     runner.add_trial(trial)
 
-    runner.step()  # Start trial, call _train once
+    while trial.status != Trial.RUNNING:
+        runner.step()
     running_trials = _get_running_trials(runner)
     assert len(running_trials) == 1
     assert _check_trial_running(running_trials[0])
@@ -169,8 +181,8 @@ def test_remove_node_before_result(start_connected_emptyhead_cluster):
     cluster.wait_for_nodes()
     assert ray.cluster_resources()["CPU"] == 1
 
-    # Process result: fetch data, invoke _train again
-    runner.step()
+    while not trial.last_result.get("training_iteration") == 1:
+        runner.step()
     assert trial.last_result.get("training_iteration") == 1
 
     # Process result: discover failure, recover, _train (from scratch)
@@ -313,9 +325,11 @@ def test_trial_requeue(start_connected_emptyhead_cluster, tmpdir, durable):
     for t in trials:
         runner.add_trial(t)
 
-    runner.step()  # Start trial
-    runner.step()  # Process result, dispatch save
-    runner.step()  # Process save
+    while not any(t.status == Trial.RUNNING for t in trials):
+        runner.step()
+
+    runner.step()
+    runner.step()
 
     running_trials = _get_running_trials(runner)
     assert len(running_trials) == 1
