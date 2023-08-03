@@ -1,6 +1,6 @@
 .. _train-tune:
 
-Hyperparameter tuning with Ray Tune
+Hyperparameter Tuning with Ray Tune
 ===================================
 
 Hyperparameter tuning with :ref:`Ray Tune <tune-main>` is natively supported
@@ -9,7 +9,7 @@ with Ray Train.
 
 .. https://docs.google.com/drawings/d/1yMd12iMkyo6DGrFoET1TIlKfFnXX9dfh2u3GSdTz6W4/edit
 
-.. figure:: images/train-tuner.svg
+.. figure:: ../images/train-tuner.svg
     :align: center
 
     The `Tuner` will take in a `Trainer` and execute multiple training runs, each with different hyperparameter configurations.
@@ -37,7 +37,7 @@ Basic usage
 Specifically, you can take an existing ``Trainer`` and simply
 pass it into a :py:class:`~ray.tune.tuner.Tuner`.
 
-.. literalinclude:: doc_code/tuner.py
+.. literalinclude:: ../doc_code/tuner.py
     :language: python
     :start-after: __basic_start__
     :end-before: __basic_end__
@@ -57,7 +57,7 @@ The :class:`TuneConfig <ray.tune.tune_config.TuneConfig>` contains tuning specif
 
 Here are some common configurations for `TuneConfig`:
 
-.. literalinclude:: doc_code/tuner.py
+.. literalinclude:: ../doc_code/tuner.py
     :language: python
     :start-after: __tune_config_start__
     :end-before: __tune_config_end__
@@ -77,7 +77,7 @@ This may include:
 
 Below we showcase some common configurations of :class:`RunConfig <ray.air.config.RunConfig>`.
 
-.. literalinclude:: doc_code/tuner.py
+.. literalinclude:: ../doc_code/tuner.py
     :language: python
     :start-after: __run_config_start__
     :end-before: __run_config_end__
@@ -124,14 +124,14 @@ Advanced Tuning
 
 Tuners also offer the ability to tune different data preprocessing steps, as shown in the following snippet.
 
-.. literalinclude:: doc_code/tuner.py
+.. literalinclude:: ../doc_code/tuner.py
     :language: python
     :start-after: __tune_preprocess_start__
     :end-before: __tune_preprocess_end__
 
 Additionally, you can sample different train/validation datasets:
 
-.. literalinclude:: doc_code/tuner.py
+.. literalinclude:: ../doc_code/tuner.py
     :language: python
     :start-after: __tune_dataset_start__
     :end-before: __tune_dataset_end__

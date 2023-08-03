@@ -15,7 +15,7 @@ Ray AIR provides several common preprocessors out of the box and interfaces to d
 Overview
 --------
 
-The most common way of using a preprocessor is by passing it as an argument to the constructor of a Ray Train :ref:`Trainer <train-getting-started>` in conjunction with a :ref:`Ray Data dataset <data>`.
+The most common way of using a preprocessor is by passing it as an argument to the constructor of a Ray Train :ref:`Trainer <train-docs>` in conjunction with a :ref:`Ray Data dataset <data>`.
 For example, the following code trains a model with a preprocessor that normalizes the data.
 
 .. literalinclude:: doc_code/preprocessors.py
