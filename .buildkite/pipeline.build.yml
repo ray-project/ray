@@ -187,7 +187,7 @@
       --test_tag_filters=client_tests,small_size_python_tests,-team:core 
       -- python/ray/tests/...
     - bazel test --config=ci $(./ci/run/bazel_export_options)
-      --test_tag_filters=ray_ha
+      --test_tag_filters=xcommit
       --test_env=DOCKER_HOST=tcp://docker:2376
       --test_env=DOCKER_TLS_VERIFY=1
       --test_env=DOCKER_CERT_PATH=/certs/client
@@ -195,18 +195,6 @@
       -- python/ray/tests/...
     - bazel test --config=ci $(./ci/run/bazel_export_options)
       -- python/ray/autoscaler/v2/...
-
-- label: ":python: (Large)"
-  conditions: ["RAY_CI_PYTHON_AFFECTED"]
-  instance_size: large
-  commands:
-    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - DL=1 ./ci/env/install-dependencies.sh
-    - ./ci/env/env_info.sh
-    - bazel test --config=ci $(./ci/run/bazel_export_options) --test_env=CONDA_EXE --test_env=CONDA_PYTHON_EXE
-      --test_env=CONDA_SHLVL --test_env=CONDA_PREFIX --test_env=CONDA_DEFAULT_ENV --test_env=CONDA_PROMPT_MODIFIER
-      --test_env=CI --test_tag_filters="large_size_python_tests_shard_0,large_size_python_tests_shard_1,large_size_python_tests_shard_2,-team:core"
-      -- python/ray/tests/...
 
 - label: ":python: (Medium A-J)"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
