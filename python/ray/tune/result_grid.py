@@ -4,6 +4,7 @@ import pandas as pd
 from typing import Optional, Union
 
 from ray.air.result import Result
+from ray.train._internal.storage import _use_storage_context
 from ray.cloudpickle import cloudpickle
 from ray.exceptions import RayTaskError
 from ray.tune.analysis import ExperimentAnalysis
@@ -279,16 +280,30 @@ class ResultGrid:
             if trial.uses_cloud_checkpointing
             else None
         )
-        checkpoint = trial.checkpoint.to_air_checkpoint(
-            local_to_remote_path_fn,
-        )
-        best_checkpoints = [
-            (
-                checkpoint.to_air_checkpoint(local_to_remote_path_fn),
-                checkpoint.metrics,
+
+        if _use_storage_context():
+            from ray.train._internal.checkpoint_manager import (
+                _CheckpointManager as _NewCheckpointManager,
             )
-            for checkpoint in trial.get_trial_checkpoints()
-        ]
+
+            assert isinstance(trial.checkpoint_manager, _NewCheckpointManager)
+            checkpoint = trial.checkpoint_manager.latest_checkpoint_result.checkpoint
+            best_checkpoint_results = trial.checkpoint_manager.best_checkpoint_results
+            best_checkpoints = [
+                (checkpoint_result.checkpoint, checkpoint_result.metrics)
+                for checkpoint_result in best_checkpoint_results
+            ]
+        else:
+            checkpoint = trial.checkpoint.to_air_checkpoint(
+                local_to_remote_path_fn,
+            )
+            best_checkpoints = [
+                (
+                    checkpoint.to_air_checkpoint(local_to_remote_path_fn),
+                    checkpoint.metrics,
+                )
+                for checkpoint in trial.get_trial_checkpoints()
+            ]
 
         result = Result(
             checkpoint=checkpoint,

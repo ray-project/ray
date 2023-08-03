@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Tuple, Type, Un
 from ray._private.thirdparty.tabulate.tabulate import tabulate
 
 import ray
-from ray import tune
+from ray import train, tune
 from ray.air.checkpoint import Checkpoint
 from ray.air._internal.checkpointing import add_preprocessor_to_checkpoint
 from ray.air.config import DatasetConfig, RunConfig, ScalingConfig, CheckpointConfig
@@ -17,6 +17,7 @@ from ray.train._internal import session
 from ray.train._internal.backend_executor import BackendExecutor, TrialInfo
 from ray.train._internal.checkpoint import TuneCheckpointManager
 from ray.train._internal.data_config import DataConfig, _LegacyDataConfigWrapper
+from ray.train._internal.storage import _use_storage_context
 from ray.train._internal.utils import construct_train_func
 from ray.train.constants import TRAIN_DATASET_KEY, WILDCARD_KEY
 from ray.train.trainer import BaseTrainer, GenDataset
@@ -429,7 +430,19 @@ class DataParallelTrainer(BaseTrainer):
         for results in training_iterator:
             # TODO(ml-team): add ability to report results from multiple workers.
             first_worker_results = results[0]
-            tune.report(**first_worker_results)
+            if _use_storage_context():
+                assert (
+                    isinstance(first_worker_results, tuple)
+                    and len(first_worker_results) == 2
+                )
+                metrics, checkpoint = first_worker_results
+                logger.debug(
+                    "Report (metrics, checkpoint) to the Tune session:\n"
+                    f"  metrics={metrics}\n  checkpoint={checkpoint}"
+                )
+                train.report(metrics, checkpoint=checkpoint)
+            else:
+                tune.report(**first_worker_results)
 
     def training_loop(self) -> None:
         scaling_config = self._validate_scaling_config(self.scaling_config)
