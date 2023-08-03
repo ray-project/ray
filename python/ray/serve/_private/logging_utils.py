@@ -197,9 +197,7 @@ def configure_component_logger(
     stream_handler.addFilter(log_to_stderr_filter)
     logger.addHandler(stream_handler)
 
-    logs_dir = os.path.join(
-        ray._private.worker._global_node.get_logs_dir_path(), "serve"
-    )
+    logs_dir = get_serve_logs_dir()
     os.makedirs(logs_dir, exist_ok=True)
     if max_bytes is None:
         max_bytes = ray._private.worker._global_node.max_bytes
@@ -238,6 +236,8 @@ def configure_component_memory_logger(
     """
 
     if RAY_SERVE_ENABLE_MEMORY_PROFILING:
+        logger = logging.getLogger(SERVE_LOGGER_NAME)
+
         try:
             import memray
 
@@ -247,10 +247,16 @@ def configure_component_memory_logger(
                 component_type=component_type,
                 suffix="_memray.bin",
             )
+            tracker = memray.Tracker(memray_file_name, native_traces=True).__enter__()
 
-            return memray.Tracker(memray_file_name, native_traces=True).__enter__()
+            logger.info(
+                "RAY_SERVE_ENABLE_MEMORY_PROFILING is enabled. Started a "
+                "memray tracker on this actor. Tracker file located at "
+                f'"{get_serve_logs_dir()}/{memray_file_name}"'
+            )
+
+            return tracker
         except ImportError:
-            logger = logging.getLogger(SERVE_LOGGER_NAME)
             logger.warning(
                 "RAY_SERVE_ENABLE_MEMORY_PROFILING is enabled, but memray "
                 "is not installed. No memory profiling is happening. "
@@ -258,6 +264,12 @@ def configure_component_memory_logger(
             )
 
     return None
+
+
+def get_serve_logs_dir() -> str:
+    """Get the directory that stores Serve log files."""
+
+    return os.path.join(ray._private.worker._global_node.get_logs_dir_path(), "serve")
 
 
 def get_component_log_file_name(
