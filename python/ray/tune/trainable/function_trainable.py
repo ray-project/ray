@@ -243,6 +243,9 @@ class _StatusReporter:
         return self._fresh_checkpoint
 
     def get_checkpoint(self):
+        # NOTE: This is not the same as `train.get_checkpoint`.
+        # This is used internally by `FunctionTrainable.save_checkpoint`.
+        # `loaded_checkpoint` is the checkpoint accessible by the user.
         self._fresh_checkpoint = False
         return self._last_checkpoint
 
@@ -250,20 +253,46 @@ class _StatusReporter:
         self._last_report_time = time.time()
 
     def report(self, metrics: Dict, *, checkpoint: Optional[Checkpoint] = None) -> None:
+        from ray.train._internal.storage import _use_storage_context
+        from ray.train._internal.checkpoint_manager import _TrainingResult
+        from ray.train._checkpoint import Checkpoint as NewCheckpoint
+
         # TODO(xwjiang): Tons of optimizations.
         self._air_session_has_reported = True
-        if checkpoint:
-            training_iteration = self._get_training_iteration()
-            checkpoint_dir = self.make_checkpoint_dir(step=training_iteration)
-            self.set_checkpoint(checkpoint_dir)
-            checkpoint.to_directory(checkpoint_dir)
-            # TODO(krfricke): Remove this once support is added in Checkpoint.
-            open(os.path.join(checkpoint_dir, ".is_checkpoint"), "a").close()
+
+        # TODO(justinvyu): With a unified session, we'll still run into this doubled
+        # report problem. This should be fixed by checking if the checkpoint has been
+        # uploaded already (via some marker), then skipping the repeat upload.
+        if _use_storage_context() and isinstance(checkpoint, NewCheckpoint):
+            logger.debug(f"Checkpoint received by the Tune session: {checkpoint}")
+            self._fresh_checkpoint = True
+            # TODO(justinvyu): `metrics` doesn't include the autofilled metrics
+            # like `training_iteration` and `time_total_s`.
+            # Should the session be the source of truth for these metrics?
+            self._last_checkpoint = _TrainingResult(
+                checkpoint=checkpoint, metrics=metrics
+            )
+        else:
+            if checkpoint:
+                training_iteration = self._get_training_iteration()
+                checkpoint_dir = self.make_checkpoint_dir(step=training_iteration)
+                self.set_checkpoint(checkpoint_dir)
+                checkpoint.to_directory(checkpoint_dir)
+                # TODO(krfricke): Remove this once support is added in Checkpoint.
+                open(os.path.join(checkpoint_dir, ".is_checkpoint"), "a").close()
         self.__call__(**metrics)
 
     @property
     def loaded_checkpoint(self) -> Optional[Checkpoint]:
         if self._last_checkpoint:
+            from ray.train._internal.storage import _use_storage_context
+            from ray.train._internal.checkpoint_manager import _TrainingResult
+
+            if _use_storage_context() and isinstance(
+                self._last_checkpoint, _TrainingResult
+            ):
+                return self._last_checkpoint.checkpoint
+
             assert isinstance(self._last_checkpoint, str)
             return Checkpoint.from_directory(self._last_checkpoint)
         return None
@@ -464,6 +493,12 @@ class FunctionTrainable(Trainable):
             raise ValueError("Checkpoint dir should not be used with function API.")
 
         checkpoint = self._status_reporter.get_checkpoint()
+
+        from ray.train._internal.storage import _use_storage_context
+        from ray.train._internal.checkpoint_manager import _TrainingResult
+
+        if _use_storage_context() and isinstance(checkpoint, _TrainingResult):
+            return checkpoint
 
         if not checkpoint:
             # We drop a marker here to indicate that the checkpoint is empty
