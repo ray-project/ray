@@ -418,6 +418,10 @@ class ServeController:
                 "The number of control loops performed by the controller. "
                 "Increases monotonically over the controller's lifetime."
             ),
+            tag_keys=("actor_id",),
+        )
+        self.num_control_loops_gauge.set_default_tags(
+            {"actor_id": ray.get_runtime_context().get_actor_id()}
         )
 
     def _put_serve_snapshot(self) -> None:
