@@ -1,4 +1,5 @@
 import pytest
+import requests
 
 import ray
 from ray import serve
@@ -229,6 +230,25 @@ def test_unique_name_reset_upon_build(serve_instance):
     # Assert we don't keep increasing suffix id between build() calls
     assert deployments[0].name == "Model"
     assert deployments[1].name == "Model_1"
+
+
+def test_deployment_function_node_build(serve_instance):
+    @serve.deployment
+    class Forward:
+        def __init__(self, handle: RayServeHandle):
+            self.handle = handle
+
+        async def __call__(self, *args, **kwargs):
+            return await (await self.handle.remote())
+
+    @serve.deployment
+    def no_op():
+        return "No-op"
+
+    app = Forward.bind(Forward.bind(Forward.bind(no_op.bind())))
+
+    serve.run(app)
+    assert requests.get("http://localhost:8000/").text == "No-op"
 
 
 if __name__ == "__main__":

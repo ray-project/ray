@@ -12,6 +12,8 @@ from ray_release.util import DeferredEnvVar
 
 DEFAULT_ARTIFACTS_DIR_HOST = "/tmp/ray_release_test_artifacts"
 
+# TODO (can): unify release_queue_small and runner_queue_small_branch queues
+# having too many type of queues make them difficult to maintain
 RELEASE_QUEUE_DEFAULT = DeferredEnvVar("RELEASE_QUEUE_DEFAULT", "release_queue_small")
 RELEASE_QUEUE_CLIENT = DeferredEnvVar("RELEASE_QUEUE_CLIENT", "release_queue_small")
 
@@ -62,12 +64,16 @@ def get_step(
     ray_wheels: Optional[str] = None,
     env: Optional[Dict] = None,
     priority_val: int = 0,
+    global_config: Optional[str] = None,
 ):
     env = env or {}
 
     step = copy.deepcopy(DEFAULT_STEP_TEMPLATE)
 
     cmd = ["./release/run_release_test.sh", test["name"]]
+
+    if global_config:
+        cmd += ["--global-config", global_config]
 
     if report and not bool(int(os.environ.get("NO_REPORT_OVERRIDE", "0"))):
         cmd += ["--report"]

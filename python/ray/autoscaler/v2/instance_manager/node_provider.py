@@ -118,11 +118,11 @@ class NodeProviderAdapter(NodeProvider):
         instance = Instance()
         instance.cloud_instance_id = cloud_instance_id
         if self._provider.is_running(cloud_instance_id):
-            instance.status = Instance.STARTING
+            instance.status = Instance.ALLOCATED
         elif self._provider.is_terminated(cloud_instance_id):
             instance.status = Instance.STOPPED
         else:
-            instance.status = Instance.INSTANCE_STATUS_UNSPECIFIED
+            instance.status = Instance.UNKNOWN
         instance.internal_ip = self._provider.internal_ip(cloud_instance_id)
         instance.external_ip = self._provider.external_ip(cloud_instance_id)
         instance.instance_type = self._provider.node_tags(cloud_instance_id)[
