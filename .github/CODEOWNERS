@@ -1,3 +1,10 @@
 # Every PR into runtime needs to get approval from one the below
 
 *  @edoakes @pcmoritz @ericl
+
+# Have codeowner protection because runtime CI scripts are written in a quick
+# and dirty way, and works different from ray OSS upstream.
+#
+# We will remove CODEOWNER when the test infra is synced with upstream and more
+# mature
+anyscale/ci @aslonnie @can-anyscale

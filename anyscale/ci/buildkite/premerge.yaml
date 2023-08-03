@@ -126,7 +126,6 @@ steps:
 
   - name: "serve tests"
     depends_on: "ci-build-image"
-    soft_fail: true
     command:
       - source anyscale/ci/setup-env.sh
       - /bin/bash anyscale/ci/run-tests-in-docker.sh serve
@@ -140,7 +139,6 @@ steps:
     steps:
     - name: "Data tests (Arrow 6)"
       depends_on: "ci-ml-image"
-      parallelism: 3
       command:
         - source anyscale/ci/setup-env.sh
         - /bin/bash anyscale/ci/run-tests-in-docker.sh data "6.0.1"
@@ -151,7 +149,6 @@ steps:
           limit: 1
     - name: "Data tests (Arrow 12)"
       depends_on: "ci-ml-image"
-      parallelism: 3
       command:
         - source anyscale/ci/setup-env.sh
         - /bin/bash anyscale/ci/run-tests-in-docker.sh data "12"

@@ -1,25 +1,29 @@
 #!/bin/bash
 
-set -euo pipefail
+set -exuo pipefail
 
-SCRIPT_ROOT="./anyscale/ci"
-if [[ "$1" == "serve" ]]; then
+SCRIPT_ROOT="anyscale/ci"
+
+TEST_TYPE="$1"
+shift
+
+if [[ "${TEST_TYPE}" == "serve" ]]; then
   TEST_SCRIPT="${SCRIPT_ROOT}/run-serve-tests.sh"
   IMAGE_SUFFIX="ci-build"
-elif [[ "$1" == "data" ]]; then
-  TEST_SCRIPT="${SCRIPT_ROOT}/run-data-tests.sh '$2'"
+elif [[ "${TEST_TYPE}" == "data" ]]; then
+  TEST_SCRIPT="${SCRIPT_ROOT}/run-data-tests.sh"
   IMAGE_SUFFIX="ci-ml"
 else
-  echo "Usage: $0 [serve|data]"
+  echo "Usage: $0 serve|data <extra args>"
   exit 1
 fi
 
-echo "--- Pull CI build image"
+echo "--- Pull image"
 
-IMAGE_CI_BUILD="${CI_TMP_REPO}:${IMAGE_PREFIX}-${IMAGE_SUFFIX}"
-docker pull "${IMAGE_CI_BUILD}"
+CI_IMAGE="${CI_TMP_REPO}:${IMAGE_PREFIX}-${IMAGE_SUFFIX}"
+docker pull "${CI_IMAGE}"
 
-echo "--- Run CI build"
+echo "--- Run tests in image"
 
 docker run --rm -ti \
   --env BUILDKITE_JOB_ID \
@@ -34,5 +38,5 @@ docker run --rm -ti \
   --env BUILDKITE_BUILD_NUMBER \
   --shm-size=2.5gb \
   -v /var/run/docker.sock:/var/run/docker.sock \
-  "${IMAGE_CI_BUILD}" \
-  /bin/bash -ecil "${TEST_SCRIPT}"
+  "${CI_IMAGE}" \
+  /bin/bash "${TEST_SCRIPT}" "$@"
