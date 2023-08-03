@@ -27,12 +27,14 @@ def check_old_gym_env(
                 and isinstance(env.observation_space.spaces[1], gym.spaces.Dict)
             )
         ):
-            raise ValueError
+            raise ValueError(
+                "The number of values returned from `gym.Env.reset(seed=.., options=..)"
+                "` must be 2! Make sure your `reset()` method returns: [obs] and "
+                "[infos]."
+            )
     # Check `step()` results.
     elif step_results is not None:
-        if len(step_results) == 4:
-            return ValueError
-        elif len(step_results) == 5:
+        if len(step_results) == 5:
             return False
         else:
             raise ValueError(

@@ -1,32 +1,34 @@
+import asyncio
 import functools
 import logging
+import sys
 from typing import Any, Callable, Optional, Union, Dict
+
+from fastapi import Depends, FastAPI
+import grpc
+
 import ray
+from ray import cloudpickle
 from ray._private.utils import get_or_create_event_loop
-from ray.serve._private.utils import install_serve_encoders_to_fastapi
+from ray._private.tls_utils import add_port_to_grpc_server
 from ray.util.annotations import PublicAPI
 
-import starlette
-from fastapi import Depends, FastAPI
-
-from ray.serve.deployment_graph import RayServeDAGHandle
-from ray.serve._private.http_util import ASGIHTTPSender
-from ray.serve.handle import RayServeDeploymentHandle
-from ray.serve.exceptions import RayServeException
 from ray import serve
-import sys
-import asyncio
-import grpc
-from ray.serve.generated import serve_pb2, serve_pb2_grpc
-from ray.serve._private.constants import DEFAULT_GRPC_PORT, SERVE_LOGGER_NAME
+from ray.serve.deployment_graph import RayServeDAGHandle
 from ray.serve.drivers_utils import load_http_adapter
+from ray.serve.exceptions import RayServeException
+from ray.serve.generated import serve_pb2, serve_pb2_grpc
+from ray.serve.handle import RayServeHandle
+from ray.serve._private.constants import DEFAULT_GRPC_PORT, SERVE_LOGGER_NAME
+from ray.serve._private.http_util import ASGIAppReplicaWrapper
+from ray.serve._private.utils import install_serve_encoders_to_fastapi, record_serve_tag
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
 @PublicAPI(stability="beta")
 @serve.deployment(route_prefix="/")
-class DAGDriver:
+class DAGDriver(ASGIAppReplicaWrapper):
     """A driver implementation that accepts HTTP requests."""
 
     MATCH_ALL_ROUTE_PREFIX = "/{path:path}"
@@ -43,17 +45,22 @@ class DAGDriver:
             http_adapter: a callable function or import string to convert
                 HTTP requests to Ray Serve input.
         """
+
+        record_serve_tag("SERVE_DAG_DRIVER_USED", "1")
+        if http_adapter is not None:
+            record_serve_tag("SERVE_HTTP_ADAPTER_USED", "1")
+
         install_serve_encoders_to_fastapi()
         http_adapter = load_http_adapter(http_adapter)
-        self.app = FastAPI()
+        app = FastAPI()
 
         if isinstance(dags, dict):
             self.dags = dags
             for route in dags.keys():
 
                 def endpoint_create(route):
-                    @self.app.get(f"{route}")
-                    @self.app.post(f"{route}")
+                    @app.get(f"{route}")
+                    @app.post(f"{route}")
                     async def handle_request(inp=Depends(http_adapter)):
                         return await self.predict_with_route(
                             route, inp  # noqa: B023 function redefinition
@@ -64,29 +71,27 @@ class DAGDriver:
                 endpoint_create_func()
 
         else:
-            assert isinstance(dags, (RayServeDAGHandle, RayServeDeploymentHandle))
+            assert isinstance(dags, (RayServeDAGHandle, RayServeHandle))
             self.dags = {self.MATCH_ALL_ROUTE_PREFIX: dags}
 
             # Single dag case, we will receive all prefix route
-            @self.app.get(self.MATCH_ALL_ROUTE_PREFIX)
-            @self.app.post(self.MATCH_ALL_ROUTE_PREFIX)
+            @app.get(self.MATCH_ALL_ROUTE_PREFIX)
+            @app.post(self.MATCH_ALL_ROUTE_PREFIX)
             async def handle_request(inp=Depends(http_adapter)):
                 return await self.predict(inp)
 
-    async def __call__(self, request: starlette.requests.Request):
-        # NOTE(simon): This is now duplicated from ASGIAppWrapper because we need to
-        # generate FastAPI on the fly, we should find a way to unify the two.
-        sender = ASGIHTTPSender()
-        await self.app(request.scope, receive=request.receive, send=sender)
-        return sender.build_asgi_response()
+        frozen_app = cloudpickle.loads(cloudpickle.dumps(app))
+        super().__init__(frozen_app)
 
     async def predict(self, *args, _ray_cache_refs: bool = False, **kwargs):
         """Perform inference directly without HTTP."""
-        return await (
-            await self.dags[self.MATCH_ALL_ROUTE_PREFIX].remote(
-                *args, _ray_cache_refs=_ray_cache_refs, **kwargs
-            )
-        )
+        dag = self.dags[self.MATCH_ALL_ROUTE_PREFIX]
+        # `dag` may also be a vanilla `RayServeHandle`; in that case, it doesn't take
+        # the `_ray_cache_refs` kwarg.
+        if isinstance(dag, RayServeDAGHandle):
+            kwargs["_ray_cache_refs"] = _ray_cache_refs
+
+        return await (await dag.remote(*args, **kwargs))
 
     async def predict_with_route(self, route_path, *args, **kwargs):
         """Perform inference directly without HTTP for multi dags."""
@@ -111,9 +116,9 @@ class DAGDriver:
 
         return await root_dag_node.get_object_refs_from_last_execute()
 
-    async def get_dag_node_json(self) -> str:
-        """Returns the json serialized root dag node"""
-        return self.dags[self.MATCH_ALL_ROUTE_PREFIX].dag_node_json
+    async def get_pickled_dag_node(self) -> bytes:
+        """Returns the serialized root dag node."""
+        return self.dags[self.MATCH_ALL_ROUTE_PREFIX].pickled_dag_node
 
 
 @PublicAPI(stability="alpha")
@@ -136,16 +141,29 @@ class gRPCIngress:
 
         self.setup_complete = asyncio.Event()
         self.running_task = get_or_create_event_loop().create_task(self.run())
+        record_serve_tag("SERVE_GRPC_INGRESS_USED", "1")
 
     async def run(self):
         """Start gRPC Server"""
-
         logger.info(
             "Starting gRPC server with on node:{} "
             "listening on port {}".format(ray.util.get_node_ip_address(), self.port)
         )
+        address = "[::]:{}".format(self.port)
+        try:
+            # Depending on whether RAY_USE_TLS is on, `add_port_to_grpc_server`
+            # can create a secure or insecure channel
+            self.grpc_port = add_port_to_grpc_server(self.server, address)
+        except Exception:
+            # TODO(SongGuyang): Catch the exception here because there is
+            # port conflict issue which brought from static port. We should
+            # remove this after we find better port resolution.
+            logger.exception(
+                "Failed to add port to grpc server. GRPC service will be disabled"
+            )
+            self.server = None
+            self.grpc_port = None
 
-        self.server.add_insecure_port("[::]:{}".format(self.port))
         self.setup_complete.set()
         await self.server.start()
         await self.server.wait_for_termination()

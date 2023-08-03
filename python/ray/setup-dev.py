@@ -1,11 +1,22 @@
 #!/usr/bin/env python
+# flake8: noqa E402
 """This script allows you to develop Ray Python code without needing to compile
 Ray.
 See https://docs.ray.io/en/master/development.html#building-ray-python-only"""
 
+import os
+import sys
+
+# types.py can conflict with stdlib's types.py in some python versions,
+# see https://github.com/python/cpython/issues/101210.
+# To avoid import errors, we move the current working dir to the end of sys.path.
+this_dir = os.path.dirname(__file__)
+if this_dir in sys.path:
+    cur = sys.path.remove(this_dir)
+    sys.path.append(this_dir)
+
 import argparse
 import click
-import os
 import shutil
 import subprocess
 
@@ -98,6 +109,7 @@ if __name__ == "__main__":
     do_link("experimental", force=args.yes, skip_list=args.skip)
     do_link("util", force=args.yes, skip_list=args.skip)
     do_link("workflow", force=args.yes, skip_list=args.skip)
+    do_link("serve", force=args.yes, skip_list=args.skip)
     do_link("dag", force=args.yes, skip_list=args.skip)
     do_link("widgets", force=args.yes, skip_list=args.skip)
     do_link("cluster_utils.py", force=args.yes, skip_list=args.skip)

@@ -1,27 +1,34 @@
-from ray import serve
-from ray.serve._private.http_util import ASGIHTTPSender
+import logging
+from typing import Callable
+
 from ray.util.annotations import PublicAPI
 
-import starlette
+from ray import serve
+from ray.serve._private.http_util import (
+    ASGIAppReplicaWrapper,
+)
 
 try:
-    import gradio as gr
+    from gradio import routes, Blocks
 except ModuleNotFoundError:
     print("Gradio isn't installed. Run `pip install gradio` to install Gradio.")
     raise
 
+logger = logging.getLogger(__file__)
+
 
 @PublicAPI(stability="alpha")
-class GradioIngress:
-    """User-facing class that wraps a Gradio App in a Serve Deployment"""
+class GradioIngress(ASGIAppReplicaWrapper):
+    """User-facing class that wraps a Gradio App in a Serve Deployment."""
 
-    def __init__(self, io: gr.Blocks):
-        self.app = gr.routes.App.create_app(io)
+    def __init__(self, builder: Callable[[], Blocks]):
+        """Builds and wraps an ASGI app from the provided builder.
 
-    async def __call__(self, request: starlette.requests.Request):
-        sender = ASGIHTTPSender()
-        await self.app(request.scope, receive=request.receive, send=sender)
-        return sender.build_asgi_response()
+        The builder should take no arguments and return a Gradio App (of type Interface
+        or Blocks).
+        """
+        io: Blocks = builder()
+        super().__init__(routes.App.create_app(io))
 
 
 GradioServer = serve.deployment(GradioIngress)

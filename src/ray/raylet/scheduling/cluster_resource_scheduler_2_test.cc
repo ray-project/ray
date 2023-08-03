@@ -28,6 +28,7 @@ class GcsResourceSchedulerTest : public ::testing::Test {
  public:
   void SetUp() override {
     cluster_resource_scheduler_ = std::make_shared<ClusterResourceScheduler>(
+        io_context_,
         scheduling::NodeID(NodeID::FromRandom().Binary()),
         NodeResources(),
         /*is_node_available_fn=*/
@@ -177,7 +178,7 @@ class GcsResourceSchedulerTest : public ::testing::Test {
     ASSERT_TRUE(result.status.IsSuccess());
     ASSERT_EQ(result.selected_nodes.size(), resources_list.size());
   }
-
+  instrumented_io_context io_context_;
   std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler_;
 };
 

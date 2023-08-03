@@ -32,25 +32,6 @@ RAYCLUSTERS_QUALIFIED = "rayclusters.ray.io"
 LOG_FORMAT = "[%(levelname)s %(asctime)s] " "%(filename)s: %(lineno)d  " "%(message)s"
 
 
-def setup_logging():
-    """Set up logging for kuberay.
-
-    For kuberay's autoscaler integration, the autoscaler runs in a sidecar container
-    in the same pod as the main Ray container, which runs the rest of the Ray
-    processes.
-
-    The logging configuration here is for the sidecar container, but we need the
-    logs to go to the same place as the head node logs because the autoscaler is
-    allowed to send scaling events to Ray drivers' stdout. The implementation of
-    this feature involves the autoscaler communicating to another Ray process
-    (the log monitor) via logs in that directory.
-    """
-    logging.basicConfig(
-        level=logging.INFO,
-        format=LOG_FORMAT,
-    )
-
-
 def switch_to_ray_parent_dir():
     # Switch to parent of Ray repo, because that's what the doc examples do.
     logger.info("Switching to parent of Ray directory.")

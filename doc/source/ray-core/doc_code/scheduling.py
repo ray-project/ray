@@ -47,7 +47,7 @@ actors = [SpreadActor.options(scheduling_strategy="SPREAD").remote() for _ in ra
 # __node_affinity_scheduling_strategy_start__
 @ray.remote
 def node_affinity_func():
-    return ray.get_runtime_context().node_id
+    return ray.get_runtime_context().get_node_id()
 
 
 @ray.remote(num_cpus=1)
@@ -58,7 +58,7 @@ class NodeAffinityActor:
 # Only run the task on the local node.
 node_affinity_func.options(
     scheduling_strategy=ray.util.scheduling_strategies.NodeAffinitySchedulingStrategy(
-        node_id=ray.get_runtime_context().node_id,
+        node_id=ray.get_runtime_context().get_node_id(),
         soft=False,
     )
 ).remote()
@@ -74,7 +74,7 @@ node_affinity_func.options(
 # Only run the actor on the local node.
 actor = NodeAffinityActor.options(
     scheduling_strategy=ray.util.scheduling_strategies.NodeAffinitySchedulingStrategy(
-        node_id=ray.get_runtime_context().node_id,
+        node_id=ray.get_runtime_context().get_node_id(),
         soft=False,
     )
 ).remote()

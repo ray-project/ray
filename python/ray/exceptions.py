@@ -102,6 +102,7 @@ class RayTaskError(RayError):
         pid=None,
         ip=None,
         actor_repr=None,
+        actor_id=None,
     ):
         """Initialize a RayTaskError."""
         import ray
@@ -119,6 +120,7 @@ class RayTaskError(RayError):
         self.function_name = function_name
         self.traceback_str = traceback_str
         self.actor_repr = actor_repr
+        self._actor_id = actor_id
         # TODO(edoakes): should we handle non-serializable exception objects?
         self.cause = cause
         assert traceback_str is not None
@@ -183,7 +185,9 @@ class RayTaskError(RayError):
                     f"(pid={self.pid}, ip={self.ip}"
                 )
                 if self.actor_repr:
-                    traceback_line += f", repr={self.actor_repr})"
+                    traceback_line += (
+                        f", actor_id={self._actor_id}, repr={self.actor_repr})"
+                    )
                 else:
                     traceback_line += ")"
                 code_from_internal_file = False
@@ -273,6 +277,7 @@ class RayActorError(RayError):
             self.error_msg = self.base_error_msg
         elif isinstance(cause, RayTaskError):
             self._actor_init_failed = True
+            self.actor_id = cause._actor_id
             self.error_msg = (
                 "The actor died because of an error"
                 " raised in its creation task, "
@@ -455,6 +460,18 @@ class ObjectFetchTimedOutError(ObjectLostError):
                 "system-level bug."
             )
         )
+
+
+@DeveloperAPI
+class RpcError(RayError):
+    """Indicates an error in the underlying RPC system."""
+
+    def __init__(self, message, rpc_code=None):
+        self.message = message
+        self.rpc_code = rpc_code
+
+    def __str__(self):
+        return self.message
 
 
 @DeveloperAPI
@@ -695,6 +712,15 @@ class ActorUnschedulableError(RayError):
 
     def __str__(self):
         return f"The actor is not schedulable: {self.error_message}"
+
+
+@DeveloperAPI
+class ObjectRefStreamEndOfStreamError(RayError):
+    """Raised by streaming generator tasks when there are no more ObjectRefs to
+    read.
+    """
+
+    pass
 
 
 RAY_EXCEPTION_TYPES = [

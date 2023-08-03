@@ -114,6 +114,12 @@ def _import_dreamer():
     return dreamer.Dreamer, dreamer.Dreamer.get_default_config()
 
 
+def _import_dreamerv3():
+    import ray.rllib.algorithms.dreamerv3 as dreamerv3
+
+    return dreamerv3.DreamerV3, dreamerv3.DreamerV3.get_default_config()
+
+
 def _import_dt():
     import ray.rllib.algorithms.dt as dt
 
@@ -216,6 +222,12 @@ def _import_td3():
     return td3.TD3, td3.TD3.get_default_config()
 
 
+def _import_leela_chess_zero():
+    import ray.rllib.algorithms.leela_chess_zero as lc0
+
+    return lc0.LeelaChessZero, lc0.LeelaChessZero.get_default_config()
+
+
 ALGORITHMS = {
     "A2C": _import_a2c,
     "A3C": _import_a3c,
@@ -233,6 +245,7 @@ ALGORITHMS = {
     "DDPPO": _import_ddppo,
     "DQN": _import_dqn,
     "Dreamer": _import_dreamer,
+    "DreamerV3": _import_dreamerv3,
     "DT": _import_dt,
     "IMPALA": _import_impala,
     "APPO": _import_appo,
@@ -251,6 +264,47 @@ ALGORITHMS = {
     "SimpleQ": _import_simple_q,
     "SlateQ": _import_slate_q,
     "TD3": _import_td3,
+    "LeelaChessZero": _import_leela_chess_zero,
+}
+
+
+ALGORITHMS_CLASS_TO_NAME = {
+    "A2C": "A2C",
+    "A3C": "A3C",
+    "AlphaZero": "AlphaZero",
+    "ApexDQN": "APEX",
+    "ApexDDPG": "APEX_DDPG",
+    "ARS": "ARS",
+    "BanditLinTS": "BanditLinTS",
+    "BanditLinUCB": "BanditLinUCB",
+    "BC": "BC",
+    "CQL": "CQL",
+    "CRR": "CRR",
+    "ES": "ES",
+    "DDPG": "DDPG",
+    "DDPPO": "DDPPO",
+    "DQN": "DQN",
+    "Dreamer": "Dreamer",
+    "DreamerV3": "DreamerV3",
+    "DT": "DT",
+    "Impala": "IMPALA",
+    "APPO": "APPO",
+    "AlphaStar": "AlphaStar",
+    "MADDPG": "MADDPG",
+    "MAML": "MAML",
+    "MARWIL": "MARWIL",
+    "MBMPO": "MBMPO",
+    "PG": "PG",
+    "PPO": "PPO",
+    "QMix": "QMIX",
+    "R2D2": "R2D2",
+    "RandomAgent": "Random",
+    "RNNSAC": "RNNSAC",
+    "SAC": "SAC",
+    "SimpleQ": "SimpleQ",
+    "SlateQ": "SlateQ",
+    "TD3": "TD3",
+    "LeelaChessZero": "LeelaChessZero",
 }
 
 
@@ -263,7 +317,7 @@ def get_algorithm_class(
     alg: str,
     return_config=False,
 ) -> Union[Type["Algorithm"], Tuple[Type["Algorithm"], "AlgorithmConfig"]]:
-    """Returns the class of a known Trainer given its name."""
+    """Returns the class of a known Algorithm given its name."""
 
     try:
         return _get_algorithm_class(alg, return_config=return_config)
@@ -275,10 +329,6 @@ def get_algorithm_class(
         if return_config:
             return class_, config
         return class_
-
-
-# Backward compat alias.
-get_trainer_class = get_algorithm_class
 
 
 def _get_algorithm_class(alg: str) -> type:

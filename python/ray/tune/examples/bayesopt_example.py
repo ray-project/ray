@@ -6,8 +6,7 @@ Requires the BayesOpt library to be installed (`pip install bayesian-optimizatio
 """
 import time
 
-from ray import air, tune
-from ray.air import session
+from ray import train, tune
 from ray.tune.schedulers import AsyncHyperBandScheduler
 from ray.tune.search import ConcurrencyLimiter
 from ray.tune.search.bayesopt import BayesOptSearch
@@ -25,7 +24,7 @@ def easy_objective(config):
         # Iterative training function - can be any arbitrary training procedure
         intermediate_score = evaluation_fn(step, width, height)
         # Feed the score back back to Tune.
-        session.report({"iterations": step, "mean_loss": intermediate_score})
+        train.report({"iterations": step, "mean_loss": intermediate_score})
         time.sleep(0.1)
 
 
@@ -36,19 +35,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--smoke-test", action="store_true", help="Finish quickly for testing"
     )
-    parser.add_argument(
-        "--server-address",
-        type=str,
-        default=None,
-        required=False,
-        help="The address of server to connect to if using Ray Client.",
-    )
     args, _ = parser.parse_known_args()
-
-    if args.server_address:
-        import ray
-
-        ray.init(f"ray://{args.server_address}")
 
     algo = BayesOptSearch(utility_kwargs={"kind": "ucb", "kappa": 2.5, "xi": 0.0})
     algo = ConcurrencyLimiter(algo, max_concurrent=4)
@@ -62,7 +49,7 @@ if __name__ == "__main__":
             scheduler=scheduler,
             num_samples=10 if args.smoke_test else 1000,
         ),
-        run_config=air.RunConfig(
+        run_config=train.RunConfig(
             name="my_exp",
         ),
         param_space={

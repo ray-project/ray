@@ -10,8 +10,7 @@ import torch.optim as optim
 from torchvision import datasets, transforms
 
 import ray
-from ray import air, tune
-from ray.air import session
+from ray import train, tune
 from ray.train.torch import TorchCheckpoint
 from ray.tune.schedulers import AsyncHyperBandScheduler
 
@@ -33,7 +32,7 @@ class ConvNet(nn.Module):
         return F.log_softmax(x, dim=1)
 
 
-def train(model, optimizer, train_loader, device=None):
+def train_func(model, optimizer, train_loader, device=None):
     device = device or torch.device("cpu")
     model.train()
     for batch_idx, (data, target) in enumerate(train_loader):
@@ -47,7 +46,7 @@ def train(model, optimizer, train_loader, device=None):
         optimizer.step()
 
 
-def test(model, data_loader, device=None):
+def test_func(model, data_loader, device=None):
     device = device or torch.device("cpu")
     model.eval()
     correct = 0
@@ -103,13 +102,13 @@ def train_mnist(config):
     )
 
     while True:
-        train(model, optimizer, train_loader, device)
-        acc = test(model, test_loader, device)
+        train_func(model, optimizer, train_loader, device)
+        acc = test_func(model, test_loader, device)
         checkpoint = None
         if should_checkpoint:
             checkpoint = TorchCheckpoint.from_state_dict(model.state_dict())
         # Report metrics (and possibly a checkpoint) to Tune
-        session.report({"mean_accuracy": acc}, checkpoint=checkpoint)
+        train.report({"mean_accuracy": acc}, checkpoint=checkpoint)
 
 
 if __name__ == "__main__":
@@ -120,25 +119,9 @@ if __name__ == "__main__":
     parser.add_argument(
         "--smoke-test", action="store_true", help="Finish quickly for testing"
     )
-    parser.add_argument(
-        "--ray-address",
-        help="Address of Ray cluster for seamless distributed execution.",
-    )
-    parser.add_argument(
-        "--server-address",
-        type=str,
-        default=None,
-        required=False,
-        help="The address of server to connect to if using Ray Client.",
-    )
     args, _ = parser.parse_known_args()
 
-    if args.server_address:
-        ray.init(f"ray://{args.server_address}")
-    elif args.ray_address:
-        ray.init(address=args.ray_address)
-    else:
-        ray.init(num_cpus=2 if args.smoke_test else None)
+    ray.init(num_cpus=2 if args.smoke_test else None)
 
     # for early stopping
     sched = AsyncHyperBandScheduler()
@@ -152,7 +135,7 @@ if __name__ == "__main__":
             scheduler=sched,
             num_samples=1 if args.smoke_test else 50,
         ),
-        run_config=air.RunConfig(
+        run_config=train.RunConfig(
             name="exp",
             stop={
                 "mean_accuracy": 0.98,

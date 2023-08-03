@@ -32,9 +32,9 @@ import tensorflow as tf
 from tensorflow import keras
 from tensorflow.keras import layers
 
-from ray.air import session
-from ray.air.config import ScalingConfig
-from ray.air.integrations.keras import Callback as KerasCallback
+from ray import train
+from ray.train import ScalingConfig
+from ray.air.integrations.keras import ReportCheckpointCallback
 from ray.train.tensorflow import TensorflowTrainer
 
 
@@ -55,9 +55,9 @@ def train_loop_per_worker(config):
     epochs = config["num_epochs"]
     num_features = config["num_features"]
 
-    # Get the Ray Dataset shard for this data parallel worker,
+    # Get the Dataset shard for this data parallel worker,
     # and convert it to a Tensorflow Dataset.
-    train_data = session.get_dataset_shard("train")
+    train_data = train.get_dataset_shard("train")
 
     strategy = tf.distribute.MultiWorkerMirroredStrategy()
     with strategy.scope():
@@ -79,7 +79,7 @@ def train_loop_per_worker(config):
         )
         multi_worker_model.fit(
             tf_dataset,
-            callbacks=[KerasCallback()],
+            callbacks=[ReportCheckpointCallback()],
             verbose=0,
         )
 
@@ -103,8 +103,8 @@ trainer = TensorflowTrainer(
     preprocessor=preprocessor,
 )
 
-result = trainer.fit()
-print(f"Last result: {result.metrics}")
+best_result = trainer.fit()
+print(f"Last result: {best_result.metrics}")
 # Last result: {'loss': 8.997025489807129, ...}
 # __air_tf_train_end__
 
@@ -131,24 +131,3 @@ best_result = result_grid.get_best_result()
 print("Best Result:", best_result)
 # Best Result: Result(metrics={'loss': 4.997025489807129, ...)
 # __air_tune_generic_end__
-
-# __air_tf_batchpred_start__
-from ray.train.batch_predictor import BatchPredictor
-from ray.train.tensorflow import TensorflowPredictor
-
-# You can also create a checkpoint from a trained model using `TensorflowCheckpoint`.
-checkpoint = best_result.checkpoint
-
-batch_predictor = BatchPredictor.from_checkpoint(
-    checkpoint,
-    TensorflowPredictor,
-    model_definition=lambda: create_keras_model(num_features),
-)
-
-predicted_probabilities = batch_predictor.predict(test_dataset)
-predicted_probabilities.show()
-# {'predictions': 0.033036969602108}
-# {'predictions': 0.05944341793656349}
-# {'predictions': 0.1657751202583313}
-# ...
-# __air_tf_batchpred_end__

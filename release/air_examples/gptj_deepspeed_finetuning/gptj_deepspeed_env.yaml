@@ -1,0 +1,21 @@
+base_image: {{ env["RAY_IMAGE_ML_NIGHTLY_GPU"] }}
+env_vars: {}
+debian_packages:
+  - curl
+
+python:
+  pip_packages:
+    - "datasets"
+    - "evaluate"
+    - "accelerate==0.16.0"
+    - "transformers==4.26.0"
+    - "torch>=1.12.0"
+    - "deepspeed==0.9.2"
+    - myst-parser==0.15.2
+    - myst-nb==0.13.1
+    - jupytext==1.13.6
+  conda_packages: []
+
+post_build_cmds:
+  - pip uninstall -y ray || true && pip3 install -U {{ env["RAY_WHEELS"] | default("ray") }}
+  - {{ env["RAY_WHEELS_SANITY_CHECK"] | default("echo No Ray wheels sanity check") }}

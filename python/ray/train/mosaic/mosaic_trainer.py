@@ -1,14 +1,13 @@
 import inspect
-import os
-from typing import TYPE_CHECKING, Callable, Dict, Optional
+from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Type
 import warnings
 
 from composer.trainer import Trainer
 from composer.loggers.logger_destination import LoggerDestination
 
-from ray.air import session
 from ray.air.checkpoint import Checkpoint
-from ray.air.config import DatasetConfig, RunConfig, ScalingConfig
+from ray.air.config import RunConfig, ScalingConfig
+from ray.train import DataConfig
 from ray.train.mosaic._mosaic_utils import RayLogger
 from ray.train.torch import TorchConfig, TorchTrainer
 from ray.train.trainer import GenDataset
@@ -33,84 +32,94 @@ class MosaicTrainer(TorchTrainer):
     will have access to preprocessed train and evaluation datasets.
 
     Example:
-        >>> import torch.utils.data  # doctest: +SKIP
-        >>> import torchvision  # doctest: +SKIP
-        >>> from torchvision import transforms, datasets  # doctest: +SKIP
-        >>>
-        >>> from composer.models.tasks import ComposerClassifier # doctest: +SKIP
-        >>> import composer.optim # doctest: +SKIP
-        >>> from composer.algorithms import LabelSmoothing # doctest: +SKIP
-        >>>
-        >>> import ray
-        >>> from ray.air.config import ScalingConfig
-        >>> import ray.train as train
-        >>> from ray.air import session
-        >>> from ray.train.mosaic import MosaicTrainer # doctest: +SKIP
-        >>>
-        >>> def trainer_init_per_worker(config):
-        ...     # prepare the model for distributed training and wrap with
-        ...     # ComposerClassifier for Composer Trainer compatibility
-        ...     model = torchvision.models.resnet18(num_classes=10)
-        ...     model = ComposerClassifier(ray.train.torch.prepare_model(model))
-        ...
-        ...     # prepare train/test dataset
-        ...     mean = (0.507, 0.487, 0.441)
-        ...     std = (0.267, 0.256, 0.276)
-        ...     cifar10_transforms = transforms.Compose(
-        ...         [transforms.ToTensor(), transforms.Normalize(mean, std)]
-        ...     )
-        ...     data_directory = "~/data"
-        ...     train_dataset = datasets.CIFAR10(
-        ...         data_directory,
-        ...         train=True,
-        ...         download=True,
-        ...         transform=cifar10_transforms
-        ...     )
-        ...
-        ...     # prepare train dataloader
-        ...     batch_size_per_worker = BATCH_SIZE // session.get_world_size()
-        ...     train_dataloader = torch.utils.data.DataLoader(
-        ...         train_dataset,
-        ...         batch_size=batch_size_per_worker
-        ...     )
-        ...     train_dataloader = ray.train.torch.prepare_data_loader(train_dataloader)
-        ...
-        ...     # prepare optimizer
-        ...     optimizer = composer.optim.DecoupledSGDW(
-        ...         model.parameters(),
-        ...         lr=0.05,
-        ...         momentum=0.9,
-        ...         weight_decay=2.0e-3,
-        ...     )
-        ...
-        ...     return composer.trainer.Trainer(
-        ...         model=model,
-        ...         train_dataloader=train_dataloader,
-        ...         optimizers=optimizer,
-        ...         **config
-        ...     )
-        ...
-        >>> scaling_config = ScalingConfig(num_workers=2, use_gpu=True)
-        >>> trainer_init_config = {
-        ...     "max_duration": "1ba",
-        ...     "algorithms": [LabelSmoothing()],
-        ... } # doctest: +SKIP
-        ...
-        >>> trainer = MosaicTrainer(
-        ...     trainer_init_per_worker=trainer_init_per_worker,
-        ...     trainer_init_config=trainer_init_config,
-        ...     scaling_config=scaling_config,
-        ... ) # doctest: +SKIP
-        ...
-        >>> trainer.fit() # doctest: +SKIP
 
+    ..
+        TODO(yunxuan): Enable the test after we resolve the mosaicml dependency issue
+
+    .. testcode::
+        :skipif: True
+
+        import torch.utils.data
+        import torchvision
+        from torchvision import transforms, datasets
+
+        from composer.models.tasks import ComposerClassifier
+        import composer.optim
+        from composer.algorithms import LabelSmoothing
+
+        import ray
+        import ray.train as train
+        from ray.train import ScalingConfig
+        from ray.train.mosaic import MosaicTrainer
+
+        def trainer_init_per_worker(config):
+            # prepare the model for distributed training and wrap with
+            # ComposerClassifier for Composer Trainer compatibility
+            model = torchvision.models.resnet18(num_classes=10)
+            model = ComposerClassifier(ray.train.torch.prepare_model(model))
+
+            # prepare train/test dataset
+            mean = (0.507, 0.487, 0.441)
+            std = (0.267, 0.256, 0.276)
+            cifar10_transforms = transforms.Compose(
+                [transforms.ToTensor(), transforms.Normalize(mean, std)]
+            )
+            data_directory = "~/data"
+            train_dataset = datasets.CIFAR10(
+                data_directory,
+                train=True,
+                download=True,
+                transform=cifar10_transforms
+            )
+
+            # prepare train dataloader
+            batch_size_per_worker = BATCH_SIZE // session.get_world_size()
+            train_dataloader = torch.utils.data.DataLoader(
+                train_dataset,
+                batch_size=batch_size_per_worker
+            )
+            train_dataloader = ray.train.torch.prepare_data_loader(train_dataloader)
+
+            # prepare optimizer
+            optimizer = composer.optim.DecoupledSGDW(
+                model.parameters(),
+                lr=0.05,
+                momentum=0.9,
+                weight_decay=2.0e-3,
+            )
+
+            return composer.trainer.Trainer(
+                model=model,
+                train_dataloader=train_dataloader,
+                optimizers=optimizer,
+                **config
+            )
+
+        scaling_config = ScalingConfig(num_workers=2, use_gpu=True)
+        trainer_init_config = {
+            "max_duration": "1ba",
+            "algorithms": [LabelSmoothing()],
+        }
+
+        trainer = MosaicTrainer(
+            trainer_init_per_worker=trainer_init_per_worker,
+            trainer_init_config=trainer_init_config,
+            scaling_config=scaling_config,
+        )
+
+        trainer.fit()
+
+    .. testoutput::
+            :hide:
+
+            ...
 
     Args:
         trainer_init_per_worker: The function that returns an instantiated
             ``composer.Trainer`` object and takes in configuration
             dictionary (``config``) as an argument. This dictionary is based on
             ``trainer_init_config`` and is modified for Ray - Composer integration.
-        datasets: Any Ray Datasets to use for training. At the moment, we do not support
+        datasets: Any Datasets to use for training. At the moment, we do not support
             passing datasets to the trainer and using the dataset shards in the trainer
             loop. Instead, configure and load the datasets inside
             ``trainer_init_per_worker`` function
@@ -141,7 +150,7 @@ class MosaicTrainer(TorchTrainer):
         trainer_init_config: Optional[Dict] = None,
         torch_config: Optional[TorchConfig] = None,
         scaling_config: Optional[ScalingConfig] = None,
-        dataset_config: Optional[Dict[str, DatasetConfig]] = None,
+        dataset_config: Optional[DataConfig] = None,
         run_config: Optional[RunConfig] = None,
         preprocessor: Optional["Preprocessor"] = None,
         resume_from_checkpoint: Optional[Checkpoint] = None,
@@ -154,16 +163,15 @@ class MosaicTrainer(TorchTrainer):
         self._validate_datasets(datasets)
         self._validate_trainer_init_config(trainer_init_config)
 
-        trainer_init_config = trainer_init_config.copy() if trainer_init_config else {}
-        if "_trainer_init_per_worker" in trainer_init_config:
-            raise ValueError(
-                "'_trainer_init_per_worker' is a reserved key in `trainer_init_config`."
-            )
-        trainer_init_config["_trainer_init_per_worker"] = trainer_init_per_worker
+        if resume_from_checkpoint:
+            # TODO(ml-team): Reenable after Mosaic checkpointing is supported
+            raise NotImplementedError
 
         super().__init__(
             train_loop_per_worker=_mosaic_train_loop_per_worker,
-            train_loop_config=trainer_init_config,
+            train_loop_config=self._create_trainer_init_config(
+                trainer_init_per_worker, trainer_init_config
+            ),
             torch_config=torch_config,
             scaling_config=scaling_config,
             dataset_config=dataset_config,
@@ -172,6 +180,25 @@ class MosaicTrainer(TorchTrainer):
             preprocessor=preprocessor,
             resume_from_checkpoint=resume_from_checkpoint,
         )
+
+    @classmethod
+    def _create_trainer_init_config(
+        cls,
+        trainer_init_per_worker: Callable[[Optional[Dict]], Trainer],
+        trainer_init_config: Optional[Dict[str, Any]],
+    ) -> Dict[str, Any]:
+        trainer_init_config = trainer_init_config.copy() if trainer_init_config else {}
+        if "_trainer_init_per_worker" in trainer_init_config:
+            raise ValueError(
+                "'_trainer_init_per_worker' is a reserved key in `trainer_init_config`."
+            )
+        trainer_init_config["_trainer_init_per_worker"] = trainer_init_per_worker
+        return trainer_init_config
+
+    @classmethod
+    def restore(cls: Type["MosaicTrainer"], **kwargs) -> "MosaicTrainer":
+        # TODO(ml-team): Reenable after Mosaic checkpointing is supported
+        raise NotImplementedError
 
     def _validate_trainer_init_per_worker(
         self, trainer_init_per_worker: Callable, fn_name: str
@@ -203,12 +230,6 @@ class MosaicTrainer(TorchTrainer):
 def _mosaic_train_loop_per_worker(config):
     """Per-worker training loop for Mosaic Composers."""
     trainer_init_per_worker = config.pop("_trainer_init_per_worker")
-
-    os.environ["RANK"] = str(session.get_world_rank())
-    os.environ["WORLD_SIZE"] = str(session.get_world_size())
-    os.environ["LOCAL_RANK"] = str(session.get_local_rank())
-    os.environ["LOCAL_WORLD_SIZE"] = str(session.get_local_world_size())
-    os.environ["NODE_RANK"] = str(session.get_node_rank())
 
     # Replace Composer's Loggers with RayLogger
     ray_logger = RayLogger(keys=config.pop("log_keys", []))

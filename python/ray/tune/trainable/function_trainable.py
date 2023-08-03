@@ -9,14 +9,17 @@ import uuid
 import warnings
 from functools import partial
 from numbers import Number
-from typing import Any, Callable, Dict, Optional, Type, Union
+from typing import Any, Callable, Dict, Optional, Type
 
 from ray.air._internal.util import StartTraceback, RunnerThread
-from ray.tune.resources import Resources
 import queue
 
 from ray.air.checkpoint import Checkpoint
-from ray.air.constants import _ERROR_FETCH_TIMEOUT, _RESULT_FETCH_TIMEOUT
+from ray.air.constants import (
+    _ERROR_FETCH_TIMEOUT,
+    _RESULT_FETCH_TIMEOUT,
+    TIME_THIS_ITER_S,
+)
 from ray.tune import TuneError
 from ray.tune.execution.placement_groups import PlacementGroupFactory
 from ray.tune.trainable import session
@@ -24,7 +27,6 @@ from ray.tune.result import (
     DEFAULT_METRIC,
     RESULT_DUPLICATE,
     SHOULD_CHECKPOINT,
-    TIME_THIS_ITER_S,
 )
 from ray.tune.trainable import Trainable, TrainableUtil
 from ray.tune.utils import (
@@ -135,7 +137,7 @@ class _StatusReporter:
         trial_name: Optional[str] = None,
         trial_id: Optional[str] = None,
         logdir: Optional[str] = None,
-        trial_resources: Optional[Union[Resources, PlacementGroupFactory]] = None,
+        trial_resources: Optional[PlacementGroupFactory] = None,
     ):
         self._queue = result_queue
         self._last_report_time = None
@@ -223,9 +225,19 @@ class _StatusReporter:
                     "make_checkpoint_dir."
                 )
                 raise
+        previous_checkpoint = self._last_checkpoint
         self._last_checkpoint = checkpoint
         if is_new:
             self._fresh_checkpoint = True
+
+        # Delete temporary checkpoint folder from `restore_from_object`
+        if previous_checkpoint and FuncCheckpointUtil.is_temp_checkpoint_dir(
+            previous_checkpoint
+        ):
+            previous_checkpoint_dir = TrainableUtil.find_checkpoint_dir(
+                previous_checkpoint
+            )
+            shutil.rmtree(previous_checkpoint_dir, ignore_errors=True)
 
     def has_new_checkpoint(self):
         return self._fresh_checkpoint
@@ -279,6 +291,11 @@ class _StatusReporter:
     def trial_resources(self):
         """Resources assigned to the trial of this Trainable."""
         return self._trial_resources
+
+    @property
+    def trial_dir(self) -> str:
+        """Trial-level log directory for the corresponding trial."""
+        return self._logdir
 
 
 @DeveloperAPI
@@ -601,13 +618,13 @@ def wrap_function(
                     "`checkpoint_dir` in `func(config, checkpoint_dir)` is "
                     "being deprecated. "
                     "To save and load checkpoint in trainable functions, "
-                    "please use the `ray.air.session` API:\n\n"
-                    "from ray.air import session\n\n"
+                    "please use the `report` API:\n\n"
+                    "from ray import train\n\n"
                     "def train(config):\n"
                     "    # ...\n"
-                    '    session.report({"metric": metric}, checkpoint=checkpoint)\n\n'
+                    '    train.report({"metric": metric}, checkpoint=checkpoint)\n\n'
                     "For more information please see "
-                    "https://docs.ray.io/en/master/tune/api_docs/trainable.html\n"
+                    "https://docs.ray.io/en/latest/tune/api/trainable.html\n"
                 )
                 warnings.warn(
                     warning_msg,
@@ -663,7 +680,7 @@ def wrap_function(
         @classmethod
         def default_resource_request(
             cls, config: Dict[str, Any]
-        ) -> Optional[Union[Resources, PlacementGroupFactory]]:
+        ) -> Optional[PlacementGroupFactory]:
             if not isinstance(resources, PlacementGroupFactory) and callable(resources):
                 return resources(config)
             return resources

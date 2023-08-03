@@ -21,7 +21,7 @@ import tarfile
 import numpy as np
 import re
 
-from ray import air, tune
+from ray import train, tune
 
 
 def tokenize(sent):
@@ -266,19 +266,10 @@ if __name__ == "__main__":
     parser.add_argument(
         "--smoke-test", action="store_true", help="Finish quickly for testing"
     )
-    parser.add_argument(
-        "--server-address",
-        type=str,
-        default=None,
-        required=False,
-        help="The address of server to connect to if using Ray Client.",
-    )
     args, _ = parser.parse_known_args()
 
     if args.smoke_test:
         ray.init(num_cpus=2)
-    elif args.server_address:
-        ray.init(f"ray://{args.server_address}")
 
     perturbation_interval = 2
     pbt = PopulationBasedTraining(
@@ -292,10 +283,10 @@ if __name__ == "__main__":
 
     tuner = tune.Tuner(
         MemNNModel,
-        run_config=air.RunConfig(
+        run_config=train.RunConfig(
             name="pbt_babi_memnn",
             stop={"training_iteration": 4 if args.smoke_test else 100},
-            checkpoint_config=air.CheckpointConfig(
+            checkpoint_config=train.CheckpointConfig(
                 checkpoint_frequency=perturbation_interval,
                 checkpoint_score_attribute="mean_accuracy",
                 num_to_keep=2,

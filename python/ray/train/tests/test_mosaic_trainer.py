@@ -6,9 +6,10 @@ import torch.utils.data
 import torchvision
 from torchvision import transforms, datasets
 
-from ray.air.config import ScalingConfig
+from ray.train import ScalingConfig
+from ray.air.constants import TRAINING_ITERATION
 import ray.train as train
-from ray.air import session
+from ray.train.trainer import TrainingFailedError
 
 
 scaling_config = ScalingConfig(num_workers=2, use_gpu=False)
@@ -46,7 +47,7 @@ def trainer_init_per_worker(config):
         list(range(64)),
     )
 
-    batch_size_per_worker = BATCH_SIZE // session.get_world_size()
+    batch_size_per_worker = BATCH_SIZE // train.get_context().get_world_size()
     train_dataloader = torch.utils.data.DataLoader(
         train_dataset, batch_size=batch_size_per_worker, shuffle=True
     )
@@ -58,7 +59,9 @@ def trainer_init_per_worker(config):
     test_dataloader = train.torch.prepare_data_loader(test_dataloader)
 
     evaluator = Evaluator(
-        dataloader=test_dataloader, label="my_evaluator", metrics=Accuracy()
+        dataloader=test_dataloader,
+        label="my_evaluator",
+        metrics=Accuracy(task="multiclass", num_classes=10, top_k=1),
     )
 
     # prepare optimizer
@@ -89,7 +92,7 @@ def test_mosaic_cifar10(ray_start_4_cpus):
     assert result["epoch"][result.index[-1]] == 4
 
     # check train_iterations
-    assert result["_training_iteration"][result.index[-1]] == 5
+    assert result[TRAINING_ITERATION][result.index[-1]] == 5
 
     # check metrics/train/Accuracy has increased
     acc = list(result["metrics/train/Accuracy"])
@@ -147,13 +150,16 @@ def test_loggers(ray_start_4_cpus):
     from composer.loggers import Logger
     from composer.core.callback import Callback
 
+    class _CallbackExistsError(ValueError):
+        pass
+
     class DummyLogger(LoggerDestination):
         def fit_start(self, state: State, logger: Logger) -> None:
-            raise ValueError("Composer Logger object exists.")
+            raise ValueError
 
     class DummyCallback(Callback):
         def fit_start(self, state: State, logger: Logger) -> None:
-            raise ValueError("Composer Callback object exists.")
+            raise _CallbackExistsError
 
     class DummyMonitorCallback(Callback):
         def fit_start(self, state: State, logger: Logger) -> None:
@@ -173,7 +179,7 @@ def test_loggers(ray_start_4_cpus):
 
     trainer.fit()
 
-    # DummyCallback should throw an error since it should not have been removed.
+    # DummyCallback should throw an error since it's not removed automatically.
     trainer_init_config["callbacks"] = DummyCallback()
     trainer = MosaicTrainer(
         trainer_init_per_worker=trainer_init_per_worker,
@@ -181,9 +187,9 @@ def test_loggers(ray_start_4_cpus):
         scaling_config=scaling_config,
     )
 
-    with pytest.raises(ValueError) as e:
+    with pytest.raises(TrainingFailedError) as exc_info:
         trainer.fit()
-        assert e == "Composer Callback object exists."
+    assert isinstance(exc_info.value.__cause__, _CallbackExistsError)
 
     trainer_init_config["callbacks"] = DummyMonitorCallback()
     trainer = MosaicTrainer(
@@ -257,7 +263,7 @@ def test_monitor_callbacks(ray_start_4_cpus):
     from ray.train.mosaic import MosaicTrainer
 
     # Test Callbacks involving logging (SpeedMonitor, LRMonitor)
-    from composer.callbacks import SpeedMonitor, LRMonitor, GradMonitor
+    from composer.callbacks import SpeedMonitor, LRMonitor
 
     trainer_init_config = {
         "max_duration": "1ep",
@@ -269,7 +275,6 @@ def test_monitor_callbacks(ray_start_4_cpus):
     trainer_init_config["callbacks"] = [
         SpeedMonitor(window_size=3),
         LRMonitor(),
-        GradMonitor(),
     ]
 
     trainer = MosaicTrainer(
@@ -288,7 +293,6 @@ def test_monitor_callbacks(ray_start_4_cpus):
         "wall_clock/val",
         "wall_clock/total",
         "lr-DecoupledSGDW/group0",
-        "grad_l2_norm/step",
     ]
     for column in columns_to_check:
         assert column in metrics_columns, column + " is not found"

@@ -1,5 +1,5 @@
 """
-Example of running an RLlib Trainer against a locally running Unity3D editor
+Example of running an RLlib Algorithm against a locally running Unity3D editor
 instance (available as Unity3DEnv inside RLlib).
 For a distributed cloud setup example with Unity,
 see `examples/serving/unity3d_[server|client].py`
@@ -64,7 +64,7 @@ parser.add_argument(
     type=str,
     default=None,
     help="Full path to a checkpoint file for restoring a previously saved "
-    "Trainer state.",
+    "Algorithm state.",
 )
 parser.add_argument("--num-workers", type=int, default=0)
 parser.add_argument(
@@ -95,7 +95,7 @@ parser.add_argument(
 parser.add_argument(
     "--framework",
     choices=["tf", "tf2", "torch"],
-    default="tf",
+    default="torch",
     help="The DL framework specifier.",
 )
 

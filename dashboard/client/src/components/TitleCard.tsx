@@ -13,19 +13,17 @@ const useStyles = makeStyles((theme) => ({
     color: theme.palette.text.secondary,
     marginBottom: theme.spacing(1),
   },
-  body: {
-    padding: theme.spacing(0.5),
-  },
+  body: {},
 }));
 
 const TitleCard = ({
   title,
   children,
-}: PropsWithChildren<{ title: ReactNode | string }>) => {
+}: PropsWithChildren<{ title?: ReactNode | string }>) => {
   const classes = useStyles();
   return (
     <Paper className={classes.card}>
-      <div className={classes.title}>{title}</div>
+      {title && <div className={classes.title}>{title}</div>}
       <div className={classes.body}>{children}</div>
     </Paper>
   );

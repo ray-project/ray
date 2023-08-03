@@ -1,17 +1,18 @@
 import collections
-import numpy as np
-import sys
+from functools import partial
 import itertools
-import tree  # pip install dm_tree
-from typing import Dict, Iterator, List, Optional, Set, Union
+import sys
 from numbers import Number
+from typing import Dict, Iterator, Set, Union
+from typing import List, Optional
 
-from ray.util import log_once
+import numpy as np
+import tree  # pip install dm_tree
+
 from ray.rllib.utils.annotations import DeveloperAPI, ExperimentalAPI, PublicAPI
 from ray.rllib.utils.compression import pack, unpack, is_compressed
 from ray.rllib.utils.deprecation import Deprecated, deprecation_warning
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
-from ray.rllib.utils.numpy import concat_aligned
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 from ray.rllib.utils.typing import (
     PolicyID,
@@ -19,6 +20,7 @@ from ray.rllib.utils.typing import (
     SampleBatchType,
     ViewRequirementsDict,
 )
+from ray.util import log_once
 
 tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
@@ -29,27 +31,20 @@ DEFAULT_POLICY_ID = "default_policy"
 
 @DeveloperAPI
 def attempt_count_timesteps(tensor_dict: dict):
-    """Attempt to count timesteps based on dimensions of individual elements
+    """Attempt to count timesteps based on dimensions of individual elements.
 
-    tensor_dict should be a SampleBatch or another dict. We do not attempt to count
-    on INFOS or any state_in_* and state_out_* keys. The number of timesteps we count
-    in cases where we are unable to count is zero.
+    Returns the first successfully counted number of timesteps.
+    We do not attempt to count on INFOS or any state_in_* and state_out_* keys. The
+    number of timesteps we count in cases where we are unable to count is zero.
+
+    Args:
+        tensor_dict: A SampleBatch or another dict.
 
     Returns:
         count: The inferred number of timesteps >= 0.
     """
     # Try to infer the "length" of the SampleBatch by finding the first
     # value that is actually a ndarray/tensor.
-    lengths = []
-    copy_ = {k: v for k, v in tensor_dict.items() if k != SampleBatch.SEQ_LENS}
-
-    for k, v in copy_.items():
-        # TODO: Drop support for lists and Numbers as values.
-        # Convert lists of int|float into numpy arrays make sure all data
-        # has same length.
-        if isinstance(v, (Number, list)):
-            tensor_dict[k] = np.array(v)
-
     # Skip manual counting routine if we can directly infer count from sequence lengths
     if (
         tensor_dict.get(SampleBatch.SEQ_LENS) is not None
@@ -61,7 +56,10 @@ def attempt_count_timesteps(tensor_dict: dict):
         else:
             return sum(tensor_dict[SampleBatch.SEQ_LENS])
 
-    for k, v in copy_.items():
+    for k, v in tensor_dict.items():
+        if k == SampleBatch.SEQ_LENS:
+            continue
+
         assert isinstance(k, str), tensor_dict
 
         if (
@@ -88,40 +86,12 @@ def attempt_count_timesteps(tensor_dict: dict):
             # Add one of the elements' length, since they are all the same
             _len = len(v_list[0])
             if _len:
-                lengths.append(_len)
+                return _len
         except Exception:
             pass
-        else:
-            # If we were able to figure out a length, all lengths of
-            # elements of nested structure must be the same
-            try:
-                same_lengths = all(
-                    len(sub_space) == len(v_list[0]) for sub_space in v_list
-                )
-            except TypeError:
-                # If input contains scalar arrays (that don't have a length),
-                # they should all be scalar arrays
-                same_lengths = all(sub_space.size == 0 for sub_space in v_list)
-            if not same_lengths:
-                if log_once("flattened_elements_have_different_lengths"):
-                    deprecation_warning(
-                        old="Usage of nested elements in SampleBatch "
-                        "with different lengths",
-                        help="Found nested elements in SampleBatch with "
-                        "different lengths. This might be because one or "
-                        "more elements are lists or of different lengths. "
-                        "Construct SampleBatch only from Tensors of same length "
-                        "to avoid this warning.",
-                        error=False,
-                    )
-                # Could not infer length
-                # TODO(Artur): raise error instead of setting length to zero once
-                #  we have deprecated non-tensor inputs
-                lengths = [0]
-                break
 
-    # Return from lengths if we found anything to count from except INFOS and states
-    return lengths[0] if lengths else 0
+    # Return zero if we are unable to count
+    return 0
 
 
 @PublicAPI
@@ -183,6 +153,10 @@ class SampleBatch(dict):
 
     # Value function predictions emitted by the behaviour policy.
     VF_PREDS = "vf_preds"
+    # Values one ts beyond the last ts taken. These are usually calculated via the value
+    # function network using the final observation (and in case of an RNN: the last
+    # returned internal state).
+    VALUES_BOOTSTRAPPED = "values_bootstrapped"
 
     # RE 3
     # This is only computed and used when RE3 exploration strategy is enabled.
@@ -194,9 +168,8 @@ class SampleBatch(dict):
 
     # Deprecated keys:
 
-    # SampleBatches must already not be constructed anymore by setting this key
-    # directly. Instead, the values under this key are auto-computed via the values of
-    # the new TERMINATEDS and TRUNCATEDS keys.
+    # Do not set this key directly. Instead, the values under this key are
+    # auto-computed via the values of the TERMINATEDS and TRUNCATEDS keys.
     DONES = "dones"
     # Use SampleBatch.OBS instead.
     CUR_OBS = "obs"
@@ -205,19 +178,19 @@ class SampleBatch(dict):
     def __init__(self, *args, **kwargs):
         """Constructs a sample batch (same params as dict constructor).
 
-        Note: All *args and those **kwargs not listed below will be passed
+        Note: All args and those kwargs not listed below will be passed
         as-is to the parent dict constructor.
 
-        Keyword Args:
-            _time_major (Optional[bool]): Whether data in this sample batch
+        Args:
+            _time_major: Whether data in this sample batch
                 is time-major. This is False by default and only relevant
                 if the data contains sequences.
-            _max_seq_len (Optional[int]): The max sequence chunk length
+            _max_seq_len: The max sequence chunk length
                 if the data contains sequences.
-            _zero_padded (Optional[bool]): Whether the data in this batch
+            _zero_padded: Whether the data in this batch
                 contains sequences AND these sequences are right-zero-padded
                 according to the `_max_seq_len` setting.
-            _is_training (Optional[bool]): Whether this batch is used for
+            _is_training: Whether this batch is used for
                 training. If False, batch may be used for e.g. action
                 computations (inference).
         """
@@ -252,6 +225,20 @@ class SampleBatch(dict):
         # by column name (str) via e.g. self["some-col"].
         dict.__init__(self, *args, **kwargs)
 
+        # Indicates whether, for this batch, sequence lengths should be slices by
+        # their index in the batch or by their index as a sequence.
+        # This is useful if a batch contains tensors of shape (B, T, ...), where each
+        # index of B indicates one sequence. In this case, when slicing the batch,
+        # we want one sequence to be slices out per index in B (
+        # `_slice_seq_lens_by_batch_index=True`. However, if the padded batch
+        # contains tensors of shape (B*T, ...), where each index of B*T indicates
+        # one timestep, we want one sequence to be sliced per T steps in B*T (
+        # `self._slice_seq_lens_in_B=False`).
+        # ._slice_seq_lens_in_B = True is only meant to be used for batches that we
+        # feed into Learner._update(), all other places in RLlib are not expected to
+        # need this.
+        self._slice_seq_lens_in_B = False
+
         self.accessed_keys = set()
         self.added_keys = set()
         self.deleted_keys = set()
@@ -265,6 +252,8 @@ class SampleBatch(dict):
         # Numpyfy seq_lens if list.
         elif isinstance(seq_lens_, list):
             self[SampleBatch.SEQ_LENS] = seq_lens_ = np.array(seq_lens_, dtype=np.int32)
+        elif (torch and torch.is_tensor(seq_lens_)) or (tf and tf.is_tensor(seq_lens_)):
+            self[SampleBatch.SEQ_LENS] = seq_lens_
 
         if (
             self.max_seq_len is None
@@ -279,6 +268,13 @@ class SampleBatch(dict):
 
         if self._is_training is None:
             self._is_training = self.pop("is_training", False)
+
+        for k, v in self.items():
+            # TODO: Drop support for lists and Numbers as values.
+            # Convert lists of int|float into numpy arrays make sure all data
+            # has same length.
+            if isinstance(v, (Number, list)) and not k == SampleBatch.INFOS:
+                self[k] = np.array(v)
 
         self.count = attempt_count_timesteps(self)
 
@@ -308,6 +304,14 @@ class SampleBatch(dict):
         To make this compatible with `MultiAgentBatch.env_steps()`.
         """
         return len(self)
+
+    @DeveloperAPI
+    def enable_slicing_by_batch_id(self):
+        self._slice_seq_lens_in_B = True
+
+    @DeveloperAPI
+    def disable_slicing_by_batch_id(self):
+        self._slice_seq_lens_in_B = False
 
     @ExperimentalAPI
     def is_terminated_or_truncated(self) -> bool:
@@ -583,7 +587,7 @@ class SampleBatch(dict):
         assert (
             sum(s.count for s in slices) == self.count
         ), f"Calling split_by_episode on {self} returns {slices}"
-        f"which should both have {self.count} timesteps!"
+        f"which should in total have {self.count} timesteps!"
         return slices
 
     def slice(
@@ -676,6 +680,40 @@ class SampleBatch(dict):
                 _time_major=self.time_major,
                 _num_grad_updates=self.num_grad_updates,
             )
+
+    def _batch_slice(self, slice_: slice) -> "SampleBatch":
+        """Helper method to handle SampleBatch slicing using a slice object.
+
+        The returned SampleBatch uses the same underlying data object as
+        `self`, so changing the slice will also change `self`.
+
+        Note that only zero or positive bounds are allowed for both start
+        and stop values. The slice step must be 1 (or None, which is the
+        same).
+
+        Args:
+            slice_: The python slice object to slice by.
+
+        Returns:
+            A new SampleBatch, however "linking" into the same data
+            (sliced) as self.
+        """
+        start = slice_.start or 0
+        stop = slice_.stop or len(self[SampleBatch.SEQ_LENS])
+        # If stop goes beyond the length of this batch -> Make it go till the
+        # end only (including last item).
+        # Analogous to `l = [0, 1, 2]; l[:100] -> [0, 1, 2];`.
+        if stop > len(self):
+            stop = len(self)
+        assert start >= 0 and stop >= 0 and slice_.step in [1, None]
+
+        data = tree.map_structure(lambda value: value[start:stop], self)
+        return SampleBatch(
+            data,
+            _is_training=self.is_training,
+            _time_major=self.time_major,
+            _num_grad_updates=self.num_grad_updates,
+        )
 
     @PublicAPI
     def timeslices(
@@ -829,7 +867,7 @@ class SampleBatch(dict):
     def size_bytes(self) -> int:
         """Returns sum over number of bytes of all data buffers.
 
-        For numpy arrays, we use `.nbytes`. For all other value types, we use
+        For numpy arrays, we use ``.nbytes``. For all other value types, we use
         sys.getsizeof(...).
 
         Returns:
@@ -841,6 +879,7 @@ class SampleBatch(dict):
         )
 
     def get(self, key, default=None):
+        """Returns one column (by key) from the data or a default value."""
         try:
             return self.__getitem__(key)
         except KeyError:
@@ -944,6 +983,7 @@ class SampleBatch(dict):
         return self._is_training
 
     def set_training(self, training: Union[bool, "tf1.placeholder"] = True):
+        """Sets the `is_training` flag for this SampleBatch."""
         self._is_training = training
         self.intercepted_values.pop("_is_training", None)
 
@@ -1018,6 +1058,7 @@ class SampleBatch(dict):
 
     @DeveloperAPI
     def set_get_interceptor(self, fn):
+        """Sets a function to be called on every getitem."""
         # If get-interceptor changes, must erase old intercepted values.
         if fn is not self.get_interceptor:
             self.intercepted_values = {}
@@ -1050,6 +1091,9 @@ class SampleBatch(dict):
             A new SampleBatch, however "linking" into the same data
             (sliced) as self.
         """
+        if self._slice_seq_lens_in_B:
+            return self._batch_slice(slice_)
+
         start = slice_.start or 0
         stop = slice_.stop or len(self)
         # If stop goes beyond the length of this batch -> Make it go till the
@@ -1057,7 +1101,6 @@ class SampleBatch(dict):
         # Analogous to `l = [0, 1, 2]; l[:100] -> [0, 1, 2];`.
         if stop > len(self):
             stop = len(self)
-        assert start >= 0 and stop >= 0 and slice_.step in [1, None]
 
         if (
             self.get(SampleBatch.SEQ_LENS) is not None
@@ -1089,11 +1132,32 @@ class SampleBatch(dict):
                     if path[0] != SampleBatch.INFOS:
                         return value[start_padded:stop_padded]
                     else:
-                        return value[start_unpadded:stop_unpadded]
+                        if (
+                            (isinstance(value, np.ndarray) and value.size > 0)
+                            or (
+                                torch
+                                and torch.is_tensor(value)
+                                and len(list(value.shape)) > 0
+                            )
+                            or (tf and tf.is_tensor(value) and tf.size(value) > 0)
+                        ):
+                            return value[start_unpadded:stop_unpadded]
+                        else:
+                            # Since infos should be stored as lists and not arrays,
+                            # we return the values here and slice them separately
+                            # TODO(Artur): Clean this hack up.
+                            return value
                 else:
                     return value[start_seq_len:stop_seq_len]
 
             data = tree.map_structure_with_path(map_, self)
+
+            # Since we don't slice in the above map_ function, we do it here.
+            if isinstance(data.get(SampleBatch.INFOS), list):
+                data[SampleBatch.INFOS] = data[SampleBatch.INFOS][
+                    start_unpadded:stop_unpadded
+                ]
+
             return SampleBatch(
                 data,
                 _is_training=self.is_training,
@@ -1103,7 +1167,22 @@ class SampleBatch(dict):
                 _num_grad_updates=self.num_grad_updates,
             )
         else:
-            data = tree.map_structure(lambda value: value[start:stop], self)
+
+            def map_(value):
+                if (
+                    isinstance(value, np.ndarray)
+                    or (torch and torch.is_tensor(value))
+                    or (tf and tf.is_tensor(value))
+                ):
+                    return value[start:stop]
+                else:
+                    # Since infos should be stored as lists and not arrays,
+                    # we return the values here and slice them separately
+                    # TODO(Artur): Clean this hack up.
+                    return value
+
+            data = tree.map_structure(map_, self)
+
             return SampleBatch(
                 data,
                 _is_training=self.is_training,
@@ -1554,19 +1633,32 @@ def concat_samples(samples: List[SampleBatchType]) -> SampleBatchType:
     for k in concated_samples[0].keys():
         try:
             if k == "infos":
-                concatd_data[k] = concat_aligned(
-                    [s[k] for s in concated_samples], time_major=time_major
+                concatd_data[k] = _concat_values(
+                    *[s[k] for s in concated_samples],
+                    time_major=time_major,
                 )
             else:
+                values_to_concat = [c[k] for c in concated_samples]
+                _concat_values_w_time = partial(_concat_values, time_major=time_major)
                 concatd_data[k] = tree.map_structure(
-                    _concat_key, *[c[k] for c in concated_samples]
+                    _concat_values_w_time, *values_to_concat
                 )
-        except Exception:
+        except RuntimeError as e:
+            # This should catch torch errors that occur when concatenating
+            # tensors from different devices.
+            raise e
+        except Exception as e:
+            # Other errors are likely due to mismatching sub-structures.
             raise ValueError(
                 f"Cannot concat data under key '{k}', b/c "
                 "sub-structures under that key don't match. "
-                f"`samples`={samples}"
+                f"`samples`={samples}\n Original error: \n {e}"
             )
+
+    if concatd_seq_lens != [] and torch and torch.is_tensor(concatd_seq_lens[0]):
+        concatd_seq_lens = torch.Tensor(concatd_seq_lens)
+    elif concatd_seq_lens != [] and tf and tf.is_tensor(concatd_seq_lens[0]):
+        concatd_seq_lens = tf.convert_to_tensor(concatd_seq_lens)
 
     # Return a new (concat'd) SampleBatch.
     return SampleBatch(
@@ -1641,8 +1733,30 @@ def concat_samples_into_ma_batch(samples: List[SampleBatchType]) -> "MultiAgentB
     return MultiAgentBatch(out, env_steps)
 
 
-def _concat_key(*values, time_major=None):
-    return concat_aligned(list(values), time_major)
+def _concat_values(*values, time_major=None) -> TensorType:
+    """Concatenates a list of values.
+
+    Args:
+        values: The values to concatenate.
+        time_major: Whether to concatenate along the first axis
+            (time_major=False) or the second axis (time_major=True).
+    """
+    if torch and torch.is_tensor(values[0]):
+        return torch.cat(values, dim=1 if time_major else 0)
+    elif isinstance(values[0], np.ndarray):
+        return np.concatenate(values, axis=1 if time_major else 0)
+    elif tf and tf.is_tensor(values[0]):
+        return tf.concat(values, axis=1 if time_major else 0)
+    elif isinstance(values[0], list):
+        concatenated_list = []
+        for sublist in values:
+            concatenated_list.extend(sublist)
+        return concatenated_list
+    else:
+        raise ValueError(
+            f"Unsupported type for concatenation: {type(values[0])} "
+            f"first element: {values[0]}"
+        )
 
 
 @DeveloperAPI

@@ -1,7 +1,8 @@
 from typing import TYPE_CHECKING, Callable, Dict, Optional, Union
 
 from ray.air.checkpoint import Checkpoint
-from ray.air.config import DatasetConfig, RunConfig, ScalingConfig
+from ray.air.config import RunConfig, ScalingConfig
+from ray.train import DataConfig
 from ray.train.data_parallel_trainer import DataParallelTrainer
 from ray.train.torch.config import TorchConfig
 from ray.train.trainer import GenDataset
@@ -39,34 +40,36 @@ class TorchTrainer(DataParallelTrainer):
 
     If the ``datasets`` dict contains a training dataset (denoted by
     the "train" key), then it will be split into multiple dataset
-    shards that can then be accessed by ``session.get_dataset_shard("train")`` inside
+    shards that can then be accessed by ``train.get_dataset_shard("train")`` inside
     ``train_loop_per_worker``. All the other datasets will not be split and
-    ``session.get_dataset_shard(...)`` will return the the entire Dataset.
+    ``train.get_dataset_shard(...)`` will return the the entire Dataset.
 
     Inside the ``train_loop_per_worker`` function, you can use any of the
-    :ref:`Ray AIR session methods <air-session-ref>`. See full example code below.
+    following methods:
 
     .. testcode::
+
+        from ray import train
 
         def train_loop_per_worker():
             # Report intermediate results for callbacks or logging and
             # checkpoint data.
-            session.report(...)
+            train.report(...)
+
+            # Get the Dataset shard for the given key.
+            train.get_dataset_shard("my_dataset")
 
             # Get dict of last saved checkpoint.
-            session.get_checkpoint()
-
-            # Session returns the Ray Dataset shard for the given key.
-            session.get_dataset_shard("my_dataset")
+            train.get_checkpoint()
 
             # Get the total number of workers executing training.
-            session.get_world_size()
+            train.get_context().get_world_size()
 
             # Get the rank of this worker.
-            session.get_world_rank()
+            train.get_context().get_world_rank()
 
             # Get the rank of the worker on the current node.
-            session.get_local_rank()
+            train.get_context().get_local_rank()
 
     You can also use any of the Torch specific function utils,
     such as :func:`ray.train.torch.get_device` and :func:`ray.train.torch.prepare_model`
@@ -81,7 +84,7 @@ class TorchTrainer(DataParallelTrainer):
             # Configures the dataloader for distributed training by adding a
             # `DistributedSampler`.
             # You should NOT use this if you are doing
-            # `session.get_dataset_shard(...).iter_torch_batches(...)`
+            # `train.get_dataset_shard(...).iter_torch_batches(...)`
             train.torch.prepare_data_loader(...)
 
             # Get the current torch device.
@@ -91,7 +94,40 @@ class TorchTrainer(DataParallelTrainer):
     used or persisted anywhere.
 
     To save a model to use for the ``TorchPredictor``, you must save it under the
-    "model" kwarg in ``Checkpoint`` passed to ``session.report()``.
+    "model" kwarg in ``Checkpoint`` passed to ``train.report()``.
+
+    .. note::
+        When you wrap the ``model`` with ``prepare_model``, the keys of its
+        ``state_dict`` are prefixed by ``module.``. For example,
+        ``layer1.0.bn1.bias`` becomes ``module.layer1.0.bn1.bias``.
+        However, when saving ``model`` through ``train.report()``
+        all ``module.`` prefixes are stripped.
+        As a result, when you load from a saved checkpoint, make sure that
+        you first load ``state_dict`` to the model
+        before calling ``prepare_model``.
+        Otherwise, you will run into errors like
+        ``Error(s) in loading state_dict for DistributedDataParallel:
+        Missing key(s) in state_dict: "module.conv1.weight", ...``. See snippet below.
+
+        .. testcode::
+
+            from torchvision.models import resnet18
+            from ray.train import Checkpoint
+            import ray.train as train
+
+            def train_func():
+                ...
+                model = resnet18()
+                model = train.torch.prepare_model(model)
+                for epoch in range(3):
+                    ...
+                    ckpt = Checkpoint.from_dict({
+                        "epoch": epoch,
+                        "model": model.state_dict(),
+                        # "model": model.module.state_dict(),
+                        # ** The above two are equivalent **
+                    })
+                    train.report({"foo": "bar"}, ckpt)
 
     Example:
 
@@ -102,17 +138,17 @@ class TorchTrainer(DataParallelTrainer):
 
             import ray
             from ray import train
-            from ray.air import session, Checkpoint
+            from ray.train import Checkpoint, CheckpointConfig, RunConfig, ScalingConfig
             from ray.train.torch import TorchTrainer
-            from ray.air.config import ScalingConfig
-            from ray.air.config import RunConfig
-            from ray.air.config import CheckpointConfig
+
+            # If using GPUs, set this to True.
+            use_gpu = False
 
             # Define NN layers archicture, epochs, and number of workers
             input_size = 1
             layer_size = 32
             output_size = 1
-            num_epochs = 200
+            num_epochs = 20
             num_workers = 3
 
             # Define your network structure
@@ -128,9 +164,10 @@ class TorchTrainer(DataParallelTrainer):
 
             # Define your train worker loop
             def train_loop_per_worker():
+                torch.manual_seed(42)
 
-                # Fetch training set from the session
-                dataset_shard = session.get_dataset_shard("train")
+                # Fetch training set
+                dataset_shard = train.get_dataset_shard("train")
                 model = NeuralNetwork()
 
                 # Loss function, optimizer, prepare model for training.
@@ -165,20 +202,17 @@ class TorchTrainer(DataParallelTrainer):
 
                     # Report and record metrics, checkpoint model at end of each
                     # epoch
-                    session.report({"loss": loss.item(), "epoch": epoch},
-                                         checkpoint=Checkpoint.from_dict(
-                                         dict(epoch=epoch, model=model.state_dict()))
+                    train.report({"loss": loss.item(), "epoch": epoch},
+                                          checkpoint=Checkpoint.from_dict(
+                                          dict(epoch=epoch, model=model.state_dict()))
                     )
 
-            torch.manual_seed(42)
             train_dataset = ray.data.from_items(
-                [{"x": x, "y": 2 * x + 1} for x in range(200)]
+                [{"x": x, "y": 2 * x + 1} for x in range(2000)]
             )
 
             # Define scaling and run configs
-            # If using GPUs, use the below scaling config instead.
-            # scaling_config = ScalingConfig(num_workers=3, use_gpu=True)
-            scaling_config = ScalingConfig(num_workers=num_workers)
+            scaling_config = ScalingConfig(num_workers=3, use_gpu=use_gpu)
             run_config = RunConfig(checkpoint_config=CheckpointConfig(num_to_keep=1))
 
             trainer = TorchTrainer(
@@ -194,11 +228,10 @@ class TorchTrainer(DataParallelTrainer):
             # Assert loss is less 0.09
             assert best_checkpoint_loss <= 0.09
 
-    .. testoutput::
-        :hide:
-        :options: +ELLIPSIS
+        .. testoutput::
+            :hide:
 
-        ...
+            ...
 
     Args:
 
@@ -212,7 +245,7 @@ class TorchTrainer(DataParallelTrainer):
         scaling_config: Configuration for how to scale data parallel training.
         dataset_config: Configuration for dataset ingest.
         run_config: Configuration for the execution of the training run.
-        datasets: Any Ray Datasets to use for training. Use
+        datasets: Any Datasets to use for training. Use
             the key "train" to denote which dataset is the training
             dataset. If a ``preprocessor`` is provided and has not already been fit,
             it will be fit on the training dataset. All datasets will be transformed
@@ -229,7 +262,7 @@ class TorchTrainer(DataParallelTrainer):
         train_loop_config: Optional[Dict] = None,
         torch_config: Optional[TorchConfig] = None,
         scaling_config: Optional[ScalingConfig] = None,
-        dataset_config: Optional[Dict[str, DatasetConfig]] = None,
+        dataset_config: Optional[DataConfig] = None,
         run_config: Optional[RunConfig] = None,
         datasets: Optional[Dict[str, GenDataset]] = None,
         preprocessor: Optional["Preprocessor"] = None,

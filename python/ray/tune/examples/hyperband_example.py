@@ -3,7 +3,7 @@
 import argparse
 
 import ray
-from ray import air, tune
+from ray import train, tune
 from ray.tune.utils.mock_trainable import MyTrainableClass
 from ray.tune.schedulers import HyperBandScheduler
 
@@ -12,18 +12,9 @@ if __name__ == "__main__":
     parser.add_argument(
         "--smoke-test", action="store_true", help="Finish quickly for testing"
     )
-    parser.add_argument(
-        "--server-address",
-        type=str,
-        default=None,
-        required=False,
-        help="The address of server to connect to if using Ray Client.",
-    )
     args, _ = parser.parse_known_args()
-    if args.server_address:
-        ray.init(f"ray://{args.server_address}")
-    else:
-        ray.init(num_cpus=4 if args.smoke_test else None)
+
+    ray.init(num_cpus=4 if args.smoke_test else None)
 
     # Hyperband early stopping, configured with `episode_reward_mean` as the
     # objective and `training_iteration` as the time unit,
@@ -32,11 +23,11 @@ if __name__ == "__main__":
 
     tuner = tune.Tuner(
         MyTrainableClass,
-        run_config=air.RunConfig(
+        run_config=train.RunConfig(
             name="hyperband_test",
             stop={"training_iteration": 1 if args.smoke_test else 200},
             verbose=1,
-            failure_config=air.FailureConfig(
+            failure_config=train.FailureConfig(
                 fail_fast=True,
             ),
         ),

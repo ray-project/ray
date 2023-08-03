@@ -519,7 +519,6 @@ void raylet::RayletClient::GlobalGC(
 }
 
 void raylet::RayletClient::UpdateResourceUsage(
-
     std::string &serialized_resource_usage_batch,
     const rpc::ClientCallback<rpc::UpdateResourceUsageReply> &callback) {
   rpc::UpdateResourceUsageRequest request;

@@ -1,6 +1,7 @@
-diff --git opencensus/stats/internal/delta_producer.cc opencensus/stats/internal/delta_producer.cc
---- opencensus/stats/internal/delta_producer.cc
-+++ opencensus/stats/internal/delta_producer.cc
+diff --git a/opencensus/stats/internal/delta_producer.cc b/opencensus/stats/internal/delta_producer.cc
+index c61b4d9..1d00504 100644
+--- a/opencensus/stats/internal/delta_producer.cc
++++ b/opencensus/stats/internal/delta_producer.cc
 @@ -139,5 +139,9 @@ void DeltaProducer::RunHarvesterLoop() {
    }
  }
@@ -11,12 +12,13 @@ diff --git opencensus/stats/internal/delta_producer.cc opencensus/stats/internal
 +
  }  // namespace stats
  }  // namespace opencensus
-diff --git opencensus/stats/internal/delta_producer.h opencensus/stats/internal/delta_producer.h
---- opencensus/stats/internal/delta_producer.h
-+++ opencensus/stats/internal/delta_producer.h
+diff --git a/opencensus/stats/internal/delta_producer.h b/opencensus/stats/internal/delta_producer.h
+index bec5605..e565f6a 100644
+--- a/opencensus/stats/internal/delta_producer.h
++++ b/opencensus/stats/internal/delta_producer.h
 @@ -84,6 +84,8 @@ class DeltaProducer final {
    // Flushes the active delta and blocks until it is harvested.
-   void Flush() LOCKS_EXCLUDED(delta_mu_, harvester_mu_);
+   void Flush() ABSL_LOCKS_EXCLUDED(delta_mu_, harvester_mu_);
  
 +  void SetHarvestInterval(const absl::Duration interval);
 +

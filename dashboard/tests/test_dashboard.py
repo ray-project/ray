@@ -19,6 +19,8 @@ import ray
 import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.modules
 import ray.dashboard.utils as dashboard_utils
+from click.testing import CliRunner
+from requests.exceptions import ConnectionError
 from ray._private import ray_constants
 from ray._private.ray_constants import (
     DEBUG_AUTOSCALING_ERROR,
@@ -34,11 +36,12 @@ from ray._private.test_utils import (
     wait_until_server_available,
     wait_until_succeeded_without_exception,
 )
+import ray.scripts.scripts as scripts
 from ray.dashboard import dashboard
 from ray.dashboard.head import DashboardHead
-from ray.experimental.state.api import StateApiClient
-from ray.experimental.state.common import ListApiOptions, StateResource
-from ray.experimental.state.exception import ServerUnavailable
+from ray.util.state import StateApiClient
+from ray.util.state.common import ListApiOptions, StateResource
+from ray.util.state.exception import ServerUnavailable
 from ray.experimental.internal_kv import _initialize_internal_kv
 from unittest.mock import MagicMock
 from ray.dashboard.utils import DashboardHeadModule
@@ -59,7 +62,7 @@ logger = logging.getLogger(__name__)
 
 def make_gcs_client(address_info):
     address = address_info["gcs_address"]
-    gcs_client = ray._private.gcs_utils.GcsClient(address=address)
+    gcs_client = ray._raylet.GcsClient(address=address)
     return gcs_client
 
 
@@ -224,9 +227,9 @@ def test_agent_report_unexpected_raylet_death(shutdown_only):
     errors = get_error_message(p, 1, ray_constants.RAYLET_DIED_ERROR)
     assert len(errors) == 1, errors
     err = errors[0]
-    assert err.type == ray_constants.RAYLET_DIED_ERROR
-    assert "Termination is unexpected." in err.error_message, err.error_message
-    assert "Raylet logs:" in err.error_message, err.error_message
+    assert err["type"] == ray_constants.RAYLET_DIED_ERROR
+    assert "Termination is unexpected." in err["error_message"], err["error_message"]
+    assert "Raylet logs:" in err["error_message"], err["error_message"]
     assert (
         os.path.getsize(os.path.join(node.get_session_dir_path(), "logs", "raylet.out"))
         < 1 * 1024**2
@@ -265,31 +268,47 @@ def test_agent_report_unexpected_raylet_death_large_file(shutdown_only):
     errors = get_error_message(p, 1, ray_constants.RAYLET_DIED_ERROR)
     assert len(errors) == 1, errors
     err = errors[0]
-    assert err.type == ray_constants.RAYLET_DIED_ERROR
-    assert "Termination is unexpected." in err.error_message, err.error_message
-    assert "Raylet logs:" in err.error_message, err.error_message
+    assert err["type"] == ray_constants.RAYLET_DIED_ERROR
+    assert "Termination is unexpected." in err["error_message"], err["error_message"]
+    assert "Raylet logs:" in err["error_message"], err["error_message"]
 
 
 @pytest.mark.parametrize(
     "ray_start_with_dashboard",
     [
         {"dashboard_host": "127.0.0.1"},
-        {"dashboard_host": "0.0.0.0"},
-        {"dashboard_host": "::"},
+        {"dashboard_host": "localhost"},
     ],
     indirect=True,
 )
-def test_dashboard_address(ray_start_with_dashboard):
+def test_dashboard_address_local(ray_start_with_dashboard):
     webui_url = ray_start_with_dashboard["webui_url"]
     if os.environ.get("RAY_MINIMAL") == "1":
         # In the minimal installation, webui url shouldn't be configured.
         assert webui_url == ""
     else:
         webui_ip = webui_url.split(":")[0]
-        print(ipaddress.ip_address(webui_ip))
-        print(webui_ip)
         assert not ipaddress.ip_address(webui_ip).is_unspecified
-        assert webui_ip in ["127.0.0.1", ray_start_with_dashboard["node_ip_address"]]
+        assert webui_ip == "127.0.0.1"
+
+
+@pytest.mark.parametrize(
+    "ray_start_with_dashboard",
+    [
+        {"dashboard_host": "0.0.0.0"},
+        {"dashboard_host": "::"},
+    ],
+    indirect=True,
+)
+def test_dashboard_address_global(ray_start_with_dashboard):
+    webui_url = ray_start_with_dashboard["webui_url"]
+    if os.environ.get("RAY_MINIMAL") == "1":
+        # In the minimal installation, webui url shouldn't be configured.
+        assert webui_url == ""
+    else:
+        webui_ip = webui_url.split(":")[0]
+        assert not ipaddress.ip_address(webui_ip).is_unspecified
+        assert webui_ip == ray_start_with_dashboard["node_ip_address"]
 
 
 @pytest.mark.skipif(
@@ -478,7 +497,7 @@ def test_dashboard_module_decorator(enable_test_module):
 import os
 import ray.dashboard.utils as dashboard_utils
 
-os.environ.pop("RAY_DASHBOARD_MODULE_TEST")
+os.environ.pop("RAY_DASHBOARD_MODULE_TEST", None)
 head_cls_list = dashboard_utils.get_all_modules(
         dashboard_utils.DashboardHeadModule)
 agent_cls_list = dashboard_utils.get_all_modules(
@@ -763,13 +782,14 @@ def test_dashboard_port_conflict(ray_start_with_dashboard):
         f"--log-dir={log_dir}",
         f"--gcs-address={address_info['gcs_address']}",
         f"--session-dir={session_dir}",
+        "--node-ip-address=127.0.0.1",
     ]
     logger.info("The dashboard should be exit: %s", dashboard_cmd)
-    p = subprocess.Popen(dashboard_cmd)
-    p.wait(5)
+    dashboard_process = subprocess.Popen(dashboard_cmd)
+    dashboard_process.wait(5)
 
     dashboard_cmd.append("--port-retries=10")
-    subprocess.Popen(dashboard_cmd)
+    conflicting_dashboard_process = subprocess.Popen(dashboard_cmd)
 
     timeout_seconds = 10
     start_time = time.time()
@@ -789,6 +809,10 @@ def test_dashboard_port_conflict(ray_start_with_dashboard):
         finally:
             if time.time() > start_time + timeout_seconds:
                 raise Exception("Timed out while testing.")
+    dashboard_process.kill()
+    conflicting_dashboard_process.kill()
+    dashboard_process.wait()
+    conflicting_dashboard_process.wait()
 
 
 @pytest.mark.skipif(
@@ -900,7 +924,7 @@ def test_agent_does_not_depend_on_serve(shutdown_only):
     os.environ.get("RAY_MINIMAL") == "1" or os.environ.get("RAY_DEFAULT") == "1",
     reason="This test is not supposed to work for minimal or default installation.",
 )
-def test_agent_port_conflict():
+def test_agent_port_conflict(shutdown_only):
     ray.shutdown()
 
     # start ray and test agent works.
@@ -981,14 +1005,17 @@ def test_dashboard_requests_fail_on_missing_deps(ray_start_with_dashboard):
 def test_dashboard_module_load(tmpdir):
     """Verify if the head module can load only selected modules."""
     head = DashboardHead(
-        "127.0.0.1",
-        8265,
-        1,
-        "127.0.0.1:6379",
-        str(tmpdir),
-        str(tmpdir),
-        str(tmpdir),
-        False,
+        http_host="127.0.0.1",
+        http_port=8265,
+        http_port_retries=1,
+        node_ip_address="127.0.0.1",
+        gcs_address="127.0.0.1:6379",
+        grpc_port=0,
+        log_dir=str(tmpdir),
+        temp_dir=str(tmpdir),
+        session_dir=str(tmpdir),
+        minimal=False,
+        serve_frontend=True,
     )
 
     # Test basic.
@@ -1043,6 +1070,76 @@ def test_dashboard_module_no_warnings(enable_test_module):
             dashboard_utils.get_all_modules(dashboard_utils.DashboardAgentModule)
     finally:
         debug._disabled = old_val
+
+
+def test_dashboard_not_included_ray_init(shutdown_only, capsys):
+    addr = ray.init(include_dashboard=False, dashboard_port=8265)
+    dashboard_url = addr["webui_url"]
+    assert "View the dashboard" not in capsys.readouterr().err
+    assert not dashboard_url
+
+    # Warm up.
+    @ray.remote
+    def f():
+        pass
+
+    ray.get(f.remote())
+
+    with pytest.raises(ConnectionError):
+        # Since the dashboard doesn't start, it should raise ConnectionError
+        # becasue we cannot estabilish a connection.
+        requests.get("http://localhost:8265")
+
+
+def test_dashboard_not_included_ray_start(shutdown_only, capsys):
+    runner = CliRunner()
+    try:
+        runner.invoke(
+            scripts.start,
+            ["--head", "--include-dashboard=False", "--dashboard-port=8265"],
+        )
+        addr = ray.init("auto")
+        dashboard_url = addr["webui_url"]
+        assert not dashboard_url
+
+        assert "view the dashboard at" not in capsys.readouterr().err
+
+        # Warm up.
+        @ray.remote
+        def f():
+            pass
+
+        ray.get(f.remote())
+
+        with pytest.raises(ConnectionError):
+            # Since the dashboard doesn't start, it should raise ConnectionError
+            # becasue we cannot estabilish a connection.
+            requests.get("http://localhost:8265")
+    finally:
+        runner.invoke(scripts.stop, ["--force"])
+
+
+@pytest.mark.skipif(
+    os.environ.get("RAY_MINIMAL") != "1",
+    reason="This test only works for minimal installation.",
+)
+def test_dashboard_not_included_ray_minimal(shutdown_only, capsys):
+    addr = ray.init(dashboard_port=8265)
+    dashboard_url = addr["webui_url"]
+    assert "View the dashboard" not in capsys.readouterr().err
+    assert not dashboard_url
+
+    # Warm up.
+    @ray.remote
+    def f():
+        pass
+
+    ray.get(f.remote())
+
+    with pytest.raises(ConnectionError):
+        # Since the dashboard doesn't start, it should raise ConnectionError
+        # becasue we cannot estabilish a connection.
+        requests.get("http://localhost:8265")
 
 
 if __name__ == "__main__":

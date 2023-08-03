@@ -4,12 +4,12 @@ from typing import TYPE_CHECKING, Dict, Optional, Union
 import numpy as np
 import torch
 
-from ray.util import log_once
-from ray.train.predictor import DataBatchType
-from ray.air.checkpoint import Checkpoint
 from ray.air._internal.torch_utils import convert_ndarray_batch_to_torch_tensor_batch
-from ray.train.torch.torch_checkpoint import TorchCheckpoint
+from ray.air.checkpoint import Checkpoint
 from ray.train._internal.dl_predictor import DLPredictor
+from ray.train.predictor import DataBatchType
+from ray.train.torch.torch_checkpoint import TorchCheckpoint
+from ray.util import log_once
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
 if TYPE_CHECKING:
@@ -38,12 +38,16 @@ class TorchPredictor(DLPredictor):
     ):
         self.model = model
         self.model.eval()
-
-        # TODO (jiaodong): #26249 Use multiple GPU devices with sharded input
         self.use_gpu = use_gpu
+
         if use_gpu:
-            # Ensure input tensor and model live on GPU for GPU inference
-            self.model.to(torch.device("cuda"))
+            # TODO (jiaodong): #26249 Use multiple GPU devices with sharded input
+            self.device = torch.device("cuda")
+        else:
+            self.device = torch.device("cpu")
+
+        # Ensure input tensor and model live on the same device
+        self.model.to(self.device)
 
         if (
             not use_gpu
@@ -117,6 +121,10 @@ class TorchPredictor(DLPredictor):
 
             .. testcode::
 
+                import numpy as np
+                import torch
+                from ray.train.torch import TorchPredictor
+
                 # List outputs are not supported by default TorchPredictor.
                 # So let's define a custom TorchPredictor and override call_model
                 class MyModel(torch.nn.Module):
@@ -141,6 +149,7 @@ class TorchPredictor(DLPredictor):
             .. testoutput::
 
                 Predictions: [1 2], [1 2]
+
         """
         with torch.no_grad():
             output = self.model(inputs)
@@ -226,12 +235,12 @@ class TorchPredictor(DLPredictor):
     def _arrays_to_tensors(
         self,
         numpy_arrays: Union[np.ndarray, Dict[str, np.ndarray]],
-        dtypes: Union[torch.dtype, Dict[str, torch.dtype]],
+        dtype: Optional[Union[torch.dtype, Dict[str, torch.dtype]]],
     ) -> Union[torch.Tensor, Dict[str, torch.Tensor]]:
         return convert_ndarray_batch_to_torch_tensor_batch(
             numpy_arrays,
-            dtypes=dtypes,
-            device="cuda" if self.use_gpu else None,
+            dtypes=dtype,
+            device=self.device,
         )
 
     def _tensor_to_array(self, tensor: torch.Tensor) -> np.ndarray:

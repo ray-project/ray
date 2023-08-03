@@ -203,7 +203,7 @@ def cql_loss(
         torch.FloatTensor(actions.shape[0] * num_actions, actions.shape[-1]).uniform_(
             action_low, action_high
         ),
-        actions.device,
+        policy.device,
     )
     curr_actions, curr_logp = policy_actions_repeat(
         model, action_dist_class, model_out_t, num_actions
@@ -323,7 +323,7 @@ def cql_stats(policy: Policy, train_batch: SampleBatch) -> Dict[str, TensorType]
 
     # Add CQL loss stats to the dict.
     stats_dict["cql_loss"] = torch.mean(
-        torch.stack(tree.flatten(policy.get_tower_stats("cql_loss")))
+        torch.stack(*policy.get_tower_stats("cql_loss"))
     )
 
     if policy.config["lagrangian"]:
@@ -390,7 +390,7 @@ CQLTorchPolicy = build_policy_class(
     name="CQLTorchPolicy",
     framework="torch",
     loss_fn=cql_loss,
-    get_default_config=lambda: ray.rllib.algorithms.cql.cql.DEFAULT_CONFIG,
+    get_default_config=lambda: ray.rllib.algorithms.cql.cql.CQLConfig(),
     stats_fn=cql_stats,
     postprocess_fn=postprocess_trajectory,
     extra_grad_process_fn=apply_grad_clipping,

@@ -40,12 +40,7 @@ try:
 except ImportError:
     yaml = None
 
-is_py2 = sys.version[0] == "2"
-
-if is_py2:
-    import Queue as queue
-else:
-    import queue as queue
+import queue as queue
 
 
 def run_tidy(task_queue, lock, timeout):

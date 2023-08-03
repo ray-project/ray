@@ -18,6 +18,7 @@ from ray.serve.schema import (
     DeploymentSchema,
     ServeApplicationSchema,
     ServeStatusSchema,
+    ServeDeploySchema,
     serve_status_to_schema,
 )
 from ray.util.accelerators.accelerators import NVIDIA_TESLA_V100, NVIDIA_TESLA_P4
@@ -533,6 +534,143 @@ class TestServeApplicationSchema:
             ],
         }
 
+    def test_serve_application_import_path_required(self):
+        # If no import path is specified, this should not parse successfully
+        with pytest.raises(ValidationError):
+            ServeApplicationSchema.parse_obj({"host": "127.0.0.1", "port": 8000})
+
+
+class TestServeDeploySchema:
+    def test_deploy_config_duplicate_apps(self):
+        deploy_config_dict = {
+            "applications": [
+                {
+                    "name": "app1",
+                    "route_prefix": "/alice",
+                    "import_path": "module.graph",
+                },
+                {
+                    "name": "app2",
+                    "route_prefix": "/charlie",
+                    "import_path": "module.graph",
+                },
+            ],
+        }
+        ServeDeploySchema.parse_obj(deploy_config_dict)
+
+        # Duplicate app1
+        deploy_config_dict["applications"].append(
+            {"name": "app1", "route_prefix": "/bob", "import_path": "module.graph"},
+        )
+        with pytest.raises(ValidationError) as e:
+            ServeDeploySchema.parse_obj(deploy_config_dict)
+        assert "app1" in str(e.value) and "app2" not in str(e.value)
+
+        # Duplicate app2
+        deploy_config_dict["applications"].append(
+            {"name": "app2", "route_prefix": "/david", "import_path": "module.graph"}
+        )
+        with pytest.raises(ValidationError) as e:
+            ServeDeploySchema.parse_obj(deploy_config_dict)
+        assert "app1" in str(e.value) and "app2" in str(e.value)
+
+    def test_deploy_config_duplicate_routes1(self):
+        """Test that apps with duplicate route prefixes raises validation error"""
+        deploy_config_dict = {
+            "applications": [
+                {
+                    "name": "app1",
+                    "route_prefix": "/alice",
+                    "import_path": "module.graph",
+                },
+                {"name": "app2", "route_prefix": "/bob", "import_path": "module.graph"},
+            ],
+        }
+        ServeDeploySchema.parse_obj(deploy_config_dict)
+
+        # Duplicate route prefix /alice
+        deploy_config_dict["applications"].append(
+            {"name": "app3", "route_prefix": "/alice", "import_path": "module.graph"},
+        )
+        with pytest.raises(ValidationError) as e:
+            ServeDeploySchema.parse_obj(deploy_config_dict)
+        assert "alice" in str(e.value) and "bob" not in str(e.value)
+
+        # Duplicate route prefix /bob
+        deploy_config_dict["applications"].append(
+            {"name": "app4", "route_prefix": "/bob", "import_path": "module.graph"},
+        )
+        with pytest.raises(ValidationError) as e:
+            ServeDeploySchema.parse_obj(deploy_config_dict)
+        assert "alice" in str(e.value) and "bob" in str(e.value)
+
+    def test_deploy_config_duplicate_routes2(self):
+        """Test that multiple apps with route_prefix set to None parses with no error"""
+        deploy_config_dict = {
+            "applications": [
+                {
+                    "name": "app1",
+                    "route_prefix": "/app1",
+                    "import_path": "module.graph",
+                },
+                {"name": "app2", "route_prefix": None, "import_path": "module.graph"},
+                {"name": "app3", "route_prefix": None, "import_path": "module.graph"},
+            ],
+        }
+        ServeDeploySchema.parse_obj(deploy_config_dict)
+
+    @pytest.mark.parametrize("option,value", [("host", "127.0.0.1"), ("port", 8000)])
+    def test_deploy_config_nested_http_options(self, option, value):
+        """
+        The application configs inside a deploy config should not have http options set.
+        """
+        deploy_config_dict = {
+            "http_options": {
+                "host": "127.0.0.1",
+                "port": 8000,
+            },
+            "applications": [
+                {
+                    "name": "app1",
+                    "route_prefix": "/app1",
+                    "import_path": "module.graph",
+                },
+            ],
+        }
+        deploy_config_dict["applications"][0][option] = value
+        with pytest.raises(ValidationError) as e:
+            ServeDeploySchema.parse_obj(deploy_config_dict)
+        assert option in str(e.value)
+
+    def test_deploy_empty_name(self):
+        """The application configs inside a deploy config should have nonempty names."""
+
+        deploy_config_dict = {
+            "applications": [
+                {
+                    "name": "",
+                    "route_prefix": "/app1",
+                    "import_path": "module.graph",
+                },
+            ],
+        }
+        with pytest.raises(ValidationError) as e:
+            ServeDeploySchema.parse_obj(deploy_config_dict)
+        # Error message should be descriptive, mention name must be nonempty
+        assert "name" in str(e.value) and "empty" in str(e.value)
+
+    def test_deploy_no_applications(self):
+        """Applications must be specified."""
+
+        deploy_config_dict = {
+            "http_options": {
+                "host": "127.0.0.1",
+                "port": 8000,
+            },
+        }
+        with pytest.raises(ValidationError):
+            ServeDeploySchema.parse_obj(deploy_config_dict)
+
 
 class TestServeStatusSchema:
     def get_valid_serve_status_schema(self):
@@ -664,22 +802,23 @@ def test_status_schema_helpers():
     def f2():
         pass
 
-    f1._func_or_class = "ray.serve.tests.test_schema.global_f"
-    f2._func_or_class = "ray.serve.tests.test_schema.global_f"
-
     client = serve.start()
-
-    f1.deploy()
-    f2.deploy()
+    serve.run(f1.bind(), name="app1")
+    serve.run(f2.bind(), name="app2")
 
     # Check statuses
-    statuses = serve_status_to_schema(client.get_serve_status()).deployment_statuses
-    deployment_names = {"f1", "f2"}
-    for deployment_status in statuses:
-        assert deployment_status.status in {"UPDATING", "HEALTHY"}
-        assert deployment_status.name in deployment_names
-        deployment_names.remove(deployment_status.name)
-    assert len(deployment_names) == 0
+    f1_statuses = serve_status_to_schema(
+        client.get_serve_status("app1")
+    ).deployment_statuses
+    f2_statuses = serve_status_to_schema(
+        client.get_serve_status("app2")
+    ).deployment_statuses
+    assert len(f1_statuses) == 1
+    assert f1_statuses[0].status in {"UPDATING", "HEALTHY"}
+    assert f1_statuses[0].name == "app1_f1"
+    assert len(f2_statuses) == 1
+    assert f2_statuses[0].status in {"UPDATING", "HEALTHY"}
+    assert f2_statuses[0].name == "app2_f2"
 
     serve.shutdown()
 

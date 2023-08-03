@@ -1,4 +1,4 @@
-import { Actor } from "../type/actor";
+import { Actor, ActorDetail } from "../type/actor";
 import { get } from "./requestHandlers";
 
 export const getActors = () => {
@@ -11,4 +11,16 @@ export const getActors = () => {
       };
     };
   }>("logical/actors");
+};
+
+export type ActorResp = {
+  result: boolean;
+  msg: string;
+  data: {
+    detail: ActorDetail;
+  };
+};
+
+export const getActor = (actorId: string) => {
+  return get<ActorResp>(`logical/actors/${actorId}`);
 };

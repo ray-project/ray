@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-""" Example Trainer for RLLIB + SUMO Utlis
+""" Example Algorithm for RLLIB + SUMO Utlis
 
     Author: Lara CODECA lara.codeca@gmail.com
 
@@ -23,7 +23,8 @@ from ray.rllib.algorithms.ppo import ppo
 from ray.rllib.examples.simulators.sumo import marlenvironment
 from ray.rllib.utils.test_utils import check_learning_achieved
 
-logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.WARN)
+logger = logging.getLogger("ppotrain")
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
@@ -49,7 +50,7 @@ parser.add_argument(
     type=str,
     default=None,
     help="Full path to a checkpoint file for restoring a previously saved "
-    "Trainer state.",
+    "Algorithm state.",
 )
 parser.add_argument("--num-workers", type=int, default=0)
 parser.add_argument(

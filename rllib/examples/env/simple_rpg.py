@@ -43,7 +43,7 @@ class SimpleRPG(gym.Env):
         self.observation_space = Repeated(self.player_space, max_len=MAX_PLAYERS)
 
     def reset(self, *, seed=None, options=None):
-        return self.observation_space.sample()
+        return self.observation_space.sample(), {}
 
     def step(self, action):
         return self.observation_space.sample(), 1, True, False, {}

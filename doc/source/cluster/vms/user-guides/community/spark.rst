@@ -17,7 +17,7 @@ Assuming the python file name is 'ray-on-spark-example1.py'.
 .. code-block:: python
 
     from pyspark.sql import SparkSession
-    from ray.util.spark import init_ray_cluster, shutdown_ray_cluster, MAX_NUM_WORKER_NODES
+    from ray.util.spark import setup_ray_cluster, shutdown_ray_cluster, MAX_NUM_WORKER_NODES
     if __name__ == "__main__":
         spark = SparkSession \
             .builder \
@@ -25,21 +25,23 @@ Assuming the python file name is 'ray-on-spark-example1.py'.
             .config("spark.task.cpus", "4") \
             .getOrCreate()
 
-        # initiate a ray cluster on this spark application, it creates a background
+        # Set up a ray cluster on this spark application, it creates a background
         # spark job that each spark task launches one ray worker node.
         # ray head node is launched in spark application driver side.
         # Resources (CPU / GPU / memory) allocated to each ray worker node is equal
         # to resources allocated to the corresponding spark task.
-        init_ray_cluster(num_worker_nodes=MAX_NUM_WORKER_NODES)
+        setup_ray_cluster(num_worker_nodes=MAX_NUM_WORKER_NODES)
 
         # You can any ray application code here, the ray application will be executed
         # on the ray cluster setup above.
-        # Note that you don't need to call `ray.init`.
+        # You don't need to set address for `ray.init`,
+        # it will connect to the cluster created above automatically.
+        ray.init()
         ...
 
         # Terminate ray cluster explicitly.
-        # If you don't call it, when spark application is terminated, the ray cluster will
-        # also be terminated.
+        # If you don't call it, when spark application is terminated, the ray cluster
+        # will also be terminated.
         shutdown_ray_cluster()
 
 2) Submit the spark application above to spark standalone cluster.
@@ -64,7 +66,7 @@ Assuming the python file name is 'long-running-ray-cluster-on-spark.py'.
 
     from pyspark.sql import SparkSession
     import time
-    from ray.util.spark import init_ray_cluster, MAX_NUM_WORKER_NODES
+    from ray.util.spark import setup_ray_cluster, MAX_NUM_WORKER_NODES
 
     if __name__ == "__main__":
         spark = SparkSession \
@@ -73,9 +75,11 @@ Assuming the python file name is 'long-running-ray-cluster-on-spark.py'.
             .config("spark.task.cpus", "4") \
             .getOrCreate()
 
-        cluster_address = init_ray_cluster(num_worker_nodes=MAX_NUM_WORKER_NODES)
-        print("Ray cluster is initiated, you can connect to this ray cluster via address "
-              f"ray://{cluster_address}")
+        cluster_address = setup_ray_cluster(
+            num_worker_nodes=MAX_NUM_WORKER_NODES
+        )
+        print("Ray cluster is set up, you can connect to this ray cluster "
+              f"via address ray://{cluster_address}")
 
         # Sleep forever until the spark application being terminated,
         # at that time, the ray cluster will also be terminated.
@@ -90,3 +94,10 @@ Assuming the python file name is 'long-running-ray-cluster-on-spark.py'.
     spark-submit \
       --master spark://{spark_master_IP}:{spark_master_port} \
       path/to/long-running-ray-cluster-on-spark.py
+
+Ray on Spark APIs
+-----------------
+
+.. autofunction:: ray.util.spark.setup_ray_cluster
+
+.. autofunction:: ray.util.spark.shutdown_ray_cluster

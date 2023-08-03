@@ -71,7 +71,8 @@ class StoreClient {
   /// Get all data from the given table asynchronously.
   ///
   /// \param table_name The name of the table to be read.
-  /// \param callback returns the key value pairs in a map.
+  /// \param keys The keys to look up from the table.
+  /// \param callback returns the key value pairs in a map for those keys that exist.
   /// \return Status
   virtual Status AsyncMultiGet(const std::string &table_name,
                                const std::vector<std::string> &keys,

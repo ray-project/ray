@@ -26,13 +26,13 @@
 #include "ray/common/client_connection.h"
 #include "ray/common/task/task_common.h"
 #include "ray/common/task/task_util.h"
-#include "ray/common/task/scheduling_resources.h"
+#include "ray/common/scheduling/scheduling_resources.h"
 #include "ray/pubsub/subscriber.h"
 #include "ray/object_manager/object_manager.h"
 #include "ray/raylet/agent_manager.h"
 #include "ray/raylet_client/raylet_client.h"
 #include "ray/raylet/local_object_manager.h"
-#include "ray/raylet/scheduling/scheduling_ids.h"
+#include "ray/common/scheduling/scheduling_ids.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
 #include "ray/raylet/scheduling/cluster_task_manager.h"
 #include "ray/raylet/scheduling/cluster_task_manager_interface.h"
@@ -46,6 +46,7 @@
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/bundle_spec.h"
 #include "ray/raylet/placement_group_resource_manager.h"
+#include "ray/raylet/worker_killing_policy.h"
 // clang-format on
 
 namespace ray {
@@ -75,9 +76,9 @@ struct NodeManagerConfig {
   /// on. This takes precedence over min_worker_port and max_worker_port.
   std::vector<int> worker_ports;
   /// The soft limit of the number of workers.
-  int num_workers_soft_limit;
-  /// Number of initial Python workers for the first job.
-  int num_initial_python_workers_for_first_job;
+  int64_t num_workers_soft_limit;
+  /// Number of initial Python workers to start when raylet starts.
+  int num_prestart_python_workers;
   /// The maximum number of workers that can be started concurrently by a
   /// worker pool.
   int maximum_startup_concurrency;
@@ -109,6 +110,10 @@ struct NodeManagerConfig {
   int max_io_workers;
   // The minimum object size that can be spilled by each spill operation.
   int64_t min_spilling_size;
+  // The key-value labels of this node.
+  absl::flat_hash_map<std::string, std::string> labels;
+
+  void AddDefaultLabels(const std::string &self_node_id);
 };
 
 class NodeManager : public rpc::NodeManagerServiceHandler,
@@ -653,13 +658,12 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
       const std::shared_ptr<WorkerInterface> &worker,
       const NodeID &node_id,
       const MemorySnapshot &system_memory,
-      float usage_threshold,
-      bool should_retry) const;
+      float usage_threshold) const;
 
   /// Creates the suggestion message for the worker that is killed due to memory running
   /// low.
   const std::string CreateOomKillMessageSuggestions(
-      const std::shared_ptr<WorkerInterface> &worker) const;
+      const std::shared_ptr<WorkerInterface> &worker, bool should_retry = true) const;
 
   /// Stores the failure reason for the task. The entry will be cleaned up by a periodic
   /// function post TTL.
@@ -827,11 +831,11 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// Ray syncer for synchronization
   syncer::RaySyncer ray_syncer_;
 
-  /// Resource message updated
-  absl::flat_hash_map<NodeID, rpc::ResourcesData> resource_message_udpated_;
-
   /// RaySyncerService for gRPC
   syncer::RaySyncerService ray_syncer_service_;
+
+  /// The Policy for selecting the worker to kill when the node runs out of memory.
+  std::shared_ptr<WorkerKillingPolicy> worker_killing_policy_;
 
   /// Monitors and reports node memory usage and whether it is above threshold.
   std::unique_ptr<MemoryMonitor> memory_monitor_;

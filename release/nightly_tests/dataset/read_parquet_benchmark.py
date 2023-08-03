@@ -1,5 +1,3 @@
-import pyarrow as pa
-
 import ray
 from ray.data.dataset import Dataset
 
@@ -23,7 +21,7 @@ def read_parquet(
         use_threads=use_threads,
         filter=filter,
         columns=columns,
-    ).fully_executed()
+    ).materialize()
 
 
 def run_read_parquet_benchmark(benchmark: Benchmark):
@@ -39,20 +37,27 @@ def run_read_parquet_benchmark(benchmark: Benchmark):
                 use_threads=use_threads,
             )
 
+    # TODO: Test below is currently excluded, due to failure around
+    # pickling the Dataset involving the filter expression.
+    # The error is present on Python < 3.8, and involves the pickle/pickle5
+    # libraries. `pickle` is included as a default library from Python 3.8+,
+    # whereas Python versions before this must import the backported `pickle5` library
+    # to maintain the same functionality.
+
     # Test with projection and filter pushdowns.
     # Since we have projection and filter pushdown, we can run the read on the full
     # size of one year data fast enough on a single node.
-    test_name = "read-parquet-nyc-taxi-2018-pushdown"
-    filter_expr = (pa.dataset.field("passenger_count") <= 10) & (
-        pa.dataset.field("passenger_count") > 0
-    )
-    benchmark.run(
-        test_name,
-        read_parquet,
-        root="s3://anonymous@air-example-data/ursa-labs-taxi-data/by_year/2018",
-        columns=["passenger_count", "trip_distance"],
-        filter=filter_expr,
-    )
+    # test_name = "read-parquet-nyc-taxi-2018-pushdown"
+    # filter_expr = (pa.dataset.field("passenger_count") <= 10) & (
+    #     pa.dataset.field("passenger_count") > 0
+    # )
+    # benchmark.run(
+    #     test_name,
+    #     read_parquet,
+    #     root="s3://anonymous@air-example-data/ursa-labs-taxi-data/by_year/2018",
+    #     columns=["passenger_count", "trip_distance"],
+    #     filter=filter_expr,
+    # )
 
     # Test with different number files to handle: from a few to many.
     data_dirs = []
@@ -78,6 +83,29 @@ def run_read_parquet_benchmark(benchmark: Benchmark):
             )
     for dir in data_dirs:
         shutil.rmtree(dir)
+
+    # Test reading many small files.
+    num_files = 1000
+    num_row_groups_per_file = 2
+    total_rows = num_files * num_row_groups_per_file
+    compression = "gzip"
+
+    many_files_dir = "s3://air-example-data-2/read-many-parquet-files/"
+    # If needed, use the following utility to generate files on S3.
+    # Otherwise, the benchmark will read pre-generated files in the above bucket.
+    # generate_data(
+    #     num_rows=total_rows,
+    #     num_files=num_files,
+    #     num_row_groups_per_file=num_row_groups_per_file,
+    #     compression=compression,
+    #     data_dir=many_files_dir,
+    # )
+    test_name = f"read-many-parquet-files-s3-{num_files}-{compression}"
+    benchmark.run(
+        test_name,
+        read_parquet,
+        root=many_files_dir,
+    )
 
 
 if __name__ == "__main__":

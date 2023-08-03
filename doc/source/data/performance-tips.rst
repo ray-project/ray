@@ -1,118 +1,102 @@
 .. _data_performance_tips:
 
-Performance Tips and Tuning
-===========================
+Advanced: Performance Tips and Tuning
+=====================================
 
-Debugging Statistics
-~~~~~~~~~~~~~~~~~~~~
+Optimizing transforms
+---------------------
 
-You can view debug stats for your Dataset and DatasetPipeline executions via :meth:`ds.stats() <ray.data.Dataset.stats>`.
-These stats can be used to understand the performance of your Dataset workload and can help you debug problematic bottlenecks. Note that both execution and iterator statistics are available:
-
-.. code-block:: python
-
-    import ray
-    import time
-
-    def pause(x):
-        time.sleep(.0001)
-        return x
-
-    ds = ray.data.range(10000)
-    ds = ds.map(lambda x: str(x + 1))
-
-    pipe = ds.repeat(5).map(pause).random_shuffle_each_window()
-
-    @ray.remote
-    def consume(p, stats=False):
-        for x in p.iter_batches():
-            pass
-        if stats:
-            print(p.stats())
-
-    a, b = pipe.split(2)
-    ray.get([consume.remote(a), consume.remote(b, True)])
-
-.. code-block::
-
-    == Pipeline Window 4 ==
-    Stage 0 read: [execution cached]
-    Stage 1 map: [execution cached]
-    Stage 2 map: 200/200 blocks executed in 0.37s
-    * Remote wall time: 8.08ms min, 15.82ms max, 9.36ms mean, 1.87s total
-    * Remote cpu time: 688.79us min, 3.63ms max, 977.38us mean, 195.48ms total
-    * Output num rows: 50 min, 50 max, 50 mean, 10000 total
-    * Output size bytes: 456 min, 456 max, 456 mean, 91200 total
-    * Tasks per node: 200 min, 200 max, 200 mean; 1 nodes used
-
-    Stage 3 random_shuffle_map: 200/200 blocks executed in 0.63s
-    * Remote wall time: 550.98us min, 5.2ms max, 900.66us mean, 180.13ms total
-    * Remote cpu time: 550.79us min, 1.13ms max, 870.82us mean, 174.16ms total
-    * Output num rows: 50 min, 50 max, 50 mean, 10000 total
-    * Output size bytes: 456 min, 456 max, 456 mean, 91200 total
-    * Tasks per node: 200 min, 200 max, 200 mean; 1 nodes used
-
-    Stage 3 random_shuffle_reduce: 200/200 blocks executed in 0.63s
-    * Remote wall time: 152.37us min, 322.96us max, 218.32us mean, 43.66ms total
-    * Remote cpu time: 151.9us min, 321.53us max, 217.96us mean, 43.59ms total
-    * Output num rows: 32 min, 69 max, 50 mean, 10000 total
-    * Output size bytes: 312 min, 608 max, 456 mean, 91200 total
-    * Tasks per node: 200 min, 200 max, 200 mean; 1 nodes used
-
-    Dataset iterator time breakdown:
-    * In ray.wait(): 1.15ms
-    * In ray.get(): 3.51ms
-    * In format_batch(): 6.83ms
-    * In user code: 441.53us
-    * Total time: 12.92ms
-
-    ##### Overall Pipeline Time Breakdown #####
-    * Time stalled waiting for next dataset: 3.48ms min, 758.48ms max, 486.78ms mean, 1.95s total
-    * Time in dataset iterator: 270.66ms
-    * Time in user code: 1.38ms
-    * Total time: 4.47s
-
-Batching Transforms
+Batching transforms
 ~~~~~~~~~~~~~~~~~~~
 
-Mapping individual records using :meth:`.map(fn) <ray.data.Dataset.map>` can be quite slow.
-Instead, consider using :meth:`.map_batches(batch_fn, batch_format="pandas") <ray.data.Dataset.map_batches>` and writing your ``batch_fn`` to
-perform vectorized pandas operations.
+If your transformation is vectorized like most NumPy or pandas operations, use
+:meth:`~ray.data.Dataset.map_batches` rather than :meth:`~ray.data.Dataset.map`. It's
+faster.
 
-Parquet Column Pruning
+If your transformation isn't vectorized, there's no performance benefit.
+
+Optimizing reads
+----------------
+
+.. _read_parallelism:
+
+Tuning read parallelism
+~~~~~~~~~~~~~~~~~~~~~~~
+
+By default, Ray Data automatically selects the read ``parallelism`` according to the following procedure:
+
+1. The number of available CPUs is estimated. If in a placement group, the number of CPUs in the cluster is scaled by the size of the placement group compared to the cluster size. If not in a placement group, this is the number of CPUs in the cluster.
+2. The parallelism is set to the estimated number of CPUs multiplied by 2. If the parallelism is less than 8, it is set to 8.
+3. The in-memory data size is estimated. If the parallelism would create in-memory blocks that are larger on average than the target block size (512MiB), the parallelism is increased until the blocks are < 512MiB in size.
+
+Occasionally, it is advantageous to manually tune the parallelism to optimize the application. This can be done when loading data via the ``parallelism`` parameter.
+For example, use ``ray.data.read_parquet(path, parallelism=1000)`` to force up to 1000 read tasks to be created.
+
+Tuning read resources
+~~~~~~~~~~~~~~~~~~~~~
+
+By default, Ray requests 1 CPU per read task, which means one read tasks per CPU can execute concurrently.
+For datasources that can benefit from higher degress of IO parallelism, you can specify a lower ``num_cpus`` value for the read function with the ``ray_remote_args`` parameter.
+For example, use ``ray.data.read_parquet(path, ray_remote_args={"num_cpus": 0.25})`` to allow up to four read tasks per CPU.
+
+Parquet column pruning
 ~~~~~~~~~~~~~~~~~~~~~~
 
-Current Datasets will read all Parquet columns into memory.
+Current Dataset will read all Parquet columns into memory.
 If you only need a subset of the columns, make sure to specify the list of columns
 explicitly when calling :meth:`ray.data.read_parquet() <ray.data.read_parquet>` to
 avoid loading unnecessary data (projection pushdown).
-For example, use ``ray.data.read_parquet("example://iris.parquet", columns=["sepal.length", "variety"]`` to read
+For example, use ``ray.data.read_parquet("s3://anonymous@ray-example-data/iris.parquet", columns=["sepal.length", "variety"])`` to read
 just two of the five columns of Iris dataset.
 
-Parquet Row Pruning
+.. _parquet_row_pruning:
+
+Parquet row pruning
 ~~~~~~~~~~~~~~~~~~~
 
 Similarly, you can pass in a filter to :meth:`ray.data.read_parquet() <ray.data.Dataset.read_parquet>` (filter pushdown)
 which will be applied at the file scan so only rows that match the filter predicate
 will be returned.
-For example, use ``ray.data.read_parquet("example://iris.parquet", filter=pa.dataset.field("sepal.length") > 5.0``
+For example, use ``ray.data.read_parquet("s3://anonymous@ray-example-data/iris.parquet", filter=pyarrow.dataset.field("sepal.length") > 5.0)``
+(where ``pyarrow`` has to be imported)
 to read rows with sepal.length greater than 5.0.
 This can be used in conjunction with column pruning when appropriate to get the benefits of both.
 
-Tuning Read Parallelism
-~~~~~~~~~~~~~~~~~~~~~~~
+.. _optimizing_shuffles:
 
-By default, Ray requests 1 CPU per read task, which means one read tasks per CPU can execute concurrently.
-For data sources that can benefit from higher degress of I/O parallelism, you can specify a lower ``num_cpus`` value for the read function via the ``ray_remote_args`` parameter.
-For example, use ``ray.data.read_parquet(path, ray_remote_args={"num_cpus": 0.25})`` to allow up to four read tasks per CPU.
+Optimizing shuffles
+-------------------
 
-By default, Datasets automatically selects the read parallelism based on the current cluster size and dataset size.
-However, the number of read tasks can also be increased manually via the ``parallelism`` parameter.
-For example, use ``ray.data.read_parquet(path, parallelism=1000)`` to force up to 1000 read tasks to be created.
+When should I use global per-epoch shuffling?
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Use global per-epoch shuffling only if your model is sensitive to the
+randomness of the training data. Based on a
+`theoretical foundation <https://arxiv.org/abs/1709.10432>`__ all
+gradient-descent-based model trainers benefit from improved (global) shuffle quality.
+In practice, the benefit is particularly pronounced for tabular data/models.
+However, the more global the shuffle is, the more expensive the shuffling operation.
+The increase compounds with distributed data-parallel training on a multi-node cluster due
+to data transfer costs. This cost can be prohibitive when using very large datasets.
+
+The best route for determining the best tradeoff between preprocessing time and cost and
+per-epoch shuffle quality is to measure the precision gain per training step for your
+particular model under different shuffling policies:
+
+* no shuffling,
+* local (per-shard) limited-memory shuffle buffer,
+* local (per-shard) shuffling,
+* windowed (pseudo-global) shuffling, and
+* fully global shuffling.
+
+From the perspective of keeping preprocessing time in check, as long as your data
+loading and shuffling throughput is higher than your training throughput, your GPU should
+be saturated. If you have shuffle-sensitive models, push the
+shuffle quality higher until this threshold is hit.
 
 .. _shuffle_performance_tips:
 
-Enabling Push-Based Shuffle
+Enabling push-based shuffle
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Some Dataset operations require a *shuffle* operation, meaning that data is shuffled from all of the input partitions to all of the output partitions.
@@ -129,12 +113,12 @@ To get an idea of the performance you can expect, here are some run time results
 .. image:: https://docs.google.com/spreadsheets/d/e/2PACX-1vQvBWpdxHsW0-loasJsBpdarAixb7rjoo-lTgikghfCeKPQtjQDDo2fY51Yc1B6k_S4bnYEoChmFrH2/pubchart?oid=598567373&format=image
    :align: center
 
-To try out push-based shuffle, set the environment variable ``RAY_DATASET_PUSH_BASED_SHUFFLE=1`` when running your application:
+To try out push-based shuffle, set the environment variable ``RAY_DATA_PUSH_BASED_SHUFFLE=1`` when running your application:
 
 .. code-block:: bash
 
     $ wget https://raw.githubusercontent.com/ray-project/ray/master/release/nightly_tests/dataset/sort.py
-    $ RAY_DATASET_PUSH_BASED_SHUFFLE=1 python sort.py --num-partitions=10 --partition-size=1e7
+    $ RAY_DATA_PUSH_BASED_SHUFFLE=1 python sort.py --num-partitions=10 --partition-size=1e7
     # Dataset size: 10 partitions, 0.01GB partition size, 0.1GB total
     # [dataset]: Run `pip install tqdm` to enable progress reporting.
     # 2022-05-04 17:30:28,806	INFO push_based_shuffle.py:118 -- Using experimental push-based shuffle.
@@ -142,17 +126,67 @@ To try out push-based shuffle, set the environment variable ``RAY_DATASET_PUSH_B
     # ...
 
 You can also specify the shuffle implementation during program execution by
-setting the ``DatasetContext.use_push_based_shuffle`` flag:
+setting the ``DataContext.use_push_based_shuffle`` flag:
 
-.. code-block:: python
+.. testcode::
 
-    import ray.data
+    import ray
 
-    ctx = ray.data.context.DatasetContext.get_current()
+    ctx = ray.data.DataContext.get_current()
     ctx.use_push_based_shuffle = True
 
-    n = 1000
-    parallelism=10
-    ds = ray.data.range(n, parallelism=parallelism)
-    print(ds.random_shuffle().take(10))
-    # [954, 405, 434, 501, 956, 762, 488, 920, 657, 834]
+    ds = (
+        ray.data.range(1000)
+        .random_shuffle()
+    )
+
+Configuring execution
+---------------------
+
+Configuring resources and locality
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+By default, the CPU and GPU limits are set to the cluster size, and the object store memory limit conservatively to 1/4 of the total object store size to avoid the possibility of disk spilling.
+
+You may want to customize these limits in the following scenarios:
+- If running multiple concurrent jobs on the cluster, setting lower limits can avoid resource contention between the jobs.
+- If you want to fine-tune the memory limit to maximize performance.
+- For data loading into training jobs, you may want to set the object store memory to a low value (e.g., 2GB) to limit resource usage.
+
+You can configure execution options with the global DataContext. The options are applied for future jobs launched in the process:
+
+.. code-block::
+
+   ctx = ray.data.DataContext.get_current()
+   ctx.execution_options.resource_limits.cpu = 10
+   ctx.execution_options.resource_limits.gpu = 5
+   ctx.execution_options.resource_limits.object_store_memory = 10e9
+
+
+Locality with output (ML ingest use case)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. code-block::
+
+   ctx.execution_options.locality_with_output = True
+
+Setting this parameter to True tells Ray Data to prefer placing operator tasks onto the consumer node in the cluster, rather than spreading them evenly across the cluster. This setting can be useful if you know you are consuming the output data directly on the consumer node (i.e., for ML training ingest). However, other use cases may incur a performance penalty with this setting.
+
+Reproducibility
+---------------
+
+Deterministic execution
+~~~~~~~~~~~~~~~~~~~~~~~
+
+.. code-block::
+
+   # By default, this is set to False.
+   ctx.execution_options.preserve_order = True
+
+To enable deterministic execution, set the above to True. This setting may decrease performance, but ensures block ordering is preserved through execution. This flag defaults to False.
+
+Monitoring your application
+---------------------------
+
+View the Ray Dashboard to monitor your application and troubleshoot issues. To learn
+more about the Ray dashboard, see :ref:`Ray Dashboard <observability-getting-started>`.

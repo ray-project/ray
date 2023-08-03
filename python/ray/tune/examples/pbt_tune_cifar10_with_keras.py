@@ -22,7 +22,7 @@ from tensorflow.keras.layers import Convolution2D, MaxPooling2D
 from tensorflow.keras.models import Model, load_model
 from tensorflow.keras.preprocessing.image import ImageDataGenerator
 
-from ray import air, tune
+from ray import train, tune
 from ray.tune import Trainable
 from ray.tune.schedulers import PopulationBasedTraining
 
@@ -116,7 +116,7 @@ class Cifar10Model(Trainable):
         model = self._build_model(x_train.shape[1:])
 
         opt = tf.keras.optimizers.Adadelta(
-            lr=self.config.get("lr", 1e-4), decay=self.config.get("decay", 1e-4)
+            lr=self.config.get("lr", 1e-4), weight_decay=self.config.get("decay", 1e-4)
         )
         model.compile(
             loss="categorical_crossentropy", optimizer=opt, metrics=["accuracy"]
@@ -212,13 +212,13 @@ if __name__ == "__main__":
             Cifar10Model,
             resources={"cpu": 1, "gpu": 1},
         ),
-        run_config=air.RunConfig(
+        run_config=train.RunConfig(
             name="pbt_cifar10",
             stop={
                 "mean_accuracy": 0.80,
                 "training_iteration": 30,
             },
-            checkpoint_config=air.CheckpointConfig(
+            checkpoint_config=train.CheckpointConfig(
                 checkpoint_frequency=perturbation_interval,
                 checkpoint_score_attribute="mean_accuracy",
                 num_to_keep=2,

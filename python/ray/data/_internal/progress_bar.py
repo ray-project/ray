@@ -1,8 +1,8 @@
 import threading
-from typing import Any, List
+from typing import Any, List, Optional
 
 import ray
-from ray._private.ray_constants import env_integer
+from ray.experimental import tqdm_ray
 from ray.types import ObjectRef
 from ray.util.annotations import PublicAPI
 
@@ -13,9 +13,6 @@ try:
 except ImportError:
     tqdm = None
     needs_warning = True
-
-# Whether progress bars are enabled in this thread.
-_enabled = not bool(env_integer("RAY_DATA_DISABLE_PROGRESS_BARS", 0))
 
 # Used a signal to cancel execution.
 _canceled_threads = set()
@@ -34,21 +31,34 @@ def set_progress_bars(enabled: bool) -> bool:
     Returns:
         Whether progress bars were previously enabled.
     """
-    global _enabled
-    old_value = _enabled
-    _enabled = enabled
+    from ray.data import DataContext
+
+    ctx = DataContext.get_current()
+    old_value = ctx.enable_progress_bars
+    ctx.enable_progress_bars = enabled
     return old_value
 
 
 class ProgressBar:
     """Thin wrapper around tqdm to handle soft imports."""
 
-    def __init__(self, name: str, total: int, position: int = 0):
+    def __init__(
+        self, name: str, total: int, position: int = 0, enabled: Optional[bool] = None
+    ):
         self._desc = name
-        if not _enabled or threading.current_thread() is not threading.main_thread():
+        self._progress = 0
+        if enabled is None:
+            from ray.data import DataContext
+
+            enabled = DataContext.get_current().enable_progress_bars
+        if not enabled:
             self._bar = None
         elif tqdm:
-            self._bar = tqdm.tqdm(total=total, position=position)
+            ctx = ray.data.context.DataContext.get_current()
+            if ctx.use_ray_tqdm:
+                self._bar = tqdm_ray.tqdm(total=total, position=position)
+            else:
+                self._bar = tqdm.tqdm(total=total, position=position)
             self._bar.set_description(self._desc)
         else:
             global needs_warning
@@ -71,8 +81,15 @@ class ProgressBar:
         ref_to_result = {}
         remaining = refs
         t = threading.current_thread()
+        # Triggering fetch_local redundantly for the same object is slower.
+        # We only need to trigger the fetch_local once for each object,
+        # raylet will persist these fetch requests even after ray.wait returns.
+        # See https://github.com/ray-project/ray/issues/30375.
+        fetch_local = True
         while remaining:
-            done, remaining = ray.wait(remaining, fetch_local=True, timeout=0.1)
+            done, remaining = ray.wait(remaining, fetch_local=fetch_local, timeout=0.1)
+            if fetch_local:
+                fetch_local = False
             for ref, result in zip(done, ray.get(done)):
                 ref_to_result[ref] = result
             self.update(len(done))
@@ -90,10 +107,18 @@ class ProgressBar:
 
     def update(self, i: int) -> None:
         if self._bar and i != 0:
+            self._progress += i
+            if self._bar.total is not None and self._progress > self._bar.total:
+                # If the progress goes over 100%, update the total.
+                self._bar.total = self._progress
             self._bar.update(i)
 
     def close(self):
         if self._bar:
+            if self._bar.total is not None and self._progress != self._bar.total:
+                # If the progress is not complete, update the total.
+                self._bar.total = self._progress
+                self._bar.refresh()
             self._bar.close()
             self._bar = None
 

@@ -1,19 +1,15 @@
 import builtins
-from typing import Any, Callable, Dict, Generic, Iterable, List, Optional, Tuple, Union
+from copy import copy
+from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
 
 import numpy as np
 
 import ray
-from ray.data._internal.arrow_block import ArrowRow
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
+from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.util import _check_pyarrow_version
-from ray.data.block import (
-    Block,
-    BlockAccessor,
-    BlockMetadata,
-    T,
-)
-from ray.data.context import DatasetContext
+from ray.data.block import Block, BlockAccessor, BlockMetadata
+from ray.data.context import DataContext
 from ray.types import ObjectRef
 from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
 
@@ -21,20 +17,26 @@ WriteResult = Any
 
 
 @PublicAPI
-class Datasource(Generic[T]):
-    """Interface for defining a custom ``ray.data.Dataset`` datasource.
+class Datasource:
+    """Interface for defining a custom :class:`~ray.data.Dataset` datasource.
 
-    To read a datasource into a dataset, use ``ray.data.read_datasource()``.
-    To write to a writable datasource, use ``Dataset.write_datasource()``.
+    To read a datasource into a dataset, use :meth:`~ray.data.read_datasource`.
+    To write to a writable datasource, use :meth:`~ray.data.Dataset.write_datasource`.
 
     See ``RangeDatasource`` and ``DummyOutputDatasource`` for examples
     of how to implement readable and writable datasources.
 
-    Datasource instances must be serializable, since ``create_reader()`` and
-    ``do_write()`` are called in remote tasks.
-    """
+    For an example of subclassing :class:`~ray.data.Datasource`, read
+    :ref:`Implementing a Custom Datasource <custom_datasources>`.
 
-    def create_reader(self, **read_args) -> "Reader[T]":
+    .. note::
+        Datasource instances must be serializable, since
+        :meth:`~ray.data.Datasource.create_reader` and
+        :meth:`~ray.data.Datasource.write` are called in remote tasks.
+
+    """  # noqa: E501
+
+    def create_reader(self, **read_args) -> "Reader":
         """Return a Reader for the given read arguments.
 
         The reader object will be responsible for querying the read metadata, and
@@ -46,10 +48,29 @@ class Datasource(Generic[T]):
         return _LegacyDatasourceReader(self, **read_args)
 
     @Deprecated
-    def prepare_read(self, parallelism: int, **read_args) -> List["ReadTask[T]"]:
+    def prepare_read(self, parallelism: int, **read_args) -> List["ReadTask"]:
         """Deprecated: Please implement create_reader() instead."""
         raise NotImplementedError
 
+    def write(
+        self,
+        blocks: Iterable[Block],
+        **write_args,
+    ) -> WriteResult:
+        """Write blocks out to the datasource. This is used by a single write task.
+
+        Args:
+            blocks: List of data blocks.
+            write_args: Additional kwargs to pass to the datasource impl.
+
+        Returns:
+            The output of the write task.
+        """
+        raise NotImplementedError
+
+    @Deprecated(
+        message="do_write() is deprecated in Ray 2.4. Use write() instead", warning=True
+    )
     def do_write(
         self,
         blocks: List[ObjectRef[Block]],
@@ -98,14 +119,24 @@ class Datasource(Generic[T]):
         """
         pass
 
+    def get_name(self) -> str:
+        """Return a human-readable name for this datasource.
+        This will be used as the names of the read tasks.
+        """
+        name = type(self).__name__
+        datasource_suffix = "Datasource"
+        if name.endswith(datasource_suffix):
+            name = name[: -len(datasource_suffix)]
+        return name
+
 
 @PublicAPI
-class Reader(Generic[T]):
-    """A bound read operation for a datasource.
+class Reader:
+    """A bound read operation for a :class:`~ray.data.Datasource`.
 
     This is a stateful class so that reads can be prepared in multiple stages.
-    For example, it is useful for Datasets to know the in-memory size of the read
-    prior to executing it.
+    For example, it is useful for :class:`Datasets <ray.data.Dataset>` to know the
+    in-memory size of the read prior to executing it.
     """
 
     def estimate_inmemory_data_size(self) -> Optional[int]:
@@ -115,7 +146,7 @@ class Reader(Generic[T]):
         """
         raise NotImplementedError
 
-    def get_read_tasks(self, parallelism: int) -> List["ReadTask[T]"]:
+    def get_read_tasks(self, parallelism: int) -> List["ReadTask"]:
         """Execute the read and return read tasks.
 
         Args:
@@ -138,16 +169,16 @@ class _LegacyDatasourceReader(Reader):
     def estimate_inmemory_data_size(self) -> Optional[int]:
         return None
 
-    def get_read_tasks(self, parallelism: int) -> List["ReadTask[T]"]:
+    def get_read_tasks(self, parallelism: int) -> List["ReadTask"]:
         return self._datasource.prepare_read(parallelism, **self._read_args)
 
 
 @DeveloperAPI
 class ReadTask(Callable[[], Iterable[Block]]):
-    """A function used to read blocks from the dataset.
+    """A function used to read blocks from the :class:`~ray.data.Dataset`.
 
-    Read tasks are generated by ``reader.get_read_tasks()``, and return
-    a list of ``ray.data.Block`` when called. Initial metadata about the read
+    Read tasks are generated by :meth:`~ray.data.datasource.Reader.get_read_tasks`,
+    and return a list of ``ray.data.Block`` when called. Initial metadata about the read
     operation can be retrieved via ``get_metadata()`` prior to executing the
     read. Final metadata is returned after the read along with the blocks.
 
@@ -157,7 +188,7 @@ class ReadTask(Callable[[], Iterable[Block]]):
     avoid running out of memory during the read.
 
     The initial metadata should reflect all the blocks returned by the read,
-    e.g., if the metadata says num_rows=1000, the read can return a single
+    e.g., if the metadata says ``num_rows=1000``, the read can return a single
     block of 1000 rows, or multiple blocks with 1000 rows altogether.
 
     The final metadata (returned with the actual block) reflects the exact
@@ -167,12 +198,13 @@ class ReadTask(Callable[[], Iterable[Block]]):
     def __init__(self, read_fn: Callable[[], Iterable[Block]], metadata: BlockMetadata):
         self._metadata = metadata
         self._read_fn = read_fn
+        self._additional_output_splits = 1
 
     def get_metadata(self) -> BlockMetadata:
         return self._metadata
 
     def __call__(self) -> Iterable[Block]:
-        context = DatasetContext.get_current()
+        context = DataContext.get_current()
         result = self._read_fn()
         if not hasattr(result, "__iter__"):
             DeprecationWarning(
@@ -183,16 +215,30 @@ class ReadTask(Callable[[], Iterable[Block]]):
 
         if context.block_splitting_enabled:
             for block in result:
-                yield block
+                yield from self._do_additional_splits(block)
         else:
             builder = DelegatingBlockBuilder()
             for block in result:
                 builder.add_block(block)
             yield builder.build()
 
+    def _set_additional_split_factor(self, k: int) -> None:
+        self._additional_output_splits = k
+
+    def _do_additional_splits(self, block: Block) -> Iterable[Block]:
+        if self._additional_output_splits > 1:
+            block = BlockAccessor.for_block(block)
+            offset = 0
+            split_sizes = _splitrange(block.num_rows(), self._additional_output_splits)
+            for size in split_sizes:
+                yield block.slice(offset, offset + size, copy=True)
+                offset += size
+        else:
+            yield block
+
 
 @PublicAPI
-class RangeDatasource(Datasource[Union[ArrowRow, int]]):
+class RangeDatasource(Datasource):
     """An example datasource that generates ranges of numbers from [0..n).
 
     Examples:
@@ -206,17 +252,25 @@ class RangeDatasource(Datasource[Union[ArrowRow, int]]):
     def create_reader(
         self,
         n: int,
-        block_format: str = "list",
+        block_format: str = "arrow",
         tensor_shape: Tuple = (1,),
+        column_name: Optional[str] = None,
     ) -> List[ReadTask]:
-        return _RangeDatasourceReader(n, block_format, tensor_shape)
+        return _RangeDatasourceReader(n, block_format, tensor_shape, column_name)
 
 
 class _RangeDatasourceReader(Reader):
-    def __init__(self, n: int, block_format: str = "list", tensor_shape: Tuple = (1,)):
+    def __init__(
+        self,
+        n: int,
+        block_format: str = "list",
+        tensor_shape: Tuple = (1,),
+        column_name: Optional[str] = None,
+    ):
         self._n = n
         self._block_format = block_format
         self._tensor_shape = tensor_shape
+        self._column_name = column_name
 
     def estimate_inmemory_data_size(self) -> Optional[int]:
         if self._block_format == "tensor":
@@ -242,7 +296,8 @@ class _RangeDatasourceReader(Reader):
                 import pyarrow as pa
 
                 return pa.Table.from_arrays(
-                    [np.arange(start, start + count)], names=["value"]
+                    [np.arange(start, start + count)],
+                    names=[self._column_name or "value"],
                 )
             elif block_format == "tensor":
                 import pyarrow as pa
@@ -251,38 +306,43 @@ class _RangeDatasourceReader(Reader):
                     np.arange(start, start + count),
                     tuple(range(1, 1 + len(tensor_shape))),
                 )
-                return BlockAccessor.batch_to_block(tensor)
+                return BlockAccessor.batch_to_block(
+                    {self._column_name: tensor} if self._column_name else tensor
+                )
             else:
                 return list(builtins.range(start, start + count))
+
+        if block_format == "arrow":
+            _check_pyarrow_version()
+            import pyarrow as pa
+
+            schema = pa.Table.from_pydict({self._column_name or "value": [0]}).schema
+        elif block_format == "tensor":
+            _check_pyarrow_version()
+            import pyarrow as pa
+
+            tensor = np.ones(tensor_shape, dtype=np.int64) * np.expand_dims(
+                np.arange(0, 10), tuple(range(1, 1 + len(tensor_shape)))
+            )
+            schema = BlockAccessor.batch_to_block(
+                {self._column_name: tensor} if self._column_name else tensor
+            ).schema
+        elif block_format == "list":
+            schema = int
+        else:
+            raise ValueError("Unsupported block type", block_format)
+        if block_format == "tensor":
+            element_size = np.product(tensor_shape)
+        else:
+            element_size = 1
 
         i = 0
         while i < n:
             count = min(block_size, n - i)
-            if block_format == "arrow":
-                _check_pyarrow_version()
-                import pyarrow as pa
-
-                schema = pa.Table.from_pydict({"value": [0]}).schema
-            elif block_format == "tensor":
-                _check_pyarrow_version()
-                import pyarrow as pa
-
-                tensor = np.ones(tensor_shape, dtype=np.int64) * np.expand_dims(
-                    np.arange(0, 10), tuple(range(1, 1 + len(tensor_shape)))
-                )
-                schema = BlockAccessor.batch_to_block(tensor).schema
-            elif block_format == "list":
-                schema = int
-            else:
-                raise ValueError("Unsupported block type", block_format)
-            if block_format == "tensor":
-                element_size = np.product(tensor_shape)
-            else:
-                element_size = 1
             meta = BlockMetadata(
                 num_rows=count,
                 size_bytes=8 * count * element_size,
-                schema=schema,
+                schema=copy(schema),
                 input_files=None,
                 exec_stats=None,
             )
@@ -295,7 +355,7 @@ class _RangeDatasourceReader(Reader):
 
 
 @DeveloperAPI
-class DummyOutputDatasource(Datasource[Union[ArrowRow, int]]):
+class DummyOutputDatasource(Datasource):
     """An example implementation of a writable datasource for testing.
 
     Examples:
@@ -307,7 +367,7 @@ class DummyOutputDatasource(Datasource[Union[ArrowRow, int]]):
     """
 
     def __init__(self):
-        ctx = DatasetContext.get_current()
+        ctx = DataContext.get_current()
 
         # Setup a dummy actor to send the data. In a real datasource, write
         # tasks would send data to an external system instead of a Ray actor.
@@ -319,32 +379,30 @@ class DummyOutputDatasource(Datasource[Union[ArrowRow, int]]):
 
             def write(self, block: Block) -> str:
                 block = BlockAccessor.for_block(block)
-                if not self.enabled:
-                    raise ValueError("disabled")
                 self.rows_written += block.num_rows()
                 return "ok"
 
             def get_rows_written(self):
                 return self.rows_written
 
-            def set_enabled(self, enabled):
-                self.enabled = enabled
-
         self.data_sink = DataSink.remote()
         self.num_ok = 0
         self.num_failed = 0
+        self.enabled = True
 
-    def do_write(
+    def write(
         self,
-        blocks: List[ObjectRef[Block]],
-        metadata: List[BlockMetadata],
-        ray_remote_args: Dict[str, Any],
+        blocks: Iterable[Block],
+        ctx: TaskContext,
         **write_args,
-    ) -> List[ObjectRef[WriteResult]]:
+    ) -> WriteResult:
         tasks = []
+        if not self.enabled:
+            raise ValueError("disabled")
         for b in blocks:
             tasks.append(self.data_sink.write.remote(b))
-        return tasks
+        ray.get(tasks)
+        return "ok"
 
     def on_write_complete(self, write_results: List[WriteResult]) -> None:
         assert all(w == "ok" for w in write_results), write_results
@@ -357,7 +415,7 @@ class DummyOutputDatasource(Datasource[Union[ArrowRow, int]]):
 
 
 @DeveloperAPI
-class RandomIntRowDatasource(Datasource[ArrowRow]):
+class RandomIntRowDatasource(Datasource):
     """An example datasource that generates rows with random int64 columns.
 
     Examples:
@@ -369,6 +427,13 @@ class RandomIntRowDatasource(Datasource[ArrowRow]):
         {'c_0': 1717767200176864416, 'c_1': 999657309586757214}
         {'c_0': 4983608804013926748, 'c_1': 1160140066899844087}
     """
+
+    def get_name(self) -> str:
+        """Return a human-readable name for this datasource.
+        This will be used as the names of the read tasks.
+        Note: overrides the base `Datasource` method.
+        """
+        return "RandomInt"
 
     def create_reader(
         self,
@@ -431,3 +496,21 @@ class _RandomIntRowDatasourceReader(Reader):
             i += block_size
 
         return read_tasks
+
+
+def _splitrange(n, k):
+    """Calculates array lens of np.array_split().
+
+    This is the equivalent of
+    `[len(x) for x in np.array_split(range(n), k)]`.
+    """
+    base = n // k
+    output = [base] * k
+    rem = n - sum(output)
+    for i in range(len(output)):
+        if rem > 0:
+            output[i] += 1
+            rem -= 1
+    assert rem == 0, (rem, output, n, k)
+    assert sum(output) == n, (output, n, k)
+    return output

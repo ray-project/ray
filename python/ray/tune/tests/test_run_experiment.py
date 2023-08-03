@@ -2,7 +2,7 @@ import os
 import unittest
 
 import ray
-from ray.air import CheckpointConfig
+from ray.train import CheckpointConfig
 from ray.rllib import _register_all
 
 from ray.tune.result import TIMESTEPS_TOTAL
@@ -138,7 +138,7 @@ class RunExperimentTest(unittest.TestCase):
         trials = run_experiments({"foo": {"run": train, "export_formats": ["format"]}})
         for trial in trials:
             self.assertEqual(trial.status, Trial.TERMINATED)
-            self.assertTrue(os.path.exists(os.path.join(trial.logdir, "exported")))
+            self.assertTrue(os.path.exists(os.path.join(trial.local_path, "exported")))
 
     def testInvalidExportFormats(self):
         class train(Trainable):
@@ -186,19 +186,19 @@ class RunExperimentTest(unittest.TestCase):
             {"foo": {"run": "__fake", "stop": {"training_iteration": 1}}},
             callbacks=[LegacyLoggerCallback(logger_classes=[CustomLogger])],
         )
-        self.assertTrue(os.path.exists(os.path.join(trial.logdir, "test.log")))
-        self.assertFalse(os.path.exists(os.path.join(trial.logdir, "params.json")))
+        self.assertTrue(os.path.exists(os.path.join(trial.local_path, "test.log")))
+        self.assertFalse(os.path.exists(os.path.join(trial.local_path, "params.json")))
 
         [trial] = run_experiments(
             {"foo": {"run": "__fake", "stop": {"training_iteration": 1}}}
         )
-        self.assertFalse(os.path.exists(os.path.join(trial.logdir, "params.json")))
+        self.assertFalse(os.path.exists(os.path.join(trial.local_path, "params.json")))
 
         [trial] = run_experiments(
             {"foo": {"run": "__fake", "stop": {"training_iteration": 1}}},
             callbacks=[LegacyLoggerCallback(logger_classes=[])],
         )
-        self.assertFalse(os.path.exists(os.path.join(trial.logdir, "params.json")))
+        self.assertFalse(os.path.exists(os.path.join(trial.local_path, "params.json")))
 
     def testCustomLoggerWithAutoLogging(self):
         """Creates CSV/JSON logger callbacks automatically"""
@@ -214,19 +214,19 @@ class RunExperimentTest(unittest.TestCase):
             {"foo": {"run": "__fake", "stop": {"training_iteration": 1}}},
             callbacks=[LegacyLoggerCallback(logger_classes=[CustomLogger])],
         )
-        self.assertTrue(os.path.exists(os.path.join(trial.logdir, "test.log")))
-        self.assertTrue(os.path.exists(os.path.join(trial.logdir, "params.json")))
+        self.assertTrue(os.path.exists(os.path.join(trial.local_path, "test.log")))
+        self.assertTrue(os.path.exists(os.path.join(trial.local_path, "params.json")))
 
         [trial] = run_experiments(
             {"foo": {"run": "__fake", "stop": {"training_iteration": 1}}}
         )
-        self.assertTrue(os.path.exists(os.path.join(trial.logdir, "params.json")))
+        self.assertTrue(os.path.exists(os.path.join(trial.local_path, "params.json")))
 
         [trial] = run_experiments(
             {"foo": {"run": "__fake", "stop": {"training_iteration": 1}}},
             callbacks=[LegacyLoggerCallback(logger_classes=[])],
         )
-        self.assertTrue(os.path.exists(os.path.join(trial.logdir, "params.json")))
+        self.assertTrue(os.path.exists(os.path.join(trial.local_path, "params.json")))
 
     def testCustomTrialString(self):
         [trial] = run_experiments(

@@ -80,20 +80,6 @@ class AgentIOTest(unittest.TestCase):
             agent = self.write_outputs("logdir", fw)
             self.assertEqual(len(glob.glob(agent.logdir + "/output-*.json")), 1)
 
-    def test_agent_output_infos(self):
-        """Verify that the infos dictionary is written to the output files.
-
-        Note, with torch this is always the case.
-        """
-        output_config = {"store_infos": True}
-        for fw in framework_iterator(frameworks=("torch", "tf")):
-            self.write_outputs(self.test_dir, fw, output_config=output_config)
-            self.assertEqual(len(os.listdir(self.test_dir + fw)), 1)
-            reader = JsonReader(self.test_dir + fw + "/*.json")
-            data = reader.next()
-            data = convert_ma_batch_to_sample_batch(data)
-            assert "infos" in data
-
     def test_agent_input_dir(self):
         config = (
             PGConfig()

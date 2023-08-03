@@ -31,21 +31,27 @@ be played by the user against the "main" agent on the command line.
 """
 
 import argparse
-import numpy as np
 import os
-from open_spiel.python.rl_environment import Environment
-import pyspiel
 import re
+
+import numpy as np
 
 import ray
 from ray import air, tune
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.algorithms.ppo import PPOConfig
-from ray.rllib.examples.self_play_with_open_spiel import ask_user_for_action
-from ray.rllib.examples.policy.random_policy import RandomPolicy
+from ray.rllib.env.utils import try_import_pyspiel, try_import_open_spiel
 from ray.rllib.env.wrappers.open_spiel import OpenSpielEnv
+from ray.rllib.examples.policy.random_policy import RandomPolicy
+from ray.rllib.examples.self_play_with_open_spiel import ask_user_for_action
 from ray.rllib.policy.policy import PolicySpec
 from ray.tune import register_env
+
+open_spiel = try_import_open_spiel(error=True)
+pyspiel = try_import_pyspiel(error=True)
+
+# Import after try_import_open_spiel, so we can error out with hints
+from open_spiel.python.rl_environment import Environment  # noqa: E402
 
 
 def get_cli_args():
@@ -54,7 +60,7 @@ def get_cli_args():
     parser.add_argument(
         "--framework",
         choices=["tf", "tf2", "torch"],
-        default="tf",
+        default="torch",
         help="The DL framework specifier.",
     )
     parser.add_argument("--num-cpus", type=int, default=0)
@@ -63,7 +69,7 @@ def get_cli_args():
         type=str,
         default=None,
         help="Full path to a checkpoint file for restoring a previously saved "
-        "Trainer state.",
+        "Algorithm state.",
     )
     parser.add_argument(
         "--env",
@@ -351,7 +357,7 @@ if __name__ == "__main__":
             ),
         ).fit()
 
-    # Restore trained trainer (set to non-explore behavior) and play against
+    # Restore trained Algorithm (set to non-explore behavior) and play against
     # human on command line.
     if args.num_episodes_human_play > 0:
         num_episodes = 0

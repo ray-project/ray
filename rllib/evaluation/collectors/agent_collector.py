@@ -1,18 +1,17 @@
+import copy
 import logging
-
-from copy import deepcopy
-from gymnasium.spaces import Space
 import math
-import numpy as np
-import tree  # pip install dm_tree
 from typing import Any, Dict, List, Optional
 
-from ray.rllib.policy.view_requirement import ViewRequirement
+import numpy as np
+import tree  # pip install dm_tree
+from gymnasium.spaces import Space
+
 from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.spaces.space_utils import (
     flatten_to_single_ndarray,
-    flatten_space,
     get_dummy_batch_for_space,
 )
 from ray.rllib.utils.typing import (
@@ -21,8 +20,6 @@ from ray.rllib.utils.typing import (
     TensorType,
     ViewRequirementsDict,
 )
-
-from ray.util import log_once
 from ray.util.annotations import PublicAPI
 
 logger = logging.getLogger(__name__)
@@ -38,6 +35,17 @@ def _to_float_np_array(v: List[Any]) -> np.ndarray:
     if arr.dtype == np.float64:
         return arr.astype(np.float32)  # save some memory
     return arr
+
+
+def _get_buffered_slice_with_paddings(d, inds):
+    element_at_t = []
+    for index in inds:
+        if index < len(d):
+            element_at_t.append(d[index])
+        else:
+            # zero pad similar to the last element.
+            element_at_t.append(tree.map_structure(np.zeros_like, d[-1]))
+    return element_at_t
 
 
 @PublicAPI
@@ -62,6 +70,7 @@ class AgentCollector:
         intial_states: Optional[List[TensorType]] = None,
         is_policy_recurrent: bool = False,
         is_training: bool = True,
+        _enable_rl_module_api: bool = False,
     ):
         """Initialize an AgentCollector.
 
@@ -80,9 +89,11 @@ class AgentCollector:
         self.max_seq_len = max_seq_len
         self.disable_action_flattening = disable_action_flattening
         self.view_requirements = view_reqs
-        self.intial_states = intial_states or []
+        # The initial_states can be an np array
+        self.initial_states = intial_states if intial_states is not None else []
         self.is_policy_recurrent = is_policy_recurrent
         self._is_training = is_training
+        self._enable_rl_module_api = _enable_rl_module_api
 
         # Determine the size of the buffer we need for data before the actual
         # episode starts. This is used for 0-buffering of e.g. prev-actions,
@@ -102,7 +113,7 @@ class AgentCollector:
         #    [0, 1],  # <- 1st sub-component of observation
         #    [np.array([.2, .3]), np.array([.0, -.2])]  # <- 2nd sub-component
         # ]
-        # NOTE: infos and state_out_... are not flattened due to them often
+        # NOTE: infos and state_out... are not flattened due to them often
         # using custom dict values whose structure may vary from timestep to
         # timestep.
         self.buffers: Dict[str, List[List[TensorType]]] = {}
@@ -139,48 +150,6 @@ class AgentCollector:
         """Returns True if this collector has no data."""
         return not self.buffers or all(len(item) == 0 for item in self.buffers.values())
 
-    def _check_view_requirement(self, view_requirement_name: str, data: TensorType):
-        """Warns if data does not fit the view requirement.
-
-        Should raise an AssertionError if data does not fit the view requirement in the
-        future.
-        """
-
-        if view_requirement_name in self.view_requirements:
-            vr = self.view_requirements[view_requirement_name]
-            # We only check for the shape here, because conflicting dtypes are often
-            # because of float conversion
-            # TODO (Artur): Revisit test_multi_agent_env for cases where we accept a
-            #  space that is not a gym.Space
-            if (
-                hasattr(vr.space, "shape")
-                and log_once(
-                    f"view_requirement"
-                    f"_{view_requirement_name}_checked_in_agent_collector"
-                )
-                and not (
-                    np.sum(
-                        (
-                            tree.map_structure(
-                                lambda x: np.product(getattr(x, "shape")),
-                                flatten_space(vr.space),
-                            )
-                        )
-                    ),
-                )
-                == np.shape(data)
-            ):
-
-                # TODO (Artur): Enforce VR shape
-                # TODO (Artur): Enforce dtype as well
-                logger.warning(
-                    f"Provided tensor\n{data}\n does not match space of view "
-                    f"requirements {view_requirement_name}.\n"
-                    f"Provided tensor has shape {np.shape(data)} and view requirement "
-                    f"has shape shape {vr.space.shape}."
-                    f"Make sure dimensions match to resolve this warning."
-                )
-
     def add_init_obs(
         self,
         episode_id: EpisodeID,
@@ -213,10 +182,6 @@ class AgentCollector:
         # convert init_obs to np.array (in case it is a list)
         if isinstance(init_obs, list):
             init_obs = np.array(init_obs)
-
-        # Check if view requirement dict has the SampleBatch.OBS key and warn once if
-        # view requirement does not match init_obs
-        self._check_view_requirement(SampleBatch.OBS, init_obs)
 
         if SampleBatch.OBS not in self.buffers:
             single_row = {
@@ -278,8 +243,7 @@ class AgentCollector:
             AgentCollector._next_unroll_id += 1
 
         # Next obs -> obs.
-        # TODO @kourosh: remove the in-place operations and get rid of this deepcopy.
-        values = deepcopy(input_values)
+        values = copy.copy(input_values)
         assert SampleBatch.OBS not in values
         values[SampleBatch.OBS] = values[SampleBatch.NEXT_OBS]
         del values[SampleBatch.NEXT_OBS]
@@ -303,12 +267,8 @@ class AgentCollector:
         self.buffers[SampleBatch.UNROLL_ID][0].append(self.unroll_id)
 
         for k, v in values.items():
-            # Check if view requirement dict has k and warn once if
-            # view requirement does not match v
-            self._check_view_requirement(k, v)
-
             if k not in self.buffers:
-                if self.training and k.startswith("state_out_"):
+                if self.training and k.startswith("state_out"):
                     vr = self.view_requirements[k]
                     data_col = vr.data_col or k
                     self._fill_buffer_with_initial_values(
@@ -316,15 +276,19 @@ class AgentCollector:
                     )
                 else:
                     self._build_buffers({k: v})
-            # Do not flatten infos, state_out_ and (if configured) actions.
+            # Do not flatten infos, state_out and (if configured) actions.
             # Infos/state-outs may be structs that change from timestep to
             # timestep.
             should_flatten_action_key = (
                 k == SampleBatch.ACTIONS and not self.disable_action_flattening
             )
+            # Note (Artur) RL Modules's states need no flattening
+            should_flatten_state_key = (
+                k.startswith("state_out") and not self._enable_rl_module_api
+            )
             if (
                 k == SampleBatch.INFOS
-                or k.startswith("state_out_")
+                or should_flatten_state_key
                 or should_flatten_action_key
             ):
                 if should_flatten_action_key:
@@ -408,13 +372,18 @@ class AgentCollector:
                 # before the last one (len(d) - 2) and so on.
                 element_at_t = d[view_req.shift_arr + len(d) - 1]
                 if element_at_t.shape[0] == 1:
-                    # squeeze to remove the T dimension if it is 1.
-                    element_at_t = element_at_t.squeeze(0)
+                    # We'd normally squeeze here to remove the time dim, but we'll
+                    # simply use the time dim as the batch dim.
+                    data.append(element_at_t)
+                    continue
                 # add the batch dimension with [None]
                 data.append(element_at_t[None])
 
-            if data:
-                batch_data[view_col] = self._unflatten_as_buffer_struct(data, data_col)
+            # We unflatten even if data is empty here, because the structure might be
+            # nested with empty leafs and so we still need to reconstruct it.
+            # This is useful because we spec-check states in RLModules and these
+            # states can sometimes be nested dicts with empty leafs.
+            batch_data[view_col] = self._unflatten_as_buffer_struct(data, data_col)
 
         batch = self._get_sample_batch(batch_data)
         return batch
@@ -510,20 +479,20 @@ class AgentCollector:
                     # handle the case where the inds are out of bounds from the end.
                     # if during the indexing any of the indices are out of bounds, we
                     # need to use padding on the end to fill in the missing indices.
-                    element_at_t = []
-                    for index in inds:
-                        if index < len(d):
-                            element_at_t.append(d[index])
-                        else:
-                            # zero pad similar to the last element.
-                            element_at_t.append(
-                                tree.map_structure(np.zeros_like, d[-1])
-                            )
-                    element_at_t = np.stack(element_at_t)
+                    # Create padding first time we encounter data
+                    if max(inds) < len(d):
+                        # Simple case where we can simply pick slices from buffer
+                        element_at_t = d[inds]
+                    else:
+                        # Case in which we have to pad because buffer has insufficient
+                        # length. This branch takes more time than simply picking
+                        # slices we try to avoid it.
+                        element_at_t = _get_buffered_slice_with_paddings(d, inds)
+                        element_at_t = np.stack(element_at_t)
 
                     if element_at_t.shape[0] == 1:
-                        # squeeze to remove the T dimension if it is 1.
-                        element_at_t = element_at_t.squeeze(0)
+                        # Remove the T dimension if it is 1.
+                        element_at_t = element_at_t[0]
                     shifted_data.append(element_at_t)
 
                 # in some multi-agent cases shifted_data may be an empty list.
@@ -534,8 +503,11 @@ class AgentCollector:
                     shifted_data_np = np.array(shifted_data)
                 data.append(shifted_data_np)
 
-            if data:
-                batch_data[view_col] = self._unflatten_as_buffer_struct(data, data_col)
+            # We unflatten even if data is empty here, because the structure might be
+            # nested with empty leafs and so we still need to reconstruct it.
+            # This is useful because we spec-check states in RLModules and these
+            # states can sometimes be nested dicts with empty leafs.
+            batch_data[view_col] = self._unflatten_as_buffer_struct(data, data_col)
 
         batch = self._get_sample_batch(batch_data)
 
@@ -594,9 +566,13 @@ class AgentCollector:
             should_flatten_action_key = (
                 col == SampleBatch.ACTIONS and not self.disable_action_flattening
             )
+            # Note (Artur) RL Modules's states need no flattening
+            should_flatten_state_key = (
+                col.startswith("state_out") and not self._enable_rl_module_api
+            )
             if (
                 col == SampleBatch.INFOS
-                or col.startswith("state_out_")
+                or should_flatten_state_key
                 or should_flatten_action_key
             ):
                 if should_flatten_action_key:
@@ -671,25 +647,28 @@ class AgentCollector:
         except KeyError:
             space = view_requirement.space
 
-        # special treatment for state_out_<i>
+        # special treatment for state_out
         # add them to the buffer in case they don't exist yet
         is_state = True
-        if data_col.startswith("state_out_"):
-            if not self.is_policy_recurrent:
-                raise ValueError(
-                    f"{data_col} is not available, because the given policy is"
-                    f"not recurrent according to the input model_inital_states."
-                    f"Have you forgotten to return non-empty lists in"
-                    f"policy.get_initial_states()?"
-                )
-            state_ind = int(data_col.split("_")[-1])
-            self._build_buffers({data_col: self.intial_states[state_ind]})
+        if data_col.startswith("state_out"):
+            if self._enable_rl_module_api:
+                self._build_buffers({data_col: self.initial_states})
+            else:
+                if not self.is_policy_recurrent:
+                    raise ValueError(
+                        f"{data_col} is not available, because the given policy is"
+                        f"not recurrent according to the input model_inital_states."
+                        f"Have you forgotten to return non-empty lists in"
+                        f"policy.get_initial_states()?"
+                    )
+                state_ind = int(data_col.split("_")[-1])
+                self._build_buffers({data_col: self.initial_states[state_ind]})
         else:
             is_state = False
             # only create dummy data during inference
             if build_for_inference:
                 if isinstance(space, Space):
-                    #  state_out_x assumes the values do not have a batch dimension
+                    #  state_out assumes the values do not have a batch dimension
                     #  (i.e. instead of being (1, d) it is of shape (d,).
                     fill_value = get_dummy_batch_for_space(
                         space,

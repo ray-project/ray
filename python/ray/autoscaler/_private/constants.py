@@ -5,6 +5,7 @@ from ray._private.ray_constants import (  # noqa F401
     AUTOSCALER_RESOURCE_REQUEST_CHANNEL,
     DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES,
     DEFAULT_OBJECT_STORE_MEMORY_PROPORTION,
+    LABELS_ENVIRONMENT_VARIABLE,
     LOGGER_FORMAT,
     RESOURCES_ENVIRONMENT_VARIABLE,
 )
@@ -19,6 +20,9 @@ def env_integer(key, default):
             return int(val)
     return default
 
+
+# Whether autoscaler cluster status logging is enabled. Set to 0 disable.
+AUTOSCALER_STATUS_LOG = env_integer("RAY_ENABLE_CLUSTER_STATUS_LOG", 1)
 
 # The name of the environment variable for plugging in a utilization scorer.
 AUTOSCALER_UTILIZATION_SCORER_KEY = "RAY_AUTOSCALER_UTILIZATION_SCORER"

@@ -13,8 +13,8 @@ from ray.train.tensorflow import (
     TensorflowTrainer,
     TensorflowPredictor,
 )
-from ray.air import session
-from ray.air.config import ScalingConfig
+from ray import train
+from ray.train import ScalingConfig
 from ray.data import Preprocessor
 
 
@@ -40,7 +40,7 @@ def get_model():
 def test_model_definition_raises_deprecation_warning():
     model = get_model()
     checkpoint = TensorflowCheckpoint.from_model(model)
-    with pytest.deprecated_call():
+    with pytest.raises(DeprecationWarning):
         checkpoint.get_model(model_definition=get_model)
 
 
@@ -131,7 +131,7 @@ def test_tensorflow_checkpoint_saved_model():
         )
         model.save("my_model")
         checkpoint = TensorflowCheckpoint.from_saved_model("my_model")
-        session.report({"my_metric": 1}, checkpoint=checkpoint)
+        train.report({"my_metric": 1}, checkpoint=checkpoint)
 
     trainer = TensorflowTrainer(
         train_loop_per_worker=train_fn, scaling_config=ScalingConfig(num_workers=2)
@@ -142,7 +142,10 @@ def test_tensorflow_checkpoint_saved_model():
     batch_predictor = BatchPredictor.from_checkpoint(
         result_checkpoint, TensorflowPredictor
     )
-    batch_predictor.predict(ray.data.range(3))
+    predictions = batch_predictor.predict(ray.data.range(3))
+
+    for _ in predictions.iter_batches():
+        pass
 
 
 def test_tensorflow_checkpoint_h5():
@@ -159,7 +162,7 @@ def test_tensorflow_checkpoint_h5():
         )
         model.save("my_model.h5")
         checkpoint = TensorflowCheckpoint.from_h5("my_model.h5")
-        session.report({"my_metric": 1}, checkpoint=checkpoint)
+        train.report({"my_metric": 1}, checkpoint=checkpoint)
 
     trainer = TensorflowTrainer(
         train_loop_per_worker=train_func, scaling_config=ScalingConfig(num_workers=2)
@@ -170,7 +173,10 @@ def test_tensorflow_checkpoint_h5():
     batch_predictor = BatchPredictor.from_checkpoint(
         result_checkpoint, TensorflowPredictor
     )
-    batch_predictor.predict(ray.data.range(3))
+    predictions = batch_predictor.predict(ray.data.range(3))
+
+    for _ in predictions.iter_batches():
+        pass
 
 
 if __name__ == "__main__":

@@ -54,12 +54,3 @@ setup_commands:
   - sudo bash -c 'rm -rf /etc/security/limits.d; echo "* soft nofile 65535" >> /etc/security/limits.conf; echo "* hard nofile 65535" >> /etc/security/limits.conf;'
 
 idle_timeout_minutes: 1
-
-head_start_ray_commands:
-    - ray stop
-    - ulimit -n 65535; ray start --head --port=6379 --object-manager-port=8076 --autoscaling-config=~/ray_bootstrap_config.yaml
-
-# Command to start ray on worker nodes. You don't need to change this.
-worker_start_ray_commands:
-    - ray stop
-    - ulimit -n 65535; ray start --address=$RAY_HEAD_IP:6379 --object-manager-port=8076

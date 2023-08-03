@@ -2,17 +2,17 @@
 # isort: skip_file
 
 # __session_report_start__
-from ray.air import session, ScalingConfig
+from ray import train
 from ray.train.data_parallel_trainer import DataParallelTrainer
 
 
 def train_fn(config):
     for i in range(10):
-        session.report({"step": i})
+        train.report({"step": i})
 
 
 trainer = DataParallelTrainer(
-    train_loop_per_worker=train_fn, scaling_config=ScalingConfig(num_workers=1)
+    train_loop_per_worker=train_fn, scaling_config=train.ScalingConfig(num_workers=1)
 )
 trainer.fit()
 
@@ -21,23 +21,25 @@ trainer.fit()
 
 # __session_data_info_start__
 import ray.data
-from ray.air import session, ScalingConfig
+
+from ray.train import ScalingConfig
 from ray.train.data_parallel_trainer import DataParallelTrainer
 
 
 def train_fn(config):
-    dataset_shard = session.get_dataset_shard("train")
+    context = ray.train.get_context()
+    dataset_shard = train.get_dataset_shard("train")
 
-    session.report(
+    ray.train.report(
         {
             # Global world size
-            "world_size": session.get_world_size(),
+            "world_size": context.get_world_size(),
             # Global worker rank on the cluster
-            "world_rank": session.get_world_rank(),
+            "world_rank": context.get_world_rank(),
             # Local worker rank on the current machine
-            "local_rank": session.get_local_rank(),
+            "local_rank": context.get_local_rank(),
             # Data
-            "data_shard": dataset_shard.to_pandas().to_numpy().tolist(),
+            "data_shard": next(iter(dataset_shard.iter_batches(batch_format="pandas"))),
         }
     )
 
@@ -52,12 +54,13 @@ trainer.fit()
 
 
 # __session_checkpoint_start__
-from ray.air import session, ScalingConfig, Checkpoint
+from ray import train
+from ray.train import ScalingConfig, Checkpoint
 from ray.train.data_parallel_trainer import DataParallelTrainer
 
 
 def train_fn(config):
-    checkpoint = session.get_checkpoint()
+    checkpoint = train.get_checkpoint()
 
     if checkpoint:
         state = checkpoint.to_dict()
@@ -66,7 +69,7 @@ def train_fn(config):
 
     for i in range(state["step"], 10):
         state["step"] += 1
-        session.report(
+        train.report(
             metrics={"step": state["step"]}, checkpoint=Checkpoint.from_dict(state)
         )
 
@@ -82,7 +85,7 @@ trainer.fit()
 
 
 # __scaling_config_start__
-from ray.air import ScalingConfig
+from ray.train import ScalingConfig
 
 scaling_config = ScalingConfig(
     # Number of distributed workers.
@@ -97,20 +100,24 @@ scaling_config = ScalingConfig(
 # __scaling_config_end__
 
 # __run_config_start__
-from ray.air import RunConfig
+from ray.train import RunConfig
+from ray.air.integrations.wandb import WandbLoggerCallback
 
 run_config = RunConfig(
     # Name of the training run (directory name).
     name="my_train_run",
-    # Directory to store results in (will be local_dir/name).
-    local_dir="~/ray_results",
-    # Low training verbosity.
-    verbose=1,
+    # The experiment results will be saved to: storage_path/name
+    storage_path="~/ray_results",
+    # storage_path="s3://my_bucket/tune_results",
+    # Custom and built-in callbacks
+    callbacks=[WandbLoggerCallback()],
+    # Stopping criteria
+    stop={"training_iteration": 10},
 )
 # __run_config_end__
 
 # __failure_config_start__
-from ray.air import RunConfig, FailureConfig
+from ray.train import RunConfig, FailureConfig
 
 run_config = RunConfig(
     failure_config=FailureConfig(
@@ -120,28 +127,37 @@ run_config = RunConfig(
 )
 # __failure_config_end__
 
-# __sync_config_start__
-from ray.air import RunConfig
-from ray.tune import SyncConfig
-
-run_config = RunConfig(
-    sync_config=SyncConfig(
-        # This will store checkpoints on S3.
-        upload_dir="s3://remote-bucket/location"
-    )
-)
-# __sync_config_end__
-
 # __checkpoint_config_start__
-from ray.air import RunConfig, CheckpointConfig
+from ray.train import RunConfig, CheckpointConfig
 
 run_config = RunConfig(
     checkpoint_config=CheckpointConfig(
-        # Only keep this many checkpoints.
-        num_to_keep=2
-    )
+        # Only keep the 2 *best* checkpoints and delete the others.
+        num_to_keep=2,
+        # *Best* checkpoints are determined by these params:
+        checkpoint_score_attribute="mean_accuracy",
+        checkpoint_score_order="max",
+    ),
+    # This will store checkpoints on S3.
+    storage_path="s3://remote-bucket/location",
 )
 # __checkpoint_config_end__
+
+# __checkpoint_config_ckpt_freq_start__
+from ray.train import RunConfig, CheckpointConfig
+
+run_config = RunConfig(
+    checkpoint_config=CheckpointConfig(
+        # Checkpoint every iteration.
+        checkpoint_frequency=1,
+        # Only keep the latest checkpoint and delete the others.
+        num_to_keep=1,
+    )
+)
+
+# from ray.train.xgboost import XGBoostTrainer
+# trainer = XGBoostTrainer(..., run_config=run_config)
+# __checkpoint_config_ckpt_freq_end__
 
 
 # __results_start__

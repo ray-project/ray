@@ -42,7 +42,7 @@ tf1, tf, tfv = try_import_tf()
 logger = logging.getLogger(__name__)
 
 
-@DeveloperAPI
+@Deprecated(error=False)
 class TFPolicy(Policy):
     """An agent policy and loss implemented in TensorFlow.
 
@@ -389,6 +389,7 @@ class TFPolicy(Policy):
         prev_action_batch: Optional[Union[List[TensorType], TensorType]] = None,
         prev_reward_batch: Optional[Union[List[TensorType], TensorType]] = None,
         actions_normalized: bool = True,
+        **kwargs,
     ) -> TensorType:
 
         if self._log_likelihood is None:

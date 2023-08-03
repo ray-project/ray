@@ -1,0 +1,37 @@
+base_image: {{ env["RAY_IMAGE_ML_NIGHTLY_GPU"] }}
+env_vars: {}
+debian_packages:
+  - curl
+
+python:
+  pip_packages:
+    - pytest
+    - awscli
+    - cupy-cuda113
+    - numpy==1.21.0
+    - protobuf==3.20.0
+  conda_packages: []
+
+post_build_cmds:
+  # Install nightly wheel.
+  - pip3 install --upgrade pip
+  # Install Alpa from source for now.
+  # TODO(jungong) : pip install alpa after next release.
+  - git clone https://github.com/alpa-projects/alpa.git
+  - pip3 install -e alpa
+  - pip3 install -e alpa/examples
+  # Install custom built jaxlib.
+  - pip install jaxlib==0.3.22+cuda113.cudnn820 -f https://alpa-projects.github.io/wheels.html
+  # Install nvidia dependencies.
+  - pip3 install --no-cache-dir nvidia-pyindex
+  - pip3 install --no-cache-dir nvidia-tensorrt==7.2.3.4
+  # Huggingface transformers.
+  # TODO(jungong) : bring llm_serving up to date with latest transforemrs library. 
+  - pip install -U transformers==4.23.1
+  - pip install -U accelerate
+  # Install testing wheel after Alpa dependencies, since Alpa's setup.py requires
+  # Ray 2.1.0 right now, and would have overridden the installed version if this
+  # order is reversed.
+  - pip3 uninstall ray -y || true && pip3 install -U {{ env["RAY_WHEELS"] | default("ray") }}
+  # Sanity check.
+  - {{ env["RAY_WHEELS_SANITY_CHECK"] | default("echo No Ray wheels sanity check") }}

@@ -84,7 +84,7 @@ class TestAlgorithm(unittest.TestCase):
                 # Add a new policy either by class (and options) or by instance.
                 pid = f"p{i}"
                 print(f"Adding policy {pid} ...")
-                # By instance.
+                # By (already instantiated) instance.
                 if i == 2:
                     new_pol = algo.add_policy(
                         pid,
@@ -109,12 +109,14 @@ class TestAlgorithm(unittest.TestCase):
                 # Make sure new policy is part of remote workers in the
                 # worker set and the eval worker set.
                 self.assertTrue(
-                    algo.workers.foreach_worker(func=lambda w: pid in w.policy_map)[0]
+                    all(algo.workers.foreach_worker(func=lambda w: pid in w.policy_map))
                 )
                 self.assertTrue(
-                    algo.evaluation_workers.foreach_worker(
-                        func=lambda w: pid in w.policy_map
-                    )[0]
+                    all(
+                        algo.evaluation_workers.foreach_worker(
+                            func=lambda w: pid in w.policy_map
+                        )
+                    )
                 )
 
                 # Assert new policy is part of local worker (eval worker set does NOT

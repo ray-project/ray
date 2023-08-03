@@ -1,5 +1,5 @@
 (serve-e2e-ft)=
-# Adding End-to-End Fault Tolerance
+# Add End-to-End Fault Tolerance
 
 This section helps you:
 
@@ -60,7 +60,7 @@ See Serve's [Kubernetes production guide](serve-in-production-kubernetes) to lea
 
 In this section, you'll learn how to add fault tolerance to Ray's Global Control Store (GCS), which allows your Serve application to serve traffic even when the head node crashes.
 
-By default the Ray head node is a single point of failure: if it crashes, the entire Ray cluster crashes and must be restarted. When running on Kubernetes, the `RayService` controller health-checks the Ray cluster and restarts it if this occurs, but this introduces some downtime.
+By default, the Ray head node is a single point of failure: if it crashes, the entire Ray cluster crashes and must be restarted. When running on Kubernetes, the `RayService` controller health-checks the Ray cluster and restarts it if this occurs, but this introduces some downtime.
 
 In Ray 2.0, KubeRay added **experimental support** for [Global Control Store (GCS) fault tolerance](https://ray-project.github.io/kuberay/guidance/gcs-ft/#ray-gcs-fault-tolerancegcs-ft-experimental), preventing the Ray cluster from crashing if the head node goes down.
 While the head node is recovering, Serve applications can still handle traffic via worker nodes but cannot be updated or recover from other failures (e.g. actors or worker nodes crashing).
@@ -149,7 +149,9 @@ After adding the Redis objects, you also need to modify the `RayService` configu
 
 First, you need to update your `RayService` metadata's annotations:
 
-::::{tabbed} Vanilla Config
+::::{tab-set}
+
+:::{tab-item} Vanilla Config
 ```yaml
 ...
 apiVersion: ray.io/v1alpha1
@@ -159,9 +161,9 @@ metadata:
 spec:
 ...
 ```
-::::
+:::
 
-::::{tabbed} Fault Tolerant Config
+:::{tab-item} Fault Tolerant Config
 :selected:
 ```yaml
 ...
@@ -175,6 +177,8 @@ metadata:
 spec:
 ...
 ```
+:::
+
 ::::
 
 The annotations are:
@@ -183,7 +187,10 @@ The annotations are:
 
 Next, you need to add the `RAY_REDIS_ADDRESS` environment variable to the `headGroupSpec`:
 
-::::{tabbed} Vanilla Config
+::::{tab-set}
+
+:::{tab-item} Vanilla Config
+
 ```yaml
 apiVersion: ray.io/v1alpha1
 kind: RayService
@@ -201,10 +208,12 @@ spec:
                     env:
                         ...
 ```
-::::
 
-::::{tabbed} Fault Tolerant Config
+:::
+
+:::{tab-item} Fault Tolerant Config
 :selected:
+
 ```yaml
 apiVersion: ray.io/v1alpha1
 kind: RayService
@@ -224,6 +233,8 @@ spec:
                         - name: RAY_REDIS_ADDRESS
                           value: redis:6379
 ```
+:::
+
 ::::
 
 `RAY_REDIS_ADDRESS`'s value should be your Redis database's `redis://` address. It should contain your Redis database's host and port. An [example Redis address](https://www.iana.org/assignments/uri-schemes/prov/rediss) is `redis://user:secret@localhost:6379/0?foo=bar&qux=baz`.
@@ -241,34 +252,28 @@ Check out the KubeRay guide on [GCS fault tolerance](https://ray-project.github.
 
 This section explains how Serve recovers from system failures. It uses the following Serve application and config as a working example.
 
-::::{tabbed} Python Code
+::::{tab-set}
+
+:::{tab-item} Python Code
 ```{literalinclude} ../doc_code/fault_tolerance/sleepy_pid.py
 :start-after: __start__
 :end-before: __end__
 :language: python
 ```
-::::
+:::
 
-::::{tabbed} Kubernetes Config
+:::{tab-item} Kubernetes Config
 ```{literalinclude} ../doc_code/fault_tolerance/k8s_config.yaml
 :language: yaml
 ```
+:::
+
 ::::
 
-You can follow along using your own Kubernetes cluster. Make sure it has at least 4 CPUs and 6 GB of memory to run the working example.
-Also, make sure your Kubernetes cluster and Kubectl are both at version at least 1.19.
-First, install the [KubeRay operator](serve-installing-kuberay-operator):
-
-```console
-$ kubectl create -k "github.com/ray-project/kuberay/ray-operator/config/default?ref=v0.3.0&timeout=90s"
-$ kubectl get deployments -n ray-system
-NAME                READY   UP-TO-DATE   AVAILABLE   AGE
-kuberay-operator    1/1     1            1           13s
-
-$ kubectl get pods -n ray-system
-NAME                                 READY   STATUS    RESTARTS   AGE
-kuberay-operator-68c75b5d5f-m8xd7    1/1     Running   0          42s
-```
+Follow the [KubeRay quickstart guide](kuberay-quickstart) to:
+* Install `kubectl` and `Helm`
+* Prepare a Kubernetes cluster
+* Deploy a KubeRay operator
 
 Then, [deploy the Serve application](serve-deploy-app-on-kuberay) above:
 
@@ -374,7 +379,7 @@ redis-75c8b8b65d-4qgfz                                    1/1     Running   0   
 Port-forward to one of your worker pods. Make sure this pod is on a separate node from the head node, so you can kill the head node without crashing the worker:
 
 ```console
-$ port-forward ervice-sample-raycluster-thwmr-worker-small-group-bdv6q
+$ kubectl port-forward ervice-sample-raycluster-thwmr-worker-small-group-bdv6q
 Forwarding from 127.0.0.1:8000 -> 8000
 Forwarding from [::1]:8000 -> 8000
 ```

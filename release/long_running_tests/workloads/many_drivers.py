@@ -1,21 +1,15 @@
 # This workload tests many drivers using the same cluster.
-import json
-import os
 import time
 import argparse
 
 import ray
 from ray.cluster_utils import Cluster
-from ray._private.test_utils import run_string_as_driver
+from ray._private.test_utils import run_string_as_driver, safe_write_to_results_json
 
 
 def update_progress(result):
     result["last_update"] = time.time()
-    test_output_json = os.environ.get(
-        "TEST_OUTPUT_JSON", "/tmp/release_test_output.json"
-    )
-    with open(test_output_json, "wt") as f:
-        json.dump(result, f)
+    safe_write_to_results_json(result)
 
 
 num_redis_shards = 5

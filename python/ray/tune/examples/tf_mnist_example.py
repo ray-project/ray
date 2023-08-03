@@ -17,7 +17,7 @@ from tensorflow.keras.layers import Dense, Flatten, Conv2D
 from tensorflow.keras import Model
 from tensorflow.keras.datasets.mnist import load_data
 
-from ray import air, tune
+from ray import train, tune
 
 MAX_TRAIN_BATCH = 10
 
@@ -121,19 +121,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--smoke-test", action="store_true", help="Finish quickly for testing"
     )
-    parser.add_argument(
-        "--server-address",
-        type=str,
-        default=None,
-        required=False,
-        help="The address of server to connect to if using Ray Client.",
-    )
     args, _ = parser.parse_known_args()
-
-    if args.server_address and not args.smoke_test:
-        import ray
-
-        ray.init(f"ray://{args.server_address}")
 
     tuner = tune.Tuner(
         MNISTTrainable,
@@ -141,7 +129,7 @@ if __name__ == "__main__":
             metric="test_loss",
             mode="min",
         ),
-        run_config=air.RunConfig(
+        run_config=train.RunConfig(
             stop={"training_iteration": 5 if args.smoke_test else 50},
             verbose=1,
         ),

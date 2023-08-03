@@ -1,33 +1,53 @@
 import React from "react";
-import { RiInformationLine, RiLineChartLine } from "react-icons/ri";
+import {
+  RiGradienterLine,
+  RiInformationLine,
+  RiLineChartLine,
+} from "react-icons/ri";
+import { Outlet } from "react-router-dom";
 import { MainNavPageInfo } from "../layout/mainNavContext";
 import { SideTabLayout, SideTabRouteLink } from "../layout/SideTabLayout";
 import { useJobDetail } from "./hook/useJobDetail";
 
-export const JobDetailLayout = () => {
-  const { job } = useJobDetail();
+export const JobPage = () => {
+  const { job, params } = useJobDetail();
 
-  const pageInfo = job
+  const jobId = job?.job_id ?? job?.submission_id;
+  const pageInfo = jobId
     ? {
-        title: job.job_id ?? "Job details",
+        title: jobId ?? "Job",
+        pageTitle: jobId ? `${jobId} | Job` : undefined,
         id: "job-detail",
-        path: job.job_id ? `/new/jobs/${job.job_id}` : undefined,
+        path: jobId,
       }
     : {
-        title: "Job details",
+        title: "Job",
         id: "job-detail",
-        path: undefined,
+        path: params.id,
       };
+  return (
+    <div>
+      <MainNavPageInfo pageInfo={pageInfo} />
+      <Outlet />
+    </div>
+  );
+};
 
+export const JobDetailLayout = () => {
   return (
     <SideTabLayout>
-      <MainNavPageInfo pageInfo={pageInfo} />
       <SideTabRouteLink tabId="info" title="Info" Icon={RiInformationLine} />
       <SideTabRouteLink
         to=""
         tabId="charts"
         title="Charts"
         Icon={RiLineChartLine}
+      />
+      <SideTabRouteLink
+        to="actors"
+        tabId="actors"
+        title="Actors"
+        Icon={RiGradienterLine}
       />
     </SideTabLayout>
   );

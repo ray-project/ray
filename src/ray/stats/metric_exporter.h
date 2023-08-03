@@ -117,8 +117,10 @@ class OpenCensusProtoExporter final : public opencensus::stats::StatsExporter::H
  private:
   /// Call Manager for gRPC client.
   rpc::ClientCallManager client_call_manager_;
+  /// Lock to protect the client
+  mutable absl::Mutex mu_;
   /// Client to call a metrics agent gRPC server.
-  std::unique_ptr<rpc::MetricsAgentClient> client_;
+  std::unique_ptr<rpc::MetricsAgentClient> client_ GUARDED_BY(&mu_);
   /// The worker ID of the current component.
   WorkerID worker_id_;
 };

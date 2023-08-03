@@ -4,10 +4,12 @@ exclude =
   doc/source/conf.py
   python/ray/cloudpickle/
   python/ray/thirdparty_files/
+  python/ray/_private/runtime_env/agent/thirdparty_files/
   python/build/
   python/.eggs/
   python/ray/_private/thirdparty/*
   python/ray/workflow/tests/mock_server.py
+  python/ray/serve/tests/test_config_files/syntax_error.py
 max-line-length = 88
 inline-quotes = "
 ignore =

@@ -12,6 +12,8 @@ import numpy as np
 import tree  # pip install dm_tree
 
 import ray
+from ray.rllib.core.models.base import STATE_IN, STATE_OUT
+from ray.rllib.core.rl_module import RLModule
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.torch.torch_action_dist import TorchDistributionWrapper
@@ -21,7 +23,6 @@ from ray.rllib.policy.rnn_sequencing import pad_batch_to_sequences_of_same_size
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.torch_policy import _directStepOptimizerSingleton
 from ray.rllib.utils import NullContextManager, force_list
-from ray.rllib.core.rl_module import RLModule
 from ray.rllib.utils.annotations import (
     DeveloperAPI,
     OverrideToImplementCustomLogic,
@@ -29,6 +30,7 @@ from ray.rllib.utils.annotations import (
     is_overridden,
     override,
 )
+from ray.rllib.utils.annotations import ExperimentalAPI
 from ray.rllib.utils.error import ERR_MSG_TORCH_POLICY_CANNOT_SAVE_MODEL
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.metrics import (
@@ -88,6 +90,7 @@ class TorchPolicyV2(Policy):
         # Create model.
         if self.config.get("_enable_rl_module_api", False):
             model = self.make_rl_module()
+
             dist_class = None
         else:
             model, dist_class = self._init_model_and_dist_class()
@@ -171,36 +174,49 @@ class TorchPolicyV2(Policy):
         self._lock = threading.RLock()
 
         self._state_inputs = self.model.get_initial_state()
-        self._is_recurrent = len(self._state_inputs) > 0
-        # Auto-update model's inference view requirements, if recurrent.
-        self._update_model_view_requirements_from_init_state()
-        # Combine view_requirements for Model and Policy.
-        self.view_requirements.update(self.model.view_requirements)
+        self._is_recurrent = len(tree.flatten(self._state_inputs)) > 0
+        if self.config.get("_enable_rl_module_api", False):
+            # Maybe update view_requirements, e.g. for recurrent case.
+            self.view_requirements = self.model.update_default_view_requirements(
+                self.view_requirements
+            )
+        else:
+            # Auto-update model's inference view requirements, if recurrent.
+            self._update_model_view_requirements_from_init_state()
+            # Combine view_requirements for Model and Policy.
+            self.view_requirements.update(self.model.view_requirements)
 
-        self.exploration = self._create_exploration()
-        self._optimizers = force_list(self.optimizer())
+        if self.config.get("_enable_rl_module_api", False):
+            # We don't need an exploration object with RLModules
+            self.exploration = None
+        else:
+            self.exploration = self._create_exploration()
 
-        # Backward compatibility workaround so Policy will call self.loss() directly.
-        # TODO(jungong): clean up after all policies are migrated to new sub-class
-        #  implementation.
-        self._loss = None
+        if not self.config.get("_enable_learner_api", False):
+            self._optimizers = force_list(self.optimizer())
 
-        # Store, which params (by index within the model's list of
-        # parameters) should be updated per optimizer.
-        # Maps optimizer idx to set or param indices.
-        self.multi_gpu_param_groups: List[Set[int]] = []
-        main_params = {p: i for i, p in enumerate(self.model.parameters())}
-        for o in self._optimizers:
-            param_indices = []
-            for pg_idx, pg in enumerate(o.param_groups):
-                for p in pg["params"]:
-                    param_indices.append(main_params[p])
-            self.multi_gpu_param_groups.append(set(param_indices))
+            # Backward compatibility workaround so Policy will call self.loss()
+            # directly.
+            # TODO (jungong): clean up after all policies are migrated to new sub-class
+            #  implementation.
+            self._loss = None
 
-        # Create n sample-batch buffers (num_multi_gpu_tower_stacks), each
-        # one with m towers (num_gpus).
-        num_buffers = self.config.get("num_multi_gpu_tower_stacks", 1)
-        self._loaded_batches = [[] for _ in range(num_buffers)]
+            # Store, which params (by index within the model's list of
+            # parameters) should be updated per optimizer.
+            # Maps optimizer idx to set or param indices.
+            self.multi_gpu_param_groups: List[Set[int]] = []
+            main_params = {p: i for i, p in enumerate(self.model.parameters())}
+            for o in self._optimizers:
+                param_indices = []
+                for pg_idx, pg in enumerate(o.param_groups):
+                    for p in pg["params"]:
+                        param_indices.append(main_params[p])
+                self.multi_gpu_param_groups.append(set(param_indices))
+
+            # Create n sample-batch buffers (num_multi_gpu_tower_stacks), each
+            # one with m towers (num_gpus).
+            num_buffers = self.config.get("num_multi_gpu_tower_stacks", 1)
+            self._loaded_batches = [[] for _ in range(num_buffers)]
 
         # If set, means we are using distributed allreduce during learning.
         self.distributed_world_size = None
@@ -237,7 +253,19 @@ class TorchPolicyV2(Policy):
         Returns:
             Loss tensor given the input batch.
         """
-        raise NotImplementedError
+        # Under the new _enable_learner_api the loss function still gets called in order
+        # to initialize the view requirements of the sample batches that are returned by
+        # the sampler. In this case, we don't actually want to compute any loss, however
+        # if we access the keys that are needed for a forward_train pass, then the
+        # sampler will include those keys in the sample batches it returns. This means
+        # that the correct sample batch keys will be available when using the learner
+        # group API.
+        if self.config._enable_learner_api:
+            for k in model.input_specs_train():
+                train_batch[k]
+            return None
+        else:
+            raise NotImplementedError
 
     @DeveloperAPI
     @OverrideToImplementCustomLogic
@@ -300,6 +328,36 @@ class TorchPolicyV2(Policy):
             ModelV2 model.
         """
         return None
+
+    @ExperimentalAPI
+    @override(Policy)
+    def maybe_remove_time_dimension(self, input_dict: Dict[str, TensorType]):
+        assert self.config.get(
+            "_enable_learner_api", False
+        ), "This is a helper method for the new learner API."
+
+        if self.config.get("_enable_rl_module_api", False) and self.model.is_stateful():
+            # Note that this is a temporary workaround to fit the old sampling stack
+            # to RL Modules.
+            ret = {}
+
+            def fold_mapping(item):
+                item = torch.as_tensor(item)
+                size = item.size()
+                b_dim, t_dim = list(size[:2])
+                other_dims = list(size[2:])
+                return item.reshape([b_dim * t_dim] + other_dims)
+
+            for k, v in input_dict.items():
+                if k not in (STATE_IN, STATE_OUT):
+                    ret[k] = tree.map_structure(fold_mapping, v)
+                else:
+                    # state in already has time dimension.
+                    ret[k] = v
+
+            return ret
+        else:
+            return input_dict
 
     @DeveloperAPI
     @OverrideToImplementCustomLogic
@@ -441,7 +499,7 @@ class TorchPolicyV2(Policy):
             ]
         else:
             optimizers = [torch.optim.Adam(self.model.parameters())]
-        if getattr(self, "exploration", None):
+        if self.exploration:
             optimizers = self.exploration.get_exploration_optimizer(optimizers)
         return optimizers
 
@@ -484,28 +542,35 @@ class TorchPolicyV2(Policy):
         **kwargs,
     ) -> Tuple[TensorType, List[TensorType], Dict[str, TensorType]]:
 
+        seq_lens = None
         with torch.no_grad():
             # Pass lazy (torch) tensor dict to Model as `input_dict`.
             input_dict = self._lazy_tensor_dict(input_dict)
             input_dict.set_training(True)
-            # Pack internal state inputs into (separate) list.
-            state_batches = [
-                input_dict[k] for k in input_dict.keys() if "state_in" in k[:8]
-            ]
-            # Calculate RNN sequence lengths.
-            seq_lens = (
-                torch.tensor(
-                    [1] * len(state_batches[0]),
-                    dtype=torch.long,
-                    device=state_batches[0].device,
+            if self.config.get("_enable_rl_module_api", False):
+                return self._compute_action_helper(
+                    input_dict,
+                    state_batches=None,
+                    seq_lens=None,
+                    explore=explore,
+                    timestep=timestep,
                 )
-                if state_batches
-                else None
-            )
+            else:
+                # Pack internal state inputs into (separate) list.
+                state_batches = [
+                    input_dict[k] for k in input_dict.keys() if "state_in" in k[:8]
+                ]
+                # Calculate RNN sequence lengths.
+                if state_batches:
+                    seq_lens = torch.tensor(
+                        [1] * len(state_batches[0]),
+                        dtype=torch.long,
+                        device=state_batches[0].device,
+                    )
 
-            return self._compute_action_helper(
-                input_dict, state_batches, seq_lens, explore, timestep
-            )
+                return self._compute_action_helper(
+                    input_dict, state_batches, seq_lens, explore, timestep
+                )
 
     @override(Policy)
     @DeveloperAPI
@@ -556,6 +621,7 @@ class TorchPolicyV2(Policy):
             Union[List[TensorStructType], TensorStructType]
         ] = None,
         actions_normalized: bool = True,
+        in_training: bool = True,
     ) -> TensorType:
 
         if is_overridden(self.action_sampler_fn) and not is_overridden(
@@ -580,8 +646,9 @@ class TorchPolicyV2(Policy):
                 convert_to_torch_tensor(s, self.device) for s in (state_batches or [])
             ]
 
-            # Exploration hook before each forward pass.
-            self.exploration.before_compute_actions(explore=False)
+            if self.exploration:
+                # Exploration hook before each forward pass.
+                self.exploration.before_compute_actions(explore=False)
 
             # Action dist class and inputs are generated via custom function.
             if is_overridden(self.action_distribution_fn):
@@ -593,13 +660,46 @@ class TorchPolicyV2(Policy):
                     explore=False,
                     is_training=False,
                 )
-
+                action_dist = dist_class(dist_inputs, self.model)
             # Default action-dist inputs calculation.
             else:
-                dist_class = self.dist_class
-                dist_inputs, _ = self.model(input_dict, state_batches, seq_lens)
+                if self.config.get("_enable_rl_module_api", False):
+                    if in_training:
+                        output = self.model.forward_train(input_dict)
+                        action_dist_cls = self.model.get_train_action_dist_cls()
+                        if action_dist_cls is None:
+                            raise ValueError(
+                                "The RLModules must provide an appropriate action "
+                                "distribution class for training if is_eval_mode is "
+                                "False."
+                            )
+                    else:
+                        output = self.model.forward_exploration(input_dict)
+                        action_dist_cls = self.model.get_exploration_action_dist_cls()
+                        if action_dist_cls is None:
+                            raise ValueError(
+                                "The RLModules must provide an appropriate action "
+                                "distribution class for exploration if is_eval_mode is "
+                                "True."
+                            )
 
-            action_dist = dist_class(dist_inputs, self.model)
+                    action_dist_inputs = output.get(
+                        SampleBatch.ACTION_DIST_INPUTS, None
+                    )
+                    if action_dist_inputs is None:
+                        raise ValueError(
+                            "The RLModules must provide inputs to create the action "
+                            "distribution. These should be part of the output of the "
+                            "appropriate forward method under the key "
+                            "SampleBatch.ACTION_DIST_INPUTS."
+                        )
+
+                    action_dist = action_dist_cls.from_logits(action_dist_inputs)
+                else:
+                    dist_class = self.dist_class
+                    dist_inputs, _ = self.model(input_dict, state_batches, seq_lens)
+
+                    action_dist = dist_class(dist_inputs, self.model)
 
             # Normalize actions if necessary.
             actions = input_dict[SampleBatch.ACTIONS]
@@ -672,6 +772,10 @@ class TorchPolicyV2(Policy):
                 shuffle=False,
                 batch_divisibility_req=self.batch_divisibility_req,
                 view_requirements=self.view_requirements,
+                _enable_rl_module_api=self.config.get("_enable_rl_module_api", False),
+                padding="last"
+                if self.config.get("_enable_rl_module_api", False)
+                else "zero",
             )
             self._lazy_tensor_dict(batch)
             self._loaded_batches[0] = [batch]
@@ -695,6 +799,10 @@ class TorchPolicyV2(Policy):
                 shuffle=False,
                 batch_divisibility_req=self.batch_divisibility_req,
                 view_requirements=self.view_requirements,
+                _enable_rl_module_api=self.config.get("_enable_rl_module_api", False),
+                padding="last"
+                if self.config.get("_enable_rl_module_api", False)
+                else "zero",
             )
 
         # 3) Load splits into the given buffer (consisting of n GPUs).
@@ -795,7 +903,7 @@ class TorchPolicyV2(Policy):
                 {
                     LEARNER_STATS_KEY: self.stats_fn(batch),
                     "model": {}
-                    if self.config["_enable_rl_module_api"]
+                    if self.config.get("_enable_rl_module_api", False)
                     else model.metrics(),
                     NUM_GRAD_UPDATES_LIFETIME: self.num_grad_updates,
                     # -1, b/c we have to measure this diff before we do the update
@@ -824,6 +932,10 @@ class TorchPolicyV2(Policy):
                 shuffle=False,
                 batch_divisibility_req=self.batch_divisibility_req,
                 view_requirements=self.view_requirements,
+                _enable_rl_module_api=self.config.get("_enable_rl_module_api", False),
+                padding="last"
+                if self.config.get("_enable_rl_module_api", False)
+                else "zero",
             )
 
         postprocessed_batch.set_training(True)
@@ -905,7 +1017,10 @@ class TorchPolicyV2(Policy):
     @DeveloperAPI
     def set_weights(self, weights: ModelWeights) -> None:
         weights = convert_to_torch_tensor(weights, device=self.device)
-        self.model.load_state_dict(weights)
+        if self.config.get("_enable_rl_module_api", False):
+            self.model.set_state(weights)
+        else:
+            self.model.load_state_dict(weights)
 
     @override(Policy)
     @DeveloperAPI
@@ -936,11 +1051,16 @@ class TorchPolicyV2(Policy):
         state = super().get_state()
 
         state["_optimizer_variables"] = []
-        for i, o in enumerate(self._optimizers):
-            optim_state_dict = convert_to_numpy(o.state_dict())
-            state["_optimizer_variables"].append(optim_state_dict)
+        # In the new Learner API stack, the optimizers live in the learner.
+        if not self.config.get("_enable_learner_api", False):
+            for i, o in enumerate(self._optimizers):
+                optim_state_dict = convert_to_numpy(o.state_dict())
+                state["_optimizer_variables"].append(optim_state_dict)
         # Add exploration state.
-        state["_exploration_state"] = self.exploration.get_state()
+        if not self.config.get("_enable_rl_module_api", False) and self.exploration:
+            # This is not compatible with RLModules, which have a method
+            # `forward_exploration` to specify custom exploration behavior.
+            state["_exploration_state"] = self.exploration.get_state()
         return state
 
     @override(Policy)
@@ -952,7 +1072,13 @@ class TorchPolicyV2(Policy):
         if optimizer_vars:
             assert len(optimizer_vars) == len(self._optimizers)
             for o, s in zip(self._optimizers, optimizer_vars):
-                optim_state_dict = convert_to_torch_tensor(s, device=self.device)
+                # Torch optimizer param_groups include things like beta, etc. These
+                # parameters should be left as scalar and not converted to tensors.
+                # otherwise, torch.optim.step() will start to complain.
+                optim_state_dict = {"param_groups": s["param_groups"]}
+                optim_state_dict["state"] = convert_to_torch_tensor(
+                    s["state"], device=self.device
+                )
                 o.load_state_dict(optim_state_dict)
         # Set exploration's state.
         if hasattr(self, "exploration") and "_exploration_state" in state:
@@ -978,6 +1104,10 @@ class TorchPolicyV2(Policy):
         """
 
         os.makedirs(export_dir, exist_ok=True)
+
+        enable_rl_module = self.config.get("_enable_rl_module_api", False)
+        if enable_rl_module and onnx:
+            raise ValueError("ONNX export not supported for RLModule API.")
 
         if onnx:
             self._lazy_tensor_dict(self._dummy_batch)
@@ -1047,32 +1177,96 @@ class TorchPolicyV2(Policy):
         """
         explore = explore if explore is not None else self.config["explore"]
         timestep = timestep if timestep is not None else self.global_timestep
-        self._is_recurrent = state_batches is not None and state_batches != []
 
         # Switch to eval mode.
         if self.model:
             self.model.eval()
 
-        extra_fetches = {}
+        extra_fetches = dist_inputs = logp = None
+
+        # New API stack: `self.model` is-a RLModule.
         if isinstance(self.model, RLModule):
-            if explore:
-                fwd_out = self.model.forward_exploration(input_dict)
-            else:
-                fwd_out = self.model.forward_inference(input_dict)
-            # anything but action_dist and state_out is an extra fetch
-            action_dist = fwd_out.pop("action_dist")
+            if self.model.is_stateful():
+                # For recurrent models, we need to add a time dimension.
+                if not seq_lens:
+                    # In order to calculate the batch size ad hoc, we need a sample
+                    # batch.
+                    if not isinstance(input_dict, SampleBatch):
+                        input_dict = SampleBatch(input_dict)
+                    seq_lens = np.array([1] * len(input_dict))
+                input_dict = self.maybe_add_time_dimension(
+                    input_dict, seq_lens=seq_lens
+                )
+            input_dict = convert_to_torch_tensor(input_dict, device=self.device)
+
+            # Batches going into the RL Module should not have seq_lens.
+            if SampleBatch.SEQ_LENS in input_dict:
+                del input_dict[SampleBatch.SEQ_LENS]
 
             if explore:
-                actions, logp = action_dist.sample(return_logp=True)
+                fwd_out = self.model.forward_exploration(input_dict)
+                # For recurrent models, we need to remove the time dimension.
+                fwd_out = self.maybe_remove_time_dimension(fwd_out)
+
+                # ACTION_DIST_INPUTS field returned by `forward_exploration()` ->
+                # Create a distribution object.
+                action_dist = None
+                if SampleBatch.ACTION_DIST_INPUTS in fwd_out:
+                    dist_inputs = fwd_out[SampleBatch.ACTION_DIST_INPUTS]
+                    action_dist_class = self.model.get_exploration_action_dist_cls()
+                    action_dist = action_dist_class.from_logits(dist_inputs)
+
+                # If `forward_exploration()` returned actions, use them here as-is.
+                if SampleBatch.ACTIONS in fwd_out:
+                    actions = fwd_out[SampleBatch.ACTIONS]
+                # Otherwise, sample actions from the distribution.
+                else:
+                    if action_dist is None:
+                        raise KeyError(
+                            "Your RLModule's `forward_exploration()` method must return"
+                            f" a dict with either the {SampleBatch.ACTIONS} key or the "
+                            f"{SampleBatch.ACTION_DIST_INPUTS} key in it (or both)!"
+                        )
+                    actions = action_dist.sample()
+
+                # Compute action-logp and action-prob from distribution and add to
+                # `extra_fetches`, if possible.
+                if action_dist is not None:
+                    logp = action_dist.logp(actions)
             else:
-                actions = action_dist.sample()
-                logp = None
-            state_out = fwd_out.pop("state_out", {})
+                fwd_out = self.model.forward_inference(input_dict)
+                # For recurrent models, we need to remove the time dimension.
+                fwd_out = self.maybe_remove_time_dimension(fwd_out)
+
+                # ACTION_DIST_INPUTS field returned by `forward_exploration()` ->
+                # Create a distribution object.
+                action_dist = None
+                if SampleBatch.ACTION_DIST_INPUTS in fwd_out:
+                    dist_inputs = fwd_out[SampleBatch.ACTION_DIST_INPUTS]
+                    action_dist_class = self.model.get_inference_action_dist_cls()
+                    action_dist = action_dist_class.from_logits(dist_inputs)
+                    action_dist = action_dist.to_deterministic()
+
+                # If `forward_inference()` returned actions, use them here as-is.
+                if SampleBatch.ACTIONS in fwd_out:
+                    actions = fwd_out[SampleBatch.ACTIONS]
+                # Otherwise, sample actions from the distribution.
+                else:
+                    if action_dist is None:
+                        raise KeyError(
+                            "Your RLModule's `forward_inference()` method must return"
+                            f" a dict with either the {SampleBatch.ACTIONS} key or the "
+                            f"{SampleBatch.ACTION_DIST_INPUTS} key in it (or both)!"
+                        )
+                    actions = action_dist.sample()
+
+            # Anything but actions and state_out is an extra fetch.
+            state_out = fwd_out.pop(STATE_OUT, {})
             extra_fetches = fwd_out
-            dist_inputs = None
+
         elif is_overridden(self.action_sampler_fn):
-            action_dist = dist_inputs = None
-            actions, logp, state_out = self.action_sampler_fn(
+            action_dist = None
+            actions, logp, dist_inputs, state_out = self.action_sampler_fn(
                 self.model,
                 obs_batch=input_dict,
                 state_batches=state_batches,
@@ -1114,7 +1308,7 @@ class TorchPolicyV2(Policy):
             )
 
         # Add default and custom fetches.
-        if not extra_fetches:
+        if extra_fetches is None:
             extra_fetches = self.extra_action_out(
                 input_dict, state_batches, self.model, action_dist
             )
@@ -1133,7 +1327,6 @@ class TorchPolicyV2(Policy):
         return convert_to_numpy((actions, state_out, extra_fetches))
 
     def _lazy_tensor_dict(self, postprocessed_batch: SampleBatch, device=None):
-        # TODO: (sven): Keep for a while to ensure backward compatibility.
         if not isinstance(postprocessed_batch, SampleBatch):
             postprocessed_batch = SampleBatch(postprocessed_batch)
         postprocessed_batch.set_get_interceptor(

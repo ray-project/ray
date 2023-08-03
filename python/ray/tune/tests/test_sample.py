@@ -1085,7 +1085,10 @@ class SearchSpaceTest(unittest.TestCase):
 
         searcher = HyperOptSearch(metric="a", mode="max")
         analysis = tune.run(
-            _mock_objective, config=config, search_alg=searcher, num_samples=10
+            _mock_objective,
+            config=config,
+            search_alg=searcher,
+            num_samples=10,
         )
 
         for trial in analysis.trials:
@@ -1262,8 +1265,8 @@ class SearchSpaceTest(unittest.TestCase):
         optuna_config = {
             "a": optuna.distributions.CategoricalDistribution([2, 3, 4]),
             "b": {
-                "x": optuna.distributions.IntUniformDistribution(0, 5, step=2),
-                "z": optuna.distributions.LogUniformDistribution(1e-4, 1e-2),
+                "x": optuna.distributions.IntDistribution(0, 5, step=2),
+                "z": optuna.distributions.FloatDistribution(1e-4, 1e-2, log=True),
             },
         }
 

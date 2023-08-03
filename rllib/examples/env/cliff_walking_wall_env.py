@@ -8,8 +8,8 @@ ACTION_LEFT = 3
 
 
 class CliffWalkingWallEnv(gym.Env):
-    """Modified version of the CliffWalking environment from OpenAI Gym
-    with walls instead of a cliff.
+    """Modified version of the CliffWalking environment from Farama-Foundation's
+    Gymnasium with walls instead of a cliff.
 
     ### Description
     The board is a 4x12 matrix, with (using NumPy matrix indexing):

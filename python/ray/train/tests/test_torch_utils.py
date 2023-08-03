@@ -81,15 +81,18 @@ class TestConvertPandasToTorch:
         # column (e.g. post-casting from extension type) doesn't leak memory. Casting
         # these tensors directly with torch.as_tensor() currently leaks memory; see
         # https://github.com/ray-project/ray/issues/30629#issuecomment-1330954556
-        col = np.empty(1000, dtype=object)
-        col[:] = [np.ones((100, 100)) for _ in range(1000)]
-        df = pd.DataFrame({"a": col})
+        def code():
+            col = np.empty(1000, dtype=object)
+            col[:] = [np.ones((100, 100)) for _ in range(1000)]
+            df = pd.DataFrame({"a": col})
+            convert_pandas_to_torch_tensor(
+                df, columns=[["a"]], column_dtypes=[torch.int]
+            )
+
         suspicious_stats = _test_some_code_for_memory_leaks(
             desc="Testing convert_pandas_to_torch_tensor for memory leaks.",
             init=None,
-            code=lambda: convert_pandas_to_torch_tensor(
-                df, columns=[["a"]], column_dtypes=[torch.int]
-            ),
+            code=code,
             repeats=10,
         )
         assert not suspicious_stats

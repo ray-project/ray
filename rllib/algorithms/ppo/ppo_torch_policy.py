@@ -44,8 +44,6 @@ class PPOTorchPolicy(
 
     def __init__(self, observation_space, action_space, config):
         config = dict(ray.rllib.algorithms.ppo.ppo.PPOConfig().to_dict(), **config)
-        # TODO: Move into Policy API, if needed at all here. Why not move this into
-        #  `PPOConfig`?.
         validate_config(config)
 
         TorchPolicyV2.__init__(
@@ -63,7 +61,6 @@ class PPOTorchPolicy(
         )
         KLCoeffMixin.__init__(self, config)
 
-        # TODO: Don't require users to call this manually.
         self._initialize_loss_from_dummy_batch()
 
     @override(TorchPolicyV2)

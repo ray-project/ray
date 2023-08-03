@@ -17,7 +17,7 @@ namespace gcs {
 
 class MockGcsNodeManager : public GcsNodeManager {
  public:
-  MockGcsNodeManager() : GcsNodeManager(nullptr, nullptr, nullptr) {}
+  MockGcsNodeManager() : GcsNodeManager(nullptr, nullptr, nullptr, ClusterID::Nil()) {}
   MOCK_METHOD(void,
               HandleRegisterNode,
               (rpc::RegisterNodeRequest request,
@@ -42,6 +42,7 @@ class MockGcsNodeManager : public GcsNodeManager {
                rpc::GetInternalConfigReply *reply,
                rpc::SendReplyCallback send_reply_callback),
               (override));
+  MOCK_METHOD(void, DrainNode, (const NodeID &node_id), (override));
 };
 
 }  // namespace gcs

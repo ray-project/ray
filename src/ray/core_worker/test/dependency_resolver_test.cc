@@ -44,10 +44,12 @@ TaskSpecification BuildTaskSpec(const std::unordered_map<std::string, double> &r
                             empty_address,
                             1,
                             false,
+                            false,
                             resources,
                             resources,
                             serialized_runtime_env,
-                            depth);
+                            depth,
+                            TaskID::Nil());
   return builder.Build();
 }
 TaskSpecification BuildEmptyTaskSpec() {
@@ -68,7 +70,8 @@ class MockTaskFinisher : public TaskFinisherInterface {
     num_tasks_complete++;
   }
 
-  bool RetryTaskIfPossible(const TaskID &task_id, bool task_failed_due_to_oom) override {
+  bool RetryTaskIfPossible(const TaskID &task_id,
+                           const rpc::RayErrorInfo &error_info) override {
     num_task_retries_attempted++;
     return false;
   }
@@ -106,7 +109,8 @@ class MockTaskFinisher : public TaskFinisherInterface {
   void MarkDependenciesResolved(const TaskID &task_id) override {}
 
   void MarkTaskWaitingForExecution(const TaskID &task_id,
-                                   const NodeID &node_id) override {}
+                                   const NodeID &node_id,
+                                   const WorkerID &worker_id) override {}
 
   int num_tasks_complete = 0;
   int num_tasks_failed = 0;

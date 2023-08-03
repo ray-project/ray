@@ -6,11 +6,10 @@ import xgboost as xgb
 
 import ray
 from ray import tune
-from ray.air.checkpoint import Checkpoint
+from ray.train import Checkpoint, ScalingConfig
 from ray.train.constants import TRAIN_DATASET_KEY
 
 from ray.train.xgboost import XGBoostCheckpoint, XGBoostTrainer
-from ray.air.config import ScalingConfig
 from ray.data.preprocessor import Preprocessor
 
 from sklearn.datasets import load_breast_cancer
@@ -20,6 +19,14 @@ from sklearn.model_selection import train_test_split
 @pytest.fixture
 def ray_start_4_cpus():
     address_info = ray.init(num_cpus=4)
+    yield address_info
+    # The code after the yield will run as teardown code.
+    ray.shutdown()
+
+
+@pytest.fixture
+def ray_start_8_cpus():
+    address_info = ray.init(num_cpus=8)
     yield address_info
     # The code after the yield will run as teardown code.
     ray.shutdown()
@@ -107,7 +114,7 @@ def test_resume_from_checkpoint(ray_start_4_cpus, tmpdir):
         scaling_config=scale_config,
         label_column="target",
         params=params,
-        num_boost_round=5,
+        num_boost_round=10,
         datasets={TRAIN_DATASET_KEY: train_dataset, "valid": valid_dataset},
         resume_from_checkpoint=resume_from,
     )
@@ -133,8 +140,8 @@ def test_checkpoint_freq(ray_start_4_cpus, freq_end_expected):
     train_dataset = ray.data.from_pandas(train_df)
     valid_dataset = ray.data.from_pandas(test_df)
     trainer = XGBoostTrainer(
-        run_config=ray.air.RunConfig(
-            checkpoint_config=ray.air.CheckpointConfig(
+        run_config=ray.train.RunConfig(
+            checkpoint_config=ray.train.CheckpointConfig(
                 checkpoint_frequency=freq, checkpoint_at_end=end
             )
         ),
@@ -168,7 +175,7 @@ def test_preprocessor_in_checkpoint(ray_start_4_cpus, tmpdir):
             super().__init__()
             self.is_same = True
 
-        def fit(self, dataset):
+        def _fit(self, dataset):
             self.fitted_ = True
 
         def _transform_pandas(self, df: "pd.DataFrame") -> "pd.DataFrame":
@@ -197,7 +204,7 @@ def test_preprocessor_in_checkpoint(ray_start_4_cpus, tmpdir):
     assert preprocessor.fitted_
 
 
-def test_tune(ray_start_4_cpus):
+def test_tune(ray_start_8_cpus):
     train_dataset = ray.data.from_pandas(train_df)
     valid_dataset = ray.data.from_pandas(test_df)
     trainer = XGBoostTrainer(
@@ -238,7 +245,7 @@ def test_validation(ray_start_4_cpus):
 
 
 def test_distributed_data_loading(ray_start_4_cpus):
-    """Checks that XGBoostTrainer does distributed data loading for Ray Datasets."""
+    """Checks that XGBoostTrainer does distributed data loading for Datasets."""
 
     class DummyXGBoostTrainer(XGBoostTrainer):
         def _train(self, params, dtrain, **kwargs):

@@ -1,4 +1,4 @@
-from typing import Union, Dict, Any, Optional
+from typing import Dict, Any, Optional
 import sklearn.datasets
 import sklearn.metrics
 import os
@@ -8,10 +8,9 @@ from xgboost.core import Booster
 import pickle
 
 import ray
-from ray import air, tune
+from ray import train, tune
 from ray.tune.schedulers import ResourceChangingScheduler, ASHAScheduler
 from ray.tune import Trainable
-from ray.tune.resources import Resources
 from ray.tune.execution.placement_groups import PlacementGroupFactory
 from ray.tune.experiment import Trial
 from ray.tune.execution import trial_runner
@@ -20,7 +19,7 @@ from ray.tune.integration.xgboost import TuneReportCheckpointCallback
 CHECKPOINT_FILENAME = "model.xgb"
 
 
-def get_best_model_checkpoint(best_result: "ray.air.Result"):
+def get_best_model_checkpoint(best_result: "ray.train.Result"):
     best_bst = xgb.Booster()
 
     with best_result.checkpoint.as_directory() as checkpoint_dir:
@@ -167,7 +166,7 @@ def tune_xgboost(use_class_trainable=True):
         trial: Trial,
         result: Dict[str, Any],
         scheduler: "ResourceChangingScheduler",
-    ) -> Optional[Union[PlacementGroupFactory, Resources]]:
+    ) -> Optional[PlacementGroupFactory]:
         """This is a basic example of a resource allocating function.
 
         The function naively balances available CPUs over live trials.
@@ -245,8 +244,8 @@ def tune_xgboost(use_class_trainable=True):
             num_samples=1,
             scheduler=scheduler,
         ),
-        run_config=air.RunConfig(
-            checkpoint_config=air.CheckpointConfig(
+        run_config=train.RunConfig(
+            checkpoint_config=train.CheckpointConfig(
                 checkpoint_at_end=use_class_trainable,
             )
         ),

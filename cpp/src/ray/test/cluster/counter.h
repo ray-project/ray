@@ -57,6 +57,10 @@ class Counter {
     return bytes;
   }
 
+  std::vector<std::byte> echoBytes(const std::vector<std::byte> &bytes) { return bytes; }
+
+  std::string echoString(const std::string &str) { return str; }
+
   int GetIntVal(ray::ObjectRef<ray::ObjectRef<int>> obj) {
     auto val = *obj.Get();
     return *val.Get();
@@ -69,6 +73,8 @@ class Counter {
     return value == NULL ? "" : std::string(value);
   }
 
+  int GetIntByObjectRef(ray::ObjectRef<int> object_ref);
+
  private:
   int count;
   bool is_restared = false;
@@ -76,9 +82,6 @@ class Counter {
 };
 
 std::string GetEnvVar(std::string key);
-
-inline Counter *CreateCounter() { return new Counter(0); }
-RAY_REMOTE(CreateCounter);
 
 class CountDownLatch {
  public:

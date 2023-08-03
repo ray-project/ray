@@ -9,23 +9,27 @@ See `appo_[tf|torch]_policy.py` for the definition of the policy loss.
 Detailed documentation:
 https://docs.ray.io/en/master/rllib-algorithms.html#appo
 """
+import dataclasses
 from typing import Optional, Type
 import logging
 
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
+from ray.rllib.algorithms.appo.appo_learner import (
+    AppoLearnerHyperparameters,
+    LEARNER_RESULTS_KL_KEY,
+)
 from ray.rllib.algorithms.impala.impala import Impala, ImpalaConfig
 from ray.rllib.algorithms.ppo.ppo import UpdateKL
-from ray.rllib.execution.common import _get_shared_metrics, STEPS_SAMPLED_COUNTER
+from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.metrics import (
     LAST_TARGET_UPDATE_TS,
     NUM_AGENT_STEPS_SAMPLED,
     NUM_ENV_STEPS_SAMPLED,
     NUM_TARGET_UPDATES,
 )
-from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
+from ray.rllib.utils.metrics import ALL_MODULES, LEARNER_STATS_KEY
 from ray.rllib.utils.typing import (
     ResultDict,
 )
@@ -93,13 +97,20 @@ class APPOConfig(ImpalaConfig):
         self.num_multi_gpu_tower_stacks = 1
         self.minibatch_buffer_size = 1
         self.num_sgd_iter = 1
+        self.target_update_frequency = 1
         self.replay_proportion = 0.0
         self.replay_buffer_num_slots = 100
         self.learner_queue_size = 16
         self.learner_queue_timeout = 300
         self.max_sample_requests_in_flight_per_worker = 2
         self.broadcast_interval = 1
+
         self.grad_clip = 40.0
+        # Note: Only when using _enable_learner_api=True can the clipping mode be
+        # configured by the user. On the old API stack, RLlib will always clip by
+        # global_norm, no matter the value of `grad_clip_by`.
+        self.grad_clip_by = "global_norm"
+
         self.opt_type = "adam"
         self.lr = 0.0005
         self.lr_schedule = None
@@ -109,6 +120,17 @@ class APPOConfig(ImpalaConfig):
         self.vf_loss_coeff = 0.5
         self.entropy_coeff = 0.01
         self.entropy_coeff_schedule = None
+        self.tau = 1.0
+        self.exploration_config = {
+            # The Exploration class to use. In the simplest case, this is the name
+            # (str) of any class present in the `rllib.utils.exploration` package.
+            # You can also provide the python class directly or the full location
+            # of your class (e.g. "ray.rllib.utils.exploration.epsilon_greedy.
+            # EpsilonGreedy").
+            "type": "StochasticSampling",
+            # Add constructor kwargs here (if any).
+        }
+
         # __sphinx_doc_end__
         # fmt: on
 
@@ -124,6 +146,8 @@ class APPOConfig(ImpalaConfig):
         use_kl_loss: Optional[bool] = NotProvided,
         kl_coeff: Optional[float] = NotProvided,
         kl_target: Optional[float] = NotProvided,
+        tau: Optional[float] = NotProvided,
+        target_update_frequency: Optional[int] = NotProvided,
         **kwargs,
     ) -> "APPOConfig":
         """Sets the training related configuration.
@@ -142,6 +166,19 @@ class APPOConfig(ImpalaConfig):
             kl_coeff: Coefficient for weighting the KL-loss term.
             kl_target: Target term for the KL-term to reach (via adjusting the
                 `kl_coeff` automatically).
+            tau: The factor by which to update the target policy network towards
+                the current policy network. Can range between 0 and 1.
+                e.g. updated_param = tau * current_param + (1 - tau) * target_param
+            target_update_frequency: The frequency to update the target policy and
+                tune the kl loss coefficients that are used during training. After
+                setting this parameter, the algorithm waits for at least
+                `target_update_frequency * minibatch_size * num_sgd_iter` number of
+                samples to be trained on by the learner group before updating the target
+                networks and tuned the kl loss coefficients that are used during
+                training.
+                NOTE: this parameter is only applicable when using the learner api
+                (_enable_learner_api=True and _enable_rl_module_api=True).
+
 
         Returns:
             This updated AlgorithmConfig object.
@@ -165,33 +202,72 @@ class APPOConfig(ImpalaConfig):
             self.kl_coeff = kl_coeff
         if kl_target is not NotProvided:
             self.kl_target = kl_target
+        if tau is not NotProvided:
+            self.tau = tau
+        if target_update_frequency is not NotProvided:
+            self.target_update_frequency = target_update_frequency
 
         return self
 
+    @override(ImpalaConfig)
+    def get_default_learner_class(self):
+        if self.framework_str == "torch":
+            from ray.rllib.algorithms.appo.torch.appo_torch_learner import (
+                APPOTorchLearner,
+            )
 
-class UpdateTargetAndKL:
-    def __init__(self, workers, config):
-        self.workers = workers
-        self.config = config
-        self.update_kl = UpdateKL(workers)
-        self.target_update_freq = (
-            config["num_sgd_iter"] * config["minibatch_buffer_size"]
+            return APPOTorchLearner
+        elif self.framework_str == "tf2":
+            from ray.rllib.algorithms.appo.tf.appo_tf_learner import APPOTfLearner
+
+            return APPOTfLearner
+        else:
+            raise ValueError(
+                f"The framework {self.framework_str} is not supported. "
+                "Use either 'torch' or 'tf2'."
+            )
+
+    @override(ImpalaConfig)
+    def get_default_rl_module_spec(self) -> SingleAgentRLModuleSpec:
+        if self.framework_str == "torch":
+            from ray.rllib.algorithms.appo.torch.appo_torch_rl_module import (
+                APPOTorchRLModule as RLModule,
+            )
+        elif self.framework_str == "tf2":
+            from ray.rllib.algorithms.appo.tf.appo_tf_rl_module import (
+                APPOTfRLModule as RLModule,
+            )
+        else:
+            raise ValueError(
+                f"The framework {self.framework_str} is not supported. "
+                "Use either 'torch' or 'tf2'."
+            )
+
+        from ray.rllib.algorithms.appo.appo_catalog import APPOCatalog
+
+        return SingleAgentRLModuleSpec(module_class=RLModule, catalog_class=APPOCatalog)
+
+    @override(ImpalaConfig)
+    def get_learner_hyperparameters(self) -> AppoLearnerHyperparameters:
+        base_hps = super().get_learner_hyperparameters()
+        return AppoLearnerHyperparameters(
+            use_kl_loss=self.use_kl_loss,
+            kl_target=self.kl_target,
+            kl_coeff=self.kl_coeff,
+            clip_param=self.clip_param,
+            tau=self.tau,
+            target_update_frequency_ts=(
+                self.train_batch_size * self.num_sgd_iter * self.target_update_frequency
+            ),
+            **dataclasses.asdict(base_hps),
         )
 
-    def __call__(self, fetches):
-        metrics = _get_shared_metrics()
-        cur_ts = metrics.counters[STEPS_SAMPLED_COUNTER]
-        last_update = metrics.counters[LAST_TARGET_UPDATE_TS]
-        if cur_ts - last_update > self.target_update_freq:
-            metrics.counters[NUM_TARGET_UPDATES] += 1
-            metrics.counters[LAST_TARGET_UPDATE_TS] = cur_ts
-            # Update Target Network
-            self.workers.local_worker().foreach_policy_to_train(
-                lambda p, _: p.update_target()
-            )
-            # Also update KL Coeff
-            if self.config.use_kl_loss:
-                self.update_kl(fetches)
+
+# Still used by one of the old checkpoints in tests.
+# Keep a shim version of this around.
+class UpdateTargetAndKL:
+    def __init__(self, workers, config):
+        pass
 
 
 class APPO(Impala):
@@ -200,22 +276,29 @@ class APPO(Impala):
         super().__init__(config, *args, **kwargs)
 
         # After init: Initialize target net.
-        self.workers.local_worker().foreach_policy_to_train(
-            lambda p, _: p.update_target()
-        )
+
+        # TODO(avnishn):
+        # does this need to happen in __init__? I think we can move it to setup()
+        if not self.config._enable_rl_module_api:
+            self.workers.local_worker().foreach_policy_to_train(
+                lambda p, _: p.update_target()
+            )
 
     @override(Impala)
     def setup(self, config: AlgorithmConfig):
         super().setup(config)
 
-        self.update_kl = UpdateKL(self.workers)
+        # TODO(avnishn):
+        # this attribute isn't used anywhere else in the code. I think we can safely
+        # delete it.
+        if not self.config._enable_rl_module_api:
+            self.update_kl = UpdateKL(self.workers)
 
     def after_train_step(self, train_results: ResultDict) -> None:
         """Updates the target network and the KL coefficient for the APPO-loss.
 
-        This method is called from within the `training_iteration` method after each
-        train update.
-
+        This method is called from within the `training_step` method after each train
+        update.
         The target network update frequency is calculated automatically by the product
         of `num_sgd_iter` setting (usually 1 for APPO) and `minibatch_buffer_size`.
 
@@ -223,45 +306,66 @@ class APPO(Impala):
             train_results: The results dict collected during the most recent
                 training step.
         """
-        cur_ts = self._counters[
-            NUM_AGENT_STEPS_SAMPLED
-            if self.config.count_steps_by == "agent_steps"
-            else NUM_ENV_STEPS_SAMPLED
-        ]
-        last_update = self._counters[LAST_TARGET_UPDATE_TS]
-        target_update_freq = (
-            self.config.num_sgd_iter * self.config.minibatch_buffer_size
-        )
-        if cur_ts - last_update > target_update_freq:
-            self._counters[NUM_TARGET_UPDATES] += 1
-            self._counters[LAST_TARGET_UPDATE_TS] = cur_ts
 
-            # Update our target network.
-            self.workers.local_worker().foreach_policy_to_train(
-                lambda p, _: p.update_target()
+        if self.config._enable_learner_api:
+            if NUM_TARGET_UPDATES in train_results:
+                self._counters[NUM_TARGET_UPDATES] += train_results[NUM_TARGET_UPDATES]
+                self._counters[LAST_TARGET_UPDATE_TS] = train_results[
+                    LAST_TARGET_UPDATE_TS
+                ]
+        else:
+            last_update = self._counters[LAST_TARGET_UPDATE_TS]
+            cur_ts = self._counters[
+                NUM_AGENT_STEPS_SAMPLED
+                if self.config.count_steps_by == "agent_steps"
+                else NUM_ENV_STEPS_SAMPLED
+            ]
+            target_update_freq = (
+                self.config.num_sgd_iter * self.config.minibatch_buffer_size
             )
+            if cur_ts - last_update > target_update_freq:
+                self._counters[NUM_TARGET_UPDATES] += 1
+                self._counters[LAST_TARGET_UPDATE_TS] = cur_ts
 
-            # Also update the KL-coefficient for the APPO loss, if necessary.
-            if self.config.use_kl_loss:
+                # Update our target network.
+                self.workers.local_worker().foreach_policy_to_train(
+                    lambda p, _: p.update_target()
+                )
 
-                def update(pi, pi_id):
-                    assert LEARNER_STATS_KEY not in train_results, (
-                        "{} should be nested under policy id key".format(
-                            LEARNER_STATS_KEY
-                        ),
-                        train_results,
-                    )
-                    if pi_id in train_results:
-                        kl = train_results[pi_id][LEARNER_STATS_KEY].get("kl")
-                        assert kl is not None, (train_results, pi_id)
-                        # Make the actual `Policy.update_kl()` call.
-                        pi.update_kl(kl)
-                    else:
-                        logger.warning("No data for {}, not updating kl".format(pi_id))
+                # Also update the KL-coefficient for the APPO loss, if necessary.
+                if self.config.use_kl_loss:
 
-                # Update KL on all trainable policies within the local (trainer)
-                # Worker.
-                self.workers.local_worker().foreach_policy_to_train(update)
+                    def update(pi, pi_id):
+                        assert LEARNER_STATS_KEY not in train_results, (
+                            "{} should be nested under policy id key".format(
+                                LEARNER_STATS_KEY
+                            ),
+                            train_results,
+                        )
+                        if pi_id in train_results:
+                            kl = train_results[pi_id][LEARNER_STATS_KEY].get("kl")
+                            assert kl is not None, (train_results, pi_id)
+                            # Make the actual `Policy.update_kl()` call.
+                            pi.update_kl(kl)
+                        else:
+                            logger.warning(
+                                "No data for {}, not updating kl".format(pi_id)
+                            )
+
+                    # Update KL on all trainable policies within the local (trainer)
+                    # Worker.
+                    self.workers.local_worker().foreach_policy_to_train(update)
+
+    @override(Impala)
+    def _get_additional_update_kwargs(self, train_results) -> dict:
+        return dict(
+            last_update=self._counters[LAST_TARGET_UPDATE_TS],
+            mean_kl_loss_per_module={
+                module_id: r[LEARNER_RESULTS_KL_KEY]
+                for module_id, r in train_results.items()
+                if module_id != ALL_MODULES
+            },
+        )
 
     @override(Impala)
     def training_step(self) -> ResultDict:
@@ -287,6 +391,12 @@ class APPO(Impala):
 
             return APPOTorchPolicy
         elif config["framework"] == "tf":
+            if config._enable_rl_module_api:
+                raise ValueError(
+                    "RLlib's RLModule and Learner API is not supported for"
+                    " tf1. Use "
+                    "framework='tf2' instead."
+                )
             from ray.rllib.algorithms.appo.appo_tf_policy import APPOTF1Policy
 
             return APPOTF1Policy
@@ -294,20 +404,3 @@ class APPO(Impala):
             from ray.rllib.algorithms.appo.appo_tf_policy import APPOTF2Policy
 
             return APPOTF2Policy
-
-
-# Deprecated: Use ray.rllib.algorithms.appo.APPOConfig instead!
-class _deprecated_default_config(dict):
-    def __init__(self):
-        super().__init__(APPOConfig().to_dict())
-
-    @Deprecated(
-        old="ray.rllib.agents.ppo.appo::DEFAULT_CONFIG",
-        new="ray.rllib.algorithms.appo.appo::APPOConfig(...)",
-        error=True,
-    )
-    def __getitem__(self, item):
-        return super().__getitem__(item)
-
-
-DEFAULT_CONFIG = _deprecated_default_config()

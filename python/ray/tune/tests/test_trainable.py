@@ -9,14 +9,15 @@ from unittest.mock import patch
 import pytest
 
 import ray
-from ray import tune
-from ray.air import session, Checkpoint
+from ray import train, tune
+from ray.train import Checkpoint
 from ray.air._internal.remote_storage import (
     download_from_uri,
     upload_to_uri,
     delete_at_uri,
 )
 from ray.tune.logger import NoopLogger
+from ray.tune.syncer import _DefaultSyncer
 from ray.tune.trainable import wrap_function
 
 
@@ -84,16 +85,14 @@ class SavingTrainable(tune.Trainable):
 
 
 def function_trainable_dict(config):
-    session.report(
-        {"metric": 2}, checkpoint=Checkpoint.from_dict({"checkpoint_data": 3})
-    )
+    train.report({"metric": 2}, checkpoint=Checkpoint.from_dict({"checkpoint_data": 3}))
 
 
 def function_trainable_directory(config):
     tmpdir = tempfile.mkdtemp("checkpoint_test")
     with open(os.path.join(tmpdir, "data.json"), "w") as f:
         json.dump({"checkpoint_data": 5}, f)
-    session.report({"metric": 4}, checkpoint=Checkpoint.from_directory(tmpdir))
+    train.report({"metric": 4}, checkpoint=Checkpoint.from_directory(tmpdir))
 
 
 @pytest.mark.parametrize("return_type", ["object", "root", "subdir", "checkpoint"])
@@ -205,17 +204,26 @@ def test_checkpoint_object_no_sync(tmpdir):
 
 
 @pytest.mark.parametrize("hanging", [True, False])
-def test_sync_timeout(tmpdir, hanging):
+def test_sync_timeout(tmpdir, monkeypatch, hanging):
+    monkeypatch.setenv("TUNE_CHECKPOINT_CLOUD_RETRY_WAIT_TIME_S", "0")
+
     orig_upload_fn = upload_to_uri
 
     def _hanging_upload(*args, **kwargs):
         time.sleep(200 if hanging else 0)
         orig_upload_fn(*args, **kwargs)
 
+    class HangingSyncer(_DefaultSyncer):
+        def _sync_up_command(self, local_path: str, uri: str, exclude: list = None):
+            return (
+                _hanging_upload,
+                dict(local_path=local_path, uri=uri, exclude=exclude),
+            )
+
     trainable = SavingTrainable(
         "object",
         remote_checkpoint_dir=f"memory:///test/location_hanging_{hanging}",
-        sync_timeout=0.5,
+        sync_config=tune.SyncConfig(syncer=HangingSyncer(sync_timeout=0.5)),
     )
 
     with patch("ray.air.checkpoint.upload_to_uri", _hanging_upload):
@@ -254,7 +262,7 @@ def test_find_latest_checkpoint_local(tmpdir):
         "object",
         logger_creator=_logger,
         remote_checkpoint_dir=None,
-        sync_timeout=0.5,
+        sync_config=tune.SyncConfig(sync_timeout=0.5),
     )
     assert trainable._get_latest_local_available_checkpoint() is None
 
@@ -301,7 +309,7 @@ def test_find_latest_checkpoint_remote(tmpdir):
         "object",
         logger_creator=_logger,
         remote_checkpoint_dir=remote_uri,
-        sync_timeout=0.5,
+        sync_config=tune.SyncConfig(sync_timeout=0.5),
     )
     assert trainable._get_latest_remote_available_checkpoint() is None
 
@@ -360,7 +368,7 @@ def test_recover_from_latest(tmpdir, upload_uri, fetch_from_cloud):
         "object",
         logger_creator=_logger,
         remote_checkpoint_dir=remote_checkpoint_dir,
-        sync_timeout=0.5,
+        sync_config=tune.SyncConfig(sync_timeout=0.5),
     )
 
     assert trainable._get_latest_available_checkpoint() is None
@@ -388,7 +396,7 @@ def test_recover_from_latest(tmpdir, upload_uri, fetch_from_cloud):
         "object",
         logger_creator=_logger,
         remote_checkpoint_dir=remote_checkpoint_dir,
-        sync_timeout=0.5,
+        sync_config=tune.SyncConfig(sync_timeout=0.5),
     )
 
     if remote_checkpoint_dir and fetch_from_cloud:

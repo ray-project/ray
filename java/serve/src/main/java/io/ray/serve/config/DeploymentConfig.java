@@ -208,6 +208,26 @@ public class DeploymentConfig implements Serializable {
     return builder.build().toByteArray();
   }
 
+  public io.ray.serve.generated.DeploymentConfig toProto() {
+    io.ray.serve.generated.DeploymentConfig.Builder builder =
+        io.ray.serve.generated.DeploymentConfig.newBuilder()
+            .setNumReplicas(numReplicas)
+            .setMaxConcurrentQueries(maxConcurrentQueries)
+            .setGracefulShutdownWaitLoopS(gracefulShutdownWaitLoopS)
+            .setGracefulShutdownTimeoutS(gracefulShutdownTimeoutS)
+            .setHealthCheckPeriodS(healthCheckPeriodS)
+            .setHealthCheckTimeoutS(healthCheckTimeoutS)
+            .setIsCrossLanguage(isCrossLanguage)
+            .setDeploymentLanguage(deploymentLanguage);
+    if (null != userConfig) {
+      builder.setUserConfig(ByteString.copyFrom(MessagePackSerializer.encode(userConfig).getKey()));
+    }
+    if (null != autoscalingConfig) {
+      builder.setAutoscalingConfig(autoscalingConfig.toProto());
+    }
+    return builder.build();
+  }
+
   public static DeploymentConfig fromProto(io.ray.serve.generated.DeploymentConfig proto) {
 
     DeploymentConfig deploymentConfig = new DeploymentConfig();

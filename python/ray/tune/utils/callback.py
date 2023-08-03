@@ -1,10 +1,9 @@
-from typing import List, Optional
-
 import logging
 import os
+from typing import Collection, List, Optional, Type, Union, TYPE_CHECKING
 
-from ray.tune.callback import Callback
-from ray.tune.progress_reporter import TrialProgressCallback
+from ray.tune.callback import Callback, CallbackList
+
 from ray.tune.syncer import SyncConfig
 from ray.tune.logger import (
     CSVLoggerCallback,
@@ -20,13 +19,37 @@ from ray.tune.syncer import SyncerCallback
 
 logger = logging.getLogger(__name__)
 
+if TYPE_CHECKING:
+    from ray.tune.experimental.output import AirVerbosity
+
+DEFAULT_CALLBACK_CLASSES = (
+    CSVLoggerCallback,
+    JsonLoggerCallback,
+    TBXLoggerCallback,
+    SyncerCallback,
+)
+
+
+def _get_artifact_templates_for_callbacks(
+    callbacks: Union[List[Callback], List[Type[Callback]], CallbackList]
+) -> List[str]:
+    templates = []
+    for callback in callbacks:
+        templates += list(callback._SAVED_FILE_TEMPLATES)
+    return templates
+
 
 def _create_default_callbacks(
     callbacks: Optional[List[Callback]],
+    *,
     sync_config: SyncConfig,
+    air_verbosity: Optional["AirVerbosity"] = None,
+    entrypoint: Optional[str] = None,
     metric: Optional[str] = None,
-    progress_metrics: Optional[List[str]] = None,
-):
+    mode: Optional[str] = None,
+    config: Optional[dict] = None,
+    progress_metrics: Optional[Collection[str]] = None,
+) -> List[Callback]:
     """Create default callbacks for `Tuner.fit()`.
 
     This function takes a list of existing callbacks and adds default
@@ -56,11 +79,36 @@ def _create_default_callbacks(
     has_json_logger = False
     has_tbx_logger = False
 
+    from ray.tune.progress_reporter import TrialProgressCallback
+
     has_trial_progress_callback = any(
         isinstance(c, TrialProgressCallback) for c in callbacks
     )
 
-    if not has_trial_progress_callback:
+    if has_trial_progress_callback and air_verbosity is not None:
+        logger.warning(
+            "AIR_VERBOSITY is set, ignoring passed-in TrialProgressCallback."
+        )
+        new_callbacks = [
+            c for c in callbacks if not isinstance(c, TrialProgressCallback)
+        ]
+        callbacks = new_callbacks
+    if air_verbosity is not None:  # new flow
+        from ray.tune.experimental.output import (
+            _detect_reporter as _detect_air_reporter,
+        )
+
+        air_progress_reporter = _detect_air_reporter(
+            air_verbosity,
+            num_samples=1,  # Update later with setup()
+            entrypoint=entrypoint,
+            metric=metric,
+            mode=mode,
+            config=config,
+            progress_metrics=progress_metrics,
+        )
+        callbacks.append(air_progress_reporter)
+    elif not has_trial_progress_callback:  # old flow
         trial_progress_callback = TrialProgressCallback(
             metric=metric, progress_metrics=progress_metrics
         )

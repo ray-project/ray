@@ -14,7 +14,10 @@ from typing import TYPE_CHECKING, Any, Dict, Iterator, Optional, Tuple, Type, Un
 
 import ray
 from ray import cloudpickle as pickle
-from ray.air._internal.checkpointing import load_preprocessor_from_dir
+from ray.air._internal.checkpointing import (
+    load_preprocessor_from_dir,
+    save_preprocessor_to_dir,
+)
 from ray.air._internal.filelock import TempFileLock
 from ray.air._internal.remote_storage import (
     download_from_uri,
@@ -23,8 +26,9 @@ from ray.air._internal.remote_storage import (
     read_file_from_uri,
     upload_to_uri,
 )
+from ray.air._internal.util import _copy_dir_ignore_conflicts
 from ray.air.constants import PREPROCESSOR_KEY, CHECKPOINT_ID_ATTR
-from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
+from ray.util.annotations import DeveloperAPI, PublicAPI
 
 if TYPE_CHECKING:
     from ray.data.preprocessor import Preprocessor
@@ -38,6 +42,8 @@ _FS_CHECKPOINT_KEY = "fs_checkpoint"
 _BYTES_DATA_KEY = "bytes_data"
 _METADATA_KEY = "_metadata"
 _CHECKPOINT_DIR_PREFIX = "checkpoint_tmp_"
+# The namespace is a constant UUID to prevent conflicts, as defined in RFC-4122
+_CHECKPOINT_UUID_URI_NAMESPACE = uuid.UUID("627fe696-f135-436f-bc4b-bda0306e0181")
 
 logger = logging.getLogger(__name__)
 
@@ -102,8 +108,7 @@ class Checkpoint:
         # It is guaranteed that the original data has been recovered
         assert recovered_data == checkpoint_data
 
-    Checkpoints can be used to instantiate a :class:`Predictor`,
-    :class:`BatchPredictor`, or :class:`PredictorDeployment` class.
+    Checkpoints can be used to instantiate a :class:`Predictor`.
 
     The constructor is a private API, instead the ``from_`` methods should
     be used to create checkpoint objects
@@ -113,7 +118,7 @@ class Checkpoint:
 
     When converting between different checkpoint formats, it is guaranteed
     that a full round trip of conversions (e.g. directory --> dict -->
-    obj ref --> directory) will recover the original checkpoint data.
+    --> directory) will recover the original checkpoint data.
     There are no guarantees made about compatibility of intermediate
     representations.
 
@@ -139,10 +144,7 @@ class Checkpoint:
     same node or a node that also has access to the local data path (e.g.
     on a shared file system like NFS).
 
-    Checkpoints pointing to object store references will keep the
-    object reference in tact - this means that these checkpoints cannot
-    be properly deserialized on other Ray clusters or outside a Ray
-    cluster. If you need persistence across clusters, use the ``to_uri()``
+    If you need persistence across clusters, use the ``to_uri()``
     or ``to_directory()`` methods to persist your checkpoints to disk.
 
     """
@@ -162,7 +164,6 @@ class Checkpoint:
         local_path: Optional[Union[str, os.PathLike]] = None,
         data_dict: Optional[dict] = None,
         uri: Optional[str] = None,
-        obj_ref: Optional[ray.ObjectRef] = None,
     ):
         # First, resolve file:// URIs to local paths
         if uri:
@@ -172,7 +173,7 @@ class Checkpoint:
 
         # Only one data type can be set at any time
         if local_path:
-            assert not data_dict and not uri and not obj_ref
+            assert not data_dict and not uri
             if not isinstance(local_path, (str, os.PathLike)) or not os.path.exists(
                 local_path
             ):
@@ -188,21 +189,14 @@ class Checkpoint:
                     f"instead."
                 )
         elif data_dict:
-            assert not local_path and not uri and not obj_ref
+            assert not local_path and not uri
             if not isinstance(data_dict, dict):
                 raise RuntimeError(
                     f"Cannot create checkpoint from dict as no "
                     f"dict was passed: {data_dict}"
                 )
-        elif obj_ref:
-            assert not local_path and not data_dict and not uri
-            if not isinstance(obj_ref, ray.ObjectRef):
-                raise RuntimeError(
-                    f"Cannot create checkpoint from object ref as no "
-                    f"object ref was passed: {obj_ref}"
-                )
         elif uri:
-            assert not local_path and not data_dict and not obj_ref
+            assert not local_path and not data_dict
             resolved = _get_external_path(uri)
             if not resolved:
                 raise RuntimeError(
@@ -218,9 +212,20 @@ class Checkpoint:
         )
         self._data_dict: Optional[Dict[str, Any]] = data_dict
         self._uri: Optional[str] = uri
-        self._obj_ref: Optional[ray.ObjectRef] = obj_ref
+        self._override_preprocessor: Optional["Preprocessor"] = None
+        self._override_preprocessor_set = False
 
-        self._uuid = uuid.uuid4()
+        # When using a cloud URI, we make sure that the uuid is constant.
+        # This ensures we do not download the data multiple times on one node.
+        # Note that this is not a caching mechanism - instead, this
+        # only ensures that if there are several processes downloading
+        # from the same URI, only one process does the actual work
+        # while the rest waits (FileLock). This also means data will not be duplicated.
+        self._uuid = (
+            uuid.uuid4()
+            if not self._uri
+            else uuid.uuid5(_CHECKPOINT_UUID_URI_NAMESPACE, self._uri)
+        )
 
     def __repr__(self):
         parameter, argument = self.get_internal_representation()
@@ -252,6 +257,37 @@ class Checkpoint:
             )
         for attr, value in metadata.checkpoint_state.items():
             setattr(self, attr, value)
+
+    @property
+    def path(self) -> Optional[str]:
+        """Return path to checkpoint, if available.
+
+        This will return a URI to cloud storage if this checkpoint is
+        persisted on cloud, or a local path if this checkpoint
+        is persisted on local disk and available on the current node.
+
+        In all other cases, this will return None.
+
+        Example:
+
+            >>> from ray.air import Checkpoint
+            >>> checkpoint = Checkpoint.from_uri("s3://some-bucket/some-location")
+            >>> assert checkpoint.path == "s3://some-bucket/some-location"
+            >>> checkpoint = Checkpoint.from_dict({"data": 1})
+            >>> assert checkpoint.path == None
+
+        Returns:
+            Checkpoint path if this checkpoint is reachable from the current node (e.g.
+            cloud storage or locally available directory).
+
+        """
+        if self._uri:
+            return self._uri
+
+        if self._local_path:
+            return self._local_path
+
+        return None
 
     @property
     def uri(self) -> Optional[str]:
@@ -294,7 +330,7 @@ class Checkpoint:
             data: Data object containing pickled checkpoint data.
 
         Returns:
-            Checkpoint: checkpoint object.
+            ray.air.checkpoint.Checkpoint: checkpoint object.
         """
         bytes_data = pickle.loads(data)
         if isinstance(bytes_data, dict):
@@ -311,8 +347,8 @@ class Checkpoint:
         """
         # Todo: Add support for stream in the future (to_bytes(file_like))
         data_dict = self.to_dict()
-        if "bytes_data" in data_dict:
-            return data_dict["bytes_data"]
+        if _BYTES_DATA_KEY in data_dict:
+            return data_dict[_BYTES_DATA_KEY]
         return pickle.dumps(data_dict)
 
     @classmethod
@@ -323,7 +359,7 @@ class Checkpoint:
             data: Dictionary containing checkpoint data.
 
         Returns:
-            Checkpoint: checkpoint object.
+            ray.air.checkpoint.Checkpoint: checkpoint object.
         """
         state = {}
         if _METADATA_KEY in data:
@@ -345,9 +381,6 @@ class Checkpoint:
         if self._data_dict:
             # If the checkpoint data is already a dict, return
             checkpoint_data = self._data_dict
-        elif self._obj_ref:
-            # If the checkpoint data is an object reference, resolve
-            checkpoint_data = ray.get(self._obj_ref)
         elif self._local_path or self._uri:
             # Else, checkpoint is either on FS or external storage
             with self.as_directory() as local_path:
@@ -405,43 +438,11 @@ class Checkpoint:
             raise RuntimeError(f"Empty data for checkpoint {self}")
 
         checkpoint_data[_METADATA_KEY] = self._metadata
+
+        # If override_preprocessor is specified, then set that in the output dict.
+        if self._override_preprocessor_set:
+            checkpoint_data[PREPROCESSOR_KEY] = self._override_preprocessor
         return checkpoint_data
-
-    @classmethod
-    @Deprecated(
-        message="To restore a checkpoint from a remote object ref, call "
-        "`ray.get(obj_ref)` instead."
-    )
-    def from_object_ref(cls, obj_ref: ray.ObjectRef) -> "Checkpoint":
-        """Create checkpoint object from object reference.
-
-        Args:
-            obj_ref: ObjectRef pointing to checkpoint data.
-
-        Returns:
-            Checkpoint: checkpoint object.
-        """
-        raise DeprecationWarning(
-            "`from_object_ref` is deprecated and will be removed in a future Ray "
-            "version. To restore a Checkpoint from a remote object ref, call "
-            "`ray.get(obj_ref)` instead.",
-        )
-
-    @Deprecated(
-        message="To store the checkpoint in the Ray object store, call `ray.put(ckpt)` "
-        "instead of `ckpt.to_object_ref()`."
-    )
-    def to_object_ref(self) -> ray.ObjectRef:
-        """Return checkpoint data as object reference.
-
-        Returns:
-            ray.ObjectRef: ObjectRef pointing to checkpoint data.
-        """
-        raise DeprecationWarning(
-            "`to_object_ref` is deprecated and will be removed in a future Ray "
-            "version. To store the checkpoint in the Ray object store, call "
-            "`ray.put(ckpt)` instead of `ckpt.to_object_ref()`.",
-        )
 
     @classmethod
     def from_directory(cls, path: Union[str, os.PathLike]) -> "Checkpoint":
@@ -453,7 +454,7 @@ class Checkpoint:
                 Checkpoint).
 
         Returns:
-            Checkpoint: checkpoint object.
+            ray.air.checkpoint.Checkpoint: checkpoint object.
         """
         state = {}
 
@@ -469,20 +470,20 @@ class Checkpoint:
 
         return checkpoint
 
-    # TODO: Deprecate `from_checkpoint`. For context, see #29058.
     @classmethod
+    @DeveloperAPI
     def from_checkpoint(cls, other: "Checkpoint") -> "Checkpoint":
-        """Create a checkpoint from a generic :py:class:`Checkpoint`.
+        """Create a checkpoint from a generic :class:`ray.air.checkpoint.Checkpoint`.
 
         This method can be used to create a framework-specific checkpoint from a
-        generic :py:class:`Checkpoint` object.
+        generic :class:`Checkpoint` object.
 
         Examples:
             >>> result = TorchTrainer.fit(...)  # doctest: +SKIP
-            >>> checkpoint = TorchCheckpoint.from_checkpoint(result.checkpoint)  # doctest: +SKIP # noqa: E501
+            >>> checkpoint = TorchCheckpoint.from_checkpoint(result.checkpoint)  # doctest: +SKIP
             >>> model = checkpoint.get_model()  # doctest: +SKIP
             Linear(in_features=1, out_features=1, bias=True)
-        """
+        """  # noqa: E501
         if type(other) is cls:
             return other
 
@@ -490,7 +491,6 @@ class Checkpoint:
             local_path=other._local_path,
             data_dict=other._data_dict,
             uri=other._uri,
-            obj_ref=other._obj_ref,
         )
         new_checkpoint._copy_metadata_attrs_from(other)
         return new_checkpoint
@@ -525,8 +525,7 @@ class Checkpoint:
             pickle.dump(self._metadata, file)
 
     def _to_directory(self, path: str, move_instead_of_copy: bool = False) -> None:
-        if self._data_dict or self._obj_ref:
-            # This is a object ref or dict
+        if self._data_dict:
             data_dict = self.to_dict()
             if _FS_CHECKPOINT_KEY in data_dict:
                 for key in data_dict.keys():
@@ -560,22 +559,26 @@ class Checkpoint:
             if local_path:
                 local_path_pathlib = Path(local_path).resolve()
                 if local_path_pathlib != path_pathlib:
-                    if path_pathlib.exists():
-                        shutil.rmtree(str(path_pathlib.absolute()))
                     # If this exists on the local path, just copy over
                     if move_instead_of_copy:
                         os.makedirs(str(path_pathlib.absolute()), exist_ok=True)
                         self._local_path = str(path_pathlib.absolute())
                         for inner in local_path_pathlib.iterdir():
+                            dest = path_pathlib / inner.name
+                            if dest.exists():
+                                # Ignore files that already exist.
+                                # For example, checkpoints from every rank may all have
+                                # a same .is_checkpoint file.
+                                continue
                             shutil.move(
                                 str(inner.absolute()), str(path_pathlib.absolute())
                             )
                     else:
-                        shutil.copytree(
-                            str(local_path_pathlib.absolute()),
-                            str(path_pathlib.absolute()),
-                        )
+                        _copy_dir_ignore_conflicts(local_path_pathlib, path_pathlib)
             elif external_path:
+                logger.info(
+                    f"Downloading checkpoint from {external_path} to {path} ..."
+                )
                 # If this exists on external storage (e.g. cloud), download
                 download_from_uri(uri=external_path, local_path=path, filelock=False)
             else:
@@ -584,6 +587,9 @@ class Checkpoint:
                 )
 
         self._save_checkpoint_metadata_in_directory(path)
+
+        if self._override_preprocessor_set and self._override_preprocessor:
+            save_preprocessor_to_dir(self._override_preprocessor, path)
 
     def _to_directory_safe(self, path: str, move_instead_of_copy: bool = False) -> None:
         try:
@@ -615,7 +621,7 @@ class Checkpoint:
                 " a local directory"
             )
         path = os.path.normpath(str(path))
-        _make_dir(path, acquire_del_lock=True)
+        _make_dir(path)
         self._local_path = self._to_directory_safe(path, move_instead_of_copy=True)
         return self._local_path
 
@@ -708,7 +714,7 @@ class Checkpoint:
             uri: Source location URI to read data from.
 
         Returns:
-            Checkpoint: checkpoint object.
+            ray.air.checkpoint.Checkpoint: checkpoint object.
         """
         state = {}
         try:
@@ -766,7 +772,7 @@ class Checkpoint:
         objects for equality or to access the underlying data storage.
 
         The returned type is a string and one of
-        ``["local_path", "data_dict", "uri", "object_ref"]``.
+        ``["local_path", "data_dict", "uri"]``.
 
         The data is the respective data value.
 
@@ -782,8 +788,6 @@ class Checkpoint:
             return "data_dict", self._data_dict
         elif self._uri:
             return "uri", self._uri
-        elif self._obj_ref:
-            return "object_ref", self._obj_ref
         else:
             raise RuntimeError(
                 "Cannot get internal representation of empty checkpoint."
@@ -807,19 +811,34 @@ class Checkpoint:
     def get_preprocessor(self) -> Optional["Preprocessor"]:
         """Return the saved preprocessor, if one exists."""
 
+        if self._override_preprocessor_set:
+            return self._override_preprocessor
+
         # The preprocessor will either be stored in an in-memory dict or
         # written to storage. In either case, it will use the PREPROCESSOR_KEY key.
 
-        # First try converting to dictionary.
-        checkpoint_dict = self.to_dict()
-        preprocessor = checkpoint_dict.get(PREPROCESSOR_KEY, None)
-
-        if preprocessor is None:
-            # Fallback to reading from directory.
+        # If this is a pure directory checkpoint (not a dict checkpoint saved to dir),
+        # then do not convert to dictionary as that takes a lot of time and memory.
+        if self.uri:
             with self.as_directory() as checkpoint_path:
-                preprocessor = load_preprocessor_from_dir(checkpoint_path)
+                if _is_persisted_directory_checkpoint(checkpoint_path):
+                    # If this is a persisted directory checkpoint, then we load the
+                    # files from the temp directory created by the context.
+                    # That way we avoid having to download the files twice.
+                    loaded_checkpoint = self.from_directory(checkpoint_path)
+                    preprocessor = _get_preprocessor(loaded_checkpoint)
+                else:
+                    preprocessor = load_preprocessor_from_dir(checkpoint_path)
+        else:
+            preprocessor = _get_preprocessor(self)
 
         return preprocessor
+
+    def set_preprocessor(self, preprocessor: Optional["Preprocessor"]):
+        """Saves the provided preprocessor to this Checkpoint."""
+
+        self._override_preprocessor = preprocessor
+        self._override_preprocessor_set = True
 
     @classmethod
     def _get_checkpoint_type(
@@ -887,7 +906,7 @@ def _get_del_lock_path(path: str, pid: str = None) -> str:
     return f"{path}.del_lock_{pid}"
 
 
-def _make_dir(path: str, acquire_del_lock: bool = True) -> None:
+def _make_dir(path: str, acquire_del_lock: bool = False) -> None:
     """Create the temporary checkpoint dir in ``path``."""
     if acquire_del_lock:
         # Each process drops a deletion lock file it then cleans up.
@@ -897,3 +916,20 @@ def _make_dir(path: str, acquire_del_lock: bool = True) -> None:
         open(del_lock_path, "a").close()
 
     os.makedirs(path, exist_ok=True)
+
+
+def _is_persisted_directory_checkpoint(path: str) -> bool:
+    return Path(path, _DICT_CHECKPOINT_FILE_NAME).exists()
+
+
+def _get_preprocessor(checkpoint: "Checkpoint") -> Optional["Preprocessor"]:
+    # First try converting to dictionary.
+    checkpoint_dict = checkpoint.to_dict()
+    preprocessor = checkpoint_dict.get(PREPROCESSOR_KEY, None)
+
+    if preprocessor is None:
+        # Fallback to reading from directory.
+        with checkpoint.as_directory() as checkpoint_path:
+            preprocessor = load_preprocessor_from_dir(checkpoint_path)
+
+    return preprocessor

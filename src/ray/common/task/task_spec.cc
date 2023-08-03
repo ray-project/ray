@@ -19,6 +19,7 @@
 
 #include "ray/common/ray_config.h"
 #include "ray/common/runtime_env_common.h"
+#include "ray/stats/metric_defs.h"
 #include "ray/util/logging.h"
 
 namespace ray {
@@ -47,11 +48,9 @@ SchedulingClass TaskSpecification::GetSchedulingClass(
     sched_cls_id = ++next_sched_id_;
     // TODO(ekl) we might want to try cleaning up task types in these cases
     if (sched_cls_id > 100) {
-      RAY_LOG(WARNING) << "More than " << sched_cls_id
-                       << " types of tasks seen, this may reduce performance.";
-    } else if (sched_cls_id > 1000) {
-      RAY_LOG(ERROR) << "More than " << sched_cls_id
-                     << " types of tasks seen, this may reduce performance.";
+      RAY_LOG_EVERY_MS(WARNING, 1000)
+          << "More than " << sched_cls_id
+          << " types of tasks seen, this may reduce performance.";
     }
     sched_cls_to_id_[sched_cls] = sched_cls_id;
     sched_id_to_cls_.emplace(sched_cls_id, sched_cls);
@@ -160,6 +159,13 @@ TaskID TaskSpecification::ParentTaskId() const {
   return TaskID::FromBinary(message_->parent_task_id());
 }
 
+TaskID TaskSpecification::SubmitterTaskId() const {
+  if (message_->submitter_task_id().empty() /* e.g., empty proto default */) {
+    return TaskID::Nil();
+  }
+  return TaskID::FromBinary(message_->submitter_task_id());
+}
+
 size_t TaskSpecification::ParentCounter() const { return message_->parent_counter(); }
 
 ray::FunctionDescriptor TaskSpecification::FunctionDescriptor() const {
@@ -189,16 +195,10 @@ bool TaskSpecification::IsRetry() const { return AttemptNumber() > 0; }
 int32_t TaskSpecification::MaxRetries() const { return message_->max_retries(); }
 
 int TaskSpecification::GetRuntimeEnvHash() const {
-  absl::flat_hash_map<std::string, double> required_resource;
-  if (RayConfig::instance().worker_resource_limits_enabled()) {
-    required_resource = GetRequiredResources().GetResourceMap();
-  }
-  WorkerCacheKey env = {
-      SerializedRuntimeEnv(),
-      required_resource,
-      IsActorCreationTask() && RayConfig::instance().isolate_workers_across_task_types(),
-      GetRequiredResources().GetResource("GPU") > 0 &&
-          RayConfig::instance().isolate_workers_across_resource_types()};
+  WorkerCacheKey env = {SerializedRuntimeEnv(),
+                        GetRequiredResources().GetResourceMap(),
+                        IsActorCreationTask(),
+                        GetRequiredResources().GetResource("GPU") > 0};
   return env.IntHash();
 }
 
@@ -215,7 +215,30 @@ ObjectID TaskSpecification::ReturnId(size_t return_index) const {
   return ObjectID::FromIndex(TaskId(), return_index + 1);
 }
 
+size_t TaskSpecification::NumStreamingGeneratorReturns() const {
+  return message_->num_streaming_generator_returns();
+}
+
+ObjectID TaskSpecification::StreamingGeneratorReturnId(size_t generator_index) const {
+  // Streaming generator task has only 1 return ID.
+  RAY_CHECK_EQ(NumReturns(), 1UL);
+  RAY_CHECK_LT(generator_index, RayConfig::instance().max_num_generator_returns());
+  // index 1 is reserved for the first task return from a generator task itself.
+  return ObjectID::FromIndex(TaskId(), 2 + generator_index);
+}
+
+void TaskSpecification::SetNumStreamingGeneratorReturns(
+    uint64_t num_streaming_generator_returns) {
+  message_->set_num_streaming_generator_returns(num_streaming_generator_returns);
+}
+
 bool TaskSpecification::ReturnsDynamic() const { return message_->returns_dynamic(); }
+
+// TODO(sang): Merge this with ReturnsDynamic once migrating to the
+// streaming generator.
+bool TaskSpecification::IsStreamingGenerator() const {
+  return message_->streaming_generator();
+}
 
 std::vector<ObjectID> TaskSpecification::DynamicReturnIds() const {
   RAY_CHECK(message_->returns_dynamic());
@@ -296,24 +319,15 @@ std::vector<ObjectID> TaskSpecification::GetDependencyIds() const {
       dependencies.push_back(ArgId(i));
     }
   }
-  if (IsActorTask()) {
-    dependencies.push_back(PreviousActorTaskDummyObjectId());
-  }
   return dependencies;
 }
 
-std::vector<rpc::ObjectReference> TaskSpecification::GetDependencies(
-    bool add_dummy_dependency) const {
+std::vector<rpc::ObjectReference> TaskSpecification::GetDependencies() const {
   std::vector<rpc::ObjectReference> dependencies;
   for (size_t i = 0; i < NumArgs(); ++i) {
     if (ArgByRef(i)) {
       dependencies.push_back(message_->args(i).object_ref());
     }
-  }
-  if (add_dummy_dependency && IsActorTask()) {
-    const auto &dummy_ref =
-        GetReferenceForActorDummyObject(PreviousActorTaskDummyObjectId());
-    dependencies.push_back(dummy_ref);
   }
   return dependencies;
 }
@@ -403,12 +417,6 @@ ObjectID TaskSpecification::ActorCreationDummyObjectId() const {
   RAY_CHECK(IsActorTask());
   return ObjectID::FromBinary(
       message_->actor_task_spec().actor_creation_dummy_object_id());
-}
-
-ObjectID TaskSpecification::PreviousActorTaskDummyObjectId() const {
-  RAY_CHECK(IsActorTask());
-  return ObjectID::FromBinary(
-      message_->actor_task_spec().previous_actor_task_dummy_object_id());
 }
 
 ObjectID TaskSpecification::ActorDummyObject() const {
@@ -537,6 +545,20 @@ bool TaskSpecification::IsRetriable() const {
   return true;
 }
 
+void TaskSpecification::EmitTaskMetrics() const {
+  double duration_s = (GetMessage().lease_grant_timestamp_ms() -
+                       GetMessage().dependency_resolution_timestamp_ms()) /
+                      1000;
+
+  if (IsActorCreationTask()) {
+    stats::STATS_scheduler_placement_time_s.Record(duration_s,
+                                                   {{"WorkloadType", "Actor"}});
+  } else {
+    stats::STATS_scheduler_placement_time_s.Record(duration_s,
+                                                   {{"WorkloadType", "Task"}});
+  }
+}
+
 std::string TaskSpecification::CallSiteString() const {
   std::ostringstream stream;
   auto desc = FunctionDescriptor();
@@ -557,9 +579,39 @@ WorkerCacheKey::WorkerCacheKey(
     bool is_actor,
     bool is_gpu)
     : serialized_runtime_env(serialized_runtime_env),
-      required_resources(std::move(required_resources)),
-      is_actor(is_actor),
-      is_gpu(is_gpu) {}
+      required_resources(RayConfig::instance().worker_resource_limits_enabled()
+                             ? required_resources
+                             : absl::flat_hash_map<std::string, double>{}),
+      is_actor(is_actor && RayConfig::instance().isolate_workers_across_task_types()),
+      is_gpu(is_gpu && RayConfig::instance().isolate_workers_across_resource_types()),
+      hash_(CalculateHash()) {}
+
+std::size_t WorkerCacheKey::CalculateHash() const {
+  size_t hash = 0;
+  if (EnvIsEmpty()) {
+    // It's useful to have the same predetermined value for both unspecified and empty
+    // runtime envs.
+    if (is_actor) {
+      hash = 1;
+    } else {
+      hash = 0;
+    }
+  } else {
+    boost::hash_combine(hash, serialized_runtime_env);
+    boost::hash_combine(hash, is_actor);
+    boost::hash_combine(hash, is_gpu);
+
+    std::vector<std::pair<std::string, double>> resource_vars(required_resources.begin(),
+                                                              required_resources.end());
+    // Sort the variables so different permutations yield the same hash.
+    std::sort(resource_vars.begin(), resource_vars.end());
+    for (auto &pair : resource_vars) {
+      boost::hash_combine(hash, pair.first);
+      boost::hash_combine(hash, pair.second);
+    }
+  }
+  return hash;
+}
 
 bool WorkerCacheKey::operator==(const WorkerCacheKey &k) const {
   // FIXME we should compare fields
@@ -571,34 +623,7 @@ bool WorkerCacheKey::EnvIsEmpty() const {
          !is_gpu;
 }
 
-std::size_t WorkerCacheKey::Hash() const {
-  // Cache the hash value.
-  if (!hash_) {
-    if (EnvIsEmpty()) {
-      // It's useful to have the same predetermined value for both unspecified and empty
-      // runtime envs.
-      if (is_actor) {
-        hash_ = 1;
-      } else {
-        hash_ = 0;
-      }
-    } else {
-      boost::hash_combine(hash_, serialized_runtime_env);
-      boost::hash_combine(hash_, is_actor);
-      boost::hash_combine(hash_, is_gpu);
-
-      std::vector<std::pair<std::string, double>> resource_vars(
-          required_resources.begin(), required_resources.end());
-      // Sort the variables so different permutations yield the same hash.
-      std::sort(resource_vars.begin(), resource_vars.end());
-      for (auto &pair : resource_vars) {
-        boost::hash_combine(hash_, pair.first);
-        boost::hash_combine(hash_, pair.second);
-      }
-    }
-  }
-  return hash_;
-}
+std::size_t WorkerCacheKey::Hash() const { return hash_; }
 
 int WorkerCacheKey::IntHash() const { return (int)Hash(); }
 

@@ -119,6 +119,34 @@ def test_grpc_message_size(shutdown_only):
     ray.get(bar.remote(*[f() for _ in range(200)]))
 
 
+def test_default_worker_import_dependency():
+    """
+    Test ray's python worker import doesn't import the not-allowed dependencies.
+    """
+    # We don't allow numpy to be imported in the worker script to avoid slow
+    # worker startup time, as well as interfering with OMP_NUM_THREADS which
+    # is used by numpy when imported.
+    # See https://github.com/ray-project/ray/issues/33891
+    blocked_deps = ["numpy"]
+
+    # Remove the ray module and the blocked deps from sys.modules.
+    sys.modules.pop("ray", None)
+    assert "ray" not in sys.modules
+    for dep in blocked_deps:
+        sys.modules.pop(dep, None)
+        assert dep not in sys.modules
+
+    # This imports the python worker.
+    import ray._private.workers.default_worker  # noqa: F401
+
+    # Check that the ray module is imported.
+    assert "ray" in sys.modules
+
+    # Check that the blocked deps are not imported.
+    for dep in blocked_deps:
+        assert dep not in sys.modules
+
+
 # https://github.com/ray-project/ray/issues/7287
 def test_omp_threads_set(ray_start_cluster, monkeypatch):
     import os
@@ -333,6 +361,25 @@ def test_invalid_arguments():
 
     ray.remote(_metadata={"data": 1})(f)
     ray.remote(_metadata={"data": 1})(A)
+
+    # Check invalid resource quantity
+    with pytest.raises(
+        ValueError,
+        match=(
+            "The precision of the fractional quantity of resource num_gpus"
+            " cannot go beyond 0.0001"
+        ),
+    ):
+        ray.remote(num_gpus=0.0000001)(f)
+
+    with pytest.raises(
+        ValueError,
+        match=(
+            "The precision of the fractional quantity of resource custom_resource"
+            " cannot go beyond 0.0001"
+        ),
+    ):
+        ray.remote(resources={"custom_resource": 0.0000001})(f)
 
 
 def test_options():
@@ -1004,7 +1051,7 @@ def test_failed_task(ray_start_shared_local_modes, error_pubsub):
         msgs = get_error_message(p, 2, ray._private.ray_constants.TASK_PUSH_ERROR)
         assert len(msgs) == 2
         for msg in msgs:
-            assert "Test function 1 intentionally failed." in msg.error_message
+            assert "Test function 1 intentionally failed." in msg["error_message"]
 
     x = throw_exception_fct2.remote()
     try:
@@ -1050,6 +1097,21 @@ def test_failed_task(ray_start_shared_local_modes, error_pubsub):
     else:
         # ray.get should throw an exception.
         assert False
+
+
+def test_import_ray_does_not_import_grpc():
+    # First unload grpc and ray
+    del sys.modules["grpc"]
+    del sys.modules["ray"]
+
+    # Then import ray from scratch
+    import ray  # noqa: F401
+
+    # Make sure grpc did not get imported by "import ray"
+    assert "grpc" not in sys.modules
+
+    # Load grpc back so other tests will not be affected
+    import grpc  # noqa: F401
 
 
 if __name__ == "__main__":

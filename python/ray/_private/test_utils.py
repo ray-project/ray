@@ -3,6 +3,7 @@ from datetime import datetime
 import fnmatch
 import functools
 import io
+import json
 import logging
 import math
 import os
@@ -18,6 +19,7 @@ from collections import defaultdict
 from contextlib import contextmanager, redirect_stderr, redirect_stdout
 from typing import Any, Callable, Dict, List, Optional
 import uuid
+from dataclasses import dataclass
 
 import requests
 from ray._raylet import Config
@@ -37,7 +39,6 @@ import ray._private.gcs_utils as gcs_utils
 import ray._private.memory_monitor as memory_monitor
 import ray._private.services
 import ray._private.utils
-from ray._private.gcs_pubsub import GcsErrorSubscriber, GcsLogSubscriber
 from ray._private.internal_api import memory_summary
 from ray._private.tls_utils import generate_self_signed_tls_certs
 from ray._raylet import GcsClientOptions, GlobalStateAccessor
@@ -48,8 +49,8 @@ from ray.core.generated import (
     gcs_service_pb2,
     gcs_service_pb2_grpc,
 )
-from ray.scripts.scripts import main as ray_main
 from ray.util.queue import Empty, Queue, _QueueActor
+from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 
 logger = logging.getLogger(__name__)
@@ -61,8 +62,10 @@ REDIS_EXECUTABLE = os.path.join(
 )
 
 try:
-    from prometheus_client.parser import text_string_to_metric_families
+    from prometheus_client.parser import text_string_to_metric_families, Sample
 except (ImportError, ModuleNotFoundError):
+
+    Sample = None
 
     def text_string_to_metric_families(*args, **kwargs):
         raise ModuleNotFoundError("`prometheus_client` not found")
@@ -95,6 +98,30 @@ def redis_replicas():
     return int(os.environ.get("TEST_EXTERNAL_REDIS_REPLICAS", "1"))
 
 
+def get_redis_cli(port, enable_tls):
+    try:
+        # If there is no redis libs installed, skip the check.
+        # This could happen In minimal test, where we don't have
+        # redis.
+        import redis
+    except Exception:
+        return True
+
+    params = {}
+    if enable_tls:
+        from ray._raylet import Config
+
+        params = {"ssl": True, "ssl_cert_reqs": "required"}
+        if Config.REDIS_CA_CERT():
+            params["ssl_ca_certs"] = Config.REDIS_CA_CERT()
+        if Config.REDIS_CLIENT_CERT():
+            params["ssl_certfile"] = Config.REDIS_CLIENT_CERT()
+        if Config.REDIS_CLIENT_KEY():
+            params["ssl_keyfile"] = Config.REDIS_CLIENT_KEY()
+
+    return redis.Redis("localhost", str(port), **params)
+
+
 def start_redis_instance(
     session_dir_path: str,
     port: int,
@@ -111,6 +138,7 @@ def start_redis_instance(
     replica_of=None,
     leader_id=None,
     db_dir=None,
+    free_port=0,
 ):
     """Start a single Redis server.
 
@@ -163,11 +191,6 @@ def start_redis_instance(
     if redis_replicas() > 1:
         command += ["--cluster-enabled", "yes", "--cluster-config-file", f"node-{port}"]
     if enable_tls:
-        import socket
-
-        with socket.socket() as s:
-            s.bind(("", 0))
-            free_port = s.getsockname()[1]
         command += [
             "--tls-port",
             str(port),
@@ -190,7 +213,9 @@ def start_redis_instance(
             command += ["--tls-cert-file", Config.REDIS_CLIENT_CERT()]
         if Config.REDIS_CLIENT_KEY():
             command += ["--tls-key-file", Config.REDIS_CLIENT_KEY()]
-        command += ["--tls-replication", "yes"]
+        if replica_of is not None:
+            command += ["--tls-replication", "yes"]
+        command += ["--tls-auth-clients", "no", "--tls-cluster", "yes"]
     if sys.platform != "win32":
         command += ["--save", "", "--appendonly", "no"]
     if db_dir is not None:
@@ -209,13 +234,13 @@ def start_redis_instance(
 
         while True:
             try:
-                redis_cli = redis.Redis("localhost", str(port))
+                redis_cli = get_redis_cli(port, enable_tls)
                 if replica_of is None:
                     slots = [str(i) for i in range(16384)]
                     redis_cli.cluster("addslots", *slots)
                 else:
-                    redis_cli.cluster("meet", "127.0.0.1", str(replica_of))
-                    redis_cli.cluster("replicate", leader_id)
+                    print(redis_cli.cluster("meet", "127.0.0.1", str(replica_of)))
+                    print(redis_cli.cluster("replicate", leader_id))
                 node_id = redis_cli.cluster("myid")
                 break
             except (
@@ -224,7 +249,7 @@ def start_redis_instance(
             ) as e:
                 from time import sleep
 
-                print(f"Waiting for redis to be up {e}")
+                print(f"Waiting for redis to be up {e} ")
                 sleep(0.1)
 
     return node_id, process_info
@@ -281,6 +306,8 @@ def check_call_module(main, argv, capture_stdout=False, capture_stderr=False):
 def check_call_subprocess(argv, capture_stdout=False, capture_stderr=False):
     # We use this function instead of calling the "ray" command to work around
     # some deadlocks that occur when piping ray's output on Windows
+    from ray.scripts.scripts import main as ray_main
+
     if sys.platform == "win32":
         result = check_call_module(
             ray_main, argv, capture_stdout=capture_stdout, capture_stderr=capture_stderr
@@ -504,7 +531,11 @@ def kill_actor_and_wait_for_failure(actor, timeout=10, retry_interval_ms=100):
 
 
 def wait_for_condition(
-    condition_predictor, timeout=10, retry_interval_ms=100, **kwargs: Any
+    condition_predictor,
+    timeout=10,
+    retry_interval_ms=100,
+    raise_exceptions=False,
+    **kwargs: Any,
 ):
     """Wait until a condition is met or time out with an exception.
 
@@ -512,6 +543,8 @@ def wait_for_condition(
         condition_predictor: A function that predicts the condition.
         timeout: Maximum timeout in seconds.
         retry_interval_ms: Retry interval in milliseconds.
+        raise_exceptions: If true, exceptions that occur while executing
+            condition_predictor won't be caught and instead will be raised.
 
     Raises:
         RuntimeError: If the condition is not met before the timeout expires.
@@ -523,6 +556,8 @@ def wait_for_condition(
             if condition_predictor(**kwargs):
                 return
         except Exception:
+            if raise_exceptions:
+                raise
             last_ex = ray._private.utils.format_error_message(traceback.format_exc())
         time.sleep(retry_interval_ms / 1000.0)
     message = "The condition wasn't met before the timeout expired."
@@ -587,20 +622,43 @@ async def async_wait_for_condition_async_predicate(
     raise RuntimeError(message)
 
 
+@dataclass
+class MetricSamplePattern:
+    name: Optional[str] = None
+    value: Optional[str] = None
+    partial_label_match: Optional[Dict[str, str]] = None
+
+    def matches(self, sample: Sample):
+        if self.name is not None:
+            if self.name != sample.name:
+                return False
+
+        if self.value is not None:
+            if self.value != sample.value:
+                return False
+
+        if self.partial_label_match is not None:
+            for label, value in self.partial_label_match.items():
+                if sample.labels.get(label) != value:
+                    return False
+
+        return True
+
+
 def get_metric_check_condition(
-    metrics_to_check: Dict[str, Optional[float]], export_addr: Optional[str] = None
+    metrics_to_check: List[MetricSamplePattern], export_addr: Optional[str] = None
 ) -> Callable[[], bool]:
     """A condition to check if a prometheus metrics reach a certain value.
     This is a blocking check that can be passed into a `wait_for_condition`
     style function.
 
     Args:
-      metrics_to_check: A map of metric lable to values to check, to ensure
-        that certain conditions have been reached. If a value is None, just check
-        that the metric was emitted with any value.
+      metrics_to_check: A list of MetricSamplePattern. The fields that
+      aren't `None` will be matched.
 
     Returns:
       A function that returns True if all the metrics are emitted.
+
     """
     node_info = ray.nodes()[0]
     metrics_export_port = node_info["MetricsExportPort"]
@@ -608,23 +666,15 @@ def get_metric_check_condition(
     prom_addr = export_addr or f"{addr}:{metrics_export_port}"
 
     def f():
-        for metric_name, metric_value in metrics_to_check.items():
+        for metric_pattern in metrics_to_check:
             _, metric_names, metric_samples = fetch_prometheus([prom_addr])
-            found_metric = False
-            if metric_name in metric_names:
-                for sample in metric_samples:
-                    if sample.name != metric_name:
-                        continue
-
-                    if metric_value is None:
-                        found_metric = True
-                    elif metric_value == sample.value:
-                        found_metric = True
-            if not found_metric:
+            for metric_sample in metric_samples:
+                if metric_pattern.matches(metric_sample):
+                    break
+            else:
                 print(
-                    "Didn't find metric, all metric names: ",
-                    metric_names,
-                    "all values",
+                    f"Didn't find {metric_pattern}",
+                    "all samples",
                     metric_samples,
                 )
                 return False
@@ -869,7 +919,9 @@ def get_non_head_nodes(cluster):
 
 def init_error_pubsub():
     """Initialize error info pub/sub"""
-    s = GcsErrorSubscriber(address=ray._private.worker.global_worker.gcs_client.address)
+    s = ray._raylet.GcsErrorSubscriber(
+        address=ray._private.worker.global_worker.gcs_client.address
+    )
     s.subscribe()
     return s
 
@@ -887,7 +939,7 @@ def get_error_message(subscriber, num=1e6, error_type=None, timeout=20):
         if not error_data:
             # Timed out before any data is received.
             break
-        if error_type is None or error_type == error_data.type:
+        if error_type is None or error_type == error_data["type"]:
             msgs.append(error_data)
         else:
             time.sleep(0.01)
@@ -897,7 +949,9 @@ def get_error_message(subscriber, num=1e6, error_type=None, timeout=20):
 
 def init_log_pubsub():
     """Initialize log pub/sub"""
-    s = GcsLogSubscriber(address=ray._private.worker.global_worker.gcs_client.address)
+    s = ray._raylet.GcsLogSubscriber(
+        address=ray._private.worker.global_worker.gcs_client.address
+    )
     s.subscribe()
     return s
 
@@ -1437,11 +1491,12 @@ def get_and_run_node_killer(
                     alive_nodes += 1
             return alive_nodes
 
-    head_node_ip = ray._private.worker.global_worker.node_ip_address
-    head_node_id = ray._private.worker.global_worker.current_node_id.hex()
+    head_node_id = ray.get_runtime_context().get_node_id()
     # Schedule the actor on the current node.
     node_killer = NodeKillerActor.options(
-        resources={f"node:{head_node_ip}": 0.001},
+        scheduling_strategy=NodeAffinitySchedulingStrategy(
+            node_id=head_node_id, soft=False
+        ),
         namespace=namespace,
         name="node_killer",
         lifetime=lifetime,
@@ -1571,7 +1626,20 @@ def no_resource_leaks_excluding_node_resources():
 
 
 @contextmanager
-def simulate_storage(storage_type, root=None):
+def simulate_storage(
+    storage_type: str,
+    root: Optional[str] = None,
+    port: int = 5002,
+    region: str = "us-west-2",
+):
+    """Context that simulates a given storage type and yields the URI.
+
+    Args:
+        storage_type: The storage type to simiulate ("fs" or "s3")
+        root: Root directory of the URI to return (e.g., s3 bucket name)
+        port: The port of the localhost endpoint where s3 is being served (s3 only)
+        region: The s3 region (s3 only)
+    """
     if storage_type == "fs":
         if root is None:
             with tempfile.TemporaryDirectory() as d:
@@ -1579,38 +1647,26 @@ def simulate_storage(storage_type, root=None):
         else:
             yield "file://" + root
     elif storage_type == "s3":
-        import uuid
+        from moto.server import ThreadedMotoServer
 
-        from moto import mock_s3
+        old_env = os.environ
+        os.environ["AWS_ACCESS_KEY_ID"] = "testing"
+        os.environ["AWS_SECRET_ACCESS_KEY"] = "testing"
+        os.environ["AWS_SECURITY_TOKEN"] = "testing"
+        os.environ["AWS_SESSION_TOKEN"] = "testing"
 
-        from ray.tests.mock_s3_server import start_service, stop_process
+        root = root or uuid.uuid4().hex
+        s3_server = f"http://localhost:{port}"
+        server = ThreadedMotoServer(port=port)
+        server.start()
+        url = f"s3://{root}?region={region}&endpoint_override={s3_server}"
+        yield url
+        server.stop()
 
-        @contextmanager
-        def aws_credentials():
-            old_env = os.environ
-            os.environ["AWS_ACCESS_KEY_ID"] = "testing"
-            os.environ["AWS_SECRET_ACCESS_KEY"] = "testing"
-            os.environ["AWS_SECURITY_TOKEN"] = "testing"
-            os.environ["AWS_SESSION_TOKEN"] = "testing"
-            yield
-            os.environ = old_env
+        os.environ = old_env
 
-        @contextmanager
-        def moto_s3_server():
-            host = "localhost"
-            port = 5002
-            url = f"http://{host}:{port}"
-            process = start_service("s3", host, port)
-            yield url
-            stop_process(process)
-
-        if root is None:
-            root = uuid.uuid4().hex
-        with moto_s3_server() as s3_server, aws_credentials(), mock_s3():
-            url = f"s3://{root}?region=us-west-2&endpoint_override={s3_server}"
-            yield url
     else:
-        raise ValueError(f"Unknown storage type: {storage_type}")
+        raise NotImplementedError(f"Unknown storage type: {storage_type}")
 
 
 def job_hook(**kwargs):
@@ -1801,3 +1857,101 @@ def wandb_populate_run_location_hook():
 
     os.environ[WANDB_PROJECT_ENV_VAR] = "test_project"
     os.environ[WANDB_GROUP_ENV_VAR] = "test_group"
+
+
+def safe_write_to_results_json(
+    result: dict,
+    default_file_name: str = "/tmp/release_test_output.json",
+    env_var: Optional[str] = "TEST_OUTPUT_JSON",
+):
+    """
+    Safe (atomic) write to file to guard against malforming the json
+    if the job gets interrupted in the middle of writing.
+    """
+    test_output_json = os.environ.get(env_var, default_file_name)
+    test_output_json_tmp = test_output_json + ".tmp"
+    with open(test_output_json_tmp, "wt") as f:
+        json.dump(result, f)
+    os.replace(test_output_json_tmp, test_output_json)
+    logger.info(f"Wrote results to {test_output_json}")
+    logger.info(json.dumps(result))
+
+
+def get_current_unused_port():
+    """
+    Returns a port number that is not currently in use.
+
+    This is useful for testing when we need to bind to a port but don't
+    care which one.
+
+    Returns:
+        A port number that is not currently in use. (Note that this port
+        might become used by the time you try to bind to it.)
+    """
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+
+    # Bind the socket to a local address with a random port number
+    sock.bind(("localhost", 0))
+
+    port = sock.getsockname()[1]
+    sock.close()
+    return port
+
+
+def search_words(string: str, words: str):
+    """Check whether each word is in the given string.
+
+    Args:
+        string: String to search
+        words: Space-separated string of words to search for
+    """
+    return [word in string for word in words.split(" ")]
+
+
+def has_all_words(string: str, words: str):
+    """Check that string has all of the given words.
+
+    Args:
+        string: String to search
+        words: Space-separated string of words to search for
+    """
+    return all(search_words(string, words))
+
+
+def has_no_words(string, words):
+    """Check that string has none of the given words.
+
+    Args:
+        string: String to search
+        words: Space-separated string of words to search for
+    """
+    return not any(search_words(string, words))
+
+
+def find_available_port(start, end, port_num=1):
+    ports = []
+    for _ in range(port_num):
+        random_port = 0
+        with socket.socket() as s:
+            s.bind(("", 0))
+            random_port = s.getsockname()[1]
+        if random_port >= start and random_port <= end and random_port not in ports:
+            ports.append(random_port)
+            continue
+
+        for port in range(start, end + 1):
+            if port in ports:
+                continue
+            try:
+                with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                    s.bind(("", port))
+                ports.append(port)
+                break
+            except OSError:
+                pass
+
+    if len(ports) != port_num:
+        raise RuntimeError(
+            f"Can't find {port_num} available port from {start} to {end}."
+        )
+    return ports

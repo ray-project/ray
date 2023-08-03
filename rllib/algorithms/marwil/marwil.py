@@ -11,7 +11,7 @@ from ray.rllib.execution.train_ops import (
 )
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.deprecation import Deprecated, deprecation_warning
+from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.metrics import (
     NUM_AGENT_STEPS_SAMPLED,
     NUM_ENV_STEPS_SAMPLED,
@@ -83,7 +83,7 @@ class MARWILConfig(AlgorithmConfig):
         # Override some of AlgorithmConfig's default values with MARWIL-specific values.
 
         # You should override input_ to point to an offline dataset
-        # (see trainer.py and trainer_config.py).
+        # (see algorithm.py and algorithm_config.py).
         # The dataset may have an arbitrary number of timesteps
         # (and even episodes) per line.
         # However, each line must only contain consecutive timesteps in
@@ -94,6 +94,18 @@ class MARWILConfig(AlgorithmConfig):
         self.postprocess_inputs = True
         self.lr = 1e-4
         self.train_batch_size = 2000
+        # TODO (Artur): MARWIL should not need an exploration config as an offline
+        #  algorithm. However, the current implementation of the CRR algorithm
+        #  requires it. Investigate.
+        self.exploration_config = {
+            # The Exploration class to use. In the simplest case, this is the name
+            # (str) of any class present in the `rllib.utils.exploration` package.
+            # You can also provide the python class directly or the full location
+            # of your class (e.g. "ray.rllib.utils.exploration.epsilon_greedy.
+            # EpsilonGreedy").
+            "type": "StochasticSampling",
+            # Add constructor kwargs here (if any).
+        }
         # __sphinx_doc_end__
         # fmt: on
         self._set_off_policy_estimation_methods = False
@@ -266,20 +278,3 @@ class MARWIL(Algorithm):
         self.workers.local_worker().set_global_vars(global_vars)
 
         return train_results
-
-
-# Deprecated: Use ray.rllib.algorithms.marwil.MARWILConfig instead!
-class _deprecated_default_config(dict):
-    def __init__(self):
-        super().__init__(MARWILConfig().to_dict())
-
-    @Deprecated(
-        old="ray.rllib.agents.marwil.marwil::DEFAULT_CONFIG",
-        new="ray.rllib.algorithms.marwil.marwil::MARWILConfig(...)",
-        error=True,
-    )
-    def __getitem__(self, item):
-        return super().__getitem__(item)
-
-
-DEFAULT_CONFIG = _deprecated_default_config()

@@ -7,7 +7,7 @@ except ImportError:
 
 
 if TYPE_CHECKING:
-    from ray.data._internal.sort import SortKeyT
+    from ray.data._internal.sort import SortKey
 
 pl = None
 
@@ -19,22 +19,22 @@ def check_polars_installed():
     except ImportError:
         raise ImportError(
             "polars not installed. Install with `pip install polars` or set "
-            "`DatasetContext.use_polars = False` to fall back to pyarrow"
+            "`DataContext.use_polars = False` to fall back to pyarrow"
         )
 
 
-def sort(table: "pyarrow.Table", key: "SortKeyT", descending: bool) -> "pyarrow.Table":
+def sort(table: "pyarrow.Table", sort_key: "SortKey") -> "pyarrow.Table":
     check_polars_installed()
-    col, _ = key[0]
     df = pl.from_arrow(table)
-    return df.sort(col, reverse=descending).to_arrow()
+    return df.sort(sort_key.get_columns(), reverse=sort_key.get_descending()).to_arrow()
 
 
 def concat_and_sort(
-    blocks: List["pyarrow.Table"], key: "SortKeyT", descending: bool
+    blocks: List["pyarrow.Table"], sort_key: "SortKey"
 ) -> "pyarrow.Table":
     check_polars_installed()
-    col, _ = key[0]
     blocks = [pl.from_arrow(block) for block in blocks]
-    df = pl.concat(blocks).sort(col, reverse=descending)
+    df = pl.concat(blocks).sort(
+        sort_key.get_columns(), reverse=sort_key.get_descending()
+    )
     return df.to_arrow()

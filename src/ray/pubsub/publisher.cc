@@ -22,24 +22,22 @@ namespace pubsub {
 
 namespace pub_internal {
 
-bool BasicEntityState::Publish(const rpc::PubMessage &pub_message) {
+bool BasicEntityState::Publish(std::shared_ptr<rpc::PubMessage> msg) {
   if (subscribers_.empty()) {
     return false;
   }
-  const auto msg = std::make_shared<rpc::PubMessage>(pub_message);
   for (auto &[id, subscriber] : subscribers_) {
     subscriber->QueueMessage(msg);
   }
   return true;
 }
 
-bool CappedEntityState::Publish(const rpc::PubMessage &pub_message) {
+bool CappedEntityState::Publish(std::shared_ptr<rpc::PubMessage> msg) {
   if (subscribers_.empty()) {
     return false;
   }
 
-  const int64_t message_size = pub_message.ByteSizeLong();
-
+  const int64_t message_size = msg->ByteSizeLong();
   while (!pending_messages_.empty()) {
     // NOTE: if atomic ref counting becomes too expensive, it should be possible
     // to implement inflight message tracking across subscribers with non-atomic
@@ -77,7 +75,6 @@ bool CappedEntityState::Publish(const rpc::PubMessage &pub_message) {
     message_sizes_.pop();
   }
 
-  const auto msg = std::make_shared<rpc::PubMessage>(pub_message);
   pending_messages_.push(msg);
   total_size_ += message_size;
   message_sizes_.push(message_size);
@@ -104,10 +101,10 @@ const absl::flat_hash_map<SubscriberID, SubscriberState *> &EntityState::Subscri
 SubscriptionIndex::SubscriptionIndex(rpc::ChannelType channel_type)
     : channel_type_(channel_type), subscribers_to_all_(CreateEntityState()) {}
 
-bool SubscriptionIndex::Publish(const rpc::PubMessage &pub_message) {
+bool SubscriptionIndex::Publish(std::shared_ptr<rpc::PubMessage> pub_message) {
   const bool publish_to_all = subscribers_to_all_->Publish(pub_message);
   bool publish_to_entity = false;
-  auto it = entities_.find(pub_message.key_id());
+  auto it = entities_.find(pub_message->key_id());
   if (it != entities_.end()) {
     publish_to_entity = it->second->Publish(pub_message);
   }
@@ -246,6 +243,22 @@ std::unique_ptr<EntityState> SubscriptionIndex::CreateEntityState() {
 void SubscriberState::ConnectToSubscriber(const rpc::PubsubLongPollingRequest &request,
                                           rpc::PubsubLongPollingReply *reply,
                                           rpc::SendReplyCallback send_reply_callback) {
+  auto max_processed_sequence_id = request.max_processed_sequence_id();
+  if (request.publisher_id().empty() ||
+      publisher_id_ != PublisherID::FromBinary(request.publisher_id())) {
+    // in case the publisher_id mismatches, we should ignore the
+    // max_processed_sequence_id.
+    max_processed_sequence_id = 0;
+  }
+
+  // clean up messages that have already been processed.
+  while (!mailbox_.empty() &&
+         mailbox_.front()->sequence_id() <= max_processed_sequence_id) {
+    RAY_LOG(DEBUG) << "removing " << max_processed_sequence_id << " : "
+                   << mailbox_.front()->sequence_id();
+    mailbox_.pop_front();
+  }
+
   if (long_polling_connection_) {
     // Because of the new long polling request, flush the current polling request with an
     // empty reply.
@@ -262,7 +275,8 @@ void SubscriberState::ConnectToSubscriber(const rpc::PubsubLongPollingRequest &r
 
 void SubscriberState::QueueMessage(const std::shared_ptr<rpc::PubMessage> &pub_message,
                                    bool try_publish) {
-  mailbox_.push(pub_message);
+  RAY_LOG(DEBUG) << "enqueue: " << pub_message->sequence_id();
+  mailbox_.push_back(pub_message);
   if (try_publish) {
     PublishIfPossible();
   }
@@ -278,28 +292,35 @@ bool SubscriberState::PublishIfPossible(bool force_noop) {
 
   // No message should have been added to the reply.
   RAY_CHECK(long_polling_connection_->reply->pub_messages().empty());
+  *long_polling_connection_->reply->mutable_publisher_id() = publisher_id_.Binary();
   if (!force_noop) {
-    for (int i = 0; i < publish_batch_size_ && !mailbox_.empty(); ++i) {
-      const rpc::PubMessage &msg = *mailbox_.front();
+    for (auto it = mailbox_.begin(); it != mailbox_.end(); it++) {
+      if (long_polling_connection_->reply->pub_messages().size() >= publish_batch_size_) {
+        break;
+      }
+      const rpc::PubMessage &msg = **it;
       // Avoid sending empty message to the subscriber. The message might have been
       // cleared because the subscribed entity's buffer was full.
       if (msg.inner_message_case() != rpc::PubMessage::INNER_MESSAGE_NOT_SET) {
         *long_polling_connection_->reply->add_pub_messages() = msg;
       }
-      mailbox_.pop();
     }
   }
+
+  RAY_LOG(DEBUG) << "sending reply back"
+                 << long_polling_connection_->reply->DebugString();
   long_polling_connection_->send_reply_callback(Status::OK(), nullptr, nullptr);
 
   // Clean up & update metadata.
   long_polling_connection_.reset();
+  // Clean up & update metadata.
   last_connection_update_time_ms_ = get_time_ms_();
   return true;
 }
 
 bool SubscriberState::CheckNoLeaks() const {
   // If all message in the mailbox has been replied, consider there is no leak.
-  return !long_polling_connection_ && mailbox_.empty();
+  return mailbox_.empty();
 }
 
 bool SubscriberState::ConnectionExists() const {
@@ -319,7 +340,8 @@ void Publisher::ConnectToSubscriber(const rpc::PubsubLongPollingRequest &request
   RAY_CHECK(send_reply_callback != nullptr);
 
   const auto subscriber_id = SubscriberID::FromBinary(request.subscriber_id());
-  RAY_LOG(DEBUG) << "Long polling connection initiated by " << subscriber_id.Hex();
+  RAY_LOG(DEBUG) << "Long polling connection initiated by " << subscriber_id.Hex()
+                 << ", publisher_id " << publisher_id_.Hex();
   absl::MutexLock lock(&mutex_);
   auto it = subscribers_.find(subscriber_id);
   if (it == subscribers_.end()) {
@@ -329,7 +351,8 @@ void Publisher::ConnectToSubscriber(const rpc::PubsubLongPollingRequest &request
                  std::make_unique<pub_internal::SubscriberState>(subscriber_id,
                                                                  get_time_ms_,
                                                                  subscriber_timeout_ms_,
-                                                                 publish_batch_size_))
+                                                                 publish_batch_size_,
+                                                                 publisher_id_))
              .first;
   }
   auto &subscriber = it->second;
@@ -350,7 +373,8 @@ bool Publisher::RegisterSubscription(const rpc::ChannelType channel_type,
                  std::make_unique<pub_internal::SubscriberState>(subscriber_id,
                                                                  get_time_ms_,
                                                                  subscriber_timeout_ms_,
-                                                                 publish_batch_size_))
+                                                                 publish_batch_size_,
+                                                                 publisher_id_))
              .first;
   }
   pub_internal::SubscriberState *subscriber = it->second.get();
@@ -359,13 +383,15 @@ bool Publisher::RegisterSubscription(const rpc::ChannelType channel_type,
   return subscription_index_it->second.AddEntry(key_id.value_or(""), subscriber);
 }
 
-void Publisher::Publish(const rpc::PubMessage &pub_message) {
+void Publisher::Publish(rpc::PubMessage pub_message) {
+  RAY_CHECK_EQ(pub_message.sequence_id(), 0) << "sequence_id should not be set;";
   const auto channel_type = pub_message.channel_type();
   absl::MutexLock lock(&mutex_);
   auto &subscription_index = subscription_index_map_.at(channel_type);
   // TODO(sang): Currently messages are lost if publish happens
   // before there's any subscriber for the object.
-  subscription_index.Publish(pub_message);
+  pub_message.set_sequence_id(++next_sequence_id_);
+  subscription_index.Publish(std::make_shared<rpc::PubMessage>(std::move(pub_message)));
   cum_pub_message_cnt_[channel_type]++;
 }
 

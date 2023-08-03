@@ -59,10 +59,11 @@ class GcsServerTest : public ::testing::Test {
 
   void TearDown() override {
     io_service_.stop();
-    rpc::DrainAndResetServerCallExecutor();
+    rpc::DrainServerCallExecutor();
     gcs_server_->Stop();
     thread_io_service_->join();
     gcs_server_.reset();
+    rpc::ResetServerCallExecutor();
   }
 
   bool AddJob(const rpc::AddJobRequest &request) {

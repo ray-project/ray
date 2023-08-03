@@ -1,25 +1,54 @@
+"""Tests for wandb integration.
+
+Note: These tests use a set of mocked APIs:
+- _MockWandbAPI: Mocks wandb API calls (ex: wandb.init).
+- _MockWandbLoggingActor: The same as the regular _WandbLoggingActor,
+    except using the mocked wandb API
+- WandbTestExperimentLogger: Thin subclass of `WandbLoggerCallback` to use for testing.
+    Provides a helper `trial_logging_actors` property that can be used to
+    access attributes of the remote actors for assertions.
+- Use the `get_mock_wandb_logger` helper method to create a logger with
+    a custom mock wandb API class. (Ex: If you want to override some wandb API methods.)
+
+Template for testing with these mocks:
+
+    wandb_logger_kwargs = {}
+    logger = get_mock_wandb_logger(mock_api_cls=_MockWandbAPI, **wandb_logger_kwargs)
+    logger.setup()
+
+    # From now on, the API key is in the env variable.
+    # Start the remote logging actor
+    logger.on_trial_start(0, [], trial)
+    # Log some results
+    result = {}
+    logger.on_trial_result(0, [], trial, result)
+    # Send a STOP signal to the logging actor
+    logger.on_trial_complete(0, [], trial)
+    # This will wait for the logging actor to finish + cleanup
+    logger.on_experiment_end(trials=[trial])
+
+    # Now, we can access properties of the logging actors
+    # (must happen after `on_trial_end` and `on_experiment_end`)
+    logger_state = logger.trial_logging_actor_states[trial]
+    # logger_state.logs, logger_state.config, logger_state.kwargs, ...
+"""
+
+import gc
+from pathlib import Path
+
+import numpy as np
 import os
+import pytest
+import time
 import tempfile
-import threading
-from collections import namedtuple
-from dataclasses import dataclass
-from queue import Queue
-from typing import Tuple, Dict
 from unittest.mock import (
     Mock,
     patch,
 )
 
-import numpy as np
-import pytest
 
 import ray
-from ray.tune import Trainable
-from ray.tune.trainable import wrap_function
-from ray.tune.integration.wandb import (
-    WandbTrainableMixin,
-    wandb_mixin,
-)
+from ray.exceptions import RayActorError
 from ray.air.integrations.wandb import (
     WandbLoggerCallback,
     _QueueItem,
@@ -32,120 +61,18 @@ from ray.air.integrations.wandb import (
     WANDB_PROJECT_ENV_VAR,
     WANDB_SETUP_API_KEY_HOOK,
 )
-from ray.tune.result import TRIAL_INFO
-from ray.tune.experiment.trial import _TrialInfo
 from ray.tune.execution.placement_groups import PlacementGroupFactory
-from wandb.util import json_dumps_safer
+
+from ray.air.tests.mocked_wandb_integration import (
+    _MockWandbAPI,
+    _MockWandbLoggingActor,
+    Trial,
+    WandbTestExperimentLogger,
+    get_mock_wandb_logger,
+)
 
 
-class Trial(
-    namedtuple(
-        "MockTrial",
-        [
-            "config",
-            "trial_id",
-            "trial_name",
-            "experiment_dir_name",
-            "placement_group_factory",
-            "logdir",
-        ],
-    )
-):
-    def __hash__(self):
-        return hash(self.trial_id)
-
-    def __str__(self):
-        return self.trial_name
-
-
-@dataclass
-class _MockWandbConfig:
-    args: Tuple
-    kwargs: Dict
-
-
-class _FakeConfig:
-    def update(self, config, *args, **kwargs):
-        for key, value in config.items():
-            setattr(self, key, value)
-
-    def __iter__(self):
-        return iter(self.__dict__)
-
-
-class _MockWandbAPI:
-    def __init__(self):
-        self.logs = Queue()
-        self.config = _FakeConfig()
-
-    def init(self, *args, **kwargs):
-        mock = Mock()
-        mock.args = args
-        mock.kwargs = kwargs
-
-        if "config" in kwargs:
-            self.config.update(kwargs["config"])
-
-        return mock
-
-    def log(self, data):
-        try:
-            json_dumps_safer(data)
-        except Exception:
-            self.logs.put("serialization error")
-        else:
-            self.logs.put(data)
-
-    def finish(self):
-        pass
-
-
-class _MockWandbLoggingActor(_WandbLoggingActor):
-    def __init__(self, logdir, queue, exclude, to_config, *args, **kwargs):
-        super(_MockWandbLoggingActor, self).__init__(
-            logdir, queue, exclude, to_config, *args, **kwargs
-        )
-        self._wandb = _MockWandbAPI()
-
-
-class WandbTestExperimentLogger(WandbLoggerCallback):
-    @property
-    def trial_processes(self):
-        return self._trial_logging_actors
-
-    def _start_logging_actor(self, trial, exclude_results, **wandb_init_kwargs):
-        self._trial_queues[trial] = Queue()
-        local_actor = _MockWandbLoggingActor(
-            logdir=trial.logdir,
-            queue=self._trial_queues[trial],
-            exclude=exclude_results,
-            to_config=self.AUTO_CONFIG_KEYS,
-            **wandb_init_kwargs,
-        )
-        self._trial_logging_actors[trial] = local_actor
-
-        thread = threading.Thread(target=local_actor.run)
-        self._trial_logging_futures[trial] = thread
-        thread.start()
-
-    def _stop_logging_actor(self, trial: "Trial", timeout: int = 10):
-        self._trial_queues[trial].put((_QueueItem.END, None))
-
-        del self._trial_queues[trial]
-        del self._trial_logging_actors[trial]
-        self._trial_logging_futures[trial].join(timeout=2)
-        del self._trial_logging_futures[trial]
-
-
-class _MockWandbTrainableMixin(WandbTrainableMixin):
-    _wandb = _MockWandbAPI()
-
-
-class WandbTestTrainable(_MockWandbTrainableMixin, Trainable):
-    pass
-
-
-@pytest.fixture
+@pytest.fixture(autouse=True, scope="module")
 def ray_start_2_cpus():
     address_info = ray.init(num_cpus=2)
     yield address_info
@@ -164,17 +91,6 @@ def trial():
         "/tmp",
     )
     yield trial
-
-
-@pytest.fixture
-def train_fn():
-    @wandb_mixin
-    def train_fn(config):
-        return 1
-
-    train_fn.__mixins__ = (_MockWandbTrainableMixin,)
-
-    yield train_fn
 
 
 @pytest.fixture(autouse=True)
@@ -293,54 +209,62 @@ class TestWandbLogger:
         mock_wandb.ensure_configured.assert_called_once()
 
     def test_wandb_logger_run_location_external_hook(self, monkeypatch):
-        # No project
-        with pytest.raises(ValueError):
+        with patch.dict(os.environ):
+            # No project
+            with pytest.raises(ValueError):
+                logger = WandbTestExperimentLogger(api_key="1234")
+                logger.setup()
+
+            # Project and group env vars from external hook
+            monkeypatch.setenv(
+                WANDB_POPULATE_RUN_LOCATION_HOOK,
+                "ray._private.test_utils.wandb_populate_run_location_hook",
+            )
             logger = WandbTestExperimentLogger(api_key="1234")
             logger.setup()
-
-        # Project and group env vars from external hook
-        monkeypatch.setenv(
-            WANDB_POPULATE_RUN_LOCATION_HOOK,
-            "ray._private.test_utils.wandb_populate_run_location_hook",
-        )
-        logger = WandbTestExperimentLogger(api_key="1234")
-        logger.setup()
-        assert os.environ[WANDB_PROJECT_ENV_VAR] == "test_project"
-        assert os.environ[WANDB_GROUP_ENV_VAR] == "test_group"
+            assert os.environ[WANDB_PROJECT_ENV_VAR] == "test_project"
+            assert os.environ[WANDB_GROUP_ENV_VAR] == "test_group"
 
     def test_wandb_logger_start(self, monkeypatch, trial):
         monkeypatch.setenv(WANDB_ENV_VAR, "9012")
         # API Key in env
         logger = WandbTestExperimentLogger(project="test_project")
         logger.setup()
-
         # From now on, the API key is in the env variable.
-        logger = WandbTestExperimentLogger(project="test_project")
         logger.log_trial_start(trial)
+        logger.log_trial_end(trial)
+        logger.on_experiment_end(trials=[trial])
 
-        assert logger.trial_processes[trial].kwargs["project"] == "test_project"
-        assert logger.trial_processes[trial].kwargs["id"] == trial.trial_id
-        assert logger.trial_processes[trial].kwargs["name"] == trial.trial_name
-        assert (
-            logger.trial_processes[trial].kwargs["group"] == trial.experiment_dir_name
-        )
-        assert "config" in logger.trial_processes[trial]._exclude
+        logger_state = logger.trial_logging_actor_states[trial]
+        assert logger_state.kwargs["project"] == "test_project"
+        assert logger_state.kwargs["id"] == trial.trial_id
+        assert logger_state.kwargs["name"] == trial.trial_name
+        assert logger_state.kwargs["group"] == trial.experiment_dir_name
+        assert "config" in logger_state.exclude
 
         del logger
 
         # log config.
         logger = WandbTestExperimentLogger(project="test_project", log_config=True)
         logger.log_trial_start(trial)
-        assert "config" not in logger.trial_processes[trial]._exclude
-        assert "metric" not in logger.trial_processes[trial]._exclude
+        logger.log_trial_end(trial)
+        logger.on_experiment_end(trials=[trial])
+
+        logger_state = logger.trial_logging_actor_states[trial]
+        assert "config" not in logger_state.exclude
+        assert "metric" not in logger_state.exclude
 
         del logger
 
         # Exclude metric.
         logger = WandbTestExperimentLogger(project="test_project", excludes=["metric"])
         logger.log_trial_start(trial)
-        assert "config" in logger.trial_processes[trial]._exclude
-        assert "metric" in logger.trial_processes[trial]._exclude
+        logger.log_trial_end(trial)
+        logger.on_experiment_end(trials=[trial])
+
+        logger_state = logger.trial_logging_actor_states[trial]
+        assert "config" in logger_state.exclude
+        assert "metric" in logger_state.exclude
 
         del logger
 
@@ -349,7 +273,6 @@ class TestWandbLogger:
             project="test_project", api_key="1234", excludes=["metric2"]
         )
         logger.on_trial_start(0, [], trial)
-
         r1 = {
             "metric1": 0.8,
             "metric2": 1.4,
@@ -358,10 +281,10 @@ class TestWandbLogger:
             "const": "text",
             "config": trial.config,
         }
-
         logger.on_trial_result(0, [], trial, r1)
-
-        logged = logger.trial_processes[trial]._wandb.logs.get(timeout=10)
+        logger.on_trial_complete(0, [], trial)
+        logger.on_experiment_end(trials=[trial])
+        logged = logger.trial_logging_actor_states[trial].logs[0]
         assert "metric1" in logged
         assert "metric2" not in logged
         assert "metric3" in logged
@@ -372,12 +295,11 @@ class TestWandbLogger:
     def test_wandb_logger_auto_config_keys(self, trial):
         logger = WandbTestExperimentLogger(project="test_project", api_key="1234")
         logger.on_trial_start(iteration=0, trials=[], trial=trial)
-        config = logger.trial_processes[trial]._wandb.config
-
         result = {key: 0 for key in WandbLoggerCallback.AUTO_CONFIG_KEYS}
         logger.on_trial_result(0, [], trial, result)
-
         logger.on_trial_complete(0, [], trial)
+        logger.on_experiment_end(trials=[trial])
+        config = logger.trial_logging_actor_states[trial].config
         # The results in `AUTO_CONFIG_KEYS` should be saved as training configuration
         # instead of output metrics.
         assert set(WandbLoggerCallback.AUTO_CONFIG_KEYS) < set(config)
@@ -389,7 +311,7 @@ class TestWandbLogger:
             trial_name="trial_0",
             experiment_dir_name="trainable",
             placement_group_factory=PlacementGroupFactory([{"CPU": 1}]),
-            logdir=tempfile.gettempdir(),
+            local_path=tempfile.gettempdir(),
         )
         logger = WandbTestExperimentLogger(
             project="test_project",
@@ -397,13 +319,14 @@ class TestWandbLogger:
             excludes=(["param2"] + WandbLoggerCallback.AUTO_CONFIG_KEYS),
         )
         logger.on_trial_start(iteration=0, trials=[], trial=trial)
-        config = logger.trial_processes[trial]._wandb.config
 
         # We need to test that `excludes` also applies to `AUTO_CONFIG_KEYS`.
         result = {key: 0 for key in WandbLoggerCallback.AUTO_CONFIG_KEYS}
         logger.on_trial_result(0, [], trial, result)
-
         logger.on_trial_complete(0, [], trial)
+        logger.on_experiment_end(trials=[trial])
+
+        config = logger.trial_logging_actor_states[trial].config
         assert set(config) == {"param1"}
 
     def test_set_serializability_result(self, trial):
@@ -434,145 +357,134 @@ class TestWandbLogger:
             },
         }
         logger.on_trial_result(0, [], trial, rllib_result)
-        logged = logger.trial_processes[trial]._wandb.logs.get(timeout=10)
+        logger.on_trial_complete(0, [], trial)
+        logger.on_experiment_end(trials=[trial])
+        logged = logger.trial_logging_actor_states[trial].logs[0]
         assert logged != "serialization error"
 
-    def test_wandb_logging_actor_api_key(self, ray_start_2_cpus, trial, monkeypatch):
+    def test_wandb_logging_actor_api_key(self, trial, monkeypatch):
         """Tests that the wandb API key get propagated as an environment variable to
         the remote logging actors."""
 
         def mock_run(actor_cls):
             return os.environ.get(WANDB_ENV_VAR)
 
-        monkeypatch.setattr(
-            WandbLoggerCallback, "_logger_actor_cls", _MockWandbLoggingActor
-        )
         monkeypatch.setattr(_MockWandbLoggingActor, "run", mock_run)
 
         logger = WandbLoggerCallback(
             project="test_project", api_key="1234", excludes=["metric2"]
         )
+        logger._logger_actor_cls = _MockWandbLoggingActor
         logger.setup()
         logger.log_trial_start(trial)
         actor_env_var = ray.get(logger._trial_logging_futures[trial])
         assert actor_env_var == "1234"
 
+    def test_wandb_finish(self, trial, tmp_path):
+        """Test that logging actors are cleaned up upon experiment completion."""
+        marker = tmp_path / "hang_marker"
+        marker.write_text("")
 
-class TestWandbClassMixin:
-    def test_wandb_mixin_config(self):
-        # Needs at least a project
-        config = {}
-        with pytest.raises(ValueError):
-            WandbTestTrainable(config)
+        class HangingFinishMockWandbAPI(_MockWandbAPI):
+            def finish(self):
+                while marker.exists():
+                    time.sleep(0.1)
 
-        # No API key
-        config = {"wandb": {"project": "test_project"}}
-        with pytest.raises(ValueError):
-            WandbTestTrainable(config)
+        logger = get_mock_wandb_logger(
+            mock_api_cls=HangingFinishMockWandbAPI,
+            upload_timeout=1.0,
+        )
+        logger.setup()
+        logger.on_trial_start(0, [], trial)
+        logger.on_trial_complete(0, [], trial)
+        # Signalling stop will not cleanup fully due to the hanging finish
+        assert logger._trial_logging_actors
+        marker.unlink()
+        # wandb.finish has ended -> experiment end hook should cleanup actors fully
+        logger.on_experiment_end(trials=[trial])
+        assert not logger._trial_logging_actors
 
-        # API Key in config
-        config = {"wandb": {"project": "test_project", "api_key": "1234"}}
-        WandbTestTrainable(config)
-        assert os.environ[WANDB_ENV_VAR] == "1234"
+    def test_wandb_kill_hanging_actor(self, trial):
+        """Test that logging actors are killed if exceeding the upload timeout
+        upon experiment completion."""
 
-        del os.environ[WANDB_ENV_VAR]
+        class HangingFinishMockWandbAPI(_MockWandbAPI):
+            def finish(self):
+                time.sleep(5)
 
-    def test_wandb_mixin_api_key_file(self):
-        # API Key file
-        with tempfile.NamedTemporaryFile("wt") as fp:
-            fp.write("5678")
-            fp.flush()
+        logger = get_mock_wandb_logger(
+            mock_api_cls=HangingFinishMockWandbAPI,
+            upload_timeout=0.1,
+        )
+        logger.setup()
+        logger.on_trial_start(0, [], trial)
+        logger.on_trial_complete(0, [], trial)
+        # Signalling stop will not cleanup fully due to the hanging finish
+        assert logger._trial_logging_actors
+        actor = logger._trial_logging_actors[trial]
+        # Experiment end hook should kill actors since upload_timeout < 5
+        logger.on_experiment_end(trials=[trial])
+        assert not logger._trial_logging_actors
+        gc.collect()
+        with pytest.raises(RayActorError):
+            ray.get(actor.get_state.remote())
 
-            config = {"wandb": {"project": "test_project", "api_key_file": fp.name}}
+    def test_wandb_destructor(self, trial):
+        """Test that the WandbLoggerCallback destructor forcefully cleans up
+        logging actors."""
 
-            WandbTestTrainable(config)
-            assert os.environ[WANDB_ENV_VAR] == "5678"
+        class SlowFinishMockWandbAPI(_MockWandbAPI):
+            def finish(self):
+                time.sleep(5)
 
-    def test_wandb_mixin_init(self, trial, monkeypatch):
-        # API Key in env
-        monkeypatch.setenv(WANDB_ENV_VAR, "9012")
-        config = {"wandb": {"project": "test_project"}}
-        trainable = WandbTestTrainable(config)
+        logger = get_mock_wandb_logger(
+            mock_api_cls=SlowFinishMockWandbAPI,
+            upload_timeout=1.0,
+        )
 
-        # From now on, the API key is in the env variable.
+        logger.setup()
+        # Triggers logging actor run loop
+        logger.on_trial_start(0, [], trial)
+        actor = logger._trial_logging_actors[trial]
+        del logger
+        gc.collect()
+        with pytest.raises(RayActorError):
+            ray.get(actor.get_state.remote())
 
-        # Default configuration
-        config = {"wandb": {"project": "test_project"}}
-        trial_info = _TrialInfo(trial)
-        config[TRIAL_INFO] = trial_info
+    def test_wandb_logging_actor_fault_tolerance(self, trial):
+        """Tests that failing wandb logging actors are restarted"""
 
-        trainable = WandbTestTrainable(config)
-        assert trainable.wandb.kwargs["project"] == "test_project"
-        assert trainable.wandb.kwargs["id"] == trial.trial_id
-        assert trainable.wandb.kwargs["name"] == trial.trial_name
-        assert trainable.wandb.kwargs["group"] == "WandbTestTrainable"
+        fail_marker = Path(tempfile.mktemp())
 
-    def test_wandb_mixin_rllib(self):
-        """Test compatibility with RLlib configuration dicts"""
-        # Local import to avoid tune dependency on rllib
-        try:
-            from ray.rllib.algorithms.ppo import PPO
-        except ImportError:
-            pytest.skip("ray[rllib] not available")
+        class _FailingWandbLoggingActor(_MockWandbLoggingActor):
+            def _handle_result(self, result):
+                if result.get("training_iteration") == 3 and not fail_marker.exists():
+                    fail_marker.write_text("Ok")
+                    raise SystemExit
 
-        class WandbPPOTrainer(_MockWandbTrainableMixin, PPO):
-            pass
+                return super()._handle_result(result)
 
-        config = {
-            "env": "CartPole-v0",
-            "wandb": {"project": "test_project", "api_key": "1234"},
-        }
+        logger = WandbLoggerCallback(
+            project="test_project", api_key="1234", excludes=["metric2"]
+        )
+        logger._logger_actor_cls = _FailingWandbLoggingActor
+        logger.setup()
+        logger.log_trial_start(trial)
 
-        # Test that trainer object can be initialized
-        WandbPPOTrainer(config)
+        actor = logger._trial_logging_actors[trial]
+        queue = logger._trial_queues[trial]
 
+        logger.log_trial_result(1, trial, result={"training_iteration": 1})
+        logger.log_trial_result(2, trial, result={"training_iteration": 2})
+        logger.log_trial_result(3, trial, result={"training_iteration": 3})
 
-class TestWandbMixinDecorator:
-    def test_wandb_decorator_config(self, train_fn):
-        # Needs at least a project
-        config = {}
-        with pytest.raises(ValueError):
-            wrap_function(train_fn)(config)
+        logger.log_trial_result(4, trial, result={"training_iteration": 4})
+        logger.log_trial_result(5, trial, result={"training_iteration": 5})
 
-        # No API key
-        config = {"wandb": {"project": "test_project"}}
-        with pytest.raises(ValueError):
-            wrap_function(train_fn)(config)
+        queue.put(_QueueItem.END)
 
-        # API Key in config
-        config = {"wandb": {"project": "test_project", "api_key": "1234"}}
-        wrap_function(train_fn)(config)
-        assert os.environ[WANDB_ENV_VAR] == "1234"
-
-    def test_wandb_decorator_api_key_file(self, train_fn):
-        # API Key file
-        with tempfile.NamedTemporaryFile("wt") as fp:
-            fp.write("5678")
-            fp.flush()
-
-            config = {"wandb": {"project": "test_project", "api_key_file": fp.name}}
-
-            wrap_function(train_fn)(config)
-            assert os.environ[WANDB_ENV_VAR] == "5678"
-
-    def test_wandb_decorator_init(self, trial, train_fn, monkeypatch):
-        trial_info = _TrialInfo(trial)
-
-        # API Key in env
-        monkeypatch.setenv(WANDB_ENV_VAR, "9012")
-        config = {"wandb": {"project": "test_project"}}
-        wrapped = wrap_function(train_fn)(config)
-
-        # From now on, the API key is in the env variable.
-
-        # Default configuration
-        config = {"wandb": {"project": "test_project"}}
-        config[TRIAL_INFO] = trial_info
-
-        wrapped = wrap_function(train_fn)(config)
-        assert wrapped.wandb.kwargs["project"] == "test_project"
-        assert wrapped.wandb.kwargs["id"] == trial.trial_id
-        assert wrapped.wandb.kwargs["name"] == trial.trial_name
+        state = ray.get(actor.get_state.remote())
+        assert [metrics["training_iteration"] for metrics in state.logs] == [4, 5]
 
 
 def test_wandb_logging_process_run_info_hook(monkeypatch):

@@ -1,26 +1,27 @@
-from typing import Optional
-from ray.rllib.models.specs.specs_base import TensorSpec
+from typing import Callable, Optional, Union
 
-from ray.rllib.models.specs.specs_dict import SpecDict
-from ray.rllib.utils.annotations import DeveloperAPI, ExperimentalAPI
+from ray.rllib.core.models.specs.specs_base import TensorSpec
+from ray.rllib.core.models.specs.specs_dict import SpecDict
+from ray.rllib.utils.annotations import DeveloperAPI
+from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.framework import try_import_jax, try_import_tf, try_import_torch
 
 
-@ExperimentalAPI
-def input_to_output_spec(
-    input_spec: SpecDict,
+@Deprecated(error=False)
+def input_to_output_specs(
+    input_specs: SpecDict,
     num_input_feature_dims: int,
     output_key: str,
     output_feature_spec: TensorSpec,
 ) -> SpecDict:
     """Convert an input spec to an output spec, based on a module.
 
-    Drops the feature dimension(s) from an input_spec, replacing them with
+    Drops the feature dimension(s) from an input_specs, replacing them with
     output_feature_spec dimension(s).
 
     Examples:
-        input_to_output_spec(
-            input_spec=SpecDict({
+        input_to_output_specs(
+            input_specs=SpecDict({
                 "bork": "batch, time, feature0",
                 "dork": "batch, time, feature1"
                 }, feature0=2, feature1=3
@@ -33,8 +34,8 @@ def input_to_output_spec(
         will return:
         SpecDict({"outer_product": "batch, time, row, col", row=2, col=3})
 
-        input_to_output_spec(
-            input_spec=SpecDict({
+        input_to_output_specs(
+            input_specs=SpecDict({
                 "bork": "batch, time, h, w, c",
                 }, h=32, w=32, c=3,
             ),
@@ -48,7 +49,7 @@ def input_to_output_spec(
 
 
     Args:
-        input_spec: SpecDict describing input to a specified module
+        input_specs: SpecDict describing input to a specified module
         num_input_dims: How many feature dimensions the module will process. E.g.
             a linear layer will only process the last dimension (1), while a CNN
             might process the last two dimensions (2)
@@ -57,31 +58,34 @@ def input_to_output_spec(
             specified module
 
     Returns:
-        A SpecDict based on the input_spec, with the trailing dimensions replaced
+        A SpecDict based on the input_specs, with the trailing dimensions replaced
             by the output_feature_spec
 
     """
     assert num_input_feature_dims >= 1, "Must specify at least one feature dim"
-    num_dims = [len(v.shape) != len for v in input_spec.values()]
+    num_dims = [len(v.shape) != len for v in input_specs.values()]
     assert all(
         nd == num_dims[0] for nd in num_dims
-    ), "All specs in input_spec must all have the same number of dimensions"
+    ), "All specs in input_specs must all have the same number of dimensions"
 
     # All keys in input should have the same numbers of dims
     # so it doesn't matter which key we use
-    key = list(input_spec.keys())[0]
-    batch_spec = input_spec[key].rdrop(num_input_feature_dims)
+    key = list(input_specs.keys())[0]
+    batch_spec = input_specs[key].rdrop(num_input_feature_dims)
     full_spec = batch_spec.append(output_feature_spec)
     return SpecDict({output_key: full_spec})
 
 
 @DeveloperAPI
-def get_activation_fn(name: Optional[str] = None, framework: str = "tf"):
+def get_activation_fn(
+    name: Optional[Union[Callable, str]] = None,
+    framework: str = "tf",
+):
     """Returns a framework specific activation function, given a name string.
 
     Args:
-        name (Optional[str]): One of "relu" (default), "tanh", "elu",
-            "swish", or "linear" (same as None).
+        name: One of "relu" (default), "tanh", "elu",
+            "swish" (or "silu", which is the same), or "linear" (same as None).
         framework: One of "jax", "tf|tf2" or "torch".
 
     Returns:
@@ -95,41 +99,53 @@ def get_activation_fn(name: Optional[str] = None, framework: str = "tf"):
     if callable(name):
         return name
 
+    name_lower = name.lower() if isinstance(name, str) else name
+
     # Infer the correct activation function from the string specifier.
     if framework == "torch":
-        if name in ["linear", None]:
+        if name_lower in ["linear", None]:
             return None
-        if name == "swish":
-            from ray.rllib.utils.torch_utils import Swish
 
-            return Swish
         _, nn = try_import_torch()
-        if name == "relu":
+        # First try getting the correct activation function from nn directly.
+        # Note that torch activation functions are not all lower case.
+        fn = getattr(nn, name, None)
+        if fn is not None:
+            return fn
+
+        if name_lower in ["swish", "silu"]:
+            return nn.SiLU
+        elif name_lower == "relu":
             return nn.ReLU
-        elif name == "tanh":
+        elif name_lower == "tanh":
             return nn.Tanh
-        elif name == "elu":
+        elif name_lower == "elu":
             return nn.ELU
     elif framework == "jax":
-        if name in ["linear", None]:
+        if name_lower in ["linear", None]:
             return None
         jax, _ = try_import_jax()
-        if name == "swish":
+        if name_lower in ["swish", "silu"]:
             return jax.nn.swish
-        if name == "relu":
+        if name_lower == "relu":
             return jax.nn.relu
-        elif name == "tanh":
+        elif name_lower == "tanh":
             return jax.nn.hard_tanh
-        elif name == "elu":
+        elif name_lower == "elu":
             return jax.nn.elu
     else:
         assert framework in ["tf", "tf2"], "Unsupported framework `{}`!".format(
             framework
         )
-        if name in ["linear", None]:
+        if name_lower in ["linear", None]:
             return None
+
         tf1, tf, tfv = try_import_tf()
-        fn = getattr(tf.nn, name, None)
+        # Try getting the correct activation function from tf.nn directly.
+        # Note that tf activation functions are all lower case, so this should always
+        # work.
+        fn = getattr(tf.nn, name_lower, None)
+
         if fn is not None:
             return fn
 
@@ -138,7 +154,7 @@ def get_activation_fn(name: Optional[str] = None, framework: str = "tf"):
     )
 
 
-@DeveloperAPI
+@Deprecated(error=False)
 def get_filter_config(shape):
     """Returns a default Conv2D filter config (list) for a given image shape.
 
@@ -173,6 +189,13 @@ def get_filter_config(shape):
         [32, [4, 4], 2],
         [256, [11, 11], 1],
     ]
+    # Dreamer-style (S-sized model) Atari or DM Control Suite.
+    filters_64x64 = [
+        [32, [4, 4], 2],
+        [64, [4, 4], 2],
+        [128, [4, 4], 2],
+        [256, [4, 4], 2],
+    ]
     # Small (1/2) Atari.
     filters_42x42 = [
         [16, [4, 4], 2],
@@ -194,6 +217,8 @@ def get_filter_config(shape):
         return filters_96x96
     elif len(shape) in [2, 3] and (shape[:2] == [84, 84] or shape[1:] == [84, 84]):
         return filters_84x84
+    elif len(shape) in [2, 3] and (shape[:2] == [64, 64] or shape[1:] == [64, 64]):
+        return filters_64x64
     elif len(shape) in [2, 3] and (shape[:2] == [42, 42] or shape[1:] == [42, 42]):
         return filters_42x42
     elif len(shape) in [2, 3] and (shape[:2] == [10, 10] or shape[1:] == [10, 10]):
@@ -203,10 +228,8 @@ def get_filter_config(shape):
             "No default configuration for obs shape {}".format(shape)
             + ", you must specify `conv_filters` manually as a model option. "
             "Default configurations are only available for inputs of the following "
-            "shapes: [42, 42, K], [84, 84, K], [10, 10, K], [240, 320, K] and "
-            " [480, 640, K]. You may "
-            "alternatively "
-            "want "
+            "shapes: [42, 42, K], [84, 84, K], [64, 64, K], [10, 10, K], "
+            "[240, 320, K], and [480, 640, K]. You may alternatively want "
             "to use a custom model or preprocessor."
         )
 

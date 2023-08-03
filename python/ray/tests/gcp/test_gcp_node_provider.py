@@ -1,7 +1,7 @@
 from typing import Dict
 from threading import RLock
 import pytest
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, patch, call
 
 from ray.autoscaler._private.gcp.node import (
     GCPCompute,
@@ -10,7 +10,7 @@ from ray.autoscaler._private.gcp.node import (
     GCPResource,
 )
 
-from python.ray.autoscaler._private.gcp.node_provider import GCPNodeProvider
+from ray.autoscaler._private.gcp.node_provider import GCPNodeProvider
 
 _PROJECT_NAME = "project-one"
 _AZ = "us-west1-b"
@@ -33,6 +33,34 @@ def test_create_node_returns_dict():
         node_provider = GCPNodeProvider({}, "")
         create_node_return_value = node_provider.create_node(mock_node_config, {}, 1)
     assert create_node_return_value == expected_return_value
+
+
+def test_terminate_nodes():
+    mock_node_config = {"machineType": "n2-standard-8"}
+    node_type = GCPNodeType.COMPUTE.value
+    id1, id2 = f"instance-id1-{node_type}", f"instance-id2-{node_type}"
+    terminate_node_ids = [id1, id2]
+    mock_resource = MagicMock()
+    mock_resource.create_instances.return_value = [
+        ({"dict": 1}, id1),
+        ({"dict": 2}, id2),
+    ]
+    mock_resource.delete_instance.return_value = "test"
+
+    def __init__(self, provider_config: dict, cluster_name: str):
+        self.lock = RLock()
+        self.cached_nodes: Dict[str, GCPNode] = {}
+        self.resources: Dict[GCPNodeType, GCPResource] = {}
+        self.resources[GCPNodeType.COMPUTE] = mock_resource
+
+    with patch.object(GCPNodeProvider, "__init__", __init__):
+        node_provider = GCPNodeProvider({}, "")
+        node_provider.create_node(mock_node_config, {}, 1)
+        node_provider.terminate_nodes(terminate_node_ids)
+
+    mock_resource.delete_instance.assert_has_calls(
+        [call(node_id=id1), call(node_id=id2)], any_order=True
+    )
 
 
 @pytest.mark.parametrize(

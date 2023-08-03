@@ -39,7 +39,7 @@ run_experiments(
     {
         "apex": {
             "run": "APEX",
-            "env": "Pong-v0",
+            "env": "ALE/Pong-v5",
             "config": {
                 "num_workers": 3,
                 "num_gpus": 0,
@@ -52,6 +52,7 @@ run_experiments(
                 "min_time_s_per_iteration": 10,
                 "min_sample_timesteps_per_iteration": 10,
             },
+            "storage_path": "/mnt/cluster_storage",
         }
     },
     callbacks=[ProgressCallback()],

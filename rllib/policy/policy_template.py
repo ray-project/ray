@@ -1,4 +1,3 @@
-import gymnasium as gym
 from typing import (
     Any,
     Callable,
@@ -11,6 +10,8 @@ from typing import (
     Union,
 )
 
+import gymnasium as gym
+
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.jax.jax_modelv2 import JAXModelV2
 from ray.rllib.models.modelv2 import ModelV2
@@ -20,7 +21,8 @@ from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.torch_policy import TorchPolicy
 from ray.rllib.utils import add_mixins, NullContextManager
-from ray.rllib.utils.annotations import override, DeveloperAPI
+from ray.rllib.utils.annotations import override
+from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.framework import try_import_torch, try_import_jax
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
 from ray.rllib.utils.numpy import convert_to_numpy
@@ -34,7 +36,7 @@ torch, _ = try_import_torch()
 
 
 # TODO: Deprecate in favor of directly sub-classing from TorchPolicy.
-@DeveloperAPI
+@Deprecated(error=False)
 def build_policy_class(
     name: str,
     framework: str,
@@ -250,10 +252,6 @@ def build_policy_class(
 
     class policy_cls(base):
         def __init__(self, obs_space, action_space, config):
-            # Set up the config from possible default-config fn and given
-            # config arg.
-            if get_default_config:
-                config = dict(get_default_config(), **config)
             self.config = config
 
             # Set the DL framework for this Policy.

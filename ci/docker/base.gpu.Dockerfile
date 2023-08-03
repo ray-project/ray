@@ -1,10 +1,10 @@
-FROM nvidia/cuda:11.6.1-cudnn8-devel-ubuntu20.04
+FROM nvidia/cuda:11.8.0-cudnn8-devel-ubuntu20.04
 
 ARG REMOTE_CACHE_URL
 ARG BUILDKITE_PULL_REQUEST
 ARG BUILDKITE_COMMIT
 ARG BUILDKITE_PULL_REQUEST_BASE_BRANCH
-ARG PYTHON=3.7
+ARG PYTHON=3.8
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV TZ=America/Los_Angeles
@@ -26,9 +26,6 @@ ENV DOCKER_TLS_VERIFY=1
 ENV DOCKER_CERT_PATH=/certs/client
 ENV TRAVIS_COMMIT=${BUILDKITE_COMMIT}
 ENV BUILDKITE_BAZEL_CACHE_URL=${REMOTE_CACHE_URL}
-
-RUN apt-key adv --fetch-keys https://developer.download.nvidia.com/compute/cuda/repos/ubuntu1804/x86_64/3bf863cc.pub
-RUN apt-key adv --fetch-keys https://developer.download.nvidia.com/compute/machine-learning/repos/ubuntu1804/x86_64/7fa2af80.pub
 
 RUN apt-get update -qq && apt-get upgrade -qq
 RUN apt-get install -y -qq \

@@ -3,8 +3,7 @@
 import argparse
 import time
 
-from ray import air, tune
-from ray.air import session
+from ray import train, tune
 from ray.tune.logger import LoggerCallback
 
 
@@ -30,7 +29,7 @@ def easy_objective(config):
         # Iterative training function - can be any arbitrary training procedure
         intermediate_score = evaluation_fn(step, width, height)
         # Feed the score back back to Tune.
-        session.report({"iterations": step, "mean_loss": intermediate_score})
+        train.report({"iterations": step, "mean_loss": intermediate_score})
 
 
 if __name__ == "__main__":
@@ -38,23 +37,11 @@ if __name__ == "__main__":
     parser.add_argument(
         "--smoke-test", action="store_true", help="Finish quickly for testing"
     )
-    parser.add_argument(
-        "--server-address",
-        type=str,
-        default=None,
-        required=False,
-        help="The address of server to connect to if using Ray Client.",
-    )
     args, _ = parser.parse_known_args()
-
-    if args.server_address:
-        import ray
-
-        ray.init(f"ray://{args.server_address}")
 
     tuner = tune.Tuner(
         easy_objective,
-        run_config=air.RunConfig(
+        run_config=train.RunConfig(
             name="hyperband_test",
             callbacks=[TestLoggerCallback()],
             stop={"training_iteration": 1 if args.smoke_test else 100},

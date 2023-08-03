@@ -3,8 +3,9 @@ import shutil
 import tempfile
 import unittest
 import pytorch_lightning as pl
+from ray.train import CheckpointConfig
 import torch
-from ray.tune.result import TRAINING_ITERATION
+from ray.air.constants import TRAINING_ITERATION
 
 from torch.utils.data import DataLoader, Dataset
 
@@ -114,16 +115,17 @@ class PyTorchLightningIntegrationTest(unittest.TestCase):
             )
             trainer.fit(module)
 
+        checkpoint_config = CheckpointConfig(num_to_keep=100)
         analysis = tune.run(
             train,
             stop={TRAINING_ITERATION: 10},
-            keep_checkpoints_num=100,
-            local_dir=tmpdir,
+            checkpoint_config=checkpoint_config,
+            storage_path=tmpdir,
         )
 
         checkpoints = [
             dir
-            for dir in os.listdir(analysis.trials[0].logdir)
+            for dir in os.listdir(analysis.trials[0].local_path)
             if dir.startswith("checkpoint")
         ]
         # 10 checkpoints after each batch, 1 checkpoint at end
@@ -145,16 +147,17 @@ class PyTorchLightningIntegrationTest(unittest.TestCase):
             )
             trainer.fit(module)
 
+        checkpoint_config = CheckpointConfig(num_to_keep=100)
         analysis = tune.run(
             train,
             stop={TRAINING_ITERATION: 10},
-            keep_checkpoints_num=100,
-            local_dir=tmpdir,
+            checkpoint_config=checkpoint_config,
+            storage_path=tmpdir,
         )
 
         checkpoints = [
             dir
-            for dir in os.listdir(analysis.trials[0].logdir)
+            for dir in os.listdir(analysis.trials[0].local_path)
             if dir.startswith("checkpoint")
         ]
         # 1 checkpoint after the validation step

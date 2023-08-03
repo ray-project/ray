@@ -1,5 +1,6 @@
 # coding: utf-8
 import os
+import pytest
 import shutil
 import tempfile
 import unittest
@@ -62,7 +63,7 @@ class AbstractWarmStartTest:
             scheduler=self.get_scheduler(),
             verbose=0,
             name=self.experiment_name,
-            local_dir=self.tmpdir,
+            storage_path=self.tmpdir,
             reuse_actors=True,
         )
         checkpoint_path = os.path.join(self.tmpdir, "warmStartTest.pkl")
@@ -81,7 +82,7 @@ class AbstractWarmStartTest:
             scheduler=self.get_scheduler(),
             verbose=0,
             name=self.experiment_name,
-            local_dir=self.tmpdir,
+            storage_path=self.tmpdir,
             reuse_actors=True,
         )
         return results
@@ -218,13 +219,16 @@ class BlendSearchWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
         }
 
         def cost(param, reporter):
-            reporter(loss=(param["height"] - 14) ** 2 - abs(param["width"] - 3))
+            reporter(loss=(param["height"] - 14) ** 2 - abs(param["width"] - 3), cost=1)
 
         search_alg = BlendSearch(
             space=space,
             metric="loss",
             mode="min",
             seed=20,
+            # Mocked to be a constant to ensure reproductibility,
+            # as runtime (default) can fluctuate
+            cost_attr="cost",
         )
 
         return search_alg, cost
@@ -261,7 +265,7 @@ class NevergradWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
 
         search_alg = NevergradSearch(
             optimizer,
-            parameter_names,
+            space=parameter_names,
             metric="loss",
             mode="min",
         )
@@ -483,7 +487,6 @@ class BOHBWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
 
     sys.exit(pytest.main(["-v", __file__] + sys.argv[1:]))

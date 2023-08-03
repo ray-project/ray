@@ -23,14 +23,8 @@ parser.add_argument("--num-cpus", type=int, default=0)
 parser.add_argument(
     "--framework",
     choices=["tf", "tf2", "torch"],
-    default="tf",
+    default="torch",
     help="The DL framework specifier.",
-)
-parser.add_argument(
-    "--eager-tracing",
-    action="store_true",
-    help="Use tf eager tracing to speed up execution in tf2.x. Only supported"
-    " for `framework=tf2`.",
 )
 parser.add_argument(
     "--prev-n-actions",
@@ -85,7 +79,7 @@ if __name__ == "__main__":
         .get_default_config()
         .environment("FrozenLake-v1")
         # Run with tracing enabled for tf2?
-        .framework(args.framework, eager_tracing=args.eager_tracing)
+        .framework(args.framework)
         .training(
             model={
                 "use_attention": True,
@@ -95,10 +89,13 @@ if __name__ == "__main__":
                 "attention_dim": 32,
                 "attention_memory_inference": 10,
                 "attention_memory_training": 10,
-            }
+            },
+            # TODO (Kourosh): Enable when Attentions are supported.
+            _enable_learner_api=False,
         )
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
         .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
+        .rl_module(_enable_rl_module_api=False)
     )
 
     stop = {
@@ -122,10 +119,10 @@ if __name__ == "__main__":
     )
     results = tuner.fit()
 
-    print("Training completed. Restoring new Trainer for action inference.")
+    print("Training completed. Restoring new Algorithm for action inference.")
     # Get the last checkpoint from the above training run.
     checkpoint = results.get_best_result().checkpoint
-    # Create new Trainer and restore its state from the last checkpoint.
+    # Create new Algorithm and restore its state from the last checkpoint.
     algo = Algorithm.from_checkpoint(checkpoint)
 
     # Create the env to do inference in.

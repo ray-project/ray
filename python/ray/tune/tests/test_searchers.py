@@ -9,7 +9,7 @@ from unittest.mock import patch
 
 import ray
 from ray import tune
-from ray.tune.result import TRAINING_ITERATION
+from ray.air.constants import TRAINING_ITERATION
 from ray.tune.search import ConcurrencyLimiter
 
 
@@ -271,6 +271,12 @@ class InvalidValuesTest(unittest.TestCase):
                 reuse_actors=False,
             )
         self.assertCorrectExperimentOutput(out)
+
+    def testNevergradWithRequiredOptimizerKwargs(self):
+        from ray.tune.search.nevergrad import NevergradSearch
+        import nevergrad as ng
+
+        NevergradSearch(optimizer=ng.optimizers.CM, optimizer_kwargs=dict(budget=16))
 
     def testOptuna(self):
         from ray.tune.search.optuna import OptunaSearch

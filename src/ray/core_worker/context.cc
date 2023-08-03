@@ -27,7 +27,10 @@ const rpc::JobConfig kDefaultJobConfig{};
 /// per-thread context for core worker.
 struct WorkerThreadContext {
   explicit WorkerThreadContext(const JobID &job_id)
-      : current_task_id_(), task_index_(0), put_counter_(0) {
+      : current_task_id_(),
+        task_index_(0),
+        put_counter_(0),
+        max_num_generator_returns_(RayConfig::instance().max_num_generator_returns()) {
     SetCurrentTaskId(TaskID::FromRandom(job_id), /*attempt_number=*/0);
   }
 
@@ -49,7 +52,10 @@ struct WorkerThreadContext {
     // thread), so there's no risk of conflicting put object IDs, either.
     // See https://github.com/ray-project/ray/issues/10324 for further details.
     auto num_returns = current_task_ != nullptr ? current_task_->NumReturns() : 0;
-    return num_returns + ++put_counter_;
+
+    // We reserve max_num_generator_returns_ number of indexes for the generator
+    // return so that all generator return can have consistent ids given an index.
+    return num_returns + max_num_generator_returns_ + ++put_counter_;
   }
 
   const TaskID &GetCurrentTaskID() const { return current_task_id_; }
@@ -100,6 +106,8 @@ struct WorkerThreadContext {
     put_counter_ = 0;
   }
 
+  uint32_t GetMaxNumGeneratorReturnIndex() const { return max_num_generator_returns_; }
+
  private:
   /// The task ID for current task.
   TaskID current_task_id_;
@@ -136,6 +144,9 @@ struct WorkerThreadContext {
 
   /// Whether or not child tasks are captured in the parent's placement group implicitly.
   bool placement_group_capture_child_tasks_ = false;
+
+  /// The maximum number of generator return values.
+  uint32_t max_num_generator_returns_;
 };
 
 thread_local std::unique_ptr<WorkerThreadContext> WorkerContext::thread_context_ =
@@ -160,6 +171,11 @@ WorkerContext::WorkerContext(WorkerType worker_type,
     RAY_CHECK(!current_job_id_.IsNil());
     GetThreadContext().SetCurrentTaskId(TaskID::ForDriverTask(job_id),
                                         /*attempt_number=*/0);
+    // Driver runs in the main thread.
+    {
+      absl::WriterMutexLock lock(&mutex_);
+      main_thread_or_actor_creation_task_id_ = TaskID::ForDriverTask(job_id);
+    }
   }
 }
 
@@ -267,6 +283,9 @@ void WorkerContext::SetCurrentTask(const TaskSpecification &task_spec) {
   GetThreadContext().SetCurrentTask(task_spec);
   absl::WriterMutexLock lock(&mutex_);
   SetTaskDepth(task_spec.GetDepth());
+  if (CurrentThreadIsMain()) {
+    main_thread_or_actor_creation_task_id_ = task_spec.TaskId();
+  }
   RAY_CHECK(current_job_id_ == task_spec.JobId());
   if (task_spec.IsNormalTask()) {
     current_task_is_direct_call_ = true;
@@ -314,6 +333,11 @@ bool WorkerContext::CurrentThreadIsMain() const {
   return boost::this_thread::get_id() == main_thread_id_;
 }
 
+const TaskID WorkerContext::GetMainThreadOrActorCreationTaskID() const {
+  absl::ReaderMutexLock lock(&mutex_);
+  return main_thread_or_actor_creation_task_id_;
+}
+
 bool WorkerContext::ShouldReleaseResourcesOnBlockingCalls() const {
   // Check if we need to release resources when we block:
   //  - Driver doesn't acquire resources and thus doesn't need to release.
@@ -350,6 +374,39 @@ bool WorkerContext::CurrentActorDetached() const {
   return is_detached_actor_;
 }
 
+const ObjectID WorkerContext::GetGeneratorReturnId(
+    const TaskID &task_id, std::optional<ObjectIDIndexType> put_index) {
+  TaskID current_task_id;
+  // We only allow to specify both task id and put index or not specifying both.
+  RAY_CHECK((task_id.IsNil() && !put_index.has_value()) ||
+            (!task_id.IsNil() || put_index.has_value()));
+  if (task_id.IsNil()) {
+    const auto &task_spec = GetCurrentTask();
+    current_task_id = task_spec->TaskId();
+  } else {
+    current_task_id = task_id;
+  }
+
+  ObjectIDIndexType current_put_index;
+  if (!put_index.has_value()) {
+    current_put_index = GetNextPutIndex();
+  } else {
+    // Streaming generator case.
+    current_put_index = put_index.value();
+    // We don't allow to return more than GetMaxNumGeneratorReturnIndex()
+    // return values.
+    auto max_generator_returns = GetThreadContext().GetMaxNumGeneratorReturnIndex();
+    if (put_index > max_generator_returns) {
+      RAY_LOG(FATAL)
+          << "The generator returns " << current_put_index
+          << " items, which exceed the maximum number of return values allowed, "
+          << max_generator_returns;
+    }
+  }
+
+  return ObjectID::FromIndex(current_task_id, current_put_index);
+}
+
 WorkerThreadContext &WorkerContext::GetThreadContext() const {
   if (thread_context_ == nullptr) {
     absl::ReaderMutexLock lock(&mutex_);
@@ -360,6 +417,5 @@ WorkerThreadContext &WorkerContext::GetThreadContext() const {
 
   return *thread_context_;
 }
-
 }  // namespace core
 }  // namespace ray

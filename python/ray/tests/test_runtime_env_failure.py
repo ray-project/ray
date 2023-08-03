@@ -2,6 +2,7 @@ import os
 from unittest import mock
 
 import pytest
+from ray._private.ray_constants import RAY_RUNTIME_ENV_URI_PIN_EXPIRATION_S_DEFAULT
 from ray._private.runtime_env.packaging import (
     RAY_RUNTIME_ENV_FAIL_DOWNLOAD_FOR_TESTING_ENV_VAR,
     RAY_RUNTIME_ENV_FAIL_UPLOAD_FOR_TESTING_ENV_VAR,
@@ -89,6 +90,9 @@ class TestRuntimeEnvFailure:
             with pytest.raises(ConnectionAbortedError) as e:
                 init_ray()
             assert "Failed to download" in str(e.value)
+            assert (
+                f"the default is {RAY_RUNTIME_ENV_URI_PIN_EXPIRATION_S_DEFAULT}"
+            ) in str(e.value)
         else:
             init_ray()
             # TODO(architkulkarni): After #25972 is resolved, we should raise an
@@ -102,6 +106,9 @@ class TestRuntimeEnvFailure:
             with pytest.raises(RuntimeEnvSetupError) as e:
                 ray.get(f.remote())
             assert "Failed to download" in str(e.value)
+            assert (
+                f"the default is {RAY_RUNTIME_ENV_URI_PIN_EXPIRATION_S_DEFAULT}"
+            ) in str(e.value)
 
     def test_eager_install_fail(
         self, tmpdir, monkeypatch, start_cluster, client_connection_timeout_1s

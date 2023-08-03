@@ -1,21 +1,26 @@
-.. _data_user_guide :
+.. _data_user_guide:
 
 ===========
 User Guides
 ===========
 
-If you’re new to Ray Datasets, we recommend starting with the :ref:`Ray Datasets Quick Start <datasets_getting_started>`.
-This user guide will help you navigate the Ray Datasets project and show you how achieve several tasks.
+If you’re new to Ray Data, we recommend starting with the
+:ref:`Ray Data Key Concepts <data_key_concepts>`.
+This user guide will help you navigate the Ray Data project and
+show you how achieve several tasks.
 
 .. toctree::
     :maxdepth: 2
 
-    creating-datasets
-    transforming-datasets
-    consuming-datasets
-    dataset-ml-preprocessing
-    dataset-tensor-support
-    custom-datasource
-    pipelining-compute
-    dataset-internals
+    loading-data
+    transforming-data
+    inspecting-data
+    iterating-over-data
+    saving-data
+    working-with-images
+    working-with-text
+    working-with-tensors
+    working-with-pytorch
+    batch_inference
     performance-tips
+    preprocessors

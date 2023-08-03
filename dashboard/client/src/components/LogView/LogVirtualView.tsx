@@ -1,3 +1,4 @@
+import { createStyles, makeStyles } from "@material-ui/core";
 import dayjs from "dayjs";
 import low from "lowlight";
 import React, { MutableRefObject, useEffect, useRef, useState } from "react";
@@ -5,7 +6,7 @@ import { FixedSizeList as List } from "react-window";
 import "./darcula.css";
 import "./github.css";
 import "./index.css";
-import { getDefaultTheme } from "../../App";
+import { MAX_LINES_FOR_LOGS } from "../../service/log";
 
 const uniqueKeySelector = () => Math.random().toString(16).slice(-8);
 
@@ -82,12 +83,20 @@ export type LogVirtualViewProps = {
   endTime?: string;
 };
 
+const useStyles = makeStyles((theme) =>
+  createStyles({
+    warningInfo: {
+      color: theme.palette.error.main,
+    },
+  }),
+);
+
 const LogVirtualView: React.FC<LogVirtualViewProps> = ({
   content,
   width = "100%",
   height,
   fontSize = 12,
-  theme = getDefaultTheme(),
+  theme = "light",
   keywords = "",
   language = "dos",
   focusLine = 1,
@@ -103,6 +112,7 @@ const LogVirtualView: React.FC<LogVirtualViewProps> = ({
   const timmer = useRef<ReturnType<typeof setTimeout>>();
   const el = useRef<List>(null);
   const outter = useRef<HTMLDivElement>(null);
+  const classes = useStyles();
   if (listRef) {
     listRef.current = outter.current;
   }
@@ -195,22 +205,31 @@ const LogVirtualView: React.FC<LogVirtualViewProps> = ({
   }, [onScrollBottom]);
 
   return (
-    <List
-      height={height || (content.split("\n").length + 1) * 18}
-      width={width}
-      ref={el}
-      outerRef={outter}
-      className={`hljs-${theme}`}
-      style={{
-        fontSize,
-        fontFamily: "menlo, monospace",
-        ...style,
-      }}
-      itemSize={fontSize + 6}
-      itemCount={total}
-    >
-      {itemRenderer}
-    </List>
+    <div>
+      {logs && logs.length > MAX_LINES_FOR_LOGS && (
+        <p className={classes.warningInfo}>
+          [Truncation warning] This log has been truncated and only the latest{" "}
+          {MAX_LINES_FOR_LOGS} lines are displayed. Click "Download" button
+          above to see the full log
+        </p>
+      )}
+      <List
+        height={height || (content.split("\n").length + 1) * 18}
+        width={width}
+        ref={el}
+        outerRef={outter}
+        className={`hljs-${theme}`}
+        style={{
+          fontSize,
+          fontFamily: "menlo, monospace",
+          ...style,
+        }}
+        itemSize={fontSize + 6}
+        itemCount={total}
+      >
+        {itemRenderer}
+      </List>
+    </div>
   );
 };
 

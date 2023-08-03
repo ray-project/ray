@@ -1,11 +1,10 @@
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.marwil.marwil import MARWIL, MARWILConfig
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.deprecation import Deprecated
 
 
 class BCConfig(MARWILConfig):
-    """Defines a configuration class from which a new BC Trainer can be built
+    """Defines a configuration class from which a new BC Algorithm can be built
 
     Example:
         >>> from ray.rllib.algorithms.bc import BCConfig
@@ -14,7 +13,7 @@ class BCConfig(MARWILConfig):
         >>> config = config.offline_data(  # doctest: +SKIP
         ...     input_="./rllib/tests/data/cartpole/large.json")
         >>> print(config.to_dict())  # doctest:+SKIP
-        >>> # Build a Trainer object from the config and run 1 training iteration.
+        >>> # Build an Algorithm object from the config and run 1 training iteration.
         >>> algo = config.build()  # doctest: +SKIP
         >>> algo.train()  # doctest: +SKIP
 
@@ -74,20 +73,3 @@ class BC(MARWIL):
     @override(MARWIL)
     def get_default_config(cls) -> AlgorithmConfig:
         return BCConfig()
-
-
-# Deprecated: Use ray.rllib.algorithms.bc.BCConfig instead!
-class _deprecated_default_config(dict):
-    def __init__(self):
-        super().__init__(BCConfig().to_dict())
-
-    @Deprecated(
-        old="ray.rllib.agents.marwil.bc::DEFAULT_CONFIG",
-        new="ray.rllib.algorithms.bc.bc::BCConfig(...)",
-        error=True,
-    )
-    def __getitem__(self, item):
-        return super().__getitem__(item)
-
-
-BC_DEFAULT_CONFIG = _deprecated_default_config()

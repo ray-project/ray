@@ -22,12 +22,12 @@
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "ray/common/id.h"
-#include "ray/common/task/scheduling_resources.h"
+#include "ray/common/scheduling/scheduling_resources.h"
 #include "ray/common/task/task.h"
 #include "ray/common/task/task_util.h"
 #include "ray/common/test_util.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
-#include "ray/raylet/scheduling/scheduling_ids.h"
+#include "ray/common/scheduling/scheduling_ids.h"
 #include "ray/raylet/local_task_manager.h"
 #include "ray/raylet/test/util.h"
 #include "mock/ray/gcs/gcs_client/gcs_client.h"
@@ -131,8 +131,9 @@ std::shared_ptr<ClusterResourceScheduler> CreateSingleNodeScheduler(
   local_node_resources[ray::kCPU_ResourceLabel] = num_cpus;
   local_node_resources[ray::kGPU_ResourceLabel] = num_gpus;
   local_node_resources[ray::kMemory_ResourceLabel] = 128;
-
+  static instrumented_io_context io_context;
   auto scheduler = std::make_shared<ClusterResourceScheduler>(
+      io_context,
       scheduling::NodeID(id),
       local_node_resources,
       /*is_node_available_fn*/ [&gcs_client](scheduling::NodeID node_id) {
@@ -164,10 +165,12 @@ RayTask CreateTask(
                                  address,
                                  0,
                                  /*returns_dynamic=*/false,
+                                 /*is_streaming_generator*/ false,
                                  required_resources,
                                  {},
                                  "",
                                  0,
+                                 TaskID::Nil(),
                                  runtime_env_info);
 
   if (!args.empty()) {
@@ -290,7 +293,9 @@ class ClusterTaskManagerTest : public ::testing::Test {
             /* announce_infeasible_task= */
             [this](const RayTask &task) { announce_infeasible_task_calls_++; },
             local_task_manager_,
-            /*get_time=*/[this]() { return current_time_ms_; }) {}
+            /*get_time=*/[this]() { return current_time_ms_; }) {
+    RayConfig::instance().initialize("{\"scheduler_top_k_absolute\": 1}");
+  }
 
   void SetUp() {
     static rpc::GcsNodeInfo node_info;

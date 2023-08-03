@@ -63,7 +63,7 @@ class SklearnTrainer(BaseTrainer):
 
     Example:
 
-    .. code-block:: python
+    .. testcode::
 
         import ray
 
@@ -75,16 +75,21 @@ class SklearnTrainer(BaseTrainer):
         trainer = SklearnTrainer(
             estimator=RandomForestRegressor(),
             label_column="y",
-            scaling_config=ray.air.config.ScalingConfig(
+            scaling_config=ray.train.ScalingConfig(
                 trainer_resources={"CPU": 4}
             ),
             datasets={"train": train_dataset}
         )
         result = trainer.fit()
 
+    .. testoutput::
+        :hide:
+
+        ...
+
     Args:
         estimator: A scikit-learn compatible estimator to use.
-        datasets: Ray Datasets to use for training and validation. Must include a
+        datasets: Datasets to use for training and validation. Must include a
             "train" key denoting the training dataset. If a ``preprocessor``
             is provided and has not already been fit, it will be fit on the training
             dataset. All datasets will be transformed by the ``preprocessor`` if

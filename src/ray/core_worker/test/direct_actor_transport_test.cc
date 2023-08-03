@@ -55,7 +55,7 @@ TaskSpecification CreateActorTaskHelper(ActorID actor_id,
       caller_worker_id.Binary());
   task.GetMutableMessage().mutable_actor_task_spec()->set_actor_id(actor_id.Binary());
   task.GetMutableMessage().mutable_actor_task_spec()->set_actor_counter(counter);
-  task.GetMutableMessage().set_num_returns(1);
+  task.GetMutableMessage().set_num_returns(0);
   return task;
 }
 
@@ -745,7 +745,8 @@ class DirectActorReceiverTest : public ::testing::Test {
                                   std::placeholders::_2,
                                   std::placeholders::_3,
                                   std::placeholders::_4,
-                                  std::placeholders::_5);
+                                  std::placeholders::_5,
+                                  std::placeholders::_6);
     receiver_ = std::make_unique<MockCoreWorkerDirectTaskReceiver>(
         worker_context_, main_io_service_, execute_task, [] { return Status::OK(); });
     receiver_->Init(std::make_shared<rpc::CoreWorkerClientPool>(
@@ -760,6 +761,7 @@ class DirectActorReceiverTest : public ::testing::Test {
       std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> *return_objects,
       std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>>
           *dynamic_return_objects,
+      std::vector<std::pair<ObjectID, bool>> *streaming_generator_returns,
       ReferenceCounter::ReferenceTableProto *borrowed_refs) {
     return Status::OK();
   }

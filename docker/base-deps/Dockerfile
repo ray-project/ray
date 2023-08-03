@@ -11,7 +11,8 @@ ENV TZ=America/Los_Angeles
 # TODO(ilr) $HOME seems to point to result in "" instead of "/home/ray"
 ENV PATH "/home/ray/anaconda3/bin:$PATH"
 ARG DEBIAN_FRONTEND=noninteractive
-ARG PYTHON_VERSION=3.7.7
+ARG PYTHON_VERSION=3.8.16
+ARG HOSTTYPE=${HOSTTYPE:-x86_64}
 
 ARG RAY_UID=1000
 ARG RAY_GID=100
@@ -26,7 +27,11 @@ RUN apt-get update -y \
 
 USER $RAY_UID
 ENV HOME=/home/ray
+# Todo (krfricke): Move to latest miniconda version once we stop building
+# images for Python 3.7.
+# https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-${HOSTTYPE}.sh
 
+SHELL ["/bin/bash", "-c"]
 RUN sudo apt-get update -y && sudo apt-get upgrade -y \
     && sudo apt-get install -y \
         git \
@@ -39,17 +44,25 @@ RUN sudo apt-get update -y && sudo apt-get upgrade -y \
         tmux \
         screen \
         rsync \
+        netbase \
         openssh-client \
         gnupg; fi) \
-    && wget \
-        --quiet "https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh" \
+    && if [[ "${PYTHON_VERSION}" = "3.11" || "${PYTHON_VERSION}" =~ ^3\.11\. ]]; then \
+            MINICONDA_VERSION="py310_23.3.1-0"; \
+            LIBGCC=(libgcc-ng); \
+        else \
+            MINICONDA_VERSION="py37_23.1.0-1"; \
+            # TODO (can): Remove libffi=3.3 once #33299 is resolved
+            LIBGCC=(libgcc-ng libffi=3.3); \
+        fi \
+    && wget --quiet \
+        "https://repo.anaconda.com/miniconda/Miniconda3-${MINICONDA_VERSION}-Linux-${HOSTTYPE}.sh" \
         -O /tmp/miniconda.sh \
     && /bin/bash /tmp/miniconda.sh -b -u -p $HOME/anaconda3 \
     && $HOME/anaconda3/bin/conda init \ 
     && echo 'export PATH=$HOME/anaconda3/bin:$PATH' >> /home/ray/.bashrc \
-    && rm /tmp/miniconda.sh \
-    && $HOME/anaconda3/bin/conda install -y \
-        libgcc python=$PYTHON_VERSION \
+    && rm /tmp/miniconda.sh  \
+    && $HOME/anaconda3/bin/conda install -y "${LIBGCC[@]}" python=$PYTHON_VERSION \
     && $HOME/anaconda3/bin/conda clean -y --all \
     && $HOME/anaconda3/bin/pip install --no-cache-dir \
         flatbuffers \
@@ -63,7 +76,7 @@ RUN sudo apt-get update -y && sudo apt-get upgrade -y \
     # We install cmake temporarily to get psutil
     && sudo apt-get autoremove -y cmake zlib1g-dev \
         # We keep g++ on GPU images, because uninstalling removes CUDA Devel tooling
-        $(if [ "$BASE_IMAGE" = "ubuntu:focal" ]; then echo \
+        $(if [[ "$BASE_IMAGE" == "ubuntu:focal" && "$HOSTTYPE" == "x86_64" ]]; then echo \
         g++; fi) \
     # Either install kubectl or remove wget 
     && (if [ "$AUTOSCALER" = "autoscaler" ]; \
@@ -76,6 +89,5 @@ RUN sudo apt-get update -y && sudo apt-get upgrade -y \
     fi;) \
     && sudo rm -rf /var/lib/apt/lists/* \
     && sudo apt-get clean
-
 
 WORKDIR $HOME

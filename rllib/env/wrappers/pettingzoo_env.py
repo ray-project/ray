@@ -3,6 +3,7 @@ from typing import Optional
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.utils.annotations import PublicAPI
 from ray.rllib.utils.gym import convert_old_gym_space_to_gymnasium_space
+from ray.rllib.utils.typing import MultiAgentDict
 
 
 @PublicAPI
@@ -112,10 +113,30 @@ class PettingZooEnv(MultiAgentEnv):
         )
         self.action_space = convert_old_gym_space_to_gymnasium_space(first_action_space)
 
-        self._agent_ids = set(self.env.agents)
+        self._agent_ids = self.env.agents
+
+    def observation_space_sample(self, agent_ids: list = None) -> MultiAgentDict:
+        if agent_ids is None:
+            agent_ids = self._agent_ids
+        return {id: self.observation_space.sample() for id in agent_ids}
+
+    def action_space_sample(self, agent_ids: list = None) -> MultiAgentDict:
+        if agent_ids is None:
+            agent_ids = self._agent_ids
+        return {id: self.action_space.sample() for id in agent_ids}
+
+    def action_space_contains(self, x: MultiAgentDict) -> bool:
+        if not isinstance(x, dict):
+            return False
+        return all(self.action_space.contains(val) for val in x.values())
+
+    def observation_space_contains(self, x: MultiAgentDict) -> bool:
+        if not isinstance(x, dict):
+            return False
+        return all(self.observation_space.contains(val) for val in x.values())
 
     def reset(self, *, seed: Optional[int] = None, options: Optional[dict] = None):
-        info = self.env.reset(seed=seed, return_info=True, options=options)
+        info = self.env.reset(seed=seed, options=options)
         return (
             {self.env.agent_selection: self.env.observe(self.env.agent_selection)},
             info or {},
@@ -200,7 +221,7 @@ class ParallelPettingZooEnv(MultiAgentEnv):
         )
 
     def reset(self, *, seed: Optional[int] = None, options: Optional[dict] = None):
-        obs, info = self.par_env.reset(seed=seed, return_info=True, options=options)
+        obs, info = self.par_env.reset(seed=seed, options=options)
         return obs, info or {}
 
     def step(self, action_dict):

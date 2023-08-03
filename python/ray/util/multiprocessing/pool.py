@@ -12,6 +12,7 @@ from multiprocessing import TimeoutError
 from typing import Any, Callable, Dict, Hashable, Iterable, List, Optional, Tuple
 
 import ray
+from ray._private.usage import usage_lib
 from ray.util import log_once
 
 try:
@@ -388,12 +389,7 @@ class IMapIterator:
         # submitted chunks. Ordering mirrors that in the in the ResultThread.
         self._submitted_chunks = []
         self._ready_objects = collections.deque()
-        try:
-            self._iterator = iter(iterable)
-        except TypeError:
-            # for compatibility with prior releases, encapsulate non-iterable in a list
-            iterable = [iterable]
-            self._iterator = iter(iterable)
+        self._iterator = iter(iterable)
         if isinstance(iterable, collections.abc.Iterator):
             # Got iterator (which has no len() function).
             # Make default chunksize 1 instead of using _calculate_chunksize().
@@ -576,7 +572,7 @@ class Pool:
         ray_address: Optional[str] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
     ):
-        ray._private.usage.usage_lib.record_library_usage("util.multiprocessing.Pool")
+        usage_lib.record_library_usage("util.multiprocessing.Pool")
 
         self._closed = False
         self._initializer = initializer

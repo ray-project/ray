@@ -43,10 +43,10 @@ class SkOptSearch(Searcher):
 
         pip install scikit-optimize
 
-    This Search Algorithm requires you to pass in a `skopt Optimizer object`_.
+    This Search Algorithm requires you to pass in a `skopt Optimizer object
+    <https://scikit-optimize.github.io/stable/modules/generated/skopt.Optimizer.html#skopt.Optimizer>`_.
 
-    This searcher will automatically filter out any NaN, inf or -inf
-    results.
+    This searcher will automatically filter out any NaN, inf or -inf results.
 
     Parameters:
         optimizer: Optimizer provided
@@ -71,7 +71,7 @@ class SkOptSearch(Searcher):
             re-running those trials by passing in the reward attributes
             as a list so the optimiser can be told the results without
             needing to re-compute the trial. Must be the same length as
-            points_to_evaluate. (See tune/examples/skopt_example.py)
+            points_to_evaluate.
         convert_to_python: SkOpt outputs numpy primitives (e.g.
             ``np.int64``) instead of Python types. If this setting is set
             to ``True``, the values will be converted to Python primitives.

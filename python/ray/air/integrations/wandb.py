@@ -13,13 +13,15 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 import ray
 from ray import logger
 from ray.air import session
+from ray.air._internal import usage as air_usage
+from ray.air.util.node import _force_on_current_node
 
 from ray.tune.logger import LoggerCallback
 from ray.tune.utils import flatten_dict
 from ray.tune.experiment import Trial
+from ray.tune.syncer import DEFAULT_SYNC_TIMEOUT
 
 from ray._private.storage import _load_class
-from ray.tune.utils.node import _force_on_current_node
 from ray.util import PublicAPI
 from ray.util.queue import Queue
 
@@ -30,13 +32,13 @@ try:
     from wandb.sdk.lib.disabled import RunDisabled
     from wandb.sdk.data_types.base_types.wb_value import WBValue
 except ImportError:
-    logger.error("pip install 'wandb' to use WandbLoggerCallback/WandbTrainableMixin.")
     wandb = json_dumps_safer = Run = RunDisabled = WBValue = None
 
 
 WANDB_ENV_VAR = "WANDB_API_KEY"
 WANDB_PROJECT_ENV_VAR = "WANDB_PROJECT_NAME"
 WANDB_GROUP_ENV_VAR = "WANDB_GROUP_NAME"
+WANDB_MODE_ENV_VAR = "WANDB_MODE"
 # Hook that is invoked before wandb.init in the setup method of WandbLoggerCallback
 # to populate the API key if it isn't already set when initializing the callback.
 # It doesn't take in any arguments and returns the W&B API key.
@@ -103,10 +105,10 @@ def setup_wandb(
 
         .. code-block: python
 
-            from ray.air.integrations.wandb import wandb_setup
+            from ray.air.integrations.wandb import setup_wandb
 
             def training_loop(config):
-                wandb = wandb_setup(config)
+                wandb = setup_wandb(config)
                 # ...
                 wandb.log({"loss": 0.123})
 
@@ -156,29 +158,13 @@ def _setup_wandb(
 ) -> Union[Run, RunDisabled]:
     _config = config.copy() if config else {}
 
-    wandb_config = _config.pop("wandb", {}).copy()
-
-    # Deprecate: 2.4
-    if wandb_config:
-        warnings.warn(
-            "Passing a `wandb` key in the config dict is deprecated and will raise an "
-            "error in the future. Please pass the actual arguments to `setup_wandb()` "
-            "instead.",
-            DeprecationWarning,
-        )
-
     # If key file is specified, set
-    api_key_file = api_key_file or wandb_config.pop("api_key_file", None)
     if api_key_file:
         api_key_file = os.path.expanduser(api_key_file)
 
-    _set_api_key(api_key_file, api_key or wandb_config.pop("api_key", None))
-    wandb_config["project"] = _get_wandb_project(wandb_config.get("project"))
-    wandb_config["group"] = (
-        os.environ.get(WANDB_GROUP_ENV_VAR)
-        if (not wandb_config.get("group") and os.environ.get(WANDB_GROUP_ENV_VAR))
-        else wandb_config.get("group")
-    )
+    _set_api_key(api_key_file, api_key)
+    project = _get_wandb_project(kwargs.pop("project", None))
+    group = kwargs.pop("group", os.environ.get(WANDB_GROUP_ENV_VAR))
 
     # remove unpickleable items
     _config = _clean_log(_config)
@@ -190,10 +176,11 @@ def _setup_wandb(
         reinit=True,
         allow_val_change=True,
         config=_config,
+        project=project,
+        group=group,
     )
 
-    # Update config (e.g.g set group, project, override other settings)
-    wandb_init_kwargs.update(wandb_config)
+    # Update config (e.g. set any other parameters in the call to wandb.init)
     wandb_init_kwargs.update(**kwargs)
 
     # On windows, we can't fork
@@ -206,6 +193,10 @@ def _setup_wandb(
 
     run = _wandb.init(**wandb_init_kwargs)
     _run_wandb_process_run_info_hook(run)
+
+    # Record `setup_wandb` usage when everything has setup successfully.
+    air_usage.tag_setup_wandb()
+
     return run
 
 
@@ -295,7 +286,11 @@ def _set_api_key(api_key_file: Optional[str] = None, api_key: Optional[str] = No
       1) From `api_key` or `api_key_file` arguments
       2) From WANDB_API_KEY environment variables
       3) User already logged in to W&B (wandb.api.api_key set)
-      4) From external hook WANDB_SETUP_API_KEY_HOOK"""
+      4) From external hook WANDB_SETUP_API_KEY_HOOK
+    """
+    if os.environ.get(WANDB_MODE_ENV_VAR) in {"offline", "disabled"}:
+        return
+
     if api_key_file:
         if api_key:
             raise ValueError("Both WandB `api_key_file` and `api_key` set.")
@@ -350,8 +345,8 @@ class _QueueItem(enum.Enum):
 
 class _WandbLoggingActor:
     """
-    We need a separate process to allow multiple concurrent
-    wandb logging instances locally. We use Ray actors as forking multiprocessing
+    Wandb assumes that each trial's information should be logged from a
+    separate process. We use Ray actors as forking multiprocessing
     processes is not supported by Ray and spawn processes run into pickling
     problems.
 
@@ -448,6 +443,42 @@ class WandbLoggerCallback(LoggerCallback):
     ``LoggerCallback`` sends metrics to Wandb for automatic tracking and
     visualization.
 
+    Example:
+
+        .. testcode::
+
+            import random
+
+            from ray import train, tune
+            from ray.train import RunConfig
+            from ray.air.integrations.wandb import WandbLoggerCallback
+
+
+            def train_func(config):
+                offset = random.random() / 5
+                for epoch in range(2, config["epochs"]):
+                    acc = 1 - (2 + config["lr"]) ** -epoch - random.random() / epoch - offset
+                    loss = (2 + config["lr"]) ** -epoch + random.random() / epoch + offset
+                    train.report({"acc": acc, "loss": loss})
+
+
+            tuner = tune.Tuner(
+                train_func,
+                param_space={
+                    "lr": tune.grid_search([0.001, 0.01, 0.1, 1.0]),
+                    "epochs": 10,
+                },
+                run_config=RunConfig(
+                    callbacks=[WandbLoggerCallback(project="Optimization_Project")]
+                ),
+            )
+            results = tuner.fit()
+
+        .. testoutput::
+            :hide:
+
+            ...
+
     Args:
         project: Name of the Wandb project. Mandatory.
         group: Name of the Wandb group. Defaults to the trainable
@@ -472,26 +503,7 @@ class WandbLoggerCallback(LoggerCallback):
 
     Please see here for all other valid configuration settings:
     https://docs.wandb.ai/library/init
-
-    Example:
-
-    .. code-block:: python
-
-        from ray.tune.logger import DEFAULT_LOGGERS
-        from ray.air.integrations.wandb import WandbLoggerCallback
-        tune.run(
-            train_fn,
-            config={
-                # define search space here
-                "parameter_1": tune.choice([1, 2, 3]),
-                "parameter_2": tune.choice([4, 5, 6]),
-            },
-            callbacks=[WandbLoggerCallback(
-                project="Optimization_Project",
-                api_key_file="/path/to/file",
-                log_config=True)])
-
-    """
+    """  # noqa: E501
 
     # Do not log these result keys
     _exclude_results = ["done", "should_checkpoint"]
@@ -519,8 +531,14 @@ class WandbLoggerCallback(LoggerCallback):
         log_config: bool = False,
         upload_checkpoints: bool = False,
         save_checkpoints: bool = False,
+        upload_timeout: int = DEFAULT_SYNC_TIMEOUT,
         **kwargs,
     ):
+        if not wandb:
+            raise RuntimeError(
+                "Wandb was not found - please install with `pip install wandb`"
+            )
+
         if save_checkpoints:
             warnings.warn(
                 "`save_checkpoints` is deprecated. Use `upload_checkpoints` instead.",
@@ -535,6 +553,7 @@ class WandbLoggerCallback(LoggerCallback):
         self.excludes = excludes or []
         self.log_config = log_config
         self.upload_checkpoints = upload_checkpoints
+        self._upload_timeout = upload_timeout
         self.kwargs = kwargs
 
         self._remote_logger_class = None
@@ -543,6 +562,7 @@ class WandbLoggerCallback(LoggerCallback):
             "Trial", ray.actor.ActorHandle[_WandbLoggingActor]
         ] = {}
         self._trial_logging_futures: Dict["Trial", ray.ObjectRef] = {}
+        self._logging_future_to_trial: Dict[ray.ObjectRef, "Trial"] = {}
         self._trial_queues: Dict["Trial", Queue] = {}
 
     def setup(self, *args, **kwargs):
@@ -616,33 +636,31 @@ class WandbLoggerCallback(LoggerCallback):
                 num_cpus=0,
                 **_force_on_current_node(),
                 runtime_env={"env_vars": env_vars},
+                max_restarts=-1,
+                max_task_retries=-1,
             )(self._logger_actor_cls)
 
         self._trial_queues[trial] = Queue(
-            actor_options={"num_cpus": 0, **_force_on_current_node()}
+            actor_options={
+                "num_cpus": 0,
+                **_force_on_current_node(),
+                "max_restarts": -1,
+                "max_task_retries": -1,
+            }
         )
         self._trial_logging_actors[trial] = self._remote_logger_class.remote(
-            logdir=trial.logdir,
+            logdir=trial.local_path,
             queue=self._trial_queues[trial],
             exclude=exclude_results,
             to_config=self.AUTO_CONFIG_KEYS,
             **wandb_init_kwargs,
         )
-        self._trial_logging_futures[trial] = self._trial_logging_actors[
-            trial
-        ].run.remote()
+        logging_future = self._trial_logging_actors[trial].run.remote()
+        self._trial_logging_futures[trial] = logging_future
+        self._logging_future_to_trial[logging_future] = trial
 
-    def _stop_logging_actor(self, trial: "Trial", timeout: int = 10):
+    def _signal_logging_actor_stop(self, trial: "Trial"):
         self._trial_queues[trial].put((_QueueItem.END, None))
-
-        try:
-            ray.get(self._trial_logging_futures[trial], timeout=timeout)
-        except TimeoutError:
-            ray.kill(self._trial_logging_actors[trial])
-
-        del self._trial_queues[trial]
-        del self._trial_logging_actors[trial]
-        del self._trial_logging_futures[trial]
 
     def log_trial_result(self, iteration: int, trial: "Trial", result: Dict):
         if trial not in self._trial_logging_actors:
@@ -658,12 +676,52 @@ class WandbLoggerCallback(LoggerCallback):
             )
 
     def log_trial_end(self, trial: "Trial", failed: bool = False):
-        self._stop_logging_actor(trial=trial, timeout=10)
+        self._signal_logging_actor_stop(trial=trial)
+        self._cleanup_logging_actors()
+
+    def _cleanup_logging_actor(self, trial: "Trial"):
+        del self._trial_queues[trial]
+        del self._trial_logging_futures[trial]
+        ray.kill(self._trial_logging_actors[trial])
+        del self._trial_logging_actors[trial]
+
+    def _cleanup_logging_actors(self, timeout: int = 0, kill_on_timeout: bool = False):
+        """Clean up logging actors that have finished uploading to wandb.
+        Waits for `timeout` seconds to collect finished logging actors.
+
+        Args:
+            timeout: The number of seconds to wait. Defaults to 0 to clean up
+                any immediate logging actors during the run.
+                This is set to a timeout threshold to wait for pending uploads
+                on experiment end.
+            kill_on_timeout: Whether or not to kill and cleanup the logging actor if
+                it hasn't finished within the timeout.
+        """
+
+        futures = list(self._trial_logging_futures.values())
+        done, remaining = ray.wait(futures, num_returns=len(futures), timeout=timeout)
+        for ready_future in done:
+            finished_trial = self._logging_future_to_trial.pop(ready_future)
+            self._cleanup_logging_actor(finished_trial)
+
+        if kill_on_timeout:
+            for remaining_future in remaining:
+                trial = self._logging_future_to_trial.pop(remaining_future)
+                self._cleanup_logging_actor(trial)
+
+    def on_experiment_end(self, trials: List["Trial"], **info):
+        """Wait for the actors to finish their call to `wandb.finish`.
+        This includes uploading all logs + artifacts to wandb."""
+        self._cleanup_logging_actors(timeout=self._upload_timeout, kill_on_timeout=True)
 
     def __del__(self):
-        for trial in list(self._trial_logging_actors):
-            self._stop_logging_actor(trial=trial, timeout=2)
+        if ray.is_initialized():
+            for trial in list(self._trial_logging_actors):
+                self._signal_logging_actor_stop(trial=trial)
+
+            self._cleanup_logging_actors(timeout=2, kill_on_timeout=True)
 
         self._trial_logging_actors = {}
         self._trial_logging_futures = {}
+        self._logging_future_to_trial = {}
         self._trial_queues = {}

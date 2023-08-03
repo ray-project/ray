@@ -28,7 +28,7 @@ from ray.serve._private.constants import (
     SERVE_PROXY_NAME,
     SERVE_ROOT_URL_ENV_KEY,
 )
-from ray._private.gcs_utils import GcsClient
+from ray._raylet import GcsClient
 from ray.serve.context import get_global_client
 from ray.serve.exceptions import RayServeException
 from ray.serve.generated.serve_pb2 import ActorNameList
@@ -40,7 +40,7 @@ from ray.serve._private.utils import (
 )
 from ray.serve.schema import ServeApplicationSchema
 
-from ray.experimental.state.api import list_actors
+from ray.util.state import list_actors
 
 # Explicitly importing it here because it is a ray core tests utility (
 # not in the tree)
@@ -135,6 +135,122 @@ def test_shutdown(ray_shutdown):
     wait_for_condition(check_dead)
 
 
+def test_v1_shutdown_actors(ray_shutdown):
+    """Tests serve.shutdown() works correctly in 1.x case.
+
+    Ensures that after deploying deployments using 1.x API, serve.shutdown()
+    deletes all actors (controller, http proxy, all replicas) in the "serve" namespace.
+    """
+    ray.init(num_cpus=16)
+    serve.start(http_options=dict(port=8003), detached=True)
+
+    @serve.deployment
+    def f():
+        pass
+
+    f.deploy()
+
+    actor_names = {
+        "ServeController",
+        "HTTPProxyActor",
+        "ServeReplica:f",
+    }
+
+    def check_alive():
+        actors = list_actors(
+            filters=[("ray_namespace", "=", SERVE_NAMESPACE), ("state", "=", "ALIVE")]
+        )
+        return {actor["class_name"] for actor in actors} == actor_names
+
+    def check_dead():
+        actors = list_actors(
+            filters=[("ray_namespace", "=", SERVE_NAMESPACE), ("state", "=", "ALIVE")]
+        )
+        return len(actors) == 0
+
+    wait_for_condition(check_alive)
+    serve.shutdown()
+    wait_for_condition(check_dead)
+
+
+def test_single_app_shutdown_actors(ray_shutdown):
+    """Tests serve.shutdown() works correctly in single-app case
+
+    Ensures that after deploying a (nameless) app using serve.run(), serve.shutdown()
+    deletes all actors (controller, http proxy, all replicas) in the "serve" namespace.
+    """
+    ray.init(num_cpus=16)
+    serve.start(http_options=dict(port=8003), detached=True)
+
+    @serve.deployment
+    def f():
+        pass
+
+    serve.run(f.bind(), name="app")
+
+    actor_names = {
+        "ServeController",
+        "HTTPProxyActor",
+        "ServeReplica:app_f",
+    }
+
+    def check_alive():
+        actors = list_actors(
+            filters=[("ray_namespace", "=", SERVE_NAMESPACE), ("state", "=", "ALIVE")]
+        )
+        return {actor["class_name"] for actor in actors} == actor_names
+
+    def check_dead():
+        actors = list_actors(
+            filters=[("ray_namespace", "=", SERVE_NAMESPACE), ("state", "=", "ALIVE")]
+        )
+        return len(actors) == 0
+
+    wait_for_condition(check_alive)
+    serve.shutdown()
+    wait_for_condition(check_dead)
+
+
+def test_multi_app_shutdown_actors(ray_shutdown):
+    """Tests serve.shutdown() works correctly in multi-app case.
+
+    Ensures that after deploying multiple distinct applications, serve.shutdown()
+    deletes all actors (controller, http proxy, all replicas) in the "serve" namespace.
+    """
+    ray.init(num_cpus=16)
+    serve.start(http_options=dict(port=8003), detached=True)
+
+    @serve.deployment
+    def f():
+        pass
+
+    serve.run(f.bind(), name="app1", route_prefix="/app1")
+    serve.run(f.bind(), name="app2", route_prefix="/app2")
+
+    actor_names = {
+        "ServeController",
+        "HTTPProxyActor",
+        "ServeReplica:app1_f",
+        "ServeReplica:app2_f",
+    }
+
+    def check_alive():
+        actors = list_actors(
+            filters=[("ray_namespace", "=", SERVE_NAMESPACE), ("state", "=", "ALIVE")]
+        )
+        return {actor["class_name"] for actor in actors} == actor_names
+
+    def check_dead():
+        actors = list_actors(
+            filters=[("ray_namespace", "=", SERVE_NAMESPACE), ("state", "=", "ALIVE")]
+        )
+        return len(actors) == 0
+
+    wait_for_condition(check_alive)
+    serve.shutdown()
+    wait_for_condition(check_dead)
+
+
 def test_detached_deployment(ray_cluster):
     # https://github.com/ray-project/ray/issues/11437
 
@@ -143,7 +259,7 @@ def test_detached_deployment(ray_cluster):
 
     # Create first job, check we can run a simple serve endpoint
     ray.init(head_node.address, namespace=SERVE_NAMESPACE)
-    first_job_id = ray.get_runtime_context().job_id
+    first_job_id = ray.get_runtime_context().get_job_id()
     serve.start(detached=True)
 
     @serve.deployment(route_prefix="/say_hi_f")
@@ -159,7 +275,7 @@ def test_detached_deployment(ray_cluster):
 
     # Create the second job, make sure we can still create new deployments.
     ray.init(head_node.address, namespace="serve")
-    assert ray.get_runtime_context().job_id != first_job_id
+    assert ray.get_runtime_context().get_job_id() != first_job_id
 
     @serve.deployment(route_prefix="/say_hi_g")
     def g(*args):
@@ -243,6 +359,17 @@ def test_multiple_routers(ray_cluster):
     node_ids = ray._private.state.node_ids()
     assert len(node_ids) == 2
     serve.start(http_options=dict(port=8005, location="EveryNode"))
+
+    @serve.deployment(
+        num_replicas=2,
+        ray_actor_options={"num_cpus": 3},
+    )
+    class A:
+        def __call__(self, *args):
+            return "hi"
+
+    serve.run(A.bind())
+
     gcs_client = GcsClient(address=ray.get_runtime_context().gcs_address)
 
     def get_proxy_names():
@@ -282,10 +409,12 @@ def test_multiple_routers(ray_cluster):
 
     # Add a new node to the cluster. This should trigger a new router to get
     # started.
-    new_node = cluster.add_node()
+    new_node = cluster.add_node(num_cpus=4)
 
     wait_for_condition(lambda: len(get_proxy_names()) == 3)
     (third_proxy,) = set(get_proxy_names()) - set(original_proxy_names)
+
+    serve.run(A.options(num_replicas=3).bind())
 
     def get_third_actor():
         try:
@@ -472,7 +601,8 @@ def test_http_head_only(ray_cluster):
         "This test can only be ran when port sharing is supported."
     ),
 )
-def test_fixed_number_proxies(ray_cluster):
+def test_fixed_number_proxies(monkeypatch, ray_cluster):
+    monkeypatch.setenv("RAY_SERVE_PROXY_MIN_DRAINING_PERIOD_S", "1")
     cluster = ray_cluster
     head_node = cluster.add_node(num_cpus=4)
     cluster.add_node(num_cpus=4)
@@ -500,10 +630,21 @@ def test_fixed_number_proxies(ray_cluster):
         }
     )
 
+    @serve.deployment(
+        num_replicas=3,
+        ray_actor_options={"num_cpus": 3},
+    )
+    class A:
+        def __call__(self, *args):
+            return "hi"
+
+    serve.run(A.bind())
+
     # Only the controller and two http proxy should be started.
     controller_handle = get_global_client()._controller
-    node_to_http_actors = ray.get(controller_handle.get_http_proxies.remote())
-    assert len(node_to_http_actors) == 2
+    wait_for_condition(
+        lambda: len(ray.get(controller_handle.get_http_proxies.remote())) == 2
+    )
 
     proxy_names_bytes = ray.get(controller_handle.get_http_proxy_names.remote())
     proxy_names = ActorNameList.FromString(proxy_names_bytes)
@@ -594,7 +735,7 @@ def test_snapshot_always_written_to_internal_kv(
             return False
 
     serve.start(detached=True)
-    serve.run(hello.bind())
+    serve.run(hello.bind(), name="app")
     check()
 
     webui_url = ray_start_with_dashboard["webui_url"]
@@ -615,11 +756,11 @@ def test_snapshot_always_written_to_internal_kv(
     snapshot = get_deployment_snapshot()
     assert len(snapshot) == 1
     hello_deployment = list(snapshot.values())[0]
-    assert hello_deployment["name"] == "hello"
+    assert hello_deployment["name"] == "app_hello"
     assert hello_deployment["status"] == "RUNNING"
 
 
-def test_serve_start_different_http_checkpoint_options_warning(caplog):
+def test_serve_start_different_http_checkpoint_options_warning(propagate_logs, caplog):
     logger = logging.getLogger("ray.serve")
     caplog.set_level(logging.WARNING, logger="ray.serve")
 
@@ -758,7 +899,7 @@ def test_run_graph_task_uses_zero_cpus():
 
     config = {"import_path": "ray.serve.tests.test_standalone.WaiterNode"}
     config = ServeApplicationSchema.parse_obj(config)
-    client.deploy_app(config)
+    client.deploy_apps(config)
 
     with pytest.raises(RuntimeError):
         wait_for_condition(lambda: ray.available_resources()["CPU"] < 1.9, timeout=5)

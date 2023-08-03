@@ -3,9 +3,13 @@ import torch.nn as nn
 
 import ray
 from ray import train
-from ray.air import session, Checkpoint
+from ray.train import Checkpoint, ScalingConfig
 from ray.train.torch import TorchTrainer
-from ray.air.config import ScalingConfig
+
+
+# If using GPUs, set this to True.
+use_gpu = False
+
 
 input_size = 1
 layer_size = 15
@@ -25,7 +29,7 @@ class NeuralNetwork(nn.Module):
 
 
 def train_loop_per_worker():
-    dataset_shard = session.get_dataset_shard("train")
+    dataset_shard = train.get_dataset_shard("train")
     model = NeuralNetwork()
     loss_fn = nn.MSELoss()
     optimizer = torch.optim.SGD(model.parameters(), lr=0.1)
@@ -44,7 +48,7 @@ def train_loop_per_worker():
             optimizer.step()
             print(f"epoch: {epoch}, loss: {loss.item()}")
 
-        session.report(
+        train.report(
             {},
             checkpoint=Checkpoint.from_dict(
                 dict(epoch=epoch, model=model.state_dict())
@@ -53,9 +57,7 @@ def train_loop_per_worker():
 
 
 train_dataset = ray.data.from_items([{"x": x, "y": 2 * x + 1} for x in range(200)])
-scaling_config = ScalingConfig(num_workers=3)
-# If using GPUs, use the below scaling config instead.
-# scaling_config = ScalingConfig(num_workers=3, use_gpu=True)
+scaling_config = ScalingConfig(num_workers=3, use_gpu=use_gpu)
 trainer = TorchTrainer(
     train_loop_per_worker=train_loop_per_worker,
     scaling_config=scaling_config,

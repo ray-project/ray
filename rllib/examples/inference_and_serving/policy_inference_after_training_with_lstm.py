@@ -23,14 +23,8 @@ parser.add_argument("--num-cpus", type=int, default=0)
 parser.add_argument(
     "--framework",
     choices=["tf", "tf2", "torch"],
-    default="tf",
+    default="torch",
     help="The DL framework specifier.",
-)
-parser.add_argument(
-    "--eager-tracing",
-    action="store_true",
-    help="Use tf eager tracing to speed up execution in tf2.x. Only supported"
-    " for `framework=tf2`.",
 )
 parser.add_argument(
     "--prev-action",
@@ -83,14 +77,14 @@ if __name__ == "__main__":
         .get_default_config()
         .environment("FrozenLake-v1")
         # Run with tracing enabled for tf2?
-        .framework(args.framework, eager_tracing=args.eager_tracing)
+        .framework(args.framework)
         .training(
             model={
                 "use_lstm": True,
                 "lstm_cell_size": 256,
                 "lstm_use_prev_action": args.prev_action,
                 "lstm_use_prev_reward": args.prev_reward,
-            }
+            },
         )
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
         .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
@@ -136,7 +130,10 @@ if __name__ == "__main__":
     # Set LSTM's initial internal state.
     lstm_cell_size = config["model"]["lstm_cell_size"]
     # range(2) b/c h- and c-states of the LSTM.
-    init_state = state = [np.zeros([lstm_cell_size], np.float32) for _ in range(2)]
+    if algo.config._enable_rl_module_api:
+        init_state = state = algo.get_policy().model.get_initial_state()
+    else:
+        init_state = state = [np.zeros([lstm_cell_size], np.float32) for _ in range(2)]
     # Do we need prev-action/reward as part of the input?
     if args.prev_action:
         init_prev_a = prev_a = 0
