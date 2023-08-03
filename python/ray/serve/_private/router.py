@@ -505,7 +505,6 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
                 chosen_ids = random.sample(
                     list(candidate_replica_ids), k=min(2, len(candidate_replica_ids))
                 )
-                logger.info(f"chosen ids: {str(chosen_ids)}")
                 yield [self._replicas[chosen_id] for chosen_id in chosen_ids]
 
             await asyncio.sleep(self.backoff_sequence_s[backoff_index])
