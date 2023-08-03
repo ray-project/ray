@@ -11,7 +11,6 @@ from enum import Enum
 from functools import wraps
 from typing import (
     Any,
-    AsyncGenerator,
     Callable,
     Dict,
     Iterable,
@@ -660,8 +659,18 @@ class MetricsPusher:
         self.pusher_thread.start()
 
     def __del__(self):
-        self.stop_event.set()
-        self.pusher_thread.join()
+        self.shutdown()
+
+    def shutdown(self):
+        """Shutdown metrics pusher gracefully.
+
+        This method will ensure idempotency of shutdown call.
+        """
+        if not self.stop_event.is_set():
+            self.stop_event.set()
+
+        if self.pusher_thread:
+            self.pusher_thread.join()
 
 
 def call_function_from_import_path(import_path: str) -> Any:
@@ -724,24 +733,3 @@ def calculate_remaining_timeout(
 
     time_since_start_s = curr_time_s - start_time_s
     return max(0, timeout_s - time_since_start_s)
-
-
-def wrap_generator_function_in_async_if_needed(
-    f: Callable,
-) -> Callable[[Any], AsyncGenerator]:
-    """Given a callable, make sure it returns an async generator.
-
-    If the callable is not a generator at all, raise a `TypeError`.
-    """
-    if inspect.isasyncgenfunction(f):
-        return f
-    elif inspect.isgeneratorfunction(f):
-
-        @wraps(f)
-        async def async_gen_wrapper(*args, **kwargs):
-            for result in f(*args, **kwargs):
-                yield result
-
-        return async_gen_wrapper
-    else:
-        raise TypeError(f"Method '{f.__name__}' is not a generator.")
