@@ -397,7 +397,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
     def _get_candidate_replica_ids_for_multiplexed_model_id(
         self,
         model_id: str,
-        fallback_to_all_replicas: bool = False,
+        get_from_all_replicas: bool = False,
     ) -> Set[str]:
         """Get multiplexed model candidates from the current replica.
 
@@ -412,7 +412,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
 
         candidates = set()
 
-        if not fallback_to_all_replicas:
+        if not get_from_all_replicas:
             if model_id in self._multiplexed_model_id_to_replica_ids:
                 candidates = self._multiplexed_model_id_to_replica_ids[model_id]
                 if len(candidates) > 0:
@@ -494,7 +494,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
                     candidate_replica_ids = (
                         self._get_candidate_replica_ids_for_multiplexed_model_id(
                             request_metadata.multiplexed_model_id,
-                            fallback_to_all_replicas=True,
+                            get_from_all_replicas=True,
                         )
                     )
             else:
