@@ -497,7 +497,6 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
                             fallback_to_all_replicas=True,
                         )
                     )
-                    logger.info(f"debug_fallback {str(candidate_replica_ids)}")
             else:
                 # non-multiplexed use case
                 candidate_replica_ids = self._get_candidate_replica_ids()
