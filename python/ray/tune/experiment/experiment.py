@@ -158,65 +158,6 @@ class Experiment:
         # Deprecated
         local_dir: Optional[str] = None,
     ):
-        if isinstance(sync_config, dict):
-            sync_config = SyncConfig(**sync_config)
-        else:
-            sync_config = sync_config or SyncConfig()
-
-        self.sync_config = sync_config
-
-        # Resolve storage_path
-        local_storage_path, remote_storage_path = _resolve_storage_path(
-            storage_path, local_dir, sync_config.upload_dir, error_location="Experiment"
-        )
-
-        if local_dir:
-            if log_once("tune_experiment_local_dir"):
-                warnings.warn(
-                    "The `local_dir` argument of `Experiment is deprecated. "
-                    "Use `storage_path` or set the `TUNE_RESULT_DIR` "
-                    "environment variable instead."
-                )
-
-            local_storage_path = local_dir
-
-        full_local_storage_path = _get_local_dir_with_expand_user(local_storage_path)
-
-        # `_experiment_checkpoint_dir` is for internal use only for better
-        # support of Tuner API.
-        # If set, it should be a subpath under `local_dir`. Also deduce `dir_name`.
-        if _experiment_checkpoint_dir:
-            experiment_checkpoint_dir_path = Path(_experiment_checkpoint_dir)
-            if _use_storage_context():
-                # TODO(justinvyu): This is a temporary hack for the
-                # custom storage_filesystem case.
-                # With a custom storage_filesystem, the storage path is possibly
-                # a "local path" (ex: [fs, path] = CustomS3FileSystem, "bucket/subdir")
-                # Our current path resolution treats a local storage_path as
-                # the cache dir, so the assertion in the else case would fail.
-                # This will be re-worked in a follow-up.
-                self.dir_name = experiment_checkpoint_dir_path.name
-            else:
-                local_dir_path = Path(full_local_storage_path)
-                assert local_dir_path in experiment_checkpoint_dir_path.parents, (
-                    local_dir_path,
-                    str(list(experiment_checkpoint_dir_path.parents)),
-                )
-                # `dir_name` is set by `_experiment_checkpoint_dir` indirectly.
-                self.dir_name = os.path.relpath(
-                    _experiment_checkpoint_dir, full_local_storage_path
-                )
-
-        self._local_storage_path = full_local_storage_path
-        self._remote_storage_path = remote_storage_path
-
-        config = config or {}
-
-        if isinstance(checkpoint_config, dict):
-            checkpoint_config = CheckpointConfig(**checkpoint_config)
-        else:
-            checkpoint_config = checkpoint_config or CheckpointConfig()
-
         if is_function_trainable(run):
             if checkpoint_config.checkpoint_at_end:
                 raise ValueError(
@@ -248,12 +189,84 @@ class Experiment:
             else:
                 raise e
 
-        self.name = name or self._run_identifier
+        self.storage = None
+        if _use_storage_context():
+            assert name is not None
 
-        if not _experiment_checkpoint_dir:
-            self.dir_name = _get_dir_name(run, name, self.name)
+            self.storage = StorageContext(
+                storage_path=storage_path,
+                storage_filesystem=storage_filesystem,
+                sync_config=sync_config,
+                experiment_dir_name=name,
+            )
+            logger.debug(f"StorageContext on the DRIVER:\n{self.storage}")
 
-        assert self.dir_name
+            # TODO(justinvyu): Rename these to legacy.
+            self._local_storage_path = None
+            self._remote_storage_path = None
+            self.sync_config = None
+            self.dir_name = None
+        else:
+            if isinstance(sync_config, dict):
+                sync_config = SyncConfig(**sync_config)
+            else:
+                sync_config = sync_config or SyncConfig()
+
+            self.sync_config = sync_config
+
+            # Resolve storage_path
+            local_storage_path, remote_storage_path = _resolve_storage_path(
+                storage_path,
+                local_dir,
+                sync_config.upload_dir,
+                error_location="Experiment",
+            )
+
+            if local_dir:
+                if log_once("tune_experiment_local_dir"):
+                    warnings.warn(
+                        "The `local_dir` argument of `Experiment is deprecated. "
+                        "Use `storage_path` or set the `TUNE_RESULT_DIR` "
+                        "environment variable instead."
+                    )
+
+                local_storage_path = local_dir
+
+            full_local_storage_path = _get_local_dir_with_expand_user(
+                local_storage_path
+            )
+
+            # `_experiment_checkpoint_dir` is for internal use only for better
+            # support of Tuner API.
+            # If set, it should be a subpath under `local_dir`. Also deduce `dir_name`.
+            if _experiment_checkpoint_dir:
+                experiment_checkpoint_dir_path = Path(_experiment_checkpoint_dir)
+                local_dir_path = Path(full_local_storage_path)
+                assert local_dir_path in experiment_checkpoint_dir_path.parents, (
+                    local_dir_path,
+                    str(list(experiment_checkpoint_dir_path.parents)),
+                )
+                # `dir_name` is set by `_experiment_checkpoint_dir` indirectly.
+                self.dir_name = os.path.relpath(
+                    _experiment_checkpoint_dir, full_local_storage_path
+                )
+
+            self._local_storage_path = full_local_storage_path
+            self._remote_storage_path = remote_storage_path
+
+            self.name = name or self._run_identifier
+
+            if not _experiment_checkpoint_dir:
+                self.dir_name = _get_dir_name(run, name, self.name)
+
+            assert self.dir_name
+
+        config = config or {}
+
+        if isinstance(checkpoint_config, dict):
+            checkpoint_config = CheckpointConfig(**checkpoint_config)
+        else:
+            checkpoint_config = checkpoint_config or CheckpointConfig()
 
         self._stopper = None
         stopping_criteria = {}
@@ -297,17 +310,6 @@ class Experiment:
                 self._stopper = TimeoutStopper(time_budget_s)
 
         stdout_file, stderr_file = _validate_log_to_file(log_to_file)
-
-        self.storage = None
-        if _use_storage_context():
-            storage = StorageContext(
-                storage_path=storage_path,
-                storage_filesystem=storage_filesystem,
-                sync_config=sync_config,
-                experiment_dir_name=self.dir_name,
-            )
-            self.storage = storage
-            logger.debug(f"StorageContext on the DRIVER:\n{storage}")
 
         spec = {
             "run": self._run_identifier,
@@ -449,6 +451,20 @@ class Experiment:
             )
             raise type(e)(str(e) + " " + extra_msg) from None
         return name
+
+    @classmethod
+    def get_experiment_dir_name(
+        cls,
+        run_obj: Union[str, Callable, Type],
+    ) -> str:
+        assert run_obj
+        run_identifier = cls.get_trainable_name(run_obj)
+
+        if bool(int(os.environ.get("TUNE_DISABLE_DATED_SUBDIR", 0))):
+            dir_name = run_identifier
+        else:
+            dir_name = "{}_{}".format(run_identifier, date_str())
+        return dir_name
 
     @classmethod
     def get_experiment_checkpoint_dir(
