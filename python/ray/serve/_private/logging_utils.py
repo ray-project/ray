@@ -241,19 +241,21 @@ def configure_component_memory_profiler(
         try:
             import memray
 
+            logs_dir = get_serve_logs_dir()
             memray_file_name = get_component_log_file_name(
                 component_name=component_name,
                 component_id=component_id,
                 component_type=component_type,
                 suffix="_memray.bin",
             )
-            tracker = memray.Tracker(memray_file_name, native_traces=True)
+            memray_file_path = os.path.join(logs_dir, memray_file_name)
+            tracker = memray.Tracker(memray_file_path, native_traces=True)
             tracker.__enter__()
 
             logger.info(
                 "RAY_SERVE_ENABLE_MEMORY_PROFILING is enabled. Started a "
                 "memray tracker on this actor. Tracker file located at "
-                f'"{get_serve_logs_dir()}/{memray_file_name}"'
+                f'"{memray_file_path}"'
             )
 
             return tracker
