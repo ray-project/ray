@@ -1,6 +1,6 @@
 import pytest
 
-from ray.air.config import ScalingConfig
+from ray.train import ScalingConfig
 from ray.air.constants import TRAINING_ITERATION
 
 from ray.train.examples.horovod.horovod_example import (

@@ -2,7 +2,7 @@ import gymnasium as gym
 import numpy as np
 import pytest
 import ray
-from ray.air import ScalingConfig
+from ray.train import ScalingConfig
 
 from ray.data.preprocessor import Preprocessor
 from ray.rllib.algorithms import Algorithm
@@ -67,8 +67,8 @@ def test_checkpoint_freq(ray_start_4_cpus, freq_end_expected):
 
     trainer = RLTrainer(
         algorithm="__fake",
-        run_config=ray.air.RunConfig(
-            checkpoint_config=ray.air.CheckpointConfig(
+        run_config=ray.train.RunConfig(
+            checkpoint_config=ray.train.CheckpointConfig(
                 checkpoint_frequency=freq, checkpoint_at_end=end
             ),
             stop={"training_iteration": 25},
