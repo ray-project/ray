@@ -41,7 +41,7 @@ from ray.serve._private.endpoint_state import EndpointState
 from ray.serve._private.http_state import HTTPProxyStateManager
 from ray.serve._private.logging_utils import (
     configure_component_logger,
-    configure_component_memory_logger,
+    configure_component_memory_profiler,
     get_component_logger_file_path,
 )
 from ray.serve._private.long_poll import LongPollHost
@@ -114,7 +114,7 @@ class ServeController:
         configure_component_logger(
             component_name="controller", component_id=str(os.getpid())
         )
-        self._memory_logger = configure_component_memory_logger(
+        self._memory_logger = configure_component_memory_profiler(
             component_name="controller", component_id=str(os.getpid())
         )
         if RAY_SERVE_CONTROLLER_CALLBACK_IMPORT_PATH:

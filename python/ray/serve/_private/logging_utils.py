@@ -225,7 +225,7 @@ def configure_component_logger(
     logger.addHandler(file_handler)
 
 
-def configure_component_memory_logger(
+def configure_component_memory_profiler(
     component_name: str,
     component_id: str,
     component_type: Optional[ServeComponentType] = None,
@@ -247,7 +247,8 @@ def configure_component_memory_logger(
                 component_type=component_type,
                 suffix="_memray.bin",
             )
-            tracker = memray.Tracker(memray_file_name, native_traces=True).__enter__()
+            tracker = memray.Tracker(memray_file_name, native_traces=True)
+            tracker.__enter__()
 
             logger.info(
                 "RAY_SERVE_ENABLE_MEMORY_PROFILING is enabled. Started a "

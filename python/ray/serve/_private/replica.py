@@ -52,7 +52,7 @@ from ray.serve._private.http_util import (
 from ray.serve._private.logging_utils import (
     access_log_msg,
     configure_component_logger,
-    configure_component_memory_logger,
+    configure_component_memory_profiler,
     get_component_logger_file_path,
 )
 from ray.serve._private.router import RequestMetadata
@@ -100,7 +100,7 @@ def create_replica_wrapper(name: str):
                 component_name=deployment_name,
                 component_id=replica_tag,
             )
-            self._memory_logger = configure_component_memory_logger(
+            self._memory_logger = configure_component_memory_profiler(
                 component_type=ServeComponentType.DEPLOYMENT,
                 component_name=deployment_name,
                 component_id=replica_tag,
