@@ -21,10 +21,11 @@ from ray.serve._private.constants import (
     SERVE_LOG_TIME,
     SERVE_LOG_LEVEL_NAME,
     SERVE_LOG_REPLICA,
+    RAY_SERVE_ENABLE_MEMORY_PROFILING,
 )
 
 
-LOG_FILE_FMT = "{component_name}_{component_id}.log"
+LOG_FILE_FMT = "{component_name}_{component_id}{suffix}"
 
 
 class ServeJSONFormatter(logging.Formatter):
@@ -207,8 +208,9 @@ def configure_component_logger(
 
     log_file_name = get_component_log_file_name(
         component_name=component_name,
-        component_type=component_type,
         component_id=component_id,
+        component_type=component_type,
+        suffix=".log",
     )
 
     file_handler = logging.handlers.RotatingFileHandler(
@@ -225,8 +227,44 @@ def configure_component_logger(
     logger.addHandler(file_handler)
 
 
+def configure_component_memory_logger(
+    component_name: str,
+    component_id: str,
+    component_type: Optional[ServeComponentType] = None,
+):
+    """Configures the memory logger for this component.
+
+    Does nothing if RAY_SERVE_ENABLE_MEMORY_PROFILING is disabled.
+    """
+
+    if RAY_SERVE_ENABLE_MEMORY_PROFILING:
+        try:
+            import memray
+
+            memray_file_name = get_component_log_file_name(
+                component_name=component_name,
+                component_id=component_id,
+                component_type=component_type,
+                suffix="_memray.bin",
+            )
+
+            return memray.Tracker(memray_file_name, native_traces=True).__enter__()
+        except ImportError:
+            logger = logging.getLogger(SERVE_LOGGER_NAME)
+            logger.warning(
+                "RAY_SERVE_ENABLE_MEMORY_PROFILING is enabled, but memray "
+                "is not installed. No memory profiling is happening. "
+                "`pip install memray` to enable memory profiling."
+            )
+
+    return None
+
+
 def get_component_log_file_name(
-    component_name: str, component_type: Optional[ServeComponentType], component_id: str
+    component_name: str,
+    component_id: str,
+    component_type: Optional[ServeComponentType],
+    suffix: str = "",
 ):
     """Get the component's log file name."""
 
@@ -238,7 +276,9 @@ def get_component_log_file_name(
         if component_type != ServeComponentType.DEPLOYMENT:
             component_name = f"{component_type}_{component_name}"
     log_file_name = LOG_FILE_FMT.format(
-        component_name=component_log_file_name, component_id=component_id
+        component_name=component_log_file_name,
+        component_id=component_id,
+        suffix=suffix,
     )
     return log_file_name
 
