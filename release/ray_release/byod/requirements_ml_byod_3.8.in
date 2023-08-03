@@ -1,6 +1,5 @@
 # Python requirements to run release tests from anyscale byod (gpu type)
 accelerate
-ale-py
 boto3
 cmake
 crc32c
@@ -12,12 +11,9 @@ fastapi
 filelock
 gcsfs
 gsutil
-gym
-gymnasium[atari,mujoco]==0.26.3
 jupytext
 memray
 mosaicml-streaming
-mujoco-py
 modin
 numpy
 openskill
