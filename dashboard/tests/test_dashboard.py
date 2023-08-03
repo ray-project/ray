@@ -43,7 +43,7 @@ from ray.util.state import StateApiClient
 from ray.util.state.common import ListApiOptions, StateResource
 from ray.util.state.exception import ServerUnavailable
 from ray.experimental.internal_kv import _initialize_internal_kv
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import MagicMock
 from ray.dashboard.utils import DashboardHeadModule
 
 import psutil
@@ -998,6 +998,10 @@ def test_dashboard_requests_fail_on_missing_deps(ray_start_with_dashboard):
     assert response is None
 
 
+@pytest.mark.skipif(
+    os.environ.get("RAY_DEFAULT") != "1",
+    reason="This test only works for default installation.",
+)
 def test_dashboard_module_load(tmpdir):
     """Verify if the head module can load only selected modules."""
     head = DashboardHead(
@@ -1013,7 +1017,6 @@ def test_dashboard_module_load(tmpdir):
         minimal=False,
         serve_frontend=True,
     )
-    head.data_source_client = AsyncMock(StateDataSourceClient)
 
     # Test basic.
     loaded_modules_expected = {"UsageStatsHead", "JobHead"}
