@@ -1,5 +1,6 @@
 import os
 import sys
+import time
 
 import pytest
 
@@ -7,7 +8,76 @@ import ray
 from ray._private.test_utils import run_string_as_driver_nonblocking, wait_for_condition
 from ray.autoscaler.v2.sdk import get_cluster_status
 from ray.cluster_utils import AutoscalingCluster
-from ray.util.state.api import list_placement_groups
+from ray.util.state.api import list_jobs, list_placement_groups
+
+
+# TODO(rickyx): We are NOT able to counter multi-node inconsistency yet. The problem is
+# right now, when node A (head node) has an infeasible task,
+# node B just finished running previous task.
+# the actual cluster view will be:
+#   node A: 1 pending task (infeasible)
+#   node B: 0 pending task, CPU used = 0
+#
+# However, when node B's state is not updated on node A, the cluster view will be:
+#  node A: 1 pending task (infeasible)
+#  node B: 0 pending task, but **CPU used = 1**
+#
+# @pytest.mark.parametrize("mode", (["single_node", "multi_node"]))
+@pytest.mark.parametrize("mode", (["single_node"]))
+def test_scheduled_task_no_pending_demand(shutdown_only, mode):
+
+    # So that head node will need to dispatch tasks to worker node.
+    num_head_cpu = 0 if mode == "multi_node" else 1
+
+    cluster = AutoscalingCluster(
+        head_resources={"CPU": num_head_cpu},
+        worker_node_types={
+            "type-1": {
+                "resources": {"CPU": 1},
+                "node_config": {},
+                "min_workers": 0,
+                "max_workers": 1,
+            },
+        },
+    )
+    cluster.start()
+    ray.init("auto")
+
+    driver_script = """
+import time
+import ray
+@ray.remote(num_cpus=1)
+def foo():
+  return True
+while True:
+    assert(ray.get(foo.remote()))
+"""
+    run_string_as_driver_nonblocking(driver_script)
+
+    def jobs_run():
+        jobs = list_jobs()
+        assert len(jobs) > 1
+
+        return True
+
+    wait_for_condition(jobs_run)
+
+    try:
+        for _ in range(30):
+            # verify no pending task + with resource used.
+            status = get_cluster_status()
+            has_task_demand = len(status.resource_demands.ray_task_actor_demand) > 0
+            has_task_usage = False
+
+            for usage in status.cluster_resource_usage:
+                if usage.resource_name == "CPU":
+                    has_task_usage = usage.used > 0
+            print(status.cluster_resource_usage)
+            print(status.resource_demands.ray_task_actor_demand)
+            assert not (has_task_demand and has_task_usage), status
+            time.sleep(0.1)
+    finally:
+        cluster.shutdown()
 
 
 def test_placement_group_consistent(shutdown_only):
