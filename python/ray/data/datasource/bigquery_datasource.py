@@ -10,11 +10,13 @@ from google.api_core import exceptions
 from google.cloud import bigquery, bigquery_storage
 from google.cloud.bigquery_storage import types
 
+from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data.block import Block, BlockAccessor, BlockMetadata
 from ray.data.datasource.datasource import Datasource, Reader, ReadTask, WriteResult
 from ray.types import ObjectRef
 
+logger = logging.getLogger(__name__)
 
 class _BigQueryDatasourceReader(Reader):
     def __init__(
@@ -71,9 +73,9 @@ class _BigQueryDatasourceReader(Reader):
         )
 
         read_tasks = []
-        print("Created streams:", len(read_session.streams))
+        logger.info("Created streams: " + str(len(read_session.streams)))
         if len(read_session.streams) < parallelism:
-            print(
+            logger.info(
                 "The number of streams created by the "
                 + "BigQuery Storage Read API is less than the requested "
                 + "parallelism due to the size of the dataset."
@@ -127,18 +129,16 @@ class BigQueryDatasource(Datasource):
     def create_reader(self, **kwargs) -> Reader:
         return _BigQueryDatasourceReader(**kwargs)
 
-    def do_write(
+    def write(
         self,
         blocks: List[ObjectRef[Block]],
-        metadata: List[BlockMetadata],
-        ray_remote_args: Optional[Dict[str, Any]],
+        ctx: TaskContext,
         project_id: str,
         dataset: str,
-    ) -> List[ObjectRef[WriteResult]]:
+    ) -> WriteResult:
         def _write_single_block(
-            block: Block, metadata: BlockMetadata, project_id: str, dataset: str
+            block: Block, project_id: str, dataset: str
         ):
-            print("Starting to write", metadata.num_rows, "rows")
             block = BlockAccessor.for_block(block).to_arrow()
 
             client = bigquery.Client(project=project_id)
@@ -158,42 +158,31 @@ class BigQueryDatasource(Datasource):
                         )
                     retry_cnt += 1
                     try:
-                        logging.info(job.result())
+                        logger.info(job.result())
                         break
                     except exceptions.Forbidden as e:
-                        print("Rate limit exceeded... Sleeping to try again")
-                        logging.debug(e)
+                        logger.info("Rate limit exceeded... Sleeping to try again")
+                        logger.debug(e)
                         time.sleep(11)
-            print("Finished writing", metadata.num_rows, "rows")
-
-        if ray_remote_args is None:
-            ray_remote_args = {}
-
-        _write_single_block = cached_remote_fn(_write_single_block).options(
-            **ray_remote_args
-        )
-        write_tasks = []
 
         # Set up datasets to write
         client = bigquery.Client(project=project_id)
         dataset_id = dataset.split(".", 1)[0]
         try:
             client.create_dataset(f"{project_id}.{dataset_id}", timeout=30)
-            print("Created dataset", dataset_id)
+            logger.info("Created dataset " + dataset_id)
         except exceptions.Conflict:
-            print(
-                "Dataset",
-                dataset_id,
-                "already exists. The table will be overwritten if it already exists.",
+            logger.info(
+                "Dataset " +
+                dataset_id +
+                " already exists. The table will be overwritten if it already exists.",
             )
 
         # Delete table if it already exists
         client.delete_table(f"{project_id}.{dataset}", not_found_ok=True)
 
-        print("Writing", len(blocks), "blocks")
-        for i in range(len(blocks)):
-            write_task = _write_single_block.remote(
-                blocks[i], metadata[i], project_id, dataset
+        for block in blocks:
+            _write_single_block(
+                block, project_id, dataset
             )
-            write_tasks.append(write_task)
-        return write_tasks
+        return "ok"

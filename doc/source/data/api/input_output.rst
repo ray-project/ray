@@ -126,6 +126,15 @@ MongoDB
    read_mongo
    Dataset.write_mongo
 
+BigQuery
+-------
+
+.. autosummary::
+   :toctree: doc/
+
+   read_bigquery
+   Dataset.write_bigquery
+
 SQL Databases
 -------------
 
