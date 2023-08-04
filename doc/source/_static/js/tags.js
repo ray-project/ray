@@ -88,6 +88,9 @@ function filterPanels(tags) {
     } else {
       noMatchesElement.classList.add("hidden");
   }
+
+  // Set the URL to match the active tags using query parameters
+  history.replaceState(null, null, activeTags.length === 0 ? '' : `?tags=${activeTags.join(',')}`);
 }
 
 /**
@@ -243,7 +246,7 @@ window.addEventListener('load', () => {
     </svg>
     `
 
-    const isGallery = window.location.href.endsWith("ray-overview/examples.html")
+    const isGallery = window.location.pathname.includes("ray-overview/examples.html")
     if (isGallery) {
         const tags = {
           useCaseTags: [
@@ -370,6 +373,18 @@ window.addEventListener('load', () => {
                 event.preventDefault();
                 filterPanels(tags);
             });
+        }
+
+        const urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.size > 0) {
+            const urlTagParams = urlParams.get('tags').split(',');
+            urlTagParams.forEach(tag => {
+                const tagButton = document.getElementById(tag);
+                if (tagButton) {
+                  tagButton.classList.replace('btn-outline-primary', 'btn-primary');
+                }
+            });
+            filterPanels(tags);
         }
     }
 });
