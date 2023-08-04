@@ -211,9 +211,10 @@ class Checkpoint:
         if isinstance(self.filesystem, pyarrow.fs.LocalFileSystem):
             yield self.path
         else:
-            temp_dir = self.to_directory()
-            del_lock_path = _get_del_lock_path(temp_dir)
+            del_lock_path = _get_del_lock_path(self._get_temporary_checkpoint_dir())
             open(del_lock_path, "a").close()
+
+            temp_dir = self.to_directory()
 
             yield temp_dir
 
@@ -236,7 +237,7 @@ class Checkpoint:
                     # Timeout 0 means there will be only one attempt to acquire
                     # the file lock. If it cannot be acquired, a TimeoutError
                     # will be thrown.
-                    with TempFileLock(f"{temp_dir}.lock", timeout=0):
+                    with TempFileLock(temp_dir, timeout=0):
                         shutil.rmtree(temp_dir, ignore_errors=True)
                 except TimeoutError:
                     pass
