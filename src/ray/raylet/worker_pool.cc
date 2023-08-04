@@ -250,7 +250,7 @@ WorkerPool::BuildProcessCommandArgs(const Language &language,
 
   // Append Ray-defined per-job options here
   std::string code_search_path;
-  if (language == Language::JAVA || language == Language::CPP) {
+  if (language == Language::JAVA || language == Language::CPP || language == Language::JULIA) {
     if (job_config) {
       std::string code_search_path_str;
       for (int i = 0; i < job_config->code_search_path_size(); i++) {
@@ -265,6 +265,8 @@ WorkerPool::BuildProcessCommandArgs(const Language &language,
         if (language == Language::JAVA) {
           code_search_path_str = "-Dray.job.code-search-path=" + code_search_path_str;
         } else if (language == Language::CPP) {
+          code_search_path_str = "--ray_code_search_path=" + code_search_path_str;
+        } else if (language == Language::JULIA) {
           code_search_path_str = "--ray_code_search_path=" + code_search_path_str;
         } else {
           RAY_LOG(FATAL) << "Unknown language " << Language_Name(language);
@@ -290,6 +292,8 @@ WorkerPool::BuildProcessCommandArgs(const Language &language,
     options.push_back("-Dray.internal.runtime-env-hash=" +
                       std::to_string(runtime_env_hash));
   }
+
+  // TODO: Append user-defined per-job options for JULIA here??
 
   // Append user-defined per-process options here
   options.insert(options.end(), dynamic_options.begin(), dynamic_options.end());
@@ -836,7 +840,10 @@ Status WorkerPool::RegisterDriver(const std::shared_ptr<WorkerInterface> &driver
   const auto job_id = driver->GetAssignedJobId();
   HandleJobStarted(job_id, job_config);
 
-  if (driver->GetLanguage() == Language::JAVA) {
+  // TODO do we want to support PrestartWorkers in Julia? Might cut down on runtime overhead...
+  if (driver->GetLanguage() == Language::JAVA || driver->GetLanguage() == Language::JULIA) {
+    send_reply_callback(Status::OK(), port);
+  } else if (driver->GetLanguage() == Language::JULIA) { // TODO check what send_reply_callback does
     send_reply_callback(Status::OK(), port);
   } else {
     if (!first_job_registered_ && RayConfig::instance().prestart_worker_first_driver() &&

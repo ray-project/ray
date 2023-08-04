@@ -1604,6 +1604,7 @@ def start_raylet(
         ["{},{}".format(*kv) for kv in static_resources.items()]
     )
 
+    # JAVA
     has_java_command = False
     if shutil.which("java") is not None:
         has_java_command = True
@@ -1630,6 +1631,7 @@ def start_raylet(
     else:
         java_worker_command = []
 
+    # CPP
     if os.path.exists(DEFAULT_WORKER_EXECUTABLE):
         cpp_worker_command = build_cpp_worker_command(
             gcs_address,
@@ -1643,6 +1645,24 @@ def start_raylet(
         )
     else:
         cpp_worker_command = []
+
+    # JULIA
+    has_julia_command = False
+    if shutil.which("julia") is not None:
+        has_julia_command = True
+    
+    if has_julia_command is True:
+        julia_worker_command = build_julia_worker_command(
+            gcs_address,
+            plasma_store_name,
+            raylet_name,
+            redis_password,
+            session_dir,
+            node_ip_address,
+            setup_worker_path,
+        )
+    else:
+        julia_worker_command = []
 
     # Create the command that the Raylet will use to start workers.
     # TODO(architkulkarni): Pipe in setup worker args separately instead of
@@ -1763,6 +1783,7 @@ def start_raylet(
         f"--python_worker_command={subprocess.list2cmdline(start_worker_command)}",  # noqa
         f"--java_worker_command={subprocess.list2cmdline(java_worker_command)}",  # noqa
         f"--cpp_worker_command={subprocess.list2cmdline(cpp_worker_command)}",  # noqa
+        f"--julia_worker_command={subprocess.list2cmdline(julia_worker_command)}",  # noqa
         f"--native_library_path={DEFAULT_NATIVE_LIBRARY_PATH}",
         f"--temp_dir={temp_dir}",
         f"--session_dir={session_dir}",
@@ -1920,6 +1941,49 @@ def build_cpp_worker_command(
     """
 
     command = [
+        sys.executable,
+        setup_worker_path,
+        DEFAULT_WORKER_EXECUTABLE,
+        f"--ray_plasma_store_socket_name={plasma_store_name}",
+        f"--ray_raylet_socket_name={raylet_name}",
+        "--ray_node_manager_port=RAY_NODE_MANAGER_PORT_PLACEHOLDER",
+        f"--ray_address={bootstrap_address}",
+        f"--ray_redis_password={redis_password}",
+        f"--ray_session_dir={session_dir}",
+        f"--ray_logs_dir={log_dir}",
+        f"--ray_node_ip_address={node_ip_address}",
+        "RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER",
+    ]
+
+    return command
+
+def build_julia_worker_command(
+    bootstrap_address: str,
+    plasma_store_name: str,
+    raylet_name: str,
+    redis_password: str,
+    session_dir: str,
+    node_ip_address: str,
+    setup_worker_path: str,
+):
+    """This method assembles the command used to start a Julia worker.
+
+    Args:
+        bootstrap_address: Bootstrap address of ray cluster.
+        plasma_store_name: The name of the plasma store socket to connect
+           to.
+        raylet_name: The name of the raylet socket to create.
+        redis_password: The password of connect to redis.
+        session_dir: The path of this session.
+        node_ip_address: The ip address for this node.
+        setup_worker_path: The path of the Python file that will set up
+            the environment for the worker process.
+    Returns:
+        The command string for starting Julia worker.
+    """
+
+    # TODO: --project, --startup-file=no, --banner=no, ...?
+     command = [
         sys.executable,
         setup_worker_path,
         DEFAULT_WORKER_EXECUTABLE,

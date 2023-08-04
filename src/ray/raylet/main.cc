@@ -60,6 +60,7 @@ DEFINE_int32(maximum_startup_concurrency, 1, "Maximum startup concurrency.");
 DEFINE_string(static_resource_list, "", "The static resource list of this node.");
 DEFINE_string(python_worker_command, "", "Python worker command.");
 DEFINE_string(java_worker_command, "", "Java worker command.");
+DEFINE_string(julia_worker_command, "", "Julia worker command.");
 DEFINE_string(dashboard_agent_command, "", "Dashboard agent command.");
 DEFINE_string(runtime_env_agent_command, "", "Runtime env agent command.");
 DEFINE_string(cpp_worker_command, "", "CPP worker command.");
@@ -152,6 +153,7 @@ int main(int argc, char *argv[]) {
   const std::string static_resource_list = FLAGS_static_resource_list;
   const std::string python_worker_command = FLAGS_python_worker_command;
   const std::string java_worker_command = FLAGS_java_worker_command;
+  const std::string julia_worker_command = FLAGS_julia_worker_command;
   const std::string dashboard_agent_command = FLAGS_dashboard_agent_command;
   const std::string runtime_env_agent_command = FLAGS_runtime_env_agent_command;
   const std::string cpp_worker_command = FLAGS_cpp_worker_command;
@@ -251,10 +253,14 @@ int main(int argc, char *argv[]) {
           node_manager_config.worker_commands.emplace(
               make_pair(ray::Language::CPP, ParseCommandLine(cpp_worker_command)));
         }
+        if (!julia_worker_command.empty()) {
+          node_manager_config.worker_commands.emplace(
+              make_pair(ray::Language::JULIA, ParseCommandLine(julia_worker_command)));
+        }
         node_manager_config.native_library_path = native_library_path;
         if (python_worker_command.empty() && java_worker_command.empty() &&
-            cpp_worker_command.empty()) {
-          RAY_LOG(FATAL) << "At least one of Python/Java/CPP worker command "
+            cpp_worker_command.empty() && julia_worker_command.empty()) {
+          RAY_LOG(FATAL) << "At least one of Python/Java/CPP/Julia worker command "
                          << "should be provided";
         }
         if (dashboard_agent_command.empty()) {
