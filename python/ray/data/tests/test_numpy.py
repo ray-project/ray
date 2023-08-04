@@ -308,14 +308,14 @@ def test_numpy_write_block_path_provider(
     fs,
     data_path,
     endpoint_url,
-    test_block_write_path_provider,
+    mock_block_write_path_provider,
 ):
     ds = ray.data.range_tensor(10, parallelism=2)
     ds._set_uuid("data")
     ds.write_numpy(
         data_path,
         filesystem=fs,
-        block_path_provider=test_block_write_path_provider,
+        block_path_provider=mock_block_write_path_provider,
         column="data",
     )
     file_path1 = os.path.join(data_path, "000000_000000_data.test.npy")

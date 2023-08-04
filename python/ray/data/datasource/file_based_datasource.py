@@ -138,6 +138,9 @@ class DefaultBlockWritePathProvider(BlockWritePathProvider):
         block_index: Optional[int] = None,
         file_format: Optional[str] = None,
     ) -> str:
+        assert task_index is not None
+        # Add the task index to the filename to make sure that each task writes
+        # to a different and deterministically generated filename.
         if block_index is not None:
             suffix = f"{dataset_uuid}_{task_index:06}_{block_index:06}.{file_format}"
         else:
@@ -262,7 +265,7 @@ class FileBasedDatasource(Datasource):
         filesystem: Optional["pyarrow.fs.FileSystem"] = None,
         try_create_dir: bool = True,
         open_stream_args: Optional[Dict[str, Any]] = None,
-        block_path_provider: BlockWritePathProvider = DefaultBlockWritePathProvider(),
+        block_path_provider: Optional[BlockWritePathProvider] = None,
         write_args_fn: Callable[[], Dict[str, Any]] = lambda: {},
         _block_udf: Optional[Callable[[Block], Block]] = None,
         **write_args,
@@ -274,13 +277,6 @@ class FileBasedDatasource(Datasource):
 
         path, filesystem = _resolve_paths_and_filesystem(path, filesystem)
         path = path[0]
-        if try_create_dir:
-            # Arrow's S3FileSystem doesn't allow creating buckets by default, so we add
-            # a query arg enabling bucket creation if an S3 URI is provided.
-            tmp = _add_creatable_buckets_param_if_s3_uri(path)
-            filesystem.create_dir(tmp, recursive=True)
-        filesystem = _wrap_s3_serialization_workaround(filesystem)
-
         _write_block_to_file = self._write_block
 
         if open_stream_args is None:
@@ -308,6 +304,16 @@ class FileBasedDatasource(Datasource):
             block = BlockAccessor.for_block(block)
             if block.num_rows() == 0:
                 continue
+
+            if block_idx == 0:
+                # On the first non-empty block, try to create the directory.
+                if try_create_dir:
+                    # Arrow's S3FileSystem doesn't allow creating buckets by
+                    # default, so we add a query arg enabling bucket creation
+                    # if an S3 URI is provided.
+                    tmp = _add_creatable_buckets_param_if_s3_uri(path)
+                    filesystem.create_dir(tmp, recursive=True)
+                filesystem = _wrap_s3_serialization_workaround(filesystem)
 
             fs = _unwrap_s3_serialization_workaround(filesystem)
             with fs.open_output_stream(write_path, **open_stream_args) as f:

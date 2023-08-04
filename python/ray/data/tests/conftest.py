@@ -151,8 +151,8 @@ def local_fs():
 
 
 @pytest.fixture(scope="function")
-def test_block_write_path_provider():
-    class TestBlockWritePathProvider(BlockWritePathProvider):
+def mock_block_write_path_provider():
+    class MockBlockWritePathProvider(BlockWritePathProvider):
         def _get_write_path_for_block(
             self,
             base_path,
@@ -168,7 +168,7 @@ def test_block_write_path_provider():
             )
             return posixpath.join(base_path, suffix)
 
-    yield TestBlockWritePathProvider()
+    yield MockBlockWritePathProvider()
 
 
 @pytest.fixture(scope="function")

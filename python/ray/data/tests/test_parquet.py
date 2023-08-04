@@ -920,7 +920,7 @@ def test_parquet_write_block_path_provider(
     fs,
     data_path,
     endpoint_url,
-    test_block_write_path_provider,
+    mock_block_write_path_provider,
 ):
     if endpoint_url is None:
         storage_options = {}
@@ -939,7 +939,7 @@ def test_parquet_write_block_path_provider(
     ds._set_uuid("data")
 
     ds.write_parquet(
-        path, filesystem=fs, block_path_provider=test_block_write_path_provider
+        path, filesystem=fs, block_path_provider=mock_block_write_path_provider
     )
     path1 = os.path.join(path, "000000_000000_data.test.parquet")
     path2 = os.path.join(path, "000001_000000_data.test.parquet")
