@@ -454,20 +454,6 @@ class Experiment:
         return name
 
     @classmethod
-    def get_experiment_dir_name(
-        cls,
-        run_obj: Union[str, Callable, Type],
-    ) -> str:
-        assert run_obj
-        run_identifier = cls.get_trainable_name(run_obj)
-
-        if bool(int(os.environ.get("TUNE_DISABLE_DATED_SUBDIR", 0))):
-            dir_name = run_identifier
-        else:
-            dir_name = "{}_{}".format(run_identifier, date_str())
-        return dir_name
-
-    @classmethod
     def get_experiment_checkpoint_dir(
         cls,
         run_obj: Union[str, Callable, Type],

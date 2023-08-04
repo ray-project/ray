@@ -4,7 +4,7 @@ import logging
 import os
 from pathlib import Path
 import shutil
-from typing import Callable, Dict, List, Optional, Tuple, TYPE_CHECKING
+from typing import Callable, Dict, List, Optional, Tuple, Type, Union, TYPE_CHECKING
 
 try:
     import fsspec
@@ -606,6 +606,19 @@ class StorageContext:
             self.current_checkpoint_index
         )
         return os.path.join(self.trial_fs_path, checkpoint_dir_name)
+
+    @staticmethod
+    def get_experiment_dir_name(run_obj: Union[str, Callable, Type]) -> str:
+        from ray.tune.experiment import Experiment
+        from ray.tune.utils import date_str
+
+        run_identifier = Experiment.get_trainable_name(run_obj)
+
+        if bool(int(os.environ.get("TUNE_DISABLE_DATED_SUBDIR", 0))):
+            dir_name = run_identifier
+        else:
+            dir_name = "{}_{}".format(run_identifier, date_str())
+        return dir_name
 
 
 _storage_context: Optional[StorageContext] = None
