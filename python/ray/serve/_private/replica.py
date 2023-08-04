@@ -518,7 +518,7 @@ class RayServeReplica:
 
         self.restart_counter.inc()
 
-        self.metrics_pusher = self.metrics_pusher = MetricsPusher()
+        self.metrics_pusher = MetricsPusher()
         if autoscaling_config:
             process_remote_func = controller_handle.record_autoscaling_metrics.remote
             config = autoscaling_config
@@ -638,12 +638,7 @@ class RayServeReplica:
                 await reconfigure_method(user_config)
 
     @asynccontextmanager
-    async def wrap_user_method_call(
-        self,
-        request_metadata: RequestMetadata,
-        *,
-        acquire_reader_lock: bool = True,
-    ):
+    async def wrap_user_method_call(self, request_metadata: RequestMetadata):
         """Context manager that should be used to wrap user method calls.
 
         This sets up the serve request context, grabs the reader lock to avoid mutating
@@ -668,16 +663,7 @@ class RayServeReplica:
         start_time = time.time()
         user_exception = None
         try:
-            # TODO(edoakes): this is only here because there is an issue where async
-            # generators in actors have the `asyncio.current_task()` change between
-            # iterations: https://github.com/ray-project/ray/issues/37147. `aiorwlock`
-            # relies on the current task being stable, so it raises an exception.
-            # This flag should be removed once the above issue is closed.
-            if acquire_reader_lock:
-                async with self.rwlock.reader:
-                    yield
-            else:
-                yield
+            yield
         except Exception as e:
             user_exception = e
             logger.exception(f"Request failed due to {type(e).__name__}:")
@@ -792,9 +778,7 @@ class RayServeReplica:
         # iterations: https://github.com/ray-project/ray/issues/37147. `aiorwlock`
         # relies on the current task being stable, so it raises an exception.
         # This flag should be removed once the above issue is closed.
-        async with self.wrap_user_method_call(
-            request_metadata, acquire_reader_lock=False
-        ):
+        async with self.wrap_user_method_call(request_metadata):
             assert (
                 not request_metadata.is_http_request
             ), "HTTP requests should go through `call_user_method`."
@@ -845,7 +829,8 @@ class RayServeReplica:
         # We set the del method to noop after successfully calling it so the
         # destructor is called only once.
         async with self.delete_lock:
-            self.metrics_pusher = None
+            if self.metrics_pusher:
+                self.metrics_pusher.shutdown()
 
             if not hasattr(self, "callable"):
                 return
@@ -855,6 +840,10 @@ class RayServeReplica:
                     # Make sure to accept `async def __del__(self)` as well.
                     await sync_to_async(self.callable.__del__)()
                     setattr(self.callable, "__del__", lambda _: None)
+
+                if hasattr(self.callable, "__serve_multiplex_wrapper"):
+                    await getattr(self.callable, "__serve_multiplex_wrapper").shutdown()
+
             except Exception as e:
                 logger.exception(f"Exception during graceful shutdown of replica: {e}")
             finally:

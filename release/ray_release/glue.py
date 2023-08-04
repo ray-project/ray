@@ -152,7 +152,6 @@ def _setup_cluster_environment(
 ) -> Tuple[str, int, int, int, int]:
     setup_signal_handling()
     # Load configs
-    cluster_env = load_test_cluster_env(test, ray_wheels_url=ray_wheels_url)
     cluster_compute = load_test_cluster_compute(test)
 
     if cluster_env_id:
@@ -171,6 +170,11 @@ def _setup_cluster_environment(
                 f"{cluster_env_id}: {e}"
             ) from e
     else:
+        cluster_env = (
+            None
+            if test.is_byod_cluster()
+            else load_test_cluster_env(test, ray_wheels_url=ray_wheels_url)
+        )
         cluster_manager.set_cluster_env(cluster_env)
 
     # Load some timeouts

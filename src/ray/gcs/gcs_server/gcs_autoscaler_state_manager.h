@@ -25,9 +25,10 @@ class GcsResourceManager;
 class GcsNodeManager;
 class GcsPlacementGroupManager;
 
-class GcsAutoscalerStateManager : public rpc::AutoscalerStateHandler {
+class GcsAutoscalerStateManager : public rpc::autoscaler::AutoscalerStateHandler {
  public:
-  GcsAutoscalerStateManager(const ClusterResourceManager &cluster_resource_manager,
+  GcsAutoscalerStateManager(const std::string &session_name,
+                            const ClusterResourceManager &cluster_resource_manager,
                             const GcsResourceManager &gcs_resource_manager,
                             const GcsNodeManager &gcs_node_manager,
                             const GcsPlacementGroupManager &gcs_placement_group_manager);
@@ -51,11 +52,25 @@ class GcsAutoscalerStateManager : public rpc::AutoscalerStateHandler {
                               rpc::autoscaler::GetClusterStatusReply *reply,
                               rpc::SendReplyCallback send_reply_callback) override;
 
+  void HandleDrainNode(rpc::autoscaler::DrainNodeRequest request,
+                       rpc::autoscaler::DrainNodeReply *reply,
+                       rpc::SendReplyCallback send_reply_callback) override;
+
   void RecordMetrics() const { throw std::runtime_error("Unimplemented"); }
 
   std::string DebugString() const { throw std::runtime_error("Unimplemented"); }
 
  private:
+  /// \brief Internal method for populating the rpc::ClusterResourceState
+  /// protobuf.
+  /// \param state The state to be filled.
+  void MakeClusterResourceStateInternal(rpc::autoscaler::ClusterResourceState *state);
+
+  /// \brief Get the placement group load from GcsPlacementGroupManager
+  ///
+  /// \return The placement group load, nullptr if there is no placement group load.
+  std::shared_ptr<rpc::PlacementGroupLoad> GetPlacementGroupLoad() const;
+
   /// \brief Increment and get the next cluster resource state version.
   /// \return The incremented cluster resource state version.
   int64_t IncrementAndGetNextClusterResourceStateVersion() {
@@ -104,6 +119,9 @@ class GcsAutoscalerStateManager : public rpc::AutoscalerStateHandler {
   /// more details. This is requested through autoscaler SDK for request_resources().
   void GetClusterResourceConstraints(rpc::autoscaler::ClusterResourceState *state);
 
+  // Ray cluster session name.
+  const std::string session_name_ = "";
+
   /// Cluster resources manager that provides cluster resources information.
   const ClusterResourceManager &cluster_resource_manager_;
 
@@ -133,11 +151,11 @@ class GcsAutoscalerStateManager : public rpc::AutoscalerStateHandler {
 
   /// The most recent cluster resource constraints requested.
   /// This is requested through autoscaler SDK from request_resources().
-  absl::optional<rpc::ClusterResourceConstraint> cluster_resource_constraint_ =
-      absl::nullopt;
+  absl::optional<rpc::autoscaler::ClusterResourceConstraint>
+      cluster_resource_constraint_ = absl::nullopt;
 
   /// Cached autoscaling state.
-  absl::optional<rpc::AutoscalingState> autoscaling_state_ = absl::nullopt;
+  absl::optional<rpc::autoscaler::AutoscalingState> autoscaling_state_ = absl::nullopt;
 
   FRIEND_TEST(GcsAutoscalerStateManagerTest, TestReportAutoscalingState);
 };

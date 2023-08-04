@@ -264,8 +264,10 @@ if setup_spec.type == SetupType.RAY:
         ],
         "client": [
             # The Ray client needs a specific range of gRPC to work:
-            # Tracking issue: https://github.com/grpc/grpc/issues/31885
-            "grpcio >= 1.42.0, <= 1.50.0",
+            # Tracking issues: https://github.com/grpc/grpc/issues/33714
+            "grpcio != 1.56.0"
+            if sys.platform == "darwin"
+            else "grpcio",
         ],
         "serve": ["uvicorn", "requests", "starlette", "fastapi", "aiorwlock"],
         "tune": ["pandas", "tensorboardX>=1.9", "requests", pyarrow_dep],
@@ -286,7 +288,7 @@ if setup_spec.type == SetupType.RAY:
 
     setup_spec.extras["rllib"] = setup_spec.extras["tune"] + [
         "dm_tree",
-        "gymnasium==0.26.3",
+        "gymnasium==0.28.1",
         "lz4",
         "scikit-image",
         "pyyaml",

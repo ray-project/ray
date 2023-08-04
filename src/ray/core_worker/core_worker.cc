@@ -20,6 +20,7 @@
 
 #include <google/protobuf/util/json_util.h>
 
+#include "absl/cleanup/cleanup.h"
 #include "absl/strings/str_format.h"
 #include "boost/fiber/all.hpp"
 #include "ray/common/bundle_spec.h"
@@ -120,6 +121,12 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       task_execution_service_work_(task_execution_service_),
       exiting_detail_(std::nullopt),
       pid_(getpid()) {
+  // Notify that core worker is initialized.
+  auto initialzed_scope_guard = absl::MakeCleanup([this] {
+    absl::MutexLock lock(&initialize_mutex_);
+    initialized_ = true;
+    intialize_cv_.SignalAll();
+  });
   RAY_LOG(DEBUG) << "Constructing CoreWorker, worker_id: " << worker_id;
 
   // Initialize task receivers.
@@ -2468,11 +2475,10 @@ Status CoreWorker::AllocateReturnObject(const ObjectID &object_id,
                                         const size_t &data_size,
                                         const std::shared_ptr<Buffer> &metadata,
                                         const std::vector<ObjectID> &contained_object_ids,
+                                        const rpc::Address &caller_address,
                                         int64_t *task_output_inlined_bytes,
                                         std::shared_ptr<RayObject> *return_object) {
-  rpc::Address owner_address(options_.is_local_mode
-                                 ? rpc::Address()
-                                 : worker_context_.GetCurrentTask()->CallerAddress());
+  rpc::Address owner_address(options_.is_local_mode ? rpc::Address() : caller_address);
 
   bool object_already_exists = false;
   std::shared_ptr<Buffer> data_buffer;
@@ -2657,7 +2663,8 @@ Status CoreWorker::ExecuteTask(
       defined_concurrency_groups,
       name_of_concurrency_group_to_execute,
       /*is_reattempt=*/task_spec.AttemptNumber() > 0,
-      /*is_streaming_generator*/ task_spec.IsStreamingGenerator());
+      /*is_streaming_generator*/ task_spec.IsStreamingGenerator(),
+      /*retry_exception*/ task_spec.ShouldRetryExceptions());
 
   // Get the reference counts for any IDs that we borrowed during this task,
   // remove the local reference for these IDs, and return the ref count info to
@@ -2732,16 +2739,17 @@ Status CoreWorker::ExecuteTask(
 
 Status CoreWorker::SealReturnObject(const ObjectID &return_id,
                                     std::shared_ptr<RayObject> return_object,
-                                    const ObjectID &generator_id) {
+                                    const ObjectID &generator_id,
+                                    const rpc::Address &caller_address) {
   RAY_LOG(DEBUG) << "Sealing return object " << return_id;
   Status status = Status::OK();
   RAY_CHECK(return_object);
   RAY_CHECK(!options_.is_local_mode);
-  std::unique_ptr<rpc::Address> caller_address =
-      std::make_unique<rpc::Address>(worker_context_.GetCurrentTask()->CallerAddress());
+  std::unique_ptr<rpc::Address> caller_address_ptr =
+      std::make_unique<rpc::Address>(caller_address);
   if (return_object->GetData() != nullptr && return_object->GetData()->IsPlasmaBuffer()) {
     status = SealExisting(
-        return_id, /*pin_object=*/true, generator_id, std::move(caller_address));
+        return_id, /*pin_object=*/true, generator_id, std::move(caller_address_ptr));
     if (!status.ok()) {
       RAY_LOG(FATAL) << "Failed to seal object " << return_id
                      << " in store: " << status.message();

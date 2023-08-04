@@ -23,7 +23,7 @@ Trainer Base Classes
 
     ~train.trainer.BaseTrainer
     ~train.data_parallel_trainer.DataParallelTrainer
-    ~train.data_config.DataConfig
+    ~train.DataConfig
     ~train.gbdt_trainer.GBDTTrainer
 
 ``BaseTrainer`` API
@@ -59,6 +59,7 @@ Ray Train Config
 
     ~ray.train.DataConfig
 
+.. _train-loop-api:
 
 Ray Train Loop
 --------------
@@ -70,6 +71,25 @@ Ray Train Loop
     ~train.get_context
     ~train.get_dataset_shard
     ~train.report
+
+
+Ray Train Checkpoints
+---------------------
+
+.. autosummary::
+    :toctree: doc/
+
+    ~train.Checkpoint
+
+
+Ray Train Context
+-----------------
+
+.. autosummary::
+    :toctree: doc/
+
+    ~train.get_context
+    ~train.context.TrainContext
 
 
 .. _train-integration-api:

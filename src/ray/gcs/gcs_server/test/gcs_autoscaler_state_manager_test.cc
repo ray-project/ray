@@ -38,28 +38,31 @@ using BundlesOnNodeMap = absl::flat_hash_map<PlacementGroupID, std::vector<int64
 // Test suite for AutoscalerState related functionality.
 class GcsAutoscalerStateManagerTest : public ::testing::Test {
  public:
-  GcsAutoscalerStateManagerTest() : cluster_resource_manager_(io_service_) {
-    gcs_resource_manager_ = std::make_shared<GcsResourceManager>(
-        io_service_, cluster_resource_manager_, NodeID::FromRandom());
-    gcs_node_manager_ = std::make_shared<MockGcsNodeManager>();
-
-    gcs_placement_group_manager_ =
-        std::make_shared<MockGcsPlacementGroupManager>(*gcs_resource_manager_);
-
-    gcs_autoscaler_state_manager_.reset(
-        new GcsAutoscalerStateManager(cluster_resource_manager_,
-                                      *gcs_resource_manager_,
-                                      *gcs_node_manager_,
-                                      *gcs_placement_group_manager_));
-  }
+  GcsAutoscalerStateManagerTest() {}
 
  protected:
   instrumented_io_context io_service_;
-  ClusterResourceManager cluster_resource_manager_;
+  std::unique_ptr<ClusterResourceManager> cluster_resource_manager_;
   std::shared_ptr<GcsResourceManager> gcs_resource_manager_;
   std::shared_ptr<MockGcsNodeManager> gcs_node_manager_;
   std::unique_ptr<GcsAutoscalerStateManager> gcs_autoscaler_state_manager_;
   std::shared_ptr<MockGcsPlacementGroupManager> gcs_placement_group_manager_;
+
+  void SetUp() override {
+    cluster_resource_manager_ = std::make_unique<ClusterResourceManager>(io_service_);
+    gcs_resource_manager_ = std::make_shared<GcsResourceManager>(
+        io_service_, *cluster_resource_manager_, NodeID::FromRandom());
+    gcs_node_manager_ = std::make_shared<MockGcsNodeManager>();
+
+    gcs_placement_group_manager_ =
+        std::make_shared<MockGcsPlacementGroupManager>(*gcs_resource_manager_);
+    gcs_autoscaler_state_manager_.reset(
+        new GcsAutoscalerStateManager("fake_cluster",
+                                      *cluster_resource_manager_,
+                                      *gcs_resource_manager_,
+                                      *gcs_node_manager_,
+                                      *gcs_placement_group_manager_));
+  }
 
  public:
   void AddNode(const std::shared_ptr<rpc::GcsNodeInfo> &node) {
@@ -102,7 +105,7 @@ class GcsAutoscalerStateManagerTest : public ::testing::Test {
   }
 
   void RequestClusterResourceConstraint(
-      const rpc::ClusterResourceConstraint &constraint) {
+      const rpc::autoscaler::ClusterResourceConstraint &constraint) {
     rpc::autoscaler::RequestClusterResourceConstraintRequest request;
     request.mutable_cluster_resource_constraint()->CopyFrom(constraint);
     rpc::autoscaler::RequestClusterResourceConstraintReply reply;
@@ -136,6 +139,17 @@ class GcsAutoscalerStateManagerTest : public ::testing::Test {
                               available_resources_changed,
                               idle_ms);
     gcs_resource_manager_->UpdateFromResourceReport(resources_data);
+  }
+
+  rpc::autoscaler::GetClusterStatusReply GetClusterStatusSync() {
+    rpc::autoscaler::GetClusterStatusRequest request;
+    rpc::autoscaler::GetClusterStatusReply reply;
+    auto send_reply_callback =
+        [](ray::Status status, std::function<void()> f1, std::function<void()> f2) {};
+
+    gcs_autoscaler_state_manager_->HandleGetClusterStatus(
+        request, &reply, send_reply_callback);
+    return reply;
   }
 
   void UpdateResourceLoads(const std::string &node_id,
@@ -353,6 +367,35 @@ TEST_F(GcsAutoscalerStateManagerTest, TestNodeAddUpdateRemove) {
   }
 }
 
+TEST_F(GcsAutoscalerStateManagerTest, TestGetClusterStatusBasic) {
+  auto node = Mocker::GenNodeInfo();
+
+  // Test basic cluster resource.
+  {
+    node->mutable_resources_total()->insert({"CPU", 2});
+    node->mutable_resources_total()->insert({"GPU", 1});
+    node->set_instance_id("instance_1");
+    AddNode(node);
+
+    const auto reply = GetClusterStatusSync();
+    const auto &state = reply.cluster_resource_state();
+    ASSERT_EQ(state.node_states_size(), 1);
+    CheckNodeResources(state.node_states(0),
+                       /* available */ {{"CPU", 2}, {"GPU", 1}},
+                       /* total */ {{"CPU", 2}, {"GPU", 1}});
+  }
+
+  // Test autoscaler info.
+  {
+    rpc::autoscaler::AutoscalingState actual_state;
+    actual_state.set_autoscaler_state_version(1);
+    ReportAutoscalingState(actual_state);
+    const auto reply = GetClusterStatusSync();
+    const auto &state = reply.autoscaling_state();
+    ASSERT_EQ(state.autoscaler_state_version(), 1);
+  }
+}
+
 TEST_F(GcsAutoscalerStateManagerTest, TestNodeDynamicLabelsWithPG) {
   /// Check if PGs are created on a node, the node status should include
   /// the PG labels.
@@ -439,13 +482,15 @@ TEST_F(GcsAutoscalerStateManagerTest, TestGangResourceRequestsBasic) {
   // A strict spread pending pg should generate pending gang resource requests.
   {
     auto pg = PlacementGroupID::Of(job_id);
-    UpdatePlacementGroupLoad(
-        {Mocker::GenPlacementGroupTableData(pg,
-                                            job_id,
-                                            {{{"CPU", 1}}, {{"GPU", 1}}},
-                                            {"", ""},
-                                            rpc::PlacementStrategy::STRICT_SPREAD,
-                                            rpc::PlacementGroupTableData::PENDING)});
+    EXPECT_CALL(*gcs_placement_group_manager_, GetPlacementGroupLoad)
+        .WillOnce(
+            Return(Mocker::GenPlacementGroupLoad({Mocker::GenPlacementGroupTableData(
+                pg,
+                job_id,
+                {{{"CPU", 1}}, {{"GPU", 1}}},
+                {"", ""},
+                rpc::PlacementStrategy::STRICT_SPREAD,
+                rpc::PlacementGroupTableData::PENDING)})));
 
     auto state = GetClusterResourceStateSync();
     CheckGangResourceRequests(state,
@@ -458,13 +503,15 @@ TEST_F(GcsAutoscalerStateManagerTest, TestGangResourceRequestsBasic) {
   // A strict pack should also generate constraints.
   {
     auto pg = PlacementGroupID::Of(job_id);
-    UpdatePlacementGroupLoad(
-        {Mocker::GenPlacementGroupTableData(pg,
-                                            job_id,
-                                            {{{"CPU", 1}}, {{"GPU", 1}}},
-                                            {"", ""},
-                                            rpc::PlacementStrategy::STRICT_PACK,
-                                            rpc::PlacementGroupTableData::PENDING)});
+    EXPECT_CALL(*gcs_placement_group_manager_, GetPlacementGroupLoad)
+        .WillOnce(
+            Return(Mocker::GenPlacementGroupLoad({Mocker::GenPlacementGroupTableData(
+                pg,
+                job_id,
+                {{{"CPU", 1}}, {{"GPU", 1}}},
+                {"", ""},
+                rpc::PlacementStrategy::STRICT_PACK,
+                rpc::PlacementGroupTableData::PENDING)})));
 
     auto state = GetClusterResourceStateSync();
     CheckGangResourceRequests(state,
@@ -489,19 +536,21 @@ TEST_F(GcsAutoscalerStateManagerTest, TestGangResourceRequestsNonStrict) {
   {
     auto pg1 = PlacementGroupID::Of(job_id1);
     auto pg2 = PlacementGroupID::Of(job_id2);
-    UpdatePlacementGroupLoad(
-        {Mocker::GenPlacementGroupTableData(pg1,
-                                            job_id1,
-                                            {{{"CPU", 1}, {"GPU", 2}}},
-                                            {""},
-                                            rpc::PlacementStrategy::PACK,
-                                            rpc::PlacementGroupTableData::PENDING),
-         Mocker::GenPlacementGroupTableData(pg2,
-                                            job_id2,
-                                            {{{"TPU", 1}}},
-                                            {""},
-                                            rpc::PlacementStrategy::SPREAD,
-                                            rpc::PlacementGroupTableData::PENDING)});
+    EXPECT_CALL(*gcs_placement_group_manager_, GetPlacementGroupLoad)
+        .WillOnce(Return(Mocker::GenPlacementGroupLoad(
+            {Mocker::GenPlacementGroupTableData(pg1,
+                                                job_id1,
+                                                {{{"CPU", 1}, {"GPU", 2}}},
+                                                {""},
+                                                rpc::PlacementStrategy::PACK,
+                                                rpc::PlacementGroupTableData::PENDING),
+             Mocker::GenPlacementGroupTableData(
+                 pg2,
+                 job_id2,
+                 {{{"TPU", 1}}},
+                 {""},
+                 rpc::PlacementStrategy::SPREAD,
+                 rpc::PlacementGroupTableData::PENDING)})));
 
     const auto &state = GetClusterResourceStateSync();
     CheckGangResourceRequests(state,
@@ -521,13 +570,16 @@ TEST_F(GcsAutoscalerStateManagerTest, TestGangResourceRequestsPartialReschedulin
   // A partially placed PG should not have unplaced bundles requests for strict spread.
   {
     auto pg1 = PlacementGroupID::Of(job_id1);
-    UpdatePlacementGroupLoad({Mocker::GenPlacementGroupTableData(
-        pg1,
-        job_id1,
-        {{{"CPU_failed_1", 1}}, {{"CPU_success_2", 2}}},
-        {"", node->node_id()},
-        rpc::PlacementStrategy::STRICT_SPREAD,
-        rpc::PlacementGroupTableData::RESCHEDULING)});
+
+    EXPECT_CALL(*gcs_placement_group_manager_, GetPlacementGroupLoad)
+        .WillOnce(
+            Return(Mocker::GenPlacementGroupLoad({Mocker::GenPlacementGroupTableData(
+                pg1,
+                job_id1,
+                {{{"CPU_failed_1", 1}}, {{"CPU_success_2", 2}}},
+                {"", node->node_id()},
+                rpc::PlacementStrategy::STRICT_SPREAD,
+                rpc::PlacementGroupTableData::RESCHEDULING)})));
 
     const auto &state = GetClusterResourceStateSync();
 
@@ -550,22 +602,22 @@ TEST_F(GcsAutoscalerStateManagerTest, TestClusterResourcesConstraint) {
   // Generate one constraint.
   {
     RequestClusterResourceConstraint(
-        Mocker::GenClusterResourcesConstraint({{{"CPU", 2}, {"GPU", 1}}}));
+        Mocker::GenClusterResourcesConstraint({{{"CPU", 2}, {"GPU", 1}}}, {1}));
     const auto &state = GetClusterResourceStateSync();
     ASSERT_EQ(state.cluster_resource_constraints_size(), 1);
     ASSERT_EQ(state.cluster_resource_constraints(0).min_bundles_size(), 1);
-    CheckResourceRequest(state.cluster_resource_constraints(0).min_bundles(0),
+    CheckResourceRequest(state.cluster_resource_constraints(0).min_bundles(0).request(),
                          {{"CPU", 2}, {"GPU", 1}});
   }
 
   // Override it
   {
-    RequestClusterResourceConstraint(
-        Mocker::GenClusterResourcesConstraint({{{"CPU", 4}, {"GPU", 5}, {"TPU", 1}}}));
+    RequestClusterResourceConstraint(Mocker::GenClusterResourcesConstraint(
+        {{{"CPU", 4}, {"GPU", 5}, {"TPU", 1}}}, {1}));
     const auto &state = GetClusterResourceStateSync();
     ASSERT_EQ(state.cluster_resource_constraints_size(), 1);
     ASSERT_EQ(state.cluster_resource_constraints(0).min_bundles_size(), 1);
-    CheckResourceRequest(state.cluster_resource_constraints(0).min_bundles(0),
+    CheckResourceRequest(state.cluster_resource_constraints(0).min_bundles(0).request(),
                          {{"CPU", 4}, {"GPU", 5}, {"TPU", 1}});
   }
 }

@@ -1425,7 +1425,7 @@ class DeploymentState:
 
         Args:
             max_to_stop: max number of replicas to stop, by default,
-            it will stop all replicas with wrong version.
+            it will stop all replicas with outdated version.
         """
         replicas_to_update = self._replicas.pop(
             exclude_version=self._target_state.version,
@@ -1481,7 +1481,7 @@ class DeploymentState:
 
         return replicas_changed
 
-    def _check_and_stop_wrong_version_replicas(self) -> bool:
+    def _check_and_stop_outdated_version_replicas(self) -> bool:
         """Stops replicas with outdated versions to implement rolling updates.
 
         This includes both explicit code version updates and changes to the
@@ -1546,7 +1546,7 @@ class DeploymentState:
         upscale = []
         downscale = None
 
-        self._check_and_stop_wrong_version_replicas()
+        self._check_and_stop_outdated_version_replicas()
 
         current_replicas = self._replicas.count(
             states=[ReplicaState.STARTING, ReplicaState.UPDATING, ReplicaState.RUNNING]

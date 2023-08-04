@@ -11,8 +11,7 @@ from torchvision import datasets, transforms
 from torch.utils.data import DataLoader
 import torch.nn.functional as F
 
-from ray import air, tune
-from ray.air import session
+from ray import train, tune
 from ray.tune.schedulers import ASHAScheduler
 # __tutorial_imports_end__
 # fmt: on
@@ -43,7 +42,7 @@ class ConvNet(nn.Module):
 EPOCH_SIZE = 512
 TEST_SIZE = 256
 
-def train(model, optimizer, train_loader):
+def train_func(model, optimizer, train_loader):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model.train()
     for batch_idx, (data, target) in enumerate(train_loader):
@@ -58,7 +57,7 @@ def train(model, optimizer, train_loader):
         optimizer.step()
 
 
-def test(model, data_loader):
+def test_func(model, data_loader):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model.eval()
     correct = 0
@@ -102,11 +101,11 @@ def train_mnist(config):
     optimizer = optim.SGD(
         model.parameters(), lr=config["lr"], momentum=config["momentum"])
     for i in range(10):
-        train(model, optimizer, train_loader)
-        acc = test(model, test_loader)
+        train_func(model, optimizer, train_loader)
+        acc = test_func(model, test_loader)
 
         # Send the current training result back to Tune
-        session.report({"mean_accuracy": acc})
+        train.report({"mean_accuracy": acc})
 
         if i % 5 == 0:
             # This saves the model to the trial directory
@@ -208,7 +207,7 @@ search_space = {
 
 tuner = tune.Tuner(
     TrainMNIST,
-    run_config=air.RunConfig(stop={"training_iteration": 10}),
+    run_config=train.RunConfig(stop={"training_iteration": 10}),
     param_space=search_space,
 )
 results = tuner.fit()
