@@ -110,7 +110,7 @@ def _get_all_test_query(targets: List[str], team: str, size: str) -> str:
     except_query = " union ".join(
         [
             f"attr(tags, {t}, {test_query})"
-            for t in ["debug_tests", "asan_tests", "ray_ha"]
+            for t in ["debug_tests", "asan_tests", "xcommit"]
         ]
     )
 

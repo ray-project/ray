@@ -4,7 +4,7 @@ import logging
 import os
 from pathlib import Path
 import shutil
-from typing import Callable, Dict, List, Optional, Tuple
+from typing import Callable, Dict, List, Optional, Tuple, TYPE_CHECKING
 
 try:
     import fsspec
@@ -29,6 +29,9 @@ from ray.air._internal.filelock import TempFileLock
 from ray.air._internal.uri_utils import URI, is_uri
 from ray.tune.syncer import Syncer, SyncConfig, _BackgroundSyncer
 from ray.tune.result import _get_defaults_results_dir
+
+if TYPE_CHECKING:
+    from ray.train._checkpoint import Checkpoint
 
 
 logger = logging.getLogger(__file__)
@@ -471,6 +474,55 @@ class StorageContext:
                 "\nCheck that all nodes in the cluster have read/write access "
                 "to the configured storage path."
             )
+
+    def persist_current_checkpoint(self, checkpoint: "Checkpoint") -> "Checkpoint":
+        """Persists a given checkpoint to the current checkpoint path on the filesystem.
+
+        "Current" is defined by the `current_checkpoint_index` attribute of the
+        storage context.
+
+        This method copies the checkpoint files to the storage location,
+        drops a marker at the storage path to indicate that the checkpoint
+        is completely uploaded, then deletes the original checkpoint directory.
+        For example, the original directory is typically a local temp directory.
+
+        Args:
+            checkpoint: The checkpoint to persist to (fs, checkpoint_fs_path).
+
+        Returns:
+            Checkpoint: A Checkpoint pointing to the persisted checkpoint location.
+        """
+        # TODO(justinvyu): Fix this cyclical import.
+        from ray.train._checkpoint import Checkpoint
+
+        logger.debug(
+            "Copying checkpoint files to storage path:\n"
+            "({source_fs}, {source}) -> ({dest_fs}, {destination})".format(
+                source=checkpoint.path,
+                destination=self.checkpoint_fs_path,
+                source_fs=checkpoint.filesystem,
+                dest_fs=self.storage_filesystem,
+            )
+        )
+        self.storage_filesystem.create_dir(self.checkpoint_fs_path)
+        _pyarrow_fs_copy_files(
+            source=checkpoint.path,
+            destination=self.checkpoint_fs_path,
+            source_filesystem=checkpoint.filesystem,
+            destination_filesystem=self.storage_filesystem,
+        )
+
+        # Delete local checkpoint files.
+        # TODO(justinvyu): What if checkpoint.path == self.checkpoint_fs_path?
+        # TODO(justinvyu): What if users don't want to delete the local checkpoint?
+        checkpoint.filesystem.delete_dir(checkpoint.path)
+
+        uploaded_checkpoint = Checkpoint(
+            filesystem=self.storage_filesystem,
+            path=self.checkpoint_fs_path,
+        )
+        logger.debug(f"Checkpoint successfully created at: {uploaded_checkpoint}")
+        return uploaded_checkpoint
 
     @property
     def experiment_path(self) -> str:
