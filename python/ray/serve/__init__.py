@@ -17,6 +17,7 @@ try:
         Deployment,
         multiplexed,
         get_multiplexed_model_id,
+        status,
     )
     from ray.serve.air_integrations import PredictorDeployment
     from ray.serve.batching import batch
@@ -52,4 +53,5 @@ __all__ = [
     "Deployment",
     "multiplexed",
     "get_multiplexed_model_id",
+    "status",
 ]
