@@ -344,6 +344,16 @@ struct Mocker {
     data.set_node_id(node_id);
   }
 
+  static std::shared_ptr<rpc::PlacementGroupLoad> GenPlacementGroupLoad(
+      std::vector<rpc::PlacementGroupTableData> placement_group_table_data_vec) {
+    auto placement_group_load = std::make_shared<rpc::PlacementGroupLoad>();
+    for (auto &placement_group_table_data : placement_group_table_data_vec) {
+      placement_group_load->add_placement_group_data()->CopyFrom(
+          placement_group_table_data);
+    }
+    return placement_group_load;
+  }
+
   static rpc::PlacementGroupTableData GenPlacementGroupTableData(
       const PlacementGroupID &placement_group_id,
       const JobID &job_id,
