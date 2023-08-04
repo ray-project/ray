@@ -125,8 +125,8 @@ void GcsAutoscalerStateManager::MakeClusterResourceStateInternal(
 void GcsAutoscalerStateManager::GetPendingGangResourceRequests(
     rpc::autoscaler::ClusterResourceState *state) {
   // Get the gang resource requests from the placement group load.
-  auto placement_group_load = gcs_resource_manager_.GetPlacementGroupLoad();
-  if (!placement_group_load) {
+  auto placement_group_load = gcs_placement_group_manager_.GetPlacementGroupLoad();
+  if (!placement_group_load || placement_group_load->placement_group_data_size() == 0) {
     return;
   }
 
