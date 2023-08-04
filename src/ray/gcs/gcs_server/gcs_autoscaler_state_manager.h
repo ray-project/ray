@@ -66,6 +66,11 @@ class GcsAutoscalerStateManager : public rpc::autoscaler::AutoscalerStateHandler
   /// \param state The state to be filled.
   void MakeClusterResourceStateInternal(rpc::autoscaler::ClusterResourceState *state);
 
+  /// \brief Get the placement group load from GcsPlacementGroupManager
+  ///
+  /// \return The placement group load, nullptr if there is no placement group load.
+  std::shared_ptr<rpc::PlacementGroupLoad> GetPlacementGroupLoad() const;
+
   /// \brief Increment and get the next cluster resource state version.
   /// \return The incremented cluster resource state version.
   int64_t IncrementAndGetNextClusterResourceStateVersion() {
