@@ -59,7 +59,7 @@ class RayOnSparkCPUClusterTestBase(ABC):
         return wr_list
 
     def test_cpu_allocation(self):
-        for num_worker_nodes, num_cpus_per_node, num_worker_nodes_arg in [
+        for num_worker_nodes, num_cpus_worker_node, num_worker_nodes_arg in [
             (
                 self.max_spark_tasks // 2,
                 self.num_cpus_per_spark_task,
@@ -79,14 +79,14 @@ class RayOnSparkCPUClusterTestBase(ABC):
         ]:
             with _setup_ray_cluster(
                 num_worker_nodes=num_worker_nodes_arg,
-                num_cpus_per_node=num_cpus_per_node,
+                num_cpus_worker_node=num_cpus_worker_node,
                 head_node_options={"include_dashboard": False},
             ):
                 ray.init()
                 worker_res_list = self.get_ray_worker_resources_list()
                 assert len(worker_res_list) == num_worker_nodes
                 for worker_res in worker_res_list:
-                    assert worker_res["CPU"] == num_cpus_per_node
+                    assert worker_res["CPU"] == num_cpus_worker_node
 
     def test_public_api(self):
         try:

@@ -58,32 +58,32 @@ def test_get_avail_mem_per_ray_worker_node(monkeypatch):
     monkeypatch.setenv("RAY_ON_SPARK_WORKER_SHARED_MEMORY_BYTES", "500000")
 
     assert _get_avail_mem_per_ray_worker_node(
-        num_cpus_per_node=1,
-        num_gpus_per_node=2,
+        num_cpus_worker_node=1,
+        num_gpus_worker_node=2,
         object_store_memory_per_node=None,
     ) == (140000, 60000, None, None)
 
     assert _get_avail_mem_per_ray_worker_node(
-        num_cpus_per_node=1,
-        num_gpus_per_node=2,
+        num_cpus_worker_node=1,
+        num_gpus_worker_node=2,
         object_store_memory_per_node=80000,
     ) == (120000, 80000, None, None)
 
     assert _get_avail_mem_per_ray_worker_node(
-        num_cpus_per_node=1,
-        num_gpus_per_node=2,
+        num_cpus_worker_node=1,
+        num_gpus_worker_node=2,
         object_store_memory_per_node=120000,
     ) == (100000, 100000, None, None)
 
     assert _get_avail_mem_per_ray_worker_node(
-        num_cpus_per_node=2,
-        num_gpus_per_node=2,
+        num_cpus_worker_node=2,
+        num_gpus_worker_node=2,
         object_store_memory_per_node=None,
     ) == (280000, 120000, None, None)
 
     assert _get_avail_mem_per_ray_worker_node(
-        num_cpus_per_node=1,
-        num_gpus_per_node=4,
+        num_cpus_worker_node=1,
+        num_gpus_worker_node=4,
         object_store_memory_per_node=None,
     ) == (280000, 120000, None, None)
 
