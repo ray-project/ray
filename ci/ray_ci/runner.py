@@ -1,11 +1,13 @@
 import logging
 import os
-import subprocess
+import sys
 from typing import List, Optional
-from math import ceil
 
 import yaml
 import click
+
+from ci.ray_ci.container import run_tests, run_command, docker_login
+from ci.ray_ci.utils import chunk_into_n, logger
 
 # Gets the path of product/tools/docker (i.e. the parent of 'common')
 bazel_workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")
@@ -15,16 +17,22 @@ bazel_workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")
 @click.argument("targets", required=True, type=str, nargs=-1)
 @click.argument("team", required=True, type=str, nargs=1)
 @click.option(
-    "--concurrency",
-    default=3,
+    "--workers",
+    default=1,
     type=int,
     help=("Number of concurrent test jobs to run."),
 )
 @click.option(
-    "--shard",
+    "--worker-id",
     default=0,
     type=int,
     help=("Index of the concurrent shard to run."),
+)
+@click.option(
+    "--parallelism-per-worker",
+    default=1,
+    type=int,
+    help=("Number of concurrent test jobs to run per worker."),
 )
 @click.option(
     "--size",
@@ -42,8 +50,9 @@ bazel_workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")
 def main(
     targets: List[str],
     team: str,
-    concurrency: int,
-    shard: int,
+    workers: int,
+    worker_id: int,
+    parallelism_per_worker: int,
     size: str,
     run_flaky_tests: bool,
 ) -> None:
@@ -51,57 +60,41 @@ def main(
         raise Exception("Please use `bazelisk run //ci/ray_ci`")
     os.chdir(bazel_workspace_dir)
 
+    docker_login()
     if run_flaky_tests:
         test_targets = _get_flaky_test_targets(team)
     else:
-        test_targets = _get_test_targets(targets, team, concurrency, shard, size)
+        test_targets = _get_test_targets(targets, team, workers, worker_id, size)
     if not test_targets:
         logging.info("No tests to run")
         return
-    logging.info(f"Running tests: {test_targets}")
-    _run_tests(test_targets)
-
-
-def _run_tests(test_targets: List[str]) -> None:
-    """
-    Run tests
-    """
-    bazel_options = (
-        subprocess.check_output([f"{bazel_workspace_dir}/ci/run/bazel_export_options"])
-        .decode("utf-8")
-        .split()
+    logger.info(f"Running tests: {test_targets}")
+    success = run_tests(
+        test_targets,
+        ["DL=1 ./ci/env/install-dependencies.sh"],
+        parallelism_per_worker,
     )
-    subprocess.check_call(
-        ["bazel", "test", "--config=ci"] + bazel_options + test_targets
-    )
+    sys.exit(0 if success else 1)
 
 
 def _get_test_targets(
     targets: str,
     team: str,
-    concurrency: int,
-    shard: int,
+    workers: int,
+    worker_id: int,
     size: str,
     yaml_dir: Optional[str] = None,
 ) -> List[str]:
     """
     Get test targets to run for a particular shard
     """
-    return _chunk_into_n(
+    return chunk_into_n(
         _get_all_test_targets(targets, team, size, yaml_dir=yaml_dir),
-        concurrency,
-    )[shard]
-
-
-def _chunk_into_n(list: List[str], n: int):
-    size = ceil(len(list) / n)
-    return [list[x * size : x * size + size] for x in range(n)]
+        workers,
+    )[worker_id]
 
 
 def _get_all_test_query(targets: List[str], team: str, size: str) -> str:
-    """
-    Bazel query to get all test targets given a team and test size
-    """
     test_query = " union ".join([f"tests({target})" for target in targets])
     team_query = f"attr(tags, team:{team}, {test_query})"
     size_query = " union ".join(
@@ -125,9 +118,7 @@ def _get_all_test_targets(
     """
 
     test_targets = (
-        subprocess.check_output(
-            ["bazel", "query", _get_all_test_query(targets, team, size)],
-        )
+        run_command(f"bazel query '{_get_all_test_query(targets, team, size)}'")
         .decode("utf-8")
         .split("\n")
     )
