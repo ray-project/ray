@@ -228,6 +228,8 @@ RAY_SERVE_CONTROLLER_CALLBACK_IMPORT_PATH = os.environ.get(
 )
 # Serve gauge metric set period.
 RAY_SERVE_GAUGE_METRIC_SET_PERIOD_S = 1
+# How often autoscaling metrics are recorded on Serve replicas.
+RAY_SERVE_REPLICA_AUTOSCALING_METRIC_RECORD_PERIOD_S = 0.5
 
 # Enable memray in all Serve actors.
 RAY_SERVE_ENABLE_MEMORY_PROFILING = (

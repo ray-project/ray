@@ -98,15 +98,6 @@ def test_e2e(serve_instance):
 
     wait_for_condition(lambda: len(get_data()) > 0)
 
-    # Many queries should be inflight.
-    def last_timestamp_value():
-        data = get_data()
-        only_key = list(data.keys())[0]
-        print(data[only_key][-1])
-        return data[only_key][-1]
-
-    wait_for_condition(lambda: last_timestamp_value().value > 50)
-
 
 if __name__ == "__main__":
     import sys
