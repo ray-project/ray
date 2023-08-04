@@ -1,3 +1,4 @@
+import os
 import time
 
 import numpy as np
@@ -6,6 +7,7 @@ import pyarrow as pa
 import pytest
 
 import ray
+from ray.data import Dataset
 from ray.data._internal.lazy_block_list import LazyBlockList
 from ray.data.block import BlockMetadata
 from ray.data.datasource import Datasource
@@ -18,14 +20,17 @@ from ray.tests.conftest import *  # noqa
 class RandomBytesDatasource(Datasource):
     def create_reader(self, **read_args):
         return RandomBytesReader(
-            read_args["num_blocks_per_task"], read_args["block_size"]
+            read_args["num_blocks_per_task"],
+            read_args["block_size"],
+            read_args.get("use_bytes", True),
         )
 
 
 class RandomBytesReader(Reader):
-    def __init__(self, num_blocks_per_task: int, block_size: int):
+    def __init__(self, num_blocks_per_task: int, block_size: int, use_bytes=True):
         self.num_blocks_per_task = num_blocks_per_task
         self.block_size = block_size
+        self.use_bytes = use_bytes
 
     def estimate_inmemory_data_size(self):
         return None
@@ -33,7 +38,12 @@ class RandomBytesReader(Reader):
     def get_read_tasks(self, parallelism: int):
         def _blocks_generator():
             for _ in range(self.num_blocks_per_task):
-                yield pd.DataFrame({"one": [np.random.bytes(self.block_size)]})
+                if self.use_bytes:
+                    yield pd.DataFrame({"one": [np.random.bytes(self.block_size)]})
+                else:
+                    yield pd.DataFrame(
+                        {"one": [np.array2string(np.ones(self.block_size, dtype=int))]}
+                    )
 
         return parallelism * [
             ReadTask(
@@ -367,6 +377,91 @@ def test_read_large_data(ray_start_cluster, enable_dynamic_block_splitting):
 
     ds = ds.map_batches(foo, batch_size=None)
     assert ds.count() == num_blocks_per_task
+
+
+def _test_write_large_data(
+    tmp_path, ext, write_fn, read_fn, use_bytes, write_kwargs=None
+):
+    # Test 2G input with single task
+    num_blocks_per_task = 200
+    block_size = 10 * 1024 * 1024
+
+    ds = ray.data.read_datasource(
+        RandomBytesDatasource(),
+        parallelism=1,
+        num_blocks_per_task=num_blocks_per_task,
+        block_size=block_size,
+        use_bytes=use_bytes,
+    )
+
+    # This should succeed without OOM.
+    # https://github.com/ray-project/ray/pull/37966.
+    out_dir = os.path.join(tmp_path, ext)
+    write_kwargs = {} if write_kwargs is None else write_kwargs
+    write_fn(ds, out_dir, **write_kwargs)
+
+    max_heap_memory = ds._write_ds._get_stats_summary().get_max_heap_memory()
+    assert max_heap_memory < (num_blocks_per_task * block_size / 2), (
+        max_heap_memory,
+        ext,
+    )
+
+    # Make sure we can read out a record.
+    if read_fn is not None:
+        assert read_fn(out_dir).count() == num_blocks_per_task
+
+
+def test_write_large_data_parquet(shutdown_only, tmp_path):
+    _test_write_large_data(
+        tmp_path,
+        "parquet",
+        Dataset.write_parquet,
+        ray.data.read_parquet,
+        use_bytes=True,
+    )
+
+
+def test_write_large_data_json(shutdown_only, tmp_path):
+    _test_write_large_data(
+        tmp_path, "json", Dataset.write_json, ray.data.read_json, use_bytes=False
+    )
+
+
+def test_write_large_data_numpy(shutdown_only, tmp_path):
+    _test_write_large_data(
+        tmp_path,
+        "numpy",
+        Dataset.write_numpy,
+        ray.data.read_numpy,
+        use_bytes=False,
+        write_kwargs={"column": "one"},
+    )
+
+
+def test_write_large_data_csv(shutdown_only, tmp_path):
+    _test_write_large_data(
+        tmp_path, "csv", Dataset.write_csv, ray.data.read_csv, use_bytes=False
+    )
+
+
+def test_write_large_data_tfrecords(shutdown_only, tmp_path):
+    _test_write_large_data(
+        tmp_path,
+        "tfrecords",
+        Dataset.write_tfrecords,
+        ray.data.read_tfrecords,
+        use_bytes=True,
+    )
+
+
+def test_write_large_data_webdataset(shutdown_only, tmp_path):
+    _test_write_large_data(
+        tmp_path,
+        "webdataset",
+        Dataset.write_webdataset,
+        ray.data.read_webdataset,
+        use_bytes=True,
+    )
 
 
 if __name__ == "__main__":
