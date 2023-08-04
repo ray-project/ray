@@ -650,9 +650,8 @@ def read_parquet(
             NumPy array format in C-contiguous order (e.g., via
             `arr.tobytes()`).
         meta_provider: A :ref:`file metadata provider <metadata_provider>`. Custom
-            metadata providers might be able to resolve file metadata more quickly or
-            accurately. If ``None``, this function uses a system-chosen implementation.
             metadata providers may be able to resolve file metadata more quickly and/or
+            accurately. In most cases you do not need to set this parameter.
         arrow_parquet_args: Other parquet read options to pass to PyArrow. For the full
             set of arguments, see the`PyArrow API <https://arrow.apache.org/docs/\
                 python/generated/pyarrow.dataset.Scanner.html\
