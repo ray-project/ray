@@ -520,7 +520,7 @@ class Experiment:
     @property
     def remote_path(self) -> Optional[str]:
         if _use_storage_context():
-            return self.storage.experiment_path
+            return str(self.storage.storage_prefix / self.storage.experiment_fs_path)
 
         if not self._legacy_remote_storage_path:
             return None

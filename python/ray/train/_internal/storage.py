@@ -547,16 +547,6 @@ class StorageContext:
         return uploaded_checkpoint
 
     @property
-    def experiment_path(self) -> str:
-        """The path the experiment directory, where the format matches the
-        original `storage_path` format specified by the user.
-
-        Ex: If the user passed in storage_path="s3://bucket/path?param=1", then
-        this property returns "s3://bucket/path/exp_name?param=1".
-        """
-        return str(URI(self.storage_path) / self.experiment_dir_name)
-
-    @property
     def experiment_fs_path(self) -> str:
         """The path on the `storage_filesystem` to the experiment directory.
 
@@ -574,16 +564,6 @@ class StorageContext:
         syncing them to the `storage_path` on the `storage_filesystem`.
         """
         return os.path.join(self.storage_local_path, self.experiment_dir_name)
-
-    @property
-    def trial_path(self) -> str:
-        """The path the experiment directory, where the format matches the
-        original `storage_path` format specified by the user.
-
-        Ex: If the user passed in storage_path="s3://bucket/path?param=1", then
-        this property returns "s3://bucket/path/exp_name?param=1".
-        """
-        return str(URI(self.experiment_path) / self.trial_dir_name)
 
     @property
     def trial_local_path(self) -> str:
