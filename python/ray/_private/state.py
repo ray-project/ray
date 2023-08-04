@@ -734,6 +734,10 @@ class GlobalState:
             node_ip_address
         )
 
+    def get_draining_nodes(self):
+        self._check_connected()
+        return self.global_state_accessor.get_draining_nodes()
+
 
 state = GlobalState()
 """A global object used to access the cluster's global state."""
