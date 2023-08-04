@@ -111,6 +111,10 @@ MAX_BACKOFF_PERIOD_SEC = 5
 BACKOFF_FACTOR = 2
 
 
+def generate_request_id() -> str:
+    return str(uuid.uuid4())
+
+
 class LongestPrefixRouter:
     """Router that performs longest prefix matches on incoming routes."""
 
@@ -731,9 +735,6 @@ class GenericProxy:
             assignment_task.cancel()
             raise TimeoutError()
 
-    def generate_request_id(self) -> str:
-        return str(uuid.uuid4())
-
     @property
     def proxy_name(self) -> str:
         """Proxy name used for metrics.
@@ -832,7 +833,7 @@ class GRPCProxy(GenericProxy):
         multiplexed_model_id = serve_request.multiplexed_model_id
         request_id = serve_request.request_id
         if not request_id:
-            request_id = self.generate_request_id()
+            request_id = generate_request_id()
             serve_request.request_id = request_id
 
         handle = handle.options(
@@ -1142,7 +1143,7 @@ class RequestIdMiddleware:
         if RAY_SERVE_REQUEST_ID_HEADER not in headers and "x-request-id" not in headers:
             # If X-Request-ID and RAY_SERVE_REQUEST_ID_HEADER are both not set, we
             # generate a new request ID.
-            request_id = self.app.generate_request_id()
+            request_id = generate_request_id()
             headers.append("x-request-id", request_id)
             headers.append(RAY_SERVE_REQUEST_ID_HEADER, request_id)
         elif "x-request-id" in headers:
@@ -1360,7 +1361,7 @@ class HTTPProxyActor:
         allows delaying this call until after the `_after` call has returned.
         """
 
-        self.app.update_draining(draining)
+        self.http_proxy.update_draining(draining)
 
     async def is_drained(self, _after: Optional[Any] = None):
         """Check whether the proxy is drained or not.
@@ -1369,7 +1370,7 @@ class HTTPProxyActor:
         allows delaying this call until after the `_after` call has returned.
         """
 
-        return self.app.is_drained()
+        return self.http_proxy.is_drained()
 
     async def check_health(self):
         """No-op method to check on the health of the HTTP Proxy.
