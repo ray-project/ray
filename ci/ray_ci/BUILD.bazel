@@ -47,3 +47,32 @@ py_test(
         ci_require("pytest"),
     ],
 )
+
+
+py_test(
+    name = "test_utils",
+    size = "small",
+    srcs = ["test_utils.py"],
+    tags = [
+        "ci_unit",
+        "team:ci",
+    ],
+    deps = [
+        ":ray_ci_lib",
+        ci_require("pytest"),
+    ],
+)
+
+py_test(
+    name = "test_container",
+    size = "small",
+    srcs = ["test_container.py"],
+    tags = [
+        "ci_unit",
+        "team:ci",
+    ],
+    deps = [
+        ":ray_ci_lib",
+        ci_require("pytest"),
+    ],
+)
