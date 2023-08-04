@@ -463,7 +463,7 @@ class BaseTrainer(abc.ABC):
 
     @classmethod
     def _validate_scaling_config(cls, scaling_config: ScalingConfig) -> ScalingConfig:
-        """Return scaling config dataclass after validating updated keys."""
+        """Returns scaling config dataclass after validating updated keys."""
         ensure_only_allowed_dataclass_keys_updated(
             dataclass=scaling_config,
             allowed_keys=cls._scaling_config_allowed_keys,
@@ -472,7 +472,7 @@ class BaseTrainer(abc.ABC):
 
     @classmethod
     def _maybe_sync_down_trainer_state(cls, restore_path: str) -> Path:
-        """Sync down trainer state from remote storage.
+        """Syncs down trainer state from remote storage.
 
         Returns:
             str: Local directory containing the trainer state
@@ -682,7 +682,7 @@ class BaseTrainer(abc.ABC):
         return result
 
     def _generate_trainable_cls(self) -> Type["Trainable"]:
-        """Generate the base Trainable class.
+        """Generates the base Trainable class.
 
         Returns:
             A Trainable class to use for training.
@@ -732,7 +732,7 @@ class BaseTrainer(abc.ABC):
             dataset_context = None
 
         class TrainTrainable(trainable_cls):
-            """Add default resources to the Trainable."""
+            """Adds default resources to the Trainable."""
 
             _handles_checkpoint_freq = trainer_cls._handles_checkpoint_freq
             _handles_checkpoint_at_end = trainer_cls._handles_checkpoint_at_end
@@ -826,7 +826,7 @@ class BaseTrainer(abc.ABC):
         return TrainTrainable
 
     def as_trainable(self) -> Type["Trainable"]:
-        """Convert self to a ``tune.Trainable`` class."""
+        """Converts self to a ``tune.Trainable`` class."""
         from ray import tune
 
         base_config = self._param_dict
