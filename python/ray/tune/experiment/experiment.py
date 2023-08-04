@@ -158,6 +158,11 @@ class Experiment:
         # Deprecated
         local_dir: Optional[str] = None,
     ):
+        if isinstance(checkpoint_config, dict):
+            checkpoint_config = CheckpointConfig(**checkpoint_config)
+        else:
+            checkpoint_config = checkpoint_config or CheckpointConfig()
+
         if is_function_trainable(run):
             if checkpoint_config.checkpoint_at_end:
                 raise ValueError(
@@ -201,7 +206,6 @@ class Experiment:
             )
             logger.debug(f"StorageContext on the DRIVER:\n{self.storage}")
 
-            # TODO(justinvyu): Rename these to legacy.
             self._legacy_local_storage_path = None
             self._legacy_remote_storage_path = None
             self.legacy_sync_config = None
@@ -263,11 +267,6 @@ class Experiment:
             assert self.legacy_dir_name
 
         config = config or {}
-
-        if isinstance(checkpoint_config, dict):
-            checkpoint_config = CheckpointConfig(**checkpoint_config)
-        else:
-            checkpoint_config = checkpoint_config or CheckpointConfig()
 
         self._stopper = None
         stopping_criteria = {}
@@ -454,20 +453,6 @@ class Experiment:
         return name
 
     @classmethod
-    def get_experiment_dir_name(
-        cls,
-        run_obj: Union[str, Callable, Type],
-    ) -> str:
-        assert run_obj
-        run_identifier = cls.get_trainable_name(run_obj)
-
-        if bool(int(os.environ.get("TUNE_DISABLE_DATED_SUBDIR", 0))):
-            dir_name = run_identifier
-        else:
-            dir_name = "{}_{}".format(run_identifier, date_str())
-        return dir_name
-
-    @classmethod
     def get_experiment_checkpoint_dir(
         cls,
         run_obj: Union[str, Callable, Type],
@@ -520,7 +505,7 @@ class Experiment:
     @property
     def remote_path(self) -> Optional[str]:
         if _use_storage_context():
-            return self.storage.experiment_path
+            return str(self.storage.storage_prefix / self.storage.experiment_fs_path)
 
         if not self._legacy_remote_storage_path:
             return None
