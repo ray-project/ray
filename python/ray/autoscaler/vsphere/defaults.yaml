@@ -24,11 +24,11 @@ provider:
     type: vsphere
 
     vsphere_config:
-      admin_user: <username>
-      admin_password: <password>
-      server: <server-ip>
+      credentials:
+        admin_user: <username>
+        admin_password: <password>
+        server: <server-ip>
       datacenter: <datacenter>
-      datastore: <vsan-datastore>
 
 # How Ray will authenticate with newly launched nodes.
 auth:
@@ -43,23 +43,29 @@ auth:
 # The node config specifies the launch config and physical instance type.
 available_node_types:
     ray.head.default:
-        # The node type's CPU and GPU resources are auto-detected based on AWS instance type.
-        # If desired, you can override the autodetected CPU and GPU resources advertised to the autoscaler.
-        # You can also set custom resources.
-        # For example, to mark a node type as having 1 CPU, 1 GPU, and 5 units of a resource called "custom", set
-        # resources: {"CPU": 1, "GPU": 1, "custom": 5}
+        # For example, {"CPU": 4, "Memory": 8000}
         resources: {}
-        
-    ray.worker.default:
+        node_config:
+            # The resource pool where the head node should live
+            resource_pool: <resource_pool_name>
+            # The frozen VM from which the head node will be instant-cloned
+            frozen_vm_name: <frozen_vm_name>
+            # The datastore to store the vmdk of the head node vm
+            datastore: <datastore_name>
+
+    worker:
         # The minimum number of nodes of this type to launch.
         # This number should be >= 0.
         min_workers: 0
-        # The node type's CPU and GPU resources are auto-detected based on AWS instance type.
-        # If desired, you can override the autodetected CPU and GPU resources advertised to the autoscaler.
-        # You can also set custom resources.
-        # For example, to mark a node type as having 1 CPU, 1 GPU, and 5 units of a resource called "custom", set
-        # resources: {"CPU": 1, "GPU": 1, "custom": 5}
+        # For example, {"CPU": 4, "Memory": 8000}
         resources: {}
+        node_config:
+          # The resource pool where the worker node should live
+          resource_pool: <resource_pool_name>
+          # The frozen VM from which the worker node will be instant-cloned
+          frozen_vm_name: <frozen_vm_name>
+          # The datastore to store the vmdk of the worker node vm(s)
+          datastore: <datastore_name>
 
 # Specify the node type of the head node (as configured above).
 head_node_type: ray.head.default
