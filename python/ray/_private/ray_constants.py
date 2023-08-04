@@ -388,7 +388,24 @@ KV_NAMESPACE_FUNCTION_TABLE = b"fun"
 
 LANGUAGE_WORKER_TYPES = ["python", "java", "cpp"]
 
+# Accelerator constants
+NOSET_AWS_NEURON_VISIBLE_CORES_ENV_VAR = (
+    "RAY_EXPERIMENTAL_NOSET_AWS_NEURON_VISIBLE_CORES"
+)
 NOSET_CUDA_VISIBLE_DEVICES_ENV_VAR = "RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES"
+NUM_NEURON_CORES = "num_neuron_cores"
+# https://awsdocs-neuron.readthedocs-hosted.com/en/latest/general/arch/neuron-hardware/inf2-arch.html#aws-inf2-arch
+# https://awsdocs-neuron.readthedocs-hosted.com/en/latest/general/arch/neuron-hardware/trn1-arch.html#aws-trn1-arch
+# Subject to removal after the information is available via public API
+AWS_NEURON_INSTANCE_MAP = {
+    "trn1.2xlarge": 2,
+    "trn1.32xlarge": 32,
+    "trn1n.32xlarge": 32,
+    "inf2.2xlarge": 2,
+    "inf2.8xlarge": 2,
+    "inf2.24xlarge": 12,
+    "inf2.48xlarge": 24,
+}
 RAY_WORKER_NICENESS = "RAY_worker_niceness"
 
 # Default max_retries option in @ray.remote for non-actor

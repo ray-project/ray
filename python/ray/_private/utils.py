@@ -44,10 +44,10 @@ import ray._private.ray_constants as ray_constants
 from ray.core.generated.runtime_env_common_pb2 import (
     RuntimeEnvInfo as ProtoRuntimeEnvInfo,
 )
+from ray.util.accelerators import AWS_NEURON_CORE
 
 if TYPE_CHECKING:
     from ray.runtime_env import RuntimeEnv
-
 
 pwd = None
 if sys.platform != "win32":
@@ -64,14 +64,12 @@ linux_prctl = None
 win32_job = None
 win32_AssignProcessToJobObject = None
 
-
 ENV_DISABLE_DOCKER_CPU_WARNING = "RAY_DISABLE_DOCKER_CPU_WARNING" in os.environ
 _PYARROW_VERSION = None
 
 # This global variable is used for testing only
 _CALLED_FREQ = defaultdict(lambda: 0)
 _CALLED_FREQ_LOCK = threading.Lock()
-
 
 PLACEMENT_GROUP_INDEXED_BUNDLED_RESOURCE_PATTERN = re.compile(
     r"(.+)_group_(\d+)_([0-9a-zA-Z]+)"
@@ -279,29 +277,45 @@ def compute_driver_id_from_job(job_id):
 
 
 def get_cuda_visible_devices():
-    """Get the device IDs in the CUDA_VISIBLE_DEVICES environment variable.
+    """
+    Get the device IDs using CUDA_VISIBLE_DEVICES environment variable.
+    """
+    return _get_visible_ids(env_var="CUDA_VISIBLE_DEVICES")
+
+
+def get_aws_neuron_core_visible_ids():
+    """
+    Get the device IDs using NEURON_RT_VISIBLE_CORES environment variable.
+    """
+    return _get_visible_ids(env_var="NEURON_RT_VISIBLE_CORES")
+
+
+def _get_visible_ids(env_var: str):
+    """Get the device IDs from defined environment variable.
+    Args:
+        env_var: Environment variable to set based on the accelerator runtime.
 
     Returns:
-        devices (List[str]): If CUDA_VISIBLE_DEVICES is set, returns a
-            list of strings representing the IDs of the visible GPUs.
+        devices (List[str]): If environment variable is set, returns a
+            list of strings representing the IDs of the visible devices or cores.
             If it is not set or is set to NoDevFiles, returns empty list.
     """
-    gpu_ids_str = os.environ.get("CUDA_VISIBLE_DEVICES", None)
+    visible_ids_str = os.environ.get(env_var, None)
 
-    if gpu_ids_str is None:
+    if visible_ids_str is None:
         return None
 
-    if gpu_ids_str == "":
+    if visible_ids_str == "":
         return []
 
-    if gpu_ids_str == "NoDevFiles":
+    if visible_ids_str == "NoDevFiles":
         return []
 
-    # GPU identifiers are given as strings representing integers or UUIDs.
-    return list(gpu_ids_str.split(","))
+    # Identifiers are given as strings representing integers or UUIDs.
+    return list(visible_ids_str.split(","))
 
 
-last_set_gpu_ids = None
+last_set_visible_ids = None
 
 
 def set_omp_num_threads_if_unset() -> bool:
@@ -350,16 +364,51 @@ def set_cuda_visible_devices(gpu_ids):
     Args:
         gpu_ids (List[str]): List of strings representing GPU IDs.
     """
-
     if os.environ.get(ray_constants.NOSET_CUDA_VISIBLE_DEVICES_ENV_VAR):
         return
+    set_visible_ids(gpu_ids, "CUDA_VISIBLE_DEVICES")
 
-    global last_set_gpu_ids
-    if last_set_gpu_ids == gpu_ids:
+
+def set_aws_neuron_core_visible_ids(core_ids):
+    """Set the NEURON_RT_VISIBLE_CORES environment variable.
+
+    Args:
+        core_ids (List[str]): List of strings representing core IDs.
+    """
+    if os.environ.get(ray_constants.NOSET_AWS_NEURON_VISIBLE_CORES_ENV_VAR):
+        return
+    set_visible_ids(core_ids, "NEURON_RT_VISIBLE_CORES")
+
+
+def set_visible_ids(visible_ids, env_var: str):
+    """Set the environment variable passed based on accelerator runtime.
+
+    Args:
+        visible_ids (List[str]): List of strings representing GPU IDs.
+        env_var: Environment variable to set based on GPU runtime.
+
+    """
+
+    global last_set_visible_ids
+    if last_set_visible_ids == visible_ids:
         return  # optimization: already set
 
-    os.environ["CUDA_VISIBLE_DEVICES"] = ",".join([str(i) for i in gpu_ids])
-    last_set_gpu_ids = gpu_ids
+    os.environ[env_var] = ",".join([str(i) for i in visible_ids])
+    last_set_visible_ids = visible_ids
+
+
+def get_neuron_core_constraint_name():
+    """Get the name of the constraint that represents the AWS Neuron core accelerator.
+
+    Returns:
+        (str) The constraint name.
+    """
+    return get_constraint_name(AWS_NEURON_CORE)
+
+
+def get_constraint_name(pretty_name: str):
+    constraint_name = f"{ray_constants.RESOURCE_CONSTRAINT_PREFIX}" f"{pretty_name}"
+    return constraint_name
 
 
 def resources_from_ray_options(options_dict: Dict[str, Any]) -> Dict[str, Any]:
@@ -397,6 +446,7 @@ def resources_from_ray_options(options_dict: Dict[str, Any]) -> Dict[str, Any]:
         resources["memory"] = int(memory)
     if object_store_memory is not None:
         resources["object_store_memory"] = object_store_memory
+    # TODO: Confirm if value is valid
     if accelerator_type is not None:
         resources[
             f"{ray_constants.RESOURCE_CONSTRAINT_PREFIX}{accelerator_type}"

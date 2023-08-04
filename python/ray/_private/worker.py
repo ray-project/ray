@@ -428,6 +428,11 @@ class Worker:
         # When the worker is constructed. Record the original value of the
         # CUDA_VISIBLE_DEVICES environment variable.
         self.original_gpu_ids = ray._private.utils.get_cuda_visible_devices()
+        # When the worker is constructed. Record the original value of the
+        # NEURON_RT_VISIBLE_CORES environment variable.
+        self.original_aws_neuron_core_ids = (
+            ray._private.utils.get_aws_neuron_core_visible_ids()
+        )
         # A dictionary that maps from driver id to SerializationContext
         # TODO: clean up the SerializationContext once the job finished.
         self.serialization_context_map = {}
@@ -846,6 +851,64 @@ def get_gpu_ids():
     Returns:
         A list of GPU IDs.
     """
+    assigned_ids = _get_all_resource_ids("GPU", r"^GPU_group_[0-9A-Za-z]+$")
+    # If the user had already set CUDA_VISIBLE_DEVICES, then respect that (in
+    # the sense that only GPU IDs that appear in CUDA_VISIBLE_DEVICES should be
+    # returned).
+    if global_worker.original_gpu_ids is not None:
+        assigned_ids = [
+            global_worker.original_gpu_ids[gpu_id] for gpu_id in assigned_ids
+        ]
+        # Give all GPUs in local_mode.
+        if global_worker.mode == LOCAL_MODE:
+            max_gpus = global_worker.node.get_resource_spec().num_gpus
+            assigned_ids = global_worker.original_gpu_ids[:max_gpus]
+
+    return assigned_ids
+
+
+@PublicAPI
+@client_mode_hook
+def get_neuron_core_ids():
+    """Get the IDs of the NeuronCores that are available to the worker.
+
+    If the NEURON_RT_VISIBLE_CORES environment variable was set when the worker
+    started up, then the IDs returned by this method will be a subset of the
+    IDs in NEURON_RT_VISIBLE_CORES. If not, the IDs will fall in the range
+    [0, NEURON_CORES - 1], where NEURON_CORES is the number of neuron_cores
+    that the node has.
+
+    Returns:
+        A list of NEURON_CORE IDs.
+    """
+    neuron_regex = (
+        f"^{ray._private.utils.get_neuron_core_constraint_name()}_group_[0-9A-Za-z]+$"
+    )
+    assigned_ids = _get_all_resource_ids(
+        ray._private.utils.get_neuron_core_constraint_name(), neuron_regex
+    )
+    # If the user had already set , then respect that
+    # (in the sense that only neuron-core IDs that appear in
+    # NEURON_RT_VISIBLE_CORES should be returned).
+    if global_worker.original_aws_neuron_core_ids is not None:
+        assigned_ids = [
+            global_worker.original_aws_neuron_core_ids[neuron_core_id]
+            for neuron_core_id in assigned_ids
+        ]
+        # Give all neuron_cores in local_mode.
+        if global_worker.mode == LOCAL_MODE:
+            max_neuron_cores = global_worker.node.get_resource_spec().resources.get(
+                ray._private.utils.get_neuron_core_constraint_name(), None
+            )
+            if max_neuron_cores:
+                assigned_ids = global_worker.original_aws_neuron_core_ids[
+                    :max_neuron_cores
+                ]
+
+    return assigned_ids
+
+
+def _get_all_resource_ids(resource_name: str, resource_regex: str):
     worker = global_worker
     worker.check_connected()
 
@@ -866,24 +929,11 @@ def get_gpu_ids():
         # group resource that does not contain the bundle index!
         import re
 
-        if resource == "GPU" or re.match(r"^GPU_group_[0-9A-Za-z]+$", resource):
+        if resource == resource_name or re.match(resource_regex, resource):
             for resource_id, _ in assignment:
                 assigned_ids.add(resource_id)
 
-    assigned_ids = list(assigned_ids)
-    # If the user had already set CUDA_VISIBLE_DEVICES, then respect that (in
-    # the sense that only GPU IDs that appear in CUDA_VISIBLE_DEVICES should be
-    # returned).
-    if global_worker.original_gpu_ids is not None:
-        assigned_ids = [
-            global_worker.original_gpu_ids[gpu_id] for gpu_id in assigned_ids
-        ]
-        # Give all GPUs in local_mode.
-        if global_worker.mode == LOCAL_MODE:
-            max_gpus = global_worker.node.get_resource_spec().num_gpus
-            assigned_ids = global_worker.original_gpu_ids[:max_gpus]
-
-    return assigned_ids
+    return list(assigned_ids)
 
 
 @Deprecated(

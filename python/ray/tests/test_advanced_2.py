@@ -477,6 +477,90 @@ def test_many_custom_resources(shutdown_only):
     ray.get(results)
 
 
+def test_neuron_core_ids(shutdown_only):
+    num_nc = 2
+    ray.init(num_cpus=num_nc, resources={"num_neuron_cores": num_nc})
+
+    def get_neuron_core_ids(num_neuron_cores_per_worker):
+        neuron_core_ids = ray.get_neuron_core_ids()
+        assert len(neuron_core_ids) == num_neuron_cores_per_worker
+        assert os.environ["NEURON_RT_VISIBLE_CORES"] == ",".join(
+            [str(i) for i in neuron_core_ids]  # noqa
+        )
+        for neuron_core_id in neuron_core_ids:
+            assert neuron_core_id in range(num_nc)
+        return neuron_core_ids
+
+    f0 = ray.remote(resources={"num_neuron_cores": 0})(lambda: get_neuron_core_ids(0))
+    f1 = ray.remote(resources={"num_neuron_cores": 1})(lambda: get_neuron_core_ids(1))
+
+    # Wait for all workers to start up.
+    @ray.remote
+    def g():
+        time.sleep(0.2)
+        return os.getpid()
+
+    start_time = time.time()
+    while True:
+        num_workers_started = len(set(ray.get([g.remote() for _ in range(num_nc)])))
+        if num_workers_started == num_nc:
+            break
+        if time.time() > start_time + 10:
+            raise RayTestTimeoutException(
+                "Timed out while waiting for workers to start up."
+            )
+
+    list_of_ids = ray.get([f0.remote() for _ in range(10)])
+    assert list_of_ids == 10 * [[]]
+    ray.get([f1.remote() for _ in range(10)])
+
+    # Test that actors have NEURON_RT_VISIBLE_CORES set properly.
+
+    @ray.remote
+    class Actor0:
+        def __init__(self):
+            neuron_core_ids = ray.get_neuron_core_ids()
+            assert len(neuron_core_ids) == 0
+            assert os.environ["NEURON_RT_VISIBLE_CORES"] == ",".join(
+                [str(i) for i in neuron_core_ids]  # noqa
+            )
+            # Set self.x to make sure that we got here.
+            self.x = 1
+
+        def test(self):
+            neuron_core_ids = ray.get_neuron_core_ids()
+            assert len(neuron_core_ids) == 0
+            assert os.environ["NEURON_RT_VISIBLE_CORES"] == ",".join(
+                [str(i) for i in neuron_core_ids]
+            )
+            return self.x
+
+    @ray.remote(resources={"num_neuron_cores": 1})
+    class Actor1:
+        def __init__(self):
+            neuron_core_ids = ray.get_neuron_core_ids()
+            assert len(neuron_core_ids) == 1
+            assert os.environ["NEURON_RT_VISIBLE_CORES"] == ",".join(
+                [str(i) for i in neuron_core_ids]
+            )
+            # Set self.x to make sure that we got here.
+            self.x = 1
+
+        def test(self):
+            gpu_ids = ray.get_gpu_ids()
+            assert len(gpu_ids) == 1
+            assert os.environ["NEURON_RT_VISIBLE_CORES"] == ",".join(
+                [str(i) for i in gpu_ids]
+            )
+            return self.x
+
+    a0 = Actor0.remote()
+    ray.get(a0.test.remote())
+
+    a1 = Actor1.remote()
+    ray.get(a1.test.remote())
+
+
 # TODO: 5 retry attempts may be too little for Travis and we may need to
 # increase it if this test begins to be flaky on Travis.
 def test_zero_capacity_deletion_semantics(shutdown_only):

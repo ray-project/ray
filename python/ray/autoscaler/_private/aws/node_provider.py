@@ -10,6 +10,7 @@ import botocore
 from boto3.resources.base import ServiceResource
 
 import ray._private.ray_constants as ray_constants
+from ray._private.utils import get_neuron_core_constraint_name
 from ray.autoscaler._private.aws.cloudwatch.cloudwatch_helper import (
     CLOUDWATCH_AGENT_INSTALLED_AMI_TAG,
     CLOUDWATCH_AGENT_INSTALLED_TAG,
@@ -648,6 +649,21 @@ class AWSNodeProvider(NodeProvider):
                     autodetected_resources.update(
                         {"GPU": gpus[0]["Count"], f"accelerator_type:{gpu_name}": 1}
                     )
+                # TODO: AWS SDK (public API) doesn't yet expose the NeuronCore
+                #  information, work-in-progress.
+                if ray_constants.AWS_NEURON_INSTANCE_MAP.contains(
+                    instance_type.lower()
+                ):
+                    num_neuron_cores = ray_constants.AWS_NEURON_INSTANCE_MAP.get(
+                        instance_type.lower()
+                    )
+                    autodetected_resources.update(
+                        {
+                            ray_constants.NUM_NEURON_CORES: num_neuron_cores,
+                            get_neuron_core_constraint_name(): num_neuron_cores,
+                        }
+                    )
+
                 autodetected_resources.update(
                     available_node_types[node_type].get("resources", {})
                 )

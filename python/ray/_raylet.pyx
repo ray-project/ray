@@ -1644,6 +1644,9 @@ cdef execute_task_with_cancellation_handler(
     # Automatically restrict the GPUs available to this task.
     ray._private.utils.set_cuda_visible_devices(ray.get_gpu_ids())
 
+    # Automatically restrict aws_neuron_cores available to this task.
+    ray._private.utils.set_aws_neuron_core_visible_ids(ray.get_neuron_core_ids())
+
     # Automatically configure OMP_NUM_THREADS to the assigned CPU number.
     # It will be unset after the task execution if it was overwridden here.
     # No-op if already set.
