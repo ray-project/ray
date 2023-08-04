@@ -490,7 +490,8 @@ def test_core_events(shutdown_only):
 
 
 def test_actors_events(shutdown_only):
-    ray.init(ignore_reinit_error=True)
+    context = ray.init()
+    dashboard_url = f"http://{context['webui_url']}"
 
     @ray.remote
     class Counter:
@@ -506,7 +507,6 @@ def test_actors_events(shutdown_only):
         def get_counter(self):
             return self.value
 
-    inspect_serializability(Counter, "debug actor serializability")
     actors = [Counter.remote() for _ in range(10)]
 
     # Increment the count for each actor asynchronously
@@ -521,7 +521,22 @@ def test_actors_events(shutdown_only):
     for i, count in enumerate(counts, start=1):
         print(f"Actor {i}: {count}")
 
-    ray.shutdown()
+    def verify():
+        # resp = requests.get(f"{dashboard_url}/events")
+        # pprint(resp.text)
+        events = list_cluster_events()
+        pprint(events)
+        # assert len(list_cluster_events()) == 10
+
+        # messages = [event["message"] for event in events]
+
+        # # Make sure the first two has been GC'ed.
+        # for m in messages:
+        #     assert submission_ids[0] not in m
+        #     assert submission_ids[1] not in m
+        return True
+
+    wait_for_condition(verify)
 
 
 def test_tasks_events(shutdown_only):
