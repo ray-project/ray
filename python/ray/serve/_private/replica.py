@@ -27,7 +27,7 @@ from ray.serve._private.common import (
     ReplicaTag,
     ServeComponentType,
     StreamingHTTPRequest,
-    GRPCRequest,
+    gRPCRequest,
 )
 from ray.serve.config import DeploymentConfig
 from ray.serve._private.constants import (
@@ -63,6 +63,7 @@ from ray.serve._private.utils import (
     MetricsPusher,
 )
 from ray.serve._private.version import DeploymentVersion
+
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -229,8 +230,9 @@ def create_replica_wrapper(name: str):
 
             request_metadata = pickle.loads(pickled_request_metadata)
             if request_metadata.serve_grpc_request:
+                # Ensure the request args are a single gRPCRequest object.
                 assert len(request_args) == 1 and isinstance(
-                    request_args[0], GRPCRequest
+                    request_args[0], gRPCRequest
                 )
                 result = await self.replica.call_user_method_grpc_unary(
                     request_metadata=request_metadata, request=request_args[0]
@@ -339,10 +341,11 @@ def create_replica_wrapper(name: str):
             """Generator that is the entrypoint for all `stream=True` handle calls."""
             request_metadata = pickle.loads(pickled_request_metadata)
             if request_metadata.serve_grpc_request:
+                # Ensure the request args are a single gRPCRequest object.
                 assert len(request_args) == 1 and isinstance(
-                    request_args[0], GRPCRequest
+                    request_args[0], gRPCRequest
                 )
-                generator = self.replica.call_user_method_with_grpc_stream(
+                generator = self.replica.call_user_method_with_grpc_streaming(
                     request_metadata, request_args[0]
                 )
             elif request_metadata.is_http_request:
@@ -716,16 +719,20 @@ class RayServeReplica:
             self.error_counter.inc(tags={"route": request_metadata.route})
             raise user_exception from None
 
-    async def call_user_method_with_grpc_stream(
-        self, request_metadata, request
+    async def call_user_method_with_grpc_streaming(
+        self, request_metadata: RequestMetadata, request: gRPCRequest
     ) -> AsyncGenerator[bytes, None]:
+        """Call a user method that is expected to be a generator.
+
+        Deserializes gRPC request into protobuf object and pass into replica's runner
+        method. Returns a generator of serialized protobuf bytes from the replica.
+        """
         async with self.wrap_user_method_call(
             request_metadata, acquire_reader_lock=False
         ):
             user_method = self.get_runner_method(request_metadata)
-            method_to_call = sync_to_async(user_method)
             user_request = pickle.loads(request.grpc_user_request)
-            result_generator = method_to_call(user_request)
+            result_generator = user_method(user_request)
             if inspect.iscoroutine(result_generator):
                 result_generator = await result_generator
 
@@ -741,7 +748,14 @@ class RayServeReplica:
                     f"function, but '{user_method.__name__}' is not."
                 )
 
-    async def call_user_method_grpc_unary(self, request_metadata, request) -> bytes:
+    async def call_user_method_grpc_unary(
+        self, request_metadata: RequestMetadata, request: gRPCRequest
+    ) -> bytes:
+        """Call a user method that is *not* expected to be a generator.
+
+        Deserializes gRPC request into protobuf object and pass into replica's runner
+        method. Returns a serialized protobuf bytes from the replica.
+        """
         async with self.wrap_user_method_call(request_metadata):
             user_request = pickle.loads(request.grpc_user_request)
 

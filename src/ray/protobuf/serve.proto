@@ -228,36 +228,15 @@ message StatusOverview {
 
 // RPC Schema
 message PredictRequest {
-  string target = 1;
-  bytes input = 2;
+  map<string, bytes> input = 2;
 }
 
 message PredictResponse {
-  bytes output = 1;
+  bytes prediction = 1;
 }
 
 service PredictAPIsService {
   rpc Predict(PredictRequest) returns (PredictResponse);
-}
-
-message TestIn {
-  string name = 1;
-  string foo = 2;
-  int64 num = 3;
-}
-
-message TestOut {
-  string greeting = 1;
-  int64 num_x2 = 2;
-}
-
-message UserRequest {
-  string message = 1;
-  map<string, bytes> input = 2;
-}
-
-message UserResponse {
-  bytes response = 1;
 }
 
 message RayServeRequest {

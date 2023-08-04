@@ -11,10 +11,14 @@ logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
 class ServeRequest:
+    """Base ServeRequest class to use in the common interface among proxies"""
+
     pass
 
 
 class ASGIServeRequest(ServeRequest):
+    """ServeRequest implementation to wrap ASGI scope, receive, and send."""
+
     def __init__(self, scope: Scope, receive: Receive, send: Send):
         self.scope = scope
         self.receive = receive
@@ -55,7 +59,9 @@ class ASGIServeRequest(ServeRequest):
         self.scope["root_path"] = root_path
 
 
-class GRPCServeRequest(ServeRequest):
+class gRPCServeRequest(ServeRequest):
+    """ServeRequest implementation to wrap gRPC request protobuf and metadata."""
+
     def __init__(
         self,
         request: bytes,
@@ -63,8 +69,7 @@ class GRPCServeRequest(ServeRequest):
         match_target: Callable[[str], Optional[str]],
         stream: bool,
     ):
-        # Any proto can be serialized by pickle so no need to call SerializeToString()
-        self.request = request  # .SerializeToString()
+        self.request = request
         self.context = context
         self.stream = stream
         self.app_name = None
@@ -75,7 +80,7 @@ class GRPCServeRequest(ServeRequest):
         for key, value in context.invocation_metadata():
             if key == "application":
                 self.app_name = value
-            elif key == "request_id":
+            elif key == "request_id":  # TODO (genesu): refactor x-request-id
                 self.request_id = value
             elif key == "multiplexed_model_id":
                 self.multiplexed_model_id = value
@@ -104,6 +109,8 @@ class GRPCServeRequest(ServeRequest):
 
 
 class ServeResponse:
+    """ServerResponse class to use in the common interface among proxies"""
+
     def __init__(
         self,
         status_code: str,

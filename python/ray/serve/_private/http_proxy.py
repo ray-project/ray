@@ -40,7 +40,7 @@ from ray.serve._private.common import (
     EndpointInfo,
     EndpointTag,
     NodeId,
-    GRPCRequest,
+    gRPCRequest,
     StreamingHTTPRequest,
 )
 from ray.serve._private.constants import (
@@ -62,7 +62,7 @@ from ray.serve._private.logging_utils import (
 )
 from ray.serve._private.serve_request_response import (
     ASGIServeRequest,
-    GRPCServeRequest,
+    gRPCServeRequest,
     ServeRequest,
     ServeResponse,
 )
@@ -274,7 +274,7 @@ class GenericProxy:
                 name,
                 sync=False,
                 missing_ok=True,
-                _is_for_http_requests=True,
+                _is_for_http_requests=(self.proxy_name == "HTTP"),
             )
 
         self.prefix_router = LongestPrefixRouter(get_handle)
@@ -429,7 +429,7 @@ class GenericProxy:
 
         This method wraps the request input into ServeRequest object and output
         response into ServeResponse object to be used commonly by both HTTP and
-        GRPC proxies. It also handles the routing, including `/-/routes` and
+        gRPC proxies. It also handles the routing, including `/-/routes` and
         `/-/healthz`, ongoing request counter and keep alive object, and metrics
         counters.
         """
@@ -708,9 +708,9 @@ class GenericProxy:
                     http_proxy_handle=self.self_actor_handle,
                 )
             )
-        if isinstance(serve_request, GRPCServeRequest):
+        if isinstance(serve_request, gRPCServeRequest):
             assignment_task = handle.remote(
-                GRPCRequest(
+                gRPCRequest(
                     grpc_user_request=serve_request.user_request,
                     grpc_proxy_handle=self.self_actor_handle,
                 )
@@ -771,7 +771,7 @@ class GenericProxy:
         raise NotImplementedError
 
 
-class GRPCProxy(GenericProxy):
+class gRPCProxy(GenericProxy):
     """This class is meant to be instantiated and run by an gRPC server.
 
     >>> import grpc
@@ -791,7 +791,7 @@ class GRPCProxy(GenericProxy):
         wraps the request in a ServeRequest object and calls proxy_request. The return
         value is protobuf RayServeResponse object.
         """
-        serve_request = GRPCServeRequest(
+        serve_request = gRPCServeRequest(
             request=request,
             context=context,
             match_target=self.prefix_router.match_target,
@@ -809,7 +809,7 @@ class GRPCProxy(GenericProxy):
         wraps the request in a ServeRequest object and calls proxy_request. The return
         value is protobuf RayServeResponse object.
         """
-        serve_request = GRPCServeRequest(
+        serve_request = gRPCServeRequest(
             request=request,
             context=context,
             match_target=self.prefix_router.match_target,
@@ -821,7 +821,7 @@ class GRPCProxy(GenericProxy):
 
     @property
     def proxy_name(self) -> str:
-        return "GRPC"
+        return "gRPC"
 
     def setup_request_context_and_handle(
         self,
@@ -1220,7 +1220,7 @@ class HTTPProxyActor:
                 request_timeout_s or RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S
             ),
         )
-        self.grpc_proxy = GRPCProxy(
+        self.grpc_proxy = gRPCProxy(
             controller_name=controller_name,
             node_id=node_id,
             request_timeout_s=(
@@ -1241,14 +1241,14 @@ class HTTPProxyActor:
             self.run_http_server()
         )
 
-        # Right now just always start the GRPC server on the side. We can decide if we
+        # Right now just always start the gRPC server on the side. We can decide if we
         # want to make this configurable later.
         self.running_task_grpc = get_or_create_event_loop().create_task(
             self.run_grpc_server()
         )
 
     async def ready(self):
-        """Returns when both HTTP and GRPC proxies are ready to serve traffic.
+        """Returns when both HTTP and gRPC proxies are ready to serve traffic.
         Or throw exception when either proxy is not able to serve traffic.
         """
         setup_task_http = get_or_create_event_loop().create_task(
@@ -1270,7 +1270,7 @@ class HTTPProxyActor:
             return_when=asyncio.FIRST_COMPLETED,
         )
         waiting_tasks_grpc = [
-            # Either the GRPC setup has completed.
+            # Either the gRPC setup has completed.
             # The event is set inside self.run_grpc_server.
             setup_task_grpc,
             # Or self.run_grpc_server errored.

@@ -74,6 +74,7 @@ class RequestMetadata:
     # If this request expects a streaming response.
     is_streaming: bool = False
 
+    # If this request is serving through gRPC
     serve_grpc_request: bool = False
 
 
@@ -625,7 +626,6 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         Upon cancellation (by the caller), the future is cancelled and will be passed
         over when a replica becomes available.
         """
-
         pending_request = PendingRequest(asyncio.Future(), query.metadata)
         try:
             self._pending_requests_to_fulfill.append(pending_request)

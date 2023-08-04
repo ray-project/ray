@@ -1,6 +1,7 @@
 import time
 from typing import Generator
 
+# Users need to include their custom message type which will be embedded in the request.
 from user_defined_protos_pb2 import UserDefinedMessage, UserDefinedResponse
 
 from ray import serve

@@ -1,13 +1,20 @@
 import grpc
 import pickle
+from typing import Any
 
 
 class RayServeServiceStub(object):
-    def __init__(self, channel, output_protobuf):
-        """Constructor.
+    def __init__(self, channel: "grpc._channel.Channel", output_protobuf: Any):
+        """Constructor for the Ray Serve gRPC service stub.
+
+        Note that `request_serializer` is using `pickle.dumps()` to serialize to
+        preserve the object typing in the gPRC server. `response_deserializer` is
+        using the `FromString()` on the `output_protobuf` to allow the client to
+        deserialize the custom defined protobuf returning object.
 
         Args:
             channel: A grpc.Channel.
+            output_protobuf: The protobuf class of the output.
         """
         self.Predict = channel.unary_unary(
             "/ray.serve.RayServeService/Predict",
@@ -21,13 +28,29 @@ class RayServeServiceStub(object):
         )
 
 
-def add_RayServeServiceServicer_to_server(servicer, server):
+def add_RayServeServiceServicer_to_server(
+    servicer: Any, server: "grpc.aio._server.Server"
+):
+    """Adds a RayServeServiceServicer to a gRPC Server.
+
+    This helper function will be called by the proxy actor. The servicer will be a
+    gRPCProxy instance. It will be added to the running gRPC server started by the
+    proxy actor.
+
+    Note that both `request_deserializer` and `response_serializer` are
+    explicitly set to `None` to allow the servicer to take in the raw protobuf bytes
+    and to return the raw protobuf bytes.
+    """
     rpc_method_handlers = {
         "Predict": grpc.unary_unary_rpc_method_handler(
             servicer.Predict,
+            request_deserializer=None,
+            response_serializer=None,
         ),
         "PredictStreaming": grpc.unary_stream_rpc_method_handler(
             servicer.PredictStreaming,
+            request_deserializer=None,
+            response_serializer=None,
         ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
