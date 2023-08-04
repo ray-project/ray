@@ -274,7 +274,7 @@ class GenericProxy:
                 name,
                 sync=False,
                 missing_ok=True,
-                _is_for_http_requests=(self.proxy_name == "HTTP"),
+                _is_for_http_requests=True,
             )
 
         self.prefix_router = LongestPrefixRouter(get_handle)
