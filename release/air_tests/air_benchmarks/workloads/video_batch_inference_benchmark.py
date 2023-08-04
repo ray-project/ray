@@ -12,7 +12,7 @@ from torchvision.models.detection import (
     fasterrcnn_resnet50_fpn_v2,
 )
 
-from ray.data.anyscale import VideoDatasource
+from ray.anyscale.data import VideoDatasource
 
 DATA_URI = "s3://anonymous@antoni-test/sewer-videos"
 

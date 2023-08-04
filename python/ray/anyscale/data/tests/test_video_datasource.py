@@ -2,8 +2,8 @@ import pyarrow as pa
 import pytest
 
 import ray
-from ray.data.anyscale import VideoDatasource
-from ray.data.anyscale.video_datasource import _VideoDatasourceReader
+from ray.anyscale.data import VideoDatasource
+from ray.anyscale.data.video_datasource import _VideoDatasourceReader
 
 
 def test_video_datasource():

@@ -16,7 +16,7 @@ bash ./ci/env/env_info.sh
 
 bazel test --config=ci --action_env=RAY_DATA_USE_STREAMING_EXECUTOR=1 \
 	--test_tag_filters=-data_integration,-doctest \
-	-- python/ray/data/...
+	-- python/ray/data/... python/ray/anyscale/data/...
 
 bazel test --config=ci --action_env=RAY_DATA_USE_STREAMING_EXECUTOR=1 \
 	--test_tag_filters=ray_data,-doctest \

@@ -7,7 +7,7 @@ from typing import List
 
 import pytest
 
-from ray.data.anyscale import AnyscaleFileMetadataProvider
+from ray.anyscale.data import AnyscaleFileMetadataProvider
 from ray.data.datasource import DefaultFileMetadataProvider
 from ray.data.datasource.file_based_datasource import _resolve_paths_and_filesystem
 
