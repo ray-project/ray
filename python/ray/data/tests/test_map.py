@@ -167,6 +167,26 @@ def test_callable_classes(shutdown_only):
     actor_reuse = ds.filter(StatefulFn, compute=ray.data.ActorPoolStrategy()).take()
     assert len(actor_reuse) == 9, actor_reuse
 
+    class StatefulFnWithArgs:
+        def __init__(self, arg, kwarg):
+            assert arg == 1
+            assert kwarg == 2
+
+        def __call__(self, x, arg, kwarg):
+            assert arg == 1
+            assert kwarg == 2
+            return x
+
+    # map_batches with args & kwargs
+    ds.map_batches(
+        StatefulFnWithArgs,
+        compute=ray.data.ActorPoolStrategy(),
+        fn_args=(1,),
+        fn_kwargs={"kwarg": 2},
+        fn_constructor_args=(1,),
+        fn_constructor_kwargs={"kwarg": 2},
+    ).take() == list(range(10))
+
 
 def test_concurrent_callable_classes(shutdown_only):
     """Test that concurrenct actor pool runs user UDF in a separate thread."""
