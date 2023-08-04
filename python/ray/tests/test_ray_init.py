@@ -125,7 +125,7 @@ def test_ray_init_existing_instance_crashed(address):
         # If no address is specified, we will default to an existing cluster.
         ray._private.node.NUM_REDIS_GET_RETRIES = 1
         with pytest.raises(ConnectionError):
-            ray.init(address=address, no_gcs=True)
+            ray.init(address=address)
     finally:
         ray._private.utils.reset_ray_address()
 
