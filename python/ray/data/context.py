@@ -4,12 +4,6 @@ from typing import TYPE_CHECKING, Optional
 
 import ray
 from ray._private.ray_constants import env_integer
-from ray.data.datasource._default_metadata_providers import (
-    DEFAULT_GENERIC_META_PROVIDER,
-    DEFAULT_IMAGE_META_PROVIDER,
-    DEFAULT_PARQUET_BULK_META_PROVIDER,
-    DEFAULT_PARQUET_META_PROVIDER,
-)
 from ray.util.annotations import DeveloperAPI
 from ray.util.scheduling_strategies import SchedulingStrategyT
 
@@ -266,10 +260,6 @@ class DataContext:
                     use_ray_tqdm=DEFAULT_USE_RAY_TQDM,
                     use_legacy_iter_batches=DEFAULT_USE_LEGACY_ITER_BATCHES,
                     enable_progress_bars=DEFAULT_ENABLE_PROGRESS_BARS,
-                    default_parquet_meta_provider=DEFAULT_PARQUET_META_PROVIDER,
-                    default_parquet_bulk_meta_provider=DEFAULT_PARQUET_BULK_META_PROVIDER,
-                    default_image_meta_provider=DEFAULT_IMAGE_META_PROVIDER,
-                    default_generic_meta_provider=DEFAULT_GENERIC_META_PROVIDER,
                 )
 
             return _default_context
