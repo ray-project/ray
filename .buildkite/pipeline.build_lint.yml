@@ -36,7 +36,7 @@
   commands:
     - ./ci/ray_ci/lint.sh copyright
 
-- label: ":book: untested-examples-lint"
+- label: ":book: untested examples lint"
   commands:
     - ./ci/ray_ci/lint.sh run_semgrep
 
