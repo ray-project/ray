@@ -215,7 +215,8 @@ def _build_docker_image(
     build_args = {}
     build_args["PYTHON_VERSION"] = PY_MATRIX[py_version]
     # I.e. "py310"[3:] == 10
-    build_args["PYTHON_MINOR_VERSION"] = py_version[3:]
+    assert py_version[:3] == "py3"
+    python_minor_version = py_version[3:]
 
     if platform.processor() in ADDITIONAL_PLATFORMS:
         build_args["HOSTTYPE"] = platform.processor()
@@ -225,15 +226,13 @@ def _build_docker_image(
     if image_name == "base-deps":
         base_image = BASE_IMAGES[image_type]
     else:
-        base_image = f"-{py_version}-{device_tag}"
-
-        base_image = _with_suffix(base_image, suffix=suffix)
+        base_image = _with_suffix(f"-{py_version}-{device_tag}", suffix=suffix)
 
     if image_name != "ray-worker-container":
         build_args["BASE_IMAGE"] = base_image
 
     if image_name in ["ray", "ray-deps", "ray-worker-container"]:
-        wheel = _get_wheel_name(build_args["PYTHON_MINOR_VERSION"])
+        wheel = _get_wheel_name(python_minor_version)
         build_args["WHEEL_PATH"] = f".whl/{wheel}"
         # Add pip option "--find-links .whl/" to ensure ray-cpp wheel
         # can be found.
