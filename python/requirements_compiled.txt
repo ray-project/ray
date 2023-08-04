@@ -302,7 +302,7 @@ nbdime==3.2.1
 nbformat==5.9.2
 nest-asyncio==1.5.7
 netifaces==0.11.0
-networkx==2.6.3
+networkx==2.6.3 ; python_version < "3.11"
 nevergrad==0.4.3.post7
 ninja==1.11.1
 notebook==6.5.5

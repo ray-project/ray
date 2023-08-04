@@ -137,11 +137,11 @@ compile_pip_dependencies() {
   # Remove +cpu and +pt20cpu suffixes e.g. for torch dependencies
   sed -iE 's/==([\.0-9]+)\+[^\b]*cpu/==\1/g' "${WORKSPACE_DIR}/python/$TARGET"
 
-  # Add python_version < 3.11 to scikit-image, scikit-optimize, and scipy
+  # Add python_version < 3.11 to scikit-image, scikit-optimize, scipy, networkx
   # as they need more recent versions in python 3.11.
   # These will be automatically resolved. Remove as
   # soon as we resolve to versions of scikit-image that are built for py311.
-  sed -iE 's/((scikit-image|scikit-optimize|scipy)==[\.0-9]+\b)/\1 ; python_version < "3.11"/g' "${WORKSPACE_DIR}/python/$TARGET"
+  sed -iE 's/((scikit-image|scikit-optimize|scipy|networkx)==[\.0-9]+\b)/\1 ; python_version < "3.11"/g' "${WORKSPACE_DIR}/python/$TARGET"
 
   cat "${WORKSPACE_DIR}/python/$TARGET"
 
