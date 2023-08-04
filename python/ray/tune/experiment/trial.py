@@ -1088,6 +1088,12 @@ class Trial:
     def on_restore(self):
         """Handles restoration completion."""
         assert self.is_restoring
+
+        if _use_storage_context():
+            from ray.train._internal.checkpoint_manager import _TrainingResult
+
+            assert isinstance(self.restoring_from, _TrainingResult)
+
         self.last_result = self.restoring_from.metrics
         self.last_result.setdefault("config", self.config)
         self.restoring_from = None

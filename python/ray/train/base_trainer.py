@@ -22,6 +22,7 @@ from ray.air.checkpoint import Checkpoint
 from ray.air.config import RunConfig, ScalingConfig
 from ray.air.result import Result
 from ray.train._internal import session
+from ray.train._internal.storage import _use_storage_context
 from ray.train.constants import TRAIN_DATASET_KEY
 from ray.util import PublicAPI
 from ray.util.annotations import DeveloperAPI
@@ -707,11 +708,13 @@ class BaseTrainer(abc.ABC):
             checkpoint = session.get_checkpoint()
             if checkpoint:
                 trainer.resume_from_checkpoint = checkpoint
-                # Always load the preprocessor from an available checkpoint
-                # Unless we are restoring the experiment and have explicitly
-                # passed in a new preprocessor
-                if not (restored and trainer.preprocessor):
-                    trainer.preprocessor = checkpoint.get_preprocessor()
+                # TODO(justinvyu): Remove this when Preprocessor is removed from Trainer
+                if not _use_storage_context():
+                    # Always load the preprocessor from an available checkpoint
+                    # Unless we are restoring the experiment and have explicitly
+                    # passed in a new preprocessor
+                    if not (restored and trainer.preprocessor):
+                        trainer.preprocessor = checkpoint.get_preprocessor()
 
             trainer.setup()
             trainer.preprocess_datasets()

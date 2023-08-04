@@ -864,6 +864,27 @@ class Trainable:
                 could not be found.
 
         """
+        if _use_storage_context():
+            from ray.train._internal.checkpoint_manager import _TrainingResult
+
+            checkpoint_result = checkpoint_path
+            assert isinstance(checkpoint_result, _TrainingResult)
+
+            # TODO(justinvyu): The Trainable `load_checkpoint` interface
+            # should be updated to take in a `_TrainingResult` / Checkpoint
+            self.load_checkpoint(checkpoint_result)
+
+            # TODO(justinvyu): What should we do about Trainable metadata?
+            self._time_since_restore = 0.0
+            self._timesteps_since_restore = 0
+            self._iterations_since_restore = 0
+            self._restored = True
+
+            logger.info(
+                f"Restored on {self._local_ip} from checkpoint: {checkpoint_result}"
+            )
+            return True
+
         # Ensure Checkpoints are converted
         if isinstance(checkpoint_path, Checkpoint):
             return self._restore_from_checkpoint_obj(checkpoint_path)

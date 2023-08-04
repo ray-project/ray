@@ -103,7 +103,10 @@ class TrainingIterator:
             run_dir=run_dir,
             latest_checkpoint_id=latest_checkpoint_id,
         )
-        checkpoint = self._checkpoint_manager._load_checkpoint(checkpoint)
+
+        if not _use_storage_context():
+            checkpoint = self._checkpoint_manager._load_checkpoint(checkpoint)
+
         self._run_with_error_handling(
             lambda: self._backend_executor.start_training(
                 train_func=train_func,
