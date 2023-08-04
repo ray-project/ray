@@ -114,6 +114,10 @@ build_wheel_windows() {
       install_ray
       cd "${WORKSPACE_DIR}"/python
       # Set the commit SHA in __init__.py.
+
+      TRAVIS_COMMIT=92ad4bab9e93c7a207a44c65ab51295f92566cb4
+      BUILDKITE_COMMIT=92ad4bab9e93c7a207a44c65ab51295f92566cb4
+
       if [ -n "$BUILDKITE_COMMIT" ]; then
         sed -i.bak "s/{{RAY_COMMIT_SHA}}/$BUILDKITE_COMMIT/g" ray/__init__.py && rm ray/__init__.py.bak
       else

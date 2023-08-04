@@ -44,8 +44,6 @@ steps:
 - label: ":windows: Wheels"
   commands:
     - *prelude_commands
-    - export BUILDKITE_COMMIT="92ad4bab9e93c7a207a44c65ab51295f92566cb4"
-    - git checkout 92ad4bab9e93c7a207a44c65ab51295f92566cb4
     - export WINDOWS_WHEELS="1"
     - . ./ci/ci.sh init
     - ./ci/ci.sh build
