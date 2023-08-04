@@ -1238,7 +1238,7 @@ def _get_trial_location(trial: Trial, result: dict) -> _Location:
         location = _Location(node_ip, pid)
     else:
         # fallback to trial location if there hasn't been a report yet
-        location = trial.location
+        location = trial.trial_state.location
     return location
 
 

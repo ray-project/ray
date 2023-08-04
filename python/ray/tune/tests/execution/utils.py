@@ -111,7 +111,7 @@ class TestingTrial(Trial):
     def create_placement_group_factory(self):
         self.placement_group_factory = self._default_placement_group_factory
 
-    def set_runner(self, runner):
+    def set_ray_actor(self, ray_actor):
         pass
 
 

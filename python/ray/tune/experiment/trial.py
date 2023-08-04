@@ -121,9 +121,9 @@ class ExportFormat:
 class _CheckpointDeleter:
     """Checkpoint deleter callback for a runner."""
 
-    def __init__(self, trial_id, runner):
+    def __init__(self, trial_id, ray_actor):
         self.trial_id = trial_id
-        self.runner = runner
+        self.ray_actor = ray_actor
 
     def __call__(self, checkpoint: _TrackedCheckpoint):
         """Requests checkpoint deletion asynchronously.
@@ -131,7 +131,7 @@ class _CheckpointDeleter:
         Args:
             checkpoint: Checkpoint to delete.
         """
-        if not self.runner:
+        if not self.ray_actor:
             return
 
         if (
@@ -147,7 +147,7 @@ class _CheckpointDeleter:
             # TODO(ujvl): Batch remote deletes.
             # We first delete the remote checkpoint. If it is on the same
             # node as the driver, it will also remove the local copy.
-            ray.get(self.runner.delete_checkpoint.remote(checkpoint_path))
+            ray.get(self.ray_actor.delete_checkpoint.remote(checkpoint_path))
 
             # Delete local copy, if any exists.
             if os.path.exists(checkpoint_path):
@@ -192,6 +192,49 @@ class _TrialInfo:
     @trial_resources.setter
     def trial_resources(self, new_resources: PlacementGroupFactory):
         self._trial_resources = new_resources
+
+
+class _TrialRuntimeMetadata:
+    """Serializable struct for holding runtime trial metadata.
+
+    Runtime metadata is data that changes and is updated on runtime. This includes
+    e.g. the last result, the currently available checkpoints, and the number
+    of errors encountered for a trial.
+    """
+
+    def __init__(self, n_steps: Tuple[int] = (5, 10)):
+        # General metadata
+        self.start_time = None
+
+        # Errors
+        self.num_failures = 0
+        self.num_failures_after_restore = 0
+
+        self.error_filename = None
+        self.pickled_error_filename = None
+
+        # Results and metrics
+        self.last_result = None
+        self.last_result_time = -float("inf")
+
+        # stores in memory max/min/avg/last-n-avg/last result for each
+        # metric by trial
+        self.metric_analysis = {}
+        self._n_steps = n_steps
+        self.metric_n_steps = {}
+
+        # Checkpoints
+        self.checkpoint_manager = None
+
+
+class _TrialState:
+    def __init__(self):
+        self.location = _Location()
+
+        self.ray_actor = None
+
+        self.saving_to = None
+        self.restoring_from = None
 
 
 def _get_max_path_length() -> int:
@@ -317,8 +360,6 @@ class Trial:
 
     _nonjson_fields = [
         "results",
-        "best_result",
-        "param_config",
         "extra_arg",
         "placement_group_factory",
         "_resources",
@@ -454,7 +495,6 @@ class Trial:
         # Parameters that Tune varies across searches.
         self.evaluated_params = evaluated_params or {}
         self.experiment_tag = experiment_tag
-        self.location = _Location()
         self.stopping_criterion = stopping_criterion or {}
 
         self._setup_default_resource = _setup_default_resource
@@ -498,8 +538,6 @@ class Trial:
         self.status = Trial.PENDING
         self.start_time = None
         self.relative_logdir = None
-        self.runner = None
-        self.last_debug = 0
         self.error_filename = None
         self.pickled_error_filename = None
 
@@ -509,9 +547,6 @@ class Trial:
         self.custom_dirname = None
 
         self.experiment_dir_name = experiment_dir_name
-
-        # Checkpointing fields
-        self.saving_to = None
 
         # Checkpoint syncing
         self.sync_config = sync_config or SyncConfig()
@@ -524,34 +559,27 @@ class Trial:
                 checkpoint_config.checkpoint_score_attribute or TRAINING_ITERATION
             )
 
-        self.checkpoint_config = checkpoint_config
-
         if _use_storage_context():
             from ray.train._internal.checkpoint_manager import (
                 _CheckpointManager as _NewCheckpointManager,
             )
 
             self.checkpoint_manager = _NewCheckpointManager(
-                checkpoint_config=self.checkpoint_config
+                checkpoint_config=checkpoint_config
             )
         else:
             self.checkpoint_manager = _CheckpointManager(
-                checkpoint_config=self.checkpoint_config,
-                delete_fn=_CheckpointDeleter(self._trainable_name(), self.runner),
+                checkpoint_config=checkpoint_config,
+                delete_fn=_CheckpointDeleter(
+                    self._trainable_name(), self.trial_state.ray_actor
+                ),
             )
 
         # Restoration fields
         self.restore_path = restore_path
-        self.restoring_from = None
         self.num_failures = 0
         # Reset after each successful restore.
         self.num_restore_failures = 0
-
-        # AutoML fields
-        self.results = None
-        self.best_result = None
-        self.param_config = None
-        self.extra_arg = None
 
         if trial_name_creator:
             self.custom_trial_name = trial_name_creator(self)
@@ -563,11 +591,13 @@ class Trial:
                     f"Trial dirname must not contain '/'. Got {self.custom_dirname}"
                 )
 
+        self.trial_state = _TrialState()
+
         self._state_json = None
         self._state_valid = False
 
     def create_placement_group_factory(self):
-        """Compute placement group factor if needed.
+        """Compute placement group factory if needed.
 
         Note: this must be called after all the placeholders in
         self.config are resolved.
@@ -620,7 +650,7 @@ class Trial:
                 self._default_result_or_future = ray.get(self._default_result_or_future)
             except RayActorError:  # error during initialization
                 self._default_result_or_future = None
-        if self._default_result_or_future and self.runner:
+        if self._default_result_or_future and self.trial_state.ray_actor:
             self.set_location(
                 _Location(
                     self._default_result_or_future.get(NODE_IP),
@@ -660,14 +690,14 @@ class Trial:
         self.invalidate_json_state()
 
     def get_runner_ip(self) -> Optional[str]:
-        if self.location.hostname:
-            return self.location.hostname
+        if self.trial_state.location.hostname:
+            return self.trial_state.location.hostname
 
-        if not self.runner:
+        if not self.trial_state.ray_actor:
             return None
 
-        hostname, pid = ray.get(self.runner.get_current_ip_pid.remote())
-        self.location = _Location(hostname, pid)
+        hostname, pid = ray.get(self.trial_state.ray_actor.get_current_ip_pid.remote())
+        self.trial_state.location = _Location(hostname, pid)
         return self.location.hostname
 
     @property
@@ -781,11 +811,11 @@ class Trial:
 
     @property
     def checkpoint_at_end(self):
-        return self.checkpoint_config.checkpoint_at_end
+        return self.checkpoint_manager.checkpoint_strategy.checkpoint_at_end
 
     @property
     def checkpoint_freq(self):
-        return self.checkpoint_config.checkpoint_frequency
+        return self.checkpoint_manager.checkpoint_strategy.checkpoint_frequency
 
     @property
     def checkpoint(self):
@@ -841,7 +871,7 @@ class Trial:
             placement_group_factory=placement_group_factory,
             stopping_criterion=self.stopping_criterion,
             sync_config=self.sync_config,
-            checkpoint_config=self.checkpoint_config,
+            checkpoint_config=self.checkpoint_manager.checkpoint_strategy,
             export_formats=self.export_formats,
             restore_path=self.restore_path,
             trial_name_creator=self.trial_name_creator,
@@ -899,24 +929,24 @@ class Trial:
 
         self.invalidate_json_state()
 
-    def set_runner(self, runner):
-        self.runner = runner
-        if runner:
+    def set_ray_actor(self, ray_actor):
+        self.trial_state.ray_actor = ray_actor
+        if ray_actor:
             # Do not block here, the result will be gotten when last_result
             # property is accessed
-            self._default_result_or_future = runner.get_auto_filled_metrics.remote(
+            self._default_result_or_future = ray_actor.get_auto_filled_metrics.remote(
                 debug_metrics_only=True
             )
         if not _use_storage_context():
             self.checkpoint_manager.set_delete_fn(
-                _CheckpointDeleter(self._trainable_name(), runner)
+                _CheckpointDeleter(self._trainable_name(), ray_actor)
             )
         # No need to invalidate state cache: runner is not stored in json
         # self.invalidate_json_state()
 
     def set_location(self, location):
         """Sets the location of the trial."""
-        self.location = location
+        self.trial_state.location = location
         # No need to invalidate state cache: location is not stored in json
         # self.invalidate_json_state()
 
@@ -1013,7 +1043,7 @@ class Trial:
 
     def clear_checkpoint(self):
         self.checkpoint.dir_or_data = None
-        self.restoring_from = None
+        self.trial_state.restoring_from = None
         self.invalidate_json_state()
 
     def on_checkpoint(self, checkpoint: _TrackedCheckpoint):
@@ -1034,9 +1064,9 @@ class Trial:
     def on_restore(self):
         """Handles restoration completion."""
         assert self.is_restoring
-        self.last_result = self.restoring_from.metrics
+        self.last_result = self.trial_state.restoring_from.metrics
         self.last_result.setdefault("config", self.config)
-        self.restoring_from = None
+        self.trial_state.restoring_from = None
         self.num_restore_failures = 0
         self.invalidate_json_state()
 
@@ -1122,11 +1152,11 @@ class Trial:
 
     @property
     def is_restoring(self):
-        return self.restoring_from is not None
+        return self.trial_state.restoring_from is not None
 
     @property
     def is_saving(self):
-        return self.saving_to is not None
+        return self.trial_state.saving_to is not None
 
     def __repr__(self):
         return self._trainable_name(include_trial_id=True)
@@ -1178,15 +1208,15 @@ class Trial:
 
     @classmethod
     def from_json_state(cls, json_state: str, stub: bool = False) -> "Trial":
-        trial_state = json.loads(json_state, cls=TuneFunctionDecoder)
+        state = json.loads(json_state, cls=TuneFunctionDecoder)
 
         new_trial = Trial(
-            trial_state["trainable_name"],
+            state["trainable_name"],
             stub=stub,
             _setup_default_resource=False,
         )
 
-        new_trial.__setstate__(trial_state)
+        new_trial.__setstate__(state)
 
         return new_trial
 
@@ -1214,11 +1244,7 @@ class Trial:
         for key in self._nonjson_fields:
             state[key] = binary_to_hex(cloudpickle.dumps(state.get(key)))
 
-        state["runner"] = None
-        state["location"] = _Location()
-        # Avoid waiting for events that will never occur on resume.
-        state["restoring_from"] = None
-        state["saving_to"] = None
+        state["trial_state"] = None
 
         state["_state_json"] = None
         state["_state_valid"] = False
