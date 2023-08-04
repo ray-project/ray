@@ -265,7 +265,7 @@ class _ParquetDatasourceReader(Reader):
         # NOTE: We override the base class FileBasedDatasource.get_read_tasks()
         # method in order to leverage pyarrow's ParquetDataset abstraction,
         # which simplifies partitioning logic. We still use
-        # FileBasedDatasource's write side (do_write), however.
+        # FileBasedDatasource's write side, however.
         read_tasks = []
         for pieces, metadata in zip(
             np.array_split(self._pq_ds.pieces, parallelism),

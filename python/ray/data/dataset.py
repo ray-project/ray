@@ -3219,80 +3219,48 @@ class Dataset:
                 soft=False,
             )
 
-        if type(datasource).write != Datasource.write:
-            write_fn = generate_write_fn(datasource, **write_args)
+        write_fn = generate_write_fn(datasource, **write_args)
 
-            def write_fn_wrapper(blocks: Iterator[Block], ctx, fn) -> Iterator[Block]:
-                return write_fn(blocks, ctx)
+        def write_fn_wrapper(blocks: Iterator[Block], ctx, fn) -> Iterator[Block]:
+            return write_fn(blocks, ctx)
 
-            plan = self._plan.with_stage(
-                OneToOneStage(
-                    "Write",
-                    write_fn_wrapper,
-                    TaskPoolStrategy(),
-                    ray_remote_args,
-                    fn=lambda x: x,
-                )
+        plan = self._plan.with_stage(
+            OneToOneStage(
+                "Write",
+                write_fn_wrapper,
+                TaskPoolStrategy(),
+                ray_remote_args,
+                fn=lambda x: x,
             )
+        )
 
-            logical_plan = self._logical_plan
-            if logical_plan is not None:
-                write_op = Write(
-                    logical_plan.dag,
-                    datasource,
-                    ray_remote_args=ray_remote_args,
-                    **write_args,
-                )
-                logical_plan = LogicalPlan(write_op)
-
-            try:
-                import pandas as pd
-
-                self._write_ds = Dataset(
-                    plan, self._epoch, self._lazy, logical_plan
-                ).materialize()
-                blocks = ray.get(self._write_ds._plan.execute().get_blocks())
-                assert all(
-                    isinstance(block, pd.DataFrame) and len(block) == 1
-                    for block in blocks
-                )
-                write_results = [block["write_result"][0] for block in blocks]
-                datasource.on_write_complete(write_results)
-            except Exception as e:
-                datasource.on_write_failed([], e)
-                raise
-        else:
-            logger.warning(
-                "The Datasource.do_write() is deprecated in "
-                "Ray 2.4 and will be removed in future release. Use "
-                "Datasource.write() instead."
+        logical_plan = self._logical_plan
+        if logical_plan is not None:
+            write_op = Write(
+                logical_plan.dag,
+                datasource,
+                ray_remote_args=ray_remote_args,
+                **write_args,
             )
+            logical_plan = LogicalPlan(write_op)
 
-            ctx = DataContext.get_current()
-            blocks, metadata = zip(*self._plan.execute().get_blocks_with_metadata())
-            # Prepare write in a remote task so that in Ray client mode, we
-            # don't do metadata resolution from the client machine.
-            do_write = cached_remote_fn(_do_write, retry_exceptions=False, num_cpus=0)
-            write_results: List[ObjectRef[WriteResult]] = ray.get(
-                do_write.remote(
-                    datasource,
-                    ctx,
-                    blocks,
-                    metadata,
-                    ray_remote_args,
-                    _wrap_arrow_serialization_workaround(write_args),
-                )
+        try:
+            import pandas as pd
+
+            self._write_ds = Dataset(
+                plan, self._epoch, self._lazy, logical_plan
+            ).materialize()
+            blocks = ray.get(self._write_ds._plan.execute().get_blocks())
+            assert all(
+                isinstance(block, pd.DataFrame) and len(block) == 1
+                for block in blocks
             )
+            write_results = [block["write_result"][0] for block in blocks]
+            datasource.on_write_complete(write_results)
+        except Exception as e:
+            datasource.on_write_failed([], e)
+            raise
 
-            progress = ProgressBar("Write Progress", len(write_results))
-            try:
-                progress.block_until_complete(write_results)
-                datasource.on_write_complete(ray.get(write_results))
-            except Exception as e:
-                datasource.on_write_failed(write_results, e)
-                raise
-            finally:
-                progress.close()
 
     @ConsumptionAPI(
         delegate=(
@@ -5194,16 +5162,3 @@ def _sliding_window(iterable: Iterable, n: int):
     for elem in it:
         window.append(elem)
         yield tuple(window)
-
-
-def _do_write(
-    ds: Datasource,
-    ctx: DataContext,
-    blocks: List[Block],
-    meta: List[BlockMetadata],
-    ray_remote_args: Dict[str, Any],
-    write_args: Dict[str, Any],
-) -> List[ObjectRef[WriteResult]]:
-    write_args = _unwrap_arrow_serialization_workaround(write_args)
-    DataContext._set_current(ctx)
-    return ds.do_write(blocks, meta, ray_remote_args=ray_remote_args, **write_args)

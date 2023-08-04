@@ -68,30 +68,6 @@ class Datasource:
         """
         raise NotImplementedError
 
-    @Deprecated(
-        message="do_write() is deprecated in Ray 2.4. Use write() instead", warning=True
-    )
-    def do_write(
-        self,
-        blocks: List[ObjectRef[Block]],
-        metadata: List[BlockMetadata],
-        ray_remote_args: Dict[str, Any],
-        **write_args,
-    ) -> List[ObjectRef[WriteResult]]:
-        """Launch Ray tasks for writing blocks out to the datasource.
-
-        Args:
-            blocks: List of data block references. It is recommended that one
-                write task be generated per block.
-            metadata: List of block metadata.
-            ray_remote_args: Kwargs passed to ray.remote in the write tasks.
-            write_args: Additional kwargs to pass to the datasource impl.
-
-        Returns:
-            A list of the output of the write tasks.
-        """
-        raise NotImplementedError
-
     def on_write_complete(self, write_results: List[WriteResult], **kwargs) -> None:
         """Callback for when a write job completes.
 
