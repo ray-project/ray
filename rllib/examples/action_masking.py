@@ -54,17 +54,6 @@ def get_cli_args():
     """Create CLI parser and return parsed arguments"""
     parser = argparse.ArgumentParser()
 
-    # example-specific args
-    parser.add_argument(
-        "--no-masking",
-        action="store_true",
-        help="Do NOT mask invalid actions. This will likely lead to errors.",
-    )
-
-    # general args
-    parser.add_argument(
-        "--run", type=str, default="APPO", help="The RLlib-registered algorithm to use."
-    )
     parser.add_argument("--num-cpus", type=int, default=0)
     parser.add_argument(
         "--framework",
@@ -127,18 +116,12 @@ if __name__ == "__main__":
         .rl_module(rl_module_spec=rlm_spec)
     )
 
-    if args.run not in {"APPO", "PPO"}:
-        raise ValueError("This example only supports APPO and PPO.")
-
     algo = config.build()
 
     # run manual training loop and print results after each iteration
     for _ in range(args.stop_iters):
         result = algo.train()
         print(pretty_print(result))
-        # stop training if the target train steps or reward are reached
-        if result["timesteps_total"] >= args.stop_timesteps:
-            break
 
     # manual test loop
     print("Finished training. Running manual test/inference loop.")
