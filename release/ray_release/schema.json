@@ -69,9 +69,6 @@
 			"type": "object",
 			"additionalProperties": false,
 			"properties": {
-				"cluster_env": {
-					"type": "string"
-				},
 				"cluster_compute": {
 					"type": "string"
 				},
@@ -90,6 +87,7 @@
 				}
 			},
 			"required": [
+				"byod",
 				"cluster_compute"
 			],
 			"title": "Cluster"
