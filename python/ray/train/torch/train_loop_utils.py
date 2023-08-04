@@ -457,6 +457,8 @@ class _TorchAccelerator(Accelerator):
 
         if move_to_device:
             device = get_device()
+            if isinstance(device, list):
+                device = device[0]
             data_loader = _WrappedDataLoader(data_loader, device, auto_transfer)
 
         return data_loader
