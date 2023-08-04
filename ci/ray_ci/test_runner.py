@@ -1,7 +1,6 @@
 import os
 import sys
 from tempfile import TemporaryDirectory
-from typing import List
 from unittest import mock
 
 import pytest
@@ -11,29 +10,7 @@ from ci.ray_ci.runner import (
     _get_all_test_query,
     _get_test_targets,
     _get_flaky_test_targets,
-    _run_tests,
-    _chunk_into_n,
 )
-
-
-def test_chunk_into_n() -> None:
-    assert _chunk_into_n([1, 2, 3, 4, 5], 2) == [[1, 2, 3], [4, 5]]
-    assert _chunk_into_n([1, 2], 3) == [[1], [2], []]
-    assert _chunk_into_n([1, 2], 1) == [[1, 2]]
-
-
-def test_run_tests() -> None:
-    test_targets = [":target_01", ":target_02"]
-
-    def _mock_check_call(input: List[str]) -> None:
-        for test_target in test_targets:
-            assert test_target in input
-
-    with mock.patch("subprocess.check_call", side_effect=_mock_check_call), mock.patch(
-        "subprocess.check_output",
-        return_value=b"-v",
-    ):
-        _run_tests(test_targets)
 
 
 def test_get_test_targets() -> None:
