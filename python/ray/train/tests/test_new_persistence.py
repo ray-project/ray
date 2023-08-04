@@ -1,5 +1,6 @@
 from contextlib import contextmanager
 import os
+from pathlib import Path
 import pickle
 import pytest
 import tempfile
@@ -25,10 +26,23 @@ def enable_new_persistence_mode(monkeypatch):
     monkeypatch.setenv("RAY_AIR_NEW_PERSISTENCE_MODE", "0")
 
 
+def _create_mock_custom_fs(custom_fs_root_dir: Path) -> pyarrow.fs.FileSystem:
+    from fsspec.implementations.dirfs import DirFileSystem
+    from fsspec.implementations.local import LocalFileSystem
+
+    custom_fs_root_dir.mkdir(parents=True, exist_ok=True)
+    storage_filesystem = pyarrow.fs.PyFileSystem(
+        pyarrow.fs.FSSpecHandler(
+            DirFileSystem(path=str(custom_fs_root_dir), fs=LocalFileSystem())
+        )
+    )
+    return storage_filesystem
+
+
 def train_fn(config):
     start = 0
 
-    checkpoint = train.get_context().get_checkpoint()
+    checkpoint = train.get_checkpoint()
     if checkpoint:
         with checkpoint.as_directory() as checkpoint_dir:
             with open(os.path.join(checkpoint_dir, "dummy.pkl"), "rb") as f:
@@ -99,17 +113,8 @@ def test_tuner(monkeypatch, storage_path_type, tmp_path):
         elif storage_path_type == "cloud":
             storage_path = str(cloud_storage_path)
         elif storage_path_type == "custom_fs":
-            from fsspec.implementations.dirfs import DirFileSystem
-            from fsspec.implementations.local import LocalFileSystem
-
             storage_path = "mock_bucket"
-            storage_filesystem = pyarrow.fs.PyFileSystem(
-                pyarrow.fs.FSSpecHandler(
-                    DirFileSystem(
-                        path=str(tmp_path / "custom_fs"), fs=LocalFileSystem()
-                    )
-                )
-            )
+            storage_filesystem = _create_mock_custom_fs(tmp_path / "custom_fs")
 
         NUM_ITERATIONS = 6  # == num_checkpoints == num_artifacts
         NUM_TRIALS = 2
@@ -166,6 +171,8 @@ def test_trainer(tmp_path):
         assert isinstance(train_session, _TrainSession)
         assert train_session.storage
         assert train_session.storage.checkpoint_fs_path
+
+        assert os.getcwd() == train_session.storage.trial_local_path
 
     trainer = DataParallelTrainer(
         dummy_train_fn,

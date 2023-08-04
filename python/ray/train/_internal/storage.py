@@ -195,6 +195,7 @@ def _upload_to_fs_path(
         # (since we always create a directory at fs_path)
         _create_directory(fs=fs, fs_path=fs_path)
         _pyarrow_fs_copy_files(local_path, fs_path, destination_filesystem=fs)
+        return
 
     if not fsspec:
         # TODO(justinvyu): Make fsspec a hard requirement of Tune/Train.
@@ -230,6 +231,14 @@ def _list_at_fs_path(fs: pyarrow.fs.FileSystem, fs_path: str) -> List[str]:
         os.path.relpath(file_info.path.lstrip("/"), start=fs_path.lstrip("/"))
         for file_info in fs.get_file_info(selector)
     ]
+
+
+def _exists_at_fs_path(fs: pyarrow.fs.FileSystem, fs_path: str) -> bool:
+    """Returns True if (fs, fs_path) exists."""
+    assert not is_uri(fs_path), fs_path
+
+    valid = fs.get_file_info([fs_path])[0]
+    return valid.type != pyarrow.fs.FileType.NotFound
 
 
 def _is_directory(fs: pyarrow.fs.FileSystem, fs_path: str) -> bool:
@@ -329,6 +338,8 @@ class StorageContext:
         >>> storage.trial_dir_name = "trial_dir"
         >>> storage.trial_fs_path
         'bucket/path/exp_name/trial_dir'
+        >>> storage.trial_local_path
+        '/tmp/ray_results/exp_name/trial_dir'
         >>> storage.current_checkpoint_index = 1
         >>> storage.checkpoint_fs_path
         'bucket/path/exp_name/trial_dir/checkpoint_000001'
@@ -348,6 +359,10 @@ class StorageContext:
         >>> storage.storage_local_path
         '/tmp/ray_results'
         >>> storage.experiment_path
+        '/tmp/ray_results/exp_name'
+        >>> storage.experiment_local_path
+        '/tmp/ray_results/exp_name'
+        >>> storage.experiment_fs_path
         '/tmp/ray_results/exp_name'
         >>> storage.syncer is None
         True
@@ -450,8 +465,7 @@ class StorageContext:
     def _check_validation_file(self):
         """Checks that the validation file exists at the storage path."""
         valid_file = os.path.join(self.experiment_fs_path, ".validate_storage_marker")
-        valid = self.storage_filesystem.get_file_info([valid_file])[0]
-        if valid.type == pyarrow.fs.FileType.NotFound:
+        if not _exists_at_fs_path(fs=self.storage_filesystem, fs_path=valid_file):
             raise RuntimeError(
                 f"Unable to set up cluster storage at storage_path={self.storage_path}"
                 "\nCheck that all nodes in the cluster have read/write access "
@@ -486,6 +500,18 @@ class StorageContext:
         syncing them to the `storage_path` on the `storage_filesystem`.
         """
         return os.path.join(self.storage_local_path, self.experiment_dir_name)
+
+    @property
+    def trial_local_path(self) -> str:
+        """The local filesystem path to the trial directory.
+
+        Raises a ValueError if `trial_dir_name` is not set beforehand.
+        """
+        if self.trial_dir_name is None:
+            raise RuntimeError(
+                "Should not access `trial_local_path` without setting `trial_dir_name`"
+            )
+        return os.path.join(self.experiment_local_path, self.trial_dir_name)
 
     @property
     def trial_fs_path(self) -> str:
