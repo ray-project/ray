@@ -10,7 +10,6 @@ from vmware.vapi.vsphere.client import create_vsphere_client
 class Constants:
     TYPE_OF_RESOURCE = "VirtualMachine"
     NODE_CATEGORY = "ray"
-    FROZEN_VM_FORMAT = "{}-{}-worker-frozen"
     RAY_HEAD_FROZEN_VM_TAG = "ray-frozen-vm"
     VSPHERE_NODE_STATUS = "vsphere-node-status"
 
