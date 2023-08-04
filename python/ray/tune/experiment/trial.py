@@ -384,8 +384,6 @@ class Trial:
         self.storage = copy.copy(storage)
 
         if _use_storage_context():
-            assert self.storage
-
             self._legacy_orig_experiment_path = None
             self._legacy_orig_experiment_dir_name = None
             self._legacy_local_experiment_path = None

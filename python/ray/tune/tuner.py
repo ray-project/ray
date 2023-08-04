@@ -301,6 +301,14 @@ class Tuner:
         Returns:
             bool: True if this path exists and contains the Tuner state to resume from
         """
+        from ray.train._internal.storage import _list_at_fs_path, _use_storage_context
+
+        if _use_storage_context():
+            import pyarrow.fs
+
+            fs, fs_path = pyarrow.fs.FileSystem.from_uri(str(path))
+            return _TUNER_PKL in _list_at_fs_path(fs, fs_path)
+
         return _TUNER_PKL in list_at_uri(str(path))
 
     def _prepare_remote_tuner_for_jupyter_progress_reporting(self):

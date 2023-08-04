@@ -373,6 +373,13 @@ class BaseTrainer(abc.ABC):
         Returns:
             bool: Whether this path exists and contains the trainer state to resume from
         """
+        if _use_storage_context():
+            from ray.train._internal.storage import _list_at_fs_path
+            import pyarrow.fs
+
+            fs, fs_path = pyarrow.fs.FileSystem.from_uri(str(path))
+            return _TRAINER_PKL in _list_at_fs_path(fs, fs_path)
+
         return _TRAINER_PKL in list_at_uri(str(path))
 
     def __repr__(self):
@@ -482,6 +489,19 @@ class BaseTrainer(abc.ABC):
         Returns:
             str: Local directory containing the trainer state
         """
+        if _use_storage_context():
+            from ray.train._internal.storage import _download_from_fs_path
+            import pyarrow.fs
+
+            tempdir = tempfile.mkdtemp("tmp_experiment_dir")
+            fs, fs_path = pyarrow.fs.FileSystem.from_uri(restore_path)
+            _download_from_fs_path(
+                fs=fs,
+                fs_path=os.path.join(fs_path, _TRAINER_PKL),
+                local_path=os.path.join(tempdir, _TRAINER_PKL),
+            )
+            return Path(tempdir) / _TRAINER_PKL
+
         if not is_non_local_path_uri(restore_path):
             return Path(os.path.expanduser(restore_path)) / _TRAINER_PKL
 

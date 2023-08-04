@@ -456,6 +456,19 @@ class TunerInternal:
         Returns:
             Tuple of (downloaded from remote, local_dir)
         """
+        if _use_storage_context():
+            from ray.train._internal.storage import _download_from_fs_path
+            import pyarrow.fs
+
+            tempdir = tempfile.mkdtemp("tmp_experiment_dir")
+            fs, fs_path = pyarrow.fs.FileSystem.from_uri(restore_path)
+            _download_from_fs_path(
+                fs=fs,
+                fs_path=os.path.join(fs_path, _TUNER_PKL),
+                local_path=os.path.join(tempdir, _TUNER_PKL),
+            )
+            return True, tempdir
+
         if not is_non_local_path_uri(restore_path):
             return False, os.path.abspath(os.path.expanduser(restore_path))
 
