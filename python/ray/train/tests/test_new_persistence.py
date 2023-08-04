@@ -10,9 +10,11 @@ from typing import Optional, Tuple
 import pyarrow.fs
 
 from ray import train, tune
+from ray.air._internal.uri_utils import URI
 from ray.air.constants import EXPR_RESULT_FILE
 from ray.train._internal.storage import _download_from_fs_path
 from ray.train._checkpoint import Checkpoint as NewCheckpoint
+from ray.train.base_trainer import TrainingFailedError
 from ray.train.data_parallel_trainer import DataParallelTrainer
 
 from ray.air.tests.test_checkpoints import mock_s3_bucket_uri
@@ -280,8 +282,10 @@ def test_trainer(
     - restoration, train.get_checkpoint
 
     {storage_path}/{exp_name}
-    ├── experiment_state-2023-07-28_10-00-38.json
+    ├── experiment_state-2023-07-28_10-00-38.json       <- Initial exp state
     ├── basic-variant-state-2023-07-28_10-00-38.json
+    ├── experiment_state-2023-07-28_10-01-38.json       <- Restored exp state
+    ├── basic-variant-state-2023-07-28_10-01-38.json
     ├── trainer.pkl
     ├── tuner.pkl
     └── DataParallelTrainer_46367_00000_0_...
@@ -306,12 +310,18 @@ def test_trainer(
     monkeypatch.setenv("RAY_AIR_LOCAL_CACHE_DIR", str(LOCAL_CACHE_DIR))
     exp_name = "trainer_new_persistence"
 
+    # TODO(justinvyu): Manual restore doesn't work yet for custom fs.
+    # Need to introduce restore(storage_filesystem) API in a follow-up.
+    TEST_MANUAL_RESTORE = storage_path_type != "custom_fs"
+
     with _resolve_storage_type(storage_path_type, tmp_path) as (
         storage_path,
         storage_filesystem,
     ):
         NUM_ITERATIONS = 6
         NUM_WORKERS = 2
+
+        max_failures = 1 if TEST_MANUAL_RESTORE else 2
         trainer = DataParallelTrainer(
             train_fn,
             train_loop_config={
@@ -326,10 +336,19 @@ def test_trainer(
                 name=exp_name,
                 verbose=0,
                 checkpoint_config=checkpoint_config,
-                failure_config=train.FailureConfig(max_failures=2),
+                failure_config=train.FailureConfig(max_failures=max_failures),
             ),
         )
-        result = trainer.fit()
+        if TEST_MANUAL_RESTORE:
+            with pytest.raises(TrainingFailedError):
+                result = trainer.fit()
+
+            restored_trainer = DataParallelTrainer.restore(
+                path=str(URI(storage_path or str(LOCAL_CACHE_DIR)) / exp_name)
+            )
+            result = restored_trainer.fit()
+        else:
+            result = trainer.fit()
 
         local_inspect_dir, storage_fs_path = _get_local_inspect_dir(
             root_local_path=tmp_path,
@@ -349,10 +368,16 @@ def test_trainer(
     exp_dir = local_inspect_dir / exp_name
 
     # Files synced by the driver
-    assert len(list(exp_dir.glob("basic-variant-state-*"))) == 1
-    assert len(list(exp_dir.glob("experiment_state-*"))) == 1
     assert len(list(exp_dir.glob("tuner.pkl"))) == 1
     assert len(list(exp_dir.glob("trainer.pkl"))) == 1
+    if TEST_MANUAL_RESTORE:
+        # 2 copies of these files:
+        # 1 for the initial run, and 1 for the manually restored run.
+        assert len(list(exp_dir.glob("basic-variant-state-*"))) == 2
+        assert len(list(exp_dir.glob("experiment_state-*"))) == 2
+    else:
+        assert len(list(exp_dir.glob("basic-variant-state-*"))) == 1
+        assert len(list(exp_dir.glob("experiment_state-*"))) == 1
 
     # Files synced by the worker
     assert len(list(exp_dir.glob("DataParallelTrainer_*"))) == 1
