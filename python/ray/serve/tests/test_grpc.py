@@ -73,14 +73,13 @@ from ray._private.tls_utils import load_certs_from_env
 import logging
 import asyncio
 try:
-    port = 9001
     ray.init()
     @serve.deployment
     class D1:
         def __call__(self, input):
             return input["a"]
 
-    serve.run(DefaultgRPCDriver.bind(D1.bind(), port=port))
+    serve.run(DefaultgRPCDriver.bind(D1.bind()))
 
     async def send_request():
         server_cert_chain, private_key, ca_cert = load_certs_from_env()
@@ -90,7 +89,7 @@ try:
             root_certificates=ca_cert,
         )
 
-        async with grpc.aio.secure_channel(f"localhost:{port}", credentials) as channel:
+        async with grpc.aio.secure_channel("localhost:9000", credentials) as channel:
             stub = serve_pb2_grpc.PredictAPIsServiceStub(channel)
             response = await stub.Predict(
                 serve_pb2.PredictRequest(input={"a": bytes("123", "utf-8")})
@@ -120,17 +119,16 @@ from ray._private.tls_utils import load_certs_from_env
 import logging
 import asyncio
 try:
-    port = 9001
     ray.init()
     @serve.deployment
     class D1:
         def __call__(self, input):
             return input["a"]
 
-    serve.run(DefaultgRPCDriver.bind(D1.bind(), port=port))
+    serve.run(DefaultgRPCDriver.bind(D1.bind()))
 
     async def send_request():
-        async with grpc.aio.insecure_channel(f"localhost:{port}") as channel:
+        async with grpc.aio.insecure_channel("localhost:9000") as channel:
             stub = serve_pb2_grpc.PredictAPIsServiceStub(channel)
             response = await stub.Predict(
                 serve_pb2.PredictRequest(input={"a": bytes("123", "utf-8")})

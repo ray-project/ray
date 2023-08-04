@@ -27,6 +27,9 @@ DEFAULT_HTTP_PORT = 8000
 #: gRPC Port
 DEFAULT_GRPC_PORT = 9000
 
+#: gRPC proxy Port
+DEFAULT_GRPC_PROXY_PORT = 9001
+
 #: Default Serve application name
 SERVE_DEFAULT_APP_NAME = "default"
 

@@ -6,8 +6,8 @@ from user_defined_protos_pb2 import UserDefinedMessage, UserDefinedResponse
 # Serve will provide stub for users to use
 from ray.serve._private.grpc_util import RayServeServiceStub
 
-# Port default to 9000. Port will be configurable in the future
-channel = grpc.insecure_channel("localhost:9000")
+# Port default to 9001. Port will be configurable in the future
+channel = grpc.insecure_channel("localhost:9001")
 
 # UserDefinedResponse is used to deserialize the response from the server
 stub = RayServeServiceStub(channel, UserDefinedResponse)

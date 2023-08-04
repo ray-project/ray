@@ -48,7 +48,7 @@ from ray.serve._private.constants import (
     SERVE_MULTIPLEXED_MODEL_ID,
     SERVE_NAMESPACE,
     DEFAULT_LATENCY_BUCKET_MS,
-    DEFAULT_GRPC_PORT,
+    DEFAULT_GRPC_PROXY_PORT,
     PROXY_MIN_DRAINING_PERIOD_S,
     RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING,
     RAY_SERVE_REQUEST_ID_HEADER,
@@ -1207,7 +1207,7 @@ class HTTPProxyActor:
 
         self.host = host
         self.port = port
-        self.grpc_port = DEFAULT_GRPC_PORT
+        self.grpc_port = DEFAULT_GRPC_PROXY_PORT
         self.root_path = root_path
 
         self.http_setup_complete = asyncio.Event()
