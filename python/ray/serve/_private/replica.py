@@ -100,7 +100,7 @@ def create_replica_wrapper(name: str):
                 component_name=deployment_name,
                 component_id=replica_tag,
             )
-            self._memory_logger = configure_component_memory_profiler(
+            configure_component_memory_profiler(
                 component_type=ServeComponentType.DEPLOYMENT,
                 component_name=deployment_name,
                 component_id=replica_tag,

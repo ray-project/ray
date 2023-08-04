@@ -906,7 +906,7 @@ class HTTPProxyActor:
             f"starting on node {node_id}."
         )
 
-        self._memory_logger = configure_component_memory_profiler(
+        configure_component_memory_profiler(
             component_name="http_proxy", component_id=node_ip_address
         )
 

@@ -229,7 +229,7 @@ def configure_component_memory_profiler(
     component_name: str,
     component_id: str,
     component_type: Optional[ServeComponentType] = None,
-):
+) -> None:
     """Configures the memory logger for this component.
 
     Does nothing if RAY_SERVE_ENABLE_MEMORY_PROFILING is disabled.
@@ -258,15 +258,12 @@ def configure_component_memory_profiler(
                 f'"{memray_file_path}"'
             )
 
-            return tracker
         except ImportError:
             logger.warning(
                 "RAY_SERVE_ENABLE_MEMORY_PROFILING is enabled, but memray "
                 "is not installed. No memory profiling is happening. "
                 "`pip install memray` to enable memory profiling."
             )
-
-    return None
 
 
 def get_serve_logs_dir() -> str:
@@ -280,7 +277,7 @@ def get_component_log_file_name(
     component_id: str,
     component_type: Optional[ServeComponentType],
     suffix: str = "",
-):
+) -> str:
     """Get the component's log file name."""
 
     # For DEPLOYMENT component type, we want to log the deployment name

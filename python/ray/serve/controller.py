@@ -114,7 +114,7 @@ class ServeController:
         configure_component_logger(
             component_name="controller", component_id=str(os.getpid())
         )
-        self._memory_logger = configure_component_memory_profiler(
+        configure_component_memory_profiler(
             component_name="controller", component_id=str(os.getpid())
         )
         if RAY_SERVE_CONTROLLER_CALLBACK_IMPORT_PATH:
