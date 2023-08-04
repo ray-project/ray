@@ -262,7 +262,7 @@ def run_wrk_on_all_nodes(
     http_port: str,
     all_endpoints: List[str] = None,
     ignore_output: bool = False,
-    debug: bool = False,
+    debug: bool = True,
 ):
     """
     Use ray task to run one wrk trial on each node alive, picked randomly
