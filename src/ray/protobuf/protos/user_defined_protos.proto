@@ -22,3 +22,13 @@ message UserDefinedResponse {
   string greeting = 1;
   int64 num_x2 = 2;
 }
+
+message FruitAmounts {
+    int64 orange = 1;
+    int64 apple = 2;
+    int64 banana = 3;
+}
+
+message FruitCosts {
+    float costs = 1;
+}

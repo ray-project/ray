@@ -1,10 +1,19 @@
 import time
-from typing import Generator
+from typing import Dict, Generator
+
+from starlette.requests import Request
 
 # Users need to include their custom message type which will be embedded in the request.
-from user_defined_protos_pb2 import UserDefinedMessage, UserDefinedResponse
+from user_defined_protos_pb2 import (
+    FruitAmounts,
+    FruitCosts,
+    UserDefinedMessage,
+    UserDefinedResponse,
+)
 
+import ray
 from ray import serve
+from ray.serve.handle import RayServeDeploymentHandle
 
 
 @serve.deployment
@@ -46,5 +55,89 @@ class GrpcDeployment:
 
             time.sleep(0.1)
 
+    @serve.multiplexed(max_num_models_per_replica=3)
+    async def get_model(self, model_id: str) -> str:
+        return f"loading model: {model_id}"
+
+    async def multiplex(self, user_message: UserDefinedMessage) -> UserDefinedResponse:
+        model_id = serve.get_multiplexed_model_id()
+        model = await self.get_model(model_id)
+        user_response = UserDefinedResponse(
+            greeting=f"{user_message.name} called model {model}",
+        )
+        return user_response
+
 
 g = GrpcDeployment.options(name="grpc-deployment").bind()
+
+
+@serve.deployment
+class FruitMarket:
+    def __init__(
+        self,
+        _orange_stand: RayServeDeploymentHandle,
+        _apple_stand: RayServeDeploymentHandle,
+    ):
+        self.directory = {
+            "ORANGE": _orange_stand,
+            "APPLE": _apple_stand,
+        }
+
+    async def __call__(self, fruit_amounts_proto: FruitAmounts) -> FruitCosts:
+        fruit_amounts = {}
+        if fruit_amounts_proto.orange:
+            fruit_amounts["ORANGE"] = fruit_amounts_proto.orange
+        if fruit_amounts_proto.apple:
+            fruit_amounts["APPLE"] = fruit_amounts_proto.apple
+        if fruit_amounts_proto.banana:
+            fruit_amounts["BANANA"] = fruit_amounts_proto.banana
+
+        costs = await self.check_price(fruit_amounts)
+        return FruitCosts(costs=costs)
+
+    async def check_price(self, inputs: Dict[str, int]) -> float:
+        costs = 0
+        for fruit, amount in inputs.items():
+            if fruit not in self.directory:
+                return
+            fruit_stand = self.directory[fruit]
+            ref: ray.ObjectRef = await fruit_stand.remote(int(amount))
+            result = await ref
+            costs += result
+        return costs
+
+
+@serve.deployment
+class OrangeStand:
+    def __init__(self):
+        self.price = 2.0
+
+    def __call__(self, num_oranges: int):
+        return num_oranges * self.price
+
+
+@serve.deployment
+class AppleStand:
+    def __init__(self):
+        self.price = 3.0
+
+    def __call__(self, num_oranges: int):
+        return num_oranges * self.price
+
+
+orange_stand = OrangeStand.bind()
+apple_stand = AppleStand.bind()
+g2 = FruitMarket.options(name="grpc-deployment-model-composition").bind(
+    orange_stand, apple_stand
+)
+
+
+@serve.deployment
+class HttpDeployment:
+    async def __call__(self, request: Request) -> str:
+        body = await request.body()
+        print("request.body()", body)
+        return f"Hello {body} {time.time()}"
+
+
+h = HttpDeployment.options(name="http-deployment").bind()
