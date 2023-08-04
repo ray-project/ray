@@ -383,9 +383,9 @@ def _prepare_for_ray_worker_node_startup():
 def _setup_ray_cluster(
     *,
     num_worker_nodes: int,
-    num_cpus_per_node: int,
+    num_cpus_worker_node: int,
     num_cpus_head_node: int,
-    num_gpus_per_node: int,
+    num_gpus_worker_node: int,
     num_gpus_head_node: int,
     using_stage_scheduling: bool,
     heap_memory_per_node: int,
@@ -562,7 +562,7 @@ def _setup_ray_cluster(
             "-m",
             "ray.util.spark.start_ray_node",
             f"--temp-dir={ray_temp_dir}",
-            f"--num-cpus={num_cpus_per_node}",
+            f"--num-cpus={num_cpus_worker_node}",
             "--block",
             f"--address={ray_head_ip}:{ray_head_port}",
             f"--memory={heap_memory_per_node}",
@@ -577,7 +577,7 @@ def _setup_ray_cluster(
             RAY_ON_SPARK_COLLECT_LOG_TO_PATH: collect_log_to_path or ""
         }
 
-        if num_gpus_per_node > 0:
+        if num_gpus_worker_node > 0:
             task_resources = context.resources()
 
             if "gpu" not in task_resources:
@@ -672,8 +672,8 @@ def _setup_ray_cluster(
 
             if using_stage_scheduling:
                 resource_profile = _create_resource_profile(
-                    num_cpus_per_node,
-                    num_gpus_per_node,
+                    num_cpus_worker_node,
+                    num_gpus_worker_node,
                 )
                 job_rdd = job_rdd.withResources(resource_profile)
 
@@ -795,9 +795,9 @@ def _verify_node_options(node_options, block_keys, node_type):
 def setup_ray_cluster(
     num_worker_nodes: int,
     *,
-    num_cpus_per_node: Optional[int] = None,
+    num_cpus_worker_node: Optional[int] = None,
     num_cpus_head_node: Optional[int] = None,
-    num_gpus_per_node: Optional[int] = None,
+    num_gpus_worker_node: Optional[int] = None,
     num_gpus_head_node: Optional[int] = None,
     object_store_memory_per_node: Optional[int] = None,
     object_store_memory_head_node: Optional[int] = None,
@@ -830,14 +830,14 @@ def setup_ray_cluster(
             To create a spark application that is intended to exclusively run a
             shared ray cluster, it is recommended to set this argument to
             `ray.util.spark.MAX_NUM_WORKER_NODES`.
-        num_cpus_per_node: Number of cpus available to per-ray worker node, if not
+        num_cpus_worker_node: Number of cpus available to per-ray worker node, if not
             provided, use spark application configuration 'spark.task.cpus' instead.
             **Limitation** Only spark version >= 3.4 or Databricks Runtime 12.x
             supports setting this argument.
         num_cpus_head_node: Number of cpus available to Ray head node, if not provide,
             use 0 instead. Number 0 means tasks requiring CPU resources are not scheduled
             to Ray head node.
-        num_gpus_per_node: Number of gpus available to per-ray worker node, if not
+        num_gpus_worker_node: Number of gpus available to per-ray worker node, if not
             provided, use spark application configuration
             'spark.task.resource.gpu.amount' instead.
             This argument is only available on spark cluster that is configured with
@@ -954,29 +954,29 @@ def setup_ray_cluster(
     # and gpus to use for each submitted spark task.
     num_spark_task_cpus = int(spark.sparkContext.getConf().get("spark.task.cpus", "1"))
 
-    if num_cpus_per_node is not None and num_cpus_per_node <= 0:
+    if num_cpus_worker_node is not None and num_cpus_worker_node <= 0:
         raise ValueError("Argument `num_cpus_per_node` value must be > 0.")
 
     num_spark_task_gpus = int(
         spark.sparkContext.getConf().get("spark.task.resource.gpu.amount", "0")
     )
 
-    if num_gpus_per_node is not None and num_spark_task_gpus == 0:
+    if num_gpus_worker_node is not None and num_spark_task_gpus == 0:
         raise ValueError(
             "The spark cluster worker nodes are not configured with 'gpu' resources, so that "
             "you cannot specify the `num_gpus_per_node` argument."
         )
 
-    if num_gpus_per_node is not None and num_gpus_per_node < 0:
+    if num_gpus_worker_node is not None and num_gpus_worker_node < 0:
         raise ValueError("Argument `num_gpus_per_node` value must be >= 0.")
 
-    if num_cpus_per_node is not None or num_gpus_per_node is not None:
+    if num_cpus_worker_node is not None or num_gpus_worker_node is not None:
         if support_stage_scheduling:
-            num_cpus_per_node = num_cpus_per_node or num_spark_task_cpus
-            num_gpus_per_node = num_gpus_per_node or num_spark_task_gpus
+            num_cpus_worker_node = num_cpus_worker_node or num_spark_task_cpus
+            num_gpus_worker_node = num_gpus_worker_node or num_spark_task_gpus
 
             using_stage_scheduling = True
-            res_profile = _create_resource_profile(num_cpus_per_node, num_gpus_per_node)
+            res_profile = _create_resource_profile(num_cpus_worker_node, num_gpus_worker_node)
         else:
             raise ValueError(
                 "Current spark version does not support stage scheduling, so that "
@@ -993,8 +993,8 @@ def setup_ray_cluster(
         using_stage_scheduling = False
         res_profile = None
 
-        num_cpus_per_node = num_spark_task_cpus
-        num_gpus_per_node = num_spark_task_gpus
+        num_cpus_worker_node = num_spark_task_cpus
+        num_gpus_worker_node = num_spark_task_gpus
 
     (
         ray_worker_node_heap_mem_bytes,
@@ -1002,8 +1002,8 @@ def setup_ray_cluster(
     ) = get_avail_mem_per_ray_worker_node(
         spark,
         object_store_memory_per_node,
-        num_cpus_per_node,
-        num_gpus_per_node,
+        num_cpus_worker_node,
+        num_gpus_worker_node,
     )
 
     if num_worker_nodes == MAX_NUM_WORKER_NODES:
@@ -1018,12 +1018,12 @@ def setup_ray_cluster(
 
     insufficient_resources = []
 
-    if num_cpus_per_node < 4:
+    if num_cpus_worker_node < 4:
         insufficient_resources.append(
             "The provided CPU resources for each ray worker are inadequate to start "
             "a ray cluster. Based on the total cpu resources available and the "
             "configured task sizing, each ray worker node would start with "
-            f"{num_cpus_per_node} CPU cores. This is less than the recommended "
+            f"{num_cpus_worker_node} CPU cores. This is less than the recommended "
             "value of `4` CPUs per worker. On spark version >= 3.4 or Databricks "
             "Runtime 12.x, you can set the argument `num_cpus_per_node` to "
             "a value >= 4 to address it, otherwise you need to increase the spark "
@@ -1082,9 +1082,9 @@ def setup_ray_cluster(
     with _active_ray_cluster_rwlock:
         cluster = _setup_ray_cluster(
             num_worker_nodes=num_worker_nodes,
-            num_cpus_per_node=num_cpus_per_node,
+            num_cpus_worker_node=num_cpus_worker_node,
             num_cpus_head_node=num_cpus_head_node,
-            num_gpus_per_node=num_gpus_per_node,
+            num_gpus_worker_node=num_gpus_worker_node,
             num_gpus_head_node=num_gpus_head_node,
             using_stage_scheduling=using_stage_scheduling,
             heap_memory_per_node=ray_worker_node_heap_mem_bytes,
