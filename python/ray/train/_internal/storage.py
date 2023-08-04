@@ -402,7 +402,7 @@ class StorageContext:
         trial_dir_name: Optional[str] = None,
         current_checkpoint_index: Optional[int] = None,
     ):
-        storage_path_provided = storage_path is not None
+        custom_fs_provided = storage_filesystem is not None
 
         self.storage_local_path = _get_defaults_results_dir()
         # If `storage_path=None`, then set it to the local path.
@@ -450,14 +450,19 @@ class StorageContext:
             Path(self.storage_fs_path)
         )
 
-        # Only initialize a syncer if a `storage_path` was provided.
+        # Syncing is always needed if a custom `storage_filesystem` is provided.
+        # Otherwise, syncing is only needed if storage_local_path
+        # and storage_fs_path point to different locations.
+        syncing_needed = (
+            custom_fs_provided or self.storage_fs_path != self.storage_local_path
+        )
         self.syncer: Optional[Syncer] = (
             _FilesystemSyncer(
                 storage_filesystem=self.storage_filesystem,
                 sync_period=self.sync_config.sync_period,
                 sync_timeout=self.sync_config.sync_timeout,
             )
-            if storage_path_provided
+            if syncing_needed
             else None
         )
 
