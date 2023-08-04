@@ -30,7 +30,8 @@ The main interface to control parallelism in your training code is to set the
 number of workers. This can be done by passing the ``num_workers`` attribute to
 the :class:`~ray.air.config.ScalingConfig`:
 
-.. code-block:: python
+.. testcode::
+    :skipif: True
 
     from ray.air.config import ScalingConfig
 
@@ -45,7 +46,8 @@ To use GPUs, pass ``use_gpu=True`` to the :class:`~ray.air.config.ScalingConfig`
 This will request one GPU per training worker. In the example below, training will
 run on 8 GPUs (8 workers, each using one GPU).
 
-.. code-block:: python
+.. testcode::
+    :skipif: True
 
     from ray.air.config import ScalingConfig
 
@@ -61,7 +63,8 @@ If you want to allocate more than one CPU or GPU per training worker, or if you
 defined :ref:`custom cluster resources <cluster-resources>`, set
 the ``resources_per_worker`` attribute:
 
-.. code-block:: python
+.. testcode::
+    :skipif: True
 
     from ray.air.config import ScalingConfig
 
@@ -80,7 +83,8 @@ Note that if you specify GPUs in ``resources_per_worker``, you also need to keep
 You can also instruct Ray Train to use fractional GPUs. In that case, multiple workers
 will be assigned the same CUDA device.
 
-.. code-block:: python
+.. testcode::
+    :skipif: True
 
     from ray.air.config import ScalingConfig
 
@@ -101,7 +105,8 @@ in your training loop so that the GPUs can be detected and used
 
 You can get the associated devices with :meth:`ray.train.torch.get_device`.
 
-.. code-block:: python
+.. testcode::
+    :skipif: True
 
     import torch
     from ray.air.config import ScalingConfig
@@ -135,7 +140,8 @@ This object often only manages lightweight communication between the training wo
 You can still specify its resources, which can be useful if you implemented your own
 Trainer that does heavier processing.
 
-.. code-block:: python
+.. testcode::
+    :skipif: True
 
     from ray.air.config import ScalingConfig
 
@@ -152,7 +158,8 @@ to start 4 training workers a 2 CPUs, this will not work, as the total number
 of required CPUs will be 9 (4 * 2 + 1). In that case, you can specify the trainer
 resources to use 0 CPUs:
 
-.. code-block:: python
+.. testcode::
+    :skipif: True
 
     from ray.air.config import ScalingConfig
 

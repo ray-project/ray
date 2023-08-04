@@ -48,7 +48,8 @@ The persistent storage location can be defined by passing a
 can be a location on remote storage (e.g. S3), or it can be a shared
 network device, such as NFS.
 
-.. code-block:: python
+.. testcode::
+    :skipif: True
 
     # Remote storage location
     run_config = RunConfig(storage_path="s3://my_bucket/train_results")

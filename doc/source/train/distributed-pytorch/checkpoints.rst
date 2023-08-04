@@ -36,7 +36,8 @@ appropriately in distributed training.
 
     .. tab-item:: Native PyTorch
 
-        .. code-block:: python
+        .. testcode::
+            :skipif: True
             :emphasize-lines: 36, 37, 38, 39, 40, 41
 
             import ray.train.torch
@@ -134,7 +135,8 @@ Checkpoints can be loaded into the training function in 2 steps:
 
     .. tab-item:: Native PyTorch
 
-        .. code-block:: python
+        .. testcode::
+            :skipif: True
             :emphasize-lines: 23, 25, 26, 29, 30, 31, 35
 
             import ray.train.torch

@@ -47,7 +47,8 @@ The `MultiWorkerMirroredStrategy <https://www.tensorflow.org/api_docs/python/tf/
 enables synchronous distributed training. The ``Model`` *must* be built and
 compiled within the scope of the strategy.
 
-.. code-block:: python
+.. testcode::
+    :skipif: True
 
     with tf.distribute.MultiWorkerMirroredStrategy().scope():
         model = ... # build model
@@ -83,7 +84,8 @@ execute training. For distributed Tensorflow,
 we use a :class:`~ray.train.tensorflow.TensorflowTrainer`
 that you can setup like this:
 
-.. code-block:: python
+.. testcode::
+    :skipif: True
 
     from ray.air import ScalingConfig
     from ray.train.tensorflow import TensorflowTrainer
@@ -97,7 +99,8 @@ that you can setup like this:
 To customize the backend setup, you can pass a
 :class:`~ray.train.tensorflow.TensorflowConfig`:
 
-.. code-block:: python
+.. testcode::
+    :skipif: True
 
     from ray.air import ScalingConfig
     from ray.train.tensorflow import TensorflowTrainer, TensorflowConfig
@@ -118,7 +121,8 @@ Running your training function
 With a distributed training function and a Ray Train ``Trainer``, you are now
 ready to start training!
 
-.. code-block:: python
+.. testcode::
+    :skipif: True
 
     trainer.fit()
 
@@ -143,7 +147,8 @@ API for model training.
 `Here's a full example you can refer to <https://github.com/ray-project/ray/blob/master/python/ray/train/examples/tf/tune_tensorflow_autoencoder_example.py>`__
 for distributed data loading. The relevant parts are:
 
-.. code-block:: python
+.. testcode::
+    :skipif: True
 
     import tensorflow as tf
     from ray import train
@@ -195,7 +200,8 @@ local log files. It can also be used to report results to
 The easiest way to report your results with Keras is by using the
 :class:`~air.integrations.keras.ReportCheckpointCallback`:
 
-.. code-block:: python
+.. testcode::
+    :skipif: True
 
     from ray.air.integrations.keras import ReportCheckpointCallback
 
@@ -231,7 +237,8 @@ Concrete examples are provided to demonstrate how checkpoints (model weights but
 appropriately in distributed training.
 
 
-.. code-block:: python
+.. testcode::
+    :skipif: True
     :emphasize-lines: 23
 
     from ray import train
@@ -281,7 +288,8 @@ directory <train-log-dir>` of each run.
 Loading checkpoints
 ~~~~~~~~~~~~~~~~~~~
 
-.. code-block:: python
+.. testcode::
+    :skipif: True
     :emphasize-lines: 15, 21, 22, 25, 26, 27, 30
 
     from ray import train

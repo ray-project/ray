@@ -26,7 +26,8 @@ the experiment tracking library.
 
 Example:
 
-.. code-block:: python
+.. testcode::
+    :skipif: True
 
     from ray import train
 
@@ -59,7 +60,8 @@ setup an experiment with the training run name and ID used by Ray Train. It also
 initializes the library in a way that only the rank 0 worker reports the results per
 default.
 
-.. code-block:: python
+.. testcode::
+    :skipif: True
 
     from ray import train
     from ray.air.integrations.wandb import setup_wandb

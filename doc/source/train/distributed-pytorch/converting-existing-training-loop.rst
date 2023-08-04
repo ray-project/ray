@@ -88,7 +88,8 @@ training.
             Keep in mind that ``DataLoader`` takes in a ``batch_size`` which is the batch size for each worker.
             The global batch size can be calculated from the worker batch size (and vice-versa) with the following equation:
 
-            .. code-block:: python
+            .. testcode::
+                :skipif: True
 
                 global_batch_size = worker_batch_size * train.get_context().get_world_size()
 
@@ -100,7 +101,8 @@ execute training. For distributed PyTorch, we use a :class:`~ray.train.torch.Tor
 that you can setup like this:
 
 
-.. code-block:: python
+.. testcode::
+    :skipif: True
 
     from ray.air import ScalingConfig
     from ray.train.torch import TorchTrainer
@@ -116,7 +118,8 @@ that you can setup like this:
 To customize the backend setup, you can pass a
 :class:`~ray.train.torch.TorchConfig`:
 
-.. code-block:: python
+.. testcode::
+    :skipif: True
 
     from ray.air import ScalingConfig
     from ray.train.torch import TorchTrainer, TorchConfig
@@ -135,7 +138,8 @@ Running your training function
 With a distributed training function and a Ray Train ``Trainer``, you are now
 ready to start training!
 
-.. code-block:: python
+.. testcode::
+    :skipif: True
 
     trainer.fit()
 
@@ -166,7 +170,8 @@ Then, you can pass in the config dictionary as an argument to ``Trainer``:
 Putting this all together, you can run your training function with different
 configurations. As an example:
 
-.. code-block:: python
+.. testcode::
+    :skipif: True
 
     from ray import train
     from ray.air import ScalingConfig
@@ -205,7 +210,8 @@ For example, you can:
 
 * Print the metrics for the last training iteration:
 
-.. code-block:: python
+.. testcode::
+    :skipif: True
 
     from pprint import pprint
 
@@ -236,13 +242,15 @@ For example, you can:
 
 * View the dataframe containing the metrics from all iterations:
 
-.. code-block:: python
+.. testcode::
+    :skipif: True
 
     print(result.metrics_dataframe)
 
 * Obtain the :py:class:`~ray.air.checkpoint.Checkpoint`, used for resuming training, prediction and serving.
 
-.. code-block:: python
+.. testcode::
+    :skipif: True
 
     result.checkpoint  # last saved checkpoint
     result.best_checkpoints  # N best saved checkpoints, as configured in run_config

@@ -19,7 +19,8 @@ In a nutshell, datasets passed to your :class:`Trainer <ray.train.trainer.BaseTr
 can be accessed from the training function with :meth:`train.get_dataset_shard("train")
 <ray.train.get_dataset_shard>` like this:
 
-.. code-block:: python
+.. testcode::
+    :skipif: True
 
     from ray import train
 
