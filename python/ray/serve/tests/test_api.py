@@ -1,5 +1,6 @@
 import asyncio
 import os
+import sys
 from typing import Dict, Optional
 
 from fastapi import FastAPI
@@ -882,6 +883,105 @@ def test_pass_starlette_request_over_handle(serve_instance):
         "foo": "bar",
         "baz": "quux",
     }
+
+
+def test_status_basic(serve_instance):
+    # Before Serve is started, serve.status() should have an empty list of applications
+    assert len(serve.status().applications) == 0
+
+    @serve.deployment(ray_actor_options={"num_cpus": 0.1})
+    class A:
+        def __call__(self, val: int):
+            return val + 1
+
+    @serve.deployment(ray_actor_options={"num_cpus": 0.1})
+    def f():
+        return "hello world"
+
+    @serve.deployment(ray_actor_options={"num_cpus": 0.1})
+    class MyDriver:
+        def __init__(self, dag: RayServeDAGHandle):
+            self.dag = dag
+
+        async def __call__(self):
+            return await (await self.dag.remote())
+
+    handle_1 = serve.run(A.bind(), name="plus", route_prefix="/a")
+    handle_2 = serve.run(MyDriver.bind(f.bind()), name="hello", route_prefix="/b")
+
+    assert ray.get(handle_1.remote(8)) == 9
+    assert ray.get(handle_2.remote()) == "hello world"
+
+    expected_dep_1 = {"plus_A"}
+    expected_dep_2 = {"hello_MyDriver", "hello_f"}
+
+    app_status = serve.status().applications
+    assert len(app_status) == 2
+    assert set(app_status["plus"].deployments.keys()) == expected_dep_1
+    assert set(app_status["hello"].deployments.keys()) == expected_dep_2
+    assert all(d.status == "HEALTHY" for d in app_status["plus"].deployments.values())
+    assert all(d.status == "HEALTHY" for d in app_status["plus"].deployments.values())
+
+    proxy_status = serve.status().proxies
+    assert all(p == "HEALTHY" for p in proxy_status.values())
+
+
+def test_status_constructor_error(serve_instance):
+    """Deploys Serve deployment that errors out in constructor, checks that the
+    traceback is surfaced in serve.status().
+    """
+
+    @serve.deployment
+    class A:
+        def __init__(self):
+            1 / 0
+
+    serve.run(A.bind(), _blocking=False)
+
+    def check_for_failed_deployment():
+        default_app = serve.status().applications["default"]
+        error_substr = "ZeroDivisionError: division by zero"
+        return (
+            default_app.status == "DEPLOY_FAILED"
+            and error_substr in default_app.deployments["default_A"].message
+        )
+
+    wait_for_condition(check_for_failed_deployment)
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="Runtime env support experimental on windows"
+)
+def test_status_package_unavailable_in_controller(serve_instance):
+    """Test that exceptions raised from packages that are installed on deployment actors
+    but not on controller is serialized and surfaced properly in serve.status().
+    """
+
+    @serve.deployment
+    class MyDeployment:
+        def __init__(self):
+            from sqlalchemy import create_engine
+            import pymysql
+
+            pymysql.install_as_MySQLdb()
+
+            create_engine("mysql://some_wrong_url:3306").connect()
+
+    ray_actor_options = {"runtime_env": {"pip": ["PyMySQL", "sqlalchemy==1.3.19"]}}
+    serve.run(
+        MyDeployment.options(ray_actor_options=ray_actor_options).bind(),
+        _blocking=False,
+    )
+
+    def check_for_failed_deployment():
+        default_app = serve.status().applications["default"]
+        return (
+            default_app.status == "DEPLOY_FAILED"
+            and "some_wrong_url"
+            in default_app.deployments["default_MyDeployment"].message
+        )
+
+    wait_for_condition(check_for_failed_deployment, timeout=15)
 
 
 if __name__ == "__main__":
