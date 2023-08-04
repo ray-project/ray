@@ -1,6 +1,5 @@
 import time
-import os
-from concurrent.futures import Executor, Future, TimeoutError as ConTimeoutError
+from concurrent.futures import Executor, Future
 from functools import partial
 from typing import (
     Any,
@@ -12,6 +11,7 @@ from typing import (
     ParamSpec,
     TYPE_CHECKING,
     TypeVar,
+    Generator,
 )
 
 import ray
@@ -24,9 +24,9 @@ T = TypeVar("T")
 P = ParamSpec("P")
 
 if TYPE_CHECKING:
-    from ray._private.worker import BaseContext, RemoteFunction0
+    from ray._private.worker import BaseContext
     from ray.actor import ActorHandle
-    from ray.types import ObjectRef
+
 
 class RoundRobinActorPool:
     pool: List["ActorHandle"]
@@ -44,8 +44,12 @@ class RoundRobinActorPool:
             self.index = 0
         return obj
 
-    def submit(self, fn: Callable[[], Any]) -> Future:
-        return self.next().actor_function.remote(fn).future()
+    def submit(self, fn: Callable[[], T]) -> Future[T]:
+        return self.next().actor_function.remote(fn).future()  # type: ignore
+
+    def get_next(self) -> Generator["ActorHandle", None, None]:
+        for obj in self.pool:
+            yield obj
 
 
 @PublicAPI(stability="alpha")  # type: ignore
@@ -108,19 +112,6 @@ class RayExecutor(Executor):
         self._context: "Optional[BaseContext]" = None
         self.actor_pool: Optional[RoundRobinActorPool] = None
 
-        if max_workers is None:
-            # max_workers = int(ray._private.state.cluster_resources()["CPU"])
-            cpus = os.cpu_count()
-            if cpus is None:
-                raise ValueError(f"max_workers was not supplied and could not determine number of cores")
-            max_workers = cpus - 1
-        elif max_workers < 1:
-            raise ValueError(
-                f"`max_workers={max_workers}` is given. The argument \
-                `max_workers` must be >= 1"
-            )
-        self.max_workers = max_workers
-
         @ray.remote
         class ExecutorActor:
             def __init__(self) -> None:
@@ -131,16 +122,27 @@ class RayExecutor(Executor):
 
         self._context = ray.init(ignore_reinit_error=True, **kwargs)
 
+        if max_workers is None:
+            max_workers = int(ray._private.state.cluster_resources()["CPU"])
+        if max_workers < 1:
+            raise ValueError(
+                f"`max_workers={max_workers}` is given. The argument \
+                `max_workers` must be >= 1"
+            )
+        self.max_workers = max_workers
+
         if self.actor_pool is not None:
             for actor in self.actor_pool.pool:
                 del actor
             del self.actor_pool
-        self.actor_pool = RoundRobinActorPool([
-            ExecutorActor.options(  # type: ignore[attr-defined]
-                name=f"actor-{i}"
-            ).remote()
-            for i in range(max_workers)
-        ])
+        self.actor_pool = RoundRobinActorPool(
+            [
+                ExecutorActor.options(  # type: ignore[attr-defined]
+                    name=f"actor-{i}"
+                ).remote()
+                for i in range(max_workers)
+            ]
+        )
 
     def submit(
         self, fn: Callable[P, T], /, *args: P.args, **kwargs: P.kwargs
@@ -234,47 +236,27 @@ class RayExecutor(Executor):
                 assert [i for i in futures_iter] == [100, 200, 300]
 
         """
-        raise NotImplementedError
         self._check_shutdown_lock()
 
         if timeout is not None:
             end_time = timeout + time.monotonic()
         fs = [self.submit(fn, *args) for args in zip(*iterables)]
 
-        # Yield must be hidden in closure so that the futures are submitted
-        # before the first iterator value is required.
-        if self.actor_pool is not None:
-
-            def result_iterator() -> Iterator[T]:
-                assert self.actor_pool is not None
-                while self.actor_pool.has_next():
+        def result_iterator() -> Iterator[T]:
+            try:
+                # reverse to keep finishing order
+                fs.reverse()
+                while fs:
+                    # Careful not to keep a reference to the popped future
                     if timeout is None:
-                        yield self.actor_pool.get_next(timeout=None)
+                        yield self._result_or_cancel(fs.pop())
                     else:
-                        try:
-                            yield self.actor_pool.get_next(
-                                timeout=end_time - time.monotonic()
-                            )
-                        except TimeoutError:
-                            raise ConTimeoutError
-
-        else:
-
-            def result_iterator() -> Iterator[T]:
-                try:
-                    # reverse to keep finishing order
-                    fs.reverse()
-                    while fs:
-                        # Careful not to keep a reference to the popped future
-                        if timeout is None:
-                            yield self._result_or_cancel(fs.pop())
-                        else:
-                            yield self._result_or_cancel(
-                                fs.pop(), end_time - time.monotonic()
-                            )
-                finally:
-                    for future in fs:
-                        future.cancel()
+                        yield self._result_or_cancel(
+                            fs.pop(), end_time - time.monotonic()
+                        )
+            finally:
+                for future in fs:
+                    future.cancel()
 
         return result_iterator()
 
