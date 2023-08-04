@@ -440,6 +440,46 @@ class _TrainSession:
         """
         self.legacy_checkpoint_uri = uri
 
+    def new_checkpoint(self, checkpoint):
+        from ray.train._checkpoint import Checkpoint as NewCheckpoint
+
+        if not isinstance(checkpoint, NewCheckpoint):
+            raise ValueError(
+                "You must pass a `ray.train.checkpoint.Checkpoint` "
+                "object to `train.report`. `ray.air.Checkpoint` is deprecated."
+            )
+
+        # Persist the reported checkpoint files to storage.
+        persisted_checkpoint = self.storage.persist_current_checkpoint(checkpoint)
+
+        self.loaded_checkpoint = persisted_checkpoint
+
+        metadata = self._auto_fill_checkpoint_metrics({})
+
+        # Save the rank of the worker that created this checkpoint.
+        metadata.update({CHECKPOINT_RANK_KEY: self.world_rank})
+
+        result = TrainingResult(
+            type=TrainingResultType.CHECKPOINT,
+            data=persisted_checkpoint,
+            metadata=metadata,
+        )
+
+        # Add result to a thread-safe queue.
+        self.result_queue.put(result, block=True)
+
+        # Acquire lock to stop the training thread until
+        # checkpoint has been processed.
+        self.continue_lock.acquire()
+
+    def new_report(self, metrics: Dict, checkpoint=None) -> None:
+        if checkpoint:
+            self.new_checkpoint(checkpoint)
+
+        # TODO(justinvyu): Unify checkpoint / report logic to just report a single
+        # (metrics, Checkpoint) result for the consumer to handle.
+        self._report_legacy(**metrics)
+
     def report(self, metrics: Dict, checkpoint: Optional[Checkpoint] = None) -> None:
         # TODO(xwjiang): tons of optimizations.
 
@@ -456,6 +496,9 @@ class _TrainSession:
                     "`checkpoint` argument of `ray.train.report` to "
                     "store your Torch objects."
                 )
+
+        if _use_storage_context():
+            return self.new_report(metrics, checkpoint=checkpoint)
 
         if checkpoint:
             self.checkpoint(checkpoint)
