@@ -36,7 +36,7 @@
   commands:
     - ./ci/ray_ci/lint.sh copyright
 
-- label: "semgrep"
+- label: "untested code snippet"
   commands:
     - ./ci/ray_ci/lint.sh run_semgrep
 
