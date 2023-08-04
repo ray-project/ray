@@ -1079,8 +1079,9 @@ class Trial:
         if _use_storage_context():
             from ray.train._internal.checkpoint_manager import _TrainingResult
 
-            assert isinstance(checkpoint, _TrainingResult)
-            self.checkpoint_manager.register_checkpoint(checkpoint)
+            checkpoint_result = checkpoint
+            assert isinstance(checkpoint_result, _TrainingResult)
+            self.checkpoint_manager.register_checkpoint(checkpoint_result)
         else:
             self.checkpoint_manager.on_checkpoint(checkpoint)
         self.invalidate_json_state()

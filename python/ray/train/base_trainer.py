@@ -21,6 +21,7 @@ from ray.air._internal.usage import AirEntrypoint
 from ray.air.checkpoint import Checkpoint
 from ray.air.config import RunConfig, ScalingConfig
 from ray.air.result import Result
+from ray.train._checkpoint import Checkpoint as NewCheckpoint
 from ray.train._internal import session
 from ray.train._internal.storage import _use_storage_context
 from ray.train.constants import TRAIN_DATASET_KEY
@@ -196,6 +197,9 @@ class BaseTrainer(abc.ABC):
 
         # This path should only be set through restore
         self._restore_path = None
+        # This checkpoint should only be populated internally
+        # by auto-recovery fault tolerance/manual Trainer.restore
+        self._checkpoint_for_restoration: Optional[NewCheckpoint] = None
 
         self._validate_attributes()
 
@@ -682,6 +686,22 @@ class BaseTrainer(abc.ABC):
                 result[key] = copy.deepcopy(self._param_dict[key])
         return result
 
+    def _get_initial_checkpoint(self) -> Optional[NewCheckpoint]:
+        """If we need to set an initial checkpoint accessible by train.get_checkpoint,
+        we are in one of 3 cases:
+        1. We are auto-recovering from a training failure (FailureConfig).
+          -> In this case, _checkpoint_for_restoration points to the *latest*
+            checkpoint, which is the one we want to restore from.
+        2. We are manually restoring an existing experiment (Trainer.restore).
+          -> Same as 1.
+        3. The user passed in a checkpoint to start a *new* training run from.
+          -> `resume_from_checkpoint` points to the user-specified checkpoint.
+
+        When populating `train.get_checkpoint`, `_checkpoint_for_restoration`
+        should take precedence over `resume_from_checkpoint`.
+        """
+        return self._checkpoint_for_restoration or self.resume_from_checkpoint
+
     def _generate_trainable_cls(self) -> Type["Trainable"]:
         """Generate the base Trainable class.
 
@@ -701,13 +721,15 @@ class BaseTrainer(abc.ABC):
             # Instantiate new Trainer in Trainable.
             trainer = trainer_cls(**config)
 
-            # Get the checkpoint from the train context, and use it to initialize
+            # Get the checkpoint from Tune, and use it to initialize
             # the restored trainer.
-            # This handles both worker-level and cluster-level restoration
-            # of the Train experiment.
             checkpoint = session.get_checkpoint()
             if checkpoint:
-                trainer.resume_from_checkpoint = checkpoint
+                # Set `_checkpoint_for_restoration` for auto-recovery fault-tolerance
+                # as well as manual restoration.
+                # `trainer.resume_from_checkpoint` is only ever set by the user.
+                trainer._checkpoint_for_restoration = checkpoint
+
                 # TODO(justinvyu): Remove this when Preprocessor is removed from Trainer
                 if not _use_storage_context():
                     # Always load the preprocessor from an available checkpoint

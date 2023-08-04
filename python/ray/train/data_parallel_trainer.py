@@ -1,6 +1,7 @@
 import copy
 import inspect
 import logging
+import os
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Tuple, Type, Union
 from ray._private.thirdparty.tabulate.tabulate import tabulate
@@ -17,7 +18,7 @@ from ray.train._internal import session
 from ray.train._internal.backend_executor import BackendExecutor, TrialInfo
 from ray.train._internal.checkpoint import TuneCheckpointManager
 from ray.train._internal.data_config import DataConfig, _LegacyDataConfigWrapper
-from ray.train._internal.storage import _use_storage_context
+from ray.train._internal.storage import _use_storage_context, StorageContext
 from ray.train._internal.utils import construct_train_func
 from ray.train.constants import TRAIN_DATASET_KEY, WILDCARD_KEY
 from ray.train.trainer import BaseTrainer, GenDataset
@@ -520,6 +521,19 @@ class DataParallelTrainer(BaseTrainer):
         checkpoint_strategy.num_to_keep = None
         checkpoint_strategy.checkpoint_score_attribute = None
 
+        initial_checkpoint = self._get_initial_checkpoint()
+
+        latest_checkpoint_index = 0
+        if _use_storage_context() and self._checkpoint_for_restoration:
+            checkpoint_dir_name = os.path.basename(
+                self._checkpoint_for_restoration.path
+            )
+            # Need to add 1 because latest_checkpoint_index is the index of the
+            # next checkpoint to be saved.
+            latest_checkpoint_index = (
+                StorageContext._parse_checkpoint_index(checkpoint_dir_name) + 1
+            )
+
         training_iterator = self._training_iterator_cls(
             backend_executor=backend_executor,
             backend_config=self._backend_config,
@@ -527,9 +541,10 @@ class DataParallelTrainer(BaseTrainer):
             datasets=self.datasets,
             data_config=self._data_config,
             checkpoint_manager=checkpoint_manager,
-            checkpoint=self.resume_from_checkpoint,
+            checkpoint=initial_checkpoint,
             checkpoint_strategy=checkpoint_strategy,
             storage_path=self.run_config.storage_path,
+            latest_checkpoint_index=latest_checkpoint_index,
         )
 
         self._report(training_iterator)
