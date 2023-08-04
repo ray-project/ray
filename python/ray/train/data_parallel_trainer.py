@@ -477,7 +477,7 @@ class DataParallelTrainer(BaseTrainer):
         )
 
         def clear_lazy_checkpoint_marker():
-            """Clear the stale lazy checkpointing marker on all worker nodes.
+            """Clears the stale lazy checkpointing marker on all worker nodes.
 
             After recovery, the trainer may be scheduled on another node.
             We should delete the marker files created earlier on each node to
@@ -538,7 +538,7 @@ class DataParallelTrainer(BaseTrainer):
         backend_executor.shutdown()
 
     def get_dataset_config(self) -> DataConfig:
-        """Return a copy of this Trainer's final dataset configs.
+        """Returns a copy of this Trainer's final dataset configs.
 
         Returns:
             The merged default + user-supplied dataset config.
@@ -550,7 +550,7 @@ class DataParallelTrainer(BaseTrainer):
 
     @repr_with_fallback(["ipywidgets", "8"])
     def _repr_mimebundle_(self, **kwargs):
-        """Return a mimebundle with an ipywidget repr and a simple text repr.
+        """Returns a mimebundle with an ipywidget repr and a simple text repr.
 
         Depending on the frontend where the data is being displayed,
         different mimetypes will be used from this bundle.
@@ -656,7 +656,7 @@ class DataParallelTrainer(BaseTrainer):
 def _load_checkpoint_dict(
     checkpoint: Checkpoint, trainer_name: str
 ) -> Tuple[Any, Optional["Preprocessor"]]:
-    """Load a Ray Train Checkpoint (dict based).
+    """Loads a Ray Train Checkpoint (dict based).
 
     This is a private API.
 
