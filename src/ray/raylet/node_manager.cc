@@ -2046,9 +2046,9 @@ void NodeManager::HandleReturnWorker(rpc::ReturnWorkerRequest request,
   send_reply_callback(status, nullptr, nullptr);
 }
 
-void NodeManager::HandleDrainNode(rpc::autoscaler::DrainNodeRequest request,
-                                  rpc::autoscaler::DrainNodeReply *reply,
-                                  rpc::SendReplyCallback send_reply_callback) {
+void NodeManager::HandleDrainRaylet(rpc::DrainRayletRequest request,
+                                    rpc::DrainRayletReply *reply,
+                                    rpc::SendReplyCallback send_reply_callback) {
   RAY_LOG(INFO) << "Drain node RPC has received. Drain reason: "
                 << request.reason_message();
 

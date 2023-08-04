@@ -90,6 +90,12 @@ cdef class GlobalStateAccessor:
             results.append(node_info)
         return results
 
+    def get_draining_nodes(self):
+        cdef c_vector[c_string] result
+        with nogil:
+            result = self.inner.get().GetDrainingNodes()
+        return result
+
     def get_all_available_resources(self):
         cdef c_vector[c_string] result
         with nogil:

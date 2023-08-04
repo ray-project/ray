@@ -78,6 +78,10 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler,
       rpc::GetAllAvailableResourcesReply *reply,
       rpc::SendReplyCallback send_reply_callback) override;
 
+  void HandleGetDrainingNodes(rpc::GetDrainingNodesRequest request,
+                              rpc::GetDrainingNodesReply *reply,
+                              rpc::SendReplyCallback send_reply_callback) override;
+
   /// Handle report resource usage rpc from a raylet.
   void HandleReportResourceUsage(rpc::ReportResourceUsageRequest request,
                                  rpc::ReportResourceUsageReply *reply,

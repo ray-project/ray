@@ -440,6 +440,9 @@ class NodeResourceInfoAccessor {
   virtual Status AsyncGetAllAvailableResources(
       const MultiItemCallback<rpc::AvailableResources> &callback);
 
+  virtual Status AsyncGetDrainingNodes(
+      const ItemCallback<std::vector<std::string>> &callback);
+
   /// Reestablish subscription.
   /// This should be called when GCS server restarts from a failure.
   /// PubSub server restart will cause GCS server restart. In this case, we need to

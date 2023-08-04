@@ -351,6 +351,15 @@ message GetTaskFailureCauseReply {
   bool fail_task_immediately = 2;
 }
 
+message DrainRayletRequest {
+  ray.rpc.autoscaler.DrainNodeReason reason = 1;
+  string reason_message = 2;
+}
+
+message DrainRayletReply {
+  bool is_accepted = 1;
+}
+
 // Service for inter-node-manager communication.
 service NodeManagerService {
   // Update the node's view of the cluster resource usage.
@@ -376,7 +385,7 @@ service NodeManagerService {
       returns (ReleaseUnusedWorkersReply);
   /// Shutdown the raylet (node manager) gracefully.
   rpc ShutdownRaylet(ShutdownRayletRequest) returns (ShutdownRayletReply);
-  rpc DrainNode(ray.rpc.autoscaler.DrainNodeRequest) returns (ray.rpc.autoscaler.DrainNodeReply);
+  rpc DrainRaylet(DrainRayletRequest) returns (DrainRayletReply);
   // Request a raylet to lock resources for a bundle.
   // This is the first phase of 2PC protocol for atomic placement group creation.
   rpc PrepareBundleResources(PrepareBundleResourcesRequest)

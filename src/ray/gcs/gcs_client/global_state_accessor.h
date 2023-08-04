@@ -81,6 +81,8 @@ class GlobalStateAccessor {
   /// deserialized with protobuf function.
   std::vector<std::string> GetAllAvailableResources() LOCKS_EXCLUDED(mutex_);
 
+  std::vector<std::string> GetDrainingNodes() LOCKS_EXCLUDED(mutex_);
+
   /// Get newest resource usage of all nodes from GCS Service. Only used when light
   /// rerouce usage report enabled.
   ///

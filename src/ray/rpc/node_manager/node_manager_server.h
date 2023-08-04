@@ -100,9 +100,9 @@ class NodeManagerServiceHandler {
                                     ShutdownRayletReply *reply,
                                     SendReplyCallback send_reply_callback) = 0;
 
-  virtual void HandleDrainNode(rpc::autoscaler::DrainNodeRequest request,
-                               rpc::autoscaler::DrainNodeReply *reply,
-                               SendReplyCallback send_reply_callback) = 0;
+  virtual void HandleDrainRaylet(rpc::DrainRayletRequest request,
+                                 rpc::DrainRayletReply *reply,
+                                 SendReplyCallback send_reply_callback) = 0;
 
   virtual void HandleCancelWorkerLease(rpc::CancelWorkerLeaseRequest request,
                                        rpc::CancelWorkerLeaseReply *reply,

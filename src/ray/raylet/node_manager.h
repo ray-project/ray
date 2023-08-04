@@ -533,9 +533,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
                             rpc::ShutdownRayletReply *reply,
                             rpc::SendReplyCallback send_reply_callback) override;
 
-  void HandleDrainNode(rpc::autoscaler::DrainNodeRequest request,
-                       rpc::autoscaler::DrainNodeReply *reply,
-                       rpc::SendReplyCallback send_reply_callback) override;
+  void HandleDrainRaylet(rpc::DrainRayletRequest request,
+                         rpc::DrainRayletReply *reply,
+                         rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle a `ReturnWorker` request.
   void HandleCancelWorkerLease(rpc::CancelWorkerLeaseRequest request,
