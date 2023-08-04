@@ -249,8 +249,12 @@ def configure_component_memory_profiler(
                 suffix="_memray.bin",
             )
             memray_file_path = os.path.join(logs_dir, memray_file_name)
-            tracker = memray.Tracker(memray_file_path, native_traces=True)
-            tracker.__enter__()
+
+            # Memray usually tracks the memory usage of only a block of code
+            # within a context manager. We explicitly call __enter__ here
+            # instead of using a context manager to track memory usage across
+            # all of the caller's code instead.
+            memray.Tracker(memray_file_path, native_traces=True).__enter__()
 
             logger.info(
                 "RAY_SERVE_ENABLE_MEMORY_PROFILING is enabled. Started a "
