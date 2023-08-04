@@ -452,6 +452,9 @@ class DatasetStatsSummary:
     def get_max_heap_memory(self) -> float:
         parent_memory = [p.get_max_heap_memory() for p in self.parents]
         parent_max = max(parent_memory) if parent_memory else 0
+        if not self.stages_stats:
+            return parent_max
+
         return max(
             parent_max,
             *[ss.memory.get("max", 0) for ss in self.stages_stats],
