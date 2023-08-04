@@ -50,6 +50,7 @@ from ray.serve._private.utils import (
     get_random_letters,
     extract_self_if_method_call,
 )
+from ray.serve.schema import ServeInstanceDetails, ServeStatus
 
 from ray.serve._private import api as _private_api
 
@@ -729,14 +730,37 @@ def get_multiplexed_model_id() -> str:
 
 
 @PublicAPI(stability="alpha")
+def status() -> ServeStatus:
+    """Get status of Serve on the cluster.
+
+    Includes status of all HTTP Proxies, all active applications, and
+    their deployments.
+
+    .. code-block:: python
+
+            @serve.deployment(num_replicas=2)
+            class MyDeployment:
+                pass
+
+            serve.run(MyDeployment.bind())
+            status = serve.status()
+            assert status.applications["default"].status == "RUNNING"
+    """
+
+    client = get_global_client(raise_if_no_controller_running=False)
+    if client is None:
+        # Serve has not started yet
+        return ServeStatus()
+
+    details = ServeInstanceDetails(**client.get_serve_details())
+    return details._get_status()
+
+
+@PublicAPI(stability="alpha")
 def get_app_handle(
     name: str, sync: Optional[bool] = None
 ) -> Optional[Union[RayServeHandle, RayServeSyncHandle]]:
     """Get a handle to the application's ingress deployment by name.
-
-    This handle will send requests to the ingress deployment across
-    application versions if an upgrade occurs, so the ingress deployment
-    must handle interface compatibility.
 
     When called from within a deployment `sync` will default to `False`.
     When called from outside a deployment `sync` will default to `True`.
@@ -784,10 +808,6 @@ def get_deployment_handle(
     deployment_name: str, app_name: Optional[str] = None, sync: Optional[bool] = None
 ) -> Union[RayServeHandle, RayServeSyncHandle]:
     """Get a handle to the named deployment.
-
-    This handle will send requests to the deployment across application
-    versions if an upgrade occurs, so the ingress deployment must handle
-    interface compatibility.
 
     When called from within a deployment `sync` will default to `False`.
     When called from outside a deployment `sync` will default to `True`.

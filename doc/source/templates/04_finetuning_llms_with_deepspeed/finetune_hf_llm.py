@@ -25,8 +25,7 @@ from transformers import (
 
 
 import ray
-from ray import air
-from ray.air import session
+from ray import train
 from ray.train.torch import TorchTrainer
 import ray.util.scheduling_strategies
 
@@ -194,8 +193,8 @@ def training_function(kwargs: dict):
     set_seed(seed)
 
     # train_ds is the local shard for this model
-    train_ds = session.get_dataset_shard("train")
-    valid_ds = session.get_dataset_shard("valid")
+    train_ds = train.get_dataset_shard("train")
+    valid_ds = train.get_dataset_shard("valid")
 
     train_ds_len = len(list(train_ds.iter_batches(batch_size=1)))
 
@@ -328,7 +327,7 @@ def training_function(kwargs: dict):
             # as long as this is not the last step report here
             if step != (train_ds_len // batch_size - 1):
                 aggregated_loss = torch.mean(accelerator.gather(loss[None])).item()
-                session.report(
+                train.report(
                     {
                         "epoch": epoch,
                         "iteration": step,
@@ -423,7 +422,7 @@ def training_function(kwargs: dict):
             "learning_rate": lr_scheduler.get_lr()[0],
         }
 
-        session.report(
+        train.report(
             metrics,
             # We do not need to explictly call report(checkpoint).
             # This is because the checkpointing is not on all distributed workers, it's
@@ -432,7 +431,7 @@ def training_function(kwargs: dict):
             # will include the checkpoint files created by the Rank_0.
             # Note that this will not delete the checkpoints from the previous
             # iterations.
-            checkpoint=air.Checkpoint.from_directory(ckpt_path_epoch),
+            checkpoint=train.Checkpoint.from_directory(ckpt_path_epoch),
         )
         print("Checkpointing time: ", time.time() - checkpointing_time_s)
 
@@ -581,13 +580,13 @@ def main():
             "args": vars(args),
             "special_tokens": special_tokens,
         },
-        run_config=air.RunConfig(
+        run_config=train.RunConfig(
             # Turn off syncing artifact as as of 2.6 it introduces a resource
             # contention between checkpoint syncronizer and artifact syncronizer that
             # can sometimes result in failed checkpoint syncing
             # sync_config=tune.SyncConfig(sync_artifacts=False),
             storage_path=storage_path,
-            checkpoint_config=air.CheckpointConfig(
+            checkpoint_config=train.CheckpointConfig(
                 num_to_keep=args.num_checkpoints_to_keep,
                 checkpoint_score_attribute="perplexity",
                 checkpoint_score_order="min",
@@ -596,7 +595,7 @@ def main():
                 _checkpoint_upload_from_workers=True,
             ),
         ),
-        scaling_config=air.ScalingConfig(
+        scaling_config=train.ScalingConfig(
             # This forces the trainer + Rank 0 worker to get scheduled on the large cpu
             # RAM instance, making the checkpointing easier.
             # "large_cpu_mem" is the tag used to identify this machine type in the

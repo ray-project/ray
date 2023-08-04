@@ -17,6 +17,7 @@ try:
         Deployment,
         multiplexed,
         get_multiplexed_model_id,
+        status,
         get_app_handle,
         get_deployment_handle,
     )
@@ -54,6 +55,7 @@ __all__ = [
     "Deployment",
     "multiplexed",
     "get_multiplexed_model_id",
+    "status",
     "get_app_handle",
     "get_deployment_handle",
 ]

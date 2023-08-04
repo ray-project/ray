@@ -3,7 +3,7 @@ import shutil
 import tempfile
 import unittest
 import pytorch_lightning as pl
-from ray.air.config import CheckpointConfig
+from ray.train import CheckpointConfig
 import torch
 from ray.air.constants import TRAINING_ITERATION
 
