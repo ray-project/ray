@@ -1,5 +1,7 @@
 import os
 import subprocess
+import sys
+import tempfile
 
 from typing import List
 
@@ -53,18 +55,26 @@ def docker_login() -> None:
     subprocess.run(["pip", "install", "awscli"])
     password = subprocess.check_output(
         ["aws", "ecr", "get-login-password", "--region", "us-west-2"],
+        stderr=sys.stderr,
     )
-    subprocess.run(
-        [
-            "docker",
-            "login",
-            "--username",
-            "AWS",
-            "--password-stdin",
-            DOCKER_ECR,
-        ],
-        stdin=password,
-    )
+    with tempfile.TemporaryFile() as f:
+        f.write(password)
+        f.flush()
+        f.seek(0)
+
+        subprocess.run(
+            [
+                "docker",
+                "login",
+                "--username",
+                "AWS",
+                "--password-stdin",
+                DOCKER_ECR,
+            ],
+            stdin=f,
+            stdout=sys.stdout,
+            stderr=sys.stderr,
+        )
 
 
 def _get_docker_run_command() -> List[str]:
