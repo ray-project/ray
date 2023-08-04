@@ -54,10 +54,10 @@ def _plan_udf_map_op(
 
         fn_ = make_callable_class_concurrent(op._fn)
 
-        def fn(item: Any) -> Any:
+        def fn(item: Any, *args, **kwargs) -> Any:
             assert ray.data._cached_fn is not None
             assert ray.data._cached_cls == fn_
-            return ray.data._cached_fn(item)
+            return ray.data._cached_fn(item, *args, **kwargs)
 
         def init_fn():
             if ray.data._cached_fn is None:
