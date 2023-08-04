@@ -1347,13 +1347,15 @@ class Learner:
 
         Args:
             batch: The train batch already converted in to a (tensor) NestedDict.
-            **kwargs: Forward compatibility kwargs.
+            kwargs: Forward compatibility kwargs.
 
         Returns:
-            A tuple consisting of: 1) The `forward_train()` output of the RLModule,
-            2) the loss_per_module dictionary mapping module IDs to individual loss
-            tensors, and 3) a metrics dict mapping module
-            IDs to metrics key/value pairs.
+            A tuple consisting of:
+                1) The `forward_train()` output of the RLModule,
+                2) the loss_per_module dictionary mapping module IDs to individual loss
+                    tensors
+                3) a metrics dict mapping module IDs to metrics key/value pairs.
+
         """
 
     def set_state(self, state: Mapping[str, Any]) -> None:
@@ -1484,14 +1486,17 @@ class Learner:
 
         the state of the learner is saved in the following format:
 
-        checkpoint_dir/
-            learner_state.json
-            module_state/
-                module_1/
-                    ...
-            optimizer_state/
-                optimizers_module_1/
-                    ...
+        .. testcode::
+            :skipif: True
+
+            checkpoint_dir/
+                learner_state.json
+                module_state/
+                    module_1/
+                        ...
+                optimizer_state/
+                    optimizers_module_1/
+                        ...
 
         Args:
             path: The path to the directory to save the state to.
@@ -1691,6 +1696,7 @@ class LearnerSpec:
             should be a subclass of LearnerHyperparameters. This is useful for passing
             in algorithm configs that contains the hyper-parameters for loss
             computation, change of training behaviors, etc. e.g lr, entropy_coeff.
+
     """
 
     learner_class: Type["Learner"]

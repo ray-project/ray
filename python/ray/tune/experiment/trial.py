@@ -65,6 +65,9 @@ from ray._private.utils import binary_to_hex, hex_to_binary
 
 DEBUG_PRINT_INTERVAL = 5
 _DEFAULT_WIN_MAX_PATH_LENGTH = 260
+TRIAL_STATE_FILENAME = "trial_metadata.json"
+
+
 logger = logging.getLogger(__name__)
 
 
@@ -515,16 +518,27 @@ class Trial:
 
         # Checkpoint config
         checkpoint_config = checkpoint_config or CheckpointConfig()
-        checkpoint_config.checkpoint_score_attribute = (
-            checkpoint_config.checkpoint_score_attribute or TRAINING_ITERATION
-        )
+        if not _use_storage_context():
+            # TODO(justinvyu): Why is this needed?
+            checkpoint_config.checkpoint_score_attribute = (
+                checkpoint_config.checkpoint_score_attribute or TRAINING_ITERATION
+            )
 
         self.checkpoint_config = checkpoint_config
 
-        self.checkpoint_manager = _CheckpointManager(
-            checkpoint_config=self.checkpoint_config,
-            delete_fn=_CheckpointDeleter(self._trainable_name(), self.runner),
-        )
+        if _use_storage_context():
+            from ray.train._internal.checkpoint_manager import (
+                _CheckpointManager as _NewCheckpointManager,
+            )
+
+            self.checkpoint_manager = _NewCheckpointManager(
+                checkpoint_config=self.checkpoint_config
+            )
+        else:
+            self.checkpoint_manager = _CheckpointManager(
+                checkpoint_config=self.checkpoint_config,
+                delete_fn=_CheckpointDeleter(self._trainable_name(), self.runner),
+            )
 
         # Restoration fields
         self.restore_path = restore_path
@@ -780,6 +794,9 @@ class Trial:
         If the trial is in ERROR state, the most recent PERSISTENT checkpoint
         is returned.
         """
+        if _use_storage_context():
+            return self.checkpoint_manager.latest_checkpoint_result
+
         if self.status == Trial.ERROR:
             checkpoint = self.checkpoint_manager.newest_persistent_checkpoint
         else:
@@ -890,9 +907,10 @@ class Trial:
             self._default_result_or_future = runner.get_auto_filled_metrics.remote(
                 debug_metrics_only=True
             )
-        self.checkpoint_manager.set_delete_fn(
-            _CheckpointDeleter(self._trainable_name(), runner)
-        )
+        if not _use_storage_context():
+            self.checkpoint_manager.set_delete_fn(
+                _CheckpointDeleter(self._trainable_name(), runner)
+            )
         # No need to invalidate state cache: runner is not stored in json
         # self.invalidate_json_state()
 
@@ -1004,7 +1022,13 @@ class Trial:
         Args:
             checkpoint: Checkpoint taken.
         """
-        self.checkpoint_manager.on_checkpoint(checkpoint)
+        if _use_storage_context():
+            from ray.train._internal.checkpoint_manager import _TrainingResult
+
+            assert isinstance(checkpoint, _TrainingResult)
+            self.checkpoint_manager.register_checkpoint(checkpoint)
+        else:
+            self.checkpoint_manager.on_checkpoint(checkpoint)
         self.invalidate_json_state()
 
     def on_restore(self):
@@ -1165,6 +1189,19 @@ class Trial:
         new_trial.__setstate__(trial_state)
 
         return new_trial
+
+    @classmethod
+    def from_directory(
+        cls, path: Union[str, os.PathLike], stub: bool = False
+    ) -> "Trial":
+        metadata_path = os.path.join(path, TRIAL_STATE_FILENAME)
+        if not os.path.exists(metadata_path):
+            raise FileNotFoundError(
+                f"Can't restore trial from path: File `{metadata_path}` not found."
+            )
+
+        json_state = Path(metadata_path).read_text()
+        return cls.from_json_state(json_state, stub=stub)
 
     def __getstate__(self):
         """Memento generator for Trial.

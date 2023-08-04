@@ -76,6 +76,7 @@ cdef class GlobalStateAccessor:
                 "RayletSocketName": c_node_info.raylet_socket_name().decode(),
                 "MetricsExportPort": c_node_info.metrics_export_port(),
                 "NodeName": c_node_info.node_name().decode(),
+                "RuntimeEnvAgentPort": c_node_info.runtime_env_agent_port(),
             }
             node_info["alive"] = node_info["Alive"]
             c_resources = PythonGetResourcesTotal(c_node_info)
