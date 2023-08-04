@@ -158,6 +158,11 @@ class Experiment:
         # Deprecated
         local_dir: Optional[str] = None,
     ):
+        if isinstance(checkpoint_config, dict):
+            checkpoint_config = CheckpointConfig(**checkpoint_config)
+        else:
+            checkpoint_config = checkpoint_config or CheckpointConfig()
+
         if is_function_trainable(run):
             if checkpoint_config.checkpoint_at_end:
                 raise ValueError(
@@ -201,7 +206,6 @@ class Experiment:
             )
             logger.debug(f"StorageContext on the DRIVER:\n{self.storage}")
 
-            # TODO(justinvyu): Rename these to legacy.
             self._legacy_local_storage_path = None
             self._legacy_remote_storage_path = None
             self.legacy_sync_config = None
@@ -263,11 +267,6 @@ class Experiment:
             assert self.legacy_dir_name
 
         config = config or {}
-
-        if isinstance(checkpoint_config, dict):
-            checkpoint_config = CheckpointConfig(**checkpoint_config)
-        else:
-            checkpoint_config = checkpoint_config or CheckpointConfig()
 
         self._stopper = None
         stopping_criteria = {}

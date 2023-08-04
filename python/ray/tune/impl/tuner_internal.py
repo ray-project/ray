@@ -427,11 +427,10 @@ class TunerInternal:
             # If we synced, `experiment_checkpoint_dir` will contain a temporary
             # directory. Create an experiment checkpoint dir instead and move
             # our data there.
-            new_exp_path, new_exp_name = Path(
-                self.setup_create_experiment_checkpoint_dir(
-                    self.converted_trainable, self._run_config
-                )
+            new_exp_path, new_exp_name = self.setup_create_experiment_checkpoint_dir(
+                self.converted_trainable, self._run_config
             )
+            new_exp_path = Path(new_exp_path)
             for file_dir in experiment_checkpoint_path.glob("*"):
                 file_dir.replace(new_exp_path / file_dir.name)
             shutil.rmtree(experiment_checkpoint_path)
