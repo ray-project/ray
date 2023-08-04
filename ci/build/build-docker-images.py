@@ -76,39 +76,46 @@ IMAGE_NAMES = list(DOCKER_HUB_DESCRIPTION.keys())
 RELEASE_PR_PIPELINE_ID = "d912884a-5198-497d-9ac3-178420500b6e"
 
 
-def _with_suffix(tag: str, suffix: Optional[str] = None):
+def _with_suffix(tag: str, suffix: Optional[str] = None) -> str:
     if suffix:
         return tag + "-" + suffix
     return tag
 
 
-def _get_branch():
+def _get_branch() -> str:
     branch = os.environ.get("TRAVIS_BRANCH") or os.environ.get("BUILDKITE_BRANCH")
     if not branch:
         print("Branch not found!")
         print(os.environ)
         print("Environment is above ^^")
+        return ""
     return branch
 
 
-def _release_build():
-    branch = _get_branch()
+_BRANCH = _get_branch()
+
+
+def _release_build(branch: Optional[str] = None) -> bool:
+    if not branch:
+        branch = _BRANCH
     return branch and branch.startswith("releases/")
 
 
-def _valid_branch():
-    return _get_branch() == "master" or _release_build()
+def _valid_branch(branch: Optional[str] = None) -> bool:
+    if not branch:
+        branch = _BRANCH
+    return branch == "master" or _release_build(branch)
 
 
-def _get_curr_dir():
+def _get_curr_dir() -> str:
     return os.path.dirname(os.path.realpath(__file__))
 
 
-def _get_root_dir():
+def _get_root_dir() -> str:
     return os.path.join(_get_curr_dir(), "../../")
 
 
-def _get_commit_sha():
+def _get_commit_sha() -> str:
     sha = os.environ.get("TRAVIS_COMMIT") or os.environ.get("BUILDKITE_COMMIT") or ""
     if len(sha) < 6:
         print("INVALID SHA FOUND")
@@ -116,18 +123,19 @@ def _get_commit_sha():
     return sha[:6]
 
 
+_COMMIT_SHA = _get_commit_sha()
+
+
 def _configure_human_version():
-    global _get_branch
-    global _get_commit_sha
-    fake_branch_name = input(
+    global _BRANCH
+    global _COMMIT_SHA
+    _BRANCH = input(
         "Provide a 'branch name'. For releases, it " "should be `releases/x.x.x`"
     )
-    _get_branch = lambda: fake_branch_name  # noqa: E731
-    fake_sha = input("Provide a SHA (used for tag value)")
-    _get_commit_sha = lambda: fake_sha  # noqa: E731
+    _COMMIT_SHA = input("Provide a SHA (used for tag value)")
 
 
-def _get_wheel_name(minor_version_number):
+def _get_wheel_name(minor_version_number) -> str:
     if minor_version_number:
         matches = [
             file
@@ -243,7 +251,7 @@ def _build_docker_image(
         labels = {
             "image-name": image_name,
             "python-version": PY_MATRIX[py_version],
-            "ray-commit": _get_commit_sha(),
+            "ray-commit": _COMMIT_SHA,
         }
         if image_type in CUDA_FULL:
             labels["cuda-version"] = CUDA_FULL[image_type]
@@ -615,9 +623,9 @@ def push_and_tag_images(
     suffix: Optional[str] = None,
 ):
     date_tag = datetime.datetime.now().strftime("%Y-%m-%d")
-    sha_tag = _get_commit_sha()
+    sha_tag = _COMMIT_SHA
     if _release_build():
-        release_name = _get_branch()[len("releases/") :]
+        release_name = _BRANCH[len("releases/") :]
         date_tag = release_name + "." + date_tag
         sha_tag = release_name + "." + sha_tag
     if release_pr_build:
