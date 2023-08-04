@@ -531,7 +531,7 @@ def test_actor_streaming_generator(shutdown_only, store_in_plasma):
         expected = 0
         async for ref in async_generator:
             value = await ref
-            assert value == value
+            assert expected == value
             expected += 1
 
     async def verify_async_task_async_generator():
@@ -550,9 +550,9 @@ def test_actor_streaming_generator(shutdown_only, store_in_plasma):
             ray.put(arr)
         )
         expected = 0
-        async for value in async_generator:
+        async for ref in async_generator:
             value = await ref
-            assert value == value
+            assert expected == value
             expected += 1
 
     verify_sync_task_executor()
@@ -1083,6 +1083,53 @@ def test_return_yield_mix(shutdown_only):
 
     assert len(result) == 1
     assert result[0] == 0
+
+
+def test_task_name_not_changed_for_iteration(shutdown_only):
+    """Handles https://github.com/ray-project/ray/issues/37147.
+    Verify the task_name is not changed for each iteration in
+    async actor generator task.
+    """
+
+    @ray.remote
+    class A:
+        async def gen(self):
+            task_name = asyncio.current_task().get_name()
+            for i in range(5):
+                assert (
+                    task_name == asyncio.current_task().get_name()
+                ), f"{task_name} != {asyncio.current_task().get_name()}"
+                yield i
+
+            assert task_name == asyncio.current_task().get_name()
+
+    a = A.remote()
+    for obj_ref in a.gen.options(num_returns="streaming").remote():
+        print(ray.get(obj_ref))
+
+
+def test_async_actor_concurrent(shutdown_only):
+    """Verify the async actor generator tasks are concurrent."""
+
+    @ray.remote
+    class A:
+        async def gen(self):
+            for i in range(5):
+                await asyncio.sleep(1)
+                yield i
+
+    a = A.remote()
+
+    async def co():
+        async for ref in a.gen.options(num_returns="streaming").remote():
+            print(await ref)
+
+    async def main():
+        await asyncio.gather(co(), co(), co())
+
+    s = time.time()
+    asyncio.run(main())
+    assert 4.5 < time.time() - s < 6.5
 
 
 if __name__ == "__main__":

@@ -340,6 +340,9 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   size_t ArgMetadataSize(size_t arg_index) const;
 
+  /// Return true if the task should be retried upon exceptions.
+  bool ShouldRetryExceptions() const;
+
   /// Return the ObjectRefs that were inlined in this task argument.
   const std::vector<rpc::ObjectReference> ArgInlinedRefs(size_t arg_index) const;
 
