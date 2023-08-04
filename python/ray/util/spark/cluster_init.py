@@ -963,7 +963,7 @@ def setup_ray_cluster(
 
     if num_gpus_per_node is not None and num_spark_task_gpus == 0:
         raise ValueError(
-            "The spark cluster is not configured with 'gpu' resources, so that "
+            "The spark cluster worker nodes are not configured with 'gpu' resources, so that "
             "you cannot specify the `num_gpus_per_node` argument."
         )
 
