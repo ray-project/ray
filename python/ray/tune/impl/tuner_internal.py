@@ -26,7 +26,7 @@ from ray.air._internal.remote_storage import download_from_uri, is_non_local_pat
 from ray.air._internal.uri_utils import URI
 from ray.air._internal.usage import AirEntrypoint
 from ray.air.config import RunConfig, ScalingConfig
-from ray.train._internal.storage import _use_storage_context
+from ray.train._internal.storage import _use_storage_context, StorageContext
 from ray.tune import Experiment, TuneError, ExperimentAnalysis
 from ray.tune.execution.experiment_state import _ResumeConfig
 from ray.tune.tune import _Config
@@ -427,11 +427,10 @@ class TunerInternal:
             # If we synced, `experiment_checkpoint_dir` will contain a temporary
             # directory. Create an experiment checkpoint dir instead and move
             # our data there.
-            new_exp_path, new_exp_name = Path(
-                self.setup_create_experiment_checkpoint_dir(
-                    self.converted_trainable, self._run_config
-                )
+            new_exp_path, new_exp_name = self.setup_create_experiment_checkpoint_dir(
+                self.converted_trainable, self._run_config
             )
+            new_exp_path = Path(new_exp_path)
             for file_dir in experiment_checkpoint_path.glob("*"):
                 file_dir.replace(new_exp_path / file_dir.name)
             shutil.rmtree(experiment_checkpoint_path)
@@ -534,8 +533,8 @@ class TunerInternal:
             Tuple: (experiment_path, experiment_dir_name)
         """
         if _use_storage_context():
-            experiment_dir_name = run_config.name or Experiment.get_experiment_dir_name(
-                trainable
+            experiment_dir_name = (
+                run_config.name or StorageContext.get_experiment_dir_name(trainable)
             )
             storage_local_path = _get_defaults_results_dir()
             experiment_path = os.path.join(storage_local_path, experiment_dir_name)
