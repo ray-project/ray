@@ -228,6 +228,11 @@ class _TrialRuntimeMetadata:
 
 
 class _TrialState:
+    """Temporary trial state.
+
+    Values saved here should not be restored on resume.
+    """
+
     def __init__(self):
         self.location = _Location()
 
@@ -235,6 +240,9 @@ class _TrialState:
 
         self.saving_to = None
         self.restoring_from = None
+
+    def __getstate__(self):
+        return {}
 
 
 def _get_max_path_length() -> int:
