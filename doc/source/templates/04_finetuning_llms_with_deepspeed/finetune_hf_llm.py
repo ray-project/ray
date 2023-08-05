@@ -40,6 +40,19 @@ OPTIM_WEIGHT_DECAY = 0.0
 MIRROR_LINK = "s3://llama-2-weights/"
 
 
+def get_expected_lora_num_parameters(lora_config, model):
+    """Calculate the expected number of parameters for lora finetuning."""
+    sum_params = 0
+    for module_name in lora_config.target_modules:
+        modules = model.named_modules()
+        # We calculate the number of parameters we need for lora finetuning by calculating 
+        # the sizes of the deecomposed weight matrices according to the paper.
+        for name, target in modules:
+            if name.split(".")[-1] == module_name:
+                sum_params += (target.in_features + target.out_features) * lora_config.r
+    return sum_params
+    
+
 def get_number_of_params(model: nn.Module):
     state_dict = model.state_dict()
     return sum(p.numel() for p in state_dict.values())
@@ -217,17 +230,24 @@ def training_function(kwargs: dict):
         assert "lora" in config, "No LoRA config provided."
         lora_config = LoraConfig(**config["lora_config"])
 
+        expected_num_parameters = get_expected_lora_num_parameters(lora_config=lora_config, model=model)
+
         if config["as_test"]:
-            print(f"Modifying model to enable LoRA...")
-            # If we execute this as a test, be more verbose about what we attempt to lora-ify
-            print(f"Model has sub-models:\n {list(model.named_modules())}")
             print(f"Attempting to apply LoRA config: {lora_config}")
 
         model = get_peft_model(model, lora_config)
+        
+        num_parameters = get_number_of_params(model)
+
+        if num_parameters != expected_num_parameters:
+            raise ValueError(f"Expected {expected_num_parameters} parameters, got {num_parameters} parameters."
+                             f"LoRA-ification failed.")
+
         if config["as_test"]:
-            print(f"LoRA-ification done in {time.time() - s} seconds.")
+            print(f"LoRA-ification done in {time.time() - s} seconds. "
+                  f"Estimated checkpoint size: {num_parameters * 2 / 1e6} MB")
     
-    print(f"Number of trainable parameters: {model.num_parameters()}")
+    print(f"Number of checkpointed parameters: {get_number_of_params(model)}")
 
     model.resize_token_embeddings(len(tokenizer))
     print("Model initialized with pretrained weights. Training starting...")
@@ -260,15 +280,15 @@ def training_function(kwargs: dict):
     ):
         lr_scheduler = get_linear_schedule_with_warmup(
             optimizer=optimizer,
-            num_warmup_steps=100,
-            num_training_steps=(train_ds_len * num_epochs)
+            num_warmup_steps=10 * batch_size,
+            num_training_steps=(train_ds_len * num_epochs * batch_size)
             // gradient_accumulation_steps,
         )
     else:
         lr_scheduler = DummyScheduler(
             optimizer,
-            total_num_steps=(train_ds_len * num_epochs) // gradient_accumulation_steps,
-            warmup_num_steps=100,
+            total_num_steps=(train_ds_len * num_epochs * batch_size) // gradient_accumulation_steps,
+            warmup_num_steps=10 * batch_size,
         )
 
     # Prepare everything
@@ -632,8 +652,9 @@ def main():
 
     results = trainer.fit()
 
-    print("results are stored in:")
-    print(results.checkpoint.uri)
+    if not args.as_test:
+        print("results are stored in:")
+        print(results.checkpoint.uri)
 
 
 if __name__ == "__main__":

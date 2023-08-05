@@ -54,7 +54,6 @@ fine_tune() {
         --test_path "${test_path}"  \
         --special_token_path "${token_path}" \
         --num-checkpoints-to-keep 1 \
-        --num-epochs 3
         "${params[@]}"; then
         echo "Failed to fine-tune the model. Exiting..."
         exit 1
@@ -75,13 +74,15 @@ do
     key=${arg%%=*}
     value=${arg#*=}
     if [[ "$key" == "--size" ]]; then
-        SIZE=${value}
-    elif [ "$arg" = "--as-test" ]; then
-        params+=("--as-test")
-    elif [ "$arg" = "--lora" ]; then
-        params+=("--lora")
-        params+=("--lr")
-        params+=("1e-4")
+        SIZE=${value};
+    elif [[ "$arg" == "--as-test" ]]; then
+        params+=("--as-test");
+    elif [[ "$arg" == "--lora" ]]; then
+        params+=("--lora");
+        params+=("--lr");
+        params+=("1e-4");
+    elif [[ "$arg" == "--num-epochs" ]]; then
+        params+=("--num-epochs", ${value})
     fi
 done
 
@@ -112,6 +113,7 @@ CONFIG_DIR="./deepspeed_configs/zero_3_llama_2_${SIZE}.json"
 setup_aws
 prepare_nodes "${MODEL_ID}"
 check_and_create_dataset "${DATA_DIR}"
+
 fine_tune "$BS" "$ND" "$MODEL_ID" "$BASE_DIR" "$CONFIG_DIR" "$TRAIN_PATH" "$TEST_PATH" "$TOKEN_PATH" "${params[@]}"
 
 echo "Process completed."
