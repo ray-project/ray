@@ -343,12 +343,12 @@ The following metrics are exposed by Ray Serve:
      - * route
        * application
      - The end-to-end latency of HTTP requests (measured from the Serve HTTP proxy).
-   * - ``serve_multiplexed_model_load_latency_s``
+   * - ``serve_multiplexed_model_load_latency_ms``
      - * deployment
        * replica
        * application
      - The time it takes to load a model.
-   * - ``serve_multiplexed_model_unload_latency_s``
+   * - ``serve_multiplexed_model_unload_latency_ms``
      - * deployment
        * replica
        * application
@@ -368,6 +368,17 @@ The following metrics are exposed by Ray Serve:
        * replica
        * application
      - The number of times models loaded on the current replica.
+   * - ``serve_registered_multiplexed_model_id``
+     - * deployment
+       * replica
+       * application
+       * model_id
+     - The mutlplexed model ID registered on the current replica.
+   * - ``serve_multiplexed_get_model_requests_counter``
+     - * deployment
+       * replica
+       * application
+     - The number of calls to get a multiplexed model.
 ```
 [*] - only available when using HTTP calls
 [**] - only available when using Python `ServeHandle` calls
