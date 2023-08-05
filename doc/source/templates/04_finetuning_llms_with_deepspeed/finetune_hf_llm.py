@@ -277,8 +277,9 @@ def training_function(kwargs: dict):
         print("Starting training ...")
         print("Number of batches on main process", train_ds_len // batch_size)
 
-    fwd_time_sum, bwd_time_sum, optim_step_time_sum = 0, 0, 0
     for epoch in range(num_epochs):
+        
+        fwd_time_sum, bwd_time_sum, optim_step_time_sum = 0, 0, 0
         s_epoch = time.time()
         model.train()
         loss_sum = torch.tensor(0.0).to(accelerator.device)
