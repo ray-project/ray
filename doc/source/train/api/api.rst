@@ -231,16 +231,6 @@ Mosaic
     ~train.mosaic.MosaicTrainer
 
 
-Reinforcement Learning (RLlib)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. autosummary::
-    :toctree: doc/
-
-    ~train.rl.RLTrainer
-    ~train.rl.RLCheckpoint
-
-
 .. _trainer-restore:
 
 Ray Train Experiment Restoration
