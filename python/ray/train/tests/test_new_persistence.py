@@ -68,6 +68,53 @@ def _resolve_storage_type(
         yield storage_path, storage_filesystem
 
 
+def _get_local_inspect_dir(
+    root_local_path: Path,
+    storage_path: str,
+    storage_local_path: Path,
+    storage_filesystem: Optional[pyarrow.fs.FileSystem],
+) -> Tuple[Path, str]:
+    """Downloads the storage path -> local dir for inspecting contents.
+
+    Returns:
+        Tuple: (local_inspect_dir, storage_fs_path), where storage_fs_path
+            is the path to the storage path on the filesystem (e.g., prefix stripped).
+            This is used to check the correctness of paths returned from `Result`'s,
+            since URIs are hard to do comparisons with.
+    """
+    local_inspect_dir = root_local_path / "inspect"
+    if storage_path:
+        if storage_filesystem:
+            fs, storage_fs_path = storage_filesystem, storage_path
+        else:
+            fs, storage_fs_path = pyarrow.fs.FileSystem.from_uri(storage_path)
+        _download_from_fs_path(
+            fs=fs, fs_path=storage_fs_path, local_path=str(local_inspect_dir)
+        )
+    else:
+        fs, storage_fs_path = pyarrow.fs.LocalFileSystem(), str(storage_local_path)
+        local_inspect_dir = storage_local_path
+
+    return local_inspect_dir, storage_fs_path
+
+
+def _convert_path_to_fs_path(
+    path: str, storage_filesystem: Optional[pyarrow.fs.FileSystem]
+) -> str:
+    """Converts a path to a (prefix-stripped) filesystem path.
+
+    Ex: "s3://bucket/path/to/file" -> "bucket/path/to/file"
+    Ex: "/mnt/nfs/path/to/file" -> "/mnt/nfs/bucket/path/to/file"
+    """
+    if not storage_filesystem:
+        _, fs_path = pyarrow.fs.FileSystem.from_uri(path)
+        return fs_path
+
+    # Otherwise, we're using a custom filesystem,
+    # and the provided path is already the fs path.
+    return path
+
+
 def train_fn(config):
     in_trainer = config.get("in_trainer", False)
     if in_trainer:
@@ -165,7 +212,7 @@ def test_tuner(monkeypatch, storage_path_type, tmp_path):
             run_config=train.RunConfig(
                 storage_path=storage_path,
                 storage_filesystem=storage_filesystem,
-                name="simple_persistence_test",
+                name=exp_name,
                 verbose=0,
                 failure_config=train.FailureConfig(max_failures=1),
             ),
@@ -174,20 +221,30 @@ def test_tuner(monkeypatch, storage_path_type, tmp_path):
                 num_samples=NUM_TRIALS, max_concurrent_trials=1
             ),
         )
-        tuner.fit()
+        result_grid = tuner.fit()
 
-        local_inspect_dir = tmp_path / "inspect"
-        if storage_path:
-            if storage_filesystem:
-                fs, fs_path = storage_filesystem, storage_path
-            else:
-                fs, fs_path = pyarrow.fs.FileSystem.from_uri(storage_path)
-            _download_from_fs_path(
-                fs=fs, fs_path=fs_path, local_path=str(local_inspect_dir)
-            )
-        else:
-            local_inspect_dir = LOCAL_CACHE_DIR
+        local_inspect_dir, storage_fs_path = _get_local_inspect_dir(
+            root_local_path=tmp_path,
+            storage_path=storage_path,
+            storage_local_path=LOCAL_CACHE_DIR,
+            storage_filesystem=storage_filesystem,
+        )
 
+    # First, check that the ResultGrid returns the correct paths.
+    experiment_fs_path = _convert_path_to_fs_path(
+        result_grid.experiment_path, storage_filesystem
+    )
+    assert experiment_fs_path == os.path.join(storage_fs_path, exp_name)
+    assert len(result_grid) == NUM_TRIALS
+    for result in result_grid:
+        trial_fs_path = _convert_path_to_fs_path(result.path, storage_filesystem)
+        assert trial_fs_path.startswith(experiment_fs_path)
+        # TODO(justinvyu): Trainable syncing of artifacts and checkpoints
+        # is not yet implemented for the new persistence path.
+        # for checkpoint, _ in result.best_checkpoints:
+        #     assert checkpoint.path.startswith(trial_fs_path)
+
+    # Next, inspect the storage path contents.
     assert len(list(local_inspect_dir.glob("*"))) == 1  # Only expect 1 experiment dir
     exp_dir = local_inspect_dir / exp_name
 
@@ -230,7 +287,7 @@ def test_trainer(
         ├── progress.csv
         ├── result.json
         ├── checkpoint_000000
-        │   ├── checkpoint_shard-rank=0.pkl                  <- Worker checkpoint shards
+        │   ├── checkpoint_shard-rank=0.pkl       <- Worker checkpoint shards
         │   └── checkpoint_shard-rank=1.pkl
         ├── ...
         ├── artifact-rank=0-iter=0.txt            <- Worker artifacts
@@ -264,29 +321,18 @@ def test_trainer(
         )
         result = trainer.fit()
 
-        local_inspect_dir = tmp_path / "inspect"
-        if storage_path:
-            if storage_filesystem:
-                fs, storage_fs_path = storage_filesystem, storage_path
-            else:
-                fs, storage_fs_path = pyarrow.fs.FileSystem.from_uri(storage_path)
-            _download_from_fs_path(
-                fs=fs, fs_path=storage_fs_path, local_path=str(local_inspect_dir)
-            )
-        else:
-            fs, storage_fs_path = pyarrow.fs.LocalFileSystem(), str(LOCAL_CACHE_DIR)
-            local_inspect_dir = LOCAL_CACHE_DIR
+        local_inspect_dir, storage_fs_path = _get_local_inspect_dir(
+            root_local_path=tmp_path,
+            storage_path=storage_path,
+            storage_local_path=LOCAL_CACHE_DIR,
+            storage_filesystem=storage_filesystem,
+        )
 
     # First, inspect that the result object returns the correct paths.
-    # TODO(justinvyu): [custom_fs_path_expansion]
-    # This doesn't work for the `custom_fs` case right now
-    # because Result.path <- Trial.remote_path/local_path <- Experiment.path,
-    # which expands the storage path to an absolute path.
-    # We shouldn't expand the storage path to an absolute path if a custom fs is passed.
-    if not storage_filesystem:
-        _, trial_fs_path = pyarrow.fs.FileSystem.from_uri(result.path)
-        assert trial_fs_path.startswith(storage_fs_path)
-        assert result.checkpoint.path.startswith(trial_fs_path)
+    trial_fs_path = _convert_path_to_fs_path(result.path, storage_filesystem)
+    assert trial_fs_path.startswith(storage_fs_path)
+    for checkpoint, _ in result.best_checkpoints:
+        assert checkpoint.path.startswith(trial_fs_path)
 
     # Second, inspect the contents of the storage path
     assert len(list(local_inspect_dir.glob("*"))) == 1  # Only expect 1 experiment dir
@@ -313,12 +359,8 @@ def test_trainer(
 
         # NOTE: These next 2 are technically synced by the driver.
         # TODO(justinvyu): In a follow-up PR, artifacts will be synced by the workers.
-        # TODO(justinvyu): [custom_fs_path_expansion] Same issue as above.
-        if not storage_filesystem:
-            assert (
-                len(list(trial_dir.glob("artifact-*"))) == NUM_ITERATIONS * NUM_WORKERS
-            )
-            assert len(list(trial_dir.glob(EXPR_RESULT_FILE))) == 1
+        assert len(list(trial_dir.glob("artifact-*"))) == NUM_ITERATIONS * NUM_WORKERS
+        assert len(list(trial_dir.glob(EXPR_RESULT_FILE))) == 1
 
 
 if __name__ == "__main__":

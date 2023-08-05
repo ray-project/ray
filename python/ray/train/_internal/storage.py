@@ -4,7 +4,7 @@ import logging
 import os
 from pathlib import Path
 import shutil
-from typing import Callable, Dict, List, Optional, Tuple, TYPE_CHECKING
+from typing import Callable, Dict, List, Optional, Tuple, Type, Union, TYPE_CHECKING
 
 try:
     import fsspec
@@ -320,20 +320,25 @@ class StorageContext:
     For example, on the driver, the storage context is initialized, only knowing
     the experiment path. On the Trainable actor, the trial_dir_name is accessible.
 
-    Example with storage_path="mock:///bucket/path":
+    There are 2 types of paths:
+    1. *_fs_path: A path on the `storage_filesystem`. This is a regular path
+        which has been prefix-stripped by pyarrow.fs.FileSystem.from_uri and
+        can be joined with `os.path.join`.
+    2. *_local_path: The path on the local filesystem where results are saved to
+       before persisting to storage.
+
+    Example with storage_path="mock:///bucket/path?param=1":
 
         >>> from ray.train._internal.storage import StorageContext
         >>> import os
         >>> os.environ["RAY_AIR_LOCAL_CACHE_DIR"] = "/tmp/ray_results"
         >>> storage = StorageContext(
-        ...     storage_path="mock:///bucket/path",
+        ...     storage_path="mock://netloc/bucket/path?param=1",
         ...     sync_config=SyncConfig(),
         ...     experiment_dir_name="exp_name",
         ... )
         >>> storage.storage_filesystem   # Auto-resolved  # doctest: +ELLIPSIS
         <pyarrow._fs._MockFileSystem object...
-        >>> storage.experiment_path
-        'mock:///bucket/path/exp_name'
         >>> storage.experiment_fs_path
         'bucket/path/exp_name'
         >>> storage.experiment_local_path
@@ -346,6 +351,10 @@ class StorageContext:
         >>> storage.current_checkpoint_index = 1
         >>> storage.checkpoint_fs_path
         'bucket/path/exp_name/trial_dir/checkpoint_000001'
+        >>> storage.storage_prefix
+        URI<mock://netloc?param=1>
+        >>> str(storage.storage_prefix / storage.experiment_fs_path)
+        'mock://netloc/bucket/path/exp_name?param=1'
 
     Example with storage_path=None:
 
@@ -361,8 +370,6 @@ class StorageContext:
         '/tmp/ray_results'
         >>> storage.storage_local_path
         '/tmp/ray_results'
-        >>> storage.experiment_path
-        '/tmp/ray_results/exp_name'
         >>> storage.experiment_local_path
         '/tmp/ray_results/exp_name'
         >>> storage.experiment_fs_path
@@ -371,7 +378,10 @@ class StorageContext:
         True
         >>> storage.storage_filesystem   # Auto-resolved  # doctest: +ELLIPSIS
         <pyarrow._fs.LocalFileSystem object...
-
+        >>> storage.storage_prefix
+        URI<.>
+        >>> str(storage.storage_prefix / storage.experiment_fs_path)
+        '/tmp/ray_results/exp_name'
 
     Internal Usage Examples:
     - To copy files to the trial directory on the storage filesystem:
@@ -427,6 +437,18 @@ class StorageContext:
                 self.storage_filesystem,
                 self.storage_fs_path,
             ) = pyarrow.fs.FileSystem.from_uri(self.storage_path)
+
+        # The storage prefix is the URI that remains after stripping the
+        # URI prefix away from the user-provided `storage_path` (using `from_uri`).
+        # Ex: `storage_path="s3://bucket/path?param=1`
+        #  -> `storage_prefix=URI<s3://.?param=1>`
+        # See the doctests for more examples.
+        # This is used to construct URI's of the same format as `storage_path`.
+        # However, we don't track these URI's internally, because pyarrow only
+        # needs to interact with the prefix-stripped fs_path.
+        self.storage_prefix: URI = URI(self.storage_path).rstrip_subpath(
+            Path(self.storage_fs_path)
+        )
 
         # Only initialize a syncer if a `storage_path` was provided.
         self.syncer: Optional[Syncer] = (
@@ -525,16 +547,6 @@ class StorageContext:
         return uploaded_checkpoint
 
     @property
-    def experiment_path(self) -> str:
-        """The path the experiment directory, where the format matches the
-        original `storage_path` format specified by the user.
-
-        Ex: If the user passed in storage_path="s3://bucket/path?param=1", then
-        this property returns "s3://bucket/path/exp_name?param=1".
-        """
-        return str(URI(self.storage_path) / self.experiment_dir_name)
-
-    @property
     def experiment_fs_path(self) -> str:
         """The path on the `storage_filesystem` to the experiment directory.
 
@@ -594,6 +606,19 @@ class StorageContext:
             self.current_checkpoint_index
         )
         return os.path.join(self.trial_fs_path, checkpoint_dir_name)
+
+    @staticmethod
+    def get_experiment_dir_name(run_obj: Union[str, Callable, Type]) -> str:
+        from ray.tune.experiment import Experiment
+        from ray.tune.utils import date_str
+
+        run_identifier = Experiment.get_trainable_name(run_obj)
+
+        if bool(int(os.environ.get("TUNE_DISABLE_DATED_SUBDIR", 0))):
+            dir_name = run_identifier
+        else:
+            dir_name = "{}_{}".format(run_identifier, date_str())
+        return dir_name
 
 
 _storage_context: Optional[StorageContext] = None
