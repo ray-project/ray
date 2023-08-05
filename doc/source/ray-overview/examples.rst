@@ -235,20 +235,6 @@ Ray Examples
         How to log results and upload models to Weights and Biases
 
     .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item
-        :link: /ray-air/examples/rl_online_example
-        :link-type: doc
-
-        RL Online Learning with Ray AIR
-
-    .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item
-        :link: /ray-air/examples/rl_offline_example
-        :link-type: doc
-
-        RL Offline Learning with Ray AIR
-
-    .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item pytorch
         :link: /ray-air/examples/torch_incremental_learning
         :link-type: doc

@@ -23,7 +23,6 @@ AIR_TRAINERS = {
     "LightGBMTrainer",
     "LightningTrainer",
     "MosaicTrainer",
-    "RLTrainer",
     "SklearnTrainer",
     "TensorflowTrainer",
     "TorchTrainer",
