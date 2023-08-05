@@ -89,4 +89,3 @@ Built-in Predictors for Library Integrations
     ~torch.TorchPredictor
     ~huggingface.TransformersPredictor
     ~sklearn.SklearnPredictor
-    ~rl.RLPredictor
