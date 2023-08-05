@@ -183,6 +183,8 @@
     - bash ./ci/ci.sh prepare_docker
     - ./ci/env/env_info.sh
     - pip install ray[client]
+    - bazel test --config=ci $(./ci/run/bazel_export_options)
+      -- python/ray/autoscaler/v2/...
     - bazel test --config=ci $(./ci/run/bazel_export_options) 
       --test_tag_filters=client_tests,small_size_python_tests,-team:core 
       -- python/ray/tests/...
@@ -193,8 +195,6 @@
       --test_env=DOCKER_CERT_PATH=/certs/client
       --test_env=DOCKER_TLS_CERTDIR=/certs
       -- python/ray/tests/...
-    - bazel test --config=ci $(./ci/run/bazel_export_options)
-      -- python/ray/autoscaler/v2/...
 
 - label: ":python: (Medium A-J)"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
