@@ -450,9 +450,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
     }
   }
 
-  int GetMemoryStoreSize() {
-    return memory_store_->Size();
-  }
+  int GetMemoryStoreSize() { return memory_store_->Size(); }
 
   /// Returns a map of all ObjectIDs currently in scope with a pair of their
   /// (local, submitted_task) reference counts. For debugging purposes.

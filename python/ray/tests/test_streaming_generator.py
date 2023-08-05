@@ -1135,7 +1135,7 @@ def test_async_actor_concurrent(shutdown_only):
 
 def test_no_memory_store_obj_leak(shutdown_only):
     """Fixes https://github.com/ray-project/ray/issues/38089
-    
+
     Verify there's no leak from in-memory object store when
     using a streaming generator.
     """
@@ -1146,13 +1146,12 @@ def test_no_memory_store_obj_leak(shutdown_only):
         for _ in range(10):
             yield 1
 
-
     for _ in range(10):
         for ref in f.options(num_returns="streaming").remote():
             del ref
-        import time
+
         time.sleep(0.2)
-    
+
     core_worker = ray._private.worker.global_worker.core_worker
     assert core_worker.get_memory_store_size() == 0
     assert_no_leak()
@@ -1160,9 +1159,10 @@ def test_no_memory_store_obj_leak(shutdown_only):
     for _ in range(10):
         for ref in f.options(num_returns="streaming").remote():
             break
-        import time
+
         time.sleep(0.2)
-    
+
+    del ref
     core_worker = ray._private.worker.global_worker.core_worker
     assert core_worker.get_memory_store_size() == 0
     assert_no_leak()
