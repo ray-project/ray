@@ -142,12 +142,17 @@ class _TrainSession:
             encode_data_fn = noop
         self._encode_data_fn = encode_data_fn
 
-        # TODO(xwjiang): Legacy Ray Train trainer clean up!
-        if trial_info:
-            # Change the working directory to `logdir`.
-            logdir = os.path.join(trial_info.logdir, f"rank_{self.world_rank}")
-            os.makedirs(logdir, exist_ok=True)
-            os.chdir(logdir)
+        if _use_storage_context():
+            # Change the working directory to the local trial directory.
+            # -> All workers on the same node share a working directory.
+            os.makedirs(storage.trial_local_path, exist_ok=True)
+            os.chdir(storage.trial_local_path)
+        else:
+            if trial_info:
+                # Change the working directory to `logdir`.
+                logdir = os.path.join(trial_info.logdir, f"rank_{self.world_rank}")
+                os.makedirs(logdir, exist_ok=True)
+                os.chdir(logdir)
 
         # This lock is used to control the execution of the training thread.
         self.continue_lock = threading.Semaphore(0)
@@ -364,7 +369,7 @@ class _TrainSession:
             if log_once("keep_all_ranks_dict_checkpoint"):
                 logger.warning(
                     "Saving checkpoints from all ranks does not work with "
-                    "dictionary checkpoints. Set `ray.air.CheckpointConfig"
+                    "dictionary checkpoints. Set `ray.train.CheckpointConfig"
                     "(_checkpoint_keep_all_ranks=False)`, or write checkpoints "
                     "to a directory and report directory checkpoints that "
                     "contain unique files per worker rank. For example, "
@@ -435,6 +440,46 @@ class _TrainSession:
         """
         self.legacy_checkpoint_uri = uri
 
+    def new_checkpoint(self, checkpoint):
+        from ray.train._checkpoint import Checkpoint as NewCheckpoint
+
+        if not isinstance(checkpoint, NewCheckpoint):
+            raise ValueError(
+                "You must pass a `ray.train.checkpoint.Checkpoint` "
+                "object to `train.report`. `ray.air.Checkpoint` is deprecated."
+            )
+
+        # Persist the reported checkpoint files to storage.
+        persisted_checkpoint = self.storage.persist_current_checkpoint(checkpoint)
+
+        self.loaded_checkpoint = persisted_checkpoint
+
+        metadata = self._auto_fill_checkpoint_metrics({})
+
+        # Save the rank of the worker that created this checkpoint.
+        metadata.update({CHECKPOINT_RANK_KEY: self.world_rank})
+
+        result = TrainingResult(
+            type=TrainingResultType.CHECKPOINT,
+            data=persisted_checkpoint,
+            metadata=metadata,
+        )
+
+        # Add result to a thread-safe queue.
+        self.result_queue.put(result, block=True)
+
+        # Acquire lock to stop the training thread until
+        # checkpoint has been processed.
+        self.continue_lock.acquire()
+
+    def new_report(self, metrics: Dict, checkpoint=None) -> None:
+        if checkpoint:
+            self.new_checkpoint(checkpoint)
+
+        # TODO(justinvyu): Unify checkpoint / report logic to just report a single
+        # (metrics, Checkpoint) result for the consumer to handle.
+        self._report_legacy(**metrics)
+
     def report(self, metrics: Dict, checkpoint: Optional[Checkpoint] = None) -> None:
         # TODO(xwjiang): tons of optimizations.
 
@@ -448,9 +493,12 @@ class _TrainSession:
                     "is not supported as it will throw an exception on "
                     "deserialization. You can either convert the tensors "
                     "to Python objects or use a `TorchCheckpoint` as the "
-                    "`checkpoint` argument of `ray.air.session.report` to "
+                    "`checkpoint` argument of `ray.train.report` to "
                     "store your Torch objects."
                 )
+
+        if _use_storage_context():
+            return self.new_report(metrics, checkpoint=checkpoint)
 
         if checkpoint:
             self.checkpoint(checkpoint)
@@ -612,16 +660,15 @@ def report(metrics: Dict, *, checkpoint: Optional[Checkpoint] = None) -> None:
 
             import tensorflow as tf
 
-            from ray.air import session
-            from ray.air.checkpoint import Checkpoint
-            from ray.air.config import ScalingConfig
+            from ray import train
+            from ray.train import Checkpoint, ScalingConfig
             from ray.train.tensorflow import TensorflowTrainer
 
             ######## Using it in the *per worker* train loop (TrainSession) #######
             def train_func():
                 model = tf.keras.applications.resnet50.ResNet50()
                 model.save("my_model", overwrite=True)
-                session.report(
+                train.report(
                     metrics={"foo": "bar"},
                     checkpoint=Checkpoint.from_directory("my_model")
                 )
@@ -665,13 +712,12 @@ def get_checkpoint() -> Optional[Checkpoint]:
         import tensorflow as tf
 
         ######## Using it in the *per worker* train loop (TrainSession) ######
-        from ray.air import session
-        from ray.air.checkpoint import Checkpoint
-        from ray.air.config import ScalingConfig
+        from ray import train
+        from ray.train import Checkpoint, ScalingConfig
         from ray.train.tensorflow import TensorflowTrainer
 
         def train_func():
-            ckpt = session.get_checkpoint()
+            ckpt = train.get_checkpoint()
             if ckpt:
                 with ckpt.as_directory() as loaded_checkpoint_dir:
                     model = tf.keras.models.load_model(loaded_checkpoint_dir)
@@ -679,7 +725,7 @@ def get_checkpoint() -> Optional[Checkpoint]:
                 model = tf.keras.applications.resnet50.ResNet50()
 
             model.save("my_model", overwrite=True)
-            session.report(
+            train.report(
                 metrics={"iter": 1},
                 checkpoint=Checkpoint.from_directory("my_model")
             )
@@ -695,7 +741,7 @@ def get_checkpoint() -> Optional[Checkpoint]:
             train_loop_per_worker=train_func,
             scaling_config=scaling_config,
             # this is ultimately what is accessed through
-            # ``Session.get_checkpoint()``
+            # ``ray.train.get_checkpoint()``
             resume_from_checkpoint=result.checkpoint,
         )
         result2 = trainer2.fit()
@@ -746,11 +792,10 @@ def get_trial_dir() -> str:
 
     .. testcode::
 
-        from ray import tune
-        from ray.air import session
+        from ray import train, tune
 
         def train_func(config):
-            print(session.get_trial_dir())
+            print(train.get_context().get_trial_dir())
 
         tuner = tune.Tuner(train_func)
         tuner.fit()
@@ -771,14 +816,14 @@ def get_world_size() -> int:
     .. testcode::
 
         import ray
-        from ray.air import session
-        from ray.air.config import ScalingConfig
+        from ray import train
+        from ray.train import ScalingConfig
         from ray.train.tensorflow import TensorflowTrainer
 
         NUM_WORKERS = 2
 
         def train_loop_per_worker(config):
-            assert session.get_world_size() == NUM_WORKERS
+            assert train.get_context().get_world_size() == NUM_WORKERS
 
         train_dataset = ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv")
         trainer = TensorflowTrainer(
@@ -811,12 +856,12 @@ def get_world_rank() -> int:
     .. testcode::
 
         import ray
-        from ray.air import session
-        from ray.air.config import ScalingConfig
+        from ray import train
+        from ray.train import ScalingConfig
         from ray.train.tensorflow import TensorflowTrainer
 
         def train_loop_per_worker(config):
-            if session.get_world_rank() == 0:
+            if train.get_context().get_world_rank() == 0:
                 print("Worker 0")
 
         train_dataset = ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv")
@@ -852,13 +897,13 @@ def get_local_rank() -> int:
         import torch
 
         import ray
-        from ray.air import session
-        from ray.air.config import ScalingConfig
+        from ray import train
+        from ray.train import ScalingConfig
         from ray.train.torch import TorchTrainer
 
         def train_loop_per_worker(config):
             if torch.cuda.is_available():
-                torch.cuda.set_device(session.get_local_rank())
+                torch.cuda.set_device(train.get_context().get_local_rank())
             ...
 
         train_dataset = ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv")
@@ -894,12 +939,12 @@ def get_local_world_size() -> int:
         .. testcode::
 
             import ray
-            from ray.air import session
-            from ray.air.config import ScalingConfig
+            from ray import train
+            from ray.train import ScalingConfig
             from ray.train.torch import TorchTrainer
 
             def train_loop_per_worker():
-                print(session.get_local_world_size())
+                print(train.get_context().get_local_world_size())
 
             train_dataset = ray.data.from_items(
                 [{"x": x, "y": x + 1} for x in range(32)])
@@ -933,12 +978,12 @@ def get_node_rank() -> int:
         .. testcode::
 
             import ray
-            from ray.air import session
-            from ray.air.config import ScalingConfig
+            from ray import train
+            from ray.train import ScalingConfig
             from ray.train.torch import TorchTrainer
 
             def train_loop_per_worker():
-                print(session.get_node_rank())
+                print(train.get_context().get_node_rank())
 
             train_dataset = ray.data.from_items(
                 [{"x": x, "y": x + 1} for x in range(32)])
@@ -976,15 +1021,15 @@ def get_dataset_shard(
     .. testcode::
 
         import ray
-        from ray.air import session
-        from ray.air.config import ScalingConfig
+        from ray import train
+        from ray.train import ScalingConfig
         from ray.train.torch import TorchTrainer
 
         def train_loop_per_worker(config):
             ...
             for epoch in range(2):
                 # Trainer will automatically handle sharding.
-                data_shard = session.get_dataset_shard("train")
+                data_shard = train.get_dataset_shard("train")
                 for batch in data_shard.iter_torch_batches():
                     ...
 

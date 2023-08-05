@@ -66,7 +66,7 @@ Even if the trial cannot be scheduled right now, Ray Tune will still try to star
 :ref:`autoscaling behavior <cluster-index>` if you're using the Ray cluster launcher.
 
 .. warning::
-    ``tune.with_resources`` cannot be used with :ref:`Ray Train Trainers <train-getting-started>`. If you are passing a Trainer to a Tuner, specify the resource requirements in the Trainer instance using :class:`~ray.air.config.ScalingConfig`. The general principles outlined below still apply.
+    ``tune.with_resources`` cannot be used with :ref:`Ray Train Trainers <train-docs>`. If you are passing a Trainer to a Tuner, specify the resource requirements in the Trainer instance using :class:`~ray.air.config.ScalingConfig`. The general principles outlined below still apply.
 
 It is also possible to specify memory (``"memory"``, in bytes) and custom resource requirements.
 
