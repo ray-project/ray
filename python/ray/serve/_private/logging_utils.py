@@ -229,7 +229,7 @@ def configure_component_memory_profiler(
     component_name: str,
     component_id: str,
     component_type: Optional[ServeComponentType] = None,
-) -> None:
+):
     """Configures the memory logger for this component.
 
     Does nothing if RAY_SERVE_ENABLE_MEMORY_PROFILING is disabled.
