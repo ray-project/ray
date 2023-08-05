@@ -431,6 +431,8 @@ def append_to_test_output_json(path, metrics):
     perf_metrics = defaultdict(dict)
     perf_metrics.update(output_json.get("perf_metrics", {}))
     perf_metric_name = f"{data_loader}_{num_images_per_file}-images-per-file_{num_files}-num-files-{num_cpu_nodes}-num-cpu-nodes_throughput-img-per-second"  # noqa: E501
+    # "." is not supported in metrics querying.
+    perf_metric_name = perf_metric_name.replace(".", "_")
     perf_metrics[perf_metric_name].update(
         {
             "THROUGHPUT": metrics["tput_images_per_s"],
