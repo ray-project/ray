@@ -495,6 +495,20 @@ class ServeApplicationSchema(BaseModel, extra=Extra.forbid):
 
 
 @PublicAPI(stability="alpha")
+class gRPCOptionsSchema(BaseModel, extra=Extra.forbid):
+    """Options to start the gRPC Proxy with."""
+
+    port: int = Field(
+        default=-1,
+        description=(
+            "Port for gRPC server. Will only start gRPC server if set. Cannot be "
+            "updated once Serve has started running. Serve must be shut down and "
+            "restarted with the new port instead."
+        ),
+    )
+
+
+@PublicAPI(stability="alpha")
 class HTTPOptionsSchema(BaseModel, extra=Extra.forbid):
     """Options to start the HTTP Proxy with."""
 
@@ -552,6 +566,9 @@ class ServeDeploySchema(BaseModel, extra=Extra.forbid):
     )
     applications: List[ServeApplicationSchema] = Field(
         ..., description=("The set of Serve applications to run on the Ray cluster.")
+    )
+    grpc_options: gRPCOptionsSchema = Field(
+        default=gRPCOptionsSchema(), description="Options to start the gRPC Proxy with."
     )
 
     @validator("applications")

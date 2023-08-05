@@ -4,14 +4,14 @@ import os
 import random
 import time
 import traceback
-from typing import Dict, List, Set, Tuple
+from typing import Dict, List, Optional, Set, Tuple
 
 import ray
 from ray.actor import ActorHandle
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 from ray._raylet import GcsClient
-from ray.serve.config import HTTPOptions, DeploymentMode
+from ray.serve.config import gRPCOptions, HTTPOptions, DeploymentMode
 from ray.serve._private.constants import (
     ASYNC_CONCURRENCY,
     PROXY_HEALTH_CHECK_TIMEOUT_S,
@@ -315,20 +315,20 @@ class HTTPProxyStateManager:
         config: HTTPOptions,
         head_node_id: str,
         gcs_client: GcsClient,
-        grpc_config=None,
+        grpc_options: Optional[gRPCOptions] = None,
     ):
-        print("in HTTPProxyStateManager", grpc_config)
+        print("in HTTPProxyStateManager", grpc_options)
         self._controller_name = controller_name
         self._detached = detached
         if config is not None:
             self._config = config
         else:
             self._config = HTTPOptions()
+        self._grpc_options = grpc_options
         self._proxy_states: Dict[NodeId, HTTPProxyState] = dict()
         self._head_node_id: str = head_node_id
 
         self._gcs_client = gcs_client
-        self.grpc_config = grpc_config
 
         assert isinstance(head_node_id, str)
 
@@ -349,6 +349,9 @@ class HTTPProxyStateManager:
 
     def get_config(self):
         return self._config
+
+    def get_grpc_options(self):
+        return self._grpc_options
 
     def get_http_proxy_handles(self) -> Dict[NodeId, ActorHandle]:
         return {
@@ -474,7 +477,7 @@ class HTTPProxyStateManager:
             node_id=node_id,
             http_middlewares=self._config.middlewares,
             request_timeout_s=self._config.request_timeout_s,
-            grpc_config=self.grpc_config,
+            grpc_options=self._grpc_options,
         )
         return proxy
 

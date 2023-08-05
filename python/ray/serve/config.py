@@ -586,3 +586,9 @@ class HTTPOptions(pydantic.BaseModel):
         validate_assignment = True
         extra = "forbid"
         arbitrary_types_allowed = True
+
+
+@PublicAPI(stability="alpha")
+class gRPCOptions(BaseModel):
+    port: int = -1
+    grpc_servicer_functions: List[Any] = []

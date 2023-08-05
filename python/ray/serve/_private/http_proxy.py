@@ -52,7 +52,6 @@ from ray.serve._private.constants import (
     SERVE_MULTIPLEXED_MODEL_ID,
     SERVE_NAMESPACE,
     DEFAULT_LATENCY_BUCKET_MS,
-    DEFAULT_GRPC_PROXY_PORT,
     PROXY_MIN_DRAINING_PERIOD_S,
     RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING,
     RAY_SERVE_REQUEST_ID_HEADER,
@@ -74,6 +73,7 @@ from ray.serve._private.utils import (
     calculate_remaining_timeout,
     call_function_from_import_path,
 )
+from ray.serve.config import gRPCOptions
 from ray.serve.exceptions import RayServeTimeout
 
 
@@ -1191,10 +1191,10 @@ class HTTPProxyActor:
         node_id: NodeId,
         request_timeout_s: Optional[float] = None,
         http_middlewares: Optional[List["starlette.middleware.Middleware"]] = None,
-        grpc_config: Optional[Dict[str, Any]] = None,
+        grpc_options: Optional[gRPCOptions] = None,
     ):  # noqa: F821
-        self.grpc_config = grpc_config or {}
-        print("in HTTPProxyActor", grpc_config)
+        self.grpc_options = grpc_options or gRPCOptions()
+        print("in HTTPProxyActor", self.grpc_options)
         configure_component_logger(
             component_name="http_proxy", component_id=node_ip_address
         )
@@ -1222,7 +1222,7 @@ class HTTPProxyActor:
 
         self.host = host
         self.port = port
-        self.grpc_port = DEFAULT_GRPC_PROXY_PORT
+        self.grpc_port = self.grpc_options.port
         self.root_path = root_path
 
         self.http_setup_complete = asyncio.Event()
@@ -1235,12 +1235,16 @@ class HTTPProxyActor:
                 request_timeout_s or RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S
             ),
         )
-        self.grpc_proxy = gRPCProxy(
-            controller_name=controller_name,
-            node_id=node_id,
-            request_timeout_s=(
-                request_timeout_s or RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S
-            ),
+        self.grpc_proxy = (
+            gRPCProxy(
+                controller_name=controller_name,
+                node_id=node_id,
+                request_timeout_s=(
+                    request_timeout_s or RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S
+                ),
+            )
+            if self.should_start_grpc_server()
+            else None
         )
 
         self.wrapped_http_proxy = self.http_proxy
@@ -1256,11 +1260,14 @@ class HTTPProxyActor:
             self.run_http_server()
         )
 
-        # Right now just always start the gRPC server on the side. We can decide if we
-        # want to make this configurable later.
+        # Start running the gRPC server on the event loop.
+        # This task should be running forever. We track it in case of failure.
         self.running_task_grpc = get_or_create_event_loop().create_task(
             self.run_grpc_server()
         )
+
+    def should_start_grpc_server(self):
+        return self.grpc_port > 0
 
     async def ready(self):
         """Returns when both HTTP and gRPC proxies are ready to serve traffic.
@@ -1315,7 +1322,8 @@ class HTTPProxyActor:
         self, endpoint: EndpointTag, timeout_s: float
     ):
         await self.http_proxy.block_until_endpoint_exists(endpoint, timeout_s)
-        await self.grpc_proxy.block_until_endpoint_exists(endpoint, timeout_s)
+        if self.should_start_grpc_server():
+            await self.grpc_proxy.block_until_endpoint_exists(endpoint, timeout_s)
 
     async def run_http_server(self):
         sock = socket.socket()
@@ -1357,6 +1365,9 @@ class HTTPProxyActor:
         await server.serve(sockets=[sock])
 
     async def run_grpc_server(self):
+        if not self.should_start_grpc_server():
+            return self.grpc_setup_complete.set()
+
         # TODO (genesu): clean this up
         grpc_server = serve_server(
             unary_unary=self.grpc_proxy.Predict,
@@ -1365,7 +1376,7 @@ class HTTPProxyActor:
         grpc_server.add_insecure_port(f"[::]:{self.grpc_port}")
         dummy_servicer = DummyServicer()
         add_RayServeServiceServicer_to_server(dummy_servicer, grpc_server)
-        for grpc_servicer_function in self.grpc_config["grpc_servicer_functions"]:
+        for grpc_servicer_function in self.grpc_options.grpc_servicer_functions:
             grpc_servicer_function(dummy_servicer, grpc_server)
         await grpc_server.start()
         logger.info(

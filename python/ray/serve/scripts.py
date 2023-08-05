@@ -18,7 +18,7 @@ from ray.autoscaler._private.cli_logger import cli_logger
 from ray.dashboard.modules.dashboard_sdk import parse_runtime_env_args
 from ray.dashboard.modules.serve.sdk import ServeSubmissionClient
 from ray.serve.api import build as build_app
-from ray.serve.config import DeploymentMode
+from ray.serve.config import DeploymentMode, gRPCOptions
 from ray.serve._private.constants import (
     DEFAULT_HTTP_HOST,
     DEFAULT_HTTP_PORT,
@@ -430,24 +430,26 @@ def run(
         )
 
     http_options = {"host": host, "port": port, "location": "EveryNode"}
-    grpc_config = {"grpc_servicer_functions": []}
+    grpc_options = gRPCOptions()
     # Merge http_options with the ones on ServeDeploySchema. If host and/or port is
     # passed by cli, those continue to take the priority
     if is_config and isinstance(config, ServeDeploySchema):
         config_http_options = config.http_options.dict()
         http_options = {**config_http_options, **http_options}
         # TODO (genesu): refactor this
+        grpc_options = gRPCOptions(**config.grpc_options.dict())
         grpc_servicer_functions = []
         for application in config.applications:
             if application.grpc_servicer_function:
                 fun = import_attr(application.grpc_servicer_function)
                 grpc_servicer_functions.append(fun)
-        grpc_config["grpc_servicer_functions"] = grpc_servicer_functions
-    print("grpc_config", grpc_config)
+        grpc_options.grpc_servicer_functions = grpc_servicer_functions
+
+    print("in run grpc_options", grpc_options)
     client = _private_api.serve_start(
         detached=True,
         http_options=http_options,
-        grpc_config=grpc_config,
+        grpc_options=grpc_options,
     )
 
     try:
