@@ -1,5 +1,5 @@
 import collections
-from typing import Any, Mapping
+from typing import Any, Mapping, Optional
 
 from ray.data._internal.arrow_block import ArrowBlockBuilder
 from ray.data._internal.block_builder import BlockBuilder
@@ -56,12 +56,27 @@ class DelegatingBlockBuilder(BlockBuilder):
 
     def build(self) -> Block:
         if self._builder is None:
-            if self._empty_block is not None:
-                self._builder = BlockAccessor.for_block(self._empty_block).builder()
-                self._builder.add_block(self._empty_block)
-            else:
-                self._builder = ArrowBlockBuilder()
+            return self.generate_empty_block(self._empty_block)
         return self._builder.build()
+
+    def generate_empty_block(self, sample_block: Optional[Block] = None) -> Block:
+        """Generates an empty block.
+
+        The returned block will have the same block format as the sample_block.
+
+        Args:
+            sample_block: A sample block to used to determine what block format the
+                output should be. If not provided, an empty Arrow block is returned.
+
+        Returns:
+            An empty block with the same format as sample_block if provided.
+        """
+
+        if sample_block is None:
+            builder = ArrowBlockBuilder()
+        else:
+            builder = BlockAccessor.for_block(sample_block).builder()
+        return builder.build()
 
     def num_rows(self) -> int:
         return self._builder.num_rows() if self._builder is not None else 0

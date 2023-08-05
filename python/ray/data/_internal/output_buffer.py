@@ -78,3 +78,18 @@ class BlockOutputBuffer:
         self._buffer = DelegatingBlockBuilder()
         self._returned_at_least_one_block = True
         return block
+
+    def generate_empty_block(self, sample_block: Optional[Block] = None) -> Block:
+        """Generates an empty block.
+
+        The returned block will have the same block format as the sample_block.
+
+        Args:
+            sample_block: A sample block to used to determine what block format the
+                output should be. If not provided, an empty Arrow block is returned.
+
+        Returns:
+            An empty block with the same format as sample_block if provided.
+        """
+
+        return self._buffer.generate_empty_block(sample_block)

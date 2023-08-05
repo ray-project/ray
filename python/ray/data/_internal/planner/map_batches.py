@@ -1,4 +1,5 @@
 import collections
+import itertools
 from types import GeneratorType
 from typing import Callable, Iterator, Optional
 
@@ -105,6 +106,12 @@ def generate_map_batches_fn(
                 else:
                     raise e from None
 
+        try:
+            first_block = next(blocks)
+            blocks = itertools.chain([first_block], blocks)
+        except StopIteration:
+            first_block = None
+
         # Ensure that zero-copy batch views are copied so mutating UDFs don't error.
         formatted_batch_iter = batch_blocks(
             blocks=blocks,
@@ -114,12 +121,19 @@ def generate_map_batches_fn(
             ensure_copy=not zero_copy_batch and batch_size is not None,
         )
 
+        has_batches = False
         for batch in formatted_batch_iter:
+            has_batches = True
             yield from process_next_batch(batch)
 
-        # Yield remainder block from output buffer.
-        output_buffer.finalize()
-        if output_buffer.has_next():
-            yield output_buffer.next()
+        if not has_batches:
+            # If the input blocks are all empty, then short-circuit and return an empty
+            # block.
+            yield output_buffer.generate_empty_block(sample_block=first_block)
+        else:
+            # Yield remainder block from output buffer.
+            output_buffer.finalize()
+            if output_buffer.has_next():
+                yield output_buffer.next()
 
     return fn
