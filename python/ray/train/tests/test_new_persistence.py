@@ -275,35 +275,32 @@ def test_trainer(
     tmp_path, monkeypatch, storage_path_type, checkpoint_config: train.CheckpointConfig
 ):
     """
-        TODO(justinvyu): Test for these once implemented:
-        - artifacts
-        - restoration, train.get_checkpoint
+    TODO(justinvyu): Test for these once implemented:
+    - artifacts
+    - restoration, train.get_checkpoint
 
-        {storage_path}/{exp_name}
-        ├── experiment_state-2023-07-28_10-00-38.json
-        ├── basic-variant-state-2023-07-28_10-00-38.json
-        ├── trainer.pkl
-        ├── tuner.pkl
-        └── DataParallelTrainer_46367_00000_0_...
-            ├── events.out.tfevents...
-            ├── params.json
-            ├── params.pkl
-            ├── progress.csv
-            ├── result.json
-            ├── checkpoint_000000
-    <<<<<<< HEAD
-            │   ├── checkpoint.pkl                    <- Shared checkpoint file
-    =======
-    >>>>>>> 470c10bd0d46d5db90b1cf83a0ed423af720ba16
-            │   ├── checkpoint_shard-rank=0.pkl       <- Worker checkpoint shards
-            │   └── checkpoint_shard-rank=1.pkl
-            ├── ...
-            ├── artifact-rank=0-iter=0.txt            <- Worker artifacts
-            ├── artifact-rank=1-iter=0.txt
-            ├── ...
-            ├── artifact-rank=0-iter=1.txt
-            ├── artifact-rank=1-iter=1.txt
-            └── ...
+    {storage_path}/{exp_name}
+    ├── experiment_state-2023-07-28_10-00-38.json
+    ├── basic-variant-state-2023-07-28_10-00-38.json
+    ├── trainer.pkl
+    ├── tuner.pkl
+    └── DataParallelTrainer_46367_00000_0_...
+        ├── events.out.tfevents...
+        ├── params.json
+        ├── params.pkl
+        ├── progress.csv
+        ├── result.json
+        ├── checkpoint_000000
+        │   ├── checkpoint.pkl                    <- Shared checkpoint file
+        │   ├── checkpoint_shard-rank=0.pkl       <- Worker checkpoint shards
+        │   └── checkpoint_shard-rank=1.pkl
+        ├── ...
+        ├── artifact-rank=0-iter=0.txt            <- Worker artifacts
+        ├── artifact-rank=1-iter=0.txt
+        ├── ...
+        ├── artifact-rank=0-iter=1.txt
+        ├── artifact-rank=1-iter=1.txt
+        └── ...
     """
     LOCAL_CACHE_DIR = tmp_path / "ray_results"
     monkeypatch.setenv("RAY_AIR_LOCAL_CACHE_DIR", str(LOCAL_CACHE_DIR))
