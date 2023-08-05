@@ -35,8 +35,6 @@ OPTIM_BETAS = (0.9, 0.999)
 OPTIM_EPS = 1e-8
 OPTIM_WEIGHT_DECAY = 0.0
 
-MIRROR_LINK = "s3://llama-2-weights/"
-
 
 def get_number_of_params(model: nn.Module):
     state_dict = model.state_dict()
@@ -60,7 +58,7 @@ def collate_fn(batch, tokenizer, block_size, device):
 
 def get_pretrained_path(model_id: str):
     mirror_uri = get_mirror_link(model_id)
-    ckpt_path, _ = get_checkpoint_and_refs_dir(model_id=model_id, bucket_uri=mirror_uri)
+    ckpt_path, _ = get_checkpoint_and_refs_dir(model_id=model_id, bucket_uri=mirror_uri, s3_sync_args=["--no-sign-request"])
     return ckpt_path
 
 
