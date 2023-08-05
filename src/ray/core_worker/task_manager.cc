@@ -30,9 +30,8 @@ const int64_t kTaskFailureThrottlingThreshold = 50;
 // Throttle task failure logs to once this interval.
 const int64_t kTaskFailureLoggingFrequencyMillis = 5000;
 
-std::vector<ObjectID> ObjectRefStream::GetItemsUnconsumed() const {
-  // TODO: make it a set instead of vector.
-  std::vector<ObjectID> result;
+absl::hash_set<ObjectID> ObjectRefStream::GetItemsUnconsumed() const {
+  absl::hash_set<ObjectID> result;
   for (int64_t index = 0; index <= max_index_seen_; index++) {
     const auto &object_id = GetObjectRefAtIndex(index);
     if (refs_written_to_stream_.find(object_id) == refs_written_to_stream_.end()) {
@@ -40,8 +39,7 @@ std::vector<ObjectID> ObjectRefStream::GetItemsUnconsumed() const {
     }
 
     if (index >= next_index_) {
-      result.push_back(object_id);
-      RAY_LOG(ERROR) << "In GetItemsUnconsumed, got obj id: " << object_id;
+      result.emplace(object_id);
     }
   }
 
@@ -49,14 +47,12 @@ std::vector<ObjectID> ObjectRefStream::GetItemsUnconsumed() const {
     // End of stream index is never consumed by a caller
     // so we should add it here.
     const auto &object_id = GetObjectRefAtIndex(end_of_stream_index_);
-    RAY_LOG(ERROR) << "In GetItemsUnconsumed, end of stream is: " << object_id;
-    result.push_back(object_id);
+    result.emplace(object_id);
   }
 
   // Temporarily owned refs are not consumed.
   for (const auto &object_id : temporarily_owned_refs_) {
-    RAY_LOG(ERROR) << "In GetItemsUnconsumed, temporary obj id: " << object_id;
-    result.push_back(object_id);
+    result.emplace(object_id);
   }
   return result;
 }
@@ -102,7 +98,7 @@ bool ObjectRefStream::TemporarilyInsertToStreamIfNeeded(const ObjectID &object_i
 
 bool ObjectRefStream::InsertToStream(const ObjectID &object_id, int64_t item_index) {
   RAY_CHECK_EQ(object_id, GetObjectRefAtIndex(item_index));
-  if (end_of_stream_index_ != -1 && item_index > end_of_stream_index_) {
+  if (end_of_stream_index_ != -1 && item_index >= end_of_stream_index_) {
     RAY_CHECK(next_index_ <= end_of_stream_index_);
     // Ignore the index after the end of the stream index.
     // It can happen if the stream is marked as ended
@@ -432,14 +428,13 @@ bool TaskManager::HandleTaskReturn(const ObjectID &object_id,
 }
 
 void TaskManager::DelObjectRefStream(const ObjectID &generator_id) {
-  RAY_LOG(ERROR) << "Deleting an object ref stream of an id " << generator_id;
+  RAY_LOG(DEBUG) << "Deleting an object ref stream of an id " << generator_id;
   std::vector<ObjectID> object_ids_unconsumed;
 
   {
     absl::MutexLock lock(&mu_);
     auto it = object_ref_streams_.find(generator_id);
     if (it == object_ref_streams_.end()) {
-      RAY_LOG(ERROR) << "STREAM WAS NOT FOUND";
       return;
     }
 
@@ -451,8 +446,14 @@ void TaskManager::DelObjectRefStream(const ObjectID &generator_id) {
   // When calling RemoveLocalReference, we shouldn't hold a lock.
   for (const auto &object_id : object_ids_unconsumed) {
     std::vector<ObjectID> deleted;
-    RAY_LOG(ERROR) << "Removing unconsume streaming ref " << object_id;
+    RAY_LOG(DEBUG) << "Removing unconsume streaming ref " << object_id;
     reference_counter_->RemoveLocalReference(object_id, &deleted);
+    // TODO(sang): This is required because the reference counter
+    // cannot remove objects from the in memory store.
+    // Instead of doing this manually here, we should modify
+    // reference_count.h to automatically remove objects
+    // when the ref goes to 0.
+    in_memory_store_->Delete(deleted);
   }
 }
 
@@ -507,7 +508,6 @@ void TaskManager::MarkEndOfStream(const ObjectID &generator_id,
                    << ". Last object id: " << last_object_id;
   }
 
-  RAY_LOG(ERROR) << "End of stream object ID: " << last_object_id;
   if (!last_object_id.IsNil()) {
     reference_counter_->OwnDynamicStreamingTaskReturnRef(last_object_id, generator_id);
     RayObject error(rpc::ErrorType::END_OF_STREAMING_GENERATOR);

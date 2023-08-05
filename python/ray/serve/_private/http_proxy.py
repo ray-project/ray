@@ -1,6 +1,5 @@
 import asyncio
 from asyncio.tasks import FIRST_COMPLETED
-import gc
 import json
 import os
 import logging

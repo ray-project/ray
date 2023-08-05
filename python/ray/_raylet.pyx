@@ -396,7 +396,6 @@ class StreamingObjectRefGenerator:
             # NOTE: This can be called multiple times
             # because python doesn't guarantee __del__ is called
             # only once.
-            print("DELETING GENERATOR!!!!!!!!")
             self.worker.core_worker.delete_object_ref_stream(self._generator_ref)
 
     def __getstate__(self):
@@ -3238,6 +3237,9 @@ cdef class CoreWorker:
         message = CCoreWorkerProcess.GetCoreWorker().MemoryUsageString()
         logger.warning("Local object store memory usage:\n{}\n".format(
             message.decode("utf-8")))
+
+    def get_memory_store_size(self):
+        return CCoreWorkerProcess.GetCoreWorker().GetMemoryStoreSize()
 
     cdef python_label_match_expressions_to_c(
             self, python_expressions,
