@@ -1143,7 +1143,7 @@ def test_no_memory_store_obj_leak(shutdown_only):
 
     @ray.remote
     def f():
-        for _ in range(1):
+        for _ in range(10):
             yield 1
 
 
@@ -1151,7 +1151,17 @@ def test_no_memory_store_obj_leak(shutdown_only):
         for ref in f.options(num_returns="streaming").remote():
             del ref
         import time
-        time.sleep(0.1)
+        time.sleep(0.2)
+    
+    core_worker = ray._private.worker.global_worker.core_worker
+    assert core_worker.get_memory_store_size() == 0
+    assert_no_leak()
+
+    for _ in range(10):
+        for ref in f.options(num_returns="streaming").remote():
+            break
+        import time
+        time.sleep(0.2)
     
     core_worker = ray._private.worker.global_worker.core_worker
     assert core_worker.get_memory_store_size() == 0

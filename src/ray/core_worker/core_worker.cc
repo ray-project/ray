@@ -2722,7 +2722,7 @@ Status CoreWorker::ExecuteTask(
              "(e.g., __init__). Fix the exceptions from the initialization to resolve "
              "the issue. ",
              status.message()),
-         creation_task_exception_pb_bytes);
+         creation_task_exception_pb_bytes);  
   } else if (status.IsIntentionalSystemExit()) {
     Exit(rpc::WorkerExitType::INTENDED_USER_EXIT,
          absl::StrCat("Worker exits by an user request. ", status.message()),

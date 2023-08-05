@@ -30,8 +30,8 @@ const int64_t kTaskFailureThrottlingThreshold = 50;
 // Throttle task failure logs to once this interval.
 const int64_t kTaskFailureLoggingFrequencyMillis = 5000;
 
-absl::hash_set<ObjectID> ObjectRefStream::GetItemsUnconsumed() const {
-  absl::hash_set<ObjectID> result;
+absl::flat_hash_set<ObjectID> ObjectRefStream::GetItemsUnconsumed() const {
+  absl::flat_hash_set<ObjectID> result;
   for (int64_t index = 0; index <= max_index_seen_; index++) {
     const auto &object_id = GetObjectRefAtIndex(index);
     if (refs_written_to_stream_.find(object_id) == refs_written_to_stream_.end()) {
@@ -429,7 +429,7 @@ bool TaskManager::HandleTaskReturn(const ObjectID &object_id,
 
 void TaskManager::DelObjectRefStream(const ObjectID &generator_id) {
   RAY_LOG(DEBUG) << "Deleting an object ref stream of an id " << generator_id;
-  std::vector<ObjectID> object_ids_unconsumed;
+  absl::flat_hash_set<ObjectID> object_ids_unconsumed;
 
   {
     absl::MutexLock lock(&mu_);
@@ -442,7 +442,6 @@ void TaskManager::DelObjectRefStream(const ObjectID &generator_id) {
     object_ids_unconsumed = stream.GetItemsUnconsumed();
     object_ref_streams_.erase(generator_id);
   }
-
   // When calling RemoveLocalReference, we shouldn't hold a lock.
   for (const auto &object_id : object_ids_unconsumed) {
     std::vector<ObjectID> deleted;
