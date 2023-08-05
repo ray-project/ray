@@ -54,6 +54,7 @@ fine_tune() {
         --test_path "${test_path}"  \
         --special_token_path "${token_path}" \
         --num-checkpoints-to-keep 1 \
+        --num-epochs 30 \
         "${params[@]}"; then
         echo "Failed to fine-tune the model. Exiting..."
         exit 1
@@ -81,8 +82,6 @@ do
         params+=("--lora");
         params+=("--lr");
         params+=("1e-4");
-    elif [[ "$arg" == "--num-epochs" ]]; then
-        params+=("--num-epochs", ${value})
     fi
 done
 

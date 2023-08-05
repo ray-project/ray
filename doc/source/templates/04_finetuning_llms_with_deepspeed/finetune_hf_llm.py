@@ -36,20 +36,39 @@ from utils import get_checkpoint_and_refs_dir, get_mirror_link
 OPTIM_BETAS = (0.9, 0.999)
 OPTIM_EPS = 1e-8
 OPTIM_WEIGHT_DECAY = 0.0
+TARGET_LLM_TO_NUM_SELF_ATTENTION_LAYERS = {
+    "meta-llama/Llama-2-7b-hf": 32,
+    "meta-llama/Llama-2-13b-hf": 40,
+    "meta-llama/Llama-2-70b-hf": 80
+}
+DO_SANITY_CHECK = True
 
 MIRROR_LINK = "s3://llama-2-weights/"
 
 
-def get_expected_lora_num_parameters(lora_config, model):
+def get_expected_lora_num_parameters(lora_config, model, model_name):
     """Calculate the expected number of parameters for lora finetuning."""
     sum_params = 0
+    in_features = 0
+    out_features = 0
     for module_name in lora_config.target_modules:
         modules = model.named_modules()
         # We calculate the number of parameters we need for lora finetuning by calculating 
         # the sizes of the deecomposed weight matrices according to the paper.
         for name, target in modules:
             if name.split(".")[-1] == module_name:
-                sum_params += (target.in_features + target.out_features) * lora_config.r
+                in_features = target.in_features
+                out_features = target.out_features
+                sum_params += (in_features + out_features) * lora_config.r
+    
+    # Sanity check to validate our understanding of LoRA
+    if DO_SANITY_CHECK:
+        assert sum_params == (
+            len(lora_config.target_modules) # number of target modules
+            * TARGET_LLM_TO_NUM_SELF_ATTENTION_LAYERS[model_name]
+            * lora_config.r # rank of the decomposition
+            * (in_features + out_features) # sizes of the decomposition matrices
+        ), "The number of parameters for LoRA finetuning is not as expected. You can either adjust `NUM_SELF_ATTENTION_LAYERS_IN_TARGET_LLM_ARCHITECTURE` or turn off this sanity check by modifying `DO_SANITY_CHECK`."
     return sum_params
     
 
@@ -230,7 +249,7 @@ def training_function(kwargs: dict):
         assert "lora" in config, "No LoRA config provided."
         lora_config = LoraConfig(**config["lora_config"])
 
-        expected_num_parameters = get_expected_lora_num_parameters(lora_config=lora_config, model=model)
+        expected_num_parameters = get_expected_lora_num_parameters(lora_config=lora_config, model=model, model_name=args.model_name)
 
         if config["as_test"]:
             print(f"Attempting to apply LoRA config: {lora_config}")
