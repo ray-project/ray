@@ -134,6 +134,7 @@ from ray._private.worker import (  # noqa: E402,F401
     get,
     get_actor,
     get_gpu_ids,
+    get_neuron_core_ids,
     init,
     is_initialized,
     put,

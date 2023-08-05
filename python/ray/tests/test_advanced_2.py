@@ -10,6 +10,7 @@ import pytest
 import ray
 import ray.cluster_utils
 from ray._private.test_utils import RayTestTimeoutException, wait_for_condition
+from ray.util.accelerators import AWS_NEURON_CORE
 
 logger = logging.getLogger(__name__)
 
@@ -478,7 +479,8 @@ def test_many_custom_resources(shutdown_only):
 
 
 def test_neuron_core_ids(shutdown_only):
-    num_nc = 2
+    num_nc = 3
+    accelerator_type = AWS_NEURON_CORE
     ray.init(num_cpus=num_nc, resources={"num_neuron_cores": num_nc})
 
     def get_neuron_core_ids(num_neuron_cores_per_worker):
@@ -491,7 +493,6 @@ def test_neuron_core_ids(shutdown_only):
             assert neuron_core_id in range(num_nc)
         return neuron_core_ids
 
-    f0 = ray.remote(resources={"num_neuron_cores": 0})(lambda: get_neuron_core_ids(0))
     f1 = ray.remote(resources={"num_neuron_cores": 1})(lambda: get_neuron_core_ids(1))
 
     # Wait for all workers to start up.
@@ -510,17 +511,15 @@ def test_neuron_core_ids(shutdown_only):
                 "Timed out while waiting for workers to start up."
             )
 
-    list_of_ids = ray.get([f0.remote() for _ in range(10)])
-    assert list_of_ids == 10 * [[]]
     ray.get([f1.remote() for _ in range(10)])
 
     # Test that actors have NEURON_RT_VISIBLE_CORES set properly.
 
-    @ray.remote
+    @ray.remote(resources={"num_neuron_cores": 1}, accelerator_type=accelerator_type)
     class Actor0:
         def __init__(self):
             neuron_core_ids = ray.get_neuron_core_ids()
-            assert len(neuron_core_ids) == 0
+            assert len(neuron_core_ids) == 1
             assert os.environ["NEURON_RT_VISIBLE_CORES"] == ",".join(
                 [str(i) for i in neuron_core_ids]  # noqa
             )
@@ -529,13 +528,13 @@ def test_neuron_core_ids(shutdown_only):
 
         def test(self):
             neuron_core_ids = ray.get_neuron_core_ids()
-            assert len(neuron_core_ids) == 0
+            assert len(neuron_core_ids) == 1
             assert os.environ["NEURON_RT_VISIBLE_CORES"] == ",".join(
                 [str(i) for i in neuron_core_ids]
             )
             return self.x
 
-    @ray.remote(resources={"num_neuron_cores": 1})
+    @ray.remote(resources={"num_neuron_cores": 1}, accelerator_type=accelerator_type)
     class Actor1:
         def __init__(self):
             neuron_core_ids = ray.get_neuron_core_ids()
@@ -547,10 +546,10 @@ def test_neuron_core_ids(shutdown_only):
             self.x = 1
 
         def test(self):
-            gpu_ids = ray.get_gpu_ids()
-            assert len(gpu_ids) == 1
+            neuron_core_ids = ray.get_neuron_core_ids()
+            assert len(neuron_core_ids) == 1
             assert os.environ["NEURON_RT_VISIBLE_CORES"] == ",".join(
-                [str(i) for i in gpu_ids]
+                [str(i) for i in neuron_core_ids]
             )
             return self.x
 

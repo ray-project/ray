@@ -206,7 +206,7 @@ class ResourceSpec(
         if num_neuron_cores is None:
             num_neuron_cores = _autodetect_aws_neuron_cores()
         if num_neuron_cores is not None:
-            if num_gpus is not None:
+            if num_gpus is not None and num_gpus > 0:
                 raise ValueError("Cannot specify both num_gpus and num_neuron_cores.")
 
             # 3. Update accelerator_type and num_neuron_cores with

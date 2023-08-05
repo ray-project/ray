@@ -204,7 +204,7 @@ def test_ray_labels_environment_variables(shutdown_only):
     assert node_info["Labels"]["custom3"] == "3"
 
 
-def test_nvidia_gpu_info_parsing():
+def test_gpu_info_parsing():
     info_string = """Model:           Tesla V100-SXM2-16GB
 IRQ:             107
 GPU UUID:        GPU-8eaaebb8-bb64-8489-fda2-62256e821983
@@ -216,7 +216,7 @@ Bus Location:    0000:00:1e.0
 Device Minor:    0
 Blacklisted:     No
     """
-    constraints_dict = resource_spec._constraints_from_nvidia_gpu_info(info_string)
+    constraints_dict = resource_spec._constraints_from_gpu_info(info_string)
     expected_dict = {
         f"{ray_constants.RESOURCE_CONSTRAINT_PREFIX}V100": 1,
     }
@@ -233,13 +233,13 @@ Bus Location:    0000:00:1b.0
 Device Minor:    0
 Blacklisted:     No
     """
-    constraints_dict = resource_spec._constraints_from_nvidia_gpu_info(info_string)
+    constraints_dict = resource_spec._constraints_from_gpu_info(info_string)
     expected_dict = {
         f"{ray_constants.RESOURCE_CONSTRAINT_PREFIX}T4": 1,
     }
     assert constraints_dict == expected_dict
 
-    assert resource_spec._constraints_from_nvidia_gpu_info(None) == {}
+    assert resource_spec._constraints_from_gpu_info(None) == {}
 
 
 @pytest.mark.parametrize(

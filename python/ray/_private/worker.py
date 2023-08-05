@@ -884,9 +884,7 @@ def get_neuron_core_ids():
     neuron_regex = (
         f"^{ray._private.utils.get_neuron_core_constraint_name()}_group_[0-9A-Za-z]+$"
     )
-    assigned_ids = _get_all_resource_ids(
-        ray._private.utils.get_neuron_core_constraint_name(), neuron_regex
-    )
+    assigned_ids = _get_all_resource_ids(ray_constants.NUM_NEURON_CORES, neuron_regex)
     # If the user had already set , then respect that
     # (in the sense that only neuron-core IDs that appear in
     # NEURON_RT_VISIBLE_CORES should be returned).
@@ -898,7 +896,7 @@ def get_neuron_core_ids():
         # Give all neuron_cores in local_mode.
         if global_worker.mode == LOCAL_MODE:
             max_neuron_cores = global_worker.node.get_resource_spec().resources.get(
-                ray._private.utils.get_neuron_core_constraint_name(), None
+                ray_constants.NUM_NEURON_CORES, None
             )
             if max_neuron_cores:
                 assigned_ids = global_worker.original_aws_neuron_core_ids[
