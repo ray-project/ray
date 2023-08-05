@@ -872,7 +872,7 @@ class _MockTrial(Trial):
         self.placement_group_factory = PlacementGroupFactory([{"CPU": 1}])
         self.custom_trial_name = None
         self.custom_dirname = None
-        self._local_experiment_path = None
+        self._legacy_local_experiment_path = None
         self.relative_logdir = None
         self._default_result_or_future = None
         self.checkpoint_manager = _CheckpointManager(
