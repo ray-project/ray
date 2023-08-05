@@ -406,7 +406,8 @@ class TuneController:
     @property
     def experiment_path(self) -> str:
         if _use_storage_context():
-            return self._storage.experiment_path
+            return str(self._storage.storage_prefix / self._storage.experiment_fs_path)
+
         return self._legacy_remote_experiment_path or self._legacy_local_experiment_path
 
     def _create_checkpoint_manager(self):

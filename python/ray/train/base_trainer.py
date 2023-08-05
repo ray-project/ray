@@ -598,16 +598,16 @@ class BaseTrainer(abc.ABC):
                 _entrypoint=AirEntrypoint.TRAINER,
             )
 
-        experiment_path = Path(
-            TunerInternal.setup_create_experiment_checkpoint_dir(
-                trainable, self.run_config
-            )
+        experiment_local_path, _ = TunerInternal.setup_create_experiment_checkpoint_dir(
+            trainable, self.run_config
         )
-        self._save(experiment_path)
+
+        experiment_local_path = Path(experiment_local_path)
+        self._save(experiment_local_path)
 
         restore_msg = TrainingFailedError._RESTORE_MSG.format(
             trainer_cls_name=self.__class__.__name__,
-            path=str(experiment_path),
+            path=str(experiment_local_path),
         )
 
         try:
