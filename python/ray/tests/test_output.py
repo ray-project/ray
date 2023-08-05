@@ -371,21 +371,20 @@ time.sleep(3)
 
     ray.init(_system_config={"enable_autoscaler_v2": True})
 
-    proc = run_string_as_driver(
+    out_str = run_string_as_driver(
         script, env={"RAY_LOG_TO_DRIVER_EVENT_LEVEL": event_level}
     )
 
-    def verify():
-        out_str = proc.stdout.read().decode("ascii")
-        print(out_str)
-        assert out_str
-        for expected in expected_msg.split(","):
-            assert expected in out_str
-        if unexpected_msg:
-            for unexpected in unexpected_msg.split(","):
-                assert unexpected not in out_str
+    print(out_str)
+    # Filter only autoscaler prints.
+    assert out_str
 
-    verify()
+    out_str = "".join([line for line in out_str.splitlines() if "autoscaler" in line])
+    for expected in expected_msg.split(","):
+        assert expected in out_str
+    if unexpected_msg:
+        for unexpected in unexpected_msg.split(","):
+            assert unexpected not in out_str
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
