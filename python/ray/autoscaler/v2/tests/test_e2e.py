@@ -8,7 +8,7 @@ import ray
 from ray._private.test_utils import run_string_as_driver_nonblocking, wait_for_condition
 from ray.autoscaler.v2.sdk import get_cluster_status
 from ray.cluster_utils import AutoscalingCluster
-from ray.util.state.api import list_jobs, list_placement_groups
+from ray.util.state.api import list_placement_groups, list_tasks
 
 
 # TODO(rickyx): We are NOT able to counter multi-node inconsistency yet. The problem is
@@ -40,8 +40,6 @@ def test_scheduled_task_no_pending_demand(shutdown_only, mode):
             },
         },
     )
-    cluster.start()
-    ray.init("auto")
 
     driver_script = """
 import time
@@ -52,17 +50,23 @@ def foo():
 while True:
     assert(ray.get(foo.remote()))
 """
-    run_string_as_driver_nonblocking(driver_script)
-
-    def jobs_run():
-        jobs = list_jobs()
-        assert len(jobs) > 1
-
-        return True
-
-    wait_for_condition(jobs_run)
 
     try:
+        cluster.start()
+        ray.init("auto")
+
+        run_string_as_driver_nonblocking(driver_script)
+
+        def tasks_run():
+            tasks = list_tasks()
+
+            # Waiting til the driver in the run_string_as_driver_nonblocking is running
+            assert len(tasks) > 0
+
+            return True
+
+        wait_for_condition(tasks_run)
+
         for _ in range(30):
             # verify no pending task + with resource used.
             status = get_cluster_status()
@@ -96,9 +100,6 @@ def test_placement_group_consistent(shutdown_only):
             },
         },
     )
-    cluster.start()
-    ray.init("auto")
-
     driver_script = """
 
 import ray
@@ -120,28 +121,33 @@ while True:
     remove_placement_group(pg)
     time.sleep(0.5)
 """
-    run_string_as_driver_nonblocking(driver_script)
 
-    def pg_created():
-        pgs = list_placement_groups()
-        assert len(pgs) > 0
+    try:
+        cluster.start()
+        ray.init("auto")
 
-        return True
+        run_string_as_driver_nonblocking(driver_script)
 
-    wait_for_condition(pg_created)
+        def pg_created():
+            pgs = list_placement_groups()
+            assert len(pgs) > 0
 
-    for _ in range(30):
-        # verify no pending request + resource used.
-        status = get_cluster_status()
-        has_pg_demand = len(status.resource_demands.placement_group_demand) > 0
-        has_pg_usage = False
-        for usage in status.cluster_resource_usage:
-            has_pg_usage = has_pg_usage or "bundle" in usage.resource_name
-        print(has_pg_demand, has_pg_usage)
-        assert not (has_pg_demand and has_pg_usage), status
-        time.sleep(0.1)
+            return True
 
-    cluster.shutdown()
+        wait_for_condition(pg_created)
+
+        for _ in range(30):
+            # verify no pending request + resource used.
+            status = get_cluster_status()
+            has_pg_demand = len(status.resource_demands.placement_group_demand) > 0
+            has_pg_usage = False
+            for usage in status.cluster_resource_usage:
+                has_pg_usage = has_pg_usage or "bundle" in usage.resource_name
+            print(has_pg_demand, has_pg_usage)
+            assert not (has_pg_demand and has_pg_usage), status
+            time.sleep(0.1)
+    finally:
+        cluster.shutdown()
 
 
 if __name__ == "__main__":
