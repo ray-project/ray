@@ -167,6 +167,26 @@ def train_fn(config):
             raise RuntimeError(f"Failing on iter={i}!!")
 
 
+def _resume_from_checkpoint(checkpoint: NewCheckpoint, expected: dict):
+    def assert_fn(config):
+        checkpoint_to_check = train.get_checkpoint()
+        with checkpoint_to_check.as_directory() as checkpoint_dir:
+            with open(os.path.join(checkpoint_dir, "checkpoint.pkl"), "rb") as f:
+                state = pickle.load(f)
+
+        print("Loaded state from `resume_from_checkpoint`:", state)
+        print("Expected state:", expected)
+        assert state == expected, (state, expected)
+
+    trainer = DataParallelTrainer(
+        assert_fn,
+        scaling_config=train.ScalingConfig(num_workers=2),
+        run_config=train.RunConfig(name="test_resume_from_checkpoint"),
+        resume_from_checkpoint=checkpoint,
+    )
+    trainer.fit()
+
+
 @pytest.mark.parametrize("storage_path_type", [None, "nfs", "cloud", "custom_fs"])
 def test_tuner(monkeypatch, storage_path_type, tmp_path):
     """End-to-end test that the new persistence mode works with the Tuner API.
@@ -330,6 +350,10 @@ def test_trainer(
             ),
         )
         result = trainer.fit()
+
+        _resume_from_checkpoint(
+            result.checkpoint, expected={"iter": NUM_ITERATIONS - 1}
+        )
 
         local_inspect_dir, storage_fs_path = _get_local_inspect_dir(
             root_local_path=tmp_path,

@@ -457,8 +457,11 @@ class BaseTrainer(abc.ABC):
                 f"found {type(self.preprocessor)} with value `{self.preprocessor}`."
             )
 
+        expected_checkpoint_type = (
+            NewCheckpoint if _use_storage_context() else ray.air.Checkpoint
+        )
         if self.resume_from_checkpoint is not None and not isinstance(
-            self.resume_from_checkpoint, ray.air.Checkpoint
+            self.resume_from_checkpoint, expected_checkpoint_type
         ):
             raise ValueError(
                 f"`resume_from_checkpoint` should be an instance of "
