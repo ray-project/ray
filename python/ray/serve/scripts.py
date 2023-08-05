@@ -436,14 +436,7 @@ def run(
     if is_config and isinstance(config, ServeDeploySchema):
         config_http_options = config.http_options.dict()
         http_options = {**config_http_options, **http_options}
-        # TODO (genesu): refactor this
         grpc_options = gRPCOptions(**config.grpc_options.dict())
-        grpc_servicer_functions = []
-        for application in config.applications:
-            if application.grpc_servicer_function:
-                fun = import_attr(application.grpc_servicer_function)
-                grpc_servicer_functions.append(fun)
-        grpc_options.grpc_servicer_functions = grpc_servicer_functions
 
     print("in run grpc_options", grpc_options)
     client = _private_api.serve_start(

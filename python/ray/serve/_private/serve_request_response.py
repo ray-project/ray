@@ -1,8 +1,9 @@
 import grpc
 import logging
+import pickle
 
 from starlette.types import Receive, Scope, Send
-from typing import Callable, List, Generator, Optional, Tuple
+from typing import Any, Callable, List, Generator, Optional, Tuple
 
 from ray.serve._private.constants import SERVE_LOGGER_NAME
 from ray.serve._private.utils import DEFAULT
@@ -64,12 +65,12 @@ class gRPCServeRequest(ServeRequest):
 
     def __init__(
         self,
-        request: bytes,
+        request_proto: Any,
         context: "grpc._cython.cygrpc._ServicerContext",
         match_target: Callable[[str], Optional[str]],
         stream: bool,
     ):
-        self.request = request
+        self.request = pickle.dumps(request_proto)
         self.context = context
         self.stream = stream
         self.app_name = None

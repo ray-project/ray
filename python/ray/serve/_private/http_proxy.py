@@ -794,7 +794,7 @@ class gRPCProxy(GenericProxy):
         return result
 
     async def Predict(
-        self, request: bytes, context: "grpc._cython.cygrpc._ServicerContext"
+        self, request: Any, context: "grpc._cython.cygrpc._ServicerContext"
     ) -> bytes:
         """Entry point of the gRPC proxy.
 
@@ -804,7 +804,7 @@ class gRPCProxy(GenericProxy):
         """
         print("in predict", request, type(request))
         serve_request = gRPCServeRequest(
-            request=pickle.dumps(request),
+            request_proto=request,
             context=context,
             match_target=self.prefix_router.match_target,
             stream=False,
@@ -813,7 +813,7 @@ class gRPCProxy(GenericProxy):
         return serve_response.response
 
     async def PredictStreaming(
-        self, request: bytes, context: "grpc._cython.cygrpc._ServicerContext"
+        self, request: Any, context: "grpc._cython.cygrpc._ServicerContext"
     ) -> Generator[bytes, None, None]:
         """Entry point of the gRPC proxy.
 
@@ -821,8 +821,9 @@ class gRPCProxy(GenericProxy):
         wraps the request in a ServeRequest object and calls proxy_request. The return
         value is protobuf RayServeResponse object.
         """
+        print("in predict streaming", request, type(request))
         serve_request = gRPCServeRequest(
-            request=request,
+            request_proto=request,
             context=context,
             match_target=self.prefix_router.match_target,
             stream=True,
@@ -1376,7 +1377,7 @@ class HTTPProxyActor:
         grpc_server.add_insecure_port(f"[::]:{self.grpc_port}")
         dummy_servicer = DummyServicer()
         add_RayServeServiceServicer_to_server(dummy_servicer, grpc_server)
-        for grpc_servicer_function in self.grpc_options.grpc_servicer_functions:
+        for grpc_servicer_function in self.grpc_options.grpc_servicer_func_callable:
             grpc_servicer_function(dummy_servicer, grpc_server)
         await grpc_server.start()
         logger.info(

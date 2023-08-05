@@ -364,12 +364,6 @@ class ServeApplicationSchema(BaseModel, extra=Extra.forbid):
         default={},
         description="Arguments that will be passed to the application builder.",
     )
-    grpc_servicer_function: Optional[str] = Field(
-        default="",
-        description=(
-            "the servicer function used to add the custom method to the gRPC server"
-        ),
-    )
 
     @property
     def deployment_names(self) -> List[str]:
@@ -504,6 +498,12 @@ class gRPCOptionsSchema(BaseModel, extra=Extra.forbid):
             "Port for gRPC server. Will only start gRPC server if set. Cannot be "
             "updated once Serve has started running. Serve must be shut down and "
             "restarted with the new port instead."
+        ),
+    )
+    grpc_servicer_functions: List[str] = Field(
+        default=[],
+        description=(
+            "the servicer functions used to add the custom methods to the gRPC server"
         ),
     )
 

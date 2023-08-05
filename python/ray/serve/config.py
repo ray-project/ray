@@ -33,7 +33,7 @@ from ray.serve.generated.serve_pb2 import (
     ReplicaConfig as ReplicaConfigProto,
 )
 from ray._private import ray_option_utils
-from ray._private.utils import resources_from_ray_options
+from ray._private.utils import import_attr, resources_from_ray_options
 from ray._private.serialization import pickle_dumps
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
@@ -591,4 +591,11 @@ class HTTPOptions(pydantic.BaseModel):
 @PublicAPI(stability="alpha")
 class gRPCOptions(BaseModel):
     port: int = -1
-    grpc_servicer_functions: List[Any] = []
+    grpc_servicer_functions: List[str] = []
+    grpc_servicer_func_callable: List[Callable] = []
+
+    def __init__(self, **data):
+        data["grpc_servicer_func_callable"] = [
+            import_attr(fun) for fun in data.get("grpc_servicer_functions", [])
+        ]
+        super().__init__(**data)
