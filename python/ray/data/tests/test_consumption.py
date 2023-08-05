@@ -1567,7 +1567,9 @@ def test_dataset_retry_exceptions(ray_start_regular, local_path):
     ds1 = ray.data.read_datasource(FlakyCSVDatasource(), parallelism=1, paths=path1)
     ds1.write_datasource(FlakyCSVDatasource(), path=local_path, dataset_uuid="data")
     assert df1.equals(
-        pd.read_csv(os.path.join(local_path, "data_000000.csv"), storage_options={})
+        pd.read_csv(
+            os.path.join(local_path, "data_000000_000000.csv"), storage_options={}
+        )
     )
 
     counter = Counter.remote()
