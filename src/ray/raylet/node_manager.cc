@@ -2049,7 +2049,7 @@ void NodeManager::HandleReturnWorker(rpc::ReturnWorkerRequest request,
 void NodeManager::HandleDrainRaylet(rpc::DrainRayletRequest request,
                                     rpc::DrainRayletReply *reply,
                                     rpc::SendReplyCallback send_reply_callback) {
-  RAY_LOG(INFO) << "Drain node RPC has received. Drain reason: "
+  RAY_LOG(INFO) << "Drain raylet RPC has received. Drain reason: "
                 << request.reason_message();
 
   if (request.reason() == rpc::autoscaler::DrainNodeReason::IDLE_TERMINATION) {

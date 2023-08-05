@@ -282,6 +282,9 @@ void GcsAutoscalerStateManager::HandleDrainNode(
     rpc::autoscaler::DrainNodeReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   const NodeID node_id = NodeID::FromBinary(request.node_id());
+  RAY_LOG(INFO) << "HandleDrainNode " << node_id.Hex()
+                << ", reason: " << request.reason_message();
+
   auto node = gcs_node_manager_.GetAliveNode(node_id);
   if (!node.has_value()) {
     reply->set_is_accepted(true);

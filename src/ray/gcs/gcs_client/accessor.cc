@@ -708,7 +708,7 @@ Status NodeResourceInfoAccessor::AsyncGetDrainingNodes(
         RAY_CHECK_OK(status);
         std::vector<std::string> draining_nodes;
         for (const auto &node_id : VectorFromProtobuf(reply.node_ids())) {
-          draining_nodes.emplace_back(NodeID::FromBinary(node_id).Hex());
+          draining_nodes.emplace_back(node_id);
         }
         callback(draining_nodes);
       });

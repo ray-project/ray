@@ -45,6 +45,7 @@ namespace rpc {
   RPC_SERVICE_HANDLER(NodeManagerService, ReleaseUnusedBundles, -1)   \
   RPC_SERVICE_HANDLER(NodeManagerService, GetSystemConfig, -1)        \
   RPC_SERVICE_HANDLER(NodeManagerService, ShutdownRaylet, -1)         \
+  RPC_SERVICE_HANDLER(NodeManagerService, DrainRaylet, -1)            \
   RPC_SERVICE_HANDLER(NodeManagerService, GetTasksInfo, -1)           \
   RPC_SERVICE_HANDLER(NodeManagerService, GetObjectsInfo, -1)         \
   RPC_SERVICE_HANDLER(NodeManagerService, GetTaskFailureCause, -1)

@@ -91,10 +91,13 @@ cdef class GlobalStateAccessor:
         return results
 
     def get_draining_nodes(self):
-        cdef c_vector[c_string] result
+        cdef c_vector[c_string] draining_nodes
         with nogil:
-            result = self.inner.get().GetDrainingNodes()
-        return result
+            draining_nodes = self.inner.get().GetDrainingNodes()
+        results = set()
+        for draining_node in draining_nodes:
+            results.add(ray._private.utils.binary_to_hex(draining_node))
+        return results
 
     def get_all_available_resources(self):
         cdef c_vector[c_string] result
