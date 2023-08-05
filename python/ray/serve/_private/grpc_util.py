@@ -1,6 +1,7 @@
 import grpc
 import pickle
-from typing import Any
+from typing import Any, Sequence
+from grpc.aio._server import Server
 
 
 class RayServeServiceStub(object):
@@ -57,3 +58,47 @@ def add_RayServeServiceServicer_to_server(
         "ray.serve.RayServeService", rpc_method_handlers
     )
     server.add_generic_rpc_handlers((generic_handler,))
+
+
+class gRPCServer(Server):
+    def __init__(self, unary_unary, unary_stream, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.unary_unary = unary_unary
+        self.unary_stream = unary_stream
+
+    def add_generic_rpc_handlers(
+        self, generic_rpc_handlers: Sequence[grpc.GenericRpcHandler]
+    ):
+        # TODO (genesu): this should only be called before server started. Need to
+        #  restart the server if need to be called again
+        serve_rpc_handlers = {}
+        for service_method, method_handler in generic_rpc_handlers[
+            0
+        ]._method_handlers.items():
+            serve_method_handler = method_handler._replace(
+                response_serializer=None,
+                unary_unary=self.unary_unary,
+                unary_stream=self.unary_stream,
+            )
+            serve_rpc_handlers[service_method] = serve_method_handler
+        generic_rpc_handlers[0]._method_handlers = serve_rpc_handlers
+        print("in add_generic_rpc_handlers", serve_rpc_handlers)
+        super().add_generic_rpc_handlers(generic_rpc_handlers)
+
+
+def serve_server(unary_unary, unary_stream):
+    return gRPCServer(
+        thread_pool=None,
+        generic_handlers=(),
+        interceptors=(),
+        options=(),
+        maximum_concurrent_rpcs=None,
+        compression=None,
+        unary_unary=unary_unary,
+        unary_stream=unary_stream,
+    )
+
+
+class DummyServicer:
+    def __getattr__(self, attr):
+        pass

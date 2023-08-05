@@ -364,6 +364,12 @@ class ServeApplicationSchema(BaseModel, extra=Extra.forbid):
         default={},
         description="Arguments that will be passed to the application builder.",
     )
+    grpc_servicer_function: Optional[str] = Field(
+        default="",
+        description=(
+            "the servicer function used to add the custom method to the gRPC server"
+        ),
+    )
 
     @property
     def deployment_names(self) -> List[str]:

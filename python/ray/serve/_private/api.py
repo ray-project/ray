@@ -124,6 +124,7 @@ def _start_controller(
     detached: bool = False,
     http_options: Optional[Union[dict, HTTPOptions]] = None,
     dedicated_cpu: bool = False,
+    grpc_config: Optional[Dict[str, Any]] = None,
     **kwargs,
 ) -> Tuple[ActorHandle, str]:
     """Start Ray Serve controller.
@@ -135,7 +136,7 @@ def _start_controller(
 
     Returns: A tuple with controller actor handle and controller name.
     """
-
+    print("in _start_controller", grpc_config)
     # Initialize ray if needed.
     ray._private.worker.global_worker._filter_logs_by_job = False
     if not ray.is_initialized():
@@ -183,6 +184,7 @@ def _start_controller(
             controller_name,
             http_config=http_options,
             detached=detached,
+            grpc_config=grpc_config,
         )
 
         proxy_handles = ray.get(controller.get_http_proxies.remote())
@@ -252,6 +254,7 @@ def serve_start(
     detached: bool = False,
     http_options: Optional[Union[dict, HTTPOptions]] = None,
     dedicated_cpu: bool = False,
+    grpc_config: Optional[Dict[str, Any]] = None,
     **kwargs,
 ) -> ServeControllerClient:
     """Initialize a serve instance.
@@ -292,6 +295,7 @@ def serve_start(
         dedicated_cpu: Whether to reserve a CPU core for the internal
           Serve controller actor.  Defaults to False.
     """
+    print("in serve_start", grpc_config)
 
     usage_lib.record_library_usage("serve")
 
@@ -308,7 +312,7 @@ def serve_start(
         pass
 
     controller, controller_name = _start_controller(
-        detached, http_options, dedicated_cpu, **kwargs
+        detached, http_options, dedicated_cpu, grpc_config, **kwargs
     )
 
     client = ServeControllerClient(

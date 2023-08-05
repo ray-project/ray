@@ -315,7 +315,9 @@ class HTTPProxyStateManager:
         config: HTTPOptions,
         head_node_id: str,
         gcs_client: GcsClient,
+        grpc_config=None,
     ):
+        print("in HTTPProxyStateManager", grpc_config)
         self._controller_name = controller_name
         self._detached = detached
         if config is not None:
@@ -326,6 +328,7 @@ class HTTPProxyStateManager:
         self._head_node_id: str = head_node_id
 
         self._gcs_client = gcs_client
+        self.grpc_config = grpc_config
 
         assert isinstance(head_node_id, str)
 
@@ -471,6 +474,7 @@ class HTTPProxyStateManager:
             node_id=node_id,
             http_middlewares=self._config.middlewares,
             request_timeout_s=self._config.request_timeout_s,
+            grpc_config=self.grpc_config,
         )
         return proxy
 

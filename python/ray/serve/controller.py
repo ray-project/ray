@@ -104,7 +104,9 @@ class ServeController:
         http_config: HTTPOptions,
         detached: bool = False,
         _disable_http_proxy: bool = False,
+        grpc_config: Optional[Dict[str, Any]] = None,
     ):
+        print("in ServeController", grpc_config)
         self._controller_node_id = ray.get_runtime_context().get_node_id()
         assert (
             self._controller_node_id == get_head_node_id()
@@ -143,6 +145,7 @@ class ServeController:
                 http_config,
                 self._controller_node_id,
                 gcs_client,
+                grpc_config,
             )
 
         self.endpoint_state = EndpointState(self.kv_store, self.long_poll_host)

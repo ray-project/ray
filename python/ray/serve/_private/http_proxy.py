@@ -25,7 +25,11 @@ from ray._raylet import StreamingObjectRefGenerator
 
 from ray import serve
 from ray.serve.handle import RayServeHandle
-from ray.serve._private.grpc_util import add_RayServeServiceServicer_to_server
+from ray.serve._private.grpc_util import (
+    add_RayServeServiceServicer_to_server,
+    serve_server,
+    DummyServicer,
+)
 from ray.serve._private.http_util import (
     ASGIMessageQueue,
     HTTPRequestWrapper,
@@ -782,6 +786,13 @@ class gRPCProxy(GenericProxy):
     >>> ) # doctest: +SKIP
     """
 
+    async def Method1(
+        self, request: bytes, context: "grpc._cython.cygrpc._ServicerContext"
+    ) -> bytes:
+        result = await self.Predict(pickle.dumps(request), context)
+        print("Method1", result, type(result))
+        return result
+
     async def Predict(
         self, request: bytes, context: "grpc._cython.cygrpc._ServicerContext"
     ) -> bytes:
@@ -791,8 +802,9 @@ class gRPCProxy(GenericProxy):
         wraps the request in a ServeRequest object and calls proxy_request. The return
         value is protobuf RayServeResponse object.
         """
+        print("in predict", request, type(request))
         serve_request = gRPCServeRequest(
-            request=request,
+            request=pickle.dumps(request),
             context=context,
             match_target=self.prefix_router.match_target,
             stream=False,
@@ -1179,7 +1191,10 @@ class HTTPProxyActor:
         node_id: NodeId,
         request_timeout_s: Optional[float] = None,
         http_middlewares: Optional[List["starlette.middleware.Middleware"]] = None,
+        grpc_config: Optional[Dict[str, Any]] = None,
     ):  # noqa: F821
+        self.grpc_config = grpc_config or {}
+        print("in HTTPProxyActor", grpc_config)
         configure_component_logger(
             component_name="http_proxy", component_id=node_ip_address
         )
@@ -1342,9 +1357,16 @@ class HTTPProxyActor:
         await server.serve(sockets=[sock])
 
     async def run_grpc_server(self):
-        grpc_server = grpc.aio.server()
+        # TODO (genesu): clean this up
+        grpc_server = serve_server(
+            unary_unary=self.grpc_proxy.Predict,
+            unary_stream=self.grpc_proxy.PredictStreaming,
+        )
         grpc_server.add_insecure_port(f"[::]:{self.grpc_port}")
-        add_RayServeServiceServicer_to_server(self.grpc_proxy, grpc_server)
+        dummy_servicer = DummyServicer()
+        add_RayServeServiceServicer_to_server(dummy_servicer, grpc_server)
+        for grpc_servicer_function in self.grpc_config["grpc_servicer_functions"]:
+            grpc_servicer_function(dummy_servicer, grpc_server)
         await grpc_server.start()
         logger.info(
             "Starting gRPC server with on node: "

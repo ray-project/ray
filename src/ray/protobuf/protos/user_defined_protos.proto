@@ -1,8 +1,7 @@
 // User defined proto file to use Ray Serve gRPC proxy
 // generate python code:
 // cd <to the upper directory of this file>
-// python -m grpc_tools.protoc -I./protos --python_out=. --pyi_out=. \
-// --grpc_python_out=. ./protos/user_defined_protos.proto
+// python -m grpc_tools.protoc -I./protos --python_out=. --pyi_out=. --grpc_python_out=. ./protos/user_defined_protos.proto
 
 syntax = "proto3";
 
@@ -31,4 +30,9 @@ message FruitAmounts {
 
 message FruitCosts {
     float costs = 1;
+}
+
+service UserDefinedService {
+  rpc Method1(UserDefinedMessage) returns (UserDefinedResponse);
+  rpc Streaming(UserDefinedMessage) returns (stream UserDefinedResponse);
 }

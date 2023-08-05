@@ -430,12 +430,25 @@ def run(
         )
 
     http_options = {"host": host, "port": port, "location": "EveryNode"}
+    grpc_config = {"grpc_servicer_functions": []}
     # Merge http_options with the ones on ServeDeploySchema. If host and/or port is
     # passed by cli, those continue to take the priority
     if is_config and isinstance(config, ServeDeploySchema):
         config_http_options = config.http_options.dict()
         http_options = {**config_http_options, **http_options}
-    client = _private_api.serve_start(detached=True, http_options=http_options)
+        # TODO (genesu): refactor this
+        grpc_servicer_functions = []
+        for application in config.applications:
+            if application.grpc_servicer_function:
+                fun = import_attr(application.grpc_servicer_function)
+                grpc_servicer_functions.append(fun)
+        grpc_config["grpc_servicer_functions"] = grpc_servicer_functions
+    print("grpc_config", grpc_config)
+    client = _private_api.serve_start(
+        detached=True,
+        http_options=http_options,
+        grpc_config=grpc_config,
+    )
 
     try:
         if is_config:

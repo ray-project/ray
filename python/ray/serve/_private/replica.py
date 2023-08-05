@@ -756,6 +756,11 @@ class RayServeReplica:
         Deserializes gRPC request into protobuf object and pass into replica's runner
         method. Returns a serialized protobuf bytes from the replica.
         """
+        print(
+            "in call_user_method_grpc_unary",
+            request_metadata,
+            request.grpc_user_request,
+        )
         async with self.wrap_user_method_call(request_metadata):
             user_request = pickle.loads(request.grpc_user_request)
 
