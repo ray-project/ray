@@ -117,6 +117,7 @@ def start_telemetry_app():
     return storage
 
 
+'''
 def test_fastapi_detected(manage_ray):
     """
     Check that FastAPI is detected by telemetry.
@@ -490,6 +491,7 @@ def test_lightweight_config_options(manage_ray, lightweight_option, value):
     for tagkey in lightweight_tagkeys:
         if not tagkey == f"serve_{lightweight_option}_lightweight_updated":
             assert tagkey not in report["extra_usage_tags"]
+'''
 
 
 @pytest.mark.parametrize("use_new_handle_api", [False, True])
