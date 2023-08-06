@@ -12,8 +12,13 @@ from pathlib import Path
 from transformers import (
     AutoModelForCausalLM,
 )
+from transformers import AutoModelForCausalLM
 
 from finetune_hf_llm import get_pretrained_path
+
+from utils import download_model, get_mirror_link, get_checkpoint_and_refs_dir
+
+
 
 
 def parse_args():
@@ -32,11 +37,11 @@ def parse_args():
     parser.add_argument("--output-path", type=str, default=None, help="Path to output directory. Defaults to the orginal checkpoint directory.")
 
     parser.add_argument(
-        "--model-name", default="meta-llama/Llama-2-7b-chat-hf", type=str
+        "--model-name", required=True, type=str
     )
 
     parser.add_argument(
-        "--checkpoint", type=str, help="Path to checkpoint containing the LoRA weights."
+        "--checkpoint", type=str, required=True, help="Path to checkpoint containing the LoRA weights."
     )
 
     args = parser.parse_args()
@@ -52,24 +57,37 @@ def main():
         raise ValueError(f"Checkpoint {args.checkpoint} does not exist.")
     
     if not args.output_path:
-        args.output_path = Path(args.checkpoint) + "/merged_model"
+        args.output_path = Path(args.checkpoint) / "merged_model"
         print(f"Output path not specified. Using {args.output_path}")
     
     Path(args.output_path).mkdir(parents=True, exist_ok=True)
 
 
     # Load orignal model
-    pretrained_path = get_pretrained_path(args.model_name)
-    print(f"Loading model from {pretrained_path} ...")
     s = time.time()
+    model_id = f"meta-llama/Llama-2-{args.model_name}-hf"
+    print(f"Downloading original model {model_id} ...")
+    s3_bucket = get_mirror_link(model_id)
+    ckpt_path, _ = get_checkpoint_and_refs_dir(model_id=model_id, bucket_uri=s3_bucket)
+
+    download_model(
+        model_id=model_id,
+        bucket_uri=s3_bucket,
+        s3_sync_args=["--no-sign-request"],
+    )
+
+    print(f"Loading original model from {ckpt_path} ...")
+
     model = AutoModelForCausalLM.from_pretrained(
-        pretrained_path,
+        ckpt_path,
         trust_remote_code=True,
         torch_dtype=torch.bfloat16,
         # `use_cache=True` is incompatible with gradient checkpointing.
         use_cache=False,
     )
-    print(f"Done loading model in {time.time() - s} seconds.")
+    print(f"Done downloading and loading model in {time.time() - s} seconds.")
+
+    print(f"Loading and merging peft weights...")
     
     # Load LoRA weights
     model = peft.PeftModel.from_pretrained(
@@ -83,7 +101,7 @@ def main():
     model.save_pretrained(Path(args.output_path))
 
     print(f"Saved merged model to {args.output_path}")
-
+    
 
 if __name__ == "__main__":
     main()
