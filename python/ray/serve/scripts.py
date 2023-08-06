@@ -432,14 +432,13 @@ def run(
 
     http_options = {"host": host, "port": port, "location": "EveryNode"}
     grpc_options = gRPCOptions()
-    # Merge http_options with the ones on ServeDeploySchema. If host and/or port is
-    # passed by cli, those continue to take the priority
+    # Merge http_options and grpc_options with the ones on ServeDeploySchema. If host
+    # and/or port is passed by cli, those continue to take the priority
     if is_config and isinstance(config, ServeDeploySchema):
         config_http_options = config.http_options.dict()
         http_options = {**config_http_options, **http_options}
         grpc_options = gRPCOptions(**config.grpc_options.dict())
 
-    print("in run grpc_options", grpc_options)
     client = _private_api.serve_start(
         detached=True,
         http_options=http_options,

@@ -317,7 +317,6 @@ class HTTPProxyStateManager:
         gcs_client: GcsClient,
         grpc_options: Optional[gRPCOptions] = None,
     ):
-        print("in HTTPProxyStateManager", grpc_options)
         self._controller_name = controller_name
         self._detached = detached
         if config is not None:

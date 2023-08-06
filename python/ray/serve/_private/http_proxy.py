@@ -26,8 +26,7 @@ from ray._raylet import StreamingObjectRefGenerator
 from ray import serve
 from ray.serve.handle import RayServeHandle
 from ray.serve._private.grpc_util import (
-    add_RayServeServiceServicer_to_server,
-    serve_server,
+    create_serve_grpc_server,
     DummyServicer,
 )
 from ray.serve._private.http_util import (
@@ -778,33 +777,22 @@ class GenericProxy:
 class gRPCProxy(GenericProxy):
     """This class is meant to be instantiated and run by an gRPC server.
 
-    >>> import grpc
-    >>> controller_name = ... # doctest: +SKIP
-    >>> grpc_server = grpc.aio.server() # doctest: +SKIP
-    >>> add_RayServeServiceServicer_to_server( # doctest: +SKIP
-    >>>     self.grpc_proxy, grpc_server # doctest: +SKIP
-    >>> ) # doctest: +SKIP
+    This is the servicer class for the gRPC server. It implements `unary_unary`
+    as the entry point for unary gRPC request and `unary_stream` as the entry
+    point for streaming gRPC request.
     """
 
-    async def Method1(
-        self, request: bytes, context: "grpc._cython.cygrpc._ServicerContext"
+    async def unary_unary(
+        self, request_proto: Any, context: "grpc._cython.cygrpc._ServicerContext"
     ) -> bytes:
-        result = await self.Predict(pickle.dumps(request), context)
-        print("Method1", result, type(result))
-        return result
+        """Entry point of the gRPC proxy unary request.
 
-    async def Predict(
-        self, request: Any, context: "grpc._cython.cygrpc._ServicerContext"
-    ) -> bytes:
-        """Entry point of the gRPC proxy.
-
-        This method is called by the gRPC server when a request is received. It
-        wraps the request in a ServeRequest object and calls proxy_request. The return
-        value is protobuf RayServeResponse object.
+        This method is called by the gRPC server when a unary request is received.
+        It wraps the request in a ServeRequest object and calls proxy_request.
+        The return value is serialized user defined protobuf bytes.
         """
-        print("in predict", request, type(request))
         serve_request = gRPCServeRequest(
-            request_proto=request,
+            request_proto=request_proto,
             context=context,
             match_target=self.prefix_router.match_target,
             stream=False,
@@ -812,18 +800,17 @@ class gRPCProxy(GenericProxy):
         serve_response = await self.proxy_request(serve_request=serve_request)
         return serve_response.response
 
-    async def PredictStreaming(
-        self, request: Any, context: "grpc._cython.cygrpc._ServicerContext"
+    async def unary_stream(
+        self, request_proto: Any, context: "grpc._cython.cygrpc._ServicerContext"
     ) -> Generator[bytes, None, None]:
-        """Entry point of the gRPC proxy.
+        """Entry point of the gRPC proxy streaming request.
 
-        This method is called by the gRPC server when a request is received. It
-        wraps the request in a ServeRequest object and calls proxy_request. The return
-        value is protobuf RayServeResponse object.
+        This method is called by the gRPC server when a streaming request is received.
+        It wraps the request in a ServeRequest object and calls proxy_request.
+        The return value is a generator of serialized user defined protobuf bytes.
         """
-        print("in predict streaming", request, type(request))
         serve_request = gRPCServeRequest(
-            request_proto=request,
+            request_proto=request_proto,
             context=context,
             match_target=self.prefix_router.match_target,
             stream=True,
@@ -1195,7 +1182,6 @@ class HTTPProxyActor:
         grpc_options: Optional[gRPCOptions] = None,
     ):  # noqa: F821
         self.grpc_options = grpc_options or gRPCOptions()
-        print("in HTTPProxyActor", self.grpc_options)
         configure_component_logger(
             component_name="http_proxy", component_id=node_ip_address
         )
@@ -1369,14 +1355,12 @@ class HTTPProxyActor:
         if not self.should_start_grpc_server():
             return self.grpc_setup_complete.set()
 
-        # TODO (genesu): clean this up
-        grpc_server = serve_server(
-            unary_unary=self.grpc_proxy.Predict,
-            unary_stream=self.grpc_proxy.PredictStreaming,
+        grpc_server = create_serve_grpc_server(
+            unary_unary=self.grpc_proxy.unary_unary,
+            unary_stream=self.grpc_proxy.unary_stream,
         )
         grpc_server.add_insecure_port(f"[::]:{self.grpc_port}")
         dummy_servicer = DummyServicer()
-        add_RayServeServiceServicer_to_server(dummy_servicer, grpc_server)
         for grpc_servicer_function in self.grpc_options.grpc_servicer_func_callable:
             grpc_servicer_function(dummy_servicer, grpc_server)
         await grpc_server.start()

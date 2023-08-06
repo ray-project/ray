@@ -1,66 +1,17 @@
 import grpc
-import pickle
-from typing import Any, Sequence
+from typing import Sequence
 from grpc.aio._server import Server
 
 
-class RayServeServiceStub(object):
-    def __init__(self, channel: "grpc._channel.Channel", output_protobuf: Any):
-        """Constructor for the Ray Serve gRPC service stub.
-
-        Note that `request_serializer` is using `pickle.dumps()` to serialize to
-        preserve the object typing in the gPRC server. `response_deserializer` is
-        using the `FromString()` on the `output_protobuf` to allow the client to
-        deserialize the custom defined protobuf returning object.
-
-        Args:
-            channel: A grpc.Channel.
-            output_protobuf: The protobuf class of the output.
-        """
-        self.Predict = channel.unary_unary(
-            "/ray.serve.RayServeService/Predict",
-            request_serializer=pickle.dumps,
-            response_deserializer=getattr(output_protobuf, "FromString"),
-        )
-        self.PredictStreaming = channel.unary_stream(
-            "/ray.serve.RayServeService/PredictStreaming",
-            request_serializer=pickle.dumps,
-            response_deserializer=getattr(output_protobuf, "FromString"),
-        )
-
-
-def add_RayServeServiceServicer_to_server(
-    servicer: Any, server: "grpc.aio._server.Server"
-):
-    """Adds a RayServeServiceServicer to a gRPC Server.
-
-    This helper function will be called by the proxy actor. The servicer will be a
-    gRPCProxy instance. It will be added to the running gRPC server started by the
-    proxy actor.
-
-    Note that both `request_deserializer` and `response_serializer` are
-    explicitly set to `None` to allow the servicer to take in the raw protobuf bytes
-    and to return the raw protobuf bytes.
-    """
-    rpc_method_handlers = {
-        "Predict": grpc.unary_unary_rpc_method_handler(
-            servicer.Predict,
-            request_deserializer=None,
-            response_serializer=None,
-        ),
-        "PredictStreaming": grpc.unary_stream_rpc_method_handler(
-            servicer.PredictStreaming,
-            request_deserializer=None,
-            response_serializer=None,
-        ),
-    }
-    generic_handler = grpc.method_handlers_generic_handler(
-        "ray.serve.RayServeService", rpc_method_handlers
-    )
-    server.add_generic_rpc_handlers((generic_handler,))
-
-
 class gRPCServer(Server):
+    """Custom gRPC server to override the unary_unary and unary_stream methods.
+
+    Added the `unary_unary` and `unary_stream` methods to the gRPC server class for
+    overriding any rpc handler callers.
+    See: https://github.com/grpc/grpc/blob/60c1701f87cacf359aa1ad785728549eeef1a4b0/
+        src/python/grpcio/grpc/aio/_server.py#L36
+    """
+
     def __init__(self, unary_unary, unary_stream, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.unary_unary = unary_unary
@@ -69,12 +20,19 @@ class gRPCServer(Server):
     def add_generic_rpc_handlers(
         self, generic_rpc_handlers: Sequence[grpc.GenericRpcHandler]
     ):
-        # TODO (genesu): this should only be called before server started. Need to
-        #  restart the server if need to be called again
+        """Override generic_rpc_handlers before adding to the gRPC server.
+
+        This function will override all user defined handlers to have
+            1. None `response_serializer` so the server can pass back the
+            raw protobuf bytes to the user.
+            2. `unary_unary` is always calling `self.unary_unary` set on the
+            initialization.
+            3. `unary_stream` is always calling `self.unary_stream` set on the
+            initialization.
+        """
         serve_rpc_handlers = {}
-        for service_method, method_handler in generic_rpc_handlers[
-            0
-        ]._method_handlers.items():
+        rpc_handler = generic_rpc_handlers[0]
+        for service_method, method_handler in rpc_handler._method_handlers.items():
             serve_method_handler = method_handler._replace(
                 response_serializer=None,
                 unary_unary=self.unary_unary,
@@ -82,11 +40,17 @@ class gRPCServer(Server):
             )
             serve_rpc_handlers[service_method] = serve_method_handler
         generic_rpc_handlers[0]._method_handlers = serve_rpc_handlers
-        print("in add_generic_rpc_handlers", serve_rpc_handlers)
         super().add_generic_rpc_handlers(generic_rpc_handlers)
 
 
-def serve_server(unary_unary, unary_stream):
+def create_serve_grpc_server(unary_unary, unary_stream):
+    """Custom function to create a gRPC server.
+
+    This funcion works similar to `grpc.server()`, but it creates a Serve defined
+    gRPC server in order to override the `unary_unary` and `unary_stream` methods
+
+    See: https://grpc.github.io/grpc/python/grpc.html#grpc.server
+    """
     return gRPCServer(
         thread_pool=None,
         generic_handlers=(),
@@ -100,5 +64,9 @@ def serve_server(unary_unary, unary_stream):
 
 
 class DummyServicer:
+    # This is a dummy class that just pass through when calling on any method.
+    # User defined servicer will attempt to add the method on this class to the
+    # gRPC server, but out gRPC server will override the caller to call gRPCProxy.
     def __getattr__(self, attr):
+        # no-op pass through, just need this to act as the callable
         pass

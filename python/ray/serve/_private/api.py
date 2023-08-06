@@ -136,7 +136,6 @@ def _start_controller(
 
     Returns: A tuple with controller actor handle and controller name.
     """
-    print("in _start_controller", grpc_options)
     # Initialize ray if needed.
     ray._private.worker.global_worker._filter_logs_by_job = False
     if not ray.is_initialized():
@@ -294,9 +293,13 @@ def serve_start(
               internal Serve HTTP proxy actor.  Defaults to 0.
         dedicated_cpu: Whether to reserve a CPU core for the internal
           Serve controller actor.  Defaults to False.
+        grpc_options (Optional[serve.gRPCOptions]): Configuration options
+            for gRPC proxy. You can pass in a gRPCOptions object with fields:
+                - port(int): Port for gRPC server. Defaults to -1, meaning not to
+                    start a gRPC service.
+                - grpc_servicer_functions(list): The list of functions that will
+                    be used to add custom methods to the gRPC servicer. Defaults to [].
     """
-    print("in serve_start", grpc_options)
-
     usage_lib.record_library_usage("serve")
 
     try:

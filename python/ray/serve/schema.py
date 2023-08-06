@@ -505,7 +505,8 @@ class gRPCOptionsSchema(BaseModel, extra=Extra.forbid):
     grpc_servicer_functions: List[str] = Field(
         default=[],
         description=(
-            "the servicer functions used to add the custom methods to the gRPC server"
+            "The servicer functions used to add the custom methods to the gRPC server."
+            "Default to empty list, which means no custom gRPC methods will be added."
         ),
     )
 

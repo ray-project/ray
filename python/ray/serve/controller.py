@@ -106,7 +106,6 @@ class ServeController:
         _disable_http_proxy: bool = False,
         grpc_options: Optional[gRPCOptions] = None,
     ):
-        print("in ServeController", grpc_options)
         self._controller_node_id = ray.get_runtime_context().get_node_id()
         assert (
             self._controller_node_id == get_head_node_id()
