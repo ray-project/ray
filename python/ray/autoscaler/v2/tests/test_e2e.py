@@ -24,7 +24,7 @@ from ray.util.state.api import list_placement_groups, list_tasks
 #
 # @pytest.mark.parametrize("mode", (["single_node", "multi_node"]))
 @pytest.mark.parametrize("mode", (["single_node"]))
-def test_scheduled_task_no_pending_demand(shutdown_only, mode):
+def test_scheduled_task_no_pending_demand(mode):
 
     # So that head node will need to dispatch tasks to worker node.
     num_head_cpu = 0 if mode == "multi_node" else 1
@@ -47,6 +47,9 @@ import ray
 @ray.remote(num_cpus=1)
 def foo():
   return True
+
+ray.init("auto")
+
 while True:
     assert(ray.get(foo.remote()))
 """
@@ -81,10 +84,12 @@ while True:
             assert not (has_task_demand and has_task_usage), status
             time.sleep(0.1)
     finally:
+        # TODO(rickyx): refactor into a fixture for autoscaling cluster.
+        ray.shutdown()
         cluster.shutdown()
 
 
-def test_placement_group_consistent(shutdown_only):
+def test_placement_group_consistent():
     # Test that continuously creating and removing placement groups
     # does not leak pending resource requests.
     import time
@@ -147,6 +152,7 @@ while True:
             assert not (has_pg_demand and has_pg_usage), status
             time.sleep(0.1)
     finally:
+        ray.shutdown()
         cluster.shutdown()
 
 

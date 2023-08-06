@@ -307,7 +307,7 @@ def test_node_info_basic(shutdown_only, monkeypatch):
         wait_for_condition(verify)
 
 
-def test_pg_pending_gang_requests_basic(ray_start_cluster):
+def test_pg_pending_gang_requests_basic(shutdown_only):
     ray.init(num_cpus=1)
 
     # Create a pg that's pending.
@@ -556,7 +556,6 @@ def test_get_cluster_status(ray_start_cluster):
     # This test is to make sure the grpc stub is working.
     # TODO(rickyx): Add e2e tests for the autoscaler state service in a separate PR
     # to validate the data content.
-
     cluster = ray_start_cluster
     # Head node
     cluster.add_node(num_cpus=1, _system_config={"enable_autoscaler_v2": True})

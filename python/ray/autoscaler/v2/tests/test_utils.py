@@ -7,6 +7,7 @@ import pytest  # noqa
 from google.protobuf.json_format import ParseDict
 
 import ray
+from ray._private.test_utils import wait_for_condition
 from ray.autoscaler.v2.schema import (
     ClusterConstraintDemand,
     ClusterStatus,
@@ -47,7 +48,11 @@ def test_is_autoscaler_v2_enabled(shutdown_only, monkeypatch, env_val, enabled):
         m.setenv("RAY_enable_autoscaler_v2", env_val)
         ray.init()
 
-        assert ray.autoscaler.v2.utils.is_autoscaler_v2() == enabled
+        def verify():
+            assert ray.autoscaler.v2.utils.is_autoscaler_v2() == enabled
+            return True
+
+        wait_for_condition(verify)
 
 
 def test_cluster_status_parser_cluster_resource_state():
