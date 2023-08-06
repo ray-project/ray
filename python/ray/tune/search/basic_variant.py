@@ -353,7 +353,7 @@ class BasicVariantGenerator(SearchAlgorithm):
                 num_samples=experiment.spec.get("num_samples", 1),
                 unresolved_spec=experiment.spec,
                 constant_grid_search=self._constant_grid_search,
-                output_path=experiment.dir_name,
+                output_path=experiment.legacy_dir_name,
                 points_to_evaluate=points_to_evaluate,
                 lazy_eval=lazy_eval,
                 start=previous_samples,
