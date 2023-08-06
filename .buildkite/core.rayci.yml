@@ -1,0 +1,6 @@
+group: core tests
+steps:
+  - label: ":python: core"
+    commands:
+      - bazel run //ci/ray_ci -- //python/ray/tests/... //python/ray/dag/... core --workers 6 --worker-id 0 --parallelism-per-worker 3
+    depends_on: forge

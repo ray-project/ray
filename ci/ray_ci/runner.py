@@ -6,7 +6,7 @@ from typing import List, Optional
 import yaml
 import click
 
-from ci.ray_ci.container import run_tests, run_command, docker_login
+from ci.ray_ci.container import run_tests, run_command, setup_test_environment
 from ci.ray_ci.utils import chunk_into_n, logger
 
 # Gets the path of product/tools/docker (i.e. the parent of 'common')
@@ -60,7 +60,7 @@ def main(
         raise Exception("Please use `bazelisk run //ci/ray_ci`")
     os.chdir(bazel_workspace_dir)
 
-    docker_login()
+    setup_test_environment(team)
     if run_flaky_tests:
         test_targets = _get_flaky_test_targets(team)
     else:
