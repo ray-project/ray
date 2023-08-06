@@ -9,7 +9,8 @@ head_node_type:
     # 8 cpus, x86, 32G mem, 10Gb NIC, $0.384/hr on demand
     instance_type: m5.2xlarge
     resources:
-      proxy: 1
+      custom_resources:
+        proxy: 1
 
 worker_node_types:
     - name: worker_node
@@ -22,7 +23,8 @@ worker_node_types:
       max_workers: 130
       use_spot: false
       resources:
-        proxy: 1
+        custom_resources:
+          proxy: 1
 
 aws:
   TagSpecifications:
