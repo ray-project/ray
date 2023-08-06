@@ -3,9 +3,7 @@
 # models) either on or off.
 
 import aiohttp
-import argparse
 import asyncio
-import grpc
 import logging
 from pprint import pprint
 import time
@@ -16,15 +14,10 @@ from starlette.requests import Request
 
 import ray
 from ray import serve
-from ray.serve.generated import serve_pb2, serve_pb2_grpc
 from ray.serve.handle import RayServeHandle
 
 NUM_CLIENTS = 8
 CALLS_PER_BATCH = 100
-parser = argparse.ArgumentParser()
-parser.add_argument("--test-grpc-request", action="store_true")
-args = parser.parse_args()
-TEST_GRPC_REQUEST = args.test_grpc_request
 
 
 async def timeit(name: str, fn: Callable, multiplier: int = 1):
@@ -50,21 +43,10 @@ async def timeit(name: str, fn: Callable, multiplier: int = 1):
     return round(np.mean(stats), 2)
 
 
-async def fetch(session, data, target):
-    if TEST_GRPC_REQUEST:
-        channel = grpc.insecure_channel("localhost:9000")
-        stub = serve_pb2_grpc.RayServeServiceStub(channel)
-        response = stub.Predict(
-            serve_pb2.RayServeRequest(
-                application=target,
-                user_request=data,
-            )
-        )
-        assert response.user_response == b"ok", response
-    else:
-        async with session.get("http://localhost:8000/", data=data) as response:
-            response = await response.text()
-            assert response == "ok", response
+async def fetch(session, data):
+    async with session.get("http://localhost:8000/", data=data) as response:
+        response = await response.text()
+        assert response == "ok", response
 
 
 @ray.remote
@@ -75,9 +57,9 @@ class Client:
     def ready(self):
         return "ok"
 
-    async def do_queries(self, num, data, target):
+    async def do_queries(self, num, data):
         for _ in range(num):
-            await fetch(self.session, data, target)
+            await fetch(self.session, data)
 
 
 def build_app(
@@ -94,11 +76,8 @@ def build_app(
             # Turn off access log.
             logging.getLogger("ray.serve").setLevel(logging.WARNING)
 
-        async def __call__(self, req: Union[bytes, Request]):
-            if isinstance(req, Request):
-                obj_ref = await self._handle.remote(await req.body())
-            else:
-                obj_ref = await self._handle.remote(req)
+        async def __call__(self, req: Request):
+            obj_ref = await self._handle.remote(await req.body())
             return await obj_ref
 
     @serve.deployment(
@@ -152,8 +131,7 @@ async def trial(
     app = build_app(
         intermediate_handles, num_replicas, max_batch_size, max_concurrent_queries
     )
-    serve_handle = serve.run(app)
-    target = serve_handle.deployment_name
+    serve.run(app)
 
     if data_size == "small":
         data = None
@@ -166,7 +144,7 @@ async def trial(
 
         async def single_client():
             for _ in range(CALLS_PER_BATCH):
-                await fetch(session, data, target)
+                await fetch(session, data)
 
         single_client_avg_tps = await timeit(
             "single client {} data".format(data_size),
@@ -180,7 +158,7 @@ async def trial(
     ray.get([client.ready.remote() for client in clients])
 
     async def many_clients():
-        ray.get([a.do_queries.remote(CALLS_PER_BATCH, data, target) for a in clients])
+        ray.get([a.do_queries.remote(CALLS_PER_BATCH, data) for a in clients])
 
     multi_client_avg_tps = await timeit(
         "{} clients {} data".format(len(clients), data_size),
