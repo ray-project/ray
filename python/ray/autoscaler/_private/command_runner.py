@@ -710,11 +710,6 @@ class DockerCommandRunner(CommandRunnerInterface):
     ):
         BOOTSTRAP_MOUNTS = ["~/ray_bootstrap_config.yaml", "~/ray_bootstrap_key.pem"]
 
-        # TODO: Maybe add another step after Setup say Post-Setup which will
-        # help in setting up the host after the container comes up.
-        if "VsphereNodeProvider" in str(type(self.ssh_command_runner.provider)):
-            BOOTSTRAP_MOUNTS += ["~/ray_bootstrap_public_key.key"]
-
         specific_image = self.docker_config.get(
             f"{'head' if as_head else 'worker'}_image", self.docker_config.get("image")
         )

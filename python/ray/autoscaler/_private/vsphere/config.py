@@ -35,7 +35,7 @@ def bootstrap_vsphere(config):
     # fields. Raise error if no `available_node_types`
     check_legacy_fields(config)
 
-    # Create new key pair if doesn't exist already
+    # Create new key pair if it doesn't exist already
     create_key_pair()
 
     # Configure SSH access, using an existing key pair if possible.
@@ -62,29 +62,17 @@ def add_credentials_into_provider_section(config):
     ):
         return
 
-    env_credentials = {}
-    env_credentials["server"] = os.environ["VSPHERE_SERVER"]
-    env_credentials["user"] = os.environ["VSPHERE_USER"]
-    env_credentials["password"] = os.environ["VSPHERE_PASSWORD"]
+    env_credentials = {
+        "server": os.environ["VSPHERE_SERVER"],
+        "user": os.environ["VSPHERE_USER"],
+        "password": os.environ["VSPHERE_PASSWORD"],
+    }
 
     provider_config["vsphere_config"] = {}
     provider_config["vsphere_config"]["credentials"] = env_credentials
 
 
 def update_vsphere_configs(config):
-    """Worker node_config:
-    If clone:False or unspecified:
-        If library_item specified:
-            Create worker from the library_item
-        If library_item unspecified
-            Create worker from head node's library_item
-    If clone:True
-        If library_item unspecified:
-            Terminate
-        If library_item specified:
-            A frozen VM is created from the library item
-            Remaining workers are created from the created frozen VM
-    """
     available_node_types = config["available_node_types"]
 
     # Fetch worker: field from the YAML file
@@ -141,29 +129,11 @@ def update_vsphere_configs(config):
 
     worker_node_config["datastore"] = worker_datastore
 
-    if "clone" in worker_node_config and worker_node_config["clone"] == True:
-        if "library_item" not in worker_node_config:
-            raise ValueError(
-                "library_item is mandatory if clone:True is set for worker config"
-            )
-
-        worker_library_item = worker_node_config["library_item"]
-
-        # Create a new object with properties to be used while creating the frozen VM.
-        freeze_vm = {
-            "library_item": worker_library_item,
-            "resource_pool": worker_resource_pool,
-            "resources": worker_node_config["resources"],
-            "networks": worker_networks,
-            "datastore": worker_datastore,
-        }
-
-        # Add the newly created feeze_vm object to head_node config
-        head_node_config["freeze_vm"] = freeze_vm
-
-    elif "clone" not in worker_node_config or worker_node_config["clone"] == False:
-        if "library_item" not in worker_node_config:
-            worker_node_config["library_item"] = head_node_config["library_item"]
+    if "frozen_vm_name" not in head_node_config:
+        raise ValueError(
+            "frozen_vm_name is mandatory for bringing up the Ray cluster, contact "
+            "yourVI admin for the information."
+        )
 
 
 def create_key_pair():
