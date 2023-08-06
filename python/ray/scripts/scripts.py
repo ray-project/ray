@@ -984,9 +984,6 @@ def start(
 
 @cli.command()
 @click.option(
-    "--address", required=False, type=str, help="The address of the cluster to stop"
-)
-@click.option(
     "-f",
     "--force",
     is_flag=True,
@@ -1002,14 +999,22 @@ def start(
         "they are forcefully terminated after the grace period. "
     ),
 )
+@click.option(
+    "--port", required=False, type=int, help="The port of the cluster to stop"
+)
 @add_click_logging_options
 @PublicAPI
-def stop(address: str, force: bool, grace_period: int):
+def stop(force: bool, grace_period: int, port: int):
     """Stop Ray processes manually on the local machine."""
     is_linux = sys.platform.startswith("linux")
     total_procs_found = 0
     total_procs_stopped = 0
     procs_not_gracefully_killed = []
+    address = (
+        services.canonicalize_bootstrap_address_or_die(f"localhost:{port}")
+        if port is not None
+        else None
+    )
 
     def kill_procs(
         force: bool,
@@ -1129,7 +1134,7 @@ def stop(address: str, force: bool, grace_period: int):
         psutil.wait_procs(alive, timeout=2)
         return total_found, total_stopped, alive
 
-    if len(services.find_gcs_addresses()) > 1 and address is None:
+    if len(services.find_gcs_addresses()) > 1 and port is None:
         if cli_logger.interactive:
             confirm_kill_all_clusters = cli_logger.confirm(
                 False,
@@ -1168,8 +1173,7 @@ def stop(address: str, force: bool, grace_period: int):
 
     # Kill GCS.
     if address is not None:
-        address = services.canonicalize_bootstrap_address_or_die(address)
-        url, port = address.split(":")
+        url = address.split(":")[0]
         gcs_proc_arg_filters = [f"--node-ip-address={url}", f"--gcs_server_port={port}"]
     else:
         gcs_proc_arg_filters = None

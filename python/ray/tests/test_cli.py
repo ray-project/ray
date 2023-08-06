@@ -418,8 +418,8 @@ def test_ray_stop_single_cluster(configure_lang, monkeypatch, cleanup_ray):
     runner = CliRunner(env={"RAY_USAGE_STATS_PROMPT_ENABLED": "0"})
 
     # Start 2 ray clusters
-    port_cluster_0 = 0
-    port_cluster_1 = 1
+    cluster_0_port = 4000
+    cluster_1_port = 4001
     runner.invoke(
         scripts.start,
         [
@@ -428,7 +428,7 @@ def test_ray_stop_single_cluster(configure_lang, monkeypatch, cleanup_ray):
             "--log-color",
             "False",
             "--port",
-            str(port_cluster_0),
+            str(cluster_0_port),
         ],
     )
     runner.invoke(
@@ -439,24 +439,28 @@ def test_ray_stop_single_cluster(configure_lang, monkeypatch, cleanup_ray):
             "--log-color",
             "False",
             "--port",
-            str(port_cluster_1),
+            str(cluster_1_port),
         ],
     )
     gcs_addresses = list(services.find_gcs_addresses())
     assert len(gcs_addresses) == 2
 
     # Stop one of the clusters and ensure that the second cluster is still up
-    cluster_address_to_stop, cluster_address_to_keep = gcs_addresses
     runner.invoke(
         scripts.stop,
         [
-            "--address",
-            cluster_address_to_stop,
+            "--port",
+            cluster_0_port,
         ],
     )
+
+    # Make sure we stopped the right cluster
     gcs_addresses = services.find_gcs_addresses()
     assert len(gcs_addresses) == 1
-    assert cluster_address_to_keep in gcs_addresses
+    remaining_cluster_expected_address = services.canonicalize_bootstrap_address(
+        f"localhost:{cluster_1_port}"
+    )
+    assert remaining_cluster_expected_address in gcs_addresses
     _die_on_error(runner.invoke(scripts.stop))
 
 
