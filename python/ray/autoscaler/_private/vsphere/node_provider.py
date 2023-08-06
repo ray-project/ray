@@ -232,9 +232,7 @@ class VsphereNodeProvider(NodeProvider):
         """
         with self.lock:
             nodes = []
-            cli_logger.info("Getting non terminated nodes...")
             vms = self.vsphere_automation_sdk_client.vcenter.VM.list()
-            cli_logger.info(f"Got {len(vms)} non terminated nodes.")
             filters = tag_filters.copy()
             if TAG_RAY_CLUSTER_NAME not in tag_filters:
                 filters[TAG_RAY_CLUSTER_NAME] = self.cluster_name
