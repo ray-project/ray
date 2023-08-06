@@ -89,10 +89,15 @@ def deploy_replicas(min_replicas, max_replicas, max_batch_size):
 
 
 def deploy_proxy_replicas():
+    # Deploy a special proxy deployment replica on each node
+    # to guarantee that the http proxy actor runs on each node
+    # even when the node has zero echo deployment replicas.
+    # This is needed since later on wrk will send requests to
+    # the http proxy on each node.
     @serve.deployment(
         name="proxy",
         num_replicas=len(ray.nodes()),
-        ray_actor_options={"resources": {"proxy": 1}},
+        ray_actor_options={"num_cpus": 0, "resources": {"proxy": 1}},
     )
     class Proxy:
         def __call__(self, request):
@@ -168,7 +173,6 @@ def main(
     # For detailed discussion, see https://github.com/wg/wrk/issues/205
     # TODO:(jiaodong) What's the best number to use here ?
     all_endpoints = list(serve.list_deployments().keys() - {"proxy"})
-    logger.info(f"jjyao {all_endpoints}")
     all_metrics, all_wrk_stdout = run_wrk_on_all_nodes(
         trial_length, NUM_CONNECTIONS, http_host, http_port, all_endpoints=all_endpoints
     )
