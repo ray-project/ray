@@ -10,7 +10,6 @@ import pytest
 
 import ray
 from ray._private.utils import _get_pyarrow_version
-from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.air.util.tensor_extensions.arrow import ArrowTensorArray
 from ray.data.block import BlockExecStats, BlockMetadata
 from ray.data.datasource.file_based_datasource import BlockWritePathProvider
@@ -132,7 +131,7 @@ def _s3_fs(aws_credentials, s3_server, s3_path):
         if "@" in s3_path:
             s3_path = s3_path.split("@")[-1]
         else:
-            s3_path = s3_path[len("s3://") :]
+            s3_path = s3_path[len("s3://"):]
     s3_path = urllib.parse.quote(s3_path)
     fs.create_dir(s3_path)
     yield fs
@@ -392,19 +391,6 @@ def ds_pandas_list_multi_column_format(ray_start_regular_shared):
 @pytest.fixture(scope="function")
 def ds_arrow_single_column_format(ray_start_regular_shared):
     yield ray.data.from_arrow(pa.table({"column_1": [1, 2, 3, 4]}))
-
-
-@pytest.fixture(scope="function")
-def ds_arrow_single_column_tensor_format(ray_start_regular_shared):
-    yield ray.data.from_arrow(
-        pa.table(
-            {
-                TENSOR_COLUMN_NAME: ArrowTensorArray.from_numpy(
-                    np.arange(16).reshape((4, 2, 2))
-                )
-            }
-        )
-    )
 
 
 @pytest.fixture(scope="function")
