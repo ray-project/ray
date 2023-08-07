@@ -1,5 +1,6 @@
 import inspect
 import json
+import logging
 from enum import Enum
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union, Set
 
@@ -24,6 +25,7 @@ from ray.serve._private.constants import (
     DEFAULT_HTTP_HOST,
     DEFAULT_HTTP_PORT,
     DEFAULT_MAX_CONCURRENT_QUERIES,
+    SERVE_LOGGER_NAME,
 )
 from ray.serve._private.utils import DEFAULT, DeploymentOptionUpdateType
 from ray.serve.generated.serve_pb2 import (
@@ -36,6 +38,8 @@ from ray._private import ray_option_utils
 from ray._private.utils import import_attr, resources_from_ray_options
 from ray._private.serialization import pickle_dumps
 from ray.util.annotations import DeveloperAPI, PublicAPI
+
+logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
 @PublicAPI(stability="stable")
@@ -595,4 +599,15 @@ class gRPCOptions(BaseModel):
 
     @property
     def grpc_servicer_func_callable(self) -> List[Callable]:
-        return [import_attr(fun) for fun in self.grpc_servicer_functions]
+        callables = []
+        for fun in self.grpc_servicer_functions:
+            try:
+                callables.append(import_attr(fun))
+            except AttributeError:
+                logger.warning(
+                    f"{fun} can't be imported! Please make sure there are no typo "
+                    "in those functions. Or you might want to rebuild service "
+                    "definitions if .proto file is changed."
+                )
+
+        return callables

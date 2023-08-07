@@ -168,9 +168,17 @@ def cli():
     type=int,
     help="Port for gRPC proxies to listen on. Defaults not to start gRPC server.",
 )
-def start(address, http_host, http_port, http_location, grpc_port):
-    # TODO (genesu): pass grpc port into serve.start
-    print(grpc_port)
+@click.option(
+    "--grpc-servicer-functions",
+    default=[],
+    required=False,
+    multiple=True,
+    help="Servicer function for adding the method handler to the gRPC server."
+    "Defaults to empty list and no gRPC server will be started.",
+)
+def start(
+    address, http_host, http_port, http_location, grpc_port, grpc_servicer_functions
+):
     ray.init(
         address=address,
         namespace=SERVE_NAMESPACE,
@@ -181,6 +189,10 @@ def start(address, http_host, http_port, http_location, grpc_port):
             host=http_host,
             port=http_port,
             location=http_location,
+        ),
+        grpc_options=gRPCOptions(
+            port=grpc_port,
+            grpc_servicer_functions=grpc_servicer_functions,
         ),
     )
 

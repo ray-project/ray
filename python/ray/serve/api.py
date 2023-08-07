@@ -1,7 +1,7 @@
 import collections
 import inspect
 import logging
-from typing import Any, Callable, Dict, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 from functools import wraps
 
 from fastapi import APIRouter, FastAPI
@@ -14,7 +14,12 @@ from ray.util.annotations import Deprecated, PublicAPI
 
 from ray.serve.built_application import BuiltApplication
 from ray.serve._private.client import ServeControllerClient
-from ray.serve.config import AutoscalingConfig, DeploymentConfig, HTTPOptions
+from ray.serve.config import (
+    AutoscalingConfig,
+    DeploymentConfig,
+    gRPCOptions,
+    HTTPOptions,
+)
 from ray.serve._private.constants import (
     DEFAULT_HTTP_HOST,
     DEFAULT_HTTP_PORT,
@@ -64,6 +69,7 @@ def start(
     detached: bool = False,
     http_options: Optional[Union[dict, HTTPOptions]] = None,
     dedicated_cpu: bool = False,
+    grpc_options: Optional[gRPCOptions] = None,
     **kwargs,
 ) -> ServeControllerClient:
     """Start Serve on the cluster.
@@ -104,7 +110,13 @@ def start(
         dedicated_cpu: Whether to reserve a CPU core for the internal
           Serve controller actor.  Defaults to False.
     """
-    client = _private_api.serve_start(detached, http_options, dedicated_cpu, **kwargs)
+    client = _private_api.serve_start(
+        detached=detached,
+        http_options=http_options,
+        dedicated_cpu=dedicated_cpu,
+        grpc_options=grpc_options,
+        **kwargs,
+    )
 
     # Record after Ray has been started.
     record_extra_usage_tag(TagKey.SERVE_API_VERSION, "v1")
@@ -419,6 +431,8 @@ def run(
     port: int = DEFAULT_HTTP_PORT,
     name: str = SERVE_DEFAULT_APP_NAME,
     route_prefix: str = DEFAULT.VALUE,
+    grpc_port: int = -1,
+    grpc_servicer_functions: List[str] = (),
 ) -> Optional[RayServeSyncHandle]:
     """Run an application and return a handle to its ingress deployment.
 
@@ -448,6 +462,10 @@ def run(
     client = _private_api.serve_start(
         detached=True,
         http_options={"host": host, "port": port, "location": "EveryNode"},
+        grpc_options=gRPCOptions(
+            port=grpc_port,
+            grpc_servicer_functions=grpc_servicer_functions,
+        ),
     )
 
     # Record after Ray has been started.
