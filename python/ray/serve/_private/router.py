@@ -324,7 +324,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         self._pending_requests_to_fulfill: Deque[PendingRequest] = deque()
         self._pending_requests_to_schedule: Deque[PendingRequest] = deque()
 
-        self.num_router_scheduling_tasks = metrics.Counter(
+        self.num_router_scheduling_tasks = metrics.Gauge(
             "serve_num_power_of_two_choices_scheduling_tasks",
             description=(
                 "The number of power-of-two-choices scheduling tasks "
@@ -602,6 +602,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
             logger.exception("Unexpected error in fulfill_pending_requests.")
         finally:
             self._scheduling_tasks.remove(asyncio.current_task(loop=self._loop))
+            self.num_router_scheduling_tasks.set(len(self._scheduling_tasks))
 
     def maybe_start_scheduling_tasks(self):
         """Start scheduling tasks to fulfill pending requests if necessary.
@@ -620,6 +621,8 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
             self._scheduling_tasks.add(
                 self._loop.create_task(self.fulfill_pending_requests())
             )
+        if len(tasks_to_start) > 0:
+            self.num_router_scheduling_tasks.set(len(self._scheduling_tasks))
 
     async def choose_replica_for_query(self, query: Query) -> ReplicaWrapper:
         """Chooses a replica to send the provided request to.
