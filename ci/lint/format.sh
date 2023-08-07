@@ -286,13 +286,13 @@ format_all_scripts() {
     fi
 
     if command -v shellcheck >/dev/null; then
-      local shell_files non_shell_files
-      non_shell_files=($(git ls-files -- ':(exclude)*.sh'))
+      local shell_files bin_like_files
       shell_files=($(git ls-files -- '*.sh'))
-      if [ 0 -lt "${#non_shell_files[@]}" ]; then
-        shell_files+=($(git --no-pager grep -l -- '^#!\(/usr\)\?/bin/\(env \+\)\?\(ba\)\?sh' "${non_shell_files[@]}" || true))
+      bin_like_files=($(git ls-files -- ':!:*.*' ':!:*/BUILD' ':!:*/Dockerfile' ':!:*README' ':!:*LICENSE' ':!:*WORKSPACE'))
+      if [[ 0 -lt "${#bin_like_files[@]}" ]]; then
+        shell_files+=($(git --no-pager grep -l -I -- '^#!\(/usr\)\?/bin/\(env \+\)\?\(ba\)\?sh' "${bin_like_files[@]}" || true))
       fi
-      if [ 0 -lt "${#shell_files[@]}" ]; then
+      if [[ 0 -lt "${#shell_files[@]}" ]]; then
         echo "$(date)" "shellcheck scripts...."
         shellcheck_scripts "${shell_files[@]}"
       fi
