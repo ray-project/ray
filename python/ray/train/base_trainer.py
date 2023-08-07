@@ -479,13 +479,13 @@ class BaseTrainer(abc.ABC):
             str: Local directory containing the trainer state
         """
         if not is_non_local_path_uri(restore_path):
-            return Path(os.path.expanduser(restore_path)) / _TRAINER_PKL
+            return os.path.join(os.path.expanduser(restore_path), _TRAINER_PKL)
 
-        tempdir = Path(tempfile.mkdtemp("tmp_experiment_dir"))
-
-        path = Path(restore_path)
-        download_from_uri(str(path / _TRAINER_PKL), str(tempdir / _TRAINER_PKL))
-        return tempdir / _TRAINER_PKL
+        tempdir = tempfile.mkdtemp("tmp_experiment_dir")
+        local_path = os.path.join(tempdir, _TRAINER_PKL)
+        
+        download_from_uri(restore_path, local_path)
+        return Path(local_path)
 
     def setup(self) -> None:
         """Called during fit() to perform initial setup on the Trainer.
