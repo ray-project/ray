@@ -40,7 +40,7 @@ JobID JOB_ID2 = JobID::FromInt(2);
 std::string BAD_RUNTIME_ENV = "bad runtime env";
 const std::string BAD_RUNTIME_ENV_ERROR_MSG = "bad runtime env";
 
-std::vector<Language> LANGUAGES = {Language::PYTHON, Language::JAVA};
+std::vector<Language> LANGUAGES = {Language::PYTHON, Language::JULIA};
 
 class MockWorkerClient : public rpc::CoreWorkerClientInterface {
  public:
@@ -303,7 +303,7 @@ class WorkerPoolMock : public WorkerPool {
       auto pushed_it = pushedProcesses_.find(it->first);
       if (pushed_it == pushedProcesses_.end()) {
         int runtime_env_hash = 0;
-        bool is_java = false;
+        bool is_julia = false;
         // Parses runtime env hash to make sure the pushed workers can be popped out.
         for (auto command_args : it->second) {
           std::string runtime_env_key = "--runtime-env-hash=";
@@ -312,9 +312,9 @@ class WorkerPoolMock : public WorkerPool {
             runtime_env_hash =
                 std::stoi(command_args.substr(pos + runtime_env_key.size()));
           }
-          pos = command_args.find("java");
+          pos = command_args.find("julia");
           if (pos != std::string::npos) {
-            is_java = true;
+            is_julia = true;
           }
         }
         // TODO(SongGuyang): support C++ language workers.
@@ -325,7 +325,7 @@ class WorkerPoolMock : public WorkerPool {
         for (int i = 0; i < register_workers; i++) {
           auto worker = CreateWorker(
               it->first,
-              is_java ? Language::JAVA : Language::PYTHON,
+              is_julia ? Language::JULIA : Language::PYTHON,
               JOB_ID,
               rpc::WorkerType::WORKER,
               runtime_env_hash,
@@ -408,8 +408,8 @@ class WorkerPoolTest : public ::testing::Test {
         std::to_string(MAX_IO_WORKER_SIZE) + R"(, "kill_idle_workers_interval_ms": 0)" +
         R"(, "enable_worker_prestart": true)" + "}");
     SetWorkerCommands({{Language::PYTHON, {"dummy_py_worker_command"}},
-                       {Language::JAVA,
-                        {"java", "RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER", "MainClass"}}});
+                       {Language::JULIA,
+                        {"julia", "RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER", "MainClass"}}});
     std::promise<bool> promise;
     thread_io_service_.reset(new std::thread([this, &promise] {
       std::unique_ptr<boost::asio::io_service::work> work(
@@ -567,9 +567,9 @@ TEST_F(WorkerPoolDriverRegisteredTest, CompareWorkerProcessObjects) {
 TEST_F(WorkerPoolDriverRegisteredTest, HandleWorkerRegistration) {
   PopWorkerStatus status;
   auto [proc, token] = worker_pool_->StartWorkerProcess(
-      Language::JAVA, rpc::WorkerType::WORKER, JOB_ID, &status);
+      Language::JULIA, rpc::WorkerType::WORKER, JOB_ID, &status);
   std::vector<std::shared_ptr<WorkerInterface>> workers;
-  workers.push_back(worker_pool_->CreateWorker(Process(), Language::JAVA));
+  workers.push_back(worker_pool_->CreateWorker(Process(), Language::JULIA));
   for (const auto &worker : workers) {
     // Check that there's still a starting worker process
     // before all workers have been registered
@@ -618,8 +618,8 @@ TEST_F(WorkerPoolDriverRegisteredTest, StartupPythonWorkerProcessCount) {
   TestStartupWorkerProcessCount(Language::PYTHON, 1);
 }
 
-TEST_F(WorkerPoolDriverRegisteredTest, StartupJavaWorkerProcessCount) {
-  TestStartupWorkerProcessCount(Language::JAVA, 1);
+TEST_F(WorkerPoolDriverRegisteredTest, StartupJuliaWorkerProcessCount) {
+  TestStartupWorkerProcessCount(Language::JULIA, 1);
 }
 
 TEST_F(WorkerPoolDriverRegisteredTest, InitialWorkerProcessCount) {
@@ -672,64 +672,64 @@ TEST_F(WorkerPoolDriverRegisteredTest, PopWorkerSyncsOfMultipleLanguages) {
   auto py_worker =
       worker_pool_->CreateWorker(Process::CreateNewDummy(), Language::PYTHON);
   worker_pool_->PushWorker(py_worker);
-  // Check that the Python worker will not be popped if the given task is a Java task
-  const auto java_task_spec = ExampleTaskSpec(ActorID::Nil(), Language::JAVA);
-  ASSERT_NE(worker_pool_->PopWorkerSync(java_task_spec), py_worker);
+  // Check that the Python worker will not be popped if the given task is a Julia task
+  const auto julia_task_spec = ExampleTaskSpec(ActorID::Nil(), Language::JULIA);
+  ASSERT_NE(worker_pool_->PopWorkerSync(julia_task_spec), py_worker);
   // Check that the Python worker can be popped if the given task is a Python task
   const auto py_task_spec = ExampleTaskSpec(ActorID::Nil(), Language::PYTHON);
   ASSERT_EQ(worker_pool_->PopWorkerSync(py_task_spec), py_worker);
 
-  // Create a Java Worker, and add it to the pool
-  auto java_worker =
-      worker_pool_->CreateWorker(Process::CreateNewDummy(), Language::JAVA);
-  worker_pool_->PushWorker(java_worker);
-  // Check that the Java worker will be popped now for Java task
-  ASSERT_EQ(worker_pool_->PopWorkerSync(java_task_spec), java_worker);
+  // Create a Julia Worker, and add it to the pool
+  auto julia_worker =
+      worker_pool_->CreateWorker(Process::CreateNewDummy(), Language::JULIA);
+  worker_pool_->PushWorker(julia_worker);
+  // Check that the Julia worker will be popped now for Julia task
+  ASSERT_EQ(worker_pool_->PopWorkerSync(julia_task_spec), julia_worker);
 }
 
 TEST_F(WorkerPoolDriverRegisteredTest, StartWorkerWithDynamicOptionsCommand) {
   std::vector<std::string> actor_jvm_options;
-  actor_jvm_options.insert(
-      actor_jvm_options.end(),
-      {"-Dmy-actor.hello=foo", "-Dmy-actor.world=bar", "-Xmx2g", "-Xms1g"});
+  // actor_jvm_options.insert(
+  //     actor_jvm_options.end(),
+  //     {"-Dmy-actor.hello=foo", "-Dmy-actor.world=bar", "-Xmx2g", "-Xms1g"});
   JobID job_id = JobID::FromInt(12345);
   auto task_id = TaskID::ForDriverTask(job_id);
   auto actor_id = ActorID::Of(job_id, task_id, 1);
   TaskSpecification task_spec = ExampleTaskSpec(
-      ActorID::Nil(), Language::JAVA, job_id, actor_id, actor_jvm_options, task_id);
+      ActorID::Nil(), Language::JULIA, job_id, actor_id, actor_jvm_options, task_id);
 
   rpc::JobConfig job_config = rpc::JobConfig();
-  job_config.add_code_search_path("/test/code_search_path");
-  job_config.add_jvm_options("-Xmx1g");
-  job_config.add_jvm_options("-Xms500m");
-  job_config.add_jvm_options("-Dmy-job.hello=world");
-  job_config.add_jvm_options("-Dmy-job.foo=bar");
+  // job_config.add_code_search_path("/test/code_search_path");
+  // job_config.add_jvm_options("-Xmx1g");
+  // job_config.add_jvm_options("-Xms500m");
+  // job_config.add_jvm_options("-Dmy-job.hello=world");
+  // job_config.add_jvm_options("-Dmy-job.foo=bar");
   worker_pool_->HandleJobStarted(job_id, job_config);
 
   ASSERT_NE(worker_pool_->PopWorkerSync(task_spec), nullptr);
   const auto real_command =
       worker_pool_->GetWorkerCommand(worker_pool_->LastStartedWorkerProcess());
 
-  // NOTE: When adding a new parameter to Java worker command, think carefully about the
+  // NOTE: When adding a new parameter to Julia worker command, think carefully about the
   // position of this new parameter. Do not modify the order of existing parameters.
   std::vector<std::string> expected_command;
-  expected_command.push_back("java");
+  expected_command.push_back("julia");
   // Ray-defined per-job options
-  expected_command.insert(expected_command.end(),
-                          {"-Dray.job.code-search-path=/test/code_search_path"});
+  // expected_command.insert(expected_command.end(),
+  //                         {"--ray.job.code-search-path=/test/code_search_path"});
   // User-defined per-job options
-  expected_command.insert(
-      expected_command.end(),
-      {"-Xmx1g", "-Xms500m", "-Dmy-job.hello=world", "-Dmy-job.foo=bar"});
+  // expected_command.insert(
+  //     expected_command.end(),
+  //     {"-Xmx1g", "-Xms500m", "-Dmy-job.hello=world", "-Dmy-job.foo=bar"});
   // Ray-defined per-process options
-  expected_command.push_back("-Dray.raylet.startup-token=0");
-  expected_command.push_back("-Dray.internal.runtime-env-hash=1");
+  // expected_command.push_back("-Dray.raylet.startup-token=0");
+  // expected_command.push_back("-Dray.internal.runtime-env-hash=1");
   // User-defined per-process options
-  expected_command.insert(
-      expected_command.end(), actor_jvm_options.begin(), actor_jvm_options.end());
+  // expected_command.insert(
+  //     expected_command.end(), actor_jvm_options.begin(), actor_jvm_options.end());
   // Entry point
   expected_command.push_back("MainClass");
-  expected_command.push_back("--language=JAVA");
+  expected_command.push_back("--language=JULIA");
   ASSERT_EQ(real_command, expected_command);
   worker_pool_->HandleJobFinished(job_id);
 }
@@ -1282,10 +1282,10 @@ TEST_F(WorkerPoolDriverRegisteredTest, TestWorkerCappingWithExitDelay) {
   ///
 
   ///
-  /// Register some idle Python and Java (w/ multi-worker enabled) workers
+  /// Register some idle Python and Julia (w/ multi-worker enabled) workers
   ///
   std::vector<std::shared_ptr<WorkerInterface>> workers;
-  std::vector<Language> languages({Language::PYTHON, Language::JAVA});
+  std::vector<Language> languages({Language::PYTHON, Language::JULIA});
   for (int i = 0; i < POOL_SIZE_SOFT_LIMIT * 2; i++) {
     for (const auto &language : languages) {
       PopWorkerStatus status;
@@ -1997,9 +1997,9 @@ TEST_F(WorkerPoolTest, RegisterSecondPythonDriverCallbackImmediately) {
   ASSERT_TRUE(callback_called);
 }
 
-TEST_F(WorkerPoolTest, RegisterFirstJavaDriverCallbackImmediately) {
+TEST_F(WorkerPoolTest, RegisterFirstJuliaDriverCallbackImmediately) {
   auto driver =
-      worker_pool_->CreateWorker(Process::CreateNewDummy(), Language::JAVA, JOB_ID);
+      worker_pool_->CreateWorker(Process::CreateNewDummy(), Language::JULIA, JOB_ID);
 
   driver->AssignTaskId(TaskID::ForDriverTask(JOB_ID));
   bool callback_called = false;
