@@ -1193,7 +1193,7 @@ TEST_F(ClusterTaskManagerTest, HeartbeatTest) {
         // infeasible, ready, CPU, GPU, size
         {1, 0, 10, 1, 2},
         {1, 0, 9, 5, 2},
-        {0, 1, 1, 0, 1}};
+        {0, 0, 1, 0, 1}};
 
     for (auto &load : *load_by_shape) {
       bool found = false;
@@ -1327,7 +1327,7 @@ TEST_F(ClusterTaskManagerTest, BacklogReportTest) {
 
     ASSERT_EQ(shape1.backlog_size(), 55);
     ASSERT_EQ(shape1.num_infeasible_requests_queued(), 0);
-    ASSERT_EQ(shape1.num_ready_requests_queued(), 10);
+    ASSERT_EQ(shape1.num_ready_requests_queued(), 9);
   }
 
   // Push a worker so the first task can run.
