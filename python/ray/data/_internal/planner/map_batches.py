@@ -127,13 +127,13 @@ def generate_map_batches_fn(
             yield from process_next_batch(batch)
 
         if not has_batches:
-            # If the input blocks are all empty, then short-circuit and return an empty
-            # block.
-            yield output_buffer.generate_empty_block(sample_block=first_block)
-        else:
-            # Yield remainder block from output buffer.
-            output_buffer.finalize()
-            if output_buffer.has_next():
-                yield output_buffer.next()
+            # If the input blocks are all empty, then add an empty block to the buffer,
+            # so that the buffer contains some data.
+            yield output_buffer.add_block(first_block)
+
+        # Yield remainder block from output buffer.
+        output_buffer.finalize()
+        if output_buffer.has_next():
+            yield output_buffer.next()
 
     return fn
