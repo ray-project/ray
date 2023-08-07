@@ -62,6 +62,8 @@ class RuntimeEnvContext:
 
             class_path_args = ["-cp", ray_jars + ":" + str(":".join(local_java_jars))]
             passthrough_args = class_path_args + passthrough_args
+        elif language == Language.JULIA:
+            executable = "julia"
         elif sys.platform == "win32":
             executable = ""
         else:
