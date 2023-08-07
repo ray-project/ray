@@ -90,10 +90,10 @@ def file_tail_iterator(path: str) -> Iterator[Optional[List[str]]]:
             if new_chunk_char_count > MAX_CHUNK_CHAR_LENGTH:
                 # Too many characters, return 20000 in this chunk, and then
                 # continue loop with remaining characters in curr_line
-                truncated_line = curr_line[0: MAX_CHUNK_CHAR_LENGTH - chunk_char_count]
+                truncated_line = curr_line[0 : MAX_CHUNK_CHAR_LENGTH - chunk_char_count]
                 lines.append(truncated_line)
                 # Set remainder of current line to process next
-                curr_line = curr_line[MAX_CHUNK_CHAR_LENGTH - chunk_char_count:]
+                curr_line = curr_line[MAX_CHUNK_CHAR_LENGTH - chunk_char_count :]
                 yield lines or None
                 lines = []
                 chunk_char_count = 0

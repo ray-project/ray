@@ -34,7 +34,9 @@ from ray.dashboard.modules.job.common import (
 from ray.dashboard.tests.conftest import *  # noqa
 from ray.runtime_env.runtime_env import RuntimeEnv, RuntimeEnvConfig
 from ray.util.state import (
-    get_node, list_nodes, list_actors,
+    get_node,
+    list_nodes,
+    list_actors,
 )
 from ray.job_submission import JobStatus, JobSubmissionClient
 from ray.tests.conftest import _ray_start
@@ -50,10 +52,13 @@ EVENT_LOOP = get_or_create_event_loop()
 
 
 def get_node_id_for_supervisor_actor_for_job(
-        address: str, job_submission_id: str) -> str:
-    actors = list_actors(address=address,
-                         filters=[
-                             ("ray_namespace", "=", SUPERVISOR_ACTOR_RAY_NAMESPACE)])
+    address: str, job_submission_id: str
+) -> str:
+    actors = list_actors(
+        address=address,
+        filters=[
+            ("ray_namespace", "=", SUPERVISOR_ACTOR_RAY_NAMESPACE)]
+    )
     for actor in actors:
         if actor.name == JOB_ACTOR_NAME_TEMPLATE.format(job_id=job_submission_id):
             return actor.node_id
