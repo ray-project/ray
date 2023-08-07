@@ -1254,7 +1254,7 @@ class HTTPProxyActor:
         )
 
     def should_start_grpc_server(self):
-        return self.grpc_port > 0
+        return self.grpc_port > 0 and self.grpc_options.grpc_servicer_func_callable
 
     async def ready(self):
         """Returns when both HTTP and gRPC proxies are ready to serve traffic.

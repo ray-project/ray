@@ -81,7 +81,7 @@ class gRPCServeRequest(ServeRequest):
         for key, value in context.invocation_metadata():
             if key == "application":
                 self.app_name = value
-            elif key == "request_id":  # TODO (genesu): refactor x-request-id
+            elif key == "request_id":
                 self.request_id = value
             elif key == "multiplexed_model_id":
                 self.multiplexed_model_id = value
