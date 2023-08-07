@@ -7,7 +7,7 @@ from ray.air.config import MAX
 from ray.air._internal.util import is_nan
 from ray.train import CheckpointConfig
 from ray.train._internal.storage import _delete_fs_path
-from ray.train.checkpoint import Checkpoint
+from ray.train._checkpoint import Checkpoint
 
 
 logger = logging.getLogger(__name__)

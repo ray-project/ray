@@ -16,7 +16,6 @@ doctest(
             "config_parser.py",
             "function_runner.py",
             "insufficient_resources_manager.py",
-            "ray_trial_executor.py",
             "sample.py",
             "session.py",
             "trial.py",
@@ -220,14 +219,6 @@ py_test(
 )
 
 py_test(
-    name = "test_ray_trial_executor",
-    size = "large",
-    srcs = ["tests/test_ray_trial_executor.py"],
-    deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive"],
-)
-
-py_test(
     name = "test_run_experiment",
     size = "medium",
     srcs = ["tests/test_run_experiment.py"],
@@ -351,46 +342,6 @@ py_test(
     name = "test_trial_relative_logdir",
     size = "medium",
     srcs = ["tests/test_trial_relative_logdir.py"],
-    deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive"],
-)
-
-py_test(
-    name = "test_trial_runner",
-    size = "large",
-    srcs = ["tests/test_trial_runner.py"],
-    deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive"],
-)
-
-py_test(
-    name = "test_trial_runner_2",
-    size = "large",
-    srcs = ["tests/test_trial_runner_2.py"],
-    deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive"],
-)
-
-py_test(
-    name = "test_trial_runner_3",
-    size = "large",
-    srcs = ["tests/test_trial_runner_3.py"],
-    deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive", "medium_instance"],
-)
-
-py_test(
-    name = "test_trial_runner_pg",
-    size = "large",
-    srcs = ["tests/test_trial_runner_pg.py"],
-    deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive"],
-)
-
-py_test(
-    name = "test_trial_runner_callbacks",
-    size = "small",
-    srcs = ["tests/test_trial_runner_callbacks.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive"],
 )

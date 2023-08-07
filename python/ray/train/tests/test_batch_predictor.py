@@ -10,7 +10,7 @@ import pytest
 from ray.air.constants import MAX_REPR_LENGTH, PREPROCESSOR_KEY
 
 import ray
-from ray.air.checkpoint import Checkpoint
+from ray.train import Checkpoint
 from ray.air.util.data_batch_conversion import BatchFormat
 from ray.data import Preprocessor
 from ray.data.preprocessors import BatchMapper
