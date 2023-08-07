@@ -23,6 +23,6 @@ def get_parquet_bulk_metadata_provider():
     return FastFileMetadataProvider()
 
 
-def get_image_metadata_provider(file_extensions: Optional[List[str]]):
+def get_image_metadata_provider():
     # Used by `read_images`
     return _ImageFileMetadataProvider()

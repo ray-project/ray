@@ -800,7 +800,7 @@ def read_images(
         ValueError: if ``mode`` is unsupported.
     """
     if meta_provider is None:
-        meta_provider = get_image_metadata_provider(ImageDatasource._FILE_EXTENSION)
+        meta_provider = get_image_metadata_provider()
     return read_datasource(
         ImageDatasource(),
         paths=paths,
