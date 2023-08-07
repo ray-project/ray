@@ -806,6 +806,7 @@ def setup_ray_cluster(
     ray_temp_root_dir: Optional[str] = None,
     strict_mode: bool = False,
     collect_log_to_path: Optional[str] = None,
+    **kwargs,
 ) -> str:
     """
     Set up a ray cluster on the spark cluster by starting a ray head node in the
@@ -949,6 +950,28 @@ def setup_ray_cluster(
             support_stage_scheduling = True
         else:
             support_stage_scheduling = False
+
+    if "num_cpus_per_node" in kwargs:
+        if num_cpus_worker_node is not None:
+            raise ValueError(
+                "'num_cpus_per_node' and 'num_cpus_worker_node' arguments cannot be set together."
+            )
+        num_cpus_worker_node = kwargs["num_cpus_per_node"]
+        _logger.warning(
+            "'num_cpus_per_node' argument is deprecated, please use 'num_cpus_worker_node' "
+            "argument instead."
+        )
+
+    if "num_gpus_per_node" in kwargs:
+        if num_gpus_worker_node is not None:
+            raise ValueError(
+                "'num_gpus_per_node' and 'num_gpus_worker_node' arguments cannot be set together."
+            )
+        num_gpus_worker_node = kwargs["num_gpus_per_node"]
+        _logger.warning(
+            "'num_gpus_per_node' argument is deprecated, please use 'num_gpus_worker_node' "
+            "argument instead."
+        )
 
     # Environment configurations within the Spark Session that dictate how many cpus
     # and gpus to use for each submitted spark task.

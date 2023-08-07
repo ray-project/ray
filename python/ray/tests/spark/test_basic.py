@@ -220,6 +220,25 @@ class TestSparkLocalCluster:
 
         shutdown_ray_cluster()
 
+    def test_use_driver_resources(self):
+        setup_ray_cluster(
+            num_worker_nodes=1,
+            num_cpus_head_node=3,
+            num_gpus_head_node=2,
+            head_node_options={"include_dashboard": False},
+        )
+
+        ray.init()
+
+        head_resources_list = []
+        for node in ray.nodes():
+            # exclude dead node and head node (with 0 CPU resource)
+            if node["Alive"] and node["Resources"].get("CPU", 0) == 3:
+                head_resources_list.append(node["Resources"])
+        assert len(head_resources_list) == 1
+        head_resources = head_resources_list[0]
+        assert head_resources["GPU", 0] == 2
+
 
 if __name__ == "__main__":
     if os.environ.get("PARALLEL_CI"):
