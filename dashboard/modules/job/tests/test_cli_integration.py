@@ -111,18 +111,18 @@ class TestRayJobHeaders:
             assert "hello" in stdout
             assert "succeeded" in stdout
 
-    @pytest.mark.parametrize("ray_job_headers", ["{'key': 'value'}"])
+    @pytest.mark.parametrize("ray_job_headers", ['{"key": "value"}'])
     def test_ray_job_headers(self, ray_start_stop, ray_job_headers: str):
         with set_env_var("RAY_JOB_HEADERS", ray_job_headers):
             _run_cmd("ray job submit -- echo hello", should_fail=False)
 
-    @pytest.mark.parametrize("ray_job_headers", ["{key value}"])
+    @pytest.mark.parametrize("ray_job_headers", ['{key value}'])
     def test_ray_incorrectly_formatted_job_headers(
         self, ray_start_stop, ray_job_headers: str
     ):
-        with pytest.raises(Exception) as excinfo:
+        with pytest.raises(ValueError) as excinfo:
             with set_env_var("RAY_JOB_HEADERS", ray_job_headers):
-                _run_cmd("ray job submit -- echo hello", should_fail=False)
+                _run_cmd("ray job submit -- echo hello", should_fail=True)
 
         exception_string = str(excinfo.value)
         assert "Failed to parse headers into JSON." in exception_string
