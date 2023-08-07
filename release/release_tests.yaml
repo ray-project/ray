@@ -5107,6 +5107,8 @@
         cluster_compute: stress_tests/stress_tests_compute_gce.yaml
       smoke_test:
         frequency: manual
+    - __suffix__: aws_pa
+      env: aws_pa
 
 - name: stress_test_dead_actors
   group: core-daily-test
@@ -5147,6 +5149,8 @@
         cluster_compute: stress_tests/stress_tests_compute_gce.yaml
       smoke_test:
         frequency: manual
+    - __suffix__: aws_pa
+      env: aws_pa
 
 # The full test is not stable, so run the smoke test only.
 # See https://github.com/ray-project/ray/issues/23244.
@@ -5175,6 +5179,8 @@
       frequency: manual
       cluster:
         cluster_compute: stress_tests/smoke_test_compute_gce.yaml
+    - __suffix__: aws_pa
+      env: aws_pa
 
 # - name: threaded_actors_stress_test
 #   group: core-daily-test
@@ -5235,6 +5241,8 @@
         cluster_compute: stress_tests/smoke_test_compute_gce.yaml
       smoke_test:
         frequency: manual
+    - __suffix__: aws_pa
+      env: aws_pa
 
 - name: single_node_oom
   group: core-daily-test
@@ -5328,6 +5336,8 @@
       frequency: manual
       cluster:
         cluster_compute: distributed/many_nodes_tests/compute_config_gce.yaml
+    - __suffix__: aws_pa
+      env: aws_pa
 
 #- name: many_nodes_multi_master_test
 #  group: core-daily-test
@@ -5366,6 +5376,8 @@
       frequency: manual
       cluster:
         cluster_compute: placement_group_tests/compute_gce.yaml
+    - __suffix__: aws_pa
+      env: aws_pa
 
 - name: placement_group_performance_test
   group: core-daily-test
@@ -5390,6 +5402,8 @@
       frequency: manual
       cluster:
         cluster_compute: placement_group_tests/pg_perf_test_compute_gce.yaml
+    - __suffix__: aws_pa
+      env: aws_pa
 
 
 #########################
@@ -5448,6 +5462,8 @@
       frequency: manual
       cluster:
         cluster_compute: object_store_gce.yaml
+    - __suffix__: aws_pa
+      env: aws_pa
 
 - name: many_actors
   group: core-scalability-test
@@ -5475,6 +5491,8 @@
       frequency: manual
       cluster:
         cluster_compute: distributed_gce.yaml
+    - __suffix__: aws_pa
+      env: aws_pa
 
 - name: many_actors_smoke_test
   group: core-scalability-test
@@ -5522,6 +5540,8 @@
       frequency: manual
       cluster:
         cluster_compute: distributed_gce.yaml
+    - __suffix__: aws_pa
+      env: aws_pa
 
 - name: many_pgs
   group: core-scalability-test
@@ -5549,6 +5569,8 @@
       frequency: manual
       cluster:
         cluster_compute: distributed_gce.yaml
+    - __suffix__: aws_pa
+      env: aws_pa
 
 
 - name: many_pgs_smoke_test
@@ -5597,6 +5619,8 @@
       frequency: manual
       cluster:
         cluster_compute: many_nodes_gce.yaml
+    - __suffix__: aws_pa
+      env: aws_pa
 
 - name: scheduling_test_many_0s_tasks_many_nodes
   group: core-scalability-test
@@ -5629,6 +5653,8 @@
       frequency: manual
       cluster:
         cluster_compute: scheduling_gce.yaml
+    - __suffix__: aws_pa
+      env: aws_pa
 
 
 # - name: scheduling_test_many_5s_tasks_single_node
