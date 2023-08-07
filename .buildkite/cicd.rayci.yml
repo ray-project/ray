@@ -5,3 +5,9 @@ steps:
       # TODO(aslonnie): wrap this in a script, and upload test telemetry.
       - bazel test --test_tag_filters=ci_unit //ci/ray_ci/...
     depends_on: forge
+
+  - label: "CI/CD: release test infra"
+    commands:
+      # TODO(aslonnie): wrap this in a script, and upload test telemetry.
+      - bazel test --test_tag_filters=release_unit //release/...
+    depends_on: forge
