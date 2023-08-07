@@ -1,7 +1,7 @@
 import collections
 import itertools
 from types import GeneratorType
-from typing import Callable, Iterator, Optional
+from typing import Callable, Iterable, Iterator, Optional
 
 from ray.data._internal.block_batching import batch_blocks
 from ray.data._internal.execution.interfaces import TaskContext
@@ -25,7 +25,7 @@ def generate_map_batches_fn(
     context = DataContext.get_current()
 
     def fn(
-        blocks: Iterator[Block],
+        blocks: Iterable[Block],
         task_context: TaskContext,
         batch_fn: UserDefinedFunction,
         *fn_args,
@@ -107,8 +107,9 @@ def generate_map_batches_fn(
                     raise e from None
 
         try:
-            first_block = next(blocks)
-            blocks = itertools.chain([first_block], blocks)
+            block_iter = iter(blocks)
+            first_block = next(block_iter)
+            blocks = itertools.chain([first_block], block_iter)
         except StopIteration:
             first_block = None
 
