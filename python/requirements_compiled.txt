@@ -1,7 +1,3 @@
---extra-index-url https://download.pytorch.org/whl/cpu
---find-links https://data.pyg.org/whl/torch-1.13.0+cpu.html
---find-links https://data.pyg.org/whl/torch-2.0.1+cpu.html
-
 about-time==4.2.1
 absl-py==1.4.0
 accelerate==0.20.3
