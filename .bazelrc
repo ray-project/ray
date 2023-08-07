@@ -99,6 +99,9 @@ build:tsan --copt -O2
 build:tsan --copt -g
 build:tsan --copt -fno-omit-frame-pointer
 build:tsan --copt -Wno-uninitialized
+# TSAN get confused by fiber context switches.
+# https://github.com/boostorg/fiber/issues/214
+build:tsan --copt -DBOOST_USE_ASAN
 build:tsan --linkopt -fsanitize=thread
 build:tsan --cxxopt="-D_RAY_TSAN_BUILD"
 # This config is only for running TSAN with LLVM toolchain on Linux.
@@ -111,6 +114,7 @@ build:asan --strip=never
 build:asan --copt -g
 build:asan --copt -fsanitize=address
 build:asan --copt -DADDRESS_SANITIZER
+build:asan --copt -DBOOST_USE_ASAN
 build:asan --copt -fno-omit-frame-pointer
 build:asan --linkopt -fsanitize=address
 test:asan --jobs=1
@@ -126,6 +130,7 @@ build:asan-build --strip=never
 build:asan-build -c dbg
 build:asan-build --copt -fsanitize=address
 build:asan-build --copt -DADDRESS_SANITIZER
+build:asan-build --copt -DBOOST_USE_ASAN
 build:asan-build --copt -O1
 build:asan-build --copt -g
 build:asan-build --copt -fno-omit-frame-pointer
