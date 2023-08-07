@@ -1,7 +1,6 @@
 import copy
 import inspect
 import logging
-import os
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Tuple, Type, Union
 from ray._private.thirdparty.tabulate.tabulate import tabulate
@@ -18,7 +17,7 @@ from ray.train._internal import session
 from ray.train._internal.backend_executor import BackendExecutor, TrialInfo
 from ray.train._internal.checkpoint import TuneCheckpointManager
 from ray.train._internal.data_config import DataConfig, _LegacyDataConfigWrapper
-from ray.train._internal.storage import _use_storage_context, StorageContext
+from ray.train._internal.storage import _use_storage_context
 from ray.train._internal.utils import construct_train_func
 from ray.train.constants import TRAIN_DATASET_KEY, WILDCARD_KEY
 from ray.train.trainer import BaseTrainer, GenDataset
