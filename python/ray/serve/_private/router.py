@@ -324,6 +324,9 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         self._pending_requests_to_fulfill: Deque[PendingRequest] = deque()
         self._pending_requests_to_schedule: Deque[PendingRequest] = deque()
 
+        # Prepare scheduler metrics.
+        self._actor_name: str = self._get_actor_name()
+
         self.num_scheduling_tasks_gauge = metrics.Gauge(
             "serve_num_power_of_two_choices_scheduling_tasks",
             description=(
@@ -331,7 +334,9 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
                 "run by the router."
             ),
             tags=("deployment",),
-        ).set_default_tags({"deployment", self._deployment_name})
+        ).set_default_tags(
+            {"deployment": self._deployment_name, "actor": self._actor_name}
+        )
 
         self.num_scheduling_tasks_in_backoff = 0
         self.num_scheduling_tasks_in_backoff_gauge = metrics.Gauge(
@@ -341,7 +346,9 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
                 "run by the router that are undergoing backoff."
             ),
             tags=("deployment",),
-        ).set_default_tags({"deployment", self._deployment_name})
+        ).set_default_tags(
+            {"deployment": self._deployment_name, "actor": self._actor_name}
+        )
         self.num_scheduling_tasks_in_backoff_gauge.set(
             self.num_scheduling_tasks_in_backoff
         )
@@ -372,6 +379,30 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
     @property
     def curr_replicas(self) -> Dict[str, ReplicaWrapper]:
         return self._replicas
+
+    def _get_actor_name(self) -> str:
+        """Gets the name of the actor where this scheduler runs.
+
+        NOTE: this call hangs when the GCS is down. As long as this method is
+        called only when the scheduler is initialized, this should be
+        okay because a ServeHandle (and its scheduler) relies
+        on the Serve controller for intialization, and the Serve controller
+        fate-shares with the GCS.
+
+        Return:
+            The name of the actor where this scheduler runs. If the scheduler
+            runs outside an actor, returns an empty string.
+        """
+
+        try:
+            actor_id = ray.get_runtime_context().get_actor_id()
+            if actor_id is None:
+                return ""
+            else:
+                return ray.util.state.get_actor(actor_id, timeout=5).name
+        except Exception:
+            logger.exception("Got exception while attempting to get actor name.")
+            return ""
 
     def update_replicas(self, replicas: List[ReplicaWrapper]):
         """Update the set of available replicas to be considered for scheduling.
