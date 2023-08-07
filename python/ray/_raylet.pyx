@@ -2522,6 +2522,21 @@ cdef class GcsClient:
 
         return serialized_reply
 
+    @_auto_reconnect
+    def drain_node(
+            self,
+            node_id: c_string,
+            reason: int32_t,
+            reason_message: c_string):
+        cdef:
+            int64_t timeout_ms = -1
+            c_bool is_accepted = False
+        with nogil:
+            check_status(self.inner.get().DrainNode(
+                node_id, reason, reason_message, timeout_ms, is_accepted))
+
+        return is_accepted
+
     #############################################################
     # Interface for rpc::autoscaler::AutoscalerStateService ends
     #############################################################

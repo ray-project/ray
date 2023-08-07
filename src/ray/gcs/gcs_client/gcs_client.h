@@ -231,6 +231,11 @@ class RAY_EXPORT PythonGcsClient {
       const std::vector<std::unordered_map<std::string, double>> &bundles,
       const std::vector<int64_t> &count_array);
   Status GetClusterStatus(int64_t timeout_ms, std::string &serialized_reply);
+  Status DrainNode(const std::string &node_id,
+                   int32_t reason,
+                   const std::string &reason_message,
+                   int64_t timeout_ms,
+                   bool &is_accepted);
 
  private:
   GcsClientOptions options_;

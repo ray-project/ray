@@ -274,12 +274,13 @@ message GetClusterStatusReply {
 }
 
 enum DrainNodeReason {
+  DRAIN_NODE_REASON_UNSPECIFIED = 0;
   // The node has been idle for long enough time.
   // Drain request with this reason is rejectable.
-  IDLE_TERMINATION = 0;
+  DRAIN_NODE_REASON_IDLE_TERMINATION = 1;
   // The node will be preempted.
   // Drain request with this reason is not rejectable.
-  PREEMPTION = 1;
+  DRAIN_NODE_REASON_PREEMPTION = 2;
 }
 
 message DrainNodeRequest {
