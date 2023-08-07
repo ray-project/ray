@@ -620,19 +620,6 @@ class StorageContext:
         """Get the name of the checkpoint directory, given an index."""
         return f"checkpoint_{index:06d}"
 
-    @staticmethod
-    def _parse_checkpoint_index(checkpoint_dir_name: str):
-        """Parse the index from a checkpoint directory name
-        created by _make_checkpoint_dir_name.
-
-        >>> StorageContext._parse_checkpoint_index("checkpoint_000001")
-        1
-        >>> StorageContext._parse_checkpoint_index("checkpoint_11111111")
-        11111111
-        """
-        assert checkpoint_dir_name.startswith("checkpoint_")
-        return int(checkpoint_dir_name.split("_")[1])
-
 
 _storage_context: Optional[StorageContext] = None
 
