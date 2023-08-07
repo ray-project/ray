@@ -19,6 +19,8 @@ from typing import (
     Tuple,
 )
 
+import pyarrow.fs
+
 import ray
 import ray.cloudpickle as pickle
 from ray.util import inspect_serializability
@@ -458,7 +460,6 @@ class TunerInternal:
         """
         if _use_storage_context():
             from ray.train._internal.storage import _download_from_fs_path
-            import pyarrow.fs
 
             tempdir = tempfile.mkdtemp("tmp_experiment_dir")
             fs, fs_path = pyarrow.fs.FileSystem.from_uri(restore_path)

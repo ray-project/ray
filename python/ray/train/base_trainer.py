@@ -8,6 +8,8 @@ import tempfile
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Type, Union
 import warnings
 
+import pyarrow.fs
+
 import ray
 import ray.cloudpickle as pickle
 from ray.air._internal.config import ensure_only_allowed_dataclass_keys_updated
@@ -23,7 +25,11 @@ from ray.air.config import RunConfig, ScalingConfig
 from ray.air.result import Result
 from ray.train._checkpoint import Checkpoint as NewCheckpoint
 from ray.train._internal import session
-from ray.train._internal.storage import _use_storage_context
+from ray.train._internal.storage import (
+    _download_from_fs_path,
+    _list_at_fs_path,
+    _use_storage_context,
+)
 from ray.train.constants import TRAIN_DATASET_KEY
 from ray.util import PublicAPI
 from ray.util.annotations import DeveloperAPI
@@ -374,9 +380,6 @@ class BaseTrainer(abc.ABC):
             bool: Whether this path exists and contains the trainer state to resume from
         """
         if _use_storage_context():
-            from ray.train._internal.storage import _list_at_fs_path
-            import pyarrow.fs
-
             fs, fs_path = pyarrow.fs.FileSystem.from_uri(str(path))
             return _TRAINER_PKL in _list_at_fs_path(fs, fs_path)
 
@@ -490,9 +493,6 @@ class BaseTrainer(abc.ABC):
             str: Local directory containing the trainer state
         """
         if _use_storage_context():
-            from ray.train._internal.storage import _download_from_fs_path
-            import pyarrow.fs
-
             tempdir = tempfile.mkdtemp("tmp_experiment_dir")
             fs, fs_path = pyarrow.fs.FileSystem.from_uri(restore_path)
             _download_from_fs_path(
