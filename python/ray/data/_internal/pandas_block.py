@@ -60,32 +60,32 @@ class PandasRow(TableRow):
 
         is_single_item = isinstance(key, str)
         keys = [key] if is_single_item else key
+        
+        def get_item(keys: List[str]):
+            col = self._row[keys]
+            if len(col) == 0:
+                return None
 
-        col = self._row[keys]
-        if len(col) == 0:
-            return None
+            items = col.iloc[0]
+            if isinstance(items[0], TensorArrayElement):
+                # Getting an item in a Pandas tensor column may return
+                # a TensorArrayElement, which we have to convert to an ndarray.
+                return tuple([item.to_numpy() for item in items])
 
-        items = col.iloc[0]
-        if isinstance(items[0], TensorArrayElement):
-            # Getting an item in a Pandas tensor column may return a TensorArrayElement,
-            # which we have to convert to an ndarray.
-            if is_single_item:
-                return items[0].to_numpy()
+            try:
+                # Try to interpret this as a numpy-type value.
+                # See https://stackoverflow.com/questions/9452775/converting-numpy-dtypes-to-native-python-types.  # noqa: E501
+                return tuple([item.as_py() for item in items])
 
-            return [item.to_numpy() for item in items]
+            except (AttributeError, ValueError):
+                # Fallback to the original form.
+                return items
 
-        try:
-            # Try to interpret this as a numpy-type value.
-            # See https://stackoverflow.com/questions/9452775/converting-numpy-dtypes-to-native-python-types.  # noqa: E501
-            if is_single_item:
-                return items[0].as_py()
-
-            return tuple([item.as_py() for item in items])
-        except (AttributeError, ValueError):
-            # Fallback to the original form.
-            if is_single_item:
-                return items[0]
-
+        items = get_item(keys)
+        
+        if is_single_item:
+            return items[0]
+        else:
             return items
 
     def __iter__(self) -> Iterator:
