@@ -64,8 +64,8 @@ training.
 
              import torch
              from torch.utils.data import DataLoader, DistributedSampler
-            +from ray import train
-            +import ray.train.torch
+            + from ray import train
+            + import ray.train.torch
 
 
              def train_func():
@@ -91,6 +91,55 @@ training.
             .. code-block:: python
 
                 global_batch_size = worker_batch_size * train.get_context().get_world_size()
+    
+    .. tab-item:: PyTorch Lightning
+
+        Ray Train will set up your distributed process group on each worker. All you need to do 
+        is to inject several utilities into the definition of your PyTorch Lightning Trainer.
+
+        .. code-block:: diff
+
+              import pytorch_lightning as pl
+            + from ray.train.lightning import (
+            +   prepare_trainer,
+            +   RayDDPStrategy,
+            +   RayLightningEnvironment,
+            + )
+
+              def train_func_per_worker():
+                ...
+                model = MyLightningModule(...)
+                datamodule = MyLightningDataModule(...)
+                
+                trainer = pl.Trainer(
+            -     devices=[0,1,2,3],
+            -     strategy=DDPStrategy(),
+            -     plugins=[LightningEnvironment()],
+            +     devices="auto",
+            +     strategy=RayDDPStrategy(),
+            +     plugins=[RayLightningEnvironment()]
+                )
+            +   trainer = prepare_trainer(trainer)
+                
+                trainer.fit(model, datamodule=datamodule)
+    
+        We provide the following utilities:
+
+        - Strategy Class:
+          - :class:`~ray.train.lightning.RayDDPStrategy`
+          - :class:`~ray.train.lightning.RayFSDPStrategy`
+          - :class:`~ray.train.lightning.RayDeepSpeedStrategy`
+
+        - Environment Plugin:
+          - :class:`~ray.train.lightning.RayLightningEnvironment`
+
+        These utilities correctly set up the worker ranking and device information for Ray 
+        Train. You should replace the original arguments in ``pl.Trainer`` with these 
+        utility classes. Also, remember to call
+        :meth:`~ray.train.lightning.prepare_trainer` to validate 
+        your Trainer configurations. 
+
+
 
 Creating a :class:`~ray.train.torch.TorchTrainer`
 -------------------------------------------------

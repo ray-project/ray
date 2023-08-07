@@ -86,8 +86,71 @@ appropriately in distributed training.
             print(result.checkpoint.to_dict())
             # {'epoch': 4, 'model_weights': OrderedDict([('bias', tensor([-0.1215])), ('weight', tensor([[0.3253, 0.1979, 0.4525, 0.2850]]))]), '_timestamp': 1656107095, '_preprocessor': None, '_current_checkpoint_id': 4}
 
-By default, checkpoints will be persisted to local disk in the :ref:`log
-directory <train-log-dir>` of each run.
+    .. tab-item:: PyTorch Lightning
+        
+        Ray Train leverages PyTorch Lightning's Callback interface to report metrics 
+        and checkpoints. We provide a simple callback implementation that reports on 
+        each epoch end.  
+
+        .. code-block:: python
+            :emphasize-lines: 2,9
+            
+            import pytorch_lightning as pl
+            from ray.train.lightning import RayTrainReportCallback
+            from ray.train.torch import TorchTrainer
+
+            def train_func_per_worker():
+                ...
+                trainer = pl.Trainer(
+                    ...
+                    callbacks = [RayTrainReportCallback()]
+                )
+                trainer.fit(...)
+
+            ray_trainer = TorchTrainer(
+                train_func_per_worker,
+                scaling_config=ScalingConfig(num_workers=2),
+            )
+            result = ray_trainer.fit()
+
+        
+        You can always get the checkpoint path from ``result.checkpoint`` and 
+        ``result.best_checkpoints``.
+
+        For more advanced reporting usages (e.g. report at different frequency, report 
+        customized checkpoint files), you can implement your own a customized callback.
+
+        Here we provide you with a simple example:
+
+        .. code-block:: python
+
+            from pytorch_lightning.callbacks import Callback
+            from ray.train import Checkpoint
+
+            class CustomRayTrainReportCallback(Callback):
+                def on_train_epoch_end(self, trainer, pl_module):
+                    if trainer.current_epoch % 3 != 0:
+                        return 
+
+                    with TemporaryDirectory() as tmpdir:
+                        # Fetch metrics
+                        metrics = trainer.callback_metrics
+                        metrics = {k: v.item() for k, v in metrics.items()}
+
+                        # Add customized metrics
+                        metrics["epoch"] = trainer.current_epoch
+                        metrics["custom_metric"] = 123
+                    
+                        # Save model checkpoint file to tmpdir
+                        ckpt_path = os.path.join(tmpdir, f"ckpt_epoch_{trainer.current_epoch}.pth")
+                        trainer.save_checkpoint(ckpt_path, weights_only=False)
+
+                        # Report to train session
+                        checkpoint = Checkpoint.from_directory(tmpdir)
+                        ray.train.report(metrics=metrics, checkpoint=checkpoint)
+            
+
+By default, checkpoints will be persisted to the :ref:`log directory <train-log-dir>` of each run.
 
 
 .. _train-dl-configure-checkpoints:
@@ -204,3 +267,49 @@ Checkpoints can be loaded into the training function in 2 steps:
 
             print(result.checkpoint.to_dict())
             # {'epoch': 3, 'model_weights': OrderedDict([('bias', tensor([0.0902])), ('weight', tensor([[-0.1549, -0.0861,  0.4353, -0.4116]]))]), '_timestamp': 1656108265, '_preprocessor': None, '_current_checkpoint_id': 2}
+
+    .. tab-item:: PyTorch Lightning
+
+        .. code-block:: python
+            :emphasize-lines: 11,12,13,14,15,16,17
+
+            from ray import train
+            from ray.train import Checkpoint, ScalingConfig
+            from ray.train.torch import TorchTrainer
+            from ray.train.lightning import RayTrainReportCallback
+            from os.path import join
+
+            def train_func_per_worker():
+                model = MyLightningModule(...)
+                datamodule = MyLightningDataModule(...)
+                trainer = pl.Trainer(
+                    ...
+                    callbacks=[RayTrainReportCallback()]
+                )
+
+                checkpoint = train.get_checkpoint()
+                if checkpoint:
+                    with checkpoint.as_directory() as ckpt_dir:
+                        ckpt_path = join(ckpt_dir, "checkpoint")
+                        trainer.fit(model, datamodule=datamodule, ckpt_path=ckpt_path)
+                else:
+                    trainer.fit(model, datamodule=datamodule)
+
+            # Train for 2 epochs        
+            ray_trainer = TorchTrainer(
+                train_func_per_worker,
+                train_loop_config={"max_epochs": 2},
+                scaling_config=ScalingConfig(num_workers=2),
+                resume_from_checkpoint=result.checkpoint,
+            )
+            result = ray_trainer.fit()
+
+            # Resume training for another 2 epochs
+            ray_trainer = TorchTrainer(
+                train_func_per_worker,
+                train_loop_config={"max_epochs": 4},
+                scaling_config=ScalingConfig(num_workers=2),
+                resume_from_checkpoint=result.checkpoint,
+            )
+            result = ray_trainer.fit()
+
