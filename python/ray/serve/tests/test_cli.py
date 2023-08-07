@@ -573,6 +573,7 @@ def test_status_basic(ray_start_stop):
     for name, status in default_app["deployments"].items():
         expected_deployments.remove(name)
         assert status["status"] in {"HEALTHY", "UPDATING"}
+        assert status["num_replicas"] == 1
         assert "message" in status
     assert len(expected_deployments) == 0
 
@@ -581,15 +582,6 @@ def test_status_basic(ray_start_stop):
         lambda: time.time() > default_app["last_deployed_time_s"],
         timeout=2,
     )
-
-    def proxy_healthy():
-        status_response = subprocess.check_output(
-            ["serve", "status", "-a", "http://localhost:52365/"]
-        )
-        proxy_status = yaml.safe_load(status_response)["proxies"]
-        return len(proxy_status) and all(p == "HEALTHY" for p in proxy_status.values())
-
-    wait_for_condition(proxy_healthy)
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
