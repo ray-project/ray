@@ -18,7 +18,6 @@ option cc_enable_arenas = true;
 package ray.rpc;
 
 import "src/ray/protobuf/common.proto";
-import "src/ray/protobuf/autoscaler.proto";
 
 option java_package = "io.ray.runtime.generated";
 

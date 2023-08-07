@@ -45,7 +45,6 @@ proto_library(
     deps = [
         ":common_proto",
         ":runtime_env_common_proto",
-        ":autoscaler_proto",
     ],
 )
 
