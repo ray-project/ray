@@ -3,6 +3,7 @@ from typing import Any, Dict, Optional
 
 import ray._private.worker
 from ray._private.client_mode_hook import client_mode_hook
+from ray._private.utils import pasre_pg_formatted_resources_to_original
 from ray.runtime_env import RuntimeEnv
 from ray.util.annotations import Deprecated, PublicAPI
 
@@ -108,6 +109,17 @@ class RuntimeContext(object):
         node_id = self.worker.current_node_id
         return node_id.hex()
 
+    def get_worker_id(self) -> str:
+        """Get current worker ID for this worker or driver process.
+
+        Returns:
+            A worker id in hex format for this worker or driver process.
+        """
+        assert (
+            ray.is_initialized()
+        ), "Worker ID is not available because Ray has not been initialized."
+        return self.worker.worker_id.hex()
+
     @property
     @Deprecated(message="Use get_task_id() instead", warning=True)
     def task_id(self):
@@ -179,7 +191,7 @@ class RuntimeContext(object):
                 print(ray.get(get_task_id.remote()))
 
             .. testoutput::
-                :options: +SKIP
+                :options: +MOCK
 
                 16310a0f0a45af5c2746a0e6efb235c0962896a201000000
                 c2668a65bda616c1ffffffffffffffffffffffff01000000
@@ -312,7 +324,7 @@ class RuntimeContext(object):
             res: sum(amt for _, amt in mapping)
             for res, mapping in resource_id_map.items()
         }
-        return resource_map
+        return pasre_pg_formatted_resources_to_original(resource_map)
 
     def get_runtime_env_string(self):
         """Get the runtime env string used for the current driver or worker.
@@ -340,11 +352,13 @@ class RuntimeContext(object):
         Returns:
             The handle of current actor.
         """
-        if self.actor_id is None:
-            raise RuntimeError("This method is only available in an actor.")
         worker = self.worker
         worker.check_connected()
-        return worker.core_worker.get_actor_handle(self.actor_id)
+        actor_id = worker.actor_id
+        if actor_id.is_nil():
+            raise RuntimeError("This method is only available in an actor.")
+
+        return worker.core_worker.get_actor_handle(actor_id)
 
     @property
     def gcs_address(self):
@@ -373,8 +387,11 @@ _runtime_context = None
 
 @PublicAPI
 @client_mode_hook
-def get_runtime_context():
+def get_runtime_context() -> RuntimeContext:
     """Get the runtime context of the current driver/worker.
+
+    The obtained runtime context can be used to get the metadata
+    of the current task and actor.
 
     Example:
 
@@ -383,6 +400,10 @@ def get_runtime_context():
             import ray
             # Get the job id.
             ray.get_runtime_context().get_job_id()
+            # Get the actor id.
+            ray.get_runtime_context().get_actor_id()
+            # Get the task id.
+            ray.get_runtime_context().get_task_id()
 
     """
     global _runtime_context

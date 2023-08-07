@@ -1,6 +1,7 @@
 import tensorflow as tf
 from typing import Any, Mapping
 
+from ray.rllib.core.learner.learner import LearnerHyperparameters
 from ray.rllib.core.learner.tf.tf_learner import TfLearner
 from ray.rllib.core.rl_module.rl_module import ModuleID
 from ray.rllib.policy.sample_batch import SampleBatch
@@ -15,6 +16,7 @@ class BCTfLearner(TfLearner, BaseTestingLearner):
         self,
         *,
         module_id: ModuleID,
+        hps: LearnerHyperparameters,
         batch: NestedDict,
         fwd_out: Mapping[str, TensorType],
     ) -> Mapping[str, Any]:

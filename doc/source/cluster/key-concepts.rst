@@ -16,7 +16,7 @@ and any number of connected :ref:`worker nodes <cluster-worker-nodes>`:
 .. figure:: images/ray-cluster.svg
     :align: center
     :width: 600px
-    
+
     *A Ray cluster with two worker nodes. Each node runs Ray helper processes to
     facilitate distributed scheduling and memory management. The head node runs
     additional control processes (highlighted in blue).*
@@ -37,7 +37,7 @@ Head Node
 ---------
 Every Ray cluster has one node which is designated as the *head node* of the cluster.
 The head node is identical to other worker nodes, except that it also runs singleton processes responsible for cluster management such as the
-:ref:`autoscaler <cluster-autoscaler>` and the Ray driver processes
+:ref:`autoscaler <cluster-autoscaler>`, :term:`GCS <GCS / Global Control Service>` and the Ray driver processes
 :ref:`which run Ray jobs <cluster-clients-and-jobs>`. Ray may schedule
 tasks and actors on the head node just like any other worker node, which is not desired in large-scale clusters.
 See :ref:`vms-large-cluster-configure-head-node` for the best practice in large-scale clusters.
@@ -68,7 +68,7 @@ Ray Jobs
 --------
 
 A Ray job is a single application: it is the collection of Ray tasks, objects, and actors that originate from the same script.
-The worker that runs the Python script is known as the *driver* of the job. 
+The worker that runs the Python script is known as the *driver* of the job.
 
 There are three ways to run a Ray job on a Ray cluster:
 
@@ -81,5 +81,5 @@ For details on these workflows, refer to the :ref:`Ray Jobs API guide <jobs-over
 .. figure:: images/ray-job-diagram.svg
     :align: center
     :width: 650px
-    
+
     *Three ways of running a job on a Ray cluster.*

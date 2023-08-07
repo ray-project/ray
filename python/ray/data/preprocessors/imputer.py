@@ -1,6 +1,6 @@
-from typing import List, Union, Optional, Dict
-from numbers import Number
 from collections import Counter
+from numbers import Number
+from typing import Dict, List, Optional, Union
 
 import pandas as pd
 from pandas.api.types import is_categorical_dtype

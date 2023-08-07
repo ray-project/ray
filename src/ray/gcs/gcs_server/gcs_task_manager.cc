@@ -387,25 +387,15 @@ void GcsTaskManager::HandleGetTaskEvents(rpc::GetTaskEventsRequest request,
   return;
 }
 
-void GcsTaskManager::RecordDataLossFromWorker(const rpc::TaskEventData &data) {
-  // TODO(rickyx): GCS side GC will be changed in another PR. This is a temporary
-  // routine for supporting legacy behaviour with worker side changes.
-  if (data.dropped_task_attempts_size() > 0) {
-    stats_counter_.Increment(kTotalNumStatusTaskEventsDropped,
-                             data.dropped_task_attempts_size());
-  }
-
-  if (data.num_profile_events_dropped() > 0) {
-    stats_counter_.Increment(kTotalNumProfileTaskEventsDropped,
-                             data.num_profile_events_dropped());
-  }
-}
-
 void GcsTaskManager::HandleAddTaskEventData(rpc::AddTaskEventDataRequest request,
                                             rpc::AddTaskEventDataReply *reply,
                                             rpc::SendReplyCallback send_reply_callback) {
   auto data = std::move(request.data());
-  RecordDataLossFromWorker(data);
+  // Update counters.
+  stats_counter_.Increment(kTotalNumProfileTaskEventsDropped,
+                           data.num_profile_task_events_dropped());
+  stats_counter_.Increment(kTotalNumStatusTaskEventsDropped,
+                           data.num_status_task_events_dropped());
 
   for (auto events_by_task : *data.mutable_events_by_task()) {
     stats_counter_.Increment(kTotalNumTaskEventsReported);

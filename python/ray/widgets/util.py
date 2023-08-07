@@ -68,11 +68,18 @@ def make_table_html_repr(
 def _has_missing(
     *deps: Iterable[Union[str, Optional[str]]], message: Optional[str] = None
 ):
+    """Return a list of missing dependencies.
+
+    Args:
+        deps: Dependencies to check for
+        message: Message to be emitted if a dependency isn't found
+
+    Returns:
+        A list of dependencies which can't be found, if any
+    """
     missing = []
     for (lib, _) in deps:
-        try:
-            importlib.import_module(lib)
-        except ImportError:
+        if importlib.util.find_spec(lib) is None:
             missing.append(lib)
 
     if missing:
@@ -80,11 +87,11 @@ def _has_missing(
             message = f"Run `pip install {' '.join(missing)}` for rich notebook output."
 
         if sys.version_info < (3, 8):
-            logger.warning(f"Missing packages: {missing}. {message}")
+            logger.info(f"Missing packages: {missing}. {message}")
         else:
             # stacklevel=3: First level is this function, then ensure_notebook_deps,
             # then the actual function affected.
-            logger.warning(f"Missing packages: {missing}. {message}", stacklevel=3)
+            logger.info(f"Missing packages: {missing}. {message}", stacklevel=3)
 
     return missing
 
@@ -115,13 +122,11 @@ def _has_outdated(
             message = f"Run `pip install -U {install_str}` for rich notebook output."
 
         if sys.version_info < (3, 8):
-            logger.warning(f"Outdated packages:\n{outdated_str}\n{message}")
+            logger.info(f"Outdated packages:\n{outdated_str}\n{message}")
         else:
             # stacklevel=3: First level is this function, then ensure_notebook_deps,
             # then the actual function affected.
-            logger.warning(
-                f"Outdated packages:\n{outdated_str}\n{message}", stacklevel=3
-            )
+            logger.info(f"Outdated packages:\n{outdated_str}\n{message}", stacklevel=3)
 
     return outdated
 
@@ -147,66 +152,61 @@ def repr_with_fallback(
         conditions above hold, in which case it returns a mimebundle that only contains
         a single text/plain mimetype.
     """
-
-    try:
-        import IPython
-
-        ipython = IPython.get_ipython()
-    except (ModuleNotFoundError, ValueError):
-        ipython = None
-
     message = (
         "Run `pip install -U ipywidgets`, then restart "
         "the notebook server for rich notebook output."
     )
+    if _can_display_ipywidgets(*notebook_deps, message=message):
 
-    def wrapper(func: F) -> F:
-        @wraps(func)
-        def wrapped(self, *args, **kwargs):
-            fallback = (
-                # In Google Colab.
-                (ipython and "google.colab" in str(ipython))
-                or
-                # In notebook environment without required dependencies.
-                (
-                    in_notebook()
-                    and (
-                        _has_missing(*notebook_deps, message=message)
-                        or _has_outdated(*notebook_deps, message=message)
-                    )
-                )
-                or
-                # In ipython shell.
-                in_ipython_shell()
-            )
-            if fallback:
-                return {"text/plain": repr(self)}
-            else:
+        def wrapper(func: F) -> F:
+            @wraps(func)
+            def wrapped(self, *args, **kwargs):
                 return func(self, *args, **kwargs)
 
-        return wrapped
+            return wrapped
+
+    else:
+
+        def wrapper(func: F) -> F:
+            @wraps(func)
+            def wrapped(self, *args, **kwargs):
+                return {"text/plain": repr(self)}
+
+            return wrapped
 
     return wrapper
 
 
 def _get_ipython_shell_name() -> str:
-    try:
-        import IPython
+    if "IPython" in sys.modules:
+        from IPython import get_ipython
 
-        shell = IPython.get_ipython().__class__.__name__
-        return shell
-    except (ModuleNotFoundError, NameError, ValueError):
-        return ""
+        return get_ipython().__class__.__name__
+    return ""
+
+
+def _can_display_ipywidgets(*deps, message) -> bool:
+    # Default to safe behavior: only display widgets if running in a notebook
+    # that has valid dependencies
+    if in_notebook() and not (
+        _has_missing(*deps, message=message) or _has_outdated(*deps, message=message)
+    ):
+        return True
+
+    return False
 
 
 @DeveloperAPI
-def in_notebook() -> bool:
-    """Return whether we are in a Jupyter notebook."""
-    shell = _get_ipython_shell_name()
-    return shell == "ZMQInteractiveShell"  # Jupyter notebook or qtconsole
+def in_notebook(shell_name: Optional[str] = None) -> bool:
+    """Return whether we are in a Jupyter notebook or qtconsole."""
+    if not shell_name:
+        shell_name = _get_ipython_shell_name()
+    return shell_name == "ZMQInteractiveShell"
 
 
 @DeveloperAPI
-def in_ipython_shell() -> bool:
-    shell = _get_ipython_shell_name()
-    return shell == "TerminalInteractiveShell"  # Terminal running IPython
+def in_ipython_shell(shell_name: Optional[str] = None) -> bool:
+    """Return whether we are in a terminal running IPython"""
+    if not shell_name:
+        shell_name = _get_ipython_shell_name()
+    return shell_name == "TerminalInteractiveShell"

@@ -1,7 +1,8 @@
 import os
 import threading
-from typing import Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
+import ray
 from ray._private.ray_constants import env_integer
 from ray.util.annotations import DeveloperAPI
 from ray.util.scheduling_strategies import SchedulingStrategyT
@@ -62,8 +63,18 @@ DEFAULT_USE_PUSH_BASED_SHUFFLE = bool(
     os.environ.get("RAY_DATA_PUSH_BASED_SHUFFLE", None)
 )
 
-# The default global scheduling strategy.
-DEFAULT_SCHEDULING_STRATEGY = "DEFAULT"
+# The default global scheduling strategy. Note that for tasks with large args,
+# DEFAULT_SCHEDULING_STRATEGY_LARGE_ARGS applies.
+DEFAULT_SCHEDULING_STRATEGY = "SPREAD"
+
+# Default scheduling strategy for tasks with large args. This enables locality-based
+# scheduling in Ray for tasks where arg data transfer is a bottleneck.
+DEFAULT_SCHEDULING_STRATEGY_LARGE_ARGS = "DEFAULT"
+
+# Size in bytes after which point task arguments are considered large. Choose a value
+# here at which point data transfer overhead becomes significant in comparison to
+# task scheduling (i.e., low tens of ms).
+DEFAULT_LARGE_ARGS_THRESHOLD = 50 * 1024 * 1024
 
 # Whether to use Polars for tabular dataset sorts, groupbys, and aggregations.
 DEFAULT_USE_POLARS = False
@@ -99,15 +110,11 @@ DEFAULT_AUTO_LOG_STATS = False
 
 # Whether to enable optimizer.
 DEFAULT_OPTIMIZER_ENABLED = bool(
-    int(os.environ.get("RAY_DATA_NEW_EXECUTION_OPTIMIZER", "0"))
+    int(os.environ.get("RAY_DATA_NEW_EXECUTION_OPTIMIZER", "1"))
 )
 
 # Set this env var to enable distributed tqdm (experimental).
 DEFAULT_USE_RAY_TQDM = bool(int(os.environ.get("RAY_TQDM", "1")))
-
-# Enable strict schema mode (experimental). In this mode, we only allow structured
-# schemas, and default to numpy as the batch format.
-DEFAULT_STRICT_MODE = bool(int(os.environ.get("RAY_DATA_STRICT_MODE", "1")))
 
 # Set this to True to use the legacy iter_batches codepath prior to 2.4.
 DEFAULT_USE_LEGACY_ITER_BATCHES = False
@@ -153,6 +160,8 @@ class DataContext:
         use_push_based_shuffle: bool,
         pipeline_push_based_shuffle_reduce_tasks: bool,
         scheduling_strategy: SchedulingStrategyT,
+        scheduling_strategy_large_args: SchedulingStrategyT,
+        large_args_threshold: int,
         use_polars: bool,
         new_execution_backend: bool,
         use_streaming_executor: bool,
@@ -166,7 +175,6 @@ class DataContext:
         execution_options: "ExecutionOptions",
         use_ray_tqdm: bool,
         use_legacy_iter_batches: bool,
-        strict_mode: bool,
         enable_progress_bars: bool,
     ):
         """Private constructor (use get_current() instead)."""
@@ -185,6 +193,8 @@ class DataContext:
             pipeline_push_based_shuffle_reduce_tasks
         )
         self.scheduling_strategy = scheduling_strategy
+        self.scheduling_strategy_large_args = scheduling_strategy_large_args
+        self.large_args_threshold = large_args_threshold
         self.use_polars = use_polars
         self.new_execution_backend = new_execution_backend
         self.use_streaming_executor = use_streaming_executor
@@ -199,7 +209,6 @@ class DataContext:
         self.execution_options = execution_options
         self.use_ray_tqdm = use_ray_tqdm
         self.use_legacy_iter_batches = use_legacy_iter_batches
-        self.strict_mode = strict_mode
         self.enable_progress_bars = enable_progress_bars
 
     @staticmethod
@@ -209,12 +218,10 @@ class DataContext:
         If the context has not yet been created in this process, it will be
         initialized with default settings.
         """
-        from ray.data._internal.execution.interfaces import ExecutionOptions
 
         global _default_context
 
         with _context_lock:
-
             if _default_context is None:
                 _default_context = DataContext(
                     block_splitting_enabled=DEFAULT_BLOCK_SPLITTING_ENABLED,
@@ -233,6 +240,10 @@ class DataContext:
                     # See https://github.com/ray-project/ray/issues/25412.
                     pipeline_push_based_shuffle_reduce_tasks=True,
                     scheduling_strategy=DEFAULT_SCHEDULING_STRATEGY,
+                    scheduling_strategy_large_args=(
+                        DEFAULT_SCHEDULING_STRATEGY_LARGE_ARGS
+                    ),
+                    large_args_threshold=DEFAULT_LARGE_ARGS_THRESHOLD,
                     use_polars=DEFAULT_USE_POLARS,
                     new_execution_backend=DEFAULT_NEW_EXECUTION_BACKEND,
                     use_streaming_executor=DEFAULT_USE_STREAMING_EXECUTOR,
@@ -245,10 +256,9 @@ class DataContext:
                     enable_auto_log_stats=DEFAULT_AUTO_LOG_STATS,
                     trace_allocations=DEFAULT_TRACE_ALLOCATIONS,
                     optimizer_enabled=DEFAULT_OPTIMIZER_ENABLED,
-                    execution_options=ExecutionOptions(),
+                    execution_options=ray.data.ExecutionOptions(),
                     use_ray_tqdm=DEFAULT_USE_RAY_TQDM,
                     use_legacy_iter_batches=DEFAULT_USE_LEGACY_ITER_BATCHES,
-                    strict_mode=DEFAULT_STRICT_MODE,
                     enable_progress_bars=DEFAULT_ENABLE_PROGRESS_BARS,
                 )
 

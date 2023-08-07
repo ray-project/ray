@@ -1,20 +1,20 @@
 import os
+import tempfile
 from typing import Dict
-from unittest.mock import patch, ANY
+from unittest.mock import ANY, patch
 
 import numpy as np
 import pyarrow as pa
 import pytest
-
 from fsspec.implementations.local import LocalFileSystem
 
 import ray
 from ray.data.datasource import Partitioning, PathPartitionFilter
 from ray.data.datasource.file_meta_provider import FastFileMetadataProvider
 from ray.data.datasource.image_datasource import (
+    ImageDatasource,
     _ImageDatasourceReader,
     _ImageFileMetadataProvider,
-    ImageDatasource,
 )
 from ray.data.extensions import ArrowTensorType
 from ray.data.tests.conftest import *  # noqa
@@ -149,11 +149,11 @@ class TestReadImages:
         ]
 
     def test_e2e_prediction(self, shutdown_only):
-        from ray.train.torch import TorchCheckpoint, TorchPredictor
-        from ray.train.batch_predictor import BatchPredictor
-
         from torchvision import transforms
         from torchvision.models import resnet18
+
+        from ray.train.batch_predictor import BatchPredictor
+        from ray.train.torch import TorchCheckpoint, TorchPredictor
 
         ray.shutdown()
         ray.init(num_cpus=2)
@@ -256,6 +256,11 @@ class TestReadImages:
         kwargs["open_stream_args"] = kwargs.pop("arrow_open_file_args")
         mock.assert_called_once_with(ANY, **kwargs)
         assert isinstance(mock.call_args[0][0], ImageDatasource)
+
+    def test_unidentified_image_error(ray_start_regular_shared):
+        with tempfile.NamedTemporaryFile(suffix=".png") as file:
+            with pytest.raises(ValueError):
+                ray.data.read_images(paths=file.name).materialize()
 
 
 if __name__ == "__main__":

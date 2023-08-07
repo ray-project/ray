@@ -5,9 +5,6 @@ import re
 
 import ray
 from ray._private.gcs_pubsub import (
-    GcsErrorSubscriber,
-    GcsLogSubscriber,
-    GcsFunctionKeySubscriber,
     GcsAioPublisher,
     GcsAioErrorSubscriber,
     GcsAioLogSubscriber,
@@ -21,7 +18,7 @@ def test_publish_and_subscribe_error_info(ray_start_regular):
     address_info = ray_start_regular
     gcs_server_addr = address_info["gcs_address"]
 
-    subscriber = GcsErrorSubscriber(address=gcs_server_addr)
+    subscriber = ray._raylet.GcsErrorSubscriber(address=gcs_server_addr)
     subscriber.subscribe()
 
     publisher = ray._raylet.GcsPublisher(address=gcs_server_addr)
@@ -30,10 +27,10 @@ def test_publish_and_subscribe_error_info(ray_start_regular):
 
     (key_id1, err1) = subscriber.poll()
     assert key_id1 == b"aaa_id"
-    assert err1.error_message == "test error message 1"
+    assert err1["error_message"] == "test error message 1"
     (key_id2, err2) = subscriber.poll()
     assert key_id2 == b"bbb_id"
-    assert err2.error_message == "test error message 2"
+    assert err2["error_message"] == "test error message 2"
 
     subscriber.close()
 
@@ -62,7 +59,7 @@ def test_publish_and_subscribe_logs(ray_start_regular):
     address_info = ray_start_regular
     gcs_server_addr = address_info["gcs_address"]
 
-    subscriber = GcsLogSubscriber(address=gcs_server_addr)
+    subscriber = ray._raylet.GcsLogSubscriber(address=gcs_server_addr)
     subscriber.subscribe()
 
     publisher = ray._raylet.GcsPublisher(address=gcs_server_addr)
@@ -109,23 +106,6 @@ async def test_aio_publish_and_subscribe_logs(ray_start_regular):
     await subscriber.close()
 
 
-def test_publish_and_subscribe_function_keys(ray_start_regular):
-    address_info = ray_start_regular
-    gcs_server_addr = address_info["gcs_address"]
-
-    subscriber = GcsFunctionKeySubscriber(address=gcs_server_addr)
-    subscriber.subscribe()
-
-    publisher = ray._raylet.GcsPublisher(address=gcs_server_addr)
-    publisher.publish_function_key(b"111")
-    publisher.publish_function_key(b"222")
-
-    assert subscriber.poll() == b"111"
-    assert subscriber.poll() == b"222"
-
-    subscriber.close()
-
-
 @pytest.mark.asyncio
 async def test_aio_publish_and_subscribe_resource_usage(ray_start_regular):
     address_info = ray_start_regular
@@ -170,7 +150,7 @@ def test_two_subscribers(ray_start_regular):
     num_messages = 100
 
     errors = []
-    error_subscriber = GcsErrorSubscriber(address=gcs_server_addr)
+    error_subscriber = ray._raylet.GcsErrorSubscriber(address=gcs_server_addr)
     # Make sure subscription is registered before publishing starts.
     error_subscriber.subscribe()
 
@@ -183,7 +163,7 @@ def test_two_subscribers(ray_start_regular):
     t1.start()
 
     logs = []
-    log_subscriber = GcsLogSubscriber(address=gcs_server_addr)
+    log_subscriber = ray._raylet.GcsLogSubscriber(address=gcs_server_addr)
     # Make sure subscription is registered before publishing starts.
     log_subscriber.subscribe()
 
@@ -222,7 +202,7 @@ def test_two_subscribers(ray_start_regular):
     assert not t2.is_alive(), str(logs)
 
     for i in range(0, num_messages):
-        assert errors[i].error_message == f"error {i}", str(errors)
+        assert errors[i]["error_message"] == f"error {i}", str(errors)
         assert logs[i]["lines"][0] == f"log {i}", str(logs)
 
 

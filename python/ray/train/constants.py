@@ -17,7 +17,7 @@ from ray.air.constants import (  # noqa: F401
     LAZY_CHECKPOINT_MARKER_FILE,
 )
 
-# Autofilled session.report() metrics. Keys should be consistent with Tune.
+# Autofilled ray.train.report() metrics. Keys should be consistent with Tune.
 TIME_TOTAL_S = "_time_total_s"
 
 WORKER_HOSTNAME = "_hostname"
@@ -80,7 +80,3 @@ CHECKPOINT_METADATA_KEY = "checkpoint_metadata"
 
 # Key for AIR Checkpoint world rank in TrainingResult metadata
 CHECKPOINT_RANK_KEY = "checkpoint_rank"
-
-
-# Key for AIR Checkpoint that gets uploaded from distributed workers.
-CHECKPOINT_DISTRIBUTED_KEY = "distributed"

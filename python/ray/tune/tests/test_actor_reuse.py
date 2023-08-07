@@ -7,6 +7,7 @@ import time
 
 import ray
 from ray import tune, logger
+from ray.train import CheckpointConfig
 from ray.tune import Trainable, run_experiments, register_trainable
 from ray.tune.error import TuneError
 from ray.tune.result_grid import ResultGrid
@@ -38,7 +39,7 @@ def ray_start_4_cpus_extra():
 
 
 class FrequentPausesScheduler(FIFOScheduler):
-    def on_trial_result(self, trial_runner, trial, result):
+    def on_trial_result(self, tune_controller, trial, result):
         return TrialScheduler.PAUSE
 
 
@@ -420,8 +421,8 @@ def test_detect_reuse_mixins():
 def test_remote_trial_dir_with_reuse_actors(ray_start_2_cpus, tmp_path):
     """Check that the trainable has its remote directory set to the right
     location, when new trials get swapped in on actor reuse.
-    Each trial runs for 2 iterations, with checkpoint_freq=1, so each remote
-    trial dir should have 2 checkpoints.
+    Each trial runs for 2 iterations, with checkpoint_frequency=1, so each
+    remote trial dir should have 2 checkpoints.
     """
     tmp_target = str(tmp_path / "upload_dir")
     exp_name = "remote_trial_dir_update_on_actor_reuse"
@@ -467,7 +468,7 @@ def test_remote_trial_dir_with_reuse_actors(ray_start_2_cpus, tmp_path):
         name=exp_name,
         storage_path=f"file://{tmp_target}",
         trial_dirname_creator=lambda t: str(t.config.get("id")),
-        checkpoint_freq=1,
+        checkpoint_config=CheckpointConfig(checkpoint_frequency=1),
     )
     result_grid = ResultGrid(analysis)
     assert not result_grid.errors
@@ -549,7 +550,7 @@ def test_artifact_syncing_with_actor_reuse(
             storage_path=f"file://{tmp_target}",
             sync_config=tune.SyncConfig(sync_artifacts=True),
             trial_dirname_creator=lambda t: str(t.config.get("id")),
-            checkpoint_freq=1,
+            checkpoint_config=CheckpointConfig(checkpoint_frequency=1),
         )
     result_grid = ResultGrid(analysis)
     assert not result_grid.errors

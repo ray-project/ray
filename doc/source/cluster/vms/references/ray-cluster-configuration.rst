@@ -113,6 +113,7 @@ Provider
             :ref:`cache_stopped_nodes <cluster-configuration-cache-stopped-nodes>`: bool
             :ref:`security_group <cluster-configuration-security-group>`:
                 :ref:`Security Group <cluster-configuration-security-group-type>`
+            :ref:`use_internal_ips <cluster-configuration-use-internal-ips>`: bool
 
     .. tab-item:: Azure
 
@@ -123,6 +124,7 @@ Provider
             :ref:`resource_group <cluster-configuration-resource-group>`: str
             :ref:`subscription_id <cluster-configuration-subscription-id>`: str
             :ref:`cache_stopped_nodes <cluster-configuration-cache-stopped-nodes>`: bool
+            :ref:`use_internal_ips <cluster-configuration-use-internal-ips>`: bool
 
     .. tab-item:: GCP
 
@@ -133,6 +135,7 @@ Provider
             :ref:`availability_zone <cluster-configuration-availability-zone>`: str
             :ref:`project_id <cluster-configuration-project-id>`: str
             :ref:`cache_stopped_nodes <cluster-configuration-cache-stopped-nodes>`: bool
+            :ref:`use_internal_ips <cluster-configuration-use-internal-ips>`: bool
 
 .. _cluster-configuration-security-group-type:
 
@@ -957,6 +960,27 @@ If enabled, nodes will be *stopped* when the cluster scales down. If disabled, n
 * **Importance:** Low
 * **Type:** Boolean
 * **Default:** ``True``
+
+.. _cluster-configuration-use-internal-ips:
+
+``provider.use_internal_ips``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+If enabled, Ray will use private IP addresses for communication between nodes.
+This should be omitted if your network interfaces use public IP addresses.
+
+If enabled, Ray CLI commands (e.g. ``ray up``) will have to be run from a machine
+that is part of the same VPC as the cluster. 
+
+This option does not affect the existence of public IP addresses for the nodes, it only
+affects which IP addresses are used by Ray. The existence of public IP addresses is
+controlled by your cloud provider's configuration.
+
+
+* **Required:** No
+* **Importance:** Low
+* **Type:** Boolean
+* **Default:** ``False``
 
 .. _cluster-configuration-security-group:
 

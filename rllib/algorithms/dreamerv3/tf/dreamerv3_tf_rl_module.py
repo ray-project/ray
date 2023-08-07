@@ -1,3 +1,12 @@
+"""
+[1] Mastering Diverse Domains through World Models - 2023
+D. Hafner, J. Pasukonis, J. Ba, T. Lillicrap
+https://arxiv.org/pdf/2301.04104v1.pdf
+
+[2] Mastering Atari with Discrete World Models - 2021
+D. Hafner, T. Lillicrap, M. Norouzi, J. Ba
+https://arxiv.org/pdf/2010.02193.pdf
+"""
 from typing import Mapping, Any
 
 from ray.rllib.algorithms.dreamerv3.dreamerv3_rl_module import DreamerV3RLModule
@@ -12,17 +21,13 @@ from ray.rllib.utils.nested_dict import NestedDict
 tf1, tf, _ = try_import_tf()
 
 
-class DreamerV3TfRLModule(DreamerV3RLModule, TfRLModule):
+class DreamerV3TfRLModule(TfRLModule, DreamerV3RLModule):
     """The tf-specific RLModule class for DreamerV3.
 
     Serves mainly as a thin-wrapper around the `DreamerModel` (a tf.keras.Model) class.
     """
 
     framework: str = "tf2"
-
-    def __init__(self, *args, **kwargs):
-        TfRLModule.__init__(self, *args, **kwargs)
-        DreamerV3RLModule.__init__(self, *args, **kwargs)
 
     @override(RLModule)
     def _forward_inference(self, batch: NestedDict) -> Mapping[str, Any]:

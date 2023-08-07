@@ -34,7 +34,7 @@ class ServeRLlibPolicy:
     """Callable class used by Ray Serve to handle async requests.
 
     All the necessary serving logic is implemented in here:
-    - Creation and restoring of the (already trained) RLlib Trainer.
+    - Creation and restoring of the (already trained) RLlib Algorithm.
     - Calls to algo.compute_action upon receiving an action request
       (with a current observation).
     """
@@ -56,7 +56,7 @@ class ServeRLlibPolicy:
 def train_rllib_policy(config: AlgorithmConfig):
     """Trains a DQN on ALE/MsPacman-v5 for n iterations.
 
-    Saves the trained Trainer to disk and returns the checkpoint path.
+    Saves the trained Algorithm to disk and returns the checkpoint path.
 
     Args:
         config: The algo config object for the Algorithm.
@@ -77,7 +77,7 @@ def train_rllib_policy(config: AlgorithmConfig):
 
 if __name__ == "__main__":
 
-    # Config for the served RLlib Policy/Trainer.
+    # Config for the served RLlib Policy/Algorithm.
     config = DQNConfig().environment("ALE/MsPacman-v5").framework(args.framework)
 
     # Train the Algorithm for some time, then save it and get the checkpoint path.
@@ -95,9 +95,7 @@ if __name__ == "__main__":
 
     # Create the environment that we would like to receive
     # served actions for.
-    env = FrameStack(
-        WarpFrame(gym.make("GymV26Environment-v0", env_id="ALE/MsPacman-v5"), 84), 4
-    )
+    env = FrameStack(WarpFrame(gym.make("ALE/MsPacman-v5"), 84), 4)
     obs, info = env.reset()
 
     while True:

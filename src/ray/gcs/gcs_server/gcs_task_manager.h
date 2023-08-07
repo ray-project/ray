@@ -277,13 +277,6 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
   };
 
  private:
-  /// Record data loss from worker.
-  ///
-  /// TODO(rickyx): This will be updated to record task attempt loss properly.
-  ///
-  /// \param data The task event data.
-  void RecordDataLossFromWorker(const rpc::TaskEventData &data);
-
   /// Test only
   size_t GetTotalNumStatusTaskEventsDropped() {
     return stats_counter_.Get(kTotalNumStatusTaskEventsDropped);

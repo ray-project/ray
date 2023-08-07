@@ -1,3 +1,4 @@
+import os
 import ray
 from ray.air import session
 from ray.air.constants import MODEL_KEY
@@ -15,7 +16,7 @@ from torch.utils.data import IterableDataset, DataLoader
 import pytorch_lightning as pl
 from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.plugins.environments import LightningEnvironment
-from pytorch_lightning.strategies import DDPStrategy
+from pytorch_lightning.strategies import DDPStrategy, DeepSpeedStrategy
 
 _LIGHTNING_GREATER_EQUAL_2_0 = Version(pl.__version__) >= Version("2.0.0")
 _TORCH_GREATER_EQUAL_1_12 = Version(torch.__version__) >= Version("1.12.0")
@@ -97,6 +98,31 @@ class RayFSDPStrategy(FSDPStrategy):
             return super().lightning_module_state_dict()
 
 
+class RayDeepSpeedStrategy(DeepSpeedStrategy):
+    """Subclass of DeepSpeedStrategy to ensure compatibility with Ray orchestration."""
+
+    def setup_distributed(self):
+        # We have to set the device ids for each node
+        # e.g. CUDA_VISIBLE_DEVICES = 2,3
+        # worker 0: LOCAL_RANK=0, parallel devices = [cuda:0, cuda:1]
+        # worker 1: LOCAL_RANK=1, parallel devices = [cuda:0, cuda:1]
+        self.parallel_devices = [
+            torch.device(f"cuda:{i}") for i in range(torch.cuda.device_count())
+        ]
+        super().setup_distributed()
+
+    @property
+    def root_device(self) -> torch.device:
+        return get_worker_root_device()
+
+    @property
+    def distributed_sampler_kwargs(self) -> Dict[str, Any]:
+        return dict(
+            num_replicas=self.world_size,
+            rank=self.global_rank,
+        )
+
+
 class RayEnvironment(LightningEnvironment):
     """Setup Lightning DDP training environment for Ray cluster."""
 
@@ -129,9 +155,10 @@ class RayIterableDataset(IterableDataset):
         super().__init__()
         self.dataset = dataset
         self.config = config
+        self.torch_iterable = self.dataset.iter_torch_batches(**self.config)
 
     def __iter__(self):
-        return self.dataset.iter_torch_batches(**self.config)
+        return iter(self.torch_iterable)
 
 
 class RayDataModule(pl.LightningDataModule):
@@ -172,9 +199,24 @@ class RayModelCheckpoint(ModelCheckpoint):
     creates an AIR checkpoint whenever a lightning checkpoint is saved.
     """
 
-    def setup(self, *args, **kwargs) -> None:
-        super().setup(*args, **kwargs)
+    def setup(
+        self,
+        trainer: "pl.Trainer",
+        pl_module: "pl.LightningModule",
+        stage: Optional[str] = None,
+    ) -> None:
+        super().setup(trainer, pl_module, stage)
         self.is_checkpoint_step = False
+
+        if isinstance(trainer.strategy, DeepSpeedStrategy):
+            # For DeepSpeed, each node has a unique set of param and optimizer states,
+            # so the local rank 0 workers report the checkpoint shards for all workers
+            # on their node.
+            self.is_report_rank = session.get_local_rank() == 0
+        else:
+            # For DDP and FSDP, only the global rank 0 worker saves the full model.
+            # Therefore, it is the only one that needs to report checkpoints.
+            self.is_report_rank = session.get_world_rank() == 0
 
     def _session_report(self, trainer: "pl.Trainer", stage: str):
         """Report latest metrics dict and checkpoint to AIR training session.
@@ -194,17 +236,26 @@ class RayModelCheckpoint(ModelCheckpoint):
             if isinstance(v, torch.Tensor):
                 metrics[k] = v.item()
 
-        # Report latest saved checkpoint
-        # Note that AIR only takes the checkpoint of rank 0.
-        # Save a dummy checkpoint on the other workers to avoid blocking.
+        # Ensures all workers already finish writing their checkpoints
+        trainer.strategy.barrier()
+
+        # Create and report the latest checkpoint
         with tempfile.TemporaryDirectory() as tmpdir:
-            if trainer.global_rank == 0:
-                shutil.copy(self.last_model_path, f"{tmpdir}/{MODEL_KEY}")
-                checkpoint = LightningCheckpoint.from_directory(path=tmpdir)
-            else:
-                checkpoint = LightningCheckpoint.from_dict(
-                    {"rank": session.get_world_rank()}
-                )
+            src_model_path = os.path.expanduser(self.last_model_path)
+            dst_model_path = os.path.join(tmpdir, MODEL_KEY)
+
+            # Copy the lightning ckpt into a tmp directory
+            # - File ckpt:       last.ckpt   -> checkpoint_00000x/model
+            # - Directory ckpt:  last.ckpt/* -> checkpoint_00000x/model/*
+            if self.is_report_rank:
+                if os.path.isdir(src_model_path):
+                    shutil.copytree(src_model_path, dst_model_path)
+                elif os.path.isfile(src_model_path):
+                    shutil.copy(src_model_path, dst_model_path)
+
+            # Only the report_rank worker creates the actual checkpoints.
+            # Other workers create placeholder checkpoints to prevent blocking.
+            checkpoint = LightningCheckpoint.from_directory(path=tmpdir)
             session.report(metrics=metrics, checkpoint=checkpoint)
 
         self.is_checkpoint_step = False

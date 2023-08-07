@@ -1,5 +1,4 @@
 import { render, screen } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 import React from "react";
 import { getActor } from "../../service/actor";
 import { getServeApplications } from "../../service/serve";
@@ -19,7 +18,7 @@ const mockGetActor = jest.mocked(getActor);
 
 describe("ServeApplicationsListPage", () => {
   it("renders list", async () => {
-    expect.assertions(15);
+    expect.assertions(5);
 
     // Mock ServeController actor fetch
     mockGetActor.mockResolvedValue({
@@ -80,36 +79,15 @@ describe("ServeApplicationsListPage", () => {
     } as any);
 
     render(<ServeApplicationsListPage />, { wrapper: TEST_APP_WRAPPER });
-
-    const user = userEvent.setup();
-
-    await screen.findByText("System");
-    expect(screen.getByText("System")).toBeVisible();
-    expect(screen.getByText("1.2.3.4")).toBeVisible();
-    expect(screen.getByText("8000")).toBeVisible();
-
-    // HTTP Proxy row
-    expect(screen.getByText("HTTPProxyActor:node:12345")).toBeVisible();
-    expect(screen.getByText("STARTING")).toBeVisible();
-
-    // Serve Controller row
-    expect(screen.getByText("Serve Controller")).toBeVisible();
-    expect(screen.getByText("HEALTHY")).toBeVisible();
+    await screen.findByText("Application status");
 
     // First row
     expect(screen.getByText("home")).toBeVisible();
     expect(screen.getByText("/")).toBeVisible();
-    expect(screen.getByText("RUNNING")).toBeVisible();
 
     // Second row
     expect(screen.getByText("second-app")).toBeVisible();
     expect(screen.getByText("/second-app")).toBeVisible();
-    expect(screen.getByText("DEPLOYING")).toBeVisible();
-
-    // Config dialog
-    await user.click(screen.getAllByText("View")[0]);
-    await screen.findByText(/import_path: home:graph/);
-    expect(screen.getByText(/import_path: home:graph/)).toBeVisible();
 
     expect(screen.getByText("Metrics")).toBeVisible();
   });

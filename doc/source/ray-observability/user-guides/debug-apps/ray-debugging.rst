@@ -25,10 +25,10 @@ Getting Started
 
 Take the following example:
 
-.. code-block:: python
+.. testcode::
+    :skipif: True
 
     import ray
-    ray.init()
 
     @ray.remote
     def f(x):
@@ -113,11 +113,10 @@ Stepping between Ray tasks
 You can use the debugger to step between Ray tasks. Let's take the
 following recursive function as an example:
 
-.. code-block:: python
+.. testcode::
+    :skipif: True
 
     import ray
-
-    ray.init()
 
     @ray.remote
     def fact(n):
@@ -140,7 +139,7 @@ After running the program by executing the Python file and calling
 ``ray debug``, you can select the breakpoint by pressing ``0`` and
 enter. This will result in the following output:
 
-.. code-block:: python
+.. code-block:: shell
 
     Enter breakpoint index or press enter to refresh: 0
     > /home/ubuntu/tmp/stepping.py(16)<module>()
@@ -151,7 +150,7 @@ You can jump into the call with the ``remote`` command in Ray's debugger.
 Inside the function, print the value of `n` with ``p(n)``, resulting in
 the following output:
 
-.. code-block:: python
+.. code-block:: shell
 
     -> result_ref = fact.remote(5)
     (Pdb) remote
@@ -179,7 +178,7 @@ to the location where ``ray.get`` is called on the result by using the
 ``get`` debugger comand. Use ``get`` again to jump back to the original
 call site and use ``p(result)`` to print the result:
 
-.. code-block:: python
+.. code-block:: shell
 
     Enter breakpoint index or press enter to refresh: 0
     > /home/ubuntu/tmp/stepping.py(14)<module>()
@@ -223,10 +222,16 @@ Post Mortem Debugging
 Often we do not know in advance where an error happens, so we cannot set a breakpoint. In these cases,
 we can automatically drop into the debugger when an error occurs or an exception is thrown. This is called *post-mortem debugging*.
 
-We will show how this works using a Ray serve application. Copy the following code into a file called
-``serve_debugging.py``:
+We will show how this works using a Ray serve application. To get started, install the required dependencies:
 
-.. code-block:: python
+.. code-block:: bash
+
+    pip install "ray[serve]" scikit-learn
+
+Next, copy the following code into a file called ``serve_debugging.py``:
+
+.. testcode::
+    :skipif: True
 
     import time
 
@@ -250,8 +255,8 @@ We will show how this works using a Ray serve application. Copy the following co
             self.model = model
             self.label_list = iris_dataset["target_names"].tolist()
 
-        await def __call__(self, starlette_request):
-            payload = await starlette_request.json()["vector"]
+        async def __call__(self, starlette_request):
+            payload = (await starlette_request.json())["vector"]
             print(f"Worker: received request with data: {payload}")
 
             prediction = self.model.predict([payload])[0]

@@ -1,9 +1,11 @@
-from typing import Dict
 import json
+import re
 import threading
+from typing import Dict
 
 from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
 from ray.data._internal.logical.interfaces import LogicalOperator
+from ray.data._internal.logical.operators.map_operator import AbstractUDFMap
 from ray.data._internal.logical.operators.read_operator import Read
 from ray.data._internal.logical.operators.write_operator import Write
 
@@ -27,14 +29,10 @@ _op_name_white_list = [
     "ReadBinary",
     "ReadCustom",
     # From
+    "FromArrow",
     "FromItems",
-    "FromPandasRefs",
-    "FromHuggingFace",
-    "FromDask",
-    "FromModin",
-    "FromMars",
-    "FromNumpyRefs",
-    "FromArrowRefs",
+    "FromNumpy",
+    "FromPandas",
     # Write
     "WriteParquet",
     "WriteJSON",
@@ -44,18 +42,19 @@ _op_name_white_list = [
     "WriteMongo",
     "WriteCustom",
     # Map
+    "Map",
     "MapBatches",
-    "MapRows",
     "Filter",
     "FlatMap",
     # All-to-all
-    "RandomizeBlocks",
+    "RandomizeBlockOrder",
     "RandomShuffle",
     "Repartition",
     "Sort",
     "Aggregate",
     # N-ary
     "Zip",
+    "Union",
 ]
 
 
@@ -89,6 +88,10 @@ def _collect_operators_to_dict(op: LogicalOperator, ops_dict: Dict[str, int]):
         op_name = f"Write{op._datasource.get_name()}"
         if op_name not in _op_name_white_list:
             op_name = "WriteCustom"
+    elif isinstance(op, AbstractUDFMap):
+        # Remove the function name from the map operator name.
+        # E.g., Map(<lambda>) -> Map
+        op_name = re.sub("\\(.*\\)$", "", op_name)
 
     # Anonymize any operator name if not in white list.
     if op_name not in _op_name_white_list:

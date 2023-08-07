@@ -2,16 +2,17 @@ import abc
 import collections
 import warnings
 from enum import Enum
-from typing import TYPE_CHECKING, Optional, Union, Dict, Any
+from typing import TYPE_CHECKING, Any, Dict, Optional, Union
 
 from ray.air.util.data_batch_conversion import BatchFormat
 from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
 
 if TYPE_CHECKING:
-    from ray.data import Dataset, DatasetPipeline
-    import pandas as pd
     import numpy as np
+    import pandas as pd
+
     from ray.air.data_batch_type import DataBatchType
+    from ray.data import Dataset, DatasetPipeline
 
 
 @PublicAPI(stability="beta")
@@ -63,7 +64,7 @@ class Preprocessor(abc.ABC):
     def fit_status(self) -> "Preprocessor.FitStatus":
         if not self._is_fittable:
             return Preprocessor.FitStatus.NOT_FITTABLE
-        elif self._check_is_fitted():
+        elif hasattr(self, "_fitted") and self._fitted:
             return Preprocessor.FitStatus.FITTED
         else:
             return Preprocessor.FitStatus.NOT_FITTED
@@ -111,7 +112,9 @@ class Preprocessor(abc.ABC):
                 "All previously fitted state will be overwritten!"
             )
 
-        return self._fit(ds)
+        fitted_ds = self._fit(ds)
+        self._fitted = True
+        return fitted_ds
 
     def fit_transform(self, ds: "Dataset") -> "Dataset":
         """Fit this Preprocessor to the Dataset and then transform the Dataset.
@@ -203,15 +206,6 @@ class Preprocessor(abc.ABC):
 
         return self._transform(pipeline)
 
-    def _check_is_fitted(self) -> bool:
-        """Returns whether this preprocessor is fitted.
-
-        We use the convention that attributes with a trailing ``_`` are set after
-        fitting is complete.
-        """
-        fitted_vars = [v for v in vars(self) if v.endswith("_")]
-        return bool(fitted_vars)
-
     @DeveloperAPI
     def _fit(self, ds: "Dataset") -> "Preprocessor":
         """Sub-classes should override this instead of fit()."""
@@ -279,11 +273,12 @@ class Preprocessor(abc.ABC):
 
     def _transform_batch(self, data: "DataBatchType") -> "DataBatchType":
         # For minimal install to locally import air modules
-        import pandas as pd
         import numpy as np
+        import pandas as pd
+
         from ray.air.util.data_batch_conversion import (
-            _convert_batch_type_to_pandas,
             _convert_batch_type_to_numpy,
+            _convert_batch_type_to_pandas,
         )
 
         try:

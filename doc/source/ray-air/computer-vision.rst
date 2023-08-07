@@ -1,3 +1,5 @@
+:orphan:
+
 .. _computer-vision:
 
 Computer Vision
@@ -38,7 +40,7 @@ Reading image data
             :end-before: __read_images1_stop__
             :dedent:
 
-        Then, apply a :ref:`user-defined function <transform_datasets_writing_udfs>` to
+        Then, apply a :ref:`user-defined function <transforming_data>` to
         encode the class names as integer targets.
 
         .. literalinclude:: ./doc_code/computer_vision.py
@@ -98,7 +100,7 @@ Reading image data
             :end-before: __read_tfrecords1_stop__
             :dedent:
 
-        Then, apply a :ref:`user-defined function <transform_datasets_writing_udfs>` to
+        Then, apply a :ref:`user-defined function <transforming_data>` to
         decode the raw image bytes.
 
         .. literalinclude:: ./doc_code/computer_vision.py
@@ -132,9 +134,8 @@ standard way to preprocess data with Ray.
         To apply TorchVision transforms, create a :class:`~ray.data.preprocessors.TorchVisionPreprocessor`.
 
         Create two :class:`TorchVisionPreprocessors <ray.data.preprocessors.TorchVisionPreprocessor>`
-        -- one to normalize images, and another to augment images. Later, you'll pass the preprocessors to :class:`Trainers <ray.train.trainer.BaseTrainer>`,
-        :class:`Predictors <ray.train.predictor.Predictor>`, and
-        :class:`PredictorDeployments <ray.serve.air_integrations.PredictorDeployment>`.
+        -- one to normalize images, and another to augment images. Later, you'll pass the preprocessors to :class:`Trainers <ray.train.trainer.BaseTrainer>` and
+        :class:`Predictors <ray.train.predictor.Predictor>`.
 
         .. literalinclude:: ./doc_code/computer_vision.py
             :start-after: __torch_preprocessors_start__
@@ -146,9 +147,8 @@ standard way to preprocess data with Ray.
         To apply TorchVision transforms, create a :class:`~ray.data.preprocessors.BatchMapper`.
 
         Create two :class:`~ray.data.preprocessors.BatchMapper` -- one to normalize images, and another to
-        augment images. Later, you'll pass the preprocessors to :class:`Trainers <ray.train.trainer.BaseTrainer>`,
-        :class:`Predictors <ray.train.predictor.Predictor>`, and
-        :class:`PredictorDeployments <ray.serve.air_integrations.PredictorDeployment>`.
+        augment images. Later, you'll pass the preprocessors to :class:`Trainers <ray.train.trainer.BaseTrainer>` and
+        :class:`Predictors <ray.train.predictor.Predictor>`.
 
         .. literalinclude:: ./doc_code/computer_vision.py
             :start-after: __tensorflow_preprocessors_start__
@@ -183,8 +183,7 @@ Training vision models
             :end-before: __torch_trainer_stop__
             :dedent:
 
-        For more in-depth examples, read :doc:`/ray-air/examples/torch_image_example` and
-        :ref:`Using Trainers <air-trainers>`.
+        For more in-depth examples, see :ref:`the Ray Train documentation <train-docs>`.
 
     .. tab-item:: TensorFlow
 
@@ -203,18 +202,18 @@ Training vision models
             :end-before: __tensorflow_trainer_stop__
             :dedent:
 
-        For more information, read :ref:`Using Trainers <air-trainers>`.
+        For more information, check out :ref:`the Ray Train documentation <train-docs>`.
 
 Creating checkpoints
 --------------------
 
-:class:`Checkpoints <ray.air.checkpoint.Checkpoint>` are required for batch inference and model
+:class:`Checkpoints <ray.train.Checkpoint>` are required for batch inference and model
 serving. They contain model state and optionally a preprocessor.
 
 If you're going from training to prediction, don't create a new checkpoint.
 :meth:`Trainer.fit() <ray.train.trainer.BaseTrainer.fit>` returns a
-:class:`~ray.air.result.Result` object. Use
-:attr:`Result.checkpoint <ray.air.result.Result.checkpoint>` instead.
+:class:`~ray.train.Result` object. Use
+:attr:`Result.checkpoint <ray.train.Result.checkpoint>` instead.
 
 .. tab-set::
 
@@ -260,9 +259,6 @@ image datasets.
             :end-before: __torch_batch_predictor_stop__
             :dedent:
 
-        For more in-depth examples, read :doc:`/ray-air/examples/pytorch_resnet_batch_prediction`
-        and :ref:`Using Predictors for Inference <air-predictors>`.
-
     .. tab-item:: TensorFlow
 
         To create a :class:`~ray.train.batch_predictor.BatchPredictor`, call
@@ -274,12 +270,10 @@ image datasets.
             :end-before: __tensorflow_batch_predictor_stop__
             :dedent:
 
-        For more information, read :ref:`Using Predictors for Inference <air-predictors>`.
-
 Serving vision models
 ---------------------
 
-:class:`~ray.serve.air_integrations.PredictorDeployment` lets you
+:class:`~ray.serve.Deployment` lets you
 deploy a model to an endpoint and make predictions over the Internet.
 
 Deployments use :ref:`HTTP adapters <serve-http>` to define how HTTP messages are converted to model
@@ -300,9 +294,8 @@ To NumPy ndarrays like this:
 
     .. tab-item:: Torch
 
-        To deploy a Torch model to an endpoint, pass the checkpoint you created in `Creating checkpoints`_
-        to :meth:`PredictorDeployment.bind <ray.serve.air_integrations.PredictorDeployment.bind>` and specify
-        :func:`~ray.serve.http_adapters.json_to_ndarray` as the HTTP adapter.
+        To deploy a Torch model to an endpoint, create a predictor from the checkpoint you created in `Creating checkpoints`_
+        and serve via a Ray Serve deployment.
 
         .. literalinclude:: ./doc_code/computer_vision.py
             :start-after: __torch_serve_start__
@@ -316,14 +309,12 @@ To NumPy ndarrays like this:
             :end-before: __torch_online_predict_stop__
             :dedent:
 
-        For more in-depth examples, read :doc:`/ray-air/examples/torch_image_example`
-        and :doc:`/ray-air/examples/serving_guide`.
+        For more in-depth examples, read about :ref:`Ray Serve <serve-getting-started>`.
 
     .. tab-item:: TensorFlow
 
-        To deploy a TensorFlow model to an endpoint, pass the checkpoint you created in `Creating checkpoints`_
-        to :meth:`PredictorDeployment.bind <ray.serve.air_integrations.PredictorDeployment.bind>` and specify
-        :func:`~ray.serve.http_adapters.json_to_multi_ndarray` as the HTTP adapter.
+        To deploy a TensorFlow model to an endpoint, use the checkpoint you created in `Creating checkpoints`_
+        to create a Ray Serve deployment serving the model.
 
         .. literalinclude:: ./doc_code/computer_vision.py
             :start-after: __tensorflow_serve_start__
@@ -337,4 +328,4 @@ To NumPy ndarrays like this:
             :end-before: __tensorflow_online_predict_stop__
             :dedent:
 
-        For more information, read :doc:`/ray-air/examples/serving_guide`.
+        For more information, see :ref:`Ray Serve <serve-getting-started>`.

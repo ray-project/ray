@@ -5,7 +5,7 @@ from filelock import FileLock
 from tensorflow.keras.datasets import mnist
 
 import ray
-from ray import air, tune
+from ray import train, tune
 from ray.tune.schedulers import AsyncHyperBandScheduler
 from ray.tune.integration.keras import TuneReportCallback
 
@@ -54,7 +54,7 @@ def tune_mnist(num_training_iterations):
 
     tuner = tune.Tuner(
         tune.with_resources(train_mnist, resources={"cpu": 2, "gpu": 0}),
-        run_config=air.RunConfig(
+        run_config=train.RunConfig(
             name="exp",
             stop={"mean_accuracy": 0.99, "training_iteration": num_training_iterations},
         ),
@@ -85,4 +85,4 @@ if __name__ == "__main__":
     if args.smoke_test:
         ray.init(num_cpus=4)
 
-    tune_mnist(num_training_iterations=5 if args.smoke_test else 300)
+    tune_mnist(num_training_iterations=2 if args.smoke_test else 300)

@@ -1,0 +1,32 @@
+{
+    "_dashboard_memory_usage_mb": 401.272832,
+    "_dashboard_test_success": true,
+    "_peak_memory": 5.3,
+    "_peak_process_memory": "PID\tMEM\tCOMMAND\n218\t1.51GiB\t/home/ray/anaconda3/lib/python3.8/site-packages/ray/core/src/ray/gcs/gcs_server --log_dir=/tmp/ray/s\n1357\t0.92GiB\tpython distributed/test_many_actors.py\n325\t0.33GiB\t/home/ray/anaconda3/bin/python /home/ray/anaconda3/lib/python3.8/site-packages/ray/dashboard/dashboa\n415\t0.1GiB\t/home/ray/anaconda3/bin/python -u /home/ray/anaconda3/lib/python3.8/site-packages/ray/dashboard/agen\n61\t0.09GiB\t/home/ray/anaconda3/bin/python /home/ray/anaconda3/bin/anyscale session web_terminal_server --deploy\n1076\t0.09GiB\tray::JobSupervisor\n1525\t0.08GiB\tray::DashboardTester.run\n1457\t0.07GiB\tray::MemoryMonitorActor.run\n54\t0.06GiB\t/home/ray/anaconda3/bin/python /home/ray/anaconda3/bin/jupyter-lab --allow-root --ip=127.0.0.1 --no-\n324\t0.05GiB\t/home/ray/anaconda3/bin/python -m ray.util.client.server --address=10.0.57.174:6379 --host=0.0.0.0 -",
+    "actors_per_second": 864.1419644845677,
+    "num_actors": 10000,
+    "perf_metrics": [
+        {
+            "perf_metric_name": "actors_per_second",
+            "perf_metric_type": "THROUGHPUT",
+            "perf_metric_value": 864.1419644845677
+        },
+        {
+            "perf_metric_name": "dashboard_p50_latency_ms",
+            "perf_metric_type": "LATENCY",
+            "perf_metric_value": 13.363
+        },
+        {
+            "perf_metric_name": "dashboard_p95_latency_ms",
+            "perf_metric_type": "LATENCY",
+            "perf_metric_value": 3274.133
+        },
+        {
+            "perf_metric_name": "dashboard_p99_latency_ms",
+            "perf_metric_type": "LATENCY",
+            "perf_metric_value": 4105.733
+        }
+    ],
+    "success": "1",
+    "time": 11.57217264175415
+}

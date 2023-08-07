@@ -1,0 +1,15 @@
+# For MAML on PyTorch.
+higher==0.2.1
+# For auto-generating an env-rendering Window.
+pyglet==1.5.15
+imageio-ffmpeg==0.4.5
+# ONNX
+# ONNX 1.13.0 depends on protobuf > 3.20, conflicting with tensorflow.
+# ONNX 1.12.0 is not published for mac arm64, so we exclude it for now.
+onnx==1.12.0; sys_platform != 'darwin' or platform_machine != 'arm64'
+onnxruntime==1.14.1; sys_platform != 'darwin' or platform_machine != 'arm64'
+tf2onnx==1.13.0; sys_platform != 'darwin' or platform_machine != 'arm64'
+rich==12.6.0
+# Msgpack checkpoint stuff.
+msgpack
+msgpack_numpy

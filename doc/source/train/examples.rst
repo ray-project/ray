@@ -6,27 +6,8 @@ Ray Train Examples
 .. Example .rst files should be organized in the same manner as the
    .py files in ray/python/ray/train/examples.
 
-Below are examples for using Ray Train with a variety of models, frameworks, 
+Below are examples for using Ray Train with a variety of models, frameworks,
 and use cases. You can filter these examples by the following categories:
-
-
-.. raw:: html
-
-    <div>
-        <div id="allButton" type="button" class="tag btn btn-primary">All</div>
-
-        <!--Frameworks-->
-        <div type="button" class="tag btn btn-outline-primary">PyTorch</div>
-        <div type="button" class="tag btn btn-outline-primary">TensorFlow</div>
-        <div type="button" class="tag btn btn-outline-primary">HuggingFace</div>
-        <div type="button" class="tag btn btn-outline-primary">Lightning</div>
-        <div type="button" class="tag btn btn-outline-primary">Horovod</div>
-        <div type="button" class="tag btn btn-outline-primary">MLflow</div>
-
-        <!--Workload-->
-        <div type="button" class="tag btn btn-outline-primary">Training</div>
-        <div type="button" class="tag btn btn-outline-primary">Tuning</div>
-    </div>
 
 
 Distributed Training Examples using Ray Train
@@ -83,7 +64,7 @@ Distributed Training Examples using Ray Train
         .. button-ref:: lightning_advanced_example
 
             Use LightningTrainer with Ray Data and Batch Predictor
-    
+
     .. grid-item-card::
         :img-top: /images/pytorch_lightning_small.png
         :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
@@ -92,6 +73,14 @@ Distributed Training Examples using Ray Train
 
             Fine-tune LLM with AIR LightningTrainer and FSDP
     
+    .. grid-item-card::
+        :img-top: /images/pytorch_lightning_small.png
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
+
+        .. button-ref:: vicuna_lightning_deepspeed_finetuning
+
+            Fine-tune vicuna-13b-v1.3 with Deepspeed and LightningTrainer
+
 
 Ray Train Examples Using Loggers & Callbacks
 --------------------------------------------

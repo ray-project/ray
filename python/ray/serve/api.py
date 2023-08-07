@@ -6,9 +6,6 @@ from functools import wraps
 
 from fastapi import APIRouter, FastAPI
 from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
-from starlette.requests import Request
-from uvicorn.config import Config
-from uvicorn.lifespan.on import LifespanOn
 
 import ray
 from ray import cloudpickle
@@ -38,8 +35,10 @@ from ray.serve._private.deployment_graph_build import (
 )
 from ray.serve.exceptions import RayServeException
 from ray.serve.handle import RayServeSyncHandle
-from ray.serve._private.http_util import ASGIHTTPSender, make_fastapi_class_based_view
-from ray.serve._private.logging_utils import LoggingContext
+from ray.serve._private.http_util import (
+    ASGIAppReplicaWrapper,
+    make_fastapi_class_based_view,
+)
 from ray.serve._private.utils import (
     DEFAULT,
     Default,
@@ -48,8 +47,10 @@ from ray.serve._private.utils import (
     install_serve_encoders_to_fastapi,
     guarded_deprecation_warning,
     record_serve_tag,
+    get_random_letters,
     extract_self_if_method_call,
 )
+from ray.serve.schema import ServeInstanceDetails, ServeStatus
 
 from ray.serve._private import api as _private_api
 
@@ -213,57 +214,27 @@ def ingress(app: Union["FastAPI", "APIRouter", Callable]) -> Callable:
         ensure_serialization_context()
         frozen_app = cloudpickle.loads(cloudpickle.dumps(app))
 
-        class ASGIAppWrapper(cls):
-            async def __init__(self, *args, **kwargs):
-                super().__init__(*args, **kwargs)
+        class ASGIIngressWrapper(cls, ASGIAppReplicaWrapper):
+            def __init__(self, *args, **kwargs):
+                # Call user-defined constructor.
+                cls.__init__(self, *args, **kwargs)
 
                 record_serve_tag("SERVE_FASTAPI_USED", "1")
                 install_serve_encoders_to_fastapi()
+                ASGIAppReplicaWrapper.__init__(self, frozen_app)
 
-                self._serve_app = frozen_app
-
-                # Use uvicorn's lifespan handling code to properly deal with
-                # startup and shutdown event.
-                self._serve_asgi_lifespan = LifespanOn(
-                    Config(self._serve_app, lifespan="on")
-                )
-                # Replace uvicorn logger with our own.
-                self._serve_asgi_lifespan.logger = logger
-                # LifespanOn's logger logs in INFO level thus becomes spammy
-                # Within this block we temporarily uplevel for cleaner logging
-                with LoggingContext(
-                    self._serve_asgi_lifespan.logger, level=logging.WARNING
-                ):
-                    await self._serve_asgi_lifespan.startup()
-
-            async def __call__(self, request: Request):
-                sender = ASGIHTTPSender()
-                await self._serve_app(
-                    request.scope,
-                    request.receive,
-                    sender,
-                )
-                return sender.build_asgi_response()
-
-            # NOTE: __del__ must be async so that we can run asgi shutdown
-            # in the same event loop.
             async def __del__(self):
-                # LifespanOn's logger logs in INFO level thus becomes spammy
-                # Within this block we temporarily uplevel for cleaner logging
-                with LoggingContext(
-                    self._serve_asgi_lifespan.logger, level=logging.WARNING
-                ):
-                    await self._serve_asgi_lifespan.shutdown()
+                await ASGIAppReplicaWrapper.__del__(self)
 
-                # Make sure to call user's del method as well.
-                super_cls = super()
-                if hasattr(super_cls, "__del__"):
-                    super_cls.__del__()
+                # Call user-defined destructor if defined.
+                if hasattr(cls, "__del__"):
+                    cls.__del__(self)
 
-        ASGIAppWrapper.__name__ = cls.__name__
+        ASGIIngressWrapper.__name__ = cls.__name__
         if hasattr(frozen_app, "docs_url"):
-            ASGIAppWrapper.__fastapi_docs_path__ = frozen_app.docs_url
-        return ASGIAppWrapper
+            ASGIIngressWrapper.__fastapi_docs_path__ = frozen_app.docs_url
+
+        return ASGIIngressWrapper
 
     return decorator
 
@@ -304,34 +275,34 @@ def deployment(
     Args:
         name: Name uniquely identifying this deployment within the application.
             If not provided, the name of the class or function is used.
-        num_replicas: The number of replicas to run that handle requests to
+        num_replicas: Number of replicas to run that handle requests to
             this deployment. Defaults to 1.
         autoscaling_config: Parameters to configure autoscaling behavior. If this
             is set, `num_replicas` cannot be set.
         init_args: [DEPRECATED] These should be passed to `.bind()` instead.
         init_kwargs: [DEPRECATED] These should be passed to `.bind()` instead.
         route_prefix: Requests to paths under this HTTP path prefix are routed
-            to this deployment. Defaults to '/{name}'. This can only be set for the
+            to this deployment. Defaults to '/'. This can only be set for the
             ingress (top-level) deployment of an application.
-        ray_actor_options: Options to be passed to the Ray actor decorator, such as
-            resource requirements. Valid options are `accelerator_type`, `memory`,
+        ray_actor_options: Options to pass to the Ray Actor decorator, such as
+            resource requirements. Valid options are: `accelerator_type`, `memory`,
             `num_cpus`, `num_gpus`, `object_store_memory`, `resources`,
             and `runtime_env`.
         user_config: Config to pass to the reconfigure method of the deployment. This
             can be updated dynamically without restarting the replicas of the
             deployment. The user_config must be fully JSON-serializable.
-        max_concurrent_queries: The maximum number of queries that are sent to a
+        max_concurrent_queries: Maximum number of queries that are sent to a
             replica of this deployment without receiving a response. Defaults to 100.
-        health_check_period_s: How often the health check is called on the replica.
-            Defaults to 10s. The health check is by default a no-op actor call to the
-            replica, but you can define your own as a "check_health" method that raises
-            an exception when unhealthy.
-        health_check_timeout_s: How long to wait for a health check method to return
-            before considering it failed. Defaults to 30s.
+        health_check_period_s: Duration between health check calls for the replica.
+            Defaults to 10s. The health check is by default a no-op Actor call to the
+            replica, but you can define your own health check using the "check_health"
+            method in your deployment that raises an exception when unhealthy.
+        health_check_timeout_s: Duration in seconds, that replicas wait for a health
+            check method to return before considering it as failed. Defaults to 30s.
         graceful_shutdown_wait_loop_s: Duration that replicas wait until there is
-            no more work to be done before shutting down.
-        graceful_shutdown_timeout_s: Duration that a replica can be gracefully shutting
-            down before being forcefully killed.
+            no more work to be done before shutting down. Defaults to 2s.
+        graceful_shutdown_timeout_s: Duration to wait for a replica to gracefully
+            shut down before being forcefully killed. Defaults to 20s.
         is_driver_deployment: [EXPERIMENTAL] when set, exactly one replica of this
             deployment runs on every node (like a daemon set).
 
@@ -498,17 +469,16 @@ def run(
             "deployment like: `app = Deployment.bind(my_dag_output)`. "
         raise TypeError(msg)
 
-    # when name provided, keep all existing applications
-    # otherwise, delete all of them.
-    remove_past_deployments = True
-    if name:
-        remove_past_deployments = False
-
     parameter_group = []
 
     for deployment in deployments:
         # Overwrite route prefix
         if route_prefix is not DEFAULT.VALUE and deployment._route_prefix is not None:
+            if route_prefix is not None and not route_prefix.startswith("/"):
+                raise ValueError(
+                    "The route_prefix must start with a forward slash ('/')"
+                )
+
             deployment._route_prefix = route_prefix
         deployment_parameters = {
             "name": deployment._name,
@@ -517,7 +487,7 @@ def run(
             "init_kwargs": deployment.init_kwargs,
             "ray_actor_options": deployment._ray_actor_options,
             "config": deployment._config,
-            "version": deployment._version,
+            "version": deployment._version or get_random_letters(),
             "route_prefix": deployment.route_prefix,
             "url": deployment.url,
             "is_driver_deployment": deployment._is_driver_deployment,
@@ -528,10 +498,13 @@ def run(
         name,
         parameter_group,
         _blocking=_blocking,
-        remove_past_deployments=remove_past_deployments,
     )
 
     if ingress is not None:
+        # The deployment state is not guaranteed to be created after
+        # deploy_application returns; the application state manager will
+        # need another reconcile iteration to create it.
+        client._wait_for_deployment_created(ingress.name)
         return ingress._get_handle()
 
 
@@ -582,8 +555,8 @@ def delete(name: str, _blocking: bool = True):
 def multiplexed(
     func: Optional[Callable[..., Any]] = None, max_num_models_per_replica: int = 3
 ):
-    """[EXPERIMENTAL] Defines a function or method used to load multiplexed
-    models in a replica.
+    """Defines a function or method used to load multiplexed
+    models in a replica (experimental).
 
     The function can be standalone function or a method of a class. The
     function must have exactly one argument, the model id of type `str` for the
@@ -606,6 +579,7 @@ def multiplexed(
     Example:
 
     .. code-block:: python
+
             from ray import serve
 
             @serve.deployment
@@ -699,7 +673,7 @@ def multiplexed(
                     )
                 multiplex_object = self
                 model_id = args[1]
-            multiplex_attr = f"__serve_multiplex_{func.__name__}"
+            multiplex_attr = "__serve_multiplex_wrapper"
             # If the multiplexed function is called for the first time,
             # create a model multiplex wrapper and cache it in the multiplex object.
             if not hasattr(multiplex_object, multiplex_attr):
@@ -718,12 +692,13 @@ def multiplexed(
 
 @PublicAPI(stability="alpha")
 def get_multiplexed_model_id() -> str:
-    """[EXPERIMENTAL] Get the multiplexed model ID for the current request.
+    """Get the multiplexed model ID for the current request (experimental).
 
     This is used with a function decorated with `@serve.multiplexed`
     to retrieve the model ID for the current request.
 
     .. code-block:: python
+
             import ray
             from ray import serve
             import requests
@@ -744,3 +719,30 @@ def get_multiplexed_model_id() -> str:
     """
     _request_context = ray.serve.context._serve_request_context.get()
     return _request_context.multiplexed_model_id
+
+
+@PublicAPI(stability="alpha")
+def status() -> ServeStatus:
+    """Get status of Serve on the cluster.
+
+    Includes status of all HTTP Proxies, all active applications, and
+    their deployments.
+
+    .. code-block:: python
+
+            @serve.deployment(num_replicas=2)
+            class MyDeployment:
+                pass
+
+            serve.run(MyDeployment.bind())
+            status = serve.status()
+            assert status.applications["default"].status == "RUNNING"
+    """
+
+    client = get_global_client(raise_if_no_controller_running=False)
+    if client is None:
+        # Serve has not started yet
+        return ServeStatus()
+
+    details = ServeInstanceDetails(**client.get_serve_details())
+    return details._get_status()

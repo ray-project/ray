@@ -2,10 +2,9 @@ from typing import Any
 
 import numpy as np
 
-import ray
+from ray.air.util.tensor_extensions.utils import create_ragged_ndarray
 from ray.data._internal.dataset_logger import DatasetLogger
 from ray.data._internal.util import _truncated_repr
-from ray.air.util.tensor_extensions.utils import create_ragged_ndarray
 
 logger = DatasetLogger(__name__)
 
@@ -50,11 +49,6 @@ def convert_udf_returns_to_numpy(udf_return_col: Any) -> Any:
     if isinstance(udf_return_col, np.ndarray):
         # No copy/conversion needed, just keep it verbatim.
         return udf_return_col
-
-    ctx = ray.data.DataContext.get_current()
-    if not ctx.strict_mode:
-        # Legacy compat.
-        return np.array(udf_return_col)
 
     if isinstance(udf_return_col, list):
         # Try to convert list values into an numpy array via

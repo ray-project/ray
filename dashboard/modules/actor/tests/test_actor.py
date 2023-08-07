@@ -7,7 +7,6 @@ import pytest
 import requests
 
 import ray
-import ray._private.gcs_pubsub as gcs_pubsub
 import ray.dashboard.utils as dashboard_utils
 from ray._private.test_utils import format_web_url, wait_until_server_available
 from ray.dashboard.modules.actor import actor_consts
@@ -126,7 +125,7 @@ def test_actor_pubsub(disable_aiohttp_cache, ray_start_with_dashboard):
     assert wait_until_server_available(ray_start_with_dashboard["webui_url"])
     address_info = ray_start_with_dashboard
 
-    sub = gcs_pubsub.GcsActorSubscriber(address=address_info["gcs_address"])
+    sub = ray._raylet._TestOnly_GcsActorSubscriber(address=address_info["gcs_address"])
     sub.subscribe()
 
     @ray.remote

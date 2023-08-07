@@ -151,6 +151,10 @@ class PlacementGroupResourceManager(ResourceManager):
             # PG was staging
             future = self._pg_to_staging_future.pop(pg)
             self._staging_future_to_pg.pop(future)
+
+            # Cancel the pg.ready task.
+            # Otherwise, it will be pending node assignment forever.
+            ray.cancel(future)
         else:
             # PG might be ready
             pg = self._request_to_ready_pgs[resource_request].pop()
