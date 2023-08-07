@@ -881,7 +881,7 @@ void GcsPlacementGroupManager::UpdatePlacementGroupLoad() {
     const auto pending_pg_spec = elem.second.second;
     auto placement_group_data = placement_group_load->add_placement_group_data();
     auto placement_group_table_data = pending_pg_spec->GetPlacementGroupTableData();
-    placement_group_data->Swap(&placement_group_table_data);
+    placement_group_data->CopyFrom(placement_group_table_data);
     total_cnt += 1;
     if (total_cnt >= RayConfig::instance().max_placement_group_load_report_size()) {
       break;
@@ -892,7 +892,7 @@ void GcsPlacementGroupManager::UpdatePlacementGroupLoad() {
   for (const auto &pending_pg_spec : infeasible_placement_groups_) {
     auto placement_group_data = placement_group_load->add_placement_group_data();
     auto placement_group_table_data = pending_pg_spec->GetPlacementGroupTableData();
-    placement_group_data->Swap(&placement_group_table_data);
+    placement_group_data->CopyFrom(placement_group_table_data);
     total_cnt += 1;
     if (total_cnt >= RayConfig::instance().max_placement_group_load_report_size()) {
       break;
@@ -1048,13 +1048,13 @@ bool GcsPlacementGroupManager::RescheduleIfStillHasUnplacedBundles(
 
 const absl::btree_multimap<
     int64_t,
-    std::pair<ExponentialBackOff, std::shared_ptr<GcsPlacementGroup>>>
-    &GcsPlacementGroupManager::GetPendingPlacementGroups() const {
+    std::pair<ExponentialBackOff, std::shared_ptr<GcsPlacementGroup>>> &
+GcsPlacementGroupManager::GetPendingPlacementGroups() const {
   return pending_placement_groups_;
 }
 
-const std::deque<std::shared_ptr<GcsPlacementGroup>>
-    &GcsPlacementGroupManager::GetInfeasiblePlacementGroups() const {
+const std::deque<std::shared_ptr<GcsPlacementGroup>> &
+GcsPlacementGroupManager::GetInfeasiblePlacementGroups() const {
   return infeasible_placement_groups_;
 }
 
