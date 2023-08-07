@@ -59,6 +59,7 @@ Ray Train Config
 
     ~ray.train.DataConfig
 
+.. _train-loop-api:
 
 Ray Train Loop
 --------------
@@ -70,6 +71,25 @@ Ray Train Loop
     ~train.get_context
     ~train.get_dataset_shard
     ~train.report
+
+
+Ray Train Checkpoints
+---------------------
+
+.. autosummary::
+    :toctree: doc/
+
+    ~train.Checkpoint
+
+
+Ray Train Context
+-----------------
+
+.. autosummary::
+    :toctree: doc/
+
+    ~train.get_context
+    ~train.context.TrainContext
 
 
 .. _train-integration-api:
@@ -209,16 +229,6 @@ Mosaic
     :toctree: doc/
 
     ~train.mosaic.MosaicTrainer
-
-
-Reinforcement Learning (RLlib)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. autosummary::
-    :toctree: doc/
-
-    ~train.rl.RLTrainer
-    ~train.rl.RLCheckpoint
 
 
 .. _trainer-restore:

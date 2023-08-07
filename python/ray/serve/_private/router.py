@@ -985,24 +985,29 @@ class Router:
             },
         )
 
-        query = Query(
-            args=list(request_args),
-            kwargs=request_kwargs,
-            metadata=request_meta,
-        )
-        await query.resolve_async_tasks()
-        await query.buffer_starlette_requests_and_warn()
-        result = await self._replica_scheduler.assign_replica(query)
+        try:
+            query = Query(
+                args=list(request_args),
+                kwargs=request_kwargs,
+                metadata=request_meta,
+            )
+            await query.resolve_async_tasks()
+            await query.buffer_starlette_requests_and_warn()
+            result = await self._replica_scheduler.assign_replica(query)
 
-        self.num_queued_queries -= 1
-        self.num_queued_queries_gauge.set(
-            self.num_queued_queries,
-            tags={
-                "application": request_meta.app_name,
-            },
-        )
-
-        return result
+            return result
+        finally:
+            # If the query is disconnected before assignment, this coroutine
+            # gets cancelled by the caller and an asyncio.CancelledError is
+            # raised. The finally block ensures that num_queued_queries
+            # is correctly decremented in this case.
+            self.num_queued_queries -= 1
+            self.num_queued_queries_gauge.set(
+                self.num_queued_queries,
+                tags={
+                    "application": request_meta.app_name,
+                },
+            )
 
     def shutdown(self):
         """Shutdown router gracefully.

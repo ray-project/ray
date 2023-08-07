@@ -2,6 +2,30 @@ import logging
 import re
 from logging.config import dictConfig
 import threading
+from typing import Union
+
+
+def _print_loggers():
+    """Print a formatted list of loggers and their handlers for debugging."""
+    loggers = {logging.root.name: logging.root}
+    loggers.update(dict(sorted(logging.root.manager.loggerDict.items())))
+    for name, logger in loggers.items():
+        if isinstance(logger, logging.Logger):
+            print(f"  {name}: disabled={logger.disabled}, propagate={logger.propagate}")
+            for handler in logger.handlers:
+                print(f"    {handler}")
+
+
+def clear_logger(logger: Union[str, logging.Logger]):
+    """Reset a logger, clearing its handlers and enabling propagation.
+
+    Args:
+        logger: Logger to be cleared
+    """
+    if isinstance(logger, str):
+        logger = logging.getLogger(logger)
+    logger.propagate = True
+    logger.handlers.clear()
 
 
 class ContextFilter(logging.Filter):
@@ -134,5 +158,6 @@ def generate_logging_config():
                 "filters": filters,
                 "handlers": handlers,
                 "loggers": loggers,
+                "disable_existing_loggers": False,
             }
         )
