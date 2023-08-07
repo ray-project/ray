@@ -26,7 +26,7 @@ from ray.air._internal.remote_storage import download_from_uri, is_non_local_pat
 from ray.air._internal.uri_utils import URI
 from ray.air._internal.usage import AirEntrypoint
 from ray.air.config import RunConfig, ScalingConfig
-from ray.train._internal.storage import _use_storage_context
+from ray.train._internal.storage import _use_storage_context, StorageContext
 from ray.tune import Experiment, TuneError, ExperimentAnalysis
 from ray.tune.execution.experiment_state import _ResumeConfig
 from ray.tune.tune import _Config
@@ -131,7 +131,10 @@ class TunerInternal:
         self._resume_config = None
         self._is_restored = False
         self._tuner_kwargs = copy.deepcopy(_tuner_kwargs) or {}
-        self._experiment_checkpoint_dir = self.setup_create_experiment_checkpoint_dir(
+        (
+            self._experiment_checkpoint_dir,
+            self._experiment_dir_name,
+        ) = self.setup_create_experiment_checkpoint_dir(
             self.converted_trainable, self._run_config
         )
         self._experiment_analysis = None
@@ -424,15 +427,15 @@ class TunerInternal:
             # If we synced, `experiment_checkpoint_dir` will contain a temporary
             # directory. Create an experiment checkpoint dir instead and move
             # our data there.
-            new_exp_path = Path(
-                self.setup_create_experiment_checkpoint_dir(
-                    self.converted_trainable, self._run_config
-                )
+            new_exp_path, new_exp_name = self.setup_create_experiment_checkpoint_dir(
+                self.converted_trainable, self._run_config
             )
+            new_exp_path = Path(new_exp_path)
             for file_dir in experiment_checkpoint_path.glob("*"):
                 file_dir.replace(new_exp_path / file_dir.name)
             shutil.rmtree(experiment_checkpoint_path)
             self._experiment_checkpoint_dir = str(new_exp_path)
+            self._experiment_dir_name = str(new_exp_name)
 
         # Load the experiment results at the point where it left off.
         try:
@@ -521,20 +524,30 @@ class TunerInternal:
     @classmethod
     def setup_create_experiment_checkpoint_dir(
         cls, trainable: TrainableType, run_config: Optional[RunConfig]
-    ) -> str:
-        """Sets up experiment checkpoint dir before actually running the experiment."""
-        path = Experiment.get_experiment_checkpoint_dir(
-            trainable,
-            # TODO(justinvyu): This is a result of the old behavior of parsing
-            # local vs. remote storage paths and should be reworked in a follow-up.
-            _get_defaults_results_dir()
-            if _use_storage_context()
-            else run_config.storage_path,
-            run_config.name,
-        )
-        if not os.path.exists(path):
-            os.makedirs(path, exist_ok=True)
-        return path
+    ) -> Tuple[str, str]:
+        """Sets up and creates the local experiment checkpoint dir.
+        This is so that the `tuner.pkl` file gets stored in the same directory
+        and gets synced with other experiment results.
+
+        Returns:
+            Tuple: (experiment_path, experiment_dir_name)
+        """
+        if _use_storage_context():
+            experiment_dir_name = (
+                run_config.name or StorageContext.get_experiment_dir_name(trainable)
+            )
+            storage_local_path = _get_defaults_results_dir()
+            experiment_path = os.path.join(storage_local_path, experiment_dir_name)
+        else:
+            experiment_path = Experiment.get_experiment_checkpoint_dir(
+                trainable,
+                run_config.storage_path,
+                run_config.name,
+            )
+            experiment_dir_name = os.path.basename(experiment_path)
+
+        os.makedirs(experiment_path, exist_ok=True)
+        return experiment_path, experiment_dir_name
 
     # This has to be done through a function signature (@property won't do).
     def get_experiment_checkpoint_dir(self) -> str:
@@ -669,6 +682,7 @@ class TunerInternal:
         return dict(
             storage_path=self._run_config.storage_path,
             storage_filesystem=self._run_config.storage_filesystem,
+            name=self._experiment_dir_name,
             mode=self._tune_config.mode,
             metric=self._tune_config.metric,
             callbacks=self._run_config.callbacks,
@@ -702,7 +716,6 @@ class TunerInternal:
                 num_samples=self._tune_config.num_samples,
                 search_alg=self._tune_config.search_alg,
                 scheduler=self._tune_config.scheduler,
-                name=self._run_config.name,
                 log_to_file=self._run_config.log_to_file,
             ),
             **self._tuner_kwargs,
