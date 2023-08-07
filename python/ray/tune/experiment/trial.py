@@ -214,7 +214,7 @@ class _TrialRuntimeMetadata:
         self.pickled_error_filename = None
 
         # Results and metrics
-        self.last_result = None
+        self.last_result = {}
         self.last_result_time = -float("inf")
 
         # stores in memory max/min/avg/last-n-avg/last result for each
@@ -225,6 +225,63 @@ class _TrialRuntimeMetadata:
 
         # Checkpoints
         self.checkpoint_manager = None
+
+        self._cached_json = None
+
+    def invalidate_cache(self):
+        self._cached_json = None
+
+    def update_metric(self, metric: str, value: Number, step: Optional[int] = 1):
+        if metric not in self.metric_analysis:
+            self.metric_analysis[metric] = {
+                "max": value,
+                "min": value,
+                "avg": value,
+                "last": value,
+            }
+            self.metric_n_steps[metric] = {}
+            for n in self._n_steps:
+                key = "last-{:d}-avg".format(n)
+                self.metric_analysis[metric][key] = value
+                # Store n as string for correct restore.
+                self.metric_n_steps[metric][str(n)] = deque([value], maxlen=n)
+        else:
+            step = step or 1
+            self.metric_analysis[metric]["max"] = max(
+                value, self.metric_analysis[metric]["max"]
+            )
+            self.metric_analysis[metric]["min"] = min(
+                value, self.metric_analysis[metric]["min"]
+            )
+            self.metric_analysis[metric]["avg"] = (
+                1 / step * (value + (step - 1) * self.metric_analysis[metric]["avg"])
+            )
+            self.metric_analysis[metric]["last"] = value
+
+            for n in self._n_steps:
+                key = "last-{:d}-avg".format(n)
+                self.metric_n_steps[metric][str(n)].append(value)
+                self.metric_analysis[metric][key] = sum(
+                    self.metric_n_steps[metric][str(n)]
+                ) / len(self.metric_n_steps[metric][str(n)])
+        self.invalidate_cache()
+
+    def __setattr__(self, key, value):
+        super().__setattr__(key, value)
+        if key not in {"_cached_json"}:
+            self.invalidate_cache()
+
+    def get_json_state(self) -> str:
+        if self._cached_json is None:
+            data = self.__dict__
+            data.pop("_cached_json", None)
+            self._cached_json = json.dumps(data, indent=2, cls=TuneFunctionEncoder)
+
+        return self._cached_json
+
+    def restore_from_json(self, json_state: str):
+        data = json.loads(json_state, cls=TuneFunctionDecoder)
+        self.__dict__.update(data)
 
 
 class _TrialState:
@@ -595,7 +652,6 @@ class Trial:
                 )
 
         self._state_json = None
-        self._state_valid = False
 
     def create_placement_group_factory(self):
         """Compute placement group factory if needed.
@@ -998,14 +1054,10 @@ class Trial:
             self.runtime_metadata.checkpoint_manager.set_delete_fn(
                 _CheckpointDeleter(self._trainable_name(), ray_actor)
             )
-        # No need to invalidate state cache: runner is not stored in json
-        # self.invalidate_json_state()
 
     def set_location(self, location):
         """Sets the location of the trial."""
         self.trial_state.location = location
-        # No need to invalidate state cache: location is not stored in json
-        # self.invalidate_json_state()
 
     def set_status(self, status):
         """Sets the status of the trial."""
@@ -1072,7 +1124,7 @@ class Trial:
                     )
                 )
                 f.write(str(exc) + "\n")
-        self.invalidate_json_state()
+        self.runtime_metadata.invalidate_cache()
 
     def should_stop(self, result):
         """Whether the given result meets this trial's stopping criteria."""
@@ -1110,7 +1162,7 @@ class Trial:
     def clear_checkpoint(self):
         self.checkpoint.dir_or_data = None
         self.trial_state.restoring_from = None
-        self.invalidate_json_state()
+        self.runtime_metadata.invalidate_cache()
 
     def on_checkpoint(self, checkpoint: _TrackedCheckpoint):
         """Hook for handling checkpoints taken by the Trainable.
@@ -1125,7 +1177,7 @@ class Trial:
             self.runtime_metadata.checkpoint_manager.register_checkpoint(checkpoint)
         else:
             self.runtime_metadata.checkpoint_manager.on_checkpoint(checkpoint)
-        self.invalidate_json_state()
+        self.runtime_metadata.invalidate_cache()
 
     def on_restore(self):
         """Handles restoration completion."""
@@ -1134,7 +1186,6 @@ class Trial:
         self.runtime_metadata.last_result.setdefault("config", self.config)
         self.trial_state.restoring_from = None
         self.trial_state.num_restore_failures = 0
-        self.invalidate_json_state()
 
     def should_recover(self):
         """Returns whether the trial qualifies for retrying.
@@ -1168,50 +1219,9 @@ class Trial:
 
         for metric, value in flatten_dict(metric_result).items():
             if isinstance(value, Number):
-                if metric not in self.runtime_metadata.metric_analysis:
-                    self.runtime_metadata.metric_analysis[metric] = {
-                        "max": value,
-                        "min": value,
-                        "avg": value,
-                        "last": value,
-                    }
-                    self.runtime_metadata.metric_n_steps[metric] = {}
-                    for n in self.runtime_metadata._n_steps:
-                        key = "last-{:d}-avg".format(n)
-                        self.runtime_metadata.metric_analysis[metric][key] = value
-                        # Store n as string for correct restore.
-                        self.runtime_metadata.metric_n_steps[metric][str(n)] = deque(
-                            [value], maxlen=n
-                        )
-                else:
-                    step = result["training_iteration"] or 1
-                    self.runtime_metadata.metric_analysis[metric]["max"] = max(
-                        value, self.runtime_metadata.metric_analysis[metric]["max"]
-                    )
-                    self.runtime_metadata.metric_analysis[metric]["min"] = min(
-                        value, self.runtime_metadata.metric_analysis[metric]["min"]
-                    )
-                    self.runtime_metadata.metric_analysis[metric]["avg"] = (
-                        1
-                        / step
-                        * (
-                            value
-                            + (step - 1)
-                            * self.runtime_metadata.metric_analysis[metric]["avg"]
-                        )
-                    )
-                    self.runtime_metadata.metric_analysis[metric]["last"] = value
-
-                    for n in self.runtime_metadata._n_steps:
-                        key = "last-{:d}-avg".format(n)
-                        self.runtime_metadata.metric_n_steps[metric][str(n)].append(
-                            value
-                        )
-                        self.runtime_metadata.metric_analysis[metric][key] = sum(
-                            self.runtime_metadata.metric_n_steps[metric][str(n)]
-                        ) / len(self.runtime_metadata.metric_n_steps[metric][str(n)])
-
-        # json state is invalidated in last_result.setter
+                self.runtime_metadata.update_metric(
+                    metric, value, step=result["training_iteration"]
+                )
 
     def get_trainable_cls(self):
         if self.stub:
@@ -1269,16 +1279,17 @@ class Trial:
         return re.sub("[/()]", "_", generated_dirname)
 
     def invalidate_json_state(self):
-        self._state_valid = False
+        self._state_json = None
 
-    def get_json_state(self) -> str:
-        if not self._state_json or not self._state_valid:
-            json_state = json.dumps(
+    def get_json_state(self) -> Tuple[str, str]:
+        if self._state_json is None:
+            self._state_json = json.dumps(
                 self.__getstate__(), indent=2, cls=TuneFunctionEncoder
             )
-            self._state_json = json_state
-            self._state_valid = True
-        return self._state_json
+
+        runtime_metadata_json = self.runtime_metadata.get_json_state()
+
+        return self._state_json, runtime_metadata_json
 
     @classmethod
     def from_json_state(cls, json_state: str, stub: bool = False) -> "Trial":
@@ -1293,6 +1304,9 @@ class Trial:
         new_trial.__setstate__(state)
 
         return new_trial
+
+    def restore_runtime_state(self, runtime_state: str):
+        self.runtime_metadata.restore_from_json(runtime_state)
 
     @classmethod
     def from_directory(

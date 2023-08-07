@@ -446,7 +446,7 @@ class TuneController:
         # Get state from trial executor and runner
         runner_state = {
             # Trials
-            "checkpoints": list(self._get_trial_checkpoints().values()),
+            "trial_data": list(self._get_trial_checkpoints().values()),
             # Experiment data
             "runner_data": self.__getstate__(),
             # Metadata
@@ -529,8 +529,9 @@ class TuneController:
 
         # 3. Load trials
         trials = []
-        for trial_json_state in runner_state["checkpoints"]:
+        for trial_json_state, trial_runtime_metadata in runner_state["trial_data"]:
             trial = Trial.from_json_state(trial_json_state)
+            trial.restore_runtime_state(trial_runtime_metadata)
 
             # The following properties may be updated on restoration
             # Ex: moved local/cloud experiment directory
