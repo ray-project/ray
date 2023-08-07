@@ -281,7 +281,7 @@ class GBDTTrainer(BaseTrainer):
 
         init_model = None
         if self._get_initial_checkpoint():
-            init_model, _ = self._load_checkpoint(self._get_initial_checkpoint())
+            init_model, _ = self._load_checkpoint(self.starting_checkpoint)
 
         config.setdefault("verbose_eval", False)
         config.setdefault("callbacks", [])
