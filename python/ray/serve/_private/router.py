@@ -387,13 +387,6 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         """Shim for compatibility with the existing round robin scheduler."""
         return self.update_replicas([ActorReplicaWrapper(r) for r in running_replicas])
 
-    def _get_candidate_replica_ids(
-        self,
-    ) -> Set[str]:
-        """Get candidates from the current replica set."""
-
-        return self._replica_id_set
-
     def _get_candidate_replica_ids_for_multiplexed_model_id(
         self,
         model_id: str,
@@ -404,7 +397,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         By default, we will only choose from replicas that have the requested
         multiplexed model id, if not matched, the function will return an empty set.
 
-        If fallback_to_all_replicas is True, we will choose from all replicas,
+        If get_from_all_replicas is True, we will choose from all replicas,
         and we will choose all replicas with the least number of multiplexed model
         ids.
 
@@ -499,7 +492,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
                     )
             else:
                 # non-multiplexed use case
-                candidate_replica_ids = self._get_candidate_replica_ids()
+                candidate_replica_ids = self._replica_id_set
 
             if candidate_replica_ids:
                 chosen_ids = random.sample(

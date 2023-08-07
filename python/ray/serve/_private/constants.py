@@ -224,7 +224,7 @@ RAY_SERVE_GAUGE_METRIC_SET_PERIOD_S = 1
 # Serve multiplexed matching timeout.
 # This is the timeout for the matching process of multiplexed requests. To avoid
 # thundering herd problem, the timeout value will be randomed between this value
-# and this value * 1.5. The unit is second.
+# and this value * 2. The unit is second.
 # If the matching process takes longer than the timeout, the request will be
 # fallen to the default routing strategy.
 RAY_SERVE_MULTIPLEXED_MODEL_ID_MATCHING_TIMEOUT_S = float(
