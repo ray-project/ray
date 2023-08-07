@@ -1075,7 +1075,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
             cls = trial.get_trainable_cls()
             actor = ray.remote(cls).remote(
                 remote_checkpoint_dir=upload_dir,
-                sync_config=trial.sync_config,
+                sync_config=trial.legacy_sync_config,
             )
             return actor
 
