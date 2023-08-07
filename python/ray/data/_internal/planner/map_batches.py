@@ -8,7 +8,7 @@ from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.numpy_support import is_valid_udf_return
 from ray.data._internal.output_buffer import BlockOutputBuffer
 from ray.data._internal.util import _truncated_repr
-from ray.data.block import Block, DataBatch, UserDefinedFunction
+from ray.data.block import Block, BlockAccessor, DataBatch, UserDefinedFunction
 from ray.data.context import DEFAULT_BATCH_SIZE, DataContext
 
 
@@ -110,6 +110,9 @@ def generate_map_batches_fn(
             block_iter = iter(blocks)
             first_block = next(block_iter)
             blocks = itertools.chain([first_block], block_iter)
+            empty_block = BlockAccessor.for_block(first_block).builder().build()
+            # Don't hold the first block in memory, so we reset the reference.
+            first_block = None
         except StopIteration:
             first_block = None
 
@@ -130,11 +133,11 @@ def generate_map_batches_fn(
         if not has_batches:
             # If the input blocks are all empty, then add an empty block to the buffer,
             # so that the buffer contains some data.
-            yield output_buffer.add_block(first_block)
-
-        # Yield remainder block from output buffer.
-        output_buffer.finalize()
-        if output_buffer.has_next():
-            yield output_buffer.next()
+            yield empty_block
+        else:
+            # Yield remainder block from output buffer.
+            output_buffer.finalize()
+            if output_buffer.has_next():
+                yield output_buffer.next()
 
     return fn
