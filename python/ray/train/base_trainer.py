@@ -21,7 +21,6 @@ from ray.air._internal.usage import AirEntrypoint
 from ray.air.checkpoint import Checkpoint
 from ray.air.config import RunConfig, ScalingConfig
 from ray.air.result import Result
-from ray.train._checkpoint import Checkpoint as NewCheckpoint
 from ray.train._internal import session
 from ray.train._internal.storage import _use_storage_context
 from ray.train.constants import TRAIN_DATASET_KEY
