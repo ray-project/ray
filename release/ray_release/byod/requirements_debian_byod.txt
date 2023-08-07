@@ -1,0 +1,14 @@
+apt-transport-https 
+ca-certificates 
+curl
+htop
+gnupg
+google-cloud-sdk
+libgl1-mesa-glx
+libglfw3
+libjemalloc-dev
+libosmesa6-dev
+patchelf
+unzip
+zip
+libaio1

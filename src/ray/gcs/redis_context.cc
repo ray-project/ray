@@ -202,7 +202,9 @@ void RedisRequestContext::Run() {
           auto reply = std::make_shared<CallbackReply>(redis_reply);
           request_cxt->io_service_.post(
               [reply, callback = std::move(request_cxt->callback_)]() {
-                callback(std::move(reply));
+                if (callback) {
+                  callback(std::move(reply));
+                }
               },
               "RedisRequestContext.Callback");
           auto end_time = absl::Now();
@@ -267,17 +269,20 @@ RedisContext::RedisContext(instrumented_io_context &io_service)
       << redisSSLContextGetError(ssl_error);
 }
 
-RedisContext::~RedisContext() { Disconnect(); }
+RedisContext::~RedisContext() {
+  Disconnect();
+  if (ssl_context_) {
+    redisFreeSSLContext(ssl_context_);
+    ssl_context_ = nullptr;
+  }
+}
 
 void RedisContext::Disconnect() {
   if (context_) {
     redisFree(context_);
     context_ = nullptr;
   }
-  if (ssl_context_) {
-    redisFreeSSLContext(ssl_context_);
-    ssl_context_ = nullptr;
-  }
+
   redis_async_context_.reset();
 }
 
@@ -356,6 +361,7 @@ Status ConnectWithRetries(const std::string &address,
                           int port,
                           const RedisConnectFunction &connect_function,
                           RedisContext **context) {
+  RAY_LOG(INFO) << "Attempting to connect to address " << address << ":" << port << ".";
   int connection_attempts = 0;
   Status status = ConnectWithoutRetries(address, port, connect_function, context);
   while (!status.ok()) {
@@ -469,6 +475,8 @@ Status RedisContext::Connect(const std::string &address,
   RAY_CHECK(!ip_addresses.empty())
       << "Failed to resolve DNS for " << address << ":" << port;
 
+  RAY_LOG(INFO) << "Resolve Redis address to " << absl::StrJoin(ip_addresses, ", ");
+
   RAY_CHECK_OK(ConnectWithRetries(ip_addresses[0], port, redisConnect, &context_));
 
   if (enable_ssl) {
@@ -518,8 +526,10 @@ Status RedisContext::Connect(const std::string &address,
 
     Disconnect();
     // Connect to the true leader.
+    RAY_LOG(INFO) << "Redis cluster leader is " << parts[2] << ". Reconnect to it.";
     return Connect(ip_port[0], std::stoi(ip_port[1]), sharding, password, enable_ssl);
   } else {
+    RAY_LOG(INFO) << "Redis cluster leader is " << ip_addresses[0] << ":" << port;
     freeReplyObject(redis_reply);
   }
 

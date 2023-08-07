@@ -27,7 +27,11 @@ from ray._private.utils import (
     format_error_message,
 )
 from ray._private.serialization import pickle_dumps
-from ray._raylet import JobID, PythonFunctionDescriptor, WORKER_SETUP_HOOK_KEY_NAME_GCS
+from ray._raylet import (
+    JobID,
+    PythonFunctionDescriptor,
+    WORKER_PROCESS_SETUP_HOOK_KEY_NAME_GCS,
+)
 
 FunctionExecutionInfo = namedtuple(
     "FunctionExecutionInfo", ["function", "function_name", "max_calls"]
@@ -47,10 +51,6 @@ def make_function_table_key(key_type: bytes, job_id: JobID, key: Optional[bytes]
         return b":".join([key_type, job_id.hex().encode()])
     else:
         return b":".join([key_type, job_id.hex().encode(), key])
-
-
-def make_exports_prefix(job_id: JobID) -> bytes:
-    return make_function_table_key(b"IsolatedExports", job_id)
 
 
 def make_export_key(pos: int, job_id: JobID) -> bytes:
@@ -158,9 +158,6 @@ class FunctionActorManager:
         # One optimization is that we can use importer counter since
         # it's sure keys before this counter has been allocated.
         with self._export_lock:
-            self._num_exported = max(
-                self._num_exported, self._worker.import_thread.num_imported
-            )
             while True:
                 self._num_exported += 1
                 holder = make_export_key(
@@ -185,7 +182,8 @@ class FunctionActorManager:
     ) -> bytes:
         """Export the setup hook function and return the key."""
         pickled_function = pickle_dumps(
-            setup_func, f"Cannot serialize the worker_setup_hook {setup_func.__name__}"
+            setup_func,
+            "Cannot serialize the worker_process_setup_hook " f"{setup_func.__name__}",
         )
 
         function_to_run_id = hashlib.shake_128(pickled_function).digest(
@@ -194,7 +192,7 @@ class FunctionActorManager:
         key = make_function_table_key(
             # This value should match with gcs_function_manager.h.
             # Otherwise, it won't be GC'ed.
-            WORKER_SETUP_HOOK_KEY_NAME_GCS.encode(),
+            WORKER_PROCESS_SETUP_HOOK_KEY_NAME_GCS.encode(),
             # b"FunctionsToRun",
             self._worker.current_job_id.binary(),
             function_to_run_id,

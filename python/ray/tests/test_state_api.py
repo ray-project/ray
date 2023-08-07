@@ -123,7 +123,6 @@ if sys.version_info >= (3, 8, 0):
 else:
     from asyncmock import AsyncMock
 
-
 """
 Unit tests
 """
@@ -134,6 +133,22 @@ def state_api_manager():
     data_source_client = AsyncMock(StateDataSourceClient)
     manager = StateAPIManager(data_source_client)
     yield manager
+
+
+def state_source_client(gcs_address):
+    GRPC_CHANNEL_OPTIONS = (
+        *ray_constants.GLOBAL_GRPC_OPTIONS,
+        ("grpc.max_send_message_length", ray_constants.GRPC_CPP_MAX_MESSAGE_SIZE),
+        ("grpc.max_receive_message_length", ray_constants.GRPC_CPP_MAX_MESSAGE_SIZE),
+    )
+    gcs_channel = ray._private.utils.init_grpc_channel(
+        gcs_address, GRPC_CHANNEL_OPTIONS, asynchronous=True
+    )
+    gcs_aio_client = GcsAioClient(address=gcs_address, nums_reconnect_retry=0)
+    client = StateDataSourceClient(
+        gcs_channel=gcs_channel, gcs_aio_client=gcs_aio_client
+    )
+    return client
 
 
 @pytest.fixture
@@ -1302,8 +1317,12 @@ async def test_api_manager_list_objects(state_api_manager):
 @pytest.mark.asyncio
 async def test_api_manager_list_runtime_envs(state_api_manager):
     data_source_client = state_api_manager.data_source_client
-    data_source_client.get_all_registered_agent_ids = MagicMock()
-    data_source_client.get_all_registered_agent_ids.return_value = ["1", "2", "3"]
+    data_source_client.get_all_registered_runtime_env_agent_ids = MagicMock()
+    data_source_client.get_all_registered_runtime_env_agent_ids.return_value = [
+        "1",
+        "2",
+        "3",
+    ]
 
     data_source_client.get_runtime_envs_info = AsyncMock()
     data_source_client.get_runtime_envs_info.side_effect = [
@@ -1490,16 +1509,7 @@ async def test_state_data_source_client(ray_start_cluster):
     # worker
     worker = cluster.add_node(num_cpus=2)
 
-    GRPC_CHANNEL_OPTIONS = (
-        *ray_constants.GLOBAL_GRPC_OPTIONS,
-        ("grpc.max_send_message_length", ray_constants.GRPC_CPP_MAX_MESSAGE_SIZE),
-        ("grpc.max_receive_message_length", ray_constants.GRPC_CPP_MAX_MESSAGE_SIZE),
-    )
-    gcs_channel = ray._private.utils.init_grpc_channel(
-        cluster.address, GRPC_CHANNEL_OPTIONS, asynchronous=True
-    )
-    gcs_aio_client = GcsAioClient(address=cluster.address, nums_reconnect_retry=0)
-    client = StateDataSourceClient(gcs_channel, gcs_aio_client)
+    client = state_source_client(cluster.address)
 
     """
     Test actor
@@ -1557,7 +1567,8 @@ async def test_state_data_source_client(ray_start_cluster):
         node_id = node["NodeID"]
         ip = node["NodeManagerAddress"]
         port = int(node["NodeManagerPort"])
-        client.register_raylet_client(node_id, ip, port)
+        runtime_env_agent_port = int(node["RuntimeEnvAgentPort"])
+        client.register_raylet_client(node_id, ip, port, runtime_env_agent_port)
         result = await client.get_task_info(node_id)
         assert isinstance(result, GetTasksInfoReply)
 
@@ -1575,7 +1586,8 @@ async def test_state_data_source_client(ray_start_cluster):
         node_id = node["NodeID"]
         ip = node["NodeManagerAddress"]
         port = int(node["NodeManagerPort"])
-        client.register_raylet_client(node_id, ip, port)
+        runtime_env_agent_port = int(node["RuntimeEnvAgentPort"])
+        client.register_raylet_client(node_id, ip, port, runtime_env_agent_port)
         result = await client.get_object_info(node_id)
         assert isinstance(result, GetObjectsInfoReply)
 
@@ -1657,17 +1669,7 @@ async def test_state_data_source_client_limit_gcs_source(ray_start_cluster):
     cluster.add_node(num_cpus=2)
     ray.init(address=cluster.address)
 
-    GRPC_CHANNEL_OPTIONS = (
-        *ray_constants.GLOBAL_GRPC_OPTIONS,
-        ("grpc.max_send_message_length", ray_constants.GRPC_CPP_MAX_MESSAGE_SIZE),
-        ("grpc.max_receive_message_length", ray_constants.GRPC_CPP_MAX_MESSAGE_SIZE),
-    )
-    gcs_channel = ray._private.utils.init_grpc_channel(
-        cluster.address, GRPC_CHANNEL_OPTIONS, asynchronous=True
-    )
-    gcs_aio_client = GcsAioClient(address=cluster.address, nums_reconnect_retry=0)
-    client = StateDataSourceClient(gcs_channel, gcs_aio_client)
-
+    client = state_source_client(gcs_address=cluster.address)
     """
     Test actor
     """
@@ -1723,22 +1725,13 @@ async def test_state_data_source_client_limit_distributed_sources(ray_start_clus
     # head
     cluster.add_node(num_cpus=8)
     ray.init(address=cluster.address)
-
-    GRPC_CHANNEL_OPTIONS = (
-        *ray_constants.GLOBAL_GRPC_OPTIONS,
-        ("grpc.max_send_message_length", ray_constants.GRPC_CPP_MAX_MESSAGE_SIZE),
-        ("grpc.max_receive_message_length", ray_constants.GRPC_CPP_MAX_MESSAGE_SIZE),
-    )
-    gcs_channel = ray._private.utils.init_grpc_channel(
-        cluster.address, GRPC_CHANNEL_OPTIONS, asynchronous=True
-    )
-    gcs_aio_client = GcsAioClient(address=cluster.address, nums_reconnect_retry=0)
-    client = StateDataSourceClient(gcs_channel, gcs_aio_client)
+    client = state_source_client(cluster.address)
     for node in ray.nodes():
         node_id = node["NodeID"]
         ip = node["NodeManagerAddress"]
         port = int(node["NodeManagerPort"])
-        client.register_raylet_client(node_id, ip, port)
+        runtime_env_agent_port = int(node["RuntimeEnvAgentPort"])
+        client.register_raylet_client(node_id, ip, port, runtime_env_agent_port)
 
     """
     Test tasks
@@ -2147,6 +2140,37 @@ def test_list_get_pgs(shutdown_only):
     print(list_placement_groups())
 
 
+@pytest.mark.asyncio
+async def test_cloud_envs(ray_start_cluster, monkeypatch):
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=1, node_name="head_node")
+    ray.init(address=cluster.address)
+    with monkeypatch.context() as m:
+        m.setenv(
+            "RAY_CLOUD_INSTANCE_ID",
+            "test_cloud_id",
+        )
+        m.setenv("RAY_NODE_TYPE_NAME", "test-node-type")
+        cluster.add_node(num_cpus=1, node_name="worker_node")
+    client = state_source_client(cluster.address)
+
+    async def verify():
+        reply = await client.get_all_node_info()
+        print(reply)
+        assert len(reply.node_info_list) == 2
+        for node_info in reply.node_info_list:
+            if node_info.node_name == "worker_node":
+                assert node_info.instance_id == "test_cloud_id"
+                assert node_info.node_type_name == "test-node-type"
+            else:
+                assert node_info.instance_id == ""
+                assert node_info.node_type_name == ""
+
+        return True
+
+    await async_wait_for_condition_async_predicate(verify)
+
+
 @pytest.mark.skipif(
     sys.platform == "win32",
     reason="Failed on Windows",
@@ -2158,7 +2182,7 @@ def test_list_get_nodes(ray_start_cluster):
     cluster.add_node(num_cpus=1, node_name="worker_node")
 
     def verify():
-        nodes = list_nodes()
+        nodes = list_nodes(detail=True)
         for node in nodes:
             assert node["state"] == "ALIVE"
             assert is_hex(node["node_id"])
@@ -2167,6 +2191,7 @@ def test_list_get_nodes(ray_start_cluster):
                 if node["node_name"] == "head_node"
                 else not node["is_head_node"]
             )
+            assert node["labels"] == {"ray.io/node_id": node["node_id"]}
 
         # Check with legacy API
         check_nodes = ray.nodes()
@@ -2446,6 +2471,7 @@ def test_pg_worker_id_tasks(shutdown_only):
 
         assert tasks[0]["placement_group_id"] == pg.id.hex()
         assert tasks[0]["worker_id"] == workers[0]["worker_id"]
+        assert tasks[0]["worker_pid"] == workers[0]["pid"]
 
         return True
 
@@ -2850,9 +2876,8 @@ async def test_cli_format_print(state_api_manager):
     print(result)
     result = [ActorState(**d) for d in result.result]
     # If the format is not yaml, it will raise an exception.
-    yaml.load(
-        format_list_api_output(result, schema=ActorState, format=AvailableFormat.YAML),
-        Loader=yaml.FullLoader,
+    yaml.safe_load(
+        format_list_api_output(result, schema=ActorState, format=AvailableFormat.YAML)
     )
     # If the format is not json, it will raise an exception.
     json.loads(
@@ -3062,18 +3087,14 @@ def test_detail(shutdown_only):
 
     # Make sure when the --detail option is specified, the default formatting
     # is yaml. If the format is not yaml, the below line will raise an yaml exception.
-    print(
-        yaml.load(
-            result.output,
-            Loader=yaml.FullLoader,
-        )
-    )
+    # Retrieve yaml content from result output
+    print(yaml.safe_load(result.output.split("---")[1].split("...")[0]))
 
     # When the format is given, it should respect that formatting.
-    result = runner.invoke(ray_list, ["actors", "--detail", "--format=table"])
+    result = runner.invoke(ray_list, ["actors", "--detail", "--format=json"])
     assert result.exit_code == 0
-    with pytest.raises(yaml.YAMLError):
-        yaml.load(result.output, Loader=yaml.FullLoader)
+    # Fails if output is not JSON
+    print(json.loads(result.output))
 
 
 def _try_state_query_expect_rate_limit(api_func, res_q, start_q=None, **kwargs):

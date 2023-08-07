@@ -118,15 +118,6 @@ projects:
     website: https://github.com/pycaret/pycaret
     repo: https://github.com/pycaret/pycaret
     image: ../images/pycaret.png
-  - name: PyTorch Lightning Integration
-    section_title: PyTorch Lightning
-    description: PyTorch Lightning is a popular open-source library that provides a
-      high level interface for PyTorch. The goal of PyTorch Lightning is to structure
-      your PyTorch code to abstract the details of training, making AI research
-      scalable and fast to iterate on.
-    website: https://github.com/ray-project/ray_lightning_accelerators
-    repo: https://github.com/ray-project/ray_lightning_accelerators
-    image: ../images/pytorch_lightning_small.png
   - name: RayDP Integration
     section_title: Spark on Ray (RayDP)
     description: RayDP ("Spark on Ray") enables you to easily use Spark inside a

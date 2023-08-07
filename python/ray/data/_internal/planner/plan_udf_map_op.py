@@ -1,10 +1,7 @@
 from typing import Any, Iterator
 
 import ray
-from ray.data._internal.compute import (
-    ActorPoolStrategy,
-    get_compute,
-)
+from ray.data._internal.compute import ActorPoolStrategy, get_compute
 from ray.data._internal.execution.interfaces import PhysicalOperator, TaskContext
 from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.util import make_callable_class_concurrent
@@ -57,10 +54,10 @@ def _plan_udf_map_op(
 
         fn_ = make_callable_class_concurrent(op._fn)
 
-        def fn(item: Any) -> Any:
+        def fn(item: Any, *args, **kwargs) -> Any:
             assert ray.data._cached_fn is not None
             assert ray.data._cached_cls == fn_
-            return ray.data._cached_fn(item)
+            return ray.data._cached_fn(item, *args, **kwargs)
 
         def init_fn():
             if ray.data._cached_fn is None:

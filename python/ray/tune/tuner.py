@@ -6,6 +6,7 @@ import ray
 
 from ray.air.config import RunConfig
 from ray.air._internal.remote_storage import list_at_uri
+from ray.air._internal.usage import AirEntrypoint
 from ray.air.util.node import _force_on_current_node
 from ray.tune import TuneError
 from ray.tune.execution.experiment_state import _ResumeConfig
@@ -60,7 +61,7 @@ class Tuner:
             Refer to ray.tune.tune_config.TuneConfig for more info.
         run_config: Runtime configuration that is specific to individual trials.
             If passed, this will overwrite the run config passed to the Trainer,
-            if applicable. Refer to ray.air.config.RunConfig for more info.
+            if applicable. Refer to ray.train.RunConfig for more info.
 
     Usage pattern:
 
@@ -70,7 +71,7 @@ class Tuner:
 
         from ray import tune
         from ray.data import from_pandas
-        from ray.air.config import RunConfig, ScalingConfig
+        from ray.train import RunConfig, ScalingConfig
         from ray.train.xgboost import XGBoostTrainer
         from ray.tune.tuner import Tuner
 
@@ -145,7 +146,7 @@ class Tuner:
         # TODO(xwjiang): Remove this later.
         _tuner_kwargs: Optional[Dict] = None,
         _tuner_internal: Optional[TunerInternal] = None,
-        _trainer_api: bool = False,
+        _entrypoint: AirEntrypoint = AirEntrypoint.TUNER,
     ):
         """Configure and construct a tune run."""
         kwargs = locals().copy()
@@ -157,7 +158,7 @@ class Tuner:
                     "[output] This uses the legacy output and progress reporter, "
                     "as Ray client is not supported by the new engine. "
                     "For more information, see "
-                    "https://docs.ray.io/en/master/ray-air/experimental-features.html"
+                    "https://github.com/ray-project/ray/issues/36949"
                 )
 
         if _tuner_internal:
@@ -272,7 +273,7 @@ class Tuner:
 
             import os
             from ray.tune import Tuner
-            from ray.air import RunConfig
+            from ray.train import RunConfig
 
             def train_fn(config):
                 # Make sure to implement checkpointing so that progress gets
@@ -399,10 +400,10 @@ class Tuner:
                 progress_reporter,
                 string_queue,
             ) = self._prepare_remote_tuner_for_jupyter_progress_reporting()
-            fit_future = self._remote_tuner.fit.remote()
+            get_results_future = self._remote_tuner.get_results.remote()
             _stream_client_output(
-                fit_future,
+                get_results_future,
                 progress_reporter,
                 string_queue,
             )
-            return ray.get(fit_future)
+            return ray.get(get_results_future)

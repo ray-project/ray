@@ -10,16 +10,15 @@ from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data.block import (
-    UserDefinedFunction,
     Block,
     BlockAccessor,
     BlockExecStats,
     BlockMetadata,
     BlockPartition,
     CallableClass,
-    StrictModeError,
+    UserDefinedFunction,
 )
-from ray.data.context import DEFAULT_SCHEDULING_STRATEGY, DataContext
+from ray.data.context import DataContext
 from ray.types import ObjectRef
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
@@ -219,22 +218,11 @@ class ActorPoolStrategy(ComputeStrategy):
                 computation and avoiding actor startup delays, but will also increase
                 queueing delay.
         """
-        ctx = DataContext.get_current()
         if legacy_min_size is not None or legacy_max_size is not None:
-            if ctx.strict_mode:
-                raise StrictModeError(
-                    "In Ray 2.5, ActorPoolStrategy requires min_size and "
-                    "max_size to be explicit kwargs."
-                )
-            else:
-                logger.warning(
-                    "DeprecationWarning: ActorPoolStrategy will require min_size and "
-                    "max_size to be explicit kwargs in a future release"
-                )
-            if legacy_min_size is not None:
-                min_size = legacy_min_size
-            if legacy_max_size is not None:
-                max_size = legacy_max_size
+            raise ValueError(
+                "In Ray 2.5, ActorPoolStrategy requires min_size and "
+                "max_size to be explicit kwargs."
+            )
         if size:
             if size < 1:
                 raise ValueError("size must be >= 1", size)
@@ -388,10 +376,7 @@ class ActorPoolStrategy(ComputeStrategy):
 
         if "scheduling_strategy" not in remote_args:
             ctx = DataContext.get_current()
-            if ctx.scheduling_strategy == DEFAULT_SCHEDULING_STRATEGY:
-                remote_args["scheduling_strategy"] = "SPREAD"
-            else:
-                remote_args["scheduling_strategy"] = ctx.scheduling_strategy
+            remote_args["scheduling_strategy"] = ctx.scheduling_strategy
 
         BlockWorker = ray.remote(**remote_args)(BlockWorker)
 
@@ -498,11 +483,8 @@ class ActorPoolStrategy(ComputeStrategy):
 
 
 def get_compute(compute_spec: Union[str, ComputeStrategy]) -> ComputeStrategy:
-    ctx = DataContext.get_current()
-    if ctx.strict_mode and not isinstance(
-        compute_spec, (TaskPoolStrategy, ActorPoolStrategy)
-    ):
-        raise StrictModeError(
+    if not isinstance(compute_spec, (TaskPoolStrategy, ActorPoolStrategy)):
+        raise ValueError(
             "In Ray 2.5, the compute spec must be either "
             f"TaskPoolStrategy or ActorPoolStategy, was: {compute_spec}."
         )

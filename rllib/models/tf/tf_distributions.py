@@ -227,7 +227,7 @@ class TfDiagGaussian(TfDistribution):
     @classmethod
     @override(Distribution)
     def from_logits(cls, logits: TensorType, **kwargs) -> "TfDiagGaussian":
-        loc, log_std = tf.split(logits, num_or_size_splits=2, axis=1)
+        loc, log_std = tf.split(logits, num_or_size_splits=2, axis=-1)
         scale = tf.math.exp(log_std)
         return TfDiagGaussian(loc=loc, scale=scale)
 
@@ -403,7 +403,7 @@ class TfMultiDistribution(Distribution):
         self,
         child_distribution_struct: Union[Tuple, List, Dict],
     ):
-        """Initializes a TorchMultiActionDistribution object.
+        """Initializes a TfMultiDistribution object.
 
         Args:
             child_distribution_struct: Any struct
@@ -528,7 +528,7 @@ class TfMultiDistribution(Distribution):
             **kwargs: Forward compatibility kwargs.
 
         Returns:
-            A TorchMultiActionDistribution object.
+            A TfMultiDistribution object.
         """
         logit_lens = tree.flatten(input_lens)
         child_distribution_cls_list = tree.flatten(child_distribution_cls_struct)

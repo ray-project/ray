@@ -1,8 +1,10 @@
 import numpy as np
 import pytest
+import pytorch_lightning as pl
+from pytorch_lightning.callbacks import ModelCheckpoint
 
 import ray
-from ray.air import RunConfig, CheckpointConfig
+from ray.train import RunConfig, CheckpointConfig
 from ray.air.util.data_batch_conversion import _convert_batch_type_to_pandas
 from ray.train.constants import MODEL_KEY
 from ray.train.trainer import TrainingFailedError
@@ -70,7 +72,7 @@ def test_native_trainer_restore(ray_start_4_cpus_2_gpus):
 
     lightning_config = config_builder.build()
 
-    scaling_config = ray.air.ScalingConfig(num_workers=num_workers, use_gpu=True)
+    scaling_config = ray.train.ScalingConfig(num_workers=num_workers, use_gpu=True)
 
     trainer = LightningTrainer(
         lightning_config=lightning_config,
@@ -108,7 +110,8 @@ def test_native_trainer_restore(ray_start_4_cpus_2_gpus):
     assert results.checkpoint
 
 
-def test_air_trainer_restore(ray_start_6_cpus, tmpdir):
+@pytest.mark.parametrize("resume_from_ckpt_path", [True, False])
+def test_air_trainer_restore(ray_start_6_cpus, tmpdir, resume_from_ckpt_path):
     """Test restore for LightningTrainer from a failed/interrupted trail."""
     exp_name = "air_trainer_restore_test"
 
@@ -116,24 +119,41 @@ def test_air_trainer_restore(ray_start_6_cpus, tmpdir):
     train_loader = datamodule.train_dataloader()
     val_loader = datamodule.val_dataloader()
 
+    max_epochs = 5
+    init_epoch = 1 if resume_from_ckpt_path else 0
+    error_epoch = 2
+
+    # init_epoch -> [error_epoch] -> max_epoch
+    training_iterations = max_epochs - init_epoch
+    iterations_since_restore = max_epochs - init_epoch - error_epoch
+
     lightning_config = (
         LightningConfigBuilder()
         .module(LinearModule, input_dim=32, output_dim=4)
-        .trainer(max_epochs=5, accelerator="cpu")
+        .trainer(max_epochs=max_epochs, accelerator="cpu")
         .fit_params(train_dataloaders=train_loader, val_dataloaders=val_loader)
-        .build()
     )
 
-    scaling_config = ray.air.ScalingConfig(num_workers=2, use_gpu=False)
+    if resume_from_ckpt_path:
+        ckpt_dir = f"{tmpdir}/ckpts"
+        callback = ModelCheckpoint(dirpath=ckpt_dir, save_last=True)
+        pl_trainer = pl.Trainer(
+            max_epochs=init_epoch, accelerator="cpu", callbacks=[callback]
+        )
+        pl_model = LinearModule(input_dim=32, output_dim=4)
+        pl_trainer.fit(pl_model, train_dataloaders=train_loader)
+        lightning_config.fit_params(ckpt_path=f"{ckpt_dir}/last.ckpt")
+
+    scaling_config = ray.train.ScalingConfig(num_workers=2, use_gpu=False)
 
     trainer = LightningTrainer(
-        lightning_config=lightning_config,
+        lightning_config=lightning_config.build(),
         scaling_config=scaling_config,
         run_config=RunConfig(
             local_dir=str(tmpdir),
             name=exp_name,
             checkpoint_config=CheckpointConfig(num_to_keep=1),
-            callbacks=[FailureInjectionCallback(num_iters=2)],
+            callbacks=[FailureInjectionCallback(num_iters=error_epoch)],
         ),
     )
 
@@ -144,8 +164,8 @@ def test_air_trainer_restore(ray_start_6_cpus, tmpdir):
     result = trainer.fit()
 
     assert not result.error
-    assert result.metrics["training_iteration"] == 5
-    assert result.metrics["iterations_since_restore"] == 3
+    assert result.metrics["training_iteration"] == training_iterations
+    assert result.metrics["iterations_since_restore"] == iterations_since_restore
     assert tmpdir / exp_name in result.log_dir.parents
 
 

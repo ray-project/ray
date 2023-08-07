@@ -10,6 +10,7 @@ from ray.util.placement_group import PlacementGroup
 from ray.util.scheduling_strategies import (
     NodeAffinitySchedulingStrategy,
     PlacementGroupSchedulingStrategy,
+    NodeLabelSchedulingStrategy,
 )
 
 
@@ -129,6 +130,7 @@ _common_options = {
             str,
             PlacementGroupSchedulingStrategy,
             NodeAffinitySchedulingStrategy,
+            NodeLabelSchedulingStrategy,
         )
     ),
     "_metadata": Option((dict, type(None))),
@@ -154,7 +156,7 @@ _task_only_options = {
     "num_returns": Option(
         (int, str, type(None)),
         lambda x: None
-        if (x is None or x == "dynamic" or x >= 0)
+        if (x is None or x == "dynamic" or x == "streaming" or x >= 0)
         else "The keyword 'num_returns' only accepts None, a non-negative integer, or "
         '"dynamic" (for generators)',
         default_value=1,

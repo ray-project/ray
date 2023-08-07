@@ -1,6 +1,6 @@
 (serve-scaling-and-resource-allocation)=
 
-# Scaling and Resource Allocation
+# Set Up Autoscaling and Resource Allocation
 
 This guide helps you to:
 
@@ -16,7 +16,7 @@ Each deployment consists of one or more [replicas](serve-architecture-high-level
 The number of replicas is specified by the `num_replicas` field in the deployment options.
 By default, `num_replicas` is 1.
 
-```{literalinclude} ../serve/doc_code/managing_deployments.py
+```{literalinclude} doc_code/managing_deployments.py
 :start-after: __scaling_out_start__
 :end-before: __scaling_out_end__
 :language: python
@@ -29,7 +29,7 @@ By default, `num_replicas` is 1.
 Serve also supports a demand-based replica autoscaler. It adjusts to traffic spikes by observing queue sizes and making scaling decisions to add or remove replicas.
 To configure it, you can set the `autoscaling_config` field in deployment options.
 
-```{literalinclude} ../serve/doc_code/managing_deployments.py
+```{literalinclude} doc_code/managing_deployments.py
 :start-after: __autoscaling_start__
 :end-before: __autoscaling_end__
 :language: python
@@ -160,7 +160,7 @@ OMP_NUM_THREADS=12 ray start --head
 OMP_NUM_THREADS=12 ray start --address=$HEAD_NODE_ADDRESS
 ```
 
-```{literalinclude} ../serve/doc_code/managing_deployments.py
+```{literalinclude} doc_code/managing_deployments.py
 :start-after: __configure_parallism_start__
 :end-before: __configure_parallism_end__
 :language: python

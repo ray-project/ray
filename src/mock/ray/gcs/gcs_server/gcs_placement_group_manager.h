@@ -1,4 +1,4 @@
-// Copyright  The Ray Authors.
+/// Copyright  The Ray Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -66,6 +66,16 @@ class MockGcsPlacementGroupManager : public GcsPlacementGroupManager {
                rpc::WaitPlacementGroupUntilReadyReply *reply,
                rpc::SendReplyCallback send_reply_callback),
               (override));
+
+  MOCK_METHOD((absl::flat_hash_map<PlacementGroupID, std::vector<int64_t>>),
+              GetBundlesOnNode,
+              (const NodeID &node_id),
+              (const, override));
+
+  MOCK_METHOD((std::shared_ptr<rpc::PlacementGroupLoad>),
+              GetPlacementGroupLoad,
+              (),
+              (const, override));
 
   instrumented_io_context context_;
 };

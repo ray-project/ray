@@ -24,41 +24,51 @@ class MinimalClusterManager(ClusterManager):
     def create_cluster_env(self):
         assert self.cluster_env_id is None
 
-        if self.cluster_env:
-            assert self.cluster_env_name
+        assert self.cluster_env_name
 
-            logger.info(
-                f"Test uses a cluster env with name "
-                f"{self.cluster_env_name}. Looking up existing "
-                f"cluster envs with this name."
-            )
+        logger.info(
+            f"Test uses a cluster env with name "
+            f"{self.cluster_env_name}. Looking up existing "
+            f"cluster envs with this name."
+        )
 
-            paging_token = None
-            while not self.cluster_env_id:
-                result = self.sdk.search_cluster_environments(
-                    dict(
-                        project_id=self.project_id,
-                        name=dict(equals=self.cluster_env_name),
-                        paging=dict(count=50, paging_token=paging_token),
-                    )
+        paging_token = None
+        while not self.cluster_env_id:
+            result = self.sdk.search_cluster_environments(
+                dict(
+                    name=dict(equals=self.cluster_env_name),
+                    paging=dict(count=50, paging_token=paging_token),
+                    project_id=None if self.test.is_byod_cluster() else self.project_id,
                 )
-                paging_token = result.metadata.next_paging_token
+            )
+            paging_token = result.metadata.next_paging_token
 
-                for res in result.results:
-                    if res.name == self.cluster_env_name:
-                        self.cluster_env_id = res.id
-                        logger.info(
-                            f"Cluster env already exists with ID "
-                            f"{self.cluster_env_id}"
-                        )
-                        break
-
-                if not paging_token or self.cluster_env_id:
+            for res in result.results:
+                if res.name == self.cluster_env_name:
+                    self.cluster_env_id = res.id
+                    logger.info(
+                        f"Cluster env already exists with ID " f"{self.cluster_env_id}"
+                    )
                     break
 
-            if not self.cluster_env_id:
-                logger.info("Cluster env not found. Creating new one.")
-                try:
+            if not paging_token or self.cluster_env_id:
+                break
+
+        if not self.cluster_env_id:
+            logger.info("Cluster env not found. Creating new one.")
+            try:
+                if self.test.is_byod_cluster():
+                    result = self.sdk.create_byod_cluster_environment(
+                        dict(
+                            name=self.cluster_env_name,
+                            config_json=dict(
+                                docker_image=self.test.get_anyscale_byod_image(),
+                                ray_version="nightly",
+                                env_vars=self.test.get_byod_runtime_env(),
+                            ),
+                        )
+                    )
+                else:
                     result = self.sdk.create_cluster_environment(
                         dict(
                             name=self.cluster_env_name,
@@ -66,16 +76,16 @@ class MinimalClusterManager(ClusterManager):
                             config_json=self.cluster_env,
                         )
                     )
-                    self.cluster_env_id = result.result.id
-                except Exception as e:
-                    logger.warning(
-                        f"Got exception when trying to create cluster "
-                        f"env: {e}. Sleeping for 10 seconds with jitter and then "
-                        f"try again..."
-                    )
-                    raise ClusterEnvCreateError("Could not create cluster env.") from e
+                self.cluster_env_id = result.result.id
+            except Exception as e:
+                logger.warning(
+                    f"Got exception when trying to create cluster "
+                    f"env: {e}. Sleeping for 10 seconds with jitter and then "
+                    f"try again..."
+                )
+                raise ClusterEnvCreateError("Could not create cluster env.") from e
 
-                logger.info(f"Cluster env created with ID {self.cluster_env_id}")
+            logger.info(f"Cluster env created with ID {self.cluster_env_id}")
 
     def build_cluster_env(self, timeout: float = 600.0):
         assert self.cluster_env_id

@@ -40,9 +40,9 @@ kubectl apply -f https://raw.githubusercontent.com/GoogleCloudPlatform/container
 #   (Method 2) "gcloud container clusters get-credentials <your-cluster-name> --region <your-region> --project <your-project>"
 #   (Method 3) "kubectl config use-context ..."
 
-# Install both CRDs and KubeRay operator v0.5.0.
+# Install both CRDs and KubeRay operator v0.6.0.
 helm repo add kuberay https://ray-project.github.io/kuberay-helm/
-helm install kuberay-operator kuberay/kuberay-operator --version 0.5.0
+helm install kuberay-operator kuberay/kuberay-operator --version 0.6.0
 
 # Create a Ray cluster
 kubectl apply -f https://raw.githubusercontent.com/ray-project/ray/master/doc/source/cluster/kubernetes/configs/ray-cluster.gpu.yaml
@@ -94,7 +94,7 @@ gcloud container node-pools create gpu-node-pool \
   --machine-type n1-standard-8
 
 # Install NVIDIA GPU device driver
-kubectl apply -f https://raw.githubusercontent.com/GoogleCloudPlatform/container-engine-accelerators/master/nvidia-driver-installer/cos/daemonset-preloaded.yaml
+kubectl apply -f https://raw.githubusercontent.com/GoogleCloudPlatform/container-engine-accelerators/master/nvidia-driver-installer/cos/daemonset-preloaded-latest.yaml
 ```
 
 ## Step 2: Deploy a Ray cluster on Kubernetes with the KubeRay operator.
@@ -114,7 +114,7 @@ It is optional.
 # Step 2: Deploy a Ray cluster on Kubernetes with the KubeRay operator.
 # Create the KubeRay operator
 helm repo add kuberay https://ray-project.github.io/kuberay-helm/
-helm install kuberay-operator kuberay/kuberay-operator --version 0.5.0
+helm install kuberay-operator kuberay/kuberay-operator --version 0.6.0
 
 # Create a Ray cluster
 kubectl apply -f https://raw.githubusercontent.com/ray-project/ray/master/doc/source/cluster/kubernetes/configs/ray-cluster.gpu.yaml

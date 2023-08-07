@@ -1,10 +1,11 @@
 from collections import deque
-from typing import Any, Dict, Optional
+import copy
+from typing import Any, Dict, List, Optional, Union
 import uuid
 
 import numpy as np
 
-from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
+from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.replay_buffers.base import ReplayBufferInterface
 from ray.rllib.utils.typing import SampleBatchType
@@ -100,23 +101,24 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
         return self.get_num_timesteps()
 
     @override(ReplayBufferInterface)
-    def add(self, batch: SampleBatchType, **kwargs) -> None:
+    def add(self, episodes: Union[List["_Episode"], "_Episode"]):
         """Converts the incoming SampleBatch into a number of _Episode objects.
 
         Then adds these episodes to the internal deque.
         """
-        if isinstance(batch, MultiAgentBatch):
-            raise ValueError(
-                "`EpisodeReplayBuffer` cannot operate on MultiAgentBatches yet! "
-                "For single-agent use only."
-            )
-
-        episode_slices = batch.split_by_episode()
-        episodes = [
-            _Episode.from_sample_batch(eps_slice) for eps_slice in episode_slices
-        ]
+        if isinstance(episodes, _Episode):
+            episodes = [episodes]
 
         for eps in episodes:
+            # Make sure we don't change what's coming in from the user.
+            # TODO (sven): It'd probably be better to make sure in the EnvRunner to not
+            #  hold on to episodes (for metrics purposes only) that we are returning
+            #  back to the user from `EnvRunner.sample()`. Then we wouldn't have to
+            #  do any copying. Instead, either compile the metrics right away on the
+            #  EnvRunner OR compile metrics entirely on the Algorithm side (this is
+            #  actually preferred).
+            eps = copy.deepcopy(eps)
+
             self._num_timesteps += len(eps)
             self._num_timesteps_added += len(eps)
 
@@ -250,7 +252,7 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
             )
             episode = self.episodes[episode_idx]
 
-            # Starting a new chunk, set continue to False.
+            # Starting a new chunk, set is_first to True.
             is_first[B][T] = True
 
             # Begin of new batch item (row).
@@ -263,7 +265,7 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
                 else:
                     rewards[B].append(episode.rewards[episode_ts - 1])
             # We are in the middle of a batch item (row). Concat next episode to this
-            # row from the episode's beginning. In other words, we never concat
+            # row from the next episode's beginning. In other words, we never concat
             # a middle of an episode to another truncated one.
             else:
                 episode_ts = 0
@@ -329,6 +331,10 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
         """Returns number of timesteps that have been sampled in buffer's lifetime."""
         return self.sampled_timesteps
 
+    def get_added_timesteps(self) -> int:
+        """Returns number of timesteps that have been added in buffer's lifetime."""
+        return self._num_timesteps_added
+
     @override(ReplayBufferInterface)
     def get_state(self) -> Dict[str, Any]:
         return {
@@ -337,6 +343,7 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
             "_num_episodes_evicted": self._num_episodes_evicted,
             "_indices": self._indices,
             "_num_timesteps": self._num_timesteps,
+            "_num_timesteps_added": self._num_timesteps_added,
             "sampled_timesteps": self.sampled_timesteps,
         }
 
@@ -349,6 +356,7 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
         self._num_episodes_evicted = state["_num_episodes_evicted"]
         self._indices = state["_indices"]
         self._num_timesteps = state["_num_timesteps"]
+        self._num_timesteps_added = state["_num_timesteps_added"]
         self.sampled_timesteps = state["sampled_timesteps"]
 
 
@@ -364,8 +372,9 @@ class _Episode:
         actions=None,
         rewards=None,
         states=None,
-        is_terminated=False,
-        is_truncated=False,
+        t: int = 0,
+        is_terminated: bool = False,
+        is_truncated: bool = False,
         render_images=None,
     ):
         self.id_ = id_ or uuid.uuid4().hex
@@ -378,6 +387,9 @@ class _Episode:
         # h-states: t0 (in case this episode is a continuation chunk, we need to know
         # about the initial h) to T.
         self.states = states
+        # The global last timestep of the episode and the timesteps when this chunk
+        # started.
+        self.t = self.t_started = t
         # obs[-1] is the final observation in the episode.
         self.is_terminated = is_terminated
         # obs[-1] is the last obs in a truncated-by-the-env episode (there will no more
@@ -389,13 +401,18 @@ class _Episode:
         self.render_images = [] if render_images is None else render_images
 
     def concat_episode(self, episode_chunk: "_Episode"):
+        """Adds the given `episode_chunk` to the right side of self."""
         assert episode_chunk.id_ == self.id_
-        assert not self.is_done()
+        assert not self.is_done
+        # Make sure the timesteps match.
+        assert self.t == episode_chunk.t_started
 
         episode_chunk.validate()
 
         # Make sure, end matches other episode chunk's beginning.
         assert np.all(episode_chunk.observations[0] == self.observations[-1])
+        # Make sure the timesteps match (our last t should be the same as their first).
+        assert self.t == episode_chunk.t_started
         # Pop out our end.
         self.observations.pop()
 
@@ -404,6 +421,7 @@ class _Episode:
         self.observations.extend(list(episode_chunk.observations))
         self.actions.extend(list(episode_chunk.actions))
         self.rewards.extend(list(episode_chunk.rewards))
+        self.t = episode_chunk.t
         self.states = episode_chunk.states
 
         if episode_chunk.is_terminated:
@@ -411,6 +429,21 @@ class _Episode:
         elif episode_chunk.is_truncated:
             self.is_truncated = True
         # Validate.
+        self.validate()
+
+    def add_initial_observation(
+        self, *, initial_observation, initial_state=None, initial_render_image=None
+    ):
+        assert not self.is_done
+        assert len(self.observations) == 0
+        # Assume that this episode is completely empty and has not stepped yet.
+        # Leave self.t (and self.t_started) at 0.
+        assert self.t == self.t_started == 0
+
+        self.observations.append(initial_observation)
+        self.states = initial_state
+        if initial_render_image is not None:
+            self.render_images.append(initial_render_image)
         self.validate()
 
     def add_timestep(
@@ -424,44 +457,71 @@ class _Episode:
         is_truncated=False,
         render_image=None,
     ):
-        assert not self.is_done()
+        # Cannot add data to an already done episode.
+        assert not self.is_done
 
         self.observations.append(observation)
         self.actions.append(action)
         self.rewards.append(reward)
         self.states = state
+        self.t += 1
         if render_image is not None:
             self.render_images.append(render_image)
         self.is_terminated = is_terminated
         self.is_truncated = is_truncated
         self.validate()
 
-    def add_initial_observation(
-        self, *, initial_observation, initial_state=None, initial_render_image=None
-    ):
-        assert not self.is_done()
-        assert len(self.observations) == 0
-
-        self.observations.append(initial_observation)
-        self.states = initial_state
-        if initial_render_image is not None:
-            self.render_images.append(initial_render_image)
-        self.validate()
-
     def validate(self):
         # Make sure we always have one more obs stored than rewards (and actions)
         # due to the reset and last-obs logic of an MDP.
         assert len(self.observations) == len(self.rewards) + 1 == len(self.actions) + 1
+        assert len(self.rewards) == (self.t - self.t_started)
 
         # Convert all lists to numpy arrays, if we are terminated.
-        if self.is_done():
+        if self.is_done:
             self.observations = np.array(self.observations)
             self.actions = np.array(self.actions)
             self.rewards = np.array(self.rewards)
             self.render_images = np.array(self.render_images, dtype=np.uint8)
 
+    @property
     def is_done(self):
+        """Whether the episode is actually done (terminated or truncated).
+
+        A done episode cannot be continued via `self.add_timestep()` or being
+        concatenated on its right-side with another episode chunk or being
+        succeeded via `self.create_successor()`.
+        """
         return self.is_terminated or self.is_truncated
+
+    def create_successor(self) -> "_Episode":
+        """Returns a successor episode chunk (of len=0) continuing with this one.
+
+        The successor will have the same ID and state as self and its only observation
+        will be the last observation in self. Its length will therefore be 0 (no
+        steps taken yet).
+
+        This method is useful if you would like to discontinue building an episode
+        chunk (b/c you have to return it from somewhere), but would like to have a new
+        episode (chunk) instance to continue building the actual env episode at a later
+        time.
+
+        Returns:
+            The successor Episode chunk of this one with the same ID and state and the
+            only observation being the last observation in self.
+        """
+        assert not self.is_done
+
+        return _Episode(
+            # Same ID.
+            id_=self.id_,
+            # First (and only) observation of successor is this episode's last obs.
+            observations=[self.observations[-1]],
+            # Same state.
+            states=self.states,
+            # Continue with self's current timestep.
+            t=self.t,
+        )
 
     def to_sample_batch(self):
         return SampleBatch(
@@ -504,6 +564,8 @@ class _Episode:
                 "actions": self.actions,
                 "rewards": self.rewards,
                 "states": self.states,
+                "t_started": self.t_started,
+                "t": self.t,
                 "is_terminated": self.is_terminated,
                 "is_truncated": self.is_truncated,
             }.items()
@@ -516,14 +578,16 @@ class _Episode:
         eps.actions = state[2][1]
         eps.rewards = state[3][1]
         eps.states = state[4][1]
-        eps.is_terminated = state[5][1]
-        eps.is_truncated = state[6][1]
+        eps.t_started = state[5][1]
+        eps.t = state[6][1]
+        eps.is_terminated = state[7][1]
+        eps.is_truncated = state[8][1]
         return eps
 
     def __len__(self):
         assert len(self.observations) > 0, (
             "ERROR: Cannot determine length of episode that hasn't started yet! "
-            "Call `_Episode.add_initial_obs(initial_observation=...)` first "
+            "Call `_Episode.add_initial_observation(initial_observation=...)` first "
             "(after which `len(_Episode)` will be 0)."
         )
         return len(self.observations) - 1

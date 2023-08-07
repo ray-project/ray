@@ -1,9 +1,8 @@
 import pytest
 
 import ray
-from ray.air import Checkpoint
+from ray.train import Checkpoint, CheckpointConfig, ScalingConfig
 from ray.air._internal.config import ensure_only_allowed_dataclass_keys_updated
-from ray.air.config import ScalingConfig, CheckpointConfig
 from ray.data.preprocessor import Preprocessor
 from ray.train.trainer import BaseTrainer
 
@@ -35,7 +34,7 @@ def test_run_config():
     DummyTrainer(run_config=None)
 
     # Succeed
-    DummyTrainer(run_config=ray.air.RunConfig())
+    DummyTrainer(run_config=ray.train.RunConfig())
 
 
 def test_checkpointing_config():
@@ -59,6 +58,36 @@ def test_checkpointing_config():
         checkpoint_score_attribute="metric", checkpoint_score_order="min"
     )
     assert checkpointing._tune_legacy_checkpoint_score_attr == "min-metric"
+
+
+def test_checkpointing_config_deprecated():
+    def resolve(checkpoint_score_attr):
+        # Copied from tune.tun()
+        checkpoint_config = CheckpointConfig()
+
+        if checkpoint_score_attr.startswith("min-"):
+            checkpoint_config.checkpoint_score_attribute = checkpoint_score_attr[4:]
+            checkpoint_config.checkpoint_score_order = "min"
+        else:
+            checkpoint_config.checkpoint_score_attribute = checkpoint_score_attr
+            checkpoint_config.checkpoint_score_order = "max"
+
+        return checkpoint_config
+
+    cc = resolve("loss")
+    assert cc._tune_legacy_checkpoint_score_attr == "loss"
+    assert cc.checkpoint_score_attribute == "loss"
+    assert cc.checkpoint_score_order == "max"
+
+    cc = resolve("min-loss")
+    assert cc._tune_legacy_checkpoint_score_attr == "min-loss"
+    assert cc.checkpoint_score_attribute == "loss"
+    assert cc.checkpoint_score_order == "min"
+
+    cc = resolve("min-min-loss")
+    assert cc._tune_legacy_checkpoint_score_attr == "min-min-loss"
+    assert cc.checkpoint_score_attribute == "min-loss"
+    assert cc.checkpoint_score_order == "min"
 
 
 def test_scaling_config():

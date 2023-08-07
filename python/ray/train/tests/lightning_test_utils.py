@@ -4,14 +4,17 @@ import torch.nn.functional as F
 import pytorch_lightning as pl
 from torch.utils.data import DataLoader
 from torchmetrics import Accuracy
+from ray import train
 
 
 class LinearModule(pl.LightningModule):
-    def __init__(self, input_dim, output_dim, strategy="ddp") -> None:
+    def __init__(self, input_dim, output_dim, strategy="ddp", fail_epoch=-1) -> None:
         super().__init__()
         self.linear = nn.Linear(input_dim, output_dim)
         self.loss = []
         self.strategy = strategy
+        self.restored = train.get_checkpoint() is not None
+        self.fail_epoch = fail_epoch
 
     def forward(self, input):
         # Backwards compat for Ray data strict mode.
@@ -20,6 +23,9 @@ class LinearModule(pl.LightningModule):
         return self.linear(input)
 
     def training_step(self, batch):
+        if not self.restored and self.fail_epoch == self.current_epoch:
+            raise RuntimeError
+
         output = self.forward(batch)
         loss = torch.sum(output)
         self.log("loss", loss)
@@ -29,6 +35,10 @@ class LinearModule(pl.LightningModule):
         loss = self.forward(val_batch)
         self.loss.append(loss)
         return {"val_loss": loss}
+
+    def test_step(self, batch, batch_idx):
+        loss = self.forward(batch)
+        return {"test_loss": loss}
 
     def on_validation_epoch_end(self) -> None:
         avg_loss = torch.stack(self.loss).mean()
@@ -88,12 +98,16 @@ class DummyDataModule(pl.LightningDataModule):
         self.batch_size = batch_size
         self.train_data = torch.randn(dataset_size, 32)
         self.val_data = torch.randn(dataset_size, 32)
+        self.test_data = torch.randn(dataset_size, 32)
 
     def train_dataloader(self):
         return DataLoader(self.train_data, batch_size=self.batch_size)
 
     def val_dataloader(self):
         return DataLoader(self.val_data, batch_size=self.batch_size)
+
+    def test_dataloader(self):
+        return DataLoader(self.test_data, batch_size=self.batch_size)
 
 
 class LightningMNISTClassifier(pl.LightningModule):
@@ -105,7 +119,7 @@ class LightningMNISTClassifier(pl.LightningModule):
         self.layer_1 = torch.nn.Linear(28 * 28, layer_1)
         self.layer_2 = torch.nn.Linear(layer_1, layer_2)
         self.layer_3 = torch.nn.Linear(layer_2, 10)
-        self.accuracy = Accuracy(task="multiclass", num_classes=10)
+        self.accuracy = Accuracy(task="multiclass", num_classes=10, top_k=1)
         self.val_acc_list = []
         self.val_loss_list = []
 

@@ -1,6 +1,6 @@
-import json
 from enum import Enum
 from dataclasses import dataclass, field, asdict
+import json
 from typing import Any, List, Dict, Optional
 
 import ray
@@ -28,6 +28,7 @@ ApplicationName = str
 class EndpointInfo:
     route: str
     app_name: str
+    app_is_cross_language: bool = False
 
 
 # Keep in sync with ServeReplicaState in dashboard/client/src/type/serve.ts
@@ -42,8 +43,9 @@ class ReplicaState(str, Enum):
 class ApplicationStatus(str, Enum):
     NOT_STARTED = "NOT_STARTED"
     DEPLOYING = "DEPLOYING"
-    RUNNING = "RUNNING"
     DEPLOY_FAILED = "DEPLOY_FAILED"
+    RUNNING = "RUNNING"
+    UNHEALTHY = "UNHEALTHY"
     DELETING = "DELETING"
 
 
@@ -58,7 +60,7 @@ class ApplicationStatusInfo:
 
     def to_proto(self):
         return ApplicationStatusInfoProto(
-            status=f"APPLICATION_STATUS_{self.status}",
+            status=f"APPLICATION_STATUS_{self.status.name}",
             message=self.message,
             deployment_timestamp=self.deployment_timestamp,
         )
@@ -91,7 +93,7 @@ class DeploymentStatusInfo:
     def to_proto(self):
         return DeploymentStatusInfoProto(
             name=self.name,
-            status=f"DEPLOYMENT_STATUS_{self.status}",
+            status=f"DEPLOYMENT_STATUS_{self.status.name}",
             message=self.message,
         )
 
@@ -172,9 +174,11 @@ class StatusOverview:
         )
 
 
-HEALTH_CHECK_CONCURRENCY_GROUP = "health_check"
+# Concurrency group used for operations that cannot be blocked by user code
+# (e.g., health checks and fetching queue length).
+CONTROL_PLANE_CONCURRENCY_GROUP = "control_plane"
 REPLICA_DEFAULT_ACTOR_OPTIONS = {
-    "concurrency_groups": {HEALTH_CHECK_CONCURRENCY_GROUP: 1}
+    "concurrency_groups": {CONTROL_PLANE_CONCURRENCY_GROUP: 1}
 }
 
 
@@ -191,6 +195,7 @@ class DeploymentInfo:
         is_driver_deployment: Optional[bool] = False,
         app_name: Optional[str] = None,
         route_prefix: str = None,
+        docs_path: str = None,
     ):
         self.deployment_config = deployment_config
         self.replica_config = replica_config
@@ -209,6 +214,7 @@ class DeploymentInfo:
 
         self.app_name = app_name
         self.route_prefix = route_prefix
+        self.docs_path = docs_path
         if deployment_config.autoscaling_config is not None:
             self.autoscaling_policy = BasicAutoscalingPolicy(
                 deployment_config.autoscaling_config
@@ -231,6 +237,29 @@ class DeploymentInfo:
 
     def set_autoscaled_num_replicas(self, autoscaled_num_replicas):
         self.autoscaled_num_replicas = autoscaled_num_replicas
+
+    def update(
+        self,
+        deployment_config: DeploymentConfig = None,
+        replica_config: ReplicaConfig = None,
+        version: str = None,
+        is_driver_deployment: bool = None,
+        route_prefix: str = None,
+    ) -> "DeploymentInfo":
+        return DeploymentInfo(
+            deployment_config=deployment_config or self.deployment_config,
+            replica_config=replica_config or self.replica_config,
+            start_time_ms=self.start_time_ms,
+            deployer_job_id=self.deployer_job_id,
+            actor_name=self.actor_name,
+            version=version or self.version,
+            end_time_ms=self.end_time_ms,
+            is_driver_deployment=is_driver_deployment
+            if is_driver_deployment is not None
+            else self.is_driver_deployment,
+            app_name=self.app_name,
+            route_prefix=route_prefix or self.route_prefix,
+        )
 
     @property
     def actor_def(self):
@@ -369,12 +398,17 @@ class ServeDeployMode(str, Enum):
     MULTI_APP = "MULTI_APP"
 
 
-# Keep in sync with ServeHTTPProxyStatus in
+# Keep in sync with ServeSystemActorStatus in
 # python/ray/dashboard/client/src/type/serve.ts
 class HTTPProxyStatus(str, Enum):
     STARTING = "STARTING"
     HEALTHY = "HEALTHY"
     UNHEALTHY = "UNHEALTHY"
+    DRAINING = "DRAINING"
+    # The DRAINED status is a momentary state
+    # just before the proxy is removed
+    # so this status won't show up on the dashboard.
+    DRAINED = "DRAINED"
 
 
 class ServeComponentType(str, Enum):
@@ -386,3 +420,11 @@ class MultiplexedReplicaInfo:
     deployment_name: str
     replica_tag: str
     model_ids: List[str]
+
+
+@dataclass
+class StreamingHTTPRequest:
+    """Sent from the HTTP proxy to replicas on the streaming codepath."""
+
+    pickled_asgi_scope: bytes
+    http_proxy_handle: ActorHandle

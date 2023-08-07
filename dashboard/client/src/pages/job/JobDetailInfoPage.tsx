@@ -99,7 +99,18 @@ export const JobMetadataSection = ({ job }: JobMetadataSectionProps) => {
         },
         {
           label: "Status",
-          content: <JobStatusWithIcon job={job} />,
+          content: (
+            <React.Fragment>
+              <JobStatusWithIcon job={job} />{" "}
+              {job.message && (
+                <CodeDialogButton
+                  title="Status details"
+                  code={job.message}
+                  buttonText="View details"
+                />
+              )}
+            </React.Fragment>
+          ),
         },
         {
           label: "Job ID",
@@ -142,7 +153,7 @@ export const JobMetadataSection = ({ job }: JobMetadataSectionProps) => {
           },
         },
         {
-          label: "Runtime environemnt",
+          label: "Runtime environment",
           ...(job.runtime_env
             ? {
                 content: (

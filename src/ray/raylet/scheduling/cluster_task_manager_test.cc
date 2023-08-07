@@ -22,12 +22,12 @@
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "ray/common/id.h"
-#include "ray/common/task/scheduling_resources.h"
+#include "ray/common/scheduling/scheduling_resources.h"
 #include "ray/common/task/task.h"
 #include "ray/common/task/task_util.h"
 #include "ray/common/test_util.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
-#include "ray/raylet/scheduling/scheduling_ids.h"
+#include "ray/common/scheduling/scheduling_ids.h"
 #include "ray/raylet/local_task_manager.h"
 #include "ray/raylet/test/util.h"
 #include "mock/ray/gcs/gcs_client/gcs_client.h"
@@ -165,6 +165,7 @@ RayTask CreateTask(
                                  address,
                                  0,
                                  /*returns_dynamic=*/false,
+                                 /*is_streaming_generator*/ false,
                                  required_resources,
                                  {},
                                  "",

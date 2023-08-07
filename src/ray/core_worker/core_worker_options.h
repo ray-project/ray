@@ -44,6 +44,7 @@ struct CoreWorkerOptions {
       const std::string &serialized_retry_exception_allowlist,
       std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> *returns,
       std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> *dynamic_returns,
+      std::vector<std::pair<ObjectID, bool>> *streaming_generator_returns,
       std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb_bytes,
       bool *is_retryable_error,
       // Application error string, empty if no error.
@@ -56,7 +57,12 @@ struct CoreWorkerOptions {
       // used for actor creation task.
       const std::vector<ConcurrencyGroup> &defined_concurrency_groups,
       const std::string name_of_concurrency_group_to_execute,
-      bool is_reattempt)>;
+      bool is_reattempt,
+      // True if the task is for streaming generator.
+      // TODO(sang): Remove it and combine it with dynamic returns.
+      bool is_streaming_generator,
+      // True if task can be retried upon exception.
+      bool retry_exception)>;
 
   CoreWorkerOptions()
       : store_socket(""),

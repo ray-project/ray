@@ -1,10 +1,11 @@
+import json
+import copy
 import logging
 import os
 from typing import Optional
-import json
-import copy
 
 import ray
+from ray.serve._private.common import ServeComponentType
 from ray.serve._private.constants import (
     DEBUG_LOG_ENV_VAR,
     SERVE_LOGGER_NAME,
@@ -21,7 +22,6 @@ from ray.serve._private.constants import (
     SERVE_LOG_LEVEL_NAME,
     SERVE_LOG_REPLICA,
 )
-from ray.serve._private.common import ServeComponentType
 
 
 LOG_FILE_FMT = "{component_name}_{component_id}.log"

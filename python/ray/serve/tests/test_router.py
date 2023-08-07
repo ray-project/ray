@@ -10,7 +10,7 @@ import pytest
 import ray
 from ray._private.utils import get_or_create_event_loop
 from ray.serve._private.common import RunningReplicaInfo
-from ray.serve._private.router import Query, ReplicaSet, RequestMetadata
+from ray.serve._private.router import Query, RoundRobinReplicaScheduler, RequestMetadata
 from ray._private.test_utils import SignalActor
 
 pytestmark = pytest.mark.asyncio
@@ -62,7 +62,7 @@ def task_runner_mock_actor():
     yield mock_task_runner()
 
 
-async def test_replica_set(ray_instance):
+async def test_replica_scheduler(ray_instance):
     signal = SignalActor.remote()
 
     @ray.remote(num_cpus=0)
@@ -79,10 +79,7 @@ async def test_replica_set(ray_instance):
             return self._num_queries
 
     # We will test a scenario with two replicas in the replica set.
-    rs = ReplicaSet(
-        "my_deployment",
-        get_or_create_event_loop(),
-    )
+    rs = RoundRobinReplicaScheduler(get_or_create_event_loop())
     replicas = [
         RunningReplicaInfo(
             deployment_name="my_deployment",

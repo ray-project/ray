@@ -1,6 +1,6 @@
 import numpy as np
-import torch
 import pytest
+import torch
 
 import ray
 from ray.air.util.tensor_extensions.utils import create_ragged_ndarray
@@ -108,6 +108,15 @@ def test_scalar_arrays(ray_start_regular_shared):
     ds = ds.map(lambda x: {"output": data})
     output = ds.take_batch()["output"]
     assert_structure_equals(output, np.array([[1, 2, 3], [1, 2, 3]], dtype=np.int64))
+
+
+def test_bytes(ray_start_regular_shared):
+    """Tests that bytes are converted to object dtype instead of zero-terminated."""
+    data = b"\x1a\n\x00\n\x1a"
+    ds = ray.data.range(1, parallelism=1)
+    ds = ds.map(lambda x: {"output": data})
+    output = ds.take_batch()["output"]
+    assert_structure_equals(output, np.array([b"\x1a\n\x00\n\x1a"], dtype=object))
 
 
 def test_scalar_array_like(ray_start_regular_shared):

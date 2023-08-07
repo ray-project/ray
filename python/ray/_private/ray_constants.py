@@ -44,6 +44,10 @@ DEBUG_AUTOSCALING_ERROR = "__autoscaling_error"
 DEBUG_AUTOSCALING_STATUS = "__autoscaling_status"
 DEBUG_AUTOSCALING_STATUS_LEGACY = "__autoscaling_status_legacy"
 
+# Sync with src/ray/common/constants.h
+AUTOSCALER_V2_ENABLED_KEY = "__autoscaler_v2_enabled"
+AUTOSCALER_NAMESPACE = "__autoscaler"
+
 ID_SIZE = 28
 
 # The default maximum number of bytes to allocate to the object store unless
@@ -173,7 +177,10 @@ EXCESS_QUEUEING_WARNING = "excess_queueing_warning"
 # Used in gpu detection
 RESOURCE_CONSTRAINT_PREFIX = "accelerator_type:"
 
+# Used by autoscaler to set the node custom resources and labels
+# from cluster.yaml.
 RESOURCES_ENVIRONMENT_VARIABLE = "RAY_OVERRIDE_RESOURCES"
+LABELS_ENVIRONMENT_VARIABLE = "RAY_OVERRIDE_LABELS"
 
 # The reporter will report its statistics this often (milliseconds).
 REPORTER_UPDATE_INTERVAL_MS = env_integer("REPORTER_UPDATE_INTERVAL_MS", 2500)
@@ -213,6 +220,7 @@ PROCESS_TYPE_LOG_MONITOR = "log_monitor"
 PROCESS_TYPE_REPORTER = "reporter"
 PROCESS_TYPE_DASHBOARD = "dashboard"
 PROCESS_TYPE_DASHBOARD_AGENT = "dashboard_agent"
+PROCESS_TYPE_RUNTIME_ENV_AGENT = "runtime_env_agent"
 PROCESS_TYPE_WORKER = "worker"
 PROCESS_TYPE_RAYLET = "raylet"
 PROCESS_TYPE_REDIS_SERVER = "redis_server"
@@ -394,6 +402,7 @@ DEFAULT_TASK_MAX_RETRIES = 3
 # Please keep this in sync with the definition kRayInternalNamespacePrefix
 # in /src/ray/gcs/gcs_server/gcs_job_manager.h.
 RAY_INTERNAL_NAMESPACE_PREFIX = "_ray_internal_"
+RAY_INTERNAL_DASHBOARD_NAMESPACE = f"{RAY_INTERNAL_NAMESPACE_PREFIX}dashboard"
 
 
 def gcs_actor_scheduling_enabled():
@@ -426,10 +435,19 @@ RAY_ALLOWED_CACHED_PORTS = {
     "metrics_agent_port",
     "metrics_export_port",
     "dashboard_agent_listen_port",
+    "runtime_env_agent_port",
     "gcs_server_port",  # the `port` option for gcs port.
 }
 
-RAY_ENABLE_RECORD_TASK_LOGGING = env_bool("RAY_ENABLE_RECORD_TASK_LOGGING", False)
+# Turn this on if actor task log's offsets are expected to be recorded.
+# With this enabled, actor tasks' log could be queried with task id.
+RAY_ENABLE_RECORD_ACTOR_TASK_LOGGING = env_bool(
+    "RAY_ENABLE_RECORD_ACTOR_TASK_LOGGING", False
+)
 
-WORKER_SETUP_HOOK_ENV_VAR = "__RAY_WORKER_SETUP_HOOK_ENV_VAR"
-RAY_WORKER_SETUP_HOOK_LOAD_TIMEOUT_ENV_VAR = "RAY_WORKER_SETUP_HOOK_LOAD_TIMEOUT"
+WORKER_PROCESS_SETUP_HOOK_ENV_VAR = "__RAY_WORKER_PROCESS_SETUP_HOOK_ENV_VAR"
+RAY_WORKER_PROCESS_SETUP_HOOK_LOAD_TIMEOUT_ENV_VAR = (
+    "RAY_WORKER_PROCESS_SETUP_HOOK_LOAD_TIMEOUT"  # noqa
+)
+
+RAY_DEFAULT_LABEL_KEYS_PREFIX = "ray.io/"

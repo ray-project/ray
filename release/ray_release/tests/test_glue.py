@@ -12,7 +12,7 @@ from ray_release.alerts.handle import result_to_handle_map
 from ray_release.cluster_manager.cluster_manager import ClusterManager
 from ray_release.cluster_manager.full import FullClusterManager
 from ray_release.command_runner.command_runner import CommandRunner
-from ray_release.config import Test
+from ray_release.test import Test
 from ray_release.exception import (
     ReleaseTestConfigError,
     ClusterEnvBuildError,
@@ -483,7 +483,7 @@ class GlueTest(unittest.TestCase):
             self._run(result)
             self.assertTrue(any("Could not fetch results" in o for o in cm.output))
         self.assertEqual(result.return_code, ExitCode.SUCCESS.value)
-        self.assertEqual(result.status, "finished")
+        self.assertEqual(result.status, "success")
 
         # Ensure cluster was terminated
         self.assertGreaterEqual(self.sdk.call_counter["terminate_cluster"], 1)
@@ -519,7 +519,7 @@ class GlueTest(unittest.TestCase):
             self._run(result)
             self.assertTrue(any("Error fetching logs" in o for o in cm.output))
         self.assertEqual(result.return_code, ExitCode.SUCCESS.value)
-        self.assertEqual(result.status, "finished")
+        self.assertEqual(result.status, "success")
 
         # Ensure cluster was terminated
         self.assertGreaterEqual(self.sdk.call_counter["terminate_cluster"], 1)
@@ -554,7 +554,7 @@ class GlueTest(unittest.TestCase):
             self.assertTrue(any("Error reporting results" in o for o in cm.output))
 
         self.assertEqual(result.return_code, ExitCode.SUCCESS.value)
-        self.assertEqual(result.status, "finished")
+        self.assertEqual(result.status, "success")
 
         # Ensure cluster was terminated
         self.assertGreaterEqual(self.sdk.call_counter["terminate_cluster"], 1)

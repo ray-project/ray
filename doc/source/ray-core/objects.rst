@@ -148,7 +148,7 @@ Ray object references can be freely passed around a Ray application. This means 
 
 There are two different ways one can pass an object to a Ray task or method. Depending on the way an object is passed, Ray will decide whether to *de-reference* the object prior to task execution.
 
-**Passing an object as a top-level argmuent**: When an object is passed directly as a top-level argument to a task, Ray will de-reference the object. This means that Ray will fetch the underlying data for all top-level object reference arguments, not executing the task until the object data becomes fully available.
+**Passing an object as a top-level argument**: When an object is passed directly as a top-level argument to a task, Ray will de-reference the object. This means that Ray will fetch the underlying data for all top-level object reference arguments, not executing the task until the object data becomes fully available.
 
 .. literalinclude:: doc_code/obj_val.py
 

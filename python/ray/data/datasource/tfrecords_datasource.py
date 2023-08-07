@@ -1,21 +1,21 @@
+import struct
 from typing import (
     TYPE_CHECKING,
     Any,
     Callable,
     Dict,
-    Optional,
-    Union,
     Iterable,
     Iterator,
+    Optional,
+    Union,
 )
-import struct
 
 import numpy as np
 
-from ray.util.annotations import PublicAPI
 from ray.data._internal.util import _check_import
 from ray.data.block import Block, BlockAccessor
 from ray.data.datasource.file_based_datasource import FileBasedDatasource
+from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
     import pyarrow
@@ -32,9 +32,9 @@ class TFRecordDatasource(FileBasedDatasource):
     def _read_stream(
         self, f: "pyarrow.NativeFile", path: str, **reader_args
     ) -> Iterator[Block]:
-        from google.protobuf.message import DecodeError
         import pyarrow as pa
         import tensorflow as tf
+        from google.protobuf.message import DecodeError
 
         tf_schema: Optional["schema_pb2.Schema"] = reader_args.get("tf_schema", None)
 
@@ -213,8 +213,8 @@ def _value_to_feature(
     value: Union["pyarrow.Scalar", "pyarrow.Array"],
     schema_feature_type: Optional["schema_pb2.FeatureType"] = None,
 ) -> "tf.train.Feature":
-    import tensorflow as tf
     import pyarrow as pa
+    import tensorflow as tf
 
     if isinstance(value, pa.ListScalar):
         # Use the underlying type of the ListScalar's value in
@@ -231,6 +231,7 @@ def _value_to_feature(
 
     underlying_value_type = {
         "bytes": pa.types.is_binary(value_type),
+        "string": pa.types.is_string(value_type),
         "float": pa.types.is_floating(value_type),
         "int": pa.types.is_integer(value_type),
     }
@@ -245,7 +246,10 @@ def _value_to_feature(
                 "the tensorflow-metadata package."
             )
         specified_feature_type = {
-            "bytes": schema_feature_type == schema_pb2.FeatureType.BYTES,
+            "bytes": schema_feature_type == schema_pb2.FeatureType.BYTES
+            and not underlying_value_type["string"],
+            "string": schema_feature_type == schema_pb2.FeatureType.BYTES
+            and underlying_value_type["string"],
             "float": schema_feature_type == schema_pb2.FeatureType.FLOAT,
             "int": schema_feature_type == schema_pb2.FeatureType.INT,
         }
@@ -265,6 +269,9 @@ def _value_to_feature(
     if underlying_value_type["float"]:
         return tf.train.Feature(float_list=tf.train.FloatList(value=value))
     if underlying_value_type["bytes"]:
+        return tf.train.Feature(bytes_list=tf.train.BytesList(value=value))
+    if underlying_value_type["string"]:
+        value = [v.encode() for v in value]  # casting to bytes
         return tf.train.Feature(bytes_list=tf.train.BytesList(value=value))
     if pa.types.is_null(value_type):
         raise ValueError(
