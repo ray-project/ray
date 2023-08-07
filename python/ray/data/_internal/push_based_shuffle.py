@@ -407,9 +407,10 @@ class PushBasedShufflePlan(ShuffleOp):
         reduce_ray_remote_args.pop("scheduling_strategy", None)
 
         # Compute all constants used for task scheduling.
-        num_cpus_per_node_map = _get_num_cpus_per_node_map()
+        num_cpus_per_node_map, num_cpus_total = _get_num_cpus_per_node_map()
         stage = self._compute_shuffle_schedule(
             num_cpus_per_node_map,
+            num_cpus_total,
             len(input_blocks_list),
             merge_factor,
             output_num_blocks,
@@ -625,11 +626,11 @@ class PushBasedShufflePlan(ShuffleOp):
     @staticmethod
     def _compute_shuffle_schedule(
         num_cpus_per_node_map: Dict[str, int],
+        num_cpus_total,
         num_input_blocks: int,
         merge_factor: int,
         num_output_blocks: int,
     ) -> _PushBasedShuffleStage:
-        num_cpus_total = sum(v for v in num_cpus_per_node_map.values())
         task_parallelism = min(num_cpus_total, num_input_blocks)
 
         num_tasks_per_map_merge_group = merge_factor + 1
@@ -702,15 +703,17 @@ def _execute_pipelined_stage(
     return prev_metadata, metadata_refs, data_outputs
 
 
-def _get_num_cpus_per_node_map() -> Dict[str, int]:
+def _get_num_cpus_per_node_map() -> Dict[str, int], int:
     nodes = ray.nodes()
     # Map from per-node resource name to number of CPUs available on that
     # node.
     num_cpus_per_node_map = {}
+    num_cpus_total = 0
     for node in nodes:
         resources = node["Resources"]
         num_cpus = int(resources.get("CPU", 0))
         if num_cpus == 0:
             continue
         num_cpus_per_node_map[node["NodeID"]] = num_cpus
-    return num_cpus_per_node_map
+        num_cpus_total += num_cpus
+    return num_cpus_per_node_map, num_cpus_total

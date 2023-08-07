@@ -153,6 +153,9 @@ class GroupedData:
                 return blocks, stage_info
 
             num_mappers = blocks.initial_num_blocks()
+            # TODO(Deegue & leixm): The number of reducers should be a variable value.
+            # It can be configured under different workloads or calculated adaptively
+            # through intermediate statistics.
             num_reducers = num_mappers
             if self._key is None:
                 num_reducers = 1
