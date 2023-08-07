@@ -6,13 +6,6 @@ import requests
 
 logger = logging.getLogger(__name__)
 
-def on_aws():
-    on_gcp = requests.get("http://169.254.169.254", headers={"Metadata-Flavor": "Google"}).headers.get("Metadata-Flavor") == "Google"
-    return not on_gcp
-
-def get_aws_cmd():
-    aws_cli_cmd = "awsv2" if on_aws() else "aws"
-    return aws_cli_cmd
 
 def get_hash_from_bucket(
     bucket_uri: str, s3_sync_args: Optional[List[str]] = None
@@ -20,7 +13,7 @@ def get_hash_from_bucket(
 
     s3_sync_args = s3_sync_args or []
     subprocess.run(
-        [get_aws_cmd(), "s3", "cp", "--quiet"]
+        ["aws", "s3", "cp", "--quiet"]
         + s3_sync_args
         + [os.path.join(bucket_uri, "refs", "main"), "."]
     )
@@ -75,7 +68,7 @@ def download_model(
     path = os.path.join(TRANSFORMERS_CACHE, f"models--{model_id.replace('/', '--')}")
 
     cmd = (
-        [get_aws_cmd(), "s3", "sync"]
+        ["aws", "s3", "sync"]
         + s3_sync_args
         + (["--exclude", "*", "--include", "*token*"] if tokenizer_only else [])
         + [bucket_uri, path]
