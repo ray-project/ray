@@ -44,7 +44,7 @@ import ray._private.ray_constants as ray_constants
 from ray.core.generated.runtime_env_common_pb2 import (
     RuntimeEnvInfo as ProtoRuntimeEnvInfo,
 )
-from ray.util.accelerators import AWS_NEURON_CORE
+from ray.util.accelerators.accelerators import AWS_NEURON_CORE
 
 if TYPE_CHECKING:
     from ray.runtime_env import RuntimeEnv
@@ -407,6 +407,14 @@ def get_neuron_core_constraint_name():
 
 
 def get_constraint_name(pretty_name: str):
+    """Get the name of the constraint that represents the given resource.
+
+    Args:
+        pretty_name: The name of the resource.
+
+    Returns:
+        (str) The constraint name.
+    """
     constraint_name = f"{ray_constants.RESOURCE_CONSTRAINT_PREFIX}" f"{pretty_name}"
     return constraint_name
 

@@ -205,7 +205,11 @@ class ResourceSpec(
         num_neuron_cores = resources.get(ray_constants.NUM_NEURON_CORES, None)
         # 2. Check if the user specified NEURON_RT_VISIBLE_CORES
         neuron_core_ids = ray._private.utils.get_aws_neuron_core_visible_ids()
-        if num_neuron_cores is not None and num_neuron_cores not in neuron_core_ids:
+        if (
+            num_neuron_cores is not None
+            and neuron_core_ids is not None
+            and num_neuron_cores > len(neuron_core_ids)
+        ):
             raise ValueError(
                 f"Attempting to start raylet with {num_neuron_cores} "
                 f"neuron cores, but NEURON_RT_VISIBLE_CORES contains "
@@ -346,6 +350,11 @@ def _autodetect_aws_neuron_cores():
 
 
 def _get_neuron_core_count():
+    """Get the number of Neuron cores on a machine based on neuron_path.
+
+    Returns:
+        The number of Neuron cores on this machine (Default to 0).
+    """
     neuron_path = "/opt/aws/neuron/bin/"
     nc_count: int = 0
     result = subprocess.run(
