@@ -583,6 +583,15 @@ def test_status_basic(ray_start_stop):
         timeout=2,
     )
 
+    def proxy_healthy():
+        status_response = subprocess.check_output(
+            ["serve", "status", "-a", "http://localhost:52365/"]
+        )
+        proxy_status = yaml.safe_load(status_response)["proxies"]
+        return len(proxy_status) and all(p == "HEALTHY" for p in proxy_status.values())
+
+    wait_for_condition(proxy_healthy)
+
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
 def test_status_error_msg_format(ray_start_stop):
