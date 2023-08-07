@@ -154,7 +154,8 @@ def run_map_batches_benchmark(benchmark: Benchmark):
     input_size = 1024 * 1024
     batch_size = 1024
     ray.data.DataContext.get_current().target_max_block_size = 1024 * 1024
-    # Disable PhysicalOperator fusion.
+    # Disable PhysicalOperator fusion. Because we will have 2 map_batches operators.
+    # And the first one will generate multiple output blocks.
     ray.data._internal.logical.optimizers.PHYSICAL_OPTIMIZER_RULES = []
     parallelism = input_size // batch_size
     input_ds = ray.data.range(input_size, parallelism=parallelism).materialize()
