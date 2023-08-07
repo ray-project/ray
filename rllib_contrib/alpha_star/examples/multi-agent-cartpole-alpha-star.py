@@ -44,7 +44,7 @@ if __name__ == "__main__":
             },
             replay_buffer_replay_ratio=0.0,
             league_builder_config={
-                "type": "ray.rllib.algorithms.alpha_star.league_builder.NoLeagueBuilder"
+                "type": "rllib_alpha_star.alpha_star.league_builder.NoLeagueBuilder"
             },
         )
         .multi_agent(
