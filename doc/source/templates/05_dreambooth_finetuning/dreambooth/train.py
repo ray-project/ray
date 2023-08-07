@@ -125,7 +125,6 @@ def load_models(config):
         subfolder="text_encoder",
         torch_dtype=dtype,
     )
-    text_encoder.requires_grad_(False)
 
     noise_scheduler = DDPMScheduler.from_pretrained(
         config["model_dir"],
@@ -151,12 +150,13 @@ def load_models(config):
 
     if is_xformers_available():
         unet.enable_xformers_memory_efficient_attention()
-    unet.requires_grad_(False)
 
     if not config["use_lora"]:
         unet_parameters = unet.parameters()
         text_parameters = text_encoder.parameters()
     else:
+        text_encoder.requires_grad_(False)
+        unet.requires_grad_(False)
         unet_parameters, text_parameters = add_lora_layers(unet, text_encoder)
 
     torch.cuda.empty_cache()
@@ -176,12 +176,12 @@ def train_fn(config):
         text_parameters,
     ) = load_models(config)
 
+    text_encoder.train()
+    unet.train()
+
     text_encoder = train.torch.prepare_model(text_encoder)
     unet = train.torch.prepare_model(unet)
     vae = vae.to(train.torch.get_device())
-
-    text_encoder.train()
-    unet.train()
 
     # Use the regular AdamW optimizer to work with bfloat16 weights.
     optimizer = torch.optim.AdamW(
