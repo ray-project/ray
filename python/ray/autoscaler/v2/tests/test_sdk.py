@@ -696,6 +696,32 @@ def test_get_cluster_status(ray_start_cluster):
     wait_for_condition(verify_autoscaler_state)
 
 
+@pytest.mark.parametrize(
+    "env_val,enabled",
+    [
+        ("1", True),
+        ("0", False),
+        ("", False),
+    ],
+)
+def test_is_autoscaler_v2_enabled(shutdown_only, monkeypatch, env_val, enabled):
+    def reset_autoscaler_v2_enabled_cache():
+        import ray.autoscaler.v2.utils as u
+
+        u.cached_is_autoscaler_v2 = None
+
+    reset_autoscaler_v2_enabled_cache()
+    with monkeypatch.context() as m:
+        m.setenv("RAY_enable_autoscaler_v2", env_val)
+        ray.init()
+
+        def verify():
+            assert ray.autoscaler.v2.utils.is_autoscaler_v2() == enabled
+            return True
+
+        wait_for_condition(verify)
+
+
 if __name__ == "__main__":
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
