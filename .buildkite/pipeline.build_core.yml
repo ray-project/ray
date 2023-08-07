@@ -1,31 +1,19 @@
-#ci:group=:book: core tests (civ2)
+#ci:group=:ray: core tests (civ2)
 
-- label: ":python: small & medium"
-  conditions: ["RAY_CI_PYTHON_AFFECTED"]
-  instance_size: medium
-  parallelism: 3
-  commands:
-    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - DL=1 ./ci/env/install-dependencies.sh
-    - ./ci/env/env_info.sh
-    - bazel run //ci/ray_ci -- //python/ray/tests/... //python/ray/dag/... core --size small,medium --concurrency "$${BUILDKITE_PARALLEL_JOB_COUNT}" --shard "$${BUILDKITE_PARALLEL_JOB}"
-
-- label: ":python: large"
+- label: ":python: core"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
   instance_size: large
-  parallelism: 3
+  parallelism: 6
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - DL=1 ./ci/env/install-dependencies.sh
     - ./ci/env/env_info.sh
-    - bazel run //ci/ray_ci -- //python/ray/tests/... //python/ray/dag/... core --size large --concurrency "$${BUILDKITE_PARALLEL_JOB_COUNT}" --shard "$${BUILDKITE_PARALLEL_JOB}"
+    - bazel run //ci/ray_ci -- //python/ray/tests/... //python/ray/dag/... core --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
 
-- label: ":python: flaky"
+- label: ":python: flaky core"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
   instance_size: large
   soft_fail: true
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - DL=1 ./ci/env/install-dependencies.sh
     - ./ci/env/env_info.sh
-    - bazel run //ci/ray_ci -- //python/ray/tests/... //python/ray/dag/... core --run-flaky-tests
+    - bazel run //ci/ray_ci -- //python/ray/tests/... //python/ray/dag/... core --run-flaky-tests --parallelism-per-worker 3
