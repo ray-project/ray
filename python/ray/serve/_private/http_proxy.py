@@ -221,17 +221,20 @@ class LongestPrefixRouter:
             target: the target to match against endpoint.
 
         Returns:
-            route if found, else None.
+            route if found, else return first route. Or None if no routes.
         """
         if target is None:
             return None
 
+        first_route = None
         for route, endpoint_and_app_name in self.route_info.items():
+            if first_route is None:
+                first_route = route
             endpoint, app_name = endpoint_and_app_name
             if target.endswith(endpoint):
                 return route
 
-        return None
+        return first_route
 
 
 class GenericProxy:

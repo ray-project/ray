@@ -75,7 +75,7 @@ class gRPCServeRequest(ServeRequest):
         self.request = pickle.dumps(request_proto)
         self.context = context
         self.stream = stream
-        self.app_name = None
+        self.app_name = ""
         self.route_path = None
         self.request_id = None
         self.method_name = service_method_split[-1].lower()
@@ -83,11 +83,11 @@ class gRPCServeRequest(ServeRequest):
         for key, value in context.invocation_metadata():
             if key == "application":
                 self.app_name = value
-                self.route_path = match_target(self.app_name)
             elif key == "request_id":
                 self.request_id = value
             elif key == "multiplexed_model_id":
                 self.multiplexed_model_id = value
+        self.route_path = match_target(self.app_name)
 
     @property
     def user_request(self) -> bytes:
