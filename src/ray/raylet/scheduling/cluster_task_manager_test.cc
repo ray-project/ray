@@ -678,6 +678,56 @@ TEST_F(ClusterTaskManagerTest, NoFeasibleNodeTest) {
   ASSERT_EQ(node_info_calls_, 0);
 }
 
+TEST_F(ClusterTaskManagerTest, DrainingWhileResolving) {
+  /*
+    Test the race condition in which a task is assigned to a node, but cannot
+    run because its dependencies are unresolved. Once its dependencies are
+    resolved, the node is being drained.
+  */
+  RayTask task = CreateTask({{ray::kCPU_ResourceLabel, 1}});
+  rpc::RequestWorkerLeaseReply reply;
+  bool callback_occurred = false;
+  bool *callback_occurred_ptr = &callback_occurred;
+  auto callback = [callback_occurred_ptr](
+                      Status, std::function<void()>, std::function<void()>) {
+    *callback_occurred_ptr = true;
+  };
+  task_manager_.QueueAndScheduleTask(task, false, false, &reply, callback);
+  std::shared_ptr<MockWorker> worker =
+      std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234);
+  std::shared_ptr<MockWorker> worker2 =
+      std::make_shared<MockWorker>(WorkerID::FromRandom(), 12345);
+  pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker));
+  pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker2));
+  pool_.TriggerCallbacks();
+  ASSERT_TRUE(callback_occurred);
+  ASSERT_EQ(leased_workers_.size(), 1);
+  ASSERT_EQ(pool_.workers.size(), 1);
+
+  auto remote_node_id = NodeID::FromRandom();
+  AddNode(remote_node_id, 5);
+
+  RayTask resolving_args_task = CreateTask({{ray::kCPU_ResourceLabel, 1}}, 1);
+  auto missing_arg = resolving_args_task.GetTaskSpecification().GetDependencyIds()[0];
+  missing_objects_.insert(missing_arg);
+  rpc::RequestWorkerLeaseReply spillback_reply;
+  task_manager_.QueueAndScheduleTask(
+      resolving_args_task, false, false, &spillback_reply, callback);
+  pool_.TriggerCallbacks();
+  ASSERT_EQ(leased_workers_.size(), 1);
+  ASSERT_EQ(pool_.workers.size(), 1);
+
+  // Drain the local node.
+  scheduler_->GetLocalResourceManager().SetLocalNodeDraining();
+
+  // Arg is resolved.
+  missing_objects_.erase(missing_arg);
+  std::vector<TaskID> unblocked = {resolving_args_task.GetTaskSpecification().TaskId()};
+  local_task_manager_->TasksUnblocked(unblocked);
+  ASSERT_EQ(spillback_reply.retry_at_raylet_address().raylet_id(),
+            remote_node_id.Binary());
+}
+
 TEST_F(ClusterTaskManagerTest, ResourceTakenWhileResolving) {
   /*
     Test the race condition in which a task is assigned to a node, but cannot

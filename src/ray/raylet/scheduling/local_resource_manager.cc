@@ -338,17 +338,14 @@ void LocalResourceManager::ReleaseWorkerResources(
   OnResourceChanged();
 }
 
-namespace {
-
-NodeResources ToNodeResources(const NodeResourceInstances &instance) {
+NodeResources LocalResourceManager::ToNodeResources() const {
   NodeResources node_resources;
-  node_resources.available = instance.available.ToResourceRequest();
-  node_resources.total = instance.total.ToResourceRequest();
-  node_resources.labels = instance.labels;
+  node_resources.available = local_resources_.available.ToResourceRequest();
+  node_resources.total = local_resources_.total.ToResourceRequest();
+  node_resources.labels = local_resources_.labels;
+  node_resources.is_draining = is_local_node_draining_;
   return node_resources;
 }
-
-}  // namespace
 
 void LocalResourceManager::UpdateAvailableObjectStoreMemResource() {
   // Update local object store usage and report to other raylets.
@@ -385,7 +382,7 @@ void LocalResourceManager::UpdateAvailableObjectStoreMemResource() {
 void LocalResourceManager::FillResourceUsage(rpc::ResourcesData &resources_data) {
   UpdateAvailableObjectStoreMemResource();
 
-  NodeResources resources = ToNodeResources(local_resources_);
+  NodeResources resources = ToNodeResources();
 
   // Initialize if last report resources is empty.
   if (!last_report_resources_) {
@@ -449,7 +446,7 @@ std::optional<syncer::RaySyncMessage> LocalResourceManager::CreateSyncMessage(
 
   resources_data.set_node_id(local_node_id_.Binary());
 
-  NodeResources resources = ToNodeResources(local_resources_);
+  NodeResources resources = ToNodeResources();
 
   for (auto entry : resources.total.ToMap()) {
     auto resource_id = entry.first;
@@ -517,7 +514,7 @@ void LocalResourceManager::OnResourceChanged() {
   if (resource_change_subscriber_ == nullptr) {
     return;
   }
-  resource_change_subscriber_(ToNodeResources(local_resources_));
+  resource_change_subscriber_(ToNodeResources());
 }
 
 void LocalResourceManager::ResetLastReportResourceUsage(
@@ -573,6 +570,11 @@ void LocalResourceManager::RecordMetrics() const {
     ray::stats::STATS_resources.Record(resource_usage.used,
                                        {{"State", "USED"}, {"Name", resource}});
   }
+}
+
+void LocalResourceManager::SetLocalNodeDraining() {
+  is_local_node_draining_ = true;
+  OnResourceChanged();
 }
 
 }  // namespace ray

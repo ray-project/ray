@@ -155,10 +155,9 @@ class LocalResourceManager : public syncer::ReporterInterface {
 
   bool IsLocalNodeIdle() const { return GetResourceIdleTime() != absl::nullopt; }
 
-  void SetLocalNodeDraining() {
-    is_local_node_draining_ = true;
-    OnResourceChanged();
-  }
+  /// Change the local node to the draining state.
+  /// After that, no new tasks can be scheduled onto the local node.
+  void SetLocalNodeDraining();
 
   bool IsLocalNodeDraining() const { return is_local_node_draining_; }
 
@@ -175,6 +174,9 @@ class LocalResourceManager : public syncer::ReporterInterface {
 
   /// Notify the subscriber that the local resouces has changed.
   void OnResourceChanged();
+
+  /// Convert local resources to NodeResources.
+  NodeResources ToNodeResources() const;
 
   /// Increase the available capacities of the instances of a given resource.
   ///

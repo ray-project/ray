@@ -383,8 +383,9 @@ service NodeManagerService {
   // are still needed. And Raylet will release other leased workers.
   rpc ReleaseUnusedWorkers(ReleaseUnusedWorkersRequest)
       returns (ReleaseUnusedWorkersReply);
-  /// Shutdown the raylet (node manager) gracefully.
+  /// Shutdown the raylet (node manager).
   rpc ShutdownRaylet(ShutdownRayletRequest) returns (ShutdownRayletReply);
+  // Request to drain the raylet.
   rpc DrainRaylet(DrainRayletRequest) returns (DrainRayletReply);
   // Request a raylet to lock resources for a bundle.
   // This is the first phase of 2PC protocol for atomic placement group creation.
