@@ -892,7 +892,8 @@ class Trainable:
             self._restored = True
 
             logger.info(
-                f"Restored on {self._local_ip} from checkpoint: {checkpoint_result}"
+                f"Restored on {self._local_ip} from checkpoint: "
+                f"{checkpoint_result.checkpoint}"
             )
             return True
 
