@@ -161,7 +161,16 @@ def cli():
     type=click.Choice(list(DeploymentMode)),
     help="Location of the HTTP proxies. Defaults to HeadOnly.",
 )
-def start(address, http_host, http_port, http_location):
+@click.option(
+    "--grpc-port",
+    default=-1,
+    required=False,
+    type=int,
+    help="Port for gRPC proxies to listen on. Defaults not to start gRPC server.",
+)
+def start(address, http_host, http_port, http_location, grpc_port):
+    # TODO (genesu): pass grpc port into serve.start
+    print(grpc_port)
     ray.init(
         address=address,
         namespace=SERVE_NAMESPACE,

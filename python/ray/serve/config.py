@@ -592,10 +592,7 @@ class HTTPOptions(pydantic.BaseModel):
 class gRPCOptions(BaseModel):
     port: int = -1
     grpc_servicer_functions: List[str] = []
-    grpc_servicer_func_callable: List[Callable] = []
 
-    def __init__(self, **data):
-        data["grpc_servicer_func_callable"] = [
-            import_attr(fun) for fun in data.get("grpc_servicer_functions", [])
-        ]
-        super().__init__(**data)
+    @property
+    def grpc_servicer_func_callable(self) -> List[Callable]:
+        return [import_attr(fun) for fun in self.grpc_servicer_functions]

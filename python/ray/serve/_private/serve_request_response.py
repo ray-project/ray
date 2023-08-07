@@ -68,30 +68,26 @@ class gRPCServeRequest(ServeRequest):
         request_proto: Any,
         context: "grpc._cython.cygrpc._ServicerContext",
         match_target: Callable[[str], Optional[str]],
+        service_method: str,
         stream: bool,
     ):
+        service_method_split = service_method.split("/")
         self.request = pickle.dumps(request_proto)
         self.context = context
         self.stream = stream
         self.app_name = None
         self.route_path = None
         self.request_id = None
-        self.method_name = "__call__"
+        self.method_name = service_method_split[-1].lower()
         self.multiplexed_model_id = DEFAULT.VALUE
         for key, value in context.invocation_metadata():
             if key == "application":
                 self.app_name = value
+                self.route_path = match_target(self.app_name)
             elif key == "request_id":
                 self.request_id = value
             elif key == "multiplexed_model_id":
                 self.multiplexed_model_id = value
-            elif key == "route_path":
-                self.route_path = value
-            elif key == "method_name":
-                self.method_name = value
-
-        if not self.route_path:
-            self.route_path = match_target(self.app_name)
 
     @property
     def user_request(self) -> bytes:

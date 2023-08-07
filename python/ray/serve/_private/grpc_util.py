@@ -12,10 +12,9 @@ class gRPCServer(Server):
         src/python/grpcio/grpc/aio/_server.py#L36
     """
 
-    def __init__(self, unary_unary, unary_stream, *args, **kwargs):
+    def __init__(self, service_handler_factory, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.unary_unary = unary_unary
-        self.unary_stream = unary_stream
+        self.service_handler_factory = service_handler_factory
 
     def add_generic_rpc_handlers(
         self, generic_rpc_handlers: Sequence[grpc.GenericRpcHandler]
@@ -35,15 +34,21 @@ class gRPCServer(Server):
         for service_method, method_handler in rpc_handler._method_handlers.items():
             serve_method_handler = method_handler._replace(
                 response_serializer=None,
-                unary_unary=self.unary_unary,
-                unary_stream=self.unary_stream,
+                unary_unary=self.service_handler_factory(
+                    service_method=service_method,
+                    stream=False,
+                ),
+                unary_stream=self.service_handler_factory(
+                    service_method=service_method,
+                    stream=True,
+                ),
             )
             serve_rpc_handlers[service_method] = serve_method_handler
         generic_rpc_handlers[0]._method_handlers = serve_rpc_handlers
         super().add_generic_rpc_handlers(generic_rpc_handlers)
 
 
-def create_serve_grpc_server(unary_unary, unary_stream):
+def create_serve_grpc_server(service_handler_factory):
     """Custom function to create a gRPC server.
 
     This funcion works similar to `grpc.server()`, but it creates a Serve defined
@@ -58,15 +63,14 @@ def create_serve_grpc_server(unary_unary, unary_stream):
         options=(),
         maximum_concurrent_rpcs=None,
         compression=None,
-        unary_unary=unary_unary,
-        unary_stream=unary_stream,
+        service_handler_factory=service_handler_factory,
     )
 
 
 class DummyServicer:
     # This is a dummy class that just pass through when calling on any method.
     # User defined servicer will attempt to add the method on this class to the
-    # gRPC server, but out gRPC server will override the caller to call gRPCProxy.
+    # gRPC server, but the gRPC server will override the caller to call gRPCProxy.
     def __getattr__(self, attr):
         # no-op pass through, just need this to act as the callable
         pass

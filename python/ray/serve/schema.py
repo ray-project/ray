@@ -505,8 +505,10 @@ class gRPCOptionsSchema(BaseModel, extra=Extra.forbid):
     grpc_servicer_functions: List[str] = Field(
         default=[],
         description=(
-            "The servicer functions used to add the custom methods to the gRPC server."
-            "Default to empty list, which means no custom gRPC methods will be added."
+            "The servicer functions used to add the method handlers to the gRPC server."
+            "Default to empty list, which means no gRPC methods will be added"
+            "and no gRPC server will be started. The servicer functions need to be"
+            "importable from the context of where Serve is running."
         ),
     )
 

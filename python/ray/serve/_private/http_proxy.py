@@ -782,42 +782,52 @@ class gRPCProxy(GenericProxy):
     point for streaming gRPC request.
     """
 
-    async def unary_unary(
-        self, request_proto: Any, context: "grpc._cython.cygrpc._ServicerContext"
-    ) -> bytes:
-        """Entry point of the gRPC proxy unary request.
+    def service_handler_factory(self, service_method: str, stream: bool) -> Callable:
+        print("in unary_unary_factory", service_method)
 
-        This method is called by the gRPC server when a unary request is received.
-        It wraps the request in a ServeRequest object and calls proxy_request.
-        The return value is serialized user defined protobuf bytes.
-        """
-        serve_request = gRPCServeRequest(
-            request_proto=request_proto,
-            context=context,
-            match_target=self.prefix_router.match_target,
-            stream=False,
-        )
-        serve_response = await self.proxy_request(serve_request=serve_request)
-        return serve_response.response
+        async def unary_unary(
+            request_proto: Any, context: "grpc._cython.cygrpc._ServicerContext"
+        ) -> bytes:
+            """Entry point of the gRPC proxy unary request.
 
-    async def unary_stream(
-        self, request_proto: Any, context: "grpc._cython.cygrpc._ServicerContext"
-    ) -> Generator[bytes, None, None]:
-        """Entry point of the gRPC proxy streaming request.
+            This method is called by the gRPC server when a unary request is received.
+            It wraps the request in a ServeRequest object and calls proxy_request.
+            The return value is serialized user defined protobuf bytes.
+            """
+            serve_request = gRPCServeRequest(
+                request_proto=request_proto,
+                context=context,
+                match_target=self.prefix_router.match_target,
+                service_method=service_method,
+                stream=False,
+            )
+            serve_response = await self.proxy_request(serve_request=serve_request)
+            return serve_response.response
 
-        This method is called by the gRPC server when a streaming request is received.
-        It wraps the request in a ServeRequest object and calls proxy_request.
-        The return value is a generator of serialized user defined protobuf bytes.
-        """
-        serve_request = gRPCServeRequest(
-            request_proto=request_proto,
-            context=context,
-            match_target=self.prefix_router.match_target,
-            stream=True,
-        )
-        serve_response = await self.proxy_request(serve_request=serve_request)
-        async for response in serve_response.streaming_response:
-            yield response
+        async def unary_stream(
+            request_proto: Any, context: "grpc._cython.cygrpc._ServicerContext"
+        ) -> Generator[bytes, None, None]:
+            """Entry point of the gRPC proxy streaming request.
+
+            This method is called by the gRPC server when a streaming request is
+            received. It wraps the request in a ServeRequest object and calls
+            proxy_request. The return value is a generator of serialized user defined
+            protobuf bytes.
+            """
+            serve_request = gRPCServeRequest(
+                request_proto=request_proto,
+                context=context,
+                match_target=self.prefix_router.match_target,
+                service_method=service_method,
+                stream=True,
+            )
+            serve_response = await self.proxy_request(serve_request=serve_request)
+            async for response in serve_response.streaming_response:
+                yield response
+
+        if not stream:
+            return unary_unary
+        return unary_stream
 
     @property
     def proxy_name(self) -> str:
@@ -1230,7 +1240,7 @@ class HTTPProxyActor:
                     request_timeout_s or RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S
                 ),
             )
-            if self.should_start_grpc_server()
+            if self.should_start_grpc_service()
             else None
         )
 
@@ -1253,8 +1263,13 @@ class HTTPProxyActor:
             self.run_grpc_server()
         )
 
-    def should_start_grpc_server(self):
-        return self.grpc_port > 0 and self.grpc_options.grpc_servicer_func_callable
+    def should_start_grpc_service(self):
+        """Determine whether gRPC service should be started
+
+        gRPC service will only be started if a valid port is provided and if the
+        servicer functions are passed.
+        """
+        return self.grpc_port > 0 and self.grpc_options.grpc_servicer_functions
 
     async def ready(self):
         """Returns when both HTTP and gRPC proxies are ready to serve traffic.
@@ -1305,13 +1320,6 @@ class HTTPProxyActor:
         else:
             return await done_set_grpc.pop()
 
-    async def block_until_endpoint_exists(
-        self, endpoint: EndpointTag, timeout_s: float
-    ):
-        await self.http_proxy.block_until_endpoint_exists(endpoint, timeout_s)
-        if self.should_start_grpc_server():
-            await self.grpc_proxy.block_until_endpoint_exists(endpoint, timeout_s)
-
     async def run_http_server(self):
         sock = socket.socket()
         if SOCKET_REUSE_PORT_ENABLED:
@@ -1352,12 +1360,11 @@ class HTTPProxyActor:
         await server.serve(sockets=[sock])
 
     async def run_grpc_server(self):
-        if not self.should_start_grpc_server():
+        if not self.should_start_grpc_service():
             return self.grpc_setup_complete.set()
 
         grpc_server = create_serve_grpc_server(
-            unary_unary=self.grpc_proxy.unary_unary,
-            unary_stream=self.grpc_proxy.unary_stream,
+            service_handler_factory=self.grpc_proxy.service_handler_factory,
         )
         grpc_server.add_insecure_port(f"[::]:{self.grpc_port}")
         dummy_servicer = DummyServicer()
