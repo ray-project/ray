@@ -196,6 +196,7 @@ class ServeController:
         self._http_proxy_nodes = set()
         self._update_http_proxy_nodes()
 
+        # Track the number of times the controller has started
         metrics.Counter(
             "serve_controller_num_starts",
             description="The number of times that controller has started.",
