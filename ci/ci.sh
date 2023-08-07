@@ -91,7 +91,7 @@ NEED_WHEELS="$(_need_wheels)"
 
 compile_pip_dependencies() {
   # Compile boundaries
-  TARGET=${1-requirements_compiled.txt}
+  TARGET="${1-requirements_compiled.txt}"
 
   if [[ "${HOSTTYPE}" == "aarch64" || "${HOSTTYPE}" = "arm64" ]]; then
     # Resolution currently does not work on aarch64 as some pinned packages
@@ -135,6 +135,9 @@ compile_pip_dependencies() {
   sed -i "/^ray==/d;/^xgboost-ray==/d;/^lightgbm-ray==/d;/^tune-sklearn==/d" "${WORKSPACE_DIR}/python/$TARGET"
 
   # Remove +cpu and +pt20cpu suffixes e.g. for torch dependencies
+  # This is needed because we specify the requirements as torch==version, but
+  # the resolver adds the device-specific version tag. If this is not removed,
+  # pip install will complain about irresolvable constraints.
   sed -iE 's/==([\.0-9]+)\+[^\b]*cpu/==\1/g' "${WORKSPACE_DIR}/python/$TARGET"
 
   # Add python_version < 3.11 to scikit-image, scikit-optimize, scipy, networkx
