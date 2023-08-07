@@ -596,7 +596,9 @@ class TuneController:
         trials = self.restore_from_dir()
 
         # Set trial statuses according to the resume configuration
-        for trial in sorted(trials, key=lambda t: t.last_update_time, reverse=True):
+        for trial in sorted(
+            trials, key=lambda t: t.runtime_metadata.last_result_time, reverse=True
+        ):
             trial_to_add = trial
             if trial.status == Trial.ERROR:
                 if resume_errored:
