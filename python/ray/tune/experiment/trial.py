@@ -749,7 +749,7 @@ class Trial:
     def metric_n_steps(self):
         return self.runtime_metadata.metric_n_steps
 
-    def get_runner_ip(self) -> Optional[str]:
+    def get_ray_actor_ip(self) -> Optional[str]:
         if self.trial_state.location.hostname:
             return self.trial_state.location.hostname
 
