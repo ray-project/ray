@@ -204,6 +204,7 @@ async def serve_start_async(
     detached: bool = False,
     http_options: Optional[Union[dict, HTTPOptions]] = None,
     dedicated_cpu: bool = False,
+    grpc_options: Optional[gRPCOptions] = None,
     **kwargs,
 ) -> ServeControllerClient:
     """Initialize a serve instance asynchronously.
@@ -233,7 +234,7 @@ async def serve_start_async(
     controller, controller_name = (
         await ray.remote(_start_controller)
         .options(num_cpus=0)
-        .remote(detached, http_options, dedicated_cpu, **kwargs)
+        .remote(detached, http_options, dedicated_cpu, grpc_options, **kwargs)
     )
 
     client = ServeControllerClient(
