@@ -238,16 +238,3 @@ message PredictResponse {
 service PredictAPIsService {
   rpc Predict(PredictRequest) returns (PredictResponse);
 }
-
-message RayServeRequest {
-  bytes user_request = 1;
-}
-
-message RayServeResponse {
-  bytes user_response = 1;
-}
-
-service RayServeService {
-  rpc Predict(RayServeRequest) returns (RayServeResponse);
-  rpc PredictStreaming(RayServeRequest) returns (stream RayServeResponse);
-}
