@@ -54,6 +54,7 @@ from ray.serve._private.long_poll import LongPollClient, LongPollNamespace
 from ray.serve._private.logging_utils import (
     access_log_msg,
     configure_component_logger,
+    configure_component_memory_profiler,
     get_component_logger_file_path,
 )
 from ray.serve._private.utils import (
@@ -904,6 +905,11 @@ class HTTPProxyActor:
             f"Proxy actor {ray.get_runtime_context().get_actor_id()} "
             f"starting on node {node_id}."
         )
+
+        configure_component_memory_profiler(
+            component_name="http_proxy", component_id=node_ip_address
+        )
+
         if http_middlewares is None:
             http_middlewares = [Middleware(RequestIdMiddleware)]
         else:
