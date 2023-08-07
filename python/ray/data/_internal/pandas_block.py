@@ -60,7 +60,7 @@ class PandasRow(TableRow):
 
         is_single_item = isinstance(key, str)
         keys = [key] if is_single_item else key
-        
+
         def get_item(keys: List[str]):
             col = self._row[keys]
             if len(col) == 0:
@@ -82,7 +82,7 @@ class PandasRow(TableRow):
                 return items
 
         items = get_item(keys)
-        
+
         if is_single_item:
             return items[0]
         else:
