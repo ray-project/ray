@@ -506,7 +506,11 @@ class Trainable:
         if _use_storage_context() and isinstance(
             checkpoint_dict_or_path, _TrainingResult
         ):
-            return checkpoint_dict_or_path
+            checkpoint_result = checkpoint_dict_or_path
+            assert self._last_result
+            # Update the checkpoint result to include auto-filled metrics.
+            checkpoint_result.metrics.update(self._last_result)
+            return checkpoint_result
 
         if checkpoint_dict_or_path is None:
             # checkpoint_dict_or_path can only be None in class trainables.
@@ -870,18 +874,26 @@ class Trainable:
             checkpoint_result = checkpoint_path
             assert isinstance(checkpoint_result, _TrainingResult)
 
+            checkpoint_metrics = checkpoint_result.metrics
+            self._iteration = checkpoint_metrics[TRAINING_ITERATION]
+            self._time_total = checkpoint_metrics[TIME_TOTAL_S]
+            self._time_since_restore = 0.0
+            self._iterations_since_restore = 0
+
+            # TODO(justinvyu): This stuff should be moved to rllib.
+            self._timesteps_total = checkpoint_metrics.get(TIMESTEPS_TOTAL)
+            self._timesteps_since_restore = 0
+            self._episodes_total = checkpoint_metrics.get(EPISODES_TOTAL)
+
             # TODO(justinvyu): The Trainable `load_checkpoint` interface
             # should be updated to take in a `_TrainingResult` / Checkpoint
             self.load_checkpoint(checkpoint_result)
 
-            # TODO(justinvyu): What should we do about Trainable metadata?
-            self._time_since_restore = 0.0
-            self._timesteps_since_restore = 0
-            self._iterations_since_restore = 0
             self._restored = True
 
             logger.info(
-                f"Restored on {self._local_ip} from checkpoint: {checkpoint_result}"
+                f"Restored on {self._local_ip} from checkpoint: "
+                f"{checkpoint_result.checkpoint}"
             )
             return True
 

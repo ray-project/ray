@@ -400,7 +400,7 @@ class StorageContext:
         experiment_dir_name: str,
         storage_filesystem: Optional[pyarrow.fs.FileSystem] = None,
         trial_dir_name: Optional[str] = None,
-        current_checkpoint_index: Optional[int] = None,
+        current_checkpoint_index: int = 0,
     ):
         storage_path_provided = storage_path is not None
 
@@ -591,15 +591,12 @@ class StorageContext:
 
     @property
     def checkpoint_fs_path(self) -> str:
-        """The trial directory path on the `storage_filesystem`.
+        """The current checkpoint directory path on the `storage_filesystem`.
 
-        Raises a ValueError if `current_checkpoint_index` is not set beforehand.
+        "Current" refers to the checkpoint that is currently being created/persisted.
+        The user of this class is responsible for setting the `current_checkpoint_index`
+        (e.g., incrementing when needed).
         """
-        if self.current_checkpoint_index is None:
-            raise RuntimeError(
-                "Should not access `checkpoint_fs_path` without setting "
-                "`current_checkpoint_index`"
-            )
         checkpoint_dir_name = StorageContext._make_checkpoint_dir_name(
             self.current_checkpoint_index
         )
@@ -622,19 +619,6 @@ class StorageContext:
     def _make_checkpoint_dir_name(index: int):
         """Get the name of the checkpoint directory, given an index."""
         return f"checkpoint_{index:06d}"
-
-    @staticmethod
-    def _parse_checkpoint_index(checkpoint_dir_name: str):
-        """Parse the index from a checkpoint directory name
-        created by _make_checkpoint_dir_name.
-
-        >>> StorageContext._parse_checkpoint_index("checkpoint_000001")
-        1
-        >>> StorageContext._parse_checkpoint_index("checkpoint_11111111")
-        11111111
-        """
-        assert checkpoint_dir_name.startswith("checkpoint_")
-        return int(checkpoint_dir_name.split("_")[1])
 
 
 _storage_context: Optional[StorageContext] = None
