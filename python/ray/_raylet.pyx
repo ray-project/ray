@@ -32,6 +32,7 @@ from typing import (
     Generator,
     AsyncGenerator
 )
+from concurrent.futures import ThreadPoolExecutor
 
 from libc.stdint cimport (
     int32_t,
@@ -1010,7 +1011,7 @@ cdef class StreamingGeneratorExecutionContext:
         return self
 
 
-cpdef report_streaming_generator_output(
+cdef report_streaming_generator_output(
         output_or_exception: Union[object, Exception],
         StreamingGeneratorExecutionContext context):
     """Report a given generator output to a caller.
@@ -1181,10 +1182,17 @@ async def execute_streaming_generator_async(
             output_or_exception = e
         # TODO(sang): This method involves in serializing the output.
         # Ideally, we don't want to run this inside an event loop.
-        done = report_streaming_generator_output(
-            output_or_exception, context)
-        if done:
-            break
+        with ray._private.worker.global_worker.core_worker.tp as tp:
+            loop = asyncio.get_running_loop()
+            print("SANG-TODO loop, ", loop)
+            done = await loop.run_in_executor(
+                tp,
+                report_streaming_generator_output,
+                output_or_exception,
+                context)
+            print("SANG-TODO loop done, ")
+            if done:
+                break
 
 
 cdef create_generator_return_obj(
@@ -2867,6 +2875,8 @@ cdef class CoreWorker:
         self.fd_to_cgname_dict = None
         self.eventloop_for_default_cg = None
         self.current_runtime_env = None
+        self.tp = ThreadPoolExecutor(
+            int(os.getenv("RAY_ASYNC_THREAD_POOL_SIZE", 1)))
 
     def shutdown(self):
         # If it's a worker, the core worker process should have been
