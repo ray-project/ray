@@ -324,6 +324,14 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         self._pending_requests_to_fulfill: Deque[PendingRequest] = deque()
         self._pending_requests_to_schedule: Deque[PendingRequest] = deque()
 
+        self.num_router_scheduling_tasks = metrics.Counter(
+            "serve_num_power_of_two_choices_scheduling_tasks",
+            description=(
+                "The number of power-of-two-choices scheduling tasks "
+                "run by the router."
+            ),
+        )
+
     @property
     def num_pending_requests(self) -> int:
         """Current number of requests pending assignment."""
