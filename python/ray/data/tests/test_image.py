@@ -1,4 +1,5 @@
 import os
+import tempfile
 from typing import Dict
 from unittest.mock import ANY, patch
 
@@ -255,6 +256,11 @@ class TestReadImages:
         kwargs["open_stream_args"] = kwargs.pop("arrow_open_file_args")
         mock.assert_called_once_with(ANY, **kwargs)
         assert isinstance(mock.call_args[0][0], ImageDatasource)
+
+    def test_unidentified_image_error(ray_start_regular_shared):
+        with tempfile.NamedTemporaryFile(suffix=".png") as file:
+            with pytest.raises(ValueError):
+                ray.data.read_images(paths=file.name).materialize()
 
 
 if __name__ == "__main__":
