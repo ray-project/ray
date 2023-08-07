@@ -505,7 +505,9 @@ class FunctionTrainable(Trainable):
         from ray.train._internal.storage import _use_storage_context
 
         if _use_storage_context():
-            # TODO(justinvyu): Not too sure about this.
+            # TODO(justinvyu): This is only used to populate the tune metadata
+            # file within the checkpoint, so can be removed after if remove
+            # the metadata file.
             return state
 
         checkpoint = self._status_reporter.get_checkpoint()
