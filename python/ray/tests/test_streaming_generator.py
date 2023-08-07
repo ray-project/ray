@@ -8,8 +8,6 @@ import gc
 import os
 import random
 import threading
-import gc
-import random
 
 from collections import Counter
 
@@ -18,9 +16,9 @@ from unittest.mock import patch, Mock
 import ray
 from ray._private.test_utils import wait_for_condition
 from ray.experimental.state.api import list_objects, list_actors
-from ray._raylet import StreamingObjectRefGenerator, ObjectRefStreamEneOfStreamError
+from ray._raylet import StreamingObjectRefGenerator
 from ray.cloudpickle import dumps
-from ray.exceptions import WorkerCrashedError
+from ray.exceptions import WorkerCrashedError, ObjectRefStreamEndOfStreamError
 
 RECONSTRUCTION_CONFIG = {
     "health_check_failure_threshold": 10,
@@ -401,7 +399,7 @@ def test_generator_streaming(shutdown_only, use_actors, store_in_plasma):
         del ref
 
         wait_for_condition(
-            lambda: len(list_objects(filters=[("object_id", "=", id)])) == 0
+            lambda id=id: len(list_objects(filters=[("object_id", "=", id)])) == 0
         )
         i += 1
 
@@ -1278,10 +1276,6 @@ def test_async_actor_concurrent(shutdown_only):
     s = time.time()
     asyncio.run(main())
     assert 4.5 < time.time() - s < 6.5
-
-
-if __name__ == "__main__":
-    import os
 
 
 if __name__ == "__main__":
