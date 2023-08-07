@@ -103,16 +103,6 @@ class MockGcsNodeTable : public GcsNodeTable {
 namespace ray {
 namespace gcs {
 
-class MockGcsNodeResourceTable : public GcsNodeResourceTable {
- public:
-};
-
-}  // namespace gcs
-}  // namespace ray
-
-namespace ray {
-namespace gcs {
-
 class MockGcsPlacementGroupScheduleTable : public GcsPlacementGroupScheduleTable {
  public:
 };

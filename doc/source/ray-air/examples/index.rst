@@ -1,8 +1,7 @@
-.. _air-examples-ref:
+:orphan:
 
 Examples
 ========
-
 
 Framework-specific Examples
 ---------------------------
@@ -44,14 +43,6 @@ Logging & Observability
 - :doc:`/ray-air/examples/upload_to_wandb`: How to log results and upload models to Weights and Biases.
 
 .. _air-rl-examples-ref:
-
-RL (RLlib)
-----------
-
-- :doc:`/ray-air/examples/rl_serving_example`
-- :doc:`/ray-air/examples/rl_online_example`
-- :doc:`/ray-air/examples/rl_offline_example`
-
 
 Advanced
 --------

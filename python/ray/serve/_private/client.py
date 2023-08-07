@@ -101,6 +101,7 @@ class ServeControllerClient:
         garbage collected.
         """
         for cache_key in list(self.handle_cache):
+            self.handle_cache[cache_key].shutdown()
             del self.handle_cache[cache_key]
 
     def shutdown(self, timeout_s: float = 30.0) -> None:
@@ -448,6 +449,10 @@ class ServeControllerClient:
             )
             for status_bytes in statuses_bytes
         ]
+
+    @_ensure_connected
+    def get_serve_details(self) -> Dict:
+        return ray.get(self._controller.get_serve_instance_details.remote())
 
     @_ensure_connected
     def get_handle(

@@ -54,6 +54,29 @@ py_test(
     deps = ["//:ray_lib",],
 )
 
+py_test(
+    name = "test_instance_launcher",
+    size = "small",
+    srcs = ["tests/test_instance_launcher.py"],
+    tags = ["team:core"],
+    deps = ["//:ray_lib",],
+)
+
+py_test(
+    name = "test_reconciler",
+    size = "small",
+    srcs = ["tests/test_reconciler.py"],
+    tags = ["team:core"],
+    deps = ["//:ray_lib",],
+)
+
+py_test(
+    name = "test_threaded_ray_installer",
+    size = "small",
+    srcs = ["tests/test_threaded_ray_installer.py"],
+    tags = ["team:core"],
+    deps = ["//:ray_lib",],
+)
 
 py_test(
     name = "test_sdk",
@@ -67,6 +90,14 @@ py_test(
     name = "test_utils",
     size = "small",
     srcs = ["tests/test_utils.py"],
+    tags = ["team:core"],
+    deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test(
+    name = "test_e2e",
+    size = "small",
+    srcs = ["tests/test_e2e.py"],
     tags = ["team:core"],
     deps = ["//:ray_lib", ":conftest"],
 )

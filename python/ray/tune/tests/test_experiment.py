@@ -2,7 +2,7 @@ import threading
 import unittest
 
 import ray
-from ray.air import CheckpointConfig
+from ray.train import CheckpointConfig
 from ray.tune import register_trainable
 from ray.tune.experiment import Experiment, Trial, _convert_to_experiment_list
 from ray.tune.error import TuneError

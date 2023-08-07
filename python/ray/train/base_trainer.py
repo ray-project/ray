@@ -58,7 +58,7 @@ class TrainingFailedError(RuntimeError):
 
     _FAILURE_CONFIG_MSG = (
         "To start a new run that will retry on training failures, set "
-        "`air.RunConfig(failure_config=air.FailureConfig(max_failures))` "
+        "`train.RunConfig(failure_config=train.FailureConfig(max_failures))` "
         "in the Trainer's `run_config` with `max_failures > 0`, or `max_failures = -1` "
         "for unlimited retries."
     )
@@ -100,8 +100,7 @@ class BaseTrainer(abc.ABC):
         import torch
 
         from ray.train.trainer import BaseTrainer
-        from ray import tune
-        from ray.air import session
+        from ray import train, tune
 
 
         class MyPytorchTrainer(BaseTrainer):
@@ -142,7 +141,7 @@ class BaseTrainer(abc.ABC):
 
                     # Use Tune functions to report intermediate
                     # results.
-                    session.report({"loss": loss, "epoch": epoch_idx})
+                    train.report({"loss": loss, "epoch": epoch_idx})
 
 
         # Initialize the Trainer, and call Trainer.fit()
@@ -233,7 +232,7 @@ class BaseTrainer(abc.ABC):
 
             import os
             import ray
-            from ray import air
+            from ray import train
             from ray.data.preprocessors import BatchMapper
             from ray.train.trainer import BaseTrainer
 
@@ -258,12 +257,12 @@ class BaseTrainer(abc.ABC):
                 trainer = CustomTrainer(
                     datasets=datasets,
                     preprocessor=preprocessor,
-                    run_config=air.RunConfig(
+                    run_config=train.RunConfig(
                         name=experiment_name,
                         local_dir=local_dir,
                         # Tip: You can also enable retries on failure for
                         # worker-level fault tolerance
-                        failure_config=air.FailureConfig(max_failures=3),
+                        failure_config=train.FailureConfig(max_failures=3),
                     ),
                 )
 
@@ -408,7 +407,7 @@ class BaseTrainer(abc.ABC):
         # Run config
         if not isinstance(self.run_config, RunConfig):
             raise ValueError(
-                f"`run_config` should be an instance of `ray.air.RunConfig`, "
+                f"`run_config` should be an instance of `ray.train.RunConfig`, "
                 f"found {type(self.run_config)} with value `{self.run_config}`."
             )
         # Scaling config
@@ -458,13 +457,13 @@ class BaseTrainer(abc.ABC):
         ):
             raise ValueError(
                 f"`resume_from_checkpoint` should be an instance of "
-                f"`ray.air.Checkpoint`, found {type(self.resume_from_checkpoint)} "
+                f"`ray.train.Checkpoint`, found {type(self.resume_from_checkpoint)} "
                 f"with value `{self.resume_from_checkpoint}`."
             )
 
     @classmethod
     def _validate_scaling_config(cls, scaling_config: ScalingConfig) -> ScalingConfig:
-        """Return scaling config dataclass after validating updated keys."""
+        """Returns scaling config dataclass after validating updated keys."""
         ensure_only_allowed_dataclass_keys_updated(
             dataclass=scaling_config,
             allowed_keys=cls._scaling_config_allowed_keys,
@@ -473,7 +472,7 @@ class BaseTrainer(abc.ABC):
 
     @classmethod
     def _maybe_sync_down_trainer_state(cls, restore_path: str) -> Path:
-        """Sync down trainer state from remote storage.
+        """Syncs down trainer state from remote storage.
 
         Returns:
             str: Local directory containing the trainer state
@@ -547,7 +546,7 @@ class BaseTrainer(abc.ABC):
         ``self.datasets`` have already been preprocessed by ``self.preprocessor``.
 
         You can use the :ref:`Tune Function API functions <tune-function-docstring>`
-        (``session.report()`` and ``session.get_checkpoint()``) inside
+        (``train.report()`` and ``train.get_checkpoint()``) inside
         this training loop.
 
         Example:
@@ -555,13 +554,13 @@ class BaseTrainer(abc.ABC):
         .. testcode::
 
             from ray.train.trainer import BaseTrainer
-            from ray.air import session
+            from ray import train
 
             class MyTrainer(BaseTrainer):
                 def training_loop(self):
                     for epoch_idx in range(5):
                         ...
-                        session.report({"epoch": epoch_idx})
+                        train.report({"epoch": epoch_idx})
 
         """
         raise NotImplementedError
@@ -599,16 +598,16 @@ class BaseTrainer(abc.ABC):
                 _entrypoint=AirEntrypoint.TRAINER,
             )
 
-        experiment_path = Path(
-            TunerInternal.setup_create_experiment_checkpoint_dir(
-                trainable, self.run_config
-            )
+        experiment_local_path, _ = TunerInternal.setup_create_experiment_checkpoint_dir(
+            trainable, self.run_config
         )
-        self._save(experiment_path)
+
+        experiment_local_path = Path(experiment_local_path)
+        self._save(experiment_local_path)
 
         restore_msg = TrainingFailedError._RESTORE_MSG.format(
             trainer_cls_name=self.__class__.__name__,
-            path=str(experiment_path),
+            path=str(experiment_local_path),
         )
 
         try:
@@ -683,7 +682,7 @@ class BaseTrainer(abc.ABC):
         return result
 
     def _generate_trainable_cls(self) -> Type["Trainable"]:
-        """Generate the base Trainable class.
+        """Generates the base Trainable class.
 
         Returns:
             A Trainable class to use for training.
@@ -701,7 +700,7 @@ class BaseTrainer(abc.ABC):
             # Instantiate new Trainer in Trainable.
             trainer = trainer_cls(**config)
 
-            # Get the checkpoint from the Tune session, and use it to initialize
+            # Get the checkpoint from the train context, and use it to initialize
             # the restored trainer.
             # This handles both worker-level and cluster-level restoration
             # of the Train experiment.
@@ -733,7 +732,7 @@ class BaseTrainer(abc.ABC):
             dataset_context = None
 
         class TrainTrainable(trainable_cls):
-            """Add default resources to the Trainable."""
+            """Adds default resources to the Trainable."""
 
             _handles_checkpoint_freq = trainer_cls._handles_checkpoint_freq
             _handles_checkpoint_at_end = trainer_cls._handles_checkpoint_at_end
@@ -827,7 +826,7 @@ class BaseTrainer(abc.ABC):
         return TrainTrainable
 
     def as_trainable(self) -> Type["Trainable"]:
-        """Convert self to a ``tune.Trainable`` class."""
+        """Converts self to a ``tune.Trainable`` class."""
         from ray import tune
 
         base_config = self._param_dict
