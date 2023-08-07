@@ -196,7 +196,10 @@ class ServeController:
         self._http_proxy_nodes = set()
         self._update_http_proxy_nodes()
 
-        self._count_start()
+        metrics.Counter(
+            "serve_controller_num_starts",
+            description="The number of times that controller has started.",
+        ).inc()
 
     def check_alive(self) -> None:
         """No-op to check if this controller is alive."""
@@ -429,12 +432,6 @@ class ServeController:
         self.num_control_loops_gauge.set_default_tags(
             {"actor_id": ray.get_runtime_context().get_actor_id()}
         )
-
-    def _count_start(self):
-        metrics.Counter(
-            "serve_controller_num_starts",
-            description="The number of times that controller has started.",
-        ).inc()
 
     def _put_serve_snapshot(self) -> None:
         val = dict()
