@@ -20,6 +20,7 @@ rules:
         # get re-written.
         - "doc/source/train/examples/pytorch/torch_data_prefetch_benchmark/benchmark_example.rst"
         - "doc/source/train/dl_guide.rst"
+        # FIXME(@ml-team): These are byproduct from train doc rewritten. Will fix them as a team.
         - "doc/source/train/distributed-pytorch/checkpoints.rst"
         - "doc/source/train/distributed-pytorch/converting-existing-training-loop.rst"
         - "doc/source/train/distributed-pytorch/data-loading-preprocessing.rst"
