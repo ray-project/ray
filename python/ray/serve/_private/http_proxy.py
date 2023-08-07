@@ -606,10 +606,10 @@ class HTTPProxy:
         # call might never arrive; if it does, it can only be `http.disconnect`.
         while retries < HTTP_REQUEST_MAX_RETRIES + 1:
             should_backoff = False
-            assignment_task: asyncio.Task = handle.remote(request)
+            assignment_task = handle.remote(request)
             client_disconnection_task = loop.create_task(receive())
             done, _ = await asyncio.wait(
-                [assignment_task, client_disconnection_task],
+                [assignment_task.to_obj_ref(), client_disconnection_task],
                 return_when=FIRST_COMPLETED,
             )
             if client_disconnection_task in done:
@@ -629,7 +629,7 @@ class HTTPProxy:
                 client_disconnection_task.cancel()
 
             try:
-                object_ref = await assignment_task
+                object_ref = await assignment_task.to_obj_ref()
 
                 # NOTE (shrekris-anyscale): when the gcs, Serve controller, and
                 # some replicas crash simultaneously (e.g. if the head node crashes),
@@ -728,13 +728,14 @@ class HTTPProxy:
         assignment_task = handle.remote(
             StreamingHTTPRequest(pickle.dumps(scope), self.self_actor_handle)
         )
+        to_gen = asyncio.ensure_future(assignment_task.to_obj_ref_gen())
         done, _ = await asyncio.wait(
-            [assignment_task, disconnected_task],
+            [to_gen, disconnected_task],
             return_when=FIRST_COMPLETED,
             timeout=timeout_s,
         )
-        if assignment_task in done:
-            return assignment_task.result()
+        if to_gen in done:
+            return to_gen.result()
         elif disconnected_task in done:
             assignment_task.cancel()
             return None

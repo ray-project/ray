@@ -6,7 +6,9 @@ from ray import cloudpickle
 
 from ray.serve.deployment import Deployment, schema_to_deployment
 from ray.serve.deployment_graph import RayServeDAGHandle
-from ray.serve._private.constants import DEPLOYMENT_NAME_PREFIX_SEPARATOR
+from ray.serve._private.constants import (
+    DEPLOYMENT_NAME_PREFIX_SEPARATOR, RAY_SERVE_ENABLE_NEW_HANDLE_API
+)
 from ray.serve._private.deployment_method_node import DeploymentMethodNode
 from ray.serve._private.deployment_node import DeploymentNode
 from ray.serve._private.deployment_function_node import DeploymentFunctionNode
@@ -17,7 +19,7 @@ from ray.serve._private.deployment_method_executor_node import (
 from ray.serve._private.deployment_function_executor_node import (
     DeploymentFunctionExecutorNode,
 )
-from ray.serve.handle import RayServeHandle
+from ray.serve.handle import DeploymentHandle, RayServeHandle
 from ray.serve.schema import DeploymentSchema
 
 
@@ -175,7 +177,10 @@ def transform_ray_dag_to_serve_dag(
             if isinstance(node, DeploymentNode) or isinstance(
                 node, DeploymentFunctionNode
             ):
-                return RayServeHandle(node._deployment.name)
+                if RAY_SERVE_ENABLE_NEW_HANDLE_API:
+                    return DeploymentHandle(node._deployment.name)
+                else:
+                    return RayServeHandle(node._deployment.name)
             elif isinstance(node, DeploymentExecutorNode):
                 return node._deployment_handle
 

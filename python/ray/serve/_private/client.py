@@ -20,6 +20,7 @@ from ray.serve._private.constants import (
     CLIENT_POLLING_INTERVAL_S,
     CLIENT_CHECK_CREATION_POLLING_INTERVAL_S,
     MAX_CACHED_HANDLES,
+    RAY_SERVE_ENABLE_NEW_HANDLE_API,
     SERVE_DEFAULT_APP_NAME,
 )
 from ray.serve._private.deploy_utils import get_deploy_args
@@ -30,7 +31,7 @@ from ray.serve.generated.serve_pb2 import StatusOverview as StatusOverviewProto
 from ray.serve.generated.serve_pb2 import (
     DeploymentStatusInfo as DeploymentStatusInfoProto,
 )
-from ray.serve.handle import RayServeHandle, RayServeSyncHandle
+from ray.serve.handle import DeploymentHandle, RayServeHandle, RayServeSyncHandle
 from ray.serve.schema import ServeApplicationSchema, ServeDeploySchema
 
 logger = logging.getLogger(__file__)
@@ -483,7 +484,13 @@ class ServeControllerClient:
         if not missing_ok and deployment_name not in all_endpoints:
             raise KeyError(f"Deployment '{deployment_name}' does not exist.")
 
-        if sync:
+        if RAY_SERVE_ENABLE_NEW_HANDLE_API:
+            handle = DeploymentHandle(
+                deployment_name,
+                _is_for_http_requests=_is_for_http_requests,
+                _is_for_sync_context=sync,
+            )
+        elif sync:
             handle = RayServeSyncHandle(
                 deployment_name,
                 _is_for_http_requests=_is_for_http_requests,

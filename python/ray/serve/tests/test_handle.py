@@ -1,5 +1,6 @@
 import asyncio
 import concurrent.futures
+import sys
 import threading
 
 import pytest
@@ -354,7 +355,4 @@ def test_call_function_with_argument(serve_instance):
 
 
 if __name__ == "__main__":
-    import sys
-    import pytest
-
     sys.exit(pytest.main(["-v", "-s", __file__]))
