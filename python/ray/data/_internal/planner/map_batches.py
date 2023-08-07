@@ -131,8 +131,8 @@ def generate_map_batches_fn(
             yield from process_next_batch(batch)
 
         if not has_batches:
-            # If the input blocks are all empty, then add an empty block to the buffer,
-            # so that the buffer contains some data.
+            # If the input blocks are all empty, then yield an empty block with same
+            # format as the input blocks.
             yield empty_block
         else:
             # Yield remainder block from output buffer.
