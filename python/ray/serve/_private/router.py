@@ -94,8 +94,10 @@ class Query:
         scanner = _PyObjScanner(source_type=DeploymentHandleResultBase)
 
         try:
+            result_to_obj_ref_coros = []
             results = scanner.find_nodes((self.args, self.kwargs))
             for result in results:
+                result_to_obj_ref_coros.append(result.to_obj_ref())
                 if isinstance(result, DeploymentHandleResultGenerator):
                     raise RuntimeError(
                         "Streaming deployment handle results cannot be passed to "
@@ -104,8 +106,8 @@ class Query:
                     )
 
             if len(results) > 0:
-                resolved = await asyncio.gather(*results)
-                replacement_table = dict(zip(results, resolved))
+                obj_refs = await asyncio.gather(*result_to_obj_ref_coros)
+                replacement_table = dict(zip(results, obj_refs))
                 self.args, self.kwargs = scanner.replace_nodes(replacement_table)
         finally:
             # Make the scanner GC-able to avoid memory leaks.
