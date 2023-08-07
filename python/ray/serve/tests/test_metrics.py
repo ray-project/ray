@@ -849,8 +849,8 @@ def test_multiplexed_metrics(serve_start_shutdown):
     # Trigger model eviction.
     handle.remote("model3")
     expected_metrics = [
-        "serve_multiplexed_model_load_latency_s",
-        "serve_multiplexed_model_unload_latency_s",
+        "serve_multiplexed_model_load_latency_ms",
+        "serve_multiplexed_model_unload_latency_ms",
         "serve_num_multiplexed_models",
         "serve_multiplexed_models_load_counter",
         "serve_multiplexed_models_unload_counter",
