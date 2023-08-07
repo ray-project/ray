@@ -14,6 +14,8 @@ from typing import (
     Generator,
 )
 
+# from uuid import uuid4
+
 import ray
 from ray.util.annotations import PublicAPI
 import ray.exceptions
@@ -29,13 +31,11 @@ if TYPE_CHECKING:
 
 
 class RoundRobinActorPool:
-    pool: List["ActorHandle"]
-    index: int = 0
-
     def __init__(self, seq: List["ActorHandle"]) -> None:
         if seq == [] or seq is None:
             raise ValueError("Pool must contain at least one Actor")
         self.pool = seq
+        self.index: int = 0
 
     def next(self) -> "ActorHandle":
         obj = self.pool[self.index]
@@ -50,6 +50,10 @@ class RoundRobinActorPool:
     def get_next(self) -> Generator["ActorHandle", None, None]:
         for obj in self.pool:
             yield obj
+
+    def kill(self) -> None:
+        for actor in self.pool:
+            ray.kill(actor)
 
 
 @PublicAPI(stability="alpha")  # type: ignore
@@ -81,36 +85,44 @@ class RayExecutor(Executor):
     def __init__(
         self,
         max_workers: Optional[int] = None,
-        shutdown_ray: bool = True,
+        shutdown_ray: Optional[bool] = None,
         **kwargs: Any,
     ):
 
-        """
-        Initialise a new RayExecutor instance which distributes tasks over
-        a Ray cluster.
+        """Initialise a new RayExecutor instance which distributes tasks over
+        a Ray cluster. RayExecutor handles existing Ray instances and shutting
+        down as follows:
 
-        self._shutdown_ray:
-            If False, the Ray cluster is not destroyed when self.shutdown() is
-            called. This prevents initialising a new cluster every time the
-            executor is used in a `with` context. Futures will be
-            destroyed regardless of the value of `_shutdown_ray`.
-        self._shutdown_lock:
-            This is set to True once self.shutdown() is called. Further task
-            submissions are blocked.
+            1. If an existing cluster is discovered in the current scope,
+            RayExecutor will simply connect to this cluster. By default, this
+            cluster will not be destroyed when RayExecutor.shutdown() is
+            called.
+
+            2. If no existing cluster is discovered in the current scope,
+            RayExecutor will instantiate a new Ray cluster instance. By
+            default, this cluster will be destroyed when RayExecutor.shutdown()
+            is called.
+
+            3. If RayExecutor.shutdown_ray is set to True or False, this will
+            override the behaviour above.
+
+        self.shutdown_ray:
+            Destroy the Ray cluster when self.shutdown() is called. If this is
+            `None`, RayExecutor will default to shutting down the Ray instance
+            if it was initialised during instantiation of the RayExecutor,
+            otherwise it will not be shutdown (see above).
+
         self.futures:
             Futures are aggregated into this list as they are returned.
-        self.__remote_fn:
-            Wrapper around the remote function to be executed by Ray.
-        self._context:
-            Context containing settings and attributes returned after
-            initialising the Ray client.
-        """
 
-        self._shutdown_ray: bool = shutdown_ray
+        self.actor_pool:
+            An object containing a set of Actor objects over which the tasks will be distributed.
+        """
         self._shutdown_lock: bool = False
+        self._initialised_ray: bool = not ray.is_initialized()
+        self._context: "BaseContext" = ray.init(ignore_reinit_error=True, **kwargs)
         self.futures: List[Future[Any]] = []
-        self._context: "Optional[BaseContext]" = None
-        self.actor_pool: Optional[RoundRobinActorPool] = None
+        self.shutdown_ray = shutdown_ray
 
         @ray.remote
         class ExecutorActor:
@@ -119,8 +131,6 @@ class RayExecutor(Executor):
 
             def actor_function(self, fn: Callable[[], T]) -> T:
                 return fn()
-
-        self._context = ray.init(ignore_reinit_error=True, **kwargs)
 
         if max_workers is None:
             max_workers = int(ray._private.state.cluster_resources()["CPU"])
@@ -131,17 +141,8 @@ class RayExecutor(Executor):
             )
         self.max_workers = max_workers
 
-        if self.actor_pool is not None:
-            for actor in self.actor_pool.pool:
-                del actor
-            del self.actor_pool
         self.actor_pool = RoundRobinActorPool(
-            [
-                ExecutorActor.options(  # type: ignore[attr-defined]
-                    name=f"actor-{i}"
-                ).remote()
-                for i in range(max_workers)
-            ]
+            [ExecutorActor.options().remote() for _ in range(max_workers)]  # type: ignore[attr-defined]
         )
 
     def submit(
@@ -274,20 +275,28 @@ class RayExecutor(Executor):
                 futures. Futures that are completed or running will not be
                 cancelled.
         """
-        if self._shutdown_ray:
-            self._shutdown_lock = True
-
-            if cancel_futures:
-                for future in self.futures:
-                    _ = future.cancel()
-
-            if wait:
-                for future in self.futures:
-                    if future.running():
-                        _ = future.result()
-            ray.shutdown()
+        if self.shutdown_ray is not None:
+            if self.shutdown_ray:
+                self._shutdown_ray(wait, cancel_futures)
+        else:
+            if self._initialised_ray:
+                self._shutdown_ray(wait, cancel_futures)
         del self.futures
         self.futures = []
+
+    def _shutdown_ray(self, wait: bool = True, cancel_futures: bool = False) -> None:
+        self._shutdown_lock = True
+
+        if cancel_futures:
+            for future in self.futures:
+                _ = future.cancel()
+
+        if wait:
+            for future in self.futures:
+                if future.running():
+                    _ = future.result()
+
+        ray.shutdown()
 
     def _check_shutdown_lock(self) -> None:
         if self._shutdown_lock:
