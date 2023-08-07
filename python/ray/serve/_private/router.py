@@ -330,7 +330,8 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
                 "The number of power-of-two-choices scheduling tasks "
                 "run by the router."
             ),
-        )
+            tags=("deployment",),
+        ).set_default_tags({"deployment", self._deployment_name})
 
         self.num_scheduling_tasks_in_backoff = 0
         self.num_scheduling_tasks_in_backoff_gauge = metrics.Gauge(
@@ -339,7 +340,8 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
                 "The number of power-of-two-choices scheduling tasks "
                 "run by the router that are undergoing backoff."
             ),
-        )
+            tags=("deployment",),
+        ).set_default_tags({"deployment", self._deployment_name})
         self.num_scheduling_tasks_in_backoff_gauge.set(
             self.num_scheduling_tasks_in_backoff
         )
