@@ -621,7 +621,7 @@ class ServeDeploySchema(BaseModel, extra=Extra.forbid):
 @dataclass
 class DeploymentStatusOverview:
     status: DeploymentStatus
-    num_replicas: int
+    num_running_replicas: int
     message: str
 
 
@@ -639,23 +639,6 @@ class ApplicationStatusOverview:
 class ServeStatus:
     proxies: Dict[str, HTTPProxyStatus] = field(default_factory=dict)
     applications: Dict[str, ApplicationStatusOverview] = field(default_factory=dict)
-
-
-# @PublicAPI(stability="beta")
-# class ReplicaStatusSchema(BaseModel):
-#     id: str
-#     actor_id: str
-#     node_id: str
-#     state: ReplicaState
-
-
-# @PublicAPI(stability="beta")
-# class DeploymentStatusSchema(BaseModel):
-#     name: str
-#     status: DeploymentStatus
-#     num_replicas: int
-#     replicas: Optional[List[ReplicaStatusSchema]]
-#     message: str = ""
 
 
 @PublicAPI(stability="alpha")
@@ -865,11 +848,13 @@ class ServeInstanceDetails(BaseModel, extra=Extra.forbid):
                     last_deployed_time_s=app.last_deployed_time_s,
                     deployments={
                         deployment_name: DeploymentStatusOverview(
-                            status=d.status,
-                            num_replicas=sum(r.state == "RUNNING" for r in d.replicas),
-                            message=d.message,
+                            status=deployment.status,
+                            num_running_replicas=sum(
+                                r.state == "RUNNING" for r in deployment.replicas
+                            ),
+                            message=deployment.message,
                         )
-                        for deployment_name, d in app.deployments.items()
+                        for deployment_name, deployment in app.deployments.items()
                     },
                 )
                 for app_name, app in self.applications.items()
