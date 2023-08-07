@@ -46,4 +46,14 @@ EOF
 
 USER forge
 
+RUN <<EOF
+#!/bin/bash
+
+set -euo pipefail
+
+echo "build --config=ci" > ~/.bazelrc
+echo "build --announce_rc" >> ~/.bazelrc
+
+EOF
+
 CMD ["echo", "ray forge"]
