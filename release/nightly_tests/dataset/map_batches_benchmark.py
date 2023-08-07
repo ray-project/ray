@@ -152,23 +152,22 @@ def run_map_batches_benchmark(benchmark: Benchmark):
     num_output_blocks = [10, 100, 1000]
     input_size = 1024 * 1024
     batch_size = 1024
-    num_output_blocks = [1, 10, 100]
     ray.data.DataContext.get_current().target_max_block_size = 1024 * 1024
     input_ds = (
         ray.data.range(input_size).repartition(input_size // batch_size).materialize()
     )
 
     def map_batches_fn(num_output_blocks, batch):
-        total_output_size = (
-            num_output_blocks * ray.data.DataContext.get_current().target_max_block_size
+        per_row_output_size = (
+            ray.data.DataContext.get_current().target_max_block_size // len(batch["id"])
         )
-        per_row_output_size = total_output_size // len(batch["id"])
-        return {
-            "data": [
-                np.zeros(shape=(per_row_output_size,), dtype=np.int8)
-                for _ in range(len(batch["id"]))
-            ]
-        }
+        for _ in range(num_output_blocks):
+            yield {
+                "data": [
+                    np.zeros(shape=(per_row_output_size,), dtype=np.int8)
+                    for _ in range(len(batch["id"]))
+                ]
+            }
 
     for num_blocks in num_output_blocks:
         test_name = f"map-batches-multiple-output-blocks-{num_blocks}"
