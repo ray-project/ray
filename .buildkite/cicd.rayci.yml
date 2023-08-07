@@ -1,0 +1,7 @@
+group: CI/CD infra
+steps:
+  - label: "CI/CD: ray_ci tooling"
+    commands:
+      # TODO(aslonnie): wrap this in a script, and upload test telemetry.
+      - bazel test --test_tag_filters=ci_unit //ci/ray_ci/...
+    depends_on: forge
