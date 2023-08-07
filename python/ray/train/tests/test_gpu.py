@@ -3,7 +3,6 @@ import time
 
 from unittest.mock import patch
 import pytest
-import numpy as np
 import torch
 import torchvision
 from torch.nn.parallel import DistributedDataParallel
