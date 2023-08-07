@@ -253,7 +253,7 @@ std::string ClusterResourceScheduler::DebugString(void) const {
   std::stringstream buffer;
   buffer << "\nLocal id: " << local_node_id_.ToInt();
   buffer << " Local resources: " << local_resource_manager_->DebugString();
-  cluster_resource_manager_->DebugString(buffer);
+  buffer << " Cluster resources: " << cluster_resource_manager_->DebugString();
   return buffer.str();
 }
 

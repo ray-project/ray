@@ -701,14 +701,14 @@ Status NodeResourceInfoAccessor::AsyncGetAllAvailableResources(
 }
 
 Status NodeResourceInfoAccessor::AsyncGetDrainingNodes(
-    const ItemCallback<std::vector<std::string>> &callback) {
+    const ItemCallback<std::vector<NodeID>> &callback) {
   rpc::GetDrainingNodesRequest request;
   client_impl_->GetGcsRpcClient().GetDrainingNodes(
       request, [callback](const Status &status, const rpc::GetDrainingNodesReply &reply) {
         RAY_CHECK_OK(status);
-        std::vector<std::string> draining_nodes;
+        std::vector<NodeID> draining_nodes;
         for (const auto &node_id : VectorFromProtobuf(reply.node_ids())) {
-          draining_nodes.emplace_back(node_id);
+          draining_nodes.emplace_back(NodeID::FromBinary(node_id));
         }
         callback(draining_nodes);
       });

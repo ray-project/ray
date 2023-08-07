@@ -78,6 +78,7 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler,
       rpc::GetAllAvailableResourcesReply *reply,
       rpc::SendReplyCallback send_reply_callback) override;
 
+  /// Handle get ids of draining nodes.
   void HandleGetDrainingNodes(rpc::GetDrainingNodesRequest request,
                               rpc::GetDrainingNodesReply *reply,
                               rpc::SendReplyCallback send_reply_callback) override;

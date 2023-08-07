@@ -440,8 +440,11 @@ class NodeResourceInfoAccessor {
   virtual Status AsyncGetAllAvailableResources(
       const MultiItemCallback<rpc::AvailableResources> &callback);
 
-  virtual Status AsyncGetDrainingNodes(
-      const ItemCallback<std::vector<std::string>> &callback);
+  /// Get ids of draining nodes from GCS asynchronously.
+  ///
+  /// \param callback Callback that will be called after lookup finishes.
+  /// \return Status
+  virtual Status AsyncGetDrainingNodes(const ItemCallback<std::vector<NodeID>> &callback);
 
   /// Reestablish subscription.
   /// This should be called when GCS server restarts from a failure.

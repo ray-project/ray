@@ -18,6 +18,7 @@
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "ray/common/asio/instrumented_io_context.h"
+#include "ray/gcs/gcs_server/test/gcs_server_test_util.h"
 #include "ray/gcs/test/gcs_test_util.h"
 #include "ray/raylet/scheduling/cluster_resource_manager.h"
 #include "mock/ray/gcs/gcs_server/gcs_placement_group_manager.h"
@@ -42,6 +43,8 @@ class GcsAutoscalerStateManagerTest : public ::testing::Test {
 
  protected:
   instrumented_io_context io_service_;
+  std::shared_ptr<GcsServerMocker::MockRayletClient> raylet_client_;
+  std::shared_ptr<rpc::NodeManagerClientPool> client_pool_;
   std::unique_ptr<ClusterResourceManager> cluster_resource_manager_;
   std::shared_ptr<GcsResourceManager> gcs_resource_manager_;
   std::shared_ptr<MockGcsNodeManager> gcs_node_manager_;
@@ -49,6 +52,9 @@ class GcsAutoscalerStateManagerTest : public ::testing::Test {
   std::shared_ptr<MockGcsPlacementGroupManager> gcs_placement_group_manager_;
 
   void SetUp() override {
+    raylet_client_ = std::make_shared<GcsServerMocker::MockRayletClient>();
+    client_pool_ = std::make_shared<rpc::NodeManagerClientPool>(
+        [this](const rpc::Address &) { return raylet_client_; });
     cluster_resource_manager_ = std::make_unique<ClusterResourceManager>(io_service_);
     gcs_resource_manager_ = std::make_shared<GcsResourceManager>(
         io_service_, *cluster_resource_manager_, NodeID::FromRandom());
@@ -61,7 +67,8 @@ class GcsAutoscalerStateManagerTest : public ::testing::Test {
                                       *cluster_resource_manager_,
                                       *gcs_resource_manager_,
                                       *gcs_node_manager_,
-                                      *gcs_placement_group_manager_));
+                                      *gcs_placement_group_manager_,
+                                      client_pool_));
   }
 
  public:
@@ -130,14 +137,16 @@ class GcsAutoscalerStateManagerTest : public ::testing::Test {
       const absl::flat_hash_map<std::string, double> &available_resources,
       const absl::flat_hash_map<std::string, double> &total_resources,
       bool available_resources_changed,
-      int64_t idle_ms = 0) {
+      int64_t idle_ms = 0,
+      bool is_draining = false) {
     rpc::ResourcesData resources_data;
     Mocker::FillResourcesData(resources_data,
                               node_id,
                               available_resources,
                               total_resources,
                               available_resources_changed,
-                              idle_ms);
+                              idle_ms,
+                              is_draining);
     gcs_resource_manager_->UpdateFromResourceReport(resources_data);
   }
 
@@ -663,6 +672,40 @@ TEST_F(GcsAutoscalerStateManagerTest, TestReportAutoscalingState) {
   }
 }
 
+TEST_F(GcsAutoscalerStateManagerTest, TestDrainingStatus) {
+  auto node = Mocker::GenNodeInfo();
+
+  // Adding a node.
+  node->mutable_resources_total()->insert({"CPU", 2});
+  node->mutable_resources_total()->insert({"GPU", 1});
+  node->set_instance_id("instance_1");
+  AddNode(node);
+
+  {
+    const auto &state = GetClusterResourceStateSync();
+    ASSERT_EQ(state.node_states(0).status(), rpc::autoscaler::NodeStatus::RUNNING);
+  }
+
+  // Report draining info.
+  UpdateFromResourceReportSync(NodeID::FromBinary(node->node_id()),
+                               {/* available */ {"CPU", 2}, {"GPU", 1}},
+                               /* total*/ {{"CPU", 2}, {"GPU", 1}},
+                               /* available_changed*/ true,
+                               /* idle_duration_ms */ 10,
+                               /* is_draining */ true);
+  {
+    const auto &state = GetClusterResourceStateSync();
+    ASSERT_EQ(state.node_states(0).status(), rpc::autoscaler::NodeStatus::DRAINING);
+  }
+
+  // Dead node should make it no longer draining.
+  {
+    RemoveNode(node);
+    const auto &state = GetClusterResourceStateSync();
+    ASSERT_EQ(state.node_states(0).status(), rpc::autoscaler::NodeStatus::DEAD);
+  }
+}
+
 TEST_F(GcsAutoscalerStateManagerTest, TestIdleTime) {
   auto node = Mocker::GenNodeInfo();
 
@@ -702,7 +745,6 @@ TEST_F(GcsAutoscalerStateManagerTest, TestIdleTime) {
   // Dead node should make it no longer idle.
   {
     RemoveNode(node);
-    gcs_resource_manager_->OnNodeDead(NodeID::FromBinary(node->node_id()));
     const auto &state = GetClusterResourceStateSync();
     ASSERT_EQ(state.node_states_size(), 1);
     CheckNodeResources(state.node_states(0),

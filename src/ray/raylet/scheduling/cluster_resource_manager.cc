@@ -291,12 +291,14 @@ bool ClusterResourceManager::UpdateNodeNormalTaskResources(
   return false;
 }
 
-void ClusterResourceManager::DebugString(std::stringstream &buffer) const {
+std::string ClusterResourceManager::DebugString() const {
+  std::stringstream buffer;
   for (auto &node : GetResourceView()) {
     buffer << "node id: " << node.first.ToInt();
     buffer << node.second.GetLocalView().DebugString();
   }
-  buffer << bundle_location_index_.DebugString();
+  buffer << " " << bundle_location_index_.DebugString();
+  return buffer.str();
 }
 
 BundleLocationIndex &ClusterResourceManager::GetBundleLocationIndex() {

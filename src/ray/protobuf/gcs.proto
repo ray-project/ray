@@ -540,6 +540,7 @@ message ResourcesData {
   // The duration in ms during which all the node's resources are idle. If the
   // node currently has any resource being used, this will be 0.
   int64 idle_duration_ms = 15;
+  // Whether the node is being drained.
   bool is_draining = 16;
   // Last unused = 17
 }

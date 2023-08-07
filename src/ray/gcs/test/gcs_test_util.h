@@ -314,7 +314,8 @@ struct Mocker {
       const absl::flat_hash_map<std::string, double> &available_resources,
       const absl::flat_hash_map<std::string, double> &total_resources,
       bool available_resources_changed,
-      int64_t idle_ms = 0) {
+      int64_t idle_ms = 0,
+      bool is_draining = false) {
     resources_data.set_node_id(node_id.Binary());
     for (const auto &resource : available_resources) {
       (*resources_data.mutable_resources_available())[resource.first] = resource.second;
@@ -324,6 +325,7 @@ struct Mocker {
     }
     resources_data.set_resources_available_changed(available_resources_changed);
     resources_data.set_idle_duration_ms(idle_ms);
+    resources_data.set_is_draining(is_draining);
   }
 
   static void FillResourcesData(rpc::ResourcesData &data,

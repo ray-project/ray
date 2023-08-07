@@ -137,6 +137,7 @@ class GcsAutoscalerStateManager : public rpc::autoscaler::AutoscalerStateHandler
   /// GCS placement group manager reference.
   const GcsPlacementGroupManager &gcs_placement_group_manager_;
 
+  /// Raylet client pool.
   std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool_;
 
   // The default value of the last seen version for the request is 0, which indicates

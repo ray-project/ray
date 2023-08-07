@@ -134,7 +134,7 @@ class ClusterResourceManager {
     return node.GetLocalView().is_draining;
   }
 
-  void DebugString(std::stringstream &buffer) const;
+  std::string DebugString() const;
 
   BundleLocationIndex &GetBundleLocationIndex();
 
