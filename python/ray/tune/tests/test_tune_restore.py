@@ -26,7 +26,7 @@ from ray.tune.callback import Callback
 from ray.tune.search.basic_variant import BasicVariantGenerator
 from ray.tune.search import Searcher
 from ray.tune.experiment import Trial
-from ray.tune.execution.trial_runner import TrialRunner
+from ray.tune.execution.tune_controller import TuneController
 from ray.tune.utils import validate_save_restore
 from ray.tune.utils.mock_trainable import MyTrainableClass
 
@@ -618,7 +618,7 @@ class TrainableCrashWithFailFast(unittest.TestCase):
             raise RuntimeError("Error happens in trainable!!")
 
         with self.assertRaisesRegex(RayTaskError, "Error happens in trainable!!"):
-            tune.run(f, fail_fast=TrialRunner.RAISE)
+            tune.run(f, fail_fast=TuneController.RAISE)
 
 
 # For some reason, different tests are coupled through tune.registry.
