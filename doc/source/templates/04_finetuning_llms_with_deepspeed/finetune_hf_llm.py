@@ -306,22 +306,21 @@ def training_function(kwargs: dict):
     # Creates Dummy Scheduler if `scheduler` was spcified in the config file else
     # creates `args.lr_scheduler_type` Scheduler
     # get train and valid dataset lengths
-
+    
     if (
         accelerator.state.deepspeed_plugin is None
         or "scheduler" not in accelerator.state.deepspeed_plugin.deepspeed_config
     ):
         lr_scheduler = get_linear_schedule_with_warmup(
             optimizer=optimizer,
-            num_warmup_steps=10 * batch_size,
-            num_training_steps=(train_ds_len * num_epochs * batch_size)
-            // gradient_accumulation_steps,
+            num_warmup_steps=int((num_epochs * train_ds_len / 20)),
+            num_training_steps=(num_epochs * train_ds_len * 2),
         )
     else:
         lr_scheduler = DummyScheduler(
             optimizer,
-            total_num_steps=(train_ds_len * num_epochs * batch_size) // gradient_accumulation_steps,
-            warmup_num_steps=10 * batch_size,
+            total_num_steps=(num_epochs * train_ds_len * 2),
+            warmup_num_steps=int((num_epochs * train_ds_len / 20)),
         )
 
     # Prepare everything
