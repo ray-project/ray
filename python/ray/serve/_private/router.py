@@ -324,12 +324,24 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         self._pending_requests_to_fulfill: Deque[PendingRequest] = deque()
         self._pending_requests_to_schedule: Deque[PendingRequest] = deque()
 
-        self.num_router_scheduling_tasks = metrics.Gauge(
+        self.num_scheduling_tasks_gauge = metrics.Gauge(
             "serve_num_power_of_two_choices_scheduling_tasks",
             description=(
                 "The number of power-of-two-choices scheduling tasks "
                 "run by the router."
             ),
+        )
+
+        self.num_scheduling_tasks_in_backoff = 0
+        self.num_scheduling_tasks_in_backoff_gauge = metrics.Gauge(
+            "serve_num_power_of_two_choices_scheduling_tasks_in_backoff",
+            description=(
+                "The number of power-of-two-choices scheduling tasks "
+                "run by the router that are undergoing backoff."
+            ),
+        )
+        self.num_scheduling_tasks_in_backoff_gauge.set(
+            self.num_scheduling_tasks_in_backoff
         )
 
     @property
@@ -427,42 +439,59 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         backoff sleep time.
         """
 
-        backoff_index = 0
-        replica_ids_attempted = set()
-        while True:
-            # If no replicas are available, wait until `update_replicas` is called.
-            while len(self._replicas) == 0:
-                logger.info(
-                    "Tried to assign replica for deployment "
-                    f"{self._deployment_name} but none are available. "
-                    "Waiting for new replicas to be added.",
-                    extra={"log_to_stderr": False},
+        try:
+            backoff_index = 0
+            entered_backoff = False
+            replica_ids_attempted = set()
+            while True:
+                # If no replicas are available, wait until `update_replicas` is called.
+                while len(self._replicas) == 0:
+                    logger.info(
+                        "Tried to assign replica for deployment "
+                        f"{self._deployment_name} but none are available. "
+                        "Waiting for new replicas to be added.",
+                        extra={"log_to_stderr": False},
+                    )
+                    self._replicas_updated_event.clear()
+                    await self._replicas_updated_event.wait()
+                    logger.info(
+                        (
+                            "Got replicas for deployment "
+                            "{self._deployment_name}, waking up."
+                        ),
+                        extra={"log_to_stderr": False},
+                    )
+
+                # Get candidates to sample from; this will exclude replicas used in a
+                # previous iteration until all replicas have been tried.
+                candidate_replica_ids = self._get_candidate_replica_ids(
+                    replica_ids_attempted, request_metadata
                 )
-                self._replicas_updated_event.clear()
-                await self._replicas_updated_event.wait()
-                logger.info(
-                    "Got replicas for deployment {self._deployment_name}, waking up.",
-                    extra={"log_to_stderr": False},
+                chosen_ids = random.sample(
+                    list(candidate_replica_ids), k=min(2, len(candidate_replica_ids))
+                )
+                yield [self._replicas[chosen_id] for chosen_id in chosen_ids]
+
+                entered_backoff = True
+                self.num_scheduling_tasks_in_backoff += 1
+                self.num_scheduling_tasks_in_backoff_gauge.set(
+                    self.num_scheduling_tasks_in_backoff
                 )
 
-            # Get candidates to sample from; this will exclude replicas used in a
-            # previous iteration until all replicas have been tried.
-            candidate_replica_ids = self._get_candidate_replica_ids(
-                replica_ids_attempted, request_metadata
-            )
-            chosen_ids = random.sample(
-                list(candidate_replica_ids), k=min(2, len(candidate_replica_ids))
-            )
-            yield [self._replicas[chosen_id] for chosen_id in chosen_ids]
+                # If another iteration occurrs, the chosen replicas did not accept the
+                # request. Blacklist them until we've attempted all replicas.
+                replica_ids_attempted.update(chosen_ids)
+                if replica_ids_attempted.issuperset(self._replica_id_set):
+                    replica_ids_attempted.clear()
 
-            # If another iteration occurrs, the chosen replicas did not accept the
-            # request. Blacklist them until we've attempted all replicas.
-            replica_ids_attempted.update(chosen_ids)
-            if replica_ids_attempted.issuperset(self._replica_id_set):
-                replica_ids_attempted.clear()
-
-            await asyncio.sleep(self.backoff_sequence_s[backoff_index])
-            backoff_index = min(backoff_index + 1, len(self.backoff_sequence_s) - 1)
+                await asyncio.sleep(self.backoff_sequence_s[backoff_index])
+                backoff_index = min(backoff_index + 1, len(self.backoff_sequence_s) - 1)
+        finally:
+            if entered_backoff:
+                self.num_scheduling_tasks_in_backoff -= 1
+                self.num_scheduling_tasks_in_backoff_gauge.set(
+                    self.num_scheduling_tasks_in_backoff
+                )
 
     async def select_from_candidate_replicas(
         self, candidates: List[ReplicaWrapper]
@@ -602,7 +631,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
             logger.exception("Unexpected error in fulfill_pending_requests.")
         finally:
             self._scheduling_tasks.remove(asyncio.current_task(loop=self._loop))
-            self.num_router_scheduling_tasks.set(len(self._scheduling_tasks))
+            self.num_scheduling_tasks_gauge.set(len(self._scheduling_tasks))
 
     def maybe_start_scheduling_tasks(self):
         """Start scheduling tasks to fulfill pending requests if necessary.
@@ -622,7 +651,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
                 self._loop.create_task(self.fulfill_pending_requests())
             )
         if len(tasks_to_start) > 0:
-            self.num_router_scheduling_tasks.set(len(self._scheduling_tasks))
+            self.num_scheduling_tasks_gauge.set(len(self._scheduling_tasks))
 
     async def choose_replica_for_query(self, query: Query) -> ReplicaWrapper:
         """Chooses a replica to send the provided request to.
