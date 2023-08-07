@@ -50,6 +50,7 @@ def _handle_headers(headers: Optional[str]) -> Optional[Dict[str, Any]]:
                     headers
                 )
             )
+    return None
 
 
 def _log_big_success_msg(success_msg):
