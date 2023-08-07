@@ -119,8 +119,8 @@ def test_max_len():
 def test_current_best_trial():
     t1 = Trial("__fake", stub=True)
     t2 = Trial("__fake", stub=True)
-    t1.last_result = {"metric": 2}
-    t2.last_result = {"metric": 1}
+    t1.runtime_metadata.last_result = {"metric": 2}
+    t2.runtime_metadata.last_result = {"metric": 1}
     assert _current_best_trial([t1, t2], metric="metric", mode="min") == (t2, "metric")
 
 

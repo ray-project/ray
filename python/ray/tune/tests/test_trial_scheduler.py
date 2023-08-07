@@ -35,6 +35,7 @@ from ray.tune.search import ConcurrencyLimiter
 from ray.tune.experiment import Trial
 
 from ray.rllib import _register_all
+from ray.tune.trainable.metadata import _TrainingRuntimeMetadata
 
 _register_all()
 
@@ -875,7 +876,8 @@ class _MockTrial(Trial):
         self._legacy_local_experiment_path = None
         self.relative_logdir = None
         self._default_result_or_future = None
-        self.checkpoint_manager = _CheckpointManager(
+        self.runtime_metadata = _TrainingRuntimeMetadata()
+        self.runtime_metadata.checkpoint_manager = _CheckpointManager(
             checkpoint_config=CheckpointConfig(
                 num_to_keep=2,
                 checkpoint_score_attribute="episode_reward_mean",
