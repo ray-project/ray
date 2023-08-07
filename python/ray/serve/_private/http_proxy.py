@@ -140,6 +140,7 @@ class LongestPrefixRouter:
                         RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING
                         and not info.app_is_cross_language
                     ),
+                    use_new_handle_api=True,
                 )
 
         # Clean up any handles that are no longer used.
@@ -606,10 +607,10 @@ class HTTPProxy:
         # call might never arrive; if it does, it can only be `http.disconnect`.
         while retries < HTTP_REQUEST_MAX_RETRIES + 1:
             should_backoff = False
-            assignment_task = handle.remote(request)
+            result_ref = handle.remote(request)
             client_disconnection_task = loop.create_task(receive())
             done, _ = await asyncio.wait(
-                [assignment_task.to_obj_ref(), client_disconnection_task],
+                [result_ref.to_obj_ref(), client_disconnection_task],
                 return_when=FIRST_COMPLETED,
             )
             if client_disconnection_task in done:
@@ -623,14 +624,11 @@ class HTTPProxy:
                     "request.",
                     extra={"log_to_stderr": False},
                 )
-                # This will make the .result() to raise cancelled error.
-                assignment_task.cancel()
+                result_ref.cancel()
             else:
                 client_disconnection_task.cancel()
 
             try:
-                object_ref = await assignment_task.to_obj_ref()
-
                 # NOTE (shrekris-anyscale): when the gcs, Serve controller, and
                 # some replicas crash simultaneously (e.g. if the head node crashes),
                 # requests to the dead replicas hang until the gcs recovers.
@@ -639,7 +637,7 @@ class HTTPProxy:
                 # check if latency drops significantly. See
                 # https://github.com/ray-project/ray/pull/29534 for more info.
                 _, request_timed_out = await asyncio.wait(
-                    [object_ref], timeout=self.request_timeout_s
+                    [result_ref], timeout=self.request_timeout_s
                 )
                 if request_timed_out:
                     logger.info(
@@ -650,7 +648,7 @@ class HTTPProxy:
                     )
                     should_backoff = True
                 else:
-                    result = await object_ref
+                    result = await result_ref
                     break
             except asyncio.CancelledError:
                 # Here because the client disconnected, we will return a custom

@@ -130,13 +130,20 @@ class DeploymentHandleBase:
         method_name: Union[str, DEFAULT] = DEFAULT.VALUE,
         multiplexed_model_id: Union[str, DEFAULT] = DEFAULT.VALUE,
         stream: Union[bool, DEFAULT] = DEFAULT.VALUE,
+        use_new_handle_api: Union[bool, DEFAULT] = DEFAULT.VALUE,
     ):
         new_handle_options = self.handle_options.copy_and_update(
             method_name=method_name,
             multiplexed_model_id=multiplexed_model_id,
             stream=stream,
         )
-        return self.__class__(
+
+        if use_new_handle_api is True:
+            cls = DeploymentHandle
+        else:
+            cls = self.__class__
+
+        return cls(
             self.deployment_name,
             handle_options=new_handle_options,
             _router=self._router,
@@ -238,6 +245,7 @@ class RayServeHandle(DeploymentHandleBase):
         method_name: Union[str, DEFAULT] = DEFAULT.VALUE,
         multiplexed_model_id: Union[str, DEFAULT] = DEFAULT.VALUE,
         stream: Union[bool, DEFAULT] = DEFAULT.VALUE,
+        use_new_handle_api: Union[bool, DEFAULT] = DEFAULT.VALUE,
     ) -> "RayServeHandle":
         """Set options for this handle and return an updated copy of it.
 
@@ -255,11 +263,10 @@ class RayServeHandle(DeploymentHandleBase):
             method_name=method_name,
             multiplexed_model_id=multiplexed_model_id,
             stream=stream,
+            use_new_handle_api=use_new_handle_api,
         )
 
-    def remote(
-        self, *args, **kwargs
-    ) -> asyncio.Task:
+    def remote(self, *args, **kwargs) -> asyncio.Task:
         """Issue an asynchronous request to the __call__ method of the deployment.
 
         Returns an `asyncio.Task` whose underlying result is a Ray ObjectRef that
@@ -279,7 +286,8 @@ class RayServeHandle(DeploymentHandleBase):
         result_coro = self._remote(
             self.deployment_name, self.handle_options, args, kwargs
         )
-        return asyncio.ensure_future(result_coro)
+        return asyncio.ensure_future(result_coro, loop=loop)
+
 
 @PublicAPI(stability="beta")
 class RayServeSyncHandle(DeploymentHandleBase):
@@ -313,6 +321,7 @@ class RayServeSyncHandle(DeploymentHandleBase):
         method_name: Union[str, DEFAULT] = DEFAULT.VALUE,
         multiplexed_model_id: Union[str, DEFAULT] = DEFAULT.VALUE,
         stream: Union[bool, DEFAULT] = DEFAULT.VALUE,
+        use_new_handle_api: Union[bool, DEFAULT] = DEFAULT.VALUE,
     ) -> "RayServeSyncHandle":
         """Set options for this handle and return an updated copy of it.
 
@@ -330,6 +339,7 @@ class RayServeSyncHandle(DeploymentHandleBase):
             method_name=method_name,
             multiplexed_model_id=multiplexed_model_id,
             stream=stream,
+            use_new_handle_api=use_new_handle_api,
         )
 
     def remote(self, *args, **kwargs) -> ray.ObjectRef:
@@ -368,12 +378,10 @@ class DeploymentHandleResultBase(asyncio.Task):
     ):
         asyncio.Task.__init__(self, assign_request_coro, loop=loop)
         self._obj_ref_future = asyncio.Future(loop=loop)
-        super().add_done_callback(
-            lambda t: self._obj_ref_future.set_result(t.result())
-        )
+        super().add_done_callback(lambda t: self._obj_ref_future.set_result(t.result()))
 
 
-class DeploymentHandleResult(DeploymentHandleResultBase):
+class DeploymentHandleResultRef(DeploymentHandleResultBase):
     def __await__(self):
         obj_ref = yield from super().__await__()
         result = yield from obj_ref.__await__()
@@ -474,6 +482,7 @@ class DeploymentHandle(DeploymentHandleBase):
         method_name: Union[str, DEFAULT] = DEFAULT.VALUE,
         multiplexed_model_id: Union[str, DEFAULT] = DEFAULT.VALUE,
         stream: Union[bool, DEFAULT] = DEFAULT.VALUE,
+        use_new_handle_api: Union[bool, DEFAULT] = DEFAULT.VALUE,
     ) -> "DeploymentHandle":
         """Set options for this handle and return an updated copy of it.
 
@@ -491,11 +500,12 @@ class DeploymentHandle(DeploymentHandleBase):
             method_name=method_name,
             multiplexed_model_id=multiplexed_model_id,
             stream=stream,
+            use_new_handle_api=use_new_handle_api,
         )
 
     def remote(
         self, *args, **kwargs
-    ) -> Union[DeploymentHandleResult, DeploymentHandleResultGenerator]:
+    ) -> Union[DeploymentHandleResultRef, DeploymentHandleResultGenerator]:
         """Issue an asynchronous request to the __call__ method of the deployment.
 
         Returns an `asyncio.Task` whose underlying result is a Ray ObjectRef that
@@ -518,4 +528,4 @@ class DeploymentHandle(DeploymentHandleBase):
         if self.handle_options.stream:
             return DeploymentHandleResultGenerator(result_coro, loop=loop)
         else:
-            return DeploymentHandleResult(result_coro, loop=loop)
+            return DeploymentHandleResultRef(result_coro, loop=loop)

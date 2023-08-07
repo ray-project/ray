@@ -7,7 +7,8 @@ from ray import cloudpickle
 from ray.serve.deployment import Deployment, schema_to_deployment
 from ray.serve.deployment_graph import RayServeDAGHandle
 from ray.serve._private.constants import (
-    DEPLOYMENT_NAME_PREFIX_SEPARATOR, RAY_SERVE_ENABLE_NEW_HANDLE_API
+    DEPLOYMENT_NAME_PREFIX_SEPARATOR,
+    RAY_SERVE_ENABLE_NEW_HANDLE_API,
 )
 from ray.serve._private.deployment_method_node import DeploymentMethodNode
 from ray.serve._private.deployment_node import DeploymentNode
