@@ -149,10 +149,12 @@ def run_map_batches_benchmark(benchmark: Benchmark):
 
     # Test map_batches whose output is large and will be split into multiple blocks.
     # With the following configuration, the total data size is (num_output_blocks * 1GB).
-    num_output_blocks = [10, 100, 1000]
+    num_output_blocks = [10, 50, 100]
     input_size = 1024 * 1024
     batch_size = 1024
     ray.data.DataContext.get_current().target_max_block_size = 1024 * 1024
+    # Disable PhysicalOperator fusion.
+    ray.data._internal.logical.optimizers.PHYSICAL_OPTIMIZER_RULES = []
     input_ds = (
         ray.data.range(input_size).repartition(input_size // batch_size).materialize()
     )
@@ -172,32 +174,45 @@ def run_map_batches_benchmark(benchmark: Benchmark):
     for num_blocks in num_output_blocks:
         test_name = f"map-batches-multiple-output-blocks-{num_blocks}"
 
+        return_ds = None
+
         def test_fn():
+            nonlocal return_ds
+
             ds = input_ds.map_batches(
                 lambda batch: map_batches_fn(num_blocks, batch),
                 batch_size=batch_size,
                 batch_format="numpy",
             )
+            # Apply a second map_batches to caculate the output size and reduce
+            # the amount of data to be materialized.
             ds = ds.map_batches(
                 lambda batch: {"data_size": [sum(x.nbytes for x in batch["data"])]},
                 batch_size=batch_size,
                 batch_format="numpy",
             )
             ds = ds.materialize()
-            total_size = ds.sum("data_size")
-            expected_total_size = (
-                input_size
-                * num_blocks
-                * ray.data.DataContext.get_current().target_max_block_size
-                // batch_size
-            )
-            assert total_size == expected_total_size
+            return_ds = ds
             return ds
 
         benchmark.run(
             test_name,
             test_fn,
         )
+
+        # Check the total size of the output is correct.
+        # Note, do this after the benchmark to avoid couting its time.
+        total_size = sum(
+            sum(batch["data_size"])
+            for batch in return_ds.iter_batches(batch_size=batch_size)
+        )
+        expected_total_size = (
+            input_size
+            * num_blocks
+            * ray.data.DataContext.get_current().target_max_block_size
+            // batch_size
+        )
+        assert total_size == expected_total_size, (total_size, expected_total_size)
 
 
 if __name__ == "__main__":
