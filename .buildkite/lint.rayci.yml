@@ -1,0 +1,5 @@
+group: :book: lint
+steps:
+  - label: "clang-format"
+    commands:
+      - ./ci/lint/check-git-clang-format-output.sh

@@ -29,7 +29,7 @@ curl -fsSL https://deb.nodesource.com/setup_18.x | bash -
 
 apt-get update
 apt-get install -y \
-  awscli docker-ce-cli nodejs build-essential python-is-python3
+  awscli docker-ce-cli nodejs build-essential clang-format-12 python-is-python3
 
 # Needs to be synchronized to the host group id as we map /var/run/docker.sock
 # into the container.
