@@ -1,6 +1,5 @@
 import asyncio
 import concurrent.futures
-import sys
 import threading
 
 import pytest
@@ -160,7 +159,7 @@ def test_handle_in_endpoint(serve_instance):
             self.handle = handle
 
         async def __call__(self, _):
-            return await self.handle.remote().get()
+            return await (await self.handle.remote())
 
     end_p1 = Endpoint1.bind()
     end_p2 = Endpoint2.bind(end_p1)
@@ -299,7 +298,7 @@ async def test_handle_across_loops(serve_instance):
 
     async def refresh_get():
         handle = A.get_handle(sync=False)
-        assert await handle.exists.remote().get()
+        assert await (await handle.exists.remote())
 
     for _ in range(10):
         loop = _get_asyncio_loop_running_in_thread()
@@ -308,7 +307,7 @@ async def test_handle_across_loops(serve_instance):
     handle = A.get_handle(sync=False)
 
     async def cache_get():
-        assert await handle.exists.remote().get()
+        assert await (await handle.exists.remote())
 
     for _ in range(10):
         loop = _get_asyncio_loop_running_in_thread()
@@ -348,11 +347,14 @@ def test_call_function_with_argument(serve_instance):
             self._h = h
 
         async def __call__(self, name: str):
-            return await self._h.remote(name).get()
+            return await (await self._h.remote(name))
 
     h = serve.run(Ingress.bind(echo.bind()))
     assert ray.get(h.remote("sned")) == "Hi sned"
 
 
 if __name__ == "__main__":
+    import sys
+    import pytest
+
     sys.exit(pytest.main(["-v", "-s", __file__]))
