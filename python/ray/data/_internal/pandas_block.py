@@ -66,10 +66,13 @@ class PandasRow(TableRow):
             return None
 
         items = col.iloc[0]
-        if isinstance(items, TensorArrayElement):
+        if isinstance(items[0], TensorArrayElement):
             # Getting an item in a Pandas tensor column may return a TensorArrayElement,
             # which we have to convert to an ndarray.
-            items = items.to_numpy()
+            if is_single_item:
+                return items[0].to_numpy()
+
+            return [item.to_numpy() for item in items]
 
         try:
             # Try to interpret this as a numpy-type value.
@@ -77,7 +80,7 @@ class PandasRow(TableRow):
             if is_single_item:
                 return items[0].as_py()
 
-            return tuple([item.item() for item in items])
+            return tuple([item.as_py() for item in items])
         except (AttributeError, ValueError):
             # Fallback to the original form.
             if is_single_item:
