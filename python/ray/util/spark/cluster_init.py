@@ -756,8 +756,8 @@ _worker_node_option_block_keys = {
     "block": None,
     "head": None,
     "address": None,
-    "num_cpus": "num_cpus_per_node",
-    "num_gpus": "num_gpus_per_node",
+    "num_cpus": "num_cpus_worker_node",
+    "num_gpus": "num_gpus_worker_node",
     "memory": None,
     "object_store_memory": "object_store_memory_per_node",
     "dashboard_agent_listen_port": None,
@@ -978,7 +978,7 @@ def setup_ray_cluster(
     num_spark_task_cpus = int(spark.sparkContext.getConf().get("spark.task.cpus", "1"))
 
     if num_cpus_worker_node is not None and num_cpus_worker_node <= 0:
-        raise ValueError("Argument `num_cpus_per_node` value must be > 0.")
+        raise ValueError("Argument `num_cpus_worker_node` value must be > 0.")
 
     num_spark_task_gpus = int(
         spark.sparkContext.getConf().get("spark.task.resource.gpu.amount", "0")
@@ -987,11 +987,11 @@ def setup_ray_cluster(
     if num_gpus_worker_node is not None and num_spark_task_gpus == 0:
         raise ValueError(
             "The spark cluster worker nodes are not configured with 'gpu' resources, so that "
-            "you cannot specify the `num_gpus_per_node` argument."
+            "you cannot specify the `num_gpus_worker_node` argument."
         )
 
     if num_gpus_worker_node is not None and num_gpus_worker_node < 0:
-        raise ValueError("Argument `num_gpus_per_node` value must be >= 0.")
+        raise ValueError("Argument `num_gpus_worker_node` value must be >= 0.")
 
     if num_cpus_worker_node is not None or num_gpus_worker_node is not None:
         if support_stage_scheduling:
@@ -1003,8 +1003,8 @@ def setup_ray_cluster(
         else:
             raise ValueError(
                 "Current spark version does not support stage scheduling, so that "
-                "you cannot set the argument `num_cpus_per_node` and "
-                "`num_gpus_per_node` values. Without setting the 2 arguments, "
+                "you cannot set the argument `num_cpus_worker_node` and "
+                "`num_gpus_worker_node` values. Without setting the 2 arguments, "
                 "per-Ray worker node will be assigned with number of "
                 f"'spark.task.cpus' (equals to {num_spark_task_cpus}) cpu cores "
                 "and number of 'spark.task.resource.gpu.amount' "
@@ -1048,7 +1048,7 @@ def setup_ray_cluster(
             "configured task sizing, each ray worker node would start with "
             f"{num_cpus_worker_node} CPU cores. This is less than the recommended "
             "value of `4` CPUs per worker. On spark version >= 3.4 or Databricks "
-            "Runtime 12.x, you can set the argument `num_cpus_per_node` to "
+            "Runtime 12.x, you can set the argument `num_cpus_worker_node` to "
             "a value >= 4 to address it, otherwise you need to increase the spark "
             "application configuration 'spark.task.cpus' to a minimum of `4` to "
             "address it."
