@@ -241,6 +241,8 @@ class _TrialState:
         self.saving_to = None
         self.restoring_from = None
 
+        self.num_restore_failures = 0
+
     def __getstate__(self):
         return {}
 
@@ -428,6 +430,9 @@ class Trial:
         self.trainable_name = trainable_name
         self.trial_id = Trial.generate_id() if trial_id is None else trial_id
 
+        self.trial_state = _TrialState()
+        self.runtime_metadata = _TrialRuntimeMetadata()
+
         # Create a copy, since `init_local_path` updates the context with the
         # generated trial dirname.
         self.storage = copy.copy(storage)
@@ -541,24 +546,11 @@ class Trial:
         self.max_failures = max_failures
 
         # Local trial state that is updated during the run
-        self._last_result = {}
         self._default_result_or_future: Union[ray.ObjectRef, dict, None] = None
-        self.last_update_time = -float("inf")
-
-        # stores in memory max/min/avg/last-n-avg/last result for each
-        # metric by trial
-        self.metric_analysis = {}
-
-        # keep a moving average over these last n steps
-        self.n_steps = [5, 10]
-        self.metric_n_steps = {}
 
         self.export_formats = export_formats
         self.status = Trial.PENDING
-        self.start_time = None
         self.relative_logdir = None
-        self.error_filename = None
-        self.pickled_error_filename = None
 
         self.trial_name_creator = trial_name_creator
         self.trial_dirname_creator = trial_dirname_creator
@@ -578,11 +570,11 @@ class Trial:
                 _CheckpointManager as _NewCheckpointManager,
             )
 
-            self.checkpoint_manager = _NewCheckpointManager(
+            self.runtime_metadata.checkpoint_manager = _NewCheckpointManager(
                 checkpoint_config=checkpoint_config
             )
         else:
-            self.checkpoint_manager = _CheckpointManager(
+            self.runtime_metadata.checkpoint_manager = _CheckpointManager(
                 checkpoint_config=checkpoint_config,
                 delete_fn=_CheckpointDeleter(
                     self._trainable_name(), self.trial_state.ray_actor
@@ -591,9 +583,6 @@ class Trial:
 
         # Restoration fields
         self.restore_path = restore_path
-        self.num_failures = 0
-        # Reset after each successful restore.
-        self.num_restore_failures = 0
 
         if trial_name_creator:
             self.custom_trial_name = trial_name_creator(self)
@@ -604,8 +593,6 @@ class Trial:
                 raise ValueError(
                     f"Trial dirname must not contain '/'. Got {self.custom_dirname}"
                 )
-
-        self.trial_state = _TrialState()
 
         self._state_json = None
         self._state_valid = False
@@ -691,17 +678,20 @@ class Trial:
         #    and return it.
         # 3. In the worst case where we have nothing, we just set the
         #    trial_id and return that.
-        result = self._last_result
+        result = self.runtime_metadata.last_result
         if not {k for k in result if k != TRIAL_ID}:
             self._get_default_result_or_future()
             result = self._default_result_or_future or result
         result.setdefault(TRIAL_ID, self.trial_id)
         return result
 
-    @last_result.setter
-    def last_result(self, val: dict):
-        self._last_result = val
-        self.invalidate_json_state()
+    @property
+    def metric_analysis(self):
+        return self.runtime_metadata.metric_analysis
+
+    @property
+    def metric_n_steps(self):
+        return self.runtime_metadata.metric_n_steps
 
     def get_runner_ip(self) -> Optional[str]:
         if self.trial_state.location.hostname:
@@ -852,7 +842,7 @@ class Trial:
 
     @property
     def has_reported_at_least_once(self) -> bool:
-        return bool(self._last_result)
+        return bool(self.runtime_metadata.last_result)
 
     @property
     def node_ip(self):
@@ -867,11 +857,13 @@ class Trial:
 
     @property
     def checkpoint_at_end(self):
-        return self.checkpoint_manager.checkpoint_strategy.checkpoint_at_end
+        strategy = self.runtime_metadata.checkpoint_manager.checkpoint_strategy
+        return strategy.checkpoint_at_end
 
     @property
     def checkpoint_freq(self):
-        return self.checkpoint_manager.checkpoint_strategy.checkpoint_frequency
+        strategy = self.runtime_metadata.checkpoint_manager.checkpoint_strategy
+        return strategy.checkpoint_frequency
 
     @property
     def checkpoint(self):
@@ -881,12 +873,14 @@ class Trial:
         is returned.
         """
         if _use_storage_context():
-            return self.checkpoint_manager.latest_checkpoint_result
+            return self.runtime_metadata.checkpoint_manager.latest_checkpoint_result
 
         if self.status == Trial.ERROR:
-            checkpoint = self.checkpoint_manager.newest_persistent_checkpoint
+            checkpoint = (
+                self.runtime_metadata.checkpoint_manager.newest_persistent_checkpoint
+            )
         else:
-            checkpoint = self.checkpoint_manager.newest_checkpoint
+            checkpoint = self.runtime_metadata.checkpoint_manager.newest_checkpoint
         if checkpoint.dir_or_data is None:
             checkpoint = _TrackedCheckpoint(
                 dir_or_data=self.restore_path,
@@ -921,6 +915,7 @@ class Trial:
             self.placement_group_factory if not clear_resources else None
         )
 
+        strategy = self.runtime_metadata.checkpoint_manager.checkpoint_strategy
         return Trial(
             self.trainable_name,
             config=self.config,
@@ -932,7 +927,7 @@ class Trial:
             placement_group_factory=placement_group_factory,
             stopping_criterion=self.stopping_criterion,
             sync_config=self.legacy_sync_config,
-            checkpoint_config=self.checkpoint_manager.checkpoint_strategy,
+            checkpoint_config=strategy,
             export_formats=self.export_formats,
             restore_path=self.restore_path,
             trial_name_creator=self.trial_name_creator,
@@ -1000,7 +995,7 @@ class Trial:
                 debug_metrics_only=True
             )
         if not _use_storage_context():
-            self.checkpoint_manager.set_delete_fn(
+            self.runtime_metadata.checkpoint_manager.set_delete_fn(
                 _CheckpointDeleter(self._trainable_name(), ray_actor)
             )
         # No need to invalidate state cache: runner is not stored in json
@@ -1016,9 +1011,8 @@ class Trial:
         """Sets the status of the trial."""
         self.status = status
         if status == Trial.RUNNING:
-            if self.start_time is None:
-                self.start_time = time.time()
-        self.invalidate_json_state()
+            if self.runtime_metadata.start_time is None:
+                self.runtime_metadata.start_time = time.time()
 
     def set_config(self, config):
         self.config = config
@@ -1029,42 +1023,52 @@ class Trial:
         self.invalidate_json_state()
 
     @property
+    def num_failures(self):
+        return self.runtime_metadata.num_failures
+
+    @property
+    def num_failures_after_restore(self):
+        return self.runtime_metadata.num_failures_after_restore
+
+    @property
     def error_file(self):
-        if not self.local_path or not self.error_filename:
+        if not self.local_path or not self.runtime_metadata.error_filename:
             return None
-        return os.path.join(self.local_path, self.error_filename)
+        return os.path.join(self.local_path, self.runtime_metadata.error_filename)
 
     @property
     def pickled_error_file(self):
-        if not self.local_path or not self.pickled_error_filename:
+        if not self.local_path or not self.runtime_metadata.pickled_error_filename:
             return None
-        return os.path.join(self.local_path, self.pickled_error_filename)
+        return os.path.join(
+            self.local_path, self.runtime_metadata.pickled_error_filename
+        )
 
     def handle_error(self, exc: Optional[Union[TuneError, RayTaskError]] = None):
         if isinstance(exc, _TuneRestoreError):
             exc = exc.exc
-            if self.num_restore_failures >= int(
+            if self.trial_state.num_restore_failures >= int(
                 os.environ.get("TUNE_RESTORE_RETRY_NUM", 0)
             ):
                 # Restore was unsuccessful, try again without checkpoint.
                 self.clear_checkpoint()
-                self.num_failures += 1
+                self.runtime_metadata.num_failures += 1
             else:
-                self.num_restore_failures += 1
+                self.trial_state.num_restore_failures += 1
         else:
-            self.num_failures += 1
+            self.runtime_metadata.num_failures += 1
 
         if self.local_path:
-            self.error_filename = EXPR_ERROR_FILE
+            self.runtime_metadata.error_filename = EXPR_ERROR_FILE
             if isinstance(exc, RayTaskError):
                 # Piping through the actual error to result grid.
-                self.pickled_error_filename = EXPR_ERROR_PICKLE_FILE
+                self.runtime_metadata.pickled_error_filename = EXPR_ERROR_PICKLE_FILE
                 with open(self.pickled_error_file, "wb") as f:
                     cloudpickle.dump(exc, f)
             with open(self.error_file, "a+") as f:
                 f.write(
                     "Failure # {} (occurred at {})\n".format(
-                        self.num_failures, date_str()
+                        self.runtime_metadata.num_failures, date_str()
                     )
                 )
                 f.write(str(exc) + "\n")
@@ -1118,18 +1122,18 @@ class Trial:
             from ray.train._internal.checkpoint_manager import _TrainingResult
 
             assert isinstance(checkpoint, _TrainingResult)
-            self.checkpoint_manager.register_checkpoint(checkpoint)
+            self.runtime_metadata.checkpoint_manager.register_checkpoint(checkpoint)
         else:
-            self.checkpoint_manager.on_checkpoint(checkpoint)
+            self.runtime_metadata.checkpoint_manager.on_checkpoint(checkpoint)
         self.invalidate_json_state()
 
     def on_restore(self):
         """Handles restoration completion."""
         assert self.is_restoring
-        self.last_result = self.trial_state.restoring_from.metrics
-        self.last_result.setdefault("config", self.config)
+        self.runtime_metadata.last_result = self.trial_state.restoring_from.metrics
+        self.runtime_metadata.last_result.setdefault("config", self.config)
         self.trial_state.restoring_from = None
-        self.num_restore_failures = 0
+        self.trial_state.num_restore_failures = 0
         self.invalidate_json_state()
 
     def should_recover(self):
@@ -1141,11 +1145,11 @@ class Trial:
         a checkpoint has been made.
         """
         return (
-            self.num_failures < self.max_failures
+            self.runtime_metadata.num_failures < self.max_failures
             or self.max_failures < 0
             or (
-                self.num_failures == self.max_failures
-                and self.num_restore_failures
+                self.runtime_metadata.num_failures == self.max_failures
+                and self.trial_state.num_restore_failures
                 < int(os.environ.get("TUNE_RESTORE_RETRY_NUM", 0))
             )
         )
@@ -1155,8 +1159,8 @@ class Trial:
             result.update(experiment_tag=self.experiment_tag)
 
         self.set_location(_Location(result.get(NODE_IP), result.get(PID)))
-        self.last_result = result
-        self.last_update_time = time.time()
+        self.runtime_metadata.last_result = result
+        self.runtime_metadata.last_result_time = time.time()
 
         metric_result = self.last_result.copy()
         for remove_metric in DEBUG_METRICS:
@@ -1164,40 +1168,48 @@ class Trial:
 
         for metric, value in flatten_dict(metric_result).items():
             if isinstance(value, Number):
-                if metric not in self.metric_analysis:
-                    self.metric_analysis[metric] = {
+                if metric not in self.runtime_metadata.metric_analysis:
+                    self.runtime_metadata.metric_analysis[metric] = {
                         "max": value,
                         "min": value,
                         "avg": value,
                         "last": value,
                     }
-                    self.metric_n_steps[metric] = {}
-                    for n in self.n_steps:
+                    self.runtime_metadata.metric_n_steps[metric] = {}
+                    for n in self.runtime_metadata._n_steps:
                         key = "last-{:d}-avg".format(n)
-                        self.metric_analysis[metric][key] = value
+                        self.runtime_metadata.metric_analysis[metric][key] = value
                         # Store n as string for correct restore.
-                        self.metric_n_steps[metric][str(n)] = deque([value], maxlen=n)
+                        self.runtime_metadata.metric_n_steps[metric][str(n)] = deque(
+                            [value], maxlen=n
+                        )
                 else:
                     step = result["training_iteration"] or 1
-                    self.metric_analysis[metric]["max"] = max(
-                        value, self.metric_analysis[metric]["max"]
+                    self.runtime_metadata.metric_analysis[metric]["max"] = max(
+                        value, self.runtime_metadata.metric_analysis[metric]["max"]
                     )
-                    self.metric_analysis[metric]["min"] = min(
-                        value, self.metric_analysis[metric]["min"]
+                    self.runtime_metadata.metric_analysis[metric]["min"] = min(
+                        value, self.runtime_metadata.metric_analysis[metric]["min"]
                     )
-                    self.metric_analysis[metric]["avg"] = (
+                    self.runtime_metadata.metric_analysis[metric]["avg"] = (
                         1
                         / step
-                        * (value + (step - 1) * self.metric_analysis[metric]["avg"])
+                        * (
+                            value
+                            + (step - 1)
+                            * self.runtime_metadata.metric_analysis[metric]["avg"]
+                        )
                     )
-                    self.metric_analysis[metric]["last"] = value
+                    self.runtime_metadata.metric_analysis[metric]["last"] = value
 
-                    for n in self.n_steps:
+                    for n in self.runtime_metadata._n_steps:
                         key = "last-{:d}-avg".format(n)
-                        self.metric_n_steps[metric][str(n)].append(value)
-                        self.metric_analysis[metric][key] = sum(
-                            self.metric_n_steps[metric][str(n)]
-                        ) / len(self.metric_n_steps[metric][str(n)])
+                        self.runtime_metadata.metric_n_steps[metric][str(n)].append(
+                            value
+                        )
+                        self.runtime_metadata.metric_analysis[metric][key] = sum(
+                            self.runtime_metadata.metric_n_steps[metric][str(n)]
+                        ) / len(self.runtime_metadata.metric_n_steps[metric][str(n)])
 
         # json state is invalidated in last_result.setter
 
@@ -1207,7 +1219,7 @@ class Trial:
         return get_trainable_cls(self.trainable_name)
 
     def get_trial_checkpoints(self) -> List[_TrackedCheckpoint]:
-        return self.checkpoint_manager.best_checkpoints()
+        return self.runtime_metadata.checkpoint_manager.best_checkpoints()
 
     def is_finished(self):
         return self.status in [Trial.ERROR, Trial.TERMINATED]

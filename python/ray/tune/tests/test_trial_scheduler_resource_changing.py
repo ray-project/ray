@@ -68,7 +68,7 @@ class TestUniformResourceAllocation(unittest.TestCase):
 
     def _allocateAndAssertNewResources(self, trial, scheduler, target_pgf, metric=1):
         result = {"metric": metric, "training_iteration": 4}
-        trial.last_result = result
+        trial.runtime_metadata.last_result = result
         decision = scheduler.on_trial_result(self.tune_controller, trial, result)
         assert decision == TrialScheduler.PAUSE
         trial.status = Trial.PENDING

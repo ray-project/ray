@@ -445,7 +445,7 @@ class ProgressReporterTest(unittest.TestCase):
             t.trial_state.location = "here"
             t.config = {"a": i, "b": i * 2, "n": {"k": [i, 2 * i]}}
             t.evaluated_params = {"a": i, "b": i * 2, "n/k/0": i, "n/k/1": 2 * i}
-            t.last_result = {
+            t.runtime_metadata.last_result = {
                 "config": {"a": i, "b": i * 2, "n": {"k": [i, 2 * i]}},
                 "metric_1": i / 2,
                 "metric_2": i / 4,
@@ -488,7 +488,11 @@ class ProgressReporterTest(unittest.TestCase):
         config = {"nested": {"conf": "nested_value"}, "toplevel": "toplevel_value"}
 
         trial = Trial("", config=config, stub=True)
-        trial.last_result = {"metric": 1, "config": config, "nested": {"metric": 2}}
+        trial.runtime_metadata.last_result = {
+            "metric": 1,
+            "config": config,
+            "nested": {"metric": 2},
+        }
 
         result = _best_trial_str(trial, "metric")
         self.assertIn("nested_value", result)
@@ -576,7 +580,7 @@ class ProgressReporterTest(unittest.TestCase):
             t.trial_state.location = "here"
             t.config = {"a": i, "b": i * 2, "n": {"k": [i, 2 * i]}}
             t.evaluated_params = {"a": i}
-            t.last_result = {"config": {"a": i}, "metric_1": i / 2}
+            t.runtime_metadata.last_result = {"config": {"a": i}, "metric_1": i / 2}
             t.__str__ = lambda self: self.trial_id
             trials.append(t)
 
@@ -611,7 +615,7 @@ class ProgressReporterTest(unittest.TestCase):
             t.trial_state.location = "here"
             t.config = {"a": i}
             t.evaluated_params = {"a": i}
-            t.last_result = {"config": {"a": i}}
+            t.runtime_metadata.last_result = {"config": {"a": i}}
             t.__str__ = lambda self: self.trial_id
             trials.append(t)
         # Set `metric_1` for terminated trails
@@ -818,7 +822,7 @@ class ProgressReporterTest(unittest.TestCase):
             t.trial_state.location = "here"
             t.config = {"verylong" * 20: i}
             t.evaluated_params = {"verylong" * 20: i}
-            t.last_result = {"some_metric": "evenlonger" * 100}
+            t.runtime_metadata.last_result = {"some_metric": "evenlonger" * 100}
             t.__str__ = lambda self: self.trial_id
             trials.append(t)
 

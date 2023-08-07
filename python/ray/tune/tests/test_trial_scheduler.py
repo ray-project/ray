@@ -1502,7 +1502,7 @@ class PopulationBasedTestingSuite(unittest.TestCase):
         tmpdir = tempfile.mkdtemp()
         for i, trial in enumerate(trials):
             trial.local_experiment_path = tmpdir
-            trial.last_result = {TRAINING_ITERATION: i}
+            trial.runtime_metadata.last_result = {TRAINING_ITERATION: i}
         self.on_trial_result(pbt, runner, trials[0], result(15, -100))
         self.on_trial_result(pbt, runner, trials[0], result(20, -100))
         self.on_trial_result(pbt, runner, trials[2], result(20, 40))
@@ -1538,7 +1538,7 @@ class PopulationBasedTestingSuite(unittest.TestCase):
         tmpdir = tempfile.mkdtemp()
         for i, trial in enumerate(trials):
             trial.local_experiment_path = tmpdir
-            trial.last_result = {TRAINING_ITERATION: i}
+            trial.runtime_metadata.last_result = {TRAINING_ITERATION: i}
             self.on_trial_result(pbt, runner, trials[i], result(10, i))
         log_files = ["pbt_global.txt", "pbt_policy_0.txt", "pbt_policy_1.txt"]
         for log_file in log_files:
@@ -1587,7 +1587,7 @@ class PopulationBasedTestingSuite(unittest.TestCase):
         trial_state = []
         for i, trial in enumerate(trials):
             trial.local_experiment_path = tmpdir
-            trial.last_result = {TRAINING_ITERATION: 0}
+            trial.runtime_metadata.last_result = {TRAINING_ITERATION: 0}
             trial_state.append(_TrialState(trial.config))
 
         # Helper function to simulate stepping trial k a number of steps,
@@ -1744,7 +1744,7 @@ class PopulationBasedTestingSuite(unittest.TestCase):
         trial_state = []
         for i, trial in enumerate(trials):
             trial.local_experiment_path = tmpdir
-            trial.last_result = {TRAINING_ITERATION: 0}
+            trial.runtime_metadata.last_result = {TRAINING_ITERATION: 0}
             trial_state.append(_TrialState(trial.config))
 
         # Helper function to simulate stepping trial k a number of steps,
@@ -1900,7 +1900,7 @@ class PopulationBasedTestingSuite(unittest.TestCase):
         tmpdir = tempfile.mkdtemp()
         for i, trial in enumerate(trials):
             trial.local_experiment_path = tmpdir
-            trial.last_result = {}
+            trial.runtime_metadata.last_result = {}
         self.on_trial_result(
             pbt, runner, trials[1], result(1, 10), TrialScheduler.CONTINUE
         )

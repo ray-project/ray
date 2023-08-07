@@ -1150,7 +1150,8 @@ def _trial_errors_str(
         fail_table_data = [
             [
                 str(trial),
-                str(trial.num_failures) + ("" if trial.status == Trial.ERROR else "*"),
+                str(trial.runtime_metadata.num_failures)
+                + ("" if trial.status == Trial.ERROR else "*"),
                 trial.error_file,
             ]
             for trial in failed[:max_rows]
