@@ -214,9 +214,7 @@ If this is your first time using Grafana, login with the username: `admin` and p
 
 ![grafana login](images/graphs.png)
 
-#### Troubleshooting
-
-##### Using Ray configurations in Grafana with Homebrew on macOS X
+**Troubleshooting: Using Ray configurations in Grafana with Homebrew on macOS X**
 
 Homebrew installs Grafana as a service that is automatically launched for you.
 Therefore, to configure these services, you cannot simply pass in the config files as command line arguments.

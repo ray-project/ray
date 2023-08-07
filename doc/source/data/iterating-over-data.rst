@@ -40,7 +40,7 @@ as a dictionary.
 
 
 For more information on working with rows, see
-:ref:`Transforming rows <transforming-rows>` and
+:ref:`Transforming rows <transforming_rows>` and
 :ref:`Inspecting rows <inspecting-rows>`.
 
 .. _iterating-over-batches:
@@ -64,7 +64,7 @@ formats by calling one of the following methods:
 
             import ray
 
-            ds = ray.data.read_images("example://image-datasets/simple")
+            ds = ray.data.read_images("s3://anonymous@ray-example-data/image-datasets/simple")
 
             for batch in ds.iter_batches(batch_size=2, batch_format="numpy"):
                 print(batch)
@@ -106,7 +106,7 @@ formats by calling one of the following methods:
 
             import ray
 
-            ds = ray.data.read_images("example://image-datasets/simple")
+            ds = ray.data.read_images("s3://anonymous@ray-example-data/image-datasets/simple")
 
             for batch in ds.iter_torch_batches(batch_size=2):
                 print(batch)
@@ -142,7 +142,7 @@ formats by calling one of the following methods:
             tf.Tensor([6.2 5.9], shape=(2,), dtype=float64) tf.Tensor([2 2], shape=(2,), dtype=int64)
 
 For more information on working with batches, see
-:ref:`Transforming batches <transforming-batches>` and
+:ref:`Transforming batches <transforming_batches>` and
 :ref:`Inspecting batches <inspecting-batches>`.
 
 .. _iterating-over-batches-with-shuffling:
@@ -172,7 +172,7 @@ movement.
 
             import ray
 
-            ds = ray.data.read_images("example://image-datasets/simple")
+            ds = ray.data.read_images("s3://anonymous@ray-example-data/image-datasets/simple")
 
             for batch in ds.iter_batches(
                 batch_size=2,
@@ -223,7 +223,7 @@ movement.
 
             import ray
 
-            ds = ray.data.read_images("example://image-datasets/simple")
+            ds = ray.data.read_images("s3://anonymous@ray-example-data/image-datasets/simple")
             for batch in ds.iter_torch_batches(
                 batch_size=2,
                 local_shuffle_buffer_size=250,

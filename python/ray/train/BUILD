@@ -8,16 +8,23 @@ doctest(
             "tests/**",
             # GPU tests
             "tensorflow/tensorflow_trainer.py",
-            # FIXME: Failing doctests
-            "xgboost/xgboost_predictor.py",
-            "xgboost/xgboost_checkpoint.py"
+            "huggingface/transformers/transformers_trainer.py",
+            "_internal/session.py",
+            "context.py"
         ]
     ),
+    size = "large",
     tags = ["team:ml"],
 )
 
 doctest(
-    files = ["tensorflow/tensorflow_trainer.py"],
+    files = [
+        "tensorflow/tensorflow_trainer.py",
+        "huggingface/transformers/transformers_trainer.py",
+        "_internal/session.py",
+        "context.py"
+    ],
+    size = "large",
     tags = ["team:ml"],
     gpu = True
 )
@@ -428,6 +435,14 @@ py_test(
     name = "test_lightning_predictor",
     size = "medium",
     srcs = ["tests/test_lightning_predictor.py"],
+    tags = ["team:ml", "exclusive", "ray_air", "gpu", "ptl_v2"],
+    deps = [":train_lib"]
+)
+
+py_test(
+    name = "test_lightning_deepspeed",
+    size = "large",
+    srcs = ["tests/test_lightning_deepspeed.py"],
     tags = ["team:ml", "exclusive", "ray_air", "gpu", "ptl_v2"],
     deps = [":train_lib"]
 )

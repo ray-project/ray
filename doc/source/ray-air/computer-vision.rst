@@ -38,7 +38,7 @@ Reading image data
             :end-before: __read_images1_stop__
             :dedent:
 
-        Then, apply a :ref:`user-defined function <transform_datasets_writing_udfs>` to
+        Then, apply a :ref:`user-defined function <transforming_data>` to
         encode the class names as integer targets.
 
         .. literalinclude:: ./doc_code/computer_vision.py
@@ -98,7 +98,7 @@ Reading image data
             :end-before: __read_tfrecords1_stop__
             :dedent:
 
-        Then, apply a :ref:`user-defined function <transform_datasets_writing_udfs>` to
+        Then, apply a :ref:`user-defined function <transforming_data>` to
         decode the raw image bytes.
 
         .. literalinclude:: ./doc_code/computer_vision.py
@@ -183,7 +183,7 @@ Training vision models
             :end-before: __torch_trainer_stop__
             :dedent:
 
-        For more in-depth examples, read :doc:`/ray-air/examples/torch_image_example` and
+        For more in-depth examples, see
         :ref:`Using Trainers <air-trainers>`.
 
     .. tab-item:: TensorFlow
@@ -315,8 +315,7 @@ To NumPy ndarrays like this:
             :end-before: __torch_online_predict_stop__
             :dedent:
 
-        For more in-depth examples, read :doc:`/ray-air/examples/torch_image_example`
-        and :doc:`/ray-air/examples/serving_guide`.
+        For more in-depth examples, see :doc:`/ray-air/examples/serving_guide`.
 
     .. tab-item:: TensorFlow
 

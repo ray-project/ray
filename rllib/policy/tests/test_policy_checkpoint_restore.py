@@ -73,15 +73,15 @@ class TestPolicyFromCheckpoint(unittest.TestCase):
 
             self.assertIsNotNone(policy)
 
-            # Add this policy to a trainer.
-            trainer = APPOConfig().framework(framework="torch").build("CartPole-v0")
+            # Add this policy to an Algorithm.
+            algo = APPOConfig().framework(framework="torch").build("CartPole-v0")
 
             # Add the entire policy.
-            self.assertIsNotNone(trainer.add_policy("test_policy", policy=policy))
+            self.assertIsNotNone(algo.add_policy("test_policy", policy=policy))
 
             # Add the same policy, but using individual parameter API.
             self.assertIsNotNone(
-                trainer.add_policy(
+                algo.add_policy(
                     "test_policy_2",
                     policy_cls=type(policy),
                     observation_space=policy.observation_space,

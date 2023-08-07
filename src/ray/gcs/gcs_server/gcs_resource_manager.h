@@ -19,9 +19,9 @@
 #include "absl/container/flat_hash_set.h"
 #include "ray/common/id.h"
 #include "ray/common/ray_syncer/ray_syncer.h"
+#include "ray/common/scheduling/cluster_resource_data.h"
 #include "ray/gcs/gcs_server/gcs_init_data.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
-#include "ray/raylet/scheduling/cluster_resource_data.h"
 #include "ray/raylet/scheduling/cluster_resource_manager.h"
 #include "ray/raylet/scheduling/cluster_task_manager.h"
 #include "ray/rpc/client_call.h"
@@ -146,6 +146,14 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler,
   /// Get aggregated resource load of all nodes.
   std::unordered_map<google::protobuf::Map<std::string, double>, rpc::ResourceDemand>
   GetAggregatedResourceLoad() const;
+
+  /// Get the placement group load info. This is used for autoscaler.
+  const std::shared_ptr<rpc::PlacementGroupLoad> GetPlacementGroupLoad() const {
+    if (placement_group_load_.has_value()) {
+      return placement_group_load_.value();
+    }
+    return nullptr;
+  }
 
  private:
   /// Aggregate nodes' pending task info.

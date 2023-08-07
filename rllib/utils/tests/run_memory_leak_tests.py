@@ -109,9 +109,6 @@ if __name__ == "__main__":
             experiment["config"]["framework"] = args.framework
         # Create env on local_worker for memory leak testing just the env.
         experiment["config"]["create_env_on_driver"] = True
-        # Always run with eager-tracing when framework=tf2 if not in local-mode.
-        if args.framework == "tf2" and not args.local_mode:
-            experiment["config"]["eager_tracing"] = True
         # experiment["config"]["callbacks"] = MemoryTrackingCallbacks
 
         # Move "env" specifier into config.
@@ -122,7 +119,7 @@ if __name__ == "__main__":
         print("== Test config ==")
         print(yaml.dump(experiment))
 
-        # Construct the trainer instance based on the given config.
+        # Construct the Algorithm instance based on the given config.
         leaking = True
         try:
             ray.init(num_cpus=5, local_mode=args.local_mode)

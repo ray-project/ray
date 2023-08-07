@@ -13,6 +13,18 @@ Ray Data is a scalable data processing library for ML workloads. It provides fle
 ..
   https://docs.google.com/drawings/d/16AwJeBNR46_TsrkOmMbGaBK7u-OPsf_V8fHjU-d2PPQ/edit
 
+Install Ray Data
+----------------
+
+To install Ray Data, run:
+
+.. code-block:: console
+
+    $ pip install -U 'ray[data]'
+
+To learn more about installing Ray and its libraries, see
+:ref:`Installing Ray <installation>`.
+
 Learn more
 ----------
 
@@ -37,19 +49,19 @@ Learn more
 
     .. grid-item-card::
 
-        **Getting Started Walkthrough**
+        **Key Concepts**
         ^^^
 
-        Start with our quick start tutorials for working with Data.
-        These concrete examples will give you an idea of how to use Ray Data.
+        Understand the key concepts behind Ray Data. Learn what
+        :ref:`Datasets <dataset_concept>` are and how they're used.
 
         +++
-        .. button-ref:: data_getting_started
+        .. button-ref:: data_key_concepts
             :color: primary
             :outline:
             :expand:
 
-            Get Started with Ray Data
+            Learn Key Concepts
 
     .. grid-item-card::
 
@@ -68,22 +80,6 @@ Learn more
 
     .. grid-item-card::
 
-        **Key Concepts**
-        ^^^
-
-        Understand the key concepts behind Ray Data.
-        Learn what :ref:`Datasets <dataset_concept>` are and how they are executed in Ray Data.
-
-        +++
-        .. button-ref:: data_key_concepts
-            :color: primary
-            :outline:
-            :expand:
-
-            Learn Key Concepts
-
-    .. grid-item-card::
-
         **Examples**
         ^^^
 
@@ -96,21 +92,6 @@ Learn more
             :expand:
 
             Ray Data Examples
-
-    .. grid-item-card::
-
-        **Ray Data FAQ**
-        ^^^
-
-        Find answers to commonly asked questions in our detailed FAQ.
-
-        +++
-        .. button-ref:: data_faq
-            :color: primary
-            :outline:
-            :expand:
-
-            Ray Data FAQ
 
     .. grid-item-card::
 

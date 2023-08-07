@@ -4,6 +4,9 @@
 * [A3C](./a3c)
 * [MAML](./maml)
 * [APEX DQN](./apex_dqn/)
+* [A2C](./a2c)
+* [DDPG](./ddpg)
+* [R2D2](./r2d2)
 
 
 

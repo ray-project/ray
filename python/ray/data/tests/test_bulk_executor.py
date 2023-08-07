@@ -8,7 +8,9 @@ import ray
 from ray.data._internal.compute import ActorPoolStrategy
 from ray.data._internal.execution.bulk_executor import BulkExecutor
 from ray.data._internal.execution.interfaces import ExecutionOptions, RefBundle
-from ray.data._internal.execution.operators.all_to_all_operator import AllToAllOperator
+from ray.data._internal.execution.operators.base_physical_operator import (
+    AllToAllOperator,
+)
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.util import make_ref_bundles

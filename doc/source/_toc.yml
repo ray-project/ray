@@ -55,11 +55,8 @@ parts:
               - file: ray-air/computer-vision
               - file: ray-air/examples/serving_guide
               - file: ray-air/deployment
-              - file: ray-air/experimental-features
           - file: ray-air/examples/index
             sections:
-              - file: ray-air/examples/opt_deepspeed_batch_inference
-              - file: ray-air/examples/torch_image_example
               - file: ray-air/examples/torch_detection
               - file: ray-air/examples/convert_existing_pytorch_code_to_ray_air
               - file: ray-air/examples/convert_existing_tf_code_to_ray_air
@@ -93,23 +90,11 @@ parts:
         sections:
           - file: data/overview
             title: Overview
-          - file: data/getting-started
           - file: data/key-concepts
           - file: data/user-guide
           - file: data/examples/index
-            sections:
-              - file: data/examples/nyc_taxi_basic_processing
-                title: Processing the NYC taxi dataset
-              - file: data/examples/batch_training
-                title: Batch Training with Ray Data
-              - file: data/examples/ocr_example
-                title: Scaling OCR with Ray Data
-              - file: data/examples/random-access
-              - file: data/examples/batch_inference_object_detection
-                title: Object Detection Batch Inference with PyTorch
-              - file: data/examples/custom-datasource
-          - file: data/faq
           - file: data/api/api
+          - file: data/data-internals
 
       - file: train/train
         title: Ray Train
@@ -205,8 +190,6 @@ parts:
                     title: "PyTorch Example"
                   - file: tune/examples/tune-pytorch-lightning
                     title: "PyTorch Lightning Example"
-                  - file: tune/examples/mxnet_example
-                    title: "MXNet Example"
                   - file: tune/examples/tune-serve-integration-mnist
                     title: "Ray Serve Example"
                   - file: tune/examples/pbt_ppo_example
@@ -235,8 +218,6 @@ parts:
                     title: "Ax Example"
                   - file: tune/examples/dragonfly_example
                     title: "Dragonfly Example"
-                  - file: tune/examples/skopt_example
-                    title: "Skopt Example"
                   - file: tune/examples/hyperopt_example
                     title: "HyperOpt Example"
                   - file: tune/examples/bayesopt_example
@@ -249,12 +230,8 @@ parts:
                     title: "Nevergrad Example"
                   - file: tune/examples/optuna_example
                     title: "Optuna Example"
-                  - file: tune/examples/zoopt_example
-                    title: "ZOOpt Example"
                   - file: tune/examples/sigopt_example
                     title: "SigOpt Example"
-                  - file: tune/examples/hebo_example
-                    title: "HEBO Example"
               - file: tune/examples/other-examples
                 title: "Other Examples"
               - file: tune/examples/exercises
@@ -267,27 +244,37 @@ parts:
         sections:
           - file: serve/getting_started
           - file: serve/key-concepts
-          - file: serve/user-guide
+          - file: serve/develop-and-deploy
+          - file: serve/model_composition
+          - file: serve/deploy-many-models/index
             sections:
-              - file: serve/http-guide
-              - file: serve/scaling-and-resource-allocation
-              - file: serve/model_composition
-              - file: serve/dev-workflow
-              - file: serve/app-builder-guide
-              - file: serve/multi-app
-              - file: serve/production-guide/index
-                sections:
-                  - file: serve/production-guide/config
-                  - file: serve/production-guide/deploy-vm
-                  - file: serve/production-guide/kubernetes
-                  - file: serve/production-guide/monitoring
-                  - file: serve/production-guide/fault-tolerance
-              - file: serve/performance
-              - file: serve/handling-dependencies
-              - file: serve/managing-java-deployments
-              - file: serve/migration
-              - file: serve/direct-ingress
-              - file: serve/model-multiplexing
+            - file: serve/deploy-many-models/multi-app
+            - file: serve/deploy-many-models/model-multiplexing
+          - file: serve/configure-serve-deployment
+          - file: serve/http-guide
+          - file: serve/production-guide/index
+            title: Production Guide
+            sections:
+              - file: serve/production-guide/config
+              - file: serve/production-guide/kubernetes
+              - file: serve/production-guide/docker
+              - file: serve/production-guide/fault-tolerance
+              - file: serve/production-guide/handling-dependencies
+              - file: serve/production-guide/best-practices
+          - file: serve/monitoring
+          - file: serve/scaling-and-resource-allocation
+          - file: serve/advanced-guides/index
+            sections:
+              - file: serve/advanced-guides/app-builder-guide
+              - file: serve/advanced-guides/performance
+              - file: serve/advanced-guides/dyn-req-batch
+              - file: serve/advanced-guides/inplace-updates
+              - file: serve/advanced-guides/dev-workflow
+              - file: serve/advanced-guides/deployment-graphs
+              - file: serve/advanced-guides/direct-ingress
+              - file: serve/advanced-guides/managing-java-deployments
+              - file: serve/advanced-guides/migration
+              - file: serve/advanced-guides/deploy-vm
           - file: serve/architecture
           - file: serve/tutorials/index
             sections:
@@ -317,6 +304,7 @@ parts:
               - file: rllib/rllib-catalogs
               - file: rllib/rllib-connector
               - file: rllib/rllib-rlmodule
+              - file: rllib/rllib-torch2x
               - file: rllib/rllib-fault-tolerance
               - file: rllib/rllib-dev
               - file: rllib/rllib-cli
@@ -329,7 +317,6 @@ parts:
           - file: ray-more-libs/joblib
           - file: ray-more-libs/multiprocessing
           - file: ray-more-libs/ray-collective
-          - file: ray-more-libs/using-ray-with-pytorch-lightning
           - file: ray-more-libs/dask-on-ray
           - file: ray-more-libs/raydp
           - file: ray-more-libs/mars-on-ray
