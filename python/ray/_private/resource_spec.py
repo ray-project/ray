@@ -200,16 +200,28 @@ class ResourceSpec(
         except Exception:
             logger.exception("Could not parse gpu information.")
 
+        # AWS NeuronCore detection and configuration
         # 1. Check if the user specified num_neuron_cores in resources
         num_neuron_cores = resources.get(ray_constants.NUM_NEURON_CORES, None)
-        # 2. Auto-detect num_neuron_cores if not specified in resources
+        # 2. Check if the user specified NEURON_RT_VISIBLE_CORES
+        neuron_core_ids = ray._private.utils.get_aws_neuron_core_visible_ids()
+        if num_neuron_cores is not None and num_neuron_cores not in neuron_core_ids:
+            raise ValueError(
+                f"Attempting to start raylet with {num_neuron_cores} "
+                f"neuron cores, but NEURON_RT_VISIBLE_CORES contains "
+                f"{neuron_core_ids}."
+            )
+        # 3. Auto-detect num_neuron_cores if not specified in resources
         if num_neuron_cores is None:
             num_neuron_cores = _autodetect_aws_neuron_cores()
+            # Don't use more neuron cores than allowed by NEURON_RT_VISIBLE_CORES.
+            if neuron_core_ids is not None:
+                num_neuron_cores = min(num_neuron_cores, len(neuron_core_ids))
         if num_neuron_cores is not None:
             if num_gpus is not None and num_gpus > 0:
                 raise ValueError("Cannot specify both num_gpus and num_neuron_cores.")
 
-            # 3. Update accelerator_type and num_neuron_cores with
+            # 4. Update accelerator_type and num_neuron_cores with
             # number of neuron cores detected or configured.
             resources.update(
                 {

@@ -486,14 +486,16 @@ def test_neuron_core_ids(shutdown_only):
     def get_neuron_core_ids(num_neuron_cores_per_worker):
         neuron_core_ids = ray.get_neuron_core_ids()
         assert len(neuron_core_ids) == num_neuron_cores_per_worker
-        assert os.environ["NEURON_RT_VISIBLE_CORES"] == ",".join(
-            [str(i) for i in neuron_core_ids]  # noqa
-        )
+        cores = os.environ.get("NEURON_RT_VISIBLE_CORES")
+        if cores is not None:
+            assert cores == ",".join([str(i) for i in neuron_core_ids])  # noqa
         for neuron_core_id in neuron_core_ids:
             assert neuron_core_id in range(num_nc)
         return neuron_core_ids
 
+    f0 = ray.remote(resources={"num_neuron_cores": 0})(lambda: get_neuron_core_ids(0))
     f1 = ray.remote(resources={"num_neuron_cores": 1})(lambda: get_neuron_core_ids(1))
+    f2 = ray.remote(resources={"num_neuron_cores": 2})(lambda: get_neuron_core_ids(2))
 
     # Wait for all workers to start up.
     @ray.remote
@@ -511,12 +513,30 @@ def test_neuron_core_ids(shutdown_only):
                 "Timed out while waiting for workers to start up."
             )
 
+    list_of_ids = ray.get([f0.remote() for _ in range(10)])
+    assert list_of_ids == 10 * [[]]
     ray.get([f1.remote() for _ in range(10)])
+    ray.get([f2.remote() for _ in range(10)])
 
     # Test that actors have NEURON_RT_VISIBLE_CORES set properly.
 
-    @ray.remote(resources={"num_neuron_cores": 1}, accelerator_type=accelerator_type)
+    @ray.remote
     class Actor0:
+        def __init__(self):
+            neuron_core_ids = ray.get_neuron_core_ids()
+            assert len(neuron_core_ids) == 0
+            assert os.environ.get("NEURON_RT_VISIBLE_CORES") is None
+            # Set self.x to make sure that we got here.
+            self.x = 0
+
+        def test(self):
+            neuron_core_ids = ray.get_neuron_core_ids()
+            assert len(neuron_core_ids) == 0
+            assert os.environ.get("NEURON_RT_VISIBLE_CORES") is None
+            return self.x
+
+    @ray.remote(resources={"num_neuron_cores": 1})
+    class Actor1:
         def __init__(self):
             neuron_core_ids = ray.get_neuron_core_ids()
             assert len(neuron_core_ids) == 1
@@ -534,30 +554,38 @@ def test_neuron_core_ids(shutdown_only):
             )
             return self.x
 
-    @ray.remote(resources={"num_neuron_cores": 1}, accelerator_type=accelerator_type)
-    class Actor1:
+    @ray.remote(resources={"num_neuron_cores": 2}, accelerator_type=accelerator_type)
+    class Actor2:
         def __init__(self):
             neuron_core_ids = ray.get_neuron_core_ids()
-            assert len(neuron_core_ids) == 1
+            assert len(neuron_core_ids) == 2
             assert os.environ["NEURON_RT_VISIBLE_CORES"] == ",".join(
                 [str(i) for i in neuron_core_ids]
             )
             # Set self.x to make sure that we got here.
-            self.x = 1
+            self.x = 2
 
         def test(self):
             neuron_core_ids = ray.get_neuron_core_ids()
-            assert len(neuron_core_ids) == 1
+            assert len(neuron_core_ids) == 2
             assert os.environ["NEURON_RT_VISIBLE_CORES"] == ",".join(
                 [str(i) for i in neuron_core_ids]
             )
             return self.x
 
     a0 = Actor0.remote()
-    ray.get(a0.test.remote())
+    assert ray.get(a0.test.remote()) == 0
 
     a1 = Actor1.remote()
-    ray.get(a1.test.remote())
+    assert ray.get(a1.test.remote()) == 1
+
+    a2 = Actor2.remote()
+    assert ray.get(a2.test.remote()) == 2
+
+
+def test_gpu_and_neuron_cores_fails(shutdown_only):
+    with pytest.raises(ValueError):
+        ray.init(num_gpus=1, resources={"num_neuron_cores": 1})
 
 
 # TODO: 5 retry attempts may be too little for Travis and we may need to
