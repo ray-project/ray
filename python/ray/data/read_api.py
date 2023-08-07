@@ -66,9 +66,9 @@ from ray.data.datasource import (
 )
 from ray.data.datasource._default_metadata_providers import (
     get_generic_metadata_provider,
-    get_parquet_metadata_provider,
-    get_parquet_bulk_metadata_provider,
     get_image_metadata_provider,
+    get_parquet_bulk_metadata_provider,
+    get_parquet_metadata_provider,
 )
 from ray.data.datasource.file_based_datasource import (
     _unwrap_arrow_serialization_workaround,
@@ -306,7 +306,7 @@ def read_datasource(
             limited by the available partitioning of the datasource. If set to -1,
             parallelism is automatically chosen based on the available cluster
             resources and estimated in-memory data size.
-        read_args: Additional kwargs to pass to the :class:`~ray.data.Datasource` 
+        read_args: Additional kwargs to pass to the :class:`~ray.data.Datasource`
             implementation.
         ray_remote_args: kwargs passed to :meth:`ray.remote` in the read tasks.
 
@@ -763,7 +763,7 @@ def read_images(
             records in all the CSV files.
         meta_provider: A :ref:`file metadata provider <metadata_provider>`. Custom
             metadata providers may be able to resolve file metadata more quickly and/or
-            accurately. In most cases, you do not need to set this. If ``None``, this 
+            accurately. In most cases, you do not need to set this. If ``None``, this
             function uses a system-chosen implementation.
         ray_remote_args: kwargs passed to :meth:`~ray.remote` in the read tasks.
         arrow_open_file_args: kwargs passed to
@@ -828,7 +828,9 @@ def read_parquet_bulk(
     ray_remote_args: Dict[str, Any] = None,
     arrow_open_file_args: Optional[Dict[str, Any]] = None,
     tensor_column_schema: Optional[Dict[str, Tuple[np.dtype, Tuple[int, ...]]]] = None,
-    meta_provider: Optional[BaseFileMetadataProvider] = get_parquet_bulk_metadata_provider,
+    meta_provider: Optional[
+        BaseFileMetadataProvider
+    ] = get_parquet_bulk_metadata_provider,
     partition_filter: Optional[PathPartitionFilter] = (
         ParquetBaseDatasource.file_extension_filter()
     ),
@@ -893,7 +895,7 @@ def read_parquet_bulk(
             `arr.tobytes()`).
         meta_provider: A :ref:`file metadata provider <metadata_provider>`. Custom
             metadata providers may be able to resolve file metadata more quickly and/or
-            accurately. In most cases, you do not need to set this. If ``None``, this 
+            accurately. In most cases, you do not need to set this. If ``None``, this
             function uses a system-chosen implementation.
         partition_filter: A
             :class:`~ray.data.datasource.partitioning.PathPartitionFilter`. Use
@@ -1013,7 +1015,7 @@ def read_json(
             when opening input files to read.
         meta_provider: A :ref:`file metadata provider <metadata_provider>`. Custom
             metadata providers may be able to resolve file metadata more quickly and/or
-            accurately. In most cases, you do not need to set this. If ``None``, this 
+            accurately. In most cases, you do not need to set this. If ``None``, this
             function uses a system-chosen implementation.
         partition_filter: A
             :class:`~ray.data.datasource.partitioning.PathPartitionFilter`.
@@ -1261,7 +1263,7 @@ def read_text(
             when opening input files to read.
         meta_provider: A :ref:`file metadata provider <metadata_provider>`. Custom
             metadata providers may be able to resolve file metadata more quickly and/or
-            accurately. In most cases, you do not need to set this. If ``None``, this 
+            accurately. In most cases, you do not need to set this. If ``None``, this
             function uses a system-chosen implementation.
         partition_filter: A
             :class:`~ray.data.datasource.partitioning.PathPartitionFilter`.
@@ -1339,7 +1341,7 @@ def read_numpy(
             `pyarrow.fs.FileSystem.open_input_stream <https://arrow.apache.org/docs/python/generated/pyarrow.fs.FileSystem.html>`_.
         numpy_load_args: Other options to pass to np.load.
         meta_provider: File metadata provider. Custom metadata providers may
-            be able to resolve file metadata more quickly and/or accurately. If 
+            be able to resolve file metadata more quickly and/or accurately. If
             ``None``, this function uses a system-chosen implementation.
         partition_filter: Path-based partition filter, if any. Can be used
             with a custom callback to read only selected partitions of a dataset.
@@ -1439,7 +1441,7 @@ def read_tfrecords(
             use ``arrow_open_stream_args={'compression_type': 'gzip'}``).
         meta_provider: A :ref:`file metadata provider <metadata_provider>`. Custom
             metadata providers may be able to resolve file metadata more quickly and/or
-            accurately. In most cases, you do not need to set this. If ``None``, this 
+            accurately. In most cases, you do not need to set this. If ``None``, this
             function uses a system-chosen implementation.
         partition_filter: A
             :class:`~ray.data.datasource.partitioning.PathPartitionFilter`.
@@ -1459,7 +1461,9 @@ def read_tfrecords(
         ValueError: If a file contains a message that isn't a ``tf.train.Example``.
     """
     if meta_provider is None:
-        meta_provider = get_generic_metadata_provider(TFRecordDatasource._FILE_EXTENSION)
+        meta_provider = get_generic_metadata_provider(
+            TFRecordDatasource._FILE_EXTENSION
+        )
     return read_datasource(
         TFRecordDatasource(),
         parallelism=parallelism,
@@ -1503,7 +1507,7 @@ def read_webdataset(
             pass the corresponding compression type (e.g. for ``GZIP`` or ``ZLIB``, use
             ``arrow_open_stream_args={'compression_type': 'gzip'}``).
         meta_provider: File metadata provider. Custom metadata providers may
-            be able to resolve file metadata more quickly and/or accurately. If 
+            be able to resolve file metadata more quickly and/or accurately. If
             ``None``, this function uses a system-chosen implementation.
         partition_filter: Path-based partition filter, if any. Can be used
             with a custom callback to read only selected partitions of a dataset.
@@ -1522,7 +1526,9 @@ def read_webdataset(
     .. _tf.train.Example: https://www.tensorflow.org/api_docs/python/tf/train/Example
     """  # noqa: E501
     if meta_provider is None:
-        meta_provider = get_generic_metadata_provider(WebDatasetDatasource._FILE_EXTENSION)
+        meta_provider = get_generic_metadata_provider(
+            WebDatasetDatasource._FILE_EXTENSION
+        )
     return read_datasource(
         WebDatasetDatasource(),
         parallelism=parallelism,
@@ -1605,7 +1611,7 @@ def read_binary_files(
                     #pyarrow.fs.FileSystem.open_input_stream>`_.
         meta_provider: A :ref:`file metadata provider <metadata_provider>`. Custom
             metadata providers may be able to resolve file metadata more quickly and/or
-            accurately. In most cases, you do not need to set this. If ``None``, this 
+            accurately. In most cases, you do not need to set this. If ``None``, this
             function uses a system-chosen implementation.
         partition_filter: A
             :class:`~ray.data.datasource.partitioning.PathPartitionFilter`.
