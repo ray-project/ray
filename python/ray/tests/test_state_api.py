@@ -161,7 +161,7 @@ def state_api_manager_e2e(ray_start_with_dashboard):
     gcs_channel.connect()
     state_api_data_source_client = StateDataSourceClient(
         gcs_channel.channel(), gcs_aio_client
-        )
+    )
     manager = StateAPIManager(state_api_data_source_client)
 
     yield manager

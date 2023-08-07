@@ -56,8 +56,7 @@ def get_node_id_for_supervisor_actor_for_job(
 ) -> str:
     actors = list_actors(
         address=address,
-        filters=[
-            ("ray_namespace", "=", SUPERVISOR_ACTOR_RAY_NAMESPACE)]
+        filters=[("ray_namespace", "=", SUPERVISOR_ACTOR_RAY_NAMESPACE)],
     )
     for actor in actors:
         if actor.name == JOB_ACTOR_NAME_TEMPLATE.format(job_id=job_submission_id):

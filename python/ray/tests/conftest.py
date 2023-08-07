@@ -207,7 +207,7 @@ def start_redis(db_dir):
         # Setup external Redis and env var for initialization.
         redis_ports = find_available_port(49159, 55535, redis_replicas() * 2)
         redis_ports = list(
-            zip(redis_ports[0: redis_replicas()], redis_ports[redis_replicas() :])
+            zip(redis_ports[0 : redis_replicas()], redis_ports[redis_replicas() :])
         )
         processes = []
         enable_tls = "RAY_REDIS_CA_CERT" in os.environ
