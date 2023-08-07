@@ -56,7 +56,11 @@ class DelegatingBlockBuilder(BlockBuilder):
 
     def build(self) -> Block:
         if self._builder is None:
-            return self.generate_empty_block(self._empty_block)
+            if self._empty_block is not None:
+                self._builder = BlockAccessor.for_block(self._empty_block).builder()
+                self._builder.add_block(self._empty_block)
+            else:
+                self._builder = ArrowBlockBuilder()
         return self._builder.build()
 
     def num_rows(self) -> int:
