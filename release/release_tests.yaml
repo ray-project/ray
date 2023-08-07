@@ -3628,7 +3628,6 @@
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
         - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
-    cluster_env: app_config.yaml
     cluster_compute: multi_node_ckpt_training_compute_config.yaml
 
   run:
@@ -3646,7 +3645,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: multi_node_ckpt_training_compute_config_gce.yaml
 
 - name: rllib_learning_tests_a2c_tf
