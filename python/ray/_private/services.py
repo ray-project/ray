@@ -1658,6 +1658,7 @@ def start_raylet(
             raylet_name,
             redis_password,
             session_dir,
+            log_dir,
             node_ip_address,
             setup_worker_path,
         )
