@@ -99,7 +99,8 @@ class GrpcClient {
              ClientCallManager &call_manager,
              bool use_tls = false)
       : client_call_manager_(call_manager), use_tls_(use_tls) {
-    channel_ = BuildChannel(address, port, CreateDefaultChannelArguments());
+    auto argument = CreateDefaultChannelArguments(GrpcService::service_full_name());
+    channel_ = BuildChannel(address, port, argument);
     stub_ = GrpcService::NewStub(channel_);
   }
 
@@ -109,7 +110,8 @@ class GrpcClient {
              int num_threads,
              bool use_tls = false)
       : client_call_manager_(call_manager), use_tls_(use_tls) {
-    grpc::ChannelArguments argument = CreateDefaultChannelArguments();
+    grpc::ChannelArguments argument =
+        CreateDefaultChannelArguments(GrpcService::service_full_name());
     grpc::ResourceQuota quota;
     quota.SetMaxThreads(num_threads);
     argument.SetResourceQuota(quota);

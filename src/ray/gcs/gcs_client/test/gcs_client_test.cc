@@ -483,6 +483,25 @@ TEST_P(GcsClientTest, TestCheckAlive) {
   }
 }
 
+TEST_P(GcsClientTest, TestDefaultRetryPolicy) {
+  // Register node.
+  auto node_info = Mocker::GenNodeInfo();
+  node_info->mutable_resources_total()->insert({"CPU", 1.0});
+  node_info->mutable_resources_total()->insert({"GPU", 10.0});
+  RAY_CHECK(RegisterNode(*node_info));
+
+  EXPECT_EQ(gcs_client_->GetGcsRpcClient().GetChannel()->GetServiceConfigJSON(),
+            "{\"methodConfig\":[{\"name\":[{\"service\":\"ray.rpc.JobInfoGcsService\"},{"
+            "\"service\":\"ray.rpc.ActorInfoGcsService\"},{\"service\":\"ray.rpc."
+            "NodeInfoGcsService\"},{\"service\":\"ray.rpc.NodeResourceInfoGcsService\"},{"
+            "\"service\":\"ray.rpc.WorkerInfoGcsService\"},{\"service\":\"ray.rpc."
+            "PlacementGroupInfoGcsService\"},{\"service\":\"ray.rpc."
+            "InternalKVGcsService\"},{\"service\":\"ray.rpc.InternalPubSubGcsService\"},{"
+            "\"service\":\"ray.rpc.TaskInfoGcsService\"}],\"retryPolicy\":{"
+            "\"backoffMultiplier\":2,\"initialBackoff\":\"0.5s\",\"maxAttempts\":5,"
+            "\"maxBackoff\":\"30s\",\"retryableStatusCodes\":[\"UNAVAILABLE\"]}}]}");
+}
+
 TEST_P(GcsClientTest, TestJobInfo) {
   // Create job table data.
   JobID add_job_id = JobID::FromInt(1);

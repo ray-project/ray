@@ -185,6 +185,25 @@ TEST_F(TestGrpcServerClientFixture, TestBasic) {
   }
 }
 
+TEST_F(TestGrpcServerClientFixture, TestDefaultRetryPolicy) {
+  // Send request
+  PingRequest request;
+  std::atomic<bool> done(false);
+  Ping(request, [&done](const Status &status, const PingReply &reply) {
+    RAY_LOG(INFO) << "replied, status=" << status;
+    done = true;
+  });
+  while (!done) {
+    RAY_LOG(INFO) << "waiting";
+    std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+  }
+  EXPECT_EQ(grpc_client_->Channel()->GetServiceConfigJSON(),
+            "{\"methodConfig\":[{\"name\":[{\"service\":\"ray.rpc.TestService\"}],"
+            "\"retryPolicy\":{\"backoffMultiplier\":2,\"initialBackoff\":\"0.5s\","
+            "\"maxAttempts\":5,\"maxBackoff\":\"30s\",\"retryableStatusCodes\":["
+            "\"UNAVAILABLE\"]}}]}");
+}
+
 TEST_F(TestGrpcServerClientFixture, TestBackpressure) {
   // Send a request which won't be replied to.
   PingRequest request;

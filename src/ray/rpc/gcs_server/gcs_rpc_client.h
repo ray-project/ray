@@ -176,7 +176,17 @@ class GcsRpcClient {
  public:
   static std::shared_ptr<grpc::Channel> CreateGcsChannel(const std::string &address,
                                                          int port) {
-    grpc::ChannelArguments arguments = CreateDefaultChannelArguments();
+    grpc::ChannelArguments arguments = CreateDefaultChannelArguments({
+        JobInfoGcsService::service_full_name(),
+        ActorInfoGcsService::service_full_name(),
+        NodeInfoGcsService::service_full_name(),
+        NodeResourceInfoGcsService::service_full_name(),
+        WorkerInfoGcsService::service_full_name(),
+        PlacementGroupInfoGcsService::service_full_name(),
+        InternalKVGcsService::service_full_name(),
+        InternalPubSubGcsService::service_full_name(),
+        TaskInfoGcsService::service_full_name(),
+    });
     arguments.SetInt(GRPC_ARG_MAX_RECONNECT_BACKOFF_MS,
                      ::RayConfig::instance().gcs_grpc_max_reconnect_backoff_ms());
     arguments.SetInt(GRPC_ARG_MIN_RECONNECT_BACKOFF_MS,
