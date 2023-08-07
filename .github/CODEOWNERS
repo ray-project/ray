@@ -9,4 +9,6 @@
 # mature
 anyscale/ci @aslonnie @can-anyscale
 
+# Data team
 /python/ray/anyscale/data @bveeramani @c21 @amogkam @scottjlee @raulchen
+/release/anyscale/data @bveeramani @c21 @amogkam @scottjlee @raulchen
