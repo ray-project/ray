@@ -4,7 +4,6 @@ import pytorch_lightning as pl
 from copy import copy
 from inspect import isclass
 from typing import Any, Dict, Optional, Type
-from pytorch_lightning.plugins.environments import ClusterEnvironment
 
 from ray.air import session
 from ray.air.config import CheckpointConfig, RunConfig, ScalingConfig
@@ -23,7 +22,7 @@ from ray.train.lightning.lightning_utils import (
     RayLightningEnvironment,
     RayDataModule,
     RayModelCheckpoint,
-    get_worker_root_device,
+    prepare_trainer,
 )
 
 
@@ -576,16 +575,11 @@ def _lightning_train_loop_per_worker(config):
 
     # Prepare Lightning Trainer
     # Setup trainer's parallel devices
-    if trainer_config.get("accelerator", None) == "gpu":
-        current_device = get_worker_root_device()
-        trainer_config["devices"] = [current_device.index]
+    trainer_config["devices"] = "auto"
 
     # Setup ray cluster environment info
-    trainer_config["plugins"] = [
-        plugin
-        for plugin in trainer_config.get("plugins", [])
-        if not isinstance(plugin, ClusterEnvironment)
-    ]
+    if "plugins" not in trainer_config:
+        trainer_config["plugins"] = []
     trainer_config["plugins"].append(RayLightningEnvironment())
 
     # Setup ddp strategy for ray orchestration
@@ -612,6 +606,8 @@ def _lightning_train_loop_per_worker(config):
     ]
 
     trainer = pl.Trainer(**trainer_config)
+
+    trainer = prepare_trainer(trainer)
 
     checkpoint = session.get_checkpoint()
     if checkpoint:
