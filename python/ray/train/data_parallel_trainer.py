@@ -523,17 +523,6 @@ class DataParallelTrainer(BaseTrainer):
 
         initial_checkpoint = self._get_initial_checkpoint()
 
-        latest_checkpoint_index = 0
-        if _use_storage_context() and self._checkpoint_for_restoration:
-            checkpoint_dir_name = os.path.basename(
-                self._checkpoint_for_restoration.path
-            )
-            # Need to add 1 because latest_checkpoint_index is the index of the
-            # next checkpoint to be saved.
-            latest_checkpoint_index = (
-                StorageContext._parse_checkpoint_index(checkpoint_dir_name) + 1
-            )
-
         training_iterator = self._training_iterator_cls(
             backend_executor=backend_executor,
             backend_config=self._backend_config,
@@ -544,7 +533,6 @@ class DataParallelTrainer(BaseTrainer):
             checkpoint=initial_checkpoint,
             checkpoint_strategy=checkpoint_strategy,
             storage_path=self.run_config.storage_path,
-            latest_checkpoint_index=latest_checkpoint_index,
         )
 
         self._report(training_iterator)

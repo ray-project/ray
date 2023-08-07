@@ -56,7 +56,6 @@ class TrainingIterator:
         checkpoint_strategy: Optional[CheckpointConfig],
         run_dir: Optional[Path] = None,
         storage_path: Optional[str] = None,
-        latest_checkpoint_index: int = 0,
     ):
         self._backend_executor = backend_executor
         self._backend = backend_config.backend_cls()
@@ -75,7 +74,6 @@ class TrainingIterator:
         self._storage = None
         if _use_storage_context():
             self._storage = get_storage_context()
-            self._storage.current_checkpoint_index = latest_checkpoint_index
 
         self._start_training(
             train_func=train_func,
