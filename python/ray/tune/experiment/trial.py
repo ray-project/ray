@@ -758,7 +758,7 @@ class Trial:
 
         hostname, pid = ray.get(self.trial_state.ray_actor.get_current_ip_pid.remote())
         self.trial_state.location = _Location(hostname, pid)
-        return self.location.hostname
+        return self.trial_state.location.hostname
 
     @property
     @Deprecated("Replaced by `local_experiment_path`")
