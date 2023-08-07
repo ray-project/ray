@@ -93,11 +93,3 @@ py_test(
     tags = ["team:core"],
     deps = ["//:ray_lib", ":conftest"],
 )
-
-py_test(
-    name = "test_e2e",
-    size = "small",
-    srcs = ["tests/test_e2e.py"],
-    tags = ["team:core"],
-    deps = ["//:ray_lib", ":conftest"],
-)

@@ -482,15 +482,13 @@ TEST_F(GcsAutoscalerStateManagerTest, TestGangResourceRequestsBasic) {
   // A strict spread pending pg should generate pending gang resource requests.
   {
     auto pg = PlacementGroupID::Of(job_id);
-    EXPECT_CALL(*gcs_placement_group_manager_, GetPlacementGroupLoad)
-        .WillOnce(
-            Return(Mocker::GenPlacementGroupLoad({Mocker::GenPlacementGroupTableData(
-                pg,
-                job_id,
-                {{{"CPU", 1}}, {{"GPU", 1}}},
-                {"", ""},
-                rpc::PlacementStrategy::STRICT_SPREAD,
-                rpc::PlacementGroupTableData::PENDING)})));
+    UpdatePlacementGroupLoad(
+        {Mocker::GenPlacementGroupTableData(pg,
+                                            job_id,
+                                            {{{"CPU", 1}}, {{"GPU", 1}}},
+                                            {"", ""},
+                                            rpc::PlacementStrategy::STRICT_SPREAD,
+                                            rpc::PlacementGroupTableData::PENDING)});
 
     auto state = GetClusterResourceStateSync();
     CheckGangResourceRequests(state,
@@ -503,15 +501,13 @@ TEST_F(GcsAutoscalerStateManagerTest, TestGangResourceRequestsBasic) {
   // A strict pack should also generate constraints.
   {
     auto pg = PlacementGroupID::Of(job_id);
-    EXPECT_CALL(*gcs_placement_group_manager_, GetPlacementGroupLoad)
-        .WillOnce(
-            Return(Mocker::GenPlacementGroupLoad({Mocker::GenPlacementGroupTableData(
-                pg,
-                job_id,
-                {{{"CPU", 1}}, {{"GPU", 1}}},
-                {"", ""},
-                rpc::PlacementStrategy::STRICT_PACK,
-                rpc::PlacementGroupTableData::PENDING)})));
+    UpdatePlacementGroupLoad(
+        {Mocker::GenPlacementGroupTableData(pg,
+                                            job_id,
+                                            {{{"CPU", 1}}, {{"GPU", 1}}},
+                                            {"", ""},
+                                            rpc::PlacementStrategy::STRICT_PACK,
+                                            rpc::PlacementGroupTableData::PENDING)});
 
     auto state = GetClusterResourceStateSync();
     CheckGangResourceRequests(state,
@@ -536,21 +532,19 @@ TEST_F(GcsAutoscalerStateManagerTest, TestGangResourceRequestsNonStrict) {
   {
     auto pg1 = PlacementGroupID::Of(job_id1);
     auto pg2 = PlacementGroupID::Of(job_id2);
-    EXPECT_CALL(*gcs_placement_group_manager_, GetPlacementGroupLoad)
-        .WillOnce(Return(Mocker::GenPlacementGroupLoad(
-            {Mocker::GenPlacementGroupTableData(pg1,
-                                                job_id1,
-                                                {{{"CPU", 1}, {"GPU", 2}}},
-                                                {""},
-                                                rpc::PlacementStrategy::PACK,
-                                                rpc::PlacementGroupTableData::PENDING),
-             Mocker::GenPlacementGroupTableData(
-                 pg2,
-                 job_id2,
-                 {{{"TPU", 1}}},
-                 {""},
-                 rpc::PlacementStrategy::SPREAD,
-                 rpc::PlacementGroupTableData::PENDING)})));
+    UpdatePlacementGroupLoad(
+        {Mocker::GenPlacementGroupTableData(pg1,
+                                            job_id1,
+                                            {{{"CPU", 1}, {"GPU", 2}}},
+                                            {""},
+                                            rpc::PlacementStrategy::PACK,
+                                            rpc::PlacementGroupTableData::PENDING),
+         Mocker::GenPlacementGroupTableData(pg2,
+                                            job_id2,
+                                            {{{"TPU", 1}}},
+                                            {""},
+                                            rpc::PlacementStrategy::SPREAD,
+                                            rpc::PlacementGroupTableData::PENDING)});
 
     const auto &state = GetClusterResourceStateSync();
     CheckGangResourceRequests(state,
@@ -570,16 +564,13 @@ TEST_F(GcsAutoscalerStateManagerTest, TestGangResourceRequestsPartialReschedulin
   // A partially placed PG should not have unplaced bundles requests for strict spread.
   {
     auto pg1 = PlacementGroupID::Of(job_id1);
-
-    EXPECT_CALL(*gcs_placement_group_manager_, GetPlacementGroupLoad)
-        .WillOnce(
-            Return(Mocker::GenPlacementGroupLoad({Mocker::GenPlacementGroupTableData(
-                pg1,
-                job_id1,
-                {{{"CPU_failed_1", 1}}, {{"CPU_success_2", 2}}},
-                {"", node->node_id()},
-                rpc::PlacementStrategy::STRICT_SPREAD,
-                rpc::PlacementGroupTableData::RESCHEDULING)})));
+    UpdatePlacementGroupLoad({Mocker::GenPlacementGroupTableData(
+        pg1,
+        job_id1,
+        {{{"CPU_failed_1", 1}}, {{"CPU_success_2", 2}}},
+        {"", node->node_id()},
+        rpc::PlacementStrategy::STRICT_SPREAD,
+        rpc::PlacementGroupTableData::RESCHEDULING)});
 
     const auto &state = GetClusterResourceStateSync();
 
