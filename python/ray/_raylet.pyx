@@ -3060,6 +3060,9 @@ cdef class CoreWorker:
         logger.warning("Local object store memory usage:\n{}\n".format(
             message.decode("utf-8")))
 
+    def get_memory_store_size(self):
+        return CCoreWorkerProcess.GetCoreWorker().GetMemoryStoreSize()
+
     cdef python_scheduling_strategy_to_c(
             self, python_scheduling_strategy,
             CSchedulingStrategy *c_scheduling_strategy):
