@@ -273,6 +273,9 @@ class FileBasedDatasource(Datasource):
         **write_args,
     ) -> WriteResult:
         """Write blocks for a file-based datasource."""
+        # `FileBasedDatasource` subclasses expose a `_FILE_EXTENSION` attribute. It 
+        # represents a list of supported file extensions. If the user doesn't specify
+        # a file format, we default to the first extension in the list.
         if file_format is None:
             file_format = self._FILE_EXTENSION
             if isinstance(file_format, list):

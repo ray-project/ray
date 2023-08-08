@@ -2804,10 +2804,6 @@ class Dataset:
     ) -> None:
         """Writes the :class:`~ray.data.Dataset` to images.
 
-        The number of files is determined by the number of blocks in the dataset.
-        To control the number of number of blocks, call
-        :meth:`~ray.data.Dataset.repartition`.
-
         Examples:
             >>> import ray
             >>> ds = ray.data.read_images("s3://anonymous@ray-example-data/image-datasets/simple")
@@ -2819,7 +2815,9 @@ class Dataset:
             path: The path to the destination root directory, where
                 the images are written to.
             column: The column containing the data you want to write to images.
-            file_format: The image file format to write with.
+            file_format: The image file format to write with. For available options,
+                see `Image file formats <https://pillow.readthedocs.io/en/latest\
+                /handbook/image-file-formats.html>`.
             filesystem: The pyarrow filesystem implementation to write to.
                 These filesystems are specified in the
                 `pyarrow docs <https://arrow.apache.org/docs\
