@@ -510,7 +510,7 @@ def _docker_push(image, tag):
     #
     # With stream=True, it's a line-at-a-time generator of the same
     # info. So we can slow it down by printing every couple hundred
-    # lines
+    # lines.
     i = 0
     for progress_line in DOCKER_CLIENT.api.push(image, tag=tag, stream=True):
         if i % 100 == 0:
