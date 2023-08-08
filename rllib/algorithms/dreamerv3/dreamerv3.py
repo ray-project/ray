@@ -7,11 +7,12 @@ https://arxiv.org/pdf/2301.04104v1.pdf
 D. Hafner, T. Lillicrap, M. Norouzi, J. Ba
 https://arxiv.org/pdf/2010.02193.pdf
 """
+import copy
 import dataclasses
 import gc
 import logging
 import tree  # pip install dm_tree
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
 import gymnasium as gym
 import numpy as np
@@ -30,6 +31,7 @@ from ray.rllib.algorithms.dreamerv3.utils.summaries import (
 )
 from ray.rllib.core.learner.learner import LearnerHyperparameters
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
+from ray.rllib.models.catalog import MODEL_DEFAULTS
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
 from ray.rllib.utils import deep_update
 from ray.rllib.utils.annotations import override
@@ -125,6 +127,7 @@ class DreamerV3Config(AlgorithmConfig):
         self.world_model_grad_clip_by_global_norm = 1000.0
         self.critic_grad_clip_by_global_norm = 100.0
         self.actor_grad_clip_by_global_norm = 100.0
+        self.symlog_obs = "auto"
 
         # Reporting.
         # DreamerV3 is super sample efficient and only needs very few episodes
@@ -156,6 +159,20 @@ class DreamerV3Config(AlgorithmConfig):
         # __sphinx_doc_end__
         # fmt: on
 
+    @property
+    def model(self):
+        model = copy.deepcopy(MODEL_DEFAULTS)
+        model.update(
+            {
+                "batch_length_T": self.batch_length_T,
+                "gamma": self.gamma,
+                "horizon_H": self.horizon_H,
+                "model_size": self.model_size,
+                "symlog_obs": self.symlog_obs,
+            }
+        )
+        return model
+
     @override(AlgorithmConfig)
     def training(
         self,
@@ -178,6 +195,7 @@ class DreamerV3Config(AlgorithmConfig):
         world_model_grad_clip_by_global_norm: Optional[float] = NotProvided,
         critic_grad_clip_by_global_norm: Optional[float] = NotProvided,
         actor_grad_clip_by_global_norm: Optional[float] = NotProvided,
+        symlog_obs: Optional[Union[bool, str]] = NotProvided,
         replay_buffer_config: Optional[dict] = NotProvided,
         **kwargs,
     ) -> "DreamerV3Config":
@@ -236,6 +254,9 @@ class DreamerV3Config(AlgorithmConfig):
             critic_grad_clip_by_global_norm: Critic grad clipping value
                 (by global norm).
             actor_grad_clip_by_global_norm: Actor grad clipping value (by global norm).
+            symlog_obs: Whether to symlog observations or not. If set to "auto"
+                (default), will check for the environment's observation space and then
+                only symlog if not an image space.
             replay_buffer_config: Replay buffer config.
                 Only serves in DreamerV3 to set the capacity of the replay buffer.
                 Note though that in the paper ([1]) a size of 1M is used for all
@@ -291,6 +312,8 @@ class DreamerV3Config(AlgorithmConfig):
             self.critic_grad_clip_by_global_norm = critic_grad_clip_by_global_norm
         if actor_grad_clip_by_global_norm is not NotProvided:
             self.actor_grad_clip_by_global_norm = actor_grad_clip_by_global_norm
+        if symlog_obs is not NotProvided:
+            self.symlog_obs = symlog_obs
         if replay_buffer_config is not NotProvided:
             # Override entire `replay_buffer_config` if `type` key changes.
             # Update, if `type` key remains the same or is not specified.
@@ -602,7 +625,7 @@ class DreamerV3(Algorithm):
                         batch_length_T=self.config.batch_length_T,
                         symlog_obs=do_symlog_obs(
                             env_runner.env.single_observation_space,
-                            self.config.model.get("symlog_obs", "auto"),
+                            self.config.symlog_obs,
                         ),
                     )
 

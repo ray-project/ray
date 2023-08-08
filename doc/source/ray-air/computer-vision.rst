@@ -183,7 +183,7 @@ Training vision models
             :end-before: __torch_trainer_stop__
             :dedent:
 
-        For more in-depth examples, see :ref:`Using Trainers <train-getting-started>`.
+        For more in-depth examples, see :ref:`the Ray Train documentation <train-docs>`.
 
     .. tab-item:: TensorFlow
 
@@ -202,18 +202,18 @@ Training vision models
             :end-before: __tensorflow_trainer_stop__
             :dedent:
 
-        For more information, check out :ref:`the Ray Train documentation <train-getting-started>`.
+        For more information, check out :ref:`the Ray Train documentation <train-docs>`.
 
 Creating checkpoints
 --------------------
 
-:class:`Checkpoints <ray.air.checkpoint.Checkpoint>` are required for batch inference and model
+:class:`Checkpoints <ray.train.Checkpoint>` are required for batch inference and model
 serving. They contain model state and optionally a preprocessor.
 
 If you're going from training to prediction, don't create a new checkpoint.
 :meth:`Trainer.fit() <ray.train.trainer.BaseTrainer.fit>` returns a
-:class:`~ray.air.result.Result` object. Use
-:attr:`Result.checkpoint <ray.air.result.Result.checkpoint>` instead.
+:class:`~ray.train.Result` object. Use
+:attr:`Result.checkpoint <ray.train.Result.checkpoint>` instead.
 
 .. tab-set::
 
@@ -259,8 +259,6 @@ image datasets.
             :end-before: __torch_batch_predictor_stop__
             :dedent:
 
-        For more in-depth examples, read :ref:`Using Predictors for Inference <air-predictors>`.
-
     .. tab-item:: TensorFlow
 
         To create a :class:`~ray.train.batch_predictor.BatchPredictor`, call
@@ -271,8 +269,6 @@ image datasets.
             :start-after: __tensorflow_batch_predictor_start__
             :end-before: __tensorflow_batch_predictor_stop__
             :dedent:
-
-        For more information, read :ref:`Using Predictors for Inference <air-predictors>`.
 
 Serving vision models
 ---------------------
