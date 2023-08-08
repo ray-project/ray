@@ -354,6 +354,14 @@ install_pip_packages() {
     requirements_files+=("${WORKSPACE_DIR}/python/requirements/ml/rllib-test-requirements.txt")
     #TODO(amogkam): Add this back to rllib-requirements.txt once mlagents no longer pins torch<1.9.0 version.
     pip install --no-dependencies mlagents==0.28.0
+
+    # Install MuJoCo.
+    sudo apt install libosmesa6-dev libgl1-mesa-glx libglfw3 patchelf -y
+    wget https://mujoco.org/download/mujoco210-linux-x86_64.tar.gz
+    mkdir -p /root/.mujoco
+    mv mujoco210-linux-x86_64.tar.gz /root/.mujoco/.
+    (cd /root/.mujoco && tar -xf /root/.mujoco/mujoco210-linux-x86_64.tar.gz)
+    export LD_LIBRARY_PATH=${LD_LIBRARY_PATH:-}:/root/.mujoco/mujoco210/bin
   fi
 
   # Additional Train test dependencies.
@@ -503,9 +511,9 @@ install_pip_packages() {
 }
 
 install_thirdparty_packages() {
-  # shellcheck disable=SC2262
-  alias pip="python -m pip"
-  CC=gcc pip install psutil setproctitle==1.2.2 colorama --target="${WORKSPACE_DIR}/python/ray/thirdparty_files"
+  RAY_THIRDPARTY_FILES="$(realpath "${WORKSPACE_DIR}/python/ray/thirdparty_files")"
+  mkdir -p "${RAY_THIRDPARTY_FILES}"
+  CC=gcc python -m pip install psutil setproctitle==1.2.2 colorama --target="${RAY_THIRDPARTY_FILES}"
 }
 
 install_dependencies() {
@@ -543,7 +551,7 @@ install_dependencies() {
   install_thirdparty_packages
 }
 
-install_dependencies "$@"
+install_dependencies
 
 # Pop caller's shell options (quietly)
 { set -vx; eval "${SHELLOPTS_STACK##*|}"; SHELLOPTS_STACK="${SHELLOPTS_STACK%|*}"; } 2> /dev/null

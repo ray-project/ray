@@ -10,14 +10,13 @@ import pytest
 
 import ray
 import ray.cloudpickle as ray_pickle
-from ray import tune
-from ray.air import (
+from ray import train, tune
+from ray.train import (
     Checkpoint,
     CheckpointConfig,
     FailureConfig,
     RunConfig,
     ScalingConfig,
-    session,
 )
 from ray.air._internal.remote_storage import (
     delete_at_uri,
@@ -27,7 +26,7 @@ from ray.air._internal.remote_storage import (
 )
 from ray.train.data_parallel_trainer import DataParallelTrainer
 from ray.tune import Callback, Trainable
-from ray.tune.execution.trial_runner import _find_newest_experiment_checkpoint
+from ray.tune.execution.experiment_state import _find_newest_experiment_checkpoint
 from ray.tune.experiment import Trial
 from ray.tune.result_grid import ResultGrid
 from ray.tune.schedulers.async_hyperband import ASHAScheduler
@@ -88,7 +87,7 @@ def _dummy_train_fn(config):
 
 
 def _dummy_train_fn_with_report(config):
-    session.report({"score": 1})
+    train.report({"score": 1})
 
 
 def _train_fn_sometimes_failing(config):
@@ -96,7 +95,7 @@ def _train_fn_sometimes_failing(config):
     # Hangs if hanging is set and marker file exists.
     failing, hanging = config["failing_hanging"]
 
-    checkpoint = session.get_checkpoint()
+    checkpoint = train.get_checkpoint()
     if checkpoint:
         checkpoint_dict = checkpoint.to_dict()
         state = {"it": checkpoint_dict["it"]}
@@ -106,7 +105,7 @@ def _train_fn_sometimes_failing(config):
     for i in range(config.get("num_epochs", 1)):
         state["it"] += 1
 
-        session.report(state, checkpoint=Checkpoint.from_dict(state))
+        train.report(state, checkpoint=Checkpoint.from_dict(state))
 
     # We fail after reporting num_epochs checkpoints.
     if failing and failing.exists():
@@ -116,7 +115,7 @@ def _train_fn_sometimes_failing(config):
         time.sleep(60)
 
     state["it"] += 1
-    session.report(state, checkpoint=Checkpoint.from_dict(state))
+    train.report(state, checkpoint=Checkpoint.from_dict(state))
 
 
 class _FailOnStats(Callback):
@@ -612,7 +611,7 @@ def test_restore_overwrite_trainable(ray_start_2_cpus, tmpdir):
 
     def train_func_1(config):
         data = {"data": config["data"]}
-        session.report(data, checkpoint=Checkpoint.from_dict(data))
+        train.report(data, checkpoint=Checkpoint.from_dict(data))
         raise RuntimeError("Failing!")
 
     tuner = Tuner(
@@ -634,7 +633,7 @@ def test_restore_overwrite_trainable(ray_start_2_cpus, tmpdir):
 
     # Can't overwrite with a different Trainable name
     def train_func_2(config):
-        checkpoint = session.get_checkpoint()
+        checkpoint = train.get_checkpoint()
         assert checkpoint and checkpoint.to_dict()["data"] == config["data"]
 
     with pytest.raises(ValueError):
@@ -646,7 +645,7 @@ def test_restore_overwrite_trainable(ray_start_2_cpus, tmpdir):
 
     # Can technically change trainable code (not recommended!)
     def train_func_1(config):
-        checkpoint = session.get_checkpoint()
+        checkpoint = train.get_checkpoint()
         assert checkpoint and checkpoint.to_dict()["data"] == config["data"]
 
     tuner = Tuner.restore(
@@ -762,7 +761,7 @@ def test_tuner_restore_from_moved_experiment_path(
     training_iteration = results[0].metrics["training_iteration"]
     assert (
         training_iteration == 1
-    ), f"Should only have 1 session.report before erroring, got {training_iteration}"
+    ), f"Should only have 1 train.report before erroring, got {training_iteration}"
 
     # Move experiment from `tmp_path/ray_results/exp_dir`
     # to `tmp_path/moved_ray_results/new_exp_dir`, changing both `local_dir` and
@@ -791,7 +790,7 @@ def test_tuner_restore_from_moved_experiment_path(
         results = tuner.fit()
 
     assert len(results.errors) == 0
-    # Check that we restored iter=1, then made 2 calls to session.report -> iter=3
+    # Check that we restored iter=1, then made 2 calls to train.report -> iter=3
     training_iteration = results[0].metrics["training_iteration"]
     assert training_iteration == 3, training_iteration
 
@@ -819,7 +818,7 @@ def test_tuner_restore_from_moved_cloud_uri(
 
     def failing_fn(config):
         data = {"score": 1}
-        session.report(data, checkpoint=Checkpoint.from_dict(data))
+        train.report(data, checkpoint=Checkpoint.from_dict(data))
         raise RuntimeError("Failing!")
 
     tuner = Tuner(

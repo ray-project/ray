@@ -131,15 +131,6 @@ def _gym_env_creator(
         # If class provided, call constructor directly.
         if isinstance(env_descriptor, type):
             env = env_descriptor(env_context)
-        # Special case: Atari not supported by gymnasium yet -> Need to use their
-        # GymV26 compatibility wrapper class.
-        # TODO(sven): Remove this if-block once gymnasium fully supports Atari envs.
-        elif env_descriptor.startswith("ALE/"):
-            env = gym.make(
-                "GymV26Environment-v0",
-                env_id=env_descriptor,
-                make_kwargs=env_context,
-            )
         else:
             env = gym.make(env_descriptor, **env_context)
         # If we are dealing with an old gym-env API, use the provided compatibility

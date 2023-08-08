@@ -251,51 +251,35 @@ class ServeAgent(dashboard_utils.DashboardAgentModule):
         from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
 
         try:
-            config = ServeDeploySchema.parse_obj(await req.json())
+            config: ServeDeploySchema = ServeDeploySchema.parse_obj(await req.json())
         except ValidationError as e:
             return Response(
                 status=400,
                 text=repr(e),
             )
 
+        config_http_options = config.http_options.dict()
+        full_http_options = dict(
+            {"location": config.proxy_location}, **config_http_options
+        )
+
         async with self._controller_start_lock:
             client = await serve_start_async(
                 detached=True,
-                http_options={
-                    "host": config.http_options.host,
-                    "port": config.http_options.port,
-                    "root_path": config.http_options.root_path,
-                    "location": config.proxy_location,
-                },
+                http_options=full_http_options,
             )
 
-        # Check HTTP Host
-        host_conflict = self.check_http_options(
-            "host", client.http_config.host, config.http_options.host
-        )
-        if host_conflict is not None:
-            return host_conflict
-
-        # Check HTTP Port
-        port_conflict = self.check_http_options(
-            "port", client.http_config.port, config.http_options.port
-        )
-        if port_conflict is not None:
-            return port_conflict
-
-        # Check HTTP root path
-        root_path_conflict = self.check_http_options(
-            "root path", client.http_config.root_path, config.http_options.root_path
-        )
-        if root_path_conflict is not None:
-            return root_path_conflict
-
-        # Check HTTP location
-        location_conflict = self.check_http_options(
-            "location", client.http_config.location, config.proxy_location
-        )
-        if location_conflict is not None:
-            return location_conflict
+        # Serve ignores HTTP options if it was already running when
+        # serve_start_async() is called. We explicitly return an error response
+        # here if Serve's HTTP options don't match the config's options.
+        for option, requested_value in full_http_options.items():
+            conflict_response = self.check_http_options(
+                option,
+                getattr(client.http_config, option),
+                requested_value,
+            )
+            if conflict_response is not None:
+                return conflict_response
 
         try:
             client.deploy_apps(config)

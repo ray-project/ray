@@ -1,14 +1,5 @@
 #!/bin/bash
 
-# Function to setup AWS
-setup_aws() {
-    echo "Setting up AWS..."
-    chmod +x ./setup_aws.sh
-    if ! ./setup_aws.sh; then
-        echo "Failed to setup AWS. Exiting..."
-        exit 1
-    fi
-}
 
 # Function to prepare nodes
 prepare_nodes() {
@@ -53,6 +44,8 @@ fine_tune() {
         --train_path "${train_path}" \
         --test_path "${test_path}"  \
         --special_token_path "${token_path}" \
+        --num-checkpoints-to-keep 1 \
+        --num-epochs 1 \
         "${params[@]}"; then
         echo "Failed to fine-tune the model. Exiting..."
         exit 1
@@ -103,7 +96,6 @@ esac
 MODEL_ID="meta-llama/Llama-2-${SIZE}-hf"
 CONFIG_DIR="./deepspeed_configs/zero_3_llama_2_${SIZE}.json"
 
-setup_aws
 prepare_nodes "${MODEL_ID}"
 check_and_create_dataset "${DATA_DIR}"
 fine_tune "$BS" "$ND" "$MODEL_ID" "$BASE_DIR" "$CONFIG_DIR" "$TRAIN_PATH" "$TEST_PATH" "$TOKEN_PATH" "${params[@]}"
