@@ -107,7 +107,7 @@ class SortTaskSpec(ExchangeTaskSpec):
         sample_dict = BlockAccessor.for_block(samples).to_numpy(columns=columns)
         # Compute sorted indices of the samples. In np.lexsort last key is the
         # primary key hence have to reverse the order.
-        indices = np.lexsort(list(reversed(sample_dict.values())))
+        indices = np.lexsort(list(reversed(list(sample_dict.values()))))
         # Sort each column by indices, and calculate q-ths quantile items.
         # Ignore the 1st item as it's not required for the boundary
         for k, v in sample_dict.items():
