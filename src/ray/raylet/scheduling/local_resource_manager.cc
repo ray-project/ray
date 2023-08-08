@@ -47,13 +47,13 @@ void LocalResourceManager::AddLocalResourceInstances(
   local_resources_.available.Add(resource_id, instances);
   local_resources_.total.Add(resource_id, instances);
   resources_last_idle_time_[resource_id] = absl::Now();
-  OnResourceChanged();
+  OnResourceOrStateChanged();
 }
 
 void LocalResourceManager::DeleteLocalResource(scheduling::ResourceID resource_id) {
   local_resources_.available.Remove(resource_id);
   local_resources_.total.Remove(resource_id);
-  OnResourceChanged();
+  OnResourceOrStateChanged();
 }
 
 bool LocalResourceManager::IsAvailableResourceEmpty(
@@ -257,7 +257,7 @@ std::vector<double> LocalResourceManager::AddResourceInstances(
   if (is_idle) {
     SetResourceIdle(resource_id);
   }
-  OnResourceChanged();
+  OnResourceOrStateChanged();
 
   return FixedPointVectorToDouble(overflow);
 }
@@ -277,7 +277,7 @@ std::vector<double> LocalResourceManager::SubtractResourceInstances(
       resource_instances_fp,
       local_resources_.available.GetMutable(resource_id),
       allow_going_negative);
-  OnResourceChanged();
+  OnResourceOrStateChanged();
 
   return FixedPointVectorToDouble(underflow);
 }
@@ -313,7 +313,7 @@ bool LocalResourceManager::AllocateLocalTaskResources(
     const ResourceRequest &resource_request,
     std::shared_ptr<TaskResourceInstances> task_allocation) {
   if (AllocateTaskResourceInstances(resource_request, task_allocation)) {
-    OnResourceChanged();
+    OnResourceOrStateChanged();
     return true;
   }
   return false;
@@ -335,7 +335,7 @@ void LocalResourceManager::ReleaseWorkerResources(
     return;
   }
   FreeTaskResourceInstances(task_allocation);
-  OnResourceChanged();
+  OnResourceOrStateChanged();
 }
 
 NodeResources LocalResourceManager::ToNodeResources() const {
@@ -362,7 +362,7 @@ void LocalResourceManager::UpdateAvailableObjectStoreMemResource() {
   if (new_available != local_resources_.available.Get(ResourceID::ObjectStoreMemory())) {
     local_resources_.available.Set(ResourceID::ObjectStoreMemory(),
                                    std::move(new_available));
-    OnResourceChanged();
+    OnResourceOrStateChanged();
 
     // This is more of a discrete approximate of the last idle object store memory usage.
     // TODO(rickyx): in order to know exactly when object store becomes idle/busy, we
@@ -500,7 +500,7 @@ ray::gcs::NodeResourceInfoAccessor::ResourceMap LocalResourceManager::GetResourc
   return map;
 }
 
-void LocalResourceManager::OnResourceChanged() {
+void LocalResourceManager::OnResourceOrStateChanged() {
   if (IsLocalNodeDraining() && IsLocalNodeIdle()) {
     // The node is drained.
     // Sending a SIGTERM to itself is equivalent to gracefully shutting down raylet.
@@ -574,7 +574,7 @@ void LocalResourceManager::RecordMetrics() const {
 
 void LocalResourceManager::SetLocalNodeDraining() {
   is_local_node_draining_ = true;
-  OnResourceChanged();
+  OnResourceOrStateChanged();
 }
 
 }  // namespace ray

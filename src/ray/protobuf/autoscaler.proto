@@ -318,5 +318,7 @@ service AutoscalerStateService {
   // the acceptance condition is met.
   // If the return status is not OK, then the request might fail
   // and it's safe to retry since it's idempotent.
+  // Caller should not read `is_accepted` from the reply
+  // if the return status is not OK.
   rpc DrainNode(DrainNodeRequest) returns (DrainNodeReply);
 }

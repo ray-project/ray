@@ -172,8 +172,8 @@ class LocalResourceManager : public syncer::ReporterInterface {
   absl::flat_hash_map<std::string, LocalResourceManager::ResourceUsage>
   GetResourceUsageMap() const;
 
-  /// Notify the subscriber that the local resouces has changed.
-  void OnResourceChanged();
+  /// Notify the subscriber that the local resouces or state has changed.
+  void OnResourceOrStateChanged();
 
   /// Convert local resources to NodeResources.
   NodeResources ToNodeResources() const;
@@ -293,6 +293,7 @@ class LocalResourceManager : public syncer::ReporterInterface {
   // Version of this resource. It will incr by one whenever the state changed.
   int64_t version_ = 0;
 
+  // Whether the local node is being drained or not.
   bool is_local_node_draining_ = false;
 
   FRIEND_TEST(ClusterResourceSchedulerTest, SchedulingUpdateTotalResourcesTest);

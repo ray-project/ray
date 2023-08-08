@@ -88,10 +88,8 @@ bool ClusterResourceScheduler::NodeAvailable(scheduling::NodeID node_id) const {
   if (node_id == local_node_id_) {
     if (!is_local_node_with_raylet_) {
       return false;
-    } else if (local_resource_manager_->IsLocalNodeDraining()) {
-      return false;
     } else {
-      return true;
+      return !local_resource_manager_->IsLocalNodeDraining();
     }
   }
 
