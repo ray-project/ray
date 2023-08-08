@@ -314,12 +314,12 @@ def training_function(kwargs: dict):
         lr_scheduler = get_linear_schedule_with_warmup(
             optimizer=optimizer,
             num_warmup_steps=int((num_epochs * train_ds_len / 20)),
-            num_training_steps=(num_epochs * train_ds_len),
+            num_training_steps=(num_epochs * train_ds_len * batch_size),
         )
     else:
         lr_scheduler = DummyScheduler(
             optimizer,
-            total_num_steps=(num_epochs * train_ds_len * 2),
+            total_num_steps=(num_epochs * train_ds_len * batch_size),
             warmup_num_steps=int((num_epochs * train_ds_len / 20)),
         )
 
