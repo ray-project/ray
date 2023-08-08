@@ -393,7 +393,7 @@ class Searcher:
 
             tuner = tune.Tuner(
                 cost,
-                run_config=train.RunConfig(
+                run_config=air.RunConfig(
                     name=self.experiment_name,
                     local_dir="~/my_results",
                 ),

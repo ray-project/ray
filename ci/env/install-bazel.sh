@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-
-set -exuo pipefail
+set -x
+set -euo pipefail
+ROOT_DIR=$(cd "$(dirname "$0")/$(dirname "$(test -L "$0" && readlink "$0" || echo "/")")"; pwd)
 
 arg1="${1-}"
 
@@ -111,6 +112,10 @@ if [[ "${TRAVIS-}" == true ]]; then
   echo "build --jobs=50" >> ~/.bazelrc
 fi
 
+if [[ "${BUILDKITE-}" == "true" ]]; then
+  cp "${ROOT_DIR}"/../../.bazeliskrc ~/.bazeliskrc
+fi
+
 if [[ "${GITHUB_ACTIONS-}" == "true" ]]; then
   echo "build --config=ci-github" >> ~/.bazelrc
   echo "build --jobs="$(($(nproc)+2)) >> ~/.bazelrc
@@ -132,9 +137,9 @@ if [[ "${CI-}" == "true" ]]; then
     echo "Using local disk cache on mac"
     echo "build --disk_cache=/tmp/bazel-cache" >> ~/.bazelrc
     echo "build --repository_cache=/tmp/bazel-repo-cache" >> ~/.bazelrc
-  elif [[ "${BUILDKITE_BAZEL_CACHE_URL:-}" != "" ]]; then
+  else
     echo "build --remote_cache=${BUILDKITE_BAZEL_CACHE_URL}" >> ~/.bazelrc
-    if [[ "${BUILDKITE_PULL_REQUEST:-false}" != "false" ]]; then
+    if [[ "${BUILDKITE_PULL_REQUEST}" != "false" ]]; then
       echo "build --remote_upload_local_results=false" >> ~/.bazelrc
     fi
   fi

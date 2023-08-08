@@ -114,12 +114,6 @@ class Test(dict):
         """
         return self.get("stable", True)
 
-    def is_gce(self) -> bool:
-        """
-        Returns whether this test is running on GCE.
-        """
-        return self.get("env") == "gce"
-
     def is_byod_cluster(self) -> bool:
         """
         Returns whether this test is running on a BYOD cluster.
@@ -255,17 +249,6 @@ class Test(dict):
             else DATAPLANE_ECR_ML_REPO
         )
 
-    def get_byod_ecr(self) -> str:
-        """
-        Returns the anyscale byod ecr to use for this test.
-        """
-        if self.is_gce():
-            return get_global_config()["byod_gcp_cr"]
-        byod_ecr = get_global_config()["byod_aws_cr"]
-        if byod_ecr:
-            return byod_ecr
-        return get_global_config()["byod_ecr"]
-
     def get_ray_image(self) -> str:
         """
         Returns the ray docker image to use for this test.
@@ -286,7 +269,7 @@ class Test(dict):
         Returns the anyscale byod image to use for this test.
         """
         return (
-            f"{self.get_byod_ecr()}/"
+            f"{get_global_config()['byod_ecr']}/"
             f"{self.get_byod_repo()}:{self.get_byod_base_image_tag()}"
         )
 
@@ -301,7 +284,7 @@ class Test(dict):
         Returns the anyscale byod image to use for this test.
         """
         return (
-            f"{self.get_byod_ecr()}/"
+            f"{get_global_config()['byod_ecr']}/"
             f"{self.get_byod_repo()}:{self.get_byod_image_tag()}"
         )
 

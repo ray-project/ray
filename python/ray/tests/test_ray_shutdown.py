@@ -1,7 +1,6 @@
 import sys
 import time
 import platform
-import os
 
 import pytest
 import ray
@@ -272,11 +271,9 @@ def test_raylet_graceful_exit_upon_agent_exit(ray_start_cluster):
         assert raylet is not None
 
         children = psutil.Process(raylet.pid).children()
-        target_path = os.path.join("dashboard", "agent.py")
-        for child in children:
-            if target_path in " ".join(child.cmdline()):
-                return raylet, child
-        raise ValueError("dashboard agent not found")
+        assert len(children) == 1
+        agent = psutil.Process(children[0].pid)
+        return raylet, agent
 
     # Make sure raylet exits gracefully upon agent terminated by SIGTERM.
     worker = cluster.add_node(num_cpus=0)
@@ -292,45 +289,6 @@ def test_raylet_graceful_exit_upon_agent_exit(ray_start_cluster):
     # from cpp code.
     worker = cluster.add_node(num_cpus=0)
     raylet, agent = get_raylet_agent_procs(worker)
-    agent.kill()
-    exit_code = raylet.wait()
-    # When the agent is terminated
-    assert exit_code == 0
-
-
-def test_raylet_graceful_exit_upon_runtime_env_agent_exit(ray_start_cluster):
-    cluster = ray_start_cluster
-    # head
-    cluster.add_node(num_cpus=0)
-
-    def get_raylet_runtime_env_agent_procs(worker):
-        raylet = None
-        for p in worker.live_processes():
-            if p[0] == "raylet":
-                raylet = p[1]
-        assert raylet is not None
-
-        children = psutil.Process(raylet.pid).children()
-        target_path = os.path.join("runtime_env", "agent", "main.py")
-        for child in children:
-            if target_path in " ".join(child.cmdline()):
-                return raylet, child
-        raise ValueError("runtime env agent not found")
-
-    # Make sure raylet exits gracefully upon agent terminated by SIGTERM.
-    worker = cluster.add_node(num_cpus=0)
-    raylet, agent = get_raylet_runtime_env_agent_procs(worker)
-    agent.terminate()
-    exit_code = raylet.wait()
-    # When the agent is terminated
-    assert exit_code == 0
-
-    # Make sure raylet exits gracefully upon agent terminated by SIGKILL.
-    # TODO(sang): Make raylet exits ungracefully in this case. It is currently
-    # not possible because we cannot detect the exit code of children process
-    # from cpp code.
-    worker = cluster.add_node(num_cpus=0)
-    raylet, agent = get_raylet_runtime_env_agent_procs(worker)
     agent.kill()
     exit_code = raylet.wait()
     # When the agent is terminated
@@ -338,6 +296,8 @@ def test_raylet_graceful_exit_upon_runtime_env_agent_exit(ray_start_cluster):
 
 
 if __name__ == "__main__":
+    import os
+
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
     else:

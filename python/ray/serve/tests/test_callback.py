@@ -231,7 +231,8 @@ def test_http_proxy_calllback_failures(ray_instance, capsys):
     # Error message printed when http proxy in STARTING state and not
     # able to be started.
     assert (
-        "Unexpected actor death when checking readiness of HTTP Proxy" in captured.err
+        "Unexpected error occurred when checking readiness of HTTP Proxy"
+        in captured.err
     )
 
 

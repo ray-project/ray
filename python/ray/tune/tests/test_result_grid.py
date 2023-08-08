@@ -10,9 +10,10 @@ import pandas as pd
 
 import ray
 from ray.air._internal.checkpoint_manager import CheckpointStorage, _TrackedCheckpoint
-from ray import train, tune
-from ray.train import Checkpoint, Result
+from ray import air, tune
+from ray.air import Checkpoint, session
 from ray.air.constants import EXPR_ERROR_FILE
+from ray.air.result import Result
 from ray.tune.registry import get_trainable_cls
 from ray.tune.result_grid import ResultGrid
 from ray.tune.experiment import Trial
@@ -216,7 +217,9 @@ def test_best_result_no_report(ray_start_2_cpus):
 
 def test_result_repr(ray_start_2_cpus):
     def f(config):
-        train.report({"loss": 1})
+        from ray.air import session
+
+        session.report({"loss": 1})
 
     tuner = tune.Tuner(f, param_space={"x": tune.grid_search([1, 2])})
     result_grid = tuner.fit()
@@ -353,7 +356,7 @@ def test_num_errors_terminated(tmpdir):
     for i in [3, 5]:
         trials[i].status = Trial.TERMINATED
 
-    create_tune_experiment_checkpoint(trials, experiment_path=str(tmpdir))
+    create_tune_experiment_checkpoint(trials, local_checkpoint_dir=str(tmpdir))
     result_grid = ResultGrid(tune.ExperimentAnalysis(str(tmpdir)))
     assert len(result_grid.errors) == 3
     assert result_grid.num_errors == 3
@@ -363,13 +366,13 @@ def test_num_errors_terminated(tmpdir):
 def test_result_grid_moved_experiment_path(ray_start_2_cpus, tmpdir):
     def train_func(config):
         data = {"it": 0}
-        if train.get_checkpoint():
-            data = train.get_checkpoint().to_dict()
+        if session.get_checkpoint():
+            data = session.get_checkpoint().to_dict()
 
         while True:
             data["it"] += 1
             checkpoint = Checkpoint.from_dict(data)
-            train.report(data, checkpoint=checkpoint)
+            session.report(data, checkpoint=checkpoint)
 
     num_to_keep = 2
     total_iters = 6
@@ -378,11 +381,11 @@ def test_result_grid_moved_experiment_path(ray_start_2_cpus, tmpdir):
         tune_config=tune.TuneConfig(
             num_samples=1,
         ),
-        run_config=train.RunConfig(
+        run_config=air.RunConfig(
             name="exp_dir",
             storage_path=str(tmpdir / "ray_results"),
             stop={"it": total_iters},
-            checkpoint_config=train.CheckpointConfig(
+            checkpoint_config=air.CheckpointConfig(
                 # Keep the latest checkpoints
                 checkpoint_score_attribute="it",
                 num_to_keep=num_to_keep,
@@ -441,11 +444,11 @@ def test_result_grid_cloud_path(ray_start_2_cpus, tmpdir):
     def trainable(config):
         for i in range(5):
             checkpoint = Checkpoint.from_dict({"model": i})
-            train.report(metrics={"metric": i}, checkpoint=checkpoint)
+            session.report(metrics={"metric": i}, checkpoint=checkpoint)
 
     tuner = tune.Tuner(
         trainable,
-        run_config=train.RunConfig(
+        run_config=air.RunConfig(
             storage_path="s3://bucket",
             sync_config=sync_config,
             local_dir=str(local_dir),

@@ -4,14 +4,15 @@ from unittest.mock import patch
 import pytest
 
 import ray
-from ray import train
-from ray.train import Checkpoint, CheckpointConfig, RunConfig, ScalingConfig
+from ray.air import session
+from ray.air.checkpoint import Checkpoint
 from ray.data.preprocessor import Preprocessor
 from ray.train.constants import (
     COPY_DIRECTORY_CHECKPOINTS_INSTEAD_OF_MOVING_ENV,
     DISABLE_LAZY_CHECKPOINTING_ENV,
 )
 from ray.train.data_parallel_trainer import DataParallelTrainer
+from ray.air.config import CheckpointConfig, RunConfig, ScalingConfig
 
 
 @pytest.fixture
@@ -33,7 +34,7 @@ def get_checkpoint_train_func(checkpoint_type):
             if checkpoint_type != "dict":
                 checkpoint = Checkpoint.from_directory(checkpoint.to_directory())
                 path = checkpoint._local_path
-            train.report({"epoch": i, "path": path}, checkpoint=checkpoint)
+            session.report({"epoch": i, "path": path}, checkpoint=checkpoint)
 
     return checkpoint_train_func
 
@@ -135,13 +136,13 @@ def test_resume_from_checkpoint(ray_start_4_cpus, tmpdir):
     """
 
     def train_func():
-        checkpoint = train.get_checkpoint()
+        checkpoint = session.get_checkpoint()
         if checkpoint:
             epoch = checkpoint.to_dict()["epoch"]
         else:
             epoch = 0
         for i in range(epoch, epoch + 2):
-            train.report({"epoch": i}, checkpoint=Checkpoint.from_dict({"epoch": i}))
+            session.report({"epoch": i}, checkpoint=Checkpoint.from_dict({"epoch": i}))
 
     trainer = DataParallelTrainer(
         train_loop_per_worker=train_func, scaling_config=scale_config
@@ -174,16 +175,16 @@ def test_checkpoints_to_keep(ray_start_4_cpus, mode):
     """
 
     def train_func():
-        train.report(
+        session.report(
             dict(loss=float("nan")), checkpoint=Checkpoint.from_dict({"idx": 0})
         )  # nan, deleted
-        train.report(
+        session.report(
             dict(loss=3), checkpoint=Checkpoint.from_dict({"idx": 1})
         )  # best for min, worst for max (del)
-        train.report(
+        session.report(
             dict(loss=7), checkpoint=Checkpoint.from_dict({"idx": 2})
         )  # worst for min (del), best for max
-        train.report(dict(loss=5), checkpoint=Checkpoint.from_dict({"idx": 3}))
+        session.report(dict(loss=5), checkpoint=Checkpoint.from_dict({"idx": 3}))
 
     checkpoint_config = CheckpointConfig(
         num_to_keep=2, checkpoint_score_attribute="loss", checkpoint_score_order=mode

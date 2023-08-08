@@ -93,6 +93,7 @@ def train_func(use_ray: bool, config: Dict):
     local_start_time = time.monotonic()
 
     if use_ray:
+        from ray.air import session
         import ray.train as train
 
     batch_size = config["batch_size"]
@@ -101,7 +102,7 @@ def train_func(use_ray: bool, config: Dict):
     shuffle = config.get("shuffle", False)
 
     if use_ray:
-        world_size = train.get_context().get_world_size()
+        world_size = session.get_world_size()
         local_rank = distributed.get_rank()
     else:
         world_size = distributed.get_world_size()
@@ -214,7 +215,7 @@ def train_func(use_ray: bool, config: Dict):
         local_time_taken = time.monotonic() - local_start_time
 
         if use_ray:
-            train.report(dict(loss=loss, local_time_taken=local_time_taken))
+            session.report(dict(loss=loss, local_time_taken=local_time_taken))
         else:
             print(f"Reporting loss: {loss:.4f}")
             if local_rank == 0:
@@ -231,8 +232,8 @@ def train_torch_ray_air(
 ) -> Tuple[float, float, float]:
     # This function is kicked off by the main() function and runs a full training
     # run using Ray AIR.
-    from ray.train import ScalingConfig
     from ray.train.torch import TorchTrainer
+    from ray.air.config import ScalingConfig
 
     def train_loop(config):
         train_func(use_ray=True, config=config)

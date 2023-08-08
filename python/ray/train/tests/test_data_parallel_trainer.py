@@ -4,12 +4,14 @@ from unittest.mock import patch
 import pytest
 
 import ray
-from ray import train, tune
-from ray.train import Checkpoint, ScalingConfig, RunConfig
+from ray import tune
+from ray.air import session
+from ray.air.checkpoint import Checkpoint
 from ray.train._internal.backend_executor import BackendExecutor
 from ray.train._internal.worker_group import WorkerGroup
 from ray.train.backend import Backend, BackendConfig
 from ray.train.data_parallel_trainer import DataParallelTrainer
+from ray.air.config import ScalingConfig, RunConfig
 from ray.tune.tune_config import TuneConfig
 from ray.tune.tuner import Tuner
 from ray.tune.callback import Callback
@@ -90,7 +92,7 @@ scale_config = ScalingConfig(num_workers=2)
 
 def test_fit_train(ray_start_4_cpus):
     def train_func():
-        train.report({"loss": 1})
+        session.report({"loss": 1})
 
     trainer = DataParallelTrainer(
         train_loop_per_worker=train_func, scaling_config=scale_config
@@ -101,7 +103,7 @@ def test_fit_train(ray_start_4_cpus):
 def test_scaling_config(ray_start_4_cpus):
     def train_func():
         assert ray.available_resources()["CPU"] == 1
-        train.report({"loss": 1})
+        session.report({"loss": 1})
 
     assert ray.available_resources()["CPU"] == 4
     trainer = DataParallelTrainer(
@@ -112,7 +114,7 @@ def test_scaling_config(ray_start_4_cpus):
 
 def test_fit_train_config(ray_start_4_cpus):
     def train_func(config):
-        train.report({"loss": config["x"]})
+        session.report({"loss": config["x"]})
 
     trainer = DataParallelTrainer(
         train_loop_per_worker=train_func,
@@ -131,11 +133,11 @@ def test_datasets(ray_start_4_cpus):
 
     def get_dataset():
         # Train dataset should be sharded.
-        train_dataset = train.get_dataset_shard("train")
+        train_dataset = session.get_dataset_shard("train")
         train_ds_count = len(list(train_dataset.iter_rows()))
         assert train_ds_count == num_train_data / scale_config.num_workers
         # All other datasets should not be sharded.
-        val_dataset = train.get_dataset_shard("val")
+        val_dataset = session.get_dataset_shard("val")
         val_ds_count = len(list(val_dataset.iter_rows()))
         assert val_ds_count == num_val_data
 
@@ -164,7 +166,7 @@ def test_bad_return_in_train_loop(ray_start_4_cpus):
             raise RuntimeError("Failing")
 
     def train_loop(config):
-        train.report({"loss": 1})
+        session.report({"loss": 1})
         return FailOnUnpickle()
 
     trainer = DataParallelTrainer(
@@ -177,7 +179,7 @@ def test_bad_return_in_train_loop(ray_start_4_cpus):
 
 def test_tune(ray_start_4_cpus):
     def train_func(config):
-        train.report({"loss": config["x"]})
+        session.report({"loss": config["x"]})
 
     trainer = DataParallelTrainer(
         train_loop_per_worker=train_func,
@@ -199,7 +201,7 @@ def test_tune(ray_start_4_cpus):
 
 def test_scaling_config_validation(ray_start_4_cpus):
     def train_func(config):
-        train.report({"loss": config["x"]})
+        session.report({"loss": config["x"]})
 
     # Should be able to create a DataParallelTrainer w/o scaling_config,
     # but it should fail on fit
@@ -224,11 +226,11 @@ def test_scaling_config_validation(ray_start_4_cpus):
 def test_fast_slow(ray_start_4_cpus):
     def train_func():
         for i in range(2):
-            train.report(dict(index=i), checkpoint=Checkpoint.from_dict({"epoch": i}))
+            session.report(dict(index=i), checkpoint=Checkpoint.from_dict({"epoch": i}))
 
     def train_slow():
         for i in range(2):
-            train.report(dict(index=i), checkpoint=Checkpoint.from_dict({"epoch": i}))
+            session.report(dict(index=i), checkpoint=Checkpoint.from_dict({"epoch": i}))
             time.sleep(5)
 
     new_backend_executor_cls = gen_new_backend_executor(train_slow)
@@ -253,10 +255,10 @@ def test_fast_slow(ray_start_4_cpus):
 def test_mismatch_report(ray_start_4_cpus):
     def train_func():
         for _ in range(2):
-            train.report(dict(loss=1))
+            session.report(dict(loss=1))
 
     def train_mismatch():
-        train.report(dict(loss=1))
+        session.report(dict(loss=1))
 
     new_backend_executor_cls = gen_new_backend_executor(train_mismatch)
 
@@ -273,7 +275,7 @@ def test_mismatch_report(ray_start_4_cpus):
 
 def test_world_rank(ray_start_4_cpus):
     def train_func():
-        train.report(dict(world_rank=train.get_context().get_world_rank()))
+        session.report(dict(world_rank=session.get_world_rank()))
 
     # Currently in DataParallelTrainers we only report metrics from rank 0.
     # For testing purposes here, we need to be able to report from all
@@ -306,7 +308,7 @@ def test_gpu_requests(ray_start_4_cpus_4_gpus_4_extra):
 
     def get_resources():
         cuda_visible_devices = os.environ["CUDA_VISIBLE_DEVICES"]
-        train.report(dict(devices=cuda_visible_devices))
+        session.report(dict(devices=cuda_visible_devices))
 
     # 0 GPUs will be requested and should not raise an error.
     trainer = DataParallelTrainerPatchedMultipleReturns(

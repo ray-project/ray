@@ -1,18 +1,16 @@
-from typing import Callable, Dict, Optional, Tuple, Union, TYPE_CHECKING
+from typing import Callable, Dict, Optional, Tuple, Union
 from copy import deepcopy
 import logging
 import numpy as np
 import pandas as pd
 
 from ray.tune import TuneError
+from ray.tune.execution import trial_runner
 from ray.tune.experiment import Trial
 from ray.tune.schedulers import PopulationBasedTraining
 from ray.tune.schedulers.pbt import _PBTTrialState
 from ray.tune.utils.util import flatten_dict, unflatten_dict
 from ray.util.debug import log_once
-
-if TYPE_CHECKING:
-    from ray.tune.execution.tune_controller import TuneController
 
 
 def import_pb2_dependencies():
@@ -401,11 +399,11 @@ class PB2(PopulationBasedTraining):
         #           are already in or scheduled to be in the next round.
         self.current = None
 
-    def on_trial_add(self, tune_controller: "TuneController", trial: Trial):
+    def on_trial_add(self, trial_runner: "trial_runner.TrialRunner", trial: Trial):
         filled_hyperparams = _fill_config(trial.config, self._hyperparam_bounds)
         # Make sure that the params we sampled show up in the CLI output
         trial.evaluated_params.update(flatten_dict(filled_hyperparams))
-        super().on_trial_add(tune_controller, trial)
+        super().on_trial_add(trial_runner, trial)
 
     def _validate_hyperparam_bounds(self, hyperparam_bounds: dict):
         """Check that each hyperparam bound is of the form [low, high].

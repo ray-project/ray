@@ -5,9 +5,9 @@ import pytest
 import torch
 
 import ray
-from ray import train
+from ray.air import session
 from ray.air.constants import MODEL_KEY
-from ray.train import ScalingConfig
+from ray.air.config import ScalingConfig
 from ray.train.torch import TorchTrainer, TorchCheckpoint
 import ray.train.torch.train_loop_utils
 
@@ -105,7 +105,7 @@ def test_torch_auto_gpu_to_cpu(ray_start_4_cpus_2_gpus):
 
         assert next(model.parameters()).is_cuda
 
-        train.report({}, checkpoint=TorchCheckpoint.from_model(model))
+        session.report({}, checkpoint=TorchCheckpoint.from_model(model))
 
     trainer = TorchTrainer(
         train_func, scaling_config=ScalingConfig(num_workers=num_workers, use_gpu=True)
@@ -130,7 +130,7 @@ def test_torch_auto_gpu_to_cpu(ray_start_4_cpus_2_gpus):
         for tensor in state_dict.values():
             assert tensor.is_cuda
 
-        train.report(
+        session.report(
             {},
             checkpoint=TorchCheckpoint.from_state_dict(state_dict),
         )

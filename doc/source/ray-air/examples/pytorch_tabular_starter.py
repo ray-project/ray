@@ -32,7 +32,8 @@ import torch
 import torch.nn as nn
 
 from ray import train
-from ray.train import ScalingConfig
+from ray.air import session
+from ray.air.config import ScalingConfig
 from ray.train.torch import TorchCheckpoint, TorchTrainer
 
 
@@ -55,7 +56,7 @@ def train_loop_per_worker(config):
 
     # Get the Dataset shard for this data parallel worker,
     # and convert it to a PyTorch Dataset.
-    train_data = train.get_dataset_shard("train")
+    train_data = session.get_dataset_shard("train")
     # Create model.
     model = create_model(num_features)
     model = train.torch.prepare_model(model)
@@ -75,7 +76,7 @@ def train_loop_per_worker(config):
             train_loss.backward()
             optimizer.step()
         loss = train_loss.item()
-        train.report({"loss": loss}, checkpoint=TorchCheckpoint.from_model(model))
+        session.report({"loss": loss}, checkpoint=TorchCheckpoint.from_model(model))
 
 
 num_features = len(train_dataset.schema().names) - 1
@@ -111,7 +112,7 @@ metric = "loss"
 
 # __air_tune_generic_start__
 from ray.tune.tuner import Tuner, TuneConfig
-from ray.train import RunConfig
+from ray.air.config import RunConfig
 
 tuner = Tuner(
     trainer,

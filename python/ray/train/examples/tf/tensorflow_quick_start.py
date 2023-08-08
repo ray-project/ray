@@ -70,7 +70,7 @@ if __name__ == "__main__":
 
     # __tf_trainer_begin__
     from ray.train.tensorflow import TensorflowTrainer
-    from ray.train import ScalingConfig
+    from ray.air.config import ScalingConfig
 
     # For GPU Training, set `use_gpu` to True.
     use_gpu = False

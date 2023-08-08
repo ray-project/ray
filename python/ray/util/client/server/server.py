@@ -870,11 +870,11 @@ def main():
         help="Password for connecting to Redis",
     )
     parser.add_argument(
-        "--runtime-env-agent-address",
+        "--metrics-agent-port",
         required=False,
-        type=str,
-        default=None,
-        help="The port to use for connecting to the runtime_env_agent.",
+        type=int,
+        default=0,
+        help="The port to use for connecting to the runtime_env agent.",
     )
     args, _ = parser.parse_known_args()
     setup_logger(ray_constants.LOGGER_LEVEL, ray_constants.LOGGER_FORMAT)
@@ -882,13 +882,13 @@ def main():
     ray_connect_handler = create_ray_handler(args.address, args.redis_password)
 
     hostport = "%s:%d" % (args.host, args.port)
-    logger.info(f"Starting Ray Client server on {hostport}, args {args}")
+    logger.info(f"Starting Ray Client server on {hostport}")
     if args.mode == "proxy":
         server = serve_proxier(
             hostport,
             args.address,
             redis_password=args.redis_password,
-            runtime_env_agent_address=args.runtime_env_agent_address,
+            runtime_env_agent_port=args.metrics_agent_port,
         )
     else:
         server = serve(hostport, ray_connect_handler)

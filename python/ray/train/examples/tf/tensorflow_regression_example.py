@@ -3,11 +3,12 @@ import argparse
 import tensorflow as tf
 
 import ray
-from ray import train
-from ray.train import Result, ScalingConfig
+from ray.air import session
 from ray.air.integrations.keras import ReportCheckpointCallback
+from ray.air.result import Result
 from ray.data.preprocessors import Concatenator
 from ray.train.tensorflow import TensorflowTrainer
+from ray.air.config import ScalingConfig
 
 
 def build_model() -> tf.keras.Model:
@@ -35,7 +36,7 @@ def train_func(config: dict):
             metrics=[tf.keras.metrics.mean_squared_error],
         )
 
-    dataset = train.get_dataset_shard("train")
+    dataset = session.get_dataset_shard("train")
 
     results = []
     for _ in range(epochs):

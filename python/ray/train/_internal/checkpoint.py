@@ -127,7 +127,7 @@ class CheckpointManager(CommonCheckpointManager):
                 f"checkpoint_score_attribute: "
                 f"{score_attr}. "
                 f"Include this attribute in the call to "
-                f"`train.report()`."
+                f"`session.report()`."
             )
 
         return _TrackedCheckpoint(

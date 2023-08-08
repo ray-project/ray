@@ -143,7 +143,7 @@ class ObjectRefStream {
   /// Get all the ObjectIDs that are not read yet via TryReadNextItem.
   ///
   /// \return A list of object IDs that are not read yet.
-  absl::flat_hash_set<ObjectID> GetItemsUnconsumed() const;
+  std::vector<ObjectID> GetItemsUnconsumed() const;
 
  private:
   ObjectID GetObjectRefAtIndex(int64_t generator_index) const;

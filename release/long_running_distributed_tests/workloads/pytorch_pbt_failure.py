@@ -5,7 +5,7 @@ import numpy as np
 
 import ray
 from ray import tune
-from ray.train import CheckpointConfig, FailureConfig, RunConfig, ScalingConfig
+from ray.air.config import CheckpointConfig, FailureConfig, RunConfig, ScalingConfig
 from ray.train.examples.pytorch.tune_cifar_torch_pbt_example import train_func
 from ray.train.torch import TorchConfig, TorchTrainer
 from ray.tune.schedulers import PopulationBasedTraining

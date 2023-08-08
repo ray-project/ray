@@ -10,9 +10,9 @@ from filelock import FileLock
 from torchvision import datasets, transforms
 
 import ray
-from ray import train
-from ray.train import ScalingConfig
+from ray.air import session
 from ray.train.horovod import HorovodTrainer
+from ray.air.config import ScalingConfig
 
 
 def metric_average(val, name):
@@ -149,7 +149,7 @@ def train_func(config):
         loss = train_epoch(
             model, optimizer, train_sampler, train_loader, epoch, log_interval, use_cuda
         )
-        train.report(dict(loss=loss))
+        session.report(dict(loss=loss))
 
 
 def main(num_workers, use_gpu, kwargs):

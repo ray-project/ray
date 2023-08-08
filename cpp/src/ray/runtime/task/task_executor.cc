@@ -137,8 +137,7 @@ Status TaskExecutor::ExecuteTask(
     const std::vector<ConcurrencyGroup> &defined_concurrency_groups,
     const std::string name_of_concurrency_group_to_execute,
     bool is_reattempt,
-    bool is_streaming_generator,
-    bool retry_exception) {
+    bool is_streaming_generator) {
   RAY_LOG(DEBUG) << "Execute task type: " << TaskType_Name(task_type)
                  << " name:" << task_name;
   RAY_CHECK(ray_function.GetLanguage() == ray::Language::CPP);
@@ -252,7 +251,6 @@ Status TaskExecutor::ExecuteTask(
         total,
         meta_buffer,
         std::vector<ray::ObjectID>(),
-        caller_address,
         &task_output_inlined_bytes,
         result_ptr));
 
@@ -279,8 +277,7 @@ Status TaskExecutor::ExecuteTask(
     RAY_CHECK_OK(CoreWorkerProcess::GetCoreWorker().SealReturnObject(
         result_id,
         result,
-        /*generator_id=*/ObjectID::Nil(),
-        caller_address));
+        /*generator_id=*/ObjectID::Nil()));
   } else {
     if (!status.ok()) {
       return ray::Status::CreationTaskError("");

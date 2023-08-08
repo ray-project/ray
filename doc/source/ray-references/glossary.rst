@@ -99,7 +99,7 @@ documentation, sorted alphabetically.
         to compute and apply one gradient update to the model weights.
 
     Batch predictor
-        A :class:`Ray AIR Batch Predictor<ray.train.predictor.Predictor>` builds on the Predictor class
+        A :ref:`Ray AIR Batch Predictor<air-predictors>` builds on the Predictor class
         to parallelize inference on a large dataset. A Batch predictor shards the
         dataset to allow multiple workers to do inference on a smaller number of data
         points and then aggregating all the worker predictions at the end.
@@ -413,7 +413,7 @@ documentation, sorted alphabetically.
     .. TODO: Policy evaluation
 
     Predictor
-        :class:`An interface for performing inference<ray.train.predictor.Predictor>` (prediction)
+        :ref:`An interface for performing inference<air-predictors>` (prediction)
         on input data with a trained model.
 
     Preprocessor
@@ -603,7 +603,7 @@ documentation, sorted alphabetically.
         (e.g., for sharing computed gradients).
 
     Trainer configuration
-        A Trainer can be configured in various ways. Some
+        :ref:`A Trainer can be configured in various ways<train-config>`. Some
         configurations are shared across all trainers, like the RunConfig, which
         configures things like the experiment storage, and ScalingConfig, which
         configures the number of training workers as well as resources needed per

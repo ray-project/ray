@@ -9,7 +9,8 @@ Requires the Optuna library to be installed (`pip install optuna`).
 import time
 
 import ray
-from ray import train, tune
+from ray import tune
+from ray.air import session
 from ray.tune.search import ConcurrencyLimiter
 from ray.tune.search.optuna import OptunaSearch
 
@@ -26,7 +27,7 @@ def easy_objective(config):
         # Iterative training function - can be any arbitrary training procedure
         intermediate_score = evaluation_fn(step, width, height)
         # Feed the score back back to Tune.
-        train.report(
+        session.report(
             {
                 "iterations": step,
                 "loss": intermediate_score,

@@ -8,8 +8,8 @@ from collections import Counter
 import click
 import numpy as np
 
-from ray import train, tune
-from ray.train import Checkpoint, CheckpointConfig, RunConfig
+from ray.air import session, Checkpoint, CheckpointConfig, RunConfig
+from ray import tune
 from ray.tune import Callback
 
 
@@ -65,7 +65,7 @@ def function_trainable(config):
 
             checkpoint = Checkpoint.from_directory(directory)
 
-        train.report({"score": metric}, checkpoint=checkpoint)
+        session.report({"score": metric}, checkpoint=checkpoint)
         time.sleep(sleep_time)
 
 

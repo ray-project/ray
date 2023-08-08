@@ -1,8 +1,8 @@
 from packaging.version import Version
 
 import ray
-from ray import train, tune
-from ray.train import ScalingConfig
+from ray import tune
+from ray.air import ScalingConfig, session
 from ray.data.preprocessors import Concatenator, Chain, StandardScaler
 from ray.train.horovod import HorovodTrainer
 from ray.tune import Tuner, TuneConfig
@@ -35,7 +35,7 @@ def keras_train_loop(config):
 
     hvd.init()
 
-    dataset = train.get_dataset_shard("train")
+    dataset = session.get_dataset_shard("train")
 
     strategy = tf.distribute.MultiWorkerMirroredStrategy()
     with strategy.scope():

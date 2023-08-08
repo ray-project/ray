@@ -6,7 +6,7 @@ import ray
 
 from ray import train
 from ray.train.torch import TorchTrainer
-from ray.train import ScalingConfig
+from ray.air.config import ScalingConfig
 
 
 @pytest.fixture

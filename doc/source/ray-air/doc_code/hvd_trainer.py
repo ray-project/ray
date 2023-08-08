@@ -1,11 +1,12 @@
-import horovod.torch as hvd
 import ray
-from ray import train
-from ray.train import Checkpoint, ScalingConfig
+import ray.train as train
 import ray.train.torch  # Need this to use `train.torch.get_device()`
-from ray.train.horovod import HorovodTrainer
+import horovod.torch as hvd
 import torch
 import torch.nn as nn
+from ray.air import session, Checkpoint
+from ray.train.horovod import HorovodTrainer
+from ray.air.config import ScalingConfig
 
 # If using GPUs, set this to True.
 use_gpu = False
@@ -30,7 +31,7 @@ class NeuralNetwork(nn.Module):
 
 def train_loop_per_worker():
     hvd.init()
-    dataset_shard = train.get_dataset_shard("train")
+    dataset_shard = session.get_dataset_shard("train")
     model = NeuralNetwork()
     device = train.torch.get_device()
     model.to(device)
@@ -55,7 +56,7 @@ def train_loop_per_worker():
             loss.backward()
             optimizer.step()
             print(f"epoch: {epoch}, loss: {loss.item()}")
-        train.report(
+        session.report(
             {},
             checkpoint=Checkpoint.from_dict(dict(model=model.state_dict())),
         )

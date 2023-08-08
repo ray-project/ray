@@ -4,8 +4,9 @@
 # __air_session_start__
 
 import tensorflow as tf
-from ray import train
-from ray.train import Checkpoint, ScalingConfig
+from ray.air import session
+from ray.air.checkpoint import Checkpoint
+from ray.air.config import ScalingConfig
 from ray.train.tensorflow import TensorflowTrainer
 
 
@@ -21,7 +22,7 @@ def build_model() -> tf.keras.Model:
 
 
 def train_func():
-    ckpt = train.get_checkpoint()
+    ckpt = session.get_checkpoint()
     if ckpt:
         with ckpt.as_directory() as loaded_checkpoint_dir:
             import tensorflow as tf
@@ -31,7 +32,9 @@ def train_func():
         model = build_model()
 
     model.save("my_model", overwrite=True)
-    train.report(metrics={"iter": 1}, checkpoint=Checkpoint.from_directory("my_model"))
+    session.report(
+        metrics={"iter": 1}, checkpoint=Checkpoint.from_directory("my_model")
+    )
 
 
 scaling_config = ScalingConfig(num_workers=2)

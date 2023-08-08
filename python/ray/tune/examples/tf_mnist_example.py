@@ -17,7 +17,7 @@ from tensorflow.keras.layers import Dense, Flatten, Conv2D
 from tensorflow.keras import Model
 from tensorflow.keras.datasets.mnist import load_data
 
-from ray import train, tune
+from ray import air, tune
 
 MAX_TRAIN_BATCH = 10
 
@@ -129,7 +129,7 @@ if __name__ == "__main__":
             metric="test_loss",
             mode="min",
         ),
-        run_config=train.RunConfig(
+        run_config=air.RunConfig(
             stop={"training_iteration": 5 if args.smoke_test else 50},
             verbose=1,
         ),

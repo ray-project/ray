@@ -5,7 +5,7 @@ can use this state to access metadata or the Serve controller.
 
 import logging
 from dataclasses import dataclass
-from typing import Callable, Optional
+from typing import Callable
 
 import ray
 from ray.exceptions import RayActorError
@@ -35,26 +35,16 @@ class ReplicaContext:
 
 
 @PublicAPI(stability="alpha")
-def get_global_client(
-    _health_check_controller: bool = False, raise_if_no_controller_running: bool = True
-) -> Optional[ServeControllerClient]:
+def get_global_client(_health_check_controller: bool = False) -> ServeControllerClient:
     """Gets the global client, which stores the controller's handle.
 
     Args:
         _health_check_controller: If True, run a health check on the
             cached controller if it exists. If the check fails, try reconnecting
             to the controller.
-        raise_if_no_controller_running: Whether to raise an exception if
-            there is no currently running Serve controller.
-
-    Returns:
-        ServeControllerClient to the running Serve controller. If there
-        is no running controller and raise_if_no_controller_running is
-        set to False, returns None.
 
     Raises:
-        RayServeException: if there is no running Serve controller actor
-        and raise_if_no_controller_running is set to True.
+        RayServeException: if there is no running Serve controller actor.
     """
 
     try:
@@ -66,7 +56,7 @@ def get_global_client(
         logger.info("The cached controller has died. Reconnecting.")
         _set_global_client(None)
 
-    return _connect(raise_if_no_controller_running)
+    return _connect()
 
 
 def _set_global_client(client):
@@ -92,7 +82,7 @@ def _set_internal_replica_context(
     )
 
 
-def _connect(raise_if_no_controller_running: bool = True) -> ServeControllerClient:
+def _connect() -> ServeControllerClient:
     """Connect to an existing Serve application on this Ray cluster.
 
     If calling from the driver program, the Serve app on this Ray cluster
@@ -103,12 +93,10 @@ def _connect(raise_if_no_controller_running: bool = True) -> ServeControllerClie
 
     Returns:
         ServeControllerClient that encapsulates a Ray actor handle to the
-        existing Serve application's Serve Controller. None if there is
-        no running Serve controller actor and raise_if_no_controller_running
-        is set to False.
+        existing Serve application's Serve Controller.
+
     Raises:
-        RayServeException: if there is no running Serve controller actor
-        and raise_if_no_controller_running is set to True.
+        RayServeException: if there is no running Serve controller actor.
     """
 
     # Initialize ray if needed.
@@ -127,14 +115,12 @@ def _connect(raise_if_no_controller_running: bool = True) -> ServeControllerClie
     try:
         controller = ray.get_actor(controller_name, namespace=SERVE_NAMESPACE)
     except ValueError:
-        if raise_if_no_controller_running:
-            raise RayServeException(
-                "There is no Serve "
-                "instance running on this Ray cluster. Please "
-                "call `serve.start(detached=True) to start "
-                "one."
-            )
-        return
+        raise RayServeException(
+            "There is no "
+            "instance running on this Ray cluster. Please "
+            "call `serve.start(detached=True) to start "
+            "one."
+        )
 
     client = ServeControllerClient(
         controller,

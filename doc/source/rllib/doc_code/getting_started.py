@@ -29,7 +29,7 @@ ray.shutdown()
 if False:
     # __rllib-tune-config-begin__
     import ray
-    from ray import train, tune
+    from ray import air, tune
 
     ray.init()
 
@@ -37,7 +37,7 @@ if False:
 
     tuner = tune.Tuner(
         "PPO",
-        run_config=train.RunConfig(
+        run_config=air.RunConfig(
             stop={"episode_reward_mean": 150},
         ),
         param_space=config,
@@ -51,9 +51,9 @@ if False:
     tuner = ray.tune.Tuner(
         "PPO",
         param_space=config,
-        run_config=train.RunConfig(
+        run_config=air.RunConfig(
             stop={"episode_reward_mean": 150},
-            checkpoint_config=train.CheckpointConfig(checkpoint_at_end=True),
+            checkpoint_config=air.CheckpointConfig(checkpoint_at_end=True),
         ),
     )
 

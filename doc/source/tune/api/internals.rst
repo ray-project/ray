@@ -10,6 +10,20 @@ TunerInternal
     :members:
 
 
+RayTrialExecutor
+----------------
+
+.. autoclass:: ray.tune.execution.ray_trial_executor.RayTrialExecutor
+    :members:
+
+.. _trialrunner-docstring:
+
+TrialRunner
+-----------
+
+.. autoclass:: ray.tune.execution.trial_runner.TrialRunner
+    :members:
+
 .. _trial-docstring:
 
 Trial

@@ -1317,12 +1317,8 @@ async def test_api_manager_list_objects(state_api_manager):
 @pytest.mark.asyncio
 async def test_api_manager_list_runtime_envs(state_api_manager):
     data_source_client = state_api_manager.data_source_client
-    data_source_client.get_all_registered_runtime_env_agent_ids = MagicMock()
-    data_source_client.get_all_registered_runtime_env_agent_ids.return_value = [
-        "1",
-        "2",
-        "3",
-    ]
+    data_source_client.get_all_registered_agent_ids = MagicMock()
+    data_source_client.get_all_registered_agent_ids.return_value = ["1", "2", "3"]
 
     data_source_client.get_runtime_envs_info = AsyncMock()
     data_source_client.get_runtime_envs_info.side_effect = [
@@ -1567,8 +1563,7 @@ async def test_state_data_source_client(ray_start_cluster):
         node_id = node["NodeID"]
         ip = node["NodeManagerAddress"]
         port = int(node["NodeManagerPort"])
-        runtime_env_agent_port = int(node["RuntimeEnvAgentPort"])
-        client.register_raylet_client(node_id, ip, port, runtime_env_agent_port)
+        client.register_raylet_client(node_id, ip, port)
         result = await client.get_task_info(node_id)
         assert isinstance(result, GetTasksInfoReply)
 
@@ -1586,8 +1581,7 @@ async def test_state_data_source_client(ray_start_cluster):
         node_id = node["NodeID"]
         ip = node["NodeManagerAddress"]
         port = int(node["NodeManagerPort"])
-        runtime_env_agent_port = int(node["RuntimeEnvAgentPort"])
-        client.register_raylet_client(node_id, ip, port, runtime_env_agent_port)
+        client.register_raylet_client(node_id, ip, port)
         result = await client.get_object_info(node_id)
         assert isinstance(result, GetObjectsInfoReply)
 
@@ -1730,8 +1724,7 @@ async def test_state_data_source_client_limit_distributed_sources(ray_start_clus
         node_id = node["NodeID"]
         ip = node["NodeManagerAddress"]
         port = int(node["NodeManagerPort"])
-        runtime_env_agent_port = int(node["RuntimeEnvAgentPort"])
-        client.register_raylet_client(node_id, ip, port, runtime_env_agent_port)
+        client.register_raylet_client(node_id, ip, port)
 
     """
     Test tasks

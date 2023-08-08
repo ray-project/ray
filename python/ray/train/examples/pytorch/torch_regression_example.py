@@ -2,16 +2,17 @@ import argparse
 from typing import Tuple
 
 import pandas as pd
-from ray.train import Checkpoint
+from ray.air.checkpoint import Checkpoint
 
 import torch
 import torch.nn as nn
 
 import ray
 import ray.train as train
-from ray.train import ScalingConfig
+from ray.air import session
 from ray.data import Dataset
 from ray.train.torch import TorchTrainer
+from ray.air.config import ScalingConfig
 
 
 def get_datasets(split: float = 0.7) -> Tuple[Dataset]:
@@ -70,8 +71,8 @@ def train_func(config):
     lr = config.get("lr", 1e-2)
     epochs = config.get("epochs", 3)
 
-    train_dataset_shard = train.get_dataset_shard("train")
-    validation_dataset = train.get_dataset_shard("validation")
+    train_dataset_shard = session.get_dataset_shard("train")
+    validation_dataset = session.get_dataset_shard("validation")
 
     model = nn.Sequential(
         nn.Linear(100, hidden_size), nn.ReLU(), nn.Linear(hidden_size, 1)
@@ -96,12 +97,12 @@ def train_func(config):
         device = train.torch.get_device()
 
         train_epoch(train_torch_dataset, model, loss_fn, optimizer, device)
-        if train.get_context().get_world_rank() == 0:
+        if session.get_world_rank() == 0:
             result = validate_epoch(validation_torch_dataset, model, loss_fn, device)
         else:
             result = {}
         results.append(result)
-        train.report(result, checkpoint=Checkpoint.from_dict(dict(model=model)))
+        session.report(result, checkpoint=Checkpoint.from_dict(dict(model=model)))
 
     return results
 

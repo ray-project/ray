@@ -4,7 +4,8 @@ from ray.train import DataConfig
 from ray.train.tensorflow.config import TensorflowConfig
 from ray.train.trainer import GenDataset
 from ray.train.data_parallel_trainer import DataParallelTrainer
-from ray.train import Checkpoint, ScalingConfig, RunConfig
+from ray.air.config import ScalingConfig, RunConfig
+from ray.air.checkpoint import Checkpoint
 from ray.util import PublicAPI
 
 if TYPE_CHECKING:
@@ -38,9 +39,9 @@ class TensorflowTrainer(DataParallelTrainer):
 
     If the ``datasets`` dict contains a training dataset (denoted by
     the "train" key), then it will be split into multiple dataset
-    shards that can then be accessed by ``ray.train.get_dataset_shard("train")`` inside
+    shards that can then be accessed by ``session.get_dataset_shard("train")`` inside
     ``train_loop_per_worker``. All the other datasets will not be split and
-    ``ray.train.get_dataset_shard(...)`` will return the the entire Dataset.
+    ``session.get_dataset_shard(...)`` will return the the entire Dataset.
 
     Inside the ``train_loop_per_worker`` function, you can use any of the
     :ref:`Ray AIR session methods <air-session-ref>`.
@@ -57,33 +58,31 @@ class TensorflowTrainer(DataParallelTrainer):
 
     .. testcode::
 
-        from ray import train
-
         def train_loop_per_worker():
             # Report intermediate results for callbacks or logging and
             # checkpoint data.
-            train.report(...)
+            session.report(...)
 
             # Returns dict of last saved checkpoint.
-            train.get_checkpoint()
+            session.get_checkpoint()
 
             # Returns the Dataset shard for the given key.
-            train.get_dataset_shard("my_dataset")
+            session.get_dataset_shard("my_dataset")
 
             # Returns the total number of workers executing training.
-            train.get_context().get_world_size()
+            session.get_world_size()
 
             # Returns the rank of this worker.
-            train.get_context().get_world_rank()
+            session.get_world_rank()
 
             # Returns the rank of the worker on the current node.
-            train.get_context().get_local_rank()
+            session.get_local_rank()
 
     Any returns from the ``train_loop_per_worker`` will be discarded and not
     used or persisted anywhere.
 
     To save a model to use for the ``TensorflowPredictor``, you must save it under the
-    "model" kwarg in ``Checkpoint`` passed to ``train.report()``.
+    "model" kwarg in ``Checkpoint`` passed to ``session.report()``.
 
     Example:
 
@@ -92,8 +91,8 @@ class TensorflowTrainer(DataParallelTrainer):
         import tensorflow as tf
 
         import ray
-        from ray import train
-        from ray.train import Checkpoint, ScalingConfig
+        from ray.air import session, Checkpoint
+        from ray.air.config import ScalingConfig
         from ray.train.tensorflow import TensorflowTrainer
 
         def build_model():
@@ -104,7 +103,7 @@ class TensorflowTrainer(DataParallelTrainer):
             )
 
         def train_loop_per_worker(config):
-            dataset_shard = train.get_dataset_shard("train")
+            dataset_shard = session.get_dataset_shard("train")
             strategy = tf.distribute.experimental.MultiWorkerMirroredStrategy()
             with strategy.scope():
                 model = build_model()
@@ -120,7 +119,7 @@ class TensorflowTrainer(DataParallelTrainer):
                 model.fit(tf_dataset)
                 # You can also use ray.air.integrations.keras.Callback
                 # for reporting and checkpointing instead of reporting manually.
-                train.report(
+                session.report(
                     {},
                     checkpoint=Checkpoint.from_dict(
                         dict(epoch=epoch, model=model.get_weights())

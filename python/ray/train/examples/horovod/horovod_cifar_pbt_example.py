@@ -7,16 +7,12 @@ import torchvision.transforms as transforms
 from torchvision.models import resnet18
 
 import ray
-from ray.train import (
-    Checkpoint,
-    CheckpointConfig,
-    FailureConfig,
-    RunConfig,
-    ScalingConfig,
-)
+from ray.air import RunConfig, session
+from ray.air.config import ScalingConfig, FailureConfig, CheckpointConfig
+from ray.air.checkpoint import Checkpoint
 import ray.train.torch
 from ray.train.horovod import HorovodTrainer
-from ray import train, tune
+from ray import tune
 from ray.tune.schedulers import create_scheduler
 from ray.tune.tune_config import TuneConfig
 from ray.tune.tuner import Tuner
@@ -50,7 +46,7 @@ def train_loop_per_worker(config):
     )
     epoch = 0
 
-    checkpoint = train.get_checkpoint()
+    checkpoint = session.get_checkpoint()
     if checkpoint:
         checkpoint_dict = checkpoint.to_dict()
         model_state = checkpoint_dict["model_state"]
@@ -118,7 +114,7 @@ def train_loop_per_worker(config):
                 epoch=epoch,
             )
         )
-        train.report(dict(loss=running_loss / epoch_steps), checkpoint=checkpoint)
+        session.report(dict(loss=running_loss / epoch_steps), checkpoint=checkpoint)
 
 
 if __name__ == "__main__":

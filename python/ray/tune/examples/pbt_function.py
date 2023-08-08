@@ -5,8 +5,9 @@ import argparse
 import random
 
 import ray
-from ray import train, tune
-from ray.train import Checkpoint
+from ray import air, tune
+from ray.air import session
+from ray.air.checkpoint import Checkpoint
 from ray.tune.schedulers import PopulationBasedTraining
 
 
@@ -38,8 +39,8 @@ def pbt_function(config):
 
     # NOTE: See below why step is initialized to 1
     step = 1
-    if train.get_checkpoint():
-        state = train.get_checkpoint().to_dict()
+    if session.get_checkpoint():
+        state = session.get_checkpoint().to_dict()
         accuracy = state["acc"]
         last_step = state["step"]
         # Current step should be 1 more than the last checkpoint step
@@ -80,7 +81,7 @@ def pbt_function(config):
             # training_iteration:  1               2     3 (perturb)  4
             checkpoint = Checkpoint.from_dict({"acc": accuracy, "step": step})
 
-        train.report(
+        session.report(
             {
                 "mean_accuracy": accuracy,
                 "cur_lr": lr,
@@ -108,7 +109,7 @@ def run_tune_pbt(smoke_test=False):
 
     tuner = tune.Tuner(
         pbt_function,
-        run_config=train.RunConfig(
+        run_config=air.RunConfig(
             name="pbt_function_api_example",
             verbose=False,
             stop={
@@ -117,10 +118,10 @@ def run_tune_pbt(smoke_test=False):
                 "done": True,
                 "training_iteration": 10 if smoke_test else 1000,
             },
-            failure_config=train.FailureConfig(
+            failure_config=air.FailureConfig(
                 fail_fast=True,
             ),
-            checkpoint_config=train.CheckpointConfig(
+            checkpoint_config=air.CheckpointConfig(
                 checkpoint_score_attribute="mean_accuracy",
                 num_to_keep=2,
             ),

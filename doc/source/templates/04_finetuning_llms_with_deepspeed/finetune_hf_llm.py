@@ -25,7 +25,8 @@ from transformers import (
 
 
 import ray
-from ray import train
+from ray import air
+from ray.air import session
 from ray.train.torch import TorchTrainer
 import ray.util.scheduling_strategies
 
@@ -34,6 +35,8 @@ from utils import get_checkpoint_and_refs_dir, get_mirror_link
 OPTIM_BETAS = (0.9, 0.999)
 OPTIM_EPS = 1e-8
 OPTIM_WEIGHT_DECAY = 0.0
+
+MIRROR_LINK = "s3://llama-2-weights/"
 
 
 def get_number_of_params(model: nn.Module):
@@ -58,9 +61,7 @@ def collate_fn(batch, tokenizer, block_size, device):
 
 def get_pretrained_path(model_id: str):
     mirror_uri = get_mirror_link(model_id)
-    ckpt_path, _ = get_checkpoint_and_refs_dir(
-        model_id=model_id, bucket_uri=mirror_uri, s3_sync_args=["--no-sign-request"]
-    )
+    ckpt_path, _ = get_checkpoint_and_refs_dir(model_id=model_id, bucket_uri=mirror_uri)
     return ckpt_path
 
 
@@ -193,8 +194,8 @@ def training_function(kwargs: dict):
     set_seed(seed)
 
     # train_ds is the local shard for this model
-    train_ds = train.get_dataset_shard("train")
-    valid_ds = train.get_dataset_shard("valid")
+    train_ds = session.get_dataset_shard("train")
+    valid_ds = session.get_dataset_shard("valid")
 
     train_ds_len = len(list(train_ds.iter_batches(batch_size=1)))
 
@@ -277,9 +278,8 @@ def training_function(kwargs: dict):
         print("Starting training ...")
         print("Number of batches on main process", train_ds_len // batch_size)
 
+    fwd_time_sum, bwd_time_sum, optim_step_time_sum = 0, 0, 0
     for epoch in range(num_epochs):
-
-        fwd_time_sum, bwd_time_sum, optim_step_time_sum = 0, 0, 0
         s_epoch = time.time()
         model.train()
         loss_sum = torch.tensor(0.0).to(accelerator.device)
@@ -328,7 +328,7 @@ def training_function(kwargs: dict):
             # as long as this is not the last step report here
             if step != (train_ds_len // batch_size - 1):
                 aggregated_loss = torch.mean(accelerator.gather(loss[None])).item()
-                train.report(
+                session.report(
                     {
                         "epoch": epoch,
                         "iteration": step,
@@ -423,7 +423,7 @@ def training_function(kwargs: dict):
             "learning_rate": lr_scheduler.get_lr()[0],
         }
 
-        train.report(
+        session.report(
             metrics,
             # We do not need to explictly call report(checkpoint).
             # This is because the checkpointing is not on all distributed workers, it's
@@ -432,7 +432,7 @@ def training_function(kwargs: dict):
             # will include the checkpoint files created by the Rank_0.
             # Note that this will not delete the checkpoints from the previous
             # iterations.
-            checkpoint=train.Checkpoint.from_directory(ckpt_path_epoch),
+            checkpoint=air.Checkpoint.from_directory(ckpt_path_epoch),
         )
         print("Checkpointing time: ", time.time() - checkpointing_time_s)
 
@@ -581,13 +581,13 @@ def main():
             "args": vars(args),
             "special_tokens": special_tokens,
         },
-        run_config=train.RunConfig(
+        run_config=air.RunConfig(
             # Turn off syncing artifact as as of 2.6 it introduces a resource
             # contention between checkpoint syncronizer and artifact syncronizer that
             # can sometimes result in failed checkpoint syncing
             # sync_config=tune.SyncConfig(sync_artifacts=False),
             storage_path=storage_path,
-            checkpoint_config=train.CheckpointConfig(
+            checkpoint_config=air.CheckpointConfig(
                 num_to_keep=args.num_checkpoints_to_keep,
                 checkpoint_score_attribute="perplexity",
                 checkpoint_score_order="min",
@@ -596,7 +596,7 @@ def main():
                 _checkpoint_upload_from_workers=True,
             ),
         ),
-        scaling_config=train.ScalingConfig(
+        scaling_config=air.ScalingConfig(
             # This forces the trainer + Rank 0 worker to get scheduled on the large cpu
             # RAM instance, making the checkpointing easier.
             # "large_cpu_mem" is the tag used to identify this machine type in the

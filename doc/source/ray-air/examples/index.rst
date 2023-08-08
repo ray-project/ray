@@ -44,6 +44,13 @@ Logging & Observability
 
 .. _air-rl-examples-ref:
 
+RL (RLlib)
+----------
+
+- :doc:`/ray-air/examples/rl_online_example`
+- :doc:`/ray-air/examples/rl_offline_example`
+
+
 Advanced
 --------
 

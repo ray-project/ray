@@ -114,7 +114,6 @@ RAY_PROCESSES = [
     ["reporter.py", False],
     [os.path.join("dashboard", "agent.py"), False],
     [os.path.join("dashboard", "dashboard.py"), False],
-    [os.path.join("runtime_env", "agent", "main.py"), False],
     ["ray_process_reaper.py", False],
 ]
 

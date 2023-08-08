@@ -10,7 +10,8 @@ import torch.optim as optim
 from torchvision import datasets, transforms
 
 import ray
-from ray import train, tune
+from ray import air, tune
+from ray.air import session
 from ray.train.torch import TorchCheckpoint
 from ray.tune.schedulers import AsyncHyperBandScheduler
 
@@ -32,7 +33,7 @@ class ConvNet(nn.Module):
         return F.log_softmax(x, dim=1)
 
 
-def train_func(model, optimizer, train_loader, device=None):
+def train(model, optimizer, train_loader, device=None):
     device = device or torch.device("cpu")
     model.train()
     for batch_idx, (data, target) in enumerate(train_loader):
@@ -46,7 +47,7 @@ def train_func(model, optimizer, train_loader, device=None):
         optimizer.step()
 
 
-def test_func(model, data_loader, device=None):
+def test(model, data_loader, device=None):
     device = device or torch.device("cpu")
     model.eval()
     correct = 0
@@ -102,13 +103,13 @@ def train_mnist(config):
     )
 
     while True:
-        train_func(model, optimizer, train_loader, device)
-        acc = test_func(model, test_loader, device)
+        train(model, optimizer, train_loader, device)
+        acc = test(model, test_loader, device)
         checkpoint = None
         if should_checkpoint:
             checkpoint = TorchCheckpoint.from_state_dict(model.state_dict())
         # Report metrics (and possibly a checkpoint) to Tune
-        train.report({"mean_accuracy": acc}, checkpoint=checkpoint)
+        session.report({"mean_accuracy": acc}, checkpoint=checkpoint)
 
 
 if __name__ == "__main__":
@@ -135,7 +136,7 @@ if __name__ == "__main__":
             scheduler=sched,
             num_samples=1 if args.smoke_test else 50,
         ),
-        run_config=train.RunConfig(
+        run_config=air.RunConfig(
             name="exp",
             stop={
                 "mean_accuracy": 0.98,

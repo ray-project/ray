@@ -18,5 +18,13 @@ config = (
     .training(
         model_size="XS",
         training_ratio=1024,
+        # TODO
+        model={
+            "batch_size_B": 16,
+            "batch_length_T": 64,
+            "horizon_H": 15,
+            "gamma": 0.997,
+            "model_size": "XS",
+        },
     )
 )

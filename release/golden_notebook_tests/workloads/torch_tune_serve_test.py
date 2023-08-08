@@ -6,7 +6,8 @@ import time
 import subprocess
 
 import ray
-from ray.train import ScalingConfig, RunConfig
+from ray.air import session
+from ray.air.config import ScalingConfig, RunConfig
 from ray.air.util.node import _force_on_current_node
 from ray.tune.tune_config import TuneConfig
 import requests
@@ -99,7 +100,7 @@ def training_loop(config):
         train_epoch(train_loader, model, criterion, optimizer)
         validation_loss = validate_epoch(validation_loader, model, criterion)
 
-        train.report(
+        session.report(
             validation_loss,
             checkpoint=TorchCheckpoint.from_state_dict(model.module.state_dict()),
         )

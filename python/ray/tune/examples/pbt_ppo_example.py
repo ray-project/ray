@@ -11,7 +11,7 @@ computationally demanding example.
 
 import random
 
-from ray import train, tune
+from ray import air, tune
 from ray.rllib.algorithms.ppo import PPO
 from ray.tune.schedulers import PopulationBasedTraining
 
@@ -46,7 +46,7 @@ if __name__ == "__main__":
 
     tuner = tune.Tuner(
         PPO,
-        run_config=train.RunConfig(
+        run_config=air.RunConfig(
             name="pbt_humanoid_test",
         ),
         tune_config=tune.TuneConfig(

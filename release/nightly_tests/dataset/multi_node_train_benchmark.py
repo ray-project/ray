@@ -1,8 +1,9 @@
 from collections import defaultdict
 import ray
-from ray import train
-from ray.train import DataConfig, ScalingConfig
+from ray.air import session
 from ray.train.torch import TorchTrainer
+from ray.air.config import ScalingConfig
+from ray.train import DataConfig
 
 
 import time
@@ -125,7 +126,7 @@ if __name__ == "__main__":
     ray_dataset = ray_dataset.map_batches(crop_and_flip_image_batch)
 
     def train_loop_per_worker():
-        it = train.get_dataset_shard("train")
+        it = session.get_dataset_shard("train")
 
         for i in range(args.num_epochs):
             num_rows = 0
@@ -139,7 +140,7 @@ if __name__ == "__main__":
             end_t = time.time()
             # Record throughput per epoch.
             epoch_tput = num_rows / (end_t - start_t)
-            train.report({"tput": epoch_tput, "epoch": i})
+            session.report({"tput": epoch_tput, "epoch": i})
 
     # 3) Train TorchTrainer on processed data
     options = DataConfig.default_ingest_options()

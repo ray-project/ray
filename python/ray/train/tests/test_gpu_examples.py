@@ -1,8 +1,9 @@
 import pytest
 import torch
 
-from ray import train
-from ray.train import Checkpoint, ScalingConfig
+from ray.air import Checkpoint, session
+
+from ray.air.config import ScalingConfig
 from ray.air.constants import TRAINING_ITERATION
 from ray.train.examples.horovod.horovod_example import (
     train_func as horovod_torch_train_func,
@@ -75,7 +76,7 @@ def test_horovod_torch_mnist_gpu_checkpoint(ray_start_4_cpus_2_gpus):
         net.to("cuda")
 
         checkpoint = Checkpoint.from_dict({"model": net.state_dict()})
-        train.report({"metric": 1}, checkpoint=checkpoint)
+        session.report({"metric": 1}, checkpoint=checkpoint)
 
     num_workers = 2
     trainer = HorovodTrainer(

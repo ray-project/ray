@@ -4,9 +4,10 @@ import logging
 import pytest
 
 import ray
-from ray import train, tune
+from ray import tune
+from ray.air import Checkpoint, session
 from ray.air.constants import TRAINING_ITERATION
-from ray.train import Checkpoint, FailureConfig, RunConfig, ScalingConfig
+from ray.air.config import FailureConfig, RunConfig, ScalingConfig
 from ray.train._internal.worker_group import WorkerGroup
 from ray.train.backend import Backend, BackendConfig
 from ray.train.data_parallel_trainer import DataParallelTrainer
@@ -132,8 +133,8 @@ def test_tune_error(ray_start_4_cpus):
 def test_tune_checkpoint(ray_start_4_cpus):
     def train_func():
         for i in range(9):
-            train.report(dict(test=i))
-        train.report(
+            session.report(dict(test=i))
+        session.report(
             dict(test=i + 1), checkpoint=Checkpoint.from_dict(dict(hello="world"))
         )
 
@@ -157,13 +158,13 @@ def test_tune_checkpoint(ray_start_4_cpus):
 def test_reuse_checkpoint(ray_start_4_cpus):
     def train_func(config):
         itr = 0
-        ckpt = train.get_checkpoint()
+        ckpt = session.get_checkpoint()
         if ckpt is not None:
             ckpt = ckpt.to_dict()
             itr = ckpt["iter"] + 1
 
         for i in range(itr, config["max_iter"]):
-            train.report(
+            session.report(
                 dict(test=i, training_iteration=i),
                 checkpoint=Checkpoint.from_dict(dict(iter=i)),
             )
@@ -195,7 +196,7 @@ def test_retry_with_max_failures(ray_start_4_cpus):
     """Tests trainer retry with max_failures > 0 when integrating with Tune."""
 
     def train_func():
-        ckpt = train.get_checkpoint()
+        ckpt = session.get_checkpoint()
         restored = bool(ckpt)  # Does a previous checkpoint exist?
         itr = 0
         if ckpt:
@@ -205,7 +206,7 @@ def test_retry_with_max_failures(ray_start_4_cpus):
         for i in range(itr, 4):
             if i == 2 and not restored:
                 raise Exception("try to fail me")
-            train.report(
+            session.report(
                 dict(test=i, training_iteration=i),
                 checkpoint=Checkpoint.from_dict(dict(iter=i)),
             )
@@ -241,8 +242,8 @@ def test_restore_with_new_trainer(ray_start_4_cpus, tmpdir, propagate_logs, capl
     assert results.errors
 
     def train_func(config):
-        dataset = train.get_dataset_shard("train")
-        assert train.get_context().get_world_size() == 2
+        dataset = session.get_dataset_shard("train")
+        assert session.get_world_size() == 2
         rows = 0
         for _ in dataset.iter_rows():
             rows += 1

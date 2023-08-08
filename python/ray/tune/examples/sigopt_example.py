@@ -7,7 +7,8 @@ Requires the SigOpt library to be installed (`pip install sigopt`).
 import sys
 import time
 
-from ray import train, tune
+from ray import air, tune
+from ray.air import session
 from ray.tune.schedulers import AsyncHyperBandScheduler
 from ray.tune.search.sigopt import SigOptSearch
 from ray.tune.search.sigopt.sigopt_search import load_sigopt_key
@@ -25,7 +26,7 @@ def easy_objective(config):
         # Iterative training function - can be any arbitrary training procedure
         intermediate_score = evaluate(step, width, height)
         # Feed the score back back to Tune.
-        train.report({"iterations": step, "mean_loss": intermediate_score})
+        session.report({"iterations": step, "mean_loss": intermediate_score})
         time.sleep(0.1)
 
 
@@ -72,7 +73,7 @@ if __name__ == "__main__":
     scheduler = AsyncHyperBandScheduler(metric="mean_loss", mode="min")
     tuner = tune.Tuner(
         easy_objective,
-        run_config=train.RunConfig(
+        run_config=air.RunConfig(
             name="my_exp",
         ),
         tune_config=tune.TuneConfig(

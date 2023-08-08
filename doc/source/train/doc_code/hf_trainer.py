@@ -10,7 +10,7 @@ from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
 
 import ray
 from ray.train.huggingface import TransformersTrainer
-from ray.train import ScalingConfig
+from ray.air.config import ScalingConfig
 
 
 # If using GPUs, set this to True.

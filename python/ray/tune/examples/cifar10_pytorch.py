@@ -15,8 +15,9 @@ import torchvision
 import torchvision.transforms as transforms
 from typing import Dict
 import ray
-from ray import train, tune
-from ray.train import Checkpoint
+from ray import tune
+from ray.air import session
+from ray.air.checkpoint import Checkpoint
 from ray.tune.schedulers import ASHAScheduler
 # __import_end__
 
@@ -78,9 +79,9 @@ def train_cifar(config):
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.SGD(net.parameters(), lr=config["lr"], momentum=0.9)
 
-    # Load existing checkpoint through `get_checkpoint()` API.
-    if train.get_checkpoint():
-        loaded_checkpoint = train.get_checkpoint()
+    # Load existing checkpoint through `session.get_checkpoint()` API.
+    if session.get_checkpoint():
+        loaded_checkpoint = session.get_checkpoint()
         with loaded_checkpoint.as_directory() as loaded_checkpoint_dir:
             model_state, optimizer_state = torch.load(os.path.join(loaded_checkpoint_dir, "checkpoint.pt"))
             net.load_state_dict(model_state)
@@ -149,7 +150,7 @@ def train_cifar(config):
                 val_steps += 1
 
         # Here we save a checkpoint. It is automatically registered with
-        # Ray Tune and will potentially be accessed through in ``get_checkpoint()``
+        # Ray Tune and will potentially be accessed through in ``session.get_checkpoint()``
         # in future iterations.
         # Note to save a file like checkpoint, you still need to put it under a directory
         # to construct an AIR checkpoint.
@@ -158,13 +159,13 @@ def train_cifar(config):
         torch.save(
             (net.state_dict(), optimizer.state_dict()), path)
         checkpoint = Checkpoint.from_directory("my_model")
-        train.report({"loss": (val_loss / val_steps), "accuracy": correct / total}, checkpoint=checkpoint)
+        session.report({"loss": (val_loss / val_steps), "accuracy": correct / total}, checkpoint=checkpoint)
     print("Finished Training")
 # __train_end__
 
 
 # __test_acc_begin__
-def test_best_model(config: Dict, checkpoint: "Checkpoint"):
+def test_best_model(config: Dict, checkpoint: "ray.air.Checkpoint"):
     best_trained_model = Net(config["l1"], config["l2"])
     device = "cuda:0" if torch.cuda.is_available() else "cpu"
     best_trained_model.to(device)

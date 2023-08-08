@@ -60,9 +60,7 @@ struct CoreWorkerOptions {
       bool is_reattempt,
       // True if the task is for streaming generator.
       // TODO(sang): Remove it and combine it with dynamic returns.
-      bool is_streaming_generator,
-      // True if task can be retried upon exception.
-      bool retry_exception)>;
+      bool is_streaming_generator)>;
 
   CoreWorkerOptions()
       : store_socket(""),

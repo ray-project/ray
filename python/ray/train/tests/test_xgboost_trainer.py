@@ -6,10 +6,11 @@ import xgboost as xgb
 
 import ray
 from ray import tune
-from ray.train import Checkpoint, ScalingConfig
+from ray.air.checkpoint import Checkpoint
 from ray.train.constants import TRAIN_DATASET_KEY
 
 from ray.train.xgboost import XGBoostCheckpoint, XGBoostTrainer
+from ray.air.config import ScalingConfig
 from ray.data.preprocessor import Preprocessor
 
 from sklearn.datasets import load_breast_cancer
@@ -140,8 +141,8 @@ def test_checkpoint_freq(ray_start_4_cpus, freq_end_expected):
     train_dataset = ray.data.from_pandas(train_df)
     valid_dataset = ray.data.from_pandas(test_df)
     trainer = XGBoostTrainer(
-        run_config=ray.train.RunConfig(
-            checkpoint_config=ray.train.CheckpointConfig(
+        run_config=ray.air.RunConfig(
+            checkpoint_config=ray.air.CheckpointConfig(
                 checkpoint_frequency=freq, checkpoint_at_end=end
             )
         ),

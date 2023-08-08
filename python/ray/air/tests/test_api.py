@@ -1,8 +1,9 @@
 import pytest
 
 import ray
-from ray.train import Checkpoint, CheckpointConfig, ScalingConfig
+from ray.air import Checkpoint
 from ray.air._internal.config import ensure_only_allowed_dataclass_keys_updated
+from ray.air.config import ScalingConfig, CheckpointConfig
 from ray.data.preprocessor import Preprocessor
 from ray.train.trainer import BaseTrainer
 
@@ -34,7 +35,7 @@ def test_run_config():
     DummyTrainer(run_config=None)
 
     # Succeed
-    DummyTrainer(run_config=ray.train.RunConfig())
+    DummyTrainer(run_config=ray.air.RunConfig())
 
 
 def test_checkpointing_config():

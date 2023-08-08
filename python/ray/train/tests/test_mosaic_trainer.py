@@ -6,7 +6,8 @@ import torch.utils.data
 import torchvision
 from torchvision import transforms, datasets
 
-from ray.train import ScalingConfig
+from ray.air import session
+from ray.air.config import ScalingConfig
 from ray.air.constants import TRAINING_ITERATION
 import ray.train as train
 from ray.train.trainer import TrainingFailedError
@@ -47,7 +48,7 @@ def trainer_init_per_worker(config):
         list(range(64)),
     )
 
-    batch_size_per_worker = BATCH_SIZE // train.get_context().get_world_size()
+    batch_size_per_worker = BATCH_SIZE // session.get_world_size()
     train_dataloader = torch.utils.data.DataLoader(
         train_dataset, batch_size=batch_size_per_worker, shuffle=True
     )

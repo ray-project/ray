@@ -37,6 +37,9 @@ install_bazel() {
   fi
 
   "${SCRIPT_DIR}"/install-bazel.sh
+  if [ -f /etc/profile.d/bazel.sh ]; then
+    . /etc/profile.d/bazel.sh
+  fi
 }
 
 install_base() {
@@ -229,7 +232,7 @@ install_upgrade_pip() {
   fi
 
   if "${python}" -m pip --version || "${python}" -m ensurepip; then  # Configure pip if present
-    "${python}" -m pip install --upgrade pip
+    "${python}" -m pip install --upgrade "pip<23.1"
 
     # If we're in a CI environment, do some configuration
     if [ "${CI-}" = true ]; then
@@ -508,9 +511,9 @@ install_pip_packages() {
 }
 
 install_thirdparty_packages() {
-  mkdir -p "${WORKSPACE_DIR}/python/ray/thirdparty_files"
-  RAY_THIRDPARTY_FILES="$(realpath "${WORKSPACE_DIR}/python/ray/thirdparty_files")"
-  CC=gcc python -m pip install psutil setproctitle==1.2.2 colorama --target="${RAY_THIRDPARTY_FILES}"
+  # shellcheck disable=SC2262
+  alias pip="python -m pip"
+  CC=gcc pip install psutil setproctitle==1.2.2 colorama --target="${WORKSPACE_DIR}/python/ray/thirdparty_files"
 }
 
 install_dependencies() {
@@ -548,7 +551,7 @@ install_dependencies() {
   install_thirdparty_packages
 }
 
-install_dependencies
+install_dependencies "$@"
 
 # Pop caller's shell options (quietly)
 { set -vx; eval "${SHELLOPTS_STACK##*|}"; SHELLOPTS_STACK="${SHELLOPTS_STACK%|*}"; } 2> /dev/null

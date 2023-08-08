@@ -2,12 +2,14 @@ import functools
 import time
 from unittest.mock import patch
 import pytest
+from ray.air.checkpoint import Checkpoint
+from ray.air.config import CheckpointConfig
 from ray.train._internal.worker_group import WorkerGroup
 from ray.train.trainer import TrainingIterator
+from ray.train import DataConfig
 
 import ray
-from ray import train
-from ray.train import Checkpoint, CheckpointConfig, DataConfig
+from ray.air import session
 from ray.air._internal.util import StartTraceback
 from ray.train.backend import BackendConfig
 
@@ -104,7 +106,7 @@ def test_run_iterator(ray_start_4_cpus):
 
     def train_func():
         for i in range(3):
-            train.report(dict(index=i))
+            session.report(dict(index=i))
         return 1
 
     iterator = create_iterator(train_func, config)
@@ -127,7 +129,7 @@ def test_run_iterator_returns(ray_start_4_cpus):
 
     def train_func():
         for i in range(3):
-            train.report(dict(index=i))
+            session.report(dict(index=i))
         return 1
 
     iterator = create_iterator(train_func, config)
@@ -164,7 +166,7 @@ def test_no_exhaust(ray_start_4_cpus, tmp_path):
 
     def train_func():
         for _ in range(2):
-            train.report(dict(loss=1))
+            session.report(dict(loss=1))
         return 2
 
     config = BackendConfig()
@@ -199,12 +201,12 @@ def test_worker_failure_1(ray_start_4_cpus):
 def test_worker_failure_2(ray_start_4_cpus):
     def train_func():
         for _ in range(2):
-            train.report(dict(loss=1))
+            session.report(dict(loss=1))
         return 1
 
     def train_actor_failure():
         for _ in range(2):
-            train.report(dict(loss=1))
+            session.report(dict(loss=1))
         import sys
 
         sys.exit(1)
@@ -223,13 +225,13 @@ def test_worker_failure_2(ray_start_4_cpus):
 
 def test_worker_failure_local_rank(ray_start_4_cpus):
     def train_func():
-        return train.get_context().get_local_rank()
+        return session.get_local_rank()
 
     def train_actor_failure():
         import sys
 
         sys.exit(1)
-        return train.get_context().get_local_rank()
+        return session.get_local_rank()
 
     new_backend_executor_cls = gen_new_backend_executor(train_actor_failure)
 
@@ -334,7 +336,7 @@ def test_worker_kill(ray_start_4_cpus, backend):
 
     def train_func():
         for i in range(2):
-            train.report(dict(loss=1, iter=i))
+            session.report(dict(loss=1, iter=i))
 
     iterator = create_iterator(train_func, test_config)
     kill_callback = KillCallback(fail_on=0, backend_executor=iterator._backend_executor)
@@ -363,14 +365,14 @@ def test_worker_kill(ray_start_4_cpus, backend):
 
 def test_worker_kill_checkpoint(ray_start_4_cpus):
     def train_func():
-        checkpoint = train.get_checkpoint()
+        checkpoint = session.get_checkpoint()
         if checkpoint:
             epoch = checkpoint.to_dict()["epoch"]
         else:
             epoch = 0
         print("Epoch: ", epoch)
         for i in range(epoch, 2):
-            train.report(
+            session.report(
                 dict(loss=1, iter=i), checkpoint=Checkpoint.from_dict(dict(epoch=i + 1))
             )
 

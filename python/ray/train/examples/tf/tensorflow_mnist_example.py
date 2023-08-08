@@ -7,11 +7,12 @@ import json
 import os
 
 import numpy as np
+from ray.air.result import Result
 import tensorflow as tf
 
 from ray.train.tensorflow import TensorflowTrainer
 from ray.air.integrations.keras import ReportCheckpointCallback
-from ray.train import Result, RunConfig, ScalingConfig
+from ray.air.config import RunConfig, ScalingConfig
 
 
 def mnist_dataset(batch_size: int) -> tf.data.Dataset:

@@ -4,8 +4,9 @@ import tempfile
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable, Dict, Optional, Type, Tuple, Union
 
-from ray import train
-from ray.train import Checkpoint, RunConfig, ScalingConfig
+from ray.air import session
+from ray.air.checkpoint import Checkpoint
+from ray.air.config import RunConfig, ScalingConfig
 from ray.train import DataConfig
 from ray.train.torch import TorchConfig
 from ray.train.trainer import GenDataset
@@ -60,29 +61,29 @@ class AccelerateTrainer(TorchTrainer):
         def train_loop_per_worker():
             # Report intermediate results for callbacks or logging and
             # checkpoint data.
-            train.report(...)
+            session.report(...)
 
             # Get dict of last saved checkpoint.
-            train.get_checkpoint()
+            session.get_checkpoint()
 
-            # Get the Dataset shard for the given key.
-            train.get_dataset_shard("my_dataset")
+            # Session returns the Dataset shard for the given key.
+            session.get_dataset_shard("my_dataset")
 
             # Get the total number of workers executing training.
-            train.get_context().get_world_size()
+            session.get_world_size()
 
             # Get the rank of this worker.
-            train.get_context().get_world_rank()
+            session.get_world_rank()
 
             # Get the rank of the worker on the current node.
-            train.get_context().get_local_rank()
+            session.get_local_rank()
 
     For more information, see the documentation of
     :class:`~ray.train.torch.TorchTrainer`.
 
     .. note::
 
-        You need to use ``ray.train.report()`` to communicate results and checkpoints
+        You need to use ``session.report()`` to communicate results and checkpoints
         back to Ray Train.
 
     Accelerate integrations with DeepSpeed, FSDP, MegatronLM etc. are fully supported.
@@ -117,9 +118,11 @@ class AccelerateTrainer(TorchTrainer):
             from accelerate import Accelerator
 
             import ray
-            from ray import train
-            from ray.train import Checkpoint, CheckpointConfig, RunConfig, ScalingConfig
+            from ray.air import session, Checkpoint
             from ray.train.huggingface import AccelerateTrainer
+            from ray.air.config import ScalingConfig
+            from ray.air.config import RunConfig
+            from ray.air.config import CheckpointConfig
 
             # If using GPUs, set this to True.
             use_gpu = False
@@ -149,8 +152,8 @@ class AccelerateTrainer(TorchTrainer):
                 # Initialize the Accelerator
                 accelerator = Accelerator()
 
-                # Fetch training set
-                dataset_shard = train.get_dataset_shard("train")
+                # Fetch training set from the session
+                dataset_shard = session.get_dataset_shard("train")
                 model = NeuralNetwork()
 
                 # Loss function, optimizer, prepare model for training.
@@ -186,7 +189,7 @@ class AccelerateTrainer(TorchTrainer):
 
                     # Report and record metrics, checkpoint model at end of each
                     # epoch
-                    train.report(
+                    session.report(
                         {"loss": loss.item(), "epoch": epoch},
                         checkpoint=Checkpoint.from_dict(
                             dict(
@@ -364,10 +367,10 @@ class AccelerateTrainer(TorchTrainer):
                 namespace = AccelerateDefaultNamespace()
                 namespace.config_file = temp_config_file
                 namespace.num_processes = 1
-                namespace.num_machines = train.get_context().get_world_size()
-                namespace.machine_rank = train.get_context().get_world_rank()
+                namespace.num_machines = session.get_world_size()
+                namespace.machine_rank = session.get_world_rank()
                 namespace.num_cpu_threads_per_process = (
-                    train.get_context().get_trial_resources().bundles[-1].get("CPU", 1)
+                    session.get_trial_resources().bundles[-1].get("CPU", 1)
                 )
                 namespace.gpu_ids = None
                 namespace.main_process_ip = master_addr

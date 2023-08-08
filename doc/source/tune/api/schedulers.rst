@@ -12,12 +12,13 @@ Trainable and is maximized or minimized according to ``mode``.
 
 .. code-block:: python
 
-    from ray import train, tune
+    from ray import tune
+    from ray.air import session
     from tune.schedulers import ASHAScheduler
 
     def train_fn(config):
         # This objective function is just for demonstration purposes
-        train.report({"loss": config["param"]})
+        session.report({"loss": config["param"]})
 
     tuner = tune.Tuner(
         train_fn,

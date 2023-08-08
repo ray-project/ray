@@ -97,8 +97,7 @@ public class GcsClient {
               data.getObjectStoreSocketName(),
               data.getRayletSocketName(),
               data.getState() == GcsNodeInfo.GcsNodeState.ALIVE,
-              new HashMap<>(),
-              data.getLabelsMap());
+              new HashMap<>());
       if (nodeInfo.isAlive) {
         nodeInfo.resources.putAll(data.getResourcesTotalMap());
       }

@@ -36,23 +36,21 @@ export const useNodeList = () => {
       } else {
         setMsg("");
       }
-      return rspData;
+      return rspData.summary;
     },
     { refreshInterval: isRefreshing ? API_REFRESH_INTERVAL_MS : 0 },
   );
 
-  const nodeList = data?.summary ?? [];
-  const nodeLogicalResources = data?.nodeLogicalResources ?? {};
+  const nodeList = data ?? [];
 
-  const nodeListWithAdditionalInfo = nodeList
+  const nodeListWithState = nodeList
     .map((e) => ({
       ...e,
       state: e.raylet.state,
-      logicalResources: nodeLogicalResources[e.raylet.nodeId],
     }))
     .sort(sorterFunc);
 
-  const sortedList = _.sortBy(nodeListWithAdditionalInfo, [
+  const sortedList = _.sortBy(nodeListWithState, [
     (obj) => !obj.raylet.isHeadNode,
     // sort by alive first, then alphabetically for other states
     (obj) => (obj.raylet.state === "ALIVE" ? "0" : obj.raylet.state),

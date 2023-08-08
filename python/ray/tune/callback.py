@@ -83,7 +83,7 @@ class Callback(metaclass=_CallbackMeta):
 
     .. testcode::
 
-        from ray import train, tune
+        from ray import air, tune
         from ray.tune import Callback
 
 
@@ -93,13 +93,13 @@ class Callback(metaclass=_CallbackMeta):
                 print(f"Got result: {result['metric']}")
 
 
-        def train_func(config):
+        def train(config):
             for i in range(10):
                 tune.report(metric=i)
 
         tuner = tune.Tuner(
-            train_func,
-            run_config=train.RunConfig(
+            train,
+            run_config=air.RunConfig(
                 callbacks=[MyCallback()]
             )
         )
@@ -131,7 +131,7 @@ class Callback(metaclass=_CallbackMeta):
 
         Arguments:
             stop: Stopping criteria.
-                If ``time_budget_s`` was passed to ``train.RunConfig``, a
+                If ``time_budget_s`` was passed to ``air.RunConfig``, a
                 ``TimeoutStopper`` will be passed here, either by itself
                 or as a part of a ``CombinedStopper``.
             num_samples: Number of times to sample from the
