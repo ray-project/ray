@@ -269,7 +269,7 @@ def test_load_trial_from_json_state(tmpdir):
     trial.status = Trial.TERMINATED
 
     checkpoint_logdir = os.path.join(trial.local_path, "checkpoint_00000")
-    trial.checkpoint_manager.on_checkpoint(
+    trial.runtime_metadata.checkpoint_manager.on_checkpoint(
         _TrackedCheckpoint(
             dir_or_data=checkpoint_logdir,
             storage_mode=CheckpointStorage.PERSISTENT,
@@ -291,7 +291,7 @@ def test_change_trial_local_dir(tmpdir):
     trial.status = Trial.TERMINATED
 
     checkpoint_logdir = os.path.join(trial.local_path, "checkpoint_00000")
-    trial.checkpoint_manager.on_checkpoint(
+    trial.runtime_metadata.checkpoint_manager.on_checkpoint(
         _TrackedCheckpoint(
             dir_or_data=checkpoint_logdir,
             storage_mode=CheckpointStorage.PERSISTENT,
