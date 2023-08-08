@@ -199,13 +199,10 @@ class BaseTrainer(abc.ABC):
         self.run_config = run_config if run_config is not None else RunConfig()
         self.datasets = datasets if datasets is not None else {}
         self.preprocessor = preprocessor
-        self.resume_from_checkpoint = resume_from_checkpoint
+        self.starting_checkpoint = resume_from_checkpoint
 
         # This path should only be set through restore
         self._restore_path = None
-        # This checkpoint should only be populated internally
-        # by auto-recovery fault tolerance/manual Trainer.restore
-        self._checkpoint_for_restoration: Optional[NewCheckpoint] = None
 
         self._validate_attributes()
 
@@ -392,7 +389,7 @@ class BaseTrainer(abc.ABC):
             "run_config": RunConfig(),
             "datasets": {},
             "preprocessor": None,
-            "resume_from_checkpoint": None,
+            "starting_checkpoint": None,
         }
 
         non_default_arguments = []
@@ -467,13 +464,16 @@ class BaseTrainer(abc.ABC):
                 f"found {type(self.preprocessor)} with value `{self.preprocessor}`."
             )
 
-        if self.resume_from_checkpoint is not None and not isinstance(
-            self.resume_from_checkpoint, ray.air.Checkpoint
+        expected_checkpoint_type = (
+            NewCheckpoint if _use_storage_context() else ray.air.Checkpoint
+        )
+        if self.starting_checkpoint is not None and not isinstance(
+            self.starting_checkpoint, expected_checkpoint_type
         ):
             raise ValueError(
                 f"`resume_from_checkpoint` should be an instance of "
-                f"`ray.train.Checkpoint`, found {type(self.resume_from_checkpoint)} "
-                f"with value `{self.resume_from_checkpoint}`."
+                f"`ray.train.Checkpoint`, found {type(self.starting_checkpoint)} "
+                f"with value `{self.starting_checkpoint}`."
             )
 
     @classmethod
@@ -706,22 +706,6 @@ class BaseTrainer(abc.ABC):
                 result[key] = copy.deepcopy(self._param_dict[key])
         return result
 
-    def _get_initial_checkpoint(self) -> Optional[NewCheckpoint]:
-        """If we need to set an initial checkpoint accessible by train.get_checkpoint,
-        we are in one of 3 cases:
-        1. We are auto-recovering from a training failure (FailureConfig).
-          -> In this case, _checkpoint_for_restoration points to the *latest*
-            checkpoint, which is the one we want to restore from.
-        2. We are manually restoring an existing experiment (Trainer.restore).
-          -> Same as 1.
-        3. The user passed in a checkpoint to start a *new* training run from.
-          -> `resume_from_checkpoint` points to the user-specified checkpoint.
-
-        When populating `train.get_checkpoint`, `_checkpoint_for_restoration`
-        should take precedence over `resume_from_checkpoint`.
-        """
-        return self._checkpoint_for_restoration or self.resume_from_checkpoint
-
     def _generate_trainable_cls(self) -> Type["Trainable"]:
         """Generates the base Trainable class.
 
@@ -741,14 +725,12 @@ class BaseTrainer(abc.ABC):
             # Instantiate new Trainer in Trainable.
             trainer = trainer_cls(**config)
 
-            # Get the checkpoint from Tune, and use it to initialize
-            # the restored trainer.
+            # Get the checkpoint from Tune and pass it to workers later on.
             checkpoint = session.get_checkpoint()
             if checkpoint:
-                # Set `_checkpoint_for_restoration` for auto-recovery fault-tolerance
+                # Set `starting_checkpoint` for auto-recovery fault-tolerance
                 # as well as manual restoration.
-                # `trainer.resume_from_checkpoint` is only ever set by the user.
-                trainer._checkpoint_for_restoration = checkpoint
+                trainer.starting_checkpoint = checkpoint
 
                 # TODO(justinvyu): Remove this when Preprocessor is removed from Trainer
                 if not _use_storage_context():
@@ -757,6 +739,8 @@ class BaseTrainer(abc.ABC):
                     # passed in a new preprocessor
                     if not (restored and trainer.preprocessor):
                         trainer.preprocessor = checkpoint.get_preprocessor()
+            # Else: Train will restore from the user-provided
+            # `resume_from_checkpoint` == `starting_checkpoint`.
 
             trainer.setup()
             trainer.preprocess_datasets()
