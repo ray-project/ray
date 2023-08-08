@@ -268,16 +268,14 @@ class TestWriteImages:
     @pytest.mark.parametrize("file_format", [None, "png"])
     def test_write_images(ray_start_regular_shared, file_format, tmp_path):
         ds = ray.data.read_images("example://image-datasets/simple")
-        ds.write_datasource(
-            ImageDatasource(),
+        ds.write_images(
             path=tmp_path,
-            file_format=file_format,
             column="image",
-            dataset_uuid=ds._uuid,
+            file_format=file_format,
         )
 
         assert len(os.listdir(tmp_path)) == ds.count()
-        
+
         for filename in os.listdir(tmp_path):
             path = os.path.join(tmp_path, filename)
             Image.open(path)
