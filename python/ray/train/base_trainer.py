@@ -378,7 +378,7 @@ class BaseTrainer(abc.ABC):
             "run_config": RunConfig(),
             "datasets": {},
             "preprocessor": None,
-            "resume_from_checkpoint": None,
+            "starting_checkpoint": None,
         }
 
         non_default_arguments = []
