@@ -97,6 +97,33 @@ class TestJobSubmitHook:
             assert "hook intercepted: echo hello" in stdout
 
 
+class TestRayJobHeaders:
+    """
+    Integration version of job CLI test that ensures interaction with the
+    following components are working as expected:
+    1) Ray client: use of RAY_JOB_HEADERS and ray.init() in job_head.py
+    2) Ray dashboard: `ray start --head`
+    """
+
+    def test_empty_ray_job_headers(self, ray_start_stop):
+        with set_env_var("RAY_JOB_HEADERS", None):
+            stdout, _ = _run_cmd("ray job submit -- echo hello")
+            assert "hello" in stdout
+            assert "succeeded" in stdout
+
+    @pytest.mark.parametrize("ray_job_headers", ['{"key": "value"}'])
+    def test_ray_job_headers(self, ray_start_stop, ray_job_headers: str):
+        with set_env_var("RAY_JOB_HEADERS", ray_job_headers):
+            _run_cmd("ray job submit -- echo hello", should_fail=False)
+
+    @pytest.mark.parametrize("ray_job_headers", ["{key value}"])
+    def test_ray_incorrectly_formatted_job_headers(
+        self, ray_start_stop, ray_job_headers: str
+    ):
+        with set_env_var("RAY_JOB_HEADERS", ray_job_headers):
+            _run_cmd("ray job submit -- echo hello", should_fail=True)
+
+
 class TestRayAddress:
     """
     Integration version of job CLI test that ensures interaction with the
