@@ -25,45 +25,91 @@ mkdir -p $ORIG_MODEL_DIR $TUNED_MODEL_DIR $IMAGES_REG_DIR $IMAGES_OWN_DIR $IMAGE
 # Unique token to identify our subject (e.g., a random dog vs. our unqtkn dog)
 export UNIQUE_TOKEN="unqtkn"
 
+skip_image_download=false
+use_lora=false
+# parse args
+for arg in "$@"; do
+  case $arg in
+    --skip_image_download)
+      echo "Option --skip_image_download is set"
+      skip_image_download=true
+      ;;
+    --use_lora)
+      echo "Option --use_lora is set"
+      use_lora=true
+      ;;
+    *)
+      echo "Invalid option: $arg"
+      ;;
+  esac
+done
+
 # Step 1
-# Only uncomment one of the following:
-
-# Option 1: Use the dog dataset ---------
-export CLASS_NAME="dog"
-python download_example_dataset.py ./images/dog
-export INSTANCE_DIR=./images/dog
-# ---------------------------------------
-
-# Option 2: Use the lego car dataset ----
-# export CLASS_NAME="car"
-# export INSTANCE_DIR=./images/lego-car
-# ---------------------------------------
-
-# Option 3: Use your own images ---------
-# export CLASS_NAME="<class-of-your-subject>"
-# export INSTANCE_DIR="/path/to/images/of/subject"
-# ---------------------------------------
-
-# Copy own images into IMAGES_OWN_DIR
-cp -rf $INSTANCE_DIR/* "$IMAGES_OWN_DIR/"
-
-# Step 2
 python cache_model.py --model_dir=$ORIG_MODEL_DIR --model_name=$ORIG_MODEL_NAME --revision=$ORIG_MODEL_HASH
 
-# Clear reg dir
-rm -rf "$IMAGES_REG_DIR"/*.jpg
+download_image() {
+  # Step 2
+  # Only uncomment one of the following:
 
-# Step 3: START
-python generate.py \
-  --model_dir=$ORIG_MODEL_PATH \
-  --output_dir=$IMAGES_REG_DIR \
-  --prompts="photo of a $CLASS_NAME" \
-  --num_samples_per_prompt=200 \
-  --use_ray_data
-# Step 3: END
+  # Option 1: Use the dog dataset ---------
+  export CLASS_NAME="dog"
+  python download_example_dataset.py ./images/dog
+  export INSTANCE_DIR=./images/dog
+  # ---------------------------------------
 
-# Step 4: START
-python train.py \
+  # Option 2: Use the lego car dataset ----
+  # export CLASS_NAME="car"
+  # export INSTANCE_DIR=./images/lego-car
+  # ---------------------------------------
+
+  # Option 3: Use your own images ---------
+  # export CLASS_NAME="<class-of-your-subject>"
+  # export INSTANCE_DIR="/path/to/images/of/subject"
+  # ---------------------------------------
+
+  # Copy own images into IMAGES_OWN_DIR
+  cp -rf $INSTANCE_DIR/* "$IMAGES_OWN_DIR/"
+
+  # Clear reg dir
+  rm -rf "$IMAGES_REG_DIR"/*.jpg
+
+  # Step 3: START
+  python generate.py \
+    --model_dir=$ORIG_MODEL_PATH \
+    --output_dir=$IMAGES_REG_DIR \
+    --prompts="photo of a $CLASS_NAME" \
+    --num_samples_per_prompt=200 \
+    --use_ray_data
+  # Step 3: END
+}
+
+# Skip step 2 and 3 if skip_image_download=true
+
+if $skip_image_download; then
+  echo "Skipping image downloading..."
+else
+  download_image
+fi
+
+if ! ((use_lora)); then
+  echo "Start full-finetuning..."
+  # Step 4: START
+  python train.py \
+    --model_dir=$ORIG_MODEL_PATH \
+    --output_dir=$TUNED_MODEL_DIR \
+    --instance_images_dir=$IMAGES_OWN_DIR \
+    --instance_prompt="photo of $UNIQUE_TOKEN $CLASS_NAME" \
+    --class_images_dir=$IMAGES_REG_DIR \
+    --class_prompt="photo of a $CLASS_NAME" \
+    --train_batch_size=2 \
+    --lr=5e-6 \
+    --num_epochs=10 \
+    --max_train_steps=400 \
+    --num_workers $NUM_WORKERS
+  # Step 4: END
+else
+  echo "Start LoRA finetuning..."
+  python train.py \
   --model_dir=$ORIG_MODEL_PATH \
   --output_dir=$TUNED_MODEL_DIR \
   --instance_images_dir=$IMAGES_OWN_DIR \
@@ -71,23 +117,32 @@ python train.py \
   --class_images_dir=$IMAGES_REG_DIR \
   --class_prompt="photo of a $CLASS_NAME" \
   --train_batch_size=2 \
-  --lr=5e-6 \
+  --lr=1e-4 \
   --num_epochs=10 \
   --max_train_steps=400 \
   --num_workers $NUM_WORKERS
-# Step 4: END
+  --use_lora
+fi
 
 # Clear new dir
 rm -rf "$IMAGES_NEW_DIR"/*.jpg
 
-# TODO: Change the prompt to something more interesting!
-# Step 5: START
-python generate.py \
-  --model_dir=$TUNED_MODEL_DIR \
+if !use_lora; then
+  # Step 5: START
+  python generate.py \
+    --model_dir=$TUNED_MODEL_DIR \
+    --output_dir=$IMAGES_NEW_DIR \
+    --prompts="photo of a $UNIQUE_TOKEN $CLASS_NAME" in a bucket\
+    --num_samples_per_prompt=5
+  # Step 5: END
+else
+  python generate.py \
+  --model_dir=$ORIG_MODEL_PATH \
+  --lora_weights_dir=$TUNED_MODEL_DIR \
   --output_dir=$IMAGES_NEW_DIR \
-  --prompts="photo of a $UNIQUE_TOKEN $CLASS_NAME" \
+  --prompts="photo of a $UNIQUE_TOKEN $CLASS_NAME" in a bucket\
   --num_samples_per_prompt=5
-# Step 5: END
+fi
 
 # Save artifact
 mkdir -p /tmp/artifacts
