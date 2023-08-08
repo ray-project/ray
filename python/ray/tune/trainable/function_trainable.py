@@ -40,9 +40,6 @@ from ray.tune.utils import (
 from ray.util.annotations import DeveloperAPI
 from ray.util.debug import log_once
 
-if TYPE_CHECKING:
-    from ray.train._internal.checkpoint_manager import _TrainingResult
-
 
 logger = logging.getLogger(__name__)
 
