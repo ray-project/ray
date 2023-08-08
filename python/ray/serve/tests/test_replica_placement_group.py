@@ -19,6 +19,10 @@ from ray.serve.context import get_global_client
 from ray.serve._private.utils import get_all_live_placement_group_names
 
 
+def _get_pg_strategy(pg: PlacementGroup) -> str:
+    return ray.util.placement_group_table(pg)["strategy"]
+
+
 def test_basic(serve_instance):
     """Test the basic workflow: multiple replicas with their own PGs."""
 
@@ -32,12 +36,50 @@ def test_basic(serve_instance):
 
     h = serve.run(D.bind(), name="pg_test")
 
-    # Verify that each replica has its own placement group with the correct bundles.
+    # Verify that each replica has its own placement group with the correct config.
     assert len(get_all_live_placement_group_names()) == 2
     unique_pgs = set(ray.get([h.get_pg.remote() for _ in range(20)]))
     assert len(unique_pgs) == 2
     for pg in unique_pgs:
+        assert _get_pg_strategy(pg) == "PACK"
         assert pg.bundle_specs == [{"CPU": 1}, {"CPU": 0.1}]
+
+    # Verify that all placement groups are deleted when the deployment is deleted.
+    serve.delete("pg_test")
+    assert len(get_all_live_placement_group_names()) == 0
+
+
+def test_upgrade_and_change_pg(serve_instance):
+    """Test re-deploying a deployment with different PG bundles and strategy."""
+
+    @serve.deployment(
+        num_replicas=1,
+        placement_group_bundles=[{"CPU": 1}, {"CPU": 0.1}],
+        placement_group_strategy="STRICT_PACK",
+    )
+    class D:
+        def get_pg(self) -> PlacementGroup:
+            return get_current_placement_group()
+
+    h = serve.run(D.bind(), name="pg_test")
+
+    # Check that the original replica is created with the expected PG config.
+    assert len(get_all_live_placement_group_names()) == 1
+    original_pg = ray.get(h.get_pg.remote())
+    assert original_pg.bundle_specs == [{"CPU": 1}, {"CPU": 0.1}]
+    assert _get_pg_strategy(original_pg) == "STRICT_PACK"
+
+    # Re-deploy with a new PG config.
+    D = D.options(
+        placement_group_bundles=[{"CPU": 2}, {"CPU": 0.2}],
+        placement_group_strategy="SPREAD",
+    )
+
+    h = serve.run(D.bind(), name="pg_test")
+    assert len(get_all_live_placement_group_names()) == 1
+    new_pg = ray.get(h.get_pg.remote())
+    assert new_pg.bundle_specs == [{"CPU": 2}, {"CPU": 0.2}]
+    assert _get_pg_strategy(new_pg) == "SPREAD"
 
     # Verify that all placement groups are deleted when the deployment is deleted.
     serve.delete("pg_test")
@@ -137,6 +179,7 @@ def test_leaked_pg_removed_on_controller_recovery(serve_instance):
     In these cases, the controller should detect the leak on recovery and delete the
     leaked placement group(s).
     """
+
     @serve.deployment(
         placement_group_bundles=[{"CPU": 1}],
         health_check_period_s=0.1,
@@ -176,7 +219,7 @@ def test_leaked_pg_removed_on_controller_recovery(serve_instance):
     assert len(get_all_live_placement_group_names()) == 0
 
 
-@pytest.mark.skip(reason="Not handled gracefully.")
+@pytest.mark.skip(reason="Not handled gracefully yet.")
 def test_replica_actor_infeasible(serve_instance):
     """Test the case where the replica actor doesn't fit in the first bundle."""
 

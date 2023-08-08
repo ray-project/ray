@@ -43,7 +43,8 @@ class ReplicaSchedulingRequest:
     actor_options: Dict
     actor_init_args: Tuple
     on_scheduled: Callable
-    # XXX: comment
+    # Placement group bundles and strategy *for this replica*.
+    # These are optional: by default replicas do not have a placement group.
     placement_group_bundles: Optional[List[Dict[str, float]]] = None
     placement_group_strategy: Optional[str] = None
 
