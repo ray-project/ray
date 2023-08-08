@@ -443,7 +443,7 @@ sarif-om==1.0.4
 scikit-image==0.19.3
 scikit-learn==1.0.2 ; python_version < "3.11"
 scikit-optimize==0.9.0
-scipy==1.7.3
+scipy==1.10.0
 segment-analytics-python==2.2.0
 semantic-version==2.10.0
 semgrep==1.32.0
