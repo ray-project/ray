@@ -29,6 +29,28 @@ def synthetic_dataset_path():
         yield tmp_path
 
 
+def test_no_file_extensions(synthetic_dataset_path):
+    input_path = os.path.join(synthetic_dataset_path, "5")
+    input_paths, filesystem = _resolve_paths_and_filesystem(input_path)
+
+    default_provider = DefaultFileMetadataProvider()
+    expected_paths, expected_file_sizes = list(
+        zip(*default_provider.expand_paths(input_paths, filesystem))
+    )
+
+    anyscale_provider = AnyscaleFileMetadataProvider(file_extensions=None)
+    actual_paths, actual_file_sizes = list(
+        zip(*anyscale_provider.expand_paths(input_paths, filesystem))
+    )
+
+    assert set(expected_paths) == set(actual_paths)
+
+    expected_total_size = sum(expected_file_sizes)
+    actual_total_size = sum(actual_file_sizes)
+    percent_error = abs(expected_total_size - actual_total_size) / expected_total_size
+    assert percent_error < 0.2
+
+
 @pytest.mark.parametrize(
     "relative_paths",
     [

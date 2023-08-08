@@ -35,6 +35,8 @@ class AnyscaleFileMetadataProvider(DefaultFileMetadataProvider):
     """
 
     def __init__(self, file_extensions: Optional[List[str]] = None):
+        if file_extensions is None:
+            file_extensions = []
         self.file_extensions = file_extensions
 
     def expand_paths(

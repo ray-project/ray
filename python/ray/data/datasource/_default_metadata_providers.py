@@ -18,7 +18,7 @@ def get_generic_metadata_provider(file_extensions: Optional[List[str]]):
     # Used by all other file-based `read_*` APIs
     from ray.anyscale.data import AnyscaleFileMetadataProvider
 
-    if ANYSCALE_METADATA_PROVIDER_ENABLED and file_extensions is not None:
+    if ANYSCALE_METADATA_PROVIDER_ENABLED:
         return AnyscaleFileMetadataProvider(file_extensions)
     else:
         return DefaultFileMetadataProvider()
