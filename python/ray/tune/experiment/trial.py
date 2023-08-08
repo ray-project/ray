@@ -27,6 +27,10 @@ from ray.air.constants import (
 
 import ray.cloudpickle as cloudpickle
 from ray.exceptions import RayActorError, RayTaskError
+from ray.train._internal.checkpoint_manager import (
+    _TrainingResult,
+    _CheckpointManager as _NewCheckpointManager,
+)
 from ray.train._internal.storage import _use_storage_context, StorageContext
 from ray.tune import TuneError
 from ray.tune.error import _TuneRestoreError
@@ -531,10 +535,6 @@ class Trial:
         self.checkpoint_config = checkpoint_config
 
         if _use_storage_context():
-            from ray.train._internal.checkpoint_manager import (
-                _CheckpointManager as _NewCheckpointManager,
-            )
-
             self.checkpoint_manager = _NewCheckpointManager(
                 checkpoint_config=self.checkpoint_config
             )
@@ -1075,8 +1075,6 @@ class Trial:
             checkpoint: Checkpoint taken.
         """
         if _use_storage_context():
-            from ray.train._internal.checkpoint_manager import _TrainingResult
-
             checkpoint_result = checkpoint
             assert isinstance(checkpoint_result, _TrainingResult)
             self.checkpoint_manager.register_checkpoint(checkpoint_result)
@@ -1093,8 +1091,6 @@ class Trial:
         assert self.is_restoring
 
         if _use_storage_context():
-            from ray.train._internal.checkpoint_manager import _TrainingResult
-
             assert isinstance(self.restoring_from, _TrainingResult)
 
         self.last_result = self.restoring_from.metrics
