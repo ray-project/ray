@@ -117,8 +117,8 @@ class Checkpoint:
         existing_metadata.update(metadata)
         self.set_metadata(existing_metadata)
 
-    @staticmethod
-    def from_directory(path: Union[str, os.PathLike]) -> "Checkpoint":
+    @classmethod
+    def from_directory(cls, path: Union[str, os.PathLike]) -> "Checkpoint":
         """Create checkpoint object from a local directory.
 
         Args:
@@ -130,7 +130,7 @@ class Checkpoint:
         Returns:
             Checkpoint: checkpoint object.
         """
-        return Checkpoint(path, filesystem=pyarrow.fs.LocalFileSystem())
+        return cls(path, filesystem=pyarrow.fs.LocalFileSystem())
 
     def to_directory(self, path: Optional[Union[str, os.PathLike]] = None) -> str:
         """Write checkpoint data to directory.
