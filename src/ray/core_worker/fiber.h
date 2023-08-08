@@ -90,10 +90,13 @@ class FiberState {
     return true;
   }
 
-  FiberState(int max_concurrency) : rate_limiter_(max_concurrency) {
+  FiberState(int max_concurrency)
+      : rate_limiter_(max_concurrency),
+        fiber_stopped_event_(std::make_shared<FiberEvent>()) {
+    std::shared_ptr<FiberEvent> fiber_stopped_event = fiber_stopped_event_;
     fiber_runner_thread_ =
         std::thread(
-            [&]() {
+            [&, fiber_stopped_event]() {
               while (!channel_.is_closed()) {
                 std::function<void()> func;
                 auto op_status = channel_.pop(func);
@@ -124,7 +127,7 @@ class FiberState {
               // no fibers can run after this point as we don't yield here.
               // This makes sure this thread won't accidentally
               // access being destructed core worker.
-              fiber_stopped_event_.Notify();
+              fiber_stopped_event->Notify();
               while (true) {
                 std::this_thread::sleep_for(std::chrono::hours(1));
               }
@@ -143,7 +146,7 @@ class FiberState {
   void Stop() { channel_.close(); }
 
   void Join() {
-    fiber_stopped_event_.Wait();
+    fiber_stopped_event_->Wait();
     fiber_runner_thread_.detach();
   }
 
@@ -155,7 +158,10 @@ class FiberState {
   /// running at once.
   FiberRateLimiter rate_limiter_;
   /// The fiber event used to notify that all worker fibers are stopped running.
-  FiberEvent fiber_stopped_event_;
+  // This FiberEvent must outlive the FiberState class, because a FiberState instance may
+  // be deallocated when the thread is in the `notify_one()` call and write to the
+  // condition_variable's underlying data.
+  std::shared_ptr<FiberEvent> fiber_stopped_event_;
   /// The thread that runs all asyncio fibers. is_asyncio_ must be true.
   std::thread fiber_runner_thread_;
 };
