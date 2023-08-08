@@ -50,7 +50,7 @@ class AnyscaleFileMetadataProvider(DefaultFileMetadataProvider):
                 for file_extension in self.file_extensions
             )
 
-        use_sampling = all(is_file(path) for path in paths)
+        use_sampling = all(is_file(path) for path in paths) and not ignore_missing_paths
         if len(paths) == 1:
             yield from _fetch_metadata(paths, filesystem, ignore_missing_paths)
         elif use_sampling:
