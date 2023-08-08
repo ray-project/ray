@@ -125,8 +125,7 @@ training.
     
         We provide the following utilities:
 
-        Step 1: Configure Distributed Strategy
-        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+        **Step 1: Configure Distributed Strategy**
 
         Ray Train offers several subclassed distributed strategy for Lightning. 
         These strategy retains the same argument list as the base strategy class. 
@@ -137,8 +136,7 @@ training.
         - :class:`~ray.train.lightning.RayFSDPStrategy` 
         - :class:`~ray.train.lightning.RayDeepSpeedStrategy` 
 
-        Step 2: Configure Ray Cluster Environment Plugin
-        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+        **Step 2: Configure Ray Cluster Environment Plugin**
 
         Ray Train also provides :class:`~ray.train.lightning.RayLightningEnvironment` 
         as a specification for Ray Cluster. This utility class configures the worker's 
@@ -148,8 +146,7 @@ training.
         ``CUDA_VISIBLE_DEVICES`` for you. One should always use all available 
         GPUs by setting ``devices="auto"``.
         
-        Step 3: Prepare your Lightning Trainer
-        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+        **Step 3: Prepare your Lightning Trainer**
 
         Finally, pass your Lightning trainer into
         :meth:`~ray.train.lightning.prepare_trainer` to validate 
