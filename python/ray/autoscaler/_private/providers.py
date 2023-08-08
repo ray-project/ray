@@ -96,6 +96,12 @@ def _import_aliyun(provider_config):
     return AliyunNodeProvider
 
 
+def _import_spark(provider_config):
+    from ray.autoscaler._private.spark.node_provider import RayOnSparkNodeProvider
+
+    return RayOnSparkNodeProvider
+
+
 def _load_fake_multinode_docker_defaults_config():
     import ray.autoscaler._private.fake_multi_node as ray_fake_multinode
 
@@ -157,6 +163,7 @@ _NODE_PROVIDERS = {
     "kuberay": _import_kuberay,
     "aliyun": _import_aliyun,
     "external": _import_external,  # Import an external module
+    "ray_on_spark": _import_spark,
 }
 
 _PROVIDER_PRETTY_NAMES = {
