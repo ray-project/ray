@@ -138,7 +138,7 @@ if [ "$use_lora" = false ]; then
   python generate.py \
     --model_dir=$TUNED_MODEL_DIR \
     --output_dir=$IMAGES_NEW_DIR \
-    --prompts="photo of a $UNIQUE_TOKEN $CLASS_NAME" in a bucket\
+    --prompts="photo of a $UNIQUE_TOKEN $CLASS_NAME in a bucket" \
     --num_samples_per_prompt=5
   # Step 5: END
 else
@@ -146,7 +146,7 @@ else
   --model_dir=$ORIG_MODEL_PATH \
   --lora_weights_dir=$TUNED_MODEL_DIR \
   --output_dir=$IMAGES_NEW_DIR \
-  --prompts="photo of a $UNIQUE_TOKEN $CLASS_NAME" in a bucket\
+  --prompts="photo of a $UNIQUE_TOKEN $CLASS_NAME in a bucket" \
   --num_samples_per_prompt=5
 fi
 

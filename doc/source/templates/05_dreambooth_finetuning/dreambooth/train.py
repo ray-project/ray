@@ -254,9 +254,9 @@ def train_fn(config):
 
             # Predict the noise residual.
             model_pred = unet(
-                noisy_latents.cuda(),
-                timesteps.cuda(),
-                encoder_hidden_states.cuda(),
+                noisy_latents.to(train.torch.get_device()),
+                timesteps.to(train.torch.get_device()),
+                encoder_hidden_states.to(train.torch.get_device()),
             ).sample
             target = get_target(noise_scheduler, noise, latents, timesteps)
 
