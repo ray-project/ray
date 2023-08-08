@@ -173,7 +173,7 @@ class TestReadImages:
                 return {"prediction": self.model(torch_tensor)}
 
         predictions = dataset.map_batches(
-            Predictor, compute=ray.data.ActorPoolStrategy(size=2)
+            Predictor, compute=ray.data.ActorPoolStrategy(min_size=1)
         )
 
         for _ in predictions.iter_batches():

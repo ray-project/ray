@@ -567,14 +567,6 @@ py_test(
 )
 
 py_test(
-    name = "test_transformers_gpu",
-    size = "medium",
-    srcs = ["tests/test_transformers_gpu.py"],
-    tags = ["team:ml", "exclusive", "gpu_only"],
-    deps = [":train_lib", ":conftest"]
-)
-
-py_test(
     name = "test_transformers_predictor",
     size = "medium",
     srcs = ["tests/test_transformers_predictor.py"],

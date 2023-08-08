@@ -147,6 +147,9 @@ If you're writing a longer example, or if object representations aren't relevant
 
         from typing import Dict
         import numpy as np
+        import ray
+
+        ds = ray.data.read_csv("s3://anonymous@air-example-data/iris.csv")
 
         # Compute a "petal area" attribute.
         def transform_batch(batch: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
