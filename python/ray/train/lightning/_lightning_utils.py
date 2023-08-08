@@ -200,10 +200,10 @@ class RayTrainReportCallback(Callback):
 
             # (Optional) Add customized metrics
             metrics["epoch"] = trainer.current_epoch
-            metrics["steps"] = trainer.global_step
+            metrics["step"] = trainer.global_step
 
             # Save checkpoint to local
-            ckpt_path = os.path.join(tmpdir, "checkpoint")
+            ckpt_path = os.path.join(tmpdir, "checkpoint.ckpt")
             trainer.save_checkpoint(ckpt_path, weights_only=False)
 
             # Report to train session

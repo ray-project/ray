@@ -184,7 +184,7 @@ Configuring checkpoints
 -----------------------
 
 For more configurability of checkpointing behavior (specifically saving
-checkpoints to disk), a :py:class:`~ray.air.config.CheckpointConfig` can be passed into
+checkpoints to disk), a :py:class:`~ray.train.CheckpointConfig` can be passed into
 ``Trainer``.
 
 .. literalinclude:: ../doc_code/key_concepts.py
@@ -195,18 +195,18 @@ checkpoints to disk), a :py:class:`~ray.air.config.CheckpointConfig` can be pass
 
 .. seealso::
 
-    See the :class:`~ray.air.CheckpointConfig` API reference.
+    See the :class:`~ray.train.CheckpointConfig` API reference.
 
 .. note::
 
     If you want to save the top-k checkpoints with respect to a metric via
-    :py:class:`~ray.air.config.CheckpointConfig`,
+    :py:class:`~ray.train.CheckpointConfig`,
     please ensure that the metric is always reported together with the checkpoints.
 
 **[Experimental] Distributed Checkpoints**: For model parallel workloads where the models do not fit in a single GPU worker,
 it will be important to save and upload the model that is partitioned across different workers. You
 can enable this by setting `_checkpoint_keep_all_ranks=True` to retain the model checkpoints across workers,
-and `_checkpoint_upload_from_workers=True` to upload their checkpoints to cloud directly in :class:`~ray.air.CheckpointConfig`. This functionality works for any trainer that inherits from :class:`~ray.train.data_parallel_trainer.DataParallelTrainer`.
+and `_checkpoint_upload_from_workers=True` to upload their checkpoints to cloud directly in :class:`~ray.train.CheckpointConfig`. This functionality works for any trainer that inherits from :class:`~ray.train.data_parallel_trainer.DataParallelTrainer`.
 
 
 
