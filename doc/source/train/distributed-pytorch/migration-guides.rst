@@ -101,8 +101,3 @@ and HuggingFace Accelerate.
             ray_trainer.fit()
 
         For more information, please refer to our :ref:`TorchTrainer User Guide <train-pytorch-overview>`.
-
-    .. tab-item:: HF Transformers 
-    
-    .. tab-item:: HF Accelerate
-

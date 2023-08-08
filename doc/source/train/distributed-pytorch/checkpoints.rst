@@ -119,7 +119,7 @@ appropriately in distributed training.
                 datamodule = MyLightningDataModule(...)
 
                 trainer = pl.Trainer(
-                    ...
+                    # ...
                     callbacks = [RayTrainReportCallback()]
                 )
                 trainer.fit(model, datamodule=datamodule)

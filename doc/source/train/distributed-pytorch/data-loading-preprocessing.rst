@@ -64,7 +64,7 @@ Let's use a single Torch training workload as a running example. A very basic ex
     .. tab-item:: PyTorch Lightning
 
         .. code-block:: python
-            :emphasize-lines: 9,10,13,14,23,24
+            :emphasize-lines: 9,10,13,14,25,26
 
             from ray import train
          
@@ -83,7 +83,9 @@ Let's use a single Torch training workload as a running example. A very basic ex
 
                 ...
 
-                trainer = pl.Trainer(...)
+                trainer = pl.Trainer(
+                    # ...
+                )
 
                 # Feed the Ray dataset iterables to ``pl.Trainer.fit``.
                 trainer.fit(

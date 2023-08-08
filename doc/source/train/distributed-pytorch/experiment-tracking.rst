@@ -94,7 +94,7 @@ Using native experiment tracking libraries
                 )
                 
                 trainer = pl.Trainer(
-                    ...,
+                    # ...,
                     logger=[wandb_logger, comet_logger, mlflow_logger],
                 )
 
