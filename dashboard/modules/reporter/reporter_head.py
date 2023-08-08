@@ -66,12 +66,7 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
         temp_dir = dashboard_head.temp_dir
         self.service_discovery = PrometheusServiceDiscoveryWriter(gcs_address, temp_dir)
         self._gcs_aio_client = dashboard_head.gcs_aio_client
-        gcs_channel = self._dashboard_head.aiogrpc_gcs_channel
-        self._state_api_data_source_client = StateDataSourceClient(
-            gcs_channel, self._dashboard_head.gcs_aio_client
-        )
-        # Set up the state API in order to fetch task information.
-        self._state_api = StateAPIManager(self._state_api_data_source_client)
+        self._state_api = None
 
     async def _update_stubs(self, change):
         if change.old:
@@ -157,7 +152,7 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
             List[str]: A list containing the task IDs
             of all the running tasks associated with the worker.
         """
-
+            
         option = ListApiOptions(
             filters=[("worker_id", "=", worker_id), ("state", "=", "RUNNING")],
             detail=True,
@@ -193,6 +188,7 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
         Raises:
             ValueError: If the task attempt is not running
         """
+        assert self._state_api is not None
         option = ListApiOptions(
             filters=[
                 ("task_id", "=", task_id),
@@ -475,6 +471,13 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
             return aiohttp.web.HTTPInternalServerError(text=reply.output)
 
     async def run(self, server):
+        gcs_channel = self._dashboard_head.aiogrpc_gcs_channel
+        self._state_api_data_source_client = StateDataSourceClient(
+            gcs_channel, self._dashboard_head.gcs_aio_client
+        )
+        # Set up the state API in order to fetch task information.
+        self._state_api = StateAPIManager(self._state_api_data_source_client)
+
         # Need daemon True to avoid dashboard hangs at exit.
         self.service_discovery.daemon = True
         self.service_discovery.start()
