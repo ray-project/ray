@@ -180,7 +180,6 @@ inline grpc::ChannelArguments CreateDefaultChannelArguments(
           {"service", service_name},
       });
     }
-    RAY_LOG(INFO) << "Making service config " << service_config.dump();
     arguments.SetServiceConfigJSON(service_config.dump());
   }
   return arguments;
