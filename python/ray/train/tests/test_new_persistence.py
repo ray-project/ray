@@ -11,7 +11,7 @@ import pyarrow.fs
 
 from ray import train, tune
 from ray.air.constants import EXPR_RESULT_FILE
-from ray.train._internal.storage import _download_from_fs_path
+from ray.train._internal.storage import _download_from_fs_path, StorageContext
 from ray.train._checkpoint import Checkpoint as NewCheckpoint
 from ray.train.data_parallel_trainer import DataParallelTrainer
 
@@ -167,7 +167,9 @@ def train_fn(config):
             raise RuntimeError(f"Failing on iter={i}!!")
 
 
-def _resume_from_checkpoint(checkpoint: NewCheckpoint, expected: dict):
+def _resume_from_checkpoint(checkpoint: NewCheckpoint, expected_state: dict):
+    print(f"\nStarting run with `resume_from_checkpoint`: {checkpoint}\n")
+
     def assert_fn(config):
         checkpoint_to_check = train.get_checkpoint()
         with checkpoint_to_check.as_directory() as checkpoint_dir:
@@ -175,8 +177,13 @@ def _resume_from_checkpoint(checkpoint: NewCheckpoint, expected: dict):
                 state = pickle.load(f)
 
         print("Loaded state from `resume_from_checkpoint`:", state)
-        print("Expected state:", expected)
-        assert state == expected, (state, expected)
+        print("Expected state:", expected_state)
+        assert state == expected_state, (state, expected_state)
+
+        dummy_ckpt = tempfile.mkdtemp()
+        with open(os.path.join(dummy_ckpt, "dummy.txt"), "w") as f:
+            f.write("data")
+        train.report({"dummy": 1}, checkpoint=NewCheckpoint.from_directory(dummy_ckpt))
 
     trainer = DataParallelTrainer(
         assert_fn,
@@ -184,7 +191,12 @@ def _resume_from_checkpoint(checkpoint: NewCheckpoint, expected: dict):
         run_config=train.RunConfig(name="test_resume_from_checkpoint"),
         resume_from_checkpoint=checkpoint,
     )
-    trainer.fit()
+    result = trainer.fit()
+
+    # Make sure that the checkpoint indexing starts from scratch.
+    assert Path(
+        result.checkpoint.path
+    ).name == StorageContext._make_checkpoint_dir_name(0)
 
 
 @pytest.mark.parametrize("storage_path_type", [None, "nfs", "cloud", "custom_fs"])
@@ -349,11 +361,16 @@ def test_trainer(
                 failure_config=train.FailureConfig(max_failures=2),
             ),
         )
+        print("\nStarting initial run.\n")
         result = trainer.fit()
 
-        _resume_from_checkpoint(
-            result.checkpoint, expected={"iter": NUM_ITERATIONS - 1}
-        )
+        with monkeypatch.context() as m:
+            # This is so that the `resume_from_checkpoint` run doesn't mess up the
+            # assertions later for the `storage_path=None` case.
+            m.setenv("RAY_AIR_LOCAL_CACHE_DIR", tmp_path / "resume_from_checkpoint")
+            _resume_from_checkpoint(
+                result.checkpoint, expected_state={"iter": NUM_ITERATIONS - 1}
+            )
 
         local_inspect_dir, storage_fs_path = _get_local_inspect_dir(
             root_local_path=tmp_path,
