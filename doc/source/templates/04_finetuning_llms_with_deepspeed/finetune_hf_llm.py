@@ -314,7 +314,7 @@ def training_function(kwargs: dict):
         lr_scheduler = get_linear_schedule_with_warmup(
             optimizer=optimizer,
             num_warmup_steps=int((num_epochs * train_ds_len / 20)),
-            num_training_steps=(num_epochs * train_ds_len * 2),
+            num_training_steps=(num_epochs * train_ds_len),
         )
     else:
         lr_scheduler = DummyScheduler(
@@ -463,10 +463,11 @@ def training_function(kwargs: dict):
         # Note: After the following call, in the case of remote storage, the checkpoint
         # directoy will get synced to the remote storage and then deleted from the
         # local directory. This will open up local disk.
+        aggregated_loss = torch.mean(accelerator.gather(loss[None])).item()
         metrics = {
             "epoch": epoch,
             "iteration": step,
-            "train_loss_batch": loss.item(),
+            "train_loss_batch": aggregated_loss,
             "avg_train_loss_epoch": loss_sum.item() / (step + 1),
             "eval_loss": eloss,
             "perplexity": perplex,
