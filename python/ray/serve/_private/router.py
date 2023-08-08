@@ -308,6 +308,11 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         self._multiplexed_model_id_to_replica_ids: DefaultDict[Set[str]] = defaultdict(
             set
         )
+        # When there is no match for a multiplexed model id, we will try to fallback
+        # to all replicas immediately. This set is used to make sure we only fallback
+        # once for concurrent requests for the same model id.
+        # Whenever there is a match, we will remove the the model id from this set.
+        self._multiplexed_model_id_fallback_match: Set[str] = set()
 
         # Tasks running the scheduling loop. The size of this set may vary over time
         # as new tasks will be scheduled when a request comes in or new replicas are
@@ -481,9 +486,27 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
                             request_metadata.multiplexed_model_id
                         )
                     )
+                    # When there is no match for a multiplexed model id, we will try to
+                    # fallback to all replicas immediately.
+                    if (
+                        len(candidate_replica_ids) == 0
+                        and request_metadata.multiplexed_model_id
+                        not in self._multiplexed_model_id_fallback_match
+                    ):
+                        candidate_replica_ids = (
+                            self._get_candidate_replica_ids_for_multiplexed_model_id(
+                                request_metadata.multiplexed_model_id,
+                                get_from_all_replicas=True,
+                            )
+                        )
+                        self._multiplexed_model_id_fallback_match.add(
+                            request_metadata.multiplexed_model_id
+                        )
+                    elif len(candidate_replica_ids) > 0:
+                        self._multiplexed_model_id_fallback_match.discard(
+                            request_metadata.multiplexed_model_id
+                        )
                 else:
-                    # If we have waited longer than the timeout, fallback to
-                    # all replicas.
                     candidate_replica_ids = (
                         self._get_candidate_replica_ids_for_multiplexed_model_id(
                             request_metadata.multiplexed_model_id,
@@ -1039,6 +1062,7 @@ class Router:
         )
         await query.resolve_async_tasks()
         await query.buffer_starlette_requests_and_warn()
+        print("scheduler: ", id(self._replica_scheduler))
         result = await self._replica_scheduler.assign_replica(query)
 
         self.num_queued_queries -= 1
