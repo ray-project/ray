@@ -12,6 +12,13 @@ from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 bundle_reservation_check = None
 BUNDLE_RESOURCE_LABEL = "bundle"
 
+VALID_PLACEMENT_GROUP_STRATEGIES = {
+    "PACK",
+    "SPREAD",
+    "STRICT_PACK",
+    "STRICT_SPREAD",
+}
+
 
 # We need to import this method to use for ready API.
 # But ray.remote is only available in runtime, and
@@ -218,6 +225,12 @@ def placement_group(
                 DeprecationWarning,
                 stacklevel=1,
             )
+
+    if strategy not in VALID_PLACEMENT_GROUP_STRATEGIES:
+        raise ValueError(
+            f"Invalid placement group strategy {strategy}. "
+            f"Supported strategies are: {VALID_PLACEMENT_GROUP_STRATEGIES}."
+        )
 
     if lifetime is None:
         detached = False
