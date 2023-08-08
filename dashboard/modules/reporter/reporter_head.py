@@ -37,12 +37,12 @@ logger = logging.getLogger(__name__)
 routes = dashboard_optional_utils.ClassMethodRouteTable
 
 EMOJI_WARNING = "&#x26A0;&#xFE0F;"
-WARNING_FOR_MULTI_TASK_IN_A_WORKER = """
-Warning: This task is running in a worker process that is running multiple tasks.
-This can happen if you are profiling a task right as it finishes or if you are using
-the Async Actor or Threaded Actors pattern.
-The information that follows may come from any of these tasks:
-"""
+WARNING_FOR_MULTI_TASK_IN_A_WORKER = (
+    "Warning: This task is running in a worker process that is running multiple tasks. "
+    "This can happen if you are profiling a task right as it finishes or if you are using "
+    "the Async Actor or Threaded Actors pattern. "
+    "The information that follows may come from any of these tasks:"
+)
 SVG_STYLE = """<style>
     svg {
         width: 100%;
@@ -152,7 +152,6 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
             List[str]: A list containing the task IDs
             of all the running tasks associated with the worker.
         """
-            
         option = ListApiOptions(
             filters=[("worker_id", "=", worker_id), ("state", "=", "RUNNING")],
             detail=True,
@@ -186,9 +185,10 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
             and worker's ID.
 
         Raises:
-            ValueError: If the task attempt is not running
+            ValueError: If the task attempt is not running or the state APi is not initialized.
         """
-        assert self._state_api is not None
+        if self._state_api is None:
+            raise ValueError(f"The state API is not initialized yet. Please retry.")
         option = ListApiOptions(
             filters=[
                 ("task_id", "=", task_id),
@@ -200,7 +200,6 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
 
         result = await self._state_api.list_tasks(option=option)
         tasks = result.result
-        logger.info(f"tasks {type(tasks)}: {tasks}")
         if not tasks:
             return None, None
 
@@ -253,7 +252,6 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
 
         ip = DataSource.node_id_to_ip[node_id]
 
-        logger.info(f"ip {type(ip)}: {ip}")
         reporter_stub = self._stubs[ip]
 
         # Default not using `--native` for profiling
