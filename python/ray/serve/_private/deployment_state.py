@@ -255,7 +255,7 @@ class ActorReplicaWrapper:
         if not self._placement_group:
             try:
                 self._placement_group = ray.util.get_placement_group(
-                    self._actor_name, namespace=SERVE_NAMESPACE
+                    self._actor_name,
                 )
             except ValueError:
                 self._placement_group = None
