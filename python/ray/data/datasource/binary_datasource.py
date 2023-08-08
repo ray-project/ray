@@ -1,7 +1,7 @@
 from io import BytesIO
 from typing import TYPE_CHECKING
 
-from ray.data._internal.arrow_block import ArrowBlockBuilder
+from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data.datasource.file_based_datasource import FileBasedDatasource
 from ray.util.annotations import PublicAPI
 
@@ -43,20 +43,14 @@ class BinaryDatasource(FileBasedDatasource):
         else:
             data = f.readall()
 
-        output_arrow_format = reader_args.pop("output_arrow_format", False)
-        if output_arrow_format:
-            builder = ArrowBlockBuilder()
-            if include_paths:
-                item = {self._COLUMN_NAME: data, "path": path}
-            else:
-                item = {self._COLUMN_NAME: data}
-            builder.add(item)
-            return builder.build()
+        if include_paths:
+            item = {self._COLUMN_NAME: data, "path": path}
         else:
-            if include_paths:
-                return [(path, data)]
-            else:
-                return [data]
+            item = {self._COLUMN_NAME: data}
+
+        block_builder = DelegatingBlockBuilder()
+        block_builder.add(item)
+        return block_builder.build()
 
     def _rows_per_file(self):
         return 1
