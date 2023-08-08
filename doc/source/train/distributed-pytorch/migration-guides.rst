@@ -10,11 +10,11 @@ and HuggingFace Accelerate.
 
     .. tab-item:: PyTorch Lightning
 
-        Previously we proposed `LightningTrainer` in Ray 2.4, which leverages 
-        `LightningConfigBuilder` to aggregate configurations for `pl.LightningModule` 
+        The `LightningTrainer` was added in Ray 2.4, and exposes a  
+        `LightningConfigBuilder` to define configurations for `pl.LightningModule` 
         and `pl.Trainer`. 
         
-        It instantiates the model and trainer object internally and runs a pre-defined 
+        It then instantiates the model and trainer objects and runs a pre-defined 
         training loop in a black box.
 
         .. code-block:: python
