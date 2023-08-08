@@ -397,6 +397,10 @@ const rpc::Address &TaskSpecification::CallerAddress() const {
   return message_->caller_address();
 }
 
+bool TaskSpecification::ShouldRetryExceptions() const {
+  return message_->retry_exceptions();
+}
+
 WorkerID TaskSpecification::CallerWorkerId() const {
   return WorkerID::FromBinary(message_->caller_address().worker_id());
 }

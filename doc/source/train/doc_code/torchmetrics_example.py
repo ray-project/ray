@@ -7,7 +7,8 @@
 # This code is tested with torchmetrics==0.7.3 and torch==1.12.1
 
 import ray.train.torch
-from ray.air import session, ScalingConfig
+from ray import train
+from ray.train import ScalingConfig
 from ray.train.torch import TorchTrainer
 
 import torch
@@ -61,7 +62,7 @@ def train_func(config):
         mape_collected = mape.compute().item()
         mean_valid_loss_collected = mean_valid_loss.compute().item()
 
-        session.report(
+        train.report(
             {
                 "mape_collected": mape_collected,
                 "valid_loss": valid_loss,

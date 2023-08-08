@@ -12,7 +12,7 @@ import ray
 from ray._private.utils import _get_pyarrow_version
 from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.air.util.tensor_extensions.arrow import ArrowTensorArray
-from ray.data.block import BlockAccessor, BlockExecStats, BlockMetadata
+from ray.data.block import BlockExecStats, BlockMetadata
 from ray.data.datasource.file_based_datasource import BlockWritePathProvider
 from ray.data.tests.mock_server import *  # noqa
 
@@ -151,25 +151,24 @@ def local_fs():
 
 
 @pytest.fixture(scope="function")
-def test_block_write_path_provider():
-    class TestBlockWritePathProvider(BlockWritePathProvider):
+def mock_block_write_path_provider():
+    class MockBlockWritePathProvider(BlockWritePathProvider):
         def _get_write_path_for_block(
             self,
             base_path,
             *,
             filesystem=None,
             dataset_uuid=None,
-            block=None,
+            task_index=None,
             block_index=None,
             file_format=None,
         ):
-            num_rows = BlockAccessor.for_block(block).num_rows()
             suffix = (
-                f"{block_index:06}_{num_rows:02}_{dataset_uuid}" f".test.{file_format}"
+                f"{task_index:06}_{block_index:06}_{dataset_uuid}.test.{file_format}"
             )
             return posixpath.join(base_path, suffix)
 
-    yield TestBlockWritePathProvider()
+    yield MockBlockWritePathProvider()
 
 
 @pytest.fixture(scope="function")
