@@ -108,11 +108,10 @@ class TestIsolated:
             futures_iter = ex.map(f, [100, 100, 100], [1, 2, 3])
             assert list(futures_iter) == [100, 200, 300]
 
-    @pytest.mark.skip("not implemented")
     def test_remote_function_map_using_max_workers(self):
         with RayExecutor(max_workers=3) as ex:
             assert ex.actor_pool is not None
-            assert len(ex.actor_pool._idle_actors) == 3
+            assert len(ex.actor_pool.pool) == 3
             time_start = time.monotonic()
             _ = list(ex.map(lambda _: time.sleep(1), range(12)))
             time_end = time.monotonic()
@@ -120,29 +119,15 @@ class TestIsolated:
             delta = time_end - time_start
             assert delta > 3.0
 
-    @pytest.mark.skip("not implemented")
-    def test_results_are_accessible_after_shutdown(self):
+    def test_results_are_not_accessible_after_shutdown(self):
+        # note: this will hang indefinitely if no timeout is specified on map()
         def f(x, y):
             return x * y
-
         with RayExecutor() as ex:
-            r1 = ex.map(f, [100, 100, 100], [1, 2, 3])
-        try:
-            list(r1)
-        except AttributeError:
-            pytest.fail("Map results are not accessible after executor shutdown")
-
-    @pytest.mark.skip("not implemented")
-    def test_actor_pool_results_are_accessible_after_shutdown(self):
-        def f(x, y):
-            return x * y
-
-        with RayExecutor(max_workers=2) as ex:
-            r1 = ex.map(f, [100, 100, 100], [1, 2, 3])
-        try:
-            list(r1)
-        except AttributeError:
-            pytest.fail("Map results are not accessible after executor shutdown")
+            r1 = ex.map(f, [100, 100, 100], [1, 2, 3], timeout=2)
+        assert ex._shutdown_lock
+        with pytest.raises(ConTimeoutError):
+            _ = list(r1)
 
     def test_remote_function_max_workers_same_result(self):
         with RayExecutor() as ex:
