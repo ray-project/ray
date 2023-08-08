@@ -29,9 +29,12 @@ from ray.train.base_trainer import (  # noqa: F401
     GenDataset,
     TrainingFailedError,
 )
-from ray.tune.trainable.util import TrainableUtil
 from ray.util.annotations import DeveloperAPI
-from ray.train._internal.storage import _use_storage_context, get_storage_context
+from ray.train._internal.storage import (
+    _use_storage_context,
+    StorageContext,
+    get_storage_context,
+)
 
 
 T = TypeVar("T")
@@ -257,7 +260,6 @@ class TrainingIterator:
                     f"{[type in TrainingResultType]}"
                 )
 
-    # TODO(justinvyu): Remove unused code
     def _finish_checkpointing(self):
         while True:
             results = self._backend_executor.get_next_results()
@@ -272,7 +274,6 @@ class TrainingIterator:
                 # TODO: Is this needed? I don't think this is ever called...
                 self._send_next_checkpoint_path_to_workers()
 
-    # TODO(justinvyu): Remove unused code
     def _finish_training(self):
         """Finish training and return final results. Propagate any exceptions.
 
@@ -335,7 +336,7 @@ class TrainingIterator:
         path = Path(session.get_trial_dir())
         trial_dir_name = path.name
         exp_dir_name = path.parent.name
-        checkpoint_dir_name = TrainableUtil._make_checkpoint_dir_name(
+        checkpoint_dir_name = StorageContext._make_checkpoint_dir_name(
             self._checkpoint_manager._latest_checkpoint_id
         )
 
