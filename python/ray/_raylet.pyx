@@ -1182,17 +1182,18 @@ async def execute_streaming_generator_async(
             output_or_exception = e
         # TODO(sang): This method involves in serializing the output.
         # Ideally, we don't want to run this inside an event loop.
-        with ray._private.worker.global_worker.core_worker.tp as tp:
-            loop = asyncio.get_running_loop()
-            print("SANG-TODO loop, ", loop)
-            done = await loop.run_in_executor(
-                tp,
-                report_streaming_generator_output,
-                output_or_exception,
-                context)
-            print("SANG-TODO loop done, ")
-            if done:
-                break
+        # with ray._private.worker.global_worker.core_worker.tp as tp:
+            # loop = asyncio.get_running_loop()
+        # print("SANG-TODO loop, ", loop)
+        done = report_streaming_generator_output(output_or_exception, context)
+            # done = await loop.run_in_executor(
+            #     tp,
+            #     report_streaming_generator_output,
+            #     output_or_exception,
+            #     context)
+        # print("SANG-TODO loop done, ")
+        if done:
+            break
 
 
 cdef create_generator_return_obj(
