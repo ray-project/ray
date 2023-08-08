@@ -62,7 +62,7 @@ Using Ray Data and Ray Train for distributed training on large datasets involves
                     # In each epoch, iterate over batches of the dataset shard in torch
                     # format to train the model.
                     for batch in train_data_shard.iter_torch_batches(batch_size=128, dtypes=torch.float32):
-                        inputs, labels = torch.unsqueeze(batches["x"], 1), batches["y"]
+                        inputs, labels = torch.unsqueeze(batch["x"], 1), torch.unsqueeze(batch["y"], 1)
                         predictions = model(inputs)
                         train_loss = loss_fn(predictions, labels)
                         train_loss.backward()
