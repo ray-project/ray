@@ -6,7 +6,7 @@ import ray
 from ray import serve
 from ray.serve.drivers import DAGDriver
 from ray.serve.http_adapters import json_to_ndarray
-from ray.air.checkpoint import Checkpoint
+from ray.train import Checkpoint
 from ray.train.predictor import Predictor
 
 

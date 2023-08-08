@@ -7,7 +7,7 @@ import pytest
 import ray.data
 import xgboost as xgb
 
-from ray.air.checkpoint import Checkpoint
+from ray.train import Checkpoint
 from ray.air.util.data_batch_conversion import _convert_pandas_to_batch_type
 from ray.data.preprocessor import Preprocessor
 from ray.train.batch_predictor import BatchPredictor
