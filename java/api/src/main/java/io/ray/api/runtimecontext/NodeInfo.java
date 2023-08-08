@@ -22,6 +22,8 @@ public class NodeInfo {
 
   public final Map<String, Double> resources;
 
+  public final Map<String, String> labels;
+
   public NodeInfo(
       UniqueId nodeId,
       String nodeAddress,
@@ -30,7 +32,8 @@ public class NodeInfo {
       String objectStoreSocketName,
       String rayletSocketName,
       boolean isAlive,
-      Map<String, Double> resources) {
+      Map<String, Double> resources,
+      Map<String, String> labels) {
     this.nodeId = nodeId;
     this.nodeAddress = nodeAddress;
     this.nodeHostname = nodeHostname;
@@ -39,6 +42,7 @@ public class NodeInfo {
     this.rayletSocketName = rayletSocketName;
     this.isAlive = isAlive;
     this.resources = resources;
+    this.labels = labels;
   }
 
   public String toString() {
@@ -56,6 +60,8 @@ public class NodeInfo {
         + isAlive
         + ", resources="
         + resources
+        + ", labels="
+        + labels
         + "}";
   }
 }
