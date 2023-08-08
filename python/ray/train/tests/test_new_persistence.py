@@ -29,11 +29,18 @@ def dummy_context_manager():
     yield "dummy value"
 
 
+@pytest.fixture(scope="module")
+def enable_new_persistence_mode():
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setenv("RAY_AIR_NEW_PERSISTENCE_MODE", "1")
+        yield
+        mp.setenv("RAY_AIR_NEW_PERSISTENCE_MODE", "0")
+
+
 @pytest.fixture(autouse=True, scope="module")
-def ray_start_4_cpus():
-    ray.init(
-        num_cpus=4, runtime_env={"env_vars": {"RAY_AIR_NEW_PERSISTENCE_MODE": "1"}}
-    )
+def ray_start_4_cpus(enable_new_persistence_mode):
+    # Make sure to set the env var before calling ray.init()
+    ray.init(num_cpus=4)
     yield
     ray.shutdown()
 
