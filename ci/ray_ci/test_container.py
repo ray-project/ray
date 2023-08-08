@@ -13,15 +13,11 @@ class MockPopen:
     commands are not empty; otherwise return 1.
     """
 
-    def __init__(self, test_targets: List[str], commands: List[str]):
+    def __init__(self, test_targets: List[str]):
         self.test_targets = test_targets
-        self.commands = commands
 
     def wait(self) -> int:
-        if self.test_targets and self.commands:
-            return 0
-        else:
-            return 1
+        return 0 if self.test_targets else 1
 
 
 def test_run_command() -> None:
@@ -34,22 +30,20 @@ def test_run_command() -> None:
 
 
 def test_run_tests() -> None:
-    def _mock_run_tests_in_docker(
-        test_targets: List[str],
-        pre_test_commands: List[str],
-    ) -> MockPopen:
-        return MockPopen(test_targets, pre_test_commands)
+    def _mock_run_tests_in_docker(test_targets: List[str]) -> MockPopen:
+        return MockPopen(test_targets)
 
     with mock.patch(
         "ci.ray_ci.container._run_tests_in_docker",
         side_effect=_mock_run_tests_in_docker,
+    ), mock.patch(
+        "ci.ray_ci.container._setup_test_environment",
+        return_value=None,
     ):
-        # test_targets and commands are not empty
-        assert run_tests(["t1", "t2"], ["some_command"], 2)
-        # command is empty
-        assert not run_tests(["t1", "t2"], [], 2)
+        # test_targets are not empty
+        assert run_tests("team", ["t1", "t2"], 2)
         # test_targets is empty after chunking
-        assert not run_tests(["t1"], ["some_command"], 2)
+        assert not run_tests("team", ["t1"], 2)
 
 
 if __name__ == "__main__":

@@ -69,11 +69,7 @@ def main(
         logging.info("No tests to run")
         return
     logger.info(f"Running tests: {test_targets}")
-    success = run_tests(
-        test_targets,
-        ["DL=1 ./ci/env/install-dependencies.sh"],
-        parallelism_per_worker,
-    )
+    success = run_tests(team, test_targets, parallelism_per_worker)
     sys.exit(0 if success else 1)
 
 
