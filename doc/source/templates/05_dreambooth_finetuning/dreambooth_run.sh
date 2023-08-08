@@ -97,7 +97,7 @@ else
   download_image
 fi
 
-if ! ((use_lora)); then
+if [ "$use_lora" = false ]; then
   echo "Start full-finetuning..."
   # Step 4: START
   python train.py \
@@ -116,6 +116,7 @@ if ! ((use_lora)); then
 else
   echo "Start LoRA finetuning..."
   python train.py \
+  --use_lora \
   --model_dir=$ORIG_MODEL_PATH \
   --output_dir=$TUNED_MODEL_DIR \
   --instance_images_dir=$IMAGES_OWN_DIR \
@@ -127,13 +128,12 @@ else
   --num_epochs=10 \
   --max_train_steps=400 \
   --num_workers $NUM_WORKERS
-  --use_lora
 fi
 
 # Clear new dir
 rm -rf "$IMAGES_NEW_DIR"/*.jpg
 
-if ! ((use_lora)); then
+if [ "$use_lora" = false ]; then
   # Step 5: START
   python generate.py \
     --model_dir=$TUNED_MODEL_DIR \

@@ -253,7 +253,7 @@ rather than just optimize for producing good images of the subject.
 
 .. literalinclude:: /templates/05_dreambooth_finetuning/dreambooth_run.sh
   :language: bash
-  :start-at: Step 3: START
+  :start-after: Step 3: START
   :end-before: Step 3: END
 
 We use Ray Data to do batch inference with 4 workers, so more images can be generated in parallel.
