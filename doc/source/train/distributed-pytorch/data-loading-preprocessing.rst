@@ -119,7 +119,7 @@ To customize this, pass in a :class:`DataConfig <ray.train.DataConfig>` to the T
     ds = ray.data.read_text(
         "s3://anonymous@ray-example-data/sms_spam_collection_subset.txt"
     )
-    train_ds, val_ds = dataset.train_test_split(0.3)
+    train_ds, val_ds = ds.train_test_split(0.3)
 
     def train_loop_per_worker():
         # Get an iterator to the dataset we passed in below.
@@ -371,21 +371,6 @@ When developing or hyperparameter tuning models, reproducibility is important du
     ds = ray.data.read_text(
         "s3://anonymous@ray-example-data/sms_spam_collection_subset.txt"
     )
-    train_ds, val_ds = dataset.train_test_split(0.3)
-
-    def train_loop_per_worker():
-        # Get an iterator to the dataset we passed in below.
-        it = session.get_dataset_shard("train")
-        for _ in range(2):
-            for batch in it.iter_batches(batch_size=128):
-                print("Do some training on batch", batch)
-
-    my_trainer = TorchTrainer(
-        train_loop_per_worker,
-        scaling_config=ScalingConfig(num_workers=2),
-        datasets={"train": train_ds, "val": val_ds},
-    )
-    my_trainer.fit()
 
 **Step 2:** Set a seed for any shuffling operations: 
 
