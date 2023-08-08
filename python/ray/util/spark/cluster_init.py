@@ -388,9 +388,9 @@ def _setup_ray_cluster(
     num_gpus_worker_node: int,
     num_gpus_head_node: int,
     using_stage_scheduling: bool,
-    heap_memory_per_node: int,
+    heap_memory_worker_node: int,
     heap_memory_head_node: int,
-    object_store_memory_per_node: int,
+    object_store_memory_worker_node: int,
     object_store_memory_head_node: int,
     head_node_options: Dict,
     worker_node_options: Dict,
@@ -565,8 +565,8 @@ def _setup_ray_cluster(
             f"--num-cpus={num_cpus_worker_node}",
             "--block",
             f"--address={ray_head_ip}:{ray_head_port}",
-            f"--memory={heap_memory_per_node}",
-            f"--object-store-memory={object_store_memory_per_node}",
+            f"--memory={heap_memory_worker_node}",
+            f"--object-store-memory={object_store_memory_worker_node}",
             f"--min-worker-port={worker_port_range_begin}",
             f"--max-worker-port={worker_port_range_end - 1}",
             f"--dashboard-agent-listen-port={ray_worker_node_dashboard_agent_port}",
@@ -799,7 +799,7 @@ def setup_ray_cluster(
     num_cpus_head_node: Optional[int] = None,
     num_gpus_worker_node: Optional[int] = None,
     num_gpus_head_node: Optional[int] = None,
-    object_store_memory_per_node: Optional[int] = None,
+    object_store_memory_worker_node: Optional[int] = None,
     object_store_memory_head_node: Optional[int] = None,
     head_node_options: Optional[Dict] = None,
     worker_node_options: Optional[Dict] = None,
@@ -849,7 +849,7 @@ def setup_ray_cluster(
             use 0 instead.
             This argument is only available on spark cluster which spark driver node
             has GPUs.
-        object_store_memory_per_node: Object store memory available to per-ray worker
+        object_store_memory_worker_node: Object store memory available to per-ray worker
             node, but it is capped by
             "dev_shm_available_size * 0.8 / num_tasks_per_spark_worker".
             The default value equals to
@@ -1027,7 +1027,7 @@ def setup_ray_cluster(
         ray_worker_node_object_store_mem_bytes,
     ) = get_avail_mem_per_ray_worker_node(
         spark,
-        object_store_memory_per_node,
+        object_store_memory_worker_node,
         num_cpus_worker_node,
         num_gpus_worker_node,
     )
@@ -1114,9 +1114,9 @@ def setup_ray_cluster(
             num_gpus_worker_node=num_gpus_worker_node,
             num_gpus_head_node=num_gpus_head_node,
             using_stage_scheduling=using_stage_scheduling,
-            heap_memory_per_node=ray_worker_node_heap_mem_bytes,
+            heap_memory_worker_node=ray_worker_node_heap_mem_bytes,
             heap_memory_head_node=heap_memory_head_node,
-            object_store_memory_per_node=ray_worker_node_object_store_mem_bytes,
+            object_store_memory_worker_node=ray_worker_node_object_store_mem_bytes,
             object_store_memory_head_node=object_store_memory_head_node,
             head_node_options=head_node_options,
             worker_node_options=worker_node_options,
