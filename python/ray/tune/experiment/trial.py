@@ -1243,8 +1243,8 @@ class Trial:
         for key in self._nonjson_fields:
             state[key] = binary_to_hex(cloudpickle.dumps(state.get(key)))
 
-        state.pop("trial_state", None)
-        state.pop("runtime_metadata", None)
+        state.pop("temporary_state", None)
+        state.pop("run_metadata", None)
 
         state["_state_json"] = None
         state["_default_result_or_future"] = None
