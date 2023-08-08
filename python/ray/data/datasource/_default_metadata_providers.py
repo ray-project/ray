@@ -1,3 +1,5 @@
+from typing import List, Optional
+
 from ray.data.datasource import (
     DefaultFileMetadataProvider,
     DefaultParquetMetadataProvider,
@@ -5,19 +7,22 @@ from ray.data.datasource import (
 )
 from ray.data.datasource.image_datasource import _ImageFileMetadataProvider
 
-# Used by `read_parquet`
-DEFAULT_PARQUET_METADATA_PROVIDER = DefaultParquetMetadataProvider()
-# Used by `read_images`
-DEFAULT_IMAGE_METADATA_PROVIDER = _ImageFileMetadataProvider()
-# Used by `read_parquet_bulk`
-DEFAULT_BULK_PARQUET_METADATA_PROVIDER = FastFileMetadataProvider()
-# Used by all other file-based `read_*` APIs
-DEFAULT_GENERIC_METADATA_PROVIDER = DefaultFileMetadataProvider()
+
+def get_generic_metadata_provider(file_extensions: Optional[List[str]]):
+    # Used by all other file-based `read_*` APIs
+    return DefaultFileMetadataProvider()
 
 
-__all__ = [
-    "DEFAULT_PARQUET_METADATA_PROVIDER",
-    "DEFAULT_IMAGE_METADATA_PROVIDER",
-    "DEFAULT_BULK_PARQUET_METADATA_PROVIDER",
-    "DEFAULT_GENERIC_METADATA_PROVIDER",
-]
+def get_parquet_metadata_provider():
+    # Used by `read_parquet`
+    return DefaultParquetMetadataProvider()
+
+
+def get_parquet_bulk_metadata_provider():
+    # Used by `read_parquet_bulk`
+    return FastFileMetadataProvider()
+
+
+def get_image_metadata_provider():
+    # Used by `read_images`
+    return _ImageFileMetadataProvider()
