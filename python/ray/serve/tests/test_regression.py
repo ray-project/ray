@@ -112,6 +112,37 @@ def test_replica_memory_growth(serve_instance):
         assert ray.get(handle.remote()) == known_num_objects_from_handle
 
 
+@pytest.mark.skipif(
+    sys.version_info.major >= 3 and sys.version_info.minor <= 7,
+    reason="Failing on Python 3.7 due to different GC behavior.",
+)
+def test_replica_memory_growth_when_exception(serve_instance):
+    # https://github.com/ray-project/ray/issues/12395
+    @serve.deployment
+    def gc_unreachable_objects(*args):
+        gc.set_debug(gc.DEBUG_SAVEALL)
+        gc.collect()
+        gc_garbage_len = len(gc.garbage)
+        print("Total objects not reachable: ", gc_garbage_len)
+        raise Exception
+
+    handle = serve.run(gc_unreachable_objects.bind())
+
+    def get_gc_garbage_len_http():
+        result = requests.get("http://127.0.0.1:8000")
+        assert result.status_code == 500
+        return None
+
+    for _ in range(11):
+        get_gc_garbage_len_http()
+
+    for _ in range(11):
+        try:
+            ray.get(handle.remote())
+        except Exception:
+            pass
+
+
 def test_ref_in_handle_input(serve_instance):
     # https://github.com/ray-project/ray/issues/12593
 

@@ -214,7 +214,28 @@ GRPC_STATUS_CODE_UNAVAILABLE = CGrpcStatusCode.UNAVAILABLE
 GRPC_STATUS_CODE_UNKNOWN = CGrpcStatusCode.UNKNOWN
 
 logger = logging.getLogger(__name__)
-tp = ThreadPoolExecutor(max_workers=int(os.getenv("RAY_ASYNC_THREAD_POOL_SIZE", 1)))
+event_loop_thread_for_cpp = None
+event_loop_for_cpp = None
+
+
+def async_thread_get_thread_for_cpp():
+    """Return the additional thread that's used to
+    dispatch cpp operations (e.g.,
+    report_streaming_generator_output) inside an async
+    event loop.
+    """
+    global event_loop_thread_for_cpp
+    global event_loop_for_cpp
+    if event_loop_thread_for_cpp is None:
+        assert event_loop_for_cpp is None
+        event_loop_for_cpp = get_new_event_loop()
+        event_loop_thread_for_cpp = threading.Thread(
+            target=lambda: event_loop_for_cpp.run_forever(),
+            name="AsyncIO Thread: default"
+            )
+        event_loop_thread_for_cpp.start()
+    return event_loop_thread_for_cpp, event_loop_for_cpp
+
 
 # The currently executing task, if any. These are used to synchronize task
 # interruption for ray.cancel.
@@ -1143,6 +1164,7 @@ cdef execute_streaming_generator_sync(StreamingGeneratorExecutionContext context
             output_or_exception = next(gen)
         except Exception as e:
             output_or_exception = e
+
         done = report_streaming_generator_output(output_or_exception, context)
         if done:
             break
@@ -1180,15 +1202,23 @@ async def execute_streaming_generator_async(
             output_or_exception = await gen.__anext__()
         except Exception as e:
             output_or_exception = e
-        loop = asyncio.get_running_loop()
+
+        # It is a new event loop thread to run cpp code.
+        _, event_loop_for_cpp = async_thread_get_thread_for_cpp()
+
+        async def f(output, context):
+            return report_streaming_generator_output(output, context)
+
         # Run it in a separate thread to that we can
         # avoid blocking the event loop when serializing
         # the output (which has nogil).
-        done = await loop.run_in_executor(
-            tp,
-            report_streaming_generator_output,
-            output_or_exception,
-            context)
+        # NOTE(sang): Using threadpool executor causes memory leak
+        # due to circular references for some reasons.
+        future = asyncio.wrap_future(
+            asyncio.run_coroutine_threadsafe(
+                f(output_or_exception, context),
+                event_loop_for_cpp))
+        done = await future
         if done:
             break
 
@@ -1763,6 +1793,7 @@ cdef void execute_task(
                     worker, outputs,
                     caller_address,
                     returns)
+
         except Exception as e:
             num_errors_stored = store_task_errors(
                     worker, e, task_exception, actor, actor_id, function_name,
