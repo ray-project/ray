@@ -388,7 +388,7 @@ pydub==0.25.1
 pyflakes==2.3.1
 pygame==2.1.2 ; python_version < "3.11"
 pyglet==1.5.15
-pygments==2.13.0
+pygments==2.15.0
 pyjwt==2.8.0
 pymars==0.10.0
 pymongo==4.3.2
