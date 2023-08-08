@@ -35,11 +35,7 @@ from utils import get_checkpoint_and_refs_dir, get_mirror_link
 OPTIM_BETAS = (0.9, 0.999)
 OPTIM_EPS = 1e-8
 OPTIM_WEIGHT_DECAY = 0.0
-TARGET_LLM_TO_NUM_SELF_ATTENTION_LAYERS = {
-    "meta-llama/Llama-2-7b-hf": 32,
-    "meta-llama/Llama-2-13b-hf": 40,
-    "meta-llama/Llama-2-70b-hf": 80
-}
+ATTENTION_LAYER_NAME = "self_attn"
 DO_SANITY_CHECK = True
 
 MIRROR_LINK = "s3://llama-2-weights/"
@@ -48,26 +44,37 @@ MIRROR_LINK = "s3://llama-2-weights/"
 def get_expected_lora_num_parameters(lora_config, model, model_name):
     """Calculate the expected number of parameters for lora finetuning."""
     sum_params = 0
-    in_features = 0
-    out_features = 0
+    in_features = {}
+    out_features = {}
+    num_attention_layers = 0
     for module_name in lora_config.target_modules:
+        # We count the number of decoder layers on the fly
+        num_attention_layers = 0
         modules = model.named_modules()
         # We calculate the number of parameters we need for lora finetuning by calculating 
         # the sizes of the deecomposed weight matrices according to the paper.
-        for name, target in modules:
-            if name.split(".")[-1] == module_name:
-                in_features = target.in_features
-                out_features = target.out_features
-                sum_params += (in_features + out_features) * lora_config.r
+        for full_name, target in modules:
+            layer_name = full_name.split(".")[-1]
+            if layer_name == module_name:
+                in_features[module_name] = target.in_features
+                out_features[module_name] = target.out_features
+                sum_params += (in_features[module_name] + out_features[module_name]) * lora_config.r
+            # Detected another attention layer (for example, llama 2 70b should have 80 of these)
+            elif layer_name == ATTENTION_LAYER_NAME:
+                num_attention_layers += 1
     
     # Sanity check to validate our understanding of LoRA
     if DO_SANITY_CHECK:
-        assert sum_params == (
-            len(lora_config.target_modules) # number of target modules
-            * TARGET_LLM_TO_NUM_SELF_ATTENTION_LAYERS[model_name]
-            * lora_config.r # rank of the decomposition
-            * (in_features + out_features) # sizes of the decomposition matrices
-        ), "The number of parameters for LoRA finetuning is not as expected. You can either adjust `NUM_SELF_ATTENTION_LAYERS_IN_TARGET_LLM_ARCHITECTURE` or turn off this sanity check by modifying `DO_SANITY_CHECK`."
+        assert len(in_features) == len(out_features) == len(lora_config.target_modules), "Failed to detect in_features or out_features according to lora_config.target_modules."
+        predicted_parameter_count = 0
+        for module_name in lora_config.target_modules:
+            predicted_parameter_count += (
+                num_attention_layers
+                * lora_config.r # rank of the decomposition
+                * (in_features[module_name] + out_features[module_name])
+            )
+        assert sum_params == predicted_parameter_count, f"The number of parameters for LoRA finetuning is not as expected. Expected {predicted_parameter_count}, counted {sum_params}. Please check `ATTENTION_LAYER_NAME` or turn off this sanity check with `DO_SANITY_CHECK`."
+
     return sum_params
     
 
