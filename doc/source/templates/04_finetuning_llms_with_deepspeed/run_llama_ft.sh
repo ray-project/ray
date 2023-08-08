@@ -54,7 +54,7 @@ fine_tune() {
         --test_path "${test_path}"  \
         --special_token_path "${token_path}" \
         --num-checkpoints-to-keep 1 \
-        --num-epochs 4 \
+        --num-epochs 7 \
         "${params[@]}"; then
         echo "Failed to fine-tune the model. Exiting..."
         exit 1
