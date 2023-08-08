@@ -161,17 +161,13 @@ class ServeController:
             if actor["namespace"] == SERVE_NAMESPACE
         ]
 
-        all_placement_group_names = get_all_live_placement_group_names(
-            ray.util.placement_group_table()
-        )
-
         self.deployment_state_manager = DeploymentStateManager(
             controller_name,
             detached,
             self.kv_store,
             self.long_poll_host,
             all_serve_actor_names,
-            all_placement_group_names,
+            get_all_live_placement_group_names(),
         )
 
         # Manage all applications' state

@@ -440,7 +440,7 @@ class ActorReplicaWrapper:
     def on_scheduled(
         self,
         actor_handle: ActorHandle,
-        placement_group: Optional[PlacementGroup] = None,
+        placement_group: Optional[PlacementGroup],
     ):
         self._actor_handle = actor_handle
         self._placement_group = placement_group

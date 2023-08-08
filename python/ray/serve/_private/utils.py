@@ -736,8 +736,12 @@ def calculate_remaining_timeout(
 
 
 def get_all_live_placement_group_names(
-    placement_group_table: Dict[str, Any]
+    placement_group_table: Optional[Dict[str, Any]] = None,
 ) -> List[str]:
+    """XXX: comment (AND TEST)."""
+    if placement_group_table is None:
+        placement_group_table = ray.util.placement_group_table()
+
     live_pg_names = []
     for entry in placement_group_table.values():
         pg_name = entry.get("name", "")

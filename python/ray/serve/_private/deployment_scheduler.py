@@ -5,7 +5,6 @@ from collections import defaultdict
 
 import ray
 from ray._raylet import GcsClient
-from ray.util.placement_group import placement_group
 from ray.util.scheduling_strategies import (
     NodeAffinitySchedulingStrategy,
     PlacementGroupSchedulingStrategy,
@@ -200,20 +199,27 @@ class DeploymentScheduler:
                 pending_replica_name
             ]
 
-            print(
-                "IN DEPLOYMENT_SCHEDULER",
-                replica_scheduling_request.placement_group_bundles,
-                replica_scheduling_request.placement_group_strategy,
-            )
+            placement_group = None
             if replica_scheduling_request.placement_group_bundles is not None:
-                pg = placement_group(
+                strategy = (
+                    replica_scheduling_request.placement_group_strategy
+                    if replica_scheduling_request.placement_group_strategy
+                    else "PACK"
+                )
+                print(
+                    "IN DEPLOYMENT_SCHEDULER",
+                    "\n\tBUNDLES:", replica_scheduling_request.placement_group_bundles,
+                    "\n\tSTRATEGY:", strategy,
+                    "\n\tNAME:", replica_scheduling_request.actor_options["name"],
+                )
+                placement_group = ray.util.placement_group(
                     replica_scheduling_request.placement_group_bundles,
-                    strategy=replica_scheduling_request.placement_group_strategy,
+                    strategy=strategy,
                     lifetime="detached",
                     name=replica_scheduling_request.actor_options["name"],
                 )
                 scheduling_strategy = PlacementGroupSchedulingStrategy(
-                    placement_group=pg,
+                    placement_group=placement_group,
                     placement_group_capture_child_tasks=True,
                 )
             else:
@@ -226,7 +232,7 @@ class DeploymentScheduler:
 
             del self._pending_replicas[deployment_name][pending_replica_name]
             self._launching_replicas[deployment_name][pending_replica_name] = None
-            replica_scheduling_request.on_scheduled(actor_handle)
+            replica_scheduling_request.on_scheduled(actor_handle, placement_group)
 
     def _schedule_driver_deployment(self, deployment_name: str) -> None:
         if self._recovering_replicas[deployment_name]:
