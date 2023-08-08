@@ -237,7 +237,7 @@ class TestSparkLocalCluster:
                 head_resources_list.append(node["Resources"])
         assert len(head_resources_list) == 1
         head_resources = head_resources_list[0]
-        assert head_resources["GPU", 0] == 2
+        assert head_resources.get("GPU", 0) == 2
 
 
 if __name__ == "__main__":
