@@ -31,7 +31,7 @@ mlagents_envs==0.28.0
 minigrid==2.1.1
 # For tests on RecSim and Kaggle envs.
 # Explicitly depends on `tensorflow` and doesn't accept `tensorflow-macos`
-recsim==0.2.4; sys_platform != 'darwin' or platform_machine != 'arm64'
+recsim==0.2.4; (sys_platform != 'darwin' or platform_machine != 'arm64') and python_version >= '3.8'
 tensorflow_estimator==2.11.0
 # DeepMind's OpenSpiel
 open-spiel==1.2
