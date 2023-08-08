@@ -520,8 +520,6 @@ class DataParallelTrainer(BaseTrainer):
         checkpoint_strategy.num_to_keep = None
         checkpoint_strategy.checkpoint_score_attribute = None
 
-        initial_checkpoint = self._get_initial_checkpoint()
-
         training_iterator = self._training_iterator_cls(
             backend_executor=backend_executor,
             backend_config=self._backend_config,
@@ -529,7 +527,7 @@ class DataParallelTrainer(BaseTrainer):
             datasets=self.datasets,
             data_config=self._data_config,
             checkpoint_manager=checkpoint_manager,
-            checkpoint=initial_checkpoint,
+            checkpoint=self.starting_checkpoint,
             checkpoint_strategy=checkpoint_strategy,
             storage_path=self.run_config.storage_path,
         )
