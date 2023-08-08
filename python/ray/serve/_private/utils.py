@@ -733,3 +733,18 @@ def calculate_remaining_timeout(
 
     time_since_start_s = curr_time_s - start_time_s
     return max(0, timeout_s - time_since_start_s)
+
+
+def get_all_live_placement_group_names(
+    placement_group_table: Dict[str, Any]
+) -> List[str]:
+    live_pg_names = []
+    for entry in placement_group_table.values():
+        pg_name = entry.get("name", "")
+        if (
+            pg_name
+            and entry.get("stats", {}).get("scheduling_state", "UNKNOWN") != "REMOVED"
+        ):
+            live_pg_names.append(pg_name)
+
+    return live_pg_names

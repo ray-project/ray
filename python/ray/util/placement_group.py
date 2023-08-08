@@ -271,7 +271,9 @@ def get_placement_group(placement_group_name: str) -> PlacementGroup:
         placement_group_name, worker.namespace
     )
     if placement_group_info is None:
-        raise ValueError(f"Failed to look up actor with name: {placement_group_name}")
+        raise ValueError(
+            f"Failed to look up placement group with name: {placement_group_name}"
+        )
     else:
         return PlacementGroup(
             PlacementGroupID(hex_to_binary(placement_group_info["placement_group_id"]))

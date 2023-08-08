@@ -2250,10 +2250,13 @@ def mock_deployment_state_manager_full(request) -> Tuple[DeploymentStateManager,
         kv_store = MockKVStore()
 
         def create_deployment_state_manager(
-            actor_names=None, is_driver_deployment=False
+            actor_names=None, placement_group_names=None, is_driver_deployment=False
         ):
             if actor_names is None:
                 actor_names = []
+
+            if placement_group_names is None:
+                placement_group_names = []
 
             return DeploymentStateManager(
                 "name",
@@ -2261,6 +2264,7 @@ def mock_deployment_state_manager_full(request) -> Tuple[DeploymentStateManager,
                 kv_store,
                 mock_long_poll,
                 actor_names,
+                placement_group_names,
             )
 
         yield create_deployment_state_manager, timer
@@ -2481,12 +2485,14 @@ def mock_deployment_state_manager(request) -> Tuple[DeploymentStateManager, Mock
 
         kv_store = RayInternalKVStore("test")
         all_current_actor_names = []
+        all_current_placement_group_names = []
         deployment_state_manager = DeploymentStateManager(
             "name",
             True,
             kv_store,
             mock_long_poll,
             all_current_actor_names,
+            all_current_placement_group_names,
         )
 
         yield deployment_state_manager, timer

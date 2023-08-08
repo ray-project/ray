@@ -13,12 +13,13 @@ from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
 import ray
 from ray import ObjectRef, cloudpickle
+from ray.actor import ActorHandle
+from ray.exceptions import RayActorError, RayError, RayTaskError
+from ray.util.placement_group import PlacementGroup
 from ray._private.usage.usage_lib import (
     TagKey,
     record_extra_usage_tag,
 )
-from ray.actor import ActorHandle
-from ray.exceptions import RayActorError, RayError, RayTaskError
 
 from ray.serve._private.autoscaling_metrics import InMemoryMetricsStore
 from ray.serve._private.common import (
@@ -201,14 +202,15 @@ class ActorReplicaWrapper:
         self._health_check_ref: Optional[ObjectRef] = None
         self._last_health_check_time: float = 0.0
         self._consecutive_health_check_failures = 0
-        # NOTE: storing these is necessary to keep the actor and PG alive in
-        # the non-detached case.
-        self._actor_handle: ActorHandle = None
 
+        # Populated in `on_scheduled` or `recover`.
+        self._actor_handle: ActorHandle = None
+        self._placement_group: PlacementGroup = None
+
+        # Populated after replica is allocated.
         self._pid: int = None
         self._actor_id: str = None
         self._worker_id: str = None
-        # Populated after replica is allocated.
         self._node_id: str = None
         self._node_ip: str = None
         self._log_file_path: str = None
@@ -247,6 +249,18 @@ class ActorReplicaWrapper:
             return self._actor_handle.handle
 
         return self._actor_handle
+
+    @property
+    def placement_group(self) -> Optional[PlacementGroup]:
+        if not self._placement_group:
+            try:
+                self._placement_group = ray.util.get_placement_group(
+                    self._actor_name, namespace=SERVE_NAMESPACE
+                )
+            except ValueError:
+                self._placement_group = None
+
+        return self._placement_group
 
     @property
     def version(self) -> DeploymentVersion:
@@ -423,8 +437,14 @@ class ActorReplicaWrapper:
             on_scheduled=self.on_scheduled,
         )
 
-    def on_scheduled(self, actor_handle: ActorHandle):
+    def on_scheduled(
+        self,
+        actor_handle: ActorHandle,
+        placement_group: Optional[PlacementGroup] = None,
+    ):
         self._actor_handle = actor_handle
+        self._placement_group = placement_group
+
         # Perform auto method name translation for java handles.
         # See https://github.com/ray-project/ray/issues/21474
         deployment_config = copy(self._version.deployment_config)
@@ -497,6 +517,7 @@ class ActorReplicaWrapper:
             f"{self.deployment_name}."
         )
         self._actor_handle = self.actor_handle
+        self._placement_group = self.placement_group
 
         # Re-fetch initialization proof
         self._allocated_obj_ref = self._actor_handle.is_allocated.remote()
@@ -605,7 +626,7 @@ class ActorReplicaWrapper:
             handle = ray.get_actor(self._actor_name, namespace=SERVE_NAMESPACE)
             self._graceful_shutdown_ref = handle.prepare_for_shutdown.remote()
         except ValueError:
-            # ValueError thrown from ray.get_actor means actor has already been deleted
+            # ValueError thrown from ray.get_actor means actor has already been deleted.
             pass
 
         return self.graceful_shutdown_timeout_s
@@ -616,7 +637,6 @@ class ActorReplicaWrapper:
             handle = ray.get_actor(self._actor_name, namespace=SERVE_NAMESPACE)
             stopped = check_obj_ref_ready_nowait(self._graceful_shutdown_ref)
             if stopped:
-                ray.kill(handle, no_restart=True)
                 try:
                     ray.get(self._graceful_shutdown_ref)
                 except Exception:
@@ -624,9 +644,16 @@ class ActorReplicaWrapper:
                         "Exception when trying to gracefully shutdown replica:\n"
                         + traceback.format_exc()
                     )
+
+                ray.kill(handle, no_restart=True)
         except ValueError:
-            # ValueError thrown from ray.get_actor means actor has already been deleted
+            # ValueError thrown from ray.get_actor means actor has already been deleted.
             stopped = True
+        finally:
+            # Remove the placement group both if the actor has already been deleted or
+            # it was just killed above.
+            if stopped and self._placement_group is not None:
+                ray.util.remove_placement_group(self._placement_group)
 
         return stopped
 
@@ -941,9 +968,10 @@ class DeploymentReplica(VersionedReplica):
         required dict and only resources in the required dict will be
         included in the available dict (filtered for relevance).
         """
-        # NOTE(edoakes):
         if self._actor.actor_resources is None:
             return "UNKNOWN", "UNKNOWN"
+
+        # XXX: add placement group info!
 
         required = {
             k: v
@@ -2148,6 +2176,7 @@ class DeploymentStateManager:
         kv_store: KVStoreBase,
         long_poll_host: LongPollHost,
         all_current_actor_names: List[str],
+        all_current_placement_group_names: List[str],
     ):
 
         self._controller_name = controller_name
@@ -2159,7 +2188,9 @@ class DeploymentStateManager:
         self._deployment_states: Dict[str, DeploymentState] = dict()
         self._deleted_deployment_metadata: Dict[str, DeploymentInfo] = OrderedDict()
 
-        self._recover_from_checkpoint(all_current_actor_names)
+        self._recover_from_checkpoint(
+            all_current_actor_names, all_current_placement_group_names
+        )
 
         # TODO(simon): move autoscaling related stuff into a manager.
         self.autoscaling_metrics_store = InMemoryMetricsStore()
@@ -2237,7 +2268,42 @@ class DeploymentStateManager:
 
         return deployment_to_current_replicas
 
-    def _recover_from_checkpoint(self, all_current_actor_names: List[str]) -> None:
+    def _detect_and_remove_leaked_placement_groups(
+        self,
+        all_current_actor_names: List[str],
+        all_current_placement_group_names: List[str],
+    ):
+        """XXX: comment."""
+        leaked_pg_names = []
+        for pg_name in all_current_placement_group_names:
+            if (
+                ReplicaName.is_replica_name(pg_name)
+                and pg_name not in all_current_actor_names
+            ):
+                leaked_pg_names.append(pg_name)
+
+        if len(leaked_pg_names) > 0:
+            logger.warning(
+                f"Detected leaked placement groups: {leaked_pg_names}."
+                "The placement groups will be removed. This can happen in rare "
+                "circumstances when the controller crashes and should not cause any. "
+                "issues. If it happens repeatedly, please file an issue on GitHub."
+            )
+
+        for leaked_pg_name in leaked_pg_names:
+            try:
+                pg = ray.util.get_placement_group(leaked_pg_name)
+                ray.util.remove_placement_group(pg)
+            except Exception:
+                logger.exception(
+                    f"Failed to remove leaked placement group {leaked_pg_name}."
+                )
+
+    def _recover_from_checkpoint(
+        self,
+        all_current_actor_names: List[str],
+        all_current_placement_group_names: List[str],
+    ):
         """
         Recover from checkpoint upon controller failure with all actor names
         found in current cluster.
@@ -2247,6 +2313,11 @@ class DeploymentStateManager:
         For current state it will prioritize reconstructing from current
         actor names found that matches deployment tag if applicable.
         """
+        self._detect_and_remove_leaked_placement_groups(
+            all_current_actor_names,
+            all_current_placement_group_names,
+        )
+
         deployment_to_current_replicas = self._map_actor_names_to_deployment(
             all_current_actor_names
         )

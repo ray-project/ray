@@ -43,10 +43,10 @@ class ReplicaSchedulingRequest:
     actor_resources: Dict
     actor_options: Dict
     actor_init_args: Tuple
-    # XXX: comment
-    placement_group_bundles: Optional[List[Dict[str, float]]]
-    placement_group_strategy: str
     on_scheduled: Callable
+    # XXX: comment
+    placement_group_bundles: Optional[List[Dict[str, float]]] = None
+    placement_group_strategy: Optional[str] = None
 
 
 @dataclass
