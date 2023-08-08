@@ -37,9 +37,6 @@ install_bazel() {
   fi
 
   "${SCRIPT_DIR}"/install-bazel.sh
-  if [ -f /etc/profile.d/bazel.sh ]; then
-    . /etc/profile.d/bazel.sh
-  fi
 }
 
 install_base() {
