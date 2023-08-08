@@ -2789,6 +2789,7 @@ class Dataset:
             **pandas_json_args,
         )
 
+    @PublicAPI(stability="alpha")
     @ConsumptionAPI
     def write_images(
         self,
