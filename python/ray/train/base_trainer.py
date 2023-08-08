@@ -197,9 +197,6 @@ class BaseTrainer(abc.ABC):
 
         # This path should only be set through restore
         self._restore_path = None
-        # This checkpoint should only be populated internally
-        # by auto-recovery fault tolerance/manual Trainer.restore
-        self._checkpoint_for_restoration: Optional[NewCheckpoint] = None
 
         self._validate_attributes()
 
@@ -688,22 +685,6 @@ class BaseTrainer(abc.ABC):
             if key in self._param_dict.keys():
                 result[key] = copy.deepcopy(self._param_dict[key])
         return result
-
-    def _get_initial_checkpoint(self) -> Optional[NewCheckpoint]:
-        """If we need to set an initial checkpoint accessible by train.get_checkpoint,
-        we are in one of 3 cases:
-        1. We are auto-recovering from a training failure (FailureConfig).
-          -> In this case, _checkpoint_for_restoration points to the *latest*
-            checkpoint, which is the one we want to restore from.
-        2. We are manually restoring an existing experiment (Trainer.restore).
-          -> Same as 1.
-        3. The user passed in a checkpoint to start a *new* training run from.
-          -> `resume_from_checkpoint` points to the user-specified checkpoint.
-
-        When populating `train.get_checkpoint`, `_checkpoint_for_restoration`
-        should take precedence over `resume_from_checkpoint`.
-        """
-        return self._checkpoint_for_restoration or self.resume_from_checkpoint
 
     def _generate_trainable_cls(self) -> Type["Trainable"]:
         """Generates the base Trainable class.
