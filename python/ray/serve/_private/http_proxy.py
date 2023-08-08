@@ -787,8 +787,6 @@ class gRPCProxy(GenericProxy):
     """
 
     def service_handler_factory(self, service_method: str, stream: bool) -> Callable:
-        print("in unary_unary_factory", service_method)
-
         async def unary_unary(
             request_proto: Any, context: "grpc._cython.cygrpc._ServicerContext"
         ) -> bytes:

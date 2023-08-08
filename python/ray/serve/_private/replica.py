@@ -68,6 +68,10 @@ from ray.serve._private.version import DeploymentVersion
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
+# This is required in test to add test related gRCP modules into importable path
+if os.getenv("PYTEST_CURRENT_TEST"):
+    import ray.serve.tests.test_config_files.protos.user_defined_protos_pb2_grpc
+
 
 def _format_replica_actor_name(deployment_name: str):
     return f"ServeReplica:{deployment_name}"
