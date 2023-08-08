@@ -43,7 +43,7 @@ auth:
 # The node config specifies the launch config and physical instance type.
 available_node_types:
     ray.head.default:
-        # For example, {"CPU": 4, "Memory": 8000}
+        # For example, {"CPU": 4, "Memory": 8192}
         resources: {}
         node_config:
             # The resource pool where the head node should live
@@ -57,7 +57,7 @@ available_node_types:
         # The minimum number of nodes of this type to launch.
         # This number should be >= 0.
         min_workers: 0
-        # For example, {"CPU": 4, "Memory": 8000}
+        # For example, {"CPU": 4, "Memory": 8192}
         resources: {}
         node_config:
           # The resource pool where the worker node should live
@@ -101,16 +101,10 @@ rsync_filter: []
 initialization_commands: []
 
 # List of shell commands to run to set up nodes.
-setup_commands:
-    - >-
-        (stat $HOME/anaconda3/envs/tensorflow2_p38/ &> /dev/null &&
-        echo 'export PATH="$HOME/anaconda3/envs/tensorflow2_p38/bin:$PATH"' >> ~/.bashrc) || true
-    - which ray || pip install -U "ray[default] @ https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp38-cp38-manylinux2014_x86_64.whl"
-    - pip install grpcio==1.51.0
+setup_commands: []
 
 # Custom commands that will be run on the head node after common setup.
-head_setup_commands:
-    - pip install 'boto3>=1.4.8'  # 1.4.8 adds InstanceMarketOptions
+head_setup_commands: []
 
 # Custom commands that will be run on worker nodes after common setup.
 worker_setup_commands: []
