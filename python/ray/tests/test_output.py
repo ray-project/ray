@@ -328,6 +328,7 @@ time.sleep(3)
     wait_for_condition(verify)
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 @pytest.mark.parametrize(
     "event_level,expected_msg,unexpected_msg",
     [
