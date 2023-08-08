@@ -9,7 +9,7 @@ import uuid
 import warnings
 from functools import partial
 from numbers import Number
-from typing import Any, Callable, Dict, Optional, Type, TYPE_CHECKING
+from typing import Any, Callable, Dict, Optional, Type
 
 from ray.air._internal.util import StartTraceback, RunnerThread
 import queue
