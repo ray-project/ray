@@ -76,6 +76,12 @@ To tell the Ray Jobs CLI how to find your Ray Cluster, we will pass the Ray Dash
 
 Alternatively, you can also pass the ``--address=http://127.0.0.1:8265`` flag explicitly to each Ray Jobs CLI command, or prepend each command with ``RAY_ADDRESS=http://127.0.0.1:8265``.
 
+Additionally, if you wish to pass headers per HTTP request to the Cluster, then utilize the `RAY_JOB_HEADERS` environment variable.` Must be in JSON form.
+
+.. code-block:: bash
+    
+    $ export RAY_JOB_HEADERS='{"KEY": "VALUE"}'
+
 To submit the job, we use ``ray job submit``.
 Make sure to specify the path to the working directory in the ``--working-dir`` argument.
 (For local clusters this is not strictly necessary, but for remote clusters this is required in order to upload the working directory to the cluster.)
