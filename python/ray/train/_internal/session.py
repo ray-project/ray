@@ -79,6 +79,14 @@ class TrainingResult:
     metadata: Optional[Dict] = None
 
 
+class _TrainingResult:
+    """A (checkpoint, metrics) result reported by the user."""
+
+    def __init__(self, checkpoint: Checkpoint, metrics: Dict[str, Any]):
+        self.checkpoint = checkpoint
+        self.metrics = metrics
+
+
 # TODO(xwjiang): This needs a better name.
 @DeveloperAPI
 class _TrainSession:
