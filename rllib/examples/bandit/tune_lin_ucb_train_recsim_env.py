@@ -40,7 +40,7 @@ if __name__ == "__main__":
                 "convert_to_discrete_action_space": True,
                 "wrap_for_bandits": True,
             },
-        ).framework(args.framework, eager_tracing=args.framework == "tf2")
+        ).framework(args.framework)
     )
 
     # Actual env timesteps per `train()` call will be

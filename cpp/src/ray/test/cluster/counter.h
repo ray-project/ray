@@ -73,6 +73,8 @@ class Counter {
     return value == NULL ? "" : std::string(value);
   }
 
+  int GetIntByObjectRef(ray::ObjectRef<int> object_ref);
+
  private:
   int count;
   bool is_restared = false;

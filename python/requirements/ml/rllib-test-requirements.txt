@@ -1,0 +1,41 @@
+-r dl-cpu-requirements.txt
+
+# Environment adapters.
+# ---------------------
+# Atari
+gymnasium==0.28.1
+imageio==2.31.1
+ale_py==0.8.1
+# For testing MuJoCo envs with gymnasium.
+mujoco==2.3.6
+dm_control==1.0.12
+
+# For tests on PettingZoo's multi-agent envs.
+pettingzoo==1.23.1; python_version >= '3.7'
+# When installing pettingzoo, chess is missing, even though its a dependancy
+# TODO: remove if a future pettingzoo and/or ray version fixes this dependancy issue.
+chess==1.7.0
+pymunk==6.2.1
+supersuit==3.8.0; python_version >= '3.7'
+tinyscaler==1.2.6
+shimmy
+
+# Kaggle envs.
+kaggle_environments==1.7.11
+# Unity3D testing
+# TODO(sven): Add this back to rllib-requirements.txt once mlagents no longer pins torch<1.9.0 version.
+#mlagents==0.28.0
+mlagents_envs==0.28.0
+
+# For tests on minigrid.
+minigrid==2.1.1
+# For tests on RecSim and Kaggle envs.
+# Explicitly depends on `tensorflow` and doesn't accept `tensorflow-macos`
+recsim==0.2.4; (sys_platform != 'darwin' or platform_machine != 'arm64') and python_version >= '3.8'
+tensorflow_estimator==2.11.0
+# DeepMind's OpenSpiel
+open-spiel==1.2
+
+# Requires libtorrent which is unavailable for arm64
+autorom[accept-rom-license]; platform_machine != "arm64"
+h5py==3.7.0

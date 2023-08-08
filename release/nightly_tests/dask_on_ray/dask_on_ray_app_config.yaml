@@ -1,4 +1,4 @@
-base_image: {{ env["RAY_IMAGE_NIGHTLY_CPU"] | default("anyscale/ray:nightly-py37") }}
+base_image: {{ env["RAY_IMAGE_NIGHTLY_CPU"] }}
 # We use retriable_lifo as the workload can crash due to multiple tasks from different
 # callers running on the same node, we also observed raylet memory leak that would
 # trigger the group-by-policy to fail the workload.
@@ -13,6 +13,7 @@ python:
 post_build_cmds:
   # - pip install fastparquet
   - pip3 install boto3 s3fs
+  - pip3 install -U s3fs
   - pip3 uninstall -y ray && pip3 install -U {{ env["RAY_WHEELS"] | default("ray") }}
   - pip3 install -U ray[default]
   - echo {{env["DATESTAMP"]}}

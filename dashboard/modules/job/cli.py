@@ -1,8 +1,9 @@
+import json
 import os
 import pprint
 import time
 from subprocess import list2cmdline
-from typing import Optional, Tuple, Union
+from typing import Optional, Tuple, Union, Dict, Any
 
 import click
 
@@ -13,6 +14,7 @@ from ray.autoscaler._private.cli_logger import add_click_logging_options, cf, cl
 from ray.dashboard.modules.dashboard_sdk import parse_runtime_env_args
 from ray.job_submission import JobStatus, JobSubmissionClient
 from ray.dashboard.modules.job.cli_utils import add_common_job_options
+from ray.dashboard.modules.job.utils import redact_url_password
 from ray.util.annotations import PublicAPI
 from ray._private.utils import parse_resources_json, parse_metadata_json
 
@@ -20,12 +22,36 @@ from ray._private.utils import parse_resources_json, parse_metadata_json
 def _get_sdk_client(
     address: Optional[str],
     create_cluster_if_needed: bool = False,
+    headers: Optional[str] = None,
     verify: Union[bool, str] = True,
 ) -> JobSubmissionClient:
-    client = JobSubmissionClient(address, create_cluster_if_needed, verify=verify)
+    client = JobSubmissionClient(
+        address,
+        create_cluster_if_needed,
+        headers=_handle_headers(headers),
+        verify=verify,
+    )
     client_address = client.get_address()
-    cli_logger.labeled_value("Job submission server address", client_address)
+    cli_logger.labeled_value(
+        "Job submission server address", redact_url_password(client_address)
+    )
     return client
+
+
+def _handle_headers(headers: Optional[str]) -> Optional[Dict[str, Any]]:
+    if headers is None and "RAY_JOB_HEADERS" in os.environ:
+        headers = os.environ["RAY_JOB_HEADERS"]
+    if headers is not None:
+        try:
+            return json.loads(headers)
+        except Exception as exc:
+            raise ValueError(
+                """Failed to parse headers into JSON.
+                Expected format: {{"KEY": "VALUE"}}, got {}, {}""".format(
+                    headers, exc
+                )
+            )
+    return None
 
 
 def _log_big_success_msg(success_msg):
@@ -180,6 +206,7 @@ def submit(
     entrypoint_resources: Optional[str],
     no_wait: bool,
     verify: Union[bool, str],
+    headers: Optional[str],
 ):
     """Submits a job to be run on the cluster.
 
@@ -218,7 +245,9 @@ def submit(
             no_wait=no_wait,
         )
 
-    client = _get_sdk_client(address, create_cluster_if_needed=True, verify=verify)
+    client = _get_sdk_client(
+        address, create_cluster_if_needed=True, headers=headers, verify=verify
+    )
 
     final_runtime_env = parse_runtime_env_args(
         runtime_env=runtime_env,
@@ -282,13 +311,18 @@ def submit(
 @add_common_job_options
 @add_click_logging_options
 @PublicAPI(stability="stable")
-def status(address: Optional[str], job_id: str, verify: Union[bool, str]):
+def status(
+    address: Optional[str],
+    job_id: str,
+    headers: Optional[str],
+    verify: Union[bool, str],
+):
     """Queries for the current status of a job.
 
     Example:
         `ray job status <my_job_id>`
     """
-    client = _get_sdk_client(address, verify=verify)
+    client = _get_sdk_client(address, headers=headers, verify=verify)
     _log_job_status(client, job_id)
 
 
@@ -314,13 +348,19 @@ def status(address: Optional[str], job_id: str, verify: Union[bool, str]):
 @add_common_job_options
 @add_click_logging_options
 @PublicAPI(stability="stable")
-def stop(address: Optional[str], no_wait: bool, job_id: str, verify: Union[bool, str]):
+def stop(
+    address: Optional[str],
+    no_wait: bool,
+    job_id: str,
+    headers: Optional[str],
+    verify: Union[bool, str],
+):
     """Attempts to stop a job.
 
     Example:
         `ray job stop <my_job_id>`
     """
-    client = _get_sdk_client(address, verify=verify)
+    client = _get_sdk_client(address, headers=headers, verify=verify)
     cli_logger.print(f"Attempting to stop job '{job_id}'")
     client.stop_job(job_id)
 
@@ -356,7 +396,12 @@ def stop(address: Optional[str], no_wait: bool, job_id: str, verify: Union[bool,
 @add_common_job_options
 @add_click_logging_options
 @PublicAPI(stability="alpha")
-def delete(address: Optional[str], job_id: str, verify: Union[bool, str]):
+def delete(
+    address: Optional[str],
+    job_id: str,
+    headers: Optional[str],
+    verify: Union[bool, str],
+):
     """Deletes a stopped job and its associated data from memory.
 
     Only supported for jobs that are already in a terminal state.
@@ -368,7 +413,7 @@ def delete(address: Optional[str], job_id: str, verify: Union[bool, str]):
     Example:
         ray job delete <my_job_id>
     """
-    client = _get_sdk_client(address, verify=verify)
+    client = _get_sdk_client(address, headers=headers, verify=verify)
     client.delete_job(job_id)
     cli_logger.print(f"Job '{job_id}' deleted successfully")
 
@@ -396,13 +441,19 @@ def delete(address: Optional[str], job_id: str, verify: Union[bool, str]):
 @add_common_job_options
 @add_click_logging_options
 @PublicAPI(stability="stable")
-def logs(address: Optional[str], job_id: str, follow: bool, verify: Union[bool, str]):
+def logs(
+    address: Optional[str],
+    job_id: str,
+    follow: bool,
+    headers: Optional[str],
+    verify: Union[bool, str],
+):
     """Gets the logs of a job.
 
     Example:
         `ray job logs <my_job_id>`
     """
-    client = _get_sdk_client(address, verify=verify)
+    client = _get_sdk_client(address, headers=headers, verify=verify)
     sdk_version = client.get_version()
     # sdk version 0 did not have log streaming
     if follow:
@@ -434,13 +485,13 @@ def logs(address: Optional[str], job_id: str, follow: bool, verify: Union[bool, 
 @add_common_job_options
 @add_click_logging_options
 @PublicAPI(stability="stable")
-def list(address: Optional[str], verify: Union[bool, str]):
+def list(address: Optional[str], headers: Optional[str], verify: Union[bool, str]):
     """Lists all running jobs and their information.
 
     Example:
         `ray job list`
     """
-    client = _get_sdk_client(address, verify=verify)
+    client = _get_sdk_client(address, headers=headers, verify=verify)
     # Set no_format to True because the logs may have unescaped "{" and "}"
     # and the CLILogger calls str.format().
     cli_logger.print(pprint.pformat(client.list_jobs()), no_format=True)

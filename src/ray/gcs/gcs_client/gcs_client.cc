@@ -152,6 +152,7 @@ Status PythonGcsClient::Connect() {
   runtime_env_stub_ = rpc::RuntimeEnvGcsService::NewStub(channel_);
   node_info_stub_ = rpc::NodeInfoGcsService::NewStub(channel_);
   job_info_stub_ = rpc::JobInfoGcsService::NewStub(channel_);
+  autoscaler_stub_ = rpc::autoscaler::AutoscalerStateService::NewStub(channel_);
   return Status::OK();
 }
 
@@ -392,6 +393,55 @@ Status PythonGcsClient::GetAllJobInfo(int64_t timeout_ms,
       return Status::OK();
     }
     return HandleGcsError(reply.status());
+  }
+  return Status::RpcError(status.error_message(), status.error_code());
+}
+
+Status PythonGcsClient::RequestClusterResourceConstraint(
+    int64_t timeout_ms,
+    const std::vector<std::unordered_map<std::string, double>> &bundles,
+    const std::vector<int64_t> &count_array) {
+  grpc::ClientContext context;
+  GrpcClientContextWithTimeoutMs(context, timeout_ms);
+
+  rpc::autoscaler::RequestClusterResourceConstraintRequest request;
+  rpc::autoscaler::RequestClusterResourceConstraintReply reply;
+  RAY_CHECK(bundles.size() == count_array.size());
+  for (size_t i = 0; i < bundles.size(); ++i) {
+    const auto &bundle = bundles[i];
+    auto count = count_array[i];
+
+    auto new_resource_requests_by_count =
+        request.mutable_cluster_resource_constraint()->add_min_bundles();
+
+    new_resource_requests_by_count->mutable_request()->mutable_resources_bundle()->insert(
+        bundle.begin(), bundle.end());
+    new_resource_requests_by_count->set_count(count);
+  }
+
+  grpc::Status status =
+      autoscaler_stub_->RequestClusterResourceConstraint(&context, request, &reply);
+
+  if (status.ok()) {
+    return Status::OK();
+  }
+  return Status::RpcError(status.error_message(), status.error_code());
+}
+
+Status PythonGcsClient::GetClusterStatus(int64_t timeout_ms,
+                                         std::string &serialized_reply) {
+  rpc::autoscaler::GetClusterStatusRequest request;
+  rpc::autoscaler::GetClusterStatusReply reply;
+  grpc::ClientContext context;
+  GrpcClientContextWithTimeoutMs(context, timeout_ms);
+
+  grpc::Status status = autoscaler_stub_->GetClusterStatus(&context, request, &reply);
+
+  if (status.ok()) {
+    if (!reply.SerializeToString(&serialized_reply)) {
+      return Status::IOError("Failed to serialize GetClusterStatusReply");
+    }
+    return Status::OK();
   }
   return Status::RpcError(status.error_message(), status.error_code());
 }

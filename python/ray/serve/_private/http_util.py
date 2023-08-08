@@ -5,8 +5,9 @@ import inspect
 import json
 import logging
 import pickle
-from typing import List, Optional, Type
+from typing import Any, List, Optional, Type
 
+import starlette
 from fastapi.encoders import jsonable_encoder
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 from uvicorn.config import Config
@@ -206,25 +207,15 @@ class ASGIReceiveProxy:
 
     def __init__(
         self,
-        event_loop: asyncio.AbstractEventLoop,
         request_id: str,
         actor_handle: ActorHandle,
     ):
-        self._task = None
         self._queue = asyncio.Queue()
-        self._event_loop = event_loop
         self._request_id = request_id
         self._actor_handle = actor_handle
         self._disconnect_message = None
 
-    def start(self):
-        self._task = self._event_loop.create_task(self._fetch_until_disconnect())
-
-    def stop(self):
-        if self._task is not None and not self._task.done():
-            self._task.cancel()
-
-    async def _fetch_until_disconnect(self):
+    async def fetch_until_disconnect(self):
         """Fetch messages repeatedly until a disconnect message is received.
 
         If a disconnect message is received, this function exits and returns it.
@@ -254,8 +245,6 @@ class ASGIReceiveProxy:
 
         This will repeatedly return a disconnect message once it's been received.
         """
-        assert self._task is not None, "Must call `start` before receiving messages."
-
         if self._queue.empty() and self._disconnect_message is not None:
             return self._disconnect_message
 
@@ -411,6 +400,10 @@ class ASGIAppReplicaWrapper:
 
         with LoggingContext(self._serve_asgi_lifespan.logger, level=logging.WARNING):
             await self._serve_asgi_lifespan.startup()
+            if self._serve_asgi_lifespan.should_exit:
+                raise RuntimeError(
+                    "ASGI lifespan startup failed. Check replica logs for details."
+                )
 
     async def __call__(
         self,
@@ -434,3 +427,32 @@ class ASGIAppReplicaWrapper:
 
         with LoggingContext(self._serve_asgi_lifespan.logger, level=logging.WARNING):
             await self._serve_asgi_lifespan.shutdown()
+
+
+def validate_http_proxy_callback_return(
+    middlewares: Any,
+) -> [starlette.middleware.Middleware]:
+    """Validate the return value of HTTP proxy callback.
+
+    Middlewares should be a list of Starlette middlewares. If it is None, we
+    will treat it as an empty list. If it is not a list, we will raise an
+    error. If it is a list, we will check if all the items in the list are
+    Starlette middlewares.
+    """
+
+    if middlewares is None:
+        middlewares = []
+    if not isinstance(middlewares, list):
+        raise ValueError(
+            "HTTP proxy callback must return a list of Starlette middlewares."
+        )
+    else:
+        # All middlewares must be Starlette middlewares.
+        # https://www.starlette.io/middleware/#using-pure-asgi-middleware
+        for middleware in middlewares:
+            if not issubclass(type(middleware), starlette.middleware.Middleware):
+                raise ValueError(
+                    "HTTP proxy callback must return a list of Starlette middlewares, "
+                    f"instead got {type(middleware)} type item in the list."
+                )
+    return middlewares

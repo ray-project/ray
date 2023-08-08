@@ -10,6 +10,8 @@ Ray Data loads data from various sources. This guide shows you how to:
 * `Load in-memory data <#loading-data-from-other-libraries>`_ like pandas DataFrames
 * `Read databases <#reading-databases>`_ like MySQL
 
+.. _reading-files:
+
 Reading files
 =============
 
@@ -592,8 +594,8 @@ Ray Data interoperates with HuggingFace and TensorFlow datasets.
             from datasets import load_dataset
 
             hf_ds = load_dataset("wikitext", "wikitext-2-raw-v1")
-            ray_ds = ray.data.from_huggingface(hf_ds)
-            ray_ds["train"].take(2)
+            ray_ds = ray.data.from_huggingface(hf_ds["train"])
+            ray_ds.take(2)
 
         .. testoutput::
             :options: +MOCK
@@ -618,7 +620,12 @@ Ray Data interoperates with HuggingFace and TensorFlow datasets.
 
             print(ds)
 
+        ..
+            The following `testoutput` is mocked to avoid illustrating download logs like
+            "Downloading and preparing dataset 162.17 MiB".
+
         .. testoutput::
+            :options: +MOCK
 
             MaterializedDataset(
                num_blocks=...,

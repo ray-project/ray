@@ -7,7 +7,7 @@ import numpy as np
 
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.util import _check_import
-from ray.data.block import Block, BlockMetadata
+from ray.data.block import BlockMetadata
 from ray.data.datasource.binary_datasource import BinaryDatasource
 from ray.data.datasource.datasource import Reader
 from ray.data.datasource.file_based_datasource import (
@@ -42,7 +42,7 @@ IMAGE_ENCODING_RATIO_ESTIMATE_LOWER_BOUND = 0.5
 class ImageDatasource(BinaryDatasource):
     """A datasource that lets you read images."""
 
-    _FILE_EXTENSION = ["png", "jpg", "jpeg", "tiff", "bmp", "gif"]
+    _FILE_EXTENSION = ["png", "jpg", "jpeg", "tif", "tiff", "bmp", "gif"]
 
     def create_reader(
         self,
@@ -67,15 +67,6 @@ class ImageDatasource(BinaryDatasource):
             self, size=size, mode=mode, include_paths=include_paths, **reader_args
         )
 
-    def _convert_block_to_tabular_block(
-        self, block: Block, column_name: Optional[str] = None
-    ) -> Block:
-        import pandas as pd
-        import pyarrow as pa
-
-        assert isinstance(block, (pa.Table, pd.DataFrame))
-        return block
-
     def _read_file(
         self,
         f: "pyarrow.NativeFile",
@@ -85,13 +76,17 @@ class ImageDatasource(BinaryDatasource):
         include_paths: bool,
         **reader_args,
     ) -> "pyarrow.Table":
-        from PIL import Image
+        from PIL import Image, UnidentifiedImageError
 
         records = super()._read_file(f, path, include_paths=True, **reader_args)
         assert len(records) == 1
         path, data = records[0]
 
-        image = Image.open(io.BytesIO(data))
+        try:
+            image = Image.open(io.BytesIO(data))
+        except UnidentifiedImageError as e:
+            raise ValueError(f"PIL couldn't load image file at path '{path}'.") from e
+
         if size is not None:
             height, width = size
             image = image.resize((width, height))

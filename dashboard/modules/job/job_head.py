@@ -203,7 +203,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
         else:
             # Randomly select one from among all agents, it is possible that
             # the selected one already exists in `self._agents`
-            node_id = sample(set(agent_infos), 1)[0]
+            node_id = sample(sorted(agent_infos), 1)[0]
             agent_info = agent_infos[node_id]
 
             if node_id not in self._agents:

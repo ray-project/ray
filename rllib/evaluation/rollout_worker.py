@@ -1,13 +1,10 @@
-from collections import defaultdict
 import copy
-from gymnasium.spaces import Discrete, MultiDiscrete, Space
 import importlib.util
 import logging
-import numpy as np
 import os
 import platform
 import threading
-import tree  # pip install dm_tree
+from collections import defaultdict
 from types import FunctionType
 from typing import (
     TYPE_CHECKING,
@@ -22,6 +19,10 @@ from typing import (
     Type,
     Union,
 )
+
+import numpy as np
+import tree  # pip install dm_tree
+from gymnasium.spaces import Discrete, MultiDiscrete, Space
 
 import ray
 from ray import ObjectRef
@@ -45,8 +46,8 @@ from ray.rllib.offline import (
     D4RLReader,
     DatasetReader,
     DatasetWriter,
-    IOContext,
     InputReader,
+    IOContext,
     JsonReader,
     JsonWriter,
     MixedInput,
@@ -56,34 +57,27 @@ from ray.rllib.offline import (
 )
 from ray.rllib.policy.policy import Policy, PolicySpec
 from ray.rllib.policy.policy_map import PolicyMap
-from ray.rllib.policy.sample_batch import convert_ma_batch_to_sample_batch
-from ray.rllib.utils.filter import NoFilter
-from ray.rllib.utils.from_config import from_config
 from ray.rllib.policy.sample_batch import (
     DEFAULT_POLICY_ID,
     MultiAgentBatch,
     concat_samples,
+    convert_ma_batch_to_sample_batch,
 )
 from ray.rllib.policy.torch_policy import TorchPolicy
 from ray.rllib.policy.torch_policy_v2 import TorchPolicyV2
 from ray.rllib.utils import check_env, force_list
 from ray.rllib.utils.annotations import DeveloperAPI, override
 from ray.rllib.utils.debug import summarize, update_global_seed_if_necessary
-from ray.rllib.utils.deprecation import (
-    Deprecated,
-    DEPRECATED_VALUE,
-    deprecation_warning,
-)
+from ray.rllib.utils.deprecation import DEPRECATED_VALUE, deprecation_warning
 from ray.rllib.utils.error import ERR_MSG_NO_GPUS, HOWTO_CHANGE_CONFIG
-from ray.rllib.utils.filter import Filter, get_filter
+from ray.rllib.utils.filter import Filter, NoFilter, get_filter
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
+from ray.rllib.utils.from_config import from_config
 from ray.rllib.utils.policy import create_policy_for_framework, validate_policy_id
 from ray.rllib.utils.sgd import do_minibatch_sgd
 from ray.rllib.utils.tf_run_builder import _TFRunBuilder
-from ray.rllib.utils.tf_utils import (
-    get_gpu_devices as get_tf_gpu_devices,
-    get_tf_eager_cls_if_necessary,
-)
+from ray.rllib.utils.tf_utils import get_gpu_devices as get_tf_gpu_devices
+from ray.rllib.utils.tf_utils import get_tf_eager_cls_if_necessary
 from ray.rllib.utils.typing import (
     AgentID,
     EnvCreator,
@@ -97,11 +91,10 @@ from ray.rllib.utils.typing import (
     SampleBatchType,
     T,
 )
+from ray.tune.registry import registry_contains_input, registry_get_input
 from ray.util.annotations import PublicAPI
 from ray.util.debug import disable_log_once_globally, enable_periodic_logging, log_once
 from ray.util.iter import ParallelIteratorWorker
-from ray.tune.registry import registry_contains_input, registry_get_input
-
 
 if TYPE_CHECKING:
     from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
@@ -408,9 +401,9 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
         if self.env is not None:
             # Validate environment (general validation function).
             if not self.config.disable_env_checking:
-                check_env(self.env)
+                check_env(self.env, self.config)
             # Custom validation function given, typically a function attribute of the
-            # algorithm trainer.
+            # Algorithm.
             if validate_env is not None:
                 validate_env(self.env, self.env_context)
 
@@ -499,7 +492,6 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
                 and ray._private.worker._mode() != ray._private.worker.LOCAL_MODE
                 and not config._fake_gpus
             ):
-
                 devices = []
                 if self.config.framework_str in ["tf2", "tf"]:
                     devices = get_tf_gpu_devices()
@@ -537,7 +529,9 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
         # must have it's Model (if any) defined and ready to output an initial
         # state.
         for pol in self.policy_map.values():
-            if not pol._model_init_state_automatically_added:
+            if not pol._model_init_state_automatically_added and not pol.config.get(
+                "_enable_rl_module_api", False
+            ):
                 pol._update_model_view_requirements_from_init_state()
 
         self.multiagent: bool = set(self.policy_map.keys()) != {DEFAULT_POLICY_ID}
@@ -725,6 +719,7 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
                 else batch.agent_steps()
             )
             batches.append(batch)
+
         batch = concat_samples(batches)
 
         self.callbacks.on_sample_end(worker=self, samples=batch)
@@ -741,6 +736,7 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
 
         if self.config.fake_sampler:
             self.last_batch = batch
+
         return batch
 
     @ray.method(num_returns=2)
@@ -1837,7 +1833,6 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
 
         # Loop through given policy-dict and add each entry to our map.
         for name, policy_spec in sorted(policy_dict.items()):
-
             # Create the actual policy object.
             if policy is None:
                 new_policy = create_policy_for_framework(
@@ -1855,9 +1850,13 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
                 new_policy = policy
 
             # Maybe torch compile an RLModule.
-            if self.config.get("_enable_rl_module_api", False):
+            if self.config.get("_enable_rl_module_api", False) and self.config.get(
+                "torch_compile_worker"
+            ):
+                if self.config.framework_str != "torch":
+                    raise ValueError("Attempting to compile a non-torch RLModule.")
                 rl_module = getattr(new_policy, "model", None)
-                if rl_module is not None and self.config.framework_str == "torch":
+                if rl_module is not None:
                     compile_config = self.config.get_torch_compile_worker_config()
                     rl_module.compile(compile_config)
 
@@ -1996,7 +1995,7 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
     def _get_make_sub_env_fn(
         self, env_creator, env_context, validate_env, env_wrapper, seed
     ):
-        disable_env_checking = self.config.disable_env_checking
+        config = self.config
 
         def _make_sub_env_local(vector_index):
             # Used to created additional environments during environment
@@ -2008,9 +2007,9 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
             # Create the sub-env.
             env = env_creator(env_ctx)
             # Validate first.
-            if not disable_env_checking:
+            if not config.disable_env_checking:
                 try:
-                    check_env(env)
+                    check_env(env, config)
                 except Exception as e:
                     logger.warning(
                         "We've added a module for checking environments that "
@@ -2053,34 +2052,3 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
 
         else:
             return _make_sub_env_local
-
-    @Deprecated(
-        new="Trainer.get_policy().export_model([export_dir], [onnx]?)", error=True
-    )
-    def export_policy_model(self, *args, **kwargs):
-        pass
-
-    @Deprecated(
-        new="Trainer.get_policy().import_model_from_h5([import_file])", error=True
-    )
-    def import_policy_model_from_h5(self, *args, **kwargs):
-        pass
-
-    @Deprecated(
-        new="Trainer.get_policy().export_checkpoint([export_dir], [filename]?)",
-        error=True,
-    )
-    def export_policy_checkpoint(self, *args, **kwargs):
-        pass
-
-    @Deprecated(new="RolloutWorker.foreach_policy_to_train", error=True)
-    def foreach_trainable_policy(self, func, **kwargs):
-        pass
-
-    @Deprecated(new="state_dict = RolloutWorker.get_state()", error=True)
-    def save(self):
-        pass
-
-    @Deprecated(new="RolloutWorker.set_state([state_dict])", error=True)
-    def restore(self, objs):
-        pass

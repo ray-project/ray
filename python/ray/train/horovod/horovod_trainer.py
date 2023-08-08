@@ -1,6 +1,7 @@
 from typing import Dict, Callable, Optional, Union, TYPE_CHECKING
 
-from ray.air.config import ScalingConfig, RunConfig, DatasetConfig
+from ray.air.config import ScalingConfig, RunConfig
+from ray.train import DataConfig
 from ray.train.trainer import GenDataset
 from ray.air.checkpoint import Checkpoint
 
@@ -24,12 +25,12 @@ class HorovodTrainer(DataParallelTrainer):
     The ``train_loop_per_worker`` function is expected to take in either 0 or 1
     arguments:
 
-    .. code-block:: python
+    .. testcode::
 
         def train_loop_per_worker():
             ...
 
-    .. code-block:: python
+    .. testcode::
 
         def train_loop_per_worker(config: Dict):
             ...
@@ -40,46 +41,50 @@ class HorovodTrainer(DataParallelTrainer):
 
     If the ``datasets`` dict contains a training dataset (denoted by
     the "train" key), then it will be split into multiple dataset
-    shards that can then be accessed by ``session.get_dataset_shard("train")`` inside
+    shards that can then be accessed by ``ray.train.get_dataset_shard("train")`` inside
     ``train_loop_per_worker``. All the other datasets will not be split and
-    ``session.get_dataset_shard(...)`` will return the the entire Dataset.
+    ``ray.train.get_dataset_shard(...)`` will return the the entire Dataset.
 
     Inside the ``train_loop_per_worker`` function, you can use any of the
     :ref:`Ray AIR session methods <air-session-ref>`.
 
-    .. code-block:: python
+    .. testcode::
+
+        from ray import train
 
         def train_loop_per_worker():
             # Report intermediate results for callbacks or logging and
             # checkpoint data.
-            session.report(...)
+            train.report(...)
 
             # Returns dict of last saved checkpoint.
-            session.get_checkpoint()
+            train.get_checkpoint()
 
             # Returns the Dataset shard for the given key.
-            session.get_dataset_shard("my_dataset")
+            train.get_dataset_shard("my_dataset")
 
             # Returns the total number of workers executing training.
-            session.get_world_size()
+            train.get_context().get_world_size()
 
             # Returns the rank of this worker.
-            session.get_world_rank()
+            train.get_context().get_world_rank()
 
             # Returns the rank of the worker on the current node.
-            session.get_local_rank()
+            train.get_context().get_local_rank()
 
     Any returns from the ``train_loop_per_worker`` will be discarded and not
     used or persisted anywhere.
 
     You could use ``TensorflowPredictor`` or ``TorchPredictor`` in conjunction with
     HorovodTrainer. You must save the model under the "model" kwarg in the
-    ``Checkpoint`` passed to ``session.report()``, so that it can be used by
+    ``Checkpoint`` passed to ``train.report()``, so that it can be used by
     corresponding predictors.
 
     Example:
 
-    .. code-block:: python
+
+    .. testcode::
+        :skipif: True
 
         import ray
         import ray.train as train
@@ -87,7 +92,6 @@ class HorovodTrainer(DataParallelTrainer):
         import horovod.torch as hvd
         import torch
         import torch.nn as nn
-        from ray.air import session
         from ray.train.horovod import HorovodTrainer
         from ray.train.torch import TorchCheckpoint
         from ray.air.config import ScalingConfig
@@ -111,7 +115,7 @@ class HorovodTrainer(DataParallelTrainer):
 
         def train_loop_per_worker():
             hvd.init()
-            dataset_shard = session.get_dataset_shard("train")
+            dataset_shard = train.get_dataset_shard("train")
             model = NeuralNetwork()
             device = train.torch.get_device()
             model.to(device)
@@ -136,7 +140,7 @@ class HorovodTrainer(DataParallelTrainer):
                     loss.backward()
                     optimizer.step()
                     print(f"epoch: {epoch}, loss: {loss.item()}")
-                session.report(
+                train.report(
                     {},
                     checkpoint=TorchCheckpoint.from_state_dict(
                         model.state_dict()
@@ -179,7 +183,7 @@ class HorovodTrainer(DataParallelTrainer):
         train_loop_config: Optional[Dict] = None,
         horovod_config: Optional[HorovodConfig] = None,
         scaling_config: Optional[ScalingConfig] = None,
-        dataset_config: Optional[Dict[str, DatasetConfig]] = None,
+        dataset_config: Optional[DataConfig] = None,
         run_config: Optional[RunConfig] = None,
         datasets: Optional[Dict[str, GenDataset]] = None,
         preprocessor: Optional["Preprocessor"] = None,

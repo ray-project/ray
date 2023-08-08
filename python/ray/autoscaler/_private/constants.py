@@ -5,6 +5,7 @@ from ray._private.ray_constants import (  # noqa F401
     AUTOSCALER_RESOURCE_REQUEST_CHANNEL,
     DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES,
     DEFAULT_OBJECT_STORE_MEMORY_PROPORTION,
+    LABELS_ENVIRONMENT_VARIABLE,
     LOGGER_FORMAT,
     RESOURCES_ENVIRONMENT_VARIABLE,
 )
@@ -113,6 +114,7 @@ RAY_PROCESSES = [
     ["reporter.py", False],
     [os.path.join("dashboard", "agent.py"), False],
     [os.path.join("dashboard", "dashboard.py"), False],
+    [os.path.join("runtime_env", "agent", "main.py"), False],
     ["ray_process_reaper.py", False],
 ]
 

@@ -44,9 +44,9 @@ class ExternalEnv(threading.Thread):
         >>> YourExternalEnv = ... # doctest: +SKIP
         >>> register_env("my_env", # doctest: +SKIP
         ...     lambda config: YourExternalEnv(config))
-        >>> trainer = DQN(env="my_env") # doctest: +SKIP
+        >>> algo = DQN(env="my_env") # doctest: +SKIP
         >>> while True: # doctest: +SKIP
-        >>>     print(trainer.train()) # doctest: +SKIP
+        >>>     print(algo.train()) # doctest: +SKIP
     """
 
     @PublicAPI

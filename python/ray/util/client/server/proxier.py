@@ -8,6 +8,7 @@ import traceback
 from concurrent import futures
 from dataclasses import dataclass
 from itertools import chain
+import urllib
 from threading import Event, Lock, RLock, Thread
 from typing import Callable, Dict, List, Optional, Tuple
 
@@ -21,7 +22,6 @@ import ray.core.generated.agent_manager_pb2 as agent_manager_pb2
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
 import ray.core.generated.runtime_env_agent_pb2 as runtime_env_agent_pb2
-import ray.core.generated.runtime_env_agent_pb2_grpc as runtime_env_agent_pb2_grpc  # noqa: E501
 from ray._private.client_mode_hook import disable_client_hook
 from ray._raylet import GcsClient
 from ray._private.parameter import RayParams
@@ -114,6 +114,7 @@ class ProxyManager:
     def __init__(
         self,
         address: Optional[str],
+        runtime_env_agent_address: str,
         *,
         session_dir: Optional[str] = None,
         redis_password: Optional[str] = None,
@@ -127,14 +128,7 @@ class ProxyManager:
             range(MIN_SPECIFIC_SERVER_PORT, MAX_SPECIFIC_SERVER_PORT)
         )
 
-        self._runtime_env_channel = ray._private.utils.init_grpc_channel(
-            f"127.0.0.1:{runtime_env_agent_port}"
-        )
-        self._runtime_env_stub = (
-            runtime_env_agent_pb2_grpc.RuntimeEnvServiceStub(  # noqa: E501
-                self._runtime_env_channel
-            )
-        )
+        self._runtime_env_agent_address = runtime_env_agent_address
 
         self._check_thread = Thread(target=self._check_processes, daemon=True)
         self._check_thread.start()
@@ -232,6 +226,10 @@ class ProxyManager:
             f"Serialized runtime env is {serialized_runtime_env}."
         )
 
+        assert (
+            len(self._runtime_env_agent_address) > 0
+        ), "runtime_env_agent_address not set"
+
         create_env_request = runtime_env_agent_pb2.GetOrCreateRuntimeEnvRequest(
             serialized_runtime_env=serialized_runtime_env,
             runtime_env_config=runtime_env_config,
@@ -242,9 +240,20 @@ class ProxyManager:
         retries = 0
         max_retries = 5
         wait_time_s = 0.5
+        last_exception = None
         while retries <= max_retries:
             try:
-                r = self._runtime_env_stub.GetOrCreateRuntimeEnv(create_env_request)
+                url = urllib.parse.urljoin(
+                    self._runtime_env_agent_address, "/get_or_create_runtime_env"
+                )
+                data = create_env_request.SerializeToString()
+                req = urllib.request.Request(url, data=data, method="POST")
+                req.add_header("Content-Type", "application/octet-stream")
+                response = urllib.request.urlopen(req, timeout=None)
+                response_data = response.read()
+                r = runtime_env_agent_pb2.GetOrCreateRuntimeEnvReply()
+                r.ParseFromString(response_data)
+
                 if r.status == agent_manager_pb2.AgentRpcStatus.AGENT_RPC_STATUS_OK:
                     return r.serialized_runtime_env_context
                 elif (
@@ -256,17 +265,8 @@ class ProxyManager:
                     )
                 else:
                     assert False, f"Unknown status: {r.status}."
-            except grpc.RpcError as e:
-                # Whitelist of errors we consider transient.
-                # NOTE(edoakes): we can get UNIMPLEMENTED while the server
-                # starts up because the agent runs multiple gRPC services
-                # on the same port.
-                if e.code() not in [
-                    grpc.StatusCode.UNAVAILABLE,
-                    grpc.StatusCode.UNIMPLEMENTED,
-                ]:
-                    raise e
-
+            except urllib.error.URLError as e:
+                last_exception = e
                 logger.warning(
                     f"GetOrCreateRuntimeEnv request failed: {e}. "
                     f"Retrying after {wait_time_s}s. "
@@ -280,6 +280,7 @@ class ProxyManager:
 
         raise TimeoutError(
             f"GetOrCreateRuntimeEnv request failed after {max_retries} attempts."
+            f" Last exception: {last_exception}"
         )
 
     def start_specific_server(self, client_id: str, job_config: JobConfig) -> bool:
@@ -483,7 +484,7 @@ class RayletServicerProxy(ray_client_pb2_grpc.RayletDriverServicer):
         Otherwise, we proxy the call to the downstream server as usual.
         """
         if self._has_channel_for_request(context):
-            return self._call_inner_function(request, context, "KVGet")
+            return self._call_inner_function(request, context, "KVDel")
 
         with disable_client_hook():
             ray.experimental.internal_kv._internal_kv_del(request.key)
@@ -829,7 +830,7 @@ def serve_proxier(
     *,
     redis_password: Optional[str] = None,
     session_dir: Optional[str] = None,
-    runtime_env_agent_port: int = 0,
+    runtime_env_agent_address: Optional[str] = None,
 ):
     # Initialize internal KV to be used to upload and download working_dir
     # before calling ray.init within the RayletServicers.
@@ -847,7 +848,7 @@ def serve_proxier(
         address,
         session_dir=session_dir,
         redis_password=redis_password,
-        runtime_env_agent_port=runtime_env_agent_port,
+        runtime_env_agent_address=runtime_env_agent_address,
     )
     task_servicer = RayletServicerProxy(None, proxy_manager)
     data_servicer = DataServicerProxy(proxy_manager)

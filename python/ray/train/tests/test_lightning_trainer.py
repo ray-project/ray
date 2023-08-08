@@ -91,7 +91,7 @@ def test_trainer_with_native_dataloader(
     if datasource == "datamodule":
         config_builder.fit_params(datamodule=datamodule)
 
-    scaling_config = ray.air.ScalingConfig(
+    scaling_config = ray.train.ScalingConfig(
         num_workers=num_workers, use_gpu=(accelerator == "gpu")
     )
 
@@ -131,7 +131,7 @@ def test_trainer_with_ray_data(ray_start_6_cpus_2_gpus, strategy, accelerator):
         .build()
     )
 
-    scaling_config = ray.air.ScalingConfig(
+    scaling_config = ray.train.ScalingConfig(
         num_workers=num_workers, use_gpu=(accelerator == "gpu")
     )
 
@@ -177,7 +177,7 @@ def test_trainer_with_categorical_ray_data(ray_start_6_cpus_2_gpus, accelerator)
         .build()
     )
 
-    scaling_config = ray.air.ScalingConfig(
+    scaling_config = ray.train.ScalingConfig(
         num_workers=num_workers, use_gpu=(accelerator == "gpu")
     )
 
@@ -196,6 +196,55 @@ def test_trainer_with_categorical_ray_data(ray_start_6_cpus_2_gpus, accelerator)
     assert "loss" in results.metrics
     assert "val_loss" in results.metrics
     assert results.checkpoint
+
+
+def test_trainer_checkpoint_configs():
+    num_epochs = 1
+    batch_size = 8
+    input_dim = 32
+    output_dim = 4
+    dataset_size = 256
+
+    datamodule = DummyDataModule(batch_size, dataset_size)
+
+    config_builder = (
+        LightningConfigBuilder()
+        .module(LinearModule, input_dim=input_dim, output_dim=output_dim)
+        .trainer(max_epochs=num_epochs, accelerator="gpu")
+        .strategy("fsdp")
+        .checkpointing(monitor="metric_a", mode="min", save_top_k=3, save_last=True)
+        .fit_params(datamodule=datamodule)
+    )
+
+    scaling_config = ray.train.ScalingConfig(num_workers=2, use_gpu=True)
+
+    trainer = LightningTrainer(
+        lightning_config=config_builder.build(), scaling_config=scaling_config
+    )
+
+    # Test checkpoint configs
+    air_ckpt_config = trainer.run_config.checkpoint_config
+    assert air_ckpt_config.checkpoint_score_attribute == "metric_a"
+    assert air_ckpt_config.checkpoint_score_order == "min"
+    assert air_ckpt_config.num_to_keep == 3
+
+    config_builder.checkpointing(save_top_k=-1, monitor=None)
+    trainer = LightningTrainer(
+        lightning_config=config_builder.build(), scaling_config=scaling_config
+    )
+    air_ckpt_config = trainer.run_config.checkpoint_config
+    assert air_ckpt_config.checkpoint_score_attribute is None
+    assert air_ckpt_config.checkpoint_score_order == "min"
+    assert air_ckpt_config.num_to_keep is None
+
+
+def test_trainer_dataset_iter_config():
+    # Test missing datasets_iter_config
+    with pytest.raises(RuntimeError, match="No `datasets_iter_config` provided"):
+        LightningTrainer(
+            scaling_config=ray.train.ScalingConfig(num_workers=2),
+            datasets={"train": ray.data.range(100)},
+        )
 
 
 if __name__ == "__main__":

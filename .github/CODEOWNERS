@@ -11,7 +11,7 @@
 # NOTE: Add @ray-project/ray-docs to all following docs subdirs.
 /doc/ @ray-project/ray-docs
 /doc/source/use-cases.rst @ericl @pcmoritz
-/doc/source/templates @justinvyu @sofianhnaide
+/doc/source/templates @justinvyu @matthewdeng @sofianhnaide
 
 # ==== Ray core ====
 
@@ -54,11 +54,11 @@
 #!/python/ray/rllib/ @ray-project/ray-core
 
 # Java worker.
-/java/dependencies.bzl @jovany-wang @kfstorm @raulchen @ericl @iycheng @WangTaoTheTonic
-/java/pom.xml @jovany-wang @kfstorm @raulchen @ericl @iycheng @WangTaoTheTonic
-/java/pom_template.xml @jovany-wang @kfstorm @raulchen @ericl @iycheng @WangTaoTheTonic
-/java/*/pom_template.xml @jovany-wang @kfstorm @raulchen @ericl @iycheng @WangTaoTheTonic
-/java/api/ @jovany-wang @kfstorm @raulchen @ericl @iycheng @WangTaoTheTonic
+/java/dependencies.bzl @kfstorm @raulchen @ericl @iycheng @WangTaoTheTonic @SongGuyang @jovany-wang
+/java/pom.xml @kfstorm @raulchen @ericl @iycheng @WangTaoTheTonic @SongGuyang @jovany-wang
+/java/pom_template.xml @kfstorm @raulchen @ericl @iycheng @WangTaoTheTonic @SongGuyang @jovany-wang
+/java/*/pom_template.xml @kfstorm @raulchen @ericl @iycheng @WangTaoTheTonic @SongGuyang @jovany-wang
+/java/api/ @kfstorm @raulchen @ericl @iycheng @WangTaoTheTonic @SongGuyang @jovany-wang
 
 # C++ worker
 /cpp/include/ray @SongGuyang @raulchen @kfstorm @ray-project/ray-core
@@ -101,8 +101,8 @@
 /doc/source/ray-air/ @richardliaw @gjoliver @krfricke @xwjiang2010 @amogkam @matthewdeng @Yard1 @maxpumperla @ray-project/ray-docs
 
 # ML Docker Dependencies
-/python/requirements/ml/requirements_dl.txt @amogkam @krfricke @richardliaw @matthewdeng
-/python/requirements/ml/requirements_ml_docker.txt @amogkam @krfricke @richardliaw @matthewdeng
+/python/requirements/ml/dl-cpu-requirements.txt @amogkam @krfricke @richardliaw @matthewdeng
+/python/requirements/ml/dl-gpu-requirements.txt @amogkam @krfricke @richardliaw @matthewdeng
 
 # Ray symbol export
 /src/ray/ray_version_script.lds @iycheng @ericl @scv119

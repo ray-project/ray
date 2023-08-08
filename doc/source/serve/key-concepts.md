@@ -30,6 +30,14 @@ handle = serve.run(my_first_deployment)
 print(ray.get(handle.remote())) # "Hello world!"
 ```
 
+(serve-key-concepts-application)=
+
+## Application
+
+An application is the unit of upgrade in a Ray Serve cluster. An application consists of one or more deployments. One of these deployments is considered the [“ingress” deployment](serve-key-concepts-ingress-deployment), which handles all inbound traffic.
+
+Applications can be called via HTTP at the specified route_prefix or in Python by retrieving a handle to the application by name.
+ 
 (serve-key-concepts-query-deployment)=
 
 ## ServeHandle (composing deployments)
@@ -112,7 +120,7 @@ class MostBasicIngress:
 
 ## Deployment Graph
 
-Building on top of the deployment concept, Ray Serve also provides a first-class API for composing multiple models into a graph structure and orchestrating the calls to each deployment automatically.
+Building on top of the deployment concept, Ray Serve also provides a first-class API for composing multiple models into a graph structure and orchestrating the calls to each deployment automatically. In this case, the `DAGDriver` is the ingress deployment.
 
 Here's a simple example combining a preprocess function and model.
 

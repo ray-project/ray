@@ -4,9 +4,9 @@ import tempfile
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable, Dict, Optional, Type, Tuple, Union
 
-from ray.air import session
-from ray.air.checkpoint import Checkpoint
-from ray.air.config import DatasetConfig, RunConfig, ScalingConfig
+from ray import train
+from ray.train import Checkpoint, RunConfig, ScalingConfig
+from ray.train import DataConfig
 from ray.train.torch import TorchConfig
 from ray.train.trainer import GenDataset
 
@@ -60,29 +60,29 @@ class AccelerateTrainer(TorchTrainer):
         def train_loop_per_worker():
             # Report intermediate results for callbacks or logging and
             # checkpoint data.
-            session.report(...)
+            train.report(...)
 
             # Get dict of last saved checkpoint.
-            session.get_checkpoint()
+            train.get_checkpoint()
 
-            # Session returns the Dataset shard for the given key.
-            session.get_dataset_shard("my_dataset")
+            # Get the Dataset shard for the given key.
+            train.get_dataset_shard("my_dataset")
 
             # Get the total number of workers executing training.
-            session.get_world_size()
+            train.get_context().get_world_size()
 
             # Get the rank of this worker.
-            session.get_world_rank()
+            train.get_context().get_world_rank()
 
             # Get the rank of the worker on the current node.
-            session.get_local_rank()
+            train.get_context().get_local_rank()
 
     For more information, see the documentation of
     :class:`~ray.train.torch.TorchTrainer`.
 
     .. note::
 
-        You need to use ``session.report()`` to communicate results and checkpoints
+        You need to use ``ray.train.report()`` to communicate results and checkpoints
         back to Ray Train.
 
     Accelerate integrations with DeepSpeed, FSDP, MegatronLM etc. are fully supported.
@@ -107,10 +107,9 @@ class AccelerateTrainer(TorchTrainer):
     - Type of launcher
 
     This Trainer requires ``accelerate>=0.17.0`` package.
-    It is tested with ``accelerate==0.17.1``.
 
     Example:
-        .. code-block:: python
+        .. testcode::
 
             import torch
             import torch.nn as nn
@@ -118,11 +117,9 @@ class AccelerateTrainer(TorchTrainer):
             from accelerate import Accelerator
 
             import ray
-            from ray.air import session, Checkpoint
+            from ray import train
+            from ray.train import Checkpoint, CheckpointConfig, RunConfig, ScalingConfig
             from ray.train.huggingface import AccelerateTrainer
-            from ray.air.config import ScalingConfig
-            from ray.air.config import RunConfig
-            from ray.air.config import CheckpointConfig
 
             # If using GPUs, set this to True.
             use_gpu = False
@@ -131,7 +128,7 @@ class AccelerateTrainer(TorchTrainer):
             input_size = 1
             layer_size = 32
             output_size = 1
-            num_epochs = 200
+            num_epochs = 30
             num_workers = 3
 
             # Define your network structure
@@ -147,12 +144,13 @@ class AccelerateTrainer(TorchTrainer):
 
             # Define your train worker loop
             def train_loop_per_worker():
+                torch.manual_seed(42)
 
                 # Initialize the Accelerator
                 accelerator = Accelerator()
 
-                # Fetch training set from the session
-                dataset_shard = session.get_dataset_shard("train")
+                # Fetch training set
+                dataset_shard = train.get_dataset_shard("train")
                 model = NeuralNetwork()
 
                 # Loss function, optimizer, prepare model for training.
@@ -188,7 +186,7 @@ class AccelerateTrainer(TorchTrainer):
 
                     # Report and record metrics, checkpoint model at end of each
                     # epoch
-                    session.report(
+                    train.report(
                         {"loss": loss.item(), "epoch": epoch},
                         checkpoint=Checkpoint.from_dict(
                             dict(
@@ -198,9 +196,9 @@ class AccelerateTrainer(TorchTrainer):
                         ),
                     )
 
-            torch.manual_seed(42)
+
             train_dataset = ray.data.from_items(
-                [{"x": x, "y": 2 * x + 1} for x in range(200)]
+                [{"x": x, "y": 2 * x + 1} for x in range(2000)]
             )
 
             # Define scaling and run configs
@@ -224,6 +222,11 @@ class AccelerateTrainer(TorchTrainer):
 
             # Assert loss is less 0.09
             assert best_checkpoint_loss <= 0.09
+
+        .. testoutput::
+            :hide:
+
+            ...
 
     Args:
         train_loop_per_worker: The training function to execute.
@@ -258,7 +261,7 @@ class AccelerateTrainer(TorchTrainer):
         accelerate_config: Optional[Union[dict, str, Path, os.PathLike]] = None,
         torch_config: Optional[TorchConfig] = None,
         scaling_config: Optional[ScalingConfig] = None,
-        dataset_config: Optional[Dict[str, DatasetConfig]] = None,
+        dataset_config: Optional[DataConfig] = None,
         run_config: Optional[RunConfig] = None,
         datasets: Optional[Dict[str, GenDataset]] = None,
         preprocessor: Optional["Preprocessor"] = None,
@@ -361,10 +364,10 @@ class AccelerateTrainer(TorchTrainer):
                 namespace = AccelerateDefaultNamespace()
                 namespace.config_file = temp_config_file
                 namespace.num_processes = 1
-                namespace.num_machines = session.get_world_size()
-                namespace.machine_rank = session.get_world_rank()
+                namespace.num_machines = train.get_context().get_world_size()
+                namespace.machine_rank = train.get_context().get_world_rank()
                 namespace.num_cpu_threads_per_process = (
-                    session.get_trial_resources().bundles[-1].get("CPU", 1)
+                    train.get_context().get_trial_resources().bundles[-1].get("CPU", 1)
                 )
                 namespace.gpu_ids = None
                 namespace.main_process_ip = master_addr

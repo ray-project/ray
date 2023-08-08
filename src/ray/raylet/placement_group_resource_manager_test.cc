@@ -20,7 +20,7 @@
 #include "gtest/gtest.h"
 #include "ray/common/bundle_spec.h"
 #include "ray/common/id.h"
-#include "ray/common/task/scheduling_resources.h"
+#include "ray/common/scheduling/scheduling_resources.h"
 #include "ray/gcs/test/gcs_test_util.h"
 #include "mock/ray/gcs/gcs_client/gcs_client.h"
 // clang-format on

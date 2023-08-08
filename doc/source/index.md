@@ -101,7 +101,8 @@ class HuggingFacePredictor:
     # Logic for inference on 1 batch of data.
     def __call__(self, batch: Dict[str, np.ndarray]) -> Dict[str, list]:
         # Get the predictions from the input batch.
-        predictions = self.model(list(batch["data"]), max_length=20, num_return_sequences=1)
+        predictions = self.model(
+            list(batch["data"]), max_length=20, num_return_sequences=1)
         # `predictions` is a list of length-one lists. For example:
         # [[{'generated_text': 'output_1'}], ..., [{'generated_text': 'output_2'}]]
         # Modify the output to get it into the following format instead:
@@ -131,7 +132,7 @@ predictions.show(limit=1)
           </div>
           <div class="tab-pane fade" id="v-pills-training" role="tabpanel" aria-labelledby="v-pills-training-tab" style="user-select:none;">
             <pre style="margin:0;"><code class="language-python not-selectable">
-from ray.air.config import ScalingConfig
+from ray.train import ScalingConfig
 from ray.train.torch import TorchTrainer
 
 # Step 1: setup PyTorch model training as you normally would
@@ -165,7 +166,7 @@ result = trainer.fit()
           <div class="tab-pane fade" id="v-pills-tuning" role="tabpanel" aria-labelledby="v-pills-tuning-tab" style="user-select:none;" style="user-select:none;">
             <pre style="margin:0;"><code class="language-python not-selectable">
 from ray import tune
-from ray.air.config import ScalingConfig
+from ray.train import ScalingConfig
 from ray.train.lightgbm import LightGBMTrainer
 
 train_dataset, eval_dataset = ...
@@ -181,8 +182,7 @@ trainer = LightGBMTrainer(
 tuner = tune.Tuner(
     trainer=trainer,
     param_space=hyper_param_space,
-    tune_config=tune.TuneConfig(num_sa
-    les=1000),
+    tune_config=tune.TuneConfig(num_samples=1000),
 )
 
 # Step 3: run distributed HPO with 1000 trials; each trial runs on 64 CPUs
@@ -333,10 +333,10 @@ ppo_algo.evaluate()
   <div class="info-box-2">
         <div class="image-header" style="padding:0px;">
             <img src="_static/img/AIR.png" width="32px" height="32px" />
-            <h3 style="font-size:20px; font-weight:600;">Ray AI Runtime</h3>
+            <h3 style="font-size:20px; font-weight:600;">Ray AI Runtime Libraries</h3>
         </div>
         <p>Scale the entire ML pipeline from data ingest to model serving with high-level Python APIs that integrate with popular ecosystem frameworks.</p>      
-        <a class="bold-link" style="letter-spacing:0.05em; text-transform:uppercase; font-weight:500;" href="./ray-air/getting-started.html" target="_blank">Learn more about AIR ></a>      
+        <a class="bold-link" style="letter-spacing:0.05em; text-transform:uppercase; font-weight:500;" href="./ray-overview/getting-started.html#ray-ai-runtime-libraries-quickstart" target="_blank">Learn more about Ray Libraries></a>
   </div>
   <div class="info-box-2">
         <div class="image-header" style="padding:0px;">

@@ -4,139 +4,64 @@
 (gentle-intro)=
 
 # Getting Started
-Use Ray to scale applications on your laptop or the cloud. Choose the right guide for your task. 
-* Scale end-to-end ML applications: [Ray AI Runtime Quickstart](#ray-ai-runtime-quickstart)
-* Scale single ML workloads: [Ray Libraries Quickstart](#ray-libraries-quickstart)
+Use Ray to scale applications on your laptop or the cloud. Choose the right guide for your task.
+* Scale ML workloads: [Ray Libraries Quickstart](#ray-libraries-quickstart)
 * Scale general Python applications: [Ray Core Quickstart](#ray-core-quickstart)
 * Deploy to the cloud: [Ray Clusters Quickstart](#ray-cluster-quickstart)
 * Debug and monitor applications: [Debugging and Monitoring Quickstart](#debugging-and-monitoring-quickstart)
-## Ray AI Runtime Quickstart
 
-Explore Ray's full suite of libraries for end-to-end ML pipelines, with the `air` packages:
 
-```
-pip install -U "ray[air]"
-```
+(libraries-quickstart)=
+## Ray AI Runtime Libraries Quickstart
 
-`````{dropdown} Efficiently process your data into features.
-
-Load data into a ``Dataset``.
-
-```{literalinclude} ../ray-air/examples/xgboost_starter.py
-    :language: python
-    :start-after: __air_generic_preprocess_start__
-    :end-before: __air_generic_preprocess_end__
-```
-
-Preprocess your data with a ``Preprocessor``.
-
-```{literalinclude} ../ray-air/examples/xgboost_starter.py
-    :language: python
-    :start-after: __air_xgb_preprocess_start__
-    :end-before: __air_xgb_preprocess_end__
-```
-`````
-
-`````{dropdown} Scale out model training.
-
-This example will use XGBoost to train a Machine Learning model, so, install Ray's wrapper library `xgboost_ray`:
-
-```
-pip install xgboost_ray
-```
-
-Train a model with an ``XGBoostTrainer``.
-
-```{literalinclude} ../ray-air/examples/xgboost_starter.py
-    :language: python
-    :start-after: __air_xgb_train_start__
-    :end-before: __air_xgb_train_end__
-```
-`````
-
-`````{dropdown} Tune the hyperparameters to find the best model with Ray Tune.
-
-Configure the parameters for tuning:
-
-```{literalinclude} ../ray-air/examples/xgboost_starter.py
-    :language: python
-    :start-after: __air_xgb_tuner_start__
-    :end-before: __air_xgb_tuner_end__
-```
-
-Run hyperparameter tuning with Ray Tune to find the best model:
-
-```{literalinclude} ../ray-air/examples/xgboost_starter.py
-    :language: python
-    :start-after: __air_tune_generic_end__
-    :end-before: __air_tune_generic_end__
-```
-`````
-
-`````{dropdown} Use the trained model for Batch prediction
-
-Use the trained model for batch prediction with a ``BatchPredictor``.
-
-```{literalinclude} ../ray-air/examples/xgboost_starter.py
-    :language: python
-    :start-after: __air_xgb_batchpred_start__
-    :end-before: __air_xgb_batchpred_end__
-```
-
-```{button-ref} air
-:color: primary
-:outline:
-:expand:
-
-Learn more about Ray AIR
-```
-`````
-
-## Ray Libraries Quickstart
-
-Use individual libraries for single ML workloads, without having to install the full AI Runtime package. Click on the dropdowns for your workload below. 
+Use individual libraries for ML workloads. Click on the dropdowns for your workload below.
 
 `````{dropdown} <img src="images/ray_svg_logo.svg" alt="ray" width="50px"> Data: Scalable Datasets for ML
 :animate: fade-in-slide-down
 
-Ray Data is the standard way to load and exchange data in Ray libraries and applications.
-Ray Data provides basic distributed data transformations such as `map`, `filter`, and `repartition`.
-They are compatible with a variety of file formats, datasources, and distributed frameworks.
+Scale offline inference and training ingest with [Ray Data](data_key_concepts) --
+a data processing library designed for ML.
+
+To learn more, see [Offline batch inference](batch_inference_overview) and
+[Data preprocessing and ingest for ML training](ml_ingest_overview).
 
 ````{note}
-To run this example install Ray Data and Dask:
+To run this example, install Ray Data:
 
 ```bash
-pip install -U "ray[data]" dask
+pip install -U "ray[data]"
 ```
 ````
 
-Get started by creating a Dataset from synthetic data using ``ray.data.range()`` and ``ray.data.from_items()``.
-A Dataset can hold either plain Python objects (schema is a Python type), or Arrow records (schema is Arrow).
+```{testcode}
+from typing import Dict
+import numpy as np
+import ray
 
-```{literalinclude} ../data/doc_code/quick_start.py
-:language: python
-:start-after: __create_from_python_begin__
-:end-before: __create_from_python_end__
+# Create datasets from on-disk files, Python objects, and cloud storage like S3.
+ds = ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv")
+
+# Apply functions to transform data. Ray Data executes transformations in parallel.
+def compute_area(batch: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
+    length = batch["petal length (cm)"]
+    width = batch["petal width (cm)"]
+    batch["petal area (cm^2)"] = length * width
+    return batch
+
+transformed_ds = ds.map_batches(compute_area)
+
+# Iterate over batches of data.
+for batch in transformed_ds.iter_batches(batch_size=4):
+    print(batch)
+
+# Save dataset contents to on-disk files or cloud storage.
+transformed_ds.write_parquet("local:///tmp/iris/")
 ```
 
-Datasets can be created from files on local disk or remote datasources such as S3. Any filesystem 
-[supported by pyarrow](http://arrow.apache.org/docs/python/generated/pyarrow.fs.FileSystem.html) can be used to specify file locations.
-You can also create a ``Dataset`` from existing data in the Ray object store or Ray-compatible distributed DataFrames:
+```{testoutput}
+:hide:
 
-```{literalinclude} ../data/doc_code/quick_start.py
-:language: python
-:start-after: __create_from_files_begin__
-:end-before: __create_from_files_end__
-```
-Datasets can be transformed in parallel using ``.map()``. 
-Transformations are executed *eagerly* and block until the operation is finished.
-Datasets also supports ``.filter()`` and ``.flat_map()``.
-
-```{literalinclude} ../data/doc_code/quick_start.py
-:language: python
-:start-after: __data_transform_begin__
-:end-before: __data_transform_end__
+...
 ```
 
 ```{button-ref}  ../data/data
@@ -152,7 +77,7 @@ Learn more about Ray Data
 :animate: fade-in-slide-down
 
 Ray Train abstracts away the complexity of setting up a distributed training
-system. 
+system.
 
 `````{tab-set}
 
@@ -296,8 +221,8 @@ Learn more about Ray Train
 `````{dropdown} <img src="images/ray_svg_logo.svg" alt="ray" width="50px"> Tune: Hyperparameter Tuning at Scale
 :animate: fade-in-slide-down
 
-[Tune](../tune/index.rst) is a library for hyperparameter tuning at any scale. 
-With Tune, you can launch a multi-node distributed hyperparameter sweep in less than 10 lines of code. 
+[Tune](../tune/index.rst) is a library for hyperparameter tuning at any scale.
+With Tune, you can launch a multi-node distributed hyperparameter sweep in less than 10 lines of code.
 Tune supports any deep learning framework, including PyTorch, TensorFlow, and Keras.
 
 ````{note}
@@ -336,7 +261,7 @@ Learn more about Ray Tune
 `````{dropdown} <img src="images/ray_svg_logo.svg" alt="ray" width="50px"> Serve: Scalable Model Serving
 :animate: fade-in-slide-down
 
-[Ray Serve](../serve/index) is a scalable model-serving library built on Ray. 
+[Ray Serve](../serve/index) is a scalable model-serving library built on Ray.
 
 ````{note}
 To run this example, install Ray Serve and scikit-learn:
@@ -400,7 +325,7 @@ Learn more about Ray RLlib
 ## Ray Core Quickstart
 
 Turn functions and classes easily into Ray tasks and actors,
-for Python and Java, with simple primitives for building and running distributed applications. 
+for Python and Java, with simple primitives for building and running distributed applications.
 
 
 ``````{dropdown} <img src="images/ray_svg_logo.svg" alt="ray" width="50px"> Core: Parallelizing Functions with Ray Tasks
@@ -445,7 +370,7 @@ To run this example, add the [ray-api](https://mvnrepository.com/artifact/io.ray
 ```
 
 Use `Ray.init` to initialize Ray runtime.
-Then use `Ray.task(...).remote()` to convert any Java static method into a Ray task. 
+Then use `Ray.task(...).remote()` to convert any Java static method into a Ray task.
 The task runs asynchronously in a remote worker process. The `remote` method returns an ``ObjectRef``,
 and you can fetch the actual result with ``get``.
 
@@ -461,7 +386,7 @@ public class RayDemo {
     public static int square(int x) {
         return x * x;
     }
-    
+
     public static void main(String[] args) {
         // Intialize Ray runtime.
         Ray.init();
@@ -556,18 +481,18 @@ import java.util.stream.Collectors;
 public class RayDemo {
 
     public static class Counter {
-    
+
         private int value = 0;
-        
+
         public void increment() {
             this.value += 1;
         }
-        
+
         public int read() {
             return this.value;
         }
     }
-        
+
     public static void main(String[] args) {
         // Intialize Ray runtime.
         Ray.init();
@@ -577,7 +502,7 @@ public class RayDemo {
         for (int i = 0; i < 4; i++) {
             counters.add(Ray.actor(Counter::new).remote());
         }
-        
+
         // Invoke the `increment` method on each actor.
         // This will send an actor task to each remote actor.
         for (ActorHandle<Counter> counter : counters) {
@@ -712,12 +637,12 @@ Run the following code.
     def task_running_300_seconds():
         print("Start!")
         time.sleep(300)
-    
+
     @ray.remote
     class Actor:
         def __init__(self):
             print("Actor created")
-    
+
     # Create 2 tasks
     tasks = [task_running_300_seconds.remote() for _ in range(2)]
 

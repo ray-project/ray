@@ -6,6 +6,8 @@ file_mounts:
 available_node_types:
     head_node:
         resources: {}
+        labels:
+            key1: value1
         max_workers: 0
         node_config:
             ImageId: latest_dlami

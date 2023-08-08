@@ -160,7 +160,9 @@ scheduling::NodeID ClusterResourceScheduler::GetBestSchedulableNode(
             scheduling_strategy.node_affinity_scheduling_strategy().node_id(),
             scheduling_strategy.node_affinity_scheduling_strategy().soft(),
             scheduling_strategy.node_affinity_scheduling_strategy()
-                .spill_on_unavailable()));
+                .spill_on_unavailable(),
+            scheduling_strategy.node_affinity_scheduling_strategy()
+                .fail_on_unavailable()));
   } else if (IsAffinityWithBundleSchedule(scheduling_strategy) &&
              !is_local_node_with_raylet_) {
     // This scheduling strategy is only used for gcs scheduling for the time being.
@@ -172,6 +174,9 @@ scheduling::NodeID ClusterResourceScheduler::GetBestSchedulableNode(
                       .placement_group_bundle_index());
     best_node_id = scheduling_policy_->Schedule(
         resource_request, SchedulingOptions::AffinityWithBundle(bundle_id));
+  } else if (scheduling_strategy.has_node_label_scheduling_strategy()) {
+    best_node_id = scheduling_policy_->Schedule(
+        resource_request, SchedulingOptions::NodeLabelScheduling(scheduling_strategy));
   } else {
     // TODO (Alex): Setting require_available == force_spillback is a hack in order to
     // remain bug compatible with the legacy scheduling algorithms.

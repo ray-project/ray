@@ -22,12 +22,12 @@
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "ray/common/id.h"
-#include "ray/common/task/scheduling_resources.h"
+#include "ray/common/scheduling/scheduling_resources.h"
 #include "ray/common/task/task.h"
 #include "ray/common/task/task_util.h"
 #include "ray/common/test_util.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
-#include "ray/raylet/scheduling/scheduling_ids.h"
+#include "ray/common/scheduling/scheduling_ids.h"
 #include "ray/raylet/local_task_manager.h"
 #include "ray/raylet/test/util.h"
 #include "mock/ray/gcs/gcs_client/gcs_client.h"
@@ -1193,7 +1193,7 @@ TEST_F(ClusterTaskManagerTest, HeartbeatTest) {
         // infeasible, ready, CPU, GPU, size
         {1, 0, 10, 1, 2},
         {1, 0, 9, 5, 2},
-        {0, 1, 1, 0, 1}};
+        {0, 0, 1, 0, 1}};
 
     for (auto &load : *load_by_shape) {
       bool found = false;
@@ -1319,7 +1319,7 @@ TEST_F(ClusterTaskManagerTest, BacklogReportTest) {
   ASSERT_EQ(pool_.workers.size(), 0);
   ASSERT_EQ(node_info_calls_, 0);
 
-  {  // No tasks can run because the worker pool is empty.
+  {  // 1 task has resources allocated, while remaining 9 is stuck.
     rpc::ResourcesData data;
     task_manager_.FillResourceUsage(data);
     auto resource_load_by_shape = data.resource_load_by_shape();
@@ -1327,7 +1327,7 @@ TEST_F(ClusterTaskManagerTest, BacklogReportTest) {
 
     ASSERT_EQ(shape1.backlog_size(), 55);
     ASSERT_EQ(shape1.num_infeasible_requests_queued(), 0);
-    ASSERT_EQ(shape1.num_ready_requests_queued(), 10);
+    ASSERT_EQ(shape1.num_ready_requests_queued(), 9);
   }
 
   // Push a worker so the first task can run.
