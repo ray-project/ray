@@ -1014,7 +1014,9 @@ def setup_ray_cluster(
             num_gpus_worker_node = num_gpus_worker_node or num_spark_task_gpus
 
             using_stage_scheduling = True
-            res_profile = _create_resource_profile(num_cpus_worker_node, num_gpus_worker_node)
+            res_profile = _create_resource_profile(
+                num_cpus_worker_node, num_gpus_worker_node
+            )
         else:
             raise ValueError(
                 "Current spark version does not support stage scheduling, so that "
@@ -1114,8 +1116,8 @@ def setup_ray_cluster(
         heap_memory_head_node = 128 * 1024 * 1024
         object_store_memory_head_node = 128 * 1024 * 1024
     else:
-        heap_memory_head_node, object_store_memory_head_node = (
-            calc_mem_ray_head_node(object_store_memory_head_node)
+        heap_memory_head_node, object_store_memory_head_node = calc_mem_ray_head_node(
+            object_store_memory_head_node
         )
 
     with _active_ray_cluster_rwlock:

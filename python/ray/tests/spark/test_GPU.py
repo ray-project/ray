@@ -56,7 +56,9 @@ class RayOnSparkGPUClusterTestBase(RayOnSparkCPUClusterTestBase, ABC):
                     assert worker_res["CPU"] == num_cpus_worker_node
                     assert worker_res["GPU"] == num_gpus_worker_node
 
-                @ray.remote(num_cpus=num_cpus_worker_node, num_gpus=num_gpus_worker_node)
+                @ray.remote(
+                    num_cpus=num_cpus_worker_node, num_gpus=num_gpus_worker_node
+                )
                 def f(_):
                     # Add a sleep to avoid the task finishing too fast,
                     # so that it can make all ray tasks concurrently running in all idle

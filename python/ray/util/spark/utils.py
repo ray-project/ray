@@ -176,7 +176,9 @@ def calc_mem_ray_head_node(configured_object_store_bytes):
     import psutil
 
     if RAY_ON_SPARK_DRIVER_PHYSICAL_MEMORY_BYTES in os.environ:
-        available_physical_mem = int(os.environ[RAY_ON_SPARK_DRIVER_PHYSICAL_MEMORY_BYTES])
+        available_physical_mem = int(
+            os.environ[RAY_ON_SPARK_DRIVER_PHYSICAL_MEMORY_BYTES]
+        )
     else:
         available_physical_mem = psutil.virtual_memory().total
 
@@ -186,9 +188,7 @@ def calc_mem_ray_head_node(configured_object_store_bytes):
         available_shared_mem = psutil.virtual_memory().total
 
     heap_mem_bytes, object_store_bytes, warning_msg = _calc_mem_per_ray_node(
-        available_physical_mem,
-        available_shared_mem,
-        configured_object_store_bytes
+        available_physical_mem, available_shared_mem, configured_object_store_bytes
     )
 
     if warning_msg is not None:
@@ -209,14 +209,14 @@ def _calc_mem_per_ray_worker_node(
     return _calc_mem_per_ray_node(
         available_physical_mem_per_node,
         available_shared_mem_per_node,
-        configured_object_store_bytes
+        configured_object_store_bytes,
     )
 
 
 def _calc_mem_per_ray_node(
     available_physical_mem_per_node,
     available_shared_mem_per_node,
-    configured_object_store_bytes
+    configured_object_store_bytes,
 ):
     from ray._private.ray_constants import (
         DEFAULT_OBJECT_STORE_MEMORY_PROPORTION,
