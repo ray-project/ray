@@ -532,8 +532,12 @@ class ReplicaConfig:
             proto.init_args if proto.init_args != b"" else None,
             proto.init_kwargs if proto.init_kwargs != b"" else None,
             json.loads(proto.ray_actor_options),
-            json.loads(proto.placement_group_bundles),
-            proto.placement_group_strategy,
+            json.loads(proto.placement_group_bundles)
+            if proto.placement_group_bundles != b""
+            else None,
+            proto.placement_group_strategy
+            if proto.placement_group_strategy != ""
+            else None,
             needs_pickle,
         )
 
