@@ -247,15 +247,6 @@ py_test(
 # --------------------------------------------------------------------
 
 py_test(
-    name = "pytorch_pbt_failure",
-    size = "small",
-    srcs = ["tests/pytorch_pbt_failure.py"],
-    tags = ["team:ml", "exlusive", "no_main"],
-    deps = [":train_lib"],
-    args = ["--smoke-test"]
-)
-
-py_test(
     name = "test_accelerate_trainer_gpu",
     size = "large",
     srcs = ["tests/test_accelerate_trainer_gpu.py"],
@@ -296,9 +287,25 @@ py_test(
 )
 
 py_test(
+    name = "test_checkpoint",
+    size = "small",
+    srcs = ["tests/test_checkpoint.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":train_lib"]
+)
+
+py_test(
     name = "test_checkpoints",
     size = "small",
     srcs = ["tests/test_checkpoints.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":train_lib"]
+)
+
+py_test(
+    name = "test_checkpoint_manager",
+    size = "small",
+    srcs = ["tests/test_checkpoint_manager.py"],
     tags = ["team:ml", "exclusive"],
     deps = [":train_lib"]
 )
@@ -456,27 +463,19 @@ py_test(
 )
 
 py_test(
+    name = "test_new_persistence",
+    size = "medium",
+    srcs = ["tests/test_new_persistence.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":train_lib", ":conftest"]
+)
+
+py_test(
     name = "test_predictor",
     size = "small",
     srcs = ["tests/test_predictor.py"],
     tags = ["team:ml", "exclusive", "ray_air"],
     deps = [":train_lib"]
-)
-
-py_test(
-    name = "test_rl_trainer",
-    size = "medium",
-    srcs = ["tests/test_rl_trainer.py"],
-    tags = ["team:ml", "exclusive", "ray_air"],
-    deps = [":train_lib", ":conftest"]
-)
-
-py_test(
-    name = "test_rl_predictor",
-    size = "small",
-    srcs = ["tests/test_rl_predictor.py"],
-    tags = ["team:ml", "exclusive", "ray_air"],
-    deps = [":train_lib", ":conftest"]
 )
 
 py_test(

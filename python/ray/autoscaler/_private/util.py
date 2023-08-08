@@ -395,13 +395,15 @@ def with_envs(cmds: List[str], kv: Dict[str, str]) -> str:
 
     Example:
         with_envs(["echo $FOO"], {"FOO": "BAR"})
-            -> ["FOO=BAR echo $FOO"]
+            -> ["export FOO=BAR; echo $FOO"]
     """
     out_cmds = []
     for cmd in cmds:
         kv_str = ""
         for k, v in kv.items():
-            kv_str += f"{k}={v} "
+            # We will need to do export here so that it works correctly with
+            # shell if the cmd args uses the argument.
+            kv_str += f"export {k}={v}; "
 
         out_cmds.append(f"{kv_str}{cmd}")
     return out_cmds
@@ -794,7 +796,7 @@ def format_info_string(
 
     failure_lines = []
     for ip, node_type in autoscaler_summary.failed_nodes:
-        line = f" {node_type}: RayletUnexpectedlyDied (ip: {ip})"
+        line = f" {node_type}: NodeTerminated (ip: {ip})"
         failure_lines.append(line)
     if autoscaler_summary.node_availability_summary:
         records = sorted(

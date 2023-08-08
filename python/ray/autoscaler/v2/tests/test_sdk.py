@@ -52,7 +52,7 @@ def get_node_ids() -> Tuple[str, List[str]]:
 
 
 def assert_cluster_resource_constraints(
-    state: ClusterResourceState, expected: List[dict]
+    state: ClusterResourceState, expected_bundles: List[dict], expected_count: List[int]
 ):
     """
     Assert a GetClusterResourceStateReply has cluster_resource_constraints that
@@ -62,16 +62,26 @@ def assert_cluster_resource_constraints(
     assert len(state.cluster_resource_constraints) == 1
 
     min_bundles = state.cluster_resource_constraints[0].min_bundles
-    assert len(min_bundles) == len(expected)
+    assert len(min_bundles) == len(expected_bundles) == len(expected_count)
 
     # Sort all the bundles by bundle's resource names
     min_bundles = sorted(
-        min_bundles, key=lambda bundle: "".join(bundle.resources_bundle.keys())
+        min_bundles,
+        key=lambda bundle_by_count: "".join(
+            bundle_by_count.request.resources_bundle.keys()
+        ),
     )
-    expected = sorted(expected, key=lambda bundle: "".join(bundle.keys()))
+    expected = zip(expected_bundles, expected_count)
+    expected = sorted(
+        expected, key=lambda bundle_count: "".join(bundle_count[0].keys())
+    )
 
-    for actual_bundle, expected_bundle in zip(min_bundles, expected):
-        assert dict(actual_bundle.resources_bundle) == expected_bundle
+    for actual_bundle_count, expected_bundle_count in zip(min_bundles, expected):
+        assert (
+            dict(actual_bundle_count.request.resources_bundle)
+            == expected_bundle_count[0]
+        )
+        assert actual_bundle_count.count == expected_bundle_count[1]
 
 
 @dataclass
@@ -240,7 +250,7 @@ def test_request_cluster_resources_basic(shutdown_only):
 
     def verify():
         state = get_cluster_resource_state(stub)
-        assert_cluster_resource_constraints(state, [{"CPU": 1}])
+        assert_cluster_resource_constraints(state, [{"CPU": 1}], [1])
         return True
 
     wait_for_condition(verify)
@@ -250,7 +260,17 @@ def test_request_cluster_resources_basic(shutdown_only):
 
     def verify():
         state = get_cluster_resource_state(stub)
-        assert_cluster_resource_constraints(state, [{"CPU": 2, "GPU": 1}, {"CPU": 1}])
+        assert_cluster_resource_constraints(
+            state, [{"CPU": 2, "GPU": 1}, {"CPU": 1}], [1, 1]
+        )
+        return True
+
+    # Request multiple is aggregated by shape.
+    request_cluster_resources([{"CPU": 1}] * 100)
+
+    def verify():
+        state = get_cluster_resource_state(stub)
+        assert_cluster_resource_constraints(state, [{"CPU": 1}], [100])
         return True
 
     wait_for_condition(verify)
@@ -287,7 +307,7 @@ def test_node_info_basic(shutdown_only, monkeypatch):
         wait_for_condition(verify)
 
 
-def test_pg_pending_gang_requests_basic(ray_start_cluster):
+def test_pg_pending_gang_requests_basic(shutdown_only):
     ray.init(num_cpus=1)
 
     # Create a pg that's pending.
@@ -536,7 +556,6 @@ def test_get_cluster_status(ray_start_cluster):
     # This test is to make sure the grpc stub is working.
     # TODO(rickyx): Add e2e tests for the autoscaler state service in a separate PR
     # to validate the data content.
-
     cluster = ray_start_cluster
     # Head node
     cluster.add_node(num_cpus=1, _system_config={"enable_autoscaler_v2": True})
@@ -675,6 +694,32 @@ def test_get_cluster_status(ray_start_cluster):
         return True
 
     wait_for_condition(verify_autoscaler_state)
+
+
+@pytest.mark.parametrize(
+    "env_val,enabled",
+    [
+        ("1", True),
+        ("0", False),
+        ("", False),
+    ],
+)
+def test_is_autoscaler_v2_enabled(shutdown_only, monkeypatch, env_val, enabled):
+    def reset_autoscaler_v2_enabled_cache():
+        import ray.autoscaler.v2.utils as u
+
+        u.cached_is_autoscaler_v2 = None
+
+    reset_autoscaler_v2_enabled_cache()
+    with monkeypatch.context() as m:
+        m.setenv("RAY_enable_autoscaler_v2", env_val)
+        ray.init()
+
+        def verify():
+            assert ray.autoscaler.v2.utils.is_autoscaler_v2() == enabled
+            return True
+
+        wait_for_condition(verify)
 
 
 if __name__ == "__main__":

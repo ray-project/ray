@@ -1,8 +1,7 @@
-.. _air-examples-ref:
+:orphan:
 
 Examples
 ========
-
 
 Framework-specific Examples
 ---------------------------
@@ -33,7 +32,7 @@ Text/NLP
 Image/CV
 --------
 
-- :doc:`/ray-air/examples/torch_image_example`
+- :doc:`/ray-air/computer-vision`
 - :doc:`/ray-air/examples/torch_detection`
 - :doc:`/ray-air/examples/stablediffusion_batch_prediction`: How to use Ray AIR to do batch prediction with the Stable Diffusion text-to-image model.
 
@@ -44,14 +43,6 @@ Logging & Observability
 - :doc:`/ray-air/examples/upload_to_wandb`: How to log results and upload models to Weights and Biases.
 
 .. _air-rl-examples-ref:
-
-RL (RLlib)
-----------
-
-- :doc:`/ray-air/examples/rl_serving_example`
-- :doc:`/ray-air/examples/rl_online_example`
-- :doc:`/ray-air/examples/rl_offline_example`
-
 
 Advanced
 --------

@@ -13,6 +13,7 @@ from ray.air.execution.resources import (
 from ray.air.execution._internal.tracked_actor import TrackedActor
 from ray.tune.execution.tune_controller import TuneController
 from ray.tune.experiment import Trial
+from ray.tune.utils.resource_updater import _ResourceUpdater
 
 
 class NoopClassCache:
@@ -92,6 +93,17 @@ class NoopActorManager(RayActorManager):
         self._pending_actors_to_attrs = {i: None for i in range(num_pending)}
 
 
+class _FakeResourceUpdater(_ResourceUpdater):
+    def __init__(self, resource_manager: BudgetResourceManager):
+        self._resource_manager = resource_manager
+
+    def get_num_cpus(self):
+        return self._resource_manager._total_resources.get("CPU", 0)
+
+    def get_num_gpus(self) -> int:
+        return self._resource_manager._total_resources.get("GPU", 0)
+
+
 class TestingTrial(Trial):
     def get_trainable_cls(self):
         return self.trainable_name
@@ -104,19 +116,27 @@ class TestingTrial(Trial):
 
 
 def create_execution_test_objects(
-    tmpdir, max_pending_trials: int = 8, resources: Optional[Dict[str, float]] = None
+    tmpdir,
+    max_pending_trials: int = 8,
+    resources: Optional[Dict[str, float]] = None,
+    reuse_actors: bool = True,
+    tune_controller_cls: Type[TuneController] = TuneController,
+    **kwargs,
 ):
     os.environ["TUNE_MAX_PENDING_TRIALS_PG"] = str(max_pending_trials)
 
     resources = resources or {"CPU": 4}
 
-    tune_controller = TuneController(
+    tune_controller = tune_controller_cls(
         experiment_path=str(tmpdir),
-        reuse_actors=True,
+        reuse_actors=reuse_actors,
+        **kwargs,
     )
     resource_manager = BudgetResourceManager(total_resources=resources)
+    resource_updater = _FakeResourceUpdater(resource_manager)
     actor_manger = NoopActorManager(resource_manager)
     tune_controller._actor_manager = actor_manger
     tune_controller._class_cache = NoopClassCache()
+    tune_controller._resource_updater = resource_updater
 
     return tune_controller, actor_manger, resource_manager

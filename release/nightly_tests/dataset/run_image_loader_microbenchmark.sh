@@ -1,5 +1,9 @@
 #!/bin/bash
 
+
+# Exit if any of the test commands fail.
+set -e pipeline
+
 INPUT_DIR=~/imagenet-1gb
 OUTPUT_DIR=~/imagenet-1gb-data
 

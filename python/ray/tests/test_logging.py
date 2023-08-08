@@ -137,6 +137,7 @@ def test_log_file_exists(shutdown_only):
     log_rotating_component = [
         (ray_constants.PROCESS_TYPE_DASHBOARD, [".log", ".err"]),
         (ray_constants.PROCESS_TYPE_DASHBOARD_AGENT, [".log"]),
+        (ray_constants.PROCESS_TYPE_RUNTIME_ENV_AGENT, [".log", ".out", ".err"]),
         (ray_constants.PROCESS_TYPE_LOG_MONITOR, [".log", ".err"]),
         (ray_constants.PROCESS_TYPE_MONITOR, [".log", ".out", ".err"]),
         (ray_constants.PROCESS_TYPE_PYTHON_CORE_WORKER_DRIVER, [".log"]),
@@ -940,6 +941,15 @@ def test_log_level_settings(
         assert caplog.records[-1].levelno == test_level, "Log message level mismatch."
     else:
         assert len(caplog.records) == 0, "Log message found where none are expected."
+
+
+def test_log_with_import():
+
+    logger = logging.getLogger(__name__)
+    assert not logger.disabled
+    ray.log.logger_initialized = False
+    ray.log.generate_logging_config()
+    assert not logger.disabled
 
 
 if __name__ == "__main__":
