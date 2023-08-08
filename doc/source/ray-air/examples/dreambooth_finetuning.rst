@@ -16,8 +16,8 @@ See the HuggingFace tutorial for useful explanations and suggestions on hyperpar
 
 **Compute requirements:**
 
-* Because of the large model sizes, you'll need a machine with at least 2 A10G GPUs.
-* Each training worker uses 2 GPUs, so you'll need ``N * 2`` total GPUs in your Ray cluster, if training with ``N`` distributed training workers. The example can leverage data-parallel training with more GPUs to speed up training time.
+* Because of the large model sizes, you'll need a machine with at least 1 A10G GPU.
+* Each training worker uses 1 GPU. If training with ``N`` distributed training workers. The example can leverage data-parallel training with more GPUs to speed up training time.
 
 This example fine-tunes both the ``text_encoder`` and ``unet`` models used in the Stable Diffusion process, with respect to a prior preserving loss.
 
@@ -123,9 +123,9 @@ Configuring the scale
 
 In the TorchTrainer, we can easily configure our scale.
 The above example uses the ``num_workers`` argument to specify the number
-of workers. This defaults to 2 workers with 2 GPUs each - so 4 GPUs in total.
+of workers. This defaults to 2 workers with 1 GPU each - so 2 GPUs in total.
 
-To run the example on 8 GPUs, just set the number of workers to 4 using ``--num-workers=4``!
+To run the example on 4 GPUs, just set the number of workers to 4 using ``--num-workers=4``!
 Or you can change the scaling config directly:
 
 .. code-block:: diff
@@ -134,9 +134,6 @@ Or you can change the scaling config directly:
          use_gpu=True,
     -    num_workers=args.num_workers,
     +    num_workers=4,
-         resources_per_worker={
-             "GPU": 2,
-         },
      )
 
 If you're running multi-node training, you should make sure that all nodes have access to a shared
@@ -146,11 +143,11 @@ storage (e.g. via NFS or EFS). In the example script below, you can adjust this 
 Training throughput
 ~~~~~~~~~~~~~~~~~~~
 
-We ran training using 1, 2, 4, and 8 workers (and 2, 4, 8, and 16 GPUs, respectively) to compare throughput.
+We ran training using 1, 2, and 4 workers/GPUs to compare throughput.
 
 Setup:
 
-* 2 x g5.12xlarge nodes with 4 A10G GPUs each
+* One g5.12xlarge nodes with 4 A10G GPUs each
 * Model as configured below
 * Data from this example
 * 200 regularization images
@@ -182,9 +179,6 @@ more workers and GPUs.
    * - 4
      - 8
      - 252.37 (3.18)
-   * - 8
-     - 16
-     - 160.97 (1.36)
 
 
 While the training time decreases linearly with the amount of workers/GPUs, we observe some penalty.
