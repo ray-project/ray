@@ -15,8 +15,8 @@
 #pragma once
 
 #include "ray/rpc/gcs_server/gcs_rpc_server.h"
+#include "ray/rpc/node_manager/node_manager_client_pool.h"
 #include "src/ray/protobuf/gcs.pb.h"
-#include "src/ray/rpc/node_manager/node_manager_client_pool.h"
 
 namespace ray {
 class ClusterResourceManager;
