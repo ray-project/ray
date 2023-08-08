@@ -87,7 +87,7 @@ def test_trainer_with_native_dataloader(
     results = trainer.fit()
     assert results.metrics["epoch"] == num_epochs - 1
     assert (
-        results.metrics["steps"] == num_epochs * dataset_size / num_workers / batch_size
+        results.metrics["step"] == num_epochs * dataset_size / num_workers / batch_size
     )
     assert "loss" in results.metrics
     assert "val_loss" in results.metrics
@@ -148,7 +148,7 @@ def test_trainer_with_ray_data(ray_start_6_cpus_2_gpus, strategy_name, accelerat
     results = trainer.fit()
     assert results.metrics["epoch"] == num_epochs - 1
     assert (
-        results.metrics["steps"] == num_epochs * dataset_size / num_workers / batch_size
+        results.metrics["step"] == num_epochs * dataset_size / num_workers / batch_size
     )
     assert "loss" in results.metrics
     assert "val_loss" in results.metrics
