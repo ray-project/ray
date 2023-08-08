@@ -321,26 +321,20 @@ Checkpoints can be loaded into the training function in 2 steps:
                 checkpoint = train.get_checkpoint()
                 if checkpoint:
                     with checkpoint.as_directory() as ckpt_dir:
-                        ckpt_path = join(ckpt_dir, "checkpoint")
+                        ckpt_path = join(ckpt_dir, "checkpoint.ckpt")
                         trainer.fit(model, datamodule=datamodule, ckpt_path=ckpt_path)
                 else:
                     trainer.fit(model, datamodule=datamodule)
 
-            # Train for 2 epochs        
-            ray_trainer = TorchTrainer(
-                train_func_per_worker,
-                train_loop_config={"max_epochs": 2},
-                scaling_config=ScalingConfig(num_workers=2),
-                resume_from_checkpoint=result.checkpoint,
-            )
-            result = ray_trainer.fit()
+            # Build a Ray Train Checkpoint
+            # Suppose we have a Lightning checkpoint under ./ckpt_dir/checkpoint.ckpt
+            checkpoint = Checkpoint.from_directory("./ckpt_dir/checkpoint.ckpt")
 
-            # Resume training for another 2 epochs
+            # Resume training from checkpoint file
             ray_trainer = TorchTrainer(
                 train_func_per_worker,
-                train_loop_config={"max_epochs": 4},
                 scaling_config=ScalingConfig(num_workers=2),
-                resume_from_checkpoint=result.checkpoint,
+                resume_from_checkpoint=checkpoint,
             )
             result = ray_trainer.fit()
 
