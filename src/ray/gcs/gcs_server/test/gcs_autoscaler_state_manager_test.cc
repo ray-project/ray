@@ -132,6 +132,20 @@ class GcsAutoscalerStateManagerTest : public ::testing::Test {
     return reply.cluster_resource_state();
   }
 
+  bool DrainNodeSync(const NodeID &node_id,
+                     const rpc::autoscaler::DrainNodeReason &reason,
+                     const std::string &reason_message) {
+    rpc::autoscaler::DrainNodeRequest request;
+    request.set_node_id(node_id.Binary());
+    request.set_reason(reason);
+    request.set_reason_message(reason_message);
+    rpc::autoscaler::DrainNodeReply reply;
+    auto send_reply_callback =
+        [](ray::Status status, std::function<void()> f1, std::function<void()> f2) {};
+    gcs_autoscaler_state_manager_->HandleDrainNode(request, &reply, send_reply_callback);
+    return reply.is_accepted();
+  }
+
   void UpdateFromResourceReportSync(
       const NodeID &node_id,
       const absl::flat_hash_map<std::string, double> &available_resources,
@@ -670,6 +684,29 @@ TEST_F(GcsAutoscalerStateManagerTest, TestReportAutoscalingState) {
     ASSERT_NE(autoscaling_state, absl::nullopt);
     ASSERT_EQ(autoscaling_state->autoscaler_state_version(), 2);
   }
+}
+
+TEST_F(GcsAutoscalerStateManagerTest, TestDrainNonAliveNode) {
+  auto node = Mocker::GenNodeInfo();
+
+  // Adding a node.
+  node->mutable_resources_total()->insert({"CPU", 2});
+  node->mutable_resources_total()->insert({"GPU", 1});
+  node->set_instance_id("instance_1");
+  AddNode(node);
+  RemoveNode(node);
+
+  // Drain a dead node.
+  ASSERT_TRUE(
+      DrainNodeSync(NodeID::FromBinary(node->node_id()),
+                    rpc::autoscaler::DrainNodeReason::DRAIN_NODE_REASON_PREEMPTION,
+                    "preemption"));
+
+  // Drain a non-exist node.
+  ASSERT_TRUE(
+      DrainNodeSync(NodeID::FromRandom(),
+                    rpc::autoscaler::DrainNodeReason::DRAIN_NODE_REASON_PREEMPTION,
+                    "preemption"));
 }
 
 TEST_F(GcsAutoscalerStateManagerTest, TestDrainingStatus) {

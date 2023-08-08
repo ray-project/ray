@@ -287,8 +287,16 @@ void GcsAutoscalerStateManager::HandleDrainNode(
 
   auto node = gcs_node_manager_.GetAliveNode(node_id);
   if (!node.has_value()) {
-    // The node is dead so treat it as drained.
-    reply->set_is_accepted(true);
+    if (gcs_node_manager_.GetAllDeadNodes().contains(node_id)) {
+      // The node is dead so treat it as drained.
+      reply->set_is_accepted(true);
+    } else {
+      // Since gcs only stores limit number of dead nodes
+      // so we don't know whether the node is dead or doesn't exist.
+      // Since it's not running so still treat it as drained.
+      RAY_LOG(WARNING) << "Request to drain an unknown node " << node_id;
+      reply->set_is_accepted(true);
+    }
     send_reply_callback(ray::Status::OK(), nullptr, nullptr);
     return;
   }
