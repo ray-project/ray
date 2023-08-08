@@ -1,7 +1,6 @@
 import os
 import random
 import tempfile
-import uuid
 from timeit import default_timer as timer
 from typing import List
 

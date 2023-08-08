@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 from ray.data import DataContext
 from ray.data._internal.output_buffer import BlockOutputBuffer

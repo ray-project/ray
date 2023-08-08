@@ -44,10 +44,12 @@ class AnyscaleFileMetadataProvider(DefaultFileMetadataProvider):
         partitioning: Optional[Partitioning] = None,
         ignore_missing_paths: bool = False,
     ) -> Iterator[Tuple[str, int]]:
-        is_file = lambda path: any(
-            path.endswith("." + file_extension)
-            for file_extension in self.file_extensions
-        )
+        def is_file(path):
+            return any(
+                path.endswith("." + file_extension)
+                for file_extension in self.file_extensions
+            )
+
         use_sampling = all(is_file(path) for path in paths)
         if len(paths) == 1:
             yield from _fetch_metadata(paths, filesystem, ignore_missing_paths)
