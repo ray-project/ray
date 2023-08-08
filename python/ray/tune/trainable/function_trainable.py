@@ -336,6 +336,37 @@ class FunctionTrainable(Trainable):
     _name = "func"
 
     def setup(self, config):
+        from ray.train._internal.storage import _use_storage_context
+        from ray.train._internal.session import init_session, get_session, TrialInfo
+
+        if _use_storage_context():
+            init_session(
+                training_func=lambda: self._trainable_func(
+                    self.config, self._session, self._session.loaded_checkpoint
+                ),
+                world_rank=None,
+                local_rank=None,
+                node_rank=None,
+                local_world_size=None,
+                world_size=None,
+                trial_info=TrialInfo(
+                    name=self.trial_name,
+                    id=self.trial_id,
+                    resources=self.trial_resources,
+                    logdir=None,
+                    driver_ip=None,
+                    experiment_name=self._storage.experiment_dir_name,
+                ),
+                dataset_shard=None,
+                checkpoint=None,
+                encode_data_fn=None,
+                enable_lazy_checkpointing=False,
+                storage=self._storage,
+            )
+            self._session = get_session()
+            self._last_training_result = None
+            return
+
         # Semaphore for notifying the reporter to continue with the computation
         # and to generate the next result.
         self._continue_semaphore = threading.Semaphore(0)
@@ -409,6 +440,40 @@ class FunctionTrainable(Trainable):
         along with a result with "done=True". The TrialRunner will handle the
         result accordingly (see tune/tune_controller.py).
         """
+        from ray.train._internal.storage import _use_storage_context
+        from ray.train._internal.session import _TrainingResult
+
+        if _use_storage_context():
+            if not self._session.training_started:
+                self._session.start()
+            training_result: Optional[_TrainingResult] = self._session.get_next()
+
+            if not training_result:
+                raise RuntimeError(
+                    "Should not have reached here. The TuneController should not "
+                    "have scheduled another `train` remote call."
+                    "It should have scheduled a `stop` instead "
+                    "after the training function exits."
+                )
+
+            metrics = training_result.metrics
+            # This keyword appears if the train_func using the Function API
+            # finishes without "done=True". This duplicates the last result, but
+            # the TuneController will not log this result again.
+            # TuneController will also inject done=True to the result,
+            # and proceed to queue up a STOP decision for the trial.
+            if RESULT_DUPLICATE in metrics:
+                metrics[SHOULD_CHECKPOINT] = False
+
+            self._last_training_result = training_result
+            if training_result.checkpoint is not None:
+                # TODO(justinvyu): Result/checkpoint reporting can be combined.
+                # Since result/checkpoint reporting is separate, this
+                # special key will tell Tune to pull the checkpoint from
+                # the `last_training_result`.
+                metrics[SHOULD_CHECKPOINT] = True
+            return metrics
+
         if self._runner and self._runner.is_alive():
             # if started and alive, inform the reporter to continue and
             # generate the next result
@@ -483,22 +548,24 @@ class FunctionTrainable(Trainable):
     def get_state(self):
         state = super().get_state()
 
-        checkpoint = self._status_reporter.get_checkpoint()
-        if not checkpoint:
-            state.update(iteration=0, timesteps_total=0, episodes_total=0)
+        # checkpoint = self._status_reporter.get_checkpoint()
+        # if not checkpoint:
+        #     state.update(iteration=0, timesteps_total=0, episodes_total=0)
         return state
 
     def save_checkpoint(self, checkpoint_dir: str = ""):
         if checkpoint_dir:
             raise ValueError("Checkpoint dir should not be used with function API.")
 
-        checkpoint = self._status_reporter.get_checkpoint()
-
         from ray.train._internal.storage import _use_storage_context
-        from ray.train._internal.checkpoint_manager import _TrainingResult
 
-        if _use_storage_context() and isinstance(checkpoint, _TrainingResult):
-            return checkpoint
+        if _use_storage_context():
+            # TRAIN -> SAVE remote calls get processed sequentially,
+            # so `_last_training_result.checkpoint` holds onto the latest ckpt.
+            assert self._last_training_result.checkpoint
+            return self._last_training_result
+
+        checkpoint = self._status_reporter.get_checkpoint()
 
         if not checkpoint:
             # We drop a marker here to indicate that the checkpoint is empty
@@ -566,6 +633,20 @@ class FunctionTrainable(Trainable):
         self.restore(self.temp_checkpoint_dir)
 
     def cleanup(self):
+        from ray.train._internal.storage import _use_storage_context
+        from ray.train._internal.session import shutdown_session
+
+        if _use_storage_context():
+            try:
+                # session.finish raises any Exceptions from training.
+                _ = self._session.finish()
+            finally:
+                self._session = None
+                # Shutdown session even if session.finish() raises an
+                # Exception.
+                shutdown_session()
+            return
+
         # Trigger thread termination
         self._end_event.set()
         self._continue_semaphore.release()
@@ -709,7 +790,13 @@ def wrap_function(
             # If train_func returns, we need to notify the main event loop
             # of the last result while avoiding double logging. This is done
             # with the keyword RESULT_DUPLICATE -- see tune/tune_controller.py.
-            reporter(**{RESULT_DUPLICATE: True})
+            from ray.train._internal.storage import _use_storage_context
+
+            if _use_storage_context():
+                session = reporter
+                session.report({RESULT_DUPLICATE: True})
+            else:
+                reporter(**{RESULT_DUPLICATE: True})
             return output
 
         @classmethod

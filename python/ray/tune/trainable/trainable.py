@@ -172,17 +172,6 @@ class Trainable:
 
         self._start_time = time.time()
         self._local_ip = ray.util.get_node_ip_address()
-        self.setup(copy.deepcopy(self.config))
-        setup_time = time.time() - self._start_time
-        if setup_time > SETUP_TIME_THRESHOLD:
-            logger.info(
-                "Trainable.setup took {:.3f} seconds. If your "
-                "trainable is slow to initialize, consider setting "
-                "reuse_actors=True to reduce actor creation "
-                "overheads.".format(setup_time)
-            )
-        log_sys_usage = self.config.get("log_sys_usage", False)
-        self._monitor = UtilMonitor(start=log_sys_usage)
 
         self._storage = storage
 
@@ -195,6 +184,18 @@ class Trainable:
             # Set a globally accessible storage context on the remote Trainable process
             # This is accessible from the training loop thread for FunctionTrainable's
             init_shared_storage_context(storage)
+
+        self.setup(copy.deepcopy(self.config))
+        setup_time = time.time() - self._start_time
+        if setup_time > SETUP_TIME_THRESHOLD:
+            logger.info(
+                "Trainable.setup took {:.3f} seconds. If your "
+                "trainable is slow to initialize, consider setting "
+                "reuse_actors=True to reduce actor creation "
+                "overheads.".format(setup_time)
+            )
+        log_sys_usage = self.config.get("log_sys_usage", False)
+        self._monitor = UtilMonitor(start=log_sys_usage)
 
         self.remote_checkpoint_dir = remote_checkpoint_dir
         # If no sync_config is provided, but we save to a remote_checkpoint_dir,
