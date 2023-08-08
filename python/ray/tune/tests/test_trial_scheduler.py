@@ -816,7 +816,8 @@ class BOHBSuite(unittest.TestCase):
             fail_fast="raise",
         )
         counter = Counter(
-            t.last_result.get("training_iteration") for t in analysis.trials
+            t.runtime_metadata.last_result.get("training_iteration")
+            for t in analysis.trials
         )
         assert 32 in counter
         assert counter[32] > 1
@@ -1597,7 +1598,7 @@ class PopulationBasedTestingSuite(unittest.TestCase):
         def trial_step(k, steps, score):
             res = result(trial_state[k].step + steps, score)
 
-            trials[k].last_result = res
+            trials[k].runtime_metadata.last_result = res
             trial_state[k].forward(res[TRAINING_ITERATION])
 
             old_config = trials[k].config
@@ -1691,7 +1692,7 @@ class PopulationBasedTestingSuite(unittest.TestCase):
                 stop={TRAINING_ITERATION: trial_state[i].step},
             )
 
-            replayed = analysis.trials[0].last_result["replayed"]
+            replayed = analysis.trials[0].runtime_metadata.last_result["replayed"]
             self.assertSequenceEqual(trial_state[i].history, replayed)
 
         # Trial 1 did not exploit anything and should raise an error
@@ -1754,7 +1755,7 @@ class PopulationBasedTestingSuite(unittest.TestCase):
         def trial_step(k, steps, score, synced=False):
             res = result(trial_state[k].step + steps, score)
 
-            trials[k].last_result = res
+            trials[k].runtime_metadata.last_result = res
             trial_state[k].forward(res[TRAINING_ITERATION])
 
             if not synced:
@@ -1863,7 +1864,7 @@ class PopulationBasedTestingSuite(unittest.TestCase):
                 stop={TRAINING_ITERATION: trial_state[i].step},
             )
 
-            replayed = analysis.trials[0].last_result["replayed"]
+            replayed = analysis.trials[0].runtime_metadata.last_result["replayed"]
             self.assertSequenceEqual(trial_state[i].history, replayed)
 
         # Trial 1 did not exploit anything and should raise an error

@@ -823,13 +823,13 @@ class Trial:
 
     @property
     def checkpoint_at_end(self):
-        strategy = self.runtime_metadata.checkpoint_manager.checkpoint_strategy
-        return strategy.checkpoint_at_end
+        config = self.runtime_metadata.checkpoint_manager.checkpoint_config
+        return config.checkpoint_at_end
 
     @property
     def checkpoint_freq(self):
-        strategy = self.runtime_metadata.checkpoint_manager.checkpoint_strategy
-        return strategy.checkpoint_frequency
+        config = self.runtime_metadata.checkpoint_manager.checkpoint_config
+        return config.checkpoint_frequency
 
     @property
     def checkpoint(self):
@@ -881,7 +881,7 @@ class Trial:
             self.placement_group_factory if not clear_resources else None
         )
 
-        strategy = self.runtime_metadata.checkpoint_manager.checkpoint_strategy
+        checkpoint_config = self.runtime_metadata.checkpoint_manager.checkpoint_config
         return Trial(
             self.trainable_name,
             config=self.config,
@@ -893,7 +893,7 @@ class Trial:
             placement_group_factory=placement_group_factory,
             stopping_criterion=self.stopping_criterion,
             sync_config=self.legacy_sync_config,
-            checkpoint_config=strategy,
+            checkpoint_config=checkpoint_config,
             export_formats=self.export_formats,
             restore_path=self.restore_path,
             trial_name_creator=self.trial_name_creator,
@@ -1130,7 +1130,7 @@ class Trial:
         for metric, value in flatten_dict(metric_result).items():
             if isinstance(value, Number):
                 self.runtime_metadata.update_metric(
-                    metric, value, step=result["training_iteration"]
+                    metric, value, step=result.get("training_iteration")
                 )
 
     def get_trainable_cls(self):
