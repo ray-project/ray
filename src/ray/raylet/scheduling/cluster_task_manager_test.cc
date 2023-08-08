@@ -991,6 +991,51 @@ TEST_F(ClusterTaskManagerTest, TestSpillAfterAssigned) {
   AssertNoLeaks();
 }
 
+TEST_F(ClusterTaskManagerTest, NotOKPopWorkerAfterDrainingTest) {
+  /*
+    Test cases where the node is being drained after PopWorker is called
+    and PopWorker fails.
+  */
+
+  // Make the node non-idle so that the node won't be drained and terminated immediately.
+  {
+    std::shared_ptr<TaskResourceInstances> task_allocation =
+        std::make_shared<TaskResourceInstances>();
+    ResourceRequest resource_request = ResourceMapToResourceRequest(
+        {{ResourceID::CPU(), 1.0}}, false);
+    scheduler_->GetLocalResourceManager().AllocateLocalTaskResources(resource_request, task_allocation);
+  }
+
+  RayTask task1 = CreateTask({{ray::kCPU_ResourceLabel, 1}});
+  RayTask task2 = CreateTask({{ray::kCPU_ResourceLabel, 1}});
+  rpc::RequestWorkerLeaseReply reply1;
+  rpc::RequestWorkerLeaseReply reply2;
+  bool callback_called = false;
+  bool *callback_called_ptr = &callback_called;
+  auto callback = [callback_called_ptr](
+                      Status, std::function<void()>, std::function<void()>) {
+    *callback_called_ptr = true;
+  };
+  task_manager_.QueueAndScheduleTask(task1, false, false, &reply1, callback);
+  task_manager_.QueueAndScheduleTask(task2, false, false, &reply2, callback);
+
+  auto remote_node_id = NodeID::FromRandom();
+  AddNode(remote_node_id, 5);
+
+  // Drain the local node.
+  scheduler_->GetLocalResourceManager().SetLocalNodeDraining();
+
+  pool_.callbacks[task1.GetTaskSpecification().GetRuntimeEnvHash()].front()(nullptr, PopWorkerStatus::WorkerPendingRegistration, "");
+  pool_.callbacks[task1.GetTaskSpecification().GetRuntimeEnvHash()].back()(nullptr, PopWorkerStatus::RuntimeEnvCreationFailed, "runtime env setup error");
+  pool_.callbacks.clear();
+  task_manager_.ScheduleAndDispatchTasks();
+  // task1 is spilled and task2 is cancelled.
+  ASSERT_EQ(reply1.retry_at_raylet_address().raylet_id(),
+            remote_node_id.Binary());
+  ASSERT_TRUE(reply2.canceled());
+  ASSERT_EQ(reply2.scheduling_failure_message(), "runtime env setup error");
+}
+
 TEST_F(ClusterTaskManagerTest, NotOKPopWorkerTest) {
   RayTask task1 = CreateTask({{ray::kCPU_ResourceLabel, 1}});
   rpc::RequestWorkerLeaseReply reply;
@@ -2473,6 +2518,73 @@ TEST_F(ClusterTaskManagerTest, DispatchTimerAfterRequestTest) {
   }
 
   AssertNoLeaks();
+}
+
+TEST_F(ClusterTaskManagerTest, PopWorkerBeforeDraining) {
+  /*
+    Test that if PopWorker happens before draining,
+    the lease request can still succeed.
+  */
+  RayTask task = CreateTask({{ray::kCPU_ResourceLabel, 1}});
+  rpc::RequestWorkerLeaseReply reply;
+  bool callback_occurred = false;
+  bool *callback_occurred_ptr = &callback_occurred;
+  auto callback = [callback_occurred_ptr](
+                      Status, std::function<void()>, std::function<void()>) {
+    *callback_occurred_ptr = true;
+  };
+  task_manager_.QueueAndScheduleTask(task, false, false, &reply, callback);
+
+  // Drain the local node.
+  scheduler_->GetLocalResourceManager().SetLocalNodeDraining();
+
+  std::shared_ptr<MockWorker> worker =
+      std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234);
+  pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker));
+  pool_.TriggerCallbacks();
+  ASSERT_TRUE(callback_occurred);
+  ASSERT_EQ(leased_workers_.size(), 1);
+}
+
+TEST_F(ClusterTaskManagerTest, UnscheduleableWhileDraining) {
+  /*
+    Test that new tasks are not scheduled onto draining nodes.
+  */
+  RayTask task = CreateTask({{ray::kCPU_ResourceLabel, 1}});
+  rpc::RequestWorkerLeaseReply reply;
+  bool callback_occurred = false;
+  bool *callback_occurred_ptr = &callback_occurred;
+  auto callback = [callback_occurred_ptr](
+                      Status, std::function<void()>, std::function<void()>) {
+    *callback_occurred_ptr = true;
+  };
+  task_manager_.QueueAndScheduleTask(task, false, false, &reply, callback);
+  std::shared_ptr<MockWorker> worker =
+      std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234);
+  std::shared_ptr<MockWorker> worker2 =
+      std::make_shared<MockWorker>(WorkerID::FromRandom(), 12345);
+  pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker));
+  pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker2));
+  pool_.TriggerCallbacks();
+  ASSERT_TRUE(callback_occurred);
+  ASSERT_EQ(leased_workers_.size(), 1);
+  ASSERT_EQ(pool_.workers.size(), 1);
+
+  auto remote_node_id = NodeID::FromRandom();
+  AddNode(remote_node_id, 5);
+
+  // Drain the local node.
+  scheduler_->GetLocalResourceManager().SetLocalNodeDraining();
+
+  RayTask spillback_task = CreateTask({{ray::kCPU_ResourceLabel, 1}});
+  rpc::RequestWorkerLeaseReply spillback_reply;
+  task_manager_.QueueAndScheduleTask(
+      spillback_task, false, false, &spillback_reply, callback);
+  pool_.TriggerCallbacks();
+  ASSERT_EQ(leased_workers_.size(), 1);
+  ASSERT_EQ(pool_.workers.size(), 1);
+  ASSERT_EQ(spillback_reply.retry_at_raylet_address().raylet_id(),
+            remote_node_id.Binary());
 }
 
 // Regression test for https://github.com/ray-project/ray/issues/16935:

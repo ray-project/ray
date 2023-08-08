@@ -623,6 +623,7 @@ service NodeResourceInfoGcsService {
   rpc ReportResourceUsage(ReportResourceUsageRequest) returns (ReportResourceUsageReply);
   // Get resource usage of all nodes from GCS Service.
   rpc GetAllResourceUsage(GetAllResourceUsageRequest) returns (GetAllResourceUsageReply);
+  // Get ids of draining nodes.
   rpc GetDrainingNodes(GetDrainingNodesRequest) returns (GetDrainingNodesReply);
 }
 
