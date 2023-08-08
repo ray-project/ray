@@ -527,7 +527,7 @@ class DataParallelTrainer(BaseTrainer):
             datasets=self.datasets,
             data_config=self._data_config,
             checkpoint_manager=checkpoint_manager,
-            checkpoint=self.resume_from_checkpoint,
+            checkpoint=self.starting_checkpoint,
             checkpoint_strategy=checkpoint_strategy,
             storage_path=self.run_config.storage_path,
         )

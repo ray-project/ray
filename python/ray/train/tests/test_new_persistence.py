@@ -143,24 +143,28 @@ def train_fn(config):
     for i in range(start, config.get("num_iterations", 5)):
         time.sleep(0.25)
 
-        checkpoint_file_name = "checkpoint.pkl"
+        temp_dir = tempfile.mkdtemp()
+        with open(os.path.join(temp_dir, "checkpoint.pkl"), "wb") as f:
+            pickle.dump({"iter": i}, f)
+
         artifact_file_name = f"artifact-iter={i}.txt"
         if in_trainer:
             rank = train.get_context().get_world_rank()
-            checkpoint_file_name = f"checkpoint_shard-rank={rank}.pkl"
             artifact_file_name = f"artifact-rank={rank}-iter={i}.txt"
+
+            checkpoint_file_name = f"checkpoint_shard-rank={rank}.pkl"
+            with open(os.path.join(temp_dir, checkpoint_file_name), "wb") as f:
+                pickle.dump({"iter": i}, f)
 
         with open(artifact_file_name, "w") as f:
             f.write(f"{i}")
-
-        temp_dir = tempfile.mkdtemp()
-        with open(os.path.join(temp_dir, checkpoint_file_name), "wb") as f:
-            pickle.dump({"iter": i}, f)
 
         train.report(
             {"iter": i, _SCORE_KEY: i},
             checkpoint=NewCheckpoint.from_directory(temp_dir),
         )
+        if i in config.get("fail_iters", []):
+            raise RuntimeError(f"Failing on iter={i}!!")
 
 
 @pytest.mark.parametrize("storage_path_type", [None, "nfs", "cloud", "custom_fs"])
@@ -287,6 +291,7 @@ def test_trainer(
         ├── progress.csv
         ├── result.json
         ├── checkpoint_000000
+        │   ├── checkpoint.pkl                    <- Shared checkpoint file
         │   ├── checkpoint_shard-rank=0.pkl       <- Worker checkpoint shards
         │   └── checkpoint_shard-rank=1.pkl
         ├── ...
@@ -309,7 +314,11 @@ def test_trainer(
         NUM_WORKERS = 2
         trainer = DataParallelTrainer(
             train_fn,
-            train_loop_config={"in_trainer": True, "num_iterations": NUM_ITERATIONS},
+            train_loop_config={
+                "in_trainer": True,
+                "num_iterations": NUM_ITERATIONS,
+                "fail_iters": [2, 4],
+            },
             scaling_config=train.ScalingConfig(num_workers=2),
             run_config=train.RunConfig(
                 storage_path=storage_path,
@@ -317,6 +326,7 @@ def test_trainer(
                 name=exp_name,
                 verbose=0,
                 checkpoint_config=checkpoint_config,
+                failure_config=train.FailureConfig(max_failures=2),
             ),
         )
         result = trainer.fit()
@@ -352,6 +362,8 @@ def test_trainer(
 
         assert len(list(trial_dir.glob("checkpoint_*"))) == expected_num_checkpoints
         for checkpoint_dir in trial_dir.glob("checkpoint_*"):
+            # 1 shared checkpoint.pkl file, written by all workers.
+            assert len(list(checkpoint_dir.glob("checkpoint.pkl"))) == 1
             # 1 checkpoint shard per worker.
             assert (
                 len(list(checkpoint_dir.glob("checkpoint_shard-*.pkl"))) == NUM_WORKERS
