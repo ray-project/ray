@@ -8,7 +8,6 @@ import numpy as np
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.util import _check_import
 from ray.data.block import BlockMetadata
-from ray.data.datasource.binary_datasource import BinaryDatasource
 from ray.data.datasource.datasource import Reader
 from ray.data.datasource.file_based_datasource import (
     FileBasedDatasource,
@@ -39,7 +38,7 @@ IMAGE_ENCODING_RATIO_ESTIMATE_LOWER_BOUND = 0.5
 
 
 @DeveloperAPI
-class ImageDatasource(BinaryDatasource):
+class ImageDatasource(FileBasedDatasource):
     """A datasource that lets you read images."""
 
     _FILE_EXTENSION = ["png", "jpg", "jpeg", "tiff", "bmp", "gif"]

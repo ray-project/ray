@@ -567,10 +567,6 @@ if __name__ == "__main__":
         else:
             logger.info("Using Ray Datasets loader")
 
-            # Enable block splitting to support larger file sizes w/o OOM.
-            ctx = ray.data.context.DataContext.get_current()
-            ctx.block_splitting_enabled = True
-
             options.resource_limits.object_store_memory = 10e9
 
             datasets["train"] = build_dataset(
