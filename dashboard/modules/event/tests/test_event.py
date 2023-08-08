@@ -542,11 +542,11 @@ def test_actors_events(shutdown_only):
 def test_tasks_events(shutdown_only):
     # Initialize Ray
     ray.init(ignore_reinit_error=True)
+    logger = get_event_logger("CORE_WORKER", "")
 
     @ray.remote
     def my_task(task_id):
-        logger = get_event_logger("CORE_WORKER", "")
-        logger.info(f"task start id ={task_id}")
+        logger.info(f"task started!")
 
         print(f"Running task {task_id}")
         time.sleep(1000)
