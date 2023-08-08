@@ -384,8 +384,6 @@ class Trial:
         self.storage = copy.copy(storage)
 
         if _use_storage_context():
-            assert self.storage
-
             self._legacy_orig_experiment_path = None
             self._legacy_orig_experiment_dir_name = None
             self._legacy_local_experiment_path = None
@@ -1079,8 +1077,13 @@ class Trial:
         if _use_storage_context():
             from ray.train._internal.checkpoint_manager import _TrainingResult
 
-            assert isinstance(checkpoint, _TrainingResult)
-            self.checkpoint_manager.register_checkpoint(checkpoint)
+            checkpoint_result = checkpoint
+            assert isinstance(checkpoint_result, _TrainingResult)
+            self.checkpoint_manager.register_checkpoint(checkpoint_result)
+            # Increment the checkpoint index to keep the checkpoint index in sync.
+            # This index will get restored when the trial is restored and will
+            # be passed to the Trainable as the starting checkpoint index.
+            self.storage.current_checkpoint_index += 1
         else:
             self.checkpoint_manager.on_checkpoint(checkpoint)
         self.invalidate_json_state()
@@ -1088,6 +1091,12 @@ class Trial:
     def on_restore(self):
         """Handles restoration completion."""
         assert self.is_restoring
+
+        if _use_storage_context():
+            from ray.train._internal.checkpoint_manager import _TrainingResult
+
+            assert isinstance(self.restoring_from, _TrainingResult)
+
         self.last_result = self.restoring_from.metrics
         self.last_result.setdefault("config", self.config)
         self.restoring_from = None
