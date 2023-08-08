@@ -637,7 +637,7 @@ class ReplicaConfig:
             init_args=self.serialized_init_args,
             init_kwargs=self.serialized_init_kwargs,
             ray_actor_options=json.dumps(self.ray_actor_options),
-            placement_group_bundles=json.dumps(self.placement_group_bundles),
+            placement_group_bundles=json.dumps(self.placement_group_bundles) if self.placement_group_bundles is not None else "",
             placement_group_strategy=self.placement_group_strategy,
         )
 
