@@ -1034,7 +1034,6 @@ cdef report_streaming_generator_output(
     worker = ray._private.worker.global_worker
 
     cdef:
-        CoreWorker core_worker = worker.core_worker
         # Ray Object created from an output.
         c_pair[CObjectID, shared_ptr[CRayObject]] return_obj
 
@@ -2876,8 +2875,8 @@ cdef class CoreWorker:
         self.fd_to_cgname_dict = None
         self.eventloop_for_default_cg = None
         self.current_runtime_env = None
-        self.tp = ThreadPoolExecutor(
-            int(os.getenv("RAY_ASYNC_THREAD_POOL_SIZE", 1)))
+        self.tp = ThreadPoolExecutor(max_workers=1)
+        #     int(os.getenv("RAY_ASYNC_THREAD_POOL_SIZE", 1)))
 
     def shutdown(self):
         # If it's a worker, the core worker process should have been
