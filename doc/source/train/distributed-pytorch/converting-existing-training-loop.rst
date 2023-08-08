@@ -125,17 +125,35 @@ training.
     
         We provide the following utilities:
 
-        - Strategy Class: :class:`~ray.train.lightning.RayDDPStrategy`, 
-        :class:`~ray.train.lightning.RayFSDPStrategy`, 
-        :class:`~ray.train.lightning.RayDeepSpeedStrategy`
-         
-        - Environment Plugin: :class:`~ray.train.lightning.RayLightningEnvironment` 
+        Step 1: Configure Distributed Strategy
+        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-        These utilities correctly set up the worker ranking and device information for Ray 
-        Train. You should replace the original arguments in ``pl.Trainer`` with these 
-        utility classes. Also, remember to call
+        Ray Train offers several subclassed distributed strategy for Lightning. 
+        These strategy retains the same argument list as the base strategy class. 
+        Internally, it correctly configures the root device and the distributed 
+        sampler arguments.
+            
+        - :class:`~ray.train.lightning.RayDDPStrategy` 
+        - :class:`~ray.train.lightning.RayFSDPStrategy` 
+        - :class:`~ray.train.lightning.RayDeepSpeedStrategy` 
+
+        Step 2: Configure Ray Cluster Environment Plugin
+        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+        Ray Train also provides :class:`~ray.train.lightning.RayLightningEnvironment` 
+        as a specification for Ray Cluster. This utility class configures the worker's 
+        local, global, and node rank and world size.
+
+        In addition, Ray TorchTrainer has already configured the correct 
+        ``CUDA_VISIBLE_DEVICES`` for you. One should always use all available 
+        GPUs by setting ``devices="auto"``.
+        
+        Step 3: Prepare your Lightning Trainer
+        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+        Finally, pass your Lightning trainer into
         :meth:`~ray.train.lightning.prepare_trainer` to validate 
-        your Trainer configurations. 
+        your configurations. 
 
 
 

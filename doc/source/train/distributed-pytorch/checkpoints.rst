@@ -175,13 +175,6 @@ appropriately in distributed training.
                         checkpoint = Checkpoint.from_directory(tmpdir)
                         ray.train.report(metrics=metrics, checkpoint=checkpoint)
         
-        .. note::
-
-            If you want to save the top-k checkpoints with respect to a metric via
-            :py:class:`~ray.air.config.CheckpointConfig`,
-            please ensure that the metric is always reported together with the checkpoints.
-            
-
 By default, checkpoints will be persisted to the :ref:`log directory <train-log-dir>` of each run.
 
 
@@ -203,6 +196,12 @@ checkpoints to disk), a :py:class:`~ray.air.config.CheckpointConfig` can be pass
 .. seealso::
 
     See the :class:`~ray.air.CheckpointConfig` API reference.
+
+.. note::
+
+    If you want to save the top-k checkpoints with respect to a metric via
+    :py:class:`~ray.air.config.CheckpointConfig`,
+    please ensure that the metric is always reported together with the checkpoints.
 
 **[Experimental] Distributed Checkpoints**: For model parallel workloads where the models do not fit in a single GPU worker,
 it will be important to save and upload the model that is partitioned across different workers. You

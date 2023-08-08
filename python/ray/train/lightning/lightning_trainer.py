@@ -15,7 +15,7 @@ from ray.train.trainer import GenDataset
 from ray.train.torch import TorchTrainer
 from ray.train.torch.config import TorchConfig
 from ray.util import PublicAPI
-from ray.train.lightning.lightning_utils import (
+from ray.train.lightning._lightning_utils import (
     RayDDPStrategy,
     RayFSDPStrategy,
     RayDeepSpeedStrategy,
