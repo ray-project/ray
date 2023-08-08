@@ -78,9 +78,7 @@ class ImageDatasource(BinaryDatasource):
     ) -> "pyarrow.Table":
         from PIL import Image
 
-        records = super()._read_file(f, path, include_paths=True, **reader_args)
-        assert len(records) == 1
-        path, data = records[0]
+        data = f.readall()
 
         image = Image.open(io.BytesIO(data))
         if size is not None:
