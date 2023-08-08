@@ -617,7 +617,7 @@ class ReplicaConfig:
             proto.init_kwargs if proto.init_kwargs != b"" else None,
             json.loads(proto.ray_actor_options),
             json.loads(proto.placement_group_bundles)
-            if proto.placement_group_bundles != b""
+            if proto.placement_group_bundles
             else None,
             proto.placement_group_strategy
             if proto.placement_group_strategy != ""
