@@ -1,44 +1,19 @@
 import hashlib
 from os import path
 
-from diffusers import DiffusionPipeline
-from diffusers.loaders import LoraLoaderMixin
 import time
 import torch
 import ray
 
 from flags import run_model_flags
-
-
-def load_lora_weights(unet, text_encoder, input_dir):
-
-    lora_state_dict, network_alphas = LoraLoaderMixin.lora_state_dict(input_dir)
-    LoraLoaderMixin.load_lora_into_unet(
-        lora_state_dict, network_alphas=network_alphas, unet=unet
-    )
-    LoraLoaderMixin.load_lora_into_text_encoder(
-        lora_state_dict, network_alphas=network_alphas, text_encoder=text_encoder
-    )
-    return unet, text_encoder
+from generate_utils import get_pipeline
 
 
 def run(args):
     class StableDiffusionCallable:
-        def __init__(self, model_dir, output_dir, lora_weights_dir):
+        def __init__(self, model_dir, output_dir, lora_weights_dir=None):
             print(f"Loading model from {model_dir}")
-
-            self.pipeline = DiffusionPipeline.from_pretrained(
-                model_dir, torch_dtype=torch.float16
-            )
-            if lora_weights_dir:
-                unet = self.pipeline.unet
-                text_encoder = self.pipeline.text_encoder
-                print(f"Loading LoRA weights from {lora_weights_dir}")
-                unet, text_encoder = load_lora_weights(
-                    unet, text_encoder, lora_weights_dir
-                )
-                self.pipeline.unet = unet
-                self.pipeline.text_encoder = text_encoder
+            self.pipeline = get_pipeline(model_dir, lora_weights_dir)
             self.pipeline.set_progress_bar_config(disable=True)
             if torch.cuda.is_available():
                 self.pipeline.to("cuda")

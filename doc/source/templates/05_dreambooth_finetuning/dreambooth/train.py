@@ -67,6 +67,13 @@ def get_target(scheduler, noise, latents, timesteps):
 
 
 def add_lora_layers(unet, text_encoder):
+    """Add LoRA layers for unet and text encoder.
+
+    `unet` and `text_encoder` will be modified in place.
+
+    Returns:
+        The LoRA parameters for unet and text encoder correspondingly.
+    """
     unet_lora_attn_procs = {}
     unet_lora_parameters = []
     for name, attn_processor in unet.attn_processors.items():
@@ -125,7 +132,6 @@ def load_models(config):
         subfolder="text_encoder",
         torch_dtype=dtype,
     )
-    text_encoder.requires_grad_(False)
 
     noise_scheduler = DDPMScheduler.from_pretrained(
         config["model_dir"],
@@ -151,17 +157,27 @@ def load_models(config):
 
     if is_xformers_available():
         unet.enable_xformers_memory_efficient_attention()
-    unet.requires_grad_(False)
 
     if not config["use_lora"]:
-        unet_parameters = unet.parameters()
-        text_parameters = text_encoder.parameters()
+        unet_trainable_parameters = unet.parameters()
+        text_trainable_parameters = text_encoder.parameters()
     else:
-        unet_parameters, text_parameters = add_lora_layers(unet, text_encoder)
+        text_encoder.requires_grad_(False)
+        unet.requires_grad_(False)
+        unet_trainable_parameters, text_trainable_parameters = add_lora_layers(
+            unet, text_encoder
+        )
 
     torch.cuda.empty_cache()
 
-    return text_encoder, noise_scheduler, vae, unet, unet_parameters, text_parameters
+    return (
+        text_encoder,
+        noise_scheduler,
+        vae,
+        unet,
+        unet_trainable_parameters,
+        text_trainable_parameters,
+    )
 
 
 def train_fn(config):
@@ -172,20 +188,22 @@ def train_fn(config):
         noise_scheduler,
         vae,
         unet,
-        unet_parameters,
-        text_parameters,
+        unet_trainable_parameters,
+        text_trainable_parameters,
     ) = load_models(config)
-
-    text_encoder = train.torch.prepare_model(text_encoder)
-    unet = train.torch.prepare_model(unet)
-    vae = vae.to(train.torch.get_device())
 
     text_encoder.train()
     unet.train()
 
+    text_encoder = train.torch.prepare_model(text_encoder)
+    unet = train.torch.prepare_model(unet)
+    # manually move to device as `prepare_model` can't be used on
+    # non-training models.
+    vae = vae.to(train.torch.get_device())
+
     # Use the regular AdamW optimizer to work with bfloat16 weights.
     optimizer = torch.optim.AdamW(
-        itertools.chain(unet_parameters, text_parameters),
+        itertools.chain(unet_trainable_parameters, text_trainable_parameters),
         lr=config["lr"],
     )
 
@@ -204,13 +222,10 @@ def train_fn(config):
 
         for _, batch in enumerate(
             train_dataset.iter_torch_batches(
-                # batch_size=config["train_batch_size"], device=cuda[1]
                 batch_size=config["train_batch_size"],
                 device=train.torch.get_device(),
             )
         ):
-            # Load batch on GPU 2 because VAE and text encoder are there.
-            # batch = collate(batch, cuda[1], torch.bfloat16)
             batch = collate(batch, torch.bfloat16)
 
             optimizer.zero_grad()
@@ -237,7 +252,7 @@ def train_fn(config):
             # Get the text embedding for conditioning
             encoder_hidden_states = text_encoder(batch["prompt_ids"])[0]
 
-            # Predit the noise residual.
+            # Predict the noise residual.
             model_pred = unet(
                 noisy_latents.cuda(),
                 timesteps.cuda(),
@@ -252,7 +267,7 @@ def train_fn(config):
 
             # Gradient clipping before optimizer stepping.
             clip_grad_norm_(
-                itertools.chain(unet_parameters, text_parameters),
+                itertools.chain(unet_trainable_parameters, text_trainable_parameters),
                 config["max_grad_norm"],
             )
 
@@ -283,7 +298,7 @@ def train_fn(config):
 
 
 def unet_attn_processors_state_dict(unet) -> Dict[str, torch.tensor]:
-    r"""
+    """
     Returns:
         a state dict containing just the attention processor parameters.
     """
@@ -293,10 +308,8 @@ def unet_attn_processors_state_dict(unet) -> Dict[str, torch.tensor]:
 
     for attn_processor_key, attn_processor in attn_processors.items():
         for parameter_key, parameter in attn_processor.state_dict().items():
-            attn_processors_state_dict[
-                f"{attn_processor_key}.{parameter_key}"
-            ] = parameter
-
+            param_name = f"{attn_processor_key}.{parameter_key}"
+            attn_processors_state_dict[param_name] = parameter
     return attn_processors_state_dict
 
 
