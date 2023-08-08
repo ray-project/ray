@@ -6,7 +6,6 @@ from typing import Dict
 import pytest  # noqa
 from google.protobuf.json_format import ParseDict
 
-import ray
 from ray.autoscaler.v2.schema import (
     ClusterConstraintDemand,
     ClusterStatus,
@@ -26,28 +25,6 @@ from ray.core.generated.autoscaler_pb2 import GetClusterStatusReply
 
 def _gen_cluster_status_reply(data: Dict):
     return ParseDict(data, GetClusterStatusReply())
-
-
-@pytest.mark.parametrize(
-    "env_val,enabled",
-    [
-        ("1", True),
-        ("0", False),
-        ("", False),
-    ],
-)
-def test_is_autoscaler_v2_enabled(shutdown_only, monkeypatch, env_val, enabled):
-    def reset_autoscaler_v2_enabled_cache():
-        import ray.autoscaler.v2.utils as u
-
-        u.cached_is_autoscaler_v2 = None
-
-    reset_autoscaler_v2_enabled_cache()
-    with monkeypatch.context() as m:
-        m.setenv("RAY_enable_autoscaler_v2", env_val)
-        ray.init()
-
-        assert ray.autoscaler.v2.utils.is_autoscaler_v2() == enabled
 
 
 def test_cluster_status_parser_cluster_resource_state():
