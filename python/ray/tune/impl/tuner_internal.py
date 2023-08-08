@@ -89,6 +89,7 @@ class TunerInternal:
     def __init__(
         self,
         restore_path: str = None,
+        storage_filesystem: Optional[pyarrow.fs.FileSystem] = None,
         resume_config: Optional[_ResumeConfig] = None,
         trainable: Optional[TrainableTypeOrTrainer] = None,
         param_space: Optional[Dict[str, Any]] = None,
@@ -117,6 +118,7 @@ class TunerInternal:
                 trainable=trainable,
                 overwrite_param_space=param_space,
                 resume_config=resume_config,
+                storage_filesystem=storage_filesystem,
             )
             return
 
@@ -390,12 +392,13 @@ class TunerInternal:
         trainable: TrainableTypeOrTrainer,
         overwrite_param_space: Optional[Dict[str, Any]],
         resume_config: _ResumeConfig,
+        storage_filesystem: Optional[pyarrow.fs.FileSystem],
     ):
         # Sync down from cloud storage if needed
         (
             restoring_from_cloud,
             local_experiment_checkpoint_dir,
-        ) = self._maybe_sync_down_tuner_state(path_or_uri)
+        ) = self._maybe_sync_down_tuner_state(path_or_uri, storage_filesystem)
         experiment_checkpoint_path = Path(local_experiment_checkpoint_dir)
 
         old_trainable_name, flattened_param_space_keys = self._load_tuner_state(
@@ -452,17 +455,22 @@ class TunerInternal:
         self._resume_config = resume_config
         self._is_restored = True
 
-    def _maybe_sync_down_tuner_state(self, restore_path: str) -> Tuple[bool, str]:
+    def _maybe_sync_down_tuner_state(
+        self, restore_path: str, storage_filesystem: Optional[pyarrow.fs.FileSystem]
+    ) -> Tuple[bool, str]:
         """Sync down trainable state from remote storage.
 
         Returns:
             Tuple of (downloaded from remote, local_dir)
         """
         if _use_storage_context():
-            from ray.train._internal.storage import _download_from_fs_path
+            from ray.train._internal.storage import (
+                _download_from_fs_path,
+                get_fs_and_path,
+            )
 
             tempdir = tempfile.mkdtemp("tmp_experiment_dir")
-            fs, fs_path = pyarrow.fs.FileSystem.from_uri(restore_path)
+            fs, fs_path = get_fs_and_path(restore_path, storage_filesystem)
             _download_from_fs_path(
                 fs=fs,
                 fs_path=os.path.join(fs_path, _TUNER_PKL),

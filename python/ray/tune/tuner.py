@@ -1,9 +1,10 @@
 import logging
-from pathlib import Path
+import os
 from typing import Any, Callable, Dict, Optional, Type, Union, TYPE_CHECKING
 
-import ray
+import pyarrow.fs
 
+import ray
 from ray.air.config import RunConfig
 from ray.air._internal.remote_storage import list_at_uri
 from ray.air._internal.usage import AirEntrypoint
@@ -185,6 +186,7 @@ class Tuner:
         resume_errored: bool = False,
         restart_errored: bool = False,
         param_space: Optional[Dict[str, Any]] = None,
+        storage_filesystem: Optional[pyarrow.fs.FileSystem] = None,
     ) -> "Tuner":
         """Restores Tuner after a previously failed run.
 
@@ -246,6 +248,7 @@ class Tuner:
                 resume_config=resume_config,
                 trainable=trainable,
                 param_space=param_space,
+                storage_filesystem=storage_filesystem,
             )
             return Tuner(_tuner_internal=tuner_internal)
         else:
@@ -256,11 +259,16 @@ class Tuner:
                 resume_config=resume_config,
                 trainable=trainable,
                 param_space=param_space,
+                storage_filesystem=storage_filesystem,
             )
             return Tuner(_tuner_internal=tuner_internal)
 
     @classmethod
-    def can_restore(cls, path: Union[str, Path]) -> bool:
+    def can_restore(
+        cls,
+        path: Union[str, os.PathLike],
+        storage_filesystem: Optional[pyarrow.fs.FileSystem] = None,
+    ) -> bool:
         """Checks whether a given directory contains a restorable Tune experiment.
 
         Usage Pattern:
@@ -301,12 +309,14 @@ class Tuner:
         Returns:
             bool: True if this path exists and contains the Tuner state to resume from
         """
-        from ray.train._internal.storage import _list_at_fs_path, _use_storage_context
+        from ray.train._internal.storage import (
+            _list_at_fs_path,
+            _use_storage_context,
+            get_fs_and_path,
+        )
 
         if _use_storage_context():
-            import pyarrow.fs
-
-            fs, fs_path = pyarrow.fs.FileSystem.from_uri(str(path))
+            fs, fs_path = get_fs_and_path(path, storage_filesystem)
             return _TUNER_PKL in _list_at_fs_path(fs, fs_path)
 
         return _TUNER_PKL in list_at_uri(str(path))
