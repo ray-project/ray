@@ -328,7 +328,6 @@ time.sleep(3)
     wait_for_condition(verify)
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 @pytest.mark.parametrize(
     "event_level,expected_msg,unexpected_msg",
     [
@@ -372,10 +371,11 @@ time.sleep(3)
 
     ray.init(_system_config={"enable_autoscaler_v2": True})
 
-    out_str = run_string_as_driver(
-        script, env={"RAY_LOG_TO_DRIVER_EVENT_LEVEL": event_level}
+    proc = run_string_as_driver_nonblocking(script,
+        env={"RAY_LOG_TO_DRIVER_EVENT_LEVEL": event_level}
     )
 
+    out_str = proc.stdout.read().decode("ascii")
     print(out_str)
     # Filter only autoscaler prints.
     assert out_str
