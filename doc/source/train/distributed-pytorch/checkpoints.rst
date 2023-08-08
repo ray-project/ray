@@ -89,43 +89,69 @@ appropriately in distributed training.
     .. tab-item:: PyTorch Lightning
         
         Ray Train leverages PyTorch Lightning's Callback interface to report metrics 
-        and checkpoints. We provide a simple callback implementation that reports on 
-        each epoch end.  
+        and checkpoints. We provide a simple callback implementation that reports 
+        ``on_train_epoch_end``.  
+
+        Specifically, on each train epoch end, it 
+
+        - collects all the logged metrics from ``trainer.callback_metrics`` 
+        - saves a checkpoint via ``trainer.save_checkpoint`` 
+        - reports to Ray Train via ``ray.train.report(metrics, checkpoint)`` 
 
         .. code-block:: python
-            :emphasize-lines: 2,9
+            :emphasize-lines: 2,11,20,28,29,30,31,32
             
             import pytorch_lightning as pl
             from ray.train.lightning import RayTrainReportCallback
             from ray.train.torch import TorchTrainer
+            from ray.train import CheckpointConfig, RunConfig
+
+            class MyLightningModule(LightningModule):
+                ...
+                def on_validation_epoch_end(self):
+                    ...
+                    mean_acc = calculate_accuracy()
+                    self.log("mean_accuracy", mean_acc, sync_dist=True)
 
             def train_func_per_worker():
                 ...
+                model = MyLightningModule(...)
+                datamodule = MyLightningDataModule(...)
+
                 trainer = pl.Trainer(
                     ...
                     callbacks = [RayTrainReportCallback()]
                 )
-                trainer.fit(...)
+                trainer.fit(model, datamodule=datamodule)
 
             ray_trainer = TorchTrainer(
                 train_func_per_worker,
                 scaling_config=ScalingConfig(num_workers=2),
+                run_config=RunConfig(
+                    checkpoint_config=CheckpointConfig(
+                        num_to_keep=2,
+                        checkpoint_score_attribute="mean_accuracy",
+                        checkpoint_score_order="max",
+                    ),
+                )
             )
             result = ray_trainer.fit()
 
         
-        You can always get the checkpoint path from ``result.checkpoint`` and 
+        You can always get the saved checkpoint path from ``result.checkpoint`` and 
         ``result.best_checkpoints``.
 
         For more advanced reporting usages (e.g. report at different frequency, report 
         customized checkpoint files), you can implement your own a customized callback.
-
-        Here we provide you with a simple example:
+        Here is a simple example that reports a checkpoint every 3 epochs:
 
         .. code-block:: python
-
-            from pytorch_lightning.callbacks import Callback
+            
+            import os
+            import ray
             from ray.train import Checkpoint
+            from tempfile import TemporaryDirectory
+            from pytorch_lightning.callbacks import Callback
 
             class CustomRayTrainReportCallback(Callback):
                 def on_train_epoch_end(self, trainer, pl_module):
@@ -142,12 +168,18 @@ appropriately in distributed training.
                         metrics["custom_metric"] = 123
                     
                         # Save model checkpoint file to tmpdir
-                        ckpt_path = os.path.join(tmpdir, f"ckpt_epoch_{trainer.current_epoch}.pth")
+                        ckpt_path = os.path.join(tmpdir, "ckpt.pt")
                         trainer.save_checkpoint(ckpt_path, weights_only=False)
 
                         # Report to train session
                         checkpoint = Checkpoint.from_directory(tmpdir)
                         ray.train.report(metrics=metrics, checkpoint=checkpoint)
+        
+        .. note::
+
+            If you want to save the top-k checkpoints with respect to a metric via
+            :py:class:`~ray.air.config.CheckpointConfig`,
+            please ensure that the metric is always reported together with the checkpoints.
             
 
 By default, checkpoints will be persisted to the :ref:`log directory <train-log-dir>` of each run.

@@ -104,10 +104,9 @@ Using native experiment tracking libraries
             Ray Train will not automatically port environment varaibles 
             on the head node to workers.
 
-            Taking Weights&Bias as an example, you can pass your WANDB_API_KEY via 
-            the ``train_loop_config`` and manually set it on each worker. This 
-            allows the ``WandbLogger`` to fetch credentials from environment 
-            variables and automatically login to your Wandb account.
+            Taking Wandb as an example, you can manually set `WANDB_API_KEY`
+            on each worker. This allows the ``WandbLogger`` to fetch credentials 
+            from environment variables and automatically login to your Wandb account.
 
             .. code-block:: python
                 :emphasize-lines: 5,9

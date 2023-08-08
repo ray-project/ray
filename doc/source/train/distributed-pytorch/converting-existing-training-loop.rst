@@ -94,8 +94,8 @@ training.
     
     .. tab-item:: PyTorch Lightning
 
-        Ray Train will set up your distributed process group on each worker. All you need to do 
-        is to inject several utilities into the definition of your PyTorch Lightning Trainer.
+        Ray Train will set up your distributed process group on each worker. You only need to 
+        provide several Ray Train utilities in your Lightning Trainer definition.
 
         .. code-block:: diff
 
@@ -125,13 +125,11 @@ training.
     
         We provide the following utilities:
 
-        - Strategy Class:
-          - :class:`~ray.train.lightning.RayDDPStrategy`
-          - :class:`~ray.train.lightning.RayFSDPStrategy`
-          - :class:`~ray.train.lightning.RayDeepSpeedStrategy`
-
-        - Environment Plugin:
-          - :class:`~ray.train.lightning.RayLightningEnvironment`
+        - Strategy Class: :class:`~ray.train.lightning.RayDDPStrategy`, 
+        :class:`~ray.train.lightning.RayFSDPStrategy`, 
+        :class:`~ray.train.lightning.RayDeepSpeedStrategy`
+         
+        - Environment Plugin: :class:`~ray.train.lightning.RayLightningEnvironment` 
 
         These utilities correctly set up the worker ranking and device information for Ray 
         Train. You should replace the original arguments in ``pl.Trainer`` with these 
