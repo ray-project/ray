@@ -193,6 +193,13 @@
       --test_env=DOCKER_CERT_PATH=/certs/client
       --test_env=DOCKER_TLS_CERTDIR=/certs
       -- python/ray/tests/...
+
+- label: ":python: Autoscaler"
+  conditions: ["RAY_CI_PYTHON_AFFECTED"]
+  instance_size: medium
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+    - ./ci/env/env_info.sh
     - bazel test --config=ci $(./ci/run/bazel_export_options)
       -- python/ray/autoscaler/v2/...
 

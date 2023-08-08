@@ -72,9 +72,7 @@ arguments in the :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConf
 	:hide:
     :skipif: True
 
-	from gymnasium.envs.classic_control.cartpole import CartPoleEnv
-
-	config = config.environment(env=CartPoleEnv)
+	config = config.environment(env="CartPole-v1")
 	config.build()  # test that the algorithm can be built with the given resources
 
 
