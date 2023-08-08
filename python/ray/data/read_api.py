@@ -830,7 +830,7 @@ def read_parquet_bulk(
     tensor_column_schema: Optional[Dict[str, Tuple[np.dtype, Tuple[int, ...]]]] = None,
     meta_provider: Optional[
         BaseFileMetadataProvider
-    ] = get_parquet_bulk_metadata_provider,
+    ] = None,
     partition_filter: Optional[PathPartitionFilter] = (
         ParquetBaseDatasource.file_extension_filter()
     ),
