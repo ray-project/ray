@@ -214,6 +214,7 @@ GRPC_STATUS_CODE_UNAVAILABLE = CGrpcStatusCode.UNAVAILABLE
 GRPC_STATUS_CODE_UNKNOWN = CGrpcStatusCode.UNKNOWN
 
 logger = logging.getLogger(__name__)
+tp = ThreadPoolExecutor(max_workers=int(os.getenv("RAY_ASYNC_THREAD_POOL_SIZE", 1)))
 
 # The currently executing task, if any. These are used to synchronize task
 # interruption for ray.cancel.
@@ -1179,18 +1180,15 @@ async def execute_streaming_generator_async(
             output_or_exception = await gen.__anext__()
         except Exception as e:
             output_or_exception = e
-        # TODO(sang): This method involves in serializing the output.
-        # Ideally, we don't want to run this inside an event loop.
-        # with ray._private.worker.global_worker.core_worker.tp as tp:
-            # loop = asyncio.get_running_loop()
-        # print("SANG-TODO loop, ", loop)
-        done = report_streaming_generator_output(output_or_exception, context)
-            # done = await loop.run_in_executor(
-            #     tp,
-            #     report_streaming_generator_output,
-            #     output_or_exception,
-            #     context)
-        # print("SANG-TODO loop done, ")
+        loop = asyncio.get_running_loop()
+        # Run it in a separate thread to that we can
+        # avoid blocking the event loop when serializing
+        # the output (which has nogil).
+        done = await loop.run_in_executor(
+            tp,
+            report_streaming_generator_output,
+            output_or_exception,
+            context)
         if done:
             break
 
@@ -2875,8 +2873,6 @@ cdef class CoreWorker:
         self.fd_to_cgname_dict = None
         self.eventloop_for_default_cg = None
         self.current_runtime_env = None
-        self.tp = ThreadPoolExecutor(max_workers=1)
-        #     int(os.getenv("RAY_ASYNC_THREAD_POOL_SIZE", 1)))
 
     def shutdown(self):
         # If it's a worker, the core worker process should have been
