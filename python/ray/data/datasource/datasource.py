@@ -5,7 +5,6 @@ from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
 import numpy as np
 
 import ray
-from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.util import _check_pyarrow_version
 from ray.data.block import Block, BlockAccessor, BlockMetadata
@@ -204,7 +203,6 @@ class ReadTask(Callable[[], Iterable[Block]]):
         return self._metadata
 
     def __call__(self) -> Iterable[Block]:
-        context = DataContext.get_current()
         result = self._read_fn()
         if not hasattr(result, "__iter__"):
             DeprecationWarning(
@@ -213,14 +211,8 @@ class ReadTask(Callable[[], Iterable[Block]]):
                 "`block`.".format(result)
             )
 
-        if context.block_splitting_enabled:
-            for block in result:
-                yield from self._do_additional_splits(block)
-        else:
-            builder = DelegatingBlockBuilder()
-            for block in result:
-                builder.add_block(block)
-            yield builder.build()
+        for block in result:
+            yield from self._do_additional_splits(block)
 
     def _set_additional_split_factor(self, k: int) -> None:
         self._additional_output_splits = k
