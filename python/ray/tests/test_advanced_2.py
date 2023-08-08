@@ -22,6 +22,9 @@ def test_gpu_ids(shutdown_only):
     def get_gpu_ids(num_gpus_per_worker):
         gpu_ids = ray.get_gpu_ids()
         assert len(gpu_ids) == num_gpus_per_worker
+        # Either GPU or NeuronCore.
+        neuron_core_ids = ray.get_neuron_core_ids()
+        assert len(neuron_core_ids) == 0
         assert os.environ["CUDA_VISIBLE_DEVICES"] == ",".join(
             [str(i) for i in gpu_ids]  # noqa
         )
@@ -485,7 +488,10 @@ def test_neuron_core_ids(shutdown_only):
 
     def get_neuron_core_ids(num_neuron_cores_per_worker):
         neuron_core_ids = ray.get_neuron_core_ids()
+        gpu_ids = ray.get_gpu_ids()
         assert len(neuron_core_ids) == num_neuron_cores_per_worker
+        # Either GPU or NeuronCore.
+        assert len(gpu_ids) == 0
         cores = os.environ.get("NEURON_RT_VISIBLE_CORES")
         if cores is not None:
             assert cores == ",".join([str(i) for i in neuron_core_ids])  # noqa

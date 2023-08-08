@@ -41,10 +41,10 @@ from google.protobuf import json_format
 
 import ray
 import ray._private.ray_constants as ray_constants
+import ray.util.accelerators.accelerators as accelerators
 from ray.core.generated.runtime_env_common_pb2 import (
     RuntimeEnvInfo as ProtoRuntimeEnvInfo,
 )
-from ray.util.accelerators.accelerators import AWS_NEURON_CORE
 
 if TYPE_CHECKING:
     from ray.runtime_env import RuntimeEnv
@@ -315,7 +315,8 @@ def _get_visible_ids(env_var: str):
     return list(visible_ids_str.split(","))
 
 
-last_set_visible_ids = None
+last_set_gpu_ids = None
+last_set_neuron_core_ids = None
 
 
 def set_omp_num_threads_if_unset() -> bool:
@@ -366,18 +367,26 @@ def set_cuda_visible_devices(gpu_ids):
     """
     if os.environ.get(ray_constants.NOSET_CUDA_VISIBLE_DEVICES_ENV_VAR):
         return
+    global last_set_gpu_ids
+    if last_set_gpu_ids == gpu_ids:
+        return  # optimization: already set
     set_visible_ids(gpu_ids, "CUDA_VISIBLE_DEVICES")
+    last_set_gpu_ids = gpu_ids
 
 
-def set_aws_neuron_core_visible_ids(core_ids):
+def set_aws_neuron_core_visible_ids(neuron_core_ids):
     """Set the NEURON_RT_VISIBLE_CORES environment variable.
 
     Args:
-        core_ids (List[str]): List of strings representing core IDs.
+        neuron_core_ids (List[str]): List of strings representing core IDs.
     """
     if os.environ.get(ray_constants.NOSET_AWS_NEURON_VISIBLE_CORES_ENV_VAR):
         return
-    set_visible_ids(core_ids, "NEURON_RT_VISIBLE_CORES")
+    global last_set_neuron_core_ids
+    if last_set_neuron_core_ids == neuron_core_ids:
+        return  # optimization: already set
+    set_visible_ids(neuron_core_ids, "NEURON_RT_VISIBLE_CORES")
+    last_set_neuron_core_ids = neuron_core_ids
 
 
 def set_visible_ids(visible_ids, env_var: str):
@@ -388,13 +397,7 @@ def set_visible_ids(visible_ids, env_var: str):
         env_var: Environment variable to set based on GPU runtime.
 
     """
-
-    global last_set_visible_ids
-    if last_set_visible_ids == visible_ids:
-        return  # optimization: already set
-
     os.environ[env_var] = ",".join([str(i) for i in visible_ids])
-    last_set_visible_ids = visible_ids
 
 
 def get_neuron_core_constraint_name():
@@ -403,7 +406,7 @@ def get_neuron_core_constraint_name():
     Returns:
         (str) The constraint name.
     """
-    return get_constraint_name(AWS_NEURON_CORE)
+    return get_constraint_name(accelerators.AWS_NEURON_CORE)
 
 
 def get_constraint_name(pretty_name: str):

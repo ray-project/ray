@@ -401,7 +401,7 @@ AWS_NEURON_INSTANCE_MAP = {
     "trn1.2xlarge": 2,
     "trn1.32xlarge": 32,
     "trn1n.32xlarge": 32,
-    "inf2.2xlarge": 2,
+    "inf2.xlarge": 2,
     "inf2.8xlarge": 2,
     "inf2.24xlarge": 12,
     "inf2.48xlarge": 24,

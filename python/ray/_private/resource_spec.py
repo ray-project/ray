@@ -1,5 +1,4 @@
 import importlib.util
-import json
 import logging
 import os
 import re
@@ -8,9 +7,11 @@ import sys
 from collections import namedtuple
 from typing import Optional
 
+from ray._private.accelerator import update_resources_with_accelerator_type
+
 import ray
 import ray._private.ray_constants as ray_constants
-from ray._private.utils import get_neuron_core_constraint_name
+
 
 try:
     import GPUtil
@@ -200,39 +201,7 @@ class ResourceSpec(
         except Exception:
             logger.exception("Could not parse gpu information.")
 
-        # AWS NeuronCore detection and configuration
-        # 1. Check if the user specified num_neuron_cores in resources
-        num_neuron_cores = resources.get(ray_constants.NUM_NEURON_CORES, None)
-        # 2. Check if the user specified NEURON_RT_VISIBLE_CORES
-        neuron_core_ids = ray._private.utils.get_aws_neuron_core_visible_ids()
-        if (
-            num_neuron_cores is not None
-            and neuron_core_ids is not None
-            and num_neuron_cores > len(neuron_core_ids)
-        ):
-            raise ValueError(
-                f"Attempting to start raylet with {num_neuron_cores} "
-                f"neuron cores, but NEURON_RT_VISIBLE_CORES contains "
-                f"{neuron_core_ids}."
-            )
-        # 3. Auto-detect num_neuron_cores if not specified in resources
-        if num_neuron_cores is None:
-            num_neuron_cores = _autodetect_aws_neuron_cores()
-            # Don't use more neuron cores than allowed by NEURON_RT_VISIBLE_CORES.
-            if neuron_core_ids is not None:
-                num_neuron_cores = min(num_neuron_cores, len(neuron_core_ids))
-        if num_neuron_cores is not None:
-            if num_gpus is not None and num_gpus > 0:
-                raise ValueError("Cannot specify both num_gpus and num_neuron_cores.")
-
-            # 4. Update accelerator_type and num_neuron_cores with
-            # number of neuron cores detected or configured.
-            resources.update(
-                {
-                    ray_constants.NUM_NEURON_CORES: num_neuron_cores,
-                    get_neuron_core_constraint_name(): num_neuron_cores,
-                }
-            )
+        update_resources_with_accelerator_type(resources, num_gpus)
 
         # Choose a default object store size.
         system_memory = ray._private.utils.get_system_memory()
@@ -334,39 +303,6 @@ def _autodetect_num_gpus():
         lines = subprocess.check_output(cmdargs).splitlines()[1:]
         result = len([x.rstrip() for x in lines if x.startswith(b"NVIDIA")])
     return result
-
-
-def _autodetect_aws_neuron_cores():
-    """
-    Attempt to detect the number of Neuron cores on this machine.
-
-    Returns:
-        The number of Neuron cores if any were detected, otherwise None.
-    """
-    result = None
-    if sys.platform.startswith("linux") and os.path.isdir("/opt/aws/neuron/bin/"):
-        result = _get_neuron_core_count()
-    return result
-
-
-def _get_neuron_core_count():
-    """Get the number of Neuron cores on a machine based on neuron_path.
-
-    Returns:
-        The number of Neuron cores on this machine (Default to 0).
-    """
-    neuron_path = "/opt/aws/neuron/bin/"
-    nc_count: int = 0
-    result = subprocess.run(
-        [os.path.join(neuron_path, "neuron-ls"), "--json-output"],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-    )
-    if result.returncode == 0 and result.stdout:
-        json_out = json.loads(result.stdout)
-        for neuron_device in json_out:
-            nc_count += neuron_device["nc_count"]
-    return nc_count
 
 
 def _get_gpu_types_gputil():

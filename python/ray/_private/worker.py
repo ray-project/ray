@@ -867,7 +867,7 @@ def get_gpu_ids():
     return assigned_ids
 
 
-@PublicAPI
+@DeveloperAPI()
 @client_mode_hook
 def get_neuron_core_ids():
     """Get the IDs of the NeuronCores that are available to the worker.

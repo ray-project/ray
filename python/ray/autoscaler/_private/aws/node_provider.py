@@ -651,8 +651,10 @@ class AWSNodeProvider(NodeProvider):
                     )
                 # TODO: AWS SDK (public API) doesn't yet expose the NeuronCore
                 #  information, work-in-progress.
-                if ray_constants.AWS_NEURON_INSTANCE_MAP.contains(
+                if (
                     instance_type.lower()
+                    in ray_constants.AWS_NEURON_INSTANCE_MAP.keys()
+                    and gpus is None
                 ):
                     num_neuron_cores = ray_constants.AWS_NEURON_INSTANCE_MAP.get(
                         instance_type.lower()

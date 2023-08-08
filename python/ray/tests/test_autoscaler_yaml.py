@@ -148,7 +148,7 @@ class AutoscalingConfigTest(unittest.TestCase):
             "cpu_4_ondemand": new_config["available_node_types"]["cpu_4_ondemand"],
             "cpu_16_spot": new_config["available_node_types"]["cpu_16_spot"],
             "gpu_8_ondemand": new_config["available_node_types"]["gpu_8_ondemand"],
-            "gpu_inf_1_ondemand": {
+            "neuron_core_inf_1_ondemand": {
                 "node_config": {
                     "InstanceType": "inf2.xlarge",
                     "ImageId": "latest_dlami",
@@ -171,15 +171,15 @@ class AutoscalingConfigTest(unittest.TestCase):
             "GPU": 4,
             "accelerator_type:V100": 1,
         }
-        expected_available_node_types["gpu_inf_1_ondemand"]["resources"] = {
+        expected_available_node_types["neuron_core_inf_1_ondemand"]["resources"] = {
             "CPU": 4,
             "memory": 12025908428,
-            "GPU": 1,
-            "accelerator_type:Inferentia": 1,
+            "num_neuron_cores": 2,
+            "accelerator_type:aws-neuron-core": 2,
         }
         expected_available_node_types["cpu_16_spot"]["min_workers"] = 0
         expected_available_node_types["gpu_8_ondemand"]["min_workers"] = 0
-        expected_available_node_types["gpu_inf_1_ondemand"]["min_workers"] = 0
+        expected_available_node_types["neuron_core_inf_1_ondemand"]["min_workers"] = 0
 
         boto3_dict = {
             "InstanceTypes": [
