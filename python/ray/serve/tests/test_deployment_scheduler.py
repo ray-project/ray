@@ -41,7 +41,7 @@ def test_spread_deployment_scheduling_policy_upscale(ray_start_cluster):
                     actor_resources={"CPU": 1},
                     actor_options={},
                     actor_init_args=(),
-                    on_scheduled=lambda actor_handle: replica_actor_handles.append(
+                    on_scheduled=lambda actor_handle, placement_group: replica_actor_handles.append(
                         actor_handle
                     ),
                 ),
@@ -52,7 +52,7 @@ def test_spread_deployment_scheduling_policy_upscale(ray_start_cluster):
                     actor_resources={"CPU": 1},
                     actor_options={},
                     actor_init_args=(),
-                    on_scheduled=lambda actor_handle: replica_actor_handles.append(
+                    on_scheduled=lambda actor_handle, placement_group: replica_actor_handles.append(
                         actor_handle
                     ),
                 ),
@@ -116,7 +116,7 @@ def test_spread_deployment_scheduling_policy_downscale(ray_start_cluster):
                     actor_resources={"CPU": 1},
                     actor_options={},
                     actor_init_args=(),
-                    on_scheduled=lambda actor_handle: actor_handle,
+                    on_scheduled=lambda actor_handle, placement_group: actor_handle,
                 ),
             ]
         },
@@ -244,7 +244,7 @@ def test_driver_deployment_scheduling_policy_upscale(ray_start_cluster):
                     actor_resources={"CPU": 1},
                     actor_options={},
                     actor_init_args=(),
-                    on_scheduled=lambda actor_handle: replica_actor_handles.append(
+                    on_scheduled=lambda actor_handle, placement_group: replica_actor_handles.append(
                         actor_handle
                     ),
                 ),
@@ -255,7 +255,7 @@ def test_driver_deployment_scheduling_policy_upscale(ray_start_cluster):
                     actor_resources={"CPU": 1},
                     actor_options={},
                     actor_init_args=(),
-                    on_scheduled=lambda actor_handle: replica_actor_handles.append(
+                    on_scheduled=lambda actor_handle, placement_group: replica_actor_handles.append(
                         actor_handle
                     ),
                 ),
@@ -266,7 +266,7 @@ def test_driver_deployment_scheduling_policy_upscale(ray_start_cluster):
                     actor_resources={"CPU": 1},
                     actor_options={},
                     actor_init_args=(),
-                    on_scheduled=lambda actor_handle: replica_actor_handles.append(
+                    on_scheduled=lambda actor_handle, placement_group: replica_actor_handles.append(
                         actor_handle
                     ),
                 ),

@@ -440,7 +440,7 @@ class ActorReplicaWrapper:
     def on_scheduled(
         self,
         actor_handle: ActorHandle,
-        placement_group: Optional[PlacementGroup],
+        placement_group: Optional[PlacementGroup] = None,
     ):
         self._actor_handle = actor_handle
         self._placement_group = placement_group
@@ -2284,7 +2284,7 @@ class DeploymentStateManager:
 
         if len(leaked_pg_names) > 0:
             logger.warning(
-                f"Detected leaked placement groups: {leaked_pg_names}."
+                f"Detected leaked placement groups: {leaked_pg_names}. "
                 "The placement groups will be removed. This can happen in rare "
                 "circumstances when the controller crashes and should not cause any. "
                 "issues. If it happens repeatedly, please file an issue on GitHub."

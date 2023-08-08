@@ -206,12 +206,6 @@ class DeploymentScheduler:
                     if replica_scheduling_request.placement_group_strategy
                     else "PACK"
                 )
-                print(
-                    "IN DEPLOYMENT_SCHEDULER",
-                    "\n\tBUNDLES:", replica_scheduling_request.placement_group_bundles,
-                    "\n\tSTRATEGY:", strategy,
-                    "\n\tNAME:", replica_scheduling_request.actor_options["name"],
-                )
                 placement_group = ray.util.placement_group(
                     replica_scheduling_request.placement_group_bundles,
                     strategy=strategy,
@@ -232,7 +226,9 @@ class DeploymentScheduler:
 
             del self._pending_replicas[deployment_name][pending_replica_name]
             self._launching_replicas[deployment_name][pending_replica_name] = None
-            replica_scheduling_request.on_scheduled(actor_handle, placement_group)
+            replica_scheduling_request.on_scheduled(
+                actor_handle, placement_group=placement_group
+            )
 
     def _schedule_driver_deployment(self, deployment_name: str) -> None:
         if self._recovering_replicas[deployment_name]:
@@ -271,7 +267,7 @@ class DeploymentScheduler:
             self._launching_replicas[deployment_name][
                 pending_replica_name
             ] = target_node_id
-            replica_scheduling_request.on_scheduled(actor_handle)
+            replica_scheduling_request.on_scheduled(actor_handle, placement_group=None)
 
     def _get_replicas_to_stop(
         self, deployment_name: str, max_num_to_stop: int
