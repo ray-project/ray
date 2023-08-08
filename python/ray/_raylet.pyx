@@ -32,7 +32,6 @@ from typing import (
     Generator,
     AsyncGenerator
 )
-from concurrent.futures import ThreadPoolExecutor
 
 from libc.stdint cimport (
     int32_t,
