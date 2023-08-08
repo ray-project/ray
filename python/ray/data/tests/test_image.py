@@ -169,7 +169,7 @@ class TestReadImages:
                 self.model = resnet18(pretrained=True)
 
             def __call__(self, batch: np.ndarray):
-                torch_tensor = torch.as_tensor(batch["image"])
+                torch_tensor = torch.as_tensor(batch["out"])
                 return {"prediction": self.model(torch_tensor)}
 
         predictions = dataset.map_batches(

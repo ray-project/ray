@@ -166,14 +166,14 @@ If you're writing a longer example, or if object representations aren't relevant
         MaterializedDataset(
         num_blocks=...,
         num_rows=150,
-        schema={
-            sepal length (cm): double,
-            sepal width (cm): double,
-            petal length (cm): double,
-            petal width (cm): double,
-            target: int64,
-            petal area (cm^2): double
-        }
+            schema={
+                sepal length (cm): double,
+                sepal width (cm): double,
+                petal length (cm): double,
+                petal width (cm): double,
+                target: int64,
+                petal area (cm^2): double
+            }
         )
 
 When to use *literalinclude*

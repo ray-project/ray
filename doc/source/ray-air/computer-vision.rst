@@ -10,8 +10,6 @@ This guide explains how to perform common computer vision tasks like:
 * `Reading image data`_
 * `Transforming images`_
 * `Training vision models`_
-* `Batch predicting images`_
-* `Serving vision models`_
 
 Reading image data
 ------------------

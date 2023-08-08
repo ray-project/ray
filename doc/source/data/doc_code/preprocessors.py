@@ -101,6 +101,7 @@ predicted_probabilities = test_dataset.map_batches(
     XGBoostPredictorWrapper,
     compute=ray.data.ActorPoolStrategy(size=2),
     fn_constructor_kwargs={"checkpoint": checkpoint},
+    batch_format="pandas",
 )
 predicted_probabilities.show()
 # {'predictions': 0.09843720495700836}
