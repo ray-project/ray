@@ -41,6 +41,7 @@ from ray.serve._private.endpoint_state import EndpointState
 from ray.serve._private.http_state import HTTPProxyStateManager
 from ray.serve._private.logging_utils import (
     configure_component_logger,
+    configure_component_memory_profiler,
     get_component_logger_file_path,
 )
 from ray.serve._private.long_poll import LongPollHost
@@ -111,6 +112,9 @@ class ServeController:
         ), "Controller must be on the head node."
 
         configure_component_logger(
+            component_name="controller", component_id=str(os.getpid())
+        )
+        configure_component_memory_profiler(
             component_name="controller", component_id=str(os.getpid())
         )
         if RAY_SERVE_CONTROLLER_CALLBACK_IMPORT_PATH:
@@ -191,6 +195,12 @@ class ServeController:
         # Nodes where http proxy actors should run.
         self._http_proxy_nodes = set()
         self._update_http_proxy_nodes()
+
+        # Track the number of times the controller has started
+        metrics.Counter(
+            "serve_controller_num_starts",
+            description="The number of times that controller has started.",
+        ).inc()
 
     def check_alive(self) -> None:
         """No-op to check if this controller is alive."""
@@ -327,6 +337,10 @@ class ServeController:
                 )
                 if not self.done_recovering_event.is_set() and not any_recovering:
                     self.done_recovering_event.set()
+                    logger.info(
+                        "Finished recovering deployments after "
+                        f"{time.time() - start_time}s."
+                    )
             except Exception:
                 logger.exception("Exception updating deployment state.")
 

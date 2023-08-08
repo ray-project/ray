@@ -406,7 +406,8 @@ class TuneController:
     @property
     def experiment_path(self) -> str:
         if _use_storage_context():
-            return self._storage.experiment_path
+            return str(self._storage.storage_prefix / self._storage.experiment_fs_path)
+
         return self._legacy_remote_experiment_path or self._legacy_local_experiment_path
 
     def _create_checkpoint_manager(self):
@@ -1955,11 +1956,29 @@ class TuneController:
     ###
     # RESTORE
     def _schedule_trial_restore(self, trial: Trial) -> bool:
-        checkpoint = trial.checkpoint
-
         if _use_storage_context():
-            # TODO(justinvyu): Skipping restoration altogether for now.
-            return False
+            checkpoint_result = trial.checkpoint_manager.latest_checkpoint_result
+
+            if not checkpoint_result:
+                logger.debug(f"Not restoring trial {trial}: No checkpoint found.")
+                return False
+
+            # TODO(justinvyu): Is this really needed?
+            trial.restoring_from = checkpoint_result
+
+            method_name = "restore"
+            args = (checkpoint_result,)
+            self._schedule_trial_task(
+                trial=trial,
+                method_name=method_name,
+                args=args,
+                kwargs={},
+                on_result=self._on_restoring_result,
+                on_error=self._trial_task_failure,
+            )
+            return True
+
+        checkpoint = trial.checkpoint
 
         if checkpoint.dir_or_data is None:
             logger.debug(f"Not restoring trial {trial}: No checkpoint found.")
