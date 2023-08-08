@@ -610,6 +610,22 @@ py_test(
 )
 
 py_test(
+    name = "test_global_config",
+    size = "small",
+    srcs = ["ray_release/tests/test_global_config.py"],
+    exec_compatible_with = ["//:hermetic_python"],
+    tags = [
+        "release_unit",
+        "team:ci",
+    ],
+    deps = [
+        ":ray_release",
+        ":test_utils",
+        bk_require("pytest"),
+    ],
+)
+
+py_test(
     name = "test_glue",
     size = "small",
     srcs = ["ray_release/tests/test_glue.py"],
