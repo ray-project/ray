@@ -61,6 +61,7 @@ from ray.serve._private.utils import (
     record_serve_tag,
 )
 from ray.serve._private.application_state import ApplicationStateManager
+from ray.serve._private.cluster_node_accessor import ClusterNodeAccessor
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -127,10 +128,12 @@ class ServeController:
         # Used to read/write checkpoints.
         self.ray_worker_namespace = ray.get_runtime_context().namespace
         self.controller_name = controller_name
-        gcs_client = GcsClient(address=ray.get_runtime_context().gcs_address)
+        self.gcs_client = GcsClient(address=ray.get_runtime_context().gcs_address)
         kv_store_namespace = f"{self.controller_name}-{self.ray_worker_namespace}"
-        self.kv_store = RayInternalKVStore(kv_store_namespace, gcs_client)
-        self.snapshot_store = RayInternalKVStore(kv_store_namespace, gcs_client)
+        self.kv_store = RayInternalKVStore(kv_store_namespace, self.gcs_client)
+        self.snapshot_store = RayInternalKVStore(kv_store_namespace, self.gcs_client)
+        self.cluster_node_accessor = ClusterNodeAccessor(self.gcs_client)
+        self.cluster_node_accessor.update()
 
         # Dictionary of deployment_name -> proxy_name -> queue length.
         self.deployment_stats = defaultdict(lambda: defaultdict(dict))
@@ -146,7 +149,7 @@ class ServeController:
                 detached,
                 http_config,
                 self._controller_node_id,
-                gcs_client,
+                self.cluster_node_accessor,
             )
 
         self.endpoint_state = EndpointState(self.kv_store, self.long_poll_host)
@@ -295,6 +298,9 @@ class ServeController:
         (head node and nodes with deployment replicas).
         """
         new_http_proxy_nodes = self.deployment_state_manager.get_active_node_ids()
+        new_http_proxy_nodes = (
+            new_http_proxy_nodes - self.cluster_node_accessor.get_draining_node_ids()
+        )
         new_http_proxy_nodes.add(self._controller_node_id)
         self._http_proxy_nodes = new_http_proxy_nodes
 
@@ -307,6 +313,9 @@ class ServeController:
         start_time = time.time()
         while True:
             loop_start_time = time.time()
+
+            self.cluster_node_accessor.update()
+
             if self._shutting_down:
                 try:
                     self.shutdown()

@@ -34,7 +34,6 @@ from ray.actor import ActorHandle
 from ray.exceptions import RayTaskError
 from ray.serve._private.constants import (
     HTTP_PROXY_TIMEOUT,
-    RAY_GCS_RPC_TIMEOUT_S,
     SERVE_LOGGER_NAME,
 )
 from ray.types import ObjectRef
@@ -172,24 +171,6 @@ def format_actor_name(actor_name, controller_name=None, *modifiers):
         name += "-{}".format(modifier)
 
     return name
-
-
-def get_all_node_ids(gcs_client) -> List[Tuple[str, str]]:
-    """Get IDs for all live nodes in the cluster.
-
-    Returns a list of (node_id: str, ip_address: str). The node_id can be
-    passed into the Ray SchedulingPolicy API.
-    """
-    nodes = gcs_client.get_all_node_info(timeout=RAY_GCS_RPC_TIMEOUT_S)
-    node_ids = [
-        (ray.NodeID.from_binary(node_id).hex(), node["node_name"].decode("utf-8"))
-        for (node_id, node) in nodes.items()
-        if node["state"] == ray.core.generated.gcs_pb2.GcsNodeInfo.ALIVE
-    ]
-
-    # Sort on NodeID to ensure the ordering is deterministic across the cluster.
-    sorted(node_ids)
-    return node_ids
 
 
 def compute_iterable_delta(old: Iterable, new: Iterable) -> Tuple[set, set, set]:
