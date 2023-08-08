@@ -24,6 +24,7 @@ from ray.air.constants import (
     TIME_THIS_ITER_S,
     TRAINING_ITERATION,
 )
+from ray.train._internal.checkpoint_manager import _TrainingResult
 from ray.train._internal.storage import (
     _use_storage_context,
     StorageContext,
@@ -501,8 +502,6 @@ class Trainable:
         # User saves checkpoint
         checkpoint_dict_or_path = self.save_checkpoint(checkpoint_dir)
 
-        from ray.train._internal.checkpoint_manager import _TrainingResult
-
         if _use_storage_context() and isinstance(
             checkpoint_dict_or_path, _TrainingResult
         ):
@@ -869,8 +868,6 @@ class Trainable:
 
         """
         if _use_storage_context():
-            from ray.train._internal.checkpoint_manager import _TrainingResult
-
             checkpoint_result = checkpoint_path
             assert isinstance(checkpoint_result, _TrainingResult)
 

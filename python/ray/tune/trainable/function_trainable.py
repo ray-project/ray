@@ -9,7 +9,7 @@ import uuid
 import warnings
 from functools import partial
 from numbers import Number
-from typing import Any, Callable, Dict, Optional, Type, TYPE_CHECKING
+from typing import Any, Callable, Dict, Optional, Type
 
 from ray.air._internal.util import StartTraceback, RunnerThread
 import queue
@@ -20,6 +20,9 @@ from ray.air.constants import (
     _RESULT_FETCH_TIMEOUT,
     TIME_THIS_ITER_S,
 )
+from ray.train._checkpoint import Checkpoint as NewCheckpoint
+from ray.train._internal.storage import _use_storage_context
+from ray.train._internal.checkpoint_manager import _TrainingResult
 from ray.tune import TuneError
 from ray.tune.execution.placement_groups import PlacementGroupFactory
 from ray.tune.trainable import session
@@ -36,9 +39,6 @@ from ray.tune.utils import (
 )
 from ray.util.annotations import DeveloperAPI
 from ray.util.debug import log_once
-
-if TYPE_CHECKING:
-    from ray.train._internal.checkpoint_manager import _TrainingResult
 
 
 logger = logging.getLogger(__name__)
@@ -249,8 +249,6 @@ class _StatusReporter:
         return self._fresh_checkpoint
 
     def get_checkpoint_result(self) -> Optional["_TrainingResult"]:
-        from ray.train._internal.storage import _use_storage_context
-
         assert _use_storage_context()
         # The checkpoint is no longer fresh after it's been handed off to Tune.
         self._fresh_checkpoint = False
@@ -267,10 +265,6 @@ class _StatusReporter:
         self._last_report_time = time.time()
 
     def report(self, metrics: Dict, *, checkpoint: Optional[Checkpoint] = None) -> None:
-        from ray.train._internal.storage import _use_storage_context
-        from ray.train._internal.checkpoint_manager import _TrainingResult
-        from ray.train._checkpoint import Checkpoint as NewCheckpoint
-
         # TODO(xwjiang): Tons of optimizations.
         self._air_session_has_reported = True
 
@@ -301,9 +295,6 @@ class _StatusReporter:
 
     @property
     def loaded_checkpoint(self) -> Optional[Checkpoint]:
-        from ray.train._internal.storage import _use_storage_context
-        from ray.train._internal.checkpoint_manager import _TrainingResult
-
         if _use_storage_context():
             if not self._latest_checkpoint_result:
                 return None
@@ -502,8 +493,6 @@ class FunctionTrainable(Trainable):
     def get_state(self):
         state = super().get_state()
 
-        from ray.train._internal.storage import _use_storage_context
-
         if _use_storage_context():
             # TODO(justinvyu): This is only used to populate the tune metadata
             # file within the checkpoint, so can be removed after if remove
@@ -518,9 +507,6 @@ class FunctionTrainable(Trainable):
     def save_checkpoint(self, checkpoint_dir: str = ""):
         if checkpoint_dir:
             raise ValueError("Checkpoint dir should not be used with function API.")
-
-        from ray.train._internal.storage import _use_storage_context
-        from ray.train._internal.checkpoint_manager import _TrainingResult
 
         if _use_storage_context():
             checkpoint_result = self._status_reporter.get_checkpoint_result()
@@ -566,9 +552,6 @@ class FunctionTrainable(Trainable):
         return checkpoint.to_bytes()
 
     def load_checkpoint(self, checkpoint):
-        from ray.train._internal.storage import _use_storage_context
-        from ray.train._internal.checkpoint_manager import _TrainingResult
-
         if _use_storage_context():
             checkpoint_result = checkpoint
             assert isinstance(checkpoint_result, _TrainingResult)
