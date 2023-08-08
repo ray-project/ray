@@ -852,7 +852,8 @@ void GcsPlacementGroupManager::Tick() {
       std::chrono::milliseconds(1000) /* milliseconds */);
 }
 
-void GcsPlacementGroupManager::UpdatePlacementGroupLoad() {
+std::shared_ptr<rpc::PlacementGroupLoad> GcsPlacementGroupManager::GetPlacementGroupLoad()
+    const {
   std::shared_ptr<rpc::PlacementGroupLoad> placement_group_load =
       std::make_shared<rpc::PlacementGroupLoad>();
   int total_cnt = 0;
@@ -877,7 +878,14 @@ void GcsPlacementGroupManager::UpdatePlacementGroupLoad() {
       break;
     }
   }
-  gcs_resource_manager_.UpdatePlacementGroupLoad(std::move(placement_group_load));
+
+  return placement_group_load;
+}
+
+void GcsPlacementGroupManager::UpdatePlacementGroupLoad() {
+  // TODO(rickyx): We should remove this, no other callers other than autoscaler
+  // use this info.
+  gcs_resource_manager_.UpdatePlacementGroupLoad(GetPlacementGroupLoad());
 }
 
 void GcsPlacementGroupManager::Initialize(const GcsInitData &gcs_init_data) {
