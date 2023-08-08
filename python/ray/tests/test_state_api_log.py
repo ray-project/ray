@@ -454,8 +454,8 @@ async def generate_logs_stream(num_chunks: int):
 async def test_logs_manager_list_logs(logs_manager):
     logs_client = logs_manager.data_source_client
 
-    logs_client.get_all_registered_agent_ids = MagicMock()
-    logs_client.get_all_registered_agent_ids.return_value = ["1", "2"]
+    logs_client.get_all_registered_log_agent_ids = MagicMock()
+    logs_client.get_all_registered_log_agent_ids.return_value = ["1", "2"]
 
     logs_client.list_logs.side_effect = [
         generate_list_logs(["gcs_server.out"]),
@@ -472,7 +472,7 @@ async def test_logs_manager_list_logs(logs_manager):
     assert len(result) == 1
     assert result["gcs_server"] == ["gcs_server.out"]
     assert result["raylet"] == []
-    logs_client.get_all_registered_agent_ids.assert_called()
+    logs_client.get_all_registered_log_agent_ids.assert_called()
     logs_client.list_logs.assert_awaited_with("2", "*gcs*", timeout=30)
 
     # The second call raises DataSourceUnavailable, which will
@@ -495,8 +495,8 @@ async def test_logs_manager_resolve_file(logs_manager):
     Test filename is given.
     """
     logs_client = logs_manager.data_source_client
-    logs_client.get_all_registered_agent_ids = MagicMock()
-    logs_client.get_all_registered_agent_ids.return_value = [node_id.hex()]
+    logs_client.get_all_registered_log_agent_ids = MagicMock()
+    logs_client.get_all_registered_log_agent_ids.return_value = [node_id.hex()]
     expected_filename = "filename"
     res = await logs_manager.resolve_filename(
         node_id=node_id.hex(),
@@ -718,8 +718,8 @@ async def test_logs_manager_stream_log(logs_manager):
     NUM_LOG_CHUNKS = 10
     logs_client = logs_manager.data_source_client
 
-    logs_client.get_all_registered_agent_ids = MagicMock()
-    logs_client.get_all_registered_agent_ids.return_value = ["1", "2"]
+    logs_client.get_all_registered_log_agent_ids = MagicMock()
+    logs_client.get_all_registered_log_agent_ids.return_value = ["1", "2"]
     logs_client.ip_to_node_id = MagicMock()
     logs_client.stream_log.return_value = generate_logs_stream(NUM_LOG_CHUNKS)
 
@@ -791,8 +791,8 @@ async def test_logs_manager_keepalive_no_timeout(logs_manager):
     NUM_LOG_CHUNKS = 10
     logs_client = logs_manager.data_source_client
 
-    logs_client.get_all_registered_agent_ids = MagicMock()
-    logs_client.get_all_registered_agent_ids.return_value = ["1", "2"]
+    logs_client.get_all_registered_log_agent_ids = MagicMock()
+    logs_client.get_all_registered_log_agent_ids.return_value = ["1", "2"]
     logs_client.ip_to_node_id = MagicMock()
     logs_client.stream_log.return_value = generate_logs_stream(NUM_LOG_CHUNKS)
 

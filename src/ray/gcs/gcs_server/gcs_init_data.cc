@@ -17,8 +17,8 @@
 namespace ray {
 namespace gcs {
 void GcsInitData::AsyncLoad(const EmptyCallback &on_done) {
-  // There are 6 kinds of table data need to be loaded.
-  auto count_down = std::make_shared<int>(6);
+  // There are 5 kinds of table data need to be loaded.
+  auto count_down = std::make_shared<int>(5);
   auto on_load_finished = [count_down, on_done] {
     if (--(*count_down) == 0) {
       if (on_done) {
@@ -30,8 +30,6 @@ void GcsInitData::AsyncLoad(const EmptyCallback &on_done) {
   AsyncLoadJobTableData(on_load_finished);
 
   AsyncLoadNodeTableData(on_load_finished);
-
-  AsyncLoadResourceTableData(on_load_finished);
 
   AsyncLoadActorTableData(on_load_finished);
 
@@ -62,19 +60,6 @@ void GcsInitData::AsyncLoadNodeTableData(const EmptyCallback &on_done) {
         on_done();
       };
   RAY_CHECK_OK(gcs_table_storage_->NodeTable().GetAll(load_node_table_data_callback));
-}
-
-void GcsInitData::AsyncLoadResourceTableData(const EmptyCallback &on_done) {
-  RAY_LOG(INFO) << "Loading cluster resources table data.";
-  auto load_resource_table_data_callback =
-      [this, on_done](absl::flat_hash_map<NodeID, rpc::ResourceMap> &&result) {
-        resource_table_data_ = std::move(result);
-        RAY_LOG(INFO) << "Finished loading cluster resources table data, size = "
-                      << resource_table_data_.size();
-        on_done();
-      };
-  RAY_CHECK_OK(
-      gcs_table_storage_->NodeResourceTable().GetAll(load_resource_table_data_callback));
 }
 
 void GcsInitData::AsyncLoadPlacementGroupTableData(const EmptyCallback &on_done) {
