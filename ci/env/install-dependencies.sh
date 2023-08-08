@@ -80,17 +80,9 @@ install_miniconda() {
     conda="$(command -v conda || true)"
   fi
 
-  if [ ! -x "${conda}" ] || [ "${MINIMAL_INSTALL-}" = 1 ] || [ "${PYTHON}" = "3.7" ]; then
-    # If no conda is found, install it
+  if [ ! -x "${conda}" ] || [ "${MINIMAL_INSTALL-}" = 1 ]; then  # If no conda is found, install it
     local miniconda_dir  # Keep directories user-independent, to help with Bazel caching
-
-    local miniconda_version="Miniconda3-py37_23.1.0-1"
-#    if [ "${PYTHON}" = "3.7" ]; then
-#      local miniconda_version="Miniconda3-py37_23.1.0-1"
-#    else
-#      local miniconda_version="Miniconda3-latest"
-#    fi
-
+    local miniconda_version="Miniconda3-py38_23.1.0-1"
     local miniconda_platform=""
     local exe_suffix=".sh"
 
@@ -102,7 +94,6 @@ install_miniconda() {
       darwin*)
         if [ "$(uname -m)" = "arm64" ]; then
           HOSTTYPE="arm64"
-          miniconda_version="Miniconda3-latest"
           miniconda_dir="/opt/homebrew/opt/miniconda"
         else
           HOSTTYPE="x86_64"
