@@ -58,8 +58,7 @@ class SortKey:
         elif isinstance(descending, list):
             if len(descending) != len(key):
                 raise ValueError(
-                    f"Descending must be a boolean or a list of booleans, "
-                    f"but got {descending}."
+                    "Length of `descending` does not match the length of the key."
                 )
             if len(set(descending)) != 1:
                 raise ValueError("Sorting with mixed key orders not supported yet.")

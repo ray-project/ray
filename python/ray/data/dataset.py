@@ -2175,7 +2175,7 @@ class Dataset:
         Args:
             key: The column or a list of columns to sort by.
             descending: Whether to sort in descending order. Must be a boolean or a list
-                of booleans matching the number of the colunns.
+                of booleans matching the number of the columns.
 
         Returns:
             A new, sorted :class:`Dataset`.

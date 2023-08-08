@@ -104,14 +104,18 @@ class SortTaskSpec(ExchangeTaskSpec):
         samples = builder.build()
 
         sample_dict = BlockAccessor.for_block(samples).to_numpy(columns=columns)
-        indices = np.lexsort(list(reversed(list(sample_dict.values()))))
-        sample_dict = {
-            k: [
-                np.quantile(v[indices], q, interpolation="nearest")
+        # Compute sorted indices of the samples. In np.lexsort last key is the
+        # primary key hence have to reverse the order.
+        indices = np.lexsort(list(reversed(sample_dict.values())))
+        # Sort each column by indices, and calculate q-ths quantile items
+        # Ignore the 1st item as it's not required for the boundary
+        for k, v in sample_dict.items():
+            sorted_v = v[indices]
+            sample_dict[k] = [
+                np.quantile(sorted_v, q, interpolation="nearest")
                 for q in np.linspace(0, 1, num_reducers)
             ][1:]
-            for k, v in sample_dict.items()
-        }
+        # Return tuples of sample values
         return [
             tuple(sample_dict[k][i] for k in sample_dict)
             for i in range(num_reducers - 1)
