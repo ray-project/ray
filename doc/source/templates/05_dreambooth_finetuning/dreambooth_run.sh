@@ -7,6 +7,7 @@ set -xe
 pushd dreambooth || true
 
 # Step 0 cont
+# __preparation_start__
 # TODO: If running on multiple nodes, change this path to a shared directory (ex: NFS)
 export DATA_PREFIX="/tmp"
 export ORIG_MODEL_NAME="CompVis/stable-diffusion-v1-4"
@@ -21,21 +22,22 @@ export IMAGES_NEW_DIR="$DATA_PREFIX/images-new"
 export NUM_WORKERS=2
 
 mkdir -p $ORIG_MODEL_DIR $TUNED_MODEL_DIR $IMAGES_REG_DIR $IMAGES_OWN_DIR $IMAGES_NEW_DIR
+# __preparation_end__
 
 # Unique token to identify our subject (e.g., a random dog vs. our unqtkn dog)
 export UNIQUE_TOKEN="unqtkn"
 
-skip_image_download=false
+skip_image_setup=false
 use_lora=false
 # parse args
 for arg in "$@"; do
   case $arg in
-    --skip_image_download)
-      echo "Option --skip_image_download is set"
-      skip_image_download=true
+    --skip_image_setup)
+      echo "Option --skip_image_setup is set"
+      skip_image_setup=true
       ;;
-    --use_lora)
-      echo "Option --use_lora is set"
+    --lora)
+      echo "Option --lora is set"
       use_lora=true
       ;;
     *)
@@ -45,10 +47,13 @@ for arg in "$@"; do
 done
 
 # Step 1
+# __cache_model_start__
 python cache_model.py --model_dir=$ORIG_MODEL_DIR --model_name=$ORIG_MODEL_NAME --revision=$ORIG_MODEL_HASH
+# __cache_model_end__
 
 download_image() {
   # Step 2
+  # __supply_own_images_start__
   # Only uncomment one of the following:
 
   # Option 1: Use the dog dataset ---------
@@ -69,6 +74,7 @@ download_image() {
 
   # Copy own images into IMAGES_OWN_DIR
   cp -rf $INSTANCE_DIR/* "$IMAGES_OWN_DIR/"
+  # __supply_own_images_end__
 
   # Clear reg dir
   rm -rf "$IMAGES_REG_DIR"/*.jpg
@@ -83,9 +89,9 @@ download_image() {
   # Step 3: END
 }
 
-# Skip step 2 and 3 if skip_image_download=true
+# Skip step 2 and 3 if skip_image_setup=true
 
-if $skip_image_download; then
+if $skip_image_setup; then
   echo "Skipping image downloading..."
 else
   download_image
@@ -127,7 +133,7 @@ fi
 # Clear new dir
 rm -rf "$IMAGES_NEW_DIR"/*.jpg
 
-if !use_lora; then
+if ! ((use_lora)); then
   # Step 5: START
   python generate.py \
     --model_dir=$TUNED_MODEL_DIR \

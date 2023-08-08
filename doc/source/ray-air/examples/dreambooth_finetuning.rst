@@ -223,11 +223,23 @@ Prepare some directories and environment variables.
 
 .. literalinclude:: /templates/05_dreambooth_finetuning/dreambooth_run.sh
   :language: bash
-  :start-after: Step 0 cont
-  :end-at: export UNIQUE_TOKEN
+  :start-after: __preparation_start__
+  :end-before: __preparation_end__
 
 
-Step 1: Supply images of your subject
+Step 1: Download the pre-trained model
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Download and cache a pre-trained Stable-Diffusion model locally.
+
+.. literalinclude:: /templates/05_dreambooth_finetuning/dreambooth_run.sh
+  :language: bash
+  :start-after: __cache_model_start__
+  :end-before: __cache_model_end__
+
+You can access the downloaded model checkpoint at the ``$ORIG_MODEL_PATH``.
+
+Step 2: Supply images of your subject
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 Use one of the sample datasets (dog, lego car), or provide your own directory
@@ -237,25 +249,13 @@ Then, we copy these images to ``$IMAGES_OWN_DIR``.
 
 .. literalinclude:: /templates/05_dreambooth_finetuning/dreambooth_run.sh
   :language: bash
-  :start-after: Step 1
-  :end-at: cp -rf $INSTANCE_DIR/*
+  :start-after: __supply_own_images_start__
+  :end-before: __supply_own_images_end__
 
 The ``$CLASS_NAME`` should be the general category of your subject.
 The images produced by the prompt ``photo of a unqtkn <class>`` should be diverse images
 that are different enough from the subject in order for generated images to clearly
 show the effect of fine-tuning.
-
-Step 2: Download the pre-trained model
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-Download and cache a pre-trained Stable-Diffusion model locally.
-
-.. literalinclude:: /templates/05_dreambooth_finetuning/dreambooth_run.sh
-  :language: bash
-  :start-after: Step 2
-  :end-at: python cache_model.py
-
-You can access the downloaded model checkpoint at the ``$ORIG_MODEL_PATH``.
 
 Step 3: Create the regularization images
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

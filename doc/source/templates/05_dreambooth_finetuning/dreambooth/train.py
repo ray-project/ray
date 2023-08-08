@@ -197,6 +197,8 @@ def train_fn(config):
 
     text_encoder = train.torch.prepare_model(text_encoder)
     unet = train.torch.prepare_model(unet)
+    # manually move to device as `prepare_model` can't be used on
+    # non-training models.
     vae = vae.to(train.torch.get_device())
 
     # Use the regular AdamW optimizer to work with bfloat16 weights.
