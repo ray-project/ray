@@ -5523,21 +5523,21 @@
       cluster:
         cluster_compute: distributed_gce.yaml
 
-- name: many_generator_actor_tasks
-  group: core-scalability-test
-  working_dir: benchmarks
+# - name: many_generator_actor_tasks
+#   group: core-scalability-test
+#   working_dir: benchmarks
 
-  frequency: nightly
-  team: core
-  cluster:
-    cluster_env: app_config.yaml
-    cluster_compute: distributed.yaml
+#   frequency: nightly
+#   team: core
+#   cluster:
+#     cluster_env: app_config.yaml
+#     cluster_compute: distributed.yaml
 
-  run:
-    timeout: 3600
-    script: python distributed/test_many_generator_actor_tasks.py
-    wait_for_nodes:
-      num_nodes: 65
+#   run:
+#     timeout: 3600
+#     script: python distributed/test_many_generator_actor_tasks.py
+#     wait_for_nodes:
+#       num_nodes: 65
 
 - name: many_pgs
   group: core-scalability-test
