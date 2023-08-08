@@ -70,14 +70,14 @@ def train_func_per_worker(config: Dict):
     # Build datasets inside worker training function
     train_dataloader, test_dataloader = build_dataset(batch_size=batch_size)
 
-    # [2] Prepare Dataloader for distributed training
+    # [1] Prepare Dataloader for distributed training
     # ===============================================
     train_dataloader = ray.train.torch.prepare_data_loader(train_dataloader)
     test_dataloader = ray.train.torch.prepare_data_loader(test_dataloader)
 
     model = NeuralNetwork()
 
-    # [3] Prepare and wrap your model with DistributedDataParallel
+    # [2] Prepare and wrap your model with DistributedDataParallel
     # ============================================================
     model = ray.train.torch.prepare_model(model)
 
@@ -109,7 +109,7 @@ def train_func_per_worker(config: Dict):
         test_loss /= len(test_dataloader)
         accuracy = num_correct / num_total
 
-        # [4] Report metrics to Ray Train
+        # [3] Report metrics to Ray Train
         # ==============================
         ray.train.report(metrics={"test_loss": test_loss, "accuracy": accuracy})
 
