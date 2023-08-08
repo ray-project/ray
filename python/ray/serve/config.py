@@ -549,6 +549,7 @@ class ReplicaConfig:
 class DeploymentMode(str, Enum):
     NoServer = "NoServer"
     HeadOnly = "HeadOnly"
+    WorkersOnly = "WorkersOnly"
     EveryNode = "EveryNode"
     FixedNumber = "FixedNumber"
 
