@@ -39,6 +39,36 @@ def test_basic_dataset(ray_start_regular_shared):
     # assert it.stats() == ds.stats()
 
 
+def test_basic_dataset_multi_use_iterator(ray_start_regular_shared):
+    """Tests that the iterable outputted by `iter_batches` can be used
+    multiple times."""
+    ds = ray.data.range(100)
+    it = ds.iterator().iter_batches()
+    for _ in range(2):
+        result = []
+        for batch in it:
+            batch = batch["id"]
+            result += batch.tolist()
+        assert result == list(range(100))
+
+
+def test_basic_dataset_preemption(ray_start_regular_shared):
+    """Tests that the iterable outputted by ``iter_batches``
+    can be used multiple times even if it is preempted during iteration."""
+
+    ds = ray.data.range(100)
+    it = ds.iterator().iter_batches(batch_size=50)
+    for _ in range(2):
+        result = []
+        for i, batch in enumerate(it):
+            if i > 0:
+                break
+            batch = batch["id"]
+            result += batch.tolist()
+
+        assert result == list(range(50))
+
+
 def test_basic_dataset_iter_rows(ray_start_regular_shared):
     ds = ray.data.range(100)
     it = ds.iterator()
@@ -156,6 +186,18 @@ def test_torch_conversion(ray_start_regular_shared):
         callable(kwargs["_collate_fn"]) and callable(kwargs["_finalize_fn"])
         for kwargs in iter_batches_calls_kwargs
     ), iter_batches_calls_kwargs
+
+
+def test_torch_multi_use_iterator(ray_start_regular_shared):
+    """Tests that the iterator outputted by `iter_torch_batches` can be used
+    multiple times."""
+    ds = ray.data.range(5)
+    it = ds.iterator().iter_torch_batches()
+
+    for _ in range(2):
+        for batch in it:
+            assert isinstance(batch["id"], torch.Tensor)
+            assert batch["id"].tolist() == list(range(5))
 
 
 def test_torch_conversion_pipeline(ray_start_regular_shared):

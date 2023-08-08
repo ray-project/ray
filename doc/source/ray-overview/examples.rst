@@ -50,7 +50,7 @@ Ray Examples
 
     .. grid-item-card:: :bdg-primary:`Blog`
         :class-item: gallery-item training serving huggingface llm
-        :link: https://www.anyscale.com/blog/how-to-fine-tune-and-serve-llms-simply-quickly-and-cost-effectively-using
+        :link: https://www.anyscale.com/blog/how-to-fine-tune-and-serve-llms
 
         How to fine tune and serve LLMs simply, quickly and cost effectively using Ray + DeepSpeed + HuggingFace
 
@@ -233,20 +233,6 @@ Ray Examples
         :link-type: doc
 
         How to log results and upload models to Weights and Biases
-
-    .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item
-        :link: /ray-air/examples/rl_online_example
-        :link-type: doc
-
-        RL Online Learning with Ray AIR
-
-    .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item
-        :link: /ray-air/examples/rl_offline_example
-        :link-type: doc
-
-        RL Offline Learning with Ray AIR
 
     .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item pytorch
@@ -867,7 +853,7 @@ Ray Examples
 
     .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item rl rllib
-        :link: https://github.com/ray-project/ray/blob/master/rllib/examples/custom_loss.py
+        :link: https://github.com/ray-project/ray/blob/master/rllib/examples/custom_model_loss_and_metrics.py
 
         Example of defining and registering a custom model with a supervised loss.
 

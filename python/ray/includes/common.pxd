@@ -395,7 +395,8 @@ cdef extern from "ray/gcs/gcs_client/gcs_client.h" nogil:
             int64_t timeout_ms, c_vector[CJobTableData]& result)
         CRayStatus RequestClusterResourceConstraint(
             int64_t timeout_ms,
-            const c_vector[unordered_map[c_string, double]] &bundles)
+            const c_vector[unordered_map[c_string, double]] &bundles,
+            const c_vector[int64_t] &count_array)
         CRayStatus GetClusterStatus(
             int64_t timeout_ms,
             c_string &serialized_reply)
@@ -476,6 +477,7 @@ cdef extern from "src/ray/protobuf/gcs.pb.h" nogil:
         c_string object_store_socket_name() const
         c_string raylet_socket_name() const
         int metrics_export_port() const
+        int runtime_env_agent_port() const
         void ParseFromString(const c_string &serialized)
 
     cdef enum CGcsNodeState "ray::rpc::GcsNodeInfo_GcsNodeState":

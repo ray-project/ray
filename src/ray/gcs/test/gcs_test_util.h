@@ -344,6 +344,16 @@ struct Mocker {
     data.set_node_id(node_id);
   }
 
+  static std::shared_ptr<rpc::PlacementGroupLoad> GenPlacementGroupLoad(
+      std::vector<rpc::PlacementGroupTableData> placement_group_table_data_vec) {
+    auto placement_group_load = std::make_shared<rpc::PlacementGroupLoad>();
+    for (auto &placement_group_table_data : placement_group_table_data_vec) {
+      placement_group_load->add_placement_group_data()->CopyFrom(
+          placement_group_table_data);
+    }
+    return placement_group_load;
+  }
+
   static rpc::PlacementGroupTableData GenPlacementGroupTableData(
       const PlacementGroupID &placement_group_id,
       const JobID &job_id,
@@ -378,11 +388,17 @@ struct Mocker {
     return placement_group_table_data;
   }
   static rpc::autoscaler::ClusterResourceConstraint GenClusterResourcesConstraint(
-      const std::vector<std::unordered_map<std::string, double>> &request_resources) {
+      const std::vector<std::unordered_map<std::string, double>> &request_resources,
+      const std::vector<int64_t> &count_array) {
     rpc::autoscaler::ClusterResourceConstraint constraint;
-    for (const auto &resource : request_resources) {
+    RAY_CHECK(request_resources.size() == count_array.size());
+    for (size_t i = 0; i < request_resources.size(); i++) {
+      auto &resource = request_resources[i];
+      auto count = count_array[i];
       auto bundle = constraint.add_min_bundles();
-      bundle->mutable_resources_bundle()->insert(resource.begin(), resource.end());
+      bundle->set_count(count);
+      bundle->mutable_request()->mutable_resources_bundle()->insert(resource.begin(),
+                                                                    resource.end());
     }
     return constraint;
   }

@@ -167,6 +167,26 @@ def test_callable_classes(shutdown_only):
     actor_reuse = ds.filter(StatefulFn, compute=ray.data.ActorPoolStrategy()).take()
     assert len(actor_reuse) == 9, actor_reuse
 
+    class StatefulFnWithArgs:
+        def __init__(self, arg, kwarg):
+            assert arg == 1
+            assert kwarg == 2
+
+        def __call__(self, x, arg, kwarg):
+            assert arg == 1
+            assert kwarg == 2
+            return x
+
+    # map_batches with args & kwargs
+    ds.map_batches(
+        StatefulFnWithArgs,
+        compute=ray.data.ActorPoolStrategy(),
+        fn_args=(1,),
+        fn_kwargs={"kwarg": 2},
+        fn_constructor_args=(1,),
+        fn_constructor_kwargs={"kwarg": 2},
+    ).take() == list(range(10))
+
 
 def test_concurrent_callable_classes(shutdown_only):
     """Test that concurrenct actor pool runs user UDF in a separate thread."""
@@ -839,6 +859,27 @@ def test_map_batches_combine_empty_blocks(ray_start_regular_shared):
 
     # The number of partitions should not affect the map_batches() result.
     assert ds1.take_all() == ds2.take_all()
+
+
+def test_map_batches_preserves_empty_block_format(ray_start_regular_shared):
+    """Tests that the block format for empty blocks are not modified."""
+
+    def empty_pandas(batch):
+        return pd.DataFrame({"x": []})
+
+    df = pd.DataFrame({"x": [1, 2, 3]})
+
+    # First map_batches creates the empty Pandas block.
+    # Applying subsequent map_batches should not change the type of the empty block.
+    ds = (
+        ray.data.from_pandas(df)
+        .map_batches(empty_pandas)
+        .map_batches(lambda x: x, batch_size=None)
+    )
+
+    block_refs = ds.get_internal_block_refs()
+    assert len(block_refs) == 1
+    assert type(ray.get(block_refs)[0]) == pd.DataFrame
 
 
 def test_random_sample(ray_start_regular_shared):
