@@ -143,7 +143,7 @@ storage (e.g. via NFS or EFS). In the example script below, you can adjust this 
 Training throughput
 ~~~~~~~~~~~~~~~~~~~
 
-We ran training using 1, 2, and 4 workers/GPUs to compare throughput.
+We ran training using 2, and 4 workers/GPUs to compare throughput.
 
 Setup:
 
@@ -152,33 +152,25 @@ Setup:
 * Data from this example
 * 200 regularization images
 * Training for 4 epochs (800 steps)
-* Use a mounted External File System to share data between nodes
-* 3 runs per configuration
-
-Because network storage can be slow, we excluded the time it takes to save the final model from the training time.
 
 We expect that the training time should benefit from scale and decreases when running with
 more workers and GPUs.
 
 
-.. image:: /templates/05_dreambooth_finetuning/dreambooth/images/dreambooth_training.png
-   :alt: DreamBooth training times
+
+
+.. .. image:: /templates/05_dreambooth_finetuning/dreambooth/images/dreambooth_training.png
+..    :alt: DreamBooth training times
 
 .. list-table::
    :header-rows: 1
 
-   * - Number of workers
-     - Number of GPUs
+   * - Number of workers/GPUs
      - Training time
-   * - 1
-     - 2
-     - 458.16 (3.82)
    * - 2
-     - 4
-     - 364.61 (1.65)
+     - 5min 4s
    * - 4
-     - 8
-     - 252.37 (3.18)
+     - 3min 25s
 
 
 While the training time decreases linearly with the amount of workers/GPUs, we observe some penalty.
