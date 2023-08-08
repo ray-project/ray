@@ -149,11 +149,9 @@ class TestReadImages:
         ]
 
     def test_e2e_prediction(self, shutdown_only):
+        import torch
         from torchvision import transforms
         from torchvision.models import resnet18
-
-        from ray.train.batch_predictor import BatchPredictor
-        from ray.train.torch import TorchCheckpoint, TorchPredictor
 
         ray.shutdown()
         ray.init(num_cpus=2)
@@ -166,10 +164,17 @@ class TestReadImages:
 
         dataset = dataset.map_batches(preprocess, batch_format="numpy")
 
-        model = resnet18(pretrained=True)
-        checkpoint = TorchCheckpoint.from_model(model=model)
-        predictor = BatchPredictor.from_checkpoint(checkpoint, TorchPredictor)
-        predictions = predictor.predict(dataset)
+        class Predictor:
+            def __init__(self):
+                self.model = resnet18(pretrained=True)
+
+            def __call__(self, batch: np.ndarray):
+                torch_tensor = torch.as_tensor(batch["image"])
+                return {"prediction": self.model(torch_tensor)}
+
+        predictions = dataset.map_batches(
+            Predictor, compute=ray.data.ActorPoolStrategy(size=2)
+        )
 
         for _ in predictions.iter_batches():
             pass

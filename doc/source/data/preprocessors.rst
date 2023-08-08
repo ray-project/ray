@@ -119,7 +119,7 @@ Predictor
 A ``Predictor`` can be constructed from a saved ``Checkpoint``. If the ``Checkpoint`` contains a ``Preprocessor``,
 then the ``Preprocessor`` calls ``transform_batch`` on input batches prior to performing inference.
 
-In the following example, we show the Batch Predictor flow.
+In the following example, we show the batch inference flow.
 
 .. literalinclude:: doc_code/preprocessors.py
     :language: python

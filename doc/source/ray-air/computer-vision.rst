@@ -204,71 +204,69 @@ Training vision models
 
         For more information, check out :ref:`the Ray Train documentation <train-docs>`.
 
-Creating checkpoints
---------------------
-
-:class:`Checkpoints <ray.train.Checkpoint>` are required for batch inference and model
-serving. They contain model state and optionally a preprocessor.
-
-If you're going from training to prediction, don't create a new checkpoint.
-:meth:`Trainer.fit() <ray.train.trainer.BaseTrainer.fit>` returns a
-:class:`~ray.train.Result` object. Use
-:attr:`Result.checkpoint <ray.train.Result.checkpoint>` instead.
-
-.. tab-set::
-
-    .. tab-item:: Torch
-
-        To create a :class:`~ray.train.torch.TorchCheckpoint`, pass a Torch model and
-        the :class:`~ray.data.preprocessor.Preprocessor` you created in `Transforming images`_
-        to :meth:`TorchCheckpoint.from_model() <ray.train.torch.TorchCheckpoint.from_model>`.
-
-        .. literalinclude:: ./doc_code/computer_vision.py
-            :start-after: __torch_checkpoint_start__
-            :end-before: __torch_checkpoint_stop__
-            :dedent:
-
-    .. tab-item:: TensorFlow
-
-        To create a :class:`~ray.train.tensorflow.TensorflowCheckpoint`, pass a TensorFlow model and
-        the :class:`~ray.data.preprocessor.Preprocessor` you created in `Transforming images`_
-        to :meth:`TensorflowCheckpoint.from_model() <ray.train.tensorflow.TensorflowCheckpoint.from_model>`.
-
-        .. literalinclude:: ./doc_code/computer_vision.py
-            :start-after: __tensorflow_checkpoint_start__
-            :end-before: __tensorflow_checkpoint_stop__
-            :dedent:
-
-
 Batch predicting images
 -----------------------
 
-:class:`~ray.train.batch_predictor.BatchPredictor` lets you perform inference on large
-image datasets.
+To perform inference with a pre-trained model on images, first load and transform your data.
 
-.. tab-set::
+.. testcode::
 
-    .. tab-item:: Torch
+    from typing import Any, Dict
+    from torchvision import transforms
+    import ray
 
-        To create a :class:`~ray.train.batch_predictor.BatchPredictor`, call
-        :meth:`BatchPredictor.from_checkpoint <ray.train.batch_predictor.BatchPredictor.from_checkpoint>` and pass the checkpoint
-        you created in `Creating checkpoints`_.
+    def transform_image(row: Dict[str, Any]) -> Dict[str, Any]:
+        transform = transforms.Compose([
+            transforms.ToTensor(),
+            transforms.Resize((32, 32))
+        ])
+        row["image"] = transform(row["image"])
+        return row
 
-        .. literalinclude:: ./doc_code/computer_vision.py
-            :start-after: __torch_batch_predictor_start__
-            :end-before: __torch_batch_predictor_stop__
-            :dedent:
+    ds = (
+        ray.data.read_images("s3://anonymous@ray-example-data/batoidea/JPEGImages")
+        .map(transform_image)
+    )
 
-    .. tab-item:: TensorFlow
+Next, implement a callable class that sets up and invokes your model.
 
-        To create a :class:`~ray.train.batch_predictor.BatchPredictor`, call
-        :meth:`BatchPredictor.from_checkpoint <ray.train.batch_predictor.BatchPredictor.from_checkpoint>` and pass the checkpoint
-        you created in `Creating checkpoints`_.
+.. testcode::
 
-        .. literalinclude:: ./doc_code/computer_vision.py
-            :start-after: __tensorflow_batch_predictor_start__
-            :end-before: __tensorflow_batch_predictor_stop__
-            :dedent:
+    import torch
+    from torchvision import models
+
+    class ImageClassifier:
+        def __init__(self):
+            weights = models.ResNet18_Weights.DEFAULT
+            self.model = models.resnet18(weights=weights)
+            self.model.eval()
+
+        def __call__(self, batch):
+            inputs = torch.from_numpy(batch["image"])
+            with torch.inference_mode():
+                outputs = self.model(inputs)
+            return {"class": outputs.argmax(dim=1)}
+
+Finally, call :meth:`Dataset.map_batches() <ray.data.Dataset.map_batches>`.
+
+.. testcode::
+
+    predictions = ds.map_batches(
+        ImageClassifier,
+        compute=ray.data.ActorPoolStrategy(size=2),
+        batch_size=4
+    )
+    predictions.show(3)
+
+.. testoutput::
+
+    {'class': 118}
+    {'class': 153}
+    {'class': 296}
+
+For more information on performing inference on images, see
+:ref:`End-to-end: Offline Batch Inference <batch_inference_home>`
+and :ref:`Working with images <working_with_images>`.
 
 Serving vision models
 ---------------------
