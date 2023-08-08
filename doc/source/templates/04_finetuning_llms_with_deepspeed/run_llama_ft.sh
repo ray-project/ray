@@ -81,7 +81,7 @@ do
     elif [[ "$arg" == "--lora" ]]; then
         params+=("--lora");
         params+=("--lr");
-        params+=("3e-4");
+        params+=("1e-4");
     fi
 done
 
