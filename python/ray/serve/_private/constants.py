@@ -118,6 +118,14 @@ PROXY_READY_CHECK_TIMEOUT_S = (
 #: being marked unhealthy.
 PROXY_HEALTH_CHECK_UNHEALTHY_THRESHOLD = 3
 
+# The minimum drain period for a HTTP proxy.
+PROXY_MIN_DRAINING_PERIOD_S = (
+    float(os.environ.get("RAY_SERVE_PROXY_MIN_DRAINING_PERIOD_S", "30")) or 30
+)
+# The time in seconds that the http proxy state waits before
+# rechecking whether the proxy actor is drained or not.
+PROXY_DRAIN_CHECK_PERIOD_S = 5
+
 #: Number of times in a row that a replica must fail the health check before
 #: being marked unhealthy.
 REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD = 3
@@ -229,4 +237,8 @@ RAY_SERVE_GAUGE_METRIC_SET_PERIOD_S = 1
 # fallen to the default routing strategy.
 RAY_SERVE_MULTIPLEXED_MODEL_ID_MATCHING_TIMEOUT_S = float(
     os.environ.get("RAY_SERVE_MULTIPLEXED_MODEL_ID_MATCHING_TIMEOUT_S", "1")
+
+# Enable memray in all Serve actors.
+RAY_SERVE_ENABLE_MEMORY_PROFILING = (
+    os.environ.get("RAY_SERVE_ENABLE_MEMORY_PROFILING", "0") == "1"
 )

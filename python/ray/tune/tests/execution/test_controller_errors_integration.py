@@ -5,7 +5,7 @@ import pytest
 import sys
 
 import ray
-from ray.air import CheckpointConfig
+from ray.train import CheckpointConfig
 from ray.air.execution import FixedResourceManager, PlacementGroupResourceManager
 from ray.tune import PlacementGroupFactory, TuneError
 from ray.tune.execution.tune_controller import TuneController
@@ -27,7 +27,7 @@ def create_mock_components():
     class _MockScheduler(FIFOScheduler):
         errored_trials = []
 
-        def on_trial_error(self, trial_runner, trial):
+        def on_trial_error(self, tune_controller, trial):
             self.errored_trials += [trial]
 
     class _MockSearchAlg(BasicVariantGenerator):
