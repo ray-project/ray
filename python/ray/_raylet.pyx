@@ -3238,6 +3238,9 @@ cdef class CoreWorker:
         logger.warning("Local object store memory usage:\n{}\n".format(
             message.decode("utf-8")))
 
+    def get_memory_store_size(self):
+        return CCoreWorkerProcess.GetCoreWorker().GetMemoryStoreSize()
+
     cdef python_label_match_expressions_to_c(
             self, python_expressions,
             CLabelMatchExpressions *c_expressions):

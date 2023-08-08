@@ -256,6 +256,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             int64_t item_index,
             uint64_t attempt_number)
         c_string MemoryUsageString()
+        int GetMemoryStoreSize()
 
         CWorkerContext &GetWorkerContext()
         void YieldCurrentFiber(CFiberEvent &coroutine_done)
