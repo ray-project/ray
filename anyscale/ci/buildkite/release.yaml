@@ -1,7 +1,7 @@
 steps:
   - name: "Nightly release tests"
     command:
-      - /bin/bash anyscale/ci/run-release-tests.sh nightly
+      - /bin/bash anyscale/ci/run-release-tests.sh
     artifact_paths:
       - "/artifacts/**/*"
     env:
