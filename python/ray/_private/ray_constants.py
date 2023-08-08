@@ -389,10 +389,12 @@ KV_NAMESPACE_FUNCTION_TABLE = b"fun"
 LANGUAGE_WORKER_TYPES = ["python", "java", "cpp"]
 
 # Accelerator constants
-NOSET_AWS_NEURON_VISIBLE_CORES_ENV_VAR = (
-    "RAY_EXPERIMENTAL_NOSET_AWS_NEURON_VISIBLE_CORES"
+NOSET_AWS_NEURON_RT_VISIBLE_CORES_ENV_VAR = (
+    "RAY_EXPERIMENTAL_NOSET_NEURON_RT_VISIBLE_CORES"
 )
 NOSET_CUDA_VISIBLE_DEVICES_ENV_VAR = "RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES"
+CUDA_VISIBLE_DEVICES_ENV_VAR = "CUDA_VISIBLE_DEVICES"
+NEURON_RT_VISIBLE_CORES_ENV_VAR = "NEURON_RT_VISIBLE_CORES"
 NUM_NEURON_CORES = "num_neuron_cores"
 # https://awsdocs-neuron.readthedocs-hosted.com/en/latest/general/arch/neuron-hardware/inf2-arch.html#aws-inf2-arch
 # https://awsdocs-neuron.readthedocs-hosted.com/en/latest/general/arch/neuron-hardware/trn1-arch.html#aws-trn1-arch

@@ -22,7 +22,6 @@ def test_gpu_ids(shutdown_only):
     def get_gpu_ids(num_gpus_per_worker):
         gpu_ids = ray.get_gpu_ids()
         assert len(gpu_ids) == num_gpus_per_worker
-        # Either GPU or NeuronCore.
         neuron_core_ids = ray.get_neuron_core_ids()
         assert len(neuron_core_ids) == 0
         assert os.environ["CUDA_VISIBLE_DEVICES"] == ",".join(
@@ -490,7 +489,6 @@ def test_neuron_core_ids(shutdown_only):
         neuron_core_ids = ray.get_neuron_core_ids()
         gpu_ids = ray.get_gpu_ids()
         assert len(neuron_core_ids) == num_neuron_cores_per_worker
-        # Either GPU or NeuronCore.
         assert len(gpu_ids) == 0
         cores = os.environ.get("NEURON_RT_VISIBLE_CORES")
         if cores is not None:
@@ -589,9 +587,52 @@ def test_neuron_core_ids(shutdown_only):
     assert ray.get(a2.test.remote()) == 2
 
 
-def test_gpu_and_neuron_cores_fails(shutdown_only):
+def test_gpu_and_neuron_cores(shutdown_only):
+    num_gpus = 2
+    num_nc = 2
+    accelerator_type = AWS_NEURON_CORE
+    ray.init(num_cpus=2, num_gpus=num_gpus, resources={"num_neuron_cores": num_nc})
+
+    def get_gpu_ids(num_gpus_per_worker):
+        gpu_ids = ray.get_gpu_ids()
+        assert len(gpu_ids) == num_gpus_per_worker
+        assert os.environ["CUDA_VISIBLE_DEVICES"] == ",".join(
+            [str(i) for i in gpu_ids]  # noqa
+        )
+        for gpu_id in gpu_ids:
+            assert gpu_id in range(num_gpus)
+        return gpu_ids
+
+    assert ray.remote(num_gpus=2)(lambda: get_gpu_ids(2)) == 2
+
+    def get_neuron_core_ids(num_neuron_cores_per_worker):
+        neuron_core_ids = ray.get_neuron_core_ids()
+        assert len(neuron_core_ids) == num_neuron_cores_per_worker
+        cores = os.environ.get("NEURON_RT_VISIBLE_CORES")
+        if cores is not None:
+            assert cores == ",".join([str(i) for i in neuron_core_ids])  # noqa
+        for neuron_core_id in neuron_core_ids:
+            assert neuron_core_id in range(num_nc)
+        return neuron_core_ids
+
+    assert (
+        ray.remote(resources={"num_neuron_cores": 2})(lambda: get_neuron_core_ids(2))
+        == 2
+    )
+    assert (
+        ray.remote(accelerator_type=accelerator_type)(lambda: get_neuron_core_ids(1))
+        == 1
+    )
+
     with pytest.raises(ValueError):
-        ray.init(num_gpus=1, resources={"num_neuron_cores": 1})
+        ray.remote(resources={"num_neuron_cores": 1}, num_gpus=1)(
+            lambda: get_neuron_core_ids(1)
+        )
+
+    with pytest.raises(ValueError):
+        ray.remote(accelerator_type=accelerator_type, num_gpus=1)(
+            lambda: get_neuron_core_ids(1)
+        )
 
 
 # TODO: 5 retry attempts may be too little for Travis and we may need to

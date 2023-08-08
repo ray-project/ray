@@ -38,6 +38,7 @@ py_test_module_list(
     "test_advanced_8.py",
     "test_advanced_9.py",
     "test_array.py",
+    "test_accelerator.py",
     "test_autoscaling_policy.py",
     "test_basic.py",
     "test_basic_2.py",

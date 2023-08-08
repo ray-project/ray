@@ -7,25 +7,43 @@ import ray._private.utils
 import ray._private.ray_constants as ray_constants
 
 
-def update_resources_with_accelerator_type(resources, num_gpus):
+def update_resources_with_accelerator_type(resources: dict):
     """Update the resources dictionary with the accelerator type and custom
     resources.
+
+    Currently, we support AWS NeuronCore (num_neuron_cores /
+    accelerator_type:aws-neuron-core) detection and configuration.
+
+    Args:
+        resources: Resources dictionary to be updated with
+        accelerator type and custom resources.
     """
-    _detect_and_configure_aws_neuron_core(resources, num_gpus)
+    _detect_and_configure_aws_neuron_core(resources)
 
 
-def _detect_and_configure_aws_neuron_core(resources, num_gpus):
+def _detect_and_configure_aws_neuron_core(resources: dict):
     """Configuration and auto-detection of AWS NeuronCore accelerator type
-    and number of NeuronCore.
+    and number of NeuronCore (num_neuron_cores).
 
     If the number of NeuronCore is not specified in the resources, this
     function will try to detect the number of NeuronCore.
 
     If the number of NeuronCore is specified in the resources, this
     function will check if the number of NeuronCore is greater than the
-    number of visible NeuronCore.
+    number of visible NeuronCore and raise an error if it is true.
 
-    Also, throws an error if GPUs are configured along with NeuronCores.
+    If the number of NeuronCore is greater than the number of visible
+    NeuronCore, this function will raise an error.
+
+    Lastly, update accelerator_type and num_neuron_cores in resources.
+
+    Args:
+        resources: Resources dictionary to be updated with
+        NeuronCore accelerator type and custom resources(num_neuron_cores).
+
+    Raises:
+        ValueError: If the number of NeuronCore is greater than the number of
+            visible NeuronCore.
     """
     # AWS NeuronCore detection and configuration
     # 1. Check if the user specified num_neuron_cores in resources
@@ -46,11 +64,9 @@ def _detect_and_configure_aws_neuron_core(resources, num_gpus):
     if num_neuron_cores is None:
         num_neuron_cores = _autodetect_aws_neuron_cores()
         # Don't use more neuron cores than allowed by NEURON_RT_VISIBLE_CORES.
-        if None not in (neuron_core_ids, num_neuron_cores):
+        if num_neuron_cores is not None and neuron_core_ids is not None:
             num_neuron_cores = min(num_neuron_cores, len(neuron_core_ids))
     if num_neuron_cores is not None:
-        if num_gpus is not None and num_gpus > 0:
-            raise ValueError("Cannot specify both num_gpus and num_neuron_cores.")
         # 4. Update accelerator_type and num_neuron_cores with
         # number of neuron cores detected or configured.
         resources.update(
@@ -90,5 +106,5 @@ def _get_neuron_core_count():
     if result.returncode == 0 and result.stdout:
         json_out = json.loads(result.stdout)
         for neuron_device in json_out:
-            nc_count += neuron_device["nc_count"]
+            nc_count += neuron_device.get("nc_count", 0)
     return nc_count

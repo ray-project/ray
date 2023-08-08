@@ -201,7 +201,7 @@ class ResourceSpec(
         except Exception:
             logger.exception("Could not parse gpu information.")
 
-        update_resources_with_accelerator_type(resources, num_gpus)
+        update_resources_with_accelerator_type(resources)
 
         # Choose a default object store size.
         system_memory = ray._private.utils.get_system_memory()
