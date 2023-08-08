@@ -1001,9 +1001,10 @@ TEST_F(ClusterTaskManagerTest, NotOKPopWorkerAfterDrainingTest) {
   {
     std::shared_ptr<TaskResourceInstances> task_allocation =
         std::make_shared<TaskResourceInstances>();
-    ResourceRequest resource_request = ResourceMapToResourceRequest(
-        {{ResourceID::CPU(), 1.0}}, false);
-    scheduler_->GetLocalResourceManager().AllocateLocalTaskResources(resource_request, task_allocation);
+    ResourceRequest resource_request =
+        ResourceMapToResourceRequest({{ResourceID::CPU(), 1.0}}, false);
+    scheduler_->GetLocalResourceManager().AllocateLocalTaskResources(resource_request,
+                                                                     task_allocation);
   }
 
   RayTask task1 = CreateTask({{ray::kCPU_ResourceLabel, 1}});
@@ -1025,13 +1026,14 @@ TEST_F(ClusterTaskManagerTest, NotOKPopWorkerAfterDrainingTest) {
   // Drain the local node.
   scheduler_->GetLocalResourceManager().SetLocalNodeDraining();
 
-  pool_.callbacks[task1.GetTaskSpecification().GetRuntimeEnvHash()].front()(nullptr, PopWorkerStatus::WorkerPendingRegistration, "");
-  pool_.callbacks[task1.GetTaskSpecification().GetRuntimeEnvHash()].back()(nullptr, PopWorkerStatus::RuntimeEnvCreationFailed, "runtime env setup error");
+  pool_.callbacks[task1.GetTaskSpecification().GetRuntimeEnvHash()].front()(
+      nullptr, PopWorkerStatus::WorkerPendingRegistration, "");
+  pool_.callbacks[task1.GetTaskSpecification().GetRuntimeEnvHash()].back()(
+      nullptr, PopWorkerStatus::RuntimeEnvCreationFailed, "runtime env setup error");
   pool_.callbacks.clear();
   task_manager_.ScheduleAndDispatchTasks();
   // task1 is spilled and task2 is cancelled.
-  ASSERT_EQ(reply1.retry_at_raylet_address().raylet_id(),
-            remote_node_id.Binary());
+  ASSERT_EQ(reply1.retry_at_raylet_address().raylet_id(), remote_node_id.Binary());
   ASSERT_TRUE(reply2.canceled());
   ASSERT_EQ(reply2.scheduling_failure_message(), "runtime env setup error");
 }

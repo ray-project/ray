@@ -129,19 +129,18 @@ TEST_F(LocalResourceManagerTest, BasicGetResourceUsageMapTest) {
 
 TEST_F(LocalResourceManagerTest, NodeDrainingTest) {
   manager = std::make_unique<LocalResourceManager>(
-    local_node_id,
-    CreateNodeResources({{ResourceID::CPU(), 8.0}}),
-    nullptr,
-    nullptr,
-    nullptr
-  );
+      local_node_id,
+      CreateNodeResources({{ResourceID::CPU(), 8.0}}),
+      nullptr,
+      nullptr,
+      nullptr);
 
   // Make the node non-idle.
   {
     std::shared_ptr<TaskResourceInstances> task_allocation =
         std::make_shared<TaskResourceInstances>();
-    ResourceRequest resource_request = ResourceMapToResourceRequest(
-        {{ResourceID::CPU(), 1.0}}, false);
+    ResourceRequest resource_request =
+        ResourceMapToResourceRequest({{ResourceID::CPU(), 1.0}}, false);
     manager->AllocateLocalTaskResources(resource_request, task_allocation);
   }
 
@@ -150,8 +149,8 @@ TEST_F(LocalResourceManagerTest, NodeDrainingTest) {
 
   // Make the node idle so that the node is drained and terminated.
   std::shared_ptr<TaskResourceInstances> task_allocation =
-        std::make_shared<TaskResourceInstances>(ResourceRequest(
-            ResourceMapToResourceRequest({{ResourceID::CPU(), 1.0}}, false)));
+      std::make_shared<TaskResourceInstances>(ResourceRequest(
+          ResourceMapToResourceRequest({{ResourceID::CPU(), 1.0}}, false)));
   EXPECT_DEATH(manager->ReleaseWorkerResources(task_allocation), ".*");
 }
 
