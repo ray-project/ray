@@ -211,35 +211,38 @@ class Checkpoint:
         if isinstance(self.filesystem, pyarrow.fs.LocalFileSystem):
             yield self.path
         else:
-            temp_dir = self.to_directory()
-            del_lock_path = _get_del_lock_path(temp_dir)
+            del_lock_path = _get_del_lock_path(self._get_temporary_checkpoint_dir())
             open(del_lock_path, "a").close()
 
-            yield temp_dir
-
-            # Cleanup
             try:
-                os.remove(del_lock_path)
-            except Exception:
-                logger.warning(
-                    f"Could not remove {del_lock_path} deletion file lock. "
-                    f"Traceback:\n{traceback.format_exc()}"
-                )
-
-            # In the edge case (process crash before del lock file is removed),
-            # we do not remove the directory at all.
-            # Since it's in /tmp, this is not that big of a deal.
-            # check if any lock files are remaining
-            remaining_locks = _list_existing_del_locks(temp_dir)
-            if not remaining_locks:
+                temp_dir = self.to_directory()
+                yield temp_dir
+            finally:
+                # Always cleanup the del lock after we're done with the directory.
+                # This avoids leaving a lock file behind in the case of an exception
+                # in the user code.
                 try:
-                    # Timeout 0 means there will be only one attempt to acquire
-                    # the file lock. If it cannot be acquired, a TimeoutError
-                    # will be thrown.
-                    with TempFileLock(f"{temp_dir}.lock", timeout=0):
-                        shutil.rmtree(temp_dir, ignore_errors=True)
-                except TimeoutError:
-                    pass
+                    os.remove(del_lock_path)
+                except Exception:
+                    logger.warning(
+                        f"Could not remove {del_lock_path} deletion file lock. "
+                        f"Traceback:\n{traceback.format_exc()}"
+                    )
+
+                # In the edge case (process crash before del lock file is removed),
+                # we do not remove the directory at all.
+                # Since it's in /tmp, this is not that big of a deal.
+                # check if any lock files are remaining
+                remaining_locks = _list_existing_del_locks(temp_dir)
+                if not remaining_locks:
+                    try:
+                        # Timeout 0 means there will be only one attempt to acquire
+                        # the file lock. If it cannot be acquired, a TimeoutError
+                        # will be thrown.
+                        with TempFileLock(temp_dir, timeout=0):
+                            shutil.rmtree(temp_dir, ignore_errors=True)
+                    except TimeoutError:
+                        pass
 
     def _get_temporary_checkpoint_dir(self) -> str:
         """Return the name for the temporary checkpoint dir that this checkpoint
