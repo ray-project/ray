@@ -352,11 +352,17 @@ message GetTaskFailureCauseReply {
 }
 
 message DrainRayletRequest {
+  // The reason why the node will be drained.
+  // This information will be used to
+  // decide whether the request is rejectable.
   ray.rpc.autoscaler.DrainNodeReason reason = 1;
+  // The detailed drain reason message.
+  // Used for observability.
   string reason_message = 2;
 }
 
 message DrainRayletReply {
+  // Whether the drain request is accepted.
   bool is_accepted = 1;
 }
 

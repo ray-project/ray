@@ -1,4 +1,5 @@
 import sys
+import pytest
 
 import ray
 import time
@@ -21,6 +22,11 @@ def test_idle_termination(ray_start_cluster):
 
     head_node_id = ray.get(get_node_id.options(resources={"head": 1}).remote())
     worker_node_id = ray.get(get_node_id.options(resources={"worker": 1}).remote())
+
+    wait_for_condition(
+        lambda: {node["NodeID"] for node in ray.nodes() if (node["Alive"])}
+        == {head_node_id, worker_node_id}
+    )
 
     @ray.remote(num_cpus=1, resources={"worker": 1})
     class Actor:
@@ -57,6 +63,14 @@ def test_idle_termination(ray_start_cluster):
         lambda: {node["NodeID"] for node in ray.nodes() if (node["Alive"])}
         == {head_node_id}
     )
+
+    # Draining a dead node is always accepted.
+    is_accepted = gcs_client.drain_node(
+        worker_node_id,
+        autoscaler_pb2.DrainNodeReason.Value("DRAIN_NODE_REASON_IDLE_TERMINATION"),
+        "idle for long enough",
+    )
+    assert is_accepted
 
 
 def test_preemption(ray_start_cluster):
@@ -121,12 +135,12 @@ def test_scheduling_during_draining(ray_start_cluster):
     head_node_id = ray.get(get_node_id.options(resources={"head": 1}).remote())
     worker_node_id = ray.get(get_node_id.options(resources={"worker": 1}).remote())
 
-    @ray.remote(num_cpus=0, resources={"worker": 1})
+    @ray.remote
     class Actor:
         def ping(self):
             pass
 
-    actor = Actor.remote()
+    actor = Actor.options(num_cpus=0, resources={"worker": 1}).remote()
     ray.get(actor.ping.remote())
 
     gcs_client = GcsClient(address=ray.get_runtime_context().gcs_address)
@@ -159,10 +173,30 @@ def test_scheduling_during_draining(ray_start_cluster):
         == head_node_id
     )
 
+    with pytest.raises(ray.exceptions.TaskUnschedulableError):
+        ray.get(
+            get_node_id.options(
+                scheduling_strategy=NodeAffinitySchedulingStrategy(
+                    worker_node_id, soft=False
+                )
+            ).remote()
+        )
+
+    head_actor = Actor.options(num_cpus=1, resources={"head": 1}).remote()
+    ray.get(head_actor.ping.remote())
+
+    obj = get_node_id.remote()
+
+    # Cannot run on the draining worker node even though it has resources.
+    with pytest.raises(ray.exceptions.GetTimeoutError):
+        ray.get(obj, timeout=2)
+
+    ray.kill(head_actor)
+    ray.get(obj, timeout=2) == head_node_id
+
 
 if __name__ == "__main__":
     import os
-    import pytest
 
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
