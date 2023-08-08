@@ -531,17 +531,17 @@ class TuneController:
 
             # The following properties may be updated on restoration
             # Ex: moved local/cloud experiment directory
-            if not _use_storage_context():
+            if _use_storage_context():
+                # Propagate updated storage ctx properties to the trial's restored copy.
+                # TODO(justinvyu): [handle_moved_storage_path]
+                trial.storage.storage_path = self._storage.storage_path
+                trial.storage.experiment_dir_name = self._storage.experiment_dir_name
+            else:
                 # ATTN: Set `local_experiment_path` to update trial checkpoints!
                 trial.local_experiment_path = self._legacy_local_experiment_path
                 trial.remote_experiment_path = self._legacy_remote_experiment_path
                 trial.sync_config = self._legacy_sync_config
                 trial.experiment_dir_name = self._legacy_experiment_dir_name
-
-            # Propagate updated storage ctx properties to the trial's restored copy.
-            # TODO(justinvyu): [handle_moved_storage_path]
-            trial.storage.storage_path = self._storage.storage_path
-            trial.storage.experiment_dir_name = self._storage.experiment_dir_name
 
             # Avoid creating logdir in client mode for returned trial results,
             # since the dir might not be creatable locally.
