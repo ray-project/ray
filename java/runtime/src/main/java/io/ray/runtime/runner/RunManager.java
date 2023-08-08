@@ -37,6 +37,13 @@ public class RunManager {
       command.add(numGpus);
     }
 
+    // Set node labels.
+    String labels = System.getProperty("ray.labels");
+    if (labels != null) {
+      command.add("--labels");
+      command.add(labels);
+    }
+
     String output;
     try {
       output = runCommand(command);

@@ -22,6 +22,7 @@ from ray.air.checkpoint import Checkpoint
 from ray.air.config import RunConfig, ScalingConfig
 from ray.air.result import Result
 from ray.train._internal import session
+from ray.train._internal.storage import _use_storage_context
 from ray.train.constants import TRAIN_DATASET_KEY
 from ray.util import PublicAPI
 from ray.util.annotations import DeveloperAPI
@@ -191,7 +192,7 @@ class BaseTrainer(abc.ABC):
         self.run_config = run_config if run_config is not None else RunConfig()
         self.datasets = datasets if datasets is not None else {}
         self.preprocessor = preprocessor
-        self.resume_from_checkpoint = resume_from_checkpoint
+        self.starting_checkpoint = resume_from_checkpoint
 
         # This path should only be set through restore
         self._restore_path = None
@@ -377,7 +378,7 @@ class BaseTrainer(abc.ABC):
             "run_config": RunConfig(),
             "datasets": {},
             "preprocessor": None,
-            "resume_from_checkpoint": None,
+            "starting_checkpoint": None,
         }
 
         non_default_arguments = []
@@ -452,18 +453,18 @@ class BaseTrainer(abc.ABC):
                 f"found {type(self.preprocessor)} with value `{self.preprocessor}`."
             )
 
-        if self.resume_from_checkpoint is not None and not isinstance(
-            self.resume_from_checkpoint, ray.air.Checkpoint
+        if self.starting_checkpoint is not None and not isinstance(
+            self.starting_checkpoint, ray.air.Checkpoint
         ):
             raise ValueError(
                 f"`resume_from_checkpoint` should be an instance of "
-                f"`ray.train.Checkpoint`, found {type(self.resume_from_checkpoint)} "
-                f"with value `{self.resume_from_checkpoint}`."
+                f"`ray.train.Checkpoint`, found {type(self.starting_checkpoint)} "
+                f"with value `{self.starting_checkpoint}`."
             )
 
     @classmethod
     def _validate_scaling_config(cls, scaling_config: ScalingConfig) -> ScalingConfig:
-        """Return scaling config dataclass after validating updated keys."""
+        """Returns scaling config dataclass after validating updated keys."""
         ensure_only_allowed_dataclass_keys_updated(
             dataclass=scaling_config,
             allowed_keys=cls._scaling_config_allowed_keys,
@@ -472,7 +473,7 @@ class BaseTrainer(abc.ABC):
 
     @classmethod
     def _maybe_sync_down_trainer_state(cls, restore_path: str) -> Path:
-        """Sync down trainer state from remote storage.
+        """Syncs down trainer state from remote storage.
 
         Returns:
             str: Local directory containing the trainer state
@@ -598,16 +599,16 @@ class BaseTrainer(abc.ABC):
                 _entrypoint=AirEntrypoint.TRAINER,
             )
 
-        experiment_path = Path(
-            TunerInternal.setup_create_experiment_checkpoint_dir(
-                trainable, self.run_config
-            )
+        experiment_local_path, _ = TunerInternal.setup_create_experiment_checkpoint_dir(
+            trainable, self.run_config
         )
-        self._save(experiment_path)
+
+        experiment_local_path = Path(experiment_local_path)
+        self._save(experiment_local_path)
 
         restore_msg = TrainingFailedError._RESTORE_MSG.format(
             trainer_cls_name=self.__class__.__name__,
-            path=str(experiment_path),
+            path=str(experiment_local_path),
         )
 
         try:
@@ -682,7 +683,7 @@ class BaseTrainer(abc.ABC):
         return result
 
     def _generate_trainable_cls(self) -> Type["Trainable"]:
-        """Generate the base Trainable class.
+        """Generates the base Trainable class.
 
         Returns:
             A Trainable class to use for training.
@@ -700,18 +701,22 @@ class BaseTrainer(abc.ABC):
             # Instantiate new Trainer in Trainable.
             trainer = trainer_cls(**config)
 
-            # Get the checkpoint from the train context, and use it to initialize
-            # the restored trainer.
-            # This handles both worker-level and cluster-level restoration
-            # of the Train experiment.
+            # Get the checkpoint from Tune and pass it to workers later on.
             checkpoint = session.get_checkpoint()
             if checkpoint:
-                trainer.resume_from_checkpoint = checkpoint
-                # Always load the preprocessor from an available checkpoint
-                # Unless we are restoring the experiment and have explicitly
-                # passed in a new preprocessor
-                if not (restored and trainer.preprocessor):
-                    trainer.preprocessor = checkpoint.get_preprocessor()
+                # Set `starting_checkpoint` for auto-recovery fault-tolerance
+                # as well as manual restoration.
+                trainer.starting_checkpoint = checkpoint
+
+                # TODO(justinvyu): Remove this when Preprocessor is removed from Trainer
+                if not _use_storage_context():
+                    # Always load the preprocessor from an available checkpoint
+                    # Unless we are restoring the experiment and have explicitly
+                    # passed in a new preprocessor
+                    if not (restored and trainer.preprocessor):
+                        trainer.preprocessor = checkpoint.get_preprocessor()
+            # Else: Train will restore from the user-provided
+            # `resume_from_checkpoint` == `starting_checkpoint`.
 
             trainer.setup()
             trainer.preprocess_datasets()
@@ -732,7 +737,7 @@ class BaseTrainer(abc.ABC):
             dataset_context = None
 
         class TrainTrainable(trainable_cls):
-            """Add default resources to the Trainable."""
+            """Adds default resources to the Trainable."""
 
             _handles_checkpoint_freq = trainer_cls._handles_checkpoint_freq
             _handles_checkpoint_at_end = trainer_cls._handles_checkpoint_at_end
@@ -826,7 +831,7 @@ class BaseTrainer(abc.ABC):
         return TrainTrainable
 
     def as_trainable(self) -> Type["Trainable"]:
-        """Convert self to a ``tune.Trainable`` class."""
+        """Converts self to a ``tune.Trainable`` class."""
         from ray import tune
 
         base_config = self._param_dict

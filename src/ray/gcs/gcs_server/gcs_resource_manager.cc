@@ -273,16 +273,6 @@ void GcsResourceManager::Initialize(const GcsInitData &gcs_init_data) {
       OnNodeAdd(entry.second);
     }
   }
-
-  for (const auto &entry : gcs_init_data.ClusterResources()) {
-    scheduling::NodeID node_id(entry.first.Binary());
-    for (const auto &resource : entry.second.items()) {
-      cluster_resource_manager_.UpdateResourceCapacity(
-          node_id,
-          scheduling::ResourceID(resource.first),
-          resource.second.resource_capacity());
-    }
-  }
 }
 
 void GcsResourceManager::OnNodeAdd(const rpc::GcsNodeInfo &node) {

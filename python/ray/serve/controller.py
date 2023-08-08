@@ -41,6 +41,7 @@ from ray.serve._private.endpoint_state import EndpointState
 from ray.serve._private.http_state import HTTPProxyStateManager
 from ray.serve._private.logging_utils import (
     configure_component_logger,
+    configure_component_memory_profiler,
     get_component_logger_file_path,
 )
 from ray.serve._private.long_poll import LongPollHost
@@ -111,6 +112,9 @@ class ServeController:
         ), "Controller must be on the head node."
 
         configure_component_logger(
+            component_name="controller", component_id=str(os.getpid())
+        )
+        configure_component_memory_profiler(
             component_name="controller", component_id=str(os.getpid())
         )
         if RAY_SERVE_CONTROLLER_CALLBACK_IMPORT_PATH:
@@ -191,6 +195,12 @@ class ServeController:
         # Nodes where http proxy actors should run.
         self._http_proxy_nodes = set()
         self._update_http_proxy_nodes()
+
+        # Track the number of times the controller has started
+        metrics.Counter(
+            "serve_controller_num_starts",
+            description="The number of times that controller has started.",
+        ).inc()
 
     def check_alive(self) -> None:
         """No-op to check if this controller is alive."""
@@ -299,6 +309,7 @@ class ServeController:
         # because an unhandled exception would cause the main control loop to
         # halt, which should *never* happen.
         recovering_timeout = RECOVERING_LONG_POLL_BROADCAST_TIMEOUT_S
+        num_loops = 0
         start_time = time.time()
         while True:
             loop_start_time = time.time()
@@ -326,6 +337,10 @@ class ServeController:
                 )
                 if not self.done_recovering_event.is_set() and not any_recovering:
                     self.done_recovering_event.set()
+                    logger.info(
+                        "Finished recovering deployments after "
+                        f"{time.time() - start_time}s."
+                    )
             except Exception:
                 logger.exception("Exception updating deployment state.")
 
@@ -373,7 +388,10 @@ class ServeController:
                     "replicas in a single Ray cluster. Consider using "
                     "multiple Ray clusters."
                 )
-            self.control_loop_gauge_s.set(loop_duration)
+            self.control_loop_duration_gauge_s.set(loop_duration)
+
+            num_loops += 1
+            self.num_control_loops_gauge.set(num_loops)
 
             sleep_start_time = time.time()
             await asyncio.sleep(CONTROL_LOOP_PERIOD_S)
@@ -404,9 +422,20 @@ class ServeController:
             "serve_controller_sleep_duration_s",
             description="The duration of the last control loop's sleep.",
         )
-        self.control_loop_gauge_s = metrics.Gauge(
+        self.control_loop_duration_gauge_s = metrics.Gauge(
             "serve_controller_control_loop_duration_s",
             description="The duration of the last control loop.",
+        )
+        self.num_control_loops_gauge = metrics.Gauge(
+            "serve_controller_num_control_loops",
+            description=(
+                "The number of control loops performed by the controller. "
+                "Increases monotonically over the controller's lifetime."
+            ),
+            tag_keys=("actor_id",),
+        )
+        self.num_control_loops_gauge.set_default_tags(
+            {"actor_id": ray.get_runtime_context().get_actor_id()}
         )
 
     def _put_serve_snapshot(self) -> None:
