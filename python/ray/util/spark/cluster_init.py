@@ -836,8 +836,8 @@ def setup_ray_cluster(
             **Limitation** Only spark version >= 3.4 or Databricks Runtime 12.x
             supports setting this argument.
         num_cpus_head_node: Number of cpus available to Ray head node, if not provide,
-            use 0 instead. Number 0 means tasks requiring CPU resources are not scheduled
-            to Ray head node.
+            use 0 instead. Number 0 means tasks requiring CPU resources are not
+            scheduled to Ray head node.
         num_gpus_worker_node: Number of gpus available to per-ray worker node, if not
             provided, use spark application configuration
             'spark.task.resource.gpu.amount' instead.
@@ -847,7 +847,8 @@ def setup_ray_cluster(
             supports setting this argument.
         num_gpus_head_node: Number of gpus available to Ray head node, if not provide,
             use 0 instead.
-            This argument is only available on spark cluster which spark driver node has GPUs.
+            This argument is only available on spark cluster which spark driver node
+            has GPUs.
         object_store_memory_per_node: Object store memory available to per-ray worker
             node, but it is capped by
             "dev_shm_available_size * 0.8 / num_tasks_per_spark_worker".
@@ -954,23 +955,25 @@ def setup_ray_cluster(
     if "num_cpus_per_node" in kwargs:
         if num_cpus_worker_node is not None:
             raise ValueError(
-                "'num_cpus_per_node' and 'num_cpus_worker_node' arguments cannot be set together."
+                "'num_cpus_per_node' and 'num_cpus_worker_node' arguments cannot be "
+                "set together."
             )
         num_cpus_worker_node = kwargs["num_cpus_per_node"]
         _logger.warning(
-            "'num_cpus_per_node' argument is deprecated, please use 'num_cpus_worker_node' "
-            "argument instead."
+            "'num_cpus_per_node' argument is deprecated, please use "
+            "'num_cpus_worker_node' argument instead."
         )
 
     if "num_gpus_per_node" in kwargs:
         if num_gpus_worker_node is not None:
             raise ValueError(
-                "'num_gpus_per_node' and 'num_gpus_worker_node' arguments cannot be set together."
+                "'num_gpus_per_node' and 'num_gpus_worker_node' arguments cannot be "
+                "set together."
             )
         num_gpus_worker_node = kwargs["num_gpus_per_node"]
         _logger.warning(
-            "'num_gpus_per_node' argument is deprecated, please use 'num_gpus_worker_node' "
-            "argument instead."
+            "'num_gpus_per_node' argument is deprecated, please use "
+            "'num_gpus_worker_node' argument instead."
         )
 
     # Environment configurations within the Spark Session that dictate how many cpus
@@ -986,8 +989,8 @@ def setup_ray_cluster(
 
     if num_gpus_worker_node is not None and num_spark_task_gpus == 0:
         raise ValueError(
-            "The spark cluster worker nodes are not configured with 'gpu' resources, so that "
-            "you cannot specify the `num_gpus_worker_node` argument."
+            "The spark cluster worker nodes are not configured with 'gpu' resources, "
+            "so that you cannot specify the `num_gpus_worker_node` argument."
         )
 
     if num_gpus_worker_node is not None and num_gpus_worker_node < 0:
@@ -1094,7 +1097,8 @@ def setup_ray_cluster(
 
     if num_cpus_head_node == 0 and num_gpus_head_node == 0:
         # Because tasks that require CPU or GPU resources are not scheduled to Ray
-        # head node, limit the heap memory and object store memory allocation to the head node.
+        # head node, limit the heap memory and object store memory allocation to the
+        # head node.
         heap_memory_head_node = 128 * 1024 * 1024
         object_store_memory_head_node = 128 * 1024 * 1024
     else:
