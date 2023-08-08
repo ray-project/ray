@@ -237,6 +237,7 @@ RAY_SERVE_GAUGE_METRIC_SET_PERIOD_S = 1
 # fallen to the default routing strategy.
 RAY_SERVE_MULTIPLEXED_MODEL_ID_MATCHING_TIMEOUT_S = float(
     os.environ.get("RAY_SERVE_MULTIPLEXED_MODEL_ID_MATCHING_TIMEOUT_S", "1")
+)
 
 # Enable memray in all Serve actors.
 RAY_SERVE_ENABLE_MEMORY_PROFILING = (
