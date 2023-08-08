@@ -1006,7 +1006,7 @@ class TuneTerminalReporter(TuneReporterBase):
         fail_table_data = [
             [
                 str(trial),
-                str(trial.runtime_metadata.num_failures)
+                str(trial.run_metadata.num_failures)
                 + ("" if trial.status == Trial.ERROR else "*"),
                 trial.error_file,
             ]

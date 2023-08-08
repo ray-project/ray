@@ -78,7 +78,7 @@ def test_checkpoint_save_restore(
         runner.step()
 
     # Set some state that will be saved in the checkpoint
-    assert ray.get(trials[0].trial_state.ray_actor.set_info.remote(1)) == 1
+    assert ray.get(trials[0].temporary_state.ray_actor.set_info.remote(1)) == 1
 
     while trials[0].status != Trial.TERMINATED:
         runner.step()
@@ -101,7 +101,7 @@ def test_checkpoint_save_restore(
     # Restore
     runner.step()
 
-    assert ray.get(trials[1].trial_state.ray_actor.get_info.remote()) == 1
+    assert ray.get(trials[1].temporary_state.ray_actor.get_info.remote()) == 1
 
     # Run to termination
     while trials[1].status != Trial.TERMINATED:
@@ -166,8 +166,8 @@ def test_pause_resume_trial(
     while trials[0].status != Trial.RUNNING:
         runner.step()
 
-    assert ray.get(trials[0].trial_state.ray_actor.get_info.remote()) is None
-    assert ray.get(trials[0].trial_state.ray_actor.set_info.remote(1)) == 1
+    assert ray.get(trials[0].temporary_state.ray_actor.get_info.remote()) is None
+    assert ray.get(trials[0].temporary_state.ray_actor.set_info.remote(1)) == 1
 
     runner._schedule_trial_pause(trials[0], should_checkpoint=True)
 
@@ -183,7 +183,7 @@ def test_pause_resume_trial(
     while trials[0].status != Trial.RUNNING:
         runner.step()
 
-    assert ray.get(trials[0].trial_state.ray_actor.get_info.remote()) == 1
+    assert ray.get(trials[0].temporary_state.ray_actor.get_info.remote()) == 1
 
     while trials[0].status != Trial.TERMINATED:
         runner.step()
@@ -212,7 +212,7 @@ def test_checkpoint_num_to_keep(
         checkpoint_config=CheckpointConfig(num_to_keep=2),
     )
     trial.init_local_path()
-    trial.runtime_metadata.checkpoint_manager.set_delete_fn(
+    trial.run_metadata.checkpoint_manager.set_delete_fn(
         lambda cp: shutil.rmtree(cp.dir_or_data)
     )
 
@@ -229,7 +229,7 @@ def test_checkpoint_num_to_keep(
             storage_mode=CheckpointStorage.PERSISTENT,
             metrics=result,
         )
-        trial.trial_state.saving_to = tune_cp
+        trial.temporary_state.saving_to = tune_cp
 
         return checkpoint_dir
 
@@ -276,7 +276,7 @@ def test_checkpoint_num_to_keep(
     runner.resume()
 
     trial = runner.get_trials()[0]
-    trial.runtime_metadata.checkpoint_manager.set_delete_fn(
+    trial.run_metadata.checkpoint_manager.set_delete_fn(
         lambda cp: shutil.rmtree(cp.dir_or_data)
     )
 

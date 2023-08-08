@@ -1150,7 +1150,7 @@ def _trial_errors_str(
         fail_table_data = [
             [
                 str(trial),
-                str(trial.runtime_metadata.num_failures)
+                str(trial.run_metadata.num_failures)
                 + ("" if trial.status == Trial.ERROR else "*"),
                 trial.error_file,
             ]
@@ -1239,7 +1239,7 @@ def _get_trial_location(trial: Trial, result: dict) -> _Location:
         location = _Location(node_ip, pid)
     else:
         # fallback to trial location if there hasn't been a report yet
-        location = trial.trial_state.location
+        location = trial.temporary_state.location
     return location
 
 

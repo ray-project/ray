@@ -6,7 +6,7 @@ from typing import Tuple, Optional
 from ray.tune.utils.serialization import TuneFunctionEncoder, TuneFunctionDecoder
 
 
-class _TrainingRuntimeMetadata:
+class _TrainingRunMetadata:
     """Serializable struct for holding runtime trial metadata.
 
     Runtime metadata is data that changes and is updated on runtime. This includes

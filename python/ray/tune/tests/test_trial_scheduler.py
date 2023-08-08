@@ -35,7 +35,7 @@ from ray.tune.search import ConcurrencyLimiter
 from ray.tune.experiment import Trial
 
 from ray.rllib import _register_all
-from ray.tune.trainable.metadata import _TrainingRuntimeMetadata
+from ray.tune.trainable.metadata import _TrainingRunMetadata
 
 _register_all()
 
@@ -816,7 +816,7 @@ class BOHBSuite(unittest.TestCase):
             fail_fast="raise",
         )
         counter = Counter(
-            t.runtime_metadata.last_result.get("training_iteration")
+            t.run_metadata.last_result.get("training_iteration")
             for t in analysis.trials
         )
         assert 32 in counter
@@ -877,8 +877,8 @@ class _MockTrial(Trial):
         self._legacy_local_experiment_path = None
         self.relative_logdir = None
         self._default_result_or_future = None
-        self.runtime_metadata = _TrainingRuntimeMetadata()
-        self.runtime_metadata.checkpoint_manager = _CheckpointManager(
+        self.run_metadata = _TrainingRunMetadata()
+        self.run_metadata.checkpoint_manager = _CheckpointManager(
             checkpoint_config=CheckpointConfig(
                 num_to_keep=2,
                 checkpoint_score_attribute="episode_reward_mean",
@@ -1505,7 +1505,7 @@ class PopulationBasedTestingSuite(unittest.TestCase):
         tmpdir = tempfile.mkdtemp()
         for i, trial in enumerate(trials):
             trial.local_experiment_path = tmpdir
-            trial.runtime_metadata.last_result = {TRAINING_ITERATION: i}
+            trial.run_metadata.last_result = {TRAINING_ITERATION: i}
         self.on_trial_result(pbt, runner, trials[0], result(15, -100))
         self.on_trial_result(pbt, runner, trials[0], result(20, -100))
         self.on_trial_result(pbt, runner, trials[2], result(20, 40))
@@ -1541,7 +1541,7 @@ class PopulationBasedTestingSuite(unittest.TestCase):
         tmpdir = tempfile.mkdtemp()
         for i, trial in enumerate(trials):
             trial.local_experiment_path = tmpdir
-            trial.runtime_metadata.last_result = {TRAINING_ITERATION: i}
+            trial.run_metadata.last_result = {TRAINING_ITERATION: i}
             self.on_trial_result(pbt, runner, trials[i], result(10, i))
         log_files = ["pbt_global.txt", "pbt_policy_0.txt", "pbt_policy_1.txt"]
         for log_file in log_files:
@@ -1590,7 +1590,7 @@ class PopulationBasedTestingSuite(unittest.TestCase):
         trial_state = []
         for i, trial in enumerate(trials):
             trial.local_experiment_path = tmpdir
-            trial.runtime_metadata.last_result = {TRAINING_ITERATION: 0}
+            trial.run_metadata.last_result = {TRAINING_ITERATION: 0}
             trial_state.append(_TrialState(trial.config))
 
         # Helper function to simulate stepping trial k a number of steps,
@@ -1598,7 +1598,7 @@ class PopulationBasedTestingSuite(unittest.TestCase):
         def trial_step(k, steps, score):
             res = result(trial_state[k].step + steps, score)
 
-            trials[k].runtime_metadata.last_result = res
+            trials[k].run_metadata.last_result = res
             trial_state[k].forward(res[TRAINING_ITERATION])
 
             old_config = trials[k].config
@@ -1692,7 +1692,7 @@ class PopulationBasedTestingSuite(unittest.TestCase):
                 stop={TRAINING_ITERATION: trial_state[i].step},
             )
 
-            replayed = analysis.trials[0].runtime_metadata.last_result["replayed"]
+            replayed = analysis.trials[0].run_metadata.last_result["replayed"]
             self.assertSequenceEqual(trial_state[i].history, replayed)
 
         # Trial 1 did not exploit anything and should raise an error
@@ -1747,7 +1747,7 @@ class PopulationBasedTestingSuite(unittest.TestCase):
         trial_state = []
         for i, trial in enumerate(trials):
             trial.local_experiment_path = tmpdir
-            trial.runtime_metadata.last_result = {TRAINING_ITERATION: 0}
+            trial.run_metadata.last_result = {TRAINING_ITERATION: 0}
             trial_state.append(_TrialState(trial.config))
 
         # Helper function to simulate stepping trial k a number of steps,
@@ -1755,7 +1755,7 @@ class PopulationBasedTestingSuite(unittest.TestCase):
         def trial_step(k, steps, score, synced=False):
             res = result(trial_state[k].step + steps, score)
 
-            trials[k].runtime_metadata.last_result = res
+            trials[k].run_metadata.last_result = res
             trial_state[k].forward(res[TRAINING_ITERATION])
 
             if not synced:
@@ -1864,7 +1864,7 @@ class PopulationBasedTestingSuite(unittest.TestCase):
                 stop={TRAINING_ITERATION: trial_state[i].step},
             )
 
-            replayed = analysis.trials[0].runtime_metadata.last_result["replayed"]
+            replayed = analysis.trials[0].run_metadata.last_result["replayed"]
             self.assertSequenceEqual(trial_state[i].history, replayed)
 
         # Trial 1 did not exploit anything and should raise an error
@@ -1903,7 +1903,7 @@ class PopulationBasedTestingSuite(unittest.TestCase):
         tmpdir = tempfile.mkdtemp()
         for i, trial in enumerate(trials):
             trial.local_experiment_path = tmpdir
-            trial.runtime_metadata.last_result = {}
+            trial.run_metadata.last_result = {}
         self.on_trial_result(
             pbt, runner, trials[1], result(1, 10), TrialScheduler.CONTINUE
         )

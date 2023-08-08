@@ -597,14 +597,14 @@ class TuneController:
 
         # Set trial statuses according to the resume configuration
         for trial in sorted(
-            trials, key=lambda t: t.runtime_metadata.last_result_time, reverse=True
+            trials, key=lambda t: t.run_metadata.last_result_time, reverse=True
         ):
             trial_to_add = trial
             if trial.status == Trial.ERROR:
                 if resume_errored:
                     # Keep trial ID on resume
-                    trial_to_add.runtime_metadata.error_filename = None
-                    trial_to_add.runtime_metadata.pickled_error_filename = None
+                    trial_to_add.run_metadata.error_filename = None
+                    trial_to_add.run_metadata.pickled_error_filename = None
                     trial_to_add.set_status(Trial.PENDING)
                     trial_to_add.restore_path = trial.checkpoint.dir_or_data
                 elif restart_errored:
@@ -1519,8 +1519,8 @@ class TuneController:
 
         logger.debug(f"Requesting to STOP actor for trial {trial}")
 
-        trial.trial_state.saving_to = None
-        trial.trial_state.restoring_from = None
+        trial.temporary_state.saving_to = None
+        trial.temporary_state.restoring_from = None
 
         self._set_trial_status(trial, Trial.ERROR if exception else Trial.TERMINATED)
         trial.set_location(_Location())
@@ -1870,7 +1870,7 @@ class TuneController:
                 storage_mode=storage,
                 metrics=result,
             )
-            trial.trial_state.saving_to = checkpoint
+            trial.temporary_state.saving_to = checkpoint
 
         return checkpoint
 
@@ -1893,8 +1893,8 @@ class TuneController:
                 "is being synced from the worker to the head node."
             )
 
-            if trial.trial_state.location.hostname and (
-                trial.trial_state.location.hostname != get_node_ip_address()
+            if trial.temporary_state.location.hostname and (
+                trial.temporary_state.location.hostname != get_node_ip_address()
             ):
                 if log_once("tune_head_worker_checkpoint"):
                     logger.warning(msg)
@@ -1923,14 +1923,14 @@ class TuneController:
                 self._checkpoint_manager.on_trial_checkpoint(trial)
                 self._mark_trial_to_checkpoint(trial)
             else:
-                trial.trial_state.saving_to.dir_or_data = checkpoint_value
+                trial.temporary_state.saving_to.dir_or_data = checkpoint_value
                 self._callbacks.on_checkpoint(
                     iteration=self._iteration,
                     trials=self._trials,
                     trial=trial,
-                    checkpoint=trial.trial_state.saving_to,
+                    checkpoint=trial.temporary_state.saving_to,
                 )
-                trial.on_checkpoint(trial.trial_state.saving_to)
+                trial.on_checkpoint(trial.temporary_state.saving_to)
                 self._checkpoint_manager.on_trial_checkpoint(trial)
                 if trial.checkpoint.storage_mode != CheckpointStorage.MEMORY:
                     self._mark_trial_to_checkpoint(trial)
@@ -1944,7 +1944,7 @@ class TuneController:
                 "Trial %s: Error handling checkpoint %s", trial, checkpoint_value
             )
 
-        trial.trial_state.saving_to = None
+        trial.temporary_state.saving_to = None
         decision = self._cached_trial_decisions.pop(trial.trial_id, None)
         if decision and checkpoint_value:
             self._queue_decision(trial, decision)
@@ -1953,7 +1953,7 @@ class TuneController:
         """Checkpoints trial based off trial.last_result."""
         if trial.should_checkpoint() or force:
             # Save trial runtime if possible.
-            if trial.trial_state.ray_actor:
+            if trial.temporary_state.ray_actor:
                 self._schedule_trial_save(trial, storage=CheckpointStorage.PERSISTENT)
 
     ###
@@ -2002,7 +2002,7 @@ class TuneController:
                 "storage-based restoration"
             )
 
-        trial.trial_state.restoring_from = checkpoint
+        trial.temporary_state.restoring_from = checkpoint
         self._schedule_trial_task(
             trial=trial,
             method_name=method_name,
@@ -2041,7 +2041,7 @@ class TuneController:
         self._cached_trial_decisions.pop(trial.trial_id, None)
         # Resetting this, in case that the trial is in saving status when it crashes.
         if trial.is_saving:
-            trial.trial_state.saving_to = None
+            trial.temporary_state.saving_to = None
         if trial.is_restoring and exc:
             exc = _TuneRestoreError(exc)
         self._schedule_trial_stop(trial, exception=exc)

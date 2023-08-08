@@ -441,11 +441,11 @@ class ProgressReporterTest(unittest.TestCase):
                 t.status = "RUNNING"
             t.trial_id = "%05d" % i
             t.local_experiment_path = "/foo"
-            t.trial_state = Mock()
-            t.trial_state.location = "here"
+            t.temporary_state = Mock()
+            t.temporary_state.location = "here"
             t.config = {"a": i, "b": i * 2, "n": {"k": [i, 2 * i]}}
             t.evaluated_params = {"a": i, "b": i * 2, "n/k/0": i, "n/k/1": 2 * i}
-            t.runtime_metadata.last_result = {
+            t.run_metadata.last_result = {
                 "config": {"a": i, "b": i * 2, "n": {"k": [i, 2 * i]}},
                 "metric_1": i / 2,
                 "metric_2": i / 4,
@@ -488,7 +488,7 @@ class ProgressReporterTest(unittest.TestCase):
         config = {"nested": {"conf": "nested_value"}, "toplevel": "toplevel_value"}
 
         trial = Trial("", config=config, stub=True)
-        trial.runtime_metadata.last_result = {
+        trial.run_metadata.last_result = {
             "metric": 1,
             "config": config,
             "nested": {"metric": 2},
@@ -576,11 +576,11 @@ class ProgressReporterTest(unittest.TestCase):
             t.status = "RUNNING"
             t.trial_id = "%05d" % i
             t.local_experiment_path = "/foo"
-            t.trial_state = Mock()
-            t.trial_state.location = "here"
+            t.temporary_state = Mock()
+            t.temporary_state.location = "here"
             t.config = {"a": i, "b": i * 2, "n": {"k": [i, 2 * i]}}
             t.evaluated_params = {"a": i}
-            t.runtime_metadata.last_result = {"config": {"a": i}, "metric_1": i / 2}
+            t.run_metadata.last_result = {"config": {"a": i}, "metric_1": i / 2}
             t.__str__ = lambda self: self.trial_id
             trials.append(t)
 
@@ -611,11 +611,11 @@ class ProgressReporterTest(unittest.TestCase):
                 t.status = "RUNNING"
             t.trial_id = "%05d" % i
             t.local_experiment_path = "/foo"
-            t.trial_state = Mock()
-            t.trial_state.location = "here"
+            t.temporary_state = Mock()
+            t.temporary_state.location = "here"
             t.config = {"a": i}
             t.evaluated_params = {"a": i}
-            t.runtime_metadata.last_result = {"config": {"a": i}}
+            t.run_metadata.last_result = {"config": {"a": i}}
             t.__str__ = lambda self: self.trial_id
             trials.append(t)
         # Set `metric_1` for terminated trails
@@ -818,11 +818,11 @@ class ProgressReporterTest(unittest.TestCase):
             t.status = "TERMINATED"
             t.trial_id = "%05d" % i
             t.local_experiment_path = "/foo"
-            t.trial_state = Mock()
-            t.trial_state.location = "here"
+            t.temporary_state = Mock()
+            t.temporary_state.location = "here"
             t.config = {"verylong" * 20: i}
             t.evaluated_params = {"verylong" * 20: i}
-            t.runtime_metadata.last_result = {"some_metric": "evenlonger" * 100}
+            t.run_metadata.last_result = {"some_metric": "evenlonger" * 100}
             t.__str__ = lambda self: self.trial_id
             trials.append(t)
 
