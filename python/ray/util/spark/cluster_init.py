@@ -759,7 +759,7 @@ _worker_node_option_block_keys = {
     "num_cpus": "num_cpus_worker_node",
     "num_gpus": "num_gpus_worker_node",
     "memory": None,
-    "object_store_memory": "object_store_memory_per_node",
+    "object_store_memory": "object_store_memory_worker_node",
     "dashboard_agent_listen_port": None,
     "min_worker_port": None,
     "max_worker_port": None,
@@ -976,6 +976,18 @@ def setup_ray_cluster(
             "'num_gpus_worker_node' argument instead."
         )
 
+    if "object_store_memory_per_node" in kwargs:
+        if object_store_memory_worker_node is not None:
+            raise ValueError(
+                "'object_store_memory_per_node' and 'object_store_memory_worker_node' "
+                "arguments cannot be set together."
+            )
+        object_store_memory_worker_node = kwargs["object_store_memory_per_node"]
+        _logger.warning(
+            "'object_store_memory_per_node' argument is deprecated, please use "
+            "'object_store_memory_worker_node' argument instead."
+        )
+
     # Environment configurations within the Spark Session that dictate how many cpus
     # and gpus to use for each submitted spark task.
     num_spark_task_cpus = int(spark.sparkContext.getConf().get("spark.task.cpus", "1"))
@@ -1066,10 +1078,10 @@ def setup_ray_cluster(
             "the recommended value of 10GB. The ray worker node heap memory size is "
             "calculated by "
             "(SPARK_WORKER_NODE_PHYSICAL_MEMORY / num_local_spark_task_slots * 0.8) - "
-            "object_store_memory_per_node. To increase the heap space available, "
+            "object_store_memory_worker_node. To increase the heap space available, "
             "increase the memory in the spark cluster by changing instance types or "
             "worker count, reduce the target `num_worker_nodes`, or apply a lower "
-            "`object_store_memory_per_node`."
+            "`object_store_memory_worker_node`."
         )
     if insufficient_resources:
         if strict_mode:
