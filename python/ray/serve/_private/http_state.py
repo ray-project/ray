@@ -411,6 +411,18 @@ class HTTPProxyStateManager:
             )
             return nodes
 
+        if location == DeploymentMode.WorkersOnly:
+            nodes = [
+                (node_id, ip_address)
+                for node_id, ip_address in target_nodes
+                if node_id != self._head_node_id
+            ]
+            assert len(nodes) > 1, (
+                f"Worker nodes not found! Head node id: {self._head_node_id}, "
+                f"all nodes: {target_nodes}."
+            )
+            return nodes
+
         if location == DeploymentMode.FixedNumber:
             num_replicas = self._config.fixed_number_replicas
             if num_replicas > len(target_nodes):
