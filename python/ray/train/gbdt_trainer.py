@@ -280,7 +280,7 @@ class GBDTTrainer(BaseTrainer):
         evals_result = {}
 
         init_model = None
-        if self._get_initial_checkpoint():
+        if self.starting_checkpoint:
             init_model, _ = self._load_checkpoint(self.starting_checkpoint)
 
         config.setdefault("verbose_eval", False)
