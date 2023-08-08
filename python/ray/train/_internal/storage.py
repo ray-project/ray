@@ -272,6 +272,44 @@ def _create_directory(fs: pyarrow.fs.FileSystem, fs_path: str) -> None:
         )
 
 
+def get_fs_and_path(
+    storage_path: Union[str, os.PathLike],
+    storage_filesystem: Optional[pyarrow.fs.FileSystem] = None,
+) -> Tuple[pyarrow.fs.FileSystem, str]:
+    """Returns the fs and path from a storage path and an optional custom fs.
+
+    Args:
+        storage_path: A storage path or URI. (ex: s3://bucket/path or /tmp/ray_results)
+        storage_filesystem: A custom filesystem to use. If not provided,
+            this will be auto-resolved by pyarrow. If provided, the storage_path
+            is assumed to be prefix-stripped already, and must be a valid path
+            on the filesystem.
+
+    Raises:
+        ValueError: if the storage path is a URI and a custom filesystem is given.
+    """
+    storage_path = str(storage_path)
+
+    if storage_filesystem:
+        if is_uri(storage_path):
+            raise ValueError(
+                "If you specify a custom `storage_filesystem`, the corresponding "
+                "`storage_path` must be a *path* on that filesystem, not a URI.\n"
+                "For example: "
+                "(storage_filesystem=CustomS3FileSystem(), "
+                "storage_path='s3://bucket/path') should be changed to "
+                "(storage_filesystem=CustomS3FileSystem(), "
+                "storage_path='bucket/path')\n"
+                "This is what you provided: "
+                f"(storage_filesystem={storage_filesystem}, "
+                f"storage_path={storage_path})\n"
+                "Note that this may depend on the custom filesystem you use."
+            )
+        return storage_filesystem, storage_path
+
+    return pyarrow.fs.FileSystem.from_uri(storage_path)
+
+
 class _FilesystemSyncer(_BackgroundSyncer):
     """Syncer between local filesystem and a `storage_filesystem`."""
 
@@ -414,32 +452,12 @@ class StorageContext:
         self.current_checkpoint_index = current_checkpoint_index
         self.sync_config = dataclasses.replace(sync_config)
 
-        if storage_filesystem:
-            # Custom pyarrow filesystem
-            self.storage_filesystem = storage_filesystem
-            if is_uri(self.storage_path):
-                raise ValueError(
-                    "If you specify a custom `storage_filesystem`, the corresponding "
-                    "`storage_path` must be a *path* on that filesystem, not a URI.\n"
-                    "For example: "
-                    "(storage_filesystem=CustomS3FileSystem(), "
-                    "storage_path='s3://bucket/path') should be changed to "
-                    "(storage_filesystem=CustomS3FileSystem(), "
-                    "storage_path='bucket/path')\n"
-                    "This is what you provided: "
-                    f"(storage_filesystem={storage_filesystem}, "
-                    f"storage_path={storage_path})\n"
-                    "Note that this may depend on the custom filesystem you use."
-                )
-            self.storage_fs_path = self.storage_path
-        else:
-            (
-                self.storage_filesystem,
-                self.storage_fs_path,
-            ) = pyarrow.fs.FileSystem.from_uri(self.storage_path)
+        self.storage_filesystem, self.storage_fs_path = get_fs_and_path(
+            self.storage_path, storage_filesystem
+        )
 
-        # The storage prefix is the URI that remains after stripping the
-        # URI prefix away from the user-provided `storage_path` (using `from_uri`).
+        # The storage prefix is part of the URI that is stripped away
+        # from the user-provided `storage_path` by pyarrow's `from_uri`.
         # Ex: `storage_path="s3://bucket/path?param=1`
         #  -> `storage_prefix=URI<s3://.?param=1>`
         # See the doctests for more examples.
