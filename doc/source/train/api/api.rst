@@ -147,8 +147,8 @@ PyTorch Lightning
 .. note::
 
     We will deprecate `LightningTrainer`, `LightningConfigBuilder`,
-    `LightningCheckpoint`, and `LightningPredictor` in 2.8. Please 
-    refers to the migration guides for more info.
+    `LightningCheckpoint`, and `LightningPredictor` in Ray 2.8. Please 
+    refer to the migration guides for more info.
 
 Tensorflow/Keras
 ~~~~~~~~~~~~~~~~

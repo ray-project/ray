@@ -141,8 +141,8 @@ appropriately in distributed training.
         You can always get the saved checkpoint path from ``result.checkpoint`` and 
         ``result.best_checkpoints``.
 
-        For more advanced reporting usages (e.g. report at different frequency, report 
-        customized checkpoint files), you can implement your own a customized callback.
+        For more advanced usage (e.g. reporting at different frequency, reporting 
+        customized checkpoint files), you can implement your own customized callback.
         Here is a simple example that reports a checkpoint every 3 epochs:
 
         .. code-block:: python
@@ -303,7 +303,7 @@ Checkpoints can be loaded into the training function in 2 steps:
     .. tab-item:: PyTorch Lightning
 
         .. code-block:: python
-            :emphasize-lines: 11,12,13,14,15,16,17
+            :emphasize-lines: 11-17
 
             from ray import train
             from ray.train import Checkpoint, ScalingConfig

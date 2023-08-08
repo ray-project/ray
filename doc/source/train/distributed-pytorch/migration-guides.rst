@@ -1,10 +1,10 @@
 Migration Guides for LightningTrainer, TransformersTrainer, and AccelerateTrainer
 =================================================================================
 
-In version 2.7, we're excited to introduce a unified approach for Torch-based trainers 
-using the :class:`~ray.train.torch.TorchTrainer` API. This enhancement allows more 
-flexible and centralized integration with PyTorch Lightning, HuggingFace Transformers, 
-and HuggingFace Accelerate, all under the TorchTrainer umbrella.
+In Ray 2.7, we're excited to introduce a unified approach for Torch-based training frameworks
+using the :class:`~ray.train.torch.TorchTrainer` API. This change allows for a more 
+flexible and complementary integration with PyTorch Lightning, HuggingFace Transformers, 
+and HuggingFace Accelerate.
 
 .. tab-set::
 
@@ -47,13 +47,13 @@ and HuggingFace Accelerate, all under the TorchTrainer umbrella.
             )
             ray_trainer.fit()
 
-        The earlier version of our LightningTrainer API was constraining, reducing 
-        the users' ability to manage the internal training function.
+        This version of our LightningTrainer API was constraining and limited 
+        the users' ability to manage the training functionality.
         
-        We're pleased to introduce the new unified TorchTrainer API, which offers 
-        enhanced transparency, flexibility, and simplicity. This refined training 
-        function aligns closely with standard PyTorch Lightning scripts, ensuring 
-        users have complete control and customization options.
+        We're pleased to introduce the newly unified TorchTrainer API, which offers 
+        enhanced transparency, flexibility, and simplicity. This API is more aligned
+        with standard PyTorch Lightning scripts, ensuring users have better 
+        control over their native Lightning code.
 
 
         .. code-block:: python
