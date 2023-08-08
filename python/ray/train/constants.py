@@ -17,7 +17,7 @@ from ray.air.constants import (  # noqa: F401
     LAZY_CHECKPOINT_MARKER_FILE,
 )
 
-# Autofilled session.report() metrics. Keys should be consistent with Tune.
+# Autofilled ray.train.report() metrics. Keys should be consistent with Tune.
 TIME_TOTAL_S = "_time_total_s"
 
 WORKER_HOSTNAME = "_hostname"

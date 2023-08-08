@@ -4,7 +4,7 @@ import os
 import time
 
 import ray
-from ray.air.config import ScalingConfig
+from ray.train import ScalingConfig
 from ray.air.util.check_ingest import DummyTrainer
 from ray.data.preprocessors import BatchMapper
 
