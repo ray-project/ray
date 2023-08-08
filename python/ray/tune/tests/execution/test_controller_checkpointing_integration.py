@@ -212,7 +212,9 @@ def test_checkpoint_num_to_keep(
         checkpoint_config=CheckpointConfig(num_to_keep=2),
     )
     trial.init_local_path()
-    trial.checkpoint_manager.set_delete_fn(lambda cp: shutil.rmtree(cp.dir_or_data))
+    trial.runtime_metadata.checkpoint_manager.set_delete_fn(
+        lambda cp: shutil.rmtree(cp.dir_or_data)
+    )
 
     def write_checkpoint(trial: Trial, index: int):
         checkpoint_dir = TrainableUtil.make_checkpoint_dir(
@@ -274,7 +276,9 @@ def test_checkpoint_num_to_keep(
     runner.resume()
 
     trial = runner.get_trials()[0]
-    trial.checkpoint_manager.set_delete_fn(lambda cp: shutil.rmtree(cp.dir_or_data))
+    trial.runtime_metadata.checkpoint_manager.set_delete_fn(
+        lambda cp: shutil.rmtree(cp.dir_or_data)
+    )
 
     # Write fourth checkpoint
     result = write_checkpoint(trial, 4)

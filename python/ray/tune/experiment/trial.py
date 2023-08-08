@@ -975,6 +975,7 @@ class Trial:
         if status == Trial.RUNNING:
             if self.runtime_metadata.start_time is None:
                 self.runtime_metadata.start_time = time.time()
+        self.invalidate_json_state()
 
     def set_config(self, config):
         self.config = config

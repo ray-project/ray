@@ -603,8 +603,8 @@ class TuneController:
             if trial.status == Trial.ERROR:
                 if resume_errored:
                     # Keep trial ID on resume
-                    trial_to_add.error_filename = None
-                    trial_to_add.pickled_error_filename = None
+                    trial_to_add.runtime_metadata.error_filename = None
+                    trial_to_add.runtime_metadata.pickled_error_filename = None
                     trial_to_add.set_status(Trial.PENDING)
                     trial_to_add.restore_path = trial.checkpoint.dir_or_data
                 elif restart_errored:
