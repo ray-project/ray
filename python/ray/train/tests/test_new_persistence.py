@@ -351,8 +351,6 @@ def test_trainer(
     monkeypatch.setenv("RAY_AIR_LOCAL_CACHE_DIR", str(LOCAL_CACHE_DIR))
     exp_name = "trainer_new_persistence"
 
-    # TODO(justinvyu): Manual restore doesn't work yet for custom fs.
-    # Need to introduce restore(storage_filesystem) API in a follow-up.
     with _resolve_storage_type(storage_path_type, tmp_path) as (
         storage_path,
         storage_filesystem,
