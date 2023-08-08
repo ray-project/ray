@@ -274,7 +274,7 @@ minigrid==2.1.1
 mistune==0.8.4
 ml-dtypes==0.2.0
 mlagents-envs==0.28.0
-mlflow==2.4.1 ; python_version > "3.7"
+mlflow==2.5.0 ; python_version > "3.7"
 mock==5.1.0
 modin==0.22.2 ; python_version >= "3.8"
 monotonic==1.6
