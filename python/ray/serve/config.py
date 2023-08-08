@@ -512,8 +512,9 @@ class ReplicaConfig:
                     or not all(isinstance(v, (int, float)) for v in bundle.values())
                 ):
                     raise ValueError(
-                        "`placement_group_bundles` must be a non-empty list of resource "
-                        'dictionaries. For example: `[{"CPU": 1.0}, {"GPU": 1.0}]`.'
+                        "`placement_group_bundles` must be a non-empty list of "
+                        "resource dictionaries. For example: "
+                        '`[{"CPU": 1.0}, {"GPU": 1.0}]`.'
                     )
 
                 # Validate that the replica actor fits in the first bundle.

@@ -254,7 +254,10 @@ class TestReplicaConfig:
         # Invalid: malformed placement_group_bundles.
         with pytest.raises(
             ValueError,
-            match="`placement_group_bundles` must be a non-empty list of resource dictionaries.",
+            match=(
+                "`placement_group_bundles` must be a non-empty list "
+                "of resource dictionaries."
+            ),
         ):
             ReplicaConfig.create(
                 Class,
@@ -266,7 +269,10 @@ class TestReplicaConfig:
         # Invalid: replica actor does not fit in the first bundle (CPU).
         with pytest.raises(
             ValueError,
-            match="the resource requirements for the actor must be a subset of the first bundle.",
+            match=(
+                "the resource requirements for the actor must be a "
+                "subset of the first bundle."
+            ),
         ):
             ReplicaConfig.create(
                 Class,
@@ -279,7 +285,10 @@ class TestReplicaConfig:
         # Invalid: replica actor does not fit in the first bundle (CPU).
         with pytest.raises(
             ValueError,
-            match="the resource requirements for the actor must be a subset of the first bundle.",
+            match=(
+                "the resource requirements for the actor must be a "
+                "subset of the first bundle."
+            ),
         ):
             ReplicaConfig.create(
                 Class,
@@ -292,7 +301,10 @@ class TestReplicaConfig:
         # Invalid: replica actor does not fit in the first bundle (custom resource).
         with pytest.raises(
             ValueError,
-            match="the resource requirements for the actor must be a subset of the first bundle.",
+            match=(
+                "the resource requirements for the actor must be a "
+                "subset of the first bundle."
+            ),
         ):
             ReplicaConfig.create(
                 Class,
