@@ -16,7 +16,7 @@ from ray.train.examples.pytorch.torch_quick_start import (
     train_func as torch_quick_start_train_func,
 )
 from ray.train.examples.pytorch.torch_fashion_mnist_example import (
-    train_func as fashion_mnist_train_func,
+    train_func_per_worker as fashion_mnist_train_func,
 )
 from ray.train.examples.pytorch.torch_linear_example import (
     train_func as linear_train_func,

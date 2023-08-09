@@ -12,7 +12,7 @@ from ray.train import ScalingConfig
 from ray.train.torch import TorchTrainer
 
 
-def build_dataset(batch_size):
+def get_dataloaders(batch_size):
     # Transform to normalize the input images
     transform = transforms.Compose([ToTensor(), Normalize((0.5,), (0.5,))])
 
@@ -67,17 +67,19 @@ def train_func_per_worker(config: Dict):
     epochs = config["epochs"]
     batch_size = config["batch_size_per_worker"]
 
-    # Build datasets inside worker training function
-    train_dataloader, test_dataloader = build_dataset(batch_size=batch_size)
+    # Get dataloaders inside worker training function
+    train_dataloader, test_dataloader = get_dataloaders(batch_size=batch_size)
 
     # [1] Prepare Dataloader for distributed training
-    # ===============================================
+    # Shard the datasets among workers and move batches to the correct device
+    # =======================================================================
     train_dataloader = ray.train.torch.prepare_data_loader(train_dataloader)
     test_dataloader = ray.train.torch.prepare_data_loader(test_dataloader)
 
     model = NeuralNetwork()
 
     # [2] Prepare and wrap your model with DistributedDataParallel
+    # Move the model the correct GPU/CPU device
     # ============================================================
     model = ray.train.torch.prepare_model(model)
 
@@ -110,7 +112,7 @@ def train_func_per_worker(config: Dict):
         accuracy = num_correct / num_total
 
         # [3] Report metrics to Ray Train
-        # ==============================
+        # ===============================
         ray.train.report(metrics={"test_loss": test_loss, "accuracy": accuracy})
 
 
@@ -133,6 +135,10 @@ def train_fashion_mnist(num_workers=2, use_gpu=False):
         train_loop_config=train_config,
         scaling_config=scaling_config,
     )
+
+    # [4] Start Distributed Training
+    # Run `train_func_per_worker` on all workers
+    # =============================================
     result = trainer.fit()
     print(f"Training result: {result}")
 
