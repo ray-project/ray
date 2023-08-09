@@ -1,5 +1,6 @@
 from abc import ABCMeta, abstractmethod
 import math
+import os
 from typing import List
 
 from ray.serve.config import AutoscalingConfig
@@ -43,7 +44,20 @@ def calculate_desired_num_replicas(
     )
 
     # Multiply the distance to 1 by the smoothing ("gain") factor (default=1).
-    smoothed_error_ratio = 1 + ((error_ratio - 1) * autoscaling_config.smoothing_factor)
+    if error_ratio >= 1:
+        smoothing_factor = float(
+            os.environ.get(
+                "UPSCALE_SMOOTHING_FACTOR", autoscaling_config.smoothing_factor
+            )
+        )
+    else:
+        smoothing_factor = float(
+            os.environ.get(
+                "DOWNSCALE_SMOOTHING_FACTOR", autoscaling_config.smoothing_factor
+            )
+        )
+
+    smoothed_error_ratio = 1 + ((error_ratio - 1) * smoothing_factor)
     desired_num_replicas = math.ceil(current_num_replicas * smoothed_error_ratio)
 
     # Ensure min_replicas <= desired_num_replicas <= max_replicas.
@@ -135,9 +149,12 @@ class BasicAutoscalingPolicy(AutoscalingPolicy):
 
         if len(current_num_ongoing_requests) == 0:
             # When 0 replicas and queries are queued, scale up the replicas
+            smoothing_factor = float(
+                os.environ.get("UPSCALE_SMOOTHING_FACTOR", self.config.smoothing_factor)
+            )
             if current_handle_queued_queries > 0:
                 return max(
-                    math.ceil(1 * self.config.smoothing_factor),
+                    math.ceil(1 * smoothing_factor),
                     curr_target_num_replicas,
                 )
             return curr_target_num_replicas
