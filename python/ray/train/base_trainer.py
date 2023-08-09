@@ -313,13 +313,19 @@ class BaseTrainer(abc.ABC):
                 "is the experiment directory that results from a call to "
                 "`trainer.fit()`."
             )
-        trainer_state_path = cls._maybe_sync_down_trainer_state(
-            path, storage_filesystem
-        )
-        assert trainer_state_path.exists()
+        if _use_storage_context():
+            fs, fs_path = get_fs_and_path(path, storage_filesystem)
+            with fs.open_input_file(os.path.join(fs_path, _TRAINER_PKL)) as f:
+                trainer_cls, param_dict = pickle.loads(f.readall())
+        else:
+            trainer_state_path = cls._maybe_sync_down_trainer_state(
+                path, storage_filesystem
+            )
+            assert trainer_state_path.exists()
 
-        with open(trainer_state_path, "rb") as fp:
-            trainer_cls, param_dict = pickle.load(fp)
+            with open(trainer_state_path, "rb") as fp:
+                trainer_cls, param_dict = pickle.load(fp)
+
         if trainer_cls is not cls:
             warnings.warn(
                 f"Invalid trainer type. You are attempting to restore a trainer of type"
