@@ -164,8 +164,8 @@ If you're writing a longer example, or if object representations aren't relevant
     .. testoutput::
 
         MaterializedDataset(
-        num_blocks=...,
-        num_rows=150,
+           num_blocks=...,
+           num_rows=150,
            schema={
               sepal length (cm): double,
               sepal width (cm): double,
