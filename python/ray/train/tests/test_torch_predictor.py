@@ -2,6 +2,7 @@ import re
 
 import numpy as np
 import pandas as pd
+import pyarrow.fs
 import pyarrow as pa
 import pytest
 import ray
@@ -13,6 +14,7 @@ from ray.air.util.data_batch_conversion import (
     _convert_pandas_to_batch_type,
     _convert_batch_type_to_pandas,
 )
+from ray.train._internal.storage import _pyarrow_fs_copy_files
 from ray.train.batch_predictor import BatchPredictor
 from ray.train.predictor import TYPE_TO_ENUM
 from ray.train.torch import TorchCheckpoint, TorchPredictor
@@ -289,8 +291,13 @@ def test_predictor_w_ckpt_from_uri(mock_s3_bucket_uri):
 
     model = create_model()
     saved_checkpoint = TorchCheckpoint.from_model(model=model)
-    saved_checkpoint.to_uri(mock_s3_bucket_uri)
-    loaded_checkpoint = TorchCheckpoint.from_uri(mock_s3_bucket_uri)
+
+    s3_fs, s3_path = pyarrow.fs.FileSystem.from_uri(mock_s3_bucket_uri)
+    _pyarrow_fs_copy_files(
+        saved_checkpoint.path, s3_path, saved_checkpoint.filesystem, s3_fs
+    )
+
+    loaded_checkpoint = TorchCheckpoint(path=mock_s3_bucket_uri)
     batch_predictor = BatchPredictor.from_checkpoint(
         checkpoint=loaded_checkpoint, predictor_cls=TorchPredictor
     )
