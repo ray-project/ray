@@ -371,9 +371,9 @@ time.sleep(3)
 
     ray.init(_system_config={"enable_autoscaler_v2": True})
 
-    proc = run_string_as_driver_nonblocking(
-        script, env={"RAY_LOG_TO_DRIVER_EVENT_LEVEL": event_level}
-    )
+    env = os.environ.copy()
+    env["RAY_LOG_TO_DRIVER_EVENT_LEVEL"] = event_level
+    proc = run_string_as_driver_nonblocking(script, env=env)
 
     def verify():
         out_str = proc.stdout.read().decode("ascii")
