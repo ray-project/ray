@@ -650,6 +650,9 @@ def call_ray_stop_only():
 def start_cluster(ray_start_cluster_enabled, request):
     assert request.param in {"ray_client", "no_ray_client"}
     use_ray_client: bool = request.param == "ray_client"
+    if os.environ.get("RAY_MINIMAL") == "1" and use_ray_client:
+        pytest.skip("Skipping due to we don't have ray client in minimal.")
+
     cluster = ray_start_cluster_enabled
     cluster.add_node(num_cpus=4, dashboard_agent_listen_port=find_free_port())
     if use_ray_client:
