@@ -278,13 +278,14 @@ std::vector<double> LocalResourceManager::SubtractResourceInstances(
       resource_instances_fp,
       local_resources_.available.GetMutable(resource_id),
       allow_going_negative);
+
+  SetResourceNonIdle(resource_id);
   OnResourceOrStateChanged();
 
   return FixedPointVectorToDouble(underflow);
 }
 
 void LocalResourceManager::SetResourceNonIdle(const scheduling::ResourceID &resource_id) {
-  // We o
   resources_last_idle_time_[resource_id] = absl::nullopt;
 }
 
