@@ -123,9 +123,7 @@ def get_transform(to_torch_tensor):
             ),
             torchvision.transforms.RandomHorizontalFlip(),
         ]
-        + [torchvision.transforms.ToTensor()]
-        if to_torch_tensor
-        else []
+        + ([torchvision.transforms.ToTensor()] if to_torch_tensor else [])
     )
     return transform
 
