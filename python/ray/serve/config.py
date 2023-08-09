@@ -387,6 +387,15 @@ class ReplicaConfig:
         self._validate_ray_actor_options()
         self.resource_dict = resources_from_ray_options(self.ray_actor_options)
 
+    def update_placement_group_options(
+        self,
+        placement_group_bundles: Optional[List[Dict[str, float]]],
+        placement_group_strategy: Optional[str],
+    ):
+        self.placement_group_bundles = placement_group_bundles
+        self.placement_group_strategy = placement_group_strategy
+        self._validate_placement_group_options()
+
     @classmethod
     def create(
         cls,
