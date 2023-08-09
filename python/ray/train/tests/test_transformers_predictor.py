@@ -4,11 +4,9 @@ import tempfile
 
 import numpy as np
 import pandas as pd
-import pyarrow as pa
 import pytest
 from ray.air.constants import MAX_REPR_LENGTH
 from ray.air.util.data_batch_conversion import _convert_pandas_to_batch_type
-from ray.train.batch_predictor import BatchPredictor
 from ray.train.predictor import TYPE_TO_ENUM
 from transformers import (
     AutoConfig,
@@ -19,7 +17,6 @@ from transformers import (
 from transformers.pipelines import pipeline, Pipeline
 
 
-import ray
 from ray.train.huggingface import (
     TransformersCheckpoint,
     TransformersPredictor,
@@ -136,29 +133,6 @@ def create_checkpoint():
         checkpoint = TransformersCheckpoint.from_model(model, tokenizer, path=tmpdir)
         # Serialize to dict so we can remove the temporary directory
         return TransformersCheckpoint.from_dict(checkpoint.to_dict())
-
-
-# TODO(ml-team): Add np.ndarray to batch_type
-@pytest.mark.parametrize("batch_type", [pd.DataFrame])
-def test_predict_batch(ray_start_4_cpus, batch_type):
-    checkpoint = create_checkpoint()
-    predictor = BatchPredictor.from_checkpoint(
-        checkpoint, TransformersPredictor, task="text-generation"
-    )
-
-    # Todo: Ray data does not support numpy string arrays well
-    if batch_type == np.ndarray:
-        dataset = ray.data.from_numpy(prompts.to_numpy().astype("U"))
-    elif batch_type == pd.DataFrame:
-        dataset = ray.data.from_pandas(prompts)
-    elif batch_type == pa.Table:
-        dataset = ray.data.from_arrow(pa.Table.from_pandas(prompts))
-    else:
-        raise RuntimeError("Invalid batch_type")
-
-    predictions = predictor.predict(dataset)
-
-    assert predictions.count() == 3
 
 
 if __name__ == "__main__":

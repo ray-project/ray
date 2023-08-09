@@ -23,13 +23,11 @@ def test(*, framework: str, datasource: str):
         preprocessor, per_epoch_preprocessor = create_torch_preprocessors()
         train_torch_model(dataset, preprocessor, per_epoch_preprocessor)
         checkpoint = create_torch_checkpoint(preprocessor)
-        batch_predict_torch(dataset, checkpoint)
         online_predict_torch(checkpoint)
     if framework == "tensorflow":
         preprocessor, per_epoch_preprocessor = create_tensorflow_preprocessors()
         train_tensorflow_model(dataset, preprocessor, per_epoch_preprocessor)
         checkpoint = create_tensorflow_checkpoint(preprocessor)
-        batch_predict_tensorflow(dataset, checkpoint)
         online_predict_tensorflow(checkpoint)
 
 
@@ -325,32 +323,6 @@ def create_tensorflow_checkpoint(preprocessor):
     checkpoint = TensorflowCheckpoint.from_model(model, preprocessor=preprocessor)
     # __tensorflow_checkpoint_stop__
     return checkpoint
-
-
-def batch_predict_torch(dataset, checkpoint):
-    # __torch_batch_predictor_start__
-    from ray.train.batch_predictor import BatchPredictor
-    from ray.train.torch import TorchPredictor
-
-    predictor = BatchPredictor.from_checkpoint(checkpoint, TorchPredictor)
-    predictor.predict(dataset, feature_columns=["image"], keep_columns=["label"])
-    # __torch_batch_predictor_stop__
-
-
-def batch_predict_tensorflow(dataset, checkpoint):
-    # __tensorflow_batch_predictor_start__
-    import tensorflow as tf
-
-    from ray.train.batch_predictor import BatchPredictor
-    from ray.train.tensorflow import TensorflowPredictor
-
-    predictor = BatchPredictor.from_checkpoint(
-        checkpoint,
-        TensorflowPredictor,
-        model_definition=tf.keras.applications.resnet50.ResNet50,
-    )
-    predictor.predict(dataset, feature_columns=["image"], keep_columns=["label"])
-    # __tensorflow_batch_predictor_stop__
 
 
 def online_predict_torch(checkpoint):

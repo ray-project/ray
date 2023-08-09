@@ -224,7 +224,6 @@ py_test_run_all_subdirectory(
     size = "large",
     include = ["source/train/doc_code/*.py"],
     exclude = [
-        "source/train/doc_code/predictors.py",  # Too large
         "source/train/doc_code/hf_trainer.py",  # Too large
     ],
     extra_srcs = [],
@@ -260,14 +259,6 @@ py_test_run_all_subdirectory(
 # --------------
 # Run GPU tests
 # --------------
-
-py_test_run_all_subdirectory(
-    size = "large",
-    include = ["source/train/doc_code/predictors.py"],
-    exclude = [],
-    extra_srcs = [],
-    tags = ["exclusive", "team:ml", "ray_air", "gpu"],
-)
 
 py_test(
     name = "pytorch_resnet_finetune",
