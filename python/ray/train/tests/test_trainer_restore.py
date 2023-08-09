@@ -19,13 +19,15 @@ from ray.train.data_parallel_trainer import (
     _DataParallelCheckpointManager,
     DataParallelTrainer,
 )
-from ray.train.torch import TorchTrainer, TorchCheckpoint
+from ray.train.torch import TorchTrainer
 from ray.train.xgboost import XGBoostTrainer
 from ray.train.lightgbm import LightGBMTrainer
 from ray.train.huggingface import TransformersTrainer
 from ray.tune import Callback
 from ray.data.preprocessors.batch_mapper import BatchMapper
 from ray.data.preprocessor import Preprocessor
+
+from ray.train.tests.util import create_dict_checkpoint
 
 
 @pytest.fixture
@@ -500,9 +502,8 @@ def test_clear_lazy_ckpt_markers(ray_start_4_cpus):
         ).exists()
 
         if not train.get_checkpoint():
-            train.report(
-                metrics={"a": 1}, checkpoint=TorchCheckpoint.from_dict({"a": 1})
-            )
+            with create_dict_checkpoint({"a": 1}) as checkpoint:
+                train.report({"a": 1}, checkpoint=checkpoint)
             raise RuntimeError
 
     trainer = DataParallelTrainerPatched(
