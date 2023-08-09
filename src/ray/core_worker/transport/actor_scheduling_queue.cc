@@ -21,6 +21,7 @@ ActorSchedulingQueue::ActorSchedulingQueue(
     instrumented_io_context &main_io_service,
     DependencyWaiter &waiter,
     std::shared_ptr<ConcurrencyGroupManager<BoundedExecutor>> pool_manager,
+    std::shared_ptr<ConcurrencyGroupManager<FiberState>> fiber_state_manager,
     bool is_asyncio,
     int fiber_max_concurrency,
     const std::vector<ConcurrencyGroup> &concurrency_groups,
@@ -30,6 +31,7 @@ ActorSchedulingQueue::ActorSchedulingQueue(
       main_thread_id_(boost::this_thread::get_id()),
       waiter_(waiter),
       pool_manager_(pool_manager),
+      fiber_state_manager_(fiber_state_manager),
       is_asyncio_(is_asyncio) {
   if (is_asyncio_) {
     std::stringstream ss;
@@ -39,8 +41,6 @@ ActorSchedulingQueue::ActorSchedulingQueue(
       ss << "\t" << concurrency_group.name << " : " << concurrency_group.max_concurrency;
     }
     RAY_LOG(INFO) << ss.str();
-    fiber_state_manager_ = std::make_unique<ConcurrencyGroupManager<FiberState>>(
-        concurrency_groups, fiber_max_concurrency);
   }
 }
 

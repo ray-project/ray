@@ -26,7 +26,15 @@ class MockActorSchedulingQueue {
  public:
   MockActorSchedulingQueue(instrumented_io_context &main_io_service,
                            DependencyWaiter &waiter)
-      : queue_(main_io_service, waiter) {}
+      : queue_(main_io_service,
+               waiter,
+               /*pool_manager=*/
+               std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>(),
+               /*fiber_state_manager=*/
+               std::make_shared<ConcurrencyGroupManager<FiberState>>(),
+               /*is_asyncio=*/false,
+               /*fiber_max_concurrency=*/1,
+               /*concurrency_groups=*/{}) {}
   void Add(int64_t seq_no,
            int64_t client_processed_up_to,
            std::function<void(rpc::SendReplyCallback)> accept_request,
@@ -44,6 +52,8 @@ class MockActorSchedulingQueue {
                task_id,
                dependencies);
   }
+
+  ~MockActorSchedulingQueue() { queue_.Stop(); }
 
  private:
   ActorSchedulingQueue queue_;
