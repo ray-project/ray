@@ -2161,7 +2161,7 @@ class DeploymentStateManager:
         self._long_poll_host = long_poll_host
         self._cluster_node_info_cache = cluster_node_info_cache
         self._deployment_scheduler = deployment_scheduler.DeploymentScheduler(
-            self._cluster_node_info_cache
+            cluster_node_info_cache
         )
 
         self._deployment_states: Dict[str, DeploymentState] = dict()

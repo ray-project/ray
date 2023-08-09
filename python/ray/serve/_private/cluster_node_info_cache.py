@@ -19,10 +19,10 @@ class ClusterNodeInfoCache:
     def update(self):
         """Update the cache by fetching latest node information from GCS.
 
-        This should be called once in each update cycle and within an update
-        cycle, everyone will see the same cached node info avoiding
-        any potential issues caused by inconsistent node info
-        seen by different components.
+        This should be called once in each update cycle.
+        Within an update cycle, everyone will see the same
+        cached node info avoiding any potential issues
+        caused by inconsistent node info seen by different components.
         """
         nodes = self._gcs_client.get_all_node_info(timeout=RAY_GCS_RPC_TIMEOUT_S)
         alive_nodes = [
@@ -44,10 +44,16 @@ class ClusterNodeInfoCache:
         return self._cached_alive_nodes
 
     def get_alive_node_ids(self) -> Set[str]:
+        """Get IDs of all live nodes in the cluster."""
         return {node_id for node_id, _ in self.get_alive_nodes()}
 
     def get_draining_node_ids(self) -> Set[str]:
+        """Get IDs of all draining nodes in the cluster."""
         return set()
 
     def get_active_node_ids(self) -> Set[str]:
+        """Get IDs of all active nodes in the cluster.
+
+        A node is active if it's schedulable for new tasks and actors.
+        """
         return self.get_alive_node_ids() - self.get_draining_node_ids()
