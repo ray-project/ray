@@ -316,9 +316,10 @@ class DashboardAgent:
         # TODO: Use async version if performance is an issue
         # -1 should indicate that http server is not started.
         http_port = -1 if not self.http_server else self.http_server.http_port
+        grpc_port = -1 if not self.server else self.grpc_port
         await self.gcs_aio_client.internal_kv_put(
             f"{dashboard_consts.DASHBOARD_AGENT_PORT_PREFIX}{self.node_id}".encode(),
-            json.dumps([http_port, self.grpc_port]).encode(),
+            json.dumps([http_port, grpc_port]).encode(),
             True,
             namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
         )

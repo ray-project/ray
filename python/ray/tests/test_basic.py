@@ -1101,8 +1101,10 @@ def test_failed_task(ray_start_shared_local_modes, error_pubsub):
 
 def test_import_ray_does_not_import_grpc():
     # First unload grpc and ray
-    del sys.modules["grpc"]
-    del sys.modules["ray"]
+    if "grpc" in sys.modules:
+        del sys.modules["grpc"]
+    if "ray" in sys.modules:
+        del sys.modules["ray"]
 
     # Then import ray from scratch
     import ray  # noqa: F401
