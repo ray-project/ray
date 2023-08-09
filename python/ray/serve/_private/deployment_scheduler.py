@@ -4,11 +4,10 @@ from dataclasses import dataclass
 from collections import defaultdict
 
 import ray
-from ray._raylet import GcsClient
 from ray.serve._private.utils import (
-    get_all_node_ids,
     get_head_node_id,
 )
+from ray.serve._private.cluster_node_info_cache import ClusterNodeInfoCache
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 
@@ -59,7 +58,7 @@ class DeploymentScheduler:
     It makes a batch of scheduling decisions in each update cycle.
     """
 
-    def __init__(self):
+    def __init__(self, cluster_node_info_cache: ClusterNodeInfoCache):
         # {deployment_name: scheduling_policy}
         self._deployments = {}
         # Replicas that are waiting to be scheduled.
@@ -78,7 +77,7 @@ class DeploymentScheduler:
         # {deployment_name: {replica_name: running_node_id}}
         self._running_replicas = defaultdict(dict)
 
-        self._gcs_client = GcsClient(address=ray.get_runtime_context().gcs_address)
+        self._cluster_node_info_cache = cluster_node_info_cache
 
         self._head_node_id = get_head_node_id()
 
@@ -206,7 +205,7 @@ class DeploymentScheduler:
             # so that we can make sure we don't schedule two replicas on the same node.
             return
 
-        all_nodes = {node_id for node_id, _ in get_all_node_ids(self._gcs_client)}
+        all_active_nodes = self._cluster_node_info_cache.get_active_node_ids()
         scheduled_nodes = set()
         for node_id in self._launching_replicas[deployment_name].values():
             assert node_id is not None
@@ -214,7 +213,7 @@ class DeploymentScheduler:
         for node_id in self._running_replicas[deployment_name].values():
             assert node_id is not None
             scheduled_nodes.add(node_id)
-        unscheduled_nodes = all_nodes - scheduled_nodes
+        unscheduled_nodes = all_active_nodes - scheduled_nodes
 
         for pending_replica_name in list(
             self._pending_replicas[deployment_name].keys()
