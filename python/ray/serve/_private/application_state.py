@@ -67,6 +67,7 @@ class BuildAppTaskInfo:
 
     obj_ref: ObjectRef
     code_version: str
+    finished: bool
 
 
 @dataclass
@@ -413,6 +414,13 @@ class ApplicationState:
         if config_version == self._target_state.code_version:
             return None, BuildAppStatus.NO_TASK_STARTED, ""
 
+        if (
+            self._build_app_task_info
+            and config_version == self._build_app_task_info.code_version
+            and self._build_app_task_info.finished
+        ):
+            return None, BuildAppStatus.NO_TASK_STARTED, ""
+
         # If there is a non-null target config, and the current code
         # version is out of sync with that target config, we need to
         # rebuild the application with the new target config
@@ -445,13 +453,12 @@ class ApplicationState:
                 self._target_state.config.args,
             )
             self._build_app_task_info = BuildAppTaskInfo(
-                build_app_obj_ref, config_version
+                build_app_obj_ref, config_version, False
             )
         elif check_obj_ref_ready_nowait(self._build_app_task_info.obj_ref):
-            build_app_obj_ref = self._build_app_task_info.obj_ref
-            self._build_app_task_info = None
+            self._build_app_task_info.finished = True
             try:
-                args, err = ray.get(build_app_obj_ref)
+                args, err = ray.get(self._build_app_task_info.obj_ref)
                 if err is None:
                     logger.info(f"Deploy task for app '{self._name}' ran successfully.")
                     return (args, config_version), BuildAppStatus.SUCCEEDED, ""
