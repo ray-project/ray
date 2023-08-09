@@ -3,11 +3,16 @@
 MOCK = True
 
 # __ft_initial_run_start__
+import os
+import tempfile
 from typing import Dict, Optional
+
+import torch
 
 import ray
 from ray import train
-from ray.train.torch import TorchCheckpoint, TorchTrainer
+from ray.train._checkpoint import Checkpoint
+from ray.train.torch import TorchTrainer
 
 
 def get_datasets() -> Dict[str, ray.data.Dataset]:
@@ -18,8 +23,13 @@ def train_loop_per_worker(config: dict):
     from torchvision.models import resnet18
 
     # Checkpoint loading
-    checkpoint: Optional[TorchCheckpoint] = train.get_checkpoint()
-    model = checkpoint.get_model() if checkpoint else resnet18()
+    checkpoint: Optional[Checkpoint] = train.get_checkpoint()
+    model = resnet18()
+    if checkpoint:
+        with checkpoint.as_directory() as checkpoint_dir:
+            model_state_dict = torch.load(os.path.join(checkpoint_dir, "model.pt"))
+            model.load_state_dict(model_state_dict)
+
     ray.train.torch.prepare_model(model)
 
     train_ds = train.get_dataset_shard("train")
@@ -28,10 +38,9 @@ def train_loop_per_worker(config: dict):
         # Do some training...
 
         # Checkpoint saving
-        train.report(
-            {"epoch": epoch},
-            checkpoint=TorchCheckpoint.from_model(model),
-        )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            torch.save(model.module.state_dict(), os.path.join(tmpdir, "model.pt"))
+            train.report({"epoch": epoch}, checkpoint=Checkpoint.from_directory(tmpdir))
 
 
 trainer = TorchTrainer(
