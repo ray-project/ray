@@ -124,7 +124,7 @@ def train_fashion_mnist(num_workers=2, use_gpu=False):
         "batch_size_per_worker": global_batch_size // num_workers,
     }
 
-    # Configrue computation resources
+    # Configure computation resources
     scaling_config = ScalingConfig(num_workers=num_workers, use_gpu=use_gpu)
 
     # Initialize a Ray TorchTrainer
