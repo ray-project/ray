@@ -362,6 +362,40 @@ TEST_F(ClusterResourceSchedulerTest, NodeAffinitySchedulingStrategyTest) {
                                                              &violations,
                                                              &is_infeasible);
   ASSERT_EQ(node_id_4, local_node_id);
+
+  // Allocate some local resources so the local node is not idle and won't be drained
+  // immediately.
+  auto task_allocation = std::make_shared<TaskResourceInstances>();
+  ASSERT_TRUE(resource_scheduler.GetLocalResourceManager().AllocateLocalTaskResources(
+      resource_request, task_allocation));
+  // Drain the local node so that it's not schedulable for new tasks.
+  resource_scheduler.GetLocalResourceManager().SetLocalNodeDraining();
+
+  scheduling_strategy.mutable_node_affinity_scheduling_strategy()->set_node_id(
+      local_node_id.Binary());
+  scheduling_strategy.mutable_node_affinity_scheduling_strategy()->set_soft(false);
+  auto node_id_5 = resource_scheduler.GetBestSchedulableNode(resource_request,
+                                                             scheduling_strategy,
+                                                             false,
+                                                             false,
+                                                             false,
+                                                             std::string(),
+                                                             &violations,
+                                                             &is_infeasible);
+  ASSERT_TRUE(node_id_5.IsNil());
+
+  scheduling_strategy.mutable_node_affinity_scheduling_strategy()->set_node_id(
+      local_node_id.Binary());
+  scheduling_strategy.mutable_node_affinity_scheduling_strategy()->set_soft(true);
+  auto node_id_6 = resource_scheduler.GetBestSchedulableNode(resource_request,
+                                                             scheduling_strategy,
+                                                             false,
+                                                             false,
+                                                             false,
+                                                             std::string(),
+                                                             &violations,
+                                                             &is_infeasible);
+  ASSERT_EQ(node_id_6, remote_node_id);
 }
 
 TEST_F(ClusterResourceSchedulerTest, SpreadSchedulingStrategyTest) {

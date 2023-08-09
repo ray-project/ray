@@ -133,6 +133,11 @@ class NodeManagerWorkerClient
                          grpc_client_,
                          /*method_timeout_ms*/ -1, )
 
+  VOID_RPC_CLIENT_METHOD(NodeManagerService,
+                         DrainRaylet,
+                         grpc_client_,
+                         /*method_timeout_ms*/ -1, )
+
   /// Cancel a pending worker lease request.
   VOID_RPC_CLIENT_METHOD(NodeManagerService,
                          CancelWorkerLease,

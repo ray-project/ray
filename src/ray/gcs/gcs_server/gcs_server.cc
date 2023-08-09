@@ -685,7 +685,8 @@ void GcsServer::InitGcsAutoscalerStateManager() {
       cluster_resource_scheduler_->GetClusterResourceManager(),
       *gcs_resource_manager_,
       *gcs_node_manager_,
-      *gcs_placement_group_manager_);
+      *gcs_placement_group_manager_,
+      raylet_client_pool_);
 
   autoscaler_state_service_.reset(new rpc::autoscaler::AutoscalerStateGrpcService(
       main_service_, *gcs_autoscaler_state_manager_));
