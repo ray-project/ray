@@ -126,8 +126,8 @@ class DeploymentVersion:
             placement_group_bundles=json.dumps(self.placement_group_bundles)
             if self.placement_group_bundles is not None
             else "",
-            placement_group_version=self.placement_group_version
-            if self.placement_group_version is not None
+            placement_group_strategy=self.placement_group_strategy
+            if self.placement_group_strategy is not None
             else "",
         )
 

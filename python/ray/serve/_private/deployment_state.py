@@ -2280,7 +2280,17 @@ class DeploymentStateManager:
         all_current_actor_names: List[str],
         all_current_placement_group_names: List[str],
     ):
-        """XXX: comment."""
+        """Detect and remove any placement groups not associated with a replica.
+
+        This can happen under certain rare circumstances:
+            - The controller creates a placement group then crashes before creating
+            the associated replica actor.
+            - While the controller is down, a replica actor crashes but its placement
+            group still exists.
+
+        In both of these (or any other unknown cases), we simply need to remove the
+        leaked placement groups.
+        """
         leaked_pg_names = []
         for pg_name in all_current_placement_group_names:
             if (
