@@ -1113,7 +1113,11 @@ def test_import_ray_does_not_import_grpc():
     assert "grpc" not in sys.modules
 
     # Load grpc back so other tests will not be affected
-    import grpc  # noqa: F401
+    try:
+        import grpc  # noqa: F401
+    except ImportError:
+        # It's ok if we don't have grpc installed.
+        pass
 
 
 if __name__ == "__main__":
