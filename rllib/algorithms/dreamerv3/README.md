@@ -62,13 +62,13 @@ in combination with the following scripts and command lines in order to run RLli
 ### Atari100k
 ```shell
 $ cd ray/rllib
-$ rllib train --file ../tuned_examples/dreamerv3/atari_100k.py --env ALE/Pong-v5 
+$ rllib train file tuned_examples/dreamerv3/atari_100k.py --env ALE/Pong-v5 
 ```
 
 ### DeepMind Control Suite (vision)
 ```shell
-$ cd ray/rllib/tests
-$ rllib train --file ../tuned_examples/dreamerv3/dm_control_suite_vision.py --env DMC/cartpole/swingup 
+$ cd ray/rllib
+$ rllib train file tuned_examples/dreamerv3/dm_control_suite_vision.py --env DMC/cartpole/swingup 
 ```
 Other `--env` options for the DM Control Suite would be `--env DMC/hopper/hop`, `--env DMC/walker/walk`, etc..
 Note that you can also switch on WandB logging with the above script via the options
