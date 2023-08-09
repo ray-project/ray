@@ -358,6 +358,9 @@ inline bool operator==(const FunctionDescriptor &left, const FunctionDescriptor 
   case ray::FunctionDescriptorType::kCppFunctionDescriptor:
     return static_cast<const CppFunctionDescriptor &>(*left) ==
            static_cast<const CppFunctionDescriptor &>(*right);
+  case ray::FunctionDescriptorType::kJuliaFunctionDescriptor:
+    return static_cast<const JuliaFunctionDescriptor &>(*left) ==
+           static_cast<const JuliaFunctionDescriptor &>(*right);
   default:
     RAY_LOG(FATAL) << "Unknown function descriptor type: " << left->Type();
     return false;
