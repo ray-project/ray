@@ -74,7 +74,7 @@ class TorchPredictor(DLPredictor):
     @classmethod
     def from_checkpoint(
         cls,
-        checkpoint: Checkpoint,
+        checkpoint: TorchCheckpoint,
         model: Optional[torch.nn.Module] = None,
         use_gpu: bool = False,
     ) -> "TorchPredictor":
@@ -93,7 +93,6 @@ class TorchPredictor(DLPredictor):
             use_gpu: If set, the model will be moved to GPU on instantiation and
                 prediction happens on GPU.
         """
-        checkpoint = TorchCheckpoint.from_checkpoint(checkpoint)
         model = checkpoint.get_model(model)
         preprocessor = checkpoint.get_preprocessor()
         return cls(model=model, preprocessor=preprocessor, use_gpu=use_gpu)
