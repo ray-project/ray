@@ -670,6 +670,7 @@ py_test(
         "exclusive",
         "ray_air",
         "team:ml",
+        ":conftest",
     ],
     deps = [":train_lib"],
 )
