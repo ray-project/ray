@@ -31,6 +31,3 @@ class TextDatasource(FileBasedDatasource):
 
         block = builder.build()
         return block
-
-    def _rows_per_file(self):
-        return None

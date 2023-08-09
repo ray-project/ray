@@ -101,6 +101,9 @@ class ImageDatasource(FileBasedDatasource):
 
         return block
 
+    def _rows_per_file(self):
+        return 1
+
 
 class _ImageFileMetadataProvider(DefaultFileMetadataProvider):
     def _set_encoding_ratio(self, encoding_ratio: int):
