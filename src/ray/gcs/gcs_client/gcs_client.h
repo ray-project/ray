@@ -31,7 +31,7 @@
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
 #include "ray/rpc/gcs_server/gcs_rpc_client.h"
 #include "ray/util/logging.h"
-#include "src/ray/protobuf/experimental/autoscaler.grpc.pb.h"
+#include "src/ray/protobuf/autoscaler.grpc.pb.h"
 
 namespace ray {
 
@@ -193,6 +193,10 @@ class RAY_EXPORT PythonGcsClient {
   explicit PythonGcsClient(const GcsClientOptions &options);
   Status Connect();
 
+  Status CheckAlive(const std::vector<std::string> &raylet_addresses,
+                    int64_t timeout_ms,
+                    std::vector<bool> &result);
+
   Status InternalKVGet(const std::string &ns,
                        const std::string &key,
                        int64_t timeout_ms,
@@ -231,6 +235,11 @@ class RAY_EXPORT PythonGcsClient {
       const std::vector<std::unordered_map<std::string, double>> &bundles,
       const std::vector<int64_t> &count_array);
   Status GetClusterStatus(int64_t timeout_ms, std::string &serialized_reply);
+  Status DrainNode(const std::string &node_id,
+                   int32_t reason,
+                   const std::string &reason_message,
+                   int64_t timeout_ms,
+                   bool &is_accepted);
 
  private:
   GcsClientOptions options_;

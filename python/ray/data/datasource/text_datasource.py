@@ -1,7 +1,7 @@
 from typing import TYPE_CHECKING, List
 
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
-from ray.data.datasource.binary_datasource import BinaryDatasource
+from ray.data.datasource.file_based_datasource import FileBasedDatasource
 from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
@@ -9,7 +9,7 @@ if TYPE_CHECKING:
 
 
 @PublicAPI
-class TextDatasource(BinaryDatasource):
+class TextDatasource(FileBasedDatasource):
     """Text datasource, for reading and writing text files."""
 
     _COLUMN_NAME = "text"
@@ -17,9 +17,7 @@ class TextDatasource(BinaryDatasource):
     def _read_file(
         self, f: "pyarrow.NativeFile", path: str, **reader_args
     ) -> List[str]:
-        block = super()._read_file(f, path, **reader_args)
-        assert len(block) == 1
-        data = block[0]
+        data = f.readall()
 
         builder = DelegatingBlockBuilder()
 
@@ -33,6 +31,3 @@ class TextDatasource(BinaryDatasource):
 
         block = builder.build()
         return block
-
-    def _rows_per_file(self):
-        return None
