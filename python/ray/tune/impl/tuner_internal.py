@@ -344,7 +344,7 @@ class TunerInternal:
             )
 
     def _load_tuner_state(
-        self, tuner_pkl_path: Path
+        self, tuner_state: Dict[str, Any]
     ) -> Tuple[Optional[str], Optional[List[str]]]:
         """Loads Tuner state from the previously saved `tuner.pkl`.
 
@@ -356,38 +356,13 @@ class TunerInternal:
             tuple: of `(old_trainable_name, flattened_param_space_keys)` used for
                 validating the re-specified `trainable` and `param_space`.
         """
-        if not tuner_pkl_path.exists():
-            raise RuntimeError(
-                f"Could not find Tuner state in restore directory. Did you pass"
-                f"the correct path (the top-level experiment directory?) Got: "
-                f"{tuner_pkl_path.parent}"
-            )
+        # NOTE: These are magic keys used for validating restore args.
+        old_trainable_name = tuner_state.pop("__trainable_name", None)
+        flattened_param_space_keys = tuner_state.pop(
+            "__flattened_param_space_keys", None
+        )
 
-        with open(tuner_pkl_path, "rb") as fp:
-            tuner_state = pickle.load(fp)
-
-            if isinstance(tuner_state, TunerInternal):
-                # TODO(ml-team): Remove in 2.7.
-                # Backwards compatibility: ray<=2.4 pickles the full Tuner object
-                # within `tuner.pkl`. ray>=2.5 pickles the object state as a dict.
-                tuner: TunerInternal = tuner_state
-                self.__setstate__(tuner.__getstate__())
-
-                logger.warning(
-                    "You are restoring a Tune experiment that was run with an older "
-                    "version of Ray. Note that backwards compatibility of restoring "
-                    "this experiment will only be guaranteed until Ray 2.7."
-                )
-
-                old_trainable_name, flattened_param_space_keys = None, None
-            else:
-                # NOTE: These are magic keys used for validating restore args.
-                old_trainable_name = tuner_state.pop("__trainable_name", None)
-                flattened_param_space_keys = tuner_state.pop(
-                    "__flattened_param_space_keys", None
-                )
-
-                self.__setstate__(tuner_state)
+        self.__setstate__(tuner_state)
 
         return old_trainable_name, flattened_param_space_keys
 
@@ -399,15 +374,27 @@ class TunerInternal:
         resume_config: _ResumeConfig,
         storage_filesystem: Optional[pyarrow.fs.FileSystem],
     ):
-        # Sync down from cloud storage if needed
-        (
-            restoring_from_cloud,
-            local_experiment_checkpoint_dir,
-        ) = self._maybe_sync_down_tuner_state(path_or_uri, storage_filesystem)
-        experiment_checkpoint_path = Path(local_experiment_checkpoint_dir)
+        if _use_storage_context():
+            fs, fs_path = get_fs_and_path(path_or_uri, storage_filesystem)
+            with fs.open_input_file(os.path.join(fs_path, _TUNER_PKL)) as f:
+                tuner_state = pickle.loads(f.readall())
+
+            restoring_from_cloud = None
+            local_experiment_checkpoint_dir = None
+            experiment_checkpoint_path = None
+        else:
+            # Sync down from cloud storage if needed
+            (
+                restoring_from_cloud,
+                local_experiment_checkpoint_dir,
+            ) = self._maybe_sync_down_tuner_state(path_or_uri)
+            experiment_checkpoint_path = Path(local_experiment_checkpoint_dir)
+
+            with open(experiment_checkpoint_path / _TUNER_PKL, "rb") as fp:
+                tuner_state = pickle.load(fp)
 
         old_trainable_name, flattened_param_space_keys = self._load_tuner_state(
-            experiment_checkpoint_path / _TUNER_PKL
+            tuner_state
         )
 
         # Perform validation and set the re-specified `trainable` and `param_space`
@@ -420,9 +407,8 @@ class TunerInternal:
         )
 
         # Update RunConfig to reflect changes in the experiment directory
-        path_or_uri_obj: Union[Path, URI] = (
-            URI(path_or_uri) if restoring_from_cloud else experiment_checkpoint_path
-        )
+        path_or_uri_obj = URI(path_or_uri)
+
         # Infer the `storage_path` and run `name` of the restored run using the
         # experiment directory.
         # Ex: ~/ray_results/exp_name -> ~/ray_results, exp_name
@@ -430,22 +416,33 @@ class TunerInternal:
         self._run_config.name = path_or_uri_obj.name
         self._run_config.storage_path = str(path_or_uri_obj.parent)
 
-        # Set the experiment directory
-        if not restoring_from_cloud:
-            self._experiment_checkpoint_dir = local_experiment_checkpoint_dir
-        else:
-            # If we synced, `experiment_checkpoint_dir` will contain a temporary
-            # directory. Create an experiment checkpoint dir instead and move
-            # our data there.
-            new_exp_path, new_exp_name = self.setup_create_experiment_checkpoint_dir(
+        if _use_storage_context():
+            (
+                self._experiment_checkpoint_dir,
+                self._experiment_dir_name,
+            ) = self.setup_create_experiment_checkpoint_dir(
                 self.converted_trainable, self._run_config
             )
-            new_exp_path = Path(new_exp_path)
-            for file_dir in experiment_checkpoint_path.glob("*"):
-                file_dir.replace(new_exp_path / file_dir.name)
-            shutil.rmtree(experiment_checkpoint_path)
-            self._experiment_checkpoint_dir = str(new_exp_path)
-            self._experiment_dir_name = str(new_exp_name)
+        else:
+            # Set the experiment directory
+            if not restoring_from_cloud:
+                self._experiment_checkpoint_dir = local_experiment_checkpoint_dir
+            else:
+                # If we synced, `experiment_checkpoint_dir` will contain a temporary
+                # directory. Create an experiment checkpoint dir instead and move
+                # our data there.
+                (
+                    new_exp_path,
+                    new_exp_name,
+                ) = self.setup_create_experiment_checkpoint_dir(
+                    self.converted_trainable, self._run_config
+                )
+                new_exp_path = Path(new_exp_path)
+                for file_dir in experiment_checkpoint_path.glob("*"):
+                    file_dir.replace(new_exp_path / file_dir.name)
+                shutil.rmtree(experiment_checkpoint_path)
+                self._experiment_checkpoint_dir = str(new_exp_path)
+                self._experiment_dir_name = str(new_exp_name)
 
         # Load the experiment results at the point where it left off.
         try:
@@ -460,24 +457,12 @@ class TunerInternal:
         self._resume_config = resume_config
         self._is_restored = True
 
-    def _maybe_sync_down_tuner_state(
-        self, restore_path: str, storage_filesystem: Optional[pyarrow.fs.FileSystem]
-    ) -> Tuple[bool, str]:
+    def _maybe_sync_down_tuner_state(self, restore_path: str) -> Tuple[bool, str]:
         """Sync down trainable state from remote storage.
 
         Returns:
             Tuple of (downloaded from remote, local_dir)
         """
-        if _use_storage_context():
-            tempdir = tempfile.mkdtemp("tmp_experiment_dir")
-            fs, fs_path = get_fs_and_path(restore_path, storage_filesystem)
-            _download_from_fs_path(
-                fs=fs,
-                fs_path=os.path.join(fs_path, _TUNER_PKL),
-                local_path=os.path.join(tempdir, _TUNER_PKL),
-            )
-            return True, tempdir
-
         if not is_non_local_path_uri(restore_path):
             return False, os.path.abspath(os.path.expanduser(restore_path))
 

@@ -10,7 +10,7 @@ from ray.air._internal.remote_storage import list_at_uri
 from ray.air._internal.usage import AirEntrypoint
 from ray.air.util.node import _force_on_current_node
 from ray.train._internal.storage import (
-    _list_at_fs_path,
+    _exists_at_fs_path,
     _use_storage_context,
     get_fs_and_path,
 )
@@ -316,7 +316,7 @@ class Tuner:
         """
         if _use_storage_context():
             fs, fs_path = get_fs_and_path(path, storage_filesystem)
-            return _TUNER_PKL in _list_at_fs_path(fs, fs_path)
+            return _exists_at_fs_path(fs, os.path.join(fs_path, _TUNER_PKL))
 
         return _TUNER_PKL in list_at_uri(str(path))
 
