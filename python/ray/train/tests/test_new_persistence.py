@@ -13,6 +13,7 @@ from ray import train, tune
 from ray.air.constants import EXPR_RESULT_FILE
 from ray.train._internal.storage import _download_from_fs_path, StorageContext
 from ray.train._checkpoint import Checkpoint as NewCheckpoint
+from ray.train.constants import RAY_AIR_NEW_PERSISTENCE_MODE
 from ray.train.data_parallel_trainer import DataParallelTrainer
 
 from ray.air.tests.test_checkpoints import mock_s3_bucket_uri
@@ -28,9 +29,9 @@ def dummy_context_manager():
 
 @pytest.fixture(autouse=True)
 def enable_new_persistence_mode(monkeypatch):
-    monkeypatch.setenv("RAY_AIR_NEW_PERSISTENCE_MODE", "1")
+    monkeypatch.setenv(RAY_AIR_NEW_PERSISTENCE_MODE, "1")
     yield
-    monkeypatch.setenv("RAY_AIR_NEW_PERSISTENCE_MODE", "0")
+    monkeypatch.setenv(RAY_AIR_NEW_PERSISTENCE_MODE, "0")
 
 
 def _create_mock_custom_fs(custom_fs_root_dir: Path) -> pyarrow.fs.FileSystem:
