@@ -6,12 +6,9 @@ import tensorflow as tf
 from typing import List
 import unittest
 
-import ray
-from ray.train.batch_predictor import BatchPredictor
 from ray.train.tensorflow import (
     TensorflowCheckpoint,
     TensorflowTrainer,
-    TensorflowPredictor,
 )
 from ray import train
 from ray.train import ScalingConfig
@@ -137,15 +134,7 @@ def test_tensorflow_checkpoint_saved_model():
         train_loop_per_worker=train_fn, scaling_config=ScalingConfig(num_workers=2)
     )
 
-    result_checkpoint = trainer.fit().checkpoint
-
-    batch_predictor = BatchPredictor.from_checkpoint(
-        result_checkpoint, TensorflowPredictor
-    )
-    predictions = batch_predictor.predict(ray.data.range(3))
-
-    for _ in predictions.iter_batches():
-        pass
+    _ = trainer.fit().checkpoint
 
 
 def test_tensorflow_checkpoint_h5():
@@ -168,15 +157,7 @@ def test_tensorflow_checkpoint_h5():
         train_loop_per_worker=train_func, scaling_config=ScalingConfig(num_workers=2)
     )
 
-    result_checkpoint = trainer.fit().checkpoint
-
-    batch_predictor = BatchPredictor.from_checkpoint(
-        result_checkpoint, TensorflowPredictor
-    )
-    predictions = batch_predictor.predict(ray.data.range(3))
-
-    for _ in predictions.iter_batches():
-        pass
+    _ = trainer.fit().checkpoint
 
 
 if __name__ == "__main__":

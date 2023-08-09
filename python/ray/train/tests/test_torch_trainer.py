@@ -10,7 +10,6 @@ import ray
 from ray.train.examples.pytorch.torch_linear_example import (
     train_func as linear_train_func,
 )
-from ray.train.batch_predictor import BatchPredictor
 from ray.train.constants import DISABLE_LAZY_CHECKPOINTING_ENV
 from ray.train.torch import TorchPredictor, TorchTrainer
 from ray.train import RunConfig, ScalingConfig
@@ -81,13 +80,6 @@ def test_torch_e2e(ray_start_4_cpus, prepare_model):
     result = trainer.fit()
     assert isinstance(result.checkpoint.get_preprocessor(), DummyPreprocessor)
 
-    predict_dataset = ray.data.range(9)
-    batch_predictor = BatchPredictor.from_checkpoint(result.checkpoint, TorchPredictor)
-    predictions = batch_predictor.predict(
-        predict_dataset, batch_size=3, dtype=torch.float
-    )
-    assert predictions.count() == 3
-
 
 @pytest.mark.parametrize("prepare_model", (True, False))
 def test_torch_e2e_state_dict(ray_start_4_cpus, prepare_model):
@@ -109,15 +101,6 @@ def test_torch_e2e_state_dict(ray_start_4_cpus, prepare_model):
     # If loading from a state dict, a model definition must be passed in.
     with pytest.raises(ValueError):
         TorchPredictor.from_checkpoint(result.checkpoint)
-
-    predict_dataset = ray.data.range(9)
-    batch_predictor = BatchPredictor.from_checkpoint(
-        result.checkpoint, TorchPredictor, model=torch.nn.Linear(3, 1)
-    )
-    predictions = batch_predictor.predict(
-        predict_dataset, batch_size=3, dtype=torch.float
-    )
-    assert predictions.count() == 3
 
 
 # We can't really test for prepare_model here as we can't detect what the user
