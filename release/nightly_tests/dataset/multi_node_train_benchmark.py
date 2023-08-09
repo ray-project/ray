@@ -146,7 +146,7 @@ if __name__ == "__main__":
     torch_trainer = TorchTrainer(
         train_loop_per_worker,
         datasets={"train": ray_dataset},
-        scaling_config=ScalingConfig(num_workers=args.num_workers),
+        scaling_config=ScalingConfig(num_workers=args.num_workers, use_gpu=True),
         dataset_config=ray.train.DataConfig(
             execution_options=options,
         ),
