@@ -99,15 +99,18 @@ class TorchCheckpoint(Checkpoint):
                 ...
         """
         tempdir = tempfile.mkdtemp()
-        preprocessor_path = os.path.join(tempdir, cls.PREPROCESSOR_FILENAME)
-        model_path = os.path.join(tempdir, cls.MODEL_FILENAME)
-        with open(preprocessor_path, "wb") as f:
-            ray_pickle.dump(preprocessor, f)
 
+        model_path = os.path.join(tempdir, cls.MODEL_FILENAME)
         stripped_state_dict = consume_prefix_in_state_dict_if_present_not_in_place(
             state_dict, "module."
         )
         torch.save(stripped_state_dict, model_path)
+
+        if preprocessor:
+            preprocessor_path = os.path.join(tempdir, cls.PREPROCESSOR_FILENAME)
+            with open(preprocessor_path, "wb") as f:
+                ray_pickle.dump(preprocessor, f)
+
         return cls.from_directory(tempdir)
 
     @classmethod
@@ -171,11 +174,15 @@ class TorchCheckpoint(Checkpoint):
                 ...
         """
         tempdir = tempfile.mkdtemp()
-        preprocessor_path = os.path.join(tempdir, cls.PREPROCESSOR_FILENAME)
+
         model_path = os.path.join(tempdir, cls.MODEL_FILENAME)
-        with open(preprocessor_path, "wb") as f:
-            ray_pickle.dump(preprocessor, f)
         torch.save(model, model_path)
+
+        if preprocessor:
+            preprocessor_path = os.path.join(tempdir, cls.PREPROCESSOR_FILENAME)
+            with open(preprocessor_path, "wb") as f:
+                ray_pickle.dump(preprocessor, f)
+
         return cls.from_directory(tempdir)
 
     def get_model(self, model: Optional[torch.nn.Module] = None) -> torch.nn.Module:
