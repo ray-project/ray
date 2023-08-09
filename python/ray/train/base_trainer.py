@@ -318,9 +318,7 @@ class BaseTrainer(abc.ABC):
             with fs.open_input_file(os.path.join(fs_path, _TRAINER_PKL)) as f:
                 trainer_cls, param_dict = pickle.loads(f.readall())
         else:
-            trainer_state_path = cls._maybe_sync_down_trainer_state(
-                path, storage_filesystem
-            )
+            trainer_state_path = cls._maybe_sync_down_trainer_state(path)
             assert trainer_state_path.exists()
 
             with open(trainer_state_path, "rb") as fp:
@@ -503,25 +501,13 @@ class BaseTrainer(abc.ABC):
 
     @classmethod
     def _maybe_sync_down_trainer_state(
-        cls,
-        restore_path: Union[str, os.PathLike],
-        storage_filesystem: Optional[pyarrow.fs.FileSystem],
+        cls, restore_path: Union[str, os.PathLike]
     ) -> Path:
         """Syncs down trainer state from remote storage.
 
         Returns:
             str: Local directory containing the trainer state
         """
-        if _use_storage_context():
-            tempdir = tempfile.mkdtemp("tmp_experiment_dir")
-            fs, fs_path = get_fs_and_path(restore_path, storage_filesystem)
-            _download_from_fs_path(
-                fs=fs,
-                fs_path=os.path.join(fs_path, _TRAINER_PKL),
-                local_path=os.path.join(tempdir, _TRAINER_PKL),
-            )
-            return Path(tempdir) / _TRAINER_PKL
-
         if not is_non_local_path_uri(restore_path):
             return Path(os.path.expanduser(restore_path)) / _TRAINER_PKL
 
