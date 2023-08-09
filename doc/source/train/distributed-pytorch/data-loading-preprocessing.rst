@@ -228,8 +228,19 @@ Transformations that you want run per-epoch, such as randomization, should go af
 
 .. testcode::
 
+    from typing import Dict
+    import numpy as np
+    import ray
+
     # Load the data.
     train_ds = ray.data.read_parquet("s3://anonymous@ray-example-data/iris.parquet")
+
+    # Define a preprocessing function.
+    def normalize_length(batch: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
+        new_col = batch["sepal.length"] / np.max(batch["sepal.length"])
+        batch["normalized.sepal.length"] = new_col
+        del batch["sepal.length"]
+        return batch
 
     # Preprocess the data. Transformations that are made before the materialize call
     # below are only run once.
@@ -239,11 +250,20 @@ Transformations that you want run per-epoch, such as randomization, should go af
     # Only do this if train_ds is small enough to fit in object store memory.
     train_ds = train_ds.materialize()
 
+    # Dummy augmentation transform.
+    def augment_data(batch):
+        return batch
+
     # Add per-epoch preprocessing. Transformations that you want to run per-epoch, such
     # as data augmentation or randomization, should go after the materialize call.
     train_ds = train_ds.map_batches(augment_data)
 
     # Pass train_ds to the Trainer
+
+.. testoutput::
+    :hide:
+
+    ...
 
 Adding CPU-only nodes to your cluster
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -307,7 +327,7 @@ First, randomize each :ref:`block <dataset_concept>` of your dataset via :meth:`
 .. testcode::
     import ray
 
-     ds = ray.data.read_text(
+    ds = ray.data.read_text(
         "s3://anonymous@ray-example-data/sms_spam_collection_subset.txt"
     )
 
@@ -342,7 +362,7 @@ If your model is sensitive to shuffle quality, call :meth:`Dataset.random_shuffl
 
     import ray
 
-     ds = ray.data.read_text(
+    ds = ray.data.read_text(
         "s3://anonymous@ray-example-data/sms_spam_collection_subset.txt"
     )
 
