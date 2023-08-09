@@ -2,19 +2,21 @@ import click
 import time
 import json
 import os
+import tempfile
 from typing import Dict
 
 import numpy as np
 from torchvision import transforms
 from torchvision.models import resnet18
+import torch
 import torch.nn as nn
 import torch.optim as optim
 
 import ray
-from ray.train.torch import TorchCheckpoint
 from ray.data.preprocessors import BatchMapper, Chain, TorchVisionPreprocessor
 from ray import train
 from ray.train import RunConfig, ScalingConfig
+from ray.train._checkpoint import Checkpoint
 from ray.train.torch import TorchTrainer
 
 
@@ -55,10 +57,12 @@ def train_loop_per_worker(config):
                 print(f"[{epoch + 1}, {i + 1:5d}] loss: {running_loss / 2000:.3f}")
                 running_loss = 0.0
 
-        train.report(
-            dict(running_loss=running_loss),
-            checkpoint=TorchCheckpoint.from_model(model),
-        )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            torch.save(model.module.state_dict(), os.path.join(tmpdir, "model.pt"))
+            train.report(
+                dict(running_loss=running_loss),
+                checkpoint=Checkpoint.from_directory(tmpdir),
+            )
 
 
 @click.command(help="Run Batch prediction on Pytorch ResNet models.")
