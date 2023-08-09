@@ -1037,7 +1037,7 @@ void NodeManager::NodeRemoved(const NodeID &node_id) {
   RAY_LOG(DEBUG) << "[NodeRemoved] Received callback from node id " << node_id;
 
   if (node_id == self_node_id_) {
-    if (!is_node_drained_) {
+    if (!is_shutdown_request_received_) {
       std::ostringstream error_message;
       error_message
           << "[Timeout] Exiting because this node manager has mistakenly been marked as "
@@ -2029,6 +2029,33 @@ void NodeManager::HandleReturnWorker(rpc::ReturnWorkerRequest request,
   send_reply_callback(status, nullptr, nullptr);
 }
 
+void NodeManager::HandleDrainRaylet(rpc::DrainRayletRequest request,
+                                    rpc::DrainRayletReply *reply,
+                                    rpc::SendReplyCallback send_reply_callback) {
+  RAY_LOG(INFO) << "Drain raylet RPC has received. Drain reason: "
+                << request.reason_message();
+
+  if (request.reason() ==
+      rpc::autoscaler::DrainNodeReason::DRAIN_NODE_REASON_IDLE_TERMINATION) {
+    const bool is_idle =
+        cluster_resource_scheduler_->GetLocalResourceManager().IsLocalNodeIdle();
+    if (is_idle) {
+      cluster_resource_scheduler_->GetLocalResourceManager().SetLocalNodeDraining();
+      reply->set_is_accepted(true);
+    } else {
+      reply->set_is_accepted(false);
+    }
+  } else {
+    // Non-rejectable draining request.
+    RAY_CHECK_EQ(request.reason(),
+                 rpc::autoscaler::DrainNodeReason::DRAIN_NODE_REASON_PREEMPTION);
+    cluster_resource_scheduler_->GetLocalResourceManager().SetLocalNodeDraining();
+    reply->set_is_accepted(true);
+  }
+
+  send_reply_callback(Status::OK(), nullptr, nullptr);
+}
+
 void NodeManager::HandleShutdownRaylet(rpc::ShutdownRayletRequest request,
                                        rpc::ShutdownRayletReply *reply,
                                        rpc::SendReplyCallback send_reply_callback) {
@@ -2038,7 +2065,7 @@ void NodeManager::HandleShutdownRaylet(rpc::ShutdownRayletRequest request,
   if (!request.graceful()) {
     std::_Exit(EXIT_SUCCESS);
   }
-  if (is_node_drained_) {
+  if (is_shutdown_request_received_) {
     RAY_LOG(INFO) << "Node already has received the shutdown request. The shutdown "
                      "request RPC is ignored.";
     return;
@@ -2060,7 +2087,7 @@ void NodeManager::HandleShutdownRaylet(rpc::ShutdownRayletRequest request,
         << "There was a failure while sending a sigterm to itself. The process will not "
            "gracefully shutdown.";
   };
-  is_node_drained_ = true;
+  is_shutdown_request_received_ = true;
   send_reply_callback(Status::OK(), shutdown_after_reply, shutdown_after_reply);
 }
 

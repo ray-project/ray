@@ -65,6 +65,7 @@ Images
    :toctree: doc/
 
    read_images
+   Dataset.write_images
 
 Binary
 ------
