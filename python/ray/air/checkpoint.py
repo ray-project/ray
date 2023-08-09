@@ -477,13 +477,7 @@ class Checkpoint:
 
         This method can be used to create a framework-specific checkpoint from a
         generic :class:`Checkpoint` object.
-
-        Examples:
-            >>> result = TorchTrainer.fit(...)  # doctest: +SKIP
-            >>> checkpoint = TorchCheckpoint.from_checkpoint(result.checkpoint)  # doctest: +SKIP
-            >>> model = checkpoint.get_model()  # doctest: +SKIP
-            Linear(in_features=1, out_features=1, bias=True)
-        """  # noqa: E501
+        """
         if type(other) is cls:
             return other
 
