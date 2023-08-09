@@ -1,20 +1,24 @@
+import os
 import logging
-import warnings
+import shutil
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Iterator, Optional, Tuple, Type
+from tempfile import TemporaryDirectory
 
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, Dataset
 import datasets.iterable_dataset
 import transformers.trainer
 from transformers import Trainer
 from transformers.trainer_callback import TrainerCallback
 from transformers.trainer_utils import IntervalStrategy
 
+import ray
 from ray.air import session
 from ray.data import DataIterator
 from ray.data.iterator import _IterableFromIterator
 from ray.data.dataset import MaterializedDataset
 from ray.data._internal.iterator.stream_split_iterator import StreamSplitDataIterator
+from ray.train import Checkpoint
 from ray.train.huggingface.transformers.transformers_checkpoint import (
     TransformersCheckpoint,
 )
@@ -220,10 +224,50 @@ class TrainReportCallback(TrainerCallback):
         self._report()
 
 
-def _wrap_transformers_trainer(
-    trainer: transformers.trainer.Trainer,
-) -> transformers.trainer.Trainer:
-    """Change the class of trainer to a subclass implementing Ray-specific logic."""
+@PublicAPI(stability="alpha")
+class RayTrainReportCallback(TrainerCallback):
+    """A simple callback to report checkpoints and metrics to Ray Tarin.
+
+    This callback overrides the `TrainerCallback.on_save()` method. After
+    a new checkpoint get saved, it fetches the latest metric dictionary
+    from `TrainerState.log_history` and reports it with the latest checkpoint
+    to Ray Train.
+
+    If you want more customized reporting logics, please implement your own
+    callbacks following the Transformers integration user guides.
+
+    Note that users should ensure that the logging, evaluation, and saving frequencies
+    are properly configured to ensure that the monitoring metric is always up-to-date
+    when `transformers.Trainer` saves a checkpoint.
+
+    Suppose the monitoring metric is reported from evaluation stage:
+
+    Some valid configurations:
+        - evaluation_strategy == save_strategy == "epoch"
+        - evaluation_strategy == save_strategy == "steps", save_steps % eval_steps == 0
+
+    Some invalid configurations:
+        - evaluation_strategy != save_strategy
+        - evaluation_strategy == save_strategy == "steps", save_steps % eval_steps != 0
+
+    """
+
+    def on_save(self, args, state, control, **kwargs):
+        """Event called after a checkpoint save."""
+        with TemporaryDirectory() as tmpdir:
+            metrics = state.log_history[-1] if state.log_history else {}
+
+            source_ckpt_path = transformers.trainer.get_last_checkpoint(args.output_dir)
+            target_ckpt_path = os.path.join(tmpdir, "checkpoint")
+            shutil.copytree(source_ckpt_path, target_ckpt_path)
+            checkpoint = Checkpoint.from_directory(tmpdir)
+
+            ray.train.report(metrics=metrics, checkpoint=checkpoint)
+
+
+@PublicAPI(stability="alpha")
+def prepare_trainer(trainer: Trainer) -> Trainer:
+    """Prepare your HuggingFace Transformer Trainer for Ray Train."""
     base_trainer_class: Type[transformers.trainer.Trainer] = trainer.__class__
 
     class RayTrainer(base_trainer_class):
@@ -246,85 +290,5 @@ def _wrap_transformers_trainer(
                 return super().get_eval_dataloader(eval_dataset)
 
     trainer.__class__ = RayTrainer
-    return trainer
-
-
-@PublicAPI(stability="alpha")
-def prepare_trainer(trainer: Trainer) -> Trainer:
-    """Prepare your HuggingFace Transformer Trainer for Ray Train."""
-
-    # Check callback strategies compatibility
-    save_strategy = trainer.args.save_strategy
-    logging_strategy = trainer.args.logging_strategy
-    evaluation_strategy = trainer.args.evaluation_strategy
-
-    for strategy in [save_strategy, evaluation_strategy]:
-        if strategy in ("no", IntervalStrategy.NO):
-            continue
-        if strategy != logging_strategy:
-            raise ValueError(
-                "When using Ray Train, `evaluation_strategy` and `save_strategy` "
-                " must be 'no' or the same as `logging_strategy`. Got: \n"
-                f"`logging_strategy`={trainer.args.logging_strategy}\n"
-                f"`save_strategy`={trainer.args.save_strategy}\n"
-                f"`evaluation_strategy`={trainer.args.evaluation_strategy}"
-            )
-
-    # Check callback steps compatibility
-    save_steps = trainer.args.save_steps
-    eval_steps = trainer.args.eval_steps
-    logging_steps = trainer.args.logging_steps
-
-    if save_strategy in ("steps", IntervalStrategy.STEPS):
-        if save_steps < logging_steps or save_steps % logging_steps != 0:
-            raise ValueError(
-                "When `save_strategy == 'steps'`, `save_steps` must be a multiple of "
-                "`logging_steps`, so that saving and logging happens at the same time."
-                f"Got `save_steps`={trainer.args.save_steps}, "
-                f"`logging_steps`={trainer.args.logging_steps}."
-            )
-
-    if evaluation_strategy in ("steps", IntervalStrategy.STEPS):
-        if logging_steps != eval_steps:
-            raise ValueError(
-                "`logging_steps` must be equal to `eval_steps`. "
-                f"Got `logging_steps`={trainer.args.logging_steps}, "
-                f"`eval_steps`={trainer.args.eval_steps}"
-            )
-
-    if trainer.args.load_best_model_at_end:
-        raise ValueError(
-            "As Ray Train replaces Transformers checkpointing, "
-            "`load_best_model_at_end` must be set to False.\n"
-            "You can obtain the Ray Train Checkpoint with "
-            "`Result.checkpoint` returned by the `fit()` method "
-            "of this Trainer, and the model itself by calling "
-            "`Checkpoint.get_model()`.\n"
-            "You can configure the checkpointing by setting "
-            "`run_config.checkpoint_config`."
-        )
-
-    if trainer.args.push_to_hub and not trainer.args.hub_token:
-        warnings.warn(
-            "You have set `push_to_hub=True` but didn't specify `hub_token`. "
-            "Pushing to hub will most likely fail, as the credentials will not "
-            "be automatically propagated from the local enviroment to the Ray Actors. "
-            "If that happens, specify `hub_token` in `TrainingArguments`.",
-            stacklevel=2,
-        )
-
-    trainer = _wrap_transformers_trainer(trainer)
-
-    # TODO(ml-team): How to enable experiment tracking integration?
-    # ensure no HF logging callbacks are added
-    # aside from doubling functionality with our callbacks,
-    # the Wandb callbacks causes training to freeze
-    integration_callbacks = transformers.trainer.get_reporting_integration_callbacks(
-        trainer.args.report_to
-    )
-    for callback in integration_callbacks:
-        trainer.pop_callback(callback)
-
-    trainer.add_callback(TrainReportCallback)
 
     return trainer

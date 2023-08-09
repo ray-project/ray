@@ -32,7 +32,7 @@ try:
     from transformers.trainer_utils import IntervalStrategy
     from transformers.utils import is_datasets_available
 
-    from ray.train.huggingface.transformers.transformers_utils import (
+    from ray.train.huggingface.transformers._transformers_utils import (
         TrainReportCallback,
         process_datasets,
         wrap_transformers_trainer,
