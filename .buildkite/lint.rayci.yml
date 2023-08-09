@@ -1,0 +1,7 @@
+group: lint
+steps:
+  - label: "clang-format"
+    commands:
+      - pip install -c python/requirements_compiled.txt clang-format
+      - ./ci/lint/check-git-clang-format-output.sh
+    depends_on: forge
