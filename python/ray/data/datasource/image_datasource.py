@@ -1,7 +1,7 @@
 import io
 import logging
 import time
-from typing import TYPE_CHECKING, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 
@@ -41,6 +41,7 @@ IMAGE_ENCODING_RATIO_ESTIMATE_LOWER_BOUND = 0.5
 class ImageDatasource(FileBasedDatasource):
     """A datasource that lets you read images."""
 
+    _WRITE_FILE_PER_ROW = True
     _FILE_EXTENSION = ["png", "jpg", "jpeg", "tif", "tiff", "bmp", "gif"]
 
     def create_reader(
@@ -103,6 +104,24 @@ class ImageDatasource(FileBasedDatasource):
 
     def _rows_per_file(self):
         return 1
+
+    def _write_row(
+        self,
+        f: "pyarrow.NativeFile",
+        row,
+        writer_args_fn: Callable[[], Dict[str, Any]] = lambda: {},
+        column: str = None,
+        file_format: str = None,
+        **writer_args,
+    ):
+        import io
+
+        from PIL import Image
+
+        image = Image.fromarray(row[column])
+        buffer = io.BytesIO()
+        image.save(buffer, format=file_format)
+        f.write(buffer.getvalue())
 
 
 class _ImageFileMetadataProvider(DefaultFileMetadataProvider):
