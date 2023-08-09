@@ -190,13 +190,13 @@ class RayServeHandle:
             _router_cls=_router_cls,
         )
 
-        if self._router is None and not _router_cls:
+        if self._router is None and _router_cls == DEFAULT.VALUE:
             self._get_or_create_router()
 
         return self.__class__(
             self.deployment_name,
             handle_options=new_handle_options,
-            _router=None if _router_cls else self._router,
+            _router=None if _router_cls != DEFAULT.VALUE else self._router,
             _is_for_http_requests=self._is_for_http_requests,
         )
 
