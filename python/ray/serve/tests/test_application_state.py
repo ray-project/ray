@@ -165,6 +165,7 @@ def deployment_params(name: str, route_prefix: str = None, docs_path: str = None
         "deployer_job_id": "random",
         "route_prefix": route_prefix,
         "docs_path": docs_path,
+        "ingress": False,
         "is_driver_deployment": False,
     }
 

@@ -1300,5 +1300,16 @@ def test_deployments_not_listed_in_config(client: ServeControllerClient):
     assert all(pid == pid1 for pid in pids)
 
 
+def test_get_app_handle(client: ServeControllerClient):
+    config = ServeDeploySchema.parse_obj(get_test_deploy_config())
+    client.deploy_apps(config)
+    check_multi_app()
+
+    handle_1 = serve.get_app_handle("app1")
+    handle_2 = serve.get_app_handle("app2")
+    assert ray.get(handle_1.predict.remote("ADD", 2)) == "4 pizzas please!"
+    assert ray.get(handle_2.predict.remote("ADD", 2)) == "5 pizzas please!"
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))
