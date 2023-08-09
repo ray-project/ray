@@ -8,12 +8,15 @@ import numpy as np
 
 
 # Torch-specific
-from ray.train.torch import TorchCheckpoint
+import os
+import tempfile
 
 import horovod.torch as hvd
 
 import torch
 import torch.nn as nn
+
+from ray.train._checkpoint import Checkpoint
 
 
 def create_model(input_features):
@@ -63,7 +66,9 @@ def torch_train_loop(config):
             train_loss.backward()
             optimizer.step()
         loss = train_loss.item()
-        train.report({"loss": loss}, checkpoint=TorchCheckpoint.from_model(model))
+        with tempfile.TemporaryDirectory() as tmpdir:
+            torch.save(model.state_dict(), os.path.join(tmpdir, "model.pt"))
+            train.report({"loss": loss}, checkpoint=Checkpoint.from_directory(tmpdir))
 
 
 def tune_horovod_torch(num_workers, num_samples, use_gpu):
