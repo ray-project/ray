@@ -171,6 +171,7 @@ class ServeController:
             self.kv_store,
             self.long_poll_host,
             all_serve_actor_names,
+            self.cluster_node_info_cache,
         )
 
         # Manage all applications' state

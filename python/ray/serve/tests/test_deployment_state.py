@@ -1209,6 +1209,63 @@ def test_deploy_new_config_new_version(mock_deployment_state):
 
 
 @pytest.mark.parametrize("mock_deployment_state", [True, False], indirect=True)
+def test_draining_replicas(mock_deployment_state):
+    deployment_state, timer = mock_deployment_state
+    deployment_state._cluster_node_info_cache.alive_node_ids = {"node-1", "node-2"}
+
+    b_info_1, b_version_1 = deployment_info(num_replicas=2, version="1")
+    updating = deployment_state.deploy(b_info_1)
+    assert updating
+
+    deployment_state_update_result = deployment_state.update()
+    deployment_state._deployment_scheduler.schedule(
+        {deployment_state._name: deployment_state_update_result.upscale}, {}
+    )
+    check_counts(deployment_state, total=2, by_state=[(ReplicaState.STARTING, 2)])
+    assert deployment_state.curr_status_info.status == DeploymentStatus.UPDATING
+
+    # Drain node-2.
+    deployment_state._cluster_node_info_cache.draining_node_ids = {"node-2"}
+
+    # Since the replicas are still starting and we don't know the actor node id
+    # yet so nothing happens
+    deployment_state.update()
+    check_counts(deployment_state, total=2, by_state=[(ReplicaState.STARTING, 2)])
+
+    deployment_state._replicas.get()[0]._actor.set_ready()
+    deployment_state._replicas.get()[0]._actor.set_node_id("node-1")
+    deployment_state._replicas.get()[1]._actor.set_ready()
+    deployment_state._replicas.get()[1]._actor.set_node_id("node-2")
+
+    # The replica running on node-2 will be drained.
+    deployment_state.update()
+    check_counts(
+        deployment_state,
+        total=2,
+        by_state=[(ReplicaState.RUNNING, 1), (ReplicaState.STOPPING, 1)],
+    )
+
+    # A new node is started.
+    deployment_state._cluster_node_info_cache.alive_node_ids = {
+        "node-1",
+        "node-2",
+        "node-3",
+    }
+
+    # The draining replica is stopped and a new one will be started.
+    deployment_state._replicas.get()[1]._actor.set_done_stopping()
+    deployment_state_update_result = deployment_state.update()
+    deployment_state._deployment_scheduler.schedule(
+        {deployment_state._name: deployment_state_update_result.upscale}, {}
+    )
+    check_counts(
+        deployment_state,
+        total=2,
+        by_state=[(ReplicaState.STARTING, 1), (ReplicaState.RUNNING, 1)],
+    )
+
+
+@pytest.mark.parametrize("mock_deployment_state", [True, False], indirect=True)
 def test_initial_deploy_no_throttling(mock_deployment_state):
     # All replicas should be started at once for a new deployment.
     deployment_state, timer = mock_deployment_state
@@ -2400,6 +2457,7 @@ def test_recover_during_rolling_update(
     new_deployment_state_manager = create_deployment_state_manager(
         [ReplicaName.prefix + mocked_replica.replica_tag]
     )
+    new_deployment_state_manager._cluster_node_info_cache.alive_node_ids = {"node-id"}
 
     # New deployment state should be created and one replica should
     # be RECOVERING with last-checkpointed target version "2"
@@ -2503,6 +2561,7 @@ def test_shutdown(mock_deployment_state_manager, is_driver_deployment):
     are force-killed without a grace period.
     """
     deployment_state_manager, timer = mock_deployment_state_manager
+    deployment_state_manager._cluster_node_info_cache.alive_node_ids = {"node-id"}
 
     deployment_name = "test"
 
