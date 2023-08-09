@@ -125,8 +125,8 @@ void GcsAutoscalerStateManager::MakeClusterResourceStateInternal(
 void GcsAutoscalerStateManager::GetPendingGangResourceRequests(
     rpc::autoscaler::ClusterResourceState *state) {
   // Get the gang resource requests from the placement group load.
-  auto placement_group_load = gcs_resource_manager_.GetPlacementGroupLoad();
-  if (!placement_group_load) {
+  auto placement_group_load = gcs_placement_group_manager_.GetPlacementGroupLoad();
+  if (!placement_group_load || placement_group_load->placement_group_data_size() == 0) {
     return;
   }
 
@@ -272,6 +272,11 @@ void GcsAutoscalerStateManager::GetNodeStates(
     populate_node_state(*gcs_node_info.second);
   });
 }
+
+void GcsAutoscalerStateManager::HandleDrainNode(
+    rpc::autoscaler::DrainNodeRequest request,
+    rpc::autoscaler::DrainNodeReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {}
 
 }  // namespace gcs
 }  // namespace ray

@@ -2,6 +2,8 @@
 
 .. include:: /_includes/rllib/we_are_hiring.rst
 
+.. include:: /_includes/rllib/rlm_learner_migration_banner.rst
+
 Examples
 ========
 
@@ -70,7 +72,7 @@ Custom- and Complex Models
    Example of using a custom Keras model.
 - `Custom Keras/PyTorch RNN model <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_rnn_model.py>`__:
    Example of using a custom Keras- or PyTorch RNN model.
-- `Registering a custom model with supervised loss <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_loss.py>`__:
+- `Registering a custom model with supervised loss <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_model_loss_and_metrics.py>`__:
    Example of defining and registering a custom model with a supervised loss.
 - `Batch normalization <https://github.com/ray-project/ray/blob/master/rllib/examples/batch_norm_model.py>`__:
    Example of adding batch norm layers to a custom model.

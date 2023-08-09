@@ -74,6 +74,7 @@ from ray.data._internal.planner.map_rows import generate_map_rows_fn
 from ray.data._internal.planner.write import generate_write_fn
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.remote_fn import cached_remote_fn
+from ray.data._internal.sort import SortKey
 from ray.data._internal.split import _get_num_rows, _split_at_indices
 from ray.data._internal.stage_impl import (
     LimitStage,
@@ -103,7 +104,6 @@ from ray.data.block import (
     UserDefinedFunction,
     _apply_strict_mode_batch_format,
     _apply_strict_mode_batch_size,
-    _validate_key_fn,
 )
 from ray.data.context import (
     ESTIMATED_SAFE_MEMORY_FRACTION,
@@ -1846,7 +1846,7 @@ class Dataset:
         # Always allow None since groupby interprets that as grouping all
         # records into a single global group.
         if key is not None:
-            _validate_key_fn(self.schema(fetch_if_missing=True), key)
+            SortKey(key).validate_schema(self.schema(fetch_if_missing=True))
 
         return GroupedData(self, key)
 
@@ -2172,14 +2172,14 @@ class Dataset:
             A new, sorted :class:`Dataset`.
         """
 
-        plan = self._plan.with_stage(SortStage(self, key, descending))
+        sort_key = SortKey(key, descending)
+        plan = self._plan.with_stage(SortStage(self, sort_key))
 
         logical_plan = self._logical_plan
         if logical_plan is not None:
             op = Sort(
                 logical_plan.dag,
-                key=key,
-                descending=descending,
+                sort_key=sort_key,
             )
             logical_plan = LogicalPlan(op)
         return Dataset(plan, self._epoch, self._lazy, logical_plan)
@@ -2296,8 +2296,12 @@ class Dataset:
         batch_format = _apply_strict_mode_batch_format(batch_format)
         try:
             res = next(
-                self.iter_batches(
-                    batch_size=batch_size, prefetch_batches=0, batch_format=batch_format
+                iter(
+                    self.iter_batches(
+                        batch_size=batch_size,
+                        prefetch_batches=0,
+                        batch_format=batch_format,
+                    )
                 )
             )
         except StopIteration:

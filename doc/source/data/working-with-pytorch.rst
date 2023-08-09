@@ -47,7 +47,8 @@ Ray Data integrates with :ref:`Ray Train <train-docs>` for easy data ingest for 
     import torch
     from torch import nn
     import ray
-    from ray.air import session, ScalingConfig
+    from ray import train
+    from ray.train import ScalingConfig
     from ray.train.torch import TorchTrainer
 
     def train_func(config):
@@ -56,7 +57,7 @@ Ray Data integrates with :ref:`Ray Train <train-docs>` for easy data ingest for 
         optimizer = torch.optim.SGD(model.parameters(), lr=0.001)
 
         # Datasets can be accessed in your train_func via ``get_dataset_shard``.
-        train_data_shard = session.get_dataset_shard("train")
+        train_data_shard = train.get_dataset_shard("train")
 
         for epoch_idx in range(2):
             for batch in train_data_shard.iter_torch_batches(batch_size=128, dtypes=torch.float32):
@@ -81,7 +82,7 @@ Ray Data integrates with :ref:`Ray Train <train-docs>` for easy data ingest for 
 
     ...
 
-For more details, see the :ref:`Ray Train user guide <train-datasets>`.
+For more details, see the :ref:`Ray Train user guide <data-ingest-torch>`.
 
 .. _transform_pytorch:
 

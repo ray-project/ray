@@ -3,7 +3,11 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Dict, List, Optional
 
-NODE_DEATH_CAUSE_RAYLET_DIED = "RayletUnexpectedlyDied"
+# TODO(rickyx): once we have graceful shutdown, we could populate
+# the failure detail with the actual termination message. As of now,
+# we will use a more generic message to include cases such as:
+# (idle termination, node death, crash, preemption, etc)
+NODE_DEATH_CAUSE_RAYLET_DIED = "NodeTerminated"
 
 
 @dataclass

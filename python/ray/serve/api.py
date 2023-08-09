@@ -50,6 +50,7 @@ from ray.serve._private.utils import (
     get_random_letters,
     extract_self_if_method_call,
 )
+from ray.serve.schema import ServeInstanceDetails, ServeStatus
 
 from ray.serve._private import api as _private_api
 
@@ -672,7 +673,7 @@ def multiplexed(
                     )
                 multiplex_object = self
                 model_id = args[1]
-            multiplex_attr = f"__serve_multiplex_{func.__name__}"
+            multiplex_attr = "__serve_multiplex_wrapper"
             # If the multiplexed function is called for the first time,
             # create a model multiplex wrapper and cache it in the multiplex object.
             if not hasattr(multiplex_object, multiplex_attr):
@@ -718,3 +719,30 @@ def get_multiplexed_model_id() -> str:
     """
     _request_context = ray.serve.context._serve_request_context.get()
     return _request_context.multiplexed_model_id
+
+
+@PublicAPI(stability="alpha")
+def status() -> ServeStatus:
+    """Get status of Serve on the cluster.
+
+    Includes status of all HTTP Proxies, all active applications, and
+    their deployments.
+
+    .. code-block:: python
+
+            @serve.deployment(num_replicas=2)
+            class MyDeployment:
+                pass
+
+            serve.run(MyDeployment.bind())
+            status = serve.status()
+            assert status.applications["default"].status == "RUNNING"
+    """
+
+    client = get_global_client(raise_if_no_controller_running=False)
+    if client is None:
+        # Serve has not started yet
+        return ServeStatus()
+
+    details = ServeInstanceDetails(**client.get_serve_details())
+    return details._get_status()

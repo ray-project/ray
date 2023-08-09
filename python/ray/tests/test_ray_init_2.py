@@ -216,6 +216,7 @@ def test_ports_assignment(ray_start_cluster):
         "dashboard_port": 30005,
         "metrics_agent_port": 30006,
         "metrics_export_port": 30007,
+        "runtime_env_agent_port": 30008,
     }
 
     # Make sure we can start a node properly.

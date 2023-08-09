@@ -51,7 +51,7 @@ logger = logging.getLogger(__name__)
 
 
 def _validate_log_to_file(log_to_file):
-    """Validate ``air.RunConfig``'s ``log_to_file`` parameter. Return
+    """Validate ``train.RunConfig``'s ``log_to_file`` parameter. Return
     validated relative stdout and stderr filenames."""
     if not log_to_file:
         stdout_file = stderr_file = None
@@ -158,60 +158,6 @@ class Experiment:
         # Deprecated
         local_dir: Optional[str] = None,
     ):
-        if isinstance(sync_config, dict):
-            sync_config = SyncConfig(**sync_config)
-        else:
-            sync_config = sync_config or SyncConfig()
-
-        self.sync_config = sync_config
-
-        # Resolve storage_path
-        local_storage_path, remote_storage_path = _resolve_storage_path(
-            storage_path, local_dir, sync_config.upload_dir, error_location="Experiment"
-        )
-
-        if local_dir:
-            if log_once("tune_experiment_local_dir"):
-                warnings.warn(
-                    "The `local_dir` argument of `Experiment is deprecated. "
-                    "Use `storage_path` or set the `TUNE_RESULT_DIR` "
-                    "environment variable instead."
-                )
-
-            local_storage_path = local_dir
-
-        full_local_storage_path = _get_local_dir_with_expand_user(local_storage_path)
-
-        # `_experiment_checkpoint_dir` is for internal use only for better
-        # support of Tuner API.
-        # If set, it should be a subpath under `local_dir`. Also deduce `dir_name`.
-        if _experiment_checkpoint_dir:
-            experiment_checkpoint_dir_path = Path(_experiment_checkpoint_dir)
-            if _use_storage_context():
-                # TODO(justinvyu): This is a temporary hack for the
-                # custom storage_filesystem case.
-                # With a custom storage_filesystem, the storage path is possibly
-                # a "local path" (ex: [fs, path] = CustomS3FileSystem, "bucket/subdir")
-                # Our current path resolution treats a local storage_path as
-                # the cache dir, so the assertion in the else case would fail.
-                # This will be re-worked in a follow-up.
-                self.dir_name = experiment_checkpoint_dir_path.name
-            else:
-                local_dir_path = Path(full_local_storage_path)
-                assert local_dir_path in experiment_checkpoint_dir_path.parents, (
-                    local_dir_path,
-                    str(list(experiment_checkpoint_dir_path.parents)),
-                )
-                # `dir_name` is set by `_experiment_checkpoint_dir` indirectly.
-                self.dir_name = os.path.relpath(
-                    _experiment_checkpoint_dir, full_local_storage_path
-                )
-
-        self._local_storage_path = full_local_storage_path
-        self._remote_storage_path = remote_storage_path
-
-        config = config or {}
-
         if isinstance(checkpoint_config, dict):
             checkpoint_config = CheckpointConfig(**checkpoint_config)
         else:
@@ -222,15 +168,15 @@ class Experiment:
                 raise ValueError(
                     "'checkpoint_at_end' cannot be used with a function trainable. "
                     "You should include one last call to "
-                    "`ray.air.session.report(metrics=..., checkpoint=...)` at the end "
-                    "of your training loop to get this behavior."
+                    "`ray.train.report(metrics=..., checkpoint=...)` "
+                    "at the end of your training loop to get this behavior."
                 )
             if checkpoint_config.checkpoint_frequency:
                 raise ValueError(
                     "'checkpoint_frequency' cannot be set for a function trainable. "
                     "You will need to report a checkpoint every "
                     "`checkpoint_frequency` iterations within your training loop using "
-                    "`ray.air.session.report(metrics=..., checkpoint=...)` "
+                    "`ray.train.report(metrics=..., checkpoint=...)` "
                     "to get this behavior."
                 )
         try:
@@ -248,12 +194,79 @@ class Experiment:
             else:
                 raise e
 
-        self.name = name or self._run_identifier
+        self.storage = None
+        if _use_storage_context():
+            assert name is not None
 
-        if not _experiment_checkpoint_dir:
-            self.dir_name = _get_dir_name(run, name, self.name)
+            self.storage = StorageContext(
+                storage_path=storage_path,
+                storage_filesystem=storage_filesystem,
+                sync_config=sync_config,
+                experiment_dir_name=name,
+            )
+            logger.debug(f"StorageContext on the DRIVER:\n{self.storage}")
 
-        assert self.dir_name
+            self._legacy_local_storage_path = None
+            self._legacy_remote_storage_path = None
+            self.legacy_sync_config = None
+            self.legacy_dir_name = None
+            self.legacy_name = None
+        else:
+            if isinstance(sync_config, dict):
+                sync_config = SyncConfig(**sync_config)
+            else:
+                sync_config = sync_config or SyncConfig()
+
+            self.legacy_sync_config = sync_config
+
+            # Resolve storage_path
+            local_storage_path, remote_storage_path = _resolve_storage_path(
+                storage_path,
+                local_dir,
+                sync_config.upload_dir,
+                error_location="Experiment",
+            )
+
+            if local_dir:
+                if log_once("tune_experiment_local_dir"):
+                    warnings.warn(
+                        "The `local_dir` argument of `Experiment is deprecated. "
+                        "Use `storage_path` or set the `TUNE_RESULT_DIR` "
+                        "environment variable instead."
+                    )
+
+                local_storage_path = local_dir
+
+            full_local_storage_path = _get_local_dir_with_expand_user(
+                local_storage_path
+            )
+
+            # `_experiment_checkpoint_dir` is for internal use only for better
+            # support of Tuner API.
+            # If set, it should be a subpath under `local_dir`. Also deduce `dir_name`.
+            if _experiment_checkpoint_dir:
+                experiment_checkpoint_dir_path = Path(_experiment_checkpoint_dir)
+                local_dir_path = Path(full_local_storage_path)
+                assert local_dir_path in experiment_checkpoint_dir_path.parents, (
+                    local_dir_path,
+                    str(list(experiment_checkpoint_dir_path.parents)),
+                )
+                # `dir_name` is set by `_experiment_checkpoint_dir` indirectly.
+                self.legacy_dir_name = os.path.relpath(
+                    _experiment_checkpoint_dir, full_local_storage_path
+                )
+
+            self._legacy_local_storage_path = full_local_storage_path
+            self._legacy_remote_storage_path = remote_storage_path
+
+            self.legacy_name = name or self._run_identifier
+
+            if not _experiment_checkpoint_dir:
+                self.legacy_dir_name = _get_dir_name(run, name, self.legacy_name)
+
+            assert self.legacy_dir_name
+
+        config = config or {}
 
         self._stopper = None
         stopping_criteria = {}
@@ -265,7 +278,7 @@ class Experiment:
                 stopper_types = [type(s) for s in stop]
                 raise ValueError(
                     "If you pass a list as the `stop` argument to "
-                    "`air.RunConfig()`, each element must be an instance of "
+                    "`train.RunConfig()`, each element must be an instance of "
                     f"`tune.stopper.Stopper`. Got {stopper_types}."
                 )
             self._stopper = CombinedStopper(*stop)
@@ -306,8 +319,8 @@ class Experiment:
             "resources_per_trial": resources_per_trial,
             "num_samples": num_samples,
             "experiment_path": self.path,
-            "experiment_dir_name": self.dir_name,
-            "sync_config": sync_config,
+            "experiment_dir_name": self.legacy_dir_name,
+            "sync_config": self.legacy_sync_config,
             "checkpoint_config": checkpoint_config,
             "trial_name_creator": trial_name_creator,
             "trial_dirname_creator": trial_dirname_creator,
@@ -317,19 +330,8 @@ class Experiment:
             "restore": os.path.abspath(os.path.expanduser(restore))
             if restore
             else None,
+            "storage": self.storage,
         }
-
-        self.storage = None
-        if _use_storage_context():
-            storage = StorageContext(
-                storage_path=storage_path,
-                storage_filesystem=storage_filesystem,
-                sync_config=sync_config,
-                experiment_dir_name=self.dir_name,
-            )
-            self.storage = spec["storage"] = storage
-            logger.debug(f"StorageContext on the DRIVER:\n{storage}")
-
         self.spec = spec
 
     @classmethod
@@ -487,9 +489,12 @@ class Experiment:
 
     @property
     def local_path(self) -> Optional[str]:
-        if not self._local_storage_path:
+        if _use_storage_context():
+            return self.storage.experiment_local_path
+
+        if not self._legacy_local_storage_path:
             return None
-        return str(Path(self._local_storage_path) / self.dir_name)
+        return str(Path(self._legacy_local_storage_path) / self.legacy_dir_name)
 
     @property
     @Deprecated("Replaced by `local_path`")
@@ -499,9 +504,12 @@ class Experiment:
 
     @property
     def remote_path(self) -> Optional[str]:
-        if not self._remote_storage_path:
+        if _use_storage_context():
+            return str(self.storage.storage_prefix / self.storage.experiment_fs_path)
+
+        if not self._legacy_remote_storage_path:
             return None
-        return str(URI(self._remote_storage_path) / self.dir_name)
+        return str(URI(self._legacy_remote_storage_path) / self.legacy_dir_name)
 
     @property
     def path(self) -> Optional[str]:

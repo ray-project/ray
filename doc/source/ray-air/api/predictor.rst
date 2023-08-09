@@ -1,11 +1,6 @@
 Predictor
 =========
 
-.. seealso::
-
-    See this :ref:`user guide on performing model inference <air-predictors>` in
-    AIR for usage examples.
-
 .. currentmodule:: ray.train
 
 Predictor Interface
@@ -94,4 +89,3 @@ Built-in Predictors for Library Integrations
     ~torch.TorchPredictor
     ~huggingface.TransformersPredictor
     ~sklearn.SklearnPredictor
-    ~rl.RLPredictor
