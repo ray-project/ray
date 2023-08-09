@@ -1,5 +1,4 @@
 import os
-import importlib
 from pathlib import Path
 from packaging import version
 import sys
