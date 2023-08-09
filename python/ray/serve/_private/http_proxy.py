@@ -830,7 +830,10 @@ class gRPCProxy(GenericProxy):
         status_code = grpc.StatusCode.ABORTED
         serve_request.send_status_code(status_code=status_code)
         serve_request.send_details(message=drained_message)
-        response_proto = HealthzResponse(response=drained_message)
+        if serve_request.route_path == "/-/routes":
+            response_proto = RoutesResponse(application_names=self.route_info.values())
+        else:
+            response_proto = HealthzResponse(response=drained_message)
         return ServeResponse(
             status_code=str(status_code),
             response=response_proto.SerializeToString(),
