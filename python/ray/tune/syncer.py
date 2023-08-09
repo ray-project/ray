@@ -105,7 +105,7 @@ _SYNC_TO_HEAD_DEPRECATION_MESSAGE = (
     "If you are already using NFS, you can ignore this warning message.\n\n"
     "Other temporary workarounds:\n"
     "- If you want to avoid errors/warnings and continue running with "
-    "syncing explicitly turned off, set `RunConfig(SyncConfig(syncer=None))`\n"
+    "syncing explicitly turned off, set `RunConfig(sync_config=SyncConfig(syncer=None))`\n"
     "- Or, to re-enable the head node syncing behavior, set the "
     f"environment variable {REENABLE_DEPRECATED_SYNC_TO_HEAD_NODE}=1\n"
     "  - **Note that this functionality will tentatively be hard-deprecated in "
