@@ -539,7 +539,12 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
                             rpc::ShutdownRayletReply *reply,
                             rpc::SendReplyCallback send_reply_callback) override;
 
-  /// Handle a `ReturnWorker` request.
+  /// Handle a `DrainRaylet` request.
+  void HandleDrainRaylet(rpc::DrainRayletRequest request,
+                         rpc::DrainRayletReply *reply,
+                         rpc::SendReplyCallback send_reply_callback) override;
+
+  /// Handle a `CancelWorkerLease` request.
   void HandleCancelWorkerLease(rpc::CancelWorkerLeaseRequest request,
                                rpc::CancelWorkerLeaseReply *reply,
                                rpc::SendReplyCallback send_reply_callback) override;
@@ -845,8 +850,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// indicate network issues (dropped/duplicated/ooo packets, etc).
   int64_t next_resource_seq_no_;
 
-  /// Whether or not if the node draining process has already received.
-  bool is_node_drained_ = false;
+  /// Whether or not if the shutdown raylet request has been received.
+  bool is_shutdown_request_received_ = false;
 
   /// Ray syncer for synchronization
   syncer::RaySyncer ray_syncer_;
