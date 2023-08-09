@@ -1,3 +1,5 @@
+.. _migration-guide:
+
 Migration Guides for LightningTrainer, TransformersTrainer, and AccelerateTrainer
 =================================================================================
 

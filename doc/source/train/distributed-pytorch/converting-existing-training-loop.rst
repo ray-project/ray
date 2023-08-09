@@ -141,11 +141,13 @@ training.
         as a specification for Ray Cluster. This utility class configures the worker's 
         local, global, and node rank and world size.
 
+        **Step 3: Configure Parallel Devices**
+        
         In addition, Ray TorchTrainer has already configured the correct 
         ``CUDA_VISIBLE_DEVICES`` for you. One should always use all available 
         GPUs by setting ``devices="auto"``.
         
-        **Step 3: Prepare your Lightning Trainer**
+        **Step 4: Prepare your Lightning Trainer**
 
         Finally, pass your Lightning Trainer into
         :meth:`~ray.train.lightning.prepare_trainer` to validate 
