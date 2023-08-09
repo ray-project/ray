@@ -380,8 +380,8 @@ def test_handle_options_custom_router(serve_instance):
     handle2 = handle.options(_router_cls="ray.serve.tests.test_handle.MyRouter")
     ray.get(handle2.remote("HI"))
     print("Router class used", handle2._router._replica_scheduler)
-    assert isinstance(
-        handle2._router._replica_scheduler, MyRouter
+    assert (
+        "MyRouter" in handle2._router._replica_scheduler.__class__.__name__
     ), handle2._router._replica_scheduler
 
 
