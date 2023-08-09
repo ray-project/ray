@@ -398,15 +398,11 @@ def test_run_get_ingress_app(serve_instance):
     def g():
         return "got g"
 
-    app = BuiltApplication([g])
+    app = BuiltApplication([g], "g")
     ingress_handle = serve.run(app)
 
     assert ray.get(ingress_handle.remote()) == "got g"
     serve_instance.delete_apps(["default"])
-
-    no_ingress_app = BuiltApplication([g.options(route_prefix=None)])
-    ingress_handle = serve.run(no_ingress_app)
-    assert ingress_handle is None
 
 
 def test_run_get_ingress_node(serve_instance):
@@ -982,6 +978,119 @@ def test_status_package_unavailable_in_controller(serve_instance):
         )
 
     wait_for_condition(check_for_failed_deployment, timeout=15)
+
+
+def test_get_app_handle_basic(serve_instance):
+    @serve.deployment(ray_actor_options={"num_cpus": 0.1})
+    class M:
+        def __call__(self, val: int):
+            return val + 1
+
+    @serve.deployment(ray_actor_options={"num_cpus": 0.1})
+    def f():
+        return "hello world"
+
+    @serve.deployment(ray_actor_options={"num_cpus": 0.1})
+    class MyDriver:
+        def __init__(self, dag: RayServeDAGHandle):
+            self.dag = dag
+
+        async def __call__(self):
+            return await (await self.dag.remote())
+
+    serve.run(M.bind(), name="A", route_prefix="/a")
+    serve.run(MyDriver.bind(f.bind()), name="B", route_prefix="/b")
+
+    handle = serve.get_app_handle("A")
+    assert ray.get(handle.remote(8)) == 9
+
+    handle = serve.get_app_handle("B")
+    assert ray.get(handle.remote()) == "hello world"
+
+
+def test_get_app_handle_dne(serve_instance):
+    """Test getting app handle to an app that doesn't exist."""
+
+    with pytest.raises(RayServeException) as e:
+        serve.get_app_handle("random")
+
+    assert "Application 'random' does not exist" in str(e.value)
+
+
+def test_get_app_handle_within_deployment_async(serve_instance):
+    @serve.deployment()
+    class a:
+        def __init__(self, handle):
+            self.handle = handle
+
+        def __call__(self, val: int):
+            return val + 2
+
+    @serve.deployment()
+    class b:
+        def __call__(self, val: int):
+            return val
+
+    @serve.deployment
+    async def f(val):
+        handle = serve.get_app_handle("default")
+        result = await (await handle.remote(val))
+        return f"The answer is {result}"
+
+    serve.run(a.bind(b.bind()), route_prefix="/math")
+    serve.run(f.bind(), name="call")
+
+    handle = serve.get_app_handle("call")
+    assert ray.get(handle.remote(7)) == "The answer is 9"
+
+
+def test_get_app_handle_within_deployment_sync(serve_instance):
+    @serve.deployment()
+    class a:
+        def __init__(self, handle):
+            self.handle = handle
+
+        def __call__(self, val: int):
+            return val + 2
+
+    @serve.deployment()
+    class b:
+        def __call__(self, val: int):
+            return val
+
+    @serve.deployment
+    def f(val):
+        handle = serve.get_app_handle("default", sync=True)
+        result = ray.get(handle.remote(val))
+        return f"The answer is {result}"
+
+    serve.run(a.bind(b.bind()), route_prefix="/math")
+    serve.run(f.bind(), name="call")
+
+    handle = serve.get_app_handle("call")
+    assert ray.get(handle.remote(7)) == "The answer is 9"
+
+
+def test_get_deployment_handle_basic(serve_instance):
+    @serve.deployment(ray_actor_options={"num_cpus": 0.1})
+    def f():
+        return "hello world"
+
+    @serve.deployment(ray_actor_options={"num_cpus": 0.1})
+    class MyDriver:
+        def __init__(self, dag: RayServeDAGHandle):
+            self.dag = dag
+
+        async def __call__(self):
+            return f"{await (await self.dag.remote())}!!"
+
+    serve.run(MyDriver.bind(f.bind()))
+
+    handle = serve.get_deployment_handle("f", "default")
+    assert ray.get(handle.remote()) == "hello world"
+
+    app_handle = serve.get_app_handle("default")
+    assert ray.get(app_handle.remote()) == "hello world!!"
 
 
 if __name__ == "__main__":
