@@ -11,7 +11,7 @@ from ray.train.examples.tf.tensorflow_mnist_example import (
     train_func as tensorflow_mnist_train_func,
 )
 from ray.train.examples.pytorch.torch_fashion_mnist_example import (
-    train_func as fashion_mnist_train_func,
+    train_func_per_worker as fashion_mnist_train_func,
 )
 from ray.train.horovod.horovod_trainer import HorovodTrainer
 from ray.train.tests.test_tune import (
@@ -43,7 +43,7 @@ def test_torch_fashion_mnist_gpu(ray_start_4_cpus_2_gpus):
     num_workers = 2
     epochs = 3
 
-    config = {"lr": 1e-3, "batch_size": 64, "epochs": epochs}
+    config = {"lr": 1e-3, "batch_size_per_worker": 32, "epochs": epochs}
     trainer = TorchTrainer(
         fashion_mnist_train_func,
         train_loop_config=config,
