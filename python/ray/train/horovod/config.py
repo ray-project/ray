@@ -17,11 +17,6 @@ from horovod.runner.common.util import secret, timeout
 from ray.util import PublicAPI
 
 try:
-    from ray.train.torch.torch_checkpoint import TorchCheckpoint
-except ImportError:
-    TorchCheckpoint = None
-
-try:
     from ray.train.tensorflow.tensorflow_checkpoint import TensorflowCheckpoint
 except ImportError:
     TensorflowCheckpoint = None

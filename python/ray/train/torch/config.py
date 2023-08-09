@@ -5,12 +5,10 @@ from datetime import timedelta
 from typing import Optional
 
 import ray
-from ray.air.checkpoint import Checkpoint
-from ray.train.backend import BackendConfig, Backend, _warn_about_bad_checkpoint_type
+from ray.train.backend import BackendConfig, Backend
 from ray.train.constants import DEFAULT_NCCL_SOCKET_IFNAME
 from ray.train._internal.worker_group import WorkerGroup
 from ray.train._internal.utils import get_address_and_port
-from ray.train.torch.torch_checkpoint import TorchCheckpoint
 from ray.util import PublicAPI
 
 import torch

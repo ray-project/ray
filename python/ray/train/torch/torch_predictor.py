@@ -5,7 +5,6 @@ import numpy as np
 import torch
 
 from ray.air._internal.torch_utils import convert_ndarray_batch_to_torch_tensor_batch
-from ray.air.checkpoint import Checkpoint
 from ray.train._internal.dl_predictor import DLPredictor
 from ray.train.predictor import DataBatchType
 from ray.train.torch.torch_checkpoint import TorchCheckpoint
