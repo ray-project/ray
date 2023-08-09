@@ -51,6 +51,7 @@ class ClusterNodeInfoCache(ABC):
     @abstractmethod
     def get_draining_node_ids(self) -> Set[str]:
         """Get IDs of all draining nodes in the cluster."""
+        raise NotImplementedError
 
     def get_active_node_ids(self) -> Set[str]:
         """Get IDs of all active nodes in the cluster.
