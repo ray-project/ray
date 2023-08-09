@@ -64,6 +64,8 @@ bool LocalResourceManager::IsAvailableResourceEmpty(
 std::string LocalResourceManager::DebugString(void) const {
   std::stringstream buffer;
   buffer << local_resources_.DebugString();
+  buffer << " is_draining: " << IsLocalNodeDraining();
+  buffer << " is_idle: " << IsLocalNodeIdle();
   return buffer.str();
 }
 
@@ -501,6 +503,7 @@ ray::gcs::NodeResourceInfoAccessor::ResourceMap LocalResourceManager::GetResourc
 }
 
 void LocalResourceManager::OnResourceOrStateChanged() {
+  RAY_LOG(INFO) << "jjyao OnResourceOrStateChanged " << DebugString();
   if (IsLocalNodeDraining() && IsLocalNodeIdle()) {
     // The node is drained.
     // Sending a SIGTERM to itself is equivalent to gracefully shutting down raylet.
