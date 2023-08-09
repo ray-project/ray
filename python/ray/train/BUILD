@@ -570,7 +570,7 @@ py_test(
     name = "test_torch_trainer",
     size = "large",
     srcs = ["tests/test_torch_trainer.py"],
-    tags = ["team:ml", "exclusive", "ray_air", "no_new_storage"],
+    tags = ["team:ml", "exclusive", "ray_air", "new_storage"],
     deps = [":train_lib"]
 )
 
