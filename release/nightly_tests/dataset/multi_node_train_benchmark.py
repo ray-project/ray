@@ -93,9 +93,11 @@ def get_transform(to_torch_tensor):
             ),
             torchvision.transforms.RandomHorizontalFlip(),
         ]
-        + [torchvision.transforms.ToTensor()]
-        if to_torch_tensor
-        else []
+        + (
+            [torchvision.transforms.ToTensor()]
+            if to_torch_tensor
+            else []
+        )
     )
     return transform
 
@@ -176,4 +178,5 @@ if __name__ == "__main__":
     with open(test_output_json, "wt") as f:
         json.dump(result_dict, f)
 
-    print(f"Finished benchmark, metrics exported to {test_output_json}.")
+    print(f"Finished benchmark, metrics exported to {test_output_json}:")
+    print(result_dict)
