@@ -160,7 +160,7 @@ def continue_debug_session(live_jobs: Set[str]):
                 continue
 
             print("Continuing pdb session in different process...")
-            key = b"RAY_PDB_" + active_session[len("RAY_PDB_CONTINUE_"):]
+            key = b"RAY_PDB_" + active_session[len("RAY_PDB_CONTINUE_") :]
             while True:
                 data = ray.experimental.internal_kv._internal_kv_get(
                     key, namespace=ray_constants.KV_NAMESPACE_PDB
@@ -1133,9 +1133,7 @@ def stop(force: bool, grace_period: int):
     buckets = [[processes_to_kill[0]], processes_to_kill[1:-1], [processes_to_kill[-1]]]
 
     for bucket in buckets:
-        found, stopped, alive = kill_procs(
-            force, grace_period / len(buckets), bucket
-        )
+        found, stopped, alive = kill_procs(force, grace_period / len(buckets), bucket)
         total_procs_found += found
         total_procs_stopped += stopped
         procs_not_gracefully_killed.extend(alive)
