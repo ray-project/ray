@@ -99,32 +99,26 @@ class TorchCategorical(TorchDistribution):
         self,
         logits: torch.Tensor = None,
         probs: torch.Tensor = None,
-        temperature: float = 1.0,
     ) -> None:
         # We assert this here because to_deterministic makes this assumption.
         assert (probs is None) != (
             logits is None
         ), "Exactly one out of `probs` and `logits` must be set!"
 
-        if logits is not None:
-            assert temperature > 0.0, "Categorical `temperature` must be > 0.0!"
-            _logits = logits / temperature
-            probs = torch.nn.functional.softmax(_logits, dim=-1)
-
         self.probs = probs
         self.logits = logits
-        self.temperature = temperature
         self.one_hot = torch.distributions.one_hot_categorical.OneHotCategorical(
-            probs=probs
+            logits=logits, probs=probs
         )
-        super().__init__(probs=probs)
+        super().__init__(logits=logits, probs=probs)
 
     @override(TorchDistribution)
     def _get_torch_distribution(
         self,
+        logits: torch.Tensor = None,
         probs: torch.Tensor = None,
     ) -> "torch.distributions.Distribution":
-        return torch.distributions.categorical.Categorical(probs)
+        return torch.distributions.categorical.Categorical(logits=logits, probs=probs)
 
     @staticmethod
     @override(Distribution)
@@ -140,9 +134,9 @@ class TorchCategorical(TorchDistribution):
     @classmethod
     @override(Distribution)
     def from_logits(
-        cls, logits: TensorType, temperature: float = 1.0, **kwargs
+        cls, logits: TensorType, **kwargs
     ) -> "TorchCategorical":
-        return TorchCategorical(logits=logits, temperature=temperature, **kwargs)
+        return TorchCategorical(logits=logits, **kwargs)
 
     def to_deterministic(self) -> "TorchDeterministic":
         if self.probs is not None:
