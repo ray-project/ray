@@ -1,0 +1,9 @@
+#ci:group=:ray-serve: serve tests (civ2)
+
+- label: ":python: serve"
+  conditions: ["RAY_CI_PYTHON_AFFECTED"]
+  instance_size: medium
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+    - ./ci/env/env_info.sh
+    - bazel run //ci/ray_ci -- //python/ray/tests/... serve --except-tags worker-container
