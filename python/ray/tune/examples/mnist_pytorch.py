@@ -1,6 +1,7 @@
 # Original Code here:
 # https://github.com/pytorch/examples/blob/master/mnist/main.py
 import os
+import tempfile
 import argparse
 from filelock import FileLock
 import torch
@@ -11,7 +12,7 @@ from torchvision import datasets, transforms
 
 import ray
 from ray import train, tune
-from ray.train.torch import TorchCheckpoint
+from ray.train._checkpoint import Checkpoint
 from ray.tune.schedulers import AsyncHyperBandScheduler
 
 # Change these values if you want the training to run quicker or slower.
@@ -104,11 +105,15 @@ def train_mnist(config):
     while True:
         train_func(model, optimizer, train_loader, device)
         acc = test_func(model, test_loader, device)
-        checkpoint = None
-        if should_checkpoint:
-            checkpoint = TorchCheckpoint.from_state_dict(model.state_dict())
         # Report metrics (and possibly a checkpoint) to Tune
-        train.report({"mean_accuracy": acc}, checkpoint=checkpoint)
+        if should_checkpoint:
+            with tempfile.TemporaryDirectory() as tmpdir:
+                torch.save(model.state_dict(), os.path.join(tmpdir, "model.pt"))
+                train.report(
+                    {"mean_accuracy": acc}, checkpoint=Checkpoint.from_directory(tmpdir)
+                )
+        else:
+            train.report({"mean_accuracy": acc})
 
 
 if __name__ == "__main__":
