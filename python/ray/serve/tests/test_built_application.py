@@ -18,23 +18,24 @@ class TestBuiltApplicationConstruction:
             return "got C"
 
     def test_valid_deployments(self):
-        app = BuiltApplication([self.f, self.C])
+        app = BuiltApplication([self.f, self.C], "f")
 
         assert len(app.deployments) == 2
         app_deployment_names = {d.name for d in app.deployments.values()}
         assert "f" in app_deployment_names
         assert "C" in app_deployment_names
+        assert app.ingress.name == "f"
 
     def test_repeated_deployment_names(self):
         with pytest.raises(ValueError):
-            BuiltApplication([self.f, self.C.options(name="f")])
+            BuiltApplication([self.f, self.C.options(name="f")], "f")
 
         with pytest.raises(ValueError):
-            BuiltApplication([self.C, self.f.options(name="C")])
+            BuiltApplication([self.C, self.f.options(name="C")], "C")
 
     def test_non_deployments(self):
         with pytest.raises(TypeError):
-            BuiltApplication([self.f, 5, "hello"])
+            BuiltApplication([self.f, 5, "hello"], "f")
 
 
 class TestServeRun:
@@ -68,7 +69,7 @@ class TestServeRun:
 
         for i in range(len(deployments)):
             serve.run(
-                BuiltApplication([deployments[i]]),
+                BuiltApplication([deployments[i]], deployments[i].name),
                 name=f"app{i}",
                 _blocking=blocking,
             )
@@ -144,7 +145,7 @@ class TestServeRun:
                 MutualHandles.options(name=deployment_name, init_args=(handle_name,))
             )
 
-        serve.run(BuiltApplication(deployments), _blocking=True)
+        serve.run(BuiltApplication(deployments, deployments[-1].name), _blocking=True)
 
         for deployment in deployments:
             assert (ray.get(deployment.get_handle().remote("hello"))) == "hello"
@@ -181,7 +182,7 @@ class TestServeRun:
         """
 
         with pytest.raises(TypeError):
-            BuiltApplication([self.f, self.C, "not a Deployment object"]).deploy(
+            BuiltApplication([self.f, self.C, "not a Deployment object"], "f").deploy(
                 blocking=True
             )
 
@@ -273,7 +274,7 @@ class DecoratedClass:
 
 
 def test_immutable_deployment_list(serve_instance):
-    app = BuiltApplication([DecoratedClass, decorated_func])
+    app = BuiltApplication([DecoratedClass, decorated_func], "decorated_func")
     assert len(app.deployments.values()) == 2
 
     for name in app.deployments.keys():
