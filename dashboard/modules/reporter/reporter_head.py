@@ -185,7 +185,7 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
             and worker's ID.
 
         Raises:
-            ValueError: If the task attempt is not running or the state APi is not 
+            ValueError: If the task attempt is not running or the state APi is not
                 initialized.
         """
         if self._state_api is None:
