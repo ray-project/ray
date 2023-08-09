@@ -156,6 +156,7 @@ For use cases not covered by the default config class, you can also fully custom
     import ray
     from ray.air import ScalingConfig, session
     from ray.train.torch import TorchTrainer
+    from ray.train import DataConfig
     from ray.data import Dataset, DataIterator, NodeIdStr
     from ray.actor import ActorHandle
 

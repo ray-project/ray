@@ -21,7 +21,9 @@ from ray.air._internal.usage import AirEntrypoint
 from ray.air.checkpoint import Checkpoint
 from ray.air.config import RunConfig, ScalingConfig
 from ray.air.result import Result
+from ray.train._checkpoint import Checkpoint as NewCheckpoint
 from ray.train._internal import session
+from ray.train._internal.storage import _use_storage_context
 from ray.train.constants import TRAIN_DATASET_KEY
 from ray.util import PublicAPI
 from ray.util.annotations import DeveloperAPI
@@ -191,7 +193,7 @@ class BaseTrainer(abc.ABC):
         self.run_config = run_config if run_config is not None else RunConfig()
         self.datasets = datasets if datasets is not None else {}
         self.preprocessor = preprocessor
-        self.resume_from_checkpoint = resume_from_checkpoint
+        self.starting_checkpoint = resume_from_checkpoint
 
         # This path should only be set through restore
         self._restore_path = None
@@ -377,7 +379,7 @@ class BaseTrainer(abc.ABC):
             "run_config": RunConfig(),
             "datasets": {},
             "preprocessor": None,
-            "resume_from_checkpoint": None,
+            "starting_checkpoint": None,
         }
 
         non_default_arguments = []
@@ -452,13 +454,16 @@ class BaseTrainer(abc.ABC):
                 f"found {type(self.preprocessor)} with value `{self.preprocessor}`."
             )
 
-        if self.resume_from_checkpoint is not None and not isinstance(
-            self.resume_from_checkpoint, ray.air.Checkpoint
+        expected_checkpoint_type = (
+            NewCheckpoint if _use_storage_context() else ray.air.Checkpoint
+        )
+        if self.starting_checkpoint is not None and not isinstance(
+            self.starting_checkpoint, expected_checkpoint_type
         ):
             raise ValueError(
                 f"`resume_from_checkpoint` should be an instance of "
-                f"`ray.train.Checkpoint`, found {type(self.resume_from_checkpoint)} "
-                f"with value `{self.resume_from_checkpoint}`."
+                f"`ray.train.Checkpoint`, found {type(self.starting_checkpoint)} "
+                f"with value `{self.starting_checkpoint}`."
             )
 
     @classmethod
@@ -700,18 +705,22 @@ class BaseTrainer(abc.ABC):
             # Instantiate new Trainer in Trainable.
             trainer = trainer_cls(**config)
 
-            # Get the checkpoint from the train context, and use it to initialize
-            # the restored trainer.
-            # This handles both worker-level and cluster-level restoration
-            # of the Train experiment.
+            # Get the checkpoint from Tune and pass it to workers later on.
             checkpoint = session.get_checkpoint()
             if checkpoint:
-                trainer.resume_from_checkpoint = checkpoint
-                # Always load the preprocessor from an available checkpoint
-                # Unless we are restoring the experiment and have explicitly
-                # passed in a new preprocessor
-                if not (restored and trainer.preprocessor):
-                    trainer.preprocessor = checkpoint.get_preprocessor()
+                # Set `starting_checkpoint` for auto-recovery fault-tolerance
+                # as well as manual restoration.
+                trainer.starting_checkpoint = checkpoint
+
+                # TODO(justinvyu): Remove this when Preprocessor is removed from Trainer
+                if not _use_storage_context():
+                    # Always load the preprocessor from an available checkpoint
+                    # Unless we are restoring the experiment and have explicitly
+                    # passed in a new preprocessor
+                    if not (restored and trainer.preprocessor):
+                        trainer.preprocessor = checkpoint.get_preprocessor()
+            # Else: Train will restore from the user-provided
+            # `resume_from_checkpoint` == `starting_checkpoint`.
 
             trainer.setup()
             trainer.preprocess_datasets()

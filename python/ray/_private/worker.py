@@ -1809,7 +1809,7 @@ def filter_autoscaler_events(lines: List[str]) -> Iterator[str]:
     from ray.autoscaler.v2.utils import is_autoscaler_v2
 
     if is_autoscaler_v2():
-        from ray._private.event.event_logger import parse_event
+        from ray._private.event.event_logger import parse_event, filter_event_by_level
 
         for event_line in lines:
             if autoscaler_log_fyi_needed():
@@ -1818,8 +1818,12 @@ def filter_autoscaler_events(lines: List[str]) -> Iterator[str]:
             event = parse_event(event_line)
             if not event or not event.message:
                 continue
-            # We need to filter anything below Event.Severity.INFO if
-            # there's any more verbose.
+
+            if filter_event_by_level(
+                event, ray_constants.RAY_LOG_TO_DRIVER_EVENT_LEVEL
+            ):
+                continue
+
             yield event.message
     else:
         # Print out autoscaler events only, ignoring other messages.

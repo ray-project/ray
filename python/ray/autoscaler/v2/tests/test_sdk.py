@@ -307,7 +307,7 @@ def test_node_info_basic(shutdown_only, monkeypatch):
         wait_for_condition(verify)
 
 
-def test_pg_pending_gang_requests_basic(ray_start_cluster):
+def test_pg_pending_gang_requests_basic(shutdown_only):
     ray.init(num_cpus=1)
 
     # Create a pg that's pending.
@@ -556,7 +556,6 @@ def test_get_cluster_status(ray_start_cluster):
     # This test is to make sure the grpc stub is working.
     # TODO(rickyx): Add e2e tests for the autoscaler state service in a separate PR
     # to validate the data content.
-
     cluster = ray_start_cluster
     # Head node
     cluster.add_node(num_cpus=1, _system_config={"enable_autoscaler_v2": True})
@@ -695,6 +694,32 @@ def test_get_cluster_status(ray_start_cluster):
         return True
 
     wait_for_condition(verify_autoscaler_state)
+
+
+@pytest.mark.parametrize(
+    "env_val,enabled",
+    [
+        ("1", True),
+        ("0", False),
+        ("", False),
+    ],
+)
+def test_is_autoscaler_v2_enabled(shutdown_only, monkeypatch, env_val, enabled):
+    def reset_autoscaler_v2_enabled_cache():
+        import ray.autoscaler.v2.utils as u
+
+        u.cached_is_autoscaler_v2 = None
+
+    reset_autoscaler_v2_enabled_cache()
+    with monkeypatch.context() as m:
+        m.setenv("RAY_enable_autoscaler_v2", env_val)
+        ray.init()
+
+        def verify():
+            assert ray.autoscaler.v2.utils.is_autoscaler_v2() == enabled
+            return True
+
+        wait_for_condition(verify)
 
 
 if __name__ == "__main__":
