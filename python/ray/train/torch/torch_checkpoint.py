@@ -6,7 +6,9 @@ import warnings
 
 import ray.cloudpickle as ray_pickle
 
+from ray.data.preprocessor import Preprocessor
 from ray.train._checkpoint import Checkpoint
+from ray.train._internal.storage import _exists_at_fs_path
 from ray.air._internal.torch_utils import (
     load_torch_model,
     consume_prefix_in_state_dict_if_present_not_in_place,
@@ -25,6 +27,20 @@ class TorchCheckpoint(Checkpoint):
 
     MODEL_FILENAME = "model.pt"
     PREPROCESSOR_FILENAME = "preprocessor.pkl"
+
+    def get_preprocessor(self) -> Optional[Preprocessor]:
+        """Return the preprocessor stored in the checkpoint.
+
+        Returns:
+            The preprocessor stored in the checkpoint, or ``None`` if no
+            preprocessor was stored.
+        """
+        preprocessor_path = os.path.join(self.path, self.PREPROCESSOR_FILENAME)
+        if not _exists_at_fs_path(self.filesystem, preprocessor_path):
+            return None
+
+        with self.filesystem.open_input_file(preprocessor_path) as f:
+            return ray_pickle.loads(f.readall())
 
     @classmethod
     def from_state_dict(
