@@ -284,7 +284,7 @@ def prepare_trainer(trainer: Trainer) -> Trainer:
         ) -> DataLoader:
             if eval_dataset is None:
                 eval_dataset = self.eval_dataset
-                
+
             if isinstance(eval_dataset, _IterableFromIterator):
                 return DataLoader(eval_dataset, collate_fn=lambda x: x[0])
             else:
