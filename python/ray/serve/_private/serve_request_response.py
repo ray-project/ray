@@ -71,23 +71,35 @@ class gRPCServeRequest(ServeRequest):
         service_method: str,
         stream: bool,
     ):
-        service_method_split = service_method.split("/")
-        self.request = pickle.dumps(request_proto)
+        self.request = request_proto
         self.context = context
+        self.match_target = match_target
+        self.service_method = service_method
         self.stream = stream
         self.app_name = ""
         self.route_path = None
         self.request_id = None
-        self.method_name = service_method_split[-1].lower()
+        self.method_name = "__call__"
         self.multiplexed_model_id = DEFAULT.VALUE
-        for key, value in context.invocation_metadata():
-            if key == "application":
-                self.app_name = value
-            elif key == "request_id":
-                self.request_id = value
-            elif key == "multiplexed_model_id":
-                self.multiplexed_model_id = value
-        self.route_path = match_target(self.app_name)
+        self.setup_variables()
+
+    def setup_variables(self):
+        if self.service_method == "/ray.serve.ServeAPIService/ServeRoutes":
+            self.route_path = "/-/routes"
+        elif self.service_method == "/ray.serve.ServeAPIService/ServeHealthz":
+            self.route_path = "/-/healthz"
+        else:
+            service_method_split = self.service_method.split("/")
+            self.request = pickle.dumps(self.request)
+            self.method_name = service_method_split[-1].lower()
+            for key, value in self.context.invocation_metadata():
+                if key == "application":
+                    self.app_name = value
+                elif key == "request_id":
+                    self.request_id = value
+                elif key == "multiplexed_model_id":
+                    self.multiplexed_model_id = value
+            self.route_path = self.match_target(self.app_name)
 
     @property
     def user_request(self) -> bytes:
@@ -103,6 +115,12 @@ class gRPCServeRequest(ServeRequest):
 
     def send_request_id(self, request_id: str):
         self.context.set_trailing_metadata([("request_id", request_id)])
+
+    def send_status_code(self, status_code: grpc.StatusCode):
+        self.context.set_code(status_code)
+
+    def send_details(self, message: str):
+        self.context.set_details(message)
 
 
 class ServeResponse:

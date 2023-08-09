@@ -75,6 +75,8 @@ from ray.serve._private.utils import (
 )
 from ray.serve.config import gRPCOptions
 from ray.serve.exceptions import RayServeTimeout
+from ray.serve.generated.serve_pb2 import HealthzResponse, RoutesResponse
+from ray.serve.generated.serve_pb2_grpc import add_ServeAPIServiceServicer_to_server
 
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
@@ -113,6 +115,8 @@ if os.environ.get("SERVE_REQUEST_PROCESSING_TIMEOUT_S") is not None:
 INITIAL_BACKOFF_PERIOD_SEC = 0.05
 MAX_BACKOFF_PERIOD_SEC = 5
 BACKOFF_FACTOR = 2
+drained_message = "This node is being drained."
+success_message = "success"
 
 
 def generate_request_id() -> str:
@@ -395,15 +399,6 @@ class GenericProxy:
             serve_request.scope, serve_request.receive, serve_request.send
         )
 
-    async def _draining_response(self, serve_request: ServeRequest):
-        response = Response(
-            "This node is being drained.",
-            status_code=503,
-        )
-        await response.send(
-            serve_request.scope, serve_request.receive, serve_request.send
-        )
-
     async def _timeout_response(self, serve_request: ServeRequest, request_id: str):
         response = Response(
             f"Request {request_id} timed out after {self.request_timeout_s}s.",
@@ -459,9 +454,7 @@ class GenericProxy:
                     "status_code": "200",
                 }
             )
-            return await starlette.responses.JSONResponse(self.route_info)(
-                serve_request.scope, serve_request.receive, serve_request.send
-            )
+            return await self._routes_response(serve_request=serve_request)
 
         if route_path == "/-/healthz":
             if self._is_draining():
@@ -475,9 +468,7 @@ class GenericProxy:
                     "status_code": "200",
                 }
             )
-            return await starlette.responses.PlainTextResponse("success")(
-                serve_request.scope, serve_request.receive, serve_request.send
-            )
+            return await self._health_response(serve_request=serve_request)
 
         try:
             self._ongoing_requests_start()
@@ -835,6 +826,36 @@ class gRPCProxy(GenericProxy):
     def proxy_name(self) -> str:
         return "gRPC"
 
+    async def _draining_response(self, serve_request: ServeRequest) -> ServeResponse:
+        status_code = grpc.StatusCode.ABORTED
+        serve_request.send_status_code(status_code=status_code)
+        serve_request.send_details(message=drained_message)
+        response_proto = HealthzResponse(response=drained_message)
+        return ServeResponse(
+            status_code=str(status_code),
+            response=response_proto.SerializeToString(),
+        )
+
+    async def _routes_response(self, serve_request: ServeRequest):
+        status_code = grpc.StatusCode.OK
+        serve_request.send_status_code(status_code=status_code)
+        serve_request.send_details(message=success_message)
+        response_proto = RoutesResponse(application_names=self.route_info.values())
+        return ServeResponse(
+            status_code=str(status_code),
+            response=response_proto.SerializeToString(),
+        )
+
+    async def _health_response(self, serve_request: ServeRequest):
+        status_code = grpc.StatusCode.OK
+        serve_request.send_status_code(status_code=status_code)
+        serve_request.send_details(message=success_message)
+        response_proto = HealthzResponse(response=success_message)
+        return ServeResponse(
+            status_code=str(status_code),
+            response=response_proto.SerializeToString(),
+        )
+
     def setup_request_context_and_handle(
         self,
         app_name: str,
@@ -950,6 +971,22 @@ class HTTPProxy(GenericProxy):
     @property
     def proxy_name(self) -> str:
         return "HTTP"
+
+    async def _draining_response(self, serve_request: ServeRequest):
+        response = Response(drained_message, status_code=503)
+        await response.send(
+            serve_request.scope, serve_request.receive, serve_request.send
+        )
+
+    async def _routes_response(self, serve_request: ServeRequest):
+        return await starlette.responses.JSONResponse(self.route_info)(
+            serve_request.scope, serve_request.receive, serve_request.send
+        )
+
+    async def _health_response(self, serve_request: ServeRequest):
+        return await starlette.responses.PlainTextResponse(success_message)(
+            serve_request.scope, serve_request.receive, serve_request.send
+        )
 
     def setup_request_context_and_handle(
         self,
@@ -1375,6 +1412,7 @@ class HTTPProxyActor:
         )
         grpc_server.add_insecure_port(f"[::]:{self.grpc_port}")
         dummy_servicer = DummyServicer()
+        add_ServeAPIServiceServicer_to_server(dummy_servicer, grpc_server)
         for grpc_servicer_function in self.grpc_options.grpc_servicer_func_callable:
             grpc_servicer_function(dummy_servicer, grpc_server)
         await grpc_server.start()

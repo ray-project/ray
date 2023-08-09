@@ -238,3 +238,20 @@ message PredictResponse {
 service PredictAPIsService {
   rpc Predict(PredictRequest) returns (PredictResponse);
 }
+
+message RoutesRequest {}
+
+message RoutesResponse {
+  repeated string application_names = 1;
+}
+
+message HealthzRequest {}
+
+message HealthzResponse {
+  string response = 1;
+}
+
+service ServeAPIService {
+  rpc ServeRoutes(RoutesRequest) returns (RoutesResponse);
+  rpc ServeHealthz(HealthzRequest) returns (HealthzResponse);
+}
