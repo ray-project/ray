@@ -86,6 +86,9 @@ class HorovodTrainer(DataParallelTrainer):
     .. testcode::
         :skipif: True
 
+        import os
+        import tempfile
+
         import ray
         import ray.train as train
         import ray.train.torch. # Need this to use `train.torch.get_device()`
@@ -93,7 +96,7 @@ class HorovodTrainer(DataParallelTrainer):
         import torch
         import torch.nn as nn
         from ray.train.horovod import HorovodTrainer
-        from ray.train.torch import TorchCheckpoint
+        from ray.train._checkpoint import Checkpoint
         from ray.air.config import ScalingConfig
 
         # If using GPUs, set this to True.
@@ -140,12 +143,15 @@ class HorovodTrainer(DataParallelTrainer):
                     loss.backward()
                     optimizer.step()
                     print(f"epoch: {epoch}, loss: {loss.item()}")
-                train.report(
-                    {},
-                    checkpoint=TorchCheckpoint.from_state_dict(
-                        model.state_dict()
-                    ),
-                )
+                with tempfile.TemporaryDirectory() as tmpdir:
+                    torch.save(
+                        model.state_dict(),
+                        os.path.join(tmpdir, "model.pt")
+                    )
+                    train.report(
+                        {"loss": loss.item()},
+                        checkpoint=Checkpoint.from_directory(tmpdir)
+                    )
         train_dataset = ray.data.from_items([{"x": x, "y": x + 1} for x in range(32)])
         scaling_config = ScalingConfig(num_workers=3, use_gpu=use_gpu)
         trainer = HorovodTrainer(
