@@ -255,8 +255,7 @@ def training_function(kwargs: dict):
 
         expected_num_parameters = get_expected_lora_num_parameters(lora_config=lora_config, model=model)
 
-        if config["as_test"]:
-            print(f"Attempting to apply LoRA config: {lora_config}")
+        print(f"Attempting to apply LoRA config: {lora_config}")
 
         model = get_peft_model(model, lora_config)
         
@@ -266,9 +265,7 @@ def training_function(kwargs: dict):
             raise ValueError(f"Expected {expected_num_parameters} parameters, got {num_parameters} parameters."
                              f"LoRA-ification failed.")
 
-        if config["as_test"]:
-            print(f"LoRA-ification done in {time.time() - s} seconds. "
-                  f"Estimated checkpoint size: {num_parameters * 2 / 1e6} MB")
+        print(f"LoRA-ification done in {time.time() - s} seconds. Estimated checkpoint size (16 bit parameters): {num_parameters * 2 / 1e6} MB")
     
     print(f"Number of checkpointed parameters: {get_number_of_params(model)}")
 
@@ -484,10 +481,10 @@ def training_function(kwargs: dict):
 
         if perplex < args.stop_perplexity:
             print(f"Perplexity reached {perplex} < {args.stop_perplexity}. Stopping.")
-            return
+            break
         
         if config["as_test"]:
-            return
+            break
 
 
 def parse_args():
