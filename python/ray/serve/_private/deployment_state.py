@@ -251,18 +251,6 @@ class ActorReplicaWrapper:
         return self._actor_handle
 
     @property
-    def placement_group(self) -> Optional[PlacementGroup]:
-        if not self._placement_group:
-            try:
-                self._placement_group = ray.util.get_placement_group(
-                    self._actor_name,
-                )
-            except ValueError:
-                self._placement_group = None
-
-        return self._placement_group
-
-    @property
     def version(self) -> DeploymentVersion:
         """Replica version. This can be incorrect during state recovery.
 
@@ -517,7 +505,13 @@ class ActorReplicaWrapper:
             f"{self.deployment_name}."
         )
         self._actor_handle = self.actor_handle
-        self._placement_group = self.placement_group
+        try:
+            self._placement_group = ray.util.get_placement_group(
+                self._actor_name,
+            )
+        except ValueError:
+            # ValueError is raised if the placement group does not exist.
+            self._placement_group = None
 
         # Re-fetch initialization proof
         self._allocated_obj_ref = self._actor_handle.is_allocated.remote()
