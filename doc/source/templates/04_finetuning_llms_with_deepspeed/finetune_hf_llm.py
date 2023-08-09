@@ -643,7 +643,7 @@ def main():
         f"{artifact_storage}/{user_name}/ft_llms_with_deepspeed/{args.model_name}"
     )
 
-    trial_name = f"{args.model_name}"
+    trial_name = f"{args.model_name}".split("/")[-1]
     if args.lora:
         trial_name += "-lora"
 
