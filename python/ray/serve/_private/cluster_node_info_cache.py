@@ -66,4 +66,4 @@ class DefaultClusterNodeInfoCache(ClusterNodeInfoCache):
         super().__init__(gcs_client)
 
     def get_draining_node_ids(self) -> Set[str]:
-        return set()
+        return ray._private.state.state.get_draining_nodes()
