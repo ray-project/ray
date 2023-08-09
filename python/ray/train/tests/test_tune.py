@@ -63,7 +63,7 @@ def torch_fashion_mnist(num_workers, use_gpu, num_samples):
         param_space={
             "train_loop_config": {
                 "lr": tune.loguniform(1e-4, 1e-1),
-                "batch_size": tune.choice([32, 64, 128]),
+                "batch_size_per_worker": tune.choice([32, 64, 128]),
                 "epochs": 2,
             }
         },

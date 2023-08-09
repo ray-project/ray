@@ -43,7 +43,7 @@ def test_torch_fashion_mnist_gpu(ray_start_4_cpus_2_gpus):
     num_workers = 2
     epochs = 3
 
-    config = {"lr": 1e-3, "batch_size": 64, "epochs": epochs}
+    config = {"lr": 1e-3, "batch_size_per_worker": 32, "epochs": epochs}
     trainer = TorchTrainer(
         fashion_mnist_train_func,
         train_loop_config=config,

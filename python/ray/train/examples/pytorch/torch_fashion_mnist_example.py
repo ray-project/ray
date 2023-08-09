@@ -63,7 +63,6 @@ class NeuralNetwork(nn.Module):
 
 def train_func_per_worker(config: Dict):
     lr = config["lr"]
-    momentum = config["momentum"]
     epochs = config["epochs"]
     batch_size = config["batch_size_per_worker"]
 
@@ -84,7 +83,7 @@ def train_func_per_worker(config: Dict):
     model = ray.train.torch.prepare_model(model)
 
     loss_fn = nn.CrossEntropyLoss()
-    optimizer = torch.optim.SGD(model.parameters(), lr=lr, momentum=momentum)
+    optimizer = torch.optim.SGD(model.parameters(), lr=lr, momentum=0.9)
 
     # Model training loop
     for epoch in range(epochs):
@@ -121,7 +120,6 @@ def train_fashion_mnist(num_workers=2, use_gpu=False):
 
     train_config = {
         "lr": 1e-3,
-        "momentum": 0.9,
         "epochs": 10,
         "batch_size_per_worker": global_batch_size // num_workers,
     }
