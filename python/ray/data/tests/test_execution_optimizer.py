@@ -46,6 +46,7 @@ from ray.data._internal.logical.util import (
     _recorded_operators_lock,
 )
 from ray.data._internal.planner.planner import Planner
+from ray.data._internal.sort import SortKey
 from ray.data._internal.stats import DatasetStats
 from ray.data.aggregate import Count
 from ray.data.datasource.datasource import RangeDatasource
@@ -467,7 +468,9 @@ def test_read_map_batches_operator_fusion(ray_start_regular_shared, enable_optim
     assert physical_op.name == "ReadParquet->MapBatches(<lambda>)"
     assert isinstance(physical_op, MapOperator)
     assert len(physical_op.input_dependencies) == 1
-    assert isinstance(physical_op.input_dependencies[0], InputDataBuffer)
+    input = physical_op.input_dependencies[0]
+    assert isinstance(input, InputDataBuffer)
+    assert physical_op in input.output_dependencies, input.output_dependencies
 
 
 def test_read_map_chain_operator_fusion(ray_start_regular_shared, enable_optimizer):
@@ -904,8 +907,7 @@ def test_sort_operator(ray_start_regular_shared, enable_optimizer):
     read_op = Read(ParquetDatasource(), [], 0)
     op = Sort(
         read_op,
-        key="col1",
-        descending=False,
+        sort_key=SortKey("col1"),
     )
     plan = LogicalPlan(op)
     physical_op = planner.plan(plan).dag
@@ -1222,8 +1224,11 @@ def test_from_huggingface_e2e(ray_start_regular_shared, enable_optimizer):
 
     data = datasets.load_dataset("tweet_eval", "emotion")
     assert isinstance(data, datasets.DatasetDict)
-    ray_datasets = ray.data.from_huggingface(data)
-    assert isinstance(ray_datasets, dict)
+    ray_datasets = {
+        "train": ray.data.from_huggingface(data["train"]),
+        "validation": ray.data.from_huggingface(data["validation"]),
+        "test": ray.data.from_huggingface(data["test"]),
+    }
 
     for ds_key, ds in ray_datasets.items():
         assert isinstance(ds, ray.data.Dataset)

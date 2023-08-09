@@ -92,6 +92,7 @@ def test_client_disconnect(serve_instance):
     not RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING,
     reason="Streaming feature flag is disabled.",
 )
+@pytest.mark.skipif(sys.platform == "win32", reason="Hanging on Windows.")
 def test_server_disconnect(serve_instance):
     app = FastAPI()
 

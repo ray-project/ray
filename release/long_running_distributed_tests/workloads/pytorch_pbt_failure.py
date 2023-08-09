@@ -5,7 +5,7 @@ import numpy as np
 
 import ray
 from ray import tune
-from ray.air.config import RunConfig, ScalingConfig, FailureConfig
+from ray.train import CheckpointConfig, FailureConfig, RunConfig, ScalingConfig
 from ray.train.examples.pytorch.tune_cifar_torch_pbt_example import train_func
 from ray.train.torch import TorchConfig, TorchTrainer
 from ray.tune.schedulers import PopulationBasedTraining
@@ -70,7 +70,9 @@ tuner = Tuner(
     run_config=RunConfig(
         stop={"training_iteration": 1} if args.smoke_test else None,
         failure_config=FailureConfig(max_failures=-1),
+        checkpoint_config=CheckpointConfig(num_to_keep=10),
         callbacks=[FailureInjectorCallback(time_between_checks=90), ProgressCallback()],
+        storage_path="/mnt/cluster_storage",
     ),
 )
 

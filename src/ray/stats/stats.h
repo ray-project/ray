@@ -125,6 +125,7 @@ static inline void Shutdown() {
   metrics_io_service_pool = nullptr;
   exporter = nullptr;
   StatsConfig::instance().SetIsInitialized(false);
+  RAY_LOG(INFO) << "Stats module has shutdown.";
 }
 
 }  // namespace stats

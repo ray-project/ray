@@ -186,12 +186,11 @@ def train_torch_model(dataset, preprocessor, per_epoch_preprocessor):
     from torchvision import models
 
     from ray import train
-    from ray.air import session
-    from ray.air.config import DatasetConfig, ScalingConfig
+    from ray.train import ScalingConfig
     from ray.train.torch import TorchCheckpoint, TorchTrainer
 
     def train_one_epoch(model, *, criterion, optimizer, batch_size, epoch):
-        dataset_shard = session.get_dataset_shard("train")
+        dataset_shard = train.get_dataset_shard("train")
 
         running_loss = 0
         for i, batch in enumerate(
@@ -210,7 +209,7 @@ def train_torch_model(dataset, preprocessor, per_epoch_preprocessor):
 
             running_loss += loss.item()
             if i % 2000 == 1999:
-                session.report(
+                train.report(
                     metrics={
                         "epoch": epoch,
                         "batch": i,
@@ -237,13 +236,11 @@ def train_torch_model(dataset, preprocessor, per_epoch_preprocessor):
     # __torch_training_loop_stop__
 
     # __torch_trainer_start__
+    dataset = per_epoch_preprocessor.transform(dataset)
     trainer = TorchTrainer(
         train_loop_per_worker=train_loop_per_worker,
         train_loop_config={"batch_size": 32, "lr": 0.02, "epochs": 1},
         datasets={"train": dataset},
-        dataset_config={
-            "train": DatasetConfig(per_epoch_preprocessor=per_epoch_preprocessor)
-        },
         scaling_config=ScalingConfig(num_workers=2),
         preprocessor=preprocessor,
     )
@@ -256,13 +253,13 @@ def train_tensorflow_model(dataset, preprocessor, per_epoch_preprocessor):
     # __tensorflow_training_loop_start__
     import tensorflow as tf
 
-    from ray.air import session
+    from ray import train
     from ray.air.integrations.keras import ReportCheckpointCallback
 
     def train_loop_per_worker(config):
         strategy = tf.distribute.experimental.MultiWorkerMirroredStrategy()
 
-        train_shard = session.get_dataset_shard("train")
+        train_shard = train.get_dataset_shard("train")
         train_dataset = train_shard.to_tf(
             "image",
             "label",
@@ -288,16 +285,16 @@ def train_tensorflow_model(dataset, preprocessor, per_epoch_preprocessor):
     # __tensorflow_training_loop_stop__
 
     # __tensorflow_trainer_start__
-    from ray.air import DatasetConfig, ScalingConfig
+    from ray.train import ScalingConfig
     from ray.train.tensorflow import TensorflowTrainer
 
+    # The following transform operation is lazy.
+    # It will be re-run every epoch.
+    dataset = per_epoch_preprocessor.transform(dataset)
     trainer = TensorflowTrainer(
         train_loop_per_worker=train_loop_per_worker,
         train_loop_config={"batch_size": 32, "lr": 0.02, "epochs": 1},
         datasets={"train": dataset},
-        dataset_config={
-            "train": DatasetConfig(per_epoch_preprocessor=per_epoch_preprocessor)
-        },
         scaling_config=ScalingConfig(num_workers=2),
         preprocessor=preprocessor,
     )
@@ -358,32 +355,29 @@ def batch_predict_tensorflow(dataset, checkpoint):
 
 def online_predict_torch(checkpoint):
     # __torch_serve_start__
+    from io import BytesIO
+    import numpy as np
+    from PIL import Image
     from ray import serve
-    from ray.serve import PredictorDeployment
-    from ray.serve.http_adapters import json_to_ndarray
     from ray.train.torch import TorchPredictor
 
-    serve.run(
-        PredictorDeployment.bind(
-            TorchPredictor,
-            checkpoint,
-            http_adapter=json_to_ndarray,
-        )
-    )
+    @serve.deployment
+    class TorchDeployment:
+        def __init__(self, checkpoint):
+            self.predictor = TorchPredictor.from_checkpoint(checkpoint)
+
+        async def __call__(self, request):
+            image = Image.open(BytesIO(await request.body()))
+            return self.predictor.predict(np.array(image)[np.newaxis])
+
+    serve.run(TorchDeployment.bind(checkpoint))
     # __torch_serve_stop__
 
     # __torch_online_predict_start__
-    from io import BytesIO
-
-    import numpy as np
     import requests
-    from PIL import Image
 
     response = requests.get("http://placekitten.com/200/300")
-    image = Image.open(BytesIO(response.content))
-
-    payload = {"array": np.array(image).tolist(), "dtype": "float32"}
-    response = requests.post("http://localhost:8000/", json=payload)
+    response = requests.post("http://localhost:8000/", data=response.content)
     predictions = response.json()
     # __torch_online_predict_stop__
     predictions
@@ -391,35 +385,34 @@ def online_predict_torch(checkpoint):
 
 def online_predict_tensorflow(checkpoint):
     # __tensorflow_serve_start__
+    from io import BytesIO
+    import numpy as np
+    from PIL import Image
     import tensorflow as tf
 
     from ray import serve
-    from ray.serve import PredictorDeployment
-    from ray.serve.http_adapters import json_to_multi_ndarray
     from ray.train.tensorflow import TensorflowPredictor
 
-    serve.run(
-        PredictorDeployment.bind(
-            TensorflowPredictor,
-            checkpoint,
-            http_adapter=json_to_multi_ndarray,
-            model_definition=tf.keras.applications.resnet50.ResNet50,
-        )
-    )
+    @serve.deployment
+    class TensorflowDeployment:
+        def __init__(self, checkpoint):
+            self.predictor = TensorflowPredictor.from_checkpoint(
+                checkpoint,
+                model_definition=tf.keras.applications.resnet50.ResNet50,
+            )
+
+        async def __call__(self, request):
+            image = Image.open(BytesIO(await request.body()))
+            return self.predictor.predict({"image": np.array(image)[np.newaxis]})
+
+    serve.run(TensorflowDeployment.bind(checkpoint))
     # __tensorflow_serve_stop__
 
     # __tensorflow_online_predict_start__
-    from io import BytesIO
-
-    import numpy as np
     import requests
-    from PIL import Image
 
     response = requests.get("http://placekitten.com/200/300")
-    image = Image.open(BytesIO(response.content))
-
-    payload = {"image": {"array": np.array(image).tolist(), "dtype": "float32"}}
-    response = requests.post("http://localhost:8000/", json=payload)
+    response = requests.post("http://localhost:8000/", data=response.content)
     predictions = response.json()
     # __tensorflow_online_predict_stop__
     predictions

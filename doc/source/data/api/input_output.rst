@@ -65,6 +65,7 @@ Images
    :toctree: doc/
 
    read_images
+   Dataset.write_images
 
 Binary
 ------
@@ -224,9 +225,11 @@ Partitioning API
 
    datasource.Partitioning
    datasource.PartitionStyle
-   datasource.PathPartitionEncoder
    datasource.PathPartitionParser
    datasource.PathPartitionFilter
+   datasource.FileExtensionFilter
+
+.. _metadata_provider:
 
 MetadataProvider API
 --------------------
@@ -240,3 +243,16 @@ MetadataProvider API
    datasource.DefaultFileMetadataProvider
    datasource.DefaultParquetMetadataProvider
    datasource.FastFileMetadataProvider
+
+
+.. _block_write_path_provider:
+
+BlockWritePathProvider API
+--------------------------
+
+.. autosummary::
+   :toctree: doc/
+
+   datasource.BlockWritePathProvider
+   datasource.DefaultBlockWritePathProvider
+   

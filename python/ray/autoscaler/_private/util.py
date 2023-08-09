@@ -4,7 +4,6 @@ import hashlib
 import json
 import logging
 import os
-import re
 import threading
 from dataclasses import dataclass
 from datetime import datetime
@@ -14,6 +13,10 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 
 import ray
 import ray._private.services as services
+from ray._private.utils import (
+    PLACEMENT_GROUP_INDEXED_BUNDLED_RESOURCE_PATTERN,
+    PLACEMENT_GROUP_WILDCARD_RESOURCE_PATTERN,
+)
 from ray.autoscaler._private import constants
 from ray.autoscaler._private.cli_logger import cli_logger
 from ray.autoscaler._private.docker import validate_docker_config
@@ -23,10 +26,6 @@ from ray.autoscaler.tags import NODE_TYPE_LEGACY_HEAD, NODE_TYPE_LEGACY_WORKER
 
 REQUIRED, OPTIONAL = True, False
 
-PLACEMENT_GROUP_RESOURCE_BUNDLED_PATTERN = re.compile(
-    r"(.+)_group_(\d+)_([0-9a-zA-Z]+)"
-)
-PLACEMENT_GROUP_RESOURCE_PATTERN = re.compile(r"(.+)_group_([0-9a-zA-Z]+)")
 
 HEAD_TYPE_MAX_WORKERS_WARN_TEMPLATE = (
     "Setting `max_workers` for node type"
@@ -83,8 +82,8 @@ def is_placement_group_resource(resource_name: str) -> bool:
     Check if a resource name is structured like a placement group.
     """
     return bool(
-        PLACEMENT_GROUP_RESOURCE_PATTERN.match(resource_name)
-        or PLACEMENT_GROUP_RESOURCE_BUNDLED_PATTERN.match(resource_name)
+        PLACEMENT_GROUP_WILDCARD_RESOURCE_PATTERN.match(resource_name)
+        or PLACEMENT_GROUP_INDEXED_BUNDLED_RESOURCE_PATTERN.match(resource_name)
     )
 
 
@@ -396,13 +395,15 @@ def with_envs(cmds: List[str], kv: Dict[str, str]) -> str:
 
     Example:
         with_envs(["echo $FOO"], {"FOO": "BAR"})
-            -> ["FOO=BAR echo $FOO"]
+            -> ["export FOO=BAR; echo $FOO"]
     """
     out_cmds = []
     for cmd in cmds:
         kv_str = ""
         for k, v in kv.items():
-            kv_str += f"{k}={v} "
+            # We will need to do export here so that it works correctly with
+            # shell if the cmd args uses the argument.
+            kv_str += f"export {k}={v}; "
 
         out_cmds.append(f"{kv_str}{cmd}")
     return out_cmds
@@ -551,12 +552,14 @@ def parse_placement_group_resource_str(
         have duplicated resource information as
         wildcard resources (resource name without bundle index).
     """
-    result = PLACEMENT_GROUP_RESOURCE_BUNDLED_PATTERN.match(
+    result = PLACEMENT_GROUP_INDEXED_BUNDLED_RESOURCE_PATTERN.match(
         placement_group_resource_str
     )
     if result:
         return (result.group(1), result.group(3), False)
-    result = PLACEMENT_GROUP_RESOURCE_PATTERN.match(placement_group_resource_str)
+    result = PLACEMENT_GROUP_WILDCARD_RESOURCE_PATTERN.match(
+        placement_group_resource_str
+    )
     if result:
         return (result.group(1), result.group(2), True)
     return (placement_group_resource_str, None, True)
@@ -722,6 +725,20 @@ def get_demand_report(lm_summary: LoadMetricsSummary):
     return demand_report
 
 
+def get_per_node_breakdown_as_dict(
+    lm_summary: LoadMetricsSummary,
+) -> dict:
+    per_node_breakdown = {}
+
+    for node_id, usage in lm_summary.usage_by_node.items():
+        usage_string = ""
+        for line in parse_usage(usage, verbose=True):
+            usage_string += f"{line}\n"
+        per_node_breakdown[node_id] = usage_string.strip()
+
+    return per_node_breakdown
+
+
 def get_per_node_breakdown(
     lm_summary: LoadMetricsSummary,
     node_type_mapping: Optional[Dict[str, float]],
@@ -793,7 +810,7 @@ def format_info_string(
 
     failure_lines = []
     for ip, node_type in autoscaler_summary.failed_nodes:
-        line = f" {node_type}: RayletUnexpectedlyDied (ip: {ip})"
+        line = f" {node_type}: NodeTerminated (ip: {ip})"
         failure_lines.append(line)
     if autoscaler_summary.node_availability_summary:
         records = sorted(

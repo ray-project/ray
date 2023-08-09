@@ -26,8 +26,8 @@ import random
 import gc
 
 import ray
-from ray.air import session, Checkpoint
-from ray.air.config import RunConfig, FailureConfig, CheckpointConfig
+from ray import train
+from ray.train import Checkpoint, RunConfig, FailureConfig, CheckpointConfig
 from ray.tune.tune_config import TuneConfig
 from ray.tune.tuner import Tuner
 
@@ -41,7 +41,7 @@ WARMUP_TIME_S = 45
 
 def objective(config):
     start_iteration = 0
-    checkpoint = session.get_checkpoint()
+    checkpoint = train.get_checkpoint()
     # Ensure that after the node killer warmup time, we always have
     # a checkpoint to restore from.
     if (time.monotonic() - config["start_time"]) >= config["warmup_time_s"]:
@@ -52,7 +52,7 @@ def objective(config):
     for iteration in range(start_iteration, MAX_ITERS + 1):
         time.sleep(random.uniform(*ITER_TIME_BOUNDS))
         dct = {"iteration": iteration}
-        session.report(dct, checkpoint=Checkpoint.from_dict(dct))
+        train.report(dct, checkpoint=Checkpoint.from_dict(dct))
 
 
 def main(bucket_uri: str):

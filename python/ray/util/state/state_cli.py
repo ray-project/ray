@@ -183,6 +183,7 @@ def output_with_format(
             explicit_start=True,
             # We want to keep the defined ordering of the states, thus sort_keys=False
             sort_keys=False,
+            explicit_end=True,
         )
     elif format == AvailableFormat.JSON:
         return json.dumps(state_data)
