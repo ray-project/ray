@@ -87,5 +87,5 @@ information about the run such as the reported metrics and the saved checkpoints
 Checkpoints have the following purposes:
 
 * They can be passed to a Trainer to resume training from the given model state.
-* They can be used to create a Predictor / BatchPredictor for scalable batch prediction.
+* They can be used with Ray Data for scalable batch prediction.
 * They can be deployed with Ray Serve.
