@@ -165,9 +165,10 @@ class FiberState {
   /// running at once.
   FiberRateLimiter rate_limiter_;
   /// The fiber event used to notify that all worker fibers are stopped running.
-  // This FiberEvent must outlive the FiberState class, because a FiberState instance may
-  // be deallocated when the thread is in the `notify_one()` call and write to the
-  // condition_variable's underlying data.
+  /// Since we don't join the fiber_runner_thread, it's possible that the
+  /// `fiber_runner_thread_` still accesses the `fiber_stopped_event_` after it's
+  /// deallocated in the main thread. As a result, we use a shared_ptr here to make sure
+  /// it's not deallocated if `fiber_runner_thread_` still has a reference to it.
   std::shared_ptr<StdEvent> fiber_stopped_event_;
   /// The thread that runs all asyncio fibers. is_asyncio_ must be true.
   std::thread fiber_runner_thread_;
