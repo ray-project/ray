@@ -47,13 +47,23 @@ DEST_IMAGE="${RUNTIME_REPO}:${IMAGE_PREFIX}-${PYTHON_VERSION_CODE}-${IMAGE_TYPE}
 
 echo "--- Build ${DEST_IMAGE}"
 
-tar --mtime="UTC 2020-01-01" -c -f - \
-    ".whl/${WHEEL_FILE}" \
-    docker/ray/Dockerfile \
-    | docker build --progress=plain \
-        --build-arg BASE_IMAGE="-${PYTHON_VERSION_CODE}-${IMAGE_TYPE}" \
-        --build-arg WHEEL_PATH=".whl/${WHEEL_FILE}" \
-        -t "${DEST_IMAGE}" -f docker/ray/Dockerfile -
+CPU_TMP="$(mktemp -d)"
+
+mkdir -p "${CPU_TMP}/.whl"
+
+cp ".whl/${WHEEL_FILE}" "${CPU_TMP}/.whl/${WHEEL_FILE}"
+cp docker/ray/Dockerfile "${CPU_TMP}/Dockerfile"
+cp python/requirements_compiled.txt "${CPU_TMP}/."
+cp python/requirements_compiled_py37.txt "${CPU_TMP}/."
+
+(
+    cd "${CPU_TMP}"
+    tar --mtime="UTC 2020-01-01" -c -f - . \
+        | docker build --progress=plain \
+            --build-arg BASE_IMAGE="-${PYTHON_VERSION_CODE}-${IMAGE_TYPE}" \
+            --build-arg WHEEL_PATH=".whl/${WHEEL_FILE}" \
+            -t "${DEST_IMAGE}" -f Dockerfile -
+)
 
 docker push "${DEST_IMAGE}"
 
