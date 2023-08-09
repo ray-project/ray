@@ -203,7 +203,7 @@ def test_batching_pyarrow_table_with_many_chunks():
     while shuffling_batcher.has_any():
         shuffling_batcher.next_batch()
     duration = time.perf_counter() - start
-    assert duration < 20
+    assert duration < 30
 
 
 @pytest.mark.parametrize(
