@@ -2035,7 +2035,7 @@ class DriverDeploymentState(DeploymentState):
         if num_running_replicas >= self._target_state.num_replicas:
             # Cancel starting replicas when driver deployment state creates
             # more replicas than alive nodes.
-            # For example, get_all_node_ids returns 4 nodes when
+            # For example, get_active_node_ids returns 4 nodes when
             # the driver deployment state decides the target number of replicas
             # but later on when the deployment scheduler schedules these 4 replicas,
             # there are only 3 alive nodes (1 node dies in between).

@@ -36,8 +36,8 @@ from ray.serve._private.http_util import set_socket_reuse_port
 from ray.serve._private.utils import (
     block_until_http_ready,
     format_actor_name,
-    get_all_node_ids,
 )
+from ray.serve._private.default_impl import create_cluster_node_info_cache
 from ray.serve.schema import ServeApplicationSchema
 
 from ray.util.state import list_actors
@@ -91,6 +91,8 @@ def test_shutdown(ray_shutdown):
     ray.init(num_cpus=16)
     serve.start(http_options=dict(port=8003))
     gcs_client = GcsClient(address=ray.get_runtime_context().gcs_address)
+    cluster_node_info_cache = create_cluster_node_info_cache(gcs_client)
+    cluster_node_info_cache.update()
 
     @serve.deployment
     def f():
@@ -104,7 +106,7 @@ def test_shutdown(ray_shutdown):
         format_actor_name(
             SERVE_PROXY_NAME,
             serve.context._global_client._controller_name,
-            get_all_node_ids(gcs_client)[0][0],
+            cluster_node_info_cache.get_alive_nodes()[0][0],
         ),
     ]
 
@@ -371,10 +373,12 @@ def test_multiple_routers(ray_cluster):
     serve.run(A.bind())
 
     gcs_client = GcsClient(address=ray.get_runtime_context().gcs_address)
+    cluster_node_info_cache = create_cluster_node_info_cache(gcs_client)
+    cluster_node_info_cache.update()
 
     def get_proxy_names():
         proxy_names = []
-        for node_id, _ in get_all_node_ids(gcs_client):
+        for node_id in cluster_node_info_cache.get_alive_node_ids():
             proxy_names.append(
                 format_actor_name(
                     SERVE_PROXY_NAME,
