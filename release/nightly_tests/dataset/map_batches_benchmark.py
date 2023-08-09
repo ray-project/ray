@@ -1,5 +1,6 @@
 import sys
 from typing import Optional, Union
+import numpy as np
 
 import ray
 from ray.data._internal.compute import ActorPoolStrategy, ComputeStrategy
@@ -21,7 +22,6 @@ def map_batches(
     num_calls: Optional[int] = 1,
     is_eager_executed: Optional[bool] = False,
 ) -> Dataset:
-
     assert isinstance(input_ds, MaterializedDataset)
     ds = input_ds
 
@@ -146,6 +146,75 @@ def run_map_batches_benchmark(benchmark: Benchmark):
                 compute=compute,
                 num_calls=1,
             )
+
+    # Test map_batches whose output is large and will be split into multiple blocks.
+    # With the following configuration, the total output data size will be
+    # (num_output_blocks * 1GB).
+    num_output_blocks = [10, 50, 100]
+    input_size = 1024 * 1024
+    batch_size = 1024
+    ray.data.DataContext.get_current().target_max_block_size = 1024 * 1024
+    # Disable PhysicalOperator fusion. Because we will have 2 map_batches operators.
+    # And the first one will generate multiple output blocks.
+    ray.data._internal.logical.optimizers.PHYSICAL_OPTIMIZER_RULES = []
+    parallelism = input_size // batch_size
+    input_ds = ray.data.range(input_size, parallelism=parallelism).materialize()
+
+    def map_batches_fn(num_output_blocks, batch):
+        """A map_batches function that generates num_output_blocks output blocks."""
+        per_row_output_size = (
+            ray.data.DataContext.get_current().target_max_block_size // len(batch["id"])
+        )
+        for _ in range(num_output_blocks):
+            yield {
+                "data": [
+                    np.zeros(shape=(per_row_output_size,), dtype=np.int8)
+                    for _ in range(len(batch["id"]))
+                ]
+            }
+
+    for num_blocks in num_output_blocks:
+        test_name = f"map-batches-multiple-output-blocks-{num_blocks}"
+
+        return_ds = None
+
+        def test_fn():
+            nonlocal return_ds
+
+            ds = input_ds.map_batches(
+                lambda batch: map_batches_fn(num_blocks, batch),
+                batch_size=batch_size,
+                batch_format="numpy",
+            )
+            # Apply a second map_batches to caculate the output size and reduce
+            # the amount of data to be materialized.
+            ds = ds.map_batches(
+                lambda batch: {"data_size": [sum(x.nbytes for x in batch["data"])]},
+                batch_size=batch_size,
+                batch_format="numpy",
+            )
+            ds = ds.materialize()
+            return_ds = ds
+            return ds
+
+        benchmark.run(
+            test_name,
+            test_fn,
+        )
+
+        # Check the total size of the output is correct.
+        # Note, do this after the benchmark to avoid couting its time.
+        total_size = sum(
+            sum(batch["data_size"])
+            for batch in return_ds.iter_batches(batch_size=batch_size)
+        )
+        expected_total_size = (
+            input_size
+            * num_blocks
+            * ray.data.DataContext.get_current().target_max_block_size
+            // batch_size
+        )
+        assert total_size == expected_total_size, (total_size, expected_total_size)
 
 
 if __name__ == "__main__":

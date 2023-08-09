@@ -91,6 +91,11 @@ def test_get_ray_image():
             _stub_test({"cluster": {"byod": {}}}).get_ray_image()
             == "rayproject/ray:pr-123.123456-py38-cpu"
         )
+    with mock.patch.dict(os.environ, {"RAY_IMAGE_TAG": "my_tag"}):
+        assert (
+            _stub_test({"cluster": {"byod": {}}}).get_ray_image()
+            == "rayproject/ray:my_tag"
+        )
 
 
 def test_get_anyscale_byod_image():
