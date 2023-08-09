@@ -22,7 +22,6 @@ from com.vmware.vcenter.guest_client import (
 from com.vmware.vcenter.vm.hardware_client import Cpu, Ethernet, Memory
 from com.vmware.vcenter.vm_client import Power as HardPower
 from com.vmware.vcenter_client import VM
-from pyVim.task import WaitForTask
 from pyVmomi import vim
 
 from ray.autoscaler._private.cli_logger import cli_logger
@@ -150,6 +149,7 @@ class VsphereNodeProvider(NodeProvider):
     def non_terminated_nodes(self, tag_filters):
         with self.lock:
             nodes = []
+            cli_logger.info("Getting non terminated nodes...")
             vms = self.vsphere_sdk_client.vcenter.VM.list()
             filters = tag_filters.copy()
             if TAG_RAY_CLUSTER_NAME not in tag_filters:
@@ -476,9 +476,14 @@ class VsphereNodeProvider(NodeProvider):
         names = {vm_name}
 
         start = time.time()
+        # In most cases the instant clone VM will show up in several seconds.
+        # When the vCenter Server is busy, the time could be longer. We set a 120
+        # seconds timeout here. Because it's not used anywhere else, we don't make
+        # it as a formal constant.
         timeout = 120
 
         while time.time() - start < timeout:
+            time.sleep(0.5)
             vms = self.vsphere_sdk_client.vcenter.VM.list(VM.FilterSpec(names=names))
 
             if len(vms) == 1:
@@ -490,7 +495,6 @@ class VsphereNodeProvider(NodeProvider):
                 raise RuntimeError(
                     "Duplicated VM with name {} found.".format(self.vm_name)
                 )
-            time.sleep(2)
 
         raise RuntimeError("VM {} could not be found.".format(self.vm_name))
 
@@ -583,7 +587,7 @@ class VsphereNodeProvider(NodeProvider):
             for _ in range(count)
         ]
 
-        with ThreadPoolExecutor() as executor:
+        with ThreadPoolExecutor(max_workers=count) as executor:
             futures = [
                 executor.submit(
                     self.create_instant_clone_node,
@@ -611,7 +615,7 @@ class VsphereNodeProvider(NodeProvider):
 
         # We clean up all the created VMs if any exception occurs.
         if exception_happened:
-            with ThreadPoolExecutor() as executor:
+            with ThreadPoolExecutor(max_workers=count) as executor:
                 futures = [
                     executor.submit(self.delete_vm, vm_names[i]) for i in range(count)
                 ]
