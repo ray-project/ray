@@ -214,9 +214,8 @@ def test_leaked_pg_removed_on_controller_recovery(serve_instance):
     assert len(get_all_live_placement_group_names()) == 0
 
 
-@pytest.mark.skip(reason="Not handled gracefully yet.")
 def test_replica_actor_infeasible(serve_instance):
-    """Test the case where the replica actor doesn't fit in the first bundle."""
+    """Test that we get a validation error if the replica doesn't fit in the bundle."""
 
     @serve.deployment(
         placement_group_bundles=[{"CPU": 0.1}],
@@ -224,7 +223,7 @@ def test_replica_actor_infeasible(serve_instance):
     class Infeasible:
         pass
 
-    with pytest.raises(RuntimeError):
+    with pytest.raises(ValueError):
         serve.run(Infeasible.bind())
 
 
