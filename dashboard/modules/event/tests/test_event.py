@@ -3,6 +3,7 @@ import sys
 import time
 import json
 import copy
+import ipdb
 import logging
 from typing import Any
 import requests
@@ -489,8 +490,13 @@ def test_core_events(shutdown_only):
     pprint(list_cluster_events())
 
 
-def test_actors_events(shutdown_only):
+def test_actors_events(shutdown_only):  ## for each test case, shutdown finally
     context = ray.init()
+    print("context: ", context)
+    # ray._private.worker.global_worker.node.session_name
+    print(
+        f"ray._private.worker.global_worker.node.session_name {type(ray._private.worker.global_worker.node.session_name)}: {ray._private.worker.global_worker.node.session_name}"
+    )
     dashboard_url = f"http://{context['webui_url']}"
 
     @ray.remote
@@ -507,7 +513,7 @@ def test_actors_events(shutdown_only):
         def get_counter(self):
             return self.value
 
-    actors = [Counter.remote() for _ in range(10)]
+    actors = [Counter.remote() for _ in range(1)]
 
     # Increment the count for each actor asynchronously
     increment_results = [actor.increment.remote() for actor in actors]
@@ -525,7 +531,7 @@ def test_actors_events(shutdown_only):
         # resp = requests.get(f"{dashboard_url}/events")
         # pprint(resp.text)
         events = list_cluster_events()
-        pprint(events)
+        print("events", events)
         # assert len(list_cluster_events()) == 10
 
         # messages = [event["message"] for event in events]
@@ -534,22 +540,20 @@ def test_actors_events(shutdown_only):
         # for m in messages:
         #     assert submission_ids[0] not in m
         #     assert submission_ids[1] not in m
-        return True
+        return False
 
     wait_for_condition(verify)
 
 
 def test_tasks_events(shutdown_only):
     # Initialize Ray
-    ray.init(ignore_reinit_error=True)
+    ray.init()
 
     @ray.remote
     def my_task(task_id):
         logger = get_event_logger("CORE_WORKER", "")
         logger.info(f"task start id ={task_id}")
-
         print(f"Running task {task_id}")
-        time.sleep(1000)
         return f"Task {task_id} completed successfully"
 
     # Create and submit 10 tasks
@@ -562,6 +566,14 @@ def test_tasks_events(shutdown_only):
     for result in results:
         print(result)
 
+    def verify():
+        ipdb.set_trace()
+        events = list_cluster_events()
+        pprint(events)
+        return True
+
+    wait_for_condition(verify)
+
 
 def test_serve_events(shutdown_only):
     @serve.deployment(num_replicas=5)
@@ -572,7 +584,9 @@ def test_serve_events(shutdown_only):
             self.msg = msg
 
         def __call__(self):
-            self.event_logger.info("replica start")
+            self.event_logger.info(
+                "replica start", library="serve", serve_replica_id="1"
+            )
             return self.msg
 
     my_first_deployment = MyFirstDeployment.bind("Hello world!")

@@ -17,6 +17,7 @@ from ray.dashboard.modules.event.event_utils import (
 from ray.core.generated import event_pb2
 from ray.core.generated import event_pb2_grpc
 from ray.dashboard.datacenter import DataSource
+from pprint import pprint
 
 logger = logging.getLogger(__name__)
 routes = dashboard_optional_utils.ClassMethodRouteTable
@@ -92,6 +93,7 @@ class EventHead(
     @routes.get("/events")
     @dashboard_optional_utils.aiohttp_cache
     async def get_event(self, req) -> aiohttp.web.Response:
+        pprint(DataSource.events)
         job_id = req.query.get("job_id")
         if job_id is None:
             all_events = {

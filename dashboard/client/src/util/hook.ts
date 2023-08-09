@@ -23,6 +23,7 @@ export const useFilter = <KeyType extends string>({
     setFilters([...filters]);
     onFilterChange?.();
   };
+  // Use the filterFunc to perform fuzzy matching on data
   const filterFunc = (instance: { [key: string]: any }) => {
     return finalFilters.every((f) => {
       const instance_val = get(instance, f.key, "");

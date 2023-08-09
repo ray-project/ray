@@ -22,13 +22,18 @@ def _get_source_files(event_dir, source_types=None, event_file_filter=None):
     event_log_names = os.listdir(event_dir)
     source_files = {}
     all_source_types = set(event_consts.EVENT_SOURCE_ALL)
+    logger.info("all_source_types: ", all_source_types)
+    # assert False, all_source_types
     for source_type in source_types or event_consts.EVENT_SOURCE_ALL:
         assert source_type in all_source_types, f"Invalid source type: {source_type}"
         files = []
         for n in event_log_names:
             if fnmatch.fnmatch(n, f"*{source_type}*"):
+                logger.info("here")
                 f = os.path.join(event_dir, n)
                 if event_file_filter is not None and not event_file_filter(f):
+                    logger.info("filtering", source_type)
+
                     continue
                 files.append(f)
         if files:
@@ -182,13 +187,15 @@ def monitor_events(
     @async_loop_forever(scan_interval_seconds, cancellable=True)
     async def _scan_event_log_files():
         # Scan event files.
-        source_files = await loop.run_in_executor(
-            monitor_thread_pool_executor,
-            _get_source_files,
-            event_dir,
-            source_types,
-            _source_file_filter,
-        )
+        logger.info("Scan event log files in %s", event_dir)
+        # source_files = await loop.run_in_executor(
+        #     monitor_thread_pool_executor,
+        #     _get_source_files,
+        #     event_dir,
+        #     source_types,
+        #     _source_file_filter,
+        # )
+        source_files = _get_source_files(event_dir, source_types, _source_file_filter)
 
         # Limit concurrent read to avoid fd exhaustion.
         semaphore = asyncio.Semaphore(event_consts.CONCURRENT_READ_LIMIT)
@@ -199,6 +206,7 @@ def monitor_events(
                     monitor_thread_pool_executor, _read_monitor_file, filename, 0
                 )
 
+        logger.info("source_files", source_files)
         # Read files.
         await asyncio.gather(
             *[
