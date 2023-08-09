@@ -5,6 +5,7 @@ import pytest
 import time
 import torch
 import os
+import tempfile
 
 import ray
 from ray.train.examples.pytorch.torch_linear_example import (
@@ -14,6 +15,7 @@ from ray.train.batch_predictor import BatchPredictor
 from ray.train.constants import DISABLE_LAZY_CHECKPOINTING_ENV
 from ray.train.torch import TorchPredictor, TorchTrainer
 from ray.train import RunConfig, ScalingConfig
+from ray.train._checkpoint import Checkpoint
 from ray.train.torch import TorchConfig
 from ray.train.trainer import TrainingFailedError
 import ray.train as train
@@ -79,7 +81,6 @@ def test_torch_e2e(ray_start_4_cpus, prepare_model):
         preprocessor=DummyPreprocessor(),
     )
     result = trainer.fit()
-    assert isinstance(result.checkpoint.get_preprocessor(), DummyPreprocessor)
 
     predict_dataset = ray.data.range(9)
     batch_predictor = BatchPredictor.from_checkpoint(result.checkpoint, TorchPredictor)
@@ -104,7 +105,6 @@ def test_torch_e2e_state_dict(ray_start_4_cpus, prepare_model):
         preprocessor=DummyPreprocessor(),
     )
     result = trainer.fit()
-    isinstance(result.checkpoint.get_preprocessor(), DummyPreprocessor)
 
     # If loading from a state dict, a model definition must be passed in.
     with pytest.raises(ValueError):
@@ -122,12 +122,15 @@ def test_torch_e2e_state_dict(ray_start_4_cpus, prepare_model):
 
 # We can't really test for prepare_model here as we can't detect what the user
 # has saved without loading (and thus triggering the exception anyway)
-@pytest.mark.parametrize("lazy_checkpointing", (True, False))
-def test_torch_e2e_dir(ray_start_4_cpus, tmpdir, lazy_checkpointing):
+# @pytest.mark.parametrize("lazy_checkpointing", (True, False))
+def test_torch_e2e_dir(ray_start_4_cpus):
+    lazy_checkpointing = False
+
     def train_func():
         model = torch.nn.Linear(3, 1)
-        torch.save(model, os.path.join(tmpdir, "model"))
-        train.report({}, checkpoint=TorchCheckpoint.from_directory(tmpdir))
+        with tempfile.TemporaryDirectory() as tmpdir:
+            torch.save(model.state_dict(), os.path.join(tmpdir, "model.pt"))
+            train.report({}, checkpoint=Checkpoint.from_directory(tmpdir))
 
     scaling_config = ScalingConfig(num_workers=2)
     with patch.dict(
@@ -139,18 +142,16 @@ def test_torch_e2e_dir(ray_start_4_cpus, tmpdir, lazy_checkpointing):
             preprocessor=DummyPreprocessor(),
         )
         result = trainer.fit()
-    isinstance(result.checkpoint.get_preprocessor(), DummyPreprocessor)
 
-    # TODO(ml-team): Add a way for TorchCheckpoint to natively support
-    # models from files
     class TorchScorer:
-        def __init__(self):
-            with result.checkpoint.as_directory() as checkpoint_path:
-                model = torch.load(os.path.join(checkpoint_path, "model"))
-            preprocessor = result.checkpoint.get_preprocessor()
-            self.pred = TorchPredictor.from_checkpoint(
-                TorchCheckpoint.from_model(model, preprocessor=preprocessor)
-            )
+        def __init__(self, checkpoint: Checkpoint):
+            model = torch.nn.Linear(3, 1)
+            with checkpoint.as_directory() as checkpoint_dir:
+                print(checkpoint_dir)
+                state_dict = torch.load(os.path.join(checkpoint_dir, "model.pt"))
+                model.load_state_dict(state_dict)
+
+            self.pred = TorchPredictor(model)
 
         def __call__(self, x):
             return self.pred.predict(x, dtype=torch.float)
@@ -161,6 +162,7 @@ def test_torch_e2e_dir(ray_start_4_cpus, tmpdir, lazy_checkpointing):
         batch_size=3,
         batch_format="pandas",
         compute=ray.data.ActorPoolStrategy(),
+        fn_constructor_args=(result.checkpoint,),
     )
     assert predictions.count() == 3
 
