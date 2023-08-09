@@ -112,7 +112,7 @@ def train_func_per_worker(config: Dict):
 
         # [3] Report metrics to Ray Train
         # ===============================
-        ray.train.report(metrics={"test_loss": test_loss, "accuracy": accuracy})
+        ray.train.report(metrics={"loss": test_loss, "accuracy": accuracy})
 
 
 def train_fashion_mnist(num_workers=2, use_gpu=False):
