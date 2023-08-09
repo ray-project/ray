@@ -1,9 +1,5 @@
 #ci:group=:book: lint (civ2)
 
-- label: "clang"
-  commands:
-    - ./ci/ray_ci/lint.sh clang
-
 - label: "code format"
   commands:
     - ./ci/ray_ci/lint.sh code_format
