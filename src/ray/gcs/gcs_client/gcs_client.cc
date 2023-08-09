@@ -205,7 +205,8 @@ Status PythonGcsClient::Connect(const ClusterID &cluster_id,
 Status PythonGcsClient::CheckAlive(const std::vector<std::string> &raylet_addresses,
                                    int64_t timeout_ms,
                                    std::vector<bool> &result) {
-  grpc::ClientContext &&context = PrepareContext(timeout_ms);
+  grpc::ClientContext context;
+  PrepareContext(context, timeout_ms);
 
   rpc::CheckAliveRequest request;
   for (const auto &address : raylet_addresses) {
