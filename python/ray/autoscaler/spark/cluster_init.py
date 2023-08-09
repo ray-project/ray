@@ -68,6 +68,7 @@ class AutoscalingCluster:
             "start",
             "--autoscaling-config={}".format(fake_config),
             "--head",
+            "--port=3344",
         ]
         if "CPU" in self._head_resources:
             cmd.append("--num-cpus={}".format(self._head_resources.pop("CPU")))

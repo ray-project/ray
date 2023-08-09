@@ -108,6 +108,7 @@ class RayOnSparkNodeProvider(NodeProvider):
                 node_type = tags[TAG_RAY_USER_NODE_TYPE]
                 next_id = self.get_next_node_id()
                 resources["NODE_ID_AS_RESOURCE"] = next_id
+
                 ray_params = ray._private.parameter.RayParams(
                     min_worker_port=0,
                     max_worker_port=0,
@@ -140,6 +141,46 @@ class RayOnSparkNodeProvider(NodeProvider):
                     },
                     "node": node,
                 }
+                """
+                ray_worker_node_cmd = [
+                    sys.executable,
+                    "-m",
+                    "ray.util.spark.start_ray_node",
+                    f"--temp-dir=/tmp/test_worker1",
+                    f"--num-cpus={resources.pop('CPU', 0)}",
+                    f"--num-gpus={resources.pop('GPU', 0)}",
+                    "--block",
+                    f"--address=127.0.0.1:3344",
+                    f"--memory={512 * 1024 * 1024}",
+                    f"--object-store-memory={resources.pop('object_store_memory', 512 * 1024 * 1024)}",
+                    f"--min-worker-port={11000}",
+                    f"--max-worker-port={20000}",
+                    f"--resources={json.dumps(resources)}",
+                    # f"--dashboard-agent-listen-port={ray_worker_node_dashboard_agent_port}",
+                    # *_convert_ray_node_options(worker_node_options),
+                ]
+                
+                from ray.util.spark.cluster_init import setup_sigterm_on_parent_death, exec_cmd, RAY_ON_SPARK_COLLECT_LOG_TO_PATH
+                ray_node_proc, tail_output_deque = exec_cmd(
+                    ray_worker_node_cmd,
+                    synchronous=False,
+                    preexec_fn=setup_sigterm_on_parent_death,
+                    extra_env={
+                        RAY_ON_SPARK_COLLECT_LOG_TO_PATH: "",
+                        "RAY_ENABLE_WINDOWS_OR_OSX_CLUSTER": "1",
+                    },
+                )
+
+                self._nodes[next_id] = {
+                    "tags": {
+                        TAG_RAY_NODE_KIND: NODE_KIND_WORKER,
+                        TAG_RAY_USER_NODE_TYPE: node_type,
+                        TAG_RAY_NODE_NAME: next_id,
+                        TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE,
+                    },
+                    "node_proc": ray_node_proc,
+                }
+                """
 
     def terminate_node(self, node_id):
         with self.lock:
@@ -152,8 +193,10 @@ class RayOnSparkNodeProvider(NodeProvider):
 
     def _terminate_node(self, node):
         node["node"].kill_all_processes(check_alive=False, allow_graceful=True)
+        # node["node_proc"].terminate()
 
     @staticmethod
     def bootstrap_config(cluster_config):
         return cluster_config
+
 
