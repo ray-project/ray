@@ -37,9 +37,6 @@ install_bazel() {
   fi
 
   "${SCRIPT_DIR}"/install-bazel.sh
-  if [ -f /etc/profile.d/bazel.sh ]; then
-    . /etc/profile.d/bazel.sh
-  fi
 }
 
 install_base() {
@@ -511,8 +508,8 @@ install_pip_packages() {
 }
 
 install_thirdparty_packages() {
+  mkdir -p "${WORKSPACE_DIR}/python/ray/thirdparty_files"
   RAY_THIRDPARTY_FILES="$(realpath "${WORKSPACE_DIR}/python/ray/thirdparty_files")"
-  mkdir -p "${RAY_THIRDPARTY_FILES}"
   CC=gcc python -m pip install psutil setproctitle==1.2.2 colorama --target="${RAY_THIRDPARTY_FILES}"
 }
 
