@@ -22,6 +22,8 @@ class TestBackwardCompatibility(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         os.system("pip install gym==0.23.1")
+        import gym  # noqa: F401
+
         importlib.reload(sys.modules["gym"])
         ray.init()
 
