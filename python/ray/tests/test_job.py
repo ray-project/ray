@@ -291,7 +291,7 @@ ray.get(f.remote())
             "/api/jobs/",
         )
 
-        assert r.status_code == 200
+        assert r.status_code == 200, r.text
         jobs_info_json = json.loads(r.text)
         jobs_info_json.sort(key=lambda j: j["job_id"])
         info_json = jobs_info_json[1]
