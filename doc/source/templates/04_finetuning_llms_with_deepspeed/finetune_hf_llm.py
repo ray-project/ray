@@ -646,6 +646,10 @@ def main():
         f"{artifact_storage}/{user_name}/ft_llms_with_deepspeed/{args.model_name}"
     )
 
+    trial_name = f"{args.model_name}"
+    if args.lora:
+        trial_name += "-lora"
+
     trainer = TorchTrainer(
         training_function,
         train_loop_config={
@@ -654,6 +658,7 @@ def main():
             "special_tokens": special_tokens,
         },
         run_config=train.RunConfig(
+            name=trial_name,
             # Turn off syncing artifact as as of 2.6 it introduces a resource
             # contention between checkpoint syncronizer and artifact syncronizer that
             # can sometimes result in failed checkpoint syncing
