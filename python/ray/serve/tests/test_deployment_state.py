@@ -2560,6 +2560,7 @@ def test_resource_requirements_none():
     class FakeActor:
 
         actor_resources = {"num_cpus": 2, "fake": None}
+        placement_group_bundles = None
         available_resources = {}
 
     # Make a DeploymentReplica just to accesss its resource_requirement function

@@ -112,11 +112,12 @@ class DeploymentTargetState:
             else:
                 num_replicas = info.deployment_config.num_replicas
 
-        # XXX: should include PG info.
         version = DeploymentVersion(
             info.version,
             deployment_config=info.deployment_config,
             ray_actor_options=info.replica_config.ray_actor_options,
+            placement_group_bundles=info.replica_config.placement_group_bundles,
+            placement_group_strategy=info.replica_config.placement_group_strategy,
         )
 
         return cls(info, num_replicas, version, deleting)
@@ -249,6 +250,13 @@ class ActorReplicaWrapper:
             return self._actor_handle.handle
 
         return self._actor_handle
+
+    @property
+    def placement_group_bundles(self) -> Optional[List[Dict[str, float]]]:
+        if not self._placement_group:
+            return None
+
+        return self._placement_group.bundle_specs
 
     @property
     def version(self) -> DeploymentVersion:
@@ -965,19 +973,21 @@ class DeploymentReplica(VersionedReplica):
         if self._actor.actor_resources is None:
             return "UNKNOWN", "UNKNOWN"
 
-        # XXX: add placement group info!
+        if self._actor.placement_group_bundles is not None:
+            required = self._actor.placement_group_bundles
+        else:
+            required = {
+                k: v
+                for k, v in self._actor.actor_resources.items()
+                if v is not None and v > 0
+            }
 
-        required = {
-            k: v
-            for k, v in self._actor.actor_resources.items()
-            if v is not None and v > 0
-        }
         available = {
             k: v for k, v in self._actor.available_resources.items() if k in required
         }
 
         # Use json.dumps() instead of str() here to avoid double-quoting keys
-        # when dumping these dictionaries. See
+        # when dumping these objects. See
         # https://github.com/ray-project/ray/issues/26210 for the issue.
         return json.dumps(required), json.dumps(available)
 
@@ -1471,7 +1481,10 @@ class DeploymentState:
             # normal scale-up process.
             elif replica.version.requires_actor_restart(self._target_state.version):
                 code_version_changes += 1
-                self._stop_replica(replica)
+                # If the replica is still `STARTING`, we don't need to go through the
+                # graceful stop period.
+                graceful_stop = replica.actor_details.state == ReplicaState.RUNNING
+                self._stop_replica(replica, graceful_stop=graceful_stop)
                 replicas_changed = True
             # Otherwise, only lightweight options in deployment config is a mismatch, so
             # we update it dynamically without restarting the replica.
