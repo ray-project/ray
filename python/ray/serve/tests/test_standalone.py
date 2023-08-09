@@ -414,6 +414,7 @@ def test_multiple_routers(ray_cluster):
     # Add a new node to the cluster. This should trigger a new router to get
     # started.
     new_node = cluster.add_node(num_cpus=4)
+    cluster_node_info_cache.update()
 
     wait_for_condition(lambda: len(get_proxy_names()) == 3)
     (third_proxy,) = set(get_proxy_names()) - set(original_proxy_names)
@@ -433,6 +434,7 @@ def test_multiple_routers(ray_cluster):
     # Remove the newly-added node from the cluster. The corresponding actor
     # should be removed as well.
     cluster.remove_node(new_node)
+    cluster_node_info_cache.update()
 
     def third_actor_removed():
         try:
