@@ -1,8 +1,12 @@
+import os
+import tempfile
+
 import torch
 
 import ray.train as train
 from ray.train import ScalingConfig
-from ray.train.torch import TorchTrainer, TorchCheckpoint
+from ray.train._checkpoint import Checkpoint
+from ray.train.torch import TorchTrainer
 
 
 def train_func():
@@ -29,7 +33,11 @@ def train_func():
             optimizer.step()
             train.report({"loss": loss.item()})
 
-    train.report({}, checkpoint=TorchCheckpoint.from_model(model))
+    with tempfile.TemporaryDirectory() as tmpdir:
+        torch.save(model.module.state_dict(), os.path.join(tmpdir, "model.pt"))
+        train.report(
+            {"loss": loss.item()}, checkpoint=Checkpoint.from_directory(tmpdir)
+        )
 
 
 trainer = TorchTrainer(train_func, scaling_config=ScalingConfig(num_workers=4))
