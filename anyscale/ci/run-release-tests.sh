@@ -6,6 +6,12 @@ set -euo pipefail
 
 
 if [[ "${BUILDKITE_COMMIT}" == "HEAD" ]]; then export BUILDKITE_COMMIT=$(git rev-parse HEAD); fi 
+curl -O https://dl.google.com/dl/cloudsdk/channels/rapid/downloads/google-cloud-cli-441.0.0-linux-arm.tar.gz
+tar -xf google-cloud-cli-441.0.0-linux-arm.tar.gz
+./google-cloud-sdk/install.sh -q
+export PATH="$(pwd)/google-cloud-sdk/bin:$PATH"
+gcloud auth login --cred-file=release/aws2gce_runtime_iam.json --quiet
+gcloud auth configure-docker us-west1-docker.pkg.dev --quiet
 pip3 install --user -U pip
 pip3 install --user -r release/requirements_buildkite.txt
 pip3 install --user --no-deps -e release/
