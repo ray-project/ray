@@ -109,8 +109,8 @@ if [ "$use_lora" = false ]; then
     --class_prompt="photo of a $CLASS_NAME" \
     --train_batch_size=2 \
     --lr=5e-6 \
-    --num_epochs=10 \
-    --max_train_steps=400 \
+    --num_epochs=4 \
+    --max_train_steps=200 \
     --num_workers $NUM_WORKERS
   # Step 4: END
 else
@@ -125,8 +125,8 @@ else
   --class_prompt="photo of a $CLASS_NAME" \
   --train_batch_size=2 \
   --lr=1e-4 \
-  --num_epochs=10 \
-  --max_train_steps=400 \
+  --num_epochs=4 \
+  --max_train_steps=200 \
   --num_workers $NUM_WORKERS
 fi
 
