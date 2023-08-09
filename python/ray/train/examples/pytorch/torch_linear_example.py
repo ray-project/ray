@@ -1,11 +1,14 @@
 import argparse
+import os
+import tempfile
 
 import numpy as np
 import torch
 import torch.nn as nn
 import ray.train as train
 from ray.train import RunConfig, ScalingConfig
-from ray.train.torch import TorchTrainer, TorchCheckpoint
+from ray.train._checkpoint import Checkpoint
+from ray.train.torch import TorchTrainer
 
 
 class LinearDataset(torch.utils.data.Dataset):
@@ -44,10 +47,7 @@ def validate_epoch(dataloader, model, loss_fn):
             pred = model(X)
             loss += loss_fn(pred, y).item()
     loss /= num_batches
-    import copy
-
-    model_copy = copy.deepcopy(model)
-    return model_copy.cpu().state_dict(), loss
+    return loss
 
 
 def train_func(config):
@@ -76,10 +76,13 @@ def train_func(config):
     results = []
     for _ in range(epochs):
         train_epoch(train_loader, model, loss_fn, optimizer)
-        state_dict, loss = validate_epoch(validation_loader, model, loss_fn)
+        loss = validate_epoch(validation_loader, model, loss_fn)
         result = dict(loss=loss)
         results.append(result)
-        train.report(result, checkpoint=TorchCheckpoint.from_state_dict(state_dict))
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            torch.save(model.module.state_dict(), os.path.join(tmpdir, "model.pt"))
+            train.report(result, checkpoint=Checkpoint.from_directory(tmpdir))
 
     return results
 
