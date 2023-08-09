@@ -374,7 +374,7 @@ class BaseTrainer(abc.ABC):
     def can_restore(
         cls: Type["BaseTrainer"],
         path: Union[str, os.PathLike],
-        storage_filesystem: Optional[pyarrow.fs.FileSystem],
+        storage_filesystem: Optional[pyarrow.fs.FileSystem] = None,
     ) -> bool:
         """Checks whether a given directory contains a restorable Train experiment.
 
