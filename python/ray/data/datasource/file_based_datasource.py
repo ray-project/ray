@@ -274,7 +274,7 @@ class FileBasedDatasource(Datasource):
         **write_args,
     ) -> WriteResult:
         """Write blocks for a file-based datasource."""
-        # `FileBasedDatasource` subclasses expose a `_FILE_EXTENSION` attribute. It 
+        # `FileBasedDatasource` subclasses expose a `_FILE_EXTENSION` attribute. It
         # represents a list of supported file extensions. If the user doesn't specify
         # a file format, we default to the first extension in the list.
         if file_format is None:
@@ -335,7 +335,7 @@ class FileBasedDatasource(Datasource):
                             **write_args,
                         )
             else:
-                 write_path = block_path_provider(
+                write_path = block_path_provider(
                     path,
                     filesystem=filesystem,
                     dataset_uuid=dataset_uuid,
