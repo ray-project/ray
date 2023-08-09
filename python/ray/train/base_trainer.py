@@ -26,7 +26,6 @@ from ray.air.result import Result
 from ray.train._checkpoint import Checkpoint as NewCheckpoint
 from ray.train._internal import session
 from ray.train._internal.storage import (
-    _download_from_fs_path,
     _exists_at_fs_path,
     _use_storage_context,
     get_fs_and_path,
