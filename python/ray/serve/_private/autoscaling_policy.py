@@ -46,6 +46,17 @@ def calculate_desired_num_replicas(
     smoothed_error_ratio = 1 + ((error_ratio - 1) * autoscaling_config.smoothing_factor)
     desired_num_replicas = math.ceil(current_num_replicas * smoothed_error_ratio)
 
+    # If error_ratio = 0 meaning there is no more traffic, and desired
+    # num replicas is stuck at a positive number of the math.ceil above,
+    # decrease desired_num_replicas by one so that the deployment can
+    # eventually scale to 0.
+    if (
+        error_ratio == 0
+        and desired_num_replicas == current_num_replicas
+        and desired_num_replicas >= 1
+    ):
+        desired_num_replicas -= 1
+
     # Ensure min_replicas <= desired_num_replicas <= max_replicas.
     desired_num_replicas = min(autoscaling_config.max_replicas, desired_num_replicas)
     desired_num_replicas = max(autoscaling_config.min_replicas, desired_num_replicas)

@@ -252,7 +252,8 @@ def test_e2e_basic_scale_up_down(min_replicas, serve_instance):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
-def test_e2e_basic_scale_up_down_with_0_replica(serve_instance):
+@pytest.mark.parametrize("smoothing_factor", [1, 0.2])
+def test_e2e_basic_scale_up_down_with_0_replica(serve_instance, smoothing_factor):
     """Send 100 requests and check that we autoscale up, and then back down."""
 
     controller = serve_instance._controller
@@ -266,6 +267,7 @@ def test_e2e_basic_scale_up_down_with_0_replica(serve_instance):
             "look_back_period_s": 0.2,
             "downscale_delay_s": 0,
             "upscale_delay_s": 0,
+            "smoothing_factor": smoothing_factor,
         },
         # We will send over a lot of queries. This will make sure replicas are
         # killed quickly during cleanup.
@@ -328,8 +330,9 @@ def test_initial_num_replicas(mock, serve_instance):
     assert len(get_running_replicas(controller, "A")) == 2
 
 
-def test_smoothing_factor_with_0_replica():
-    """Unit test for smoothing_factor with 0 replica."""
+def test_smoothing_factor_scale_up_from_0_replica():
+    """Test that the smoothing factor is respected when scaling up from 0 replicas."""
+
     config = AutoscalingConfig(
         min_replicas=0,
         max_replicas=2,
@@ -355,6 +358,42 @@ def test_smoothing_factor_with_0_replica():
 
     # math.ceil(1 * 0.5)
     assert new_num_replicas == 1
+
+
+def test_smoothing_factor_scale_down_to_0_replica():
+    """Test that a deployment scales down to 0 for non-default smoothing factors."""
+
+    # Smoothing factor = 10
+    config = AutoscalingConfig(
+        min_replicas=0,
+        max_replicas=5,
+        smoothing_factor=10,
+        upscale_delay_s=0,
+        downscale_delay_s=0,
+    )
+    policy = BasicAutoscalingPolicy(config)
+    new_num_replicas = policy.get_decision_num_replicas(
+        current_num_ongoing_requests=[0, 0, 0, 0, 0],
+        curr_target_num_replicas=5,
+        current_handle_queued_queries=0,
+    )
+
+    # 1 * 10
+    assert new_num_replicas == 0
+
+    # Smoothing factor = 0.2
+    config.smoothing_factor = 0.2
+    policy = BasicAutoscalingPolicy(config)
+    num_replicas = 5
+    for _ in range(5):
+        num_replicas = policy.get_decision_num_replicas(
+            current_num_ongoing_requests=[0] * num_replicas,
+            curr_target_num_replicas=num_replicas,
+            current_handle_queued_queries=0,
+        )
+
+    # math.ceil(1 * 0.5)
+    assert num_replicas == 0
 
 
 def test_upscale_downscale_delay():
