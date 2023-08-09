@@ -28,8 +28,7 @@ from ray.actor import ActorHandle
 from ray.dag.py_obj_scanner import _PyObjScanner
 from ray.exceptions import RayActorError, RayTaskError
 from ray.util import metrics
-from ray._private.storage import _load_class
-from ray._private.utils import make_asyncio_event_version_compat
+from ray._private.utils import make_asyncio_event_version_compat, load_class
 
 from ray.serve._private.common import RunningReplicaInfo, DeploymentInfo
 from ray.serve._private.constants import (
@@ -895,7 +894,7 @@ class Router:
         deployment_name: str,
         event_loop: asyncio.BaseEventLoop = None,
         _use_new_routing: bool = False,
-        _router_cls: str = "",
+        _router_cls: Optional[str] = None,
     ):
         """Used to assign requests to downstream replicas for a deployment.
 
@@ -905,7 +904,7 @@ class Router:
         self._event_loop = event_loop
 
         if _router_cls:
-            self._replica_scheduler = _load_class(_router_cls)()
+            self._replica_scheduler = load_class(_router_cls)()
         elif _use_new_routing:
             self._replica_scheduler = PowerOfTwoChoicesReplicaScheduler(
                 event_loop, deployment_name
@@ -920,6 +919,10 @@ class Router:
                 "Using RoundRobinReplicaScheduler.",
                 extra={"log_to_stderr": False},
             )
+        logger.info(
+            f"Using {self._replica_scheduler.__class__}.",
+            extra={"log_to_stderr": False},
+        )
 
         # -- Metrics Registration -- #
         self.num_router_requests = metrics.Counter(
