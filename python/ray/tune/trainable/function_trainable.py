@@ -576,9 +576,16 @@ class FunctionTrainable(Trainable):
         if _use_storage_context():
             # TRAIN -> SAVE remote calls get processed sequentially,
             # so `_last_training_result.checkpoint` holds onto the latest ckpt.
+            assert self._last_training_result.checkpoint
             return self._last_training_result
 
-        if isinstance(checkpoint, dict):
+        checkpoint = self._status_reporter.get_checkpoint()
+
+        if not checkpoint:
+            # We drop a marker here to indicate that the checkpoint is empty
+            checkpoint = FuncCheckpointUtil.mk_null_checkpoint_dir(self.logdir)
+            parent_dir = checkpoint
+        elif isinstance(checkpoint, dict):
             return checkpoint
         elif isinstance(checkpoint, str):
             parent_dir = TrainableUtil.find_checkpoint_dir(checkpoint)
@@ -656,8 +663,7 @@ class FunctionTrainable(Trainable):
                 _ = self._session.finish()
             finally:
                 self._session = None
-                # Shutdown session even if session.finish() raises an
-                # Exception.
+                # Shutdown session even if session.finish() raises an Exception.
                 shutdown_session()
             return
 
