@@ -387,6 +387,10 @@ class FileBasedDatasource(Datasource):
         writer_args_fn: Callable[[], Dict[str, Any]] = lambda: {},
         **writer_args,
     ):
+        """Writes a row to a single file, passing all kwargs to the writer.
+
+        If `_WRITE_FILE_PER_ROW` is set to `True`, this method will be called.
+        """
         raise NotImplementedError
 
     @classmethod
