@@ -4,6 +4,7 @@ import pandas as pd
 from typing import Optional, Union
 
 from ray.air.result import Result
+from ray.train._internal.storage import _use_storage_context
 from ray.cloudpickle import cloudpickle
 from ray.exceptions import RayTaskError
 from ray.tune.analysis import ExperimentAnalysis
@@ -270,25 +271,43 @@ class ResultGrid:
         return None
 
     def _trial_to_result(self, trial: Trial) -> Result:
-        local_to_remote_path_fn = (
-            partial(
-                TrainableUtil.get_remote_storage_path,
-                local_path_prefix=trial.local_path,
-                remote_path_prefix=trial.remote_path,
+        if _use_storage_context():
+            from ray.train._internal.checkpoint_manager import (
+                _CheckpointManager as _NewCheckpointManager,
             )
-            if trial.uses_cloud_checkpointing
-            else None
-        )
-        checkpoint = trial.checkpoint.to_air_checkpoint(
-            local_to_remote_path_fn,
-        )
-        best_checkpoints = [
-            (
-                checkpoint.to_air_checkpoint(local_to_remote_path_fn),
-                checkpoint.metrics,
+
+            assert isinstance(trial.checkpoint_manager, _NewCheckpointManager)
+            checkpoint = None
+            if trial.checkpoint_manager.latest_checkpoint_result:
+                checkpoint = (
+                    trial.checkpoint_manager.latest_checkpoint_result.checkpoint
+                )
+            best_checkpoint_results = trial.checkpoint_manager.best_checkpoint_results
+            best_checkpoints = [
+                (checkpoint_result.checkpoint, checkpoint_result.metrics)
+                for checkpoint_result in best_checkpoint_results
+            ]
+        else:
+            local_to_remote_path_fn = (
+                partial(
+                    TrainableUtil.get_remote_storage_path,
+                    local_path_prefix=trial.local_path,
+                    remote_path_prefix=trial.remote_path,
+                )
+                if trial.uses_cloud_checkpointing
+                else None
             )
-            for checkpoint in trial.get_trial_checkpoints()
-        ]
+
+            checkpoint = trial.checkpoint.to_air_checkpoint(
+                local_to_remote_path_fn,
+            )
+            best_checkpoints = [
+                (
+                    checkpoint.to_air_checkpoint(local_to_remote_path_fn),
+                    checkpoint.metrics,
+                )
+                for checkpoint in trial.get_trial_checkpoints()
+            ]
 
         result = Result(
             checkpoint=checkpoint,

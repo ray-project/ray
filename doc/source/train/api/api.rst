@@ -59,6 +59,7 @@ Ray Train Config
 
     ~ray.train.DataConfig
 
+.. _train-loop-api:
 
 Ray Train Loop
 --------------
@@ -228,16 +229,6 @@ Mosaic
     :toctree: doc/
 
     ~train.mosaic.MosaicTrainer
-
-
-Reinforcement Learning (RLlib)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. autosummary::
-    :toctree: doc/
-
-    ~train.rl.RLTrainer
-    ~train.rl.RLCheckpoint
 
 
 .. _trainer-restore:

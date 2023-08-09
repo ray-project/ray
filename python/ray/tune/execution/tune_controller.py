@@ -406,7 +406,8 @@ class TuneController:
     @property
     def experiment_path(self) -> str:
         if _use_storage_context():
-            return self._storage.experiment_path
+            return str(self._storage.storage_prefix / self._storage.experiment_fs_path)
+
         return self._legacy_remote_experiment_path or self._legacy_local_experiment_path
 
     def _create_checkpoint_manager(self):
@@ -1828,6 +1829,19 @@ class TuneController:
 
         result = result or trial.last_result
 
+        if _use_storage_context():
+            assert (
+                storage == CheckpointStorage.PERSISTENT
+            ), "Memory checkpoints are no longer supported in the new persistence mode."
+            self._schedule_trial_task(
+                trial=trial,
+                method_name="save",
+                on_result=self._on_saving_result,
+                on_error=self._trial_task_failure,
+            )
+            # TODO(justinvyu): Remove the return value?
+            return
+
         if storage == CheckpointStorage.MEMORY:
             future = self._schedule_trial_task(
                 trial=trial,
@@ -1896,18 +1910,27 @@ class TuneController:
         """
         logger.debug("Trial %s: Processing trial save.", trial)
 
+        from ray.train._internal.checkpoint_manager import _TrainingResult
+
         try:
-            trial.saving_to.dir_or_data = checkpoint_value
-            self._callbacks.on_checkpoint(
-                iteration=self._iteration,
-                trials=self._trials,
-                trial=trial,
-                checkpoint=trial.saving_to,
-            )
-            trial.on_checkpoint(trial.saving_to)
-            self._checkpoint_manager.on_trial_checkpoint(trial)
-            if trial.checkpoint.storage_mode != CheckpointStorage.MEMORY:
+            if _use_storage_context() and isinstance(checkpoint_value, _TrainingResult):
+                # TODO(justinvyu): Update callbacks to take in a _TrainingResult
+                trial.on_checkpoint(checkpoint_value)
+
+                self._checkpoint_manager.on_trial_checkpoint(trial)
                 self._mark_trial_to_checkpoint(trial)
+            else:
+                trial.saving_to.dir_or_data = checkpoint_value
+                self._callbacks.on_checkpoint(
+                    iteration=self._iteration,
+                    trials=self._trials,
+                    trial=trial,
+                    checkpoint=trial.saving_to,
+                )
+                trial.on_checkpoint(trial.saving_to)
+                self._checkpoint_manager.on_trial_checkpoint(trial)
+                if trial.checkpoint.storage_mode != CheckpointStorage.MEMORY:
+                    self._mark_trial_to_checkpoint(trial)
         except Exception as e:
             if (
                 isinstance(e, _HeadNodeSyncDeprecationWarning)
@@ -1933,6 +1956,28 @@ class TuneController:
     ###
     # RESTORE
     def _schedule_trial_restore(self, trial: Trial) -> bool:
+        if _use_storage_context():
+            checkpoint_result = trial.checkpoint_manager.latest_checkpoint_result
+
+            if not checkpoint_result:
+                logger.debug(f"Not restoring trial {trial}: No checkpoint found.")
+                return False
+
+            # TODO(justinvyu): Is this really needed?
+            trial.restoring_from = checkpoint_result
+
+            method_name = "restore"
+            args = (checkpoint_result,)
+            self._schedule_trial_task(
+                trial=trial,
+                method_name=method_name,
+                args=args,
+                kwargs={},
+                on_result=self._on_restoring_result,
+                on_error=self._trial_task_failure,
+            )
+            return True
+
         checkpoint = trial.checkpoint
 
         if checkpoint.dir_or_data is None:
