@@ -102,7 +102,6 @@ def deploy_args_to_deployment_info(
     replica_config = ReplicaConfig.from_proto_bytes(
         replica_config_proto_bytes, deployment_config.needs_pickle()
     )
-    print("IN deploy_args_to_deployment_info", replica_config.placement_group_bundles)
 
     # Java API passes in JobID as bytes
     if isinstance(deployer_job_id, bytes):
