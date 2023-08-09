@@ -14,7 +14,7 @@ from ray.train.examples.tf.tensorflow_mnist_example import (
     train_func as tensorflow_mnist_train_func,
 )
 from ray.train.examples.pytorch.torch_fashion_mnist_example import (
-    train_func as fashion_mnist_train_func,
+    train_func_per_worker as fashion_mnist_train_func,
 )
 from ray.train.tensorflow.tensorflow_trainer import TensorflowTrainer
 from ray.train.torch.torch_trainer import TorchTrainer
@@ -63,7 +63,7 @@ def torch_fashion_mnist(num_workers, use_gpu, num_samples):
         param_space={
             "train_loop_config": {
                 "lr": tune.loguniform(1e-4, 1e-1),
-                "batch_size": tune.choice([32, 64, 128]),
+                "batch_size_per_worker": tune.choice([32, 64, 128]),
                 "epochs": 2,
             }
         },
