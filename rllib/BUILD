@@ -2977,12 +2977,12 @@ py_test(
 # --------------------------------------------------------------------
 
 py_test(
-    name = "examples/action_masking_tf",
+    name = "examples/action_masking_tf2",
     main = "examples/action_masking.py",
     tags = ["team:rllib", "exclusive", "examples"],
     size = "small",
     srcs = ["examples/action_masking.py"],
-    args = ["--stop-iter=2", "--framework=tf"]
+    args = ["--stop-iter=2", "--framework=tf2"]
 )
 
 py_test(
