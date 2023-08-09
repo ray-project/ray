@@ -703,13 +703,12 @@ TASK = {
 }
 
 
-def test_get_task_traceback_running_task():
+def test_get_task_traceback_running_task(shutdown_only):
     """
     Verify that we throw an error for a non-running task.
     """
-    ray.shutdown()
     context = ray.init()
-    dashboard_url = f"http://{context['webui_url']}"
+    dashboard_url = f"http://{context['webuiurl']}"
 
     @ray.remote
     def f():
@@ -741,11 +740,10 @@ def test_get_task_traceback_running_task():
     wait_for_condition(verify, timeout=20)
 
 
-def test_get_task_traceback_non_running_task():
+def test_get_task_traceback_non_running_task(shutdown_only):
     """
     Verify that we throw an error for a non-running task.
     """
-    ray.shutdown()
     context = ray.init()
     dashboard_url = f"http://{context['webui_url']}"
 
@@ -772,11 +770,10 @@ def test_get_task_traceback_non_running_task():
     wait_for_condition(verify, timeout=10)
 
 
-def test_get_cpu_profile_non_running_task():
+def test_get_cpu_profile_non_running_task(shutdown_only):
     """
     Verify that we throw an error for a non-running task.
     """
-    ray.shutdown()
     context = ray.init()
     dashboard_url = f"http://{context['webui_url']}"
 
