@@ -56,7 +56,7 @@ def _run_tests_in_docker(test_targets: List[str]) -> subprocess.Popen:
     return subprocess.Popen(_docker_run_bash_script(command))
 
 
-def run_command(script: str) -> bytes:
+def run_script_in_docker(script: str) -> bytes:
     """
     Run command in docker
     """
