@@ -120,17 +120,18 @@ def _validate_neuron_core_accelerator(options: Dict[str, Any]):
     """
     num_gpus = options.get("num_gpus", None)
     if num_gpus is not None and num_gpus > 0:
-        resources = options["resources"] if "resources" in options else {}
-        num_neuron_cores = resources.get(ray_constants.NUM_NEURON_CORES, 0)
-        accelerator_type_value: str = options.get("accelerator_type", "")
-        if (
-            num_neuron_cores > 0
-            or accelerator_type_value == accelerators.AWS_NEURON_CORE
-        ):
-            raise ValueError(
-                "'num_gpus' cannot be used together with "
-                "num_neuron_cores/accelerator_type:aws-neuron-core."
-            )
+        resources = options["resources"] if "resources" in options else None
+        if resources is not None:
+            num_neuron_cores: int = resources.get(ray_constants.NUM_NEURON_CORES, 0)
+            accelerator_type_value: str = options.get("accelerator_type", "")
+            if (
+                num_neuron_cores > 0
+                or accelerator_type_value == accelerators.AWS_NEURON_CORE
+            ):
+                raise ValueError(
+                    "'num_gpus' cannot be used together with "
+                    "num_neuron_cores/accelerator_type:aws-neuron-core."
+                )
 
 
 _common_options = {
