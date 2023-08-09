@@ -10,6 +10,7 @@ import pytest
 import ray
 from ray.air._internal.uri_utils import URI
 from ray.cluster_utils import Cluster
+from ray.train.constants import RAY_AIR_NEW_PERSISTENCE_MODE
 from ray._private.test_utils import simulate_storage
 
 
@@ -124,3 +125,10 @@ def mock_s3_bucket_uri():
         logging.getLogger("werkzeug").setLevel(logging.WARNING)
         yield s3_uri
         logging.getLogger("werkzeug").setLevel(logging.INFO)
+
+
+@pytest.fixture
+def enable_new_persistence_mode(monkeypatch):
+    monkeypatch.setenv(RAY_AIR_NEW_PERSISTENCE_MODE, "1")
+    yield
+    monkeypatch.setenv(RAY_AIR_NEW_PERSISTENCE_MODE, "0")
