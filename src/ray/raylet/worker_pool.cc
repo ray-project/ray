@@ -168,10 +168,10 @@ void WorkerPool::Start() {
   }
 
   RAY_LOG(INFO) << "WUBBA";
+  PrestartDefaultCpuWorkers(Language::JULIA, 1);
 
   if (RayConfig::instance().enable_worker_prestart()) {
     PrestartDefaultCpuWorkers(Language::PYTHON, num_prestart_python_workers);
-    PrestartDefaultCpuWorkers(Language::JULIA, 1);
   }
 }
 

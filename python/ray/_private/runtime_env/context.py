@@ -64,12 +64,16 @@ class RuntimeEnvContext:
             passthrough_args = class_path_args + passthrough_args
         elif language == Language.JULIA:
             executable = "julia"
+            julia_args = ["--project=/Users/cvogt/.julia/dev/ray_core_worker_julia_jll"]
+            julia_args = julia_args + ["-e", "'using ray_core_worker_julia_jll; ray_core_worker_julia_jll.start_worker()'"]
+            passthrough_args = julia_args + ["--"] + passthrough_args
         elif sys.platform == "win32":
             executable = ""
         else:
             executable = "exec "
 
-        passthrough_args = [s.replace(" ", r"\ ") for s in passthrough_args]
+        # TODO: This messes up our inline Julia code
+        # passthrough_args = [s.replace(" ", r"\ ") for s in passthrough_args]
         exec_command = " ".join([f"{executable}"] + passthrough_args)
         command_str = " ".join(self.command_prefix + [exec_command])
         # TODO(SongGuyang): We add this env to command for macOS because it doesn't
@@ -84,7 +88,7 @@ class RuntimeEnvContext:
                 + " "
                 + command_str
             )
-        logger.debug(f"Exec'ing worker with command: {command_str}")
+        logger.info(f"Exec'ing worker with command: {command_str}")
         if sys.platform == "win32":
             cmd = [*self.command_prefix, executable, *passthrough_args]
             subprocess.Popen(cmd, shell=True).wait()
