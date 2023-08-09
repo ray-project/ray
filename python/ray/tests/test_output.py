@@ -328,65 +328,6 @@ time.sleep(3)
     wait_for_condition(verify)
 
 
-@pytest.mark.parametrize(
-    "event_level,expected_msg,unexpected_msg",
-    [
-        ("TRACE", "TRACE,DEBUG,INFO,WARNING,ERROR,FATAL", ""),
-        ("DEBUG", "DEBUG,INFO,WARNING,ERROR,FATAL", "TRACE"),
-        ("INFO", "INFO,WARNING,ERROR,FATAL", "TRACE,DEBUG"),
-        ("WARNING", "WARNING,ERROR,FATAL", "TRACE,DEBUG,INFO"),
-        ("ERROR", "ERROR,FATAL", "TRACE,DEBUG,INFO,WARNING"),
-        ("FATAL", "FATAL", "TRACE,DEBUG,INFO,WARNING,ERROR"),
-    ],
-)
-def test_autoscaler_v2_stream_events_filter_level(
-    shutdown_only, event_level, expected_msg, unexpected_msg, monkeypatch
-):
-    """
-    Test in autoscaler v2, autoscaler events are streamed directly from
-    events file
-    """
-
-    script = """
-import ray
-import time
-from ray.core.generated.event_pb2 import Event as RayEvent
-from ray._private.event.event_logger import get_event_logger
-
-ray.init("auto")
-
-# Get event logger to write autoscaler events.
-log_dir = ray._private.worker.global_worker.node.get_logs_dir_path()
-event_logger = get_event_logger(RayEvent.SourceType.AUTOSCALER, log_dir)
-event_logger.trace("TRACE")
-event_logger.debug("DEBUG")
-event_logger.info("INFO")
-event_logger.warning("WARNING")
-event_logger.error("ERROR")
-event_logger.fatal("FATAL")
-
-# Block and sleep
-time.sleep(3)
-    """
-
-    ray.init(_system_config={"enable_autoscaler_v2": True})
-
-    out_str = run_string_as_driver(
-        script, env={"RAY_LOG_TO_DRIVER_EVENT_LEVEL": event_level}
-    )
-
-    print(out_str)
-    # Filter only autoscaler prints.
-    assert out_str
-
-    out_str = "".join([line for line in out_str.splitlines() if "autoscaler" in line])
-    for expected in expected_msg.split(","):
-        assert expected in out_str
-    if unexpected_msg:
-        for unexpected in unexpected_msg.split(","):
-            assert unexpected not in out_str
-
-
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_fail_importing_actor(ray_start_regular, error_pubsub):
     script = f"""
