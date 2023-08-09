@@ -21,15 +21,10 @@ from ray.tune.registry import register_env
 class TestBackwardCompatibility(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        os.system("pip install gym==0.23.1")
-        import gym  # noqa: F401
-
-        importlib.reload(sys.modules["gym"])
-        ray.init()
+        ray.init(runtime_env={"pip_packages": ["gym==0.23.1"]})
 
     @classmethod
     def tearDownClass(cls):
-        os.system("pip install gym==0.26.2")
         ray.shutdown()
 
     def test_old_checkpoint_formats(self):
