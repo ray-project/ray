@@ -109,6 +109,7 @@ class RayOnSparkNodeProvider(NodeProvider):
                 next_id = self.get_next_node_id()
                 resources["NODE_ID_AS_RESOURCE"] = next_id
 
+                """
                 ray_params = ray._private.parameter.RayParams(
                     min_worker_port=0,
                     max_worker_port=0,
@@ -118,12 +119,8 @@ class RayOnSparkNodeProvider(NodeProvider):
                     object_store_memory=resources.pop("object_store_memory", None),
                     resources=resources,
                     labels=labels,
-                    redis_address="{}:6379".format(
-                        ray._private.services.get_node_ip_address()
-                    ),
-                    gcs_address="{}:6379".format(
-                        ray._private.services.get_node_ip_address()
-                    ),
+                    redis_address="127.0.0.1:3344",
+                    gcs_address="127.0.0.1:3344",
                     env_vars={
                         ray_constants.RESOURCES_ENVIRONMENT_VARIABLE: json.dumps(resources),
                         ray_constants.LABELS_ENVIRONMENT_VARIABLE: json.dumps(labels),
@@ -150,7 +147,7 @@ class RayOnSparkNodeProvider(NodeProvider):
                     f"--num-cpus={resources.pop('CPU', 0)}",
                     f"--num-gpus={resources.pop('GPU', 0)}",
                     "--block",
-                    f"--address=127.0.0.1:3344",
+                    "--address=192.168.10.116:3344",
                     f"--memory={512 * 1024 * 1024}",
                     f"--object-store-memory={resources.pop('object_store_memory', 512 * 1024 * 1024)}",
                     f"--min-worker-port={11000}",
@@ -180,7 +177,6 @@ class RayOnSparkNodeProvider(NodeProvider):
                     },
                     "node_proc": ray_node_proc,
                 }
-                """
 
     def terminate_node(self, node_id):
         with self.lock:
@@ -192,8 +188,8 @@ class RayOnSparkNodeProvider(NodeProvider):
             self._terminate_node(node)
 
     def _terminate_node(self, node):
-        node["node"].kill_all_processes(check_alive=False, allow_graceful=True)
-        # node["node_proc"].terminate()
+        # node["node"].kill_all_processes(check_alive=False, allow_graceful=True)
+        node["node_proc"].terminate()
 
     @staticmethod
     def bootstrap_config(cluster_config):

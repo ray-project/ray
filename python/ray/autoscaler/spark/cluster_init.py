@@ -68,6 +68,7 @@ class AutoscalingCluster:
             "start",
             "--autoscaling-config={}".format(fake_config),
             "--head",
+            "--node-ip-address=192.168.10.116",
             "--port=3344",
         ]
         if "CPU" in self._head_resources:
