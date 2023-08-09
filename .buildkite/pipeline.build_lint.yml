@@ -28,10 +28,6 @@
   commands:
     - ./ci/ray_ci/lint.sh copyright
 
-- label: "untested code snippet"
-  commands:
-    - ./ci/ray_ci/lint.sh run_semgrep
-
 - label: "test script"
   commands:
     - ./ci/ray_ci/lint.sh test_script
