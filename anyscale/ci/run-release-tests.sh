@@ -15,6 +15,5 @@ export RELEASE_AWS_BUCKET="runtime-release-test-artifacts"
 # is to bypass some invariant checks in the release test pipeline. 
 # TODO(can-anyscale): remove this once we deprecated completely non-byod tests
 export RAY_WHEELS="https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp310-cp310-manylinux2014_x86_64.whl"
-export TEST_ATTR_REGEX_FILTERS="name:.*"
 cd release
 (python3 ray_release/scripts/build_pipeline.py --run-jailed-tests --run-unstable-tests --global-config runtime_config.yaml) | buildkite-agent pipeline upload
