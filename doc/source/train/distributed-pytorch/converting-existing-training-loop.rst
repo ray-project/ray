@@ -62,13 +62,13 @@ training.
 
         .. code-block:: diff
 
-             import torch
-             from torch.utils.data import DataLoader, DistributedSampler
+              import torch
+              from torch.utils.data import DataLoader, DistributedSampler
             + from ray import train
             + import ray.train.torch
 
 
-             def train_func():
+              def train_func(config):
             -    device = torch.device(f"cuda:{train.get_context().get_local_rank()}" if
             -        torch.cuda.is_available() else "cpu")
             -    torch.cuda.set_device(device)
@@ -115,6 +115,7 @@ training.
             -     devices=[0,1,2,3],
             -     strategy=DDPStrategy(),
             -     plugins=[LightningEnvironment()],
+            +     accelerator="auto",
             +     devices="auto",
             +     strategy=RayDDPStrategy(),
             +     plugins=[RayLightningEnvironment()]
@@ -142,6 +143,9 @@ training.
         local, global, and node rank and world size.
 
         **Step 3: Configure Parallel Devices**
+        
+        Set ``accelerator="auto"`` so that Lightning Trainer can automatically 
+        switch devices type between GPU and CPU.
 
         In addition, Ray TorchTrainer has already configured the correct 
         ``CUDA_VISIBLE_DEVICES`` for you. One should always use all available 
