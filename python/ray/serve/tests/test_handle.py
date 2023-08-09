@@ -353,6 +353,19 @@ def test_call_function_with_argument(serve_instance):
     assert ray.get(h.remote("sned")) == "Hi sned"
 
 
+def test_handle_options_with_same_router(serve_instance):
+    """Make sure that multiple handles share same router object."""
+
+    @serve.deployment
+    def echo(name: str):
+        return f"Hi {name}"
+
+    handle = serve.run(echo.bind())
+    handle2 = handle.options(multiplexed_model_id="model2")
+    assert handle._router
+    assert id(handle2._router) == id(handle._router)
+
+
 if __name__ == "__main__":
     import sys
     import pytest
