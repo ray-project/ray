@@ -43,7 +43,7 @@ def is_pull_request():
 
     if (
         os.environ.get("BUILDKITE")
-        and os.environ.get("BUILDKITE_PULL_REQUEST") != "false"
+        and os.environ.get("BUILDKITE_PULL_REQUEST", "false") != "false"
     ):
         event_type = "pull_request"
 

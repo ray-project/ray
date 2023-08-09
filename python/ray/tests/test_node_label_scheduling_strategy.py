@@ -143,6 +143,68 @@ def test_node_label_scheduling_in_cluster(ray_start_cluster):
     assert ray.get(actor.get_node_id.remote(), timeout=3) in (node_1, node_2, node_3)
 
 
+def test_node_label_scheduling_with_soft(ray_start_cluster):
+    cluster = ray_start_cluster
+    created_nodes = []
+    cluster.add_node(num_cpus=3, labels={"gpu_type": "A100", "azone": "azone-1"})
+    cluster.wait_for_nodes()
+    ray.init(address=cluster.address)
+    node_1 = get_new_node_id(created_nodes)
+    cluster.add_node(num_cpus=3, labels={"gpu_type": "T100", "azone": "azone-1"})
+    node_2 = get_new_node_id(created_nodes)
+    cluster.add_node(num_cpus=3, labels={"gpu_type": "T100", "azone": "azone-2"})
+    node_3 = get_new_node_id(created_nodes)
+    cluster.add_node(num_cpus=3)
+    node_4 = get_new_node_id(created_nodes)
+    cluster.wait_for_nodes()
+
+    # hard match and soft match
+    actor = MyActor.options(
+        scheduling_strategy=NodeLabelSchedulingStrategy(
+            hard={"azone": In("azone-1")}, soft={"gpu_type": In("T100")}
+        )
+    ).remote()
+    assert ray.get(actor.get_node_id.remote(), timeout=3) == node_2
+
+    # hard match and soft don't match
+    actor = MyActor.options(
+        scheduling_strategy=NodeLabelSchedulingStrategy(
+            hard={"azone": In("azone-1")}, soft={"gpu_type": In("H100")}
+        )
+    ).remote()
+    assert ray.get(actor.get_node_id.remote(), timeout=3) in (node_1, node_2)
+
+    # no hard and  soft match
+    actor = MyActor.options(
+        scheduling_strategy=NodeLabelSchedulingStrategy(
+            hard={}, soft={"gpu_type": Exists()}
+        )
+    ).remote()
+    assert ray.get(actor.get_node_id.remote(), timeout=3) in (node_1, node_2, node_3)
+
+    # no hard and soft don't match
+    actor = MyActor.options(
+        scheduling_strategy=NodeLabelSchedulingStrategy(
+            hard={}, soft={"gpu_type": In("H100")}
+        )
+    ).remote()
+    assert ray.get(actor.get_node_id.remote(), timeout=3) in (
+        node_1,
+        node_2,
+        node_3,
+        node_4,
+    )
+
+    # hard don't match and soft match
+    actor = MyActor.options(
+        scheduling_strategy=NodeLabelSchedulingStrategy(
+            hard={"azone": In("azone-3")}, soft={"gpu_type": In("T100")}
+        )
+    ).remote()
+    with pytest.raises(TimeoutError):
+        ray.get(actor.get_node_id.remote(), timeout=3)
+
+
 def get_new_node_id(created_nodes):
     wait_for_condition(lambda: len(ray.nodes()) > len(created_nodes), timeout=30)
     nodes = ray.nodes()

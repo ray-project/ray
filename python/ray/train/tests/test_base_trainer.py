@@ -10,9 +10,8 @@ import numpy as np
 import pytest
 
 import ray
-from ray import tune
-from ray.air import session
-from ray.air.checkpoint import Checkpoint
+from ray import train, tune
+from ray.train import Checkpoint, ScalingConfig
 from ray.air.constants import MAX_REPR_LENGTH
 from ray.data.context import DataContext
 from ray.data.preprocessor import Preprocessor
@@ -21,7 +20,6 @@ from ray.tune.impl import tuner_internal
 from ray.train.data_parallel_trainer import DataParallelTrainer
 from ray.train.gbdt_trainer import GBDTTrainer
 from ray.train.trainer import BaseTrainer
-from ray.air.config import ScalingConfig
 from ray.util.placement_group import get_current_placement_group
 
 logger = logging.getLogger(__name__)
@@ -90,7 +88,7 @@ class DummyGBDTTrainer(GBDTTrainer):
 
 def test_trainer_fit(ray_start_4_cpus):
     def training_loop(self):
-        session.report(dict(my_metric=1))
+        train.report(dict(my_metric=1))
 
     trainer = DummyTrainer(train_loop=training_loop)
     result = trainer.fit()
@@ -400,7 +398,7 @@ def test_large_params(ray_start_4_cpus):
     array_size = int(1e8)
 
     def training_loop(self):
-        checkpoint = self.resume_from_checkpoint.to_dict()["ckpt"]
+        checkpoint = self.starting_checkpoint.to_dict()["ckpt"]
         assert len(checkpoint) == array_size
 
     checkpoint = Checkpoint.from_dict({"ckpt": np.zeros(shape=array_size)})
@@ -413,7 +411,7 @@ def test_preprocess_datasets_context(ray_start_4_cpus):
 
     def training_loop(self):
         assert self.datasets["my_dataset"].take() == [{"a": i} for i in range(2, 5)]
-        session.report(dict(my_metric=1))
+        train.report(dict(my_metric=1))
 
     target_max_block_size = 100
 

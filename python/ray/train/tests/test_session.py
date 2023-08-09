@@ -5,7 +5,7 @@ import pytest
 
 import ray
 from ray.air._internal.util import StartTraceback
-from ray.air.checkpoint import Checkpoint
+from ray.train import Checkpoint
 from ray.train._internal.accelerator import Accelerator
 from ray.air.constants import SESSION_MISUSE_LOG_ONCE_KEY
 from ray.train._internal.session import (
