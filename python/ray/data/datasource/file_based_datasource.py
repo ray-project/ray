@@ -1,4 +1,5 @@
 import itertools
+import os
 import pathlib
 import posixpath
 import sys
@@ -208,6 +209,10 @@ class FileBasedDatasource(Datasource):
         JSONDatasource, CSVDatasource, NumpyDatasource, BinaryDatasource
     """
 
+    # If `_WRITE_FILE_PER_ROW` is `True`, this datasource calls `_write_row` and writes
+    # each row to a file. Otherwise, this datasource calls `_write_block` and writes
+    # each block to a file.
+    _WRITE_FILE_PER_ROW = False
     _FILE_EXTENSION: Optional[Union[str, List[str]]] = None
 
     def _open_input_source(
@@ -267,17 +272,23 @@ class FileBasedDatasource(Datasource):
         open_stream_args: Optional[Dict[str, Any]] = None,
         block_path_provider: Optional[BlockWritePathProvider] = None,
         write_args_fn: Callable[[], Dict[str, Any]] = lambda: {},
+        file_format: Optional[str] = None,
         _block_udf: Optional[Callable[[Block], Block]] = None,
         **write_args,
     ) -> WriteResult:
         """Write blocks for a file-based datasource."""
-        file_format = self._FILE_EXTENSION
-        if isinstance(file_format, list):
-            file_format = file_format[0]
+        # `FileBasedDatasource` subclasses expose a `_FILE_EXTENSION` attribute. It
+        # represents a list of supported file extensions. If the user doesn't specify
+        # a file format, we default to the first extension in the list.
+        if file_format is None:
+            file_format = self._FILE_EXTENSION
+            if isinstance(file_format, list):
+                file_format = file_format[0]
 
         path, filesystem = _resolve_paths_and_filesystem(path, filesystem)
         path = path[0]
         _write_block_to_file = self._write_block
+        _write_row_to_file = self._write_row
 
         if open_stream_args is None:
             open_stream_args = {}
@@ -288,16 +299,6 @@ class FileBasedDatasource(Datasource):
         num_rows_written = 0
         block_idx = 0
         for block in blocks:
-            write_path = block_path_provider(
-                path,
-                filesystem=filesystem,
-                dataset_uuid=dataset_uuid,
-                task_index=ctx.task_idx,
-                block_index=block_idx,
-                file_format=file_format,
-            )
-
-            logger.get_logger().debug(f"Writing {write_path} file.")
             if _block_udf is not None:
                 block = _block_udf(block)
 
@@ -316,13 +317,43 @@ class FileBasedDatasource(Datasource):
                 filesystem = _wrap_s3_serialization_workaround(filesystem)
 
             fs = _unwrap_s3_serialization_workaround(filesystem)
-            with fs.open_output_stream(write_path, **open_stream_args) as f:
-                _write_block_to_file(
-                    f,
-                    block,
-                    writer_args_fn=write_args_fn,
-                    **write_args,
+
+            if self._WRITE_FILE_PER_ROW:
+                for row_index, row in enumerate(
+                    block.iter_rows(public_row_format=False)
+                ):
+                    # TODO: Refactor `BlockWritePathProvider` to support rows.
+                    filename = (
+                        f"{dataset_uuid}_{ctx.task_idx:06}_{block_idx:06}_"
+                        f"{row_index:06}.{file_format}"
+                    )
+                    write_path = os.path.join(path, filename)
+                    logger.get_logger().debug(f"Writing {write_path} file.")
+                    with fs.open_output_stream(write_path, **open_stream_args) as f:
+                        _write_row_to_file(
+                            f,
+                            row,
+                            writer_args_fn=write_args_fn,
+                            file_format=file_format,
+                            **write_args,
+                        )
+            else:
+                write_path = block_path_provider(
+                    path,
+                    filesystem=filesystem,
+                    dataset_uuid=dataset_uuid,
+                    task_index=ctx.task_idx,
+                    block_index=block_idx,
+                    file_format=file_format,
                 )
+                logger.get_logger().debug(f"Writing {write_path} file.")
+                with fs.open_output_stream(write_path, **open_stream_args) as f:
+                    _write_block_to_file(
+                        f,
+                        block,
+                        writer_args_fn=write_args_fn,
+                        **write_args,
+                    )
 
             num_rows_written += block.num_rows()
             block_idx += 1
@@ -351,6 +382,20 @@ class FileBasedDatasource(Datasource):
         raise NotImplementedError(
             "Subclasses of FileBasedDatasource must implement _write_files()."
         )
+
+    def _write_row(
+        self,
+        f: "pyarrow.NativeFile",
+        row,
+        writer_args_fn: Callable[[], Dict[str, Any]] = lambda: {},
+        **writer_args,
+    ):
+        """Writes a row to a single file, passing all kwargs to the writer.
+
+        If `_WRITE_FILE_PER_ROW` is set to `True`, this method will be called instead
+        of `_write_block()`.
+        """
+        raise NotImplementedError
 
     @classmethod
     def file_extension_filter(cls) -> Optional[PathPartitionFilter]:

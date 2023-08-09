@@ -520,6 +520,30 @@ Status PythonGcsClient::GetClusterStatus(int64_t timeout_ms,
   return Status::RpcError(status.error_message(), status.error_code());
 }
 
+Status PythonGcsClient::DrainNode(const std::string &node_id,
+                                  int32_t reason,
+                                  const std::string &reason_message,
+                                  int64_t timeout_ms,
+                                  bool &is_accepted) {
+  rpc::autoscaler::DrainNodeRequest request;
+  request.set_node_id(NodeID::FromHex(node_id).Binary());
+  request.set_reason(static_cast<rpc::autoscaler::DrainNodeReason>(reason));
+  request.set_reason_message(reason_message);
+
+  rpc::autoscaler::DrainNodeReply reply;
+
+  grpc::ClientContext context;
+  GrpcClientContextWithTimeoutMs(context, timeout_ms);
+
+  grpc::Status status = autoscaler_stub_->DrainNode(&context, request, &reply);
+
+  if (status.ok()) {
+    is_accepted = reply.is_accepted();
+    return Status::OK();
+  }
+  return Status::RpcError(status.error_message(), status.error_code());
+}
+
 std::unordered_map<std::string, double> PythonGetResourcesTotal(
     const rpc::GcsNodeInfo &node_info) {
   return std::unordered_map<std::string, double>(node_info.resources_total().begin(),
