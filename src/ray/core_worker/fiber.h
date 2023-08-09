@@ -27,28 +27,33 @@ namespace core {
 /// from python to switch control among different coroutines.
 /// Taken from boost::fiber examples
 /// https://github.com/boostorg/fiber/blob/7be4f860e733a92d2fa80a848dd110df009a20e1/examples/wait_stuff.cpp#L115-L142
-class FiberEvent {
+/// We use FiberEvent to synchronize fibers and StdEvent to synchronize threads.
+template <typename Mutex, typename Cond>
+class Event {
  public:
   // Block the fiber until the event is notified.
   void Wait() {
-    std::unique_lock<boost::fibers::mutex> lock(mutex_);
+    std::unique_lock<Mutex> lock(mutex_);
     cond_.wait(lock, [this]() { return ready_; });
   }
 
   // Notify the event and unblock all waiters.
   void Notify() {
     {
-      std::unique_lock<boost::fibers::mutex> lock(mutex_);
+      std::unique_lock<Mutex> lock(mutex_);
       ready_ = true;
     }
     cond_.notify_one();
   }
 
  private:
-  boost::fibers::condition_variable cond_;
-  boost::fibers::mutex mutex_;
+  Cond cond_;
+  Mutex mutex_;
   bool ready_ = false;
 };
+
+using FiberEvent = Event<boost::fibers::mutex, boost::fibers::condition_variable>;
+using StdEvent = Event<std::mutex, std::condition_variable>;
 
 /// Used by async actor mode. The FiberRateLimiter is a barrier that
 /// allows at most num fibers running at once. It implements the
@@ -94,8 +99,8 @@ class FiberState {
 
   FiberState(int max_concurrency)
       : rate_limiter_(max_concurrency),
-        fiber_stopped_event_(std::make_shared<FiberEvent>()) {
-    std::shared_ptr<FiberEvent> fiber_stopped_event = fiber_stopped_event_;
+        fiber_stopped_event_(std::make_shared<StdEvent>()) {
+    std::shared_ptr<StdEvent> fiber_stopped_event = fiber_stopped_event_;
     fiber_runner_thread_ =
         std::thread(
             [&, fiber_stopped_event]() {
@@ -163,7 +168,7 @@ class FiberState {
   // This FiberEvent must outlive the FiberState class, because a FiberState instance may
   // be deallocated when the thread is in the `notify_one()` call and write to the
   // condition_variable's underlying data.
-  std::shared_ptr<FiberEvent> fiber_stopped_event_;
+  std::shared_ptr<StdEvent> fiber_stopped_event_;
   /// The thread that runs all asyncio fibers. is_asyncio_ must be true.
   std::thread fiber_runner_thread_;
 };
