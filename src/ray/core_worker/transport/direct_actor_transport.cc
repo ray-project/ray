@@ -163,11 +163,6 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
         /// be 0 if this is an asyncio actor.
         const int default_max_concurrency =
             task_spec.IsAsyncioActor() ? 0 : task_spec.MaxActorConcurrency();
-        // One Receiver only handles one Actor, so ideally we should set
-        // `pool_manager_` and `fiber_state_manager_` to nullptr, and do this:
-        //    RAY_CHECK((!pool_manager_) && (!fiber_state_manager_));
-        // However in unit test we don't send ActorCreationTask so we have to provide
-        // a default `pool_manager_` in ctor.
         pool_manager_ = std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>(
             task_spec.ConcurrencyGroups(), default_max_concurrency);
         if (task_spec.IsAsyncioActor()) {
