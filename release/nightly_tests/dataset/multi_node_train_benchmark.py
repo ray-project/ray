@@ -93,9 +93,7 @@ def get_transform(to_torch_tensor):
             ),
             torchvision.transforms.RandomHorizontalFlip(),
         ]
-        + [torchvision.transforms.ToTensor()]
-        if to_torch_tensor
-        else []
+        + ([torchvision.transforms.ToTensor()] if to_torch_tensor else [])
     )
     return transform
 
@@ -148,7 +146,7 @@ if __name__ == "__main__":
     torch_trainer = TorchTrainer(
         train_loop_per_worker,
         datasets={"train": ray_dataset},
-        scaling_config=ScalingConfig(num_workers=args.num_workers),
+        scaling_config=ScalingConfig(num_workers=args.num_workers, use_gpu=True),
         dataset_config=ray.train.DataConfig(
             execution_options=options,
         ),
@@ -176,4 +174,5 @@ if __name__ == "__main__":
     with open(test_output_json, "wt") as f:
         json.dump(result_dict, f)
 
-    print(f"Finished benchmark, metrics exported to {test_output_json}.")
+    print(f"Finished benchmark, metrics exported to {test_output_json}:")
+    print(result_dict)
