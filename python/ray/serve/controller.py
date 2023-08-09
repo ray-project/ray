@@ -196,6 +196,12 @@ class ServeController:
         self._http_proxy_nodes = set()
         self._update_http_proxy_nodes()
 
+        # Track the number of times the controller has started
+        metrics.Counter(
+            "serve_controller_num_starts",
+            description="The number of times that controller has started.",
+        ).inc()
+
     def check_alive(self) -> None:
         """No-op to check if this controller is alive."""
         return
@@ -331,6 +337,10 @@ class ServeController:
                 )
                 if not self.done_recovering_event.is_set() and not any_recovering:
                     self.done_recovering_event.set()
+                    logger.info(
+                        "Finished recovering deployments after "
+                        f"{time.time() - start_time}s."
+                    )
             except Exception:
                 logger.exception("Exception updating deployment state.")
 
@@ -843,6 +853,13 @@ class ServeController:
             )
         return deployment_route_list.SerializeToString()
 
+    def list_deployment_names(self) -> List[str]:
+        """Gets the current list of all deployments' names.
+
+        Returns: deployment names, in the format {app-name}_{deployment-name}.
+        """
+        return self.deployment_state_manager._deployment_states.keys()
+
     def get_serve_instance_details(self) -> Dict:
         """Gets details on all applications on the cluster and system-level info.
 
@@ -952,6 +969,15 @@ class ServeController:
 
         Currently, this is the OpenAPI docs path for FastAPI-integrated applications."""
         return self.application_state_manager.get_docs_path(name)
+
+    def get_ingress_deployment_name(self, app_name: str) -> Optional[str]:
+        """Name of the ingress deployment in an application.
+
+        Returns:
+            Ingress deployment name (str): if the application exists.
+            None: if the application does not exist.
+        """
+        return self.application_state_manager.get_ingress_deployment_name(app_name)
 
     def delete_apps(self, names: Iterable[str]):
         """Delete applications based on names
