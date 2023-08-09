@@ -240,7 +240,7 @@ class Monitor:
     def update_load_metrics(self):
         """Fetches resource usage data from GCS and updates load metrics."""
 
-        response = self.gcs_client.GetAllResourceUsage(timeout=60)
+        response = self.gcs_client.get_all_resource_usage(timeout=60)
         resources_batch_data = response.resource_usage_data
         log_resource_batch_data_if_desired(resources_batch_data)
 
