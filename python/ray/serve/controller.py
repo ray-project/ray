@@ -196,6 +196,12 @@ class ServeController:
         self._http_proxy_nodes = set()
         self._update_http_proxy_nodes()
 
+        # Track the number of times the controller has started
+        metrics.Counter(
+            "serve_controller_num_starts",
+            description="The number of times that controller has started.",
+        ).inc()
+
     def check_alive(self) -> None:
         """No-op to check if this controller is alive."""
         return
@@ -331,6 +337,10 @@ class ServeController:
                 )
                 if not self.done_recovering_event.is_set() and not any_recovering:
                     self.done_recovering_event.set()
+                    logger.info(
+                        "Finished recovering deployments after "
+                        f"{time.time() - start_time}s."
+                    )
             except Exception:
                 logger.exception("Exception updating deployment state.")
 

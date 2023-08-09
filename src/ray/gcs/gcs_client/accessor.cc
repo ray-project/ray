@@ -700,6 +700,21 @@ Status NodeResourceInfoAccessor::AsyncGetAllAvailableResources(
   return Status::OK();
 }
 
+Status NodeResourceInfoAccessor::AsyncGetDrainingNodes(
+    const ItemCallback<std::vector<NodeID>> &callback) {
+  rpc::GetDrainingNodesRequest request;
+  client_impl_->GetGcsRpcClient().GetDrainingNodes(
+      request, [callback](const Status &status, const rpc::GetDrainingNodesReply &reply) {
+        RAY_CHECK_OK(status);
+        std::vector<NodeID> draining_nodes;
+        for (const auto &node_id : VectorFromProtobuf(reply.node_ids())) {
+          draining_nodes.emplace_back(NodeID::FromBinary(node_id));
+        }
+        callback(draining_nodes);
+      });
+  return Status::OK();
+}
+
 Status NodeResourceInfoAccessor::AsyncReportResourceUsage(
     const std::shared_ptr<rpc::ResourcesData> &data_ptr, const StatusCallback &callback) {
   absl::MutexLock lock(&mutex_);
