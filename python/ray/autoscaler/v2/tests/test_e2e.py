@@ -171,28 +171,30 @@ def test_placement_group_removal_idle_node():
             },
         },
     )
+    try:
+        cluster.start()
+        ray.init("auto")
 
-    cluster.start()
-    ray.init("auto")
+        # Schedule a pg on nodes
+        pg = placement_group([{"CPU": 2}] * 3, strategy="STRICT_SPREAD")
+        ray.get(pg.ready())
 
-    # Schedule a pg on nodes
-    pg = placement_group([{"CPU": 2}] * 3, strategy="STRICT_SPREAD")
-    ray.get(pg.ready())
+        time.sleep(2)
+        remove_placement_group(pg)
 
-    time.sleep(2)
-    remove_placement_group(pg)
+        time.sleep(1)
+        from ray.autoscaler.v2.sdk import get_cluster_status
 
-    time.sleep(1)
-    from ray.autoscaler.v2.sdk import get_cluster_status
+        cluster_state = get_cluster_status()
 
-    cluster_state = get_cluster_status()
-
-    # Verify that nodes are idle.
-    assert len((cluster_state.healthy_nodes)) == 3
-    for node in cluster_state.healthy_nodes:
-        assert node.node_status == "IDLE"
-        assert node.resource_usage.idle_time_ms > 1000
-
+        # Verify that nodes are idle.
+        assert len((cluster_state.healthy_nodes)) == 3
+        for node in cluster_state.healthy_nodes:
+            assert node.node_status == "IDLE"
+            assert node.resource_usage.idle_time_ms > 1000
+    finally:
+        ray.shutdown()
+        cluster.shutdown()
 
 if __name__ == "__main__":
     if os.environ.get("PARALLEL_CI"):
