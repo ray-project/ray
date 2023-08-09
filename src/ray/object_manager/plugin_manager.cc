@@ -48,9 +48,9 @@ void PluginManager::LoadObjectStorePlugin() {
   }
 
   PluginClientCreator client_creator =
-      reinterpret_cast<PluginClientCreator>(dlsym(handle, "CreateNewStoreClient"));
+      reinterpret_cast<PluginClientCreator>(dlsym(handle, "CreateClient"));
   if (!client_creator) {
-    std::cerr << "Failed to get CreateNewStoreClient function: " << dlerror()
+    std::cerr << "Failed to get CreateClient function: " << dlerror()
               << std::endl;
     dlclose(handle);
     return;
@@ -58,9 +58,9 @@ void PluginManager::LoadObjectStorePlugin() {
   client_creators_[plugin_name_] = client_creator;
 
   PluginRunnerCreator runner_creator =
-      reinterpret_cast<PluginRunnerCreator>(dlsym(handle, "CreateNewStoreRunner"));
+      reinterpret_cast<PluginRunnerCreator>(dlsym(handle, "CreateRunner"));
   if (!runner_creator) {
-    std::cerr << "Failed to get CreateNewStoreRunner function: " << dlerror()
+    std::cerr << "Failed to get CreateRunner function: " << dlerror()
               << std::endl;
     dlclose(handle);
     return;
@@ -73,6 +73,7 @@ void PluginManager::LoadObjectStorePlugin() {
 
 std::shared_ptr<plasma::ObjectStoreClientInterface>
 PluginManager::CreateObjectStoreClientInstance(const std::string &plugin_name) {
+
   if (plugin_name == "default") {
     return std::any_cast<DefaultClientCreator>(client_creators_[plugin_name])();
   }
@@ -100,9 +101,9 @@ void PluginManager::LoadObjectStoreClientPlugin() {
   }
 
   PluginClientCreator client_creator =
-      reinterpret_cast<PluginClientCreator>(dlsym(handle, "CreateNewStoreClient"));
+      reinterpret_cast<PluginClientCreator>(dlsym(handle, "CreateClient"));
   if (!client_creator) {
-    std::cerr << "Failed to get CreateNewStoreClient function: " << dlerror()
+    std::cerr << "Failed to get CreateClient function: " << dlerror()
               << std::endl;
     dlclose(handle);
     return;
@@ -139,16 +140,12 @@ void PluginManager::SetObjectStores(const std::string plugin_name,
   if (plugin_name != "default") {
     LoadObjectStorePlugin();
   } else {
-  
+
     // Parse the plugin parameters
     json params_map = json::parse(plugin_params);
     std::string store_socket_name = params_map.value("store_socket_name", "");
     int64_t object_store_memory = params_map["object_store_memory"];
-    bool huge_pages = false;
-    if (params_map.contains("huge_pages") && !params_map["huge_pages"].is_null() &&
-        params_map["huge_pages"] == true) {
-      huge_pages = true;
-    }
+    bool huge_pages = params_map.value("huge_pages", false);
     std::string plasma_directory = params_map.value("plasma_directory", "");
     std::string fallback_directory = params_map.value("fallback_directory", "");
 
@@ -169,3 +166,4 @@ void PluginManager::SetObjectStores(const std::string plugin_name,
 }
 
 }  // namespace ray
+

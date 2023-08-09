@@ -16,7 +16,7 @@ namespace ray {
 
 class PluginManager {
   public:
-  
+
   using DefaultClientCreator = std::shared_ptr<plasma::ObjectStoreClientInterface> (*)();
   using DefaultRunnerCreator = std::unique_ptr<plasma::ObjectStoreRunnerInterface> (*)(
                                    std::string,
@@ -40,10 +40,10 @@ class PluginManager {
       const std::string& plugin_name);
 
 
-  /// Set up object store clients according to the name of the plugin, the path 
-  /// of the plugin shared library, and also the provided plugin parameters. 
-  /// If the plugin name is 'default', it would load the current PlasmaClient as the 
-  /// client instance; if the plugin name is other than 'default', it would load the 
+  /// Set up object store clients according to the name of the plugin, the path
+  /// of the plugin shared library, and also the provided plugin parameters.
+  /// If the plugin name is 'default', it would load the current PlasmaClient as the
+  /// client instance; if the plugin name is other than 'default', it would load the
   /// client creators function from the shared library provided from the plugin path.
   ///
   /// \param plugin_name The name of the object store client plugin.
@@ -53,14 +53,13 @@ class PluginManager {
                              const std::string plugin_path,
                              const std::string plugin_params);
 
-  
 
-  /// Set up both object store clients and runners according to the name of the 
-  /// plugin, the path of the plugin shared library, and also the provided 
-  /// plugin parameters. 
-  /// 
+  /// Set up both object store clients and runners according to the name of the
+  /// plugin, the path of the plugin shared library, and also the provided
+  /// plugin parameters.
+  ///
   /// If the plugin name is 'default', it would load the current PlasmaClient and
-  /// PlasmaStoreRunner as the client/store runner instance; if the plugin name 
+  /// PlasmaStoreRunner as the client/store runner instance; if the plugin name
   /// is other than 'default', it would load the client/runner creators function
   /// from the shared library provided by the plugin path.
   ///
@@ -77,9 +76,9 @@ class PluginManager {
   void LoadObjectStorePlugin();
 
   /// Load the object store client creators from the shared library.
-	///
+  ///
   void LoadObjectStoreClientPlugin();
-  
+
 
   /// Get an instance from the singleton PluginManager.
   ///
@@ -92,7 +91,7 @@ class PluginManager {
   PluginManager& operator=(PluginManager &&) = delete;
   PluginManager(){}
   ~PluginManager(){}
-  
+
   /// Define parameter struct for creating default runner
   struct DefaultRunnerParams {
     std::string store_socket_name;
@@ -101,7 +100,7 @@ class PluginManager {
     std::string plasma_directory;
     std::string fallback_directory;
   };
-  
+
   /// Parameter struct for creating default object store runner
   DefaultRunnerParams default_runner_params_;
 

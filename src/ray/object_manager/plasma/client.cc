@@ -165,6 +165,8 @@ class PlasmaClient::Impl : public std::enable_shared_from_this<PlasmaClient::Imp
 
   int64_t store_capacity() { return store_capacity_; }
 
+  bool IsGlobalShm() { return is_global_shm_; }
+
  private:
   /// Helper method to read and process the reply of a create request.
   Status HandleCreateReply(const ObjectID &object_id,
@@ -224,6 +226,8 @@ class PlasmaClient::Impl : public std::enable_shared_from_this<PlasmaClient::Imp
   std::unordered_set<ObjectID> deletion_cache_;
   /// A mutex which protects this class.
   std::recursive_mutex client_mutex_;
+  /// A bool to indicate if global shared memory is used.
+  bool is_global_shm_ = false;
 };
 
 PlasmaBuffer::~PlasmaBuffer() { RAY_UNUSED(client_->Release(object_id_)); }
@@ -853,6 +857,11 @@ bool PlasmaClient::IsInUse(const ObjectID &object_id) {
   return impl_->IsInUse(object_id);
 }
 
+bool PlasmaClient::IsGlobalShm() {
+  return impl_->IsGlobalShm();
+}
+
 int64_t PlasmaClient::store_capacity() { return impl_->store_capacity(); }
 
 }  // namespace plasma
+

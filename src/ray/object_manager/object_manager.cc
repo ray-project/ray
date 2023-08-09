@@ -33,7 +33,7 @@ ObjectStoreRunner::ObjectStoreRunner(const ObjectManagerConfig &config,
                                      AddObjectCallback add_object_callback,
                                      DeleteObjectCallback delete_object_callback) {
   plasma::plasma_store_runner = std::move(store_runner);
-  
+
   // Initialize object store.
   std::map<std::string, std::string> emptyMap;
   store_thread_ = std::thread(&plasma::ObjectStoreRunnerInterface::Start,
@@ -83,7 +83,7 @@ ObjectManager::ObjectManager(
       pull_retry_timer_(*main_service_,
                         boost::posix_time::milliseconds(config.timer_freq_ms)) {
   RAY_CHECK(config_.rpc_service_threads_number > 0);
-  
+
   PluginManager& plugin_manager = PluginManager::GetInstance();
   json params_map = json::parse(config.plugin_params);
   if (config.plugin_name == "default"){
@@ -94,7 +94,7 @@ ObjectManager::ObjectManager(
     params_map["huge_pages"] = config.huge_pages;
   }
   plugin_manager.SetObjectStores(config.plugin_name,
-                                 config.plugin_path, 
+                                 config.plugin_path,
                                  params_map.dump());
   object_store_internal_ = std::make_unique<ObjectStoreRunner>(
           config,
@@ -122,6 +122,7 @@ ObjectManager::ObjectManager(
                 "ObjectManager.ObjectDeleted");
           });
   buffer_pool_store_client_ = plugin_manager.CreateObjectStoreClientInstance(config.plugin_name);
+  //buffer_pool_store_client_ = plugin_manager.CreateObjectStoreClientInstance("");
   buffer_pool_ = std::make_shared<ObjectBufferPool>(buffer_pool_store_client_, config_.object_chunk_size);
   //RAY_LOG(INFO) << buffer_pool_store_client_->DebugString();
 
@@ -827,4 +828,5 @@ void ObjectManager::Tick(const boost::system::error_code &e) {
 }
 
 }  // namespace ray
+
 

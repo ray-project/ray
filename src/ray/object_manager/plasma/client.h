@@ -214,6 +214,11 @@ class PlasmaClient : public ObjectStoreClientInterface {
   /// \return Memory capacity of the store in bytes.
   int64_t store_capacity() override;
 
+  /// Get if global shared memory is used.
+  ///
+  /// \return True if global shared memory is used, other then false.
+  bool IsGlobalShm() override;
+
   Status Authenticate(const std::string& user,
                       const std::string& passwd) override {
     return Status::OK();
@@ -223,7 +228,7 @@ class PlasmaClient : public ObjectStoreClientInterface {
     return Status::OK();
   };
 
-  void MemCpy(void* dest, void* src, size_t len) override {
+  void MemCpy(void* dest, const void* src, size_t len) override {
     memcpy(dest, src, len);
   };
 
@@ -252,3 +257,4 @@ class PlasmaClient : public ObjectStoreClientInterface {
 };
 
 } // namespace plasma
+

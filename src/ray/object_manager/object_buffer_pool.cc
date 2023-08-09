@@ -136,7 +136,8 @@ void ObjectBufferPool::WriteChunk(const ObjectID &object_id,
   RAY_CHECK(data.size() == chunk_info.buffer_length)
       << "size mismatch!  data size: " << data.size()
       << " chunk size: " << chunk_info.buffer_length;
-  std::memcpy(chunk_info.data, data.data(), chunk_info.buffer_length);
+  //std::memcpy(chunk_info.data, data.data(), chunk_info.buffer_length);
+  store_client_->MemCpy(chunk_info.data, data.data(), chunk_info.buffer_length);
   it->second.chunk_state.at(chunk_index) = CreateChunkState::SEALED;
   it->second.num_seals_remaining--;
   if (it->second.num_seals_remaining == 0) {
@@ -301,4 +302,5 @@ std::string ObjectBufferPool::DebugString() const {
 }
 
 }  // namespace ray
+
 

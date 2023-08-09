@@ -56,7 +56,7 @@ BufferTracker::UsedObjects() const {
 
 CoreWorkerPlasmaStoreProvider::CoreWorkerPlasmaStoreProvider(
     const std::string &store_socket,
-    const std::string &plugin_name, 
+    const std::string &plugin_name,
     const std::string &plugin_path,
     const std::string &plugin_params,
     const std::shared_ptr<raylet::RayletClient> raylet_client,
@@ -105,7 +105,8 @@ Status CoreWorkerPlasmaStoreProvider::Put(const RayObject &object,
   // not throw an error.
   if (data != nullptr) {
     if (object.HasData()) {
-      memcpy(data->Data(), object.GetData()->Data(), object.GetData()->Size());
+      //memcpy(data->Data(), object.GetData()->Data(), object.GetData()->Size());
+      store_client_->MemCpy(data->Data(), object.GetData()->Data(), object.GetData()->Size());
     }
     RAY_RETURN_NOT_OK(Seal(object_id));
     if (object_exists) {
@@ -278,6 +279,14 @@ Status CoreWorkerPlasmaStoreProvider::Get(
     const WorkerContext &ctx,
     absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> *results,
     bool *got_exception) {
+  if (store_client_->IsGlobalShm()) {
+    std::vector<ObjectID> obj_list;
+    for (const auto& id : object_ids) {
+      obj_list.emplace_back(id);
+    }
+    return GetIfLocal(obj_list, results);
+  }
+
   int64_t batch_size = RayConfig::instance().worker_fetch_request_size();
   std::vector<ObjectID> batch_ids;
   absl::flat_hash_set<ObjectID> remaining(object_ids.begin(), object_ids.end());
@@ -492,4 +501,5 @@ Status CoreWorkerPlasmaStoreProvider::WarmupStore() {
 
 }  // namespace core
 }  // namespace ray
+
 

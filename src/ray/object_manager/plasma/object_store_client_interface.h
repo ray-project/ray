@@ -175,7 +175,7 @@ class ObjectStoreClientInterface : public std::enable_shared_from_this<ObjectSto
   /// \param src  The source address.
   /// \param len  Number of bytes to copy.
   virtual void MemCpy(void* dest,
-                      void* src,
+                      const void* src,
                       size_t len) = 0;
 
   /// Create an object in the Plasma Store. Any metadata for this object must be
@@ -244,6 +244,13 @@ class ObjectStoreClientInterface : public std::enable_shared_from_this<ObjectSto
   /// \return Memory capacity of the store in bytes.
   virtual int64_t store_capacity() = 0;
 
+  /// Get if global shared memory is used.
+  ///
+  /// \return True if global shared memory is used, other then false.
+  virtual bool IsGlobalShm() = 0;
+
+
 };
 
 }  // namespace plasma
+
