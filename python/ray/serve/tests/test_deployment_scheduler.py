@@ -13,7 +13,7 @@ from ray.serve._private.deployment_scheduler import (
     DeploymentDownscaleRequest,
 )
 from ray.serve._private.utils import get_head_node_id
-from ray.serve._private.cluster_node_info_cache_factory import (
+from ray.serve._private.default_impl import (
     create_cluster_node_info_cache,
 )
 

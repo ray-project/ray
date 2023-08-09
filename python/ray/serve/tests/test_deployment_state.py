@@ -404,7 +404,7 @@ def mock_deployment_state(request) -> Tuple[DeploymentState, Mock, Mock]:
                 cluster_node_info_cache,
                 mock_save_checkpoint_fn,
             )
-            yield deployment_state, timer
+            yield deployment_state, timer, cluster_node_info_cache
         else:
             deployment_state = DeploymentState(
                 "name",
@@ -416,7 +416,7 @@ def mock_deployment_state(request) -> Tuple[DeploymentState, Mock, Mock]:
                 mock_save_checkpoint_fn,
             )
 
-            yield deployment_state, timer
+            yield deployment_state, timer, cluster_node_info_cache
 
 
 def replica(version: Optional[DeploymentVersion] = None) -> VersionedReplica:
@@ -654,8 +654,8 @@ def check_counts(
 
 @pytest.mark.parametrize("mock_deployment_state", [True, False], indirect=True)
 def test_create_delete_single_replica(mock_deployment_state):
-    deployment_state, timer = mock_deployment_state
-    deployment_state._cluster_node_info_cache.alive_node_ids = {"node-id"}
+    deployment_state, timer, cluster_node_info_cache = mock_deployment_state
+    cluster_node_info_cache.alive_node_ids = {"node-id"}
 
     b_info_1, b_version_1 = deployment_info()
     updating = deployment_state.deploy(b_info_1)
@@ -703,8 +703,8 @@ def test_create_delete_single_replica(mock_deployment_state):
 
 @pytest.mark.parametrize("mock_deployment_state", [True, False], indirect=True)
 def test_force_kill(mock_deployment_state):
-    deployment_state, timer = mock_deployment_state
-    deployment_state._cluster_node_info_cache.alive_node_ids = {"node-id"}
+    deployment_state, timer, cluster_node_info_cache = mock_deployment_state
+    cluster_node_info_cache.alive_node_ids = {"node-id"}
 
     grace_period_s = 10
     b_info_1, b_version_1 = deployment_info(graceful_shutdown_timeout_s=grace_period_s)
@@ -762,8 +762,8 @@ def test_force_kill(mock_deployment_state):
 @pytest.mark.parametrize("mock_deployment_state", [True, False], indirect=True)
 def test_redeploy_same_version(mock_deployment_state):
     # Redeploying with the same version and code should do nothing.
-    deployment_state, timer = mock_deployment_state
-    deployment_state._cluster_node_info_cache.alive_node_ids = {"node-id"}
+    deployment_state, timer, cluster_node_info_cache = mock_deployment_state
+    cluster_node_info_cache.alive_node_ids = {"node-id"}
 
     b_info_1, b_version_1 = deployment_info(version="1")
     updating = deployment_state.deploy(b_info_1)
@@ -822,8 +822,8 @@ def test_redeploy_same_version(mock_deployment_state):
 def test_redeploy_no_version(mock_deployment_state):
     # Redeploying with no version specified (`None`) should always redeploy
     # the replicas.
-    deployment_state, timer = mock_deployment_state
-    deployment_state._cluster_node_info_cache.alive_node_ids = {"node-id"}
+    deployment_state, timer, cluster_node_info_cache = mock_deployment_state
+    cluster_node_info_cache.alive_node_ids = {"node-id"}
 
     b_info_1, b_version_1 = deployment_info(version=None)
     updating = deployment_state.deploy(b_info_1)
@@ -899,8 +899,8 @@ def test_redeploy_no_version(mock_deployment_state):
 @pytest.mark.parametrize("mock_deployment_state", [True, False], indirect=True)
 def test_redeploy_new_version(mock_deployment_state):
     # Redeploying with a new version should start a new replica.
-    deployment_state, timer = mock_deployment_state
-    deployment_state._cluster_node_info_cache.alive_node_ids = {"node-id"}
+    deployment_state, timer, cluster_node_info_cache = mock_deployment_state
+    cluster_node_info_cache.alive_node_ids = {"node-id"}
 
     b_info_1, b_version_1 = deployment_info(version="1")
     updating = deployment_state.deploy(b_info_1)
@@ -1023,8 +1023,8 @@ def test_redeploy_new_version(mock_deployment_state):
 def test_deploy_new_config_same_code_version(mock_deployment_state, option, value):
     # Deploying a new config with the same version should not deploy a new
     # replica.
-    deployment_state, timer = mock_deployment_state
-    deployment_state._cluster_node_info_cache.alive_node_ids = {"node-id"}
+    deployment_state, timer, cluster_node_info_cache = mock_deployment_state
+    cluster_node_info_cache.alive_node_ids = {"node-id"}
 
     b_info_1, b_version_1 = deployment_info(version="1")
     updated = deployment_state.deploy(b_info_1)
@@ -1084,8 +1084,8 @@ def test_deploy_new_config_same_code_version(mock_deployment_state, option, valu
 @pytest.mark.parametrize("mock_deployment_state", [True, False], indirect=True)
 def test_deploy_new_config_same_code_version_2(mock_deployment_state):
     # Make sure we don't transition from STARTING to UPDATING directly.
-    deployment_state, timer = mock_deployment_state
-    deployment_state._cluster_node_info_cache.alive_node_ids = {"node-id"}
+    deployment_state, timer, cluster_node_info_cache = mock_deployment_state
+    cluster_node_info_cache.alive_node_ids = {"node-id"}
 
     b_info_1, b_version_1 = deployment_info(version="1")
     updated = deployment_state.deploy(b_info_1)
@@ -1144,8 +1144,8 @@ def test_deploy_new_config_same_code_version_2(mock_deployment_state):
 @pytest.mark.parametrize("mock_deployment_state", [True, False], indirect=True)
 def test_deploy_new_config_new_version(mock_deployment_state):
     # Deploying a new config with a new version should deploy a new replica.
-    deployment_state, timer = mock_deployment_state
-    deployment_state._cluster_node_info_cache.alive_node_ids = {"node-id"}
+    deployment_state, timer, cluster_node_info_cache = mock_deployment_state
+    cluster_node_info_cache.alive_node_ids = {"node-id"}
 
     b_info_1, b_version_1 = deployment_info(version="1")
     updating = deployment_state.deploy(b_info_1)
@@ -1209,9 +1209,9 @@ def test_deploy_new_config_new_version(mock_deployment_state):
 
 
 @pytest.mark.parametrize("mock_deployment_state", [True, False], indirect=True)
-def test_draining_replicas(mock_deployment_state):
-    deployment_state, timer = mock_deployment_state
-    deployment_state._cluster_node_info_cache.alive_node_ids = {"node-1", "node-2"}
+def test_stop_replicas_on_draining_nodes(mock_deployment_state):
+    deployment_state, timer, cluster_node_info_cache = mock_deployment_state
+    cluster_node_info_cache.alive_node_ids = {"node-1", "node-2"}
 
     b_info_1, b_version_1 = deployment_info(num_replicas=2, version="1")
     updating = deployment_state.deploy(b_info_1)
@@ -1225,7 +1225,7 @@ def test_draining_replicas(mock_deployment_state):
     assert deployment_state.curr_status_info.status == DeploymentStatus.UPDATING
 
     # Drain node-2.
-    deployment_state._cluster_node_info_cache.draining_node_ids = {"node-2"}
+    cluster_node_info_cache.draining_node_ids = {"node-2"}
 
     # Since the replicas are still starting and we don't know the actor node id
     # yet so nothing happens
@@ -1246,7 +1246,7 @@ def test_draining_replicas(mock_deployment_state):
     )
 
     # A new node is started.
-    deployment_state._cluster_node_info_cache.alive_node_ids = {
+    cluster_node_info_cache.alive_node_ids = {
         "node-1",
         "node-2",
         "node-3",
@@ -1268,10 +1268,8 @@ def test_draining_replicas(mock_deployment_state):
 @pytest.mark.parametrize("mock_deployment_state", [True, False], indirect=True)
 def test_initial_deploy_no_throttling(mock_deployment_state):
     # All replicas should be started at once for a new deployment.
-    deployment_state, timer = mock_deployment_state
-    deployment_state._cluster_node_info_cache.alive_node_ids = {
-        str(i) for i in range(10)
-    }
+    deployment_state, timer, cluster_node_info_cache = mock_deployment_state
+    cluster_node_info_cache.alive_node_ids = {str(i) for i in range(10)}
 
     b_info_1, b_version_1 = deployment_info(num_replicas=10, version="1")
     updating = deployment_state.deploy(b_info_1)
@@ -1298,10 +1296,8 @@ def test_new_version_deploy_throttling(mock_deployment_state):
     # All replicas should be started at once for a new deployment.
     # When the version is updated, it should be throttled. The throttling
     # should apply to both code version and user config updates.
-    deployment_state, timer = mock_deployment_state
-    deployment_state._cluster_node_info_cache.alive_node_ids = {
-        str(i) for i in range(10)
-    }
+    deployment_state, timer, cluster_node_info_cache = mock_deployment_state
+    cluster_node_info_cache.alive_node_ids = {str(i) for i in range(10)}
 
     b_info_1, b_version_1 = deployment_info(
         num_replicas=10, version="1", user_config="1"
@@ -1528,10 +1524,8 @@ def test_new_version_deploy_throttling(mock_deployment_state):
 def test_reconfigure_throttling(mock_deployment_state):
     # All replicas should be started at once for a new deployment.
     # When the version is updated, it should be throttled.
-    deployment_state, timer = mock_deployment_state
-    deployment_state._cluster_node_info_cache.alive_node_ids = {
-        str(i) for i in range(2)
-    }
+    deployment_state, timer, cluster_node_info_cache = mock_deployment_state
+    cluster_node_info_cache.alive_node_ids = {str(i) for i in range(2)}
 
     b_info_1, b_version_1 = deployment_info(
         num_replicas=2, version="1", user_config="1"
@@ -1609,8 +1603,8 @@ def test_new_version_and_scale_down(mock_deployment_state):
     # Test the case when we reduce the number of replicas and change the
     # version at the same time. First the number of replicas should be
     # turned down, then the rolling update should happen.
-    deployment_state, timer = mock_deployment_state
-    deployment_state._cluster_node_info_cache.alive_node_ids = {"node-id"}
+    deployment_state, timer, cluster_node_info_cache = mock_deployment_state
+    cluster_node_info_cache.alive_node_ids = {"node-id"}
 
     b_info_1, b_version_1 = deployment_info(num_replicas=10, version="1")
     updating = deployment_state.deploy(b_info_1)
@@ -1753,7 +1747,7 @@ def test_new_version_and_scale_up(mock_deployment_state):
     # Test the case when we increase the number of replicas and change the
     # version at the same time. The new replicas should all immediately be
     # turned up. When they're up, rolling update should trigger.
-    deployment_state, timer = mock_deployment_state
+    deployment_state, timer, cluster_node_info_cache = mock_deployment_state
 
     b_info_1, b_version_1 = deployment_info(num_replicas=2, version="1")
     updating = deployment_state.deploy(b_info_1)
@@ -1852,10 +1846,8 @@ def test_new_version_and_scale_up(mock_deployment_state):
 
 @pytest.mark.parametrize("mock_deployment_state", [True, False], indirect=True)
 def test_health_check(mock_deployment_state):
-    deployment_state, timer = mock_deployment_state
-    deployment_state._cluster_node_info_cache.alive_node_ids = {
-        str(i) for i in range(2)
-    }
+    deployment_state, timer, cluster_node_info_cache = mock_deployment_state
+    cluster_node_info_cache.alive_node_ids = {str(i) for i in range(2)}
 
     b_info_1, b_version_1 = deployment_info(num_replicas=2, version="1")
     updating = deployment_state.deploy(b_info_1)
@@ -1918,10 +1910,8 @@ def test_health_check(mock_deployment_state):
 
 @pytest.mark.parametrize("mock_deployment_state", [True, False], indirect=True)
 def test_update_while_unhealthy(mock_deployment_state):
-    deployment_state, timer = mock_deployment_state
-    deployment_state._cluster_node_info_cache.alive_node_ids = {
-        str(i) for i in range(2)
-    }
+    deployment_state, timer, cluster_node_info_cache = mock_deployment_state
+    cluster_node_info_cache.alive_node_ids = {str(i) for i in range(2)}
 
     b_info_1, b_version_1 = deployment_info(num_replicas=2, version="1")
     updating = deployment_state.deploy(b_info_1)
@@ -2069,10 +2059,8 @@ def test_deploy_with_consistent_constructor_failure(mock_deployment_state):
 
     The deployment should get marked FAILED.
     """
-    deployment_state, timer = mock_deployment_state
-    deployment_state._cluster_node_info_cache.alive_node_ids = {
-        str(i) for i in range(2)
-    }
+    deployment_state, timer, cluster_node_info_cache = mock_deployment_state
+    cluster_node_info_cache.alive_node_ids = {str(i) for i in range(2)}
 
     b_info_1, b_version_1 = deployment_info(num_replicas=2)
     updating = deployment_state.deploy(b_info_1)
@@ -2101,10 +2089,8 @@ def test_deploy_with_partial_constructor_failure(mock_deployment_state):
 
     Same testing for same test case in test_deploy.py.
     """
-    deployment_state, timer = mock_deployment_state
-    deployment_state._cluster_node_info_cache.alive_node_ids = {
-        str(i) for i in range(2)
-    }
+    deployment_state, timer, cluster_node_info_cache = mock_deployment_state
+    cluster_node_info_cache.alive_node_ids = {str(i) for i in range(2)}
 
     b_info_1, b_version_1 = deployment_info(num_replicas=2)
     updating = deployment_state.deploy(b_info_1)
@@ -2195,10 +2181,8 @@ def test_deploy_with_transient_constructor_failure(mock_deployment_state):
 
     Same testing for same test case in test_deploy.py.
     """
-    deployment_state, timer = mock_deployment_state
-    deployment_state._cluster_node_info_cache.alive_node_ids = {
-        str(i) for i in range(2)
-    }
+    deployment_state, timer, cluster_node_info_cache = mock_deployment_state
+    cluster_node_info_cache.alive_node_ids = {str(i) for i in range(2)}
 
     b_info_1, b_version_1 = deployment_info(num_replicas=2)
     updating = deployment_state.deploy(b_info_1)
@@ -2233,10 +2217,8 @@ def test_deploy_with_transient_constructor_failure(mock_deployment_state):
 @pytest.mark.parametrize("mock_deployment_state", [False], indirect=True)
 def test_exponential_backoff(mock_deployment_state):
     """Test exponential backoff."""
-    deployment_state, timer = mock_deployment_state
-    deployment_state._cluster_node_info_cache.alive_node_ids = {
-        str(i) for i in range(2)
-    }
+    deployment_state, timer, cluster_node_info_cache = mock_deployment_state
+    cluster_node_info_cache.alive_node_ids = {str(i) for i in range(2)}
 
     b_info_1, b_version_1 = deployment_info(num_replicas=2)
     updating = deployment_state.deploy(b_info_1)
@@ -2286,7 +2268,9 @@ def test_exponential_backoff(mock_deployment_state):
 
 
 @pytest.fixture
-def mock_deployment_state_manager_full(request) -> Tuple[DeploymentStateManager, Mock]:
+def mock_deployment_state_manager_full(
+    request,
+) -> Tuple[DeploymentStateManager, Mock, Mock]:
     """Fully mocked deployment state manager.
 
     i.e kv store and gcs client is mocked so we don't need to initialize
@@ -2310,6 +2294,7 @@ def mock_deployment_state_manager_full(request) -> Tuple[DeploymentStateManager,
     ):
 
         kv_store = MockKVStore()
+        cluster_node_info_cache = MockClusterNodeInfoCache()
 
         def create_deployment_state_manager(
             actor_names=None, is_driver_deployment=False
@@ -2323,10 +2308,10 @@ def mock_deployment_state_manager_full(request) -> Tuple[DeploymentStateManager,
                 kv_store,
                 mock_long_poll,
                 actor_names,
-                MockClusterNodeInfoCache(),
+                cluster_node_info_cache,
             )
 
-        yield create_deployment_state_manager, timer
+        yield create_deployment_state_manager, timer, cluster_node_info_cache
 
 
 @pytest.mark.parametrize("is_driver_deployment", [True, False])
@@ -2335,9 +2320,13 @@ def test_recover_state_from_replica_names(
 ):
     """Test recover deployment state."""
     tag = "test_deployment"
-    create_deployment_state_manager, _ = mock_deployment_state_manager_full
+    (
+        create_deployment_state_manager,
+        _,
+        cluster_node_info_cache,
+    ) = mock_deployment_state_manager_full
     deployment_state_manager = create_deployment_state_manager()
-    deployment_state_manager._cluster_node_info_cache.alive_node_ids = {"node-id"}
+    cluster_node_info_cache.alive_node_ids = {"node-id"}
 
     # Deploy deployment with version "1" and one replica
     info1, version1 = deployment_info(
@@ -2412,9 +2401,13 @@ def test_recover_during_rolling_update(
     with the target version.
     """
     tag = "test_deployment"
-    create_deployment_state_manager, _ = mock_deployment_state_manager_full
+    (
+        create_deployment_state_manager,
+        _,
+        cluster_node_info_cache,
+    ) = mock_deployment_state_manager_full
     deployment_state_manager = create_deployment_state_manager()
-    deployment_state_manager._cluster_node_info_cache.alive_node_ids = {"node-id"}
+    cluster_node_info_cache.alive_node_ids = {"node-id"}
 
     # Step 1: Create some deployment info with actors in running state
     info1, version1 = deployment_info(
@@ -2457,7 +2450,7 @@ def test_recover_during_rolling_update(
     new_deployment_state_manager = create_deployment_state_manager(
         [ReplicaName.prefix + mocked_replica.replica_tag]
     )
-    new_deployment_state_manager._cluster_node_info_cache.alive_node_ids = {"node-id"}
+    cluster_node_info_cache.alive_node_ids = {"node-id"}
 
     # New deployment state should be created and one replica should
     # be RECOVERING with last-checkpointed target version "2"
@@ -2524,7 +2517,7 @@ def test_recover_during_rolling_update(
 
 
 @pytest.fixture
-def mock_deployment_state_manager(request) -> Tuple[DeploymentStateManager, Mock]:
+def mock_deployment_state_manager(request) -> Tuple[DeploymentStateManager, Mock, Mock]:
     ray.init()
     timer = MockTimer()
     with patch(
@@ -2540,6 +2533,7 @@ def mock_deployment_state_manager(request) -> Tuple[DeploymentStateManager, Mock
     ) as mock_long_poll:
 
         kv_store = RayInternalKVStore("test")
+        cluster_node_info_cache = MockClusterNodeInfoCache()
         all_current_actor_names = []
         deployment_state_manager = DeploymentStateManager(
             "name",
@@ -2547,10 +2541,10 @@ def mock_deployment_state_manager(request) -> Tuple[DeploymentStateManager, Mock
             kv_store,
             mock_long_poll,
             all_current_actor_names,
-            MockClusterNodeInfoCache(),
+            cluster_node_info_cache,
         )
 
-        yield deployment_state_manager, timer
+        yield deployment_state_manager, timer, cluster_node_info_cache
     ray.shutdown()
 
 
@@ -2560,8 +2554,12 @@ def test_shutdown(mock_deployment_state_manager, is_driver_deployment):
     Test that shutdown waits for all deployments to be deleted and they
     are force-killed without a grace period.
     """
-    deployment_state_manager, timer = mock_deployment_state_manager
-    deployment_state_manager._cluster_node_info_cache.alive_node_ids = {"node-id"}
+    (
+        deployment_state_manager,
+        timer,
+        cluster_node_info_cache,
+    ) = mock_deployment_state_manager
+    cluster_node_info_cache.alive_node_ids = {"node-id"}
 
     deployment_name = "test"
 
@@ -2632,8 +2630,8 @@ def test_cancel_extra_replicas_for_driver_deployment(mock_deployment_state):
     can cancel extra starting replicas.
     """
 
-    deployment_state, timer = mock_deployment_state
-    deployment_state._cluster_node_info_cache.alive_node_ids = {"0", "1"}
+    deployment_state, timer, cluster_node_info_cache = mock_deployment_state
+    cluster_node_info_cache.alive_node_ids = {"0", "1"}
 
     b_info_1, b_version_1 = deployment_info()
     updating = deployment_state.deploy(b_info_1)
@@ -2642,7 +2640,7 @@ def test_cancel_extra_replicas_for_driver_deployment(mock_deployment_state):
 
     deployment_state_update_result = deployment_state.update()
     # 1 node dies, now the cluster only has 1 node
-    deployment_state._cluster_node_info_cache.alive_node_ids = {"0"}
+    cluster_node_info_cache.alive_node_ids = {"0"}
     deployment_state._deployment_scheduler.schedule(
         {deployment_state._name: deployment_state_update_result.upscale}, {}
     )
@@ -2660,8 +2658,8 @@ def test_cancel_extra_replicas_for_driver_deployment(mock_deployment_state):
 
 @pytest.mark.parametrize("mock_deployment_state", [True], indirect=True)
 def test_add_and_remove_nodes_for_driver_deployment(mock_deployment_state):
-    deployment_state, timer = mock_deployment_state
-    deployment_state._cluster_node_info_cache.alive_node_ids = {"0"}
+    deployment_state, timer, cluster_node_info_cache = mock_deployment_state
+    cluster_node_info_cache.alive_node_ids = {"0"}
 
     b_info_1, b_version_1 = deployment_info()
     updating = deployment_state.deploy(b_info_1)
@@ -2675,7 +2673,7 @@ def test_add_and_remove_nodes_for_driver_deployment(mock_deployment_state):
     check_counts(deployment_state, total=1, by_state=[(ReplicaState.STARTING, 1)])
 
     # Add a node when previous one is in STARTING state
-    deployment_state._cluster_node_info_cache.alive_node_ids = {"0", "1"}
+    cluster_node_info_cache.alive_node_ids = {"0", "1"}
     deployment_state_update_result = deployment_state.update()
     deployment_state._deployment_scheduler.schedule(
         {deployment_state._name: deployment_state_update_result.upscale}, {}
@@ -2687,7 +2685,7 @@ def test_add_and_remove_nodes_for_driver_deployment(mock_deployment_state):
     check_counts(deployment_state, total=2, by_state=[(ReplicaState.RUNNING, 2)])
 
     # Add another two nodes
-    deployment_state._cluster_node_info_cache.alive_node_ids = {"0", "1", "2", "3"}
+    cluster_node_info_cache.alive_node_ids = {"0", "1", "2", "3"}
     deployment_state_update_result = deployment_state.update()
     deployment_state._deployment_scheduler.schedule(
         {deployment_state._name: deployment_state_update_result.upscale}, {}
@@ -2703,7 +2701,7 @@ def test_add_and_remove_nodes_for_driver_deployment(mock_deployment_state):
     check_counts(deployment_state, total=4, by_state=[(ReplicaState.RUNNING, 4)])
 
     # Remove one node and add another node, node3 is removed, node4 added
-    deployment_state._cluster_node_info_cache.alive_node_ids = {"0", "1", "2", "4"}
+    cluster_node_info_cache.alive_node_ids = {"0", "1", "2", "4"}
     deployment_state._replicas.get(states=[ReplicaState.RUNNING])[
         3
     ]._actor.set_unhealthy()
@@ -2776,9 +2774,13 @@ def test_get_active_node_ids(mock_deployment_state_manager_full):
     node_ids = ("node1", "node2", "node2")
 
     tag = "test_deployment"
-    create_deployment_state_manager, _ = mock_deployment_state_manager_full
+    (
+        create_deployment_state_manager,
+        _,
+        cluster_node_info_cache,
+    ) = mock_deployment_state_manager_full
     deployment_state_manager = create_deployment_state_manager()
-    deployment_state_manager._cluster_node_info_cache.alive_node_ids = set(node_ids)
+    cluster_node_info_cache.alive_node_ids = set(node_ids)
 
     # Deploy deployment with version "1" and 3 replicas
     info1, version1 = deployment_info(version="1", num_replicas=3)
@@ -2839,9 +2841,13 @@ def test_get_active_node_ids_none(mock_deployment_state_manager_full):
     node_ids = ("node1", "node2", "node2")
 
     tag = "test_deployment"
-    create_deployment_state_manager, _ = mock_deployment_state_manager_full
+    (
+        create_deployment_state_manager,
+        _,
+        cluster_node_info_cache,
+    ) = mock_deployment_state_manager_full
     deployment_state_manager = create_deployment_state_manager()
-    deployment_state_manager._cluster_node_info_cache.alive_node_ids = set(node_ids)
+    cluster_node_info_cache.alive_node_ids = set(node_ids)
 
     # Deploy deployment with version "1" and 3 replicas
     info1, version1 = deployment_info(version="1", num_replicas=3)

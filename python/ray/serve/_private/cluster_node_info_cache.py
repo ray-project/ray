@@ -1,3 +1,4 @@
+from abc import ABC, abstractmethod
 from typing import (
     Set,
     List,
@@ -9,7 +10,7 @@ from ray._raylet import GcsClient
 from ray.serve._private.constants import RAY_GCS_RPC_TIMEOUT_S
 
 
-class ClusterNodeInfoCache:
+class ClusterNodeInfoCache(ABC):
     """Provide access to cached node information in the cluster."""
 
     def __init__(self, gcs_client: GcsClient):
@@ -47,9 +48,9 @@ class ClusterNodeInfoCache:
         """Get IDs of all live nodes in the cluster."""
         return {node_id for node_id, _ in self.get_alive_nodes()}
 
+    @abstractmethod
     def get_draining_node_ids(self) -> Set[str]:
         """Get IDs of all draining nodes in the cluster."""
-        return set()
 
     def get_active_node_ids(self) -> Set[str]:
         """Get IDs of all active nodes in the cluster.
@@ -57,3 +58,11 @@ class ClusterNodeInfoCache:
         A node is active if it's schedulable for new tasks and actors.
         """
         return self.get_alive_node_ids() - self.get_draining_node_ids()
+
+
+class DefaultClusterNodeInfoCache(ClusterNodeInfoCache):
+    def __init__(self, gcs_client: GcsClient):
+        super().__init__(gcs_client)
+
+    def get_draining_node_ids(self) -> Set[str]:
+        return set()

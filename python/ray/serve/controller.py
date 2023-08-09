@@ -61,7 +61,7 @@ from ray.serve._private.utils import (
     record_serve_tag,
 )
 from ray.serve._private.application_state import ApplicationStateManager
-from ray.serve._private.cluster_node_info_cache_factory import (
+from ray.serve._private.default_impl import (
     create_cluster_node_info_cache,
 )
 

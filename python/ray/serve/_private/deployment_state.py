@@ -1924,7 +1924,7 @@ class DeploymentState:
             if not stopped:
                 self._replicas.add(ReplicaState.STOPPING, replica)
 
-    def _draining_replicas(self):
+    def _stop_replicas_on_draining_nodes(self):
         draining_nodes = self._cluster_node_info_cache.get_draining_node_ids()
         for replica in self._replicas.pop(
             states=[ReplicaState.UPDATING, ReplicaState.RUNNING]
@@ -1957,7 +1957,7 @@ class DeploymentState:
             # Check the state of existing replicas and transition if necessary.
             self._check_and_update_replicas()
 
-            self._draining_replicas()
+            self._stop_replicas_on_draining_nodes()
 
             upscale, downscale = self._scale_deployment_replicas()
 
@@ -2110,7 +2110,7 @@ class DriverDeploymentState(DeploymentState):
                         new_config.version = self._target_state.version.code_version
                     self._set_target_state(new_config)
 
-                self._draining_replicas()
+                self._stop_replicas_on_draining_nodes()
 
                 max_to_stop = self._calculate_max_replicas_to_stop()
                 self._stop_or_update_outdated_version_replicas(max_to_stop)
