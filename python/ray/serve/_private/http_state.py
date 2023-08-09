@@ -412,7 +412,7 @@ class HTTPProxyStateManager:
                 for node_id, ip_address in target_nodes
                 if node_id != self._head_node_id
             ]
-            assert len(nodes) > 1, (
+            assert len(nodes) >= 1, (
                 f"Worker nodes not found! Head node id: {self._head_node_id}, "
                 f"all nodes: {target_nodes}."
             )
