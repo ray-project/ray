@@ -28,6 +28,7 @@ from ray.actor import ActorHandle
 from ray.dag.py_obj_scanner import _PyObjScanner
 from ray.exceptions import RayActorError, RayTaskError
 from ray.util import metrics
+from ray._private.storage import _load_class
 from ray._private.utils import make_asyncio_event_version_compat
 
 from ray.serve._private.common import RunningReplicaInfo, DeploymentInfo
@@ -894,6 +895,7 @@ class Router:
         deployment_name: str,
         event_loop: asyncio.BaseEventLoop = None,
         _use_new_routing: bool = False,
+        _router_cls: str = "",
     ):
         """Used to assign requests to downstream replicas for a deployment.
 
@@ -901,7 +903,10 @@ class Router:
         wrapper that adds metrics and logging.
         """
         self._event_loop = event_loop
-        if _use_new_routing:
+
+        if _router_cls:
+            self._replica_scheduler = _load_class(_router_cls)()
+        elif _use_new_routing:
             self._replica_scheduler = PowerOfTwoChoicesReplicaScheduler(
                 event_loop, deployment_name
             )
