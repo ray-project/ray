@@ -209,6 +209,7 @@ class FileBasedDatasource(Datasource):
         JSONDatasource, CSVDatasource, NumpyDatasource, BinaryDatasource
     """
 
+    _WRITE_FILE_PER_ROW = False
     _FILE_EXTENSION: Optional[Union[str, List[str]]] = None
 
     def _open_input_source(
@@ -314,24 +315,7 @@ class FileBasedDatasource(Datasource):
 
             fs = _unwrap_s3_serialization_workaround(filesystem)
 
-            if self.__class__._write_block != FileBasedDatasource._write_block:
-                write_path = block_path_provider(
-                    path,
-                    filesystem=filesystem,
-                    dataset_uuid=dataset_uuid,
-                    task_index=ctx.task_idx,
-                    block_index=block_idx,
-                    file_format=file_format,
-                )
-                logger.get_logger().debug(f"Writing {write_path} file.")
-                with fs.open_output_stream(write_path, **open_stream_args) as f:
-                    _write_block_to_file(
-                        f,
-                        block,
-                        writer_args_fn=write_args_fn,
-                        **write_args,
-                    )
-            else:
+            if self._WRITE_FILE_PER_ROW:
                 for row_index, row in enumerate(
                     block.iter_rows(public_row_format=False)
                 ):
@@ -350,6 +334,23 @@ class FileBasedDatasource(Datasource):
                             file_format=file_format,
                             **write_args,
                         )
+            else:
+                 write_path = block_path_provider(
+                    path,
+                    filesystem=filesystem,
+                    dataset_uuid=dataset_uuid,
+                    task_index=ctx.task_idx,
+                    block_index=block_idx,
+                    file_format=file_format,
+                )
+                logger.get_logger().debug(f"Writing {write_path} file.")
+                with fs.open_output_stream(write_path, **open_stream_args) as f:
+                    _write_block_to_file(
+                        f,
+                        block,
+                        writer_args_fn=write_args_fn,
+                        **write_args,
+                    )
 
             num_rows_written += block.num_rows()
             block_idx += 1
