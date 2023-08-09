@@ -209,6 +209,9 @@ class FileBasedDatasource(Datasource):
         JSONDatasource, CSVDatasource, NumpyDatasource, BinaryDatasource
     """
 
+    # If `_WRITE_FILE_PER_ROW` is `True`, this datasource calls `_write_row` and writes 
+    # each row to a file. Otherwise, this datasource calls `_write_block` and writes
+    # each block to a file.
     _WRITE_FILE_PER_ROW = False
     _FILE_EXTENSION: Optional[Union[str, List[str]]] = None
 
@@ -389,7 +392,8 @@ class FileBasedDatasource(Datasource):
     ):
         """Writes a row to a single file, passing all kwargs to the writer.
 
-        If `_WRITE_FILE_PER_ROW` is set to `True`, this method will be called.
+        If `_WRITE_FILE_PER_ROW` is set to `True`, this method will be called instead
+        of `_write_block()`.
         """
         raise NotImplementedError
 
