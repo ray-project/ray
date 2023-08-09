@@ -31,10 +31,6 @@ DEFAULT_TARGET_MIN_BLOCK_SIZE = 1 * 1024 * 1024
 # which is very sensitive to the buffer size.
 DEFAULT_STREAMING_READ_BUFFER_SIZE = 32 * 1024 * 1024
 
-# Whether dynamic block splitting is enabled.
-# NOTE: disable dynamic block splitting when using Ray client.
-DEFAULT_BLOCK_SPLITTING_ENABLED = True
-
 # Whether pandas block format is enabled.
 # TODO (kfstorm): Remove this once stable.
 DEFAULT_ENABLE_PANDAS_BLOCK = True
@@ -147,7 +143,6 @@ class DataContext:
 
     def __init__(
         self,
-        block_splitting_enabled: bool,
         target_max_block_size: int,
         target_min_block_size: int,
         streaming_read_buffer_size: int,
@@ -178,7 +173,6 @@ class DataContext:
         enable_progress_bars: bool,
     ):
         """Private constructor (use get_current() instead)."""
-        self.block_splitting_enabled = block_splitting_enabled
         self.target_max_block_size = target_max_block_size
         self.target_min_block_size = target_min_block_size
         self.streaming_read_buffer_size = streaming_read_buffer_size
@@ -224,7 +218,6 @@ class DataContext:
         with _context_lock:
             if _default_context is None:
                 _default_context = DataContext(
-                    block_splitting_enabled=DEFAULT_BLOCK_SPLITTING_ENABLED,
                     target_max_block_size=DEFAULT_TARGET_MAX_BLOCK_SIZE,
                     target_min_block_size=DEFAULT_TARGET_MIN_BLOCK_SIZE,
                     streaming_read_buffer_size=DEFAULT_STREAMING_READ_BUFFER_SIZE,
