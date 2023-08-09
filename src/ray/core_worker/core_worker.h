@@ -1207,6 +1207,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   void HandleNumPendingTasks(rpc::NumPendingTasksRequest request,
                              rpc::NumPendingTasksReply *reply,
                              rpc::SendReplyCallback send_reply_callback) override;
+
+  void HandleExportObjectOwnership(rpc::ExportObjectOwnershipRequest request,
+                                   rpc::ExportObjectOwnershipReply *reply,
+                                   rpc::SendReplyCallback send_reply_callback) override;
   ///
   /// Public methods related to async actor call. This should only be used when
   /// the actor is (1) direct actor and (2) using asyncio mode.
@@ -1534,6 +1538,9 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   }
 
   const CoreWorkerOptions options_;
+
+  std::function<std::shared_ptr<raylet::RayletClient>(const std::string &, int)>
+      raylet_client_factory_;
 
   /// Callback to get the current language (e.g., Python) call site.
   std::function<void(std::string *)> get_call_site_;

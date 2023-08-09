@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #pragma once
+#include <filesystem>
 
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
@@ -545,6 +546,9 @@ class ReferenceCounter : public ReferenceCounterInterface,
 
   /// Release all local references which registered on this local.
   void ReleaseAllLocalReferences();
+
+  std::unordered_map<NodeID, std::vector<ObjectID>> DumpOwnerInfo(
+      std::filesystem::path prefix) LOCKS_EXCLUDED(mutex_);
 
  private:
   /// Contains information related to nested object refs only.

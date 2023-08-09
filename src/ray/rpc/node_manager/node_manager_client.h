@@ -108,6 +108,10 @@ class NodeManagerWorkerClient
                          RequestWorkerLease,
                          grpc_client_,
                          /*method_timeout_ms*/ -1, )
+  VOID_RPC_CLIENT_METHOD(NodeManagerService,
+                         DrainObjectStore,
+                         grpc_client_,
+                         /*method_timeout_ms*/ -1, )
 
   /// Report task backlog information
   VOID_RPC_CLIENT_METHOD(NodeManagerService,

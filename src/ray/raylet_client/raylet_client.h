@@ -394,7 +394,7 @@ class RayletClient : public RayletClientInterface {
   /// \param callback Callback that will be called after raylet completes the
   /// object spilling (or it fails).
   void RequestObjectSpillage(
-      const ObjectID &object_id,
+      const std::vector<ObjectID> &object_ids,
       const rpc::ClientCallback<rpc::RequestObjectSpillageReply> &callback);
 
   std::shared_ptr<grpc::Channel> GetChannel() const override;

@@ -14,6 +14,9 @@
 
 #include "ray/object_manager/ownership_based_object_directory.h"
 
+#include <filesystem>
+#include <fstream>
+
 #include "ray/stats/metric_defs.h"
 
 namespace ray {
@@ -351,24 +354,36 @@ ray::Status OwnershipBasedObjectDirectory::SubscribeObjectLocations(
                                                   const Status &status) {
       const auto object_id = ObjectID::FromBinary(object_id_binary);
       rpc::WorkerObjectLocationsPubMessage location_info;
-      if (!status.ok()) {
-        RAY_LOG(INFO) << "Failed to get the location for " << object_id
-                      << status.ToString();
-        mark_as_failed_(object_id, rpc::ErrorType::OWNER_DIED);
+
+      auto spilled_url = "/tmp/ray/session_latest/ray_spilled_objects/" + object_id.Hex();
+      RAY_LOG(INFO) << "DBG:::: Subscribe to " << object_id
+                    << " failed. Check spilled url " << spilled_url << " "
+                    << std::filesystem::exists(spilled_url);
+      if (std::filesystem::exists(spilled_url)) {
+        location_info.set_spilled_url(spilled_url);
+        ObjectLocationSubscriptionCallback(location_info,
+                                           object_id,
+                                           /*location_lookup_failed*/ false);
       } else {
-        // Owner is still alive but published a failure because the ref was
-        // deleted.
-        RAY_LOG(INFO)
-            << "Failed to get the location for " << object_id
-            << ", object already released by distributed reference counting protocol";
-        mark_as_failed_(object_id, rpc::ErrorType::OBJECT_DELETED);
+        if (!status.ok()) {
+          RAY_LOG(INFO) << "Failed to get the location for " << object_id
+                        << status.ToString();
+          mark_as_failed_(object_id, rpc::ErrorType::OWNER_DIED);
+        } else {
+          // Owner is still alive but published a failure because the ref was
+          // deleted.
+          RAY_LOG(INFO)
+              << "Failed to get the location for " << object_id
+              << ", object already released by distributed reference counting protocol";
+          mark_as_failed_(object_id, rpc::ErrorType::OBJECT_DELETED);
+        }
+        // Location lookup can fail if the owner is reachable but no longer has a
+        // record of this ObjectRef, most likely due to an issue with the
+        // distributed reference counting protocol.
+        ObjectLocationSubscriptionCallback(location_info,
+                                           object_id,
+                                           /*location_lookup_failed*/ true);
       }
-      // Location lookup can fail if the owner is reachable but no longer has a
-      // record of this ObjectRef, most likely due to an issue with the
-      // distributed reference counting protocol.
-      ObjectLocationSubscriptionCallback(location_info,
-                                         object_id,
-                                         /*location_lookup_failed*/ true);
     };
 
     auto sub_message = std::make_unique<rpc::SubMessage>();

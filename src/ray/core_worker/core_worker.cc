@@ -20,6 +20,8 @@
 
 #include <google/protobuf/util/json_util.h>
 
+#include <filesystem>
+
 #include "absl/cleanup/cleanup.h"
 #include "absl/strings/str_format.h"
 #include "boost/fiber/all.hpp"
@@ -121,6 +123,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       task_execution_service_work_(task_execution_service_),
       exiting_detail_(std::nullopt),
       pid_(getpid()) {
+  ::RayConfig::instance().prototype_session_dir() = options_.session_dir;
   // Notify that core worker is initialized.
   auto initialzed_scope_guard = absl::MakeCleanup([this] {
     absl::MutexLock lock(&initialize_mutex_);
@@ -419,11 +422,10 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
     }
   }
 
-  auto raylet_client_factory = [this](const std::string ip_address, int port) {
+  raylet_client_factory_ = [this](const std::string &ip_address, int port) {
     auto grpc_client =
         rpc::NodeManagerWorkerClient::make(ip_address, port, *client_call_manager_);
-    return std::shared_ptr<raylet::RayletClient>(
-        new raylet::RayletClient(std::move(grpc_client)));
+    return std::make_shared<raylet::RayletClient>(std::move(grpc_client));
   };
 
   auto on_excess_queueing = [this](const ActorID &actor_id, uint64_t num_queued) {
@@ -471,7 +473,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       rpc_address_,
       local_raylet_client_,
       core_worker_client_pool_,
-      raylet_client_factory,
+      raylet_client_factory_,
       std::move(lease_policy),
       memory_store_,
       task_manager_,
@@ -532,7 +534,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   };
   object_recovery_manager_ = std::make_unique<ObjectRecoveryManager>(
       rpc_address_,
-      raylet_client_factory,
+      raylet_client_factory_,
       local_raylet_client_,
       object_lookup_fn,
       task_manager_,
@@ -1429,6 +1431,8 @@ Status CoreWorker::Get(const std::vector<ObjectID> &ids,
       missing_result = true;
     }
   }
+  RAY_LOG(INFO) << "CoreWorker::DEBUG: " << will_throw_exception << " " << missing_result
+                << " " << timeout_ms << " " << got_exception;
   // If no timeout was set and none of the results will throw an exception,
   // then check that we fetched all results before returning.
   if (timeout_ms < 0 && !will_throw_exception) {
@@ -3158,6 +3162,22 @@ void CoreWorker::HandleGetObjectStatus(rpc::GetObjectStatusRequest request,
   }
 
   RemoveLocalReference(object_id);
+}
+
+void CoreWorker::HandleExportObjectOwnership(rpc::ExportObjectOwnershipRequest request,
+                                             rpc::ExportObjectOwnershipReply *reply,
+                                             rpc::SendReplyCallback send_reply_callback) {
+  RAY_LOG(INFO) << "HandleExportObjectOwnership";
+  auto dumpped_objects =
+      reference_counter_->DumpOwnerInfo(options_.session_dir + "/drain_object_meta");
+  for (const auto &[node_id, object_ids] : dumpped_objects) {
+    auto *location = reply->add_locations();
+    location->set_node_id(node_id.Binary());
+    for (const auto &object_id : object_ids) {
+      location->add_object_ids(object_id.Binary());
+    }
+  }
+  send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
 void CoreWorker::PopulateObjectStatus(const ObjectID &object_id,

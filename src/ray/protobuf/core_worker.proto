@@ -412,6 +412,17 @@ message ReportGeneratorItemReturnsRequest {
 
 message ReportGeneratorItemReturnsReply {}
 
+message ExportObjectOwnershipRequest {}
+
+
+message ExportObjectOwnershipReply {
+  message PrimaryCopyLocation {
+    bytes node_id = 1;
+    repeated bytes object_ids = 2;
+  }
+  repeated PrimaryCopyLocation locations = 1;
+}
+
 service CoreWorkerService {
   // Notify core worker GCS has restarted.
   rpc RayletNotifyGCSRestart(RayletNotifyGCSRestartRequest)
@@ -472,4 +483,6 @@ service CoreWorkerService {
   rpc AssignObjectOwner(AssignObjectOwnerRequest) returns (AssignObjectOwnerReply);
   // Get the number of pending tasks.
   rpc NumPendingTasks(NumPendingTasksRequest) returns (NumPendingTasksReply);
+  // Export the ownership of objects to external storage.
+  rpc ExportObjectOwnership(ExportObjectOwnershipRequest) returns (ExportObjectOwnershipReply);
 }

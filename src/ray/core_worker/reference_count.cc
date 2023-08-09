@@ -14,6 +14,8 @@
 
 #include "ray/core_worker/reference_count.h"
 
+#include <fstream>
+
 #define PRINT_REF_COUNT(it)                                                        \
   RAY_LOG(DEBUG) << "REF " << it->first                                            \
                  << " borrowers: " << it->second.borrow().borrowers.size()         \
@@ -549,6 +551,26 @@ void ReferenceCounter::RemoveSubmittedTaskReferences(
       DeleteReferenceInternal(it, deleted);
     }
   }
+}
+
+std::unordered_map<NodeID, std::vector<ObjectID>> ReferenceCounter::DumpOwnerInfo(
+    std::filesystem::path prefix) {
+  size_t owned_objs = 0;
+  absl::MutexLock lock(&mutex_);
+  std::unordered_map<NodeID, std::vector<ObjectID>> node_to_objects;
+  if (!std::filesystem::exists(prefix)) {
+    std::filesystem::create_directories(prefix);
+  }
+  for (auto &[obj_id, meta] : object_id_refs_) {
+    if (meta.owned_by_us && meta.pinned_at_raylet_id) {
+      ++owned_objs;
+      std::ofstream out(prefix / obj_id.Hex(), std::ios::out | std::ios::trunc);
+      out << meta.pinned_at_raylet_id->Hex() << "\t" << meta.object_size << std::endl;
+      node_to_objects[*meta.pinned_at_raylet_id].push_back(obj_id);
+    }
+  }
+  RAY_LOG(INFO) << "Dump owner info into " << prefix << ", num=" << owned_objs;
+  return node_to_objects;
 }
 
 bool ReferenceCounter::HasOwner(const ObjectID &object_id) const {

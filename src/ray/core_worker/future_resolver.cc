@@ -46,6 +46,10 @@ void FutureResolver::ProcessResolvedObject(const ObjectID &object_id,
                      << " that was deserialized: " << status.ToString();
   }
 
+  std::string out;
+  google::protobuf::util::MessageToJsonString(reply, &out);
+  RAY_LOG(INFO) << "DEBUG:::::: " << out;
+
   if (!status.ok()) {
     // The owner is unreachable. Store an error so that an exception will be
     // thrown immediately when the worker tries to get the value.

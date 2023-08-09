@@ -11,8 +11,9 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-
 #include "ray/raylet/local_object_manager.h"
+
+#include <fstream>
 
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/stats/metric_defs.h"
@@ -437,6 +438,13 @@ std::string LocalObjectManager::GetLocalSpilledObjectURL(const ObjectID &object_
     // In that case, the URL is supposed to be obtained by OBOD.
     return "";
   }
+  auto spilled_url = "/tmp/ray/session_latest/ray_spilled_objects/" + object_id.Hex();
+  RAY_LOG(INFO) << "DBG:::: Subscribe to " << object_id << " failed. Check spilled url "
+                << spilled_url << " " << std::filesystem::exists(spilled_url);
+  if (std::filesystem::exists(spilled_url)) {
+    return spilled_url;
+  }
+
   auto entry = spilled_objects_url_.find(object_id);
   if (entry != spilled_objects_url_.end()) {
     return entry->second;
@@ -644,6 +652,28 @@ void LocalObjectManager::RecordMetrics() const {
 
 int64_t LocalObjectManager::GetPrimaryBytes() const {
   return pinned_objects_size_ + num_bytes_pending_spill_;
+}
+
+void LocalObjectManager::SpillPrimaryCopies(
+    std::function<void(const ray::Status &)> callback) {
+  std::vector<ObjectID> object_ids;
+  for (auto &[obj_id, _] : local_objects_) {
+    if (auto iter = pinned_objects_.find(obj_id); iter != pinned_objects_.end()) {
+      object_ids.emplace_back(obj_id);
+      RAY_LOG(INFO) << "DEBUG:: Will spill " << obj_id;
+    } else {
+      RAY_LOG(INFO) << "Failed to dump: " << obj_id
+                    << " because it's not a pinned object";
+    }
+  }
+
+  SpillObjects(object_ids, [callback, object_ids](const auto &status) {
+    for (const auto &obj_id : object_ids) {
+      RAY_LOG(INFO) << "DEBUG:: Object " << obj_id << " spilled with status "
+                    << status.ToString();
+    }
+    callback(status);
+  });
 }
 
 bool LocalObjectManager::HasLocallySpilledObjects() const {

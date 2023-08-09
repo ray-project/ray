@@ -30,6 +30,7 @@ namespace rpc {
   RPC_SERVICE_HANDLER(NodeManagerService, GetResourceLoad, -1)        \
   RPC_SERVICE_HANDLER(NodeManagerService, NotifyGCSRestart, -1)       \
   RPC_SERVICE_HANDLER(NodeManagerService, RequestWorkerLease, -1)     \
+  RPC_SERVICE_HANDLER(NodeManagerService, DrainObjectStore, -1)       \
   RPC_SERVICE_HANDLER(NodeManagerService, ReportWorkerBacklog, -1)    \
   RPC_SERVICE_HANDLER(NodeManagerService, ReturnWorker, -1)           \
   RPC_SERVICE_HANDLER(NodeManagerService, ReleaseUnusedWorkers, -1)   \
@@ -83,6 +84,9 @@ class NodeManagerServiceHandler {
   virtual void HandleRequestWorkerLease(RequestWorkerLeaseRequest request,
                                         RequestWorkerLeaseReply *reply,
                                         SendReplyCallback send_reply_callback) = 0;
+  virtual void HandleDrainObjectStore(DrainObjectStoreRequest request,
+                                      DrainObjectStoreReply *reply,
+                                      SendReplyCallback send_reply_callback) = 0;
 
   virtual void HandleReportWorkerBacklog(ReportWorkerBacklogRequest request,
                                          ReportWorkerBacklogReply *reply,
