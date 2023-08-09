@@ -210,7 +210,6 @@ py_test_module_list(
     "test_unhandled_error.py",
     "test_utils.py",
     "test_widgets.py",
-    "test_node_labels.py",
   ],
   size = "small",
   tags = ["exclusive", "small_size_python_tests", "team:core"],
@@ -221,6 +220,7 @@ py_test_module_list(
   files = [
     "test_gcs_ha_e2e.py",
     "test_memory_pressure.py",
+    "test_node_labels.py",
   ],
   size = "medium",
   tags = ["exclusive", "team:core", "xcommit"],
