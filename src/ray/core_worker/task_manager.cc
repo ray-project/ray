@@ -376,9 +376,9 @@ bool TaskManager::HandleTaskReturn(const ObjectID &object_id,
   reference_counter_->UpdateObjectSize(object_id, return_object.size());
   RAY_LOG(DEBUG) << "Task return object " << object_id << " has size "
                  << return_object.size();
-
   const auto nested_refs =
       VectorFromProtobuf<rpc::ObjectReference>(return_object.nested_inlined_refs());
+
   if (return_object.in_plasma()) {
     // NOTE(swang): We need to add the location of the object before marking
     // it as local in the in-memory store so that the data locality policy
@@ -474,8 +474,8 @@ ObjectID TaskManager::PeekObjectRefStream(const ObjectID &generator_id) {
   auto stream_it = object_ref_streams_.find(generator_id);
   RAY_CHECK(stream_it != object_ref_streams_.end())
       << "PeekObjectRefStream API can be used only when the stream has been "
-          "created "
-          "and not removed.";
+         "created "
+         "and not removed.";
   next_object_id = stream_it->second.PeekNextItem();
 
   // Temporarily own the ref since the corresponding reference is probably
@@ -503,7 +503,7 @@ void TaskManager::MarkEndOfStream(const ObjectID &generator_id,
 
   stream_it->second.MarkEndOfStream(end_of_stream_index, &last_object_id);
   RAY_LOG(DEBUG) << "Write EoF to the object ref stream. Index: " << end_of_stream_index
-                  << ". Last object id: " << last_object_id;
+                 << ". Last object id: " << last_object_id;
 
   if (!last_object_id.IsNil()) {
     reference_counter_->OwnDynamicStreamingTaskReturnRef(last_object_id, generator_id);
@@ -576,7 +576,6 @@ bool TaskManager::HandleReportGeneratorItemReturns(
                      NodeID::FromBinary(request.worker_addr().raylet_id()),
                      /*store_in_plasma*/ store_in_plasma_ids.count(object_id));
   }
-
   return num_objects_written != 0;
 }
 
@@ -586,8 +585,8 @@ bool TaskManager::TemporarilyOwnGeneratorReturnRefIfNeeded(const ObjectID &objec
   return TemporarilyOwnGeneratorReturnRefIfNeededInternal(object_id, generator_id);
 }
 
-bool TaskManager::TemporarilyOwnGeneratorReturnRefIfNeededInternal(const ObjectID &object_id,
-                                                           const ObjectID &generator_id) {
+bool TaskManager::TemporarilyOwnGeneratorReturnRefIfNeededInternal(
+    const ObjectID &object_id, const ObjectID &generator_id) {
   bool inserted_to_stream = false;
   auto stream_it = object_ref_streams_.find(generator_id);
   if (stream_it == object_ref_streams_.end()) {

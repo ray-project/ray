@@ -272,7 +272,7 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
    *
    * Reference implementation of streaming generator using the following APIs
    * is available from `_raylet.StreamingObjectRefGenerator`.
-   * 
+   *
    * NOTE: When calling APIs, you should ensure to hold a lock
    * objet_ref_stream_ops_mu_ to avoid werid concurrency errors.
    * Also, make sure you don't hold the task manager mutex (mu_). When
@@ -317,7 +317,8 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// \param generator_id The return ref ID of a generator task.
   /// \return True if we temporarily owned the reference. False otherwise.
   bool TemporarilyOwnGeneratorReturnRefIfNeeded(const ObjectID &object_id,
-                                                const ObjectID &generator_id) LOCKS_EXCLUDED(mu_);
+                                                const ObjectID &generator_id)
+      LOCKS_EXCLUDED(mu_);
 
   /// Delete the object ref stream.
   ///
@@ -355,7 +356,8 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// \param[out] object_id_out The next object ID from the stream.
   /// Nil ID is returned if the next index hasn't been written.
   /// \return ObjectRefEndOfStream if it reaches to EoF. Ok otherwise.
-  Status TryReadObjectRefStream(const ObjectID &generator_id, ObjectID *object_id_out) LOCKS_EXCLUDED(mu_);
+  Status TryReadObjectRefStream(const ObjectID &generator_id, ObjectID *object_id_out)
+      LOCKS_EXCLUDED(mu_);
 
   /// Read the next index of a ObjectRefStream of generator_id without
   /// consuming an index.
@@ -723,7 +725,8 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
 
   /// See TemporarilyOwnGeneratorReturnRefIfNeeded for a docstring.
   bool TemporarilyOwnGeneratorReturnRefIfNeededInternal(const ObjectID &object_id,
-                                                const ObjectID &generator_id) EXCLUSIVE_LOCKS_REQUIRED(objet_ref_stream_ops_mu_) LOCKS_EXCLUDED(mu_);
+                                                        const ObjectID &generator_id)
+      EXCLUSIVE_LOCKS_REQUIRED(objet_ref_stream_ops_mu_) LOCKS_EXCLUDED(mu_);
 
   /// Used to store task results.
   std::shared_ptr<CoreWorkerMemoryStore> in_memory_store_;
@@ -734,7 +737,8 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   std::shared_ptr<ReferenceCounter> reference_counter_;
 
   /// Mapping from a streaming generator task id -> object ref stream.
-  absl::flat_hash_map<ObjectID, ObjectRefStream> object_ref_streams_ GUARDED_BY(objet_ref_stream_ops_mu_);
+  absl::flat_hash_map<ObjectID, ObjectRefStream> object_ref_streams_
+      GUARDED_BY(objet_ref_stream_ops_mu_);
 
   /// Callback to store objects in plasma. This is used for objects that were
   /// originally stored in plasma. During reconstruction, we ensure that these

@@ -401,7 +401,7 @@ def test_generator_streaming(shutdown_only, use_actors, store_in_plasma):
         del ref
 
         wait_for_condition(
-            lambda: len(list_objects(filters=[("object_id", "=", id)])) == 0
+            lambda id=id: len(list_objects(filters=[("object_id", "=", id)])) == 0
         )
         i += 1
 
@@ -623,7 +623,9 @@ def test_threaded_actor_generator(shutdown_only):
         async def run():
             i = 0
             async for ref in a.f.options(num_returns="streaming").remote():
-                val = ray.get(ref)
+                print("before get")
+                val = ray.get(ref, timeout=0.1)
+                print("after get")
                 print(val)
                 print(ref)
                 assert np.array_equal(val, np.ones(1024 * 1024) * i)
