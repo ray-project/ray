@@ -6,7 +6,165 @@ Ray Train API
 
 This page covers framework specific integrations with Ray Train and Ray Train Developer APIs.
 
-For core Ray AIR APIs, take a look at the :ref:`AIR package reference <air-api-ref>`.
+.. _train-integration-api:
+.. _train-framework-specific-ckpts:
+
+Ray Train Integrations
+----------------------
+
+.. _train-pytorch-integration:
+
+PyTorch Ecosystem
+~~~~~~~~~~~~~~~~~
+
+.. autosummary::
+    :toctree: doc/
+
+    ~train.torch.TorchTrainer
+    ~train.torch.TorchConfig
+    ~train.torch.TorchCheckpoint
+
+
+PyTorch
+*******
+
+.. autosummary::
+    :toctree: doc/
+
+    ~train.torch.prepare_model
+    ~train.torch.prepare_optimizer
+    ~train.torch.prepare_data_loader
+    ~train.torch.get_device
+    ~train.torch.accelerate
+    ~train.torch.backward
+    ~train.torch.enable_reproducibility
+
+.. _train-lightning-integration:
+
+PyTorch Lightning
+*****************
+
+.. note::
+
+    We will deprecate `LightningTrainer`, `LightningConfigBuilder`,
+    `LightningCheckpoint`, and `LightningPredictor` in Ray 2.8. Please 
+    refer to the :ref:`migration guides <migration-guide>` for more info.
+
+.. autosummary::
+    :toctree: doc/
+
+    ~train.lightning.prepare_trainer
+    ~train.lightning.RayLightningEnvironment
+    ~train.lightning.RayDDPStrategy
+    ~train.lightning.RayFSDPStrategy
+    ~train.lightning.RayDeepSpeedStrategy
+    ~train.lightning.RayTrainReportCallback
+    (Deprecating) ~train.lightning.LightningTrainer
+    (Deprecating) ~train.lightning.LightningConfigBuilder
+    (Deprecating) ~train.lightning.LightningCheckpoint
+    (Deprecating) ~train.lightning.LightningPredictor
+
+HuggingFace Transformers
+************************
+
+.. note::
+
+    We will deprecate `TransformersTrainer`, `TransformersCheckpoint`
+    in Ray 2.8. Please refer to the :ref:`migration guides <migration-guide>` 
+    for more info.
+
+.. autosummary::
+    :toctree: doc/
+
+    (Deprecating) ~train.huggingface.TransformersTrainer
+    (Deprecating) ~train.huggingface.TransformersCheckpoint
+
+HuggingFace Accelerate
+**********************
+
+.. note::
+
+    We will deprecate `AccelerateTrainer` in Ray 2.8. Please refer to the 
+    :ref:`migration guides <migration-guide>` for more info.
+
+.. autosummary::
+    :toctree: doc/
+
+    (Deprecating) ~train.huggingface.AccelerateTrainer
+
+Tensorflow/Keras
+~~~~~~~~~~~~~~~~
+
+.. autosummary::
+    :toctree: doc/
+
+    ~train.tensorflow.TensorflowTrainer
+    ~train.tensorflow.TensorflowConfig
+    ~train.tensorflow.TensorflowCheckpoint
+
+
+Tensorflow/Keras Training Loop Utilities
+****************************************
+
+.. autosummary::
+    :toctree: doc/
+
+    ~train.tensorflow.prepare_dataset_shard
+
+.. autosummary::
+
+    ~air.integrations.keras.ReportCheckpointCallback
+
+
+Horovod
+~~~~~~~
+
+.. autosummary::
+    :toctree: doc/
+
+    ~train.horovod.HorovodTrainer
+    ~train.horovod.HorovodConfig
+
+
+XGBoost
+~~~~~~~
+
+.. autosummary::
+    :toctree: doc/
+
+    ~train.xgboost.XGBoostTrainer
+    ~train.xgboost.XGBoostCheckpoint
+
+
+LightGBM
+~~~~~~~~
+
+.. autosummary::
+    :toctree: doc/
+
+    ~train.lightgbm.LightGBMTrainer
+    ~train.lightgbm.LightGBMCheckpoint
+
+Scikit-Learn
+~~~~~~~~~~~~
+
+.. autosummary::
+    :toctree: doc/
+
+    ~train.sklearn.SklearnTrainer
+    ~train.sklearn.SklearnCheckpoint
+
+
+Mosaic
+~~~~~~
+
+.. autosummary::
+    :toctree: doc/
+
+    ~train.mosaic.MosaicTrainer
+
+
+
 
 Ray Train Base Classes (Developer APIs)
 ---------------------------------------
@@ -90,157 +248,6 @@ Ray Train Context
 
     ~train.get_context
     ~train.context.TrainContext
-
-
-.. _train-integration-api:
-.. _train-framework-specific-ckpts:
-
-Ray Train Integrations
-----------------------
-
-.. _train-pytorch-integration:
-
-PyTorch
-~~~~~~~~
-
-.. autosummary::
-    :toctree: doc/
-
-    ~train.torch.TorchTrainer
-    ~train.torch.TorchConfig
-    ~train.torch.TorchCheckpoint
-
-
-PyTorch Training Loop Utilities
-********************************
-
-.. autosummary::
-    :toctree: doc/
-
-    ~train.torch.prepare_model
-    ~train.torch.prepare_optimizer
-    ~train.torch.prepare_data_loader
-    ~train.torch.get_device
-    ~train.torch.accelerate
-    ~train.torch.backward
-    ~train.torch.enable_reproducibility
-
-.. _train-lightning-integration:
-
-PyTorch Lightning
-~~~~~~~~~~~~~~~~~
-
-.. autosummary::
-    :toctree: doc/
-
-    ~train.lightning.LightningTrainer
-    ~train.lightning.LightningConfigBuilder
-    ~train.lightning.LightningCheckpoint
-    ~train.lightning.LightningPredictor
-    ~train.lightning.prepare_trainer
-    ~train.lightning.RayLightningEnvironment
-    ~train.lightning.RayDDPStrategy
-    ~train.lightning.RayFSDPStrategy
-    ~train.lightning.RayDeepSpeedStrategy
-    ~train.lightning.RayTrainReportCallback
-
-.. note::
-
-    We will deprecate `LightningTrainer`, `LightningConfigBuilder`,
-    `LightningCheckpoint`, and `LightningPredictor` in Ray 2.8. Please 
-    refer to the :ref:`migration guides <migration-guide>` for more info.
-
-Tensorflow/Keras
-~~~~~~~~~~~~~~~~
-
-.. autosummary::
-    :toctree: doc/
-
-    ~train.tensorflow.TensorflowTrainer
-    ~train.tensorflow.TensorflowConfig
-    ~train.tensorflow.TensorflowCheckpoint
-
-
-Tensorflow/Keras Training Loop Utilities
-****************************************
-
-.. autosummary::
-    :toctree: doc/
-
-    ~train.tensorflow.prepare_dataset_shard
-
-.. autosummary::
-
-    ~air.integrations.keras.ReportCheckpointCallback
-
-
-Horovod
-~~~~~~~
-
-.. autosummary::
-    :toctree: doc/
-
-    ~train.horovod.HorovodTrainer
-    ~train.horovod.HorovodConfig
-
-
-XGBoost
-~~~~~~~
-
-.. autosummary::
-    :toctree: doc/
-
-    ~train.xgboost.XGBoostTrainer
-    ~train.xgboost.XGBoostCheckpoint
-
-
-LightGBM
-~~~~~~~~
-
-.. autosummary::
-    :toctree: doc/
-
-    ~train.lightgbm.LightGBMTrainer
-    ~train.lightgbm.LightGBMCheckpoint
-
-
-Hugging Face
-~~~~~~~~~~~~
-
-Transformers
-************
-
-.. autosummary::
-    :toctree: doc/
-
-    ~train.huggingface.TransformersTrainer
-    ~train.huggingface.TransformersCheckpoint
-
-Accelerate
-**********
-
-.. autosummary::
-    :toctree: doc/
-
-    ~train.huggingface.AccelerateTrainer
-
-Scikit-Learn
-~~~~~~~~~~~~
-
-.. autosummary::
-    :toctree: doc/
-
-    ~train.sklearn.SklearnTrainer
-    ~train.sklearn.SklearnCheckpoint
-
-
-Mosaic
-~~~~~~
-
-.. autosummary::
-    :toctree: doc/
-
-    ~train.mosaic.MosaicTrainer
 
 
 .. _trainer-restore:
