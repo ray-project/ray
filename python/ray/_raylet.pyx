@@ -182,6 +182,7 @@ import ray._private.ray_constants as ray_constants
 import ray.cloudpickle as ray_pickle
 from ray.core.generated.common_pb2 import ActorDiedErrorContext
 from ray.core.generated.gcs_pb2 import JobTableData
+from ray.core.generated.gcs_service_pb2 import GetAllResourceUsageReply
 from ray._private.async_compat import (
     sync_to_async,
     get_new_event_loop,
@@ -2528,6 +2529,18 @@ cdef class GcsClient:
             result[job_info.job_id] = job_info
         return result
 
+    @_auto_reconnect
+    def get_all_resource_usage(self, timeout=None) -> GetAllResourceUsageReply:
+        cdef:
+            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
+            c_string serialized_reply
+            
+        with nogil:
+            check_status(self.inner.get().GetAllResourceUsage(timeout_ms, serialized_reply))
+        
+        reply = GetAllResourceUsageReply()
+        reply.ParseFromString(serialized_reply)
+        return reply
     ########################################################
     # Interface for rpc::autoscaler::AutoscalerStateService
     ########################################################

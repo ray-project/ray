@@ -152,6 +152,7 @@ Status PythonGcsClient::Connect() {
   runtime_env_stub_ = rpc::RuntimeEnvGcsService::NewStub(channel_);
   node_info_stub_ = rpc::NodeInfoGcsService::NewStub(channel_);
   job_info_stub_ = rpc::JobInfoGcsService::NewStub(channel_);
+  node_resource_info_stub_ = rpc::NodeResourceInfoGcsService::NewStub(channel_);
   autoscaler_stub_ = rpc::autoscaler::AutoscalerStateService::NewStub(channel_);
   return Status::OK();
 }
@@ -443,6 +444,26 @@ Status PythonGcsClient::GetAllJobInfo(int64_t timeout_ms,
     if (reply.status().code() == static_cast<int>(StatusCode::OK)) {
       result = std::vector<rpc::JobTableData>(reply.job_info_list().begin(),
                                               reply.job_info_list().end());
+      return Status::OK();
+    }
+    return HandleGcsError(reply.status());
+  }
+  return Status::RpcError(status.error_message(), status.error_code());
+}
+
+Status PythonGcsClient::GetAllResourceUsage(int64_t timeout_ms,
+                                            std::string &serialized_reply) {
+  grpc::ClientContext context;
+  GrpcClientContextWithTimeoutMs(context, timeout_ms);
+
+  rpc::GetAllResourceUsageRequest request;
+  rpc::GetAllResourceUsageReply reply;
+
+  grpc::Status status =
+      node_resource_info_stub_->GetAllResourceUsage(&context, request, &reply);
+  if (status.ok()) {
+    if (reply.status().code() == static_cast<int>(StatusCode::OK)) {
+      serialized_reply = reply.SerializeAsString();
       return Status::OK();
     }
     return HandleGcsError(reply.status());

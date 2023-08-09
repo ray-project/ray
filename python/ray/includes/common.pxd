@@ -402,6 +402,8 @@ cdef extern from "ray/gcs/gcs_client/gcs_client.h" nogil:
             int64_t timeout_ms, c_vector[CGcsNodeInfo]& result)
         CRayStatus GetAllJobInfo(
             int64_t timeout_ms, c_vector[CJobTableData]& result)
+        CRayStatus GetAllResourceUsage(
+            int64_t timeout_ms, c_string& serialized_reply)
         CRayStatus RequestClusterResourceConstraint(
             int64_t timeout_ms,
             const c_vector[unordered_map[c_string, double]] &bundles,
