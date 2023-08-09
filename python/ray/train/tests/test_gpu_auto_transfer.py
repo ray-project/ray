@@ -105,7 +105,7 @@ def test_torch_auto_gpu_to_cpu(ray_start_4_cpus_2_gpus):
 
         assert next(model.parameters()).is_cuda
 
-        train.report({}, checkpoint=TorchCheckpoint.from_model(model))
+        train.report({}, checkpoint=TorchCheckpoint.from_model(model.module))
 
     trainer = TorchTrainer(
         train_func, scaling_config=ScalingConfig(num_workers=num_workers, use_gpu=True)
@@ -125,7 +125,7 @@ def test_torch_auto_gpu_to_cpu(ray_start_4_cpus_2_gpus):
 
         assert next(model.parameters()).is_cuda
 
-        state_dict = model.state_dict()
+        state_dict = model.module.state_dict()
 
         for tensor in state_dict.values():
             assert tensor.is_cuda
