@@ -209,7 +209,7 @@ class FileBasedDatasource(Datasource):
         JSONDatasource, CSVDatasource, NumpyDatasource, BinaryDatasource
     """
 
-    # If `_WRITE_FILE_PER_ROW` is `True`, this datasource calls `_write_row` and writes 
+    # If `_WRITE_FILE_PER_ROW` is `True`, this datasource calls `_write_row` and writes
     # each row to a file. Otherwise, this datasource calls `_write_block` and writes
     # each block to a file.
     _WRITE_FILE_PER_ROW = False
