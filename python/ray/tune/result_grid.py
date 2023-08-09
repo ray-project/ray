@@ -277,7 +277,11 @@ class ResultGrid:
             )
 
             assert isinstance(trial.checkpoint_manager, _NewCheckpointManager)
-            checkpoint = trial.checkpoint_manager.latest_checkpoint_result.checkpoint
+            checkpoint = None
+            if trial.checkpoint_manager.latest_checkpoint_result:
+                checkpoint = (
+                    trial.checkpoint_manager.latest_checkpoint_result.checkpoint
+                )
             best_checkpoint_results = trial.checkpoint_manager.best_checkpoint_results
             best_checkpoints = [
                 (checkpoint_result.checkpoint, checkpoint_result.metrics)
