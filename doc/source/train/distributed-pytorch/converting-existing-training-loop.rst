@@ -95,7 +95,7 @@ training.
     .. tab-item:: PyTorch Lightning
 
         Ray Train will set up your distributed process group on each worker. You only need to 
-        provide several Ray Train utilities in your Lightning Trainer definition.
+        make a few changes to your Lightning Trainer definition.
 
         .. code-block:: diff
 
@@ -123,13 +123,12 @@ training.
                 
                 trainer.fit(model, datamodule=datamodule)
     
-        We provide the following utilities:
 
         **Step 1: Configure Distributed Strategy**
 
-        Ray Train offers several subclassed distributed strategy for Lightning. 
-        These strategy retains the same argument list as the base strategy class. 
-        Internally, it correctly configures the root device and the distributed 
+        Ray Train offers several subclassed distributed strategies for Lightning. 
+        These strategies retain the same argument list as their base strategy classes. 
+        Internally, they configure the root device and the distributed 
         sampler arguments.
             
         - :class:`~ray.train.lightning.RayDDPStrategy` 
@@ -148,7 +147,7 @@ training.
         
         **Step 3: Prepare your Lightning Trainer**
 
-        Finally, pass your Lightning trainer into
+        Finally, pass your Lightning Trainer into
         :meth:`~ray.train.lightning.prepare_trainer` to validate 
         your configurations. 
 
