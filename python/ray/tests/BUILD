@@ -492,6 +492,14 @@ py_test(
     deps = ["//:ray_lib", ":conftest"],
 )
 
+py_test(
+    name = "kuberay/chaos_testing/test_chaos_network",
+    size = "large",
+    srcs = ["kuberay/chaos_testing/test_chaos_network.py"],
+    tags = ["exclusive", "kuberay_chaos", "team:core"],
+    deps = ["//:ray_lib", ":conftest"],
+)
+
 # TODO(ekl) we can't currently support tagging these as flaky since there's
 # no way to filter by both flaky and client mode tests in bazel.
 py_test_module_list(

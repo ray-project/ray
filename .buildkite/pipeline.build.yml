@@ -280,6 +280,47 @@
       --test_env=KUBECONFIG=/root/.kube/config
       python/ray/tests/...
 
+
+- label: ":kubernetes: :mending_heart: chaos test"
+  conditions: ["RAY_CI_LINUX_WHEELS_AFFECTED"]
+  instance_size: medium
+  commands:
+    - |
+      cleanup() {
+        if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi
+        python python/ray/tests/kuberay/setup/teardown_kuberay.py || true
+        kind delete cluster
+      }
+      trap cleanup EXIT
+    - ./ci/env/install-minimal.sh 3.8
+    - PYTHON=3.8 ./ci/env/install-dependencies.sh
+    # Specifying above somehow messes up the Ray install.
+    # Uninstall and re-install Ray so that we can use Ray Client.
+    # (Remove thirdparty_files to sidestep an issue with psutil.)
+    - pip uninstall -y ray && rm -rf /ray/python/ray/thirdparty_files
+    - pip install -e /ray/python
+    - echo "--- Setting up local kind cluster."
+    - ./ci/k8s/prep-k8s-environment.sh
+    - echo "--- Building py38-cpu Ray image for the test."
+    - LINUX_WHEELS=1 ./ci/ci.sh build
+    - pip install -q docker
+    - python ci/build/build-docker-images.py --py-versions py38 --device-types cpu --build-type LOCAL --build-base
+    # Tag the image built in the last step. We want to be sure to distinguish the image from the real Ray nightly.
+    - docker tag rayproject/ray:nightly-py38-cpu ray-ci:kuberay-test
+    # Load the image into the kind node
+    - kind load docker-image ray-ci:kuberay-test
+    - echo "--- Setting up KubeRay operator."
+    - python python/ray/tests/kuberay/setup/setup_kuberay.py
+    - ./ci/env/env_info.sh
+    - echo "--- Running the test."
+    - bazel test --config=ci $(./ci/run/bazel_export_options)
+      --test_tag_filters=kuberay_chaos
+      --test_env=RAY_IMAGE=docker.io/library/ray-ci:kuberay-test
+      --test_env=PULL_POLICY=IfNotPresent
+      --test_env=KUBECONFIG=/root/.kube/config
+      python/ray/tests/...
+
+
 - label: ":book: Documentation"
   commands:
     - export LINT=1
