@@ -1931,8 +1931,8 @@ class DeploymentState:
         ):
             if replica.actor_node_id in draining_nodes:
                 logger.info(
-                    f"Draining replica {replica.replica_tag} of deployment "
-                    f"{self._name}."
+                    f"Stopping replica {replica.replica_tag} of deployment "
+                    f"{self._name} on draining node {replica.actor_node_id}."
                 )
                 self._stop_replica(replica, graceful_stop=True)
             else:

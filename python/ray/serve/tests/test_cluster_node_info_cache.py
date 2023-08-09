@@ -33,6 +33,10 @@ def test_get_alive_nodes(ray_start_cluster):
         head_node_id,
         worker_node_id,
     }
+    assert (
+        cluster_node_info_cache.get_alive_node_ids()
+        == cluster_node_info_cache.get_active_node_ids()
+    )
 
     cluster.remove_node(worker_node)
     cluster.wait_for_nodes()
@@ -43,6 +47,10 @@ def test_get_alive_nodes(ray_start_cluster):
         (head_node_id, ray.nodes()[0]["NodeName"])
     ]
     assert cluster_node_info_cache.get_alive_node_ids() == {head_node_id}
+    assert (
+        cluster_node_info_cache.get_alive_node_ids()
+        == cluster_node_info_cache.get_active_node_ids()
+    )
 
 
 if __name__ == "__main__":
