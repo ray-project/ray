@@ -11,3 +11,9 @@ steps:
       - pip install -c python/requirements_compiled.txt -r python/requirements/lint-requirements.txt
       - FORMAT_SH_PRINT_DIFF=1 ./ci/lint/format.sh --all-scripts
     depends_on: forge
+
+  - label: "lint: untested code snippet"
+    commands:
+      - pip install -c python/requirements_compiled.txt semgrep
+      - semgrep ci --config semgrep.yml
+    depends_on: forge
