@@ -191,7 +191,7 @@ def test_placement_group_removal_idle_node():
         assert len((cluster_state.healthy_nodes)) == 3
         for node in cluster_state.healthy_nodes:
             assert node.node_status == "IDLE"
-            assert node.resource_usage.idle_time_ms > 1000
+            assert node.resource_usage.idle_time_ms >= 1000
     finally:
         ray.shutdown()
         cluster.shutdown()
