@@ -181,13 +181,18 @@ def create_tensorflow_preprocessors():
 
 def train_torch_model(dataset, preprocessor, per_epoch_preprocessor):
     # __torch_training_loop_start__
+    import os
+    import tempfile
+
+    import torch
     import torch.nn as nn
     import torch.optim as optim
     from torchvision import models
 
     from ray import train
     from ray.train import ScalingConfig
-    from ray.train.torch import TorchCheckpoint, TorchTrainer
+    from ray.train._checkpoint import Checkpoint
+    from ray.train.torch import TorchTrainer
 
     def train_one_epoch(model, *, criterion, optimizer, batch_size, epoch):
         dataset_shard = train.get_dataset_shard("train")
@@ -209,13 +214,15 @@ def train_torch_model(dataset, preprocessor, per_epoch_preprocessor):
 
             running_loss += loss.item()
             if i % 2000 == 1999:
+                temp_checkpoint_dir = tempfile.mkdtemp()
+                torch.save(os.path.join(temp_checkpoint_dir, "model.pt"), model)
                 train.report(
                     metrics={
                         "epoch": epoch,
                         "batch": i,
                         "running_loss": running_loss / 2000,
                     },
-                    checkpoint=TorchCheckpoint.from_model(model),
+                    checkpoint=Checkpoint.from_directory(temp_checkpoint_dir),
                 )
                 running_loss = 0
 
