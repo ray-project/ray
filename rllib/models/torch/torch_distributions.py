@@ -372,10 +372,8 @@ class TorchMultiCategorical(Distribution):
         ), "input_lens and temperatures must be same length"
 
         categoricals = [
-            TorchCategorical(logits=logits, temperature=temperature)
-            for logits, temperature in zip(
-                torch.split(logits, input_lens, dim=1), temperatures
-            )
+            TorchCategorical(logits=logits)
+            for logits in torch.split(logits, input_lens, dim=1)
         ]
 
         return TorchMultiCategorical(categoricals=categoricals)
