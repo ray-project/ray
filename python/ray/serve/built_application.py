@@ -89,12 +89,14 @@ def _get_deploy_args_from_built_app(app: BuiltApplication):
                 deployment._func_or_class,
                 deployment.init_args,
                 deployment.init_kwargs,
-                deployment._ray_actor_options,
-                deployment._config,
-                deployment._version,
-                deployment.route_prefix,
-                deployment._is_driver_deployment,
-                deployment._docs_path,
+                ray_actor_options=deployment._ray_actor_options,
+                placement_group_bundles=deployment._placement_group_bundles,
+                placement_group_strategy=deployment._placement_group_strategy,
+                config=deployment._config,
+                version=deployment._version,
+                route_prefix=deployment.route_prefix,
+                is_driver_deployment=deployment._is_driver_deployment,
+                docs_path=deployment._docs_path,
             )
         )
     return deploy_args_list
