@@ -217,11 +217,9 @@ class TestReadImages:
     def test_dynamic_block_split(ray_start_regular_shared):
         ctx = ray.data.context.DataContext.get_current()
         target_max_block_size = ctx.target_max_block_size
-        block_splitting_enabled = ctx.block_splitting_enabled
         # Reduce target max block size to trigger block splitting on small input.
         # Otherwise we have to generate big input files, which is unnecessary.
         ctx.target_max_block_size = 1
-        ctx.block_splitting_enabled = True
         try:
             root = "example://image-datasets/simple"
             ds = ray.data.read_images(root, parallelism=1)
@@ -235,7 +233,6 @@ class TestReadImages:
             assert union_ds.num_blocks() == 12
         finally:
             ctx.target_max_block_size = target_max_block_size
-            ctx.block_splitting_enabled = block_splitting_enabled
 
     def test_args_passthrough(ray_start_regular_shared):
         kwargs = {

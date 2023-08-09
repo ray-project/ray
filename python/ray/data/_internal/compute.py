@@ -77,8 +77,6 @@ class TaskPoolStrategy(ComputeStrategy):
         if fn_kwargs is None:
             fn_kwargs = {}
 
-        context = DataContext.get_current()
-
         # Handle empty datasets.
         if block_list.initial_num_blocks() == 0:
             return block_list
@@ -96,37 +94,20 @@ class TaskPoolStrategy(ComputeStrategy):
         name = name.title()
         map_bar = ProgressBar(name, total=len(block_bundles))
 
-        if context.block_splitting_enabled:
-            map_block = cached_remote_fn(_map_block_split).options(
-                num_returns="dynamic", **remote_args
+        map_block = cached_remote_fn(_map_block_split).options(
+            num_returns="dynamic", **remote_args
+        )
+        refs = [
+            map_block.remote(
+                block_fn,
+                [f for m in ms for f in m.input_files],
+                fn,
+                len(bs),
+                *(bs + fn_args),
+                **fn_kwargs,
             )
-            refs = [
-                map_block.remote(
-                    block_fn,
-                    [f for m in ms for f in m.input_files],
-                    fn,
-                    len(bs),
-                    *(bs + fn_args),
-                    **fn_kwargs,
-                )
-                for bs, ms in block_bundles
-            ]
-        else:
-            map_block = cached_remote_fn(_map_block_nosplit).options(
-                **dict(remote_args, num_returns=2)
-            )
-            all_refs = [
-                map_block.remote(
-                    block_fn,
-                    [f for m in ms for f in m.input_files],
-                    fn,
-                    len(bs),
-                    *(bs + fn_args),
-                    **fn_kwargs,
-                )
-                for bs, ms in block_bundles
-            ]
-            data_refs, refs = map(list, zip(*all_refs))
+            for bs, ms in block_bundles
+        ]
 
         in_block_owned_by_consumer = block_list._owned_by_consumer
         # Release input block references.
@@ -155,17 +136,12 @@ class TaskPoolStrategy(ComputeStrategy):
             raise e from None
 
         new_blocks, new_metadata = [], []
-        if context.block_splitting_enabled:
-            for ref_generator in results:
-                refs = list(ref_generator)
-                metadata = ray.get(refs.pop(-1))
-                assert len(metadata) == len(refs)
-                new_blocks += refs
-                new_metadata += metadata
-        else:
-            for block, metadata in zip(data_refs, results):
-                new_blocks.append(block)
-                new_metadata.append(metadata)
+        for ref_generator in results:
+            refs = list(ref_generator)
+            metadata = ray.get(refs.pop(-1))
+            assert len(metadata) == len(refs)
+            new_blocks += refs
+            new_metadata += metadata
         return BlockList(
             list(new_blocks),
             list(new_metadata),
