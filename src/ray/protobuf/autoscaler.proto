@@ -95,8 +95,6 @@ enum NodeStatus {
   IDLE = 3;
   // Node is being drained.
   DRAINING = 4;
-  // Node is drained.
-  DRAINED = 5;
 }
 
 message NodeState {
@@ -276,12 +274,13 @@ message GetClusterStatusReply {
 }
 
 enum DrainNodeReason {
+  DRAIN_NODE_REASON_UNSPECIFIED = 0;
   // The node has been idle for long enough time.
   // Drain request with this reason is rejectable.
-  IDLE_TERMINATION = 0;
+  DRAIN_NODE_REASON_IDLE_TERMINATION = 1;
   // The node will be preempted.
   // Drain request with this reason is not rejectable.
-  PREEMPTION = 1;
+  DRAIN_NODE_REASON_PREEMPTION = 2;
 }
 
 message DrainNodeRequest {
@@ -314,5 +313,12 @@ service AutoscalerStateService {
   // Obtain the current cluster state, including the autoscaler state (e.g. pending
   // requests), and the cluster resource state (e.g. ray node states).
   rpc GetClusterStatus(GetClusterStatusRequest) returns (GetClusterStatusReply);
+  // Request to drain a specified node.
+  // The request is accepted if the node is already dead or
+  // the acceptance condition is met.
+  // If the return status is not OK, then the request might fail
+  // and it's safe to retry since it's idempotent.
+  // Caller should not read `is_accepted` from the reply
+  // if the return status is not OK.
   rpc DrainNode(DrainNodeRequest) returns (DrainNodeReply);
 }

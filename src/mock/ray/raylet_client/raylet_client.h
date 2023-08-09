@@ -114,6 +114,12 @@ class MockRayletClientInterface : public RayletClientInterface {
                bool graceful,
                const rpc::ClientCallback<rpc::ShutdownRayletReply> &callback),
               (override));
+  MOCK_METHOD(void,
+              DrainRaylet,
+              (const rpc::autoscaler::DrainNodeReason &reason,
+               const std::string &reason_message,
+               const rpc::ClientCallback<rpc::DrainRayletReply> &callback),
+              (override));
 };
 
 }  // namespace ray
