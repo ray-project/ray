@@ -7,6 +7,7 @@ import numpy as np
 import pyarrow as pa
 import pytest
 from fsspec.implementations.local import LocalFileSystem
+from PIL import Image
 
 import ray
 from ray.data.datasource import Partitioning, PathPartitionFilter
@@ -261,6 +262,23 @@ class TestReadImages:
         with tempfile.NamedTemporaryFile(suffix=".png") as file:
             with pytest.raises(ValueError):
                 ray.data.read_images(paths=file.name).materialize()
+
+
+class TestWriteImages:
+    @pytest.mark.parametrize("file_format", [None, "png"])
+    def test_write_images(ray_start_regular_shared, file_format, tmp_path):
+        ds = ray.data.read_images("example://image-datasets/simple")
+        ds.write_images(
+            path=tmp_path,
+            column="image",
+            file_format=file_format,
+        )
+
+        assert len(os.listdir(tmp_path)) == ds.count()
+
+        for filename in os.listdir(tmp_path):
+            path = os.path.join(tmp_path, filename)
+            Image.open(path)
 
 
 if __name__ == "__main__":
