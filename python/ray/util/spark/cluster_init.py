@@ -5,6 +5,7 @@ import time
 import threading
 import logging
 import uuid
+import warnings
 from packaging.version import Version
 from typing import Optional, Dict, Type
 
@@ -955,37 +956,41 @@ def setup_ray_cluster(
     if "num_cpus_per_node" in kwargs:
         if num_cpus_worker_node is not None:
             raise ValueError(
-                "'num_cpus_per_node' and 'num_cpus_worker_node' arguments cannot be "
-                "set together."
+                "'num_cpus_per_node' and 'num_cpus_worker_node' arguments are equivalent. "
+                "Only set 'num_cpus_worker_node'."
             )
         num_cpus_worker_node = kwargs["num_cpus_per_node"]
-        _logger.warning(
+        warnings.warn(
             "'num_cpus_per_node' argument is deprecated, please use "
-            "'num_cpus_worker_node' argument instead."
+            "'num_cpus_worker_node' argument instead.",
+            DeprecationWarning,
         )
 
     if "num_gpus_per_node" in kwargs:
         if num_gpus_worker_node is not None:
             raise ValueError(
-                "'num_gpus_per_node' and 'num_gpus_worker_node' arguments cannot be "
-                "set together."
+                "'num_gpus_per_node' and 'num_gpus_worker_node' arguments are equivalent. "
+                "Only set 'num_gpus_worker_node'."
             )
         num_gpus_worker_node = kwargs["num_gpus_per_node"]
-        _logger.warning(
+        warnings.warn(
             "'num_gpus_per_node' argument is deprecated, please use "
-            "'num_gpus_worker_node' argument instead."
+            "'num_gpus_worker_node' argument instead.",
+            DeprecationWarning,
         )
 
     if "object_store_memory_per_node" in kwargs:
         if object_store_memory_worker_node is not None:
             raise ValueError(
                 "'object_store_memory_per_node' and 'object_store_memory_worker_node' "
-                "arguments cannot be set together."
+                "arguments  are equivalent. Only set "
+                "'object_store_memory_worker_node'."
             )
         object_store_memory_worker_node = kwargs["object_store_memory_per_node"]
-        _logger.warning(
+        warnings.warn(
             "'object_store_memory_per_node' argument is deprecated, please use "
-            "'object_store_memory_worker_node' argument instead."
+            "'object_store_memory_worker_node' argument instead.",
+            DeprecationWarning,
         )
 
     # Environment configurations within the Spark Session that dictate how many cpus
@@ -1101,13 +1106,19 @@ def setup_ray_cluster(
         num_cpus_head_node = 0
     else:
         if num_cpus_head_node < 0:
-            raise ValueError("Argument `num_cpus_head_node` value must be >= 0.")
+            raise ValueError(
+                "Argument `num_cpus_head_node` value must be >= 0. "
+                f"Current value is {num_cpus_head_node}."
+            )
 
     if num_gpus_head_node is None:
         num_gpus_head_node = 0
     else:
         if num_gpus_head_node < 0:
-            raise ValueError("Argument `num_gpus_head_node` value must be >= 0.")
+            raise ValueError(
+                "Argument `num_gpus_head_node` value must be >= 0."
+                f"Current value is {num_gpus_head_node}."
+            )
 
     if num_cpus_head_node == 0 and num_gpus_head_node == 0:
         # Because tasks that require CPU or GPU resources are not scheduled to Ray
