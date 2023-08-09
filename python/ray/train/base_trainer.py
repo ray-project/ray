@@ -499,9 +499,7 @@ class BaseTrainer(abc.ABC):
         return scaling_config
 
     @classmethod
-    def _maybe_sync_down_trainer_state(
-        cls, restore_path: Union[str, os.PathLike]
-    ) -> Path:
+    def _maybe_sync_down_trainer_state(cls, restore_path: str) -> Path:
         """Syncs down trainer state from remote storage.
 
         Returns:

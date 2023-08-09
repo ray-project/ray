@@ -607,7 +607,8 @@ class TuneController:
                     trial_to_add.pickled_error_filename = None
                     trial_to_add.set_status(Trial.PENDING)
                     if not _use_storage_context():
-                        # TODO(justinvyu): Mark this as legacy.
+                        # TODO(justinvyu): Remove this.
+                        # Not needed since trial.checkpoint will be used anyways.
                         trial_to_add.restore_path = trial.checkpoint.dir_or_data
                 elif restart_errored:
                     trial_to_add = trial.reset()
