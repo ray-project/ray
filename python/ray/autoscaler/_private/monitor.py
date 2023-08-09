@@ -15,10 +15,9 @@ from typing import Any, Callable, Dict, Optional, Union
 import ray
 import ray._private.ray_constants as ray_constants
 import ray._private.utils
-import ray._private.gcs_utils as gcs_utils
 from ray._private.event.event_logger import get_event_logger
 from ray._private.ray_logging import setup_component_logger
-from ray._raylet import GcsClient, GcsClientOptions, GlobalStateAccessor
+from ray._raylet import GcsClient
 from ray.autoscaler._private.autoscaler import StandardAutoscaler
 from ray.autoscaler._private.commands import teardown_cluster
 from ray.autoscaler._private.constants import (
@@ -170,10 +169,6 @@ class Monitor:
         # If set, we are in a manually created cluster (non-autoscaling) and
         # simply mirroring what the GCS tells us the cluster node types are.
         self.readonly_config = None
-
-        gcs_options = GcsClientOptions.from_gcs_address(self.gcs_address)
-        self.global_state_accessor = GlobalStateAccessor(gcs_options)
-        self.global_state_accessor.connect()
 
         if log_dir:
             try:
