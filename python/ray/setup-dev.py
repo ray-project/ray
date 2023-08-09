@@ -91,6 +91,13 @@ if __name__ == "__main__":
         help="List of folders to skip linking to facilitate workspace dev",
         required=False,
     )
+    parser.add_argument(
+        "--extras",
+        "-e",
+        nargs="*",
+        help="List of extra folders to link to facilitate workspace dev",
+        required=False,
+    )
 
     args = parser.parse_args()
     if not args.yes:
@@ -123,6 +130,10 @@ if __name__ == "__main__":
         skip_list=args.skip,
         local_path="../../../dashboard",
     )
+
+    for package in args.extras:
+        do_link(package, force=args.yes, skip_list=args.skip)
+
     print(
         "Created links.\n\nIf you run into issues initializing Ray, please "
         "ensure that your local repo and the installed Ray are in sync "
