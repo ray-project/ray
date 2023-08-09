@@ -216,11 +216,3 @@ class _TorchBackend(Backend):
         self, worker_group: WorkerGroup, backend_config: BackendConfig
     ):
         worker_group.execute(_set_torch_distributed_env_vars)
-
-    @classmethod
-    def _encode_data(cls, checkpoint: Checkpoint):
-        checkpoint = super()._encode_data(checkpoint)
-        if type(checkpoint) is Checkpoint:
-            _warn_about_bad_checkpoint_type(TorchCheckpoint)
-            checkpoint = TorchCheckpoint.from_checkpoint(checkpoint)
-        return checkpoint

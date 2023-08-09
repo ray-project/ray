@@ -157,12 +157,6 @@ class _HorovodBackend(Backend):
                     if contains_tensorflow_object(checkpoint.to_dict()):
                         _warn_about_bad_checkpoint_type(TensorflowCheckpoint)
                         checkpoint = TensorflowCheckpoint.from_checkpoint(checkpoint)
-                if "torch" in sys.modules:
-                    from ray.air._internal.torch_utils import contains_tensor
-
-                    if contains_tensor(checkpoint.to_dict()):
-                        _warn_about_bad_checkpoint_type(TorchCheckpoint)
-                        checkpoint = TorchCheckpoint.from_checkpoint(checkpoint)
         return checkpoint
 
 
