@@ -137,9 +137,7 @@ class TfCategorical(TfDistribution):
 
     @classmethod
     @override(Distribution)
-    def from_logits(
-        cls, logits: TensorType, **kwargs
-    ) -> "TfCategorical":
+    def from_logits(cls, logits: TensorType, **kwargs) -> "TfCategorical":
         return TfCategorical(logits=logits, **kwargs)
 
     def to_deterministic(self) -> "TfDeterministic":

@@ -133,9 +133,7 @@ class TorchCategorical(TorchDistribution):
 
     @classmethod
     @override(Distribution)
-    def from_logits(
-        cls, logits: TensorType, **kwargs
-    ) -> "TorchCategorical":
+    def from_logits(cls, logits: TensorType, **kwargs) -> "TorchCategorical":
         return TorchCategorical(logits=logits, **kwargs)
 
     def to_deterministic(self) -> "TorchDeterministic":
