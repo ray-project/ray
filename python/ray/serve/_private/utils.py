@@ -735,12 +735,13 @@ def calculate_remaining_timeout(
     return max(0, timeout_s - time_since_start_s)
 
 
-def get_all_live_placement_group_names(
-    placement_group_table: Optional[Dict[str, Any]] = None,
-) -> List[str]:
-    """XXX: comment (AND TEST)."""
-    if placement_group_table is None:
-        placement_group_table = ray.util.placement_group_table()
+def get_all_live_placement_group_names() -> List[str]:
+    """Fetch and parse the Ray placement group table for live placement group names.
+
+    Placement groups are filtered based on their `scheduling_state`; any placement
+    group not in the "REMOVED" state is considered live.
+    """
+    placement_group_table = ray.util.placement_group_table()
 
     live_pg_names = []
     for entry in placement_group_table.values():

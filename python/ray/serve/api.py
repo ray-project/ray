@@ -290,8 +290,15 @@ def deployment(
             resource requirements. Valid options are: `accelerator_type`, `memory`,
             `num_cpus`, `num_gpus`, `object_store_memory`, `resources`,
             and `runtime_env`.
-        placement_group_bundles: TODO
-        placement_group_strategy: TODO
+        placement_group_bundles: Defines a set of placement group bundles to be
+            scheduled *for each replica* of this deployment. The replica actor will
+            be scheduled in the first bundle provided, so the resources specified in
+            `ray_actor_options` must be a subset of the first bundle's resources. All
+            actors and tasks created by the replica actor will be scheduled in the
+            placement group by default (`placement_group_capture_child_tasks` is set
+            to True).
+        placement_group_strategy: Strategy to use for the replica placement group
+            specified via `placement_group_bundles`. Defaults to `PACK`.
         user_config: Config to pass to the reconfigure method of the deployment. This
             can be updated dynamically without restarting the replicas of the
             deployment. The user_config must be fully JSON-serializable.

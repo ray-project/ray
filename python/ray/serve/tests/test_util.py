@@ -22,6 +22,7 @@ from ray.serve._private.utils import (
     serve_encoders,
     snake_to_camel_case,
     dict_keys_snake_to_camel_case,
+    get_all_live_placement_group_names,
     get_head_node_id,
 )
 from ray._private.resource_spec import HEAD_NODE_RESOURCE_NAME
@@ -616,6 +617,52 @@ def test_calculate_remaining_timeout():
         )
         == 0
     )
+
+
+def test_get_all_live_placement_group_names(ray_instance):
+    """Test the logic to parse the Ray placement group table.
+
+    The test contains three cases:
+    - A named placement group that was created and is still alive ("pg2").
+    - A named placement group that's still being scheduled ("pg3").
+    - An unnamed placement group.
+
+    Only "pg2" and "pg3" should be returned as live placement group names.
+    """
+
+    # Named placement group that's been removed (should not be returned).
+    pg1 = ray.util.placement_group([{"CPU": 0.1}], name="pg1")
+    ray.util.remove_placement_group(pg1)
+
+    # Named, detached placement group that's been removed (should not be returned).
+    pg2 = ray.util.placement_group([{"CPU": 0.1}], name="pg2", lifetime="detached")
+    ray.util.remove_placement_group(pg2)
+
+    # Named placement group that's still alive (should be returned).
+    pg3 = ray.util.placement_group([{"CPU": 0.1}], name="pg3")
+    assert pg3.wait()
+
+    # Named, detached placement group that's still alive (should be returned).
+    pg4 = ray.util.placement_group([{"CPU": 0.1}], name="pg4", lifetime="detached")
+    assert pg4.wait()
+
+    # Named placement group that's being scheduled (should be returned).
+    pg5 = ray.util.placement_group([{"CPU": 1000}], name="pg5")
+    assert not pg5.wait(timeout_seconds=0.001)
+
+    # Named, detached placement group that's being scheduled (should be returned).
+    pg6 = ray.util.placement_group([{"CPU": 1000}], name="pg6", lifetime="detached")
+    assert not pg6.wait(timeout_seconds=0.001)
+
+    # Unnamed placement group (should not be returned).
+    pg7 = ray.util.placement_group([{"CPU": 0.1}])
+    assert pg7.wait()
+
+    # Unnamed, detached placement group (should not be returned).
+    pg8 = ray.util.placement_group([{"CPU": 0.1}], lifetime="detached")
+    assert pg8.wait()
+
+    assert set(get_all_live_placement_group_names()) == {"pg3", "pg4", "pg5", "pg6"}
 
 
 if __name__ == "__main__":
