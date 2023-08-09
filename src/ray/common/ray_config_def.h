@@ -690,7 +690,7 @@ RAY_CONFIG(uint32_t,
 RAY_CONFIG(std::string, predefined_unit_instance_resources, "GPU")
 
 /// The scheduler will treat these custom resource types as unit_instance.
-/// Default custom_unit_instance_resources is empty.
+/// Default custom_unit_instance_resources is "num_neuron_cores".
 /// When set it to "FPGA", we will treat FPGA as unit_instance.
 RAY_CONFIG(std::string, custom_unit_instance_resources, "num_neuron_cores")
 

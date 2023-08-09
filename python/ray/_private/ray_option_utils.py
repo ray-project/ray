@@ -118,7 +118,8 @@ def _validate_neuron_core_accelerator(options: Dict[str, Any]):
     Raises:
         ValueError: If the options are invalid.
     """
-    if "num_gpus" in options and options["num_gpus"] > 0:
+    num_gpus = options.get("num_gpus", None)
+    if num_gpus is not None and num_gpus > 0:
         resources = options["resources"] if "resources" in options else {}
         num_neuron_cores = resources.get(ray_constants.NUM_NEURON_CORES, 0)
         accelerator_type_value: str = options.get("accelerator_type", "")
