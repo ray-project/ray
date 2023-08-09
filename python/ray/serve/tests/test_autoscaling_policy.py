@@ -330,7 +330,7 @@ def test_initial_num_replicas(mock, serve_instance):
     assert len(get_running_replicas(controller, "A")) == 2
 
 
-def test_smoothing_factor_scale_up_from_0_replica():
+def test_smoothing_factor_scale_up_from_0_replicas():
     """Test that the smoothing factor is respected when scaling up from 0 replicas."""
 
     config = AutoscalingConfig(
@@ -360,10 +360,11 @@ def test_smoothing_factor_scale_up_from_0_replica():
     assert new_num_replicas == 1
 
 
-def test_smoothing_factor_scale_down_to_0_replica():
+def test_smoothing_factor_scale_down_to_0_replicas():
     """Test that a deployment scales down to 0 for non-default smoothing factors."""
 
-    # Smoothing factor = 10
+    # With smoothing factor > 1, the desired number of replicas should
+    # immediately drop to 0 (while respecting upscale and downscale delay)
     config = AutoscalingConfig(
         min_replicas=0,
         max_replicas=5,
@@ -378,10 +379,11 @@ def test_smoothing_factor_scale_down_to_0_replica():
         current_handle_queued_queries=0,
     )
 
-    # 1 * 10
     assert new_num_replicas == 0
 
-    # Smoothing factor = 0.2
+    # With smoothing factor < 1, the desired number of replicas shouldn't
+    # get stuck at a positive number, and instead should eventually drop
+    # to zero
     config.smoothing_factor = 0.2
     policy = BasicAutoscalingPolicy(config)
     num_replicas = 5
@@ -392,7 +394,6 @@ def test_smoothing_factor_scale_down_to_0_replica():
             current_handle_queued_queries=0,
         )
 
-    # math.ceil(1 * 0.5)
     assert num_replicas == 0
 
 
