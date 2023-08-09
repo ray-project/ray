@@ -27,7 +27,7 @@ from ray.train._checkpoint import Checkpoint as NewCheckpoint
 from ray.train._internal import session
 from ray.train._internal.storage import (
     _download_from_fs_path,
-    _list_at_fs_path,
+    _exists_at_fs_path,
     _use_storage_context,
     get_fs_and_path,
 )
@@ -394,7 +394,7 @@ class BaseTrainer(abc.ABC):
         """
         if _use_storage_context():
             fs, fs_path = get_fs_and_path(path, storage_filesystem)
-            return _TRAINER_PKL in _list_at_fs_path(fs, fs_path)
+            return _exists_at_fs_path(fs, os.path.join(fs_path, _TRAINER_PKL))
 
         return _TRAINER_PKL in list_at_uri(str(path))
 
