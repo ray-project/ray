@@ -136,8 +136,17 @@ def test_pg_removed_on_replica_crash(serve_instance):
     with pytest.raises(ray.exceptions.RayActorError):
         ray.get(h.die.remote())
 
+    def new_replica_scheduled():
+        try:
+            ray.get(h.get_pg.remote())
+        except ray.exceptions.RayActorError:
+            return False
+
+        return True
+
     # The original placement group should be deleted and a new replica should
     # be scheduled with its own new placement group.
+    wait_for_condition(new_replica_scheduled)
     new_pg = ray.get(h.get_pg.remote())
     assert pg != new_pg
     assert len(get_all_live_placement_group_names()) == 1
