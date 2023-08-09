@@ -106,7 +106,7 @@ training.
             +   RayLightningEnvironment,
             + )
 
-              def train_func_per_worker():
+              def train_func(config):
                 ...
                 model = MyLightningModule(...)
                 datamodule = MyLightningDataModule(...)
@@ -142,7 +142,7 @@ training.
         local, global, and node rank and world size.
 
         **Step 3: Configure Parallel Devices**
-        
+
         In addition, Ray TorchTrainer has already configured the correct 
         ``CUDA_VISIBLE_DEVICES`` for you. One should always use all available 
         GPUs by setting ``devices="auto"``.
@@ -152,6 +152,8 @@ training.
         Finally, pass your Lightning Trainer into
         :meth:`~ray.train.lightning.prepare_trainer` to validate 
         your configurations. 
+
+        **Step 5: Define a Ray TorchTrainer**
 
 
 
