@@ -167,8 +167,11 @@ void WorkerPool::Start() {
         "RayletWorkerPool.deadline_timer.kill_idle_workers");
   }
 
+  RAY_LOG(INFO) << "WUBBA";
+
   if (RayConfig::instance().enable_worker_prestart()) {
     PrestartDefaultCpuWorkers(Language::PYTHON, num_prestart_python_workers);
+    PrestartDefaultCpuWorkers(Language::JULIA, 1);
   }
 }
 
@@ -849,7 +852,8 @@ Status WorkerPool::RegisterDriver(const std::shared_ptr<WorkerInterface> &driver
     if (!first_job_registered_ && RayConfig::instance().prestart_worker_first_driver() &&
         !RayConfig::instance().enable_worker_prestart()) {
       RAY_LOG(DEBUG) << "PrestartDefaultCpuWorkers " << num_prestart_python_workers;
-      PrestartDefaultCpuWorkers(Language::PYTHON, num_prestart_python_workers);
+      // PrestartDefaultCpuWorkers(Language::PYTHON, num_prestart_python_workers);
+      PrestartDefaultCpuWorkers(Language::JULIA, 1);
     }
 
     // Invoke the `send_reply_callback` later to only finish driver
