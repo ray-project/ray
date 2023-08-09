@@ -149,9 +149,6 @@ def evaluate(
         # workers.
         losses.append(accelerator.gather(loss[None]))
 
-        if as_test:
-            break
-
     # We stack losses so that we have a tensor of shape (T, K) where T is the number of
     # steps and K is the number of workers.
     losses = torch.stack(losses)
@@ -407,9 +404,6 @@ def training_function(kwargs: dict):
                         "learning_rate": lr_scheduler.get_lr()[0],
                     }
                 )
-        
-        if config["as_test"]:
-            break
 
         e_epoch = time.time()
         accelerator.print("Train time per epoch: ", e_epoch - s_epoch)
@@ -504,7 +498,10 @@ def training_function(kwargs: dict):
 
         if perplex < args.stop_perplexity:
             print(f"Perplexity reached {perplex} < {args.stop_perplexity}. Stopping.")
-            break
+            return
+        
+        if config["as_test"]:
+            return
 
 
 def parse_args():
