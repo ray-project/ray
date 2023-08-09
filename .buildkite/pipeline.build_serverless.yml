@@ -1,21 +1,21 @@
-#ci:group=:ray: core tests (civ2)
+#ci:group=:serverless: serverless tests (civ2)
 
-- label: ":python: core"
+- label: ":python: serverless"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
-  instance_size: large
-  parallelism: 6
+  instance_size: medium
+  parallelism: 2
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - ./ci/env/env_info.sh
-    - bazel run //ci/ray_ci -- //python/ray/tests/... //python/ray/dag/... python/ray/autoscaler/v2/... core 
+    - bazel run //ci/ray_ci -- //python/ray/tests/... serverless 
       --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
-      --except-tags debug_tests,asan_tests,xcommit
+      --except-tags manual,kuberay_operator,spark_plugin_tests
 
-- label: ":python: flaky core"
+- label: ":python: flaky serverless"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
-  instance_size: large
+  instance_size: medium
   soft_fail: true
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - ./ci/env/env_info.sh
-    - bazel run //ci/ray_ci -- //... core --run-flaky-tests --parallelism-per-worker 3
+    - bazel run //ci/ray_ci -- //... serverless --run-flaky-tests  --parallelism-per-worker 3
