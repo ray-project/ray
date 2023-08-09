@@ -190,13 +190,13 @@ class RayServeHandle:
             _router_cls=_router_cls,
         )
 
-        if self._router is None:
+        if self._router is None and not _router_cls:
             self._get_or_create_router()
 
         return self.__class__(
             self.deployment_name,
             handle_options=new_handle_options,
-            _router=self._router,
+            _router=None if _router_cls else self._router,
             _is_for_http_requests=self._is_for_http_requests,
         )
 
@@ -333,7 +333,7 @@ class RayServeSyncHandle(RayServeHandle):
                 self.deployment_name,
                 event_loop=_create_or_get_async_loop_in_thread(),
                 _use_new_routing=RAY_SERVE_ENABLE_NEW_ROUTING,
-                _router_cls=self.handle_options.router_cls,
+                _router_cls=self.handle_options._router_cls,
             )
 
         return self._router
@@ -344,6 +344,7 @@ class RayServeSyncHandle(RayServeHandle):
         method_name: Union[str, DEFAULT] = DEFAULT.VALUE,
         multiplexed_model_id: Union[str, DEFAULT] = DEFAULT.VALUE,
         stream: Union[bool, DEFAULT] = DEFAULT.VALUE,
+        _router_cls: Union[str, DEFAULT] = DEFAULT.VALUE,
     ) -> "RayServeSyncHandle":
         """Set options for this handle and return an updated copy of it.
 
@@ -361,6 +362,7 @@ class RayServeSyncHandle(RayServeHandle):
             method_name=method_name,
             multiplexed_model_id=multiplexed_model_id,
             stream=stream,
+            _router_cls=_router_cls,
         )
 
     def remote(self, *args, **kwargs) -> ray.ObjectRef:

@@ -904,23 +904,17 @@ class Router:
         self._event_loop = event_loop
 
         if _router_cls:
-            self._replica_scheduler = load_class(_router_cls)()
+            self._replica_scheduler = load_class(_router_cls)(
+                event_loop=event_loop, deployment_name=deployment_name
+            )
         elif _use_new_routing:
             self._replica_scheduler = PowerOfTwoChoicesReplicaScheduler(
                 event_loop, deployment_name
             )
-            logger.info(
-                "Using PowerOfTwoChoicesReplicaScheduler.",
-                extra={"log_to_stderr": False},
-            )
         else:
             self._replica_scheduler = RoundRobinReplicaScheduler(event_loop)
-            logger.info(
-                "Using RoundRobinReplicaScheduler.",
-                extra={"log_to_stderr": False},
-            )
         logger.info(
-            f"Using {self._replica_scheduler.__class__}.",
+            f"Using router {self._replica_scheduler.__class__}.",
             extra={"log_to_stderr": False},
         )
 
