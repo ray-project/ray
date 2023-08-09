@@ -9,6 +9,8 @@ This page covers framework specific integrations with Ray Train and Ray Train De
 .. _train-integration-api:
 .. _train-framework-specific-ckpts:
 
+.. currentmodule:: ray
+
 Ray Train Integrations
 ----------------------
 
@@ -16,6 +18,8 @@ Ray Train Integrations
 
 PyTorch Ecosystem
 ~~~~~~~~~~~~~~~~~
+
+Scale out your PyTorch, Lightning, HuggingFace code with Ray TorchTrainer.
 
 .. autosummary::
     :toctree: doc/
@@ -44,12 +48,6 @@ PyTorch
 PyTorch Lightning
 *****************
 
-.. note::
-
-    We will deprecate `LightningTrainer`, `LightningConfigBuilder`,
-    `LightningCheckpoint`, and `LightningPredictor` in Ray 2.8. Please 
-    refer to the :ref:`migration guides <migration-guide>` for more info.
-
 .. autosummary::
     :toctree: doc/
 
@@ -59,10 +57,20 @@ PyTorch Lightning
     ~train.lightning.RayFSDPStrategy
     ~train.lightning.RayDeepSpeedStrategy
     ~train.lightning.RayTrainReportCallback
-    (Deprecating) ~train.lightning.LightningTrainer
-    (Deprecating) ~train.lightning.LightningConfigBuilder
-    (Deprecating) ~train.lightning.LightningCheckpoint
-    (Deprecating) ~train.lightning.LightningPredictor
+
+.. note::
+
+    We will deprecate `LightningTrainer`, `LightningConfigBuilder`,
+    `LightningCheckpoint`, and `LightningPredictor` in Ray 2.8. Please 
+    refer to the :ref:`migration guides <migration-guide>` for more info.
+
+.. autosummary::
+    :toctree: doc/
+
+    ~train.lightning.LightningTrainer
+    ~train.lightning.LightningConfigBuilder
+    ~train.lightning.LightningCheckpoint
+    ~train.lightning.LightningPredictor
 
 HuggingFace Transformers
 ************************
@@ -76,8 +84,8 @@ HuggingFace Transformers
 .. autosummary::
     :toctree: doc/
 
-    (Deprecating) ~train.huggingface.TransformersTrainer
-    (Deprecating) ~train.huggingface.TransformersCheckpoint
+    ~train.huggingface.TransformersTrainer
+    ~train.huggingface.TransformersCheckpoint
 
 HuggingFace Accelerate
 **********************
@@ -90,7 +98,7 @@ HuggingFace Accelerate
 .. autosummary::
     :toctree: doc/
 
-    (Deprecating) ~train.huggingface.AccelerateTrainer
+    ~train.huggingface.AccelerateTrainer
 
 Tensorflow/Keras
 ~~~~~~~~~~~~~~~~
@@ -163,59 +171,16 @@ Mosaic
 
     ~train.mosaic.MosaicTrainer
 
-
-
-
-Ray Train Base Classes (Developer APIs)
----------------------------------------
-
-.. currentmodule:: ray
-
-.. _train-base-trainer:
-
-Trainer Base Classes
-~~~~~~~~~~~~~~~~~~~~
-
-.. autosummary::
-    :toctree: doc/
-
-    ~train.trainer.BaseTrainer
-    ~train.data_parallel_trainer.DataParallelTrainer
-    ~train.DataConfig
-    ~train.gbdt_trainer.GBDTTrainer
-
-``BaseTrainer`` API
-*******************
-
-.. autosummary::
-    :toctree: doc/
-
-    ~train.trainer.BaseTrainer.fit
-    ~train.trainer.BaseTrainer.setup
-    ~train.trainer.BaseTrainer.preprocess_datasets
-    ~train.trainer.BaseTrainer.training_loop
-    ~train.trainer.BaseTrainer.as_trainable
-
-
-Train Backend Base Classes
-~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. _train-backend:
-.. _train-backend-config:
-
-.. autosummary::
-    :toctree: doc/
-    :template: autosummary/class_without_autosummary.rst
-
-    ~train.backend.Backend
-    ~train.backend.BackendConfig
-
 Ray Train Config
 ----------------
 
 .. autosummary::
-
-    ~ray.train.DataConfig
+    :toctree: doc/
+    
+    ~train.ScalingConfig
+    ~train.RunConfig
+    ~train.CheckpointConfig
+    ~train.DataConfig
 
 .. _train-loop-api:
 
@@ -238,16 +203,6 @@ Ray Train Checkpoints
     :toctree: doc/
 
     ~train.Checkpoint
-
-
-Ray Train Context
------------------
-
-.. autosummary::
-    :toctree: doc/
-
-    ~train.get_context
-    ~train.context.TrainContext
 
 
 .. _trainer-restore:
@@ -280,6 +235,7 @@ Restoration API for Built-in Trainers
 
 .. autosummary::
 
+    train.torch.TorchTrainer.restore
     train.huggingface.TransformersTrainer.restore
 
 .. note::
@@ -294,3 +250,44 @@ Restoration API for Built-in Trainers
 .. seealso::
 
     See :ref:`train-restore-guide` for more details on when and how trainer restore should be used.
+
+Ray Train Base Classes (Developer APIs)
+---------------------------------------
+
+.. _train-base-trainer:
+
+Trainer Base Classes
+~~~~~~~~~~~~~~~~~~~~
+
+.. autosummary::
+    :toctree: doc/
+
+    ~train.trainer.BaseTrainer
+    ~train.data_parallel_trainer.DataParallelTrainer
+    ~train.gbdt_trainer.GBDTTrainer
+
+``BaseTrainer`` API
+*******************
+
+.. autosummary::
+    :toctree: doc/
+
+    ~train.trainer.BaseTrainer.fit
+    ~train.trainer.BaseTrainer.setup
+    ~train.trainer.BaseTrainer.preprocess_datasets
+    ~train.trainer.BaseTrainer.training_loop
+    ~train.trainer.BaseTrainer.as_trainable
+
+
+Train Backend Base Classes
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. _train-backend:
+.. _train-backend-config:
+
+.. autosummary::
+    :toctree: doc/
+    :template: autosummary/class_without_autosummary.rst
+
+    ~train.backend.Backend
+    ~train.backend.BackendConfig
