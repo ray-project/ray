@@ -213,6 +213,12 @@ class Test(dict):
         """
         Returns the byod image tag to use for this test.
         """
+        byod_image_tag = os.environ.get("RAY_IMAGE_TAG")
+        if byod_image_tag:
+            # Use the image tag specified in the environment variable.
+            # TODO(can): this is a temporary backdoor that should be removed
+            # once civ2 is fully rolled out.
+            return byod_image_tag
         commit = os.environ.get(
             "COMMIT_TO_TEST",
             os.environ["BUILDKITE_COMMIT"],
