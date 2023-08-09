@@ -12,6 +12,7 @@ import ray
 import ray._private.services
 from ray.util.annotations import DeveloperAPI
 from ray.autoscaler._private.spark.node_provider import RAY_ON_SPARK_HEAD_NODE_ID
+import ray._private.ray_constants as ray_constants
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +29,8 @@ class AutoscalingCluster:
             head_resources: resources of the head node, including CPU.
             worker_node_types: autoscaler node types config for worker nodes.
         """
-        self._head_resources = head_resources
+        self._head_resources = head_resources.copy()
+        self._head_resources["NODE_ID_AS_RESOURCE"] = RAY_ON_SPARK_HEAD_NODE_ID
         self._config = self._generate_config(
             head_resources, worker_node_types, **config_kwargs
         )
@@ -71,8 +73,7 @@ class AutoscalingCluster:
             cmd.append("--num-cpus={}".format(self._head_resources.pop("CPU")))
         if "GPU" in self._head_resources:
             cmd.append("--num-gpus={}".format(self._head_resources.pop("GPU")))
-        if self._head_resources:
-            cmd.append("--resources='{}'".format(json.dumps(self._head_resources)))
+        cmd.append(f"--resources={json.dumps(self._head_resources)}")
         if _system_config is not None:
             cmd.append(
                 "--system-config={}".format(
@@ -82,7 +83,7 @@ class AutoscalingCluster:
         env = os.environ.copy()
         env.update({
             "AUTOSCALER_UPDATE_INTERVAL_S": "1",
-            "RAY_OVERRIDE_NODE_ID_FOR_TESTING": RAY_ON_SPARK_HEAD_NODE_ID,
+            # ray_constants.RESOURCES_ENVIRONMENT_VARIABLE: json.dumps(self._head_resources),
         })
         subprocess.check_call(cmd, env=env)
 

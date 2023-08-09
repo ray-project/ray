@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 # We generate the node ids deterministically in the fake node provider, so that
 # we can associate launched nodes with their resource reports. IDs increment
 # starting with fffff*00000000 for the head node, fffff*00000001, etc. for workers.
-RAY_ON_SPARK_HEAD_NODE_ID = "ffffffffffffffffffffffffffffffffffffffffffffffff00000000"
+RAY_ON_SPARK_HEAD_NODE_ID = 0
 RAY_ON_SPARK_HEAD_NODE_TYPE = "ray.head.default"
 
 
@@ -52,10 +52,10 @@ class RayOnSparkNodeProvider(NodeProvider):
         }
         self._next_node_id = 0
 
-    def _next_hex_node_id(self):
-        self._next_node_id += 1
-        base = "ffffffffffffffffffffffffffffffffffffffffffffffff"
-        return base + str(self._next_node_id).zfill(8)
+    def get_next_node_id(self):
+        with self.lock:
+            self._next_node_id += 1
+            return self._next_node_id
 
     def non_terminated_nodes(self, tag_filters):
         with self.lock:
@@ -104,8 +104,10 @@ class RayOnSparkNodeProvider(NodeProvider):
     ):
         with self.lock:
             for _ in range(count):
+                resources = resources.copy()
                 node_type = tags[TAG_RAY_USER_NODE_TYPE]
-                next_id = self._next_hex_node_id()
+                next_id = self.get_next_node_id()
+                resources["NODE_ID_AS_RESOURCE"] = next_id
                 ray_params = ray._private.parameter.RayParams(
                     min_worker_port=0,
                     max_worker_port=0,
@@ -122,7 +124,6 @@ class RayOnSparkNodeProvider(NodeProvider):
                         ray._private.services.get_node_ip_address()
                     ),
                     env_vars={
-                        "RAY_OVERRIDE_NODE_ID_FOR_TESTING": next_id,
                         ray_constants.RESOURCES_ENVIRONMENT_VARIABLE: json.dumps(resources),
                         ray_constants.LABELS_ENVIRONMENT_VARIABLE: json.dumps(labels),
                     },
