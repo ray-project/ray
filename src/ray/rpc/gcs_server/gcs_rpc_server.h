@@ -18,7 +18,7 @@
 #include "ray/common/id.h"
 #include "ray/rpc/grpc_server.h"
 #include "ray/rpc/server_call.h"
-#include "src/ray/protobuf/experimental/autoscaler.grpc.pb.h"
+#include "src/ray/protobuf/autoscaler.grpc.pb.h"
 #include "src/ray/protobuf/gcs_service.grpc.pb.h"
 #include "src/ray/protobuf/monitor.grpc.pb.h"
 
@@ -410,6 +410,10 @@ class NodeResourceInfoGcsServiceHandler {
       rpc::GetAllAvailableResourcesReply *reply,
       rpc::SendReplyCallback send_reply_callback) = 0;
 
+  virtual void HandleGetDrainingNodes(rpc::GetDrainingNodesRequest request,
+                                      rpc::GetDrainingNodesReply *reply,
+                                      rpc::SendReplyCallback send_reply_callback) = 0;
+
   virtual void HandleReportResourceUsage(ReportResourceUsageRequest request,
                                          ReportResourceUsageReply *reply,
                                          SendReplyCallback send_reply_callback) = 0;
@@ -438,6 +442,7 @@ class NodeResourceInfoGrpcService : public GrpcService {
       const ClusterID &cluster_id) override {
     NODE_RESOURCE_INFO_SERVICE_RPC_HANDLER(GetResources);
     NODE_RESOURCE_INFO_SERVICE_RPC_HANDLER(GetAllAvailableResources);
+    NODE_RESOURCE_INFO_SERVICE_RPC_HANDLER(GetDrainingNodes);
     NODE_RESOURCE_INFO_SERVICE_RPC_HANDLER(ReportResourceUsage);
     NODE_RESOURCE_INFO_SERVICE_RPC_HANDLER(GetAllResourceUsage);
   }

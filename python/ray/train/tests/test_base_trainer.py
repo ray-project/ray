@@ -398,7 +398,7 @@ def test_large_params(ray_start_4_cpus):
     array_size = int(1e8)
 
     def training_loop(self):
-        checkpoint = self.resume_from_checkpoint.to_dict()["ckpt"]
+        checkpoint = self.starting_checkpoint.to_dict()["ckpt"]
         assert len(checkpoint) == array_size
 
     checkpoint = Checkpoint.from_dict({"ckpt": np.zeros(shape=array_size)})
