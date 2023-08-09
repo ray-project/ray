@@ -5,12 +5,14 @@ from typing import (
 )
 
 import ray
+from ray._raylet import GcsClient
 from ray.serve._private.constants import RAY_GCS_RPC_TIMEOUT_S
 
+
 class ClusterNodeInfoCache:
-    """Provide access to cached node information in the cluster.
-    """
-    def __init__(self, gcs_client):
+    """Provide access to cached node information in the cluster."""
+
+    def __init__(self, gcs_client: GcsClient):
         self._gcs_client = gcs_client
         self._cached_alive_nodes = None
 
