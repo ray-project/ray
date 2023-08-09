@@ -8,7 +8,6 @@ import numpy as np
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.util import _check_import
 from ray.data.block import BlockMetadata
-from ray.data.datasource.binary_datasource import BinaryDatasource
 from ray.data.datasource.datasource import Reader
 from ray.data.datasource.file_based_datasource import (
     FileBasedDatasource,
@@ -39,7 +38,7 @@ IMAGE_ENCODING_RATIO_ESTIMATE_LOWER_BOUND = 0.5
 
 
 @DeveloperAPI
-class ImageDatasource(BinaryDatasource):
+class ImageDatasource(FileBasedDatasource):
     """A datasource that lets you read images."""
 
     _WRITE_FILE_PER_ROW = True
@@ -79,9 +78,7 @@ class ImageDatasource(BinaryDatasource):
     ) -> "pyarrow.Table":
         from PIL import Image, UnidentifiedImageError
 
-        records = super()._read_file(f, path, include_paths=True, **reader_args)
-        assert len(records) == 1
-        path, data = records[0]
+        data = f.readall()
 
         try:
             image = Image.open(io.BytesIO(data))
@@ -104,6 +101,9 @@ class ImageDatasource(BinaryDatasource):
         block = builder.build()
 
         return block
+
+    def _rows_per_file(self):
+        return 1
 
     def _write_row(
         self,
