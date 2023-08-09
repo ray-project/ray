@@ -28,12 +28,16 @@ preprocessor = Chain(
 
 
 # __air_pytorch_train_start__
+import os
+import tempfile
+
 import torch
 import torch.nn as nn
 
 from ray import train
 from ray.train import ScalingConfig
-from ray.train.torch import TorchCheckpoint, TorchTrainer
+from ray.train._checkpoint import Checkpoint
+from ray.train.torch import TorchTrainer
 
 
 def create_model(input_features):
@@ -75,7 +79,9 @@ def train_loop_per_worker(config):
             train_loss.backward()
             optimizer.step()
         loss = train_loss.item()
-        train.report({"loss": loss}, checkpoint=TorchCheckpoint.from_model(model))
+        with tempfile.TemporaryDirectory() as tmpdir:
+            torch.save(model.module.state_dict(), os.path.join(tmpdir, "model.pt"))
+            train.report({"loss": loss}, checkpoint=Checkpoint.from_directory(tmpdir))
 
 
 num_features = len(train_dataset.schema().names) - 1
