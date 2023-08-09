@@ -42,6 +42,7 @@ IMAGE_ENCODING_RATIO_ESTIMATE_LOWER_BOUND = 0.5
 class ImageDatasource(BinaryDatasource):
     """A datasource that lets you read images."""
 
+    _WRITE_FILE_PER_ROW = True
     _FILE_EXTENSION = ["png", "jpg", "jpeg", "tif", "tiff", "bmp", "gif"]
 
     def create_reader(
