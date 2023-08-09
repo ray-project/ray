@@ -169,6 +169,31 @@ void GrpcClientContextWithTimeoutMs(grpc::ClientContext &context, int64_t timeou
   }
 }
 
+Status PythonGcsClient::CheckAlive(const std::vector<std::string> &raylet_addresses,
+                                   int64_t timeout_ms,
+                                   std::vector<bool> &result) {
+  grpc::ClientContext context;
+  GrpcClientContextWithTimeoutMs(context, timeout_ms);
+
+  rpc::CheckAliveRequest request;
+  for (const auto &address : raylet_addresses) {
+    request.add_raylet_address(address);
+  }
+
+  rpc::CheckAliveReply reply;
+  grpc::Status status = node_info_stub_->CheckAlive(&context, request, &reply);
+
+  if (status.ok()) {
+    if (reply.status().code() == static_cast<int>(StatusCode::OK)) {
+      result =
+          std::vector<bool>(reply.raylet_alive().begin(), reply.raylet_alive().end());
+      return Status::OK();
+    }
+    return HandleGcsError(reply.status());
+  }
+  return Status::RpcError(status.error_message(), status.error_code());
+}
+
 Status PythonGcsClient::InternalKVGet(const std::string &ns,
                                       const std::string &key,
                                       int64_t timeout_ms,
