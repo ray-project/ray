@@ -41,7 +41,6 @@ from google.protobuf import json_format
 
 import ray
 import ray._private.ray_constants as ray_constants
-import ray.util.accelerators.accelerators as accelerators
 from ray.core.generated.runtime_env_common_pb2 import (
     RuntimeEnvInfo as ProtoRuntimeEnvInfo,
 )
@@ -414,6 +413,7 @@ def get_neuron_core_constraint_name():
     Returns:
         (str) The constraint name.
     """
+    import ray.util.accelerators.accelerators as accelerators
     return get_constraint_name(accelerators.AWS_NEURON_CORE)
 
 
