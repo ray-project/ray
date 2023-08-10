@@ -61,7 +61,7 @@ class RepresentationLayer(tf.keras.layers.Layer):
             activation=None,
         )
 
-    def call(self, inputs, return_z_probs=False):
+    def call(self, inputs):
         """Produces a discrete, differentiable z-sample from some 1D input tensor.
 
         Pushes the input_ tensor through our dense layer, which outputs
@@ -80,9 +80,11 @@ class RepresentationLayer(tf.keras.layers.Layer):
                 (concatenated) outputs of the (image?) encoder + the last hidden
                 deterministic state, or b) the output of the dynamics predictor MLP
                 network.
-            return_z_probs: Whether to return the probabilities for the categorical
-                distribution (in the shape of [B, num_categoricals, num_classes])
-                as a second return value.
+
+        Returns:
+            Tuple consisting of a differentiable z-sample and the probabilities for the
+            categorical distribution (in the shape of [B, num_categoricals,
+            num_classes]) that created this sample.
         """
         # Compute the logits (no activation) for our `num_categoricals` Categorical
         # distributions (with `num_classes_per_categorical` classes each).
@@ -124,6 +126,4 @@ class RepresentationLayer(tf.keras.layers.Layer):
         differentiable_sample = (
             tf.stop_gradient(sample) + probs - tf.stop_gradient(probs)
         )
-        if return_z_probs:
-            return differentiable_sample, probs
-        return differentiable_sample
+        return differentiable_sample, probs

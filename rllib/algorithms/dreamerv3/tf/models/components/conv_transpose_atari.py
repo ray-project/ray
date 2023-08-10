@@ -111,6 +111,10 @@ class ConvTransposeAtari(tf.keras.Model):
         )
         # .. until output is 64 x 64 x 3 (or 1 for self.gray_scaled=True).
 
+    @tf.function(input_signature=[
+        tf.TensorSpec(shape=[None, 4096], dtype=tf.float32),
+        tf.TensorSpec(shape=[None, 32, 32], dtype=tf.float32),
+    ])
     def call(self, h, z):
         """Performs a forward pass through the Conv2D transpose decoder.
 
@@ -126,6 +130,7 @@ class ConvTransposeAtari(tf.keras.Model):
         z = tf.reshape(tf.cast(z, tf.float32), shape=(z_shape[0], -1))
         assert len(z.shape) == 2
         input_ = tf.concat([h, z], axis=-1)
+        input_.set_shape([None, 32*32 + 4096])
 
         # Feed through initial dense layer to get the right number of input nodes
         # for the first conv2dtranspose layer.

@@ -80,8 +80,13 @@ class ActorNetwork(tf.keras.Model):
         else:
             raise ValueError(f"Invalid action space: {action_space}")
 
-    @tf.function
-    def call(self, h, z, return_distr_params=False):
+        # Trace self.call.
+        self.call = tf.function(input_signature=[
+            tf.TensorSpec(shape=[None, 4096], dtype=tf.float32),# TODO num_gru_units
+            tf.TensorSpec(shape=[None, 32, 32], dtype=tf.float32),
+        ])(self.call)
+
+    def call(self, h, z):
         """Performs a forward pass through this policy network.
 
         Args:
@@ -91,12 +96,15 @@ class ActorNetwork(tf.keras.Model):
             return_distr_params: Whether to return (as a second tuple item) the action
                 distribution parameter tensor created by the policy.
         """
+        print(f"INSIDE ACTOR call")
+
         # Flatten last two dims of z.
         assert len(z.shape) == 3
         z_shape = tf.shape(z)
         z = tf.reshape(tf.cast(z, tf.float32), shape=(z_shape[0], -1))
         assert len(z.shape) == 2
         out = tf.concat([h, z], axis=-1)
+        out.set_shape([None, 32*32 + 4096])
         # Send h-cat-z through MLP.
         action_logits = self.mlp(out)
 
@@ -141,9 +149,7 @@ class ActorNetwork(tf.keras.Model):
 
             action = distr.sample()
 
-        if return_distr_params:
-            return action, distr_params
-        return action
+        return action, distr_params
 
     def get_action_dist_object(self, action_dist_params_T_B):
         """Helper method to create an action distribution object from (T, B, ..) params.

@@ -167,17 +167,12 @@ class WorldModel(tf.keras.Model):
         """
         h = tf.expand_dims(tf.math.tanh(self.initial_h), 0)
         # Use the mode, NOT a sample for the initial z-state.
-        _, z_probs = self.dynamics_predictor(h, return_z_probs=True)
+        _, z_probs = self.dynamics_predictor(h)
         z = tf.argmax(z_probs, axis=-1)
         z = tf.one_hot(z, depth=z_probs.shape[-1])
 
         return {"h": h, "z": z}
 
-    @tf.function
-    def call(self, inputs, *args, **kwargs):
-        return self.forward_train(inputs, *args, **kwargs)
-
-    @tf.function  # (experimental_relax_shapes=True)
     def forward_inference(self, observations, previous_states, is_first, training=None):
         """Performs a forward step for inference (e.g. environment stepping).
 
@@ -217,8 +212,12 @@ class WorldModel(tf.keras.Model):
 
         return {"h": h, "z": z}
 
-    @tf.function
-    def forward_train(self, observations, actions, is_first, training=None):
+    @tf.function(input_signature=[
+        tf.TensorSpec(shape=[None, None, 64, 64, 3], dtype=tf.float32),
+        tf.TensorSpec(shape=[None, None, 9], dtype=tf.float32),
+        tf.TensorSpec(shape=[None, None], dtype=tf.float32),
+    ])
+    def forward_train(self, observations, actions, is_first):#, training=None):
         """Performs a forward step for training.
 
         1) Forwards all observations [B, T, ...] through the encoder network to yield
@@ -246,9 +245,9 @@ class WorldModel(tf.keras.Model):
                 h-states and computed z-states to yield the next h-states.
             is_first: The batch (B, T) of `is_first` flags.
         """
+        print("INSIDE world_model.forward_train()")
         if self.symlog_obs:
             observations = symlog(observations)
-
         # Compute bare encoder outs (not z; this is done later with involvement of the
         # sequence model and the h-states).
         # Fold time dimension for CNN pass.
@@ -306,16 +305,13 @@ class WorldModel(tf.keras.Model):
             repr_input = self.posterior_mlp(posterior_mlp_input)
             # Draw one z-sample (z(t)) and also get the z-distribution for dynamics and
             # representation loss computations.
-            z_t, z_probs = self.posterior_representation_layer(
-                repr_input,
-                return_z_probs=True,
-            )
+            z_t, z_probs = self.posterior_representation_layer(repr_input)
             # z_t=[B, num_categoricals, num_classes]
             z_posterior_probs.append(z_probs)
             z_t0_to_T.append(z_t)
 
             # Compute the predicted z_t (z^) using the dynamics model.
-            _, z_probs = self.dynamics_predictor(h_t, return_z_probs=True)
+            _, z_probs = self.dynamics_predictor(h_t)
             z_prior_probs.append(z_probs)
 
         # Stack at time dimension to yield: [B, T, ...].
@@ -345,14 +341,10 @@ class WorldModel(tf.keras.Model):
         obs_distribution_means = self.decoder(h=h_BxT, z=z_BxT)
 
         # Compute (predicted) reward distributions.
-        rewards, reward_logits = self.reward_predictor(
-            h=h_BxT, z=z_BxT, return_logits=True
-        )
+        rewards, reward_logits = self.reward_predictor(h=h_BxT, z=z_BxT)
 
         # Compute (predicted) continue distributions.
-        continues, continue_distribution = self.continue_predictor(
-            h=h_BxT, z=z_BxT, return_distribution=True
-        )
+        continues, continue_distribution = self.continue_predictor(h=h_BxT, z=z_BxT)
 
         # Return outputs for loss computation.
         # Note that all shapes are [BxT, ...] (time axis already folded).
@@ -375,7 +367,6 @@ class WorldModel(tf.keras.Model):
             "z_prior_probs_BxT": z_prior_probs,
         }
 
-    @tf.function
     def compute_posterior_z(self, observations, initial_h):
         # Compute bare encoder outputs (not including z, which is computed in next step
         # with involvement of the previous output (initial_h) of the sequence model).
@@ -387,8 +378,8 @@ class WorldModel(tf.keras.Model):
         posterior_mlp_input = tf.concat([encoder_out, initial_h], axis=-1)
         # Compute z.
         repr_input = self.posterior_mlp(posterior_mlp_input)
-        # Draw one z-sample (no need to return the distribution here).
-        z_t = self.posterior_representation_layer(repr_input, return_z_probs=False)
+        # Draw a z-sample.
+        z_t, _ = self.posterior_representation_layer(repr_input)
         return z_t
 
     @staticmethod

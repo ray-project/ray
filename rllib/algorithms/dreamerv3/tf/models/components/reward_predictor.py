@@ -61,7 +61,13 @@ class RewardPredictor(tf.keras.Model):
             upper_bound=upper_bound,
         )
 
-    def call(self, h, z, return_logits=False):
+        # Trace self.call.
+        self.call = tf.function(input_signature=[
+            tf.TensorSpec(shape=[None, 4096], dtype=tf.float32),# TODO num_gru_units
+            tf.TensorSpec(shape=[None, 32, 32], dtype=tf.float32),
+        ])(self.call)
+
+    def call(self, h, z):
         """Computes the expected reward using N equal sized buckets of possible values.
 
         Args:
@@ -71,14 +77,17 @@ class RewardPredictor(tf.keras.Model):
             return_logits: Whether to return the logits over the reward buckets
                 as a second return value (besides the expected reward).
         """
+        print("INSIDE REWARD PREDICTOR call")
+
         # Flatten last two dims of z.
         assert len(z.shape) == 3
         z_shape = tf.shape(z)
         z = tf.reshape(tf.cast(z, tf.float32), shape=(z_shape[0], -1))
         assert len(z.shape) == 2
         out = tf.concat([h, z], axis=-1)
+        out.set_shape([None, 32*32 + 4096])
         # Send h-cat-z through MLP.
         out = self.mlp(out)
         # Return a) mean reward OR b) a tuple: (mean reward, logits over the reward
         # buckets).
-        return self.reward_layer(out, return_logits=return_logits)
+        return self.reward_layer(out)

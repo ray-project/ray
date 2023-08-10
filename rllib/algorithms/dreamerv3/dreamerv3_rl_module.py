@@ -65,6 +65,8 @@ class DreamerV3RLModule(RLModule, abc.ABC):
             world_model=self.world_model,
             actor=self.actor,
             critic=self.critic,
+            horizon=horizon_H,
+            gamma=gamma,
         )
         self.action_dist_cls = catalog.get_action_dist_cls(framework=self.framework)
 
@@ -90,12 +92,43 @@ class DreamerV3RLModule(RLModule, abc.ABC):
                 reps=(B, T, 1),
             )
 
-        self.dreamer_model(
+        """self.dreamer_model(
             inputs=_convert_to_tf(test_obs),
             actions=_convert_to_tf(test_actions.astype(np.float32)),
             is_first=_convert_to_tf(np.ones((B, T), np.float32)),
             start_is_terminated_BxT=_convert_to_tf(np.zeros((B * T,), np.float32)),
             horizon_H=horizon_H,
+            gamma=gamma,
+        )"""
+        # World model.
+        results = self.world_model.forward_train(
+            _convert_to_tf(test_obs),  # observations
+            _convert_to_tf(test_actions.astype(np.float32)),
+            _convert_to_tf(np.ones((B, T), np.float32)),
+        )
+        # Actor.
+        _, distr_params = self.actor(
+            h=results["h_states_BxT"],
+            z=results["z_posterior_states_BxT"],
+        )
+        # Critic.
+        values = self.critic(
+            h=results["h_states_BxT"],
+            z=results["z_posterior_states_BxT"],
+            use_ema=False,
+        )
+        # Critic (EMA copy).
+        values_ema = self.critic(
+            h=results["h_states_BxT"], z=results["z_posterior_states_BxT"], use_ema=True
+        )
+
+        # Dream pipeline.
+        self.dreamer_model.dream_trajectory(
+            start_states={
+                "h": results["h_states_BxT"],
+                "z": results["z_posterior_states_BxT"],
+            },
+            start_is_terminated=_convert_to_tf(np.zeros((B * T,), np.float32)),
             gamma=gamma,
         )
 

@@ -78,6 +78,14 @@ class SequenceModel(tf.keras.Model):
             # recurrent_activation=tf.nn.silu,
         )
 
+        # Trace self.call.
+        #self.call = tf.function(input_signature=[
+        #    # TODO: Cont. actions support.
+        #    tf.TensorSpec(shape=[None, action_space.n], dtype=tf.float32),
+        #    tf.TensorSpec(shape=[None, num_gru_units], dtype=tf.float32),
+        #    tf.TensorSpec(shape=[None, 32, 32], dtype=tf.float32),
+        #])(self.call)
+
     def call(self, a, h, z):
         """
 
@@ -88,10 +96,12 @@ class SequenceModel(tf.keras.Model):
             z: The previous stochastic discrete representations of the original
                 observation input. (B, num_categoricals, num_classes_per_categorical).
         """
+        print("INSIDE sequence_model call")
         # Flatten last two dims of z.
         z_shape = tf.shape(z)
         z = tf.reshape(tf.cast(z, tf.float32), shape=(z_shape[0], -1))
         out = tf.concat([z, a], axis=-1)
+        out.set_shape([None, 32*32 + self.action_space.n])
         # Pass through pre-GRU layer.
         out = self.pre_gru_layer(out)
         # Pass through (time-major) GRU.

@@ -97,33 +97,43 @@ class CriticNetwork(tf.keras.Model):
             trainable=False,
         )
 
-    def call(self, h, z, return_logits=False, use_ema=False):
+        # Trace self.call.
+        self.call = tf.function(input_signature=[
+            tf.TensorSpec(shape=[None, 4096], dtype=tf.float32),# TODO num_gru_units
+            tf.TensorSpec(shape=[None, 32, 32], dtype=tf.float32),
+            tf.TensorSpec(shape=[], dtype=tf.bool),
+        ])(self.call)
+
+    def call(self, h, z, use_ema):
         """Performs a forward pass through the critic network.
 
         Args:
             h: The deterministic hidden state of the sequence model. [B, dim(h)].
             z: The stochastic discrete representations of the original
                 observation input. [B, num_categoricals, num_classes].
-            return_logits: Whether also return (as a second tuple item) the logits
-                computed by the binned return layer (instead of only the value itself).
+            #return_logits: Whether also return (as a second tuple item) the logits
+            #    computed by the binned return layer (instead of only the value itself).
             use_ema: Whether to use the EMA-copy of the critic instead of the actual
                 critic to perform this computation.
         """
+        print(f"INSIDE CRITIC call use_ema={use_ema}")
+
         # Flatten last two dims of z.
         assert len(z.shape) == 3
         z_shape = tf.shape(z)
         z = tf.reshape(tf.cast(z, tf.float32), shape=(z_shape[0], -1))
         assert len(z.shape) == 2
         out = tf.concat([h, z], axis=-1)
+        out.set_shape([None, 32*32 + 4096])
 
         if not use_ema:
             # Send h-cat-z through MLP.
             out = self.mlp(out)
             # Return expected return OR (expected return, probs of bucket values).
-            return self.return_layer(out, return_logits=return_logits)
+            return self.return_layer(out)
         else:
             out = self.mlp_ema(out)
-            return self.return_layer_ema(out, return_logits=return_logits)
+            return self.return_layer_ema(out)
 
     def init_ema(self) -> None:
         """Initializes the EMA-copy of the critic from the critic's weights.

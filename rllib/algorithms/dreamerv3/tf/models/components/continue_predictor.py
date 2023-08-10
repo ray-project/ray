@@ -34,22 +34,27 @@ class ContinuePredictor(tf.keras.Model):
         super().__init__(name="continue_predictor")
         self.mlp = MLP(model_size=model_size, output_layer_size=1)
 
-    def call(self, h, z, return_distribution=False):
+    @tf.function(input_signature=[
+        tf.TensorSpec(shape=[None, 4096], dtype=tf.float32),
+        tf.TensorSpec(shape=[None, 32, 32], dtype=tf.float32),
+    ])
+    def call(self, h, z):
         """Performs a forward pass through the continue predictor.
 
         Args:
             h: The deterministic hidden state of the sequence model. [B, dim(h)].
             z: The stochastic discrete representations of the original
                 observation input. [B, num_categoricals, num_classes].
-            return_distribution: Whether to return (as a second tuple item) the
-                Bernoulli distribution object created by the underlying MLP.
         """
+        print("INSIDE CONTINUE call")
+
         # Flatten last two dims of z.
         assert len(z.shape) == 3
         z_shape = tf.shape(z)
         z = tf.reshape(tf.cast(z, tf.float32), shape=(z_shape[0], -1))
         assert len(z.shape) == 2
         out = tf.concat([h, z], axis=-1)
+        out.set_shape([None, 32*32 + 4096])
         # Send h-cat-z through MLP.
         out = self.mlp(out)
         # Remove the extra [B, 1] dimension at the end to get a proper Bernoulli
@@ -65,6 +70,4 @@ class ContinuePredictor(tf.keras.Model):
         continue_ = bernoulli.mode()
 
         # Return Bernoulli sample (whether to continue) OR (continue?, Bernoulli prob).
-        if return_distribution:
-            return continue_, bernoulli
-        return continue_
+        return continue_, bernoulli

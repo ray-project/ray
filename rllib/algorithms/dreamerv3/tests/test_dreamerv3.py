@@ -37,17 +37,18 @@ class TestDreamerV3(unittest.TestCase):
         # Build a DreamerV3Config object.
         config = (
             dreamerv3.DreamerV3Config()
+            .framework(eager_tracing=False)#TODO
             .training(
                 # Keep things simple. Especially the long dream rollouts seem
                 # to take an enormous amount of time (initially).
-                batch_size_B=4,
-                horizon_H=5,
-                batch_length_T=16,
-                model_size="nano",  # Use a tiny model for testing
-                symlog_obs=True,
+                batch_size_B=16,#TODO4
+                horizon_H=15,#TODO5
+                batch_length_T=64,#TODO16,
+                model_size="XL", #TODOnano",  # Use a tiny model for testing
+                #symlog_obs=True,
             )
             .resources(
-                num_learner_workers=2,  # Try with 2 Learners.
+                num_learner_workers=0,#TODO  # Try with 2 Learners.
                 num_cpus_per_learner_worker=1,
                 num_gpus_per_learner_worker=0,
             )

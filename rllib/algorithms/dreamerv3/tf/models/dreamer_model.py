@@ -38,6 +38,8 @@ class DreamerModel(tf.keras.Model):
         world_model: WorldModel,
         actor: ActorNetwork,
         critic: CriticNetwork,
+        horizon: int,
+        gamma: float,
         use_curiosity: bool = False,
         intrinsic_rewards_scale: float = 0.1,
     ):
@@ -50,6 +52,7 @@ class DreamerModel(tf.keras.Model):
              world_model: The WorldModel component.
              actor: The ActorNetwork component.
              critic: The CriticNetwork component.
+             horizon: The dream horizon to use when creating dreamed trajectories.
         """
         super().__init__(name="dreamer_model")
 
@@ -61,6 +64,9 @@ class DreamerModel(tf.keras.Model):
         self.actor = actor
         self.critic = critic
 
+        self.horizon = horizon
+        self.gamma = gamma
+
         self.disagree_nets = None
         if self.use_curiosity:
             self.disagree_nets = DisagreeNetworks(
@@ -69,8 +75,7 @@ class DreamerModel(tf.keras.Model):
                 intrinsic_rewards_scale=intrinsic_rewards_scale,
             )
 
-    @tf.function
-    def call(
+    """def call(
         self,
         inputs,
         actions,
@@ -80,34 +85,31 @@ class DreamerModel(tf.keras.Model):
         gamma,
         training=None,
     ):
-        """Main call method for building this model in order to generate its variables.
+        ""Main call method for building this model in order to generate its variables.
 
         Note: This method should NOT be used by users directly. It's purpose is only to
         perform all forward passes necessary to define all variables of the DreamerV3.
-        """
+        ""
 
         # Forward passes through all models are enough to build all trainable and
         # non-trainable variables:
 
         # World model.
-        results = self.world_model(
+        results = self.world_model.forward_train(
             inputs,  # observations
             actions,
             is_first,
         )
         # Actor.
-        actions = self.actor(
-            h=results["h_states_BxT"], z=results["z_posterior_states_BxT"]
-        )
-        # Actor (with returning distribution parameters).
         _, distr_params = self.actor(
             h=results["h_states_BxT"],
             z=results["z_posterior_states_BxT"],
-            return_distr_params=True,
         )
         # Critic.
         values = self.critic(
-            h=results["h_states_BxT"], z=results["z_posterior_states_BxT"]
+            h=results["h_states_BxT"],
+            z=results["z_posterior_states_BxT"],
+            use_ema=False,
         )
         # Critic (EMA copy).
         values_ema = self.critic(
@@ -131,7 +133,7 @@ class DreamerModel(tf.keras.Model):
             "actions": actions,
             "values": values,
             "values_ema": values_ema,
-        }
+        }"""
 
     @tf.function
     def forward_inference(self, observations, previous_states, is_first, training=None):
@@ -194,7 +196,6 @@ class DreamerModel(tf.keras.Model):
         actions = self.actor(h=states["h"], z=states["z"])
         return actions, {"h": states["h"], "z": states["z"], "a": actions}
 
-    @tf.function
     def forward_train(self, observations, actions, is_first, training=None):
         """Performs a training forward pass given observations and actions.
 
@@ -249,9 +250,15 @@ class DreamerModel(tf.keras.Model):
         )
         return states
 
-    @tf.function
+    @tf.function(input_signature=[
+        {
+            "h": tf.TensorSpec(shape=[None, 4096], dtype=tf.float32),
+            "z": tf.TensorSpec(shape=[None, 32, 32], dtype=tf.float32),
+        },
+        tf.TensorSpec(shape=[None], dtype=tf.float32),
+    ])
     def dream_trajectory(
-        self, *, start_states, start_is_terminated, timesteps_H, gamma
+        self, start_states, start_is_terminated
     ):
         """Dreams trajectories of length H from batch of h- and z-states.
 
@@ -269,9 +276,11 @@ class DreamerModel(tf.keras.Model):
             start_is_terminated: Float flags of shape (B,) indicating whether the
                 first timesteps of each batch row is already a terminated timestep
                 (given by the actual environment).
-            timesteps_H: The number of timesteps to dream for.
-            gamma: The discount factor gamma.
+            #timesteps_H: The number of timesteps to dream for.
+            #gamma: The discount factor gamma.
         """
+        print("INSIDE dream_trajectory")
+
         # Dreamed actions (one-hot encoded for discrete actions).
         a_dreamed_t0_to_H = []
         a_dreamed_dist_params_t0_to_H = []
@@ -294,25 +303,23 @@ class DreamerModel(tf.keras.Model):
             # term on actions further back in the trajectory.
             h=tf.stop_gradient(h),
             z=tf.stop_gradient(z),
-            return_distr_params=True,
         )
         a_dreamed_t0_to_H.append(a)
         a_dreamed_dist_params_t0_to_H.append(a_dist_params)
 
-        for i in range(timesteps_H):
+        for i in range(self.horizon):
             # Move one step in the dream using the RSSM.
             h = self.world_model.sequence_model(a=a, h=h, z=z)
             h_states_t0_to_H.append(h)
 
             # Compute prior z using dynamics model.
-            z = self.world_model.dynamics_predictor(h=h)
+            z, _ = self.world_model.dynamics_predictor(h=h)
             z_states_prior_t0_to_H.append(z)
 
             # Compute `a` using actor network.
             a, a_dist_params = self.actor(
                 h=tf.stop_gradient(h),
                 z=tf.stop_gradient(z),
-                return_distr_params=True,
             )
             a_dreamed_t0_to_H.append(a)
             a_dreamed_dist_params_t0_to_H.append(a_dist_params)
@@ -373,21 +380,20 @@ class DreamerModel(tf.keras.Model):
         # that lie past continue=False flags. B/c our world model does NOT learn how
         # to skip terminal/reset episode boundaries, dreamed data crossing such a
         # boundary should not be used for critic/actor learning either.
-        dream_loss_weights_H_B = tf.math.cumprod(gamma * c_dreamed_H_B, axis=0) / gamma
+        dream_loss_weights_H_B = tf.math.cumprod(self.gamma * c_dreamed_H_B, axis=0) / self.gamma
 
         # Compute the value estimates.
         v, v_symlog_dreamed_logits_HxB = self.critic(
             h=h_states_HxB,
             z=z_states_prior_HxB,
-            return_logits=True,
+            use_ema=False,
         )
         v_dreamed_HxB = inverse_symlog(v)
         v_dreamed_H_B = tf.reshape(v_dreamed_HxB, shape=[timesteps_H + 1, -1])
 
-        v_symlog_dreamed_ema_HxB = self.critic(
+        v_symlog_dreamed_ema_HxB, _ = self.critic(
             h=h_states_HxB,
             z=z_states_prior_HxB,
-            return_logits=False,
             use_ema=True,
         )
         v_symlog_dreamed_ema_H_B = tf.reshape(
@@ -420,7 +426,6 @@ class DreamerModel(tf.keras.Model):
 
         return ret
 
-    @tf.function
     def dream_trajectory_with_burn_in(
         self,
         *,
@@ -492,7 +497,7 @@ class DreamerModel(tf.keras.Model):
             h_states_t0_to_H.append(h)
             # Compute z from h, using the dynamics model (we don't have an actual
             # observation at this timestep).
-            z = self.world_model.dynamics_predictor(h=h)
+            z, _ = self.world_model.dynamics_predictor(h=h)
             z_states_prior_t0_to_H.append(z)
 
             # Compute next dreamed action or use sampled one or random one.
