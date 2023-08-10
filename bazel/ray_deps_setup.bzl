@@ -354,4 +354,5 @@ def ray_deps_setup():
         remote = "https://github.com/jemalloc/jemalloc.git",
         commit = "254c4847e8ac263d24720aa93c2c7d410f55a239",
         build_file = "@com_github_ray_project_ray//bazel:BUILD.jemalloc",
+        shallow_since = "1691532067 -0700",
     )
