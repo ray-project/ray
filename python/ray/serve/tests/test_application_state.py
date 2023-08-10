@@ -18,6 +18,7 @@ from ray.serve._private.common import (
     ReplicaConfig,
     DeploymentInfo,
 )
+from ray.serve._private.deploy_utils import deploy_args_to_deployment_info
 from ray.serve._private.utils import get_random_letters
 from ray.serve.exceptions import RayServeException
 from ray.serve.schema import ServeApplicationSchema, DeploymentSchema
@@ -155,7 +156,7 @@ def mocked_application_state_manager() -> Tuple[
 
 def deployment_params(name: str, route_prefix: str = None, docs_path: str = None):
     return {
-        "name": name,
+        "deployment_name": name,
         "deployment_config_proto_bytes": DeploymentConfig(
             num_replicas=1, user_config={}, version=get_random_letters()
         ).to_proto_bytes(),
@@ -168,6 +169,11 @@ def deployment_params(name: str, route_prefix: str = None, docs_path: str = None
         "ingress": False,
         "is_driver_deployment": False,
     }
+
+
+def deployment_info(name: str, route_prefix: str = None, docs_path: str = None):
+    params = deployment_params(name, route_prefix, docs_path)
+    return deploy_args_to_deployment_info(**params, app_name="test_app")
 
 
 @pytest.fixture
@@ -252,8 +258,11 @@ def test_deploy_and_delete_app(mocked_application_state):
     app_state, deployment_state_manager = mocked_application_state
 
     # DEPLOY application with deployments {d1, d2}
-    app_state.apply_deployment_args(
-        [deployment_params("d1", "/hi", "/documentation"), deployment_params("d2")]
+    app_state.deploy(
+        {
+            "d1": deployment_info("d1", "/hi", "/documentation"),
+            "d2": deployment_info("d2"),
+        }
     )
     assert app_state.route_prefix == "/hi"
     assert app_state.docs_path == "/documentation"
@@ -305,7 +314,7 @@ def test_deploy_and_delete_app(mocked_application_state):
 def test_app_deploy_failed_and_redeploy(mocked_application_state):
     """Test DEPLOYING -> DEPLOY_FAILED -> (redeploy) -> DEPLOYING -> RUNNING"""
     app_state, deployment_state_manager = mocked_application_state
-    app_state.apply_deployment_args([deployment_params("d1")])
+    app_state.deploy({"d1": deployment_info("d1")})
     assert app_state.status == ApplicationStatus.DEPLOYING
 
     # Before status of deployment changes, app should still be DEPLOYING
@@ -324,7 +333,7 @@ def test_app_deploy_failed_and_redeploy(mocked_application_state):
     assert app_state.status == ApplicationStatus.DEPLOY_FAILED
     assert app_state._status_msg == deploy_failed_msg
 
-    app_state.apply_deployment_args([deployment_params("d1"), deployment_params("d2")])
+    app_state.deploy({"d1": deployment_info("d1"), "d2": deployment_info("d2")})
     assert app_state.status == ApplicationStatus.DEPLOYING
     assert app_state._status_msg != deploy_failed_msg
 
@@ -355,7 +364,7 @@ def test_app_deploy_failed_and_recover(mocked_application_state):
     the application status should update to running.
     """
     app_state, deployment_state_manager = mocked_application_state
-    app_state.apply_deployment_args([deployment_params("d1")])
+    app_state.deploy({"d1": deployment_info("d1")})
     assert app_state.status == ApplicationStatus.DEPLOYING
 
     # Before status of deployment changes, app should still be DEPLOYING
@@ -384,7 +393,7 @@ def test_app_unhealthy(mocked_application_state):
     updated to unhealthy.
     """
     app_state, deployment_state_manager = mocked_application_state
-    app_state.apply_deployment_args([deployment_params("a"), deployment_params("b")])
+    app_state.deploy({"a": deployment_info("a"), "b": deployment_info("b")})
     assert app_state.status == ApplicationStatus.DEPLOYING
     app_state.update()
     assert app_state.status == ApplicationStatus.DEPLOYING
@@ -489,7 +498,7 @@ def test_deploy_through_config_fail(check_obj_ref_ready_nowait):
 def test_redeploy_same_app(mocked_application_state):
     """Test redeploying same application with updated deployments."""
     app_state, deployment_state_manager = mocked_application_state
-    app_state.apply_deployment_args([deployment_params("a"), deployment_params("b")])
+    app_state.deploy({"a": deployment_info("a"), "b": deployment_info("b")})
     assert app_state.status == ApplicationStatus.DEPLOYING
 
     # Update
@@ -506,7 +515,7 @@ def test_redeploy_same_app(mocked_application_state):
     assert app_state.status == ApplicationStatus.RUNNING
 
     # Deploy the same app with different deployments
-    app_state.apply_deployment_args([deployment_params("b"), deployment_params("c")])
+    app_state.deploy({"b": deployment_info("b"), "c": deployment_info("c")})
     assert app_state.status == ApplicationStatus.DEPLOYING
     # Target state should be updated immediately
     assert "a" not in app_state.target_deployments
