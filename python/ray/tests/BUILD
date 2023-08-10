@@ -122,7 +122,7 @@ py_test_module_list(
 
 py_test_module_list(
   files = [
-    "test_autoscaler_fake_scaledown.py",  # Temporarily owned by core.
+    "test_autoscaler_fake_scaledown.py",
     "test_log_dedup.py",
     "test_logging.py",
     "test_memory_scheduling.py",
@@ -173,6 +173,7 @@ py_test_module_list(
     "test_scheduling.py",
     "test_traceback.py",
     "test_queue.py",
+    "test_draining.py",
   ],
   size = "medium",
   tags = ["exclusive", "medium_size_python_tests_k_to_z", "team:core"],
@@ -182,6 +183,7 @@ py_test_module_list(
 py_test_module_list(
   files = [
     "test_actor_out_of_order.py",
+    "test_actor_bounded_threads.py",
     "test_autoscaler_fake_multinode.py",  # Temporarily owned by core.
     "test_annotations.py",
     "test_args.py",

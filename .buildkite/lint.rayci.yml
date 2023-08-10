@@ -1,0 +1,35 @@
+group: lint
+steps:
+  - label: "lint: clang format"
+    commands:
+      - pip install -c python/requirements_compiled.txt clang-format
+      - ./ci/lint/check-git-clang-format-output.sh
+    depends_on: forge
+
+  - label: "lint: code format"
+    commands:
+      - pip install -c python/requirements_compiled.txt -r python/requirements/lint-requirements.txt
+      - FORMAT_SH_PRINT_DIFF=1 ./ci/lint/format.sh --all-scripts
+    depends_on: forge
+
+  - label: "lint: untested code snippet"
+    commands:
+      - pip install -c python/requirements_compiled.txt semgrep
+      - semgrep ci --config semgrep.yml
+    depends_on: forge
+
+  - label: "lint: banned words"
+    commands:
+      - ./ci/lint/check-banned-words.sh
+    depends_on: forge
+
+  - label: "lint: doc readme"
+    commands:
+      - pip install -c python/requirements_compiled.txt docutils
+      - cd python && python setup.py check --restructuredtext --strict --metadata
+    depends_on: forge
+
+  - label: "lint: dashboard format"
+    commands:
+      - ./ci/lint/check-dashboard-format.sh
+    depends_on: forge
