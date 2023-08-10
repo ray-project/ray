@@ -325,9 +325,6 @@ def _inject_tracing_into_function(function):
     Use the provided trace context from kwargs.
     """
     # Add _ray_trace_ctx to function signature
-    if not _is_tracing_enabled():
-        return function
-
     setattr(
         function,
         "__signature__",
