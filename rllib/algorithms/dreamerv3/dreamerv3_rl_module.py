@@ -92,14 +92,14 @@ class DreamerV3RLModule(RLModule, abc.ABC):
                 reps=(B, T, 1),
             )
 
-        self.dreamer_model(
-            inputs=_convert_to_tf(test_obs),
-            actions=_convert_to_tf(test_actions.astype(np.float32)),
-            is_first=_convert_to_tf(np.ones((B, T), np.float32)),
-            start_is_terminated_BxT=_convert_to_tf(np.zeros((B * T,), np.float32)),
-            #horizon_H=horizon_H,
-            #gamma=gamma,
-        )
+        #self.dreamer_model(
+        #    inputs=_convert_to_tf(test_obs),
+        #    actions=_convert_to_tf(test_actions.astype(np.float32)),
+        #    is_first=_convert_to_tf(np.ones((B, T), np.float32)),
+        #    start_is_terminated_BxT=_convert_to_tf(np.zeros((B * T,), np.float32)),
+        #    #horizon_H=horizon_H,
+        #    #gamma=gamma,
+        #)
         """# World model.
         results = self.world_model.forward_train(
             _convert_to_tf(test_obs),  # observations
@@ -132,7 +132,7 @@ class DreamerV3RLModule(RLModule, abc.ABC):
         )"""
 
         # Initialize the critic EMA net:
-        self.critic.init_ema()
+        #self.critic.init_ema()
 
     @override(RLModule)
     def get_initial_state(self) -> NestedDict:

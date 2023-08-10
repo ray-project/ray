@@ -502,8 +502,8 @@ class DreamerV3(Algorithm):
             ]
 
         # Summarize (single-agent) RLModule (only once) here.
-        if self.config.framework_str == "tf2":
-            self.workers.local_worker().module.dreamer_model.summary(expand_nested=True)
+        #if self.config.framework_str == "tf2":
+        #    self.workers.local_worker().module.dreamer_model.summary(expand_nested=True)
 
         # Create a replay buffer for storing actual env samples.
         self.replay_buffer = EpisodeReplayBuffer(
@@ -659,9 +659,9 @@ class DreamerV3(Algorithm):
                     NUM_TRAINING_STEP_CALLS_SINCE_LAST_SYNCH_WORKER_WEIGHTS
                 ] = 0
                 self._counters[NUM_SYNCH_WORKER_WEIGHTS] += 1
-                self.workers.sync_weights(
-                    from_worker_or_learner_group=self.learner_group
-                )
+                #self.workers.sync_weights(
+                #    from_worker_or_learner_group=self.learner_group
+                #)
 
         # Try trick from https://medium.com/dive-into-ml-ai/dealing-with-memory-leak-
         # issue-in-keras-model-training-e703907a6501
