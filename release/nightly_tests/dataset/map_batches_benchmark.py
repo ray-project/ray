@@ -149,11 +149,11 @@ def run_map_batches_benchmark(benchmark: Benchmark):
 
     # Test map_batches whose output is large and will be split into multiple blocks.
     # With the following configuration, the total output data size will be
-    # (num_output_blocks * 1GB).
+    # (num_output_blocks * 10GB).
     num_output_blocks = [10, 50, 100]
     input_size = 1024 * 1024
     batch_size = 1024
-    ray.data.DataContext.get_current().target_max_block_size = 1024 * 1024
+    ray.data.DataContext.get_current().target_max_block_size = 10 * 1024 * 1024
     # Disable PhysicalOperator fusion. Because we will have 2 map_batches operators.
     # And the first one will generate multiple output blocks.
     ray.data._internal.logical.optimizers.PHYSICAL_OPTIMIZER_RULES = []
