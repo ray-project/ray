@@ -229,7 +229,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
 
   gcs_client_ = std::make_shared<gcs::GcsClient>(options_.gcs_options, GetWorkerID());
 
-  RAY_CHECK_OK(gcs_client_->Connect(io_service_, options_.cluster_id));
+  RAY_CHECK_OK(gcs_client_->Connect(io_service_));
   RegisterToGcs(options_.worker_launch_time_ms, options_.worker_launched_time_ms);
 
   // Initialize the task state event buffer.
@@ -1429,6 +1429,7 @@ Status CoreWorker::Get(const std::vector<ObjectID> &ids,
       missing_result = true;
     }
   }
+
   // If no timeout was set and none of the results will throw an exception,
   // then check that we fetched all results before returning.
   if (timeout_ms < 0 && !will_throw_exception) {
