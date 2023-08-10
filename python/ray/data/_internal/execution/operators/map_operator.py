@@ -1,8 +1,11 @@
 import copy
+import collections
 import itertools
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, replace
 from typing import Any, Callable, Dict, Iterator, List, Optional, Union
+from pandas import pandas
+import pyarrow
 
 import ray
 from ray._raylet import ObjectRefGenerator
@@ -24,10 +27,12 @@ from ray.data._internal.execution.operators.base_physical_operator import (
 )
 from ray.data._internal.memory_tracing import trace_allocation
 from ray.data._internal.stats import StatsDict
-from ray.data.block import Block, BlockAccessor, BlockExecStats, BlockMetadata
+from ray.data.block import Block, BlockAccessor, BlockExecStats, BlockMetadata, DataBatch
 from ray.data.context import DataContext
 from ray.types import ObjectRef
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
+
+from ray.data._internal.output_buffer import BlockOutputBuffer
 
 
 class MapOperator(OneToOneOperator, ABC):
@@ -412,7 +417,24 @@ def _map_task(
     """
     output_metadata = []
     stats = BlockExecStats.builder()
-    for b_out in fn(iter(blocks), ctx):
+    output_buffer = BlockOutputBuffer(None, DataContext.get_current().target_max_block_size)
+
+    for output in fn(iter(blocks), ctx):
+        try:
+            output_buffer.add_batch(output)
+        except ValueError:
+            output_buffer.add(output)
+        while output_buffer.has_next():
+            b_out = output_buffer.next()
+            # TODO(Clark): Add input file propagation from input blocks.
+            m_out = BlockAccessor.for_block(b_out).get_metadata([], None)
+            m_out.exec_stats = stats.build()
+            output_metadata.append(m_out)
+            yield b_out
+            stats = BlockExecStats.builder()
+    output_buffer.finalize()
+    while output_buffer.has_next():
+        b_out = output_buffer.next()
         # TODO(Clark): Add input file propagation from input blocks.
         m_out = BlockAccessor.for_block(b_out).get_metadata([], None)
         m_out.exec_stats = stats.build()

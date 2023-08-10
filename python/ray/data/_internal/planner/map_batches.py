@@ -6,7 +6,6 @@ from typing import Callable, Iterable, Iterator, Optional
 from ray.data._internal.block_batching import batch_blocks
 from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.numpy_support import is_valid_udf_return
-from ray.data._internal.output_buffer import BlockOutputBuffer
 from ray.data._internal.util import _truncated_repr
 from ray.data.block import Block, BlockAccessor, DataBatch, UserDefinedFunction
 from ray.data.context import DEFAULT_BATCH_SIZE, DataContext
@@ -32,7 +31,6 @@ def generate_map_batches_fn(
         **fn_kwargs,
     ) -> Iterator[Block]:
         DataContext._set_current(context)
-        output_buffer = BlockOutputBuffer(None, context.target_max_block_size)
 
         def validate_batch(batch: Block) -> None:
             if not isinstance(
@@ -55,7 +53,7 @@ def generate_map_batches_fn(
             if isinstance(batch, list):
                 raise ValueError(
                     f"Error validating {_truncated_repr(batch)}: "
-                    "Returning a list of objects from `map_batches` is not "
+                    "Rturning a list of objects from `map_batches` is not "
                     "allowed in Ray 2.5. To return Python objects, "
                     "wrap them in a named dict field, e.g., "
                     "return `{'results': objects}` instead of just `objects`."
@@ -84,10 +82,7 @@ def generate_map_batches_fn(
 
                 for b in batch:
                     validate_batch(b)
-                    # Add output batch to output buffer.
-                    output_buffer.add_batch(b)
-                    if output_buffer.has_next():
-                        yield output_buffer.next()
+                    yield b
             except ValueError as e:
                 read_only_msgs = [
                     "assignment destination is read-only",
@@ -134,10 +129,5 @@ def generate_map_batches_fn(
             # If the input blocks are all empty, then yield an empty block with same
             # format as the input blocks.
             yield empty_block
-        else:
-            # Yield remainder block from output buffer.
-            output_buffer.finalize()
-            if output_buffer.has_next():
-                yield output_buffer.next()
 
     return fn
