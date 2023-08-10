@@ -59,6 +59,7 @@ Ray Train Config
 
     ~ray.train.DataConfig
 
+.. _train-loop-api:
 
 Ray Train Loop
 --------------
@@ -136,6 +137,18 @@ PyTorch Lightning
     ~train.lightning.LightningConfigBuilder
     ~train.lightning.LightningCheckpoint
     ~train.lightning.LightningPredictor
+    ~train.lightning.prepare_trainer
+    ~train.lightning.RayLightningEnvironment
+    ~train.lightning.RayDDPStrategy
+    ~train.lightning.RayFSDPStrategy
+    ~train.lightning.RayDeepSpeedStrategy
+    ~train.lightning.RayTrainReportCallback
+
+.. note::
+
+    We will deprecate `LightningTrainer`, `LightningConfigBuilder`,
+    `LightningCheckpoint`, and `LightningPredictor` in Ray 2.8. Please 
+    refer to the :ref:`migration guides <migration-guide>` for more info.
 
 Tensorflow/Keras
 ~~~~~~~~~~~~~~~~
@@ -228,16 +241,6 @@ Mosaic
     :toctree: doc/
 
     ~train.mosaic.MosaicTrainer
-
-
-Reinforcement Learning (RLlib)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. autosummary::
-    :toctree: doc/
-
-    ~train.rl.RLTrainer
-    ~train.rl.RLCheckpoint
 
 
 .. _trainer-restore:

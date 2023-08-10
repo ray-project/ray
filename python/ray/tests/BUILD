@@ -121,11 +121,10 @@ py_test_module_list(
 
 py_test_module_list(
   files = [
-    "test_autoscaler_fake_scaledown.py",  # Temporarily owned by core.
+    "test_autoscaler_fake_scaledown.py",
     "test_log_dedup.py",
     "test_logging.py",
     "test_memory_scheduling.py",
-    "test_memory_pressure.py",
     "test_nested_task.py",
     "test_metrics.py",
     "test_task_events.py",
@@ -173,6 +172,7 @@ py_test_module_list(
     "test_scheduling.py",
     "test_traceback.py",
     "test_queue.py",
+    "test_draining.py",
   ],
   size = "medium",
   tags = ["exclusive", "medium_size_python_tests_k_to_z", "team:core"],
@@ -182,6 +182,7 @@ py_test_module_list(
 py_test_module_list(
   files = [
     "test_actor_out_of_order.py",
+    "test_actor_bounded_threads.py",
     "test_autoscaler_fake_multinode.py",  # Temporarily owned by core.
     "test_annotations.py",
     "test_args.py",
@@ -210,7 +211,6 @@ py_test_module_list(
     "test_unhandled_error.py",
     "test_utils.py",
     "test_widgets.py",
-    "test_node_labels.py",
   ],
   size = "small",
   tags = ["exclusive", "small_size_python_tests", "team:core"],
@@ -220,9 +220,11 @@ py_test_module_list(
 py_test_module_list(
   files = [
     "test_gcs_ha_e2e.py",
+    "test_memory_pressure.py",
+    "test_node_labels.py",
   ],
   size = "medium",
-  tags = ["exclusive", "ray_ha", "team:core", "xcommit"],
+  tags = ["exclusive", "team:core", "xcommit"],
   deps = ["//:ray_lib", ":conftest"],
 )
 

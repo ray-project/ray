@@ -21,6 +21,7 @@ from ray.air.constants import (
     EXPR_PARAM_FILE,
     TRAINING_ITERATION,
 )
+from ray.train._internal.storage import _use_storage_context
 from ray.tune.syncer import SyncConfig
 from ray.tune.utils import flatten_dict
 from ray.tune.utils.serialization import TuneFunctionDecoder
@@ -40,7 +41,7 @@ from ray.tune.result import (
     CONFIG_PREFIX,
 )
 from ray.tune.experiment import Trial
-from ray.tune.execution.trial_runner import _find_newest_experiment_checkpoint
+from ray.tune.execution.experiment_state import _find_newest_experiment_checkpoint
 from ray.tune.trainable.util import TrainableUtil
 from ray.tune.utils.util import unflattened_lookup
 
@@ -948,11 +949,11 @@ class ExperimentAnalysis:
         return True
 
     def runner_data(self) -> Dict:
-        """Returns a dictionary of the TrialRunner data.
+        """Returns a dictionary of the TuneController data.
 
         If ``experiment_checkpoint_path`` pointed to a directory of
         experiments, the dict will be in the format of
-        ``{experiment_session_id: TrialRunner_data}``."""
+        ``{experiment_session_id: TuneController_data}``."""
         if len(self._experiment_states) == 1:
             return self._experiment_states[0]["runner_data"]
         else:
@@ -980,7 +981,9 @@ class ExperimentAnalysis:
             for trial_json_state, path in self._checkpoints_and_paths:
                 try:
                     trial = Trial.from_json_state(trial_json_state, stub=True)
-                    trial.local_experiment_path = str(path)
+                    # TODO(justinvyu): [handle_moved_storage_path]
+                    if not _use_storage_context():
+                        trial.local_experiment_path = str(path)
                 except Exception:
                     logger.warning(
                         f"Could not load trials from experiment checkpoint. "

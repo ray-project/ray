@@ -156,6 +156,21 @@ def test_multiprocess_as_directory(checkpoint: Checkpoint, monkeypatch):
         assert not Path(checkpoint_dir_1).exists()
 
 
+def test_as_directory_lock_cleanup(checkpoint: Checkpoint):
+    """Errors when accessing a checkpoint with `as_directory`
+    shouldn't leave behind lock files.
+    """
+    with pytest.raises(RuntimeError):
+        with checkpoint.as_directory() as checkpoint_dir:
+            raise RuntimeError
+
+    assert not _list_existing_del_locks(checkpoint_dir)
+
+    is_local_checkpoint = isinstance(checkpoint.filesystem, pyarrow.fs.LocalFileSystem)
+    if not is_local_checkpoint:
+        assert not Path(checkpoint_dir).exists()
+
+
 def test_metadata(checkpoint: Checkpoint):
     assert checkpoint.get_metadata() == {}
 

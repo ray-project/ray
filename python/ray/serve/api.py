@@ -10,7 +10,7 @@ from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
 import ray
 from ray import cloudpickle
 from ray.dag import DAGNode
-from ray.util.annotations import Deprecated, PublicAPI
+from ray.util.annotations import Deprecated, PublicAPI, DeveloperAPI
 
 from ray.serve.built_application import BuiltApplication
 from ray.serve._private.client import ServeControllerClient
@@ -34,7 +34,7 @@ from ray.serve._private.deployment_graph_build import (
     get_and_validate_ingress_deployment,
 )
 from ray.serve.exceptions import RayServeException
-from ray.serve.handle import RayServeSyncHandle
+from ray.serve.handle import RayServeHandle, RayServeSyncHandle
 from ray.serve._private.http_util import (
     ASGIAppReplicaWrapper,
     make_fastapi_class_based_view,
@@ -50,6 +50,7 @@ from ray.serve._private.utils import (
     get_random_letters,
     extract_self_if_method_call,
 )
+from ray.serve.schema import ServeInstanceDetails, ServeStatus
 
 from ray.serve._private import api as _private_api
 
@@ -464,8 +465,10 @@ def run(
             "or a static `BuiltApplication` returned by `serve.build`."
         )
         if isinstance(target, DAGNode):
-            msg += " If you are using the DAG API, you must bind the DAG node to a "
-            "deployment like: `app = Deployment.bind(my_dag_output)`. "
+            msg += (
+                " If you are using the DAG API, you must bind the DAG node to a "
+                "deployment like: `app = Deployment.bind(my_dag_output)`. "
+            )
         raise TypeError(msg)
 
     parameter_group = []
@@ -491,6 +494,7 @@ def run(
             "url": deployment.url,
             "is_driver_deployment": deployment._is_driver_deployment,
             "docs_path": deployment._docs_path,
+            "ingress": deployment._name == ingress._name,
         }
         parameter_group.append(deployment_parameters)
     client.deploy_application(
@@ -535,9 +539,14 @@ def build(target: Application, name: str = None) -> BuiltApplication:
             "importable to run the app after building."
         )
 
+    # If application is built using pipeline_build, ingress deployment
+    # is the last deployment since Ray DAG traversal is done bottom-up.
+    deployments = pipeline_build(target._get_internal_dag_node(), name)
+    ingress = deployments[-1].name
+
     # TODO(edoakes): this should accept host and port, but we don't
     # currently support them in the REST API.
-    return BuiltApplication(pipeline_build(target._get_internal_dag_node(), name))
+    return BuiltApplication(deployments, ingress)
 
 
 @PublicAPI(stability="alpha")
@@ -718,3 +727,122 @@ def get_multiplexed_model_id() -> str:
     """
     _request_context = ray.serve.context._serve_request_context.get()
     return _request_context.multiplexed_model_id
+
+
+@PublicAPI(stability="alpha")
+def status() -> ServeStatus:
+    """Get status of Serve on the cluster.
+
+    Includes status of all HTTP Proxies, all active applications, and
+    their deployments.
+
+    .. code-block:: python
+
+            @serve.deployment(num_replicas=2)
+            class MyDeployment:
+                pass
+
+            serve.run(MyDeployment.bind())
+            status = serve.status()
+            assert status.applications["default"].status == "RUNNING"
+    """
+
+    client = get_global_client(raise_if_no_controller_running=False)
+    if client is None:
+        # Serve has not started yet
+        return ServeStatus()
+
+    details = ServeInstanceDetails(**client.get_serve_details())
+    return details._get_status()
+
+
+@PublicAPI(stability="alpha")
+def get_app_handle(
+    name: str, sync: Optional[bool] = None
+) -> Optional[Union[RayServeHandle, RayServeSyncHandle]]:
+    """Get a handle to the application's ingress deployment by name.
+
+    When called from within a deployment `sync` will default to `False`.
+    When called from outside a deployment `sync` will default to `True`.
+
+    Args:
+        name: Name of application to get a handle to.
+        sync: If false, then returns a RayServeHandle, which is
+            asynchronous. If true, then returns a RayServeSyncHandle,
+            which is synchronous.
+
+    Raises:
+        RayServeException: If no Serve controller is running, or if the
+            application does not exist.
+
+    .. code-block:: python
+
+            import ray
+            from ray import serve
+
+            @serve.deployment
+            def f(val: int) -> int:
+                return val * 2
+
+            serve.run(f.bind(), name="my_app")
+            handle = serve.get_app_handle("my_app")
+            assert ray.get(handle.remote(3)) == 6
+    """
+
+    client = get_global_client()
+    ingress = ray.get(client._controller.get_ingress_deployment_name.remote(name))
+    if ingress is None:
+        raise RayServeException(f"Application '{name}' does not exist.")
+
+    internal_replica_context = get_internal_replica_context()
+    if sync is None:
+        # If sync is unspecified, default to async within a deployment
+        # and default to sync outside a deployment
+        sync = internal_replica_context is None
+
+    return client.get_handle(ingress, sync=sync)
+
+
+@DeveloperAPI
+def get_deployment_handle(
+    deployment_name: str, app_name: Optional[str] = None, sync: Optional[bool] = None
+) -> Union[RayServeHandle, RayServeSyncHandle]:
+    """Get a handle to the named deployment.
+
+    When called from within a deployment `sync` will default to `False`.
+    When called from outside a deployment `sync` will default to `True`.
+
+    Args:
+        deployment_name: Name of deployment to get a handle to.
+        app_name: Application in which deployment resides. If calling
+            from inside a Serve application and `app_name` is not
+            specified, this will default to the application from which
+            this API is called.
+        sync: If false, then returns a RayServeHandle, which is
+            asynchronous. If true, then returns a RayServeSyncHandle,
+            which is synchronous.
+
+    Raises:
+        RayServeException: If no Serve controller is running, or if
+            calling from outside a Serve application and no application
+            name is specified.
+    """
+
+    client = get_global_client()
+
+    internal_replica_context = get_internal_replica_context()
+    if app_name is None:
+        if internal_replica_context is None:
+            raise RayServeException(
+                "Please specify an application name when getting a deployment handle "
+                "outside of a Serve application."
+            )
+        else:
+            app_name = internal_replica_context.app_name
+
+    if sync is None:
+        # If sync is unspecified, default to async within a deployment
+        # and default to sync outside a deployment
+        sync = internal_replica_context is None
+
+    return client.get_handle(f"{app_name}_{deployment_name}", sync=sync)

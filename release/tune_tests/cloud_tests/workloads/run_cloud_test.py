@@ -49,7 +49,7 @@ import ray.cloudpickle as pickle
 from ray import train, tune
 from ray.train import Checkpoint
 from ray.tune import TuneError
-from ray.tune.execution.trial_runner import _find_newest_experiment_checkpoint
+from ray.tune.execution.experiment_state import _find_newest_experiment_checkpoint
 from ray.tune.utils.serialization import TuneFunctionDecoder
 
 TUNE_SCRIPT = os.path.join(os.path.dirname(__file__), "_tune_script.py")
@@ -82,7 +82,7 @@ class TrialStub:
         trial_id: str,
         status: str,
         config: Dict[str, Any],
-        _local_experiment_path: str,
+        _legacy_local_experiment_path: str,
         experiment_tag: str,
         _last_result: Dict[str, Any],
         relative_logdir: str,
@@ -93,12 +93,10 @@ class TrialStub:
         self.trial_id = trial_id
         self.status = status
         self.config = config
-        self.local_experiment_path = _local_experiment_path
+        self.local_experiment_path = _legacy_local_experiment_path
         self.experiment_tag = experiment_tag
         self.last_result = _last_result
         self.relative_logdir = relative_logdir
-
-        self.local_experiment_dir = None
 
         # Ignore remaining arguments
 

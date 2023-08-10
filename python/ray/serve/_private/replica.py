@@ -52,6 +52,7 @@ from ray.serve._private.http_util import (
 from ray.serve._private.logging_utils import (
     access_log_msg,
     configure_component_logger,
+    configure_component_memory_profiler,
     get_component_logger_file_path,
 )
 from ray.serve._private.router import RequestMetadata
@@ -95,6 +96,11 @@ def create_replica_wrapper(name: str):
         ):
             self._replica_tag = replica_tag
             configure_component_logger(
+                component_type=ServeComponentType.DEPLOYMENT,
+                component_name=deployment_name,
+                component_id=replica_tag,
+            )
+            configure_component_memory_profiler(
                 component_type=ServeComponentType.DEPLOYMENT,
                 component_name=deployment_name,
                 component_id=replica_tag,
@@ -638,12 +644,7 @@ class RayServeReplica:
                 await reconfigure_method(user_config)
 
     @asynccontextmanager
-    async def wrap_user_method_call(
-        self,
-        request_metadata: RequestMetadata,
-        *,
-        acquire_reader_lock: bool = True,
-    ):
+    async def wrap_user_method_call(self, request_metadata: RequestMetadata):
         """Context manager that should be used to wrap user method calls.
 
         This sets up the serve request context, grabs the reader lock to avoid mutating
@@ -668,16 +669,7 @@ class RayServeReplica:
         start_time = time.time()
         user_exception = None
         try:
-            # TODO(edoakes): this is only here because there is an issue where async
-            # generators in actors have the `asyncio.current_task()` change between
-            # iterations: https://github.com/ray-project/ray/issues/37147. `aiorwlock`
-            # relies on the current task being stable, so it raises an exception.
-            # This flag should be removed once the above issue is closed.
-            if acquire_reader_lock:
-                async with self.rwlock.reader:
-                    yield
-            else:
-                yield
+            yield
         except Exception as e:
             user_exception = e
             logger.exception(f"Request failed due to {type(e).__name__}:")
@@ -792,9 +784,7 @@ class RayServeReplica:
         # iterations: https://github.com/ray-project/ray/issues/37147. `aiorwlock`
         # relies on the current task being stable, so it raises an exception.
         # This flag should be removed once the above issue is closed.
-        async with self.wrap_user_method_call(
-            request_metadata, acquire_reader_lock=False
-        ):
+        async with self.wrap_user_method_call(request_metadata):
             assert (
                 not request_metadata.is_http_request
             ), "HTTP requests should go through `call_user_method`."

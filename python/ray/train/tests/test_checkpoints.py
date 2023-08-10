@@ -5,7 +5,6 @@ import pytest
 from ray.air.constants import MAX_REPR_LENGTH
 from ray.train.huggingface import TransformersCheckpoint
 from ray.train.lightgbm import LightGBMCheckpoint
-from ray.train.rl import RLCheckpoint
 from ray.train.sklearn import SklearnCheckpoint
 from ray.train.tensorflow import TensorflowCheckpoint
 from ray.train.xgboost import XGBoostCheckpoint
@@ -17,7 +16,6 @@ from ray.train.torch import TorchCheckpoint
     [
         TransformersCheckpoint(data_dict={"foo": "bar"}),
         LightGBMCheckpoint(data_dict={"foo": "bar"}),
-        RLCheckpoint(data_dict={"foo": "bar"}),
         SklearnCheckpoint(data_dict={"foo": "bar"}),
         TensorflowCheckpoint(data_dict={"foo": "bar"}),
         XGBoostCheckpoint(data_dict={"foo": "bar"}),

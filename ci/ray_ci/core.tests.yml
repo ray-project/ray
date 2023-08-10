@@ -1,7 +1,6 @@
 flaky_tests:
   - //python/ray/tests:test_runtime_env_working_dir_3
   - //python/ray/tests:test_placement_group_3
-  - //python/ray/tests:test_memory_pressure
   - //python/ray/tests:test_placement_group_5
   - //python/ray/tests:test_runtime_env_2
   - //python/ray/tests:test_gcs_fault_tolerance

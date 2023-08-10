@@ -62,7 +62,7 @@ from ray.tune.search.ax import AxSearch
 from ray.tune.search.hyperopt import HyperOptSearch
 from ray.tune.syncer import Syncer
 from ray.tune.experiment import Trial
-from ray.tune.execution.trial_runner import TrialRunner
+from ray.tune.execution.tune_controller import TuneController
 from ray.tune.utils import flatten_dict
 from ray.tune.execution.placement_groups import PlacementGroupFactory
 
@@ -315,19 +315,19 @@ class TrainableFunctionApiTest(unittest.TestCase):
         os.environ["TUNE_WARN_INSUFFICENT_RESOURCE_THRESHOLD_S"] = "0"
 
         with self.assertRaises(RuntimeError), patch.object(
-            ray.tune.execution.ray_trial_executor.logger, "warning"
+            ray.tune.execution.tune_controller.logger, "warning"
         ) as warn_mock:
             self.assertRaises(TuneError, lambda: g(100, 100))
             assert warn_mock.assert_called_once()
 
         with self.assertRaises(RuntimeError), patch.object(
-            ray.tune.execution.ray_trial_executor.logger, "warning"
+            ray.tune.execution.tune_controller.logger, "warning"
         ) as warn_mock:
             self.assertRaises(TuneError, lambda: g(0, 100))
             assert warn_mock.assert_called_once()
 
         with self.assertRaises(RuntimeError), patch.object(
-            ray.tune.execution.ray_trial_executor.logger, "warning"
+            ray.tune.execution.tune_controller.logger, "warning"
         ) as warn_mock:
             self.assertRaises(TuneError, lambda: g(100, 0))
             assert warn_mock.assert_called_once()
@@ -1075,7 +1075,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
             cls = trial.get_trainable_cls()
             actor = ray.remote(cls).remote(
                 remote_checkpoint_dir=upload_dir,
-                sync_config=trial.sync_config,
+                sync_config=trial.legacy_sync_config,
             )
             return actor
 
@@ -1685,11 +1685,11 @@ class ApiTestFast(unittest.TestCase):
         class _MockScheduler(FIFOScheduler):
             results = []
 
-            def on_trial_result(self, trial_runner, trial, result):
+            def on_trial_result(self, tune_controller, trial, result):
                 self.results += [result]
                 return TrialScheduler.CONTINUE
 
-            def on_trial_complete(self, trial_runner, trial, result):
+            def on_trial_complete(self, tune_controller, trial, result):
                 self.complete_result = result
 
         def train(config, reporter):
@@ -1807,7 +1807,7 @@ class ApiTestFast(unittest.TestCase):
     def testSearcherSchedulerStr(self):
         capture = {}
 
-        class MockTrialRunner(TrialRunner):
+        class MockTuneController(TuneController):
             def __init__(self, search_alg=None, scheduler=None, **kwargs):
                 # should be converted from strings at this case and not None
                 capture["search_alg"] = search_alg
@@ -1818,9 +1818,7 @@ class ApiTestFast(unittest.TestCase):
                     **kwargs,
                 )
 
-        with patch("ray.tune.tune.TrialRunner", MockTrialRunner), patch(
-            "os.environ", {"TUNE_NEW_EXECUTION": "0"}
-        ):
+        with patch("ray.tune.tune.TuneController", MockTuneController):
             tune.run(
                 lambda config: tune.report(metric=1),
                 search_alg="random",
@@ -1856,7 +1854,7 @@ class MaxConcurrentTrialsTest(unittest.TestCase):
 
         capture = {}
 
-        class MockTrialRunner(TrialRunner):
+        class MockTuneController(TuneController):
             def __init__(self, search_alg=None, scheduler=None, **kwargs):
                 # should be converted from strings at this case and not None
                 capture["search_alg"] = search_alg
@@ -1867,9 +1865,7 @@ class MaxConcurrentTrialsTest(unittest.TestCase):
                     **kwargs,
                 )
 
-        with patch("ray.tune.tune.TrialRunner", MockTrialRunner), patch(
-            "os.environ", {"TUNE_NEW_EXECUTION": "0"}
-        ):
+        with patch("ray.tune.tune.TuneController", MockTuneController):
             tune.run(
                 train,
                 config={"a": tune.randint(0, 2)},
