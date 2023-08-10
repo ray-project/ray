@@ -169,6 +169,47 @@ TEST_F(NewPlacementGroupResourceManagerTest,
   ASSERT_FALSE(new_placement_group_resource_manager_->PrepareBundles(bundle_specs));
 }
 
+TEST_F(NewPlacementGroupResourceManagerTest, TestNewPrepareBundleDuringDraining) {
+  // 1. create bundle spec.
+  absl::flat_hash_map<std::string, double> unit_resource;
+  unit_resource.insert({"CPU", 1.0});
+  auto group1_id = PlacementGroupID::Of(JobID::FromInt(1));
+  auto bundle1_specs = Mocker::GenBundleSpecifications(group1_id, unit_resource, 1);
+  auto group2_id = PlacementGroupID::Of(JobID::FromInt(2));
+  auto bundle2_specs = Mocker::GenBundleSpecifications(group2_id, unit_resource, 1);
+  /// 2. init local available resource.
+  absl::flat_hash_map<std::string, double> init_unit_resource;
+  init_unit_resource.insert({"CPU", 2.0});
+  InitLocalAvailableResource(init_unit_resource);
+
+  ASSERT_TRUE(new_placement_group_resource_manager_->PrepareBundles(bundle1_specs));
+  // Drain the node, new bundle prepare will fail.
+  cluster_resource_scheduler_->GetLocalResourceManager().SetLocalNodeDraining();
+  ASSERT_FALSE(new_placement_group_resource_manager_->PrepareBundles(bundle2_specs));
+  // Prepared bundles can still be committed.
+  new_placement_group_resource_manager_->CommitBundles(bundle1_specs);
+  absl::flat_hash_map<std::string, double> remaining_resources = {
+      {"CPU_group_" + group1_id.Hex(), 1.0},
+      {"CPU_group_1_" + group1_id.Hex(), 1.0},
+      {"CPU", 2.0},
+      {"bundle_group_1_" + group1_id.Hex(), 1000},
+      {"bundle_group_" + group1_id.Hex(), 1000}};
+  auto remaining_resource_scheduler =
+      std::make_shared<ClusterResourceScheduler>(io_context,
+                                                 scheduling::NodeID("remaining"),
+                                                 remaining_resources,
+                                                 is_node_available_fn_);
+  std::shared_ptr<TaskResourceInstances> resource_instances =
+      std::make_shared<TaskResourceInstances>();
+  ASSERT_TRUE(
+      remaining_resource_scheduler->GetLocalResourceManager().AllocateLocalTaskResources(
+          unit_resource, resource_instances));
+  auto remaining_resource_instance =
+      remaining_resource_scheduler->GetClusterResourceManager().GetNodeResources(
+          scheduling::NodeID("remaining"));
+  CheckRemainingResourceCorrect(remaining_resource_instance);
+}
+
 TEST_F(NewPlacementGroupResourceManagerTest, TestNewCommitBundleResource) {
   // 1. create bundle spec.
   auto group_id = PlacementGroupID::Of(JobID::FromInt(1));
