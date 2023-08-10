@@ -8,7 +8,7 @@ import pathlib
 import sys
 
 protos_path = pathlib.Path(__file__).parent
-sys.path.insert(0, str(protos_path))
+sys.path.append(str(protos_path))
 
 import user_defined_protos_pb2 as protos_pb2  # noqa: E402
 
