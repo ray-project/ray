@@ -268,10 +268,10 @@ class RayTrainReportCallback(TrainerCallback):
 @PublicAPI(stability="alpha")
 def prepare_trainer(trainer: Trainer) -> Trainer:
     """Prepare your HuggingFace Transformer Trainer for Ray Train.
-    
+
     This utility function enable the trainer integrates with Ray Data Integration.
-    Internally, it overrides the `get_train_dataloader` and `get_eval_dataloader` 
-    methods and inject the data integration logics if the `train_dataset` and 
+    Internally, it overrides the `get_train_dataloader` and `get_eval_dataloader`
+    methods and inject the data integration logics if the `train_dataset` and
     `eval_dataset` are Ray Data Iterables.
     """
     base_trainer_class: Type[transformers.trainer.Trainer] = trainer.__class__
