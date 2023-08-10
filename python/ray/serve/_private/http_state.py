@@ -466,6 +466,7 @@ class HTTPProxyStateManager:
             port,
             self._config.root_path,
             controller_name=self._controller_name,
+            actor_name=name,
             node_ip_address=node_ip_address,
             node_id=node_id,
             http_middlewares=self._config.middlewares,
