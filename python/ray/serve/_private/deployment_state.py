@@ -2303,8 +2303,8 @@ class DeploymentStateManager:
             logger.warning(
                 f"Detected leaked placement groups: {leaked_pg_names}. "
                 "The placement groups will be removed. This can happen in rare "
-                "circumstances when the controller crashes and should not cause any. "
-                "issues. If it happens repeatedly, please file an issue on GitHub."
+                "circumstances when the controller crashes and should not cause any "
+                "issues. If this happens repeatedly, please file an issue on GitHub."
             )
 
         for leaked_pg_name in leaked_pg_names:
