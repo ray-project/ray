@@ -11,6 +11,7 @@ from ray import serve
 from ray.serve.context import get_global_client
 from ray.serve.exceptions import RayServeException
 from ray.serve.handle import HandleOptions, RayServeHandle, RayServeSyncHandle
+from ray.serve._private.router import PowerOfTwoChoicesReplicaScheduler
 from ray.serve._private.constants import (
     DEPLOYMENT_NAME_PREFIX_SEPARATOR,
     RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING,
@@ -364,6 +365,24 @@ def test_handle_options_with_same_router(serve_instance):
     handle2 = handle.options(multiplexed_model_id="model2")
     assert handle._router
     assert id(handle2._router) == id(handle._router)
+
+
+class MyRouter(PowerOfTwoChoicesReplicaScheduler):
+    pass
+
+
+def test_handle_options_custom_router(serve_instance):
+    @serve.deployment
+    def echo(name: str):
+        return f"Hi {name}"
+
+    handle = serve.run(echo.bind())
+    handle2 = handle.options(_router_cls="ray.serve.tests.test_handle.MyRouter")
+    ray.get(handle2.remote("HI"))
+    print("Router class used", handle2._router._replica_scheduler)
+    assert (
+        "MyRouter" in handle2._router._replica_scheduler.__class__.__name__
+    ), handle2._router._replica_scheduler
 
 
 if __name__ == "__main__":
