@@ -593,6 +593,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
                 if isinstance(t.exception(), RayActorError):
                     self._replicas.pop(t.replica_id, None)
                     self._replica_id_set.discard(t.replica_id)
+                    self._replica_ids_colocated_on_same_node.discard(t.replica_id)
                     msg += " This replica will no longer be considered for requests."
 
                 logger.warning(msg)
