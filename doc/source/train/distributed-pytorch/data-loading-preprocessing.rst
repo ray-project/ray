@@ -92,6 +92,46 @@ Using Ray Data and Ray Train for distributed training on large datasets involves
 
             ...
 
+    .. group-tab:: PyTorch Lightning
+
+        .. code-block:: python
+            :emphasize-lines: 9,10,13,14,25,26
+
+            from ray import train
+         
+            train_data = ray.data.read_csv("./train.csv")
+            val_data = ray.data.read_csv("./validation.csv")
+
+            def train_func_per_worker():
+                # Access Ray datsets in your train_func via ``get_dataset_shard``.
+                # The "train" dataset gets sharded across workers by default
+                train_ds = train.get_dataset_shard("train")
+                val_ds = train.get_dataset_shard("validation")
+
+                # Create Ray dataset iterables via ``iter_torch_batches``.
+                train_dataloader = train_ds.iter_torch_batches(batch_size=16)
+                val_dataloader = val_ds.iter_torch_batches(batch_size=16)
+
+                ...
+
+                trainer = pl.Trainer(
+                    # ...
+                )
+
+                # Feed the Ray dataset iterables to ``pl.Trainer.fit``.
+                trainer.fit(
+                    model, 
+                    train_dataloaders=train_dataloader, 
+                    val_dataloaders=val_dataloader
+                )
+
+            trainer = TorchTrainer(
+                train_func,
+                datasets={"train": train_data, "validation": val_data},
+                scaling_config=ScalingConfig(num_workers=4),
+            )
+            trainer.fit()
+
 Migrating from PyTorch DataLoader
 ---------------------------------
 If you're currently using PyTorch Datasets and DataLoaders, you can migrate to Ray Data for working with distributed datasets.
@@ -259,11 +299,6 @@ Transformations that you want run per-epoch, such as randomization, should go af
     train_ds = train_ds.map_batches(augment_data)
 
     # Pass train_ds to the Trainer
-
-.. testoutput::
-    :hide:
-
-    ...
 
 Adding CPU-only nodes to your cluster
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
