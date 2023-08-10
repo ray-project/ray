@@ -8,11 +8,19 @@ except ModuleNotFoundError:
     )
 # isort: on
 
+from ray.train.lightning.lightning_trainer import (
+    LightningConfigBuilder,
+    LightningTrainer,
+)
 from ray.train.lightning.lightning_checkpoint import LightningCheckpoint
 from ray.train.lightning.lightning_predictor import LightningPredictor
-from ray.train.lightning.lightning_trainer import (
-    LightningTrainer,
-    LightningConfigBuilder,
+from ray.train.lightning._lightning_utils import (
+    prepare_trainer,
+    RayDDPStrategy,
+    RayFSDPStrategy,
+    RayDeepSpeedStrategy,
+    RayLightningEnvironment,
+    RayTrainReportCallback,
 )
 
 __all__ = [
@@ -20,4 +28,10 @@ __all__ = [
     "LightningConfigBuilder",
     "LightningCheckpoint",
     "LightningPredictor",
+    "prepare_trainer",
+    "RayDDPStrategy",
+    "RayFSDPStrategy",
+    "RayDeepSpeedStrategy",
+    "RayLightningEnvironment",
+    "RayTrainReportCallback",
 ]

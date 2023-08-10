@@ -28,6 +28,7 @@ rules:
         - "doc/source/train/distributed-pytorch/monitoring-logging.rst"
         - "doc/source/train/distributed-pytorch/persistent-storage.rst"
         - "doc/source/train/distributed-pytorch/using-gpus.rst"
+        - "doc/source/train/distributed-pytorch/migration-guides.rst"
         - "doc/source/train/distributed-tensorflow-keras.rst"
         - "doc/source/train/horovod.rst"
 
