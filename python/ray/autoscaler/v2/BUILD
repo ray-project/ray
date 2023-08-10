@@ -80,7 +80,7 @@ py_test(
 
 py_test(
     name = "test_sdk",
-    size = "medium",
+    size = "small",
     srcs = ["tests/test_sdk.py"],
     tags = ["team:core", "exclusive"],
     deps = ["//:ray_lib", ":conftest"],
