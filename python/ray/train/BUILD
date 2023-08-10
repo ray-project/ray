@@ -662,9 +662,8 @@ py_test(
         "exclusive",
         "ray_air",
         "team:ml",
-        ":conftest",
     ],
-    deps = [":train_lib"],
+    deps = [":train_lib", ":conftest"],
 )
 
 # This is a dummy test dependency that causes the above tests to be
