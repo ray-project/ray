@@ -1,3 +1,4 @@
+from collections import Counter
 from dataclasses import dataclass, field
 import json
 from pydantic import BaseModel, Field, Extra, root_validator, validator
@@ -642,6 +643,7 @@ class ServeDeploySchema(BaseModel, extra=Extra.forbid):
 @dataclass
 class DeploymentStatusOverview:
     status: DeploymentStatus
+    replica_states: Dict[ReplicaState, int]
     message: str
 
 
@@ -868,7 +870,11 @@ class ServeInstanceDetails(BaseModel, extra=Extra.forbid):
                     last_deployed_time_s=app.last_deployed_time_s,
                     deployments={
                         deployment_name: DeploymentStatusOverview(
-                            status=deployment.status, message=deployment.message
+                            status=deployment.status,
+                            replica_states=dict(
+                                Counter([r.state.value for r in deployment.replicas])
+                            ),
+                            message=deployment.message,
                         )
                         for deployment_name, deployment in app.deployments.items()
                     },

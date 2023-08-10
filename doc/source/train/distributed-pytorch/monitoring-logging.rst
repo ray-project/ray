@@ -16,15 +16,44 @@ be logged and displayed.
 The primary use-case for reporting is for metrics (accuracy, loss, etc.) at
 the end of each training epoch.
 
-.. code-block:: python
+.. tab-set::
 
-    from ray import train
+    .. tab-item:: PyTorch
 
-    def train_func():
-        ...
-        for i in range(num_epochs):
-            result = model.train(...)
-            train.report({"result": result})
+        .. code-block:: python
+
+            from ray import train
+
+            def train_func():
+                ...
+                for i in range(num_epochs):
+                    result = model.train(...)
+                    train.report({"result": result})
+
+    .. tab-item:: PyTorch Lightning
+
+        In PyTorch Lightning, we use a callback to call ``train.report()``.
+
+        .. code-block:: python
+
+            from ray import train
+            import pytorch_lightning as pl
+            from pytorch_lightning.callbacks import Callback
+
+            class MyRayTrainReportCallback(Callback):
+                def on_train_epoch_end(self, trainer, pl_module):
+                    metrics = trainer.callback_metrics
+                    metrics = {k: v.item() for k, v in metrics.items()}
+
+                    train.report(metrics=metrics)
+
+            def train_func_per_worker():
+                ...
+                trainer = pl.Trainer(
+                    # ...
+                    callbacks=[MyRayTrainReportCallback()]
+                )
+                trainer.fit()
 
 The session concept exists on several levels: The execution layer (called `Tune Session`) and the Data Parallel training layer
 (called `Train Session`).
