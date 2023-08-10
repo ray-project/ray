@@ -1525,7 +1525,7 @@ cdef void execute_task(
                 else:
                     return core_worker.run_async_func_or_coro_in_event_loop(
                         async_function, function_descriptor,
-                        name_of_concurrency_group_to_execute, actor,
+                        name_of_concurrency_group_to_execute, task_id, actor,
                         *arguments, **kwarguments)
 
             return function(actor, *arguments, **kwarguments)
@@ -1551,7 +1551,7 @@ cdef void execute_task(
                                         metadata_pairs, object_refs))
                         args = core_worker.run_async_func_or_coro_in_event_loop(
                             deserialize_args, function_descriptor,
-                            name_of_concurrency_group_to_execute)
+                            name_of_concurrency_group_to_execute, None)
                     else:
                         # Defer task cancellation (SIGINT) until after the task argument
                         # deserialization context has been left.
@@ -1632,7 +1632,8 @@ cdef void execute_task(
                             core_worker.run_async_func_or_coro_in_event_loop(
                                 execute_streaming_generator_async(context),
                                 function_descriptor,
-                                name_of_concurrency_group_to_execute)
+                                name_of_concurrency_group_to_execute,
+                                task_id)
                         else:
                             execute_streaming_generator_sync(context)
 
@@ -2176,6 +2177,20 @@ cdef void delete_spilled_objects_handler(
                 "delete_spilled_objects_error",
                 traceback.format_exc() + exception_str,
                 job_id=None)
+
+
+cdef void cancel_async_task(const CTaskID &task_id, const CRayFunction &ray_function, const c_string c_name_of_concurrency_group_to_execute) nogil:
+    # SANG-TODO
+    # function_descriptor
+    # specified_cgname
+    # task_id
+    # with gil:
+    #     worker = ray._private.worker.global_worker
+    #     eventloop, _ = worker.core_worker.get_event_loop(
+    #         function_descriptor, specified_cgname)
+    #     future = worker.core_worker.task_id_to_future.get(task_id)
+    #     if future is not None:
+    #         eventloop.call_soon_threadsafe(future.cancel)
 
 
 cdef void unhandled_exception_handler(const CRayObject& error) nogil:
@@ -2906,6 +2921,7 @@ cdef class CoreWorker:
         options.restore_spilled_objects = restore_spilled_objects_handler
         options.delete_spilled_objects = delete_spilled_objects_handler
         options.unhandled_exception_handler = unhandled_exception_handler
+        options.cancel_async_task = cancel_async_task
         options.get_lang_stack = get_py_stack
         options.is_local_mode = local_mode
         options.kill_main = kill_main_task
@@ -2926,6 +2942,7 @@ cdef class CoreWorker:
         self.fd_to_cgname_dict = None
         self.eventloop_for_default_cg = None
         self.current_runtime_env = None
+        self.task_id_to_future = {}
 
     def shutdown(self):
         # If it's a worker, the core worker process should have been
@@ -4101,6 +4118,7 @@ cdef class CoreWorker:
           func_or_coro: Union[Callable[[Any, Any], Awaitable[Any]], Awaitable],
           function_descriptor: FunctionDescriptor,
           specified_cgname: str,
+          task_id: Optional[TaskID],
           *args,
           **kwargs):
         """Run the async function or coroutine to the event loop.
@@ -4110,6 +4128,8 @@ cdef class CoreWorker:
             func_or_coro: Async function (not a generator) or awaitable objects.
             function_descriptor: The function descriptor.
             specified_cgname: The name of a concurrent group.
+            task_id: The task ID to track the future. If None is provided
+                the future is not tracked with a task ID.
             args: The arguments for the async function.
             kwargs: The keyword arguments for the async function.
         """
@@ -4134,11 +4154,15 @@ cdef class CoreWorker:
             coroutine = func_or_coro(*args, **kwargs)
 
         future = asyncio.run_coroutine_threadsafe(coroutine, eventloop)
+        if task_id:
+            self.task_id_to_future[task_id] = future
         future.add_done_callback(lambda _: event.Notify())
         with nogil:
             (CCoreWorkerProcess.GetCoreWorker()
                 .YieldCurrentFiber(event))
-        return future.result()
+        result = future.result()
+        self.task_id_to_future.pop(task_id)
+        return result
 
     def stop_and_join_asyncio_threads_if_exist(self):
         event_loops = []
