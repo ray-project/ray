@@ -2424,22 +2424,6 @@ cdef class GcsClient:
         return num_added
 
     @_auto_reconnect
-    def drain_node(self, node_ids, timeout=None):
-        cdef:
-            c_vector[c_string] c_node_ids
-            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
-            c_vector[c_string] c_drained_node_ids
-        for node_id in node_ids:
-            c_node_ids.push_back(node_id)
-        with nogil:
-            check_status(self.inner.get().DrainNode(
-                c_node_ids, timeout_ms, c_drained_node_ids))
-        result = []
-        for drain_node_id in c_drained_node_ids:
-            result.append(drain_node_id)
-        return result
-
-    @_auto_reconnect
     def internal_kv_del(self, c_string key, c_bool del_by_prefix,
                         namespace=None, timeout=None):
         cdef:
@@ -2589,6 +2573,22 @@ cdef class GcsClient:
                 node_id, reason, reason_message, timeout_ms, is_accepted))
 
         return is_accepted
+
+    @_auto_reconnect
+    def drain_nodes(self, node_ids, timeout=None):
+        cdef:
+            c_vector[c_string] c_node_ids
+            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
+            c_vector[c_string] c_drained_node_ids
+        for node_id in node_ids:
+            c_node_ids.push_back(node_id)
+        with nogil:
+            check_status(self.inner.get().DrainNodes(
+                c_node_ids, timeout_ms, c_drained_node_ids))
+        result = []
+        for drain_node_id in c_drained_node_ids:
+            result.append(drain_node_id)
+        return result
 
     #############################################################
     # Interface for rpc::autoscaler::AutoscalerStateService ends

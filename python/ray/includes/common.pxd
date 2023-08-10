@@ -392,11 +392,6 @@ cdef extern from "ray/gcs/gcs_client/gcs_client.h" nogil:
         CRayStatus InternalKVExists(
             const c_string &ns, const c_string &key,
             int64_t timeout_ms, c_bool &exists)
-        CRayStatus DrainNode(
-            const c_vector[c_string]& node_ids,
-            int64_t timeout_ms,
-            c_vector[c_string]& drained_node_ids)
-
         CRayStatus PinRuntimeEnvUri(
             const c_string &uri, int expiration_s, int64_t timeout_ms)
         CRayStatus GetAllNodeInfo(
@@ -418,6 +413,10 @@ cdef extern from "ray/gcs/gcs_client/gcs_client.h" nogil:
             const c_string &reason_message,
             int64_t timeout_ms,
             c_bool &is_accepted)
+        CRayStatus DrainNodes(
+            const c_vector[c_string]& node_ids,
+            int64_t timeout_ms,
+            c_vector[c_string]& drained_node_ids)
 
 
 cdef extern from "ray/gcs/gcs_client/gcs_client.h" namespace "ray::gcs" nogil:

@@ -354,34 +354,6 @@ Status PythonGcsClient::InternalKVExists(const std::string &ns,
   return Status::RpcError(status.error_message(), status.error_code());
 }
 
-Status PythonGcsClient::DrainNode(const std::vector<std::string> &node_ids,
-                                  int64_t timeout_ms,
-                                  std::vector<std::string> &drained_node_ids) {
-  grpc::ClientContext context;
-  GrpcClientContextWithTimeoutMs(context, timeout_ms);
-
-  rpc::DrainNodeRequest request;
-  for (const std::string &node_id : node_ids) {
-    request.add_drain_node_data()->set_node_id(node_id);
-  }
-
-  rpc::DrainNodeReply reply;
-
-  grpc::Status status = node_info_stub_->DrainNode(&context, request, &reply);
-  if (status.ok()) {
-    if (reply.status().code() == static_cast<int>(StatusCode::OK)) {
-      drained_node_ids.clear();
-      drained_node_ids.reserve(reply.drain_node_status().size());
-      for (const auto &node_status : reply.drain_node_status()) {
-        drained_node_ids.push_back(node_status.node_id());
-      }
-      return Status::OK();
-    }
-    return HandleGcsError(reply.status());
-  }
-  return Status::RpcError(status.error_message(), status.error_code());
-}
-
 Status PythonGcsClient::PinRuntimeEnvUri(const std::string &uri,
                                          int expiration_s,
                                          int64_t timeout_ms) {
@@ -540,6 +512,34 @@ Status PythonGcsClient::DrainNode(const std::string &node_id,
   if (status.ok()) {
     is_accepted = reply.is_accepted();
     return Status::OK();
+  }
+  return Status::RpcError(status.error_message(), status.error_code());
+}
+
+Status PythonGcsClient::DrainNodes(const std::vector<std::string> &node_ids,
+                                   int64_t timeout_ms,
+                                   std::vector<std::string> &drained_node_ids) {
+  grpc::ClientContext context;
+  GrpcClientContextWithTimeoutMs(context, timeout_ms);
+
+  rpc::DrainNodeRequest request;
+  for (const std::string &node_id : node_ids) {
+    request.add_drain_node_data()->set_node_id(node_id);
+  }
+
+  rpc::DrainNodeReply reply;
+
+  grpc::Status status = node_info_stub_->DrainNode(&context, request, &reply);
+  if (status.ok()) {
+    if (reply.status().code() == static_cast<int>(StatusCode::OK)) {
+      drained_node_ids.clear();
+      drained_node_ids.reserve(reply.drain_node_status().size());
+      for (const auto &node_status : reply.drain_node_status()) {
+        drained_node_ids.push_back(node_status.node_id());
+      }
+      return Status::OK();
+    }
+    return HandleGcsError(reply.status());
   }
   return Status::RpcError(status.error_message(), status.error_code());
 }

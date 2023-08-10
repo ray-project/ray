@@ -224,9 +224,6 @@ class RAY_EXPORT PythonGcsClient {
                           const std::string &key,
                           int64_t timeout_ms,
                           bool &exists);
-  Status DrainNode(const std::vector<std::string> &node_ids,
-                   int64_t timeout_ms,
-                   std::vector<std::string> &drained_node_ids);
 
   Status PinRuntimeEnvUri(const std::string &uri, int expiration_s, int64_t timeout_ms);
   Status GetAllNodeInfo(int64_t timeout_ms, std::vector<rpc::GcsNodeInfo> &result);
@@ -243,6 +240,9 @@ class RAY_EXPORT PythonGcsClient {
                    const std::string &reason_message,
                    int64_t timeout_ms,
                    bool &is_accepted);
+  Status DrainNodes(const std::vector<std::string> &node_ids,
+                   int64_t timeout_ms,
+                   std::vector<std::string> &drained_node_ids);
 
  private:
   GcsClientOptions options_;
