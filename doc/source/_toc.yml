@@ -72,6 +72,8 @@ parts:
               - file: train/distributed-pytorch/checkpoints
               - file: train/distributed-pytorch/experiment-tracking
               - file: train/distributed-pytorch/fault-tolerance
+              - file: train/distributed-pytorch/migration-guides
+                title: Migration Guides
               - file: train/distributed-pytorch/advanced
                 sections:
                     - file: train/distributed-pytorch/reproducibility
