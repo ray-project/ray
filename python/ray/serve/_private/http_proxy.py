@@ -1017,7 +1017,7 @@ Please make sure your http-host and http-port are specified correctly."""
             ),
             tag_keys=("node_id", "node_ip_address"),
         ).set_default_tags(
-            {"node_id": self.node_id, "node_ip_address": self.node_ip_address}
+            {"node_id": self.node_id}, {"node_ip_address": self.node_ip_address}
         )
         server.server_state.connections = GaugeSet(num_connections_gauge)
         # TODO(edoakes): we need to override install_signal_handlers here
