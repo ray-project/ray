@@ -115,7 +115,18 @@ class _TrainSession:
         checkpoint_keep_all_ranks: bool = False,
         checkpoint_upload_from_workers: bool = False,
         storage: Optional[StorageContext] = None,
+        eager_mode: bool = True,
     ):
+        # Eager mode refers to whether the training function is immediately
+        # unblocked to continue running, after the main thread receives its result.
+        # If eager_mode is False, the training function will be blocked until the
+        # the next call to `session.get_next`.
+        # Ex: For 2 Ray Train workers with eager_mode=True, the worker that produces
+        # a result first will immediately will continue onto the next iteration.
+        # Ex: For a Tune Trainable with eager_mode=False, training will only progress
+        # with explicit calls to `session.get_next`.
+        self.eager_mode = eager_mode
+
         # Ray Train worker properties
         self.dataset_shard = dataset_shard
         self.world_rank = world_rank
@@ -219,6 +230,7 @@ class _TrainSession:
         # Reset state
         self.ignore_report = False
         self.training_started = False
+        self._first_report = True
 
     def pause_reporting(self):
         """Ignore all future ``session.report()`` calls."""
@@ -250,6 +262,16 @@ class _TrainSession:
         """
         if not self.training_started:
             raise RuntimeError("Please call start before calling get_next.")
+
+        if not self.eager_mode:
+            # There's no need to release the lock on the first report
+            # since `start` already started the training thread.
+            if not self._first_report:
+                # Release the lock to trigger training to continue,
+                # until the next call to report.
+                self.continue_lock.release()
+            self._first_report = False
+
         result = None
         # While training is still ongoing, attempt to get the result.
         while result is None and self.training_thread.is_alive():
@@ -285,8 +307,12 @@ class _TrainSession:
                     )
                 )
 
-        # Release the lock to trigger training to continue.
-        self.continue_lock.release()
+        if self.eager_mode:
+            # At this point, the training thread has already reached
+            # the next call to report and is blocked there.
+            # If eager mode is enabled, release the lock to keep training
+            # immediately after receiving the result.
+            self.continue_lock.release()
 
         # Return None if there are no more results to fetch.
         return result

@@ -372,6 +372,7 @@ class FunctionTrainable(Trainable):
                 encode_data_fn=None,
                 enable_lazy_checkpointing=False,
                 storage=self._storage,
+                eager_mode=False,
             )
             self._session = get_session()
             self._last_training_result = None
