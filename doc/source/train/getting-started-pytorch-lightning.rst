@@ -7,11 +7,10 @@ This tutorial will walk you through the process of converting an existing PyTorc
 
 By the end of this, you will learn how to:
 
-1. Configure your model so that it runs distributed and place it on the correct CPU/GPU device.
-2. Configure your dataset so that it is sharded across the workers and place data on the correct CPU/GPU device.
-3. Configure your training function to report metrics and save checkpoints.
-4. Configure scale and CPU/GPU resource requirements for your training job.
-5. Launch your distributed training job with a :class:`~ray.train.torch.TorchTrainer`.
+1. Configure your Lightning Trainer so that it runs distributed and is placed on the correct CPU/GPU device.
+2. Configure your training function to report metrics and save checkpoints.
+3. Configure scale and CPU/GPU resource requirements for your training job.
+4. Launch your distributed training job with a :class:`~ray.train.torch.TorchTrainer`.
 
 Quickstart
 ----------
@@ -42,15 +41,110 @@ Let's compare a PyTorch Lightning training script with and without Ray Train.
 
         .. code-block:: python
 
-            # TODO
+            import torch
+            from torchvision.models import resnet18
+            from torchvision.datasets import FashionMNIST
+            from torchvision.transforms import ToTensor, Normalize, Compose
+            from torch.utils.data import DataLoader
+            import pytorch_lightning as pl
+
+            # Model, Loss, Optimizer
+            class ImageClassifier(pl.LightningModule):
+                def __init__(self):
+                    super(ImageClassifier, self).__init__()
+                    self.model = resnet18(num_classes=10)
+                    self.model.conv1 = torch.nn.Conv2d(1, 64, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3), bias=False)
+                    self.criterion = torch.nn.CrossEntropyLoss()
+                
+                def forward(self, x):
+                    return self.model(x)
+                
+                def training_step(self, batch, batch_idx):
+                    x, y = batch
+                    outputs = self.forward(x)
+                    loss = self.criterion(outputs, y)
+                    self.log("loss", loss, on_step=True, prog_bar=True)
+                    return loss
+                    
+                def configure_optimizers(self):
+                    return torch.optim.Adam(self.model.parameters(), lr=0.001)
+
+            # Data
+            transform = Compose([ToTensor(), Normalize((0.5,), (0.5,))])
+            train_data = FashionMNIST(root='./data', train=True, download=True, transform=transform)
+            train_dataloader = DataLoader(train_data, batch_size=128, shuffle=True)
+
+            # Training
+            model = ImageClassifier()
+            trainer = pl.Trainer(max_epochs=10)
+            trainer.fit(model, train_dataloaders=train_dataloader)
 
                 
 
     .. group-tab:: PyTorch Lightning + Ray Train
 
         .. code-block:: python
+
+            import torch
+            from torchvision.models import resnet18
+            from torchvision.datasets import FashionMNIST
+            from torchvision.transforms import ToTensor, Normalize, Compose
+            from torch.utils.data import DataLoader
+            import pytorch_lightning as pl
+
+            from ray.train.torch import TorchTrainer
+            from ray.train import ScalingConfig
+            import ray.train.lightning
+
+            # Model, Loss, Optimizer
+            class ImageClassifier(pl.LightningModule):
+                def __init__(self):
+                    super(ImageClassifier, self).__init__()
+                    self.model = resnet18(num_classes=10)
+                    self.model.conv1 = torch.nn.Conv2d(1, 64, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3), bias=False)
+                    self.criterion = torch.nn.CrossEntropyLoss()
+                
+                def forward(self, x):
+                    return self.model(x)
+                
+                def training_step(self, batch, batch_idx):
+                    x, y = batch
+                    outputs = self.forward(x)
+                    loss = self.criterion(outputs, y)
+                    self.log("loss", loss, on_step=True, prog_bar=True)
+                    return loss
+                    
+                def configure_optimizers(self):
+                    return torch.optim.Adam(self.model.parameters(), lr=0.001)
        
-            # TODO
+
+            def train_func(config):
+
+                # Data
+                transform = Compose([ToTensor(), Normalize((0.5,), (0.5,))])
+                train_data = FashionMNIST(root='./data', train=True, download=True, transform=transform)
+                train_dataloader = DataLoader(train_data, batch_size=128, shuffle=True)
+
+                # Training
+                model = ImageClassifier()
+                # [1] Configure PyTorch Lightning Trainer.
+                trainer = pl.Trainer(
+                    max_epochs=10,
+                    devices="auto",
+                    accelerator="auto",
+                    strategy=ray.train.lightning.RayDDPStrategy(),
+                    plugins=[ray.train.lightning.RayLightningEnvironment()],
+                    callbacks=[ray.train.lightning.RayTrainReportCallback()],
+                )
+                trainer = ray.train.lightning.prepare_trainer(trainer)
+                trainer.fit(model, train_dataloaders=train_dataloader)
+
+            # [2] Configure scaling and resource requirements.
+            scaling_config = ScalingConfig(num_workers=2, use_gpu=True)
+
+            # [3] Launch distributed training job.
+            trainer = TorchTrainer(train_func, scaling_config=scaling_config)
+            result = trainer.fit()            
 
 
 Now, let's get started!
@@ -75,11 +169,9 @@ make a few changes to your Lightning Trainer definition.
 .. code-block:: diff
 
      import pytorch_lightning as pl
-    +from ray.train.lightning import (
-    +    prepare_trainer,
-    +    RayDDPStrategy,
-    +    RayLightningEnvironment,
-    +)
+    -from pl.strategies import DDPStrategy
+    -from pl.plugins.environments import LightningEnvironment
+    +import ray.train.lightning 
 
      def train_func(config):
          ...
@@ -91,14 +183,18 @@ make a few changes to your Lightning Trainer definition.
     -        strategy=DDPStrategy(),
     -        plugins=[LightningEnvironment()],
     +        devices="auto",
-    +        strategy=RayDDPStrategy(),
-    +        plugins=[RayLightningEnvironment()]
+    +        accelerator="auto",
+    +        strategy=ray.train.lightning.RayDDPStrategy(),
+    +        plugins=[ray.train.lightning.RayLightningEnvironment()]
          )
-    +    trainer = prepare_trainer(trainer)
+    +    trainer = ray.train.lightning.prepare_trainer(trainer)
         
          trainer.fit(model, datamodule=datamodule)
 
-**Step 1: Configure Distributed Strategy**
+We will now go over each change.
+
+Configuring distributed strategy
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 Ray Train offers several subclassed distributed strategies for Lightning. 
 These strategies retain the same argument list as their base strategy classes. 
@@ -109,25 +205,113 @@ sampler arguments.
 - :class:`~ray.train.lightning.RayFSDPStrategy` 
 - :class:`~ray.train.lightning.RayDeepSpeedStrategy` 
 
-**Step 2: Configure Ray Cluster Environment Plugin**
+
+.. code-block:: diff
+
+     import pytorch_lightning as pl
+    -from pl.strategies import DDPStrategy
+    +import ray.train.lightning
+
+     def train_func(config):
+         ...
+         trainer = pl.Trainer(
+             ...
+    -        strategy=DDPStrategy(),
+    +        strategy=ray.train.lightning.RayDDPStrategy(),
+             ...
+         )
+         ...
+
+Configuring Ray cluster environment plugin
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 Ray Train also provides :class:`~ray.train.lightning.RayLightningEnvironment` 
 as a specification for Ray Cluster. This utility class configures the worker's 
 local, global, and node rank and world size.
 
-**Step 3: Configure Parallel Devices**
+
+.. code-block:: diff
+
+     import pytorch_lightning as pl
+    -from pl.plugins.environments import LightningEnvironment
+    +import ray.train.lightning
+
+     def train_func(config):
+         ...
+         trainer = pl.Trainer(
+             ...
+    -        plugins=[LightningEnvironment()],
+    +        plugins=[ray.train.lightning.RayLightningEnvironment()],
+             ...
+         )
+         ...
+
+
+Configuring parallel devices
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 In addition, Ray TorchTrainer has already configured the correct 
 ``CUDA_VISIBLE_DEVICES`` for you. One should always use all available 
-GPUs by setting ``devices="auto"``.
+GPUs by setting ``devices="auto"`` and ``acelerator="auto"``.
 
-**Step 4: Prepare your Lightning Trainer**
+
+.. code-block:: diff
+
+     import pytorch_lightning as pl
+
+     def train_func(config):
+         ...
+         trainer = pl.Trainer(
+             ...
+    -        devices=[0,1,2,3],
+    +        devices="auto",
+    +        accelerator="auto",
+             ...
+         )
+         ...
+
+
+
+Reporting metrics and checkpoints
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+To monitor progress, you can report intermediate metrics and checkpoints
+using the :class:`ray.train.lightning.RayTrainReportCallback` utility callback.
+
+                    
+.. code-block:: diff
+
+     import pytorch_lightning as pl
+
+     def train_func(config):
+         ...
+         trainer = pl.Trainer(
+             ...
+    +        callbacks=[ray.train.lightning.RayTrainReportCallback()],
+             ...
+         )
+         ...
+
+For more details, see :ref:`train-checkpointing`.
+
+Preparing your Lightning Trainer
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 Finally, pass your Lightning Trainer into
 :meth:`~ray.train.lightning.prepare_trainer` to validate 
 your configurations. 
 
-.. TODO: Reformat this.
+
+.. code-block:: diff
+
+     import pytorch_lightning as pl
+     import ray.train.lightning
+
+     def train_func(config):
+         ...
+         trainer = pl.Trainer(...)
+    +    trainer = ray.train.lightning.prepare_trainer(trainer)
+         ...
 
 
 Configuring scale and GPUs
@@ -175,9 +359,9 @@ information about the training run, including the metrics and checkpoints report
 .. TODO: Add results guide
 
 Next steps
-----------
+---------- 
 
-Congratulations! You have successfully converted your PyTorch training script to use Ray Train.
+Congratulations! You have successfully converted your PyTorch Lightningtraining script to use Ray Train.
 
 * Head over to the :ref:`User Guides <train-user-guides>` to learn more about how to perform specific tasks.
 * Browse the :ref:`Examples <train-examples>` for end-to-end examples of how to use Ray Train.
