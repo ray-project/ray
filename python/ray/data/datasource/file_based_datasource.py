@@ -326,7 +326,9 @@ class FileBasedDatasource(Datasource):
                     )
                     write_path = os.path.join(path, filename)
                     logger.get_logger().debug(f"Writing {write_path} file.")
-                    with filesystem.open_output_stream(write_path, **open_stream_args) as f:
+                    with filesystem.open_output_stream(
+                        write_path, **open_stream_args
+                    ) as f:
                         _write_row_to_file(
                             f,
                             row,
