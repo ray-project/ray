@@ -275,7 +275,6 @@ def test_get_requirements_file():
                 ],
             )
         assert "Could not find a valid filename for the internal " in str(excinfo.value)
->>>>>>> master
 
 
 if __name__ == "__main__":
