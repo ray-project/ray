@@ -5,7 +5,7 @@ End-to-end: Offline Batch Inference
 
 .. tip::
 
-    `Get in touch <https://forms.gle/sGX7PQhheBGL6yxQ6>`_ to get help using Ray Data, the industry's fastest and cheapest solution for offline batch inference. 
+    `Get in touch <https://forms.gle/sGX7PQhheBGL6yxQ6>`_ to get help using Ray Data, the industry's fastest and cheapest solution for offline batch inference.
 
 Offline batch inference is a process for generating model predictions on a fixed set of input data. Ray Data offers an efficient and scalable solution for batch inference, providing faster execution and cost-effectiveness for deep learning applications.
 
@@ -27,23 +27,24 @@ To start, install Ray Data:
 Using Ray Data for offline inference involves four basic steps:
 
 - **Step 1:** Load your data into a Ray Dataset. Ray Data supports many different data sources and formats. For more details, see :ref:`Loading Data <loading_data>`.
-- **Step 2:** Define a Python class to load the pre-trained model. 
-- **Step 3:** Transform your dataset using the pre-trained model by calling :meth:`ds.map_batches() <ray.data.Dataset.map_batches>`. For more details, see :ref:`Transforming Data <transforming-data>`.
-- **Step 4:** Get the final predictions by either iterating through the output or saving the results. For more details, see :ref:`Consuming data <consuming_data>`.
+- **Step 2:** Define a Python class to load the pre-trained model.
+- **Step 3:** Transform your dataset using the pre-trained model by calling :meth:`ds.map_batches() <ray.data.Dataset.map_batches>`. For more details, see :ref:`Transforming Data <transforming_data>`.
+- **Step 4:** Get the final predictions by either iterating through the output or saving the results. For more details, see the :ref:`Iterating over data <iterating-over-data>` and :ref:`Saving data <saving-data>` user guides.
 
-For more in-depth examples for your use case, see :ref:`batch_inference_examples`_. For how to configure batch inference, see :ref:`batch_inference_configuration`_.
+For more in-depth examples for your use case, see :ref:`our batch inference examples<batch_inference_examples>`.
+For how to configure batch inference, see :ref:`the configuration guide<batch_inference_configuration>`.
 
 .. tabs::
 
     .. group-tab:: HuggingFace
-        
+
         .. testcode::
-            
+
             from typing import Dict
             import numpy as np
 
             import ray
-            
+
             # Step 1: Create a Ray Dataset from in-memory Numpy arrays.
             # You can also create a Ray Dataset from many other sources and file
             # formats.
@@ -76,12 +77,12 @@ For more in-depth examples for your use case, see :ref:`batch_inference_examples
             predictions = ds.map_batches(HuggingFacePredictor, compute=scale)
             # Step 4: Show one prediction output.
             predictions.show(limit=1)
-        
+
         .. testoutput::
             :options: +MOCK
 
             {'data': 'Complete this', 'output': 'Complete this information or purchase any item from this site.\n\nAll purchases are final and non-'}
-        
+
 
     .. group-tab:: PyTorch
 
@@ -140,7 +141,7 @@ For more in-depth examples for your use case, see :ref:`batch_inference_examples
             import numpy as np
 
             import ray
-            
+
             # Step 1: Create a Ray Dataset from in-memory Numpy arrays.
             # You can also create a Ray Dataset from many other sources and file
             # formats.
@@ -181,14 +182,14 @@ For more in-depth examples for your use case, see :ref:`batch_inference_examples
 
 More examples
 -------------
-- :doc:`Image Classification Batch Inference with PyTorch ResNet18 </data/examples/pytorch_resnet_batch_prediction>` 
+- :doc:`Image Classification Batch Inference with PyTorch ResNet18 </data/examples/pytorch_resnet_batch_prediction>`
 - :doc:`Object Detection Batch Inference with PyTorch FasterRCNN_ResNet50 </data/examples/batch_inference_object_detection>`
 - :doc:`Image Classification Batch Inference with Huggingface Vision Transformer </data/examples/huggingface_vit_batch_prediction>`
 
 .. _batch_inference_configuration:
 
 Configuration and troubleshooting
--------------------------------
+---------------------------------
 
 .. _batch_inference_gpu:
 
@@ -199,21 +200,21 @@ To use GPUs for inference, make the following changes to your code:
 
 1. Update the class implementation to move the model and data to and from GPU.
 2. Specify `num_gpus=1` in the :meth:`ds.map_batches() <ray.data.Dataset.map_batches>` call to indicate that each actor should use 1 GPU.
-3. Specify a `batch_size` for inference. For more details on how to configure the batch size, see `batch_inference_batch_size`_. 
+3. Specify a `batch_size` for inference. For more details on how to configure the batch size, see `batch_inference_batch_size`_.
 
 The remaining is the same as the :ref:`Quickstart <batch_inference_quickstart>`.
 
 .. tabs::
 
     .. group-tab:: HuggingFace
-        
+
         .. testcode::
-            
+
             from typing import Dict
             import numpy as np
 
             import ray
-            
+
             ds = ray.data.from_numpy(np.asarray(["Complete this", "for me"]))
 
             class HuggingFacePredictor:
@@ -229,21 +230,21 @@ The remaining is the same as the :ref:`Quickstart <batch_inference_quickstart>`.
 
             # Use 2 actors, each actor using 1 GPU. 2 GPUs total.
             predictions = ds.map_batches(
-                HuggingFacePredictor, 
+                HuggingFacePredictor,
                 num_gpus=1,
-                # Specify the batch size for inference. 
+                # Specify the batch size for inference.
                 # Increase this for larger datasets.
-                batch_size=1, 
+                batch_size=1,
                 # Set the ActorPool size to the number of GPUs in your cluster.
-                compute=ray.data.ActorPoolStrategy(size=2), 
+                compute=ray.data.ActorPoolStrategy(size=2),
                 )
             predictions.show(limit=1)
-        
+
         .. testoutput::
             :options: +MOCK
 
             {'data': 'Complete this', 'output': 'Complete this poll. Which one do you think holds the most promise for you?\n\nThank you'}
-        
+
 
     .. group-tab:: PyTorch
 
@@ -276,13 +277,13 @@ The remaining is the same as the :ref:`Quickstart <batch_inference_quickstart>`.
 
             # Use 2 actors, each actor using 1 GPU. 2 GPUs total.
             predictions = ds.map_batches(
-                TorchPredictor, 
+                TorchPredictor,
                 num_gpus=1,
-                # Specify the batch size for inference. 
+                # Specify the batch size for inference.
                 # Increase this for larger datasets.
                 batch_size=1,
                 # Set the ActorPool size to the number of GPUs in your cluster.
-                compute=ray.data.ActorPoolStrategy(size=2) 
+                compute=ray.data.ActorPoolStrategy(size=2)
                 )
             predictions.show(limit=1)
 
@@ -301,7 +302,7 @@ The remaining is the same as the :ref:`Quickstart <batch_inference_quickstart>`.
             from tensorflow import keras
 
             import ray
-            
+
             ds = ray.data.from_numpy(np.ones((1, 100)))
 
             class TFPredictor:
@@ -319,13 +320,13 @@ The remaining is the same as the :ref:`Quickstart <batch_inference_quickstart>`.
 
             # Use 2 actors, each actor using 1 GPU. 2 GPUs total.
             predictions = ds.map_batches(
-                TFPredictor, 
+                TFPredictor,
                 num_gpus=1,
-                # Specify the batch size for inference. 
+                # Specify the batch size for inference.
                 # Increase this for larger datasets.
                 batch_size=1,
                 # Set the ActorPool size to the number of GPUs in your cluster.
-                compute=ray.data.ActorPoolStrategy(size=2) 
+                compute=ray.data.ActorPoolStrategy(size=2)
                 )
             predictions.show(limit=1)
 
@@ -344,7 +345,7 @@ Configure the size of the input batch that is passed to ``__call__`` by setting 
 Increasing batch size results in faster execution because inference is a vectorized operation. For GPU inference, increasing batch size increases GPU utilization. Set the batch size to as large possible without running out of memory. If you encounter OOMs, decreasing ``batch_size`` may help.
 
 .. testcode::
-    
+
     import numpy as np
 
     import ray
@@ -354,7 +355,7 @@ Increasing batch size results in faster execution because inference is a vectori
     def assert_batch(batch: Dict[str, np.ndarray]):
         assert len(batch) == 2
         return batch
-    
+
     # Specify that each input batch should be of size 2.
     ds.map_batches(assert_batch, batch_size=2)
 
@@ -365,7 +366,7 @@ Increasing batch size results in faster execution because inference is a vectori
 Handling GPU out-of-memory failures
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-If you run into CUDA out-of-memory issues, your batch size is likely too large. Decrease the batch size by following :ref:`these steps <_batch_inference_batch_size>`.
+If you run into CUDA out-of-memory issues, your batch size is likely too large. Decrease the batch size by following :ref:`these steps <batch_inference_batch_size>`.
 
 If your batch size is already set to 1, then use either a smaller model or GPU devices with more memory.
 
@@ -391,12 +392,12 @@ Suppose your cluster has 4 nodes, each with 16 CPUs. To limit to at most
 
 .. testcode::
     :skipif: True
-            
+
     from typing import Dict
     import numpy as np
 
     import ray
-    
+
     ds = ray.data.from_numpy(np.asarray(["Complete this", "for me"]))
 
     class HuggingFacePredictor:
@@ -410,10 +411,99 @@ Suppose your cluster has 4 nodes, each with 16 CPUs. To limit to at most
             return batch
 
     predictions = ds.map_batches(
-        HuggingFacePredictor, 
+        HuggingFacePredictor,
         # Require 5 CPUs per actor (so at most 3 can fit per 16 CPU node).
         num_cpus=5,
         # 3 actors per node, with 4 nodes in the cluster means ActorPool size of 12.
-        compute=ray.data.ActorPoolStrategy(size=12) 
+        compute=ray.data.ActorPoolStrategy(size=12)
         )
     predictions.show(limit=1)
+
+
+Using models from Ray Train
+---------------------------
+
+Models that have been trained with :ref:`Ray Train <train-docs>` can then be used for batch inference with :ref:`Ray Data <data>` via the :class:`Checkpoint <ray.air.checkpoint.Checkpoint>` that is returned by :ref:`Ray Train <train-docs>`.
+
+**Step 1:** Train a model with :ref:`Ray Train <train-docs>`.
+
+.. testcode::
+
+    import ray
+    from ray.train.xgboost import XGBoostTrainer
+    from ray.air.config import ScalingConfig
+
+    dataset = ray.data.read_csv("s3://anonymous@air-example-data/breast_cancer.csv")
+    train_dataset, valid_dataset = dataset.train_test_split(test_size=0.3)
+
+    trainer = XGBoostTrainer(
+        scaling_config=ScalingConfig(
+            num_workers=2,
+            use_gpu=False,
+        ),
+        label_column="target",
+        num_boost_round=20,
+        params={
+            "objective": "binary:logistic",
+            "eval_metric": ["logloss", "error"],
+        },
+        datasets={"train": train_dataset, "valid": valid_dataset},
+    )
+    result = trainer.fit()
+
+.. testoutput::
+    :hide:
+
+    ...
+
+**Step 2:** Extract the :class:`Checkpoint <ray.air.checkpoint.Checkpoint>` from the training :class:`Result <ray.air.Result>`.
+
+.. testcode::
+
+    checkpoint = result.checkpoint
+
+**Step 3:** Use Ray Data for batch inference. To load in the model from the :class:`Checkpoint <ray.air.checkpoint.Checkpoint>` inside the Python class, use one of the framework-specific Checkpoint classes.
+
+In this case, we use the :class:`XGBoostCheckpoint <ray.train.xgboost.XGBoostCheckpoint>` to load the model.
+
+The rest of the logic looks the same as in the `Quickstart <#quickstart>`_.
+
+.. testcode::
+    
+    from typing import Dict
+    import pandas as pd
+    import numpy as np
+    import xgboost
+
+    from ray.air import Checkpoint
+    from ray.train.xgboost import XGBoostCheckpoint
+
+    test_dataset = valid_dataset.drop_columns(["target"])
+
+    class XGBoostPredictor:
+        def __init__(self, checkpoint: Checkpoint):
+            xgboost_checkpoint = XGBoostCheckpoint.from_checkpoint(checkpoint)
+            self.model = xgboost_checkpoint.get_model()
+        
+        def __call__(self, data: pd.DataFrame) -> Dict[str, np.ndarray]:
+            dmatrix = xgboost.DMatrix(data)
+            return {"predictions": self.model.predict(dmatrix)}
+    
+    
+    # Use 2 parallel actors for inference. Each actor predicts on a
+    # different partition of data.
+    scale = ray.data.ActorPoolStrategy(size=2)
+    # Map the Predictor over the Dataset to get predictions.
+    predictions = test_dataset.map_batches(
+        XGBoostPredictor, 
+        compute=scale,
+        batch_format="pandas",
+        # Pass in the Checkpoint to the XGBoostPredictor constructor.
+        fn_constructor_kwargs={"checkpoint": checkpoint}
+    )
+    predictions.show(limit=1)
+
+.. testoutput::
+    :options: +MOCK
+
+    {'predictions': 0.9969483017921448}

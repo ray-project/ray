@@ -6,8 +6,7 @@ import time
 import subprocess
 
 import ray
-from ray.air import session
-from ray.air.config import ScalingConfig, RunConfig
+from ray.train import ScalingConfig, RunConfig
 from ray.air.util.node import _force_on_current_node
 from ray.tune.tune_config import TuneConfig
 import requests
@@ -100,7 +99,7 @@ def training_loop(config):
         train_epoch(train_loader, model, criterion, optimizer)
         validation_loss = validate_epoch(validation_loader, model, criterion)
 
-        session.report(
+        train.report(
             validation_loss,
             checkpoint=TorchCheckpoint.from_state_dict(model.module.state_dict()),
         )
@@ -127,6 +126,7 @@ def train_mnist(test_mode=False, num_workers=1, use_gpu=False):
         ),
         run_config=RunConfig(
             verbose=1,
+            storage_path="/mnt/cluster_storage",
         ),
     )
 

@@ -21,7 +21,10 @@ import yaml
 import ray
 import ray._private.ray_constants as ray_constants
 import ray._private.services as services
-from ray._private.utils import parse_resources_json, parse_node_labels_json
+from ray._private.utils import (
+    parse_resources_json,
+    parse_node_labels_json,
+)
 from ray._private.internal_api import memory_summary
 from ray._private.storage import _load_class
 from ray._private.usage import usage_lib
@@ -636,6 +639,7 @@ def start(
         num_cpus=num_cpus,
         num_gpus=num_gpus,
         resources=resources,
+        labels=labels_dict,
         autoscaling_config=autoscaling_config,
         plasma_directory=plasma_directory,
         huge_pages=False,
@@ -655,7 +659,6 @@ def start(
         no_monitor=no_monitor,
         tracing_startup_hook=tracing_startup_hook,
         ray_debugger_external=ray_debugger_external,
-        labels=labels_dict,
     )
 
     if ray_constants.RAY_START_HOOK in os.environ:
@@ -1110,29 +1113,30 @@ def stop(force: bool, grace_period: int):
         psutil.wait_procs(alive, timeout=2)
         return total_found, total_stopped, alive
 
+    # Process killing procedure: we put processes into 3 buckets.
+    # Bucket 1: raylet
+    # Bucket 2: all other processes, e.g. dashboard, runtime env agents
+    # Bucket 3: gcs_server.
+    #
+    # For each bucket, we send sigterm to all processes, then wait for 30s, then if
+    # they are still alive, send sigkill.
+    processes_to_kill = RAY_PROCESSES
+    # Raylet should exit before all other processes exit.
+    # Otherwise, fate-sharing agents will complain and suicide.
+    assert processes_to_kill[0][0] == "raylet"
+
     # GCS should exit after all other processes exit.
     # Otherwise, some of processes may exit with an unexpected
     # exit code which breaks ray start --block.
-    processes_to_kill = RAY_PROCESSES
-    gcs = processes_to_kill[0]
-    assert gcs[0] == "gcs_server"
+    assert processes_to_kill[-1][0] == "gcs_server"
 
-    grace_period_to_kill_gcs = int(grace_period / 2)
-    grace_period_to_kill_components = grace_period - grace_period_to_kill_gcs
+    buckets = [[processes_to_kill[0]], processes_to_kill[1:-1], [processes_to_kill[-1]]]
 
-    # Kill evertyhing except GCS.
-    found, stopped, alive = kill_procs(
-        force, grace_period_to_kill_components, processes_to_kill[1:]
-    )
-    total_procs_found += found
-    total_procs_stopped += stopped
-    procs_not_gracefully_killed.extend(alive)
-
-    # Kill GCS.
-    found, stopped, alive = kill_procs(force, grace_period_to_kill_gcs, [gcs])
-    total_procs_found += found
-    total_procs_stopped += stopped
-    procs_not_gracefully_killed.extend(alive)
+    for bucket in buckets:
+        found, stopped, alive = kill_procs(force, grace_period / len(buckets), bucket)
+        total_procs_found += found
+        total_procs_stopped += stopped
+        procs_not_gracefully_killed.extend(alive)
 
     # Print the termination result.
     if total_procs_found == 0:
@@ -1906,7 +1910,7 @@ def memory(
 ):
     """Print object references held in a Ray cluster."""
     address = services.canonicalize_bootstrap_address_or_die(address)
-    if not ray._private.gcs_utils.check_health(address):
+    if not ray._raylet.check_health(address):
         print(f"Ray cluster is not found at {address}")
         sys.exit(1)
     time = datetime.now()
@@ -1947,7 +1951,7 @@ def memory(
 def status(address: str, redis_password: str, verbose: bool):
     """Print cluster status, including autoscaling info."""
     address = services.canonicalize_bootstrap_address_or_die(address)
-    if not ray._private.gcs_utils.check_health(address):
+    if not ray._raylet.check_health(address):
         print(f"Ray cluster is not found at {address}")
         sys.exit(1)
     gcs_client = ray._raylet.GcsClient(address=address)
@@ -1958,7 +1962,7 @@ def status(address: str, redis_password: str, verbose: bool):
     error = ray.experimental.internal_kv._internal_kv_get(
         ray_constants.DEBUG_AUTOSCALING_ERROR
     )
-    print(debug_status(status, error, verbose=verbose))
+    print(debug_status(status, error, verbose=verbose, address=address))
 
 
 @cli.command(hidden=True)
@@ -2245,9 +2249,7 @@ def healthcheck(address, redis_password, component, skip_version_check):
 
     if not component:
         try:
-            if ray._private.gcs_utils.check_health(
-                address, skip_version_check=skip_version_check
-            ):
+            if ray._raylet.check_health(address, skip_version_check=skip_version_check):
                 sys.exit(0)
         except Exception:
             traceback.print_exc()

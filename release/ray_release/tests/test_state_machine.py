@@ -1,5 +1,5 @@
 import sys
-from typing import List
+from typing import List, Optional
 
 import pytest
 
@@ -15,14 +15,21 @@ from ray_release.result import (
 from ray_release.test_automation.state_machine import TestStateMachine
 
 
+class MockLabel:
+    def __init__(self, name: str):
+        self.name = name
+
+
 class MockIssue:
-    def __init__(self, number: int, state: str = "open", labels: List[str] = []):
+    def __init__(
+        self, number: int, state: str = "open", labels: Optional[List[MockLabel]] = None
+    ):
         self.number = number
         self.state = state
-        self.labels = labels
+        self.labels = labels or []
         self.comments = []
 
-    def edit(self, state: str = None, labels: List[str] = None):
+    def edit(self, state: str = None, labels: List[MockLabel] = None):
         if state:
             self.state = state
         if labels:
@@ -41,8 +48,9 @@ class MockIssueDB:
 
 
 class MockRepo:
-    def create_issue(self, *args, **kwargs):
-        issue = MockIssue(MockIssueDB.issue_id)
+    def create_issue(self, labels: List[str], *args, **kwargs):
+        label_objs = [MockLabel(label) for label in labels]
+        issue = MockIssue(MockIssueDB.issue_id, labels=label_objs)
         MockIssueDB.issue_db[MockIssueDB.issue_id] = issue
         MockIssueDB.issue_id += 1
         return issue
@@ -80,7 +88,7 @@ TestStateMachine.ray_buildkite = MockBuildkite()
 
 
 def test_move_from_passing_to_failing():
-    test = Test(name="test", team="devprod")
+    test = Test(name="test", team="ci")
     # Test original state
     test.test_results = [
         TestResult.from_result(Result(status=ResultStatus.SUCCESS.value)),
@@ -109,7 +117,7 @@ def test_move_from_passing_to_failing():
 
 
 def test_move_from_failing_to_consisently_failing():
-    test = Test(name="test", team="devprod")
+    test = Test(name="test", team="ci", stable=False)
     test[Test.KEY_BISECT_BUILD_NUMBER] = 1
     test.test_results = [
         TestResult.from_result(Result(status=ResultStatus.ERROR.value)),
@@ -124,10 +132,13 @@ def test_move_from_failing_to_consisently_failing():
     issue = MockIssueDB.issue_db[test.get(Test.KEY_GITHUB_ISSUE_NUMBER)]
     assert test.get_state() == TestState.CONSITENTLY_FAILING
     assert "Blamed commit: 1234567890" in issue.comments[0]
+    labels = [label.name for label in issue.get_labels()]
+    assert "ci" in labels
+    assert "unstable-release-test" in labels
 
 
 def test_move_from_failing_to_passing():
-    test = Test(name="test", team="devprod")
+    test = Test(name="test", team="ci")
     test.test_results = [
         TestResult.from_result(Result(status=ResultStatus.ERROR.value)),
         TestResult.from_result(Result(status=ResultStatus.ERROR.value)),
@@ -145,10 +156,11 @@ def test_move_from_failing_to_passing():
     assert test.get_state() == TestState.PASSING
     assert test.get(Test.KEY_GITHUB_ISSUE_NUMBER) is None
     assert test.get(Test.KEY_BISECT_BUILD_NUMBER) is None
+    assert test.get(Test.KEY_BISECT_BLAMED_COMMIT) is None
 
 
 def test_move_from_failing_to_jailed():
-    test = Test(name="test", team="devprod")
+    test = Test(name="test", team="ci")
     test.test_results = [
         TestResult.from_result(Result(status=ResultStatus.ERROR.value)),
         TestResult.from_result(Result(status=ResultStatus.ERROR.value)),
@@ -165,6 +177,20 @@ def test_move_from_failing_to_jailed():
     sm = TestStateMachine(test)
     sm.move()
     assert test.get_state() == TestState.JAILED
+
+    # Test moving from jailed to jailed
+    issue = MockIssueDB.issue_db[test.get(Test.KEY_GITHUB_ISSUE_NUMBER)]
+    issue.edit(state="closed")
+    test.test_results.insert(
+        0,
+        TestResult.from_result(Result(status=ResultStatus.ERROR.value)),
+    )
+    sm = TestStateMachine(test)
+    sm.move()
+    assert test.get_state() == TestState.JAILED
+    assert issue.state == "open"
+
+    # Test moving from jailed to passing
     test.test_results.insert(
         0,
         TestResult.from_result(Result(status=ResultStatus.SUCCESS.value)),
@@ -172,6 +198,8 @@ def test_move_from_failing_to_jailed():
     sm = TestStateMachine(test)
     sm.move()
     assert test.get_state() == TestState.PASSING
+    assert test.get(Test.KEY_GITHUB_ISSUE_NUMBER) is None
+    assert issue.state == "closed"
 
 
 if __name__ == "__main__":

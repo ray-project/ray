@@ -314,6 +314,11 @@ class GcsRpcClient {
                              KillActorViaGcs,
                              actor_info_grpc_client_,
                              /*method_timeout_ms*/ -1, )
+  /// Register a client to GCS Service.
+  VOID_GCS_RPC_CLIENT_METHOD(NodeInfoGcsService,
+                             GetClusterId,
+                             node_info_grpc_client_,
+                             /*method_timeout_ms*/ -1, )
 
   /// Register a node to GCS Service.
   VOID_GCS_RPC_CLIENT_METHOD(NodeInfoGcsService,
@@ -354,6 +359,11 @@ class GcsRpcClient {
   /// Get available resources of all nodes from the GCS Service.
   VOID_GCS_RPC_CLIENT_METHOD(NodeResourceInfoGcsService,
                              GetAllAvailableResources,
+                             node_resource_info_grpc_client_,
+                             /*method_timeout_ms*/ -1, )
+
+  VOID_GCS_RPC_CLIENT_METHOD(NodeResourceInfoGcsService,
+                             GetDrainingNodes,
                              node_resource_info_grpc_client_,
                              /*method_timeout_ms*/ -1, )
 

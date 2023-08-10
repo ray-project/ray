@@ -152,6 +152,7 @@ Status PythonGcsClient::Connect() {
   runtime_env_stub_ = rpc::RuntimeEnvGcsService::NewStub(channel_);
   node_info_stub_ = rpc::NodeInfoGcsService::NewStub(channel_);
   job_info_stub_ = rpc::JobInfoGcsService::NewStub(channel_);
+  autoscaler_stub_ = rpc::autoscaler::AutoscalerStateService::NewStub(channel_);
   return Status::OK();
 }
 
@@ -166,6 +167,31 @@ void GrpcClientContextWithTimeoutMs(grpc::ClientContext &context, int64_t timeou
     context.set_deadline(std::chrono::system_clock::now() +
                          std::chrono::milliseconds(timeout_ms));
   }
+}
+
+Status PythonGcsClient::CheckAlive(const std::vector<std::string> &raylet_addresses,
+                                   int64_t timeout_ms,
+                                   std::vector<bool> &result) {
+  grpc::ClientContext context;
+  GrpcClientContextWithTimeoutMs(context, timeout_ms);
+
+  rpc::CheckAliveRequest request;
+  for (const auto &address : raylet_addresses) {
+    request.add_raylet_address(address);
+  }
+
+  rpc::CheckAliveReply reply;
+  grpc::Status status = node_info_stub_->CheckAlive(&context, request, &reply);
+
+  if (status.ok()) {
+    if (reply.status().code() == static_cast<int>(StatusCode::OK)) {
+      result =
+          std::vector<bool>(reply.raylet_alive().begin(), reply.raylet_alive().end());
+      return Status::OK();
+    }
+    return HandleGcsError(reply.status());
+  }
+  return Status::RpcError(status.error_message(), status.error_code());
 }
 
 Status PythonGcsClient::InternalKVGet(const std::string &ns,
@@ -396,6 +422,79 @@ Status PythonGcsClient::GetAllJobInfo(int64_t timeout_ms,
   return Status::RpcError(status.error_message(), status.error_code());
 }
 
+Status PythonGcsClient::RequestClusterResourceConstraint(
+    int64_t timeout_ms,
+    const std::vector<std::unordered_map<std::string, double>> &bundles,
+    const std::vector<int64_t> &count_array) {
+  grpc::ClientContext context;
+  GrpcClientContextWithTimeoutMs(context, timeout_ms);
+
+  rpc::autoscaler::RequestClusterResourceConstraintRequest request;
+  rpc::autoscaler::RequestClusterResourceConstraintReply reply;
+  RAY_CHECK(bundles.size() == count_array.size());
+  for (size_t i = 0; i < bundles.size(); ++i) {
+    const auto &bundle = bundles[i];
+    auto count = count_array[i];
+
+    auto new_resource_requests_by_count =
+        request.mutable_cluster_resource_constraint()->add_min_bundles();
+
+    new_resource_requests_by_count->mutable_request()->mutable_resources_bundle()->insert(
+        bundle.begin(), bundle.end());
+    new_resource_requests_by_count->set_count(count);
+  }
+
+  grpc::Status status =
+      autoscaler_stub_->RequestClusterResourceConstraint(&context, request, &reply);
+
+  if (status.ok()) {
+    return Status::OK();
+  }
+  return Status::RpcError(status.error_message(), status.error_code());
+}
+
+Status PythonGcsClient::GetClusterStatus(int64_t timeout_ms,
+                                         std::string &serialized_reply) {
+  rpc::autoscaler::GetClusterStatusRequest request;
+  rpc::autoscaler::GetClusterStatusReply reply;
+  grpc::ClientContext context;
+  GrpcClientContextWithTimeoutMs(context, timeout_ms);
+
+  grpc::Status status = autoscaler_stub_->GetClusterStatus(&context, request, &reply);
+
+  if (status.ok()) {
+    if (!reply.SerializeToString(&serialized_reply)) {
+      return Status::IOError("Failed to serialize GetClusterStatusReply");
+    }
+    return Status::OK();
+  }
+  return Status::RpcError(status.error_message(), status.error_code());
+}
+
+Status PythonGcsClient::DrainNode(const std::string &node_id,
+                                  int32_t reason,
+                                  const std::string &reason_message,
+                                  int64_t timeout_ms,
+                                  bool &is_accepted) {
+  rpc::autoscaler::DrainNodeRequest request;
+  request.set_node_id(NodeID::FromHex(node_id).Binary());
+  request.set_reason(static_cast<rpc::autoscaler::DrainNodeReason>(reason));
+  request.set_reason_message(reason_message);
+
+  rpc::autoscaler::DrainNodeReply reply;
+
+  grpc::ClientContext context;
+  GrpcClientContextWithTimeoutMs(context, timeout_ms);
+
+  grpc::Status status = autoscaler_stub_->DrainNode(&context, request, &reply);
+
+  if (status.ok()) {
+    is_accepted = reply.is_accepted();
+    return Status::OK();
+  }
+  return Status::RpcError(status.error_message(), status.error_code());
+}
+
 std::unordered_map<std::string, double> PythonGetResourcesTotal(
     const rpc::GcsNodeInfo &node_info) {
   return std::unordered_map<std::string, double>(node_info.resources_total().begin(),
@@ -406,6 +505,42 @@ std::unordered_map<std::string, std::string> PythonGetNodeLabels(
     const rpc::GcsNodeInfo &node_info) {
   return std::unordered_map<std::string, std::string>(node_info.labels().begin(),
                                                       node_info.labels().end());
+}
+
+Status PythonCheckGcsHealth(const std::string &gcs_address,
+                            const int gcs_port,
+                            const int64_t timeout_ms,
+                            const std::string &ray_version,
+                            const bool skip_version_check,
+                            bool &is_healthy) {
+  auto channel = rpc::GcsRpcClient::CreateGcsChannel(gcs_address, gcs_port);
+  auto stub = rpc::NodeInfoGcsService::NewStub(channel);
+  grpc::ClientContext context;
+  GrpcClientContextWithTimeoutMs(context, timeout_ms);
+  rpc::CheckAliveRequest request;
+  rpc::CheckAliveReply reply;
+  grpc::Status status = stub->CheckAlive(&context, request, &reply);
+  if (!status.ok()) {
+    is_healthy = false;
+    return Status::RpcError(status.error_message(), status.error_code());
+  }
+  if (reply.status().code() != static_cast<int>(StatusCode::OK)) {
+    is_healthy = false;
+    return HandleGcsError(reply.status());
+  }
+  if (!skip_version_check) {
+    // Check for Ray version match
+    if (reply.ray_version() != ray_version) {
+      is_healthy = false;
+      std::ostringstream ss;
+      ss << "Ray cluster at " << gcs_address << ":" << gcs_port << " has version "
+         << reply.ray_version() << ", but this process"
+         << "is running Ray version " << ray_version << ".";
+      return Status::Invalid(ss.str());
+    }
+  }
+  is_healthy = true;
+  return Status::OK();
 }
 
 }  // namespace gcs

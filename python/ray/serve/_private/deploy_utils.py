@@ -20,6 +20,7 @@ def get_deploy_args(
     deployment_def: Union[Callable, Type[Callable], str],
     init_args: Tuple[Any],
     init_kwargs: Dict[Any, Any],
+    ingress: bool = False,
     ray_actor_options: Optional[Dict] = None,
     config: Optional[Union[DeploymentConfig, Dict[str, Any]]] = None,
     version: Optional[str] = None,
@@ -64,17 +65,6 @@ def get_deploy_args(
 
     deployment_config.version = version
 
-    if (
-        deployment_config.autoscaling_config is not None
-        and deployment_config.max_concurrent_queries
-        < deployment_config.autoscaling_config.target_num_ongoing_requests_per_replica  # noqa: E501
-    ):
-        logger.warning(
-            "Autoscaling will never happen, "
-            "because 'max_concurrent_queries' is less than "
-            "'target_num_ongoing_requests_per_replica' now."
-        )
-
     controller_deploy_args = {
         "name": name,
         "deployment_config_proto_bytes": deployment_config.to_proto_bytes(),
@@ -84,6 +74,7 @@ def get_deploy_args(
         "is_driver_deployment": is_driver_deployment,
         "docs_path": docs_path,
         "app_name": app_name,
+        "ingress": ingress,
     }
 
     return controller_deploy_args
@@ -95,8 +86,10 @@ def deploy_args_to_deployment_info(
     replica_config_proto_bytes: bytes,
     deployer_job_id: Union[str, bytes],
     route_prefix: Optional[str],
+    docs_path: Optional[str],
     is_driver_deployment: Optional[bool] = False,
     app_name: Optional[str] = None,
+    **kwargs,
 ) -> DeploymentInfo:
     """Takes deployment args passed to the controller after building an application and
     constructs a DeploymentInfo object.
@@ -124,6 +117,7 @@ def deploy_args_to_deployment_info(
         is_driver_deployment=is_driver_deployment,
         app_name=app_name,
         route_prefix=route_prefix,
+        docs_path=docs_path,
     )
 
 
@@ -140,6 +134,7 @@ def get_app_code_version(app_config: ServeApplicationSchema) -> str:
         {
             "import_path": app_config.import_path,
             "runtime_env": app_config.runtime_env,
+            "args": app_config.args,
         },
         sort_keys=True,
     ).encode("utf-8")

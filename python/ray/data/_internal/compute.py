@@ -16,10 +16,9 @@ from ray.data.block import (
     BlockMetadata,
     BlockPartition,
     CallableClass,
-    StrictModeError,
     UserDefinedFunction,
 )
-from ray.data.context import DEFAULT_SCHEDULING_STRATEGY, DataContext
+from ray.data.context import DataContext
 from ray.types import ObjectRef
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
@@ -78,8 +77,6 @@ class TaskPoolStrategy(ComputeStrategy):
         if fn_kwargs is None:
             fn_kwargs = {}
 
-        context = DataContext.get_current()
-
         # Handle empty datasets.
         if block_list.initial_num_blocks() == 0:
             return block_list
@@ -97,37 +94,20 @@ class TaskPoolStrategy(ComputeStrategy):
         name = name.title()
         map_bar = ProgressBar(name, total=len(block_bundles))
 
-        if context.block_splitting_enabled:
-            map_block = cached_remote_fn(_map_block_split).options(
-                num_returns="dynamic", **remote_args
+        map_block = cached_remote_fn(_map_block_split).options(
+            num_returns="dynamic", **remote_args
+        )
+        refs = [
+            map_block.remote(
+                block_fn,
+                [f for m in ms for f in m.input_files],
+                fn,
+                len(bs),
+                *(bs + fn_args),
+                **fn_kwargs,
             )
-            refs = [
-                map_block.remote(
-                    block_fn,
-                    [f for m in ms for f in m.input_files],
-                    fn,
-                    len(bs),
-                    *(bs + fn_args),
-                    **fn_kwargs,
-                )
-                for bs, ms in block_bundles
-            ]
-        else:
-            map_block = cached_remote_fn(_map_block_nosplit).options(
-                **dict(remote_args, num_returns=2)
-            )
-            all_refs = [
-                map_block.remote(
-                    block_fn,
-                    [f for m in ms for f in m.input_files],
-                    fn,
-                    len(bs),
-                    *(bs + fn_args),
-                    **fn_kwargs,
-                )
-                for bs, ms in block_bundles
-            ]
-            data_refs, refs = map(list, zip(*all_refs))
+            for bs, ms in block_bundles
+        ]
 
         in_block_owned_by_consumer = block_list._owned_by_consumer
         # Release input block references.
@@ -156,17 +136,12 @@ class TaskPoolStrategy(ComputeStrategy):
             raise e from None
 
         new_blocks, new_metadata = [], []
-        if context.block_splitting_enabled:
-            for ref_generator in results:
-                refs = list(ref_generator)
-                metadata = ray.get(refs.pop(-1))
-                assert len(metadata) == len(refs)
-                new_blocks += refs
-                new_metadata += metadata
-        else:
-            for block, metadata in zip(data_refs, results):
-                new_blocks.append(block)
-                new_metadata.append(metadata)
+        for ref_generator in results:
+            refs = list(ref_generator)
+            metadata = ray.get(refs.pop(-1))
+            assert len(metadata) == len(refs)
+            new_blocks += refs
+            new_metadata += metadata
         return BlockList(
             list(new_blocks),
             list(new_metadata),
@@ -219,22 +194,11 @@ class ActorPoolStrategy(ComputeStrategy):
                 computation and avoiding actor startup delays, but will also increase
                 queueing delay.
         """
-        ctx = DataContext.get_current()
         if legacy_min_size is not None or legacy_max_size is not None:
-            if ctx.strict_mode:
-                raise StrictModeError(
-                    "In Ray 2.5, ActorPoolStrategy requires min_size and "
-                    "max_size to be explicit kwargs."
-                )
-            else:
-                logger.warning(
-                    "DeprecationWarning: ActorPoolStrategy will require min_size and "
-                    "max_size to be explicit kwargs in a future release"
-                )
-            if legacy_min_size is not None:
-                min_size = legacy_min_size
-            if legacy_max_size is not None:
-                max_size = legacy_max_size
+            raise ValueError(
+                "In Ray 2.5, ActorPoolStrategy requires min_size and "
+                "max_size to be explicit kwargs."
+            )
         if size:
             if size < 1:
                 raise ValueError("size must be >= 1", size)
@@ -388,10 +352,7 @@ class ActorPoolStrategy(ComputeStrategy):
 
         if "scheduling_strategy" not in remote_args:
             ctx = DataContext.get_current()
-            if ctx.scheduling_strategy == DEFAULT_SCHEDULING_STRATEGY:
-                remote_args["scheduling_strategy"] = "SPREAD"
-            else:
-                remote_args["scheduling_strategy"] = ctx.scheduling_strategy
+            remote_args["scheduling_strategy"] = ctx.scheduling_strategy
 
         BlockWorker = ray.remote(**remote_args)(BlockWorker)
 
@@ -498,11 +459,8 @@ class ActorPoolStrategy(ComputeStrategy):
 
 
 def get_compute(compute_spec: Union[str, ComputeStrategy]) -> ComputeStrategy:
-    ctx = DataContext.get_current()
-    if ctx.strict_mode and not isinstance(
-        compute_spec, (TaskPoolStrategy, ActorPoolStrategy)
-    ):
-        raise StrictModeError(
+    if not isinstance(compute_spec, (TaskPoolStrategy, ActorPoolStrategy)):
+        raise ValueError(
             "In Ray 2.5, the compute spec must be either "
             f"TaskPoolStrategy or ActorPoolStategy, was: {compute_spec}."
         )

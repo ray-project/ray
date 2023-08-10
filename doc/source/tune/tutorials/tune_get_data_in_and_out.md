@@ -71,7 +71,7 @@ For example, passing in a large pandas DataFrame or an unserializable model obje
 Instead, use strings or other identifiers as your values, and initialize/load the objects inside your Trainable directly depending on those.
 
 ```{note}
-[Datasets](data_getting_started) can be used as values in the search space directly.
+[Datasets](data_key_concepts) can be used as values in the search space directly.
 ```
 
 In our example, we want to tune the two model hyperparameters. We also want to set the number of epochs, so that we can easily tweak it later. For the hyperparameters, we will use the `tune.uniform` distribution. We will also modify the `training_function` to obtain those values from the `config` dictionary.
@@ -287,7 +287,7 @@ tuner = Tuner(
 
 Aside from metrics, you may want to save the state of your trained model and any other artifacts to allow resumption from training failure and further inspection and usage. Those cannot be saved as metrics, as they are often far too large and may not be easily serializable. Finally, they should be persisted on disk or cloud storage to allow access after the Tune run is interrupted or terminated.
 
-Ray AIR (which contains Ray Tune) provides a [`Checkpoint`](air-checkpoints-doc) API for that purpose. `Checkpoint` objects can be created from various sources (dictionaries, directories, cloud storage) and used between different AIR components.
+Ray Train provides a [`Checkpoint`](checkpoint-api-ref) API for that purpose. `Checkpoint` objects can be created from various sources (dictionaries, directories, cloud storage) and used between different AIR components.
 
 In Tune, `Checkpoints` are created by the user in their Trainable functions and reported using the optional `checkpoint` argument of `session.report`. `Checkpoints` can contain arbitrary data and can be freely passed around the Ray cluster. After a tuning run is over, `Checkpoints` can be [obtained from the results](/tune/examples/tune_analyze_results).
 

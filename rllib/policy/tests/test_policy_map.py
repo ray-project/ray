@@ -25,7 +25,7 @@ class TestPolicyMap(unittest.TestCase):
         # for this test for now.
         config = (
             PPOConfig()
-            .framework("tf2", eager_tracing=True)
+            .framework("tf2")
             .rl_module(_enable_rl_module_api=False)
             .training(_enable_learner_api=False)
         )

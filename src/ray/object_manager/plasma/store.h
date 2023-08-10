@@ -86,8 +86,7 @@ class PlasmaStore {
 
   /// Get the available memory for new objects to be created. This includes
   /// memory that is currently being used for created but unsealed objects.
-  void GetAvailableMemory(std::function<void(size_t)> callback) const
-      LOCKS_EXCLUDED(mutex_) {
+  size_t GetAvailableMemory() const LOCKS_EXCLUDED(mutex_) {
     absl::MutexLock lock(&mutex_);
     RAY_CHECK((object_lifecycle_mgr_.GetNumBytesUnsealed() > 0 &&
                object_lifecycle_mgr_.GetNumObjectsUnsealed() > 0) ||
@@ -105,7 +104,7 @@ class PlasmaStore {
     if (num_bytes_in_use < allocator_.GetFootprintLimit()) {
       available = allocator_.GetFootprintLimit() - num_bytes_in_use;
     }
-    callback(available);
+    return available;
   }
 
  private:

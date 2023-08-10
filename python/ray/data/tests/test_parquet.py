@@ -741,8 +741,8 @@ def test_parquet_write(ray_start_regular_shared, fs, data_path, endpoint_url):
         fs.create_dir(_unwrap_protocol(path))
     ds._set_uuid("data")
     ds.write_parquet(path, filesystem=fs)
-    path1 = os.path.join(path, "data_000000.parquet")
-    path2 = os.path.join(path, "data_000001.parquet")
+    path1 = os.path.join(path, "data_000000_000000.parquet")
+    path2 = os.path.join(path, "data_000001_000000.parquet")
     dfds = pd.concat(
         [
             pd.read_parquet(path1, storage_options=storage_options),
@@ -776,7 +776,9 @@ def test_parquet_write_create_dir(
     df = pd.concat([df1, df2])
     ds = ray.data.from_pandas([df1, df2])
     path = os.path.join(data_path, "test_parquet_dir")
-    ds._set_uuid("data")
+    # Set the uuid to a known value so that we can easily get the parquet file names.
+    data_key = "data"
+    ds._set_uuid(data_key)
     ds.write_parquet(path, filesystem=fs)
 
     # Ensure that directory was created.
@@ -786,8 +788,8 @@ def test_parquet_write_create_dir(
         assert fs.get_file_info(_unwrap_protocol(path)).type == pa.fs.FileType.Directory
 
     # Check that data was properly written to the directory.
-    path1 = os.path.join(path, "data_000000.parquet")
-    path2 = os.path.join(path, "data_000001.parquet")
+    path1 = os.path.join(path, f"{data_key}_000000_000000.parquet")
+    path2 = os.path.join(path, f"{data_key}_000001_000000.parquet")
     dfds = pd.concat(
         [
             pd.read_parquet(path1, storage_options=storage_options),
@@ -798,8 +800,8 @@ def test_parquet_write_create_dir(
 
     # Ensure that directories that already exist are left alone and that the
     # attempted creation still succeeds.
-    path3 = os.path.join(path, "data_0000002.parquet")
-    path4 = os.path.join(path, "data_0000003.parquet")
+    path3 = os.path.join(path, f"{data_key}_0000002_000000.parquet")
+    path4 = os.path.join(path, f"{data_key}_0000003_000000.parquet")
     if fs is None:
         os.rename(path1, path3)
         os.rename(path2, path4)
@@ -824,6 +826,62 @@ def test_parquet_write_create_dir(
     else:
         fs.delete_dir(_unwrap_protocol(path))
 
+    # Test that writing empty blocks does not create empty parquet files,
+    # nor does it create empty directories when no files are created.
+    ds_all_empty = ds.filter(lambda x: x["one"] > 10).materialize()
+    assert ds_all_empty.num_blocks() == 2
+    assert ds_all_empty.count() == 0
+
+    all_empty_key = "all_empty"
+    all_empty_path = os.path.join(data_path, f"test_parquet_dir_{all_empty_key}")
+    ds_all_empty.write_parquet(all_empty_path, filesystem=fs)
+
+    ds_contains_some_empty = ds.union(ds_all_empty)
+    # 2 blocks from original ds with 6 rows total, 2 empty blocks from ds_all_empty.
+    assert ds_contains_some_empty.num_blocks() == 4
+    assert ds_contains_some_empty.count() == 6
+
+    some_empty_key = "some_empty"
+    # Set the uuid to a known value so that we can easily get the parquet file names.
+    ds_contains_some_empty._set_uuid(some_empty_key)
+    some_empty_path = os.path.join(path, f"test_parquet_dir_{some_empty_key}")
+    ds_contains_some_empty.write_parquet(some_empty_path, filesystem=fs)
+
+    # Ensure that directory was created for only the non-empty dataset.
+    if fs is None:
+        assert not os.path.isdir(all_empty_path)
+        assert os.path.isdir(some_empty_path)
+        # Only files for the non-empty blocks should be created.
+        file_list = os.listdir(some_empty_path)
+        file_list.sort()
+        assert file_list == [
+            f"{some_empty_key}_00000{i}_000000.parquet" for i in range(2)
+        ]
+    else:
+        assert (
+            fs.get_file_info(_unwrap_protocol(all_empty_path)).type
+            == pa.fs.FileType.NotFound
+        )
+        assert (
+            fs.get_file_info(_unwrap_protocol(some_empty_path)).type
+            == pa.fs.FileType.Directory
+        )
+
+    # Check that data was properly written to the directory.
+    dfds = pd.concat(
+        [
+            pd.read_parquet(
+                os.path.join(
+                    some_empty_path,
+                    f"{some_empty_key}_00000{i}_000000.parquet",
+                ),
+                storage_options=storage_options,
+            )
+            for i in range(2)
+        ]
+    )
+    assert df.equals(dfds)
+
 
 def test_parquet_write_with_udf(ray_start_regular_shared, tmp_path):
     data_path = str(tmp_path)
@@ -841,8 +899,8 @@ def test_parquet_write_with_udf(ray_start_regular_shared, tmp_path):
     # 2 write tasks
     ds._set_uuid("data")
     ds.write_parquet(data_path, _block_udf=_block_udf)
-    path1 = os.path.join(data_path, "data_000000.parquet")
-    path2 = os.path.join(data_path, "data_000001.parquet")
+    path1 = os.path.join(data_path, "data_000000_000000.parquet")
+    path2 = os.path.join(data_path, "data_000001_000000.parquet")
     dfds = pd.concat([pd.read_parquet(path1), pd.read_parquet(path2)])
     expected_df = df
     expected_df["one"] += 1
@@ -862,7 +920,7 @@ def test_parquet_write_block_path_provider(
     fs,
     data_path,
     endpoint_url,
-    test_block_write_path_provider,
+    mock_block_write_path_provider,
 ):
     if endpoint_url is None:
         storage_options = {}
@@ -881,10 +939,10 @@ def test_parquet_write_block_path_provider(
     ds._set_uuid("data")
 
     ds.write_parquet(
-        path, filesystem=fs, block_path_provider=test_block_write_path_provider
+        path, filesystem=fs, block_path_provider=mock_block_write_path_provider
     )
-    path1 = os.path.join(path, "000000_03_data.test.parquet")
-    path2 = os.path.join(path, "000001_03_data.test.parquet")
+    path1 = os.path.join(path, "000000_000000_data.test.parquet")
+    path2 = os.path.join(path, "000001_000000_data.test.parquet")
     dfds = pd.concat(
         [
             pd.read_parquet(path1, storage_options=storage_options),
@@ -989,8 +1047,6 @@ def test_parquet_read_spread(ray_start_cluster, tmp_path):
 
     # Force reads.
     blocks = ds.get_internal_block_refs()
-    assert len(blocks) == 2
-
     ray.wait(blocks, num_returns=len(blocks), fetch_local=False)
     location_data = ray.experimental.get_object_locations(blocks)
     locations = []

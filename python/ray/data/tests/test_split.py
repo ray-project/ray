@@ -11,6 +11,9 @@ import pytest
 import ray
 from ray.data._internal.block_list import BlockList
 from ray.data._internal.equalize import _equalize
+from ray.data._internal.execution.interfaces import RefBundle
+from ray.data._internal.logical.interfaces import LogicalPlan
+from ray.data._internal.logical.operators.input_data_operator import InputData
 from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.split import (
     _drop_empty_block_split,
@@ -76,24 +79,32 @@ def test_equal_split(shutdown_only):
         ([2, 5], 1),  # Single split.
     ],
 )
-def test_equal_split_balanced(ray_start_regular_shared, block_sizes, num_splits):
+def test_equal_split_balanced(
+    ray_start_regular_shared, enable_optimizer, block_sizes, num_splits
+):
     _test_equal_split_balanced(block_sizes, num_splits)
 
 
 def _test_equal_split_balanced(block_sizes, num_splits):
     blocks = []
     metadata = []
+    ref_bundles = []
     total_rows = 0
     for block_size in block_sizes:
         block = pd.DataFrame({"id": list(range(total_rows, total_rows + block_size))})
         blocks.append(ray.put(block))
         metadata.append(BlockAccessor.for_block(block).get_metadata(None, None))
+        blk = (blocks[-1], metadata[-1])
+        ref_bundles.append(RefBundle((blk,), owns_blocks=True))
         total_rows += block_size
     block_list = BlockList(blocks, metadata, owned_by_consumer=True)
+
+    logical_plan = LogicalPlan(InputData(input_data=ref_bundles))
     ds = Dataset(
         ExecutionPlan(block_list, DatasetStats.TODO(), run_by_consumer=True),
         0,
         False,
+        logical_plan,
     )
 
     splits = ds.split(num_splits, equal=True)
@@ -111,7 +122,6 @@ def _test_equal_split_balanced(block_sizes, num_splits):
 
 
 def test_equal_split_balanced_grid(ray_start_regular_shared):
-
     # Tests balanced equal splitting over a grid of configurations.
     # Grid: num_blocks x num_splits x num_rows_block_1 x ... x num_rows_block_n
     seed = int(time.time())

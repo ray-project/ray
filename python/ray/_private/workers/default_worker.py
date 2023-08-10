@@ -99,6 +99,13 @@ parser.add_argument(
     help="the port of the node's metric agent.",
 )
 parser.add_argument(
+    "--runtime-env-agent-port",
+    required=True,
+    type=int,
+    default=None,
+    help="The port on which the runtime env agent receives HTTP requests.",
+)
+parser.add_argument(
     "--object-spilling-config",
     required=False,
     type=str,
@@ -196,6 +203,7 @@ if __name__ == "__main__":
         temp_dir=args.temp_dir,
         storage=args.storage,
         metrics_agent_port=args.metrics_agent_port,
+        runtime_env_agent_port=args.runtime_env_agent_port,
         gcs_address=args.gcs_address,
         session_name=args.session_name,
         webui=args.webui,
@@ -252,9 +260,11 @@ if __name__ == "__main__":
         ray._private.utils.try_import_each_module(module_names_to_import)
 
     # If the worker setup function is configured, run it.
-    worker_setup_hook_key = os.getenv(ray_constants.WORKER_SETUP_HOOK_ENV_VAR)
-    if worker_setup_hook_key:
-        error = load_and_execute_setup_hook(worker_setup_hook_key)
+    worker_process_setup_hook_key = os.getenv(
+        ray_constants.WORKER_PROCESS_SETUP_HOOK_ENV_VAR
+    )
+    if worker_process_setup_hook_key:
+        error = load_and_execute_setup_hook(worker_process_setup_hook_key)
         if error is not None:
             worker.core_worker.exit_worker("system", error)
 

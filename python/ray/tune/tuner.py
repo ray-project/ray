@@ -61,7 +61,7 @@ class Tuner:
             Refer to ray.tune.tune_config.TuneConfig for more info.
         run_config: Runtime configuration that is specific to individual trials.
             If passed, this will overwrite the run config passed to the Trainer,
-            if applicable. Refer to ray.air.config.RunConfig for more info.
+            if applicable. Refer to ray.train.RunConfig for more info.
 
     Usage pattern:
 
@@ -71,7 +71,7 @@ class Tuner:
 
         from ray import tune
         from ray.data import from_pandas
-        from ray.air.config import RunConfig, ScalingConfig
+        from ray.train import RunConfig, ScalingConfig
         from ray.train.xgboost import XGBoostTrainer
         from ray.tune.tuner import Tuner
 
@@ -158,7 +158,7 @@ class Tuner:
                     "[output] This uses the legacy output and progress reporter, "
                     "as Ray client is not supported by the new engine. "
                     "For more information, see "
-                    "https://docs.ray.io/en/master/ray-air/experimental-features.html"
+                    "https://github.com/ray-project/ray/issues/36949"
                 )
 
         if _tuner_internal:
@@ -273,7 +273,7 @@ class Tuner:
 
             import os
             from ray.tune import Tuner
-            from ray.air import RunConfig
+            from ray.train import RunConfig
 
             def train_fn(config):
                 # Make sure to implement checkpointing so that progress gets

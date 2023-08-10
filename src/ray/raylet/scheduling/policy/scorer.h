@@ -15,7 +15,7 @@
 #pragma once
 #include <optional>
 
-#include "ray/raylet/scheduling/cluster_resource_data.h"
+#include "ray/common/scheduling/cluster_resource_data.h"
 
 namespace ray {
 namespace raylet_scheduling_policy {

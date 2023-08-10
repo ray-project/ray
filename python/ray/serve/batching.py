@@ -11,6 +11,7 @@ from typing import (
     Optional,
     overload,
     Tuple,
+    Type,
     TypeVar,
     AsyncGenerator,
     Iterable,
@@ -65,7 +66,7 @@ class _BatchQueue:
     def __init__(
         self,
         max_batch_size: int,
-        timeout_s: float,
+        batch_wait_timeout_s: float,
         handle_batch_func: Optional[Callable] = None,
     ) -> None:
         """Async queue that accepts individual items and returns batches.
@@ -77,6 +78,8 @@ class _BatchQueue:
         If handle_batch_func is passed in, a background coroutine will run to
         poll from the queue and call handle_batch_func on the results.
 
+        Cannot be pickled.
+
         Arguments:
             max_batch_size: max number of elements to return in a batch.
             timeout_s: time to wait before returning an incomplete
@@ -85,9 +88,9 @@ class _BatchQueue:
                 background to handle batches if provided.
         """
         self.queue: asyncio.Queue[_SingleRequest] = asyncio.Queue()
-        self.full_batch_event = asyncio.Event()
         self.max_batch_size = max_batch_size
-        self.timeout_s = timeout_s
+        self.batch_wait_timeout_s = batch_wait_timeout_s
+        self.queue_put_event = asyncio.Event()
 
         self._handle_batch_task = None
         if handle_batch_func is not None:
@@ -97,52 +100,50 @@ class _BatchQueue:
 
     def put(self, request: Tuple[_SingleRequest, asyncio.Future]) -> None:
         self.queue.put_nowait(request)
-        # Signal when the full batch is ready. The event will be reset
-        # in wait_for_batch.
-        if self.queue.qsize() == self.max_batch_size:
-            self.full_batch_event.set()
+        self.queue_put_event.set()
 
     async def wait_for_batch(self) -> List[Any]:
         """Wait for batch respecting self.max_batch_size and self.timeout_s.
 
-        Returns a batch of up to self.max_batch_size items, waiting for up
-        to self.timeout_s for a full batch. After the timeout, returns as many
-        items as are ready.
+        Returns a batch of up to self.max_batch_size items. Waits for up to
+        to self.timeout_s after receiving the first request that will be in
+        the next batch. After the timeout, returns as many items as are ready.
 
         Always returns a batch with at least one item - will block
         indefinitely until an item comes in.
         """
-        curr_timeout = self.timeout_s
+
         batch = []
-        while len(batch) == 0:
-            loop_start = time.time()
+        batch.append(await self.queue.get())
 
-            # If the timeout is 0, wait for any item to be available on the
-            # queue.
-            if curr_timeout == 0:
-                batch.append(await self.queue.get())
-            # If the timeout is nonzero, wait for either the timeout to occur
-            # or the max batch size to be ready.
-            else:
-                try:
-                    await asyncio.wait_for(self.full_batch_event.wait(), curr_timeout)
-                except asyncio.TimeoutError:
-                    pass
+        # Cache current max_batch_size and batch_wait_timeout_s for this batch.
+        max_batch_size = self.max_batch_size
+        batch_wait_timeout_s = self.batch_wait_timeout_s
 
-            # Pull up to the max_batch_size requests off the queue.
-            while len(batch) < self.max_batch_size and not self.queue.empty():
+        # Wait self.timeout_s seconds for new queue arrivals.
+        batch_start_time = time.time()
+        while True:
+            remaining_batch_time_s = max(
+                batch_wait_timeout_s - (time.time() - batch_start_time), 0
+            )
+            try:
+                # Wait for new arrivals.
+                await asyncio.wait_for(
+                    self.queue_put_event.wait(), remaining_batch_time_s
+                )
+            except asyncio.TimeoutError:
+                pass
+
+            # Add all new arrivals to the batch.
+            while len(batch) < max_batch_size and not self.queue.empty():
                 batch.append(self.queue.get_nowait())
+            self.queue_put_event.clear()
 
-            # Reset the event if there are fewer than max_batch_size requests
-            # in the queue.
             if (
-                self.queue.qsize() < self.max_batch_size
-                and self.full_batch_event.is_set()
+                time.time() - batch_start_time >= batch_wait_timeout_s
+                or len(batch) >= max_batch_size
             ):
-                self.full_batch_event.clear()
-
-            # Adjust the timeout based on the time spent in this iteration.
-            curr_timeout = max(0, curr_timeout - (time.time() - loop_start))
+                break
 
         return batch
 
@@ -168,24 +169,35 @@ class _BatchQueue:
         is a generator.
         """
 
+        FINISHED_TOKEN = None
+
         try:
             futures = initial_futures
             async for results in func_generator:
                 self._validate_results(results, input_batch_length)
-                next_futures = [
-                    get_or_create_event_loop().create_future() for _ in futures
-                ]
-                for result, (future, next_future) in zip(
-                    results, zip(futures, next_futures)
-                ):
-                    future.set_result(_GeneratorResult(result, next_future))
+                next_futures = []
+                for result, future in zip(results, futures):
+                    if future is FINISHED_TOKEN:
+                        # This caller has already terminated.
+                        next_futures.append(FINISHED_TOKEN)
+                    elif result in [StopIteration, StopAsyncIteration]:
+                        # User's code returned sentinel. No values left
+                        # for caller. Terminate iteration for caller.
+                        future.set_exception(StopAsyncIteration)
+                        next_futures.append(FINISHED_TOKEN)
+                    else:
+                        next_future = get_or_create_event_loop().create_future()
+                        future.set_result(_GeneratorResult(result, next_future))
+                        next_futures.append(next_future)
                 futures = next_futures
 
             for future in futures:
-                future.set_exception(StopAsyncIteration)
+                if future is not FINISHED_TOKEN:
+                    future.set_exception(StopAsyncIteration)
         except Exception as e:
             for future in futures:
-                future.set_exception(e)
+                if future is not FINISHED_TOKEN:
+                    future.set_exception(e)
 
     async def _process_batches(self, func: Callable) -> None:
         """Loops infinitely and processes queued request batches."""
@@ -231,6 +243,89 @@ class _BatchQueue:
         self._handle_batch_task.cancel()
 
 
+class _LazyBatchQueueWrapper:
+    """Stores a _BatchQueue and updates its settings.
+
+    _BatchQueue cannot be pickled, you must construct it lazily
+    at runtime inside a replica. This class initializes a queue only upon
+    first access.
+    """
+
+    def __init__(
+        self,
+        max_batch_size: int = 10,
+        batch_wait_timeout_s: float = 0.0,
+        handle_batch_func: Optional[Callable] = None,
+        batch_queue_cls: Type[_BatchQueue] = _BatchQueue,
+    ):
+        self._queue: Type[_BatchQueue] = None
+        self.max_batch_size = max_batch_size
+        self.batch_wait_timeout_s = batch_wait_timeout_s
+        self.handle_batch_func = handle_batch_func
+        self.batch_queue_cls = batch_queue_cls
+
+    @property
+    def queue(self) -> Type[_BatchQueue]:
+        """Returns _BatchQueue.
+
+        Initializes queue when called for the first time.
+        """
+        if self._queue is None:
+            self._queue = self.batch_queue_cls(
+                self.max_batch_size,
+                self.batch_wait_timeout_s,
+                self.handle_batch_func,
+            )
+        return self._queue
+
+    def set_max_batch_size(self, new_max_batch_size: int) -> None:
+        """Updates queue's max_batch_size."""
+
+        self.max_batch_size = new_max_batch_size
+
+        if self._queue is not None:
+            self._queue.max_batch_size = new_max_batch_size
+
+    def set_batch_wait_timeout_s(self, new_batch_wait_timeout_s: float) -> None:
+        self.batch_wait_timeout_s = new_batch_wait_timeout_s
+
+        if self._queue is not None:
+            self._queue.batch_wait_timeout_s = new_batch_wait_timeout_s
+
+    def get_max_batch_size(self) -> int:
+        return self.max_batch_size
+
+    def get_batch_wait_timeout_s(self) -> float:
+        return self.batch_wait_timeout_s
+
+
+def _validate_max_batch_size(max_batch_size):
+    if not isinstance(max_batch_size, int):
+        if isinstance(max_batch_size, float) and max_batch_size.is_integer():
+            max_batch_size = int(max_batch_size)
+        else:
+            raise TypeError(
+                f"max_batch_size must be integer >= 1, got {max_batch_size}"
+            )
+
+    if max_batch_size < 1:
+        raise ValueError(
+            f"max_batch_size must be an integer >= 1, got {max_batch_size}"
+        )
+
+
+def _validate_batch_wait_timeout_s(batch_wait_timeout_s):
+    if not isinstance(batch_wait_timeout_s, (float, int)):
+        raise TypeError(
+            "batch_wait_timeout_s must be a float >= 0, " f"got {batch_wait_timeout_s}"
+        )
+
+    if batch_wait_timeout_s < 0:
+        raise ValueError(
+            "batch_wait_timeout_s must be a float >= 0, " f"got {batch_wait_timeout_s}"
+        )
+
+
 T = TypeVar("T")
 R = TypeVar("R")
 F = TypeVar("F", bound=Callable[[List[T]], List[R]])
@@ -246,7 +341,8 @@ def batch(func: F) -> G:
 # "Decorator factory" use case (called with arguments).
 @overload
 def batch(
-    max_batch_size: int = 10, batch_wait_timeout_s: float = 0.0
+    max_batch_size: int = 10,
+    batch_wait_timeout_s: float = 0.0,
 ) -> Callable[[F], G]:
     pass
 
@@ -256,6 +352,8 @@ def batch(
     _func: Optional[Callable] = None,
     max_batch_size: int = 10,
     batch_wait_timeout_s: float = 0.0,
+    *,
+    batch_queue_cls: Type[_BatchQueue] = _BatchQueue,
 ):
     """Converts a function to asynchronously handle batches.
 
@@ -266,6 +364,10 @@ def batch(
     When invoked, the caller passes a single object. These will be batched
     and executed asynchronously once there is a batch of `max_batch_size`
     or `batch_wait_timeout_s` has elapsed, whichever occurs first.
+
+    `max_batch_size` and `batch_wait_timeout_s` can be updated using setter
+    methods from the batch_handler (`set_max_batch_size` and
+    `set_batch_wait_timeout_s`).
 
     Example:
 
@@ -285,6 +387,10 @@ def batch(
 
                     return response_batch
 
+                def update_batch_params(self, max_batch_size, batch_wait_timeout_s):
+                    self.batch_handler.set_max_batch_size(max_batch_size)
+                    self.batch_handler.set_batch_wait_timeout_s(batch_wait_timeout_s)
+
                 async def __call__(self, request: Request):
                     return await self.batch_handler(request)
 
@@ -295,6 +401,7 @@ def batch(
             one call to the underlying function.
         batch_wait_timeout_s: the maximum duration to wait for
             `max_batch_size` elements before running the current batch.
+        batch_queue_cls: the class to use for the underlying batch queue.
     """
     # `_func` will be None in the case when the decorator is parametrized.
     # See the comment at the end of this function for a detailed explanation.
@@ -307,22 +414,17 @@ def batch(
         if not iscoroutinefunction(_func):
             raise TypeError("Functions decorated with @serve.batch must be 'async def'")
 
-    if not isinstance(max_batch_size, int):
-        if isinstance(max_batch_size, float) and max_batch_size.is_integer():
-            max_batch_size = int(max_batch_size)
-        else:
-            raise TypeError("max_batch_size must be integer >= 1")
-
-    if max_batch_size < 1:
-        raise ValueError("max_batch_size must be an integer >= 1")
-
-    if not isinstance(batch_wait_timeout_s, (float, int)):
-        raise TypeError("batch_wait_timeout_s must be a float >= 0")
-
-    if batch_wait_timeout_s < 0:
-        raise ValueError("batch_wait_timeout_s must be a float >= 0")
+    _validate_max_batch_size(max_batch_size)
+    _validate_batch_wait_timeout_s(batch_wait_timeout_s)
 
     def _batch_decorator(_func):
+        lazy_batch_queue_wrapper = _LazyBatchQueueWrapper(
+            max_batch_size,
+            batch_wait_timeout_s,
+            _func,
+            batch_queue_cls,
+        )
+
         async def batch_handler_generator(
             first_future: asyncio.Future,
         ) -> AsyncGenerator:
@@ -352,20 +454,33 @@ def batch(
                 # Trim the self argument from methods
                 flattened_args = flattened_args[2:]
 
-            # The first time the function runs, we lazily construct the batch
-            # queue and inject it under a custom attribute name. On subsequent
-            # runs, we just get a reference to the attribute.
-            batch_queue_attr = f"__serve_batch_queue_{_func.__name__}"
-            if not hasattr(batch_queue_object, batch_queue_attr):
-                batch_queue = _BatchQueue(max_batch_size, batch_wait_timeout_s, _func)
-                setattr(batch_queue_object, batch_queue_attr, batch_queue)
-            else:
-                batch_queue = getattr(batch_queue_object, batch_queue_attr)
+            batch_queue = lazy_batch_queue_wrapper.queue
+
+            # Magic batch_queue_object attributes that can be used to change the
+            # batch queue attributes on the fly.
+            # This is purposefully undocumented for now while we figure out
+            # the best API.
+            if hasattr(batch_queue_object, "_ray_serve_max_batch_size"):
+                new_max_batch_size = getattr(
+                    batch_queue_object, "_ray_serve_max_batch_size"
+                )
+                _validate_max_batch_size(new_max_batch_size)
+                batch_queue.max_batch_size = new_max_batch_size
+
+            if hasattr(batch_queue_object, "_ray_serve_batch_wait_timeout_s"):
+                new_batch_wait_timeout_s = getattr(
+                    batch_queue_object, "_ray_serve_batch_wait_timeout_s"
+                )
+                _validate_batch_wait_timeout_s(new_batch_wait_timeout_s)
+                batch_queue.batch_wait_timeout_s = new_batch_wait_timeout_s
 
             future = get_or_create_event_loop().create_future()
             batch_queue.put(_SingleRequest(self, flattened_args, future))
             return future
 
+        # TODO (shrekris-anyscale): deprecate batch_queue_cls argument and
+        # convert batch_wrapper into a class once `self` argument is no
+        # longer needed in `enqueue_request`.
         @wraps(_func)
         def generator_batch_wrapper(*args, **kwargs):
             first_future = enqueue_request(args, kwargs)
@@ -377,9 +492,22 @@ def batch(
             return await enqueue_request(args, kwargs)
 
         if isasyncgenfunction(_func):
-            return generator_batch_wrapper
+            wrapper = generator_batch_wrapper
         else:
-            return batch_wrapper
+            wrapper = batch_wrapper
+
+        # We store the lazy_batch_queue_wrapper's getters and setters as
+        # batch_wrapper attributes, so they can be accessed in user code.
+        wrapper._get_max_batch_size = lazy_batch_queue_wrapper.get_max_batch_size
+        wrapper._get_batch_wait_timeout_s = (
+            lazy_batch_queue_wrapper.get_batch_wait_timeout_s
+        )
+        wrapper.set_max_batch_size = lazy_batch_queue_wrapper.set_max_batch_size
+        wrapper.set_batch_wait_timeout_s = (
+            lazy_batch_queue_wrapper.set_batch_wait_timeout_s
+        )
+
+        return wrapper
 
     # Unfortunately, this is required to handle both non-parametrized
     # (@serve.batch) and parametrized (@serve.batch(**kwargs)) usage.

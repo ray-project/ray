@@ -294,6 +294,13 @@ RAY_CONFIG(int64_t, worker_register_timeout_seconds, 60)
 /// The maximum number of workers to iterate whenever we analyze the resources usage.
 RAY_CONFIG(uint32_t, worker_max_resource_analysis_iteration, 128)
 
+/// The maximum number of generator returns. We are using this to pre-reserve
+/// Ray object ID indexes.
+/// The first N indexes are for num_returns.
+/// The next max_num_generator_returns indexes are for generator return.
+/// The rest of them is for ray.put.
+RAY_CONFIG(uint32_t, max_num_generator_returns, 100 * 1000 * 1000)
+
 /// A value to add to workers' OOM score adjustment, so that the OS prioritizes
 /// killing these over the raylet. 0 or positive values only (negative values
 /// require sudo permissions).
@@ -521,8 +528,8 @@ RAY_CONFIG(uint32_t, agent_register_timeout_ms, 100 * 1000)
 RAY_CONFIG(uint32_t, agent_register_timeout_ms, 30 * 1000)
 #endif
 
-/// If the agent manager fails to communicate with the dashboard agent, we will retry
-/// after this interval.
+/// If the agent manager fails to communicate with the dashboard agent or the runtime env
+/// agent, we will retry after this interval.
 RAY_CONFIG(uint32_t, agent_manager_retry_interval_ms, 1000)
 
 /// The maximum number of resource shapes included in the resource
@@ -546,8 +553,10 @@ RAY_CONFIG(uint64_t, kill_idle_workers_interval_ms, 200)
 /// The idle time threshold for an idle worker to be killed.
 RAY_CONFIG(int64_t, idle_worker_killing_time_threshold_ms, 1000)
 
-/// The soft limit of the number of workers.
-/// -1 means using num_cpus instead.
+/// The soft limit of the number of workers to keep around.
+/// We apply this limit to the idle workers instead of total workers,
+/// because the total number of workers used depends on the
+/// application. -1 means using the available number of CPUs.
 RAY_CONFIG(int64_t, num_workers_soft_limit, -1)
 
 // The interval where metrics are exported in milliseconds.

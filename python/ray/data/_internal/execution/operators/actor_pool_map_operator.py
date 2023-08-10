@@ -21,7 +21,7 @@ from ray.data._internal.execution.operators.map_operator import (
 )
 from ray.data._internal.execution.util import locality_string
 from ray.data.block import Block, BlockMetadata, _CallableClassProtocol
-from ray.data.context import DEFAULT_SCHEDULING_STRATEGY, DataContext
+from ray.data.context import DataContext
 from ray.types import ObjectRef
 
 logger = DatasetLogger(__name__)
@@ -29,6 +29,10 @@ logger = DatasetLogger(__name__)
 # Higher values here are better for prefetching and locality. It's ok for this to be
 # fairly high since streaming backpressure prevents us from overloading actors.
 DEFAULT_MAX_TASKS_IN_FLIGHT = 4
+
+# The default time to wait for minimum requested actors
+# to start before raising a timeout, in seconds.
+DEFAULT_WAIT_FOR_MIN_ACTORS_SEC = 60 * 10
 
 
 class ActorPoolMapOperator(MapOperator):
@@ -117,7 +121,7 @@ class ActorPoolMapOperator(MapOperator):
         logger.get_logger().info(
             f"{self._name}: Waiting for {len(refs)} pool actors to start..."
         )
-        ray.get(refs)
+        ray.get(refs, timeout=DEFAULT_WAIT_FOR_MIN_ACTORS_SEC)
 
     def should_add_input(self) -> bool:
         return self._actor_pool.num_free_slots() > 0
@@ -230,10 +234,10 @@ class ActorPoolMapOperator(MapOperator):
         # For either a completed task or ready worker, we try to dispatch queued tasks.
         self._dispatch_tasks()
 
-    def inputs_done(self):
+    def all_inputs_done(self):
         # Call base implementation to handle any leftover bundles. This may or may not
         # trigger task dispatch.
-        super().inputs_done()
+        super().all_inputs_done()
 
         # Mark inputs as done so future task dispatch will kill all inactive workers
         # once the bundle queue is exhausted.
@@ -265,10 +269,12 @@ class ActorPoolMapOperator(MapOperator):
         ):
             # The user specified a batch size, but it was probably too large.
             logger.get_logger().warning(
-                "To ensure full parallelization across an actor pool of size "
-                f"{min_workers}, the specified batch size "
-                f"should be at most {max_desired_batch_size}. Your configured batch "
-                f"size for this operator was {self._min_rows_per_bundle}."
+                f"Your batch size is too large. Currently, your batch size is "
+                f"{self._min_rows_per_bundle}. Your dataset contains {total_rows}, and "
+                f"Ray Data tried to parallelize it across {min_workers} actors. To "
+                f"parallelize this fully across all {min_workers} actors, set batch "
+                f"size to not exceed `{total_rows} / {min_workers} = "
+                f"{max_desired_batch_size}`."
             )
         elif len(self._output_metadata) < min_workers:
             # The user created a stream that has too few blocks to begin with.
@@ -348,10 +354,7 @@ class ActorPoolMapOperator(MapOperator):
         ray_remote_args = ray_remote_args.copy()
         if "scheduling_strategy" not in ray_remote_args:
             ctx = DataContext.get_current()
-            if ctx.scheduling_strategy == DEFAULT_SCHEDULING_STRATEGY:
-                ray_remote_args["scheduling_strategy"] = "SPREAD"
-            else:
-                ray_remote_args["scheduling_strategy"] = ctx.scheduling_strategy
+            ray_remote_args["scheduling_strategy"] = ctx.scheduling_strategy
         # Enable actor fault tolerance by default, with infinite actor recreations and
         # up to N retries per task. The user can customize this in map_batches via
         # extra kwargs (e.g., map_batches(..., max_restarts=0) to disable).

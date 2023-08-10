@@ -13,7 +13,6 @@ import pytest
 import yaml
 
 from ray._private.utils import get_or_create_event_loop
-from ray._private.gcs_utils import GcsAioClient
 from ray._private.runtime_env.working_dir import upload_working_dir_if_needed
 from ray._private.runtime_env.py_modules import upload_py_modules_if_needed
 from ray._private.ray_constants import DEFAULT_DASHBOARD_AGENT_LISTEN_PORT
@@ -26,18 +25,22 @@ from ray._private.test_utils import (
     get_current_unused_port,
     async_wait_for_condition_async_predicate,
 )
-from ray.dashboard.modules.job.common import JobSubmitRequest
-from ray.dashboard.modules.job.utils import (
+from ray.dashboard.modules.job.common import (
+    JobSubmitRequest,
     validate_request_type,
-    get_supervisor_actor_into,
+    JOB_ACTOR_NAME_TEMPLATE,
+    SUPERVISOR_ACTOR_RAY_NAMESPACE,
 )
 from ray.dashboard.tests.conftest import *  # noqa
 from ray.runtime_env.runtime_env import RuntimeEnv, RuntimeEnvConfig
-from ray.util.state import list_nodes
+from ray.util.state import (
+    get_node,
+    list_nodes,
+    list_actors,
+)
 from ray.job_submission import JobStatus, JobSubmissionClient
 from ray.tests.conftest import _ray_start
 from ray.dashboard.modules.job.job_head import JobAgentSubmissionClient
-
 
 # This test requires you have AWS credentials set up (any AWS credentials will
 # do, this test only accesses a public bucket).
@@ -46,6 +49,24 @@ logger = logging.getLogger(__name__)
 
 DRIVER_SCRIPT_DIR = os.path.join(os.path.dirname(__file__), "subprocess_driver_scripts")
 EVENT_LOOP = get_or_create_event_loop()
+
+
+def get_node_id_for_supervisor_actor_for_job(
+    address: str, job_submission_id: str
+) -> str:
+    actors = list_actors(
+        address=address,
+        filters=[("ray_namespace", "=", SUPERVISOR_ACTOR_RAY_NAMESPACE)],
+    )
+    for actor in actors:
+        if actor.name == JOB_ACTOR_NAME_TEMPLATE.format(job_id=job_submission_id):
+            return actor.node_id
+    raise ValueError(f"actor not found for job_submission_id {job_submission_id}")
+
+
+def get_node_ip_by_id(node_id: str) -> str:
+    node = get_node(id=node_id)
+    return node.node_ip
 
 
 @pytest.fixture
@@ -446,15 +467,8 @@ async def test_job_log_in_multiple_node(
             if job_check_status[index]:
                 continue
             result_log = f"hello index-{index}"
-            gcs_aio_client = GcsAioClient(
-                address=cluster.address, nums_reconnect_retry=0
-            )
-            supervisor_actor_info = await get_supervisor_actor_into(
-                gcs_aio_client, job_id
-            )
-
             # Try to get the node id which supervisor actor running in.
-            node_id = supervisor_actor_info.actor_table_data.address.raylet_id.hex()
+            node_id = get_node_id_for_supervisor_actor_for_job(cluster.address, job_id)
             for node_info in summary:
                 if node_info["raylet"]["nodeId"] == node_id:
                     break
@@ -469,7 +483,7 @@ async def test_job_log_in_multiple_node(
             ), f"port: {agent_port}"
 
             # Finally, we got the whole agent address, and try to get the job log.
-            ip = supervisor_actor_info.actor_table_data.address.ip_address
+            ip = get_node_ip_by_id(node_id)
             agent_address = f"{ip}:{agent_port}"
             assert wait_until_server_available(agent_address)
             client = JobAgentSubmissionClient(format_web_url(agent_address))

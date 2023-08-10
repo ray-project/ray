@@ -532,7 +532,7 @@ class JupyterNotebookReporter(TuneReporterBase, RemoteReporterMixin):
                 "If this leads to unformatted output (e.g. like "
                 "<IPython.core.display.HTML object>), consider passing "
                 "a `CLIReporter` as the `progress_reporter` argument "
-                "to `air.RunConfig()` instead."
+                "to `train.RunConfig()` instead."
             )
 
         self._overwrite = overwrite
@@ -1145,14 +1145,28 @@ def _trial_errors_str(
                     max_rows, num_failed - max_rows
                 )
             )
-        error_table = []
-        for trial in failed[:max_rows]:
-            row = [str(trial), trial.num_failures, trial.error_file]
-            error_table.append(row)
-        columns = ["Trial name", "# failures", "error file"]
+
+        fail_header = ["Trial name", "# failures", "error file"]
+        fail_table_data = [
+            [
+                str(trial),
+                str(trial.num_failures) + ("" if trial.status == Trial.ERROR else "*"),
+                trial.error_file,
+            ]
+            for trial in failed[:max_rows]
+        ]
         messages.append(
-            tabulate(error_table, headers=columns, tablefmt=fmt, showindex=False)
+            tabulate(
+                fail_table_data,
+                headers=fail_header,
+                tablefmt=fmt,
+                showindex=False,
+                colalign=("left", "right", "left"),
+            )
         )
+        if any(trial.status == Trial.TERMINATED for trial in failed[:max_rows]):
+            messages.append("* The trial terminated successfully after retrying.")
+
     delim = "<br>" if fmt == "html" else "\n"
     return delim.join(messages)
 

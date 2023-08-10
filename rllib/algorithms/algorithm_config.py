@@ -4,6 +4,7 @@ import math
 import os
 import sys
 from typing import (
+    TYPE_CHECKING,
     Any,
     Callable,
     Container,
@@ -12,7 +13,6 @@ from typing import (
     Optional,
     Tuple,
     Type,
-    TYPE_CHECKING,
     Union,
 )
 
@@ -21,17 +21,14 @@ from packaging import version
 import ray
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.core.learner.learner import LearnerHyperparameters
-from ray.rllib.core.learner.learner_group_config import (
-    LearnerGroupConfig,
-    ModuleSpec,
-)
+from ray.rllib.core.learner.learner_group_config import LearnerGroupConfig, ModuleSpec
 from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
 from ray.rllib.core.rl_module.rl_module import ModuleID, SingleAgentRLModuleSpec
 from ray.rllib.env.env_context import EnvContext
+from ray.rllib.core.learner.learner import TorchCompileWhatToCompile
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.env.wrappers.atari_wrappers import is_atari
 from ray.rllib.evaluation.collectors.sample_collector import SampleCollector
-from ray.rllib.utils.torch_utils import TORCH_COMPILE_REQUIRED_VERSION
 from ray.rllib.evaluation.collectors.simple_list_collector import SimpleListCollector
 from ray.rllib.evaluation.episode import Episode
 from ray.rllib.models import MODEL_DEFAULTS
@@ -39,16 +36,16 @@ from ray.rllib.policy.policy import Policy, PolicySpec
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils import deep_update, merge_dicts
 from ray.rllib.utils.annotations import (
-    OverrideToImplementCustomLogic_CallToSuperRecommended,
     ExperimentalAPI,
+    OverrideToImplementCustomLogic_CallToSuperRecommended,
 )
 from ray.rllib.utils.deprecation import (
-    Deprecated,
     DEPRECATED_VALUE,
+    Deprecated,
     deprecation_warning,
 )
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
-from ray.rllib.utils.from_config import from_config, NotProvided
+from ray.rllib.utils.from_config import NotProvided, from_config
 from ray.rllib.utils.gym import (
     convert_old_gym_space_to_gymnasium_space,
     try_import_gymnasium_and_gym,
@@ -56,10 +53,11 @@ from ray.rllib.utils.gym import (
 from ray.rllib.utils.policy import validate_policy_id
 from ray.rllib.utils.schedules.scheduler import Scheduler
 from ray.rllib.utils.serialization import (
-    deserialize_type,
     NOT_SERIALIZABLE,
+    deserialize_type,
     serialize_type,
 )
+from ray.rllib.utils.torch_utils import TORCH_COMPILE_REQUIRED_VERSION
 from ray.rllib.utils.typing import (
     AgentID,
     AlgorithmConfigDict,
@@ -130,7 +128,7 @@ class AlgorithmConfig(_Config):
         ...     .resources(num_gpus=0)
         ...     .rollouts(num_rollout_workers=4)
         ...     .callbacks(MemoryTrackingCallbacks)
-        >>> # A config object can be used to construct the respective Trainer.
+        >>> # A config object can be used to construct the respective Algorithm.
         >>> rllib_algo = config.build()  # doctest: +SKIP
 
     Example:
@@ -142,7 +140,7 @@ class AlgorithmConfig(_Config):
         >>> # Use `to_dict()` method to get the legacy plain python config dict
         >>> # for usage with `tune.Tuner().fit()`.
         >>> tune.Tuner(  # doctest: +SKIP
-        ...     "[registered trainer class]", param_space=config.to_dict()
+        ...     "[registered Algorithm class]", param_space=config.to_dict()
         ...     ).fit()
     """
 
@@ -237,7 +235,7 @@ class AlgorithmConfig(_Config):
     def __init__(self, algo_class=None):
         # Define all settings and their default values.
 
-        # Define the default RLlib Trainer class that this AlgorithmConfig will be
+        # Define the default RLlib Algorithm class that this AlgorithmConfig will be
         # applied to.
         self.algo_class = algo_class
 
@@ -260,7 +258,7 @@ class AlgorithmConfig(_Config):
 
         # `self.framework()`
         self.framework_str = "torch"
-        self.eager_tracing = False
+        self.eager_tracing = True
         self.eager_max_retraces = 20
         self.tf_session_args = {
             # note: overridden by `local_tf_session_args`
@@ -282,15 +280,20 @@ class AlgorithmConfig(_Config):
         }
         # Torch compile settings
         self.torch_compile_learner = False
+        self.torch_compile_learner_what_to_compile = (
+            TorchCompileWhatToCompile.FORWARD_TRAIN
+        )
+        # AOT Eager is a dummy backend and will not result in speedups
         self.torch_compile_learner_dynamo_backend = (
             "aot_eager" if sys.platform == "darwin" else "inductor"
         )
-        self.torch_compile_learner_dynamo_mode = "reduce-overhead"
+        self.torch_compile_learner_dynamo_mode = None
         self.torch_compile_worker = False
+        # AOT Eager is a dummy backend and will not result in speedups
         self.torch_compile_worker_dynamo_backend = (
-            "aot_eager" if sys.platform == "darwin" else "inductor"
+            "aot_eager" if sys.platform == "darwin" else "onnxrt"
         )
-        self.torch_compile_worker_dynamo_mode = "reduce-overhead"
+        self.torch_compile_worker_dynamo_mode = None
 
         # `self.environment()`
         self.env = None
@@ -303,10 +306,11 @@ class AlgorithmConfig(_Config):
         self.normalize_actions = True
         self.clip_actions = False
         self.disable_env_checking = False
+        self.auto_wrap_old_gym_envs = True
+        self.action_mask_key = "action_mask"
         # Whether this env is an atari env (for atari-specific preprocessing).
         # If not specified, we will try to auto-detect this.
-        self.is_atari = None
-        self.auto_wrap_old_gym_envs = True
+        self._is_atari = None
 
         # `self.rollouts()`
         self.env_runner_cls = None
@@ -316,6 +320,8 @@ class AlgorithmConfig(_Config):
         self.create_env_on_local_worker = False
         self.sample_async = False
         self.enable_connectors = True
+        self.update_worker_filter_stats = True
+        self.use_worker_filter_stats = True
         self.rollout_fragment_length = 200
         self.batch_mode = "truncate_episodes"
         self.remote_worker_envs = False
@@ -323,7 +329,6 @@ class AlgorithmConfig(_Config):
         self.validate_workers_after_construction = True
         self.preprocessor_pref = "deepmind"
         self.observation_filter = "NoFilter"
-        self.synchronize_filters = True
         self.compress_observations = False
         self.enable_tf1_exec_eagerly = False
         self.sampler_perf_stats_ema_coef = None
@@ -334,7 +339,23 @@ class AlgorithmConfig(_Config):
         self.grad_clip = None
         self.grad_clip_by = "global_norm"
         self.train_batch_size = 32
-        self.model = copy.deepcopy(MODEL_DEFAULTS)
+        # TODO (sven): Unsolved problem with RLModules sometimes requiring settings from
+        #  the main AlgorithmConfig. We should not require the user to provide those
+        #  settings in both, the AlgorithmConfig (as property) AND the model config
+        #  dict. We should generally move to a world, in which there exists an
+        #  AlgorithmConfig that a) has-a user provided model config object and b)
+        #  is given a chance to compile a final model config (dict or object) that is
+        #  then passed into the RLModule/Catalog. This design would then match our
+        #  "compilation" pattern, where we compile automatically those settings that
+        #  should NOT be touched by the user.
+        #  In case, an Algorithm already uses the above described pattern (and has
+        #  `self.model` as a @property, ignore AttributeError (for trying to set this
+        #  property).
+        try:
+            self.model = copy.deepcopy(MODEL_DEFAULTS)
+        except AttributeError:
+            pass
+
         self.optimizer = {}
         self.max_requests_in_flight_per_sampler_worker = 2
         self._learner_class = None
@@ -462,6 +483,7 @@ class AlgorithmConfig(_Config):
         self.input_evaluation = DEPRECATED_VALUE
         self.policy_map_cache = DEPRECATED_VALUE
         self.worker_cls = DEPRECATED_VALUE
+        self.synchronize_filters = DEPRECATED_VALUE
 
         # The following values have moved because of the new ReplayBuffer API
         self.buffer_size = DEPRECATED_VALUE
@@ -477,9 +499,6 @@ class AlgorithmConfig(_Config):
         self.min_time_s_per_reporting = DEPRECATED_VALUE
         self.min_train_timesteps_per_reporting = DEPRECATED_VALUE
         self.min_sample_timesteps_per_reporting = DEPRECATED_VALUE
-        self.horizon = DEPRECATED_VALUE
-        self.soft_horizon = DEPRECATED_VALUE
-        self.no_done_at_end = DEPRECATED_VALUE
 
     def to_dict(self) -> AlgorithmConfigDict:
         """Converts all settings into a legacy config dict for backward compatibility.
@@ -719,31 +738,6 @@ class AlgorithmConfig(_Config):
         #  of themselves? This way, users won't even be able to alter those values
         #  directly anymore.
 
-    def _detect_atari_env(self) -> bool:
-        """Returns whether this configured env is an Atari env or not.
-
-        Returns:
-            True, if specified env is an Atari env, False otherwise.
-        """
-        # Atari envs are usually specified via a string like "PongNoFrameskip-v4"
-        # or "ALE/Breakout-v5".
-        # We do NOT attempt to auto-detect Atari env for other specified types like
-        # a callable, to avoid running heavy logics in validate().
-        # For these cases, users can explicitly set `environment(atari=True)`.
-        if not type(self.env) == str:
-            return False
-
-        try:
-            if self.env.startswith("ALE/"):
-                env = gym.make("GymV26Environment-v0", env_id=self.env)
-            else:
-                env = gym.make(self.env)
-        except gym.error.NameNotFound:
-            # Not an Atari env if this is not a gym env.
-            return False
-
-        return is_atari(env)
-
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     def validate(self) -> None:
         """Validates all values in this config."""
@@ -925,7 +919,7 @@ class AlgorithmConfig(_Config):
         if self.simple_optimizer is True:
             pass
         # Multi-GPU setting: Must use MultiGPUTrainOneStep.
-        elif self.num_gpus > 1:
+        elif not self._enable_learner_api and self.num_gpus > 1:
             # TODO: AlphaStar uses >1 GPUs differently (1 per policy actor), so this is
             #  ok for tf2 here.
             #  Remove this hacky check, once we have fully moved to the Learner API.
@@ -989,10 +983,6 @@ class AlgorithmConfig(_Config):
                     f"config.framework({self.framework_str})!"
                 )
 
-        # Detect if specified env is an Atari env.
-        if self.is_atari is None:
-            self.is_atari = self._detect_atari_env()
-
         if self.input_ == "sampler" and self.off_policy_estimation_methods:
             raise ValueError(
                 "Off-policy estimation methods can only be used if the input is a "
@@ -1036,6 +1026,30 @@ class AlgorithmConfig(_Config):
                         )
             else:
                 self.rl_module_spec = default_rl_module_spec
+
+            not_compatible_w_rlm_msg = (
+                "Cannot use `{}` option with RLModule API. `{"
+                "}` is part of the ModelV2 API and Policy API,"
+                " which are not compatible with the RLModule "
+                "API. You can either deactivate the RLModule "
+                "API by setting `config.rl_module( "
+                "_enable_rl_module_api=False)` and "
+                "`config.training(_enable_learner_api=False)` ,"
+                "or use the RLModule API and implement your "
+                "custom model as an RLModule."
+            )
+
+            if self.model["custom_model"] is not None:
+                raise ValueError(
+                    not_compatible_w_rlm_msg.format("custom_model", "custom_model")
+                )
+
+            if self.model["custom_model_config"] != {}:
+                raise ValueError(
+                    not_compatible_w_rlm_msg.format(
+                        "custom_model_config", "custom_model_config"
+                    )
+                )
 
             if self.exploration_config:
                 # This is not compatible with RLModules, which have a method
@@ -1157,7 +1171,7 @@ class AlgorithmConfig(_Config):
                 `num_gpus_per_learner_worker` accordingly (e.g. 4 GPUs total, and model
                 needs 2 GPUs: `num_learner_workers = 2` and
                 `num_gpus_per_learner_worker = 2`)
-            num_cpus_per_learner_worker: Number of CPUs allocated per trainer worker.
+            num_cpus_per_learner_worker: Number of CPUs allocated per Learner worker.
                 Only necessary for custom processing pipeline inside each Learner
                 requiring multiple CPU cores. Ignored if `num_learner_workers = 0`.
             num_gpus_per_learner_worker: Number of GPUs allocated per worker. If
@@ -1229,6 +1243,7 @@ class AlgorithmConfig(_Config):
         tf_session_args: Optional[Dict[str, Any]] = NotProvided,
         local_tf_session_args: Optional[Dict[str, Any]] = NotProvided,
         torch_compile_learner: Optional[bool] = NotProvided,
+        torch_compile_learner_what_to_compile: Optional[str] = NotProvided,
         torch_compile_learner_dynamo_mode: Optional[str] = NotProvided,
         torch_compile_learner_dynamo_backend: Optional[str] = NotProvided,
         torch_compile_worker: Optional[bool] = NotProvided,
@@ -1238,8 +1253,8 @@ class AlgorithmConfig(_Config):
         """Sets the config's DL framework settings.
 
         Args:
-            framework: tf: TensorFlow (static-graph); tf2: TensorFlow 2.x
-                (eager or traced, if eager_tracing=True); torch: PyTorch
+            framework: torch: PyTorch; tf2: TensorFlow 2.x (eager execution or traced
+                if eager_tracing=True); tf: TensorFlow (static-graph);
             eager_tracing: Enable tracing in eager mode. This greatly improves
                 performance (speedup ~2x), but makes it slightly harder to debug
                 since Python code won't be evaluated after the initial eager pass.
@@ -1255,8 +1270,12 @@ class AlgorithmConfig(_Config):
             local_tf_session_args: Override the following tf session args on the local
                 worker
             torch_compile_learner: If True, forward_train methods on TorchRLModules
-            on the learner are compiled. If not specified, the default is to compile
-            forward train on the learner.
+                on the learner are compiled. If not specified, the default is to compile
+                forward train on the learner.
+            torch_compile_learner_what_to_compile: A TorchCompileWhatToCompile
+                mode specifying what to compile on the learner side if
+                torch_compile_learner is True. See TorchCompileWhatToCompile for
+                details and advice on its usage.
             torch_compile_learner_dynamo_backend: The torch dynamo backend to use on
                 the learner.
             torch_compile_learner_dynamo_mode: The torch dynamo mode to use on the
@@ -1298,6 +1317,10 @@ class AlgorithmConfig(_Config):
             )
         if torch_compile_learner_dynamo_mode is not NotProvided:
             self.torch_compile_learner_dynamo_mode = torch_compile_learner_dynamo_mode
+        if torch_compile_learner_what_to_compile is not NotProvided:
+            self.torch_compile_learner_what_to_compile = (
+                torch_compile_learner_what_to_compile
+            )
         if torch_compile_worker is not NotProvided:
             self.torch_compile_worker = torch_compile_worker
         if torch_compile_worker_dynamo_backend is not NotProvided:
@@ -1326,6 +1349,7 @@ class AlgorithmConfig(_Config):
         disable_env_checking: Optional[bool] = NotProvided,
         is_atari: Optional[bool] = NotProvided,
         auto_wrap_old_gym_envs: Optional[bool] = NotProvided,
+        action_mask_key: Optional[str] = NotProvided,
     ) -> "AlgorithmConfig":
         """Sets the config's RL-environment settings.
 
@@ -1369,7 +1393,7 @@ class AlgorithmConfig(_Config):
             disable_env_checking: If True, disable the environment pre-checking module.
             is_atari: This config can be used to explicitly specify whether the env is
                 an Atari env or not. If not specified, RLlib will try to auto-detect
-                this during config validation.
+                this.
             auto_wrap_old_gym_envs: Whether to auto-wrap old gym environments (using
                 the pre 0.24 gym APIs, e.g. reset() returning single obs and no info
                 dict). If True, RLlib will automatically wrap the given gym env class
@@ -1377,6 +1401,9 @@ class AlgorithmConfig(_Config):
                 (gym.wrappers.EnvCompatibility). If False, RLlib will produce a
                 descriptive error on which steps to perform to upgrade to gymnasium
                 (or to switch this flag to True).
+             action_mask_key: If observation is a dictionary, expect the value by
+                the key `action_mask_key` to contain a valid actions mask (`numpy.int8`
+                array of zeros and ones). Defaults to "action_mask".
 
         Returns:
             This updated AlgorithmConfig object.
@@ -1406,9 +1433,11 @@ class AlgorithmConfig(_Config):
         if disable_env_checking is not NotProvided:
             self.disable_env_checking = disable_env_checking
         if is_atari is not NotProvided:
-            self.is_atari = is_atari
+            self._is_atari = is_atari
         if auto_wrap_old_gym_envs is not NotProvided:
             self.auto_wrap_old_gym_envs = auto_wrap_old_gym_envs
+        if action_mask_key is not NotProvided:
+            self.action_mask_key = action_mask_key
 
         return self
 
@@ -1422,6 +1451,8 @@ class AlgorithmConfig(_Config):
         sample_collector: Optional[Type[SampleCollector]] = NotProvided,
         sample_async: Optional[bool] = NotProvided,
         enable_connectors: Optional[bool] = NotProvided,
+        use_worker_filter_stats: Optional[bool] = NotProvided,
+        update_worker_filter_stats: Optional[bool] = NotProvided,
         rollout_fragment_length: Optional[Union[int, str]] = NotProvided,
         batch_mode: Optional[str] = NotProvided,
         remote_worker_envs: Optional[bool] = NotProvided,
@@ -1429,19 +1460,16 @@ class AlgorithmConfig(_Config):
         validate_workers_after_construction: Optional[bool] = NotProvided,
         preprocessor_pref: Optional[str] = NotProvided,
         observation_filter: Optional[str] = NotProvided,
-        synchronize_filter: Optional[bool] = NotProvided,
         compress_observations: Optional[bool] = NotProvided,
         enable_tf1_exec_eagerly: Optional[bool] = NotProvided,
         sampler_perf_stats_ema_coef: Optional[float] = NotProvided,
-        horizon=DEPRECATED_VALUE,
-        soft_horizon=DEPRECATED_VALUE,
-        no_done_at_end=DEPRECATED_VALUE,
         ignore_worker_failures=DEPRECATED_VALUE,
         recreate_failed_workers=DEPRECATED_VALUE,
         restart_failed_sub_environments=DEPRECATED_VALUE,
         num_consecutive_worker_failures_tolerance=DEPRECATED_VALUE,
         worker_health_probe_timeout_s=DEPRECATED_VALUE,
         worker_restore_timeout_s=DEPRECATED_VALUE,
+        synchronize_filter=DEPRECATED_VALUE,
     ) -> "AlgorithmConfig":
         """Sets the rollout worker configuration.
 
@@ -1470,6 +1498,14 @@ class AlgorithmConfig(_Config):
             enable_connectors: Use connector based environment runner, so that all
                 preprocessing of obs and postprocessing of actions are done in agent
                 and action connectors.
+            use_worker_filter_stats: Whether to use the workers in the WorkerSet to
+                update the central filters (held by the local worker). If False, stats
+                from the workers will not be used and discarded.
+            update_worker_filter_stats: Whether to push filter updates from the central
+                filters (held by the local worker) to the remote workers' filters.
+                Setting this to True might be useful within the evaluation config in
+                order to disable the usage of evaluation trajectories for synching
+                the central filter (used for training).
             rollout_fragment_length: Divide episodes into fragments of this many steps
                 each during rollouts. Trajectories of this size are collected from
                 rollout workers and combined into a larger batch of `train_batch_size`
@@ -1523,7 +1559,6 @@ class AlgorithmConfig(_Config):
                 environment.
             observation_filter: Element-wise observation filter, either "NoFilter"
                 or "MeanStdFilter".
-            synchronize_filter: Whether to synchronize the statistics of remote filters.
             compress_observations: Whether to LZ4 compress individual observations
                 in the SampleBatches collected during rollouts.
             enable_tf1_exec_eagerly: Explicitly tells the rollout worker to enable
@@ -1552,6 +1587,10 @@ class AlgorithmConfig(_Config):
             self.sample_async = sample_async
         if enable_connectors is not NotProvided:
             self.enable_connectors = enable_connectors
+        if use_worker_filter_stats is not NotProvided:
+            self.use_worker_filter_stats = use_worker_filter_stats
+        if update_worker_filter_stats is not NotProvided:
+            self.update_worker_filter_stats = update_worker_filter_stats
         if rollout_fragment_length is not NotProvided:
             self.rollout_fragment_length = rollout_fragment_length
         if batch_mode is not NotProvided:
@@ -1578,26 +1617,13 @@ class AlgorithmConfig(_Config):
             self.sampler_perf_stats_ema_coef = sampler_perf_stats_ema_coef
 
         # Deprecated settings.
-        if horizon != DEPRECATED_VALUE:
+        if synchronize_filter != DEPRECATED_VALUE:
             deprecation_warning(
-                old="AlgorithmConfig.rollouts(horizon=..)",
-                new="You should wrap your gymnasium.Env with a "
-                "gymnasium.wrappers.TimeLimit wrapper.",
-                error=True,
+                old="AlgorithmConfig.rollouts(synchronize_filter=..)",
+                new="AlgorithmConfig.rollouts(update_worker_filter_stats=..)",
+                error=False,
             )
-        if soft_horizon != DEPRECATED_VALUE:
-            deprecation_warning(
-                old="AlgorithmConfig.rollouts(soft_horizon=..)",
-                new="Your gymnasium.Env.step() should handle soft resets internally.",
-                error=True,
-            )
-        if no_done_at_end != DEPRECATED_VALUE:
-            deprecation_warning(
-                old="AlgorithmConfig.rollouts(no_done_at_end=..)",
-                new="Your gymnasium.Env.step() should return a truncated=True flag",
-                error=True,
-            )
-
+            self.update_worker_filter_stats = synchronize_filter
         if ignore_worker_failures != DEPRECATED_VALUE:
             deprecation_warning(
                 old="ignore_worker_failures is deprecated, and will soon be a no-op",
@@ -2151,7 +2177,7 @@ class AlgorithmConfig(_Config):
                 utility. For example, to override your learning rate and (PPO) lambda
                 setting just for a single RLModule with your MultiAgentRLModule, do:
                 config.multi_agent(algorithm_config_overrides_per_module={
-                    "module_1": PPOConfig.overrides(lr=0.0002, lambda_=0.75),
+                "module_1": PPOConfig.overrides(lr=0.0002, lambda_=0.75),
                 })
             policy_map_capacity: Keep this many policies in the "policy_map" (before
                 writing least-recently used ones to disk/S3).
@@ -2323,6 +2349,8 @@ class AlgorithmConfig(_Config):
                 In case there are more than this many episodes collected in a single
                 training iteration, use all of these episodes for metrics computation,
                 meaning don't ever cut any "excess" episodes.
+                Set this to 1 to disable smoothing and to always report only the most
+                recently collected episode's return.
             min_time_s_per_iteration: Minimum time to accumulate within a single
                 `train()` call. This value does not affect learning,
                 only the number of times `Algorithm.training_step()` is called by
@@ -2648,6 +2676,31 @@ class AlgorithmConfig(_Config):
         `.get_default_learner_class()` method.
         """
         return self._learner_class or self.get_default_learner_class()
+
+    @property
+    def is_atari(self) -> bool:
+        """True if if specified env is an Atari env."""
+
+        # Not yet determined, try to figure this out.
+        if self._is_atari is None:
+            # Atari envs are usually specified via a string like "PongNoFrameskip-v4"
+            # or "ALE/Breakout-v5".
+            # We do NOT attempt to auto-detect Atari env for other specified types like
+            # a callable, to avoid running heavy logics in validate().
+            # For these cases, users can explicitly set `environment(atari=True)`.
+            if not type(self.env) == str:
+                return False
+            try:
+                env = gym.make(self.env)
+            # Any gymnasium error -> Cannot be an Atari env.
+            except gym.error.Error:
+                return False
+
+            self._is_atari = is_atari(env)
+            # Clean up env's resources, if any.
+            env.close()
+
+        return self._is_atari
 
     # TODO: Make rollout_fragment_length as read-only property and replace the current
     #  self.rollout_fragment_length a private variable.
@@ -3055,7 +3108,6 @@ class AlgorithmConfig(_Config):
         )
 
         return TorchCompileConfig(
-            compile_forward_train=self.torch_compile_learner,
             torch_dynamo_backend=self.torch_compile_learner_dynamo_backend,
             torch_dynamo_mode=self.torch_compile_learner_dynamo_mode,
         )
@@ -3068,8 +3120,6 @@ class AlgorithmConfig(_Config):
         )
 
         return TorchCompileConfig(
-            compile_forward_exploration=self.torch_compile_worker,
-            compile_forward_inference=self.torch_compile_worker,
             torch_dynamo_backend=self.torch_compile_worker_dynamo_backend,
             torch_dynamo_mode=self.torch_compile_worker_dynamo_mode,
         )
@@ -3094,7 +3144,7 @@ class AlgorithmConfig(_Config):
 
         Returns:
             The Learner class to use for this algorithm either as a class type or as
-            a string (e.g. ray.rllib.core.learner.testing.torch.BCTrainer).
+            a string (e.g. ray.rllib.core.learner.testing.torch.BC).
         """
         raise NotImplementedError
 
@@ -3340,7 +3390,11 @@ class AlgorithmConfig(_Config):
         )
 
         if self.framework_str == "torch":
-            config.framework(torch_compile_cfg=self.get_torch_compile_learner_config())
+            config.framework(
+                torch_compile=self.torch_compile_learner,
+                torch_compile_cfg=self.get_torch_compile_learner_config(),
+                torch_compile_what_to_compile=self.torch_compile_learner_what_to_compile,  # noqa: E501
+            )
         elif self.framework_str == "tf2":
             config.framework(eager_tracing=self.eager_tracing)
 

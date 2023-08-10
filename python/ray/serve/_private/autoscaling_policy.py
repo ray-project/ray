@@ -3,7 +3,10 @@ import math
 from typing import List
 
 from ray.serve.config import AutoscalingConfig
-from ray.serve._private.constants import CONTROL_LOOP_PERIOD_S
+from ray.serve._private.constants import CONTROL_LOOP_PERIOD_S, SERVE_LOGGER_NAME
+import logging
+
+logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
 def calculate_desired_num_replicas(
@@ -133,7 +136,10 @@ class BasicAutoscalingPolicy(AutoscalingPolicy):
         if len(current_num_ongoing_requests) == 0:
             # When 0 replica and queries queued, scale up the replicas
             if current_handle_queued_queries > 0:
-                return max(1, curr_target_num_replicas)
+                return max(
+                    math.ceil(1 * self.config.smoothing_factor),
+                    curr_target_num_replicas,
+                )
             return curr_target_num_replicas
 
         decision_num_replicas = curr_target_num_replicas

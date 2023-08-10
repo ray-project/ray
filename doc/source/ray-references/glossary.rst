@@ -92,14 +92,14 @@ documentation, sorted alphabetically.
             4   4
 
         To learn more about batch formats, read
-        :ref:`Configuring batch formats <transform_datasets_batch_formats>`.
+        :ref:`Configuring batch formats <configure_batch_format>`.
 
     Batch size
         A batch size in the context of model training is the number of data points used
         to compute and apply one gradient update to the model weights.
 
     Batch predictor
-        A :ref:`Ray AIR Batch Predictor<air-predictors>` builds on the Predictor class
+        A :class:`Ray AIR Batch Predictor<ray.train.predictor.Predictor>` builds on the Predictor class
         to parallelize inference on a large dataset. A Batch predictor shards the
         dataset to allow multiple workers to do inference on a smaller number of data
         points and then aggregating all the worker predictions at the end.
@@ -122,7 +122,7 @@ documentation, sorted alphabetically.
         different AIR components and libraries. A Checkpoint can have its data
         represented as a directory on local (on-disk) storage, as a directory on an
         external storage (e.g., cloud storage), and as an in-memory dictionary.
-        :ref:`Learn more<air-checkpoint-ref>`,
+        :ref:`Learn more<checkpoint-api-ref>`,
 
         .. TODO: How does this relate to RLlib checkpoints etc.? Be clear here
 
@@ -413,7 +413,7 @@ documentation, sorted alphabetically.
     .. TODO: Policy evaluation
 
     Predictor
-        :ref:`An interface for performing inference<air-predictors>` (prediction)
+        :class:`An interface for performing inference<ray.train.predictor.Predictor>` (prediction)
         on input data with a trained model.
 
     Preprocessor
@@ -533,16 +533,19 @@ documentation, sorted alphabetically.
         used to combine multiple deployments into “deployment graphs.”
 
     Session
-        The session concept exists on several levels: The experiment execution layer
-        (called Tune Session) and the Data Parallel training layer (called Train
-        Session) if running data-parallel distributed training with Ray Train.
+        - A Ray Train/Tune session: Tune session at the experiment execution layer
+          and Train session at the Data Parallel training layer
+          if running data-parallel distributed training with Ray Train.
 
-        The session allows access to metadata such as which trial is being run,
-        information about the total number of workers as well as the rank of the
-        current worker. The session is also the interface through which an individual
-        Trainable can interact with the Tune experiment as a whole. This includes uses
-        such as reporting an individual trial’s metrics, saving/loading checkpoints,
-        and retrieving the corresponding dataset shards for each Train worker.
+          The session allows access to metadata, such as which trial is being run,
+          information about the total number of workers, as well as the rank of the
+          current worker. The session is also the interface through which an individual
+          Trainable can interact with the Tune experiment as a whole. This includes uses
+          such as reporting an individual trial’s metrics, saving/loading checkpoints,
+          and retrieving the corresponding dataset shards for each Train worker.
+
+        - A Ray cluster: in some cases the session also means a :term:`Ray Cluster`.
+          For example, logs of a Ray cluster are stored under ``session_xxx/logs/``.
 
     Spillback
         A task caller schedules a task by first sending a resource request to the
@@ -600,7 +603,7 @@ documentation, sorted alphabetically.
         (e.g., for sharing computed gradients).
 
     Trainer configuration
-        :ref:`A Trainer can be configured in various ways<train-config>`. Some
+        A Trainer can be configured in various ways. Some
         configurations are shared across all trainers, like the RunConfig, which
         configures things like the experiment storage, and ScalingConfig, which
         configures the number of training workers as well as resources needed per

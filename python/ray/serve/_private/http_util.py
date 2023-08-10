@@ -4,14 +4,16 @@ from dataclasses import dataclass
 import inspect
 import json
 import logging
-from typing import Any, Dict, List, Optional, Type
+import pickle
+from typing import Any, List, Optional, Type
 
+import starlette
 from fastapi.encoders import jsonable_encoder
-from starlette.requests import Request
-from starlette.types import Receive, Send, ASGIApp
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
 from uvicorn.config import Config
 from uvicorn.lifespan.on import LifespanOn
 
+from ray.actor import ActorHandle
 from ray.serve.exceptions import RayServeException
 from ray.serve._private.constants import SERVE_LOGGER_NAME
 
@@ -21,7 +23,7 @@ logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 @dataclass
 class HTTPRequestWrapper:
-    scope: Dict[Any, Any]
+    scope: Scope
     body: bytes
 
 
@@ -141,8 +143,9 @@ class RawASGIResponse(ASGIApp):
 
 
 class BufferedASGISender(Send):
-    """Implement the interface for ASGI sender to save data from varisous
-    asgi response type (fastapi, starlette, etc.)
+    """Implements the ASGI sender interface by buffering messages.
+
+    The messages can be built into an ASGI response.
     """
 
     def __init__(self) -> None:
@@ -156,8 +159,8 @@ class BufferedASGISender(Send):
         return RawASGIResponse(self.messages)
 
 
-class ASGIHTTPQueueSender(Send):
-    """ASGI sender that enables polling for the sent messages off a queue.
+class ASGIMessageQueue(Send):
+    """Queue enables polling for received or sent messages.
 
     This class assumes a single consumer of the queue (concurrent calls to
     `get_messages_nowait` and `wait_for_message` may result in undefined behavior).
@@ -167,12 +170,11 @@ class ASGIHTTPQueueSender(Send):
         self._message_queue = asyncio.Queue()
         self._new_message_event = asyncio.Event()
 
-    async def __call__(self, message: Dict[str, Any]):
-        assert message["type"] in ("http.response.start", "http.response.body")
+    async def __call__(self, message: Message):
         await self._message_queue.put(message)
         self._new_message_event.set()
 
-    def get_messages_nowait(self) -> List[Dict[str, Any]]:
+    def get_messages_nowait(self) -> List[Message]:
         """Returns all messages that are currently available (non-blocking).
 
         At least one message will be present if `wait_for_message` had previously
@@ -195,6 +197,64 @@ class ASGIHTTPQueueSender(Send):
         await self._new_message_event.wait()
 
 
+class ASGIReceiveProxy:
+    """Proxies ASGI receive from an actor.
+
+    The provided actor handle is expected to implement a single method:
+    `receive_asgi_messages`. It will be called repeatedly until a disconnect message
+    is received.
+    """
+
+    def __init__(
+        self,
+        request_id: str,
+        actor_handle: ActorHandle,
+    ):
+        self._queue = asyncio.Queue()
+        self._request_id = request_id
+        self._actor_handle = actor_handle
+        self._disconnect_message = None
+
+    async def fetch_until_disconnect(self):
+        """Fetch messages repeatedly until a disconnect message is received.
+
+        If a disconnect message is received, this function exits and returns it.
+
+        If an exception occurs, it will be raised on the next __call__ and no more
+        messages will be received.
+        """
+        while True:
+            try:
+                pickled_messages = (
+                    await self._actor_handle.receive_asgi_messages.remote(
+                        self._request_id
+                    )
+                )
+                for message in pickle.loads(pickled_messages):
+                    self._queue.put_nowait(message)
+
+                    if message["type"] in {"http.disconnect", "websocket.disconnect"}:
+                        self._disconnect_message = message
+                        return
+            except Exception as e:
+                self._queue.put_nowait(e)
+                return
+
+    async def __call__(self) -> Message:
+        """Return the next message once available.
+
+        This will repeatedly return a disconnect message once it's been received.
+        """
+        if self._queue.empty() and self._disconnect_message is not None:
+            return self._disconnect_message
+
+        message = await self._queue.get()
+        if isinstance(message, Exception):
+            raise message
+
+        return message
+
+
 def make_fastapi_class_based_view(fastapi_app, cls: Type) -> None:
     """Transform the `cls`'s methods and class annotations to FastAPI routes.
 
@@ -214,7 +274,7 @@ def make_fastapi_class_based_view(fastapi_app, cls: Type) -> None:
     """
     # Delayed import to prevent ciruclar imports in workers.
     from fastapi import Depends, APIRouter
-    from fastapi.routing import APIRoute
+    from fastapi.routing import APIRoute, APIWebSocketRoute
 
     def get_current_servable_instance():
         from ray import serve
@@ -226,8 +286,8 @@ def make_fastapi_class_based_view(fastapi_app, cls: Type) -> None:
         route
         for route in fastapi_app.routes
         if
-        # User defined routes must all be APIRoute.
-        isinstance(route, APIRoute)
+        # User defined routes must all be APIRoute or APIWebSocketRoute.
+        isinstance(route, (APIRoute, APIWebSocketRoute))
         # We want to find the route that's bound to the `cls`.
         # NOTE(simon): we can't use `route.endpoint in inspect.getmembers(cls)`
         # because the FastAPI supports different routes for the methods with
@@ -274,12 +334,12 @@ def make_fastapi_class_based_view(fastapi_app, cls: Type) -> None:
 
     routes_to_remove = list()
     for route in fastapi_app.routes:
-        if not isinstance(route, APIRoute):
+        if not isinstance(route, (APIRoute, APIWebSocketRoute)):
             continue
 
         # If there is a response model, FastAPI creates a copy of the fields.
         # But FastAPI creates the field incorrectly by missing the outer_type_.
-        if route.response_model:
+        if isinstance(route, APIRoute) and route.response_model:
             route.secure_cloned_response_field.outer_type_ = (
                 route.response_field.outer_type_
             )
@@ -340,30 +400,23 @@ class ASGIAppReplicaWrapper:
 
         with LoggingContext(self._serve_asgi_lifespan.logger, level=logging.WARNING):
             await self._serve_asgi_lifespan.startup()
+            if self._serve_asgi_lifespan.should_exit:
+                raise RuntimeError(
+                    "ASGI lifespan startup failed. Check replica logs for details."
+                )
 
     async def __call__(
-        self, request: Request, asgi_sender: Optional[Send] = None
+        self,
+        scope: Scope,
+        receive: Receive,
+        send: Send,
     ) -> Optional[ASGIApp]:
-        """Calls into the wrapped ASGI app.
-
-        If asgi_sender is provided, it's passed into the app and nothing is
-        returned.
-
-        If no asgi_sender is provided, an ASGI response is built and returned.
-        """
-        build_and_return_response = False
-        if asgi_sender is None:
-            asgi_sender = BufferedASGISender()
-            build_and_return_response = True
-
+        """Calls into the wrapped ASGI app."""
         await self._asgi_app(
-            request.scope,
-            request.receive,
-            asgi_sender,
+            scope,
+            receive,
+            send,
         )
-
-        if build_and_return_response:
-            return asgi_sender.build_asgi_response()
 
     # NOTE: __del__ must be async so that we can run ASGI shutdown
     # in the same event loop.
@@ -374,3 +427,32 @@ class ASGIAppReplicaWrapper:
 
         with LoggingContext(self._serve_asgi_lifespan.logger, level=logging.WARNING):
             await self._serve_asgi_lifespan.shutdown()
+
+
+def validate_http_proxy_callback_return(
+    middlewares: Any,
+) -> [starlette.middleware.Middleware]:
+    """Validate the return value of HTTP proxy callback.
+
+    Middlewares should be a list of Starlette middlewares. If it is None, we
+    will treat it as an empty list. If it is not a list, we will raise an
+    error. If it is a list, we will check if all the items in the list are
+    Starlette middlewares.
+    """
+
+    if middlewares is None:
+        middlewares = []
+    if not isinstance(middlewares, list):
+        raise ValueError(
+            "HTTP proxy callback must return a list of Starlette middlewares."
+        )
+    else:
+        # All middlewares must be Starlette middlewares.
+        # https://www.starlette.io/middleware/#using-pure-asgi-middleware
+        for middleware in middlewares:
+            if not issubclass(type(middleware), starlette.middleware.Middleware):
+                raise ValueError(
+                    "HTTP proxy callback must return a list of Starlette middlewares, "
+                    f"instead got {type(middleware)} type item in the list."
+                )
+    return middlewares

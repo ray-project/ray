@@ -52,10 +52,10 @@ def test_from_spark_e2e(enable_optimizer, spark):
     assert values == rows
 
     # Check that metadata fetch is included in stats.
-    assert "FromArrowRefs" in ds.stats()
-    # Underlying implementation uses `FromArrowRefs` operator
-    assert ds._plan._logical_plan.dag.name == "FromArrowRefs"
-    _check_usage_record(["FromArrowRefs"])
+    assert "FromArrow" in ds.stats()
+    # Underlying implementation uses `FromArrow` operator
+    assert ds._plan._logical_plan.dag.name == "FromArrow"
+    _check_usage_record(["FromArrow"])
 
 
 def test_raydp_to_torch_iter(spark):

@@ -9,8 +9,8 @@ from unittest.mock import patch
 import pytest
 
 import ray
-from ray import tune
-from ray.air import session, Checkpoint
+from ray import train, tune
+from ray.train import Checkpoint
 from ray.air._internal.remote_storage import (
     download_from_uri,
     upload_to_uri,
@@ -85,16 +85,14 @@ class SavingTrainable(tune.Trainable):
 
 
 def function_trainable_dict(config):
-    session.report(
-        {"metric": 2}, checkpoint=Checkpoint.from_dict({"checkpoint_data": 3})
-    )
+    train.report({"metric": 2}, checkpoint=Checkpoint.from_dict({"checkpoint_data": 3}))
 
 
 def function_trainable_directory(config):
     tmpdir = tempfile.mkdtemp("checkpoint_test")
     with open(os.path.join(tmpdir, "data.json"), "w") as f:
         json.dump({"checkpoint_data": 5}, f)
-    session.report({"metric": 4}, checkpoint=Checkpoint.from_directory(tmpdir))
+    train.report({"metric": 4}, checkpoint=Checkpoint.from_directory(tmpdir))
 
 
 @pytest.mark.parametrize("return_type", ["object", "root", "subdir", "checkpoint"])
@@ -264,7 +262,7 @@ def test_find_latest_checkpoint_local(tmpdir):
         "object",
         logger_creator=_logger,
         remote_checkpoint_dir=None,
-        sync_timeout=0.5,
+        sync_config=tune.SyncConfig(sync_timeout=0.5),
     )
     assert trainable._get_latest_local_available_checkpoint() is None
 
@@ -311,7 +309,7 @@ def test_find_latest_checkpoint_remote(tmpdir):
         "object",
         logger_creator=_logger,
         remote_checkpoint_dir=remote_uri,
-        sync_timeout=0.5,
+        sync_config=tune.SyncConfig(sync_timeout=0.5),
     )
     assert trainable._get_latest_remote_available_checkpoint() is None
 
@@ -370,7 +368,7 @@ def test_recover_from_latest(tmpdir, upload_uri, fetch_from_cloud):
         "object",
         logger_creator=_logger,
         remote_checkpoint_dir=remote_checkpoint_dir,
-        sync_timeout=0.5,
+        sync_config=tune.SyncConfig(sync_timeout=0.5),
     )
 
     assert trainable._get_latest_available_checkpoint() is None
@@ -398,7 +396,7 @@ def test_recover_from_latest(tmpdir, upload_uri, fetch_from_cloud):
         "object",
         logger_creator=_logger,
         remote_checkpoint_dir=remote_checkpoint_dir,
-        sync_timeout=0.5,
+        sync_config=tune.SyncConfig(sync_timeout=0.5),
     )
 
     if remote_checkpoint_dir and fetch_from_cloud:

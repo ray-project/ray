@@ -34,7 +34,7 @@ def test_from_arrow(ray_start_regular_shared):
     rows = [(r.one, r.two) for _, r in pd.concat([df1, df2]).iterrows()]
     assert values == rows
     # Check that metadata fetch is included in stats.
-    assert "FromArrowRefs" in ds.stats()
+    assert "FromArrow" in ds.stats()
 
     # test from single pyarrow table
     ds = ray.data.from_arrow(pa.Table.from_pandas(df1))
@@ -42,7 +42,7 @@ def test_from_arrow(ray_start_regular_shared):
     rows = [(r.one, r.two) for _, r in df1.iterrows()]
     assert values == rows
     # Check that metadata fetch is included in stats.
-    assert "FromArrowRefs" in ds.stats()
+    assert "FromArrow" in ds.stats()
 
 
 def test_from_arrow_refs(ray_start_regular_shared):
@@ -55,7 +55,7 @@ def test_from_arrow_refs(ray_start_regular_shared):
     rows = [(r.one, r.two) for _, r in pd.concat([df1, df2]).iterrows()]
     assert values == rows
     # Check that metadata fetch is included in stats.
-    assert "FromArrowRefs" in ds.stats()
+    assert "FromArrow" in ds.stats()
 
     # test from single pyarrow table ref
     ds = ray.data.from_arrow_refs(ray.put(pa.Table.from_pandas(df1)))
@@ -63,7 +63,7 @@ def test_from_arrow_refs(ray_start_regular_shared):
     rows = [(r.one, r.two) for _, r in df1.iterrows()]
     assert values == rows
     # Check that metadata fetch is included in stats.
-    assert "FromArrowRefs" in ds.stats()
+    assert "FromArrow" in ds.stats()
 
 
 def test_to_arrow_refs(ray_start_regular_shared):
@@ -116,8 +116,8 @@ def test_fsspec_filesystem(ray_start_regular_shared, tmp_path):
     ds._set_uuid("data")
     ds.write_parquet(out_path)
 
-    ds_df1 = pd.read_parquet(os.path.join(out_path, "data_000000.parquet"))
-    ds_df2 = pd.read_parquet(os.path.join(out_path, "data_000001.parquet"))
+    ds_df1 = pd.read_parquet(os.path.join(out_path, "data_000000_000000.parquet"))
+    ds_df2 = pd.read_parquet(os.path.join(out_path, "data_000001_000000.parquet"))
     ds_df = pd.concat([ds_df1, ds_df2])
     df = pd.concat([df1, df2])
     assert ds_df.equals(df)

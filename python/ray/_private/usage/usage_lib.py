@@ -60,9 +60,8 @@ import yaml
 import ray
 import ray._private.ray_constants as ray_constants
 import ray._private.usage.usage_constants as usage_constant
-from ray._private import gcs_utils
 from ray.experimental.internal_kv import _internal_kv_initialized, _internal_kv_put
-from ray.core.generated import usage_pb2
+from ray.core.generated import usage_pb2, gcs_pb2
 
 logger = logging.getLogger(__name__)
 TagKey = usage_pb2.TagKey
@@ -479,10 +478,10 @@ def get_total_num_running_jobs_to_report(gcs_client) -> Optional[int]:
     try:
         result = gcs_client.get_all_job_info()
         total_num_running_jobs = 0
-        for job_id, job_info in result.items():
-            if not job_info["is_dead"] and not job_info["config"][
-                "ray_namespace"
-            ].startswith("_ray_internal"):
+        for job_info in result.values():
+            if not job_info.is_dead and not job_info.config.ray_namespace.startswith(
+                "_ray_internal"
+            ):
                 total_num_running_jobs += 1
         return total_num_running_jobs
     except Exception as e:
@@ -496,7 +495,7 @@ def get_total_num_nodes_to_report(gcs_client, timeout=None) -> Optional[int]:
         result = gcs_client.get_all_node_info(timeout=timeout)
         total_num_nodes = 0
         for node_id, node_info in result.items():
-            if node_info["state"] == gcs_utils.GcsNodeInfo.GcsNodeState.ALIVE:
+            if node_info["state"] == gcs_pb2.GcsNodeInfo.GcsNodeState.ALIVE:
                 total_num_nodes += 1
         return total_num_nodes
     except Exception as e:

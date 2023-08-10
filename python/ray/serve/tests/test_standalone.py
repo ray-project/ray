@@ -359,6 +359,17 @@ def test_multiple_routers(ray_cluster):
     node_ids = ray._private.state.node_ids()
     assert len(node_ids) == 2
     serve.start(http_options=dict(port=8005, location="EveryNode"))
+
+    @serve.deployment(
+        num_replicas=2,
+        ray_actor_options={"num_cpus": 3},
+    )
+    class A:
+        def __call__(self, *args):
+            return "hi"
+
+    serve.run(A.bind())
+
     gcs_client = GcsClient(address=ray.get_runtime_context().gcs_address)
 
     def get_proxy_names():
@@ -398,10 +409,12 @@ def test_multiple_routers(ray_cluster):
 
     # Add a new node to the cluster. This should trigger a new router to get
     # started.
-    new_node = cluster.add_node()
+    new_node = cluster.add_node(num_cpus=4)
 
     wait_for_condition(lambda: len(get_proxy_names()) == 3)
     (third_proxy,) = set(get_proxy_names()) - set(original_proxy_names)
+
+    serve.run(A.options(num_replicas=3).bind())
 
     def get_third_actor():
         try:
@@ -588,7 +601,8 @@ def test_http_head_only(ray_cluster):
         "This test can only be ran when port sharing is supported."
     ),
 )
-def test_fixed_number_proxies(ray_cluster):
+def test_fixed_number_proxies(monkeypatch, ray_cluster):
+    monkeypatch.setenv("RAY_SERVE_PROXY_MIN_DRAINING_PERIOD_S", "1")
     cluster = ray_cluster
     head_node = cluster.add_node(num_cpus=4)
     cluster.add_node(num_cpus=4)
@@ -616,10 +630,21 @@ def test_fixed_number_proxies(ray_cluster):
         }
     )
 
+    @serve.deployment(
+        num_replicas=3,
+        ray_actor_options={"num_cpus": 3},
+    )
+    class A:
+        def __call__(self, *args):
+            return "hi"
+
+    serve.run(A.bind())
+
     # Only the controller and two http proxy should be started.
     controller_handle = get_global_client()._controller
-    node_to_http_actors = ray.get(controller_handle.get_http_proxies.remote())
-    assert len(node_to_http_actors) == 2
+    wait_for_condition(
+        lambda: len(ray.get(controller_handle.get_http_proxies.remote())) == 2
+    )
 
     proxy_names_bytes = ray.get(controller_handle.get_http_proxy_names.remote())
     proxy_names = ActorNameList.FromString(proxy_names_bytes)

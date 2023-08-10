@@ -1,9 +1,7 @@
-.. _air-examples-ref:
+:orphan:
 
-========
 Examples
 ========
-
 
 Framework-specific Examples
 ---------------------------
@@ -29,13 +27,12 @@ Text/NLP
 - :doc:`/ray-air/examples/gptj_batch_prediction`: How to use Ray AIR to do batch prediction with the Hugging Face Transformers GPT-J model.
 - :doc:`/ray-air/examples/gptj_serving`: How to use Ray AIR to do online serving with the Hugging Face Transformers GPT-J model.
 - :doc:`/ray-air/examples/dreambooth_finetuning`: How to fine-tune a DreamBooth text-to-image model with your own images.
-- :doc:`/ray-air/examples/opt_deepspeed_batch_inference`: How to run batch inference on a dataset of texts with a 30B OPT model.
 - :doc:`/ray-air/examples/dolly_lightning_fsdp_finetuning`: How to fine-tune a dolly-v2-7b model with Ray AIR LightningTrainer and FSDP.
 
 Image/CV
 --------
 
-- :doc:`/ray-air/examples/torch_image_example`
+- :doc:`/ray-air/computer-vision`
 - :doc:`/ray-air/examples/torch_detection`
 - :doc:`/ray-air/examples/stablediffusion_batch_prediction`: How to use Ray AIR to do batch prediction with the Stable Diffusion text-to-image model.
 
@@ -46,14 +43,6 @@ Logging & Observability
 - :doc:`/ray-air/examples/upload_to_wandb`: How to log results and upload models to Weights and Biases.
 
 .. _air-rl-examples-ref:
-
-RL (RLlib)
-----------
-
-- :doc:`/ray-air/examples/rl_serving_example`
-- :doc:`/ray-air/examples/rl_online_example`
-- :doc:`/ray-air/examples/rl_offline_example`
-
 
 Advanced
 --------

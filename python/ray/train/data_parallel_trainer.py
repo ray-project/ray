@@ -6,17 +6,18 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Tuple, Type, Un
 from ray._private.thirdparty.tabulate.tabulate import tabulate
 
 import ray
-from ray import tune
-from ray.air import session
+from ray import train, tune
 from ray.air.checkpoint import Checkpoint
 from ray.air._internal.checkpointing import add_preprocessor_to_checkpoint
 from ray.air.config import DatasetConfig, RunConfig, ScalingConfig, CheckpointConfig
-from ray.air.constants import MODEL_KEY, PREPROCESSOR_KEY
+from ray.air.constants import MODEL_KEY, PREPROCESSOR_KEY, LAZY_CHECKPOINT_MARKER_FILE
 from ray.air._internal.checkpoint_manager import _TrackedCheckpoint
 from ray.train import BackendConfig, TrainingIterator
+from ray.train._internal import session
 from ray.train._internal.backend_executor import BackendExecutor, TrialInfo
 from ray.train._internal.checkpoint import TuneCheckpointManager
-from ray.train.data_config import DataConfig, _LegacyDataConfigWrapper
+from ray.train._internal.data_config import DataConfig, _LegacyDataConfigWrapper
+from ray.train._internal.storage import _use_storage_context
 from ray.train._internal.utils import construct_train_func
 from ray.train.constants import TRAIN_DATASET_KEY, WILDCARD_KEY
 from ray.train.trainer import BaseTrainer, GenDataset
@@ -68,12 +69,12 @@ class DataParallelTrainer(BaseTrainer):
     The ``train_loop_per_worker`` function is expected to take in either 0 or 1
     arguments:
 
-    .. code-block:: python
+    .. testcode::
 
         def train_loop_per_worker():
             ...
 
-    .. code-block:: python
+    .. testcode::
 
         def train_loop_per_worker(config: Dict):
             ...
@@ -84,34 +85,36 @@ class DataParallelTrainer(BaseTrainer):
 
     If the ``datasets`` dict contains a training dataset (denoted by
     the "train" key), then it will be split into multiple dataset
-    shards that can then be accessed by ``session.get_dataset_shard("train")`` inside
+    shards that can then be accessed by ``train.get_dataset_shard("train")`` inside
     ``train_loop_per_worker``. All the other datasets will not be split and
-    ``session.get_dataset_shard(...)`` will return the the entire Dataset.
+    ``train.get_dataset_shard(...)`` will return the the entire Dataset.
 
     Inside the ``train_loop_per_worker`` function, you can use any of the
     :ref:`Ray AIR session methods <air-session-ref>`.
 
-    .. code-block:: python
+    .. testcode::
+
+        from ray import train
 
         def train_loop_per_worker():
             # Report intermediate results for callbacks or logging and
             # checkpoint data.
-            session.report(...)
+            train.report(...)
 
             # Returns dict of last saved checkpoint.
-            session.get_checkpoint()
+            train.get_checkpoint()
 
             # Returns the Dataset shard for the given key.
-            session.get_dataset_shard("my_dataset")
+            train.get_dataset_shard("my_dataset")
 
             # Returns the total number of workers executing training.
-            session.get_world_size()
+            train.get_context().get_world_size()
 
             # Returns the rank of this worker.
-            session.get_world_rank()
+            train.get_context().get_world_rank()
 
             # Returns the rank of the worker on the current node.
-            session.get_local_rank()
+            train.get_context().get_local_rank()
 
     Any returns from the ``train_loop_per_worker`` will be discarded and not
     used or persisted anywhere.
@@ -120,23 +123,33 @@ class DataParallelTrainer(BaseTrainer):
 
     Example:
 
-    .. code-block:: python
+    .. testcode::
 
         import ray
-        from ray.air import session
+        from ray import train
+        from ray.train import ScalingConfig
+        from ray.train.data_parallel_trainer import DataParallelTrainer
 
         def train_loop_for_worker():
-            dataset_shard_for_this_worker = session.get_dataset_shard("train")
+            dataset_shard_for_this_worker = train.get_dataset_shard("train")
 
-            assert len(dataset_shard_for_this_worker) == 1
+            # 3 items for 3 workers, each worker gets 1 item
+            batches = list(dataset_shard_for_this_worker.iter_batches(batch_size=1))
+            assert len(batches) == 1
 
         train_dataset = ray.data.from_items([1, 2, 3])
-        assert len(train_dataset) == 3
+        assert train_dataset.count() == 3
         trainer = DataParallelTrainer(
-            ray.air.config.ScalingConfig(num_workers=3),
+            train_loop_for_worker,
+            scaling_config=ScalingConfig(num_workers=3),
             datasets={"train": train_dataset},
         )
         result = trainer.fit()
+
+    .. testoutput::
+            :hide:
+
+            ...
 
     **How do I develop on top of DataParallelTrainer?**
 
@@ -159,7 +172,7 @@ class DataParallelTrainer(BaseTrainer):
 
     For 1, you can set a predefined training loop in __init__
 
-    .. code-block:: python
+    .. testcode::
 
         from ray.train.data_parallel_trainer import DataParallelTrainer
 
@@ -172,7 +185,7 @@ class DataParallelTrainer(BaseTrainer):
     For 2, you can implement the ``ray.train.Backend`` and ``ray.train.BackendConfig``
     interfaces.
 
-    .. code-block:: python
+    .. testcode::
 
         from dataclasses import dataclass
         from ray.train.backend import Backend, BackendConfig
@@ -417,7 +430,19 @@ class DataParallelTrainer(BaseTrainer):
         for results in training_iterator:
             # TODO(ml-team): add ability to report results from multiple workers.
             first_worker_results = results[0]
-            tune.report(**first_worker_results)
+            if _use_storage_context():
+                assert (
+                    isinstance(first_worker_results, tuple)
+                    and len(first_worker_results) == 2
+                )
+                metrics, checkpoint = first_worker_results
+                logger.debug(
+                    "Report (metrics, checkpoint) to the Tune session:\n"
+                    f"  metrics={metrics}\n  checkpoint={checkpoint}"
+                )
+                train.report(metrics, checkpoint=checkpoint)
+            else:
+                tune.report(**first_worker_results)
 
     def training_loop(self) -> None:
         scaling_config = self._validate_scaling_config(self.scaling_config)
@@ -451,12 +476,38 @@ class DataParallelTrainer(BaseTrainer):
             checkpoint_config=self.run_config.checkpoint_config,
         )
 
+        def clear_lazy_checkpoint_marker():
+            """Clears the stale lazy checkpointing marker on all worker nodes.
+
+            After recovery, the trainer may be scheduled on another node.
+            We should delete the marker files created earlier on each node to
+            Avoid converting checkpoints to string paths.
+
+            Please note that we need to clear the flag before the initialization
+            of the checkpoint_manager, during which it will create a new lazy
+            checkpointing marker file.
+            """
+
+            marker_file = Path(trial_info.logdir) / LAZY_CHECKPOINT_MARKER_FILE
+            if marker_file.exists():
+                logger.debug(
+                    f"Deleting the stale lazy checkpoint marker file: {marker_file}."
+                )
+                # Multiple workers on the same node may delete this file at the
+                # same time. Return if the marker file has been deleted.
+                # TODO(ml-team): replace this try-except block with `missing_ok=True`
+                # after we completely drop py37 support.
+                try:
+                    marker_file.unlink()
+                except FileNotFoundError:
+                    return
+
+        # Start the remote actors.
+        backend_executor.start(initialization_hook=clear_lazy_checkpoint_marker)
+
         checkpoint_manager = self._checkpoint_manager_cls(
             preprocessor=self.preprocessor
         )
-
-        # Start the remote actors.
-        backend_executor.start(initialization_hook=None)
 
         # Disable TrainingIterator's CheckpointManager from handling
         # checkpoints itself by setting num_to_keep to None.
@@ -476,7 +527,7 @@ class DataParallelTrainer(BaseTrainer):
             datasets=self.datasets,
             data_config=self._data_config,
             checkpoint_manager=checkpoint_manager,
-            checkpoint=self.resume_from_checkpoint,
+            checkpoint=self.starting_checkpoint,
             checkpoint_strategy=checkpoint_strategy,
             storage_path=self.run_config.storage_path,
         )
@@ -487,7 +538,7 @@ class DataParallelTrainer(BaseTrainer):
         backend_executor.shutdown()
 
     def get_dataset_config(self) -> DataConfig:
-        """Return a copy of this Trainer's final dataset configs.
+        """Returns a copy of this Trainer's final dataset configs.
 
         Returns:
             The merged default + user-supplied dataset config.
@@ -499,7 +550,7 @@ class DataParallelTrainer(BaseTrainer):
 
     @repr_with_fallback(["ipywidgets", "8"])
     def _repr_mimebundle_(self, **kwargs):
-        """Return a mimebundle with an ipywidget repr and a simple text repr.
+        """Returns a mimebundle with an ipywidget repr and a simple text repr.
 
         Depending on the frontend where the data is being displayed,
         different mimetypes will be used from this bundle.
@@ -605,7 +656,7 @@ class DataParallelTrainer(BaseTrainer):
 def _load_checkpoint_dict(
     checkpoint: Checkpoint, trainer_name: str
 ) -> Tuple[Any, Optional["Preprocessor"]]:
-    """Load a Ray Train Checkpoint (dict based).
+    """Loads a Ray Train Checkpoint (dict based).
 
     This is a private API.
 

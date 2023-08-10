@@ -49,10 +49,48 @@ enum TaskType {
   DRIVER_TASK = 3;
 }
 
+message LabelIn {
+  repeated string values = 1;
+}
+
+message LabelNotIn {
+  repeated string values = 1;
+}
+
+message LabelExists {}
+
+message LabelDoesNotExist {}
+
+message LabelOperator {
+  oneof label_operator {
+    LabelIn label_in = 1;
+    LabelNotIn label_not_in = 2;
+    LabelExists label_exists = 3;
+    LabelDoesNotExist label_does_not_exist = 4;
+  }
+}
+
+message LabelMatchExpression {
+  string key = 1;
+  LabelOperator operator = 2;
+}
+
+message LabelMatchExpressions {
+  repeated LabelMatchExpression expressions = 1;
+}
+
+message NodeLabelSchedulingStrategy {
+  // Required expressions to be satisfied
+  LabelMatchExpressions hard = 1;
+  // Preferred expressions to be satisfied
+  LabelMatchExpressions soft = 2;
+}
+
 message NodeAffinitySchedulingStrategy {
   bytes node_id = 1;
   bool soft = 2;
   bool spill_on_unavailable = 3;
+  bool fail_on_unavailable = 4;
 }
 
 message PlacementGroupSchedulingStrategy {
@@ -79,6 +117,7 @@ message SchedulingStrategy {
     // Best effort spread scheduling strategy.
     SpreadSchedulingStrategy spread_scheduling_strategy = 3;
     NodeAffinitySchedulingStrategy node_affinity_scheduling_strategy = 4;
+    NodeLabelSchedulingStrategy node_label_scheduling_strategy = 5;
   }
 }
 
@@ -205,6 +244,10 @@ enum ErrorType {
   OUT_OF_MEMORY = 22;
   // We use this error for failure due to node died unexpectedly.
   NODE_DIED = 23;
+  // This is a dummy object used to mark the end of a
+  // ray.StreamingObjectRefGenerator. It should never be returned directly to
+  // application code (instead raise StopIteration).
+  END_OF_STREAMING_GENERATOR = 24;
 }
 
 /// The information per ray error type.
@@ -340,6 +383,13 @@ message JobConfig {
   repeated string py_driver_sys_path = 8;
 }
 
+message StreamingGeneratorReturnIdInfo {
+  // The object ID of a streaming generator return.
+  bytes object_id = 1;
+  // Whether or not if the object is in plasma store.
+  bool is_plasma_object = 2;
+}
+
 /// The task specification encapsulates all immutable information about the
 /// task.
 message TaskSpec {
@@ -434,6 +484,9 @@ message TaskSpec {
   // The time that the task is given a lease, and sent to the executing core
   // worker.
   int64 lease_grant_timestamp_ms = 36;
+  // Number of return values from a completed streaming generator return.
+  // The value is set only when a task is completed once.
+  optional uint64 num_streaming_generator_returns = 37;
 }
 
 message TaskInfoEntry {
@@ -749,8 +802,7 @@ message ResourceAllocations {
 
 // Debug info returned from the core worker.
 message CoreWorkerStats {
-  // Debug string of the currently executing task.
-  string current_task_desc = 1;
+  reserved 1;
   // Number of pending normal and actor tasks.
   int32 num_pending_tasks = 2;
   // Number of object refs in local scope.
@@ -793,6 +845,10 @@ message CoreWorkerStats {
   int64 objects_total = 24;
   // Number of objects owned by the worker.
   int64 num_owned_objects = 25;
+  // Number of actors owned by the worker.
+  int64 num_owned_actors = 26;
+  // Number of running tasks
+  int64 num_running_tasks = 27;
 }
 
 // Resource usage reported by the node reporter.

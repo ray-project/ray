@@ -5,7 +5,7 @@
 | Summary | This template demonstrates how to parallelize the training of hundreds of time-series forecasting models with [Ray Tune](https://docs.ray.io/en/latest/tune/index.html). The template uses the `statsforecast` library to fit models to partitions of the M4 forecasting competition dataset. |
 | Time to Run | Around 5 minutes to train all models. |
 | Minimum Compute Requirements | No hard requirements. The default is 8 nodes with 8 CPUs each. |
-| Cluster Environment | This template uses the latest Anyscale-provided Ray ML image using Python 3.9: [`anyscale/ray-ml:2.4.0-py39-gpu`](https://docs.anyscale.com/reference/base-images/ray-240/py39#ray-ml-2-4-0-py39), with some extra requirements from `requirements.txt` installed on top. If you want to change to a different cluster environment, make sure that it is based off of this image and includes all packages listed in the `requirements.txt` file. |
+| Cluster Environment | This template uses the latest Anyscale-provided Ray ML image using Python 3.9: [`anyscale/ray-ml:latest-py39-gpu`](https://docs.anyscale.com/reference/base-images/overview), with some extra requirements from `requirements.txt` installed on top. If you want to change to a different cluster environment, make sure that it is based off of this image and includes all packages listed in the `requirements.txt` file. |
 
 ## Getting Started
 

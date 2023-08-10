@@ -26,13 +26,24 @@ void PushManager::StartPush(const NodeID &dest_id,
                             std::function<void(int64_t)> send_chunk_fn) {
   auto push_id = std::make_pair(dest_id, obj_id);
   RAY_CHECK(num_chunks > 0);
-  if (push_info_.contains(push_id)) {
+
+  auto it = push_info_.find(push_id);
+  if (it == push_info_.end()) {
+    chunks_remaining_ += num_chunks;
+    auto push_state = std::make_unique<PushState>(num_chunks, send_chunk_fn);
+    push_requests_with_chunks_to_send_.push_back(
+        std::make_pair(push_id, push_state.get()));
+    push_info_[push_id] = std::move(push_state);
+  } else {
     RAY_LOG(DEBUG) << "Duplicate push request " << push_id.first << ", " << push_id.second
                    << ", resending all the chunks.";
-    chunks_remaining_ += push_info_[push_id]->ResendAllChunks(send_chunk_fn);
-  } else {
-    chunks_remaining_ += num_chunks;
-    push_info_[push_id].reset(new PushState(num_chunks, send_chunk_fn));
+    if (it->second->NoChunksToSend()) {
+      // if all the chunks have been sent, the push request needs to be re-added to
+      // `push_requests_with_chunks_to_send_`.
+      push_requests_with_chunks_to_send_.push_back(
+          std::make_pair(push_id, it->second.get()));
+    }
+    chunks_remaining_ += it->second->ResendAllChunks(send_chunk_fn);
   }
   ScheduleRemainingPushes();
 }
@@ -57,9 +68,10 @@ void PushManager::ScheduleRemainingPushes() {
   // consider tracking the number of chunks active per-push and balancing those.
   while (chunks_in_flight_ < max_chunks_in_flight_ && keep_looping) {
     // Loop over each active push and try to send another chunk.
-    auto it = push_info_.begin();
+    auto it = push_requests_with_chunks_to_send_.begin();
     keep_looping = false;
-    while (it != push_info_.end() && chunks_in_flight_ < max_chunks_in_flight_) {
+    while (it != push_requests_with_chunks_to_send_.end() &&
+           chunks_in_flight_ < max_chunks_in_flight_) {
       auto push_id = it->first;
       auto &info = it->second;
       if (info->SendOneChunk()) {
@@ -71,7 +83,11 @@ void PushManager::ScheduleRemainingPushes() {
                        << " / " << max_chunks_in_flight_
                        << " max, remaining chunks: " << NumChunksRemaining();
       }
-      it++;
+      if (info->NoChunksToSend()) {
+        it = push_requests_with_chunks_to_send_.erase(it);
+      } else {
+        it++;
+      }
     }
   }
 }

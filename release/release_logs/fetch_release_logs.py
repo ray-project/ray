@@ -207,7 +207,6 @@ def main(version: str):
     build_dict_list = bk.builds().list_all_for_pipeline(
         organization=BUILDKITE_ORGANIZATION, pipeline=BUILDKITE_PIPELINE, branch=branch
     )
-
     fetched_results = get_results_from_build_collection(bk, build_dict_list)
     write_results(log_dir, fetched_results)
 

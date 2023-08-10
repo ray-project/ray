@@ -215,6 +215,23 @@ ObjectID TaskSpecification::ReturnId(size_t return_index) const {
   return ObjectID::FromIndex(TaskId(), return_index + 1);
 }
 
+size_t TaskSpecification::NumStreamingGeneratorReturns() const {
+  return message_->num_streaming_generator_returns();
+}
+
+ObjectID TaskSpecification::StreamingGeneratorReturnId(size_t generator_index) const {
+  // Streaming generator task has only 1 return ID.
+  RAY_CHECK_EQ(NumReturns(), 1UL);
+  RAY_CHECK_LT(generator_index, RayConfig::instance().max_num_generator_returns());
+  // index 1 is reserved for the first task return from a generator task itself.
+  return ObjectID::FromIndex(TaskId(), 2 + generator_index);
+}
+
+void TaskSpecification::SetNumStreamingGeneratorReturns(
+    uint64_t num_streaming_generator_returns) {
+  message_->set_num_streaming_generator_returns(num_streaming_generator_returns);
+}
+
 bool TaskSpecification::ReturnsDynamic() const { return message_->returns_dynamic(); }
 
 // TODO(sang): Merge this with ReturnsDynamic once migrating to the
@@ -378,6 +395,10 @@ TaskID TaskSpecification::CallerId() const {
 
 const rpc::Address &TaskSpecification::CallerAddress() const {
   return message_->caller_address();
+}
+
+bool TaskSpecification::ShouldRetryExceptions() const {
+  return message_->retry_exceptions();
 }
 
 WorkerID TaskSpecification::CallerWorkerId() const {

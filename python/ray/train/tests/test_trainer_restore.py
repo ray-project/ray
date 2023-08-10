@@ -3,17 +3,26 @@ import pytest
 import warnings
 
 import ray
-from ray import air
-from ray.air import Checkpoint, CheckpointConfig, RunConfig, ScalingConfig, session
+from ray import train
+from ray.train import (
+    Checkpoint,
+    CheckpointConfig,
+    RunConfig,
+    ScalingConfig,
+    FailureConfig,
+)
 from ray.air._internal.remote_storage import upload_to_uri
 from ray.train.base_trainer import BaseTrainer
+from ray.train.constants import LAZY_CHECKPOINT_MARKER_FILE
 from ray.train.trainer import TrainingFailedError
-from ray.train.data_parallel_trainer import DataParallelTrainer
-from ray.train.torch import TorchTrainer
+from ray.train.data_parallel_trainer import (
+    _DataParallelCheckpointManager,
+    DataParallelTrainer,
+)
+from ray.train.torch import TorchTrainer, TorchCheckpoint
 from ray.train.xgboost import XGBoostTrainer
 from ray.train.lightgbm import LightGBMTrainer
 from ray.train.huggingface import TransformersTrainer
-from ray.train.rl import RLTrainer
 from ray.tune import Callback
 from ray.data.preprocessors.batch_mapper import BatchMapper
 from ray.data.preprocessor import Preprocessor
@@ -42,12 +51,12 @@ class _TestSpecificError(RuntimeError):
 
 
 def _failing_train_fn(config):
-    checkpoint = session.get_checkpoint()
+    checkpoint = train.get_checkpoint()
     it = 1
     if checkpoint:
         it = checkpoint.to_dict()["it"] + 1
         print(f"\nLoading from checkpoint, which is at iteration {it}...\n")
-    session.report({"it": it}, checkpoint=Checkpoint.from_dict({"it": it}))
+    train.report({"it": it}, checkpoint=Checkpoint.from_dict({"it": it}))
     if it == 1:
         raise _TestSpecificError
 
@@ -80,7 +89,7 @@ def test_data_parallel_trainer_restore(ray_start_4_cpus, tmpdir):
         def train_fn(config):
             assert ray.get(obj_ref)["test"] == 1
             assert ray.get(config["obj_ref"])["test"] == 1
-            ds = session.get_dataset_shard("train")
+            ds = train.get_dataset_shard("train")
             assert (
                 sum([len(batch["feature"]) for batch in ds.iter_batches()])
                 == dataset_size // num_workers
@@ -220,33 +229,6 @@ def test_trainer_with_init_fn_restore(ray_start_4_cpus, tmpdir, trainer_cls):
     assert tmpdir / exp_name in result.log_dir.parents
 
 
-def test_rl_trainer_restore(ray_start_4_cpus, tmpdir):
-    """Tests restore for RL trainer. Same success criteria as above."""
-
-    trainer = RLTrainer(
-        algorithm="__fake",
-        config={
-            "rollout_fragment_length": 1,
-        },
-        run_config=RunConfig(
-            local_dir=str(tmpdir),
-            name="rl_trainer_restore",
-            checkpoint_config=CheckpointConfig(num_to_keep=1, checkpoint_frequency=1),
-            callbacks=[FailureInjectionCallback(num_iters=2)],
-            stop={"training_iteration": 5},
-        ),
-    )
-    with pytest.raises(TrainingFailedError):
-        result = trainer.fit()
-
-    trainer = RLTrainer.restore(str(tmpdir / "rl_trainer_restore"))
-    result = trainer.fit()
-    assert not result.error
-    assert result.metrics["training_iteration"] == 5
-    assert result.metrics["iterations_since_restore"] == 3
-    assert tmpdir / "rl_trainer_restore" in result.log_dir.parents
-
-
 def test_restore_with_datasets(ray_start_4_cpus, tmpdir):
     """Datasets are required to re-specify if they were originally provided."""
     datasets = {
@@ -255,7 +237,7 @@ def test_restore_with_datasets(ray_start_4_cpus, tmpdir):
     }
 
     trainer = DataParallelTrainer(
-        train_loop_per_worker=lambda config: session.report({"score": 1}),
+        train_loop_per_worker=lambda config: train.report({"score": 1}),
         datasets=datasets,
         scaling_config=ScalingConfig(num_workers=2),
         run_config=RunConfig(name="datasets_respecify_test", local_dir=tmpdir),
@@ -354,7 +336,7 @@ def test_obj_ref_in_preprocessor_udf(ray_start_4_cpus, tmpdir):
     preprocessor = create_preprocessor()
 
     def train_fn(config):
-        session.report({"score": 1})
+        train.report({"score": 1})
 
     datasets = {"train": ray.data.from_items([{"x": 1}])}
     trainer = DataParallelTrainer(
@@ -383,7 +365,7 @@ def test_restore_with_different_trainer(tmpdir):
     """Tests that an error is raised if trying to restore a XTrainer with
     `YTrainer.restore`"""
     trainer = DataParallelTrainer(
-        train_loop_per_worker=lambda config: session.report({"score": 1}),
+        train_loop_per_worker=lambda config: train.report({"score": 1}),
         scaling_config=ScalingConfig(num_workers=1),
         run_config=RunConfig(name="restore_with_diff_trainer", local_dir=tmpdir),
     )
@@ -439,7 +421,7 @@ def test_trainer_can_restore_utility(tmp_path, upload_dir):
     assert not DataParallelTrainer.can_restore(path)
 
     trainer = DataParallelTrainer(
-        train_loop_per_worker=lambda config: session.report({"score": 1}),
+        train_loop_per_worker=lambda config: train.report({"score": 1}),
         scaling_config=ScalingConfig(num_workers=1),
         run_config=RunConfig(name=name, local_dir=tmp_path),
     )
@@ -460,7 +442,7 @@ def test_retry_with_max_failures(ray_start_4_cpus, eventual_success):
     final_iter = 10
 
     def train_func():
-        ckpt = session.get_checkpoint()
+        ckpt = train.get_checkpoint()
         itr = 1
         restore_count = 0
         if ckpt:
@@ -469,7 +451,7 @@ def test_retry_with_max_failures(ray_start_4_cpus, eventual_success):
             restore_count = ckpt["restore_count"] + 1
 
         for i in range(itr, final_iter + 1):
-            session.report(
+            train.report(
                 dict(test=i, training_iteration=i),
                 checkpoint=Checkpoint.from_dict(
                     dict(iter=i, restore_count=restore_count)
@@ -482,7 +464,7 @@ def test_retry_with_max_failures(ray_start_4_cpus, eventual_success):
         train_func,
         scaling_config=ScalingConfig(num_workers=2),
         run_config=RunConfig(
-            failure_config=air.FailureConfig(max_failures=max_retries)
+            failure_config=train.FailureConfig(max_failures=max_retries)
         ),
     )
 
@@ -498,6 +480,38 @@ def test_retry_with_max_failures(ray_start_4_cpus, eventual_success):
         assert not result.error
         checkpoint = result.checkpoint.to_dict()
         assert checkpoint["iter"] == final_iter
+
+
+def test_clear_lazy_ckpt_markers(ray_start_4_cpus):
+    class PatchedTuneCheckpointManager(_DataParallelCheckpointManager):
+        def __init__(self, *args, **kwargs):
+            assert not Path(
+                train.get_context().get_trial_dir(), LAZY_CHECKPOINT_MARKER_FILE
+            ).exists(), "Stale lazy ckpt markers should have been removed!"
+            super().__init__(*args, **kwargs)
+
+    class DataParallelTrainerPatched(DataParallelTrainer):
+        _checkpoint_manager_cls = PatchedTuneCheckpointManager
+
+    def train_func():
+        # We should always have this lazy checkpoint marker in single node training
+        assert Path(
+            train.get_context().get_trial_dir(), LAZY_CHECKPOINT_MARKER_FILE
+        ).exists()
+
+        if not train.get_checkpoint():
+            train.report(
+                metrics={"a": 1}, checkpoint=TorchCheckpoint.from_dict({"a": 1})
+            )
+            raise RuntimeError
+
+    trainer = DataParallelTrainerPatched(
+        train_func,
+        scaling_config=ScalingConfig(num_workers=3, use_gpu=False),
+        run_config=RunConfig(failure_config=FailureConfig(max_failures=1)),
+    )
+
+    trainer.fit()
 
 
 if __name__ == "__main__":

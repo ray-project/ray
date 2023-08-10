@@ -23,7 +23,7 @@ Trainer Base Classes
 
     ~train.trainer.BaseTrainer
     ~train.data_parallel_trainer.DataParallelTrainer
-    ~train.data_config.DataConfig
+    ~train.DataConfig
     ~train.gbdt_trainer.GBDTTrainer
 
 ``BaseTrainer`` API
@@ -51,6 +51,45 @@ Train Backend Base Classes
 
     ~train.backend.Backend
     ~train.backend.BackendConfig
+
+Ray Train Config
+----------------
+
+.. autosummary::
+
+    ~ray.train.DataConfig
+
+.. _train-loop-api:
+
+Ray Train Loop
+--------------
+
+.. autosummary::
+    :toctree: doc/
+
+    ~train.context.TrainContext
+    ~train.get_context
+    ~train.get_dataset_shard
+    ~train.report
+
+
+Ray Train Checkpoints
+---------------------
+
+.. autosummary::
+    :toctree: doc/
+
+    ~train.Checkpoint
+
+
+Ray Train Context
+-----------------
+
+.. autosummary::
+    :toctree: doc/
+
+    ~train.get_context
+    ~train.context.TrainContext
 
 
 .. _train-integration-api:
@@ -190,16 +229,6 @@ Mosaic
     :toctree: doc/
 
     ~train.mosaic.MosaicTrainer
-
-
-Reinforcement Learning (RLlib)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. autosummary::
-    :toctree: doc/
-
-    ~train.rl.RLTrainer
-    ~train.rl.RLCheckpoint
 
 
 .. _trainer-restore:

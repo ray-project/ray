@@ -16,9 +16,11 @@
 
 #include <memory>
 
+#include "ray/common/constants.h"
 #include "ray/common/id.h"
 #include "ray/common/ray_config.h"
 #include "ray/common/task/task_spec.h"
+#include "src/ray/protobuf/autoscaler.pb.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
@@ -31,24 +33,26 @@ std::string GenErrorMessageFromDeathCause(const rpc::ActorDeathCause &death_caus
 
 /// Helper function to produce job table data (for newly created job or updated job).
 ///
-/// \param job_id The ID of job that need to be registered or updated.
+/// \param job_id The ID of job that needs to be registered or updated.
 /// \param is_dead Whether the driver of this job is dead.
-/// \param timestamp The UNIX timestamp of corresponding to this event.
-/// \param driver_ip_address IP address of the driver that started this job.
+/// \param timestamp The UNIX timestamp corresponding to this event.
+/// \param driver_address Address of the driver that started this job.
 /// \param driver_pid Process ID of the driver running this job.
-/// \param entrypoint The entrypoint name of the
+/// \param entrypoint The entrypoint name of the job.
+/// \param job_config The config of this job.
 /// \return The job table data created by this method.
 inline std::shared_ptr<ray::rpc::JobTableData> CreateJobTableData(
     const ray::JobID &job_id,
     bool is_dead,
-    const std::string &driver_ip_address,
+    const ray::rpc::Address &driver_address,
     int64_t driver_pid,
     const std::string &entrypoint,
     const ray::rpc::JobConfig &job_config = {}) {
   auto job_info_ptr = std::make_shared<ray::rpc::JobTableData>();
   job_info_ptr->set_job_id(job_id.Binary());
   job_info_ptr->set_is_dead(is_dead);
-  job_info_ptr->set_driver_ip_address(driver_ip_address);
+  *job_info_ptr->mutable_driver_address() = driver_address;
+  job_info_ptr->set_driver_ip_address(driver_address.ip_address());
   job_info_ptr->set_driver_pid(driver_pid);
   job_info_ptr->set_entrypoint(entrypoint);
   *job_info_ptr->mutable_config() = job_config;
@@ -335,6 +339,59 @@ inline void FillTaskStatusUpdateTime(const ray::rpc::TaskStatus &task_status,
     UNREACHABLE;
   }
   }
+}
+
+inline std::string FormatPlacementGroupLabelName(const std::string &pg_id) {
+  return kPlacementGroupConstraintKeyPrefix + pg_id;
+}
+
+/// \brief Format placement group details.
+///     Format:
+///        <pg_id>:<strategy>:<state>
+///
+/// \param pg_data
+/// \return
+inline std::string FormatPlacementGroupDetails(
+    const rpc::PlacementGroupTableData &pg_data) {
+  return PlacementGroupID::FromBinary(pg_data.placement_group_id()).Hex() + ":" +
+         rpc::PlacementStrategy_Name(pg_data.strategy()) + "|" +
+         rpc::PlacementGroupTableData::PlacementGroupState_Name(pg_data.state());
+}
+
+/// Generate a placement constraint for placement group.
+///
+/// \param pg_id The ID of placement group.
+/// \param strategy The placement strategy of placement group.
+/// \return The placement constraint for placement group if it's not a strict
+///   strategy, else absl::nullopt.
+inline absl::optional<rpc::autoscaler::PlacementConstraint>
+GenPlacementConstraintForPlacementGroup(const std::string &pg_id,
+                                        rpc::PlacementStrategy strategy) {
+  rpc::autoscaler::PlacementConstraint pg_constraint;
+  // We are embedding the PG id into the key for the same reasons as we do for
+  // dynamic labels (a node will have multiple PGs thus having a common PG key
+  // is not enough).
+  const std::string name = FormatPlacementGroupLabelName(pg_id);
+  switch (strategy) {
+  case rpc::PlacementStrategy::STRICT_SPREAD: {
+    pg_constraint.mutable_anti_affinity()->set_label_name(name);
+    pg_constraint.mutable_anti_affinity()->set_label_value("");
+    return pg_constraint;
+  }
+  case rpc::PlacementStrategy::STRICT_PACK: {
+    pg_constraint.mutable_affinity()->set_label_name(name);
+    pg_constraint.mutable_affinity()->set_label_value("");
+    return pg_constraint;
+  }
+  case rpc::PlacementStrategy::SPREAD:
+  case rpc::PlacementStrategy::PACK: {
+    return absl::nullopt;
+  }
+  default: {
+    RAY_LOG(ERROR) << "Encountered unexpected strategy type: " << strategy;
+  }
+  }
+  return absl::nullopt;
 }
 
 }  // namespace gcs

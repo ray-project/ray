@@ -42,14 +42,6 @@ At the end of these guides you will often find links to even more examples.
             How To Tune PyTorch Lightning Models
 
     .. grid-item-card::
-        :img-top: /images/mxnet_logo.png
-        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
-
-        .. button-ref:: tune-mxnet-example
-
-            How To Tune MXNet Models
-
-    .. grid-item-card::
         :img-top: /images/serve.svg
         :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
 

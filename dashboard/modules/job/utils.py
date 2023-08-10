@@ -1,6 +1,7 @@
 import dataclasses
 import logging
 import os
+import re
 import traceback
 from dataclasses import dataclass
 from typing import Iterator, List, Optional, Any, Dict, Tuple, Union
@@ -18,11 +19,8 @@ from ray._private import ray_constants
 from ray._private.gcs_utils import GcsAioClient
 from ray.dashboard.modules.job.common import (
     validate_request_type,
-    JOB_ACTOR_NAME_TEMPLATE,
-    SUPERVISOR_ACTOR_RAY_NAMESPACE,
     JobInfoStorageClient,
 )
-from ray.core.generated import gcs_service_pb2
 
 try:
     # package `pydantic` is not in ray's minimal dependencies
@@ -51,6 +49,15 @@ MAX_CHUNK_CHAR_LENGTH = 20000
 def strip_keys_with_value_none(d: Dict[str, Any]) -> Dict[str, Any]:
     """Strip keys with value None from a dictionary."""
     return {k: v for k, v in d.items() if v is not None}
+
+
+def redact_url_password(url: str) -> str:
+    """Redact any passwords in a URL."""
+    secret = re.findall("https?:\/\/.*:(.*)@.*", url)
+    if len(secret) > 0:
+        url = url.replace(f":{secret[0]}@", ":<redacted>@")
+
+    return url
 
 
 def file_tail_iterator(path: str) -> Iterator[Optional[List[str]]]:
@@ -151,11 +158,11 @@ async def get_driver_jobs(
     It's keyed by the submission job's submission id.
     Only the last driver of a submission job is returned.
     """
-    reply = await gcs_aio_client.get_all_job_info(timeout=timeout)
+    job_infos = await gcs_aio_client.get_all_job_info(timeout=timeout)
 
     jobs = {}
     submission_job_drivers = {}
-    for job_table_entry in reply.job_info_list:
+    for job_table_entry in job_infos.values():
         if job_table_entry.config.ray_namespace.startswith(
             ray_constants.RAY_INTERNAL_NAMESPACE_PREFIX
         ):
@@ -167,8 +174,8 @@ async def get_driver_jobs(
         if not job_submission_id:
             driver = DriverInfo(
                 id=job_id,
-                node_ip_address=job_table_entry.driver_ip_address,
-                pid=job_table_entry.driver_pid,
+                node_ip_address=job_table_entry.driver_address.ip_address,
+                pid=str(job_table_entry.driver_pid),
             )
             job = JobDetails(
                 job_id=job_id,
@@ -189,8 +196,8 @@ async def get_driver_jobs(
         else:
             driver = DriverInfo(
                 id=job_id,
-                node_ip_address=job_table_entry.driver_ip_address,
-                pid=job_table_entry.driver_pid,
+                node_ip_address=job_table_entry.driver_address.ip_address,
+                pid=str(job_table_entry.driver_pid),
             )
             submission_job_drivers[job_submission_id] = driver
 
@@ -238,13 +245,3 @@ async def find_job_by_ids(
         return job
 
     return None
-
-
-async def get_supervisor_actor_into(
-    gcs_aio_client: GcsAioClient, job_submission_id: str
-) -> gcs_service_pb2.GetNamedActorInfoReply:
-    actor_info = await gcs_aio_client.get_named_actor_info(
-        JOB_ACTOR_NAME_TEMPLATE.format(job_id=job_submission_id),
-        SUPERVISOR_ACTOR_RAY_NAMESPACE,
-    )
-    return actor_info
