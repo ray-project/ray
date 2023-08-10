@@ -140,31 +140,6 @@ class ClientCallImpl : public ClientCall {
   friend class ClientCallManager;
 };
 
-/// This class wraps a `ClientCall`, and is used as the `tag` of gRPC's `CompletionQueue`.
-///
-/// The lifecycle of a `ClientCallTag` is as follows.
-///
-/// When a client submits a new gRPC request, a new `ClientCallTag` object will be created
-/// by `ClientCallMangager::CreateCall`. Then the object will be used as the tag of
-/// `CompletionQueue`.
-///
-/// When the reply is received, `ClientCallMangager` will get the address of this object
-/// via `CompletionQueue`'s tag. And the manager should call
-/// `GetCall()->OnReplyReceived()` and then delete this object.
-class ClientCallTag {
- public:
-  /// Constructor.
-  ///
-  /// \param call A `ClientCall` that represents a request.
-  explicit ClientCallTag(std::shared_ptr<ClientCall> call) : call_(std::move(call)) {}
-
-  /// Get the wrapped `ClientCall`.
-  const std::shared_ptr<ClientCall> &GetCall() const { return call_; }
-
- private:
-  std::shared_ptr<ClientCall> call_;
-};
-
 /// Represents the generic signature of a `FooService::Stub::PrepareAsyncBar`
 /// function, where `Foo` is the service name and `Bar` is the rpc method name.
 ///
@@ -236,7 +211,7 @@ class ClientCallManager {
   ///
   /// \return A `ClientCall` representing the request that was just sent.
   template <class GrpcService, class Request, class Reply>
-  std::shared_ptr<ClientCall> CreateCall(
+  void CreateCall(
       typename GrpcService::Stub &stub,
       const PrepareAsyncFunction<GrpcService, Request, Reply> prepare_async_function,
       const Request &request,
@@ -248,7 +223,7 @@ class ClientCallManager {
       method_timeout_ms = call_timeout_ms_;
     }
 
-    auto call = std::make_shared<ClientCallImpl<Reply>>(
+    auto call = new ClientCallImpl<Reply>(
         callback, cluster_id_.load(), std::move(stats_handle), method_timeout_ms);
     // Send request.
     // Find the next completion queue to wait for response.
@@ -257,14 +232,7 @@ class ClientCallManager {
     call->response_reader_->StartCall();
     // Create a new tag object. This object will eventually be deleted in the
     // `ClientCallManager::PollEventsFromCompletionQueue` when reply is received.
-    //
-    // NOTE(chen): Unlike `ServerCall`, we can't directly use `ClientCall` as the tag.
-    // Because this function must return a `shared_ptr` to make sure the returned
-    // `ClientCall` is safe to use. But `response_reader_->Finish` only accepts a raw
-    // pointer.
-    auto tag = new ClientCallTag(call);
-    call->response_reader_->Finish(&call->reply_, &call->status_, (void *)tag);
-    return call;
+    call->response_reader_->Finish(&call->reply_, &call->status_, (void *)call);
   }
 
   void SetClusterId(const ClusterID &cluster_id) {
@@ -304,23 +272,21 @@ class ClientCallManager {
       } else if (status != grpc::CompletionQueue::TIMEOUT) {
         // NOTE: CompletionQueue::TIMEOUT and gRPC deadline exceeded are different.
         // If the client deadline is exceeded, event is obtained at this block.
-        auto tag = reinterpret_cast<ClientCallTag *>(got_tag);
-        // Refresh the tag.
-        got_tag = nullptr;
-        tag->GetCall()->SetReturnStatus();
-        std::shared_ptr<StatsHandle> stats_handle = tag->GetCall()->GetStatsHandle();
+        auto call = static_cast<ClientCall *>(got_tag);
+        call->SetReturnStatus();
+        std::shared_ptr<StatsHandle> stats_handle = call->GetStatsHandle();
         RAY_CHECK(stats_handle != nullptr);
         if (ok && !main_service_.stopped() && !shutdown_) {
           // Post the callback to the main event loop.
           main_service_.post(
-              [tag]() {
-                tag->GetCall()->OnReplyReceived();
+              [call]() {
+                call->OnReplyReceived();
                 // The call is finished, and we can delete this tag now.
-                delete tag;
+                delete call;
               },
               std::move(stats_handle));
         } else {
-          delete tag;
+          delete call;
         }
       }
     }
