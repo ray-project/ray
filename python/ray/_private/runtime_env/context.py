@@ -42,10 +42,12 @@ class RuntimeEnvContext:
 
     @staticmethod
     def deserialize(json_string):
+        # TODO(Beacon): remove these when we're done
         logger.debug(f"deserialize: {json.loads(json_string)}")
         return RuntimeEnvContext(**json.loads(json_string))
 
     def exec_worker(self, passthrough_args: List[str], language: Language):
+        # TODO(Beacon): remove these when we're done      
         logger.debug(f"Worker context env: {self.env_vars}")
         update_envs(self.env_vars)
 
