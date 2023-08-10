@@ -239,6 +239,8 @@ class TestSparkLocalCluster:
         head_resources = head_resources_list[0]
         assert head_resources.get("GPU", 0) == 2
 
+        shutdown_ray_cluster()
+
 
 if __name__ == "__main__":
     if os.environ.get("PARALLEL_CI"):

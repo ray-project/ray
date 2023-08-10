@@ -855,7 +855,7 @@ def setup_ray_cluster(
             "dev_shm_available_size * 0.8 / num_tasks_per_spark_worker".
             The default value equals to
             "0.3 * spark_worker_physical_memory * 0.8 / num_tasks_per_spark_worker".
-        object_store_memory_head_node: Object store memory available to Ray driver
+        object_store_memory_head_node: Object store memory available to Ray head
             node, but it is capped by "dev_shm_available_size * 0.8".
             The default value equals to
             "0.3 * spark_driver_physical_memory * 0.8".
