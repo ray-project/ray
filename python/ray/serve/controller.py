@@ -57,6 +57,7 @@ from ray.serve.schema import (
 from ray.serve._private.storage.kv_store import RayInternalKVStore
 from ray.serve._private.utils import (
     call_function_from_import_path,
+    get_all_live_placement_group_names,
     get_head_node_id,
     record_serve_tag,
 )
@@ -171,6 +172,7 @@ class ServeController:
             self.kv_store,
             self.long_poll_host,
             all_serve_actor_names,
+            get_all_live_placement_group_names(),
             self.cluster_node_info_cache,
         )
 
