@@ -32,6 +32,7 @@ from typing import (
     Generator,
     AsyncGenerator
 )
+from concurrent.futures import ThreadPoolExecutor
 
 from libc.stdint cimport (
     int32_t,
@@ -236,6 +237,9 @@ def async_thread_get_thread_for_cpp():
             )
         event_loop_thread_for_cpp.start()
     return event_loop_thread_for_cpp, event_loop_for_cpp
+
+
+tp = ThreadPoolExecutor(max_workers=int(os.getenv("RAY_ASYNC_THREAD_POOL_SIZE", 1)))
 
 
 # The currently executing task, if any. These are used to synchronize task
@@ -1201,25 +1205,36 @@ async def execute_streaming_generator_async(
     while True:
         try:
             output_or_exception = await gen.__anext__()
+        except StopAsyncIteration:
+            break
         except Exception as e:
             output_or_exception = e
 
-        # It is a new event loop thread to run cpp code.
-        _, event_loop_for_cpp = async_thread_get_thread_for_cpp()
+        # # It is a new event loop thread to run cpp code.
+        # _, event_loop_for_cpp = async_thread_get_thread_for_cpp()
 
-        async def f(output, context):
-            return report_streaming_generator_output(output, context)
+        # async def f(output, context):
+        #     return report_streaming_generator_output(output, context)
 
+        # # Run it in a separate thread to that we can
+        # # avoid blocking the event loop when serializing
+        # # the output (which has nogil).
+        # # NOTE(sang): Using threadpool executor causes memory leak
+        # # due to circular references for some reasons.
+        # future = asyncio.wrap_future(
+        #     asyncio.run_coroutine_threadsafe(
+        #         f(output_or_exception, context),
+        #         event_loop_for_cpp))
+        # done = await future
+        loop = asyncio.get_running_loop()
         # Run it in a separate thread to that we can
         # avoid blocking the event loop when serializing
         # the output (which has nogil).
-        # NOTE(sang): Using threadpool executor causes memory leak
-        # due to circular references for some reasons.
-        future = asyncio.wrap_future(
-            asyncio.run_coroutine_threadsafe(
-                f(output_or_exception, context),
-                event_loop_for_cpp))
-        done = await future
+        done = await loop.run_in_executor(
+            tp,
+            report_streaming_generator_output,
+            output_or_exception,
+            context)
         if done:
             break
 
