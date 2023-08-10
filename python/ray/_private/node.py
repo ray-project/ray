@@ -190,7 +190,7 @@ class Node:
 
         node_ip_address = ray_params.node_ip_address
         if connect_only:
-            self.wait_for_node_address()
+            self._wait_for_node_address()
         else:
             if node_ip_address is None:
                 node_ip_address = ray._private.services.resolve_ip_for_localhost(
@@ -933,7 +933,7 @@ class Node:
 
         return port
 
-    def wait_for_node_address(self):
+    def _wait_for_node_address(self, timeout_s=60):
         """Wait until the node_ip_address.json file is avialable.
 
         node_ip_address.json is created when a ray instance is started.
@@ -941,21 +941,21 @@ class Node:
         assert hasattr(self, "_session_dir")
         NODE_IP_FILE_NAME = "node_ip_address.json"
         file_path = Path(os.path.join(self.get_session_dir_path(), NODE_IP_FILE_NAME))
-        MAX_WAIT_S = 60
-        for i in range(MAX_WAIT_S):
+        for i in range(timeout_s):
             if file_path.exists():
                 break
 
             time.sleep(1)
             if i % 10 == 0:
                 logger.info(
-                    f"Can't find a `{NODE_IP_FILE_NAME}` file. "
+                    f"Can't find a `{NODE_IP_FILE_NAME}` file from "
+                    f"{file_path}."
                     "Have you started Ray instsance using "
                     "`ray start` or `ray.init`?"
                 )
             if i == MAX_WAIT_S:
                 raise ValueError(
-                    f"Can't find a `{NODE_IP_FILE_NAME}` file "
+                    f"Can't find a `{NODE_IP_FILE_NAME}` file from {file_path}"
                     f"for {MAX_WAIT_S} seconds"
                     "It means the ray instance hasn't started. "
                     "Did you do `ray start` or `ray.init` on this host?"
