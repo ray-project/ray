@@ -13,7 +13,6 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 from uvicorn.config import Config
 from uvicorn.lifespan.on import LifespanOn
 
-from ray.util import metrics
 from ray.actor import ActorHandle
 from ray.serve.exceptions import RayServeException
 from ray.serve._private.constants import SERVE_LOGGER_NAME
@@ -457,37 +456,3 @@ def validate_http_proxy_callback_return(
                     f"instead got {type(middleware)} type item in the list."
                 )
     return middlewares
-
-
-class GaugeSet:
-    """Set that tracks the number of items contained as in a Prometheus gauge.
-
-    The HTTPProxyActor's uvicorn server stores each connection in a set.
-    The HTTPProxyActor replaces that set with an instance of this class to
-    track the number of connections.
-
-    This class maintains a standard Python set, and it updates a Prometheus
-    gauge with the number of items contained in the set whenever the `add`,
-    `remove`, or `discard` methods are called.
-    """
-
-    def __init__(self, connection_gauge: metrics.Gauge):
-        self.connection_gauge = connection_gauge
-        self.internal_set = set()
-
-    def add(self, element: Any):
-        self.internal_set.add(element)
-        self.connection_gauge.set(len(self.internal_set))
-
-    def remove(self, element: Any):
-        self.internal_set.remove(element)
-        self.connection_gauge.set(len(self.internal_set))
-
-    def discard(self, element: Any):
-        self.internal_set.discard(element)
-        self.connection_gauge.set(len(self.internal_set))
-
-    def __getattr__(self, name):
-        """Offer set methods that aren't reimplemented in this class."""
-
-        return getattr(self.internal_set, name)
