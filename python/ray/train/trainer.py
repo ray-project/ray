@@ -18,7 +18,11 @@ from ray.train._internal.backend_executor import (
 from ray.train._internal.checkpoint import (
     CheckpointManager,
 )
-from ray.train._internal.session import TrainingResult, TrainingResultType
+from ray.train._internal.session import (
+    _TrainingResult,
+    TrainingResult,
+    TrainingResultType,
+)
 from ray.train._checkpoint import Checkpoint as NewCheckpoint
 
 # Ray Train should be usable even if Tune is not installed.
@@ -218,6 +222,13 @@ class TrainingIterator:
                 returns None.
         """
 
+        if _use_storage_context():
+            results = self._backend_executor.get_next_results()
+            if results is None:
+                return None
+            assert all(isinstance(result, _TrainingResult) for result in results)
+            return results
+
         while True:
             results = self._backend_executor.get_next_results()
             if results is None:
@@ -225,22 +236,12 @@ class TrainingIterator:
             first_result = results[0]
             result_type = first_result.type
             if result_type is TrainingResultType.REPORT:
-                if _use_storage_context():
-                    # TODO(justinvyu): Use the new _TrainingResult instead.
-                    result_data = [
-                        (r.data, None if rank > 0 else self._checkpoint_to_report)
-                        for rank, r in enumerate(results)
-                    ]
-                else:
-                    result_data = [r.data for r in results]
+                result_data = [r.data for r in results]
                 return result_data
             elif result_type is TrainingResultType.CHECKPOINT:
-                if _use_storage_context():
-                    self._process_checkpoint_results(results)
-                else:
-                    self._checkpoint_manager._process_checkpoints(
-                        results, decode_checkpoint_fn=self._backend._decode_data
-                    )
+                self._checkpoint_manager._process_checkpoints(
+                    results, decode_checkpoint_fn=self._backend._decode_data
+                )
 
                 # Note(jungong) : This is kinda funky. We update the cloud
                 # checkpoint dir on every distributed worker right after

@@ -82,9 +82,12 @@ class TrainingResult:
 class _TrainingResult:
     """A (checkpoint, metrics) result reported by the user."""
 
-    def __init__(self, checkpoint: Checkpoint, metrics: Dict[str, Any]):
+    def __init__(self, checkpoint: Optional[Checkpoint], metrics: Dict[str, Any]):
         self.checkpoint = checkpoint
         self.metrics = metrics
+
+    def __repr__(self) -> str:
+        return f"TrainingResult(checkpoint={self.checkpoint}, metrics={self.metrics})"
 
 
 # TODO(xwjiang): This needs a better name.
@@ -500,6 +503,28 @@ class _TrainSession:
         """
         self.legacy_checkpoint_uri = uri
 
+    def report_training_result(self, training_result: _TrainingResult) -> None:
+        if training_result.checkpoint:
+            # NOTE: This populates `train.get_checkpoint`
+            self.loaded_checkpoint = training_result.checkpoint
+
+            # NOTE: This is where the coordinator AND workers increment their
+            # checkpoint index.
+            self.storage.current_checkpoint_index += 1
+
+        # Add result to a thread-safe queue.
+        self.result_queue.put(training_result, block=True)
+
+        # Acquire lock to stop the training thread until main thread
+        # triggers resume.
+        self.continue_lock.acquire()
+
+        # If the trial should be terminated, exit gracefully.
+        if self.stop_event.is_set():
+            self.stop_event.clear()
+            print("\nEXITING THREAD FROM STOP EVENT!!\n")
+            sys.exit(0)
+
     def new_report(self, metrics: Dict, checkpoint=None) -> None:
         from ray.train._checkpoint import Checkpoint as NewCheckpoint
 
@@ -514,9 +539,6 @@ class _TrainSession:
             # Persist the reported checkpoint files to storage.
             persisted_checkpoint = self.storage.persist_current_checkpoint(checkpoint)
 
-            self.loaded_checkpoint = persisted_checkpoint
-            self.storage.current_checkpoint_index += 1
-
         metrics = self._auto_fill_metrics(metrics)
 
         result = _TrainingResult(
@@ -524,18 +546,7 @@ class _TrainSession:
             metrics=metrics,
         )
 
-        # Add result to a thread-safe queue.
-        self.result_queue.put(result, block=True)
-
-        # Acquire lock to stop the training thread until main thread
-        # triggers resume.
-        self.continue_lock.acquire()
-
-        # If the trial should be terminated, exit gracefully.
-        if self.stop_event.is_set():
-            self.stop_event.clear()
-            print("\nEXITING THREAD FROM STOP EVENT!!\n")
-            sys.exit(0)
+        self.report_training_result(result)
 
     def report(self, metrics: Dict, checkpoint: Optional[Checkpoint] = None) -> None:
         # TODO(xwjiang): tons of optimizations.

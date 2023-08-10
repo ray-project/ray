@@ -506,15 +506,17 @@ class BackendExecutor:
             else:
                 # Return None if all results are None.
                 return None
-        first_result = results[0]
-        result_type = first_result.type
-        if any(r.type != result_type for r in results):
-            raise RuntimeError(
-                "Some workers returned results with "
-                "different types. Make sure that "
-                "`session.report()` are called the "
-                "same number of times on all workers."
-            )
+
+        if not _use_storage_context():
+            first_result = results[0]
+            result_type = first_result.type
+            if any(r.type != result_type for r in results):
+                raise RuntimeError(
+                    "Some workers returned results with "
+                    "different types. Make sure that "
+                    "`session.report()` are called the "
+                    "same number of times on all workers."
+                )
 
         return results
 

@@ -14,6 +14,7 @@ from ray.air.constants import MODEL_KEY, PREPROCESSOR_KEY, LAZY_CHECKPOINT_MARKE
 from ray.air._internal.checkpoint_manager import _TrackedCheckpoint
 from ray.train import BackendConfig, TrainingIterator
 from ray.train._internal import session
+from ray.train._internal.session import _TrainingResult, get_session
 from ray.train._internal.backend_executor import BackendExecutor, TrialInfo
 from ray.train._internal.checkpoint import TuneCheckpointManager
 from ray.train._internal.data_config import DataConfig, _LegacyDataConfigWrapper
@@ -429,20 +430,17 @@ class DataParallelTrainer(BaseTrainer):
     def _report(self, training_iterator: TrainingIterator) -> None:
         for results in training_iterator:
             # TODO(ml-team): add ability to report results from multiple workers.
-            first_worker_results = results[0]
+            first_worker_result = results[0]
             if _use_storage_context():
-                assert (
-                    isinstance(first_worker_results, tuple)
-                    and len(first_worker_results) == 2
-                )
-                metrics, checkpoint = first_worker_results
+                assert isinstance(first_worker_result, _TrainingResult)
                 logger.debug(
                     "Report (metrics, checkpoint) to the Tune session:\n"
-                    f"  metrics={metrics}\n  checkpoint={checkpoint}"
+                    f"  metrics={first_worker_result.metrics}\n"
+                    f"  checkpoint={first_worker_result.checkpoint}"
                 )
-                train.report(metrics, checkpoint=checkpoint)
+                get_session().report_training_result(first_worker_result)
             else:
-                tune.report(**first_worker_results)
+                tune.report(**first_worker_result)
 
     def training_loop(self) -> None:
         scaling_config = self._validate_scaling_config(self.scaling_config)
