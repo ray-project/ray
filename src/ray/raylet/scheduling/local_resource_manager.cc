@@ -54,6 +54,7 @@ void LocalResourceManager::AddLocalResourceInstances(
 void LocalResourceManager::DeleteLocalResource(scheduling::ResourceID resource_id) {
   local_resources_.available.Remove(resource_id);
   local_resources_.total.Remove(resource_id);
+  resources_last_idle_time_.erase(resource_id);
   OnResourceOrStateChanged();
 }
 
@@ -280,13 +281,21 @@ std::vector<double> LocalResourceManager::SubtractResourceInstances(
       resource_instances_fp,
       local_resources_.available.GetMutable(resource_id),
       allow_going_negative);
+
+  // If there's any non 0 instance delta to be subtracted, the source should be marked as
+  // non-idle.
+  for (const auto &to_subtract_instance : resource_instances_fp) {
+    if (to_subtract_instance > 0) {
+      SetResourceNonIdle(resource_id);
+      break;
+    }
+  }
   OnResourceOrStateChanged();
 
   return FixedPointVectorToDouble(underflow);
 }
 
 void LocalResourceManager::SetResourceNonIdle(const scheduling::ResourceID &resource_id) {
-  // We o
   resources_last_idle_time_[resource_id] = absl::nullopt;
 }
 

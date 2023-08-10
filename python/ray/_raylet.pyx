@@ -129,8 +129,9 @@ from ray.includes.common cimport (
 )
 from ray.includes.unique_ids cimport (
     CActorID,
-    CObjectID,
+    CClusterID,
     CNodeID,
+    CObjectID,
     CPlacementGroupID,
     ObjectIDIndexType,
 )
@@ -2335,16 +2336,35 @@ cdef class GcsClient:
         shared_ptr[CPythonGcsClient] inner
         object address
         object _nums_reconnect_retry
+        CClusterID cluster_id
 
-    def __cinit__(self, address, nums_reconnect_retry=5):
+    def __cinit__(self, address, nums_reconnect_retry=5, cluster_id=None):
         cdef GcsClientOptions gcs_options = GcsClientOptions.from_gcs_address(address)
         self.inner.reset(new CPythonGcsClient(dereference(gcs_options.native())))
         self.address = address
         self._nums_reconnect_retry = nums_reconnect_retry
-        self._connect()
+        cdef c_string c_cluster_id
+        if cluster_id is None:
+            self.cluster_id = CClusterID.Nil()
+        else:
+            c_cluster_id = cluster_id
+            self.cluster_id = CClusterID.FromHex(c_cluster_id)
+        self._connect(5)
 
-    def _connect(self):
-        check_status(self.inner.get().Connect())
+    def _connect(self, timeout_s=None):
+        cdef:
+            int64_t timeout_ms = round(1000 * timeout_s) if timeout_s else -1
+            size_t num_retries = self._nums_reconnect_retry
+        with nogil:
+            status = self.inner.get().Connect(self.cluster_id, timeout_ms, num_retries)
+
+        check_status(status)
+        if self.cluster_id.IsNil():
+            self.cluster_id = self.inner.get().GetClusterId()
+            assert not self.cluster_id.IsNil()
+
+    def get_cluster_id(self):
+        return self.cluster_id.Hex().decode()
 
     @property
     def address(self):
@@ -2844,7 +2864,7 @@ cdef class CoreWorker:
                   node_ip_address, node_manager_port, raylet_ip_address,
                   local_mode, driver_name, stdout_file, stderr_file,
                   serialized_job_config, metrics_agent_port, runtime_env_hash,
-                  startup_token, session_name, entrypoint,
+                  startup_token, session_name, cluster_id, entrypoint,
                   worker_launch_time_ms, worker_launched_time_ms):
         self.is_local_mode = local_mode
 
@@ -2896,6 +2916,7 @@ cdef class CoreWorker:
         options.runtime_env_hash = runtime_env_hash
         options.startup_token = startup_token
         options.session_name = session_name
+        options.cluster_id = CClusterID.FromHex(cluster_id)
         options.entrypoint = entrypoint
         options.worker_launch_time_ms = worker_launch_time_ms
         options.worker_launched_time_ms = worker_launched_time_ms
@@ -4320,16 +4341,19 @@ cdef class CoreWorker:
         cdef:
             CObjectID c_generator_id = generator_id.native()
 
-        CCoreWorkerProcess.GetCoreWorker().DelObjectRefStream(c_generator_id)
+        with nogil:
+            CCoreWorkerProcess.GetCoreWorker().DelObjectRefStream(c_generator_id)
 
     def try_read_next_object_ref_stream(self, ObjectRef generator_id):
         cdef:
             CObjectID c_generator_id = generator_id.native()
             CObjectReference c_object_ref
 
-        check_status(
-            CCoreWorkerProcess.GetCoreWorker().TryReadObjectRefStream(
-                c_generator_id, &c_object_ref))
+        with nogil:
+            check_status(
+                CCoreWorkerProcess.GetCoreWorker().TryReadObjectRefStream(
+                    c_generator_id, &c_object_ref))
+
         return ObjectRef(
             c_object_ref.object_id(),
             c_object_ref.owner_address().SerializeAsString(),
@@ -4340,9 +4364,12 @@ cdef class CoreWorker:
     def peek_object_ref_stream(self, ObjectRef generator_id):
         cdef:
             CObjectID c_generator_id = generator_id.native()
-            CObjectReference c_object_ref = (
-                CCoreWorkerProcess.GetCoreWorker().PeekObjectRefStream(
-                    c_generator_id))
+            CObjectReference c_object_ref
+
+        with nogil:
+            c_object_ref = (
+                    CCoreWorkerProcess.GetCoreWorker().PeekObjectRefStream(
+                        c_generator_id))
 
         return ObjectRef(
             c_object_ref.object_id(),
