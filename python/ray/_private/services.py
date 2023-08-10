@@ -1357,6 +1357,7 @@ def start_raylet(
     node_manager_port: int,
     raylet_name: str,
     plasma_store_name: str,
+    cluster_id: str,
     worker_path: str,
     setup_worker_path: str,
     storage: str,
@@ -1538,6 +1539,7 @@ def start_raylet(
             f"--session-name={session_name}",
             f"--temp-dir={temp_dir}",
             f"--webui={webui}",
+            f"--cluster-id={cluster_id}",
         ]
     )
 
@@ -1643,6 +1645,7 @@ def start_raylet(
         f"--gcs-address={gcs_address}",
         f"--session-name={session_name}",
         f"--labels={labels_json_str}",
+        f"--cluster-id={cluster_id}",
     ]
 
     if is_head_node:
