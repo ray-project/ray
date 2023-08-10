@@ -209,8 +209,10 @@ class HTTPProxy:
 
     def __init__(
         self,
+        actor_name: str,
         controller_name: str,
         node_id: NodeId,
+        node_ip_address: str,
         request_timeout_s: Optional[float] = None,
     ):
         self.request_timeout_s = request_timeout_s
@@ -282,6 +284,7 @@ class HTTPProxy:
                 "application",
             ),
         )
+
         self.processing_latency_tracker = metrics.Histogram(
             "serve_http_request_latency_ms",
             description=(
@@ -295,6 +298,19 @@ class HTTPProxy:
                 "status_code",
             ),
         )
+
+        self.num_ongoing_requests_gauge = metrics.Gauge(
+            name="serve_num_ongoing_requests",
+            description="The number of ongoing requests in this HTTP Proxy.",
+            tag_keys=("actor_name", "node_id", "node_ip_address"),
+        ).set_default_tags(
+            {
+                "actor_name": actor_name,
+                "node_id": node_id,
+                "node_ip_address": node_ip_address,
+            }
+        )
+
         # `self._prevent_node_downscale_ref` is used to prevent the node from being
         # downscaled when there are ongoing requests
         self._prevent_node_downscale_ref = ray.put("prevent_node_downscale_object")
@@ -384,6 +400,7 @@ class HTTPProxy:
         alive while draining requests, so they are not dropped unintentionally.
         """
         self._ongoing_requests += 1
+        self.num_ongoing_requests_gauge.set(self._ongoing_requests)
 
     def _ongoing_requests_end(self):
         """Ongoing requests end.
@@ -392,6 +409,7 @@ class HTTPProxy:
         signaling that the node can be downscaled safely.
         """
         self._ongoing_requests -= 1
+        self.num_ongoing_requests_gauge.set(self._ongoing_requests)
 
     async def __call__(self, scope, receive, send):
         """Implements the ASGI protocol.
@@ -893,6 +911,7 @@ class HTTPProxyActor:
         port: int,
         root_path: str,
         controller_name: str,
+        actor_name: str,
         node_ip_address: str,
         node_id: NodeId,
         request_timeout_s: Optional[float] = None,
@@ -935,8 +954,10 @@ class HTTPProxyActor:
         self.setup_complete = asyncio.Event()
 
         self.app = HTTPProxy(
+            actor_name=actor_name,
             controller_name=controller_name,
             node_id=node_id,
+            node_ip_address=node_ip_address,
             request_timeout_s=(
                 request_timeout_s or RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S
             ),
