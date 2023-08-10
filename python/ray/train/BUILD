@@ -439,6 +439,14 @@ py_test(
 )
 
 py_test(
+    name = "test_torch_lightning_train",
+    size = "large",
+    srcs = ["tests/test_torch_lightning_train.py"],
+    tags = ["team:ml", "exclusive", "ray_air", "gpu", "ptl_v2"],
+    deps = [":train_lib"]
+)
+
+py_test(
     name = "test_minimal",
     size = "small",
     srcs = ["tests/test_minimal.py"],
@@ -647,7 +655,7 @@ py_test(
         "ray_air",
         "team:ml",
     ],
-    deps = [":train_lib"],
+    deps = [":train_lib", ":conftest"],
 )
 
 # This is a dummy test dependency that causes the above tests to be

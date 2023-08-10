@@ -4320,16 +4320,19 @@ cdef class CoreWorker:
         cdef:
             CObjectID c_generator_id = generator_id.native()
 
-        CCoreWorkerProcess.GetCoreWorker().DelObjectRefStream(c_generator_id)
+        with nogil:
+            CCoreWorkerProcess.GetCoreWorker().DelObjectRefStream(c_generator_id)
 
     def try_read_next_object_ref_stream(self, ObjectRef generator_id):
         cdef:
             CObjectID c_generator_id = generator_id.native()
             CObjectReference c_object_ref
 
-        check_status(
-            CCoreWorkerProcess.GetCoreWorker().TryReadObjectRefStream(
-                c_generator_id, &c_object_ref))
+        with nogil:
+            check_status(
+                CCoreWorkerProcess.GetCoreWorker().TryReadObjectRefStream(
+                    c_generator_id, &c_object_ref))
+
         return ObjectRef(
             c_object_ref.object_id(),
             c_object_ref.owner_address().SerializeAsString(),
@@ -4340,9 +4343,12 @@ cdef class CoreWorker:
     def peek_object_ref_stream(self, ObjectRef generator_id):
         cdef:
             CObjectID c_generator_id = generator_id.native()
-            CObjectReference c_object_ref = (
-                CCoreWorkerProcess.GetCoreWorker().PeekObjectRefStream(
-                    c_generator_id))
+            CObjectReference c_object_ref
+
+        with nogil:
+            c_object_ref = (
+                    CCoreWorkerProcess.GetCoreWorker().PeekObjectRefStream(
+                        c_generator_id))
 
         return ObjectRef(
             c_object_ref.object_id(),
