@@ -597,7 +597,7 @@ def list_at_uri(uri: str) -> List[str]:
 
     if not is_non_local_path_uri(uri):
         # Make sure local paths get expanded fully
-        bucket_path = os.path.abspath(os.path.expanduser(bucket_path))
+        bucket_path = Path(bucket_path).expanduser().absolute().as_posix()
 
     selector = pyarrow.fs.FileSelector(
         bucket_path, allow_not_found=True, recursive=False
