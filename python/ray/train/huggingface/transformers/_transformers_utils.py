@@ -275,7 +275,9 @@ def prepare_trainer(trainer: Trainer) -> Trainer:
 
         def get_train_dataloader(self):
             if isinstance(self.train_dataset, _IterableFromIterator):
-                return DataLoader(self.train_dataset, collate_fn=lambda x: x[0])
+                return DataLoader(
+                    self.train_dataset, batch_size=1, collate_fn=lambda x: x[0]
+                )
             else:
                 return super().get_train_dataloader()
 
@@ -286,7 +288,7 @@ def prepare_trainer(trainer: Trainer) -> Trainer:
                 eval_dataset = self.eval_dataset
 
             if isinstance(eval_dataset, _IterableFromIterator):
-                return DataLoader(eval_dataset, collate_fn=lambda x: x[0])
+                return DataLoader(eval_dataset, batch_size=1, collate_fn=lambda x: x[0])
             else:
                 return super().get_eval_dataloader(eval_dataset)
 
