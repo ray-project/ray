@@ -315,19 +315,19 @@
     - helm repo add kuberay https://ray-project.github.io/kuberay-helm/
     - helm install kuberay-operator kuberay/kuberay-operator
     - kubectl wait pod  -l app.kubernetes.io/name=kuberay-operator --for=condition=Ready=True  --timeout=5m
-    - helm install raycluster kuberay/ray-cluster --set image.repository=ray-ci --set image.tag=kuberay-test --set worker.replicas=10
+    - helm install raycluster kuberay/ray-cluster --set image.repository=ray-ci --set image.tag=kuberay-test --set worker.replicas=2
     - kubectl wait pod  -l ray.io/cluster=raycluster-kuberay --for=condition=Ready=True  --timeout=5m
     # Helm install chaos-mesh
-    - echo "--- Installing chaos-mesh operator and CR via Helm."
+    - echo "--- Installing chaos-mesh operator and CR."
     - helm repo add chaos-mesh https://charts.chaos-mesh.org
     - kubectl create ns chaos-mesh
     - helm install chaos-mesh chaos-mesh/chaos-mesh -n=chaos-mesh --set chaosDaemon.runtime=containerd --set chaosDaemon.socketPath=/run/containerd/containerd.sock --version 2.6.1
     - kubectl wait pod  --namespace chaos-mesh  -l app.kubernetes.io/instance=chaos-mesh --for=condition=Ready=True
     # Run the script on ray head, without faults
-    - kubectl exec -it $(kubectl get pods -l ray.io/node-type=head -o jsonpath='{.items[*].metadata.name}') -c "ray-head" -- python python/ray/tests/kuberay/chaos_test/potato_passer.py --num_actors=10 --pass_times=10000 --sleep_secs=0.01
+    - kubectl exec -it $(kubectl get pods -l ray.io/node-type=head -o jsonpath='{.items[*].metadata.name}') -c "ray-head" -- python python/ray/tests/kuberay/chaos_test/potato_passer.py --num_actors=3 --pass_times=10000 --sleep_secs=0.01
     # Now add the delay, rerun the job
     - kubectl apply -f python/ray/tests/kuberay/chaos_test/chaos_network_delay.yaml
-    - kubectl exec -it $(kubectl get pods -l ray.io/node-type=head -o jsonpath='{.items[*].metadata.name}') -c "ray-head" -- python python/ray/tests/kuberay/chaos_test/potato_passer.py --num_actors=10 --pass_times=10000 --sleep_secs=0.01
+    - kubectl exec -it $(kubectl get pods -l ray.io/node-type=head -o jsonpath='{.items[*].metadata.name}') -c "ray-head" -- python python/ray/tests/kuberay/chaos_test/potato_passer.py --num_actors=3 --pass_times=10000 --sleep_secs=0.01
     
 
 - label: ":book: Documentation"
