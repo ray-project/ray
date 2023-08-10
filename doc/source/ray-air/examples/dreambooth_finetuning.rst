@@ -216,8 +216,8 @@ Clone the Ray repository, go to the example directory, and install dependencies.
 .. code-block:: bash
 
    git clone https://github.com/ray-project/ray.git
-   cd ray/python/ray/air/examples/dreambooth
-   pip install -Ur requirements.txt
+   cd doc/source/templates/05_dreambooth_finetuning
+   pip install -Ur dreambooth/requirements.txt
 
 Prepare some directories and environment variables.
 
