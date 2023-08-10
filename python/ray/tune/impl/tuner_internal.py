@@ -457,7 +457,7 @@ class TunerInternal:
             Tuple of (downloaded from remote, local_dir)
         """
         if not is_non_local_path_uri(restore_path):
-            return False, os.path.abspath(os.path.expanduser(restore_path))
+            return False, Path(restore_path).expanduser().absolute().as_posix()
 
         tempdir = Path(tempfile.mkdtemp("tmp_experiment_dir"))
 
