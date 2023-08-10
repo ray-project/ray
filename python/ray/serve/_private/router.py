@@ -304,15 +304,18 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
     ):
         self._loop = event_loop
         self._deployment_name = deployment_name
+        self._self_node_id = self_node_id
 
         # Current replicas available to be scheduled.
         # Updated via `update_replicas`.
         self._replica_id_set: Set[str] = set()
         self._replicas: Dict[str, ReplicaWrapper] = {}
         self._replicas_updated_event = make_asyncio_event_version_compat(event_loop)
+        self._replica_ids_colocated_on_same_node: Set[str] = set()
         self._multiplexed_model_id_to_replica_ids: DefaultDict[Set[str]] = defaultdict(
             set
         )
+
         # When there is no match for a multiplexed model id, we will try to fallback
         # to all replicas immediately. This set is used to make sure we only fallback
         # once for concurrent requests for the same model id.
@@ -371,10 +374,13 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         """
         new_replicas = {}
         new_replica_id_set = set()
+        new_replica_ids_colocated_on_same_node = set()
         new_multiplexed_model_id_to_replica_ids = defaultdict(set)
         for r in replicas:
             new_replicas[r.replica_id] = r
             new_replica_id_set.add(r.replica_id)
+            if r.node_id == self._self_node_id:
+                new_replica_ids_colocated_on_same_node.add(r.replica_id)
             for model_id in r.multiplexed_model_ids:
                 new_multiplexed_model_id_to_replica_ids[model_id].add(r.replica_id)
 
@@ -387,6 +393,9 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
 
         self._replicas = new_replicas
         self._replica_id_set = new_replica_id_set
+        self._replica_ids_colocated_on_same_node = (
+            new_replica_ids_colocated_on_same_node
+        )
         self._multiplexed_model_id_to_replica_ids = (
             new_multiplexed_model_id_to_replica_ids
         )
@@ -443,6 +452,8 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
     ) -> AsyncGenerator[List[RunningReplicaInfo], None]:
         """Generator that repeatedly chooses (at most) two random replicas
         from `self._replicas`.
+
+        XXX: UPDATE THIS!
 
         For multiplexing, this will choose replicas that have the requested model ID.
         If there are no replicas with the requested model ID, it will choose from all
@@ -518,6 +529,11 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
                             get_from_all_replicas=True,
                         )
                     )
+            elif (
+                backoff_index == 0 and len(self._replica_ids_colocated_on_same_node) > 0
+            ):
+                # XXX: comment.
+                candidate_replica_ids = self._replica_ids_colocated_on_same_node
             else:
                 # non-multiplexed use case
                 candidate_replica_ids = self._replica_id_set
@@ -985,7 +1001,9 @@ class Router:
             )
         elif _use_new_routing:
             self._replica_scheduler = PowerOfTwoChoicesReplicaScheduler(
-                event_loop, deployment_name, self_node_id,
+                event_loop,
+                deployment_name,
+                self_node_id,
             )
         else:
             self._replica_scheduler = RoundRobinReplicaScheduler(event_loop)

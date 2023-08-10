@@ -16,6 +16,8 @@ from ray.serve._private.router import (
     RequestMetadata,
 )
 
+SCHEDULER_NODE_ID = "scheduler_node_id"
+
 
 class FakeReplicaWrapper(ReplicaWrapper):
     def __init__(
@@ -86,6 +88,7 @@ def pow_2_scheduler() -> PowerOfTwoChoicesReplicaScheduler:
     s = PowerOfTwoChoicesReplicaScheduler(
         get_or_create_event_loop(),
         "TEST_DEPLOYMENT",
+        SCHEDULER_NODE_ID,
     )
 
     # Update the RAY_SERVE_MULTIPLEXED_MODEL_ID_MATCHING_TIMEOUT_S
@@ -479,6 +482,43 @@ async def test_replica_responds_after_being_removed(pow_2_scheduler, fake_query)
     # Set the new replica to accept, it should be scheduled.
     r2.set_queue_state_response(0, accepted=True)
     assert (await task) == r2
+
+
+@pytest.mark.asyncio
+async def test_prefer_replica_on_same_node(pow_2_scheduler, fake_query):
+    """
+    Verify that the scheduler prefers replicas that are colocated on the same node ID
+    as itself. If the first candidate replicas on the same node reject the request,
+    it should fall back to all replicas.
+    """
+    s = pow_2_scheduler
+    loop = get_or_create_event_loop()
+
+    r1 = FakeReplicaWrapper("r1", node_id=SCHEDULER_NODE_ID)
+    print(r1.node_id)
+    r1.set_queue_state_response(0, accepted=True)
+    r2 = FakeReplicaWrapper("r2", node_id="some_other_node_in_the_stratosphere")
+    print(r2.node_id)
+    r2.set_queue_state_response(0, accepted=True)
+    s.update_replicas([r1, r2])
+
+    tasks = []
+    for _ in range(10):
+        tasks.append(loop.create_task(s.choose_replica_for_query(fake_query)))
+
+    # All requests should be scheduled to the replica on the same node if it accepts.
+    assert all(replica == r1 for replica in await asyncio.gather(*tasks))
+
+    # Update the replica on the same node to reject requests -- now requests should
+    # fall back to the other replica..
+    r1.set_queue_state_response(0, accepted=False)
+
+    tasks = []
+    for _ in range(10):
+        tasks.append(loop.create_task(s.choose_replica_for_query(fake_query)))
+
+    # All requests should be scheduled to the other replica.
+    assert all(replica == r2 for replica in await asyncio.gather(*tasks))
 
 
 @pytest.mark.asyncio
