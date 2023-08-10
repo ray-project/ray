@@ -339,9 +339,7 @@ class DataParallelTrainer(BaseTrainer):
             Union[Callable[[], None], Callable[[Dict], None]]
         ] = None,
         train_loop_config: Optional[Dict] = None,
-        datasets: Optional[Dict[str, GenDataset]] = None,
-        preprocessor: Optional["Preprocessor"] = None,
-        scaling_config: Optional[ScalingConfig] = None,
+        **kwargs,
     ) -> "DataParallelTrainer":
         """Restores a DataParallelTrainer from a previously interrupted/failed run.
 
@@ -367,9 +365,7 @@ class DataParallelTrainer(BaseTrainer):
             path=path,
             train_loop_per_worker=train_loop_per_worker,
             train_loop_config=train_loop_config,
-            datasets=datasets,
-            preprocessor=preprocessor,
-            scaling_config=scaling_config,
+            **kwargs,
         )
 
     def _validate_attributes(self):
