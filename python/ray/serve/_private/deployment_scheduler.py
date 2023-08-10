@@ -1,14 +1,18 @@
 import sys
-from typing import Callable, Dict, Tuple, List, Union, Set
+from typing import Callable, Dict, Tuple, List, Optional, Union, Set
 from dataclasses import dataclass
 from collections import defaultdict
 
 import ray
+from ray.util.scheduling_strategies import (
+    NodeAffinitySchedulingStrategy,
+    PlacementGroupSchedulingStrategy,
+)
+
 from ray.serve._private.utils import (
     get_head_node_id,
 )
 from ray.serve._private.cluster_node_info_cache import ClusterNodeInfoCache
-from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 
 class SpreadDeploymentSchedulingPolicy:
@@ -38,6 +42,10 @@ class ReplicaSchedulingRequest:
     actor_options: Dict
     actor_init_args: Tuple
     on_scheduled: Callable
+    # Placement group bundles and strategy *for this replica*.
+    # These are optional: by default replicas do not have a placement group.
+    placement_group_bundles: Optional[List[Dict[str, float]]] = None
+    placement_group_strategy: Optional[str] = None
 
 
 @dataclass
@@ -191,13 +199,36 @@ class DeploymentScheduler:
                 pending_replica_name
             ]
 
+            placement_group = None
+            if replica_scheduling_request.placement_group_bundles is not None:
+                strategy = (
+                    replica_scheduling_request.placement_group_strategy
+                    if replica_scheduling_request.placement_group_strategy
+                    else "PACK"
+                )
+                placement_group = ray.util.placement_group(
+                    replica_scheduling_request.placement_group_bundles,
+                    strategy=strategy,
+                    lifetime="detached",
+                    name=replica_scheduling_request.actor_options["name"],
+                )
+                scheduling_strategy = PlacementGroupSchedulingStrategy(
+                    placement_group=placement_group,
+                    placement_group_capture_child_tasks=True,
+                )
+            else:
+                scheduling_strategy = "SPREAD"
+
             actor_handle = replica_scheduling_request.actor_def.options(
-                scheduling_strategy="SPREAD",
+                scheduling_strategy=scheduling_strategy,
                 **replica_scheduling_request.actor_options,
             ).remote(*replica_scheduling_request.actor_init_args)
+
             del self._pending_replicas[deployment_name][pending_replica_name]
             self._launching_replicas[deployment_name][pending_replica_name] = None
-            replica_scheduling_request.on_scheduled(actor_handle)
+            replica_scheduling_request.on_scheduled(
+                actor_handle, placement_group=placement_group
+            )
 
     def _schedule_driver_deployment(self, deployment_name: str) -> None:
         if self._recovering_replicas[deployment_name]:
@@ -236,7 +267,7 @@ class DeploymentScheduler:
             self._launching_replicas[deployment_name][
                 pending_replica_name
             ] = target_node_id
-            replica_scheduling_request.on_scheduled(actor_handle)
+            replica_scheduling_request.on_scheduled(actor_handle, placement_group=None)
 
     def _get_replicas_to_stop(
         self, deployment_name: str, max_num_to_stop: int

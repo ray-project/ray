@@ -116,7 +116,7 @@ class TestDeploymentConfig:
 
 
 class TestReplicaConfig:
-    def test_replica_config_validation(self):
+    def test_basic_validation(self):
         class Class:
             pass
 
@@ -128,7 +128,10 @@ class TestReplicaConfig:
         with pytest.raises(TypeError):
             ReplicaConfig.create(Class())
 
-        # Check ray_actor_options validation.
+    def test_ray_actor_options_validation(self):
+        class Class:
+            pass
+
         ReplicaConfig.create(
             Class,
             tuple(),
@@ -185,6 +188,131 @@ class TestReplicaConfig:
         for option in disallowed_ray_actor_options:
             with pytest.raises(ValueError):
                 ReplicaConfig.create(Class, ray_actor_options={option: None})
+
+    def test_placement_group_options_validation(self):
+        class Class:
+            pass
+
+        # Specify placement_group_bundles without num_cpus or placement_group_strategy.
+        ReplicaConfig.create(
+            Class,
+            tuple(),
+            dict(),
+            placement_group_bundles=[{"CPU": 1.0}],
+        )
+
+        # Specify placement_group_bundles with integer value.
+        ReplicaConfig.create(
+            Class,
+            tuple(),
+            dict(),
+            placement_group_bundles=[{"CPU": 1}],
+        )
+
+        # Specify placement_group_bundles and placement_group_strategy.
+        ReplicaConfig.create(
+            Class,
+            tuple(),
+            dict(),
+            placement_group_bundles=[{"CPU": 1.0}],
+            placement_group_strategy="STRICT_PACK",
+        )
+
+        # Specify placement_group_bundles and placement_group_strategy and num_cpus.
+        ReplicaConfig.create(
+            Class,
+            tuple(),
+            dict(),
+            ray_actor_options={"num_cpus": 1},
+            placement_group_bundles=[{"CPU": 1.0}],
+            placement_group_strategy="STRICT_PACK",
+        )
+
+        # Invalid: placement_group_strategy without placement_group_bundles.
+        with pytest.raises(
+            ValueError, match="`placement_group_bundles` must also be provided"
+        ):
+            ReplicaConfig.create(
+                Class,
+                tuple(),
+                dict(),
+                placement_group_strategy="PACK",
+            )
+
+        # Invalid: unsupported placement_group_strategy.
+        with pytest.raises(
+            ValueError, match="Invalid placement group strategy 'FAKE_NEWS'"
+        ):
+            ReplicaConfig.create(
+                Class,
+                tuple(),
+                dict(),
+                placement_group_bundles=[{"CPU": 1.0}],
+                placement_group_strategy="FAKE_NEWS",
+            )
+
+        # Invalid: malformed placement_group_bundles.
+        with pytest.raises(
+            ValueError,
+            match=(
+                "`placement_group_bundles` must be a non-empty list "
+                "of resource dictionaries."
+            ),
+        ):
+            ReplicaConfig.create(
+                Class,
+                tuple(),
+                dict(),
+                placement_group_bundles=[{"CPU": "1.0"}],
+            )
+
+        # Invalid: replica actor does not fit in the first bundle (CPU).
+        with pytest.raises(
+            ValueError,
+            match=(
+                "the resource requirements for the actor must be a "
+                "subset of the first bundle."
+            ),
+        ):
+            ReplicaConfig.create(
+                Class,
+                tuple(),
+                dict(),
+                ray_actor_options={"num_cpus": 1},
+                placement_group_bundles=[{"CPU": 0.1}],
+            )
+
+        # Invalid: replica actor does not fit in the first bundle (CPU).
+        with pytest.raises(
+            ValueError,
+            match=(
+                "the resource requirements for the actor must be a "
+                "subset of the first bundle."
+            ),
+        ):
+            ReplicaConfig.create(
+                Class,
+                tuple(),
+                dict(),
+                ray_actor_options={"num_gpus": 1},
+                placement_group_bundles=[{"CPU": 1.0}],
+            )
+
+        # Invalid: replica actor does not fit in the first bundle (custom resource).
+        with pytest.raises(
+            ValueError,
+            match=(
+                "the resource requirements for the actor must be a "
+                "subset of the first bundle."
+            ),
+        ):
+            ReplicaConfig.create(
+                Class,
+                tuple(),
+                dict(),
+                ray_actor_options={"resources": {"custom": 1}},
+                placement_group_bundles=[{"CPU": 1}],
+            )
 
     def test_replica_config_lazy_deserialization(self):
         def f():
