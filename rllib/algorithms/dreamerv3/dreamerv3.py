@@ -502,8 +502,8 @@ class DreamerV3(Algorithm):
             ]
 
         # Summarize (single-agent) RLModule (only once) here.
-        #if self.config.framework_str == "tf2":
-        #    self.workers.local_worker().module.dreamer_model.summary(expand_nested=True)
+        if self.config.framework_str == "tf2":
+            self.workers.local_worker().module.dreamer_model.summary(expand_nested=True)
 
         # Create a replay buffer for storing actual env samples.
         self.replay_buffer = EpisodeReplayBuffer(
