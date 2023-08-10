@@ -327,9 +327,6 @@ class FileBasedDatasource(Datasource):
             if block.num_rows() == 0:
                 continue
 
-            if block_idx == 0:
-                filesystem = _wrap_s3_serialization_workaround(filesystem)
-
             fs = _unwrap_s3_serialization_workaround(filesystem)
 
             if self._WRITE_FILE_PER_ROW:
