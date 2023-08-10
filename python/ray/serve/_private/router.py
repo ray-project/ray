@@ -450,14 +450,16 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         self,
         request_metadata: Optional[RequestMetadata] = None,
     ) -> AsyncGenerator[List[RunningReplicaInfo], None]:
-        """Generator that repeatedly chooses (at most) two random replicas
-        from `self._replicas`.
+        """Generator that repeatedly chooses (at most) two random available replicas.
 
-        XXX: UPDATE THIS!
+        In the first iteration, only replicas colocated on the same node as this router
+        will be considered. If those are occupied, the full set of replicas will be
+        considered on subsequent iterations.
 
-        For multiplexing, this will choose replicas that have the requested model ID.
-        If there are no replicas with the requested model ID, it will choose from all
-        replicas.
+        For multiplexing, this will first attempt to choose replicas that have the
+        requested model ID for a configured timeout. If no replicas with the matching
+        model ID are available after that timeout, it will fall back to the regular
+        procedure.
 
         After each iteration, there will be an increasing backoff sleep time (dictated
         by `self.backoff_sequence_s`). The caller should exit the generator to reset the
@@ -532,10 +534,8 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
             elif (
                 backoff_index == 0 and len(self._replica_ids_colocated_on_same_node) > 0
             ):
-                # XXX: comment.
                 candidate_replica_ids = self._replica_ids_colocated_on_same_node
             else:
-                # non-multiplexed use case
                 candidate_replica_ids = self._replica_id_set
 
             if candidate_replica_ids:
