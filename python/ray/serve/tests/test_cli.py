@@ -729,8 +729,6 @@ def test_replica_placement_group_options(ray_start_stop):
             ["serve", "status", "-a", "http://localhost:52365/"]
         )
         status = yaml.safe_load(cli_output)["applications"]
-        # TODO(zcin): fix error handling in the application state manager for
-        # invalid override options and check for `DEPLOY_FAILED` here.
         assert (
             status["valid"]["status"] == "RUNNING"
             and status["invalid_bundles"]["status"] == "DEPLOY_FAILED"
