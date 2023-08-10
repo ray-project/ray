@@ -1919,14 +1919,12 @@ class DeploymentState:
             if len(pending_allocation) > 0:
                 required, available = pending_allocation[0].resource_requirements()
                 message = (
-                    f'Deployment "{self._name}" has '
-                    f"{len(pending_allocation)} replicas that have taken "
-                    f"more than {SLOW_STARTUP_WARNING_S}s to be scheduled. "
-                    f"This may be caused by waiting for the cluster to "
-                    f"auto-scale, or waiting for a runtime environment "
-                    f"to install. "
-                    f"Resources required for each replica: {required}, "
-                    f"resources available: {available}."
+                    f"Deployment '{self._name}' has {len(pending_allocation)} replicas "
+                    f"that have taken more than {SLOW_STARTUP_WARNING_S}s to be "
+                    "scheduled. This may be due to waiting for the cluster to "
+                    "auto-scale or for a runtime environment to be installed. "
+                    f"Resources required for each replica: {required}, total resources "
+                    f"available: {available}. Use `ray status` for more details."
                 )
                 logger.warning(message)
                 if _SCALING_LOG_ENABLED:
