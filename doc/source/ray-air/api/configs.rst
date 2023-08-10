@@ -7,7 +7,7 @@ Ray AIR Configurations
 .. currentmodule:: ray
 
 .. autosummary::
-    :toctree: doc/
+    :noindex:
 
     ~air.RunConfig
     ~air.ScalingConfig
