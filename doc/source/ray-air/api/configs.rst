@@ -7,12 +7,11 @@ Ray AIR Configurations
 .. currentmodule:: ray
 
 .. autosummary::
-    :noindex:
 
-    ~air.RunConfig
-    ~air.ScalingConfig
-    ~air.CheckpointConfig
-    ~air.FailureConfig
+    air.RunConfig
+    air.ScalingConfig
+    air.CheckpointConfig
+    air.FailureConfig
 
 .. autosummary::
 
