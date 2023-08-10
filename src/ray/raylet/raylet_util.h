@@ -20,18 +20,18 @@ namespace ray {
 namespace raylet {
 
 inline void ShutdownRayletGracefully() {
-    // Implementation note: When raylet is shutdown by ray stop, the CLI sends a
-    // sigterm. Raylet knows how to gracefully shutdown when it receives a sigterm. Here,
-    // we raise a sigterm to itself so that it can re-use the same graceful shutdown code
-    // path. The sigterm is handled in the entry point (raylet/main.cc)'s signal handler.
+  // Implementation note: When raylet is shutdown by ray stop, the CLI sends a
+  // sigterm. Raylet knows how to gracefully shutdown when it receives a sigterm. Here,
+  // we raise a sigterm to itself so that it can re-use the same graceful shutdown code
+  // path. The sigterm is handled in the entry point (raylet/main.cc)'s signal handler.
 
-    RAY_LOG(INFO) << "Sending SIGTERM to gracefully shutdown raylet";
-    // raise return 0 if succeeds. If it fails to gracefully shutdown, it kills itself
-    // forcefully.
-    RAY_CHECK_EQ(std::raise(SIGTERM), 0)
-        << "There was a failure while sending a sigterm to itself. Raylet will not "
-           "gracefully shutdown.";
+  RAY_LOG(INFO) << "Sending SIGTERM to gracefully shutdown raylet";
+  // raise return 0 if succeeds. If it fails to gracefully shutdown, it kills itself
+  // forcefully.
+  RAY_CHECK_EQ(std::raise(SIGTERM), 0)
+      << "There was a failure while sending a sigterm to itself. Raylet will not "
+         "gracefully shutdown.";
 }
 
-}
-}
+}  // namespace raylet
+}  // namespace ray
