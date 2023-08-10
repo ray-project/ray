@@ -3,6 +3,7 @@
 FROM ubuntu:20.04
 
 ENV DEBIAN_FRONTEND=noninteractive
+ENV PATH="/home/forge/.local/bin:${PATH}"
 
 RUN <<EOF
 #!/bin/bash
@@ -29,7 +30,12 @@ curl -fsSL https://deb.nodesource.com/setup_18.x | bash -
 
 apt-get update
 apt-get install -y \
-  awscli docker-ce-cli nodejs build-essential python-is-python3
+  awscli docker-ce-cli nodejs build-essential python-is-python3 \
+  python3-pip openjdk-8-jre wget jq
+
+# As a convention, we pin all python packages to a specific version. This
+# is to to make sure we can control version upgrades through code changes.
+python -m pip install pip==23.2.1
 
 # Needs to be synchronized to the host group id as we map /var/run/docker.sock
 # into the container.

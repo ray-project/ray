@@ -654,6 +654,7 @@ cc_library(
     ),
     hdrs = glob(
         [
+            "src/ray/raylet/raylet_util.h",
             "src/ray/raylet/scheduling/**/*.h",
             "src/ray/core_worker/common.h",
         ],
@@ -1011,6 +1012,17 @@ cc_test(
 cc_test(
     name = "concurrency_group_manager_test",
     srcs = ["src/ray/core_worker/test/concurrency_group_manager_test.cc"],
+    copts = COPTS,
+    tags = ["team:core"],
+    deps = [
+        ":core_worker_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "fiber_state_test",
+    srcs = ["src/ray/core_worker/test/fiber_state_test.cc"],
     copts = COPTS,
     tags = ["team:core"],
     deps = [
