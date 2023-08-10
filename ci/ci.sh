@@ -237,7 +237,6 @@ test_python() {
       -python/ray/tests:test_stress_sharded  # timeout
       -python/ray/tests:test_tracing  # tracing not enabled on windows
       -python/ray/tests:kuberay/test_autoscaling_e2e # irrelevant on windows
-      -python/ray/tests:kuberay/chaos_testing/test_chaos_network # irrelevant on windows
       -python/ray/tests/xgboost/... # Requires ML dependencies, should not be run on Windows
       -python/ray/tests/lightgbm/... # Requires ML dependencies, should not be run on Windows
       -python/ray/tests/horovod/... # Requires ML dependencies, should not be run on Windows
