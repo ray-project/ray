@@ -24,7 +24,7 @@ py_test(
     name = "test_storage",
     size = "small",
     srcs = ["tests/test_storage.py"],
-    tags = ["team:core"],
+    tags = ["team:core", "exclusive"],
     deps = ["//:ray_lib",],
 )
 
@@ -32,7 +32,7 @@ py_test(
     name = "test_config",
     size = "small",
     srcs = ["tests/test_config.py"],
-    tags = ["team:core"],
+    tags = ["team:core", "exclusive"],
     deps = [
         "//:ray_lib",
     ]
@@ -42,7 +42,7 @@ py_test(
     name = "test_node_provider",
     size = "small",
     srcs = ["tests/test_node_provider.py"],
-    tags = ["team:core"],
+    tags = ["team:core", "exclusive"],
     deps = ["//:ray_lib",],
 )
 
@@ -50,7 +50,7 @@ py_test(
     name = "test_ray_installer",
     size = "small",
     srcs = ["tests/test_ray_installer.py"],
-    tags = ["team:core"],
+    tags = ["team:core", "exclusive"],
     deps = ["//:ray_lib",],
 )
 
@@ -58,7 +58,7 @@ py_test(
     name = "test_instance_launcher",
     size = "small",
     srcs = ["tests/test_instance_launcher.py"],
-    tags = ["team:core"],
+    tags = ["team:core", "exclusive"],
     deps = ["//:ray_lib",],
 )
 
@@ -66,7 +66,7 @@ py_test(
     name = "test_reconciler",
     size = "small",
     srcs = ["tests/test_reconciler.py"],
-    tags = ["team:core"],
+    tags = ["team:core", "exclusive"],
     deps = ["//:ray_lib",],
 )
 
@@ -74,7 +74,7 @@ py_test(
     name = "test_threaded_ray_installer",
     size = "small",
     srcs = ["tests/test_threaded_ray_installer.py"],
-    tags = ["team:core"],
+    tags = ["team:core", "exclusive"],
     deps = ["//:ray_lib",],
 )
 
@@ -90,7 +90,7 @@ py_test(
     name = "test_utils",
     size = "small",
     srcs = ["tests/test_utils.py"],
-    tags = ["team:core"],
+    tags = ["team:core", "exclusive"],
     deps = ["//:ray_lib", ":conftest"],
 )
 
