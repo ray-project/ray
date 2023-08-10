@@ -1,9 +1,8 @@
 import abc
 from dataclasses import dataclass, field
 import functools
-from typing import Callable, Dict, List, Optional, Tuple, TYPE_CHECKING, Union
+from typing import Callable, List, Optional, Tuple, TYPE_CHECKING, Union
 
-import gymnasium as gym
 import numpy as np
 
 from ray.rllib.models.torch.misc import (
@@ -13,7 +12,6 @@ from ray.rllib.models.torch.misc import (
 )
 from ray.rllib.models.utils import get_activation_fn
 from ray.rllib.utils.annotations import ExperimentalAPI
-from ray.rllib.utils.typing import ViewRequirementsDict
 
 if TYPE_CHECKING:
     from ray.rllib.core.models.base import Model, Encoder
@@ -182,7 +180,9 @@ class MLPHeadConfig(_MLPConfig):
     See _MLPConfig for usage details.
 
     Example:
-    .. code-block:: python
+
+    .. testcode::
+
         # Configuration:
         config = MLPHeadConfig(
             input_dims=[4],  # must be 1D tensor
@@ -203,7 +203,9 @@ class MLPHeadConfig(_MLPConfig):
         # Linear(8, 2, bias=True)
 
     Example:
-    .. code-block:: python
+
+    .. testcode::
+
         # Configuration:
         config = MLPHeadConfig(
             input_dims=[2],
@@ -415,7 +417,7 @@ class CNNTransposeHeadConfig(ModelConfig):
             ],
             cnn_transpose_activation="silu",  # or "swish", which is the same
             cnn_transpose_use_layernorm=False,
-            use_bias=True,
+            cnn_use_bias=True,
         )
         model = config.build(framework="torch)
 
@@ -448,7 +450,7 @@ class CNNTransposeHeadConfig(ModelConfig):
             ],
             cnn_transpose_activation="relu",
             cnn_transpose_use_layernorm=True,
-            use_bias=False,
+            cnn_use_bias=False,
         )
         model = config.build(framework="torch)
 
@@ -549,7 +551,8 @@ class CNNEncoderConfig(ModelConfig):
 
     Example:
 
-    .. code-block:: python
+    .. testcode::
+
         # Configuration:
         config = CNNEncoderConfig(
             input_dims=[84, 84, 3],  # must be 3D tensor (image: w x h x C)
@@ -559,7 +562,7 @@ class CNNEncoderConfig(ModelConfig):
             ],
             cnn_activation="relu",
             cnn_use_layernorm=False,
-            use_bias=True,
+            cnn_use_bias=True,
         )
         model = config.build(framework="torch")
 
@@ -700,7 +703,7 @@ class MLPEncoderConfig(_MLPConfig):
     See _MLPConfig for usage details.
 
     Example:
-    .. code-block:: python
+    .. testcode::
         # Configuration:
         config = MLPEncoderConfig(
             input_dims=[4],  # must be 1D tensor
@@ -716,7 +719,7 @@ class MLPEncoderConfig(_MLPConfig):
         # ReLU()
 
     Example:
-    .. code-block:: python
+    .. testcode::
         # Configuration:
         config = MLPEncoderConfig(
             input_dims=[2],
@@ -760,9 +763,30 @@ class MLPEncoderConfig(_MLPConfig):
 class RecurrentEncoderConfig(ModelConfig):
     """Configuration for an LSTM-based or a GRU-based encoder.
 
-    The encoder consists of N LSTM/GRU layers stacked on top of each other and feeding
-    their outputs as inputs to the respective next layer. The internal state is
-    structued as (num_layers, B, hidden-size) for all hidden state components, e.g.
+    The encoder consists of...
+    - Zero or one tokenizers
+    - N LSTM/GRU layers stacked on top of each other and feeding
+    their outputs as inputs to the respective next layer.
+    - One linear output layer
+
+    This makes for the following flow of tensors:
+
+    Inputs
+    |
+    [Tokenizer if present]
+    |
+    LSTM layer 1
+    |
+    (...)
+    |
+    LSTM layer n
+    |
+    Linear output layer
+    |
+    Outputs
+
+    The internal state is structued as (num_layers, B, hidden-size) for all hidden
+    state components, e.g.
     h- and c-states of the LSTM layer(s) or h-state of the GRU layer(s).
     For example, the hidden states of an LSTMEncoder with num_layers=2 and hidden_dim=8
     would be: {"h": (2, B, 8), "c": (2, B, 8)}.
@@ -771,7 +795,7 @@ class RecurrentEncoderConfig(ModelConfig):
     the `hidden_dims` value.
 
     Example:
-    .. code-block:: python
+    .. testcode::
         # Configuration:
         config = RecurrentEncoderConfig(
             recurrent_layer_type="lstm",
@@ -790,7 +814,7 @@ class RecurrentEncoderConfig(ModelConfig):
         # (2, B, 128) for each c- and h-states.
 
     Example:
-    .. code-block:: python
+    .. testcode::
         # Configuration:
         config = RecurrentEncoderConfig(
             recurrent_layer_type="gru",
@@ -821,9 +845,9 @@ class RecurrentEncoderConfig(ModelConfig):
         view_requirements_dict: The view requirements to use if anything else than
             observation_space or action_space is to be encoded. This signifies an
             advanced use case.
-        get_tokenizer_config: A callable that takes a gym.Space and a dict and
-            returns a ModelConfig to build tokenizers for observations, actions and
-            other spaces that might be present in the view_requirements_dict.
+        tokenizer_config: A ModelConfig to build tokenizers for observations,
+            actions and other spaces that might be present in the
+            view_requirements_dict.
     """
 
     recurrent_layer_type: str = "lstm"
@@ -831,8 +855,7 @@ class RecurrentEncoderConfig(ModelConfig):
     num_layers: int = None
     batch_major: bool = True
     use_bias: bool = True
-    view_requirements_dict: ViewRequirementsDict = None
-    get_tokenizer_config: Callable[[gym.Space, Dict], ModelConfig] = None
+    tokenizer_config: ModelConfig = None
 
     @property
     def output_dims(self):
@@ -859,17 +882,6 @@ class RecurrentEncoderConfig(ModelConfig):
 
     @_framework_implemented()
     def build(self, framework: str = "torch") -> "Encoder":
-        if (
-            self.get_tokenizer_config is not None
-            or self.view_requirements_dict is not None
-        ):
-            raise NotImplementedError(
-                "RecurrentEncoderConfig does not support configuring Models that "
-                "encode depending on view_requirements or have a custom tokenizer. "
-                "Therefore, this config expects `view_requirements_dict=None` and "
-                "`get_tokenizer_config=None`."
-            )
-
         if framework == "torch":
             from ray.rllib.core.models.torch.encoder import (
                 TorchGRUEncoder as GRU,
@@ -910,10 +922,20 @@ class ActorCriticEncoderConfig(ModelConfig):
         if framework == "torch":
             from ray.rllib.core.models.torch.encoder import (
                 TorchActorCriticEncoder,
+                TorchStatefulActorCriticEncoder,
             )
 
-            return TorchActorCriticEncoder(self)
+            if isinstance(self.base_encoder_config, RecurrentEncoderConfig):
+                return TorchStatefulActorCriticEncoder(self)
+            else:
+                return TorchActorCriticEncoder(self)
         else:
-            from ray.rllib.core.models.tf.encoder import TfActorCriticEncoder
+            from ray.rllib.core.models.tf.encoder import (
+                TfActorCriticEncoder,
+                TfStatefulActorCriticEncoder,
+            )
 
-            return TfActorCriticEncoder(self)
+            if isinstance(self.base_encoder_config, RecurrentEncoderConfig):
+                return TfStatefulActorCriticEncoder(self)
+            else:
+                return TfActorCriticEncoder(self)

@@ -70,7 +70,7 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
         the initialization is done, and before actually training starts.
 
         Args:
-            algorithm: Reference to the trainer instance.
+            algorithm: Reference to the Algorithm instance.
             kwargs: Forward compatibility placeholder.
         """
         pass
@@ -382,14 +382,6 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
         """
         pass
 
-    @Deprecated(
-        old="on_trainer_init(trainer, **kwargs)",
-        new="on_algorithm_init(algorithm, **kwargs)",
-        error=True,
-    )
-    def on_trainer_init(self, *args, **kwargs):
-        raise DeprecationWarning
-
 
 class MemoryTrackingCallbacks(DefaultCallbacks):
     """MemoryTrackingCallbacks can be used to trace and track memory usage
@@ -454,24 +446,21 @@ class MemoryTrackingCallbacks(DefaultCallbacks):
         episode.custom_metrics["tracemalloc/worker/vms"] = worker_vms
 
 
-def make_multi_callbacks(callback_class_list: List[Type[DefaultCallbacks]]):
+def make_multi_callbacks(
+    callback_class_list: List[Type[DefaultCallbacks]],
+) -> DefaultCallbacks:
     """Allows combining multiple sub-callbacks into one new callbacks class.
 
-    Example:
-
-        .. code-block:: python
-
-            config.callbacks(make_multi_callbacks([
-                MyCustomStatsCallbacks,
-                MyCustomVideoCallbacks,
-                MyCustomTraceCallbacks,
-                ....
-            ]))
+    The resulting DefaultCallbacks will call all the sub-callbacks' callbacks
+    when called.
 
     Args:
         callback_class_list: The list of sub-classes of DefaultCallbacks to
             be baked into the to-be-returned class. All of these sub-classes'
             implemented methods will be called in the given order.
+
+    Returns:
+        A DefaultCallbacks subclass that combines all the given sub-classes.
     """
 
     class _MultiCallbacks(DefaultCallbacks):
@@ -668,8 +657,6 @@ def make_multi_callbacks(callback_class_list: List[Type[DefaultCallbacks]]):
         def on_train_result(self, *, algorithm=None, result: dict, **kwargs) -> None:
 
             for callback in self._callback_list:
-                # TODO: Remove `trainer` arg at some point to fully deprecate the old
-                #  term.
                 callback.on_train_result(algorithm=algorithm, result=result, **kwargs)
 
     return _MultiCallbacks
@@ -677,6 +664,7 @@ def make_multi_callbacks(callback_class_list: List[Type[DefaultCallbacks]]):
 
 # This Callback is used by the RE3 exploration strategy.
 # See rllib/examples/re3_exploration.py for details.
+@Deprecated(error=False)
 class RE3UpdateCallbacks(DefaultCallbacks):
     """Update input callbacks to mutate batch with states entropy rewards."""
 
@@ -735,9 +723,8 @@ class RE3UpdateCallbacks(DefaultCallbacks):
     @override(DefaultCallbacks)
     def on_train_result(self, *, result: dict, algorithm=None, **kwargs) -> None:
         # TODO(gjoliver): Remove explicit _step tracking and pass
-        # trainer._iteration as a parameter to on_learn_on_batch() call.
+        #  Algorithm._iteration as a parameter to on_learn_on_batch() call.
         RE3UpdateCallbacks._step = result["training_iteration"]
-        # TODO: Remove `trainer` arg at some point to fully deprecate the old term.
         super().on_train_result(algorithm=algorithm, result=result, **kwargs)
 
 

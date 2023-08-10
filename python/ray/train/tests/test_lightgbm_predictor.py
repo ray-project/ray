@@ -3,15 +3,12 @@ import re
 import lightgbm as lgbm
 import numpy as np
 import pandas as pd
-import pyarrow as pa
 import pytest
-import ray
 
-from ray.air.checkpoint import Checkpoint
+from ray.train import Checkpoint
 from ray.air.constants import MAX_REPR_LENGTH
 from ray.air.util.data_batch_conversion import _convert_pandas_to_batch_type
 from ray.data.preprocessor import Preprocessor
-from ray.train.batch_predictor import BatchPredictor
 from ray.train.lightgbm import LightGBMCheckpoint, LightGBMPredictor
 from ray.train.predictor import TYPE_TO_ENUM
 from typing import Tuple
@@ -68,31 +65,6 @@ def test_predict(batch_type):
 
     assert len(predictions) == 3
     assert predictor.get_preprocessor().has_preprocessed
-
-
-@pytest.mark.parametrize("batch_type", [np.ndarray, pd.DataFrame])
-def test_predict_batch(ray_start_4_cpus, batch_type):
-    checkpoint, _ = create_checkpoint_preprocessor()
-    predictor = BatchPredictor.from_checkpoint(checkpoint, LightGBMPredictor)
-
-    raw_batch = pd.DataFrame(dummy_data, columns=["A", "B"])
-    data_batch = _convert_pandas_to_batch_type(raw_batch, type=TYPE_TO_ENUM[batch_type])
-
-    if batch_type == np.ndarray:
-        # TODO(ekl) how do we fix this to work with "data" column?
-        dataset = ray.data.from_numpy(dummy_data)
-        dataset = dataset.add_column("__value__", lambda b: b["data"])
-        dataset = dataset.drop_columns(["data"])
-    elif batch_type == pd.DataFrame:
-        dataset = ray.data.from_pandas(data_batch)
-    elif batch_type == pa.Table:
-        dataset = ray.data.from_arrow(data_batch)
-    else:
-        raise RuntimeError("Invalid batch_type")
-
-    predictions = predictor.predict(dataset)
-
-    assert predictions.count() == 3
 
 
 def test_predict_feature_columns():

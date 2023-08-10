@@ -152,7 +152,6 @@ def _setup_cluster_environment(
 ) -> Tuple[str, int, int, int, int]:
     setup_signal_handling()
     # Load configs
-    cluster_env = load_test_cluster_env(test, ray_wheels_url=ray_wheels_url)
     cluster_compute = load_test_cluster_compute(test)
 
     if cluster_env_id:
@@ -171,6 +170,11 @@ def _setup_cluster_environment(
                 f"{cluster_env_id}: {e}"
             ) from e
     else:
+        cluster_env = (
+            None
+            if test.is_byod_cluster()
+            else load_test_cluster_env(test, ray_wheels_url=ray_wheels_url)
+        )
         cluster_manager.set_cluster_env(cluster_env)
 
     # Load some timeouts
@@ -289,14 +293,6 @@ def _prepare_remote_environment(
     if prepare_cmd:
         try:
             command_runner.run_prepare_command(prepare_cmd, timeout=prepare_timeout)
-        except CommandError as e:
-            raise PrepareCommandError(e)
-        except CommandTimeout as e:
-            raise PrepareCommandTimeout(e)
-
-    for pre_run_cmd in test.get_byod_pre_run_cmds():
-        try:
-            command_runner.run_prepare_command(pre_run_cmd, timeout=300)
         except CommandError as e:
             raise PrepareCommandError(e)
         except CommandTimeout as e:

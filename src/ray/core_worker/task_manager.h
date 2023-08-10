@@ -95,7 +95,8 @@ using PushErrorCallback = std::function<Status(const JobID &job_id,
 /// The API is not thread-safe.
 class ObjectRefStream {
  public:
-  ObjectRefStream(const ObjectID &generator_id) : generator_id_(generator_id) {}
+  ObjectRefStream(const ObjectID &generator_id)
+      : generator_id_(generator_id), generator_task_id_(generator_id.TaskId()) {}
 
   /// Asynchronously read object reference of the next index.
   ///
@@ -103,6 +104,8 @@ class ObjectRefStream {
   /// Nil ID is returned if the next index hasn't been written.
   /// \return KeyError if it reaches to EoF. Ok otherwise.
   Status TryReadNextItem(ObjectID *object_id_out);
+
+  ObjectID PeekNextItem();
 
   /// Insert the object id to the stream of an index item_index.
   ///
@@ -135,18 +138,19 @@ class ObjectRefStream {
   /// anymore.
   ///
   /// \param[in] The last item index that means the end of stream.
-  void MarkEndOfStream(int64_t item_index);
+  void MarkEndOfStream(int64_t item_index, ObjectID *object_id_in_last_index);
 
   /// Get all the ObjectIDs that are not read yet via TryReadNextItem.
   ///
   /// \return A list of object IDs that are not read yet.
-  std::vector<ObjectID> GetItemsUnconsumed() const;
+  absl::flat_hash_set<ObjectID> GetItemsUnconsumed() const;
 
  private:
-  const ObjectID generator_id_;
+  ObjectID GetObjectRefAtIndex(int64_t generator_index) const;
 
-  /// The item_index -> object reference ids.
-  absl::flat_hash_map<int64_t, ObjectID> item_index_to_refs_;
+  const ObjectID generator_id_;
+  const TaskID generator_task_id_;
+
   /// Refs that are temporarily owned. It means a ref is
   /// written to a stream, but index is not known yet.
   absl::flat_hash_set<ObjectID> temporarily_owned_refs_;
@@ -159,6 +163,11 @@ class ObjectRefStream {
   /// The next index of the stream.
   /// If next_index_ == end_of_stream_index_, that means it is the end of the stream.
   int64_t next_index_ = 0;
+  /// The maximum index that we have seen from the executor. We need to track
+  /// this in case the first execution fails mid-generator, and the second task
+  /// ends with fewer returns. Then, we mark one past this index as the end of
+  /// the stream.
+  int64_t max_index_seen_ = -1;
 };
 
 class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterface {
@@ -241,6 +250,30 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
                            const rpc::Address &worker_addr,
                            bool is_application_error) override;
 
+  /**
+   * The below APIs support streaming generator.
+   *
+   * - The stream must be created when a task is submitted first time. The stream
+   * must be deleted by the language frontend when the stream
+   * is not used anymore. The APIs guarantee to clean up object references
+   * associated with the stream.
+   * - The generator return values are reported via HandleReportGeneratorItemReturns.
+   * The report ordering is not guaranteed. HandleReportGeneratorItemReturns
+   * must handle the out of ordering report correctly.
+   * - Streaming generator return reference IDs are deterministic.
+   * Ray preserves first `max_num_generator_returns` indexes for a streaming
+   * generator returns.
+   * - MarkEndOfStream must be called when a task finishes or fails.
+   * Once this API is called, the stream will contain the sentinel object
+   * that raises END_OF_STREAMING_GENERATOR error at the end of the stream.
+   * The language frontend can catch this error and take proper actions.
+   * - The generator's first return value contains an exception
+   * if the task fails by a system error. Otherwise, it contains nothing.
+   *
+   * Reference implementation of streaming generator using the following APIs
+   * is available from `_raylet.StreamingObjectRefGenerator`.
+   */
+
   /// Handle the generator task return so that it will be accessible
   /// via TryReadObjectRefStream.
   ///
@@ -293,21 +326,6 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// generator task.
   void DelObjectRefStream(const ObjectID &generator_id);
 
-  /// Create the object ref stream.
-  /// If the object ref stream is not created by this API,
-  /// all object ref stream operation will be no-op.
-  ///
-  /// Once the stream is created, it has to be deleted
-  /// by DelObjectRefStream when it is not used anymore.
-  /// Once you generate a stream, it is the caller's responsibility
-  /// to call DelObjectRefStream.
-  ///
-  /// The API is not idempotent.
-  ///
-  /// \param[in] generator_id The object ref id of the streaming
-  /// generator task.
-  void CreateObjectRefStream(const ObjectID &generator_id);
-
   /// Return true if the object ref stream exists.
   ///
   /// \param[in] generator_id The object ref id of the streaming
@@ -316,10 +334,13 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
 
   /// Read object reference of the next index from the
   /// object stream of a generator_id.
+  ///
+  /// This API consumes the next index, meaning it is not idempotent.
+  /// If you don't want to consume the next index, use PeekObjectRefStream.
   /// This API always return immediately.
   ///
-  /// The caller should ensure the ObjectRefStream is already created
-  /// via CreateObjectRefStream.
+  /// The caller should ensure the ObjectRefStream is already
+  /// created, by calling AddPendingTask.
   /// If it is called after the stream hasn't been created or deleted
   /// it will panic.
   ///
@@ -327,6 +348,17 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// Nil ID is returned if the next index hasn't been written.
   /// \return ObjectRefEndOfStream if it reaches to EoF. Ok otherwise.
   Status TryReadObjectRefStream(const ObjectID &generator_id, ObjectID *object_id_out);
+
+  /// Read the next index of a ObjectRefStream of generator_id without
+  /// consuming an index.
+  ///
+  /// This API must be idempotent.
+  ///
+  /// \param[in] generator_id The object ref id of the streaming
+  /// generator task.
+  /// \return A object reference of the next index.
+  /// It should not be nil.
+  ObjectID PeekObjectRefStream(const ObjectID &generator_id);
 
   /// Returns true if task can be retried.
   ///
@@ -668,9 +700,18 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// \param task_entry Task entry for the corresponding task attempt
   void MarkTaskRetryOnFailed(TaskEntry &task_entry, const rpc::RayErrorInfo &error_info);
 
-  Status TryReadObjectRefStreamInternal(const ObjectID &generator_id,
-                                        ObjectID *object_id_out)
-      EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  /// Mark the stream is ended.
+  /// The end of the stream always contains a "sentinel object" passed
+  /// via end_of_stream_obj.
+  ///
+  /// \param generator_id The object ref id of the streaming
+  /// generator task.
+  /// \param end_of_stream_index The index of the end of the stream.
+  /// If -1 is specified, it will mark the current last index as end of stream.
+  /// this should be used when a task fails (which means we know the task won't
+  /// report any more generator return values).
+  void MarkEndOfStream(const ObjectID &generator_id, int64_t end_of_stream_index)
+      LOCKS_EXCLUDED(mu_);
 
   /// Used to store task results.
   std::shared_ptr<CoreWorkerMemoryStore> in_memory_store_;

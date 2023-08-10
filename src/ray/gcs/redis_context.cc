@@ -202,7 +202,9 @@ void RedisRequestContext::Run() {
           auto reply = std::make_shared<CallbackReply>(redis_reply);
           request_cxt->io_service_.post(
               [reply, callback = std::move(request_cxt->callback_)]() {
-                callback(std::move(reply));
+                if (callback) {
+                  callback(std::move(reply));
+                }
               },
               "RedisRequestContext.Callback");
           auto end_time = absl::Now();
@@ -267,17 +269,20 @@ RedisContext::RedisContext(instrumented_io_context &io_service)
       << redisSSLContextGetError(ssl_error);
 }
 
-RedisContext::~RedisContext() { Disconnect(); }
+RedisContext::~RedisContext() {
+  Disconnect();
+  if (ssl_context_) {
+    redisFreeSSLContext(ssl_context_);
+    ssl_context_ = nullptr;
+  }
+}
 
 void RedisContext::Disconnect() {
   if (context_) {
     redisFree(context_);
     context_ = nullptr;
   }
-  if (ssl_context_) {
-    redisFreeSSLContext(ssl_context_);
-    ssl_context_ = nullptr;
-  }
+
   redis_async_context_.reset();
 }
 

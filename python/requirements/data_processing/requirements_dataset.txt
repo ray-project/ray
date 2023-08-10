@@ -1,8 +1,0 @@
-# Used by CI for datasets tests.
-# https://github.com/ray-project/ray/pull/29448#discussion_r1006256498
-
-pickle5; python_version < '3.8'
-python-snappy
-tensorflow-datasets
-datasets<=2.10.1; python_version ~= '3.6'
-datasets; python_version >= '3.7'

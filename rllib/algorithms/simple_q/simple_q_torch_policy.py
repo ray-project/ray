@@ -31,7 +31,7 @@ class SimpleQTorchPolicy(
     TargetNetworkMixin,
     TorchPolicyV2,
 ):
-    """PyTorch policy class used with SimpleQTrainer."""
+    """PyTorch policy class used with SimpleQ."""
 
     def __init__(self, observation_space, action_space, config):
         TorchPolicyV2.__init__(

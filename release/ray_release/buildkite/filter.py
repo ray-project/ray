@@ -24,6 +24,7 @@ def filter_tests(
     test_attr_regex_filters: Optional[Dict[str, str]] = None,
     prefer_smoke_tests: bool = False,
     run_jailed_tests: bool = False,
+    run_unstable_tests: bool = False,
 ) -> List[Tuple[Test, bool]]:
     if test_attr_regex_filters is None:
         test_attr_regex_filters = {}
@@ -39,11 +40,12 @@ def filter_tests(
         if attr_mismatch:
             continue
         if not run_jailed_tests:
-            if test.get("jailed", False):
-                continue
             clone_test = copy.deepcopy(test)
             clone_test.update_from_s3()
             if clone_test.is_jailed_with_open_issue(TestStateMachine.get_ray_repo()):
+                continue
+        if not run_unstable_tests:
+            if not test.get("stable", True):
                 continue
 
         test_frequency = get_frequency(test["frequency"])

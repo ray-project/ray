@@ -33,12 +33,12 @@ class XGBoostTrainer(GBDTTrainer):
         `XGBoost documentation <https://xgboost.readthedocs.io>`__.
 
     Example:
-        .. code-block:: python
+        .. testcode::
 
             import ray
 
             from ray.train.xgboost import XGBoostTrainer
-            from ray.air.config import ScalingConfig
+            from ray.train import ScalingConfig
 
             train_dataset = ray.data.from_items(
                 [{"x": x, "y": x + 1} for x in range(32)])
@@ -49,6 +49,11 @@ class XGBoostTrainer(GBDTTrainer):
                 datasets={"train": train_dataset}
             )
             result = trainer.fit()
+
+        .. testoutput::
+            :hide:
+
+            ...
 
     Args:
         datasets: Datasets to use for training and validation. Must include a

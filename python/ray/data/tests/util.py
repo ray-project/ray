@@ -5,8 +5,6 @@ from contextlib import contextmanager
 
 import ray
 
-STRICT_MODE = ray.data.DatasetContext.get_current().strict_mode
-
 
 @ray.remote
 class Counter:

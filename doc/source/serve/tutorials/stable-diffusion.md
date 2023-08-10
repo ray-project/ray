@@ -6,7 +6,7 @@ This example runs a Stable Diffusion application with Ray Serve.
 To run this example, install the following:
 
 ```bash
-pip install "ray[serve]" requests torch diffusers transformers
+pip install "ray[serve]" requests torch diffusers==0.12.1 transformers
 ```
 
 This example uses the [stabilityai/stable-diffusion-2](https://huggingface.co/stabilityai/stable-diffusion-2) model and [FastAPI](https://fastapi.tiangolo.com/) to build the example. Save the following code to a file named stable_diffusion.py. 

@@ -5,6 +5,7 @@ from unittest.mock import MagicMock
 import pytest
 
 import ray
+from ray._private.test_utils import wait_for_condition
 from ray.data._internal.execution.interfaces import (
     ExecutionOptions,
     ExecutionResources,
@@ -25,6 +26,7 @@ from ray.data._internal.execution.streaming_executor_state import (
     build_streaming_topology,
     process_completed_tasks,
     select_operator_to_run,
+    update_operator_states,
 )
 from ray.data._internal.execution.util import make_ref_bundles
 from ray.data.tests.conftest import *  # noqa
@@ -91,6 +93,7 @@ def test_process_completed_tasks():
     # Test processing output bundles.
     assert len(topo[o1].outqueue) == 0, topo
     process_completed_tasks(topo)
+    update_operator_states(topo)
     assert len(topo[o1].outqueue) == 20, topo
 
     # Test processing completed work items.
@@ -98,29 +101,32 @@ def test_process_completed_tasks():
     done_ref = ray.put("done")
     o2.get_work_refs = MagicMock(return_value=[sleep_ref, done_ref])
     o2.notify_work_completed = MagicMock()
-    o2.inputs_done = MagicMock()
+    o2.all_inputs_done = MagicMock()
     o1.all_dependents_complete = MagicMock()
     process_completed_tasks(topo)
+    update_operator_states(topo)
     o2.notify_work_completed.assert_called_once_with(done_ref)
-    o2.inputs_done.assert_not_called()
+    o2.all_inputs_done.assert_not_called()
     o1.all_dependents_complete.assert_not_called()
 
     # Test input finalization.
     o2.get_work_refs = MagicMock(return_value=[done_ref])
     o2.notify_work_completed = MagicMock()
-    o2.inputs_done = MagicMock()
+    o2.all_inputs_done = MagicMock()
     o1.all_dependents_complete = MagicMock()
     o1.completed = MagicMock(return_value=True)
     topo[o1].outqueue.clear()
     process_completed_tasks(topo)
+    update_operator_states(topo)
     o2.notify_work_completed.assert_called_once_with(done_ref)
-    o2.inputs_done.assert_called_once()
+    o2.all_inputs_done.assert_called_once()
     o1.all_dependents_complete.assert_not_called()
 
     # Test dependents completed.
     o2.need_more_inputs = MagicMock(return_value=False)
     o1.all_dependents_complete = MagicMock()
     process_completed_tasks(topo)
+    update_operator_states(topo)
     o1.all_dependents_complete.assert_called_once()
 
 
@@ -317,7 +323,18 @@ def test_execution_allowed():
     )
 
 
-def test_resource_constrained_triggers_autoscaling():
+def test_resource_constrained_triggers_autoscaling(monkeypatch):
+    RESOURCE_REQUEST_TIMEOUT = 5
+    monkeypatch.setattr(
+        ray.data._internal.execution.autoscaling_requester,
+        "RESOURCE_REQUEST_TIMEOUT",
+        RESOURCE_REQUEST_TIMEOUT,
+    )
+    monkeypatch.setattr(
+        ray.data._internal.execution.autoscaling_requester,
+        "PURGE_INTERVAL",
+        RESOURCE_REQUEST_TIMEOUT,
+    )
     from ray.data._internal.execution.autoscaling_requester import (
         get_or_create_autoscaling_requester_actor,
     )
@@ -445,6 +462,12 @@ def test_resource_constrained_triggers_autoscaling():
         {"GPU": 1},
         {"CPU": 1},
     ]
+
+    # Test that the resource requests will be purged after the timeout.
+    wait_for_condition(
+        lambda: ray.get(ac._aggregate_requests.remote()) == [],
+        timeout=RESOURCE_REQUEST_TIMEOUT * 2,
+    )
 
 
 def test_select_ops_ensure_at_least_one_live_operator():

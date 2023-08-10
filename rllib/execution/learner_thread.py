@@ -7,9 +7,11 @@ from ray.util.timer import _Timer
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.execution.minibatch_buffer import MinibatchBuffer
 from ray.rllib.utils.framework import try_import_tf
+from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.metrics.learner_info import LearnerInfoBuilder, LEARNER_INFO
 from ray.rllib.utils.metrics.window_stat import WindowStat
 from ray.util.iter import _NextValueNotReady
+from ray.util import log_once
 
 tf1, tf, tfv = try_import_tf()
 
@@ -65,6 +67,8 @@ class LearnerThread(threading.Thread):
         self.learner_info = {}
         self.stopped = False
         self.num_steps = 0
+        if log_once("learner-thread-deprecation-warning"):
+            deprecation_warning(old="ray.rllib.execution.learner_thread.LearnerThread")
 
     def run(self) -> None:
         # Switch on eager mode if configured.

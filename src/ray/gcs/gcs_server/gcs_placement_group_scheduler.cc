@@ -181,8 +181,8 @@ void GcsPlacementGroupScheduler::PrepareResources(
 
   const auto lease_client = GetLeaseClientFromNode(node.value());
   const auto node_id = NodeID::FromBinary(node.value()->node_id());
-  RAY_LOG(DEBUG) << "Preparing resource from node " << node_id
-                 << " for bundles: " << GetDebugStringForBundles(bundles);
+  RAY_LOG(INFO) << "Preparing resource from node " << node_id
+                << " for bundles: " << GetDebugStringForBundles(bundles);
 
   lease_client->PrepareBundleResources(
       bundles,
@@ -191,11 +191,11 @@ void GcsPlacementGroupScheduler::PrepareResources(
         auto result = reply.success() ? Status::OK()
                                       : Status::IOError("Failed to reserve resource");
         if (result.ok()) {
-          RAY_LOG(DEBUG) << "Finished leasing resource from " << node_id
-                         << " for bundles: " << GetDebugStringForBundles(bundles);
+          RAY_LOG(INFO) << "Finished leasing resource from " << node_id
+                        << " for bundles: " << GetDebugStringForBundles(bundles);
         } else {
-          RAY_LOG(DEBUG) << "Failed to lease resource from " << node_id
-                         << " for bundles: " << GetDebugStringForBundles(bundles);
+          RAY_LOG(INFO) << "Failed to lease resource from " << node_id
+                        << " for bundles: " << GetDebugStringForBundles(bundles);
         }
         callback(result);
       });
@@ -209,18 +209,18 @@ void GcsPlacementGroupScheduler::CommitResources(
   const auto lease_client = GetLeaseClientFromNode(node.value());
   const auto node_id = NodeID::FromBinary(node.value()->node_id());
 
-  RAY_LOG(DEBUG) << "Committing resource to a node " << node_id
-                 << " for bundles: " << GetDebugStringForBundles(bundles);
+  RAY_LOG(INFO) << "Committing resource to a node " << node_id
+                << " for bundles: " << GetDebugStringForBundles(bundles);
   lease_client->CommitBundleResources(
       bundles,
       [bundles, node_id, callback](const Status &status,
                                    const rpc::CommitBundleResourcesReply &reply) {
         if (status.ok()) {
-          RAY_LOG(DEBUG) << "Finished committing resource to " << node_id
-                         << " for bundles: " << GetDebugStringForBundles(bundles);
+          RAY_LOG(INFO) << "Finished committing resource to " << node_id
+                        << " for bundles: " << GetDebugStringForBundles(bundles);
         } else {
-          RAY_LOG(DEBUG) << "Failed to commit resource to " << node_id
-                         << " for bundles: " << GetDebugStringForBundles(bundles);
+          RAY_LOG(INFO) << "Failed to commit resource to " << node_id
+                        << " for bundles: " << GetDebugStringForBundles(bundles);
         }
         RAY_CHECK(callback);
         callback(status);

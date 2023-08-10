@@ -1,7 +1,7 @@
 import pytest
 
 import ray
-from ray.air import ScalingConfig
+from ray.train import ScalingConfig
 from ray.air._internal.util import StartTraceback, skip_exceptions
 from ray.train.data_parallel_trainer import DataParallelTrainer
 

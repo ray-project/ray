@@ -114,6 +114,19 @@ def test_repr(preprocessor):
     assert pattern.match(representation)
 
 
+def test_fitted_preprocessor_without_stats():
+    """Tests that Preprocessors can be fitted without needing to set self.stats_."""
+
+    class FittablePreprocessor(Preprocessor):
+        def _fit(self, ds):
+            return ds
+
+    preprocessor = FittablePreprocessor()
+    ds = ray.data.from_items([1])
+    _ = preprocessor.fit(ds)
+    assert preprocessor.fit_status() == Preprocessor.FitStatus.FITTED
+
+
 @patch.object(warnings, "warn")
 def test_fit_twice(mocked_warn):
     """Tests that a warning msg should be printed."""

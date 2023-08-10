@@ -11,17 +11,18 @@ import {
   MultiTabLogViewerTabDetails,
 } from "../../common/MultiTabLogViewer";
 import { Section } from "../../common/Section";
-import Loading from "../../components/Loading";
 import { MetadataSection } from "../../components/MetadataSection";
 import { StatusChip } from "../../components/StatusChip";
 import { ServeReplica } from "../../type/serve";
-import { MainNavPageInfo } from "../layout/mainNavContext";
 import TaskList from "../state/task";
 import { useServeReplicaDetails } from "./hook/useServeApplications";
 import { ServeReplicaMetricsSection } from "./ServeDeploymentMetricsSection";
 
 const useStyles = makeStyles((theme) =>
   createStyles({
+    root: {
+      padding: theme.spacing(3),
+    },
     section: {
       marginTop: theme.spacing(4),
     },
@@ -32,16 +33,13 @@ export const ServeReplicaDetailPage = () => {
   const { applicationName, deploymentName, replicaId } = useParams();
   const classes = useStyles();
 
-  const { loading, application, deployment, replica, error } =
-    useServeReplicaDetails(applicationName, deploymentName, replicaId);
+  const { application, deployment, replica } = useServeReplicaDetails(
+    applicationName,
+    deploymentName,
+    replicaId,
+  );
 
-  if (error) {
-    return <Typography color="error">{error.toString()}</Typography>;
-  }
-
-  if (loading) {
-    return <Loading loading />;
-  } else if (!replica || !deployment || !application) {
+  if (!replica || !deployment || !application) {
     return (
       <Typography color="error">
         {applicationName} / {deploymentName} / {replicaId} not found.
@@ -49,7 +47,6 @@ export const ServeReplicaDetailPage = () => {
     );
   }
 
-  const appName = application.name ? application.name : "-";
   const {
     replica_id,
     state,
@@ -61,19 +58,7 @@ export const ServeReplicaDetailPage = () => {
     start_time_s,
   } = replica;
   return (
-    <div>
-      <MainNavPageInfo
-        pageInfo={{
-          id: "serveReplicaDetail",
-          title: replica_id,
-          pageTitle: `${replica_id} | Serve Replica`,
-          path: `/serve/applications/${encodeURIComponent(
-            appName,
-          )}/${encodeURIComponent(deployment.name)}/${encodeURIComponent(
-            replica_id,
-          )}`,
-        }}
-      />
+    <div className={classes.root}>
       <MetadataSection
         metadataList={[
           {

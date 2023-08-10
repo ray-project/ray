@@ -29,6 +29,8 @@ from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.spaces.space_utils import get_base_struct_from_space
 from ray.rllib.utils.tf_utils import flatten_inputs_to_1d_tensor, one_hot
 from ray.rllib.utils.typing import ModelConfigDict, TensorType, List
+from ray.rllib.utils.deprecation import deprecation_warning
+from ray.util import log_once
 
 tf1, tf, tfv = try_import_tf()
 
@@ -58,6 +60,10 @@ class PositionwiseFeedforward(tf.keras.layers.Layer if tf else object):
         self._output_layer = tf.keras.layers.Dense(
             out_dim, activation=output_activation
         )
+        if log_once("positionwise_feedforward_tf"):
+            deprecation_warning(
+                old="rllib.models.tf.attention_net.PositionwiseFeedforward",
+            )
 
     def call(self, inputs: TensorType, **kwargs) -> TensorType:
         del kwargs
@@ -98,7 +104,10 @@ class TrXLNet(RecurrentNetwork):
                 first of the two layers within the PositionwiseFeedforward. The
                 second layer always has size=`attention_dim`.
         """
-
+        if log_once("trxl_net_tf"):
+            deprecation_warning(
+                old="rllib.models.tf.attention_net.TrXLNet",
+            )
         super().__init__(
             observation_space, action_space, num_outputs, model_config, name
         )
@@ -171,7 +180,7 @@ class GTrXLNet(RecurrentNetwork):
     Can be used as a drop-in replacement for LSTMs in PPO and IMPALA.
     For an example script, see: `ray/rllib/examples/attention_net.py`.
 
-    To use this network as a replacement for an RNN, configure your Trainer
+    To use this network as a replacement for an RNN, configure your Algorithm
     as follows:
 
     Examples:
@@ -233,7 +242,8 @@ class GTrXLNet(RecurrentNetwork):
                 (two GRUs per Transformer unit, one after the MHA, one after
                 the position-wise MLP).
         """
-
+        if log_once("gtrxl_net_tf"):
+            deprecation_warning(old="ray.rllib.models.tf.attention_net.GTrXLNet")
         super().__init__(
             observation_space, action_space, num_outputs, model_config, name
         )
@@ -383,7 +393,10 @@ class AttentionWrapper(TFModelV2):
         model_config: ModelConfigDict,
         name: str,
     ):
-
+        if log_once("attention_wrapper_tf_deprecation"):
+            deprecation_warning(
+                old="ray.rllib.models.tf.attention_net.AttentionWrapper"
+            )
         super().__init__(obs_space, action_space, None, model_config, name)
 
         self.use_n_prev_actions = model_config["attention_use_n_prev_actions"]

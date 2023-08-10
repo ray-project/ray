@@ -130,8 +130,19 @@ void SchedulerResourceReporter::FillResourceUsage(
 
   fill_resource_usage_helper(
       tasks_to_schedule_ | boost::adaptors::transformed(transform_func), false);
-  fill_resource_usage_helper(
-      tasks_to_dispatch_ | boost::adaptors::transformed(transform_func), false);
+  auto tasks_to_dispatch_range =
+      tasks_to_dispatch_ | boost::adaptors::transformed([](const auto &pair) {
+        auto cnt = pair.second.size();
+        // We should only report dispatching tasks that do not have resources allocated.
+        for (const auto &task : pair.second) {
+          if (task->allocated_instances) {
+            cnt--;
+          }
+        }
+        return std::make_pair(pair.first, cnt);
+      });
+  fill_resource_usage_helper(tasks_to_dispatch_range, false);
+
   fill_resource_usage_helper(
       infeasible_tasks_ | boost::adaptors::transformed(transform_func), true);
   auto backlog_tracker_range = backlog_tracker_ |

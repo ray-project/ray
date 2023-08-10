@@ -58,6 +58,7 @@ import ray.cloudpickle as pickle  # noqa
 import ray.job_config
 import ray.remote_function
 from ray import ActorID, JobID, Language, ObjectRef
+from ray._raylet import StreamingObjectRefGenerator
 from ray._private import ray_option_utils
 from ray._private.client_mode_hook import client_mode_hook
 from ray._private.function_manager import FunctionActorManager
@@ -72,7 +73,9 @@ from ray._private.ray_logging import (
 from ray._private.runtime_env.constants import RAY_JOB_CONFIG_JSON_ENV_VAR
 from ray._private.runtime_env.py_modules import upload_py_modules_if_needed
 from ray._private.runtime_env.working_dir import upload_working_dir_if_needed
-from ray._private.runtime_env.setup_hook import upload_worker_setup_hook_if_needed
+from ray._private.runtime_env.setup_hook import (
+    upload_worker_process_setup_hook_if_needed,
+)
 from ray._private.storage import _load_class
 from ray._private.utils import get_ray_doc_version
 from ray.exceptions import ObjectStoreFullError, RayError, RaySystemError, RayTaskError
@@ -1136,14 +1139,15 @@ def init(
     This will autodetect an existing Ray cluster or start a new Ray instance if
     no existing cluster is found:
 
-    .. code-block:: python
+    .. testcode::
 
         ray.init()
 
     To explicitly connect to an existing local cluster, use this as follows. A
     ConnectionError will be thrown if no existing local cluster is found.
 
-    .. code-block:: python
+    .. testcode::
+        :skipif: True
 
         ray.init(address="auto")
 
@@ -1151,7 +1155,8 @@ def init(
     in the appropriate address). Note the addition of "ray://" at the beginning
     of the address.
 
-    .. code-block:: python
+    .. testcode::
+        :skipif: True
 
         ray.init(address="ray://123.45.67.89:10001")
 
@@ -1576,7 +1581,7 @@ def init(
                 spawn_reaper=False,
                 connect_only=True,
             )
-        except ConnectionError:
+        except (ConnectionError, RuntimeError):
             if gcs_address == ray._private.utils.read_ray_address(_temp_dir):
                 logger.info(
                     "Failed to connect to the default Ray cluster address at "
@@ -1585,7 +1590,7 @@ def init(
                     "address to connect to, run `ray stop` or restart Ray with "
                     "`ray start`."
                 )
-            raise
+            raise ConnectionError
 
     # Log a message to find the Ray address that we connected to and the
     # dashboard URL.
@@ -1778,26 +1783,57 @@ autoscaler_log_fyi_printed = False
 def filter_autoscaler_events(lines: List[str]) -> Iterator[str]:
     """Given raw log lines from the monitor, return only autoscaler events.
 
-    Autoscaler events are denoted by the ":event_summary:" magic token.
+    For Autoscaler V1:
+        Autoscaler events are denoted by the ":event_summary:" magic token.
+    For Autoscaler V2:
+        Autoscaler events are published from log_monitor.py which read
+        them from the `event_AUTOSCALER.log`.
     """
-    global autoscaler_log_fyi_printed
 
     if not ray_constants.AUTOSCALER_EVENTS:
         return
 
-    # Print out autoscaler events only, ignoring other messages.
-    for line in lines:
-        if ray_constants.LOG_PREFIX_EVENT_SUMMARY in line:
-            if not autoscaler_log_fyi_printed:
-                yield (
-                    "Tip: use `ray status` to view detailed "
-                    "cluster status. To disable these "
-                    "messages, set RAY_SCHEDULER_EVENTS=0."
-                )
-                autoscaler_log_fyi_printed = True
-            # The event text immediately follows the ":event_summary:"
-            # magic token.
-            yield line.split(ray_constants.LOG_PREFIX_EVENT_SUMMARY)[1]
+    AUTOSCALER_LOG_FYI = (
+        "Tip: use `ray status` to view detailed "
+        "cluster status. To disable these "
+        "messages, set RAY_SCHEDULER_EVENTS=0."
+    )
+
+    def autoscaler_log_fyi_needed() -> bool:
+        global autoscaler_log_fyi_printed
+        if not autoscaler_log_fyi_printed:
+            autoscaler_log_fyi_printed = True
+            return True
+        return False
+
+    from ray.autoscaler.v2.utils import is_autoscaler_v2
+
+    if is_autoscaler_v2():
+        from ray._private.event.event_logger import parse_event, filter_event_by_level
+
+        for event_line in lines:
+            if autoscaler_log_fyi_needed():
+                yield AUTOSCALER_LOG_FYI
+
+            event = parse_event(event_line)
+            if not event or not event.message:
+                continue
+
+            if filter_event_by_level(
+                event, ray_constants.RAY_LOG_TO_DRIVER_EVENT_LEVEL
+            ):
+                continue
+
+            yield event.message
+    else:
+        # Print out autoscaler events only, ignoring other messages.
+        for line in lines:
+            if ray_constants.LOG_PREFIX_EVENT_SUMMARY in line:
+                if autoscaler_log_fyi_needed():
+                    yield AUTOSCALER_LOG_FYI
+                # The event text immediately follows the ":event_summary:"
+                # magic token.
+                yield line.split(ray_constants.LOG_PREFIX_EVENT_SUMMARY)[1]
 
 
 def time_string() -> str:
@@ -2167,7 +2203,7 @@ def connect(
         runtime_env = upload_working_dir_if_needed(
             runtime_env, scratch_dir, logger=logger
         )
-        runtime_env = upload_worker_setup_hook_if_needed(
+        runtime_env = upload_worker_process_setup_hook_if_needed(
             runtime_env,
             worker,
         )
@@ -2181,8 +2217,11 @@ def connect(
         # assumes that the directory structures on the machines in the clusters
         # are the same.
         # When using an interactive shell, there is no script directory.
+        # We also want to skip adding script directory when running from dashboard.
         code_paths = []
-        if not interactive_mode:
+        if not interactive_mode and not (
+            namespace and namespace == ray_constants.RAY_INTERNAL_DASHBOARD_NAMESPACE
+        ):
             script_directory = os.path.dirname(os.path.realpath(sys.argv[0]))
             # If driver's sys.path doesn't include the script directory
             # (e.g driver is started via `python -m`,
@@ -2223,6 +2262,7 @@ def connect(
         runtime_env_hash,
         startup_token,
         session_name,
+        node.cluster_id,
         "" if mode != SCRIPT_MODE else entrypoint,
         worker_launch_time_ms,
         worker_launched_time_ms,
@@ -2463,7 +2503,7 @@ def get(
     with profiling.profile("ray.get"):
         # TODO(sang): Should make StreamingObjectRefGenerator
         # compatible to ray.get for dataset.
-        if isinstance(object_refs, ray._raylet.StreamingObjectRefGenerator):
+        if isinstance(object_refs, StreamingObjectRefGenerator):
             return object_refs
 
         is_individual_id = isinstance(object_refs, ray.ObjectRef)
@@ -2605,8 +2645,9 @@ def wait(
     - :doc:`/ray-core/patterns/ray-get-submission-order`
 
     Args:
-        object_refs: List of object refs for objects that may
-            or may not be ready. Note that these IDs must be unique.
+        object_refs: List of :class:`~ObjectRefs` or
+            :class:`~StreamingObjectRefGenerators` for objects that may or may
+            not be ready. Note that these must be unique.
         num_returns: The number of object refs that should be returned.
         timeout: The maximum amount of time in seconds to wait before
             returning.
@@ -2637,14 +2678,20 @@ def wait(
             )
             blocking_wait_inside_async_warned = True
 
-    if isinstance(object_refs, ObjectRef):
+    if isinstance(object_refs, ObjectRef) or isinstance(
+        object_refs, StreamingObjectRefGenerator
+    ):
         raise TypeError(
-            "wait() expected a list of ray.ObjectRef, got a single ray.ObjectRef"
+            "wait() expected a list of ray.ObjectRef or ray.StreamingObjectRefGenerator"
+            ", got a single ray.ObjectRef or ray.StreamingObjectRefGenerator "
+            f"{object_refs}"
         )
 
     if not isinstance(object_refs, list):
         raise TypeError(
-            "wait() expected a list of ray.ObjectRef, " f"got {type(object_refs)}"
+            "wait() expected a list of ray.ObjectRef or "
+            "ray.StreamingObjectRefGenerator, "
+            f"got {type(object_refs)}"
         )
 
     if timeout is not None and timeout < 0:
@@ -2653,13 +2700,16 @@ def wait(
         )
 
     for object_ref in object_refs:
-        if not isinstance(object_ref, ObjectRef):
+        if not isinstance(object_ref, ObjectRef) and not isinstance(
+            object_ref, StreamingObjectRefGenerator
+        ):
             raise TypeError(
-                "wait() expected a list of ray.ObjectRef, "
+                "wait() expected a list of ray.ObjectRef or "
+                "ray.StreamingObjectRefGenerator, "
                 f"got list containing {type(object_ref)}"
             )
-
     worker.check_connected()
+
     # TODO(swang): Check main thread.
     with profiling.profile("ray.wait"):
         # TODO(rkn): This is a temporary workaround for
@@ -2750,7 +2800,8 @@ def kill(actor: "ray.actor.ActorHandle", *, no_restart: bool = True):
     worker.check_connected()
     if not isinstance(actor, ray.actor.ActorHandle):
         raise ValueError(
-            "ray.kill() only supported for actors. Got: {}.".format(type(actor))
+            "ray.kill() only supported for actors. For tasks, try ray.cancel(). "
+            "Got: {}.".format(type(actor))
         )
     worker.core_worker.kill_actor(actor._ray_actor_id, no_restart)
 
@@ -2792,7 +2843,7 @@ def cancel(object_ref: "ray.ObjectRef", *, force: bool = False, recursive: bool 
     if not isinstance(object_ref, ray.ObjectRef):
         raise TypeError(
             "ray.cancel() only supported for non-actor object refs. "
-            f"Got: {type(object_ref)}."
+            f"For actors, try ray.kill(). Got: {type(object_ref)}."
         )
     return worker.core_worker.cancel_task(object_ref, force, recursive)
 
@@ -3077,22 +3128,31 @@ def remote(
     dynamically modified with the same arguments as above using
     ``.options()`` as follows:
 
-    >>> @ray.remote(num_gpus=1, max_calls=1, num_returns=2)
-    ... def f():
-    ...     return 1, 2
-    >>>
-    >>> f_with_2_gpus = f.options(num_gpus=2) # doctest: +SKIP
-    >>> object_ref = f_with_2_gpus.remote() # doctest: +SKIP
-    >>> assert ray.get(object_ref) == (1, 2) # doctest: +SKIP
+    .. testcode::
+        :hide:
 
-    >>> @ray.remote(num_cpus=2, resources={"CustomResource": 1})
-    ... class Foo:
-    ...     def method(self):
-    ...         return 1
-    >>>
-    >>> Foo_with_no_resources = Foo.options(num_cpus=1, resources=None)
-    >>> foo_actor = Foo_with_no_resources.remote()
-    >>> assert ray.get(foo_actor.method.remote()) == 1
+        ray.shutdown()
+
+        ray.init(num_cpus=5, num_gpus=5)
+
+    .. testcode::
+
+        @ray.remote(num_gpus=1, max_calls=1, num_returns=2)
+        def f():
+            return 1, 2
+
+        f_with_2_gpus = f.options(num_gpus=2)
+        object_refs = f_with_2_gpus.remote()
+        assert ray.get(object_refs) == [1, 2]
+
+        @ray.remote(num_cpus=2, resources={"CustomResource": 1})
+        class Foo:
+            def method(self):
+                return 1
+
+        Foo_with_no_resources = Foo.options(num_cpus=1, resources=None)
+        foo_actor = Foo_with_no_resources.remote()
+        assert ray.get(foo_actor.method.remote()) == 1
 
 
     A remote actor will be terminated when all actor handle to it

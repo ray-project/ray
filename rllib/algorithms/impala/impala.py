@@ -112,11 +112,6 @@ class ImpalaConfig(AlgorithmConfig):
         self.vtrace = True
         self.vtrace_clip_rho_threshold = 1.0
         self.vtrace_clip_pg_rho_threshold = 1.0
-        # TODO (sven): Deprecate this setting. It makes no sense to drop the last ts.
-        #  It's actually dangerous if there are important rewards "hiding" in that ts.
-        #  This setting is already ignored (always False) on the new Learner API
-        #  (if _enable_learner_api=True).
-        self.vtrace_drop_last_ts = False
         self.num_multi_gpu_tower_stacks = 1
         self.minibatch_buffer_size = 1
         self.num_sgd_iter = 1
@@ -171,6 +166,7 @@ class ImpalaConfig(AlgorithmConfig):
 
         # Deprecated value.
         self.num_data_loader_buffers = DEPRECATED_VALUE
+        self.vtrace_drop_last_ts = DEPRECATED_VALUE
 
     @override(AlgorithmConfig)
     def training(
@@ -179,7 +175,6 @@ class ImpalaConfig(AlgorithmConfig):
         vtrace: Optional[bool] = NotProvided,
         vtrace_clip_rho_threshold: Optional[float] = NotProvided,
         vtrace_clip_pg_rho_threshold: Optional[float] = NotProvided,
-        vtrace_drop_last_ts: Optional[bool] = NotProvided,
         gamma: Optional[float] = NotProvided,
         num_multi_gpu_tower_stacks: Optional[int] = NotProvided,
         minibatch_buffer_size: Optional[int] = NotProvided,
@@ -206,6 +201,8 @@ class ImpalaConfig(AlgorithmConfig):
         _separate_vf_optimizer: Optional[bool] = NotProvided,
         _lr_vf: Optional[float] = NotProvided,
         after_train_step: Optional[Callable[[dict], None]] = NotProvided,
+        # deprecated.
+        vtrace_drop_last_ts=None,
         **kwargs,
     ) -> "ImpalaConfig":
         """Sets the training related configuration.
@@ -214,13 +211,6 @@ class ImpalaConfig(AlgorithmConfig):
             vtrace: V-trace params (see vtrace_tf/torch.py).
             vtrace_clip_rho_threshold:
             vtrace_clip_pg_rho_threshold:
-            vtrace_drop_last_ts: If True, drop the last timestep for the vtrace
-                calculations, such that all data goes into the calculations as [B x T-1]
-                (+ the bootstrap value). This is the default and legacy RLlib behavior,
-                however, could potentially have a destabilizing effect on learning,
-                especially in sparse reward or reward-at-goal environments.
-                False for not dropping the last timestep.
-                System params.
             gamma: Float specifying the discount factor of the Markov Decision process.
             num_multi_gpu_tower_stacks: For each stack of multi-GPU towers, how many
                 slots should we reserve for parallel data loading? Set this to >1 to
@@ -293,6 +283,16 @@ class ImpalaConfig(AlgorithmConfig):
         Returns:
             This updated AlgorithmConfig object.
         """
+        if vtrace_drop_last_ts is not None:
+            deprecation_warning(
+                old="vtrace_drop_last_ts",
+                help="The v-trace operations in RLlib have been enhanced and we are "
+                "now using proper value bootstrapping at the end of each "
+                "trajectory, such that no timesteps in our loss functions have to "
+                "be dropped anymore.",
+                error=True,
+            )
+
         # Pass kwargs onto super's `training()` method.
         super().training(**kwargs)
 
@@ -302,8 +302,6 @@ class ImpalaConfig(AlgorithmConfig):
             self.vtrace_clip_rho_threshold = vtrace_clip_rho_threshold
         if vtrace_clip_pg_rho_threshold is not NotProvided:
             self.vtrace_clip_pg_rho_threshold = vtrace_clip_pg_rho_threshold
-        if vtrace_drop_last_ts is not NotProvided:
-            self.vtrace_drop_last_ts = vtrace_drop_last_ts
         if num_multi_gpu_tower_stacks is not NotProvided:
             self.num_multi_gpu_tower_stacks = num_multi_gpu_tower_stacks
         if minibatch_buffer_size is not NotProvided:
@@ -840,33 +838,10 @@ class Impala(Algorithm):
         # TODO(avnishn): Remove this once we have a way to extend placement group
         # factories.
         if cf._enable_learner_api:
-            # resources for the trainer
-            if cf.num_learner_workers == 0:
-                # if num_learner_workers is 0, then we need to allocate one gpu if
-                # num_gpus_per_learner_worker is greater than 0.
-                trainer_bundle = [
-                    {
-                        "CPU": cf.num_cpus_per_learner_worker,
-                        "GPU": cf.num_gpus_per_learner_worker,
-                    }
-                ]
-            else:
-                if cf.num_gpus_per_learner_worker:
-                    trainer_bundle = [
-                        {
-                            "GPU": cf.num_gpus_per_learner_worker,
-                        }
-                        for _ in range(cf.num_learner_workers)
-                    ]
-                elif cf.num_cpus_per_learner_worker:
-                    trainer_bundle = [
-                        {
-                            "CPU": cf.num_cpus_per_learner_worker,
-                        }
-                        for _ in range(cf.num_learner_workers)
-                    ]
+            # Resources for the Algorithm.
+            learner_bundles = cls._get_learner_bundles(cf)
 
-            bundles += trainer_bundle
+            bundles += learner_bundles
 
         # Return PlacementGroupFactory containing all needed resources
         # (already properly defined as device bundles).

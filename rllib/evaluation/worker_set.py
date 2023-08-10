@@ -94,9 +94,6 @@ class WorkerSet:
         local_worker: bool = True,
         logdir: Optional[str] = None,
         _setup: bool = True,
-        # deprecated args.
-        policy_class=DEPRECATED_VALUE,
-        trainer_config=DEPRECATED_VALUE,
     ):
         """Initializes a WorkerSet instance.
 
@@ -118,19 +115,6 @@ class WorkerSet:
             logdir: Optional logging directory for workers.
             _setup: Whether to setup workers. This is only for testing.
         """
-        if policy_class != DEPRECATED_VALUE:
-            deprecation_warning(
-                old="WorkerSet(policy_class=..)",
-                new="WorkerSet(default_policy_class=..)",
-                error=True,
-            )
-        if trainer_config != DEPRECATED_VALUE:
-            deprecation_warning(
-                old="WorkerSet(trainer_config=..)",
-                new="WorkerSet(config=..)",
-                error=True,
-            )
-
         from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 
         # Make sure `config` is an AlgorithmConfig object.
@@ -356,7 +340,9 @@ class WorkerSet:
     def sync_weights(
         self,
         policies: Optional[List[PolicyID]] = None,
-        from_worker_or_trainer: Optional[Union[RolloutWorker, LearnerGroup]] = None,
+        from_worker_or_learner_group: Optional[
+            Union[RolloutWorker, LearnerGroup]
+        ] = None,
         to_worker_indices: Optional[List[int]] = None,
         global_vars: Optional[Dict[str, TensorType]] = None,
         timeout_seconds: Optional[int] = 0,
@@ -369,7 +355,7 @@ class WorkerSet:
         Args:
             policies: Optional list of PolicyIDs to sync weights for.
                 If None (default), sync weights to/from all policies.
-            from_worker_or_trainer: Optional (local) RolloutWorker instance or
+            from_worker_or_learner_group: Optional (local) RolloutWorker instance or
                 LearnerGroup instance to sync from. If None (default),
                 sync from this WorkerSet's local worker.
             to_worker_indices: Optional list of worker indices to sync the
@@ -381,16 +367,16 @@ class WorkerSet:
                 for any sync calls to finish). This significantly improves
                 algorithm performance.
         """
-        if self.local_worker() is None and from_worker_or_trainer is None:
+        if self.local_worker() is None and from_worker_or_learner_group is None:
             raise TypeError(
-                "No `local_worker` in WorkerSet, must provide `from_worker` "
-                "arg in `sync_weights()`!"
+                "No `local_worker` in WorkerSet, must provide "
+                "`from_worker_or_learner_group` arg in `sync_weights()`!"
             )
 
         # Only sync if we have remote workers or `from_worker_or_trainer` is provided.
         weights = None
-        if self.num_remote_workers() or from_worker_or_trainer is not None:
-            weights_src = from_worker_or_trainer or self.local_worker()
+        if self.num_remote_workers() or from_worker_or_learner_group is not None:
+            weights_src = from_worker_or_learner_group or self.local_worker()
 
             if weights_src is None:
                 raise ValueError(
@@ -414,10 +400,10 @@ class WorkerSet:
                 timeout_seconds=timeout_seconds,
             )
 
-        # If `from_worker` is provided, also sync to this WorkerSet's
+        # If `from_worker_or_learner_group` is provided, also sync to this WorkerSet's
         # local worker.
         if self.local_worker() is not None:
-            if from_worker_or_trainer is not None:
+            if from_worker_or_learner_group is not None:
                 self.local_worker().set_weights(weights, global_vars=global_vars)
             # If `global_vars` is provided and local worker exists  -> Update its
             # global_vars.

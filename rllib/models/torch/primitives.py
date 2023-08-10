@@ -1,5 +1,7 @@
 from typing import List, Optional
 from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.utils.deprecation import deprecation_warning
+from ray.util import log_once
 
 torch, nn = try_import_torch()
 
@@ -24,6 +26,10 @@ class FCNet(nn.Module):
         output_dim: Optional[int] = None,
         activation: str = "linear",
     ):
+        if log_once("fc_net_torch_deprecation"):
+            deprecation_warning(
+                old="ray.rllib.models.torch.fcnet.FCNet",
+            )
         super().__init__()
         self.input_dim = input_dim
         self.hidden_layers = hidden_layers

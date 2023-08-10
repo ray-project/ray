@@ -2,7 +2,7 @@
 
 .. include:: /_includes/rllib/we_are_hiring.rst
 
-Connectors (Alpha)
+Connectors (Beta)
 ==================
 
 Connector are components that handle transformations on inputs and outputs of a given RL policy, with the goal of improving
@@ -259,14 +259,6 @@ for a new mock Cartpole environment that returns additional features and require
    :language: python
    :start-after: __sphinx_doc_begin__
    :end-before: __sphinx_doc_end__
-
-
-End-to-end Example
-------------------
-
-TODO: End-to-end case study: adapting an old policy to bootstrap the training of new LSTM policies,
-then serve the newly trained policy in a server/client setup.
-
 
 Notable TODOs
 -------------

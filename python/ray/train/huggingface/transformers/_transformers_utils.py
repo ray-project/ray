@@ -1,6 +1,6 @@
 import logging
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Optional, Tuple, Type
+from typing import TYPE_CHECKING, Any, Iterator, Optional, Tuple, Type
 
 import datasets.iterable_dataset
 import transformers.trainer
@@ -67,19 +67,22 @@ def wrap_transformers_trainer(
 
 
 # TODO(ml-team): Replace with a Datasets-HuggingFace integration when available.
-class RayDatasetHFIterable(datasets.iterable_dataset.ExamplesIterable):
-    """HF ExamplesIterable backed by a Dataset."""
+class RayDatasetHFIterable(datasets.iterable_dataset._BaseExamplesIterable):
+    """HF ``_BaseExamplesIterable`` backed by a ``ray.data.DataIterator``.
+
+    The other abstract methods of shuffling and sharding the data are not implemented,
+    since those operations should be done by Ray Data. For example, the dataset
+    is already sharded to each data parallel worker and is disabled
+    (see ``wrap_transformers_trainer`` above).
+    """
 
     def __init__(self, dataset: DataIterator) -> None:
+        super().__init__()
         self.dataset = dataset
-        self.generate_examples_fn = self.dataset.iter_rows
 
-        # Required for the superclass
-        self.kwargs = {}
-
-    def __iter__(self):
-        for row in self.generate_examples_fn(**self.kwargs):
-            yield (0, {k: v for k, v in row.items()})
+    def __iter__(self) -> Iterator[Tuple[int, dict]]:
+        for idx, row in enumerate(self.dataset.iter_rows()):
+            yield (idx, {k: v for k, v in row.items()})
 
 
 def process_dataset_for_hf(

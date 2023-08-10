@@ -11,6 +11,8 @@ echo 10
 EOF
 chmod +x /usr/bin/nproc
 
+export RAY_INSTALL_JAVA="${RAY_INSTALL_JAVA:-0}"
+
 NODE_VERSION="14"
 
 # Python version key, interpreter version code, numpy tuples.
@@ -22,33 +24,35 @@ PYTHON_NUMPYS=(
   "py311 cp311-cp311 1.22.0"
 )
 
-yum -y install unzip zip sudo
-yum -y install java-1.8.0-openjdk java-1.8.0-openjdk-devel maven xz
-yum -y install openssl
+YUM_PKGS=(unzip zip sudo openssl xz)
 
-if [[ "${HOSTTYPE-}" == "x86_64" ]]; then
-  yum install "libasan-4.8.5-44.el7.${HOSTTYPE}" -y
-  yum install "libubsan-7.3.1-5.10.el7.${HOSTTYPE}" -y
-  yum install "devtoolset-8-libasan-devel.${HOSTTYPE}" -y
+if [[ "${RAY_INSTALL_JAVA}" == "1" ]]; then
+  YUM_PKGS+=(java-1.8.0-openjdk java-1.8.0-openjdk-devel maven)
 fi
 
-java -version
-JAVA_BIN="$(readlink -f "$(command -v java)")"
-echo "java_bin path ${JAVA_BIN}"
-export JAVA_HOME="${JAVA_BIN%jre/bin/java}"
+if [[ "${HOSTTYPE-}" == "x86_64" ]]; then
+  YMB_PKGS+=(
+    "libasan-4.8.5-44.el7.x86_64"
+    "libubsan-7.3.1-5.10.el7.x86_64"
+    "devtoolset-8-libasan-devel.x86_64"
+  )
+fi
+
+yum -y install "${YUM_PKGS[@]}"
+
+
+if [[ "${RAY_INSTALL_JAVA}" == "1" ]]; then
+  java -version
+  JAVA_BIN="$(readlink -f "$(command -v java)")"
+  echo "java_bin path ${JAVA_BIN}"
+  export JAVA_HOME="${JAVA_BIN%jre/bin/java}"
+fi
 
 /ray/ci/env/install-bazel.sh
-# Put bazel into the PATH if building Bazel from source
-# export PATH=/root/bazel-3.2.0/output:$PATH:/root/bin
-
-# If converting down to manylinux2010, the following configuration should
-# be set for bazel
-#echo "build --config=manylinux2010" >> /root/.bazelrc
 echo "build --incompatible_linkopts_to_linklibs" >> /root/.bazelrc
 
-if [[ -n "${RAY_INSTALL_JAVA:-}" ]]; then
+if [[ "${RAY_INSTALL_JAVA}" == "1" ]]; then
   bazel build //java:ray_java_pkg
-  unset RAY_INSTALL_JAVA
 fi
 
 # Install and use the latest version of Node.js in order to build the dashboard.
@@ -82,13 +86,14 @@ for PYTHON_NUMPY in "${PYTHON_NUMPYS[@]}" ; do
   PYTHON="$(echo "${PYTHON_NUMPY}" | cut -d' ' -f2)"
   NUMPY_VERSION="$(echo "${PYTHON_NUMPY}" | cut -d' ' -f3)"
 
-  echo "---- Build wheel for ${PYTHON}, numpy=${NUMPY_VERSION}"
+  echo "--- Build wheel for ${PYTHON}, numpy=${NUMPY_VERSION}"
 
   # The -f flag is passed twice to also run git clean in the arrow subdirectory.
   # The -d flag removes directories. The -x flag ignores the .gitignore file,
   # and the -e flag ensures that we don't remove the .whl directory, the
-  # dashboard directory and jars directory.
-  git clean -f -f -x -d -e .whl -e python/ray/dashboard/client -e dashboard/client -e python/ray/jars
+  # dashboard directory and jars directory, as well as the compiled
+  # dependency constraints.
+  git clean -f -f -x -d -e .whl -e python/ray/dashboard/client -e dashboard/client -e python/ray/jars -e python/requirements_compiled.txt
 
   (
     cd python
@@ -103,13 +108,16 @@ for PYTHON_NUMPY in "${PYTHON_NUMPYS[@]}" ; do
       exit 1
     fi
 
+    # When building the wheel, we always set RAY_INSTALL_JAVA=0 because we
+    # have already built the Java code above.
+
     # build ray wheel
-    PATH="/opt/python/${PYTHON}/bin:/root/bazel-3.2.0/output:$PATH" \
-    "/opt/python/${PYTHON}/bin/python" setup.py bdist_wheel
+    PATH="/opt/python/${PYTHON}/bin:$PATH" RAY_INSTALL_JAVA=0 \
+    "/opt/python/${PYTHON}/bin/python" setup.py -q bdist_wheel
 
     # build ray-cpp wheel
-    PATH="/opt/python/${PYTHON}/bin:/root/bazel-3.2.0/output:$PATH" \
-    RAY_INSTALL_CPP=1 "/opt/python/${PYTHON}/bin/python" setup.py bdist_wheel
+    PATH="/opt/python/${PYTHON}/bin:$PATH" RAY_INSTALL_JAVA=0 \
+    RAY_INSTALL_CPP=1 "/opt/python/${PYTHON}/bin/python" setup.py -q bdist_wheel
 
     # In the future, run auditwheel here.
     mv dist/*.whl ../.whl/
@@ -128,8 +136,11 @@ for path in .whl/*.whl; do
 done
 
 # Clean the build output so later operations is on a clean directory.
-git clean -f -f -x -d -e .whl -e python/ray/dashboard/client
+git clean -f -f -x -d -e .whl -e python/ray/dashboard/client -e python/requirements_compiled.txt
 
-if [ "${BUILD_JAR-}" == "1" ]; then
-  ./java/build-jar-multiplatform.sh linux
+if [[ "${RAY_INSTALL_JAVA}" == "1" ]]; then
+  if [[ "${BUILD_JAR-}" == "1" ]]; then
+    echo "--- Build JAR"
+    ./java/build-jar-multiplatform.sh linux
+  fi
 fi

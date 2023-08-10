@@ -32,7 +32,7 @@ RUN apt-get update -qq && apt-get upgrade -qq
 RUN apt-get install -y -qq \
     curl python-is-python3 git build-essential \
     sudo unzip unrar apt-utils dialog tzdata wget rsync \
-    language-pack-en tmux cmake gdb vim htop \
+    language-pack-en tmux cmake gdb vim htop graphviz \
     libgtk2.0-dev zlib1g-dev libgl1-mesa-dev \
     liblz4-dev libunwind-dev libncurses5 \
     clang-format-12 jq \
@@ -64,4 +64,4 @@ WORKDIR /ray
 # Below should be re-run each time
 COPY . .
 
-RUN ./ci/env/install-dependencies.sh init
+RUN ./ci/env/install-dependencies.sh

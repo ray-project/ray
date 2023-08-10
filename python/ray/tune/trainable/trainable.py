@@ -10,7 +10,6 @@ import tempfile
 import time
 from contextlib import redirect_stderr, redirect_stdout
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Union, Type
-import warnings
 
 import ray
 from ray.air._internal.remote_storage import list_at_uri
@@ -24,6 +23,12 @@ from ray.air.constants import (
     TIMESTAMP,
     TIME_THIS_ITER_S,
     TRAINING_ITERATION,
+)
+from ray.train._internal.checkpoint_manager import _TrainingResult
+from ray.train._internal.storage import (
+    _use_storage_context,
+    StorageContext,
+    init_shared_storage_context,
 )
 from ray.tune.result import (
     DEBUG_METRICS,
@@ -52,7 +57,7 @@ from ray.tune.utils.callback import (
 )
 from ray.tune.utils.log import disable_ipython
 from ray.tune.execution.placement_groups import PlacementGroupFactory
-from ray.tune.syncer import Syncer, SyncConfig, get_node_to_storage_syncer
+from ray.tune.syncer import SyncConfig, get_node_to_storage_syncer
 from ray.tune.trainable.util import TrainableUtil
 from ray.tune.utils.util import Tee, _get_checkpoint_from_remote_node
 from ray.util.annotations import PublicAPI
@@ -112,9 +117,8 @@ class Trainable:
         config: Dict[str, Any] = None,
         logger_creator: Callable[[Dict[str, Any]], "Logger"] = None,  # Deprecated (2.7)
         remote_checkpoint_dir: Optional[str] = None,
-        custom_syncer: Optional[Syncer] = None,  # Deprecated (2.6)
-        sync_timeout: Optional[int] = None,  # Deprecated (2.6)
         sync_config: Optional[SyncConfig] = None,
+        storage: Optional[StorageContext] = None,
     ):
         """Initialize a Trainable.
 
@@ -181,6 +185,18 @@ class Trainable:
         log_sys_usage = self.config.get("log_sys_usage", False)
         self._monitor = UtilMonitor(start=log_sys_usage)
 
+        self._storage = storage
+
+        if _use_storage_context():
+            assert storage
+            assert storage.trial_fs_path
+            logger.debug(f"StorageContext on the TRAINABLE:\n{storage}")
+            storage._check_validation_file()
+
+            # Set a globally accessible storage context on the remote Trainable process
+            # This is accessible from the training loop thread for FunctionTrainable's
+            init_shared_storage_context(storage)
+
         self.remote_checkpoint_dir = remote_checkpoint_dir
         # If no sync_config is provided, but we save to a remote_checkpoint_dir,
         # then provide a default syncer. `upload_dir` here is just a dummy directory
@@ -189,26 +205,13 @@ class Trainable:
             upload_dir=self.remote_checkpoint_dir, syncer="auto"
         )
 
-        # TODO(ml-team): `custom_syncer` and `syncer` are deprecated. Remove in 2.6.
-        warning_message = (
-            "Specifying `custom_syncer` and `sync_timeout` as arguments in the "
-            "Trainable constructor is deprecated and will be removed in version 2.6. "
-            "Pass in a `tune.SyncConfig` object through the `sync_config` "
-            "argument instead."
+        # Resolves syncer="auto" to an actual syncer cloud storage is used
+        # If sync_config.syncer is a custom Syncer instance, this is a no-op.
+        self.sync_config.syncer = get_node_to_storage_syncer(
+            self.sync_config, self.remote_checkpoint_dir
         )
-        if sync_timeout:
-            warnings.warn(warning_message, DeprecationWarning)
-            self.sync_config.sync_timeout = sync_timeout
-        if custom_syncer:
-            warnings.warn(warning_message, DeprecationWarning)
-            self.sync_config.syncer = custom_syncer
-        else:
-            # Resolves syncer="auto" to an actual syncer if needed
-            self.sync_config.syncer = get_node_to_storage_syncer(
-                self.sync_config, self.remote_checkpoint_dir
-            )
 
-        self.sync_num_retries = int(os.getenv("TUNE_CHECKPOINT_CLOUD_RETRY_NUM", "3"))
+        self.sync_num_retries = int(os.getenv("TUNE_CHECKPOINT_CLOUD_RETRY_NUM", "2"))
         self.sync_sleep_time = float(
             os.getenv("TUNE_CHECKPOINT_CLOUD_RETRY_WAIT_TIME_S", "1")
         )
@@ -499,6 +502,15 @@ class Trainable:
         # User saves checkpoint
         checkpoint_dict_or_path = self.save_checkpoint(checkpoint_dir)
 
+        if _use_storage_context() and isinstance(
+            checkpoint_dict_or_path, _TrainingResult
+        ):
+            checkpoint_result = checkpoint_dict_or_path
+            assert self._last_result
+            # Update the checkpoint result to include auto-filled metrics.
+            checkpoint_result.metrics.update(self._last_result)
+            return checkpoint_result
+
         if checkpoint_dict_or_path is None:
             # checkpoint_dict_or_path can only be None in class trainables.
             # In that case the default is to use the root checkpoint directory.
@@ -508,7 +520,7 @@ class Trainable:
             # checkpoint_dir is only None in function trainables. In that case,
             # checkpoint_dict_or_path points to the already saved checkpoint dir.
             # This will be considered the root dir.
-            assert isinstance(checkpoint_dict_or_path, str)
+            assert isinstance(checkpoint_dict_or_path, str), checkpoint_dict_or_path
             checkpoint_dir = checkpoint_dict_or_path
 
         # Get trainable metadata
@@ -620,6 +632,9 @@ class Trainable:
         return bool(artifact_files)
 
     def _maybe_save_artifacts_to_cloud(self) -> bool:
+        if _use_storage_context():
+            return False
+
         if not self._should_upload_artifacts:
             return False
 
@@ -654,6 +669,9 @@ class Trainable:
         Returns:
             bool: True if (successfully) saved to cloud
         """
+        if _use_storage_context():
+            return False
+
         if not self.uses_cloud_checkpointing:
             return False
 
@@ -668,15 +686,16 @@ class Trainable:
                 max_retries=self.sync_num_retries,
                 backoff_s=self.sync_sleep_time,
             )
-        except TuneError:
+        except TuneError as e:
             num_retries = self.sync_num_retries
             logger.error(
                 f"Could not upload checkpoint to {checkpoint_uri} even after "
-                f"{num_retries} retries."
+                f"{num_retries} retries. "
                 f"Please check if the credentials expired and that the remote "
                 f"filesystem is supported. For large checkpoints or artifacts, "
                 f"consider increasing `SyncConfig(sync_timeout)` "
-                f"(current value: {self.sync_config.sync_timeout} seconds)."
+                f"(current value: {self.sync_config.sync_timeout} seconds). "
+                f"See the full error details below:\n{e}"
             )
             return False
         return True
@@ -694,6 +713,9 @@ class Trainable:
         Return:
             bool: True if the checkpoint was synced down successfully from cloud.
         """
+        if _use_storage_context():
+            return False
+
         if os.path.exists(checkpoint_path):
             try:
                 TrainableUtil.find_checkpoint_dir(checkpoint_path)
@@ -723,6 +745,9 @@ class Trainable:
         return success
 
     def _maybe_load_artifacts_from_cloud(self) -> bool:
+        if _use_storage_context():
+            return False
+
         if not self.sync_config.sync_artifacts:
             return False
 
@@ -750,6 +775,9 @@ class Trainable:
     def _maybe_load_from_cloud(
         self, remote_dir: str, local_dir: str, exclude: List[str] = None
     ) -> bool:
+        if _use_storage_context():
+            return False
+
         if not self.uses_cloud_checkpointing or not list_at_uri(remote_dir):
             return False
 
@@ -839,6 +867,33 @@ class Trainable:
                 could not be found.
 
         """
+        if _use_storage_context():
+            checkpoint_result = checkpoint_path
+            assert isinstance(checkpoint_result, _TrainingResult)
+
+            checkpoint_metrics = checkpoint_result.metrics
+            self._iteration = checkpoint_metrics[TRAINING_ITERATION]
+            self._time_total = checkpoint_metrics[TIME_TOTAL_S]
+            self._time_since_restore = 0.0
+            self._iterations_since_restore = 0
+
+            # TODO(justinvyu): This stuff should be moved to rllib.
+            self._timesteps_total = checkpoint_metrics.get(TIMESTEPS_TOTAL)
+            self._timesteps_since_restore = 0
+            self._episodes_total = checkpoint_metrics.get(EPISODES_TOTAL)
+
+            # TODO(justinvyu): The Trainable `load_checkpoint` interface
+            # should be updated to take in a `_TrainingResult` / Checkpoint
+            self.load_checkpoint(checkpoint_result)
+
+            self._restored = True
+
+            logger.info(
+                f"Restored on {self._local_ip} from checkpoint: "
+                f"{checkpoint_result.checkpoint}"
+            )
+            return True
+
         # Ensure Checkpoints are converted
         if isinstance(checkpoint_path, Checkpoint):
             return self._restore_from_checkpoint_obj(checkpoint_path)

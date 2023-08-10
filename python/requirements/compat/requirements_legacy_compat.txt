@@ -23,7 +23,6 @@ pytorch-lightning==1.5.10
 # Upstream libraries
 lightgbm_ray==0.1.5
 xgboost_ray==0.1.10
-ray_lightning==0.2.0
 
 # Datasets
 pyarrow==6.0.1

@@ -20,14 +20,16 @@ import argparse
 import os
 from pathlib import Path
 import sys
+import re
 import yaml
 
 import ray
-from ray.tune import run_experiments
+from ray.air.integrations.wandb import WandbLoggerCallback
 from ray.rllib import _register_all
 from ray.rllib.common import SupportedFileType
 from ray.rllib.train import load_experiments_from_file
 from ray.rllib.utils.deprecation import deprecation_warning
+from ray.tune import run_experiments
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
@@ -58,14 +60,43 @@ parser.add_argument(
     help="Run ray in local mode for easier debugging.",
 )
 parser.add_argument(
+    "--num-samples",
+    type=int,
+    default=1,
+    help="The number of seeds/samples to run with the given experiment config.",
+)
+parser.add_argument(
     "--override-mean-reward",
     type=float,
     default=0.0,
     help=(
-        "Override "
-        "the mean reward specified by the yaml file in the stopping criteria. This "
-        "is particularly useful for timed tests."
+        "Override the mean reward specified by the yaml file in the stopping criteria. "
+        "This is particularly useful for timed tests."
     ),
+)
+parser.add_argument(
+    "--verbose",
+    type=int,
+    default=2,
+    help="The verbosity level for the main `tune.run_experiments()` call.",
+)
+parser.add_argument(
+    "--wandb-key",
+    type=str,
+    default=None,
+    help="The WandB API key to use for uploading results.",
+)
+parser.add_argument(
+    "--wandb-project",
+    type=str,
+    default=None,
+    help="The WandB project name to use.",
+)
+parser.add_argument(
+    "--wandb-run-name",
+    type=str,
+    default=None,
+    help="The WandB run name to use.",
 )
 
 # Obsoleted arg, use --dir instead.
@@ -103,12 +134,14 @@ if __name__ == "__main__":
 
     # Loop through all collected files.
     for file in files:
+        config_is_python = False
         # For python files, need to make sure, we only deliver the module name into the
         # `load_experiments_from_file` function (everything from "/ray/rllib" on).
         if file.endswith(".py"):
             if file.endswith("__init__.py"):  # weird CI learning test (BAZEL) case
                 continue
             experiments = load_experiments_from_file(file, SupportedFileType.python)
+            config_is_python = True
         else:
             experiments = load_experiments_from_file(file, SupportedFileType.yaml)
 
@@ -118,13 +151,16 @@ if __name__ == "__main__":
 
         exp = list(experiments.values())[0]
 
+        # Set the number of samples to run.
+        exp["num_samples"] = args.num_samples
+
         # Override framework setting with the command line one, if provided.
         # Otherwise, will use framework setting in file (or default: torch).
         if args.framework is not None:
             exp["config"]["framework"] = args.framework
         # Override env setting if given on command line.
         if args.env is not None:
-            exp["config"]["env"] = args.env
+            exp["config"]["env"] = exp["env"] = args.env
 
         # Override the mean reward if specified. This is used by the ray ci
         # for overriding the episode reward mean for tf2 tests for off policy
@@ -139,19 +175,38 @@ if __name__ == "__main__":
             print(f"Skipping framework='{args.framework}' for QMIX.")
             continue
 
-        # Always run with eager-tracing when framework=tf2 if not in local-mode.
-        # Ignore this if the yaml explicitly tells us to disable eager tracing
+        # Always run with eager-tracing when framework=tf2, if not in local-mode
+        # and unless the yaml explicitly tells us to disable eager tracing.
         if (
-            args.framework == "tf2"
+            (args.framework == "tf2" or exp["config"].get("framework") == "tf2")
             and not args.local_mode
-            and not exp["config"].get("eager_tracing") is False
+            # Note: This check will always fail for python configs, b/c normally,
+            # algorithm configs have `self.eager_tracing=False` by default.
+            # Thus, you'd have to set `eager_tracing` to True explicitly in your python
+            # config to make sure we are indeed using eager tracing.
+            and exp["config"].get("eager_tracing") is not False
         ):
-
             exp["config"]["eager_tracing"] = True
 
-        # Print out the actual config.
-        print("== Test config ==")
-        print(yaml.dump(experiments))
+        # Print out the actual config (not for py files as yaml.dump weirdly fails).
+        if not config_is_python:
+            print("== Test config ==")
+            print(yaml.dump(experiments))
+
+        callbacks = None
+        if args.wandb_key is not None:
+            project = args.wandb_project or (
+                exp["run"].lower() + "-" + re.sub("\\W+", "-", exp["env"].lower())
+                if config_is_python
+                else list(experiments.keys())[0]
+            )
+            callbacks = [
+                WandbLoggerCallback(
+                    api_key=args.wandb_key,
+                    project=project,
+                    **({"name": args.wandb_run_name} if args.wandb_run_name else {}),
+                )
+            ]
 
         # Try running each test 3 times and make sure it reaches the given
         # reward.
@@ -165,7 +220,12 @@ if __name__ == "__main__":
                 ray.init()
             else:
                 try:
-                    trials = run_experiments(experiments, resume=False, verbose=2)
+                    trials = run_experiments(
+                        experiments,
+                        resume=False,
+                        verbose=args.verbose,
+                        callbacks=callbacks,
+                    )
                 finally:
                     ray.shutdown()
                     _register_all()
