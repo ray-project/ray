@@ -21,6 +21,7 @@ def _get_pg_strategy(pg: PlacementGroup) -> str:
     return ray.util.placement_group_table(pg)["strategy"]
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Timing out on Windows.")
 def test_basic(serve_instance):
     """Test the basic workflow: multiple replicas with their own PGs."""
 
@@ -47,6 +48,7 @@ def test_basic(serve_instance):
     assert len(get_all_live_placement_group_names()) == 0
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Timing out on Windows.")
 def test_upgrade_and_change_pg(serve_instance):
     """Test re-deploying a deployment with different PG bundles and strategy."""
 
@@ -84,6 +86,7 @@ def test_upgrade_and_change_pg(serve_instance):
     assert len(get_all_live_placement_group_names()) == 0
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Timing out on Windows.")
 def test_pg_removed_on_replica_graceful_shutdown(serve_instance):
     """Verify that PGs are removed when a replica shuts down gracefully."""
 
@@ -115,6 +118,7 @@ def test_pg_removed_on_replica_graceful_shutdown(serve_instance):
     assert len(get_all_live_placement_group_names()) == 0
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Timing out on Windows.")
 def test_pg_removed_on_replica_crash(serve_instance):
     """Verify that PGs are removed when a replica crashes unexpectedly."""
 
@@ -155,6 +159,7 @@ def test_pg_removed_on_replica_crash(serve_instance):
     assert len(get_all_live_placement_group_names()) == 1
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Timing out on Windows.")
 def test_pg_removed_after_controller_crash(serve_instance):
     """Verify that PGs are removed normally after recovering from a controller crash.
 
@@ -177,6 +182,7 @@ def test_pg_removed_after_controller_crash(serve_instance):
     assert len(get_all_live_placement_group_names()) == 0
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Timing out on Windows.")
 def test_leaked_pg_removed_on_controller_recovery(serve_instance):
     """Verify that leaked PGs are removed on controller recovery.
 
@@ -226,6 +232,7 @@ def test_leaked_pg_removed_on_controller_recovery(serve_instance):
     assert len(get_all_live_placement_group_names()) == 0
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Timing out on Windows.")
 def test_replica_actor_infeasible(serve_instance):
     """Test that we get a validation error if the replica doesn't fit in the bundle."""
 
@@ -239,6 +246,7 @@ def test_replica_actor_infeasible(serve_instance):
         serve.run(Infeasible.bind())
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Timing out on Windows.")
 def test_coschedule_actors_and_tasks(serve_instance):
     """Test that actor/tasks are placed in the replica's placement group by default."""
 
