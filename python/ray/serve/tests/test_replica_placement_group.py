@@ -7,6 +7,9 @@ from ray.util.placement_group import (
     get_current_placement_group,
     PlacementGroup,
 )
+from ray.util.scheduling_strategies import (
+    PlacementGroupSchedulingStrategy,
+)
 from ray._private.test_utils import wait_for_condition
 
 from ray import serve
@@ -234,6 +237,70 @@ def test_replica_actor_infeasible(serve_instance):
 
     with pytest.raises(ValueError):
         serve.run(Infeasible.bind())
+
+
+def test_coschedule_actors_and_tasks(serve_instance):
+    """Test that actor/tasks are placed in the replica's placement group by default."""
+
+    @ray.remote(num_cpus=1)
+    class TestActor:
+        def get_pg(self) -> PlacementGroup:
+            return get_current_placement_group()
+
+    @ray.remote
+    def get_pg():
+        return get_current_placement_group()
+
+    @serve.deployment(
+        # Bundles have space for one additional 1-CPU actor.
+        placement_group_bundles=[{"CPU": 1}, {"CPU": 1}],
+    )
+    class Parent:
+        def run_test(self):
+            # First actor should be scheduled in the placement group without issue.
+            a1 = TestActor.remote()
+            assert ray.get(a1.get_pg.remote()) == get_current_placement_group()
+
+            # Second actor can't be placed because there are no more resources in the
+            # placement group (the first actor is occupying the second bundle).
+            a2 = TestActor.remote()
+            ready, _ = ray.wait([a2.get_pg.remote()], timeout=0.1)
+            assert len(ready) == 0
+            ray.kill(a2)
+
+            # Second actor can be successfully scheduled outside the placement group.
+            a3 = TestActor.options(
+                scheduling_strategy=PlacementGroupSchedulingStrategy(
+                    placement_group=None
+                )
+            ).remote()
+            assert ray.get(a3.get_pg.remote()) is None
+
+            # A zero-CPU task can be scheduled in the placement group.
+            assert (
+                ray.get(get_pg.options(num_cpus=0).remote())
+                == get_current_placement_group()
+            )
+
+            # A two-CPU task cannot fit in the placement group.
+            ready, _ = ray.wait([get_pg.options(num_cpus=2).remote()], timeout=0.1)
+            assert len(ready) == 0
+
+            # A two-CPU task can be scheduled outside the placement group.
+            assert (
+                ray.get(
+                    get_pg.options(
+                        num_cpus=2,
+                        scheduling_strategy=PlacementGroupSchedulingStrategy(
+                            placement_group=None
+                        ),
+                    )
+                )
+                == get_current_placement_group()
+            )
+
+    h = serve.run(Parent.bind())
+    ray.get(h.run_test.remote())
 
 
 if __name__ == "__main__":
