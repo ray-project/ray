@@ -364,7 +364,6 @@ void LocalResourceManager::UpdateAvailableObjectStoreMemResource() {
   if (new_available != local_resources_.available.Get(ResourceID::ObjectStoreMemory())) {
     local_resources_.available.Set(ResourceID::ObjectStoreMemory(),
                                    std::move(new_available));
-    OnResourceOrStateChanged();
 
     // This is more of a discrete approximate of the last idle object store memory usage.
     // TODO(rickyx): in order to know exactly when object store becomes idle/busy, we
@@ -378,6 +377,8 @@ void LocalResourceManager::UpdateAvailableObjectStoreMemResource() {
       RAY_LOG(INFO) << "Object store memory is not idle.";
       resources_last_idle_time_[ResourceID::ObjectStoreMemory()] = absl::nullopt;
     }
+
+    OnResourceOrStateChanged();
   }
 }
 
@@ -503,7 +504,6 @@ ray::gcs::NodeResourceInfoAccessor::ResourceMap LocalResourceManager::GetResourc
 }
 
 void LocalResourceManager::OnResourceOrStateChanged() {
-  RAY_LOG(INFO) << "jjyao OnResourceOrStateChanged " << DebugString();
   if (IsLocalNodeDraining() && IsLocalNodeIdle()) {
     // The node is drained.
     // Sending a SIGTERM to itself is equivalent to gracefully shutting down raylet.
