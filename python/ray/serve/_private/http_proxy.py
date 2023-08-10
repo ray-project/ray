@@ -513,7 +513,6 @@ class HTTPProxy:
 
             # Streaming codepath isn't supported for Java.
             if RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING and not app_is_cross_language:
-                print(f"Starting request {request_context_info['request_id']}")
                 status_code = await self.send_request_to_replica_streaming(
                     request_context_info["request_id"],
                     handle,
@@ -521,7 +520,6 @@ class HTTPProxy:
                     receive,
                     send,
                 )
-                print(f"Finishing request {request_context_info['request_id']}")
             else:
                 status_code = await self.send_request_to_replica_unary(
                     handle,
@@ -846,6 +844,7 @@ class HTTPProxy:
             try:
                 status_code = await self._consume_and_send_asgi_message_generator(
                     obj_ref_generator,
+                    proxy_asgi_receive_task,
                     send,
                     timeout_s=calculate_remaining_timeout(
                         timeout_s=self.request_timeout_s,
