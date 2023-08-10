@@ -31,14 +31,13 @@ training.
 
         .. code-block:: diff
 
-             import torch
-             from torch.nn.parallel import DistributedDataParallel
-            +from ray.air import session
-            +from ray import train
-            +import ray.train.torch
+              import torch
+              from torch.nn.parallel import DistributedDataParallel
+            + from ray import train
+            + import ray.train.torch
 
 
-             def train_func():
+             def train_func(config):
             -    device = torch.device(f"cuda:{train.get_context().get_local_rank()}" if
             -        torch.cuda.is_available() else "cpu")
             -    torch.cuda.set_device(device)
