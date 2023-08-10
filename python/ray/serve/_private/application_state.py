@@ -978,11 +978,21 @@ def override_deployment_info(
             # if the code sets options to None).
             override_actor_options = replica_config.ray_actor_options or {}
 
+        override_placement_group_bundles = options.pop(
+            "placement_group_bundles", replica_config.placement_group_bundles
+        )
+        override_placement_group_strategy = options.pop(
+            "placement_group_strategy", replica_config.placement_group_strategy
+        )
+
         merged_env = override_runtime_envs_except_env_vars(
             app_runtime_env, override_actor_options.get("runtime_env", {})
         )
         override_actor_options.update({"runtime_env": merged_env})
         replica_config.update_ray_actor_options(override_actor_options)
+        replica_config.update_placement_group_options(
+            override_placement_group_bundles, override_placement_group_strategy
+        )
         override_options["replica_config"] = replica_config
 
         # Override deployment config options
