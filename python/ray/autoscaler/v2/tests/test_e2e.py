@@ -4,12 +4,11 @@ import time
 
 import pytest
 
-from ray.util.placement_group import placement_group, remove_placement_group
-
 import ray
 from ray._private.test_utils import run_string_as_driver_nonblocking, wait_for_condition
 from ray.autoscaler.v2.sdk import get_cluster_status
 from ray.cluster_utils import AutoscalingCluster
+from ray.util.placement_group import placement_group, remove_placement_group
 from ray.util.state.api import list_placement_groups, list_tasks
 
 
@@ -195,6 +194,7 @@ def test_placement_group_removal_idle_node():
     finally:
         ray.shutdown()
         cluster.shutdown()
+
 
 if __name__ == "__main__":
     if os.environ.get("PARALLEL_CI"):

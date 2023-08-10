@@ -279,7 +279,14 @@ std::vector<double> LocalResourceManager::SubtractResourceInstances(
       local_resources_.available.GetMutable(resource_id),
       allow_going_negative);
 
-  SetResourceNonIdle(resource_id);
+  // If there's any non 0 instance delta to be subtracted, the source should be marked as
+  // non-idle.
+  for (const auto &to_subtract_instance : resource_instances_fp) {
+    if (to_subtract_instance > 0) {
+      SetResourceNonIdle(resource_id);
+      break;
+    }
+  }
   OnResourceOrStateChanged();
 
   return FixedPointVectorToDouble(underflow);
