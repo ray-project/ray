@@ -6,18 +6,18 @@ Data Loading and Preprocessing
 Using Framework Built-in Data Utilities
 ---------------------------------------
 
-Deep Learning frameworks provide their own dataloading utilities. For example:
+Some deep learning frameworks provide their own dataloading utilities. For example:
 
 - PyTorch: `PyTorch Dataset <https://pytorch.org/tutorials/beginner/basics/data_tutorial.html>`
 - Lightning: `LightningDataModule <https://lightning.ai/docs/pytorch/stable/data/datamodule.html>`
 - HuggingFace: `HuggingFace Dataset <https://huggingface.co/docs/datasets/index>`
 
-You can continue to use the above datasets in Ray Train, but be sure to put the dataset initialization logic in ``train_loop_per_worker``.
+You can continue to use the above utilities in Ray Train, but be sure to put the dataset initialization logic in ``train_loop_per_worker``.
 
 .. warning:: 
 
-    We do not recommend passing datasets through ``train_loop_config`` or global variables, as this will serialize your 
-    dataset object on the head node and send it to remote workers via object store. This is inefficient for large dataset 
+    We do not recommend passing datasets through ``train_loop_config`` or global variables, as it will serialize your 
+    dataset objects on the head node and send it to remote workers via object store. This is inefficient for large dataset transfer 
     and may also cause serialization or ``FileNotFound`` errors.
 
 
