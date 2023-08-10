@@ -283,8 +283,8 @@ def test_coschedule_actors_and_tasks(serve_instance):
             )
 
             # A two-CPU task cannot fit in the placement group.
-            ready, _ = ray.wait([get_pg.options(num_cpus=2).remote()], timeout=0.1)
-            assert len(ready) == 0
+            with pytest.raises(ValueError):
+                get_pg.options(num_cpus=2).remote()
 
             # A two-CPU task can be scheduled outside the placement group.
             assert (
@@ -294,9 +294,9 @@ def test_coschedule_actors_and_tasks(serve_instance):
                         scheduling_strategy=PlacementGroupSchedulingStrategy(
                             placement_group=None
                         ),
-                    )
+                    ).remote()
                 )
-                == get_current_placement_group()
+                is None
             )
 
     h = serve.run(Parent.bind())
