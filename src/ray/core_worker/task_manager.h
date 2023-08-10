@@ -272,6 +272,14 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
    *
    * Reference implementation of streaming generator using the following APIs
    * is available from `_raylet.StreamingObjectRefGenerator`.
+   *
+   * NOTE: When calling APIs, you should ensure to hold a lock
+   * objet_ref_stream_ops_mu_ to avoid werid concurrency errors.
+   * Also, make sure you don't hold the task manager mutex (mu_). When
+   * it is used with reference_counter_ and memory_store_, which is
+   * called while holding objet_ref_stream_ops_mu_, it seems like
+   * there's a deadlock. We are adding LOCKS_EXCLUDED(mu_) annotation
+   * for all ObjectRefStream APIs to avoid it.
    */
 
   /// Handle the generator task return so that it will be accessible
