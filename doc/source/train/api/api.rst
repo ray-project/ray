@@ -87,12 +87,6 @@ PyTorch Lightning
 HuggingFace Transformers
 ************************
 
-.. note::
-
-    We will deprecate `TransformersTrainer`, `TransformersCheckpoint`
-    in Ray 2.8. Please refer to the :ref:`migration guides <migration-guide>` 
-    for more info.
-
 .. autosummary::
     :toctree: doc/
 
@@ -101,11 +95,6 @@ HuggingFace Transformers
 
 HuggingFace Accelerate
 **********************
-
-.. note::
-
-    We will deprecate `AccelerateTrainer` in Ray 2.8. Please refer to the 
-    :ref:`migration guides <migration-guide>` for more info.
 
 .. autosummary::
     :toctree: doc/
@@ -188,7 +177,7 @@ Ray Train Config
 
 .. autosummary::
     :toctree: doc/
-    
+
     ~train.ScalingConfig
     ~train.RunConfig
     ~train.CheckpointConfig
