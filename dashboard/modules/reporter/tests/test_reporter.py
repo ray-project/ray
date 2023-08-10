@@ -2,11 +2,12 @@ import logging
 import os
 import sys
 
+import pytest
 import requests
 import numpy as np
 import time
 import copy
-import pytest
+
 from collections import defaultdict
 from multiprocessing import Process
 from unittest.mock import MagicMock
@@ -694,113 +695,6 @@ def test_reporter_worker_cpu_percent():
                 child_proc.kill()
         if agent_mock.is_alive():
             agent_mock.kill()
-
-
-TASK = {
-    "task_id": "32d950ec0ccf9d2affffffffffffffffffffffff01000000",
-    "attempt_number": 0,
-    "node_id": "ffffffffffffffffffffffffffffffffffffffff01000000",
-}
-
-
-def test_get_task_traceback_running_task():
-    """
-    Verify that we throw an error for a non-running task.
-    """
-    ray.shutdown()
-    context = ray.init()
-    dashboard_url = f"http://{context['webui_url']}"
-
-    @ray.remote
-    def f():
-        pass
-
-    @ray.remote
-    def long_running_task():
-        print("Long-running task began.")
-        time.sleep(1000)
-        print("Long-running task completed.")
-
-    ray.get([f.remote() for _ in range(5)])
-
-    task = long_running_task.remote()
-
-    params = {
-        "task_id": task.task_id().hex(),
-        "attempt_number": 0,
-        "node_id": ray.get_runtime_context().node_id.hex(),
-    }
-
-    def verify():
-        resp = requests.get(f"{dashboard_url}/task/traceback", params=params)
-        print(f"resp.text {type(resp.text)}: {resp.text}")
-
-        assert "Process" in resp.text
-        return True
-
-    wait_for_condition(verify, timeout=20)
-
-
-def test_get_task_traceback_non_running_task():
-    """
-    Verify that we throw an error for a non-running task.
-    """
-    ray.shutdown()
-    context = ray.init()
-    dashboard_url = f"http://{context['webui_url']}"
-
-    @ray.remote
-    def f():
-        pass
-
-    ray.get([f.remote() for _ in range(5)])
-
-    params = {
-        "task_id": TASK["task_id"],
-        "attempt_number": TASK["attempt_number"],
-        "node_id": TASK["node_id"],
-    }
-
-    # Make sure the API works.
-    def verify():
-        with pytest.raises(requests.exceptions.HTTPError) as exc_info:
-            resp = requests.get(f"{dashboard_url}/task/traceback", params=params)
-            resp.raise_for_status()
-        assert isinstance(exc_info.value, requests.exceptions.HTTPError)
-        return True
-
-    wait_for_condition(verify, timeout=10)
-
-
-def test_get_cpu_profile_non_running_task():
-    """
-    Verify that we throw an error for a non-running task.
-    """
-    ray.shutdown()
-    context = ray.init()
-    dashboard_url = f"http://{context['webui_url']}"
-
-    @ray.remote
-    def f():
-        pass
-
-    ray.get([f.remote() for _ in range(5)])
-
-    params = {
-        "task_id": TASK["task_id"],
-        "attempt_number": TASK["attempt_number"],
-        "node_id": TASK["node_id"],
-    }
-
-    # Make sure the API works.
-    def verify():
-        with pytest.raises(requests.exceptions.HTTPError) as exc_info:
-            resp = requests.get(f"{dashboard_url}/task/cpu_profile", params=params)
-            resp.raise_for_status()
-        assert isinstance(exc_info.value, requests.exceptions.HTTPError)
-        return True
-
-    wait_for_condition(verify, timeout=10)
 
 
 if __name__ == "__main__":

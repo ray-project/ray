@@ -310,6 +310,10 @@ class StateDataSourceClient:
             else:
                 continue
 
+            # Remove the filter from the list so that we don't have to
+            # filter it again later.
+            filters.remove(filter)
+
         req_filters.exclude_driver = exclude_driver
 
         request = GetTaskEventsRequest(limit=limit, filters=req_filters)

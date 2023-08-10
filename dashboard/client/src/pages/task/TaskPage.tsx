@@ -10,10 +10,6 @@ import {
   MultiTabLogViewer,
   MultiTabLogViewerTabDetails,
 } from "../../common/MultiTabLogViewer";
-import {
-  TaskCpuProfilingLink,
-  TaskCpuStackTraceLink,
-} from "../../common/ProfilingLink";
 import { Section } from "../../common/Section";
 import Loading from "../../components/Loading";
 import { MetadataSection } from "../../components/MetadataSection";
@@ -82,7 +78,6 @@ const TaskPageContents = ({
   }
 
   const {
-    attempt_number,
     task_id,
     actor_id,
     end_time_ms,
@@ -97,7 +92,6 @@ const TaskPageContents = ({
     func_or_class_name,
     name,
   } = task;
-  const isTaskActive = task.state === "RUNNING" && task.worker_id;
 
   return (
     <div>
@@ -223,29 +217,6 @@ const TaskPageContents = ({
               }
             ),
           },
-          isTaskActive
-            ? {
-                label: "Actions",
-                content: (
-                  <React.Fragment>
-                    <TaskCpuProfilingLink
-                      taskId={task_id}
-                      attemptNumber={attempt_number}
-                      nodeId={node_id}
-                    />
-                    <br />
-                    <TaskCpuStackTraceLink
-                      taskId={task_id}
-                      attemptNumber={attempt_number}
-                      nodeId={node_id}
-                    />
-                  </React.Fragment>
-                ),
-              }
-            : {
-                label: "",
-                content: undefined,
-              },
         ]}
       />
       <CollapsibleSection title="Logs" startExpanded>
