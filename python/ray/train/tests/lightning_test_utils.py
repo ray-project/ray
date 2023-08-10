@@ -2,8 +2,10 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import pytorch_lightning as pl
+
 from torch.utils.data import DataLoader
 from torchmetrics import Accuracy
+
 from ray import train
 
 
