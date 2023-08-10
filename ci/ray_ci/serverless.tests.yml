@@ -1,0 +1,4 @@
+flaky_tests:
+  - //python/ray/tests:test_autoscaler
+  - //python/ray/tests:test_client_builder
+  - //python/ray/tests:test_client_library_integration
