@@ -351,7 +351,7 @@ class ApplicationState:
                 )
         else:
             # If there is an in progress build task, cancel it.
-            if self._build_app_task_info:
+            if self._build_app_task_info and not self._build_app_task_info.finished:
                 logger.info(
                     f'Received new config for application "{self._name}". '
                     "Cancelling previous request."
