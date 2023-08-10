@@ -315,6 +315,8 @@ class FileBasedDatasource(Datasource):
                     tmp = _add_creatable_buckets_param_if_s3_uri(path)
                     filesystem.create_dir(tmp, recursive=True)
 
+            fs = _unwrap_s3_serialization_workaround(filesystem)
+
             if self._WRITE_FILE_PER_ROW:
                 for row_index, row in enumerate(
                     block.iter_rows(public_row_format=False)
@@ -326,9 +328,7 @@ class FileBasedDatasource(Datasource):
                     )
                     write_path = os.path.join(path, filename)
                     logger.get_logger().debug(f"Writing {write_path} file.")
-                    with filesystem.open_output_stream(
-                        write_path, **open_stream_args
-                    ) as f:
+                    with fs.open_output_stream(write_path, **open_stream_args) as f:
                         _write_row_to_file(
                             f,
                             row,
@@ -346,7 +346,7 @@ class FileBasedDatasource(Datasource):
                     file_format=file_format,
                 )
                 logger.get_logger().debug(f"Writing {write_path} file.")
-                with filesystem.open_output_stream(write_path, **open_stream_args) as f:
+                with fs.open_output_stream(write_path, **open_stream_args) as f:
                     _write_block_to_file(
                         f,
                         block,
