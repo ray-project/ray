@@ -261,6 +261,27 @@ class FileBasedDatasource(Datasource):
             "Subclasses of FileBasedDatasource must implement _read_file()."
         )
 
+    def on_write_start(
+        self,
+        path: str,
+        try_create_dir: bool = True,
+        filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+        **write_args,
+    ) -> None:
+        """Create a directory to write files to.
+
+        If ``try_create_dir`` is ``False``, this method is a no-op.
+        """
+        if try_create_dir:
+            paths, filesystem = _resolve_paths_and_filesystem(path, filesystem)
+            assert len(paths) == 1, len(paths)
+            path = paths[0]
+
+            # Arrow's S3FileSystem doesn't allow creating buckets by default, so we add
+            # a query arg enabling bucket creation if an S3 URI is provided.
+            tmp = _add_creatable_buckets_param_if_s3_uri(path)
+            filesystem.create_dir(tmp, recursive=True)
+
     def write(
         self,
         blocks: Iterable[Block],
@@ -307,13 +328,6 @@ class FileBasedDatasource(Datasource):
                 continue
 
             if block_idx == 0:
-                # On the first non-empty block, try to create the directory.
-                if try_create_dir:
-                    # Arrow's S3FileSystem doesn't allow creating buckets by
-                    # default, so we add a query arg enabling bucket creation
-                    # if an S3 URI is provided.
-                    tmp = _add_creatable_buckets_param_if_s3_uri(path)
-                    filesystem.create_dir(tmp, recursive=True)
                 filesystem = _wrap_s3_serialization_workaround(filesystem)
 
             fs = _unwrap_s3_serialization_workaround(filesystem)
