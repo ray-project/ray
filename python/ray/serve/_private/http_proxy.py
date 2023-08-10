@@ -739,7 +739,7 @@ class HTTPProxy:
     async def _consume_and_send_asgi_message_generator(
         self,
         obj_ref_generator: StreamingObjectRefGenerator,
-        disconnected_task: asyncio.Task,
+        client_disconnected_task: asyncio.Task,
         send: Send,
         timeout_s: Optional[float] = None,
     ) -> Optional[str]:
@@ -760,19 +760,25 @@ class HTTPProxy:
         is_first_message = True
         while True:
             try:
-                generator_task = obj_ref_generator._next_async(
-                    timeout_s=calculate_remaining_timeout(
-                        timeout_s=timeout_s,
-                        start_time_s=start,
-                        curr_time_s=time.time(),
+                generator_task = asyncio.ensure_future(
+                    obj_ref_generator._next_async(
+                        timeout_s=calculate_remaining_timeout(
+                            timeout_s=timeout_s,
+                            start_time_s=start,
+                            curr_time_s=time.time(),
+                        )
                     )
                 )
 
                 done, _ = await asyncio.wait(
-                    [generator_task, disconnected_task],
+                    [generator_task, client_disconnected_task],
                     return_when=FIRST_COMPLETED,
                 )
-                if generator_task in done:
+                if client_disconnected_task in done:
+                    # TODO (shrekris-anyscale): cancel generator task
+                    # once async cancellation is supported.
+                    break
+                else:
                     obj_ref = generator_task.result()
 
                     if obj_ref.is_nil():
@@ -790,10 +796,6 @@ class HTTPProxy:
 
                         await send(asgi_message)
                         is_first_message = False
-                else:
-                    # TODO (shrekris-anyscale): cancel generator task
-                    # once async cancellation is supported.
-                    break
             except StopAsyncIteration:
                 break
 
