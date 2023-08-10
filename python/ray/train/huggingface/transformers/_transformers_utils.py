@@ -237,7 +237,7 @@ class RayTrainReportCallback(TrainerCallback):
     callbacks following the Transformers integration user guides.
 
     Note that users should ensure that the logging, evaluation, and saving frequencies
-    are properly configured to ensure that the monitoring metric is always up-to-date
+    are properly configured so that the monitoring metric is always up-to-date
     when `transformers.Trainer` saves a checkpoint.
 
     Suppose the monitoring metric is reported from evaluation stage:
@@ -267,10 +267,16 @@ class RayTrainReportCallback(TrainerCallback):
 
 @PublicAPI(stability="alpha")
 def prepare_trainer(trainer: Trainer) -> Trainer:
-    """Prepare your HuggingFace Transformer Trainer for Ray Train."""
+    """Prepare your HuggingFace Transformer Trainer for Ray Train.
+    
+    This utility function enable the trainer integrates with Ray Data Integration.
+    Internally, it overrides the `get_train_dataloader` and `get_eval_dataloader` 
+    methods and inject the data integration logics if the `train_dataset` and 
+    `eval_dataset` are Ray Data Iterables.
+    """
     base_trainer_class: Type[transformers.trainer.Trainer] = trainer.__class__
 
-    class RayTrainer(base_trainer_class):
+    class RayTransformersTrainer(base_trainer_class):
         """A Wrapper of `transformers.Trainer` for Ray Data Integration."""
 
         def get_train_dataloader(self):
@@ -292,6 +298,6 @@ def prepare_trainer(trainer: Trainer) -> Trainer:
             else:
                 return super().get_eval_dataloader(eval_dataset)
 
-    trainer.__class__ = RayTrainer
+    trainer.__class__ = RayTransformersTrainer
 
     return trainer
