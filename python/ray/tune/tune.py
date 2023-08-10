@@ -28,7 +28,7 @@ from ray.air import CheckpointConfig
 from ray.air._internal import usage as air_usage
 from ray.air._internal.usage import AirEntrypoint
 from ray.air.util.node import _force_on_current_node
-from ray.train._internal.storage import _use_storage_context
+from ray.train._internal.storage import _use_storage_context, _get_artifact_storage_uri
 from ray.tune.analysis import ExperimentAnalysis
 from ray.tune.callback import Callback
 from ray.tune.error import TuneError
@@ -264,7 +264,7 @@ def _resolve_and_validate_storage_path(
 
     if not remote_path:
         # If no remote path is set, try to get Ray Storage URI
-        remote_path = _get_storage_uri()
+        remote_path = _get_storage_uri() or _get_artifact_storage_uri()
         if remote_path:
             logger.info(
                 "Using configured Ray storage URI as storage path: " f"{remote_path}"

@@ -19,6 +19,7 @@ from ray.train import CheckpointConfig, ScalingConfig
 from ray.air._internal.remote_storage import _ensure_directory
 from ray.air.constants import TIME_THIS_ITER_S, TRAINING_ITERATION
 from ray.rllib import _register_all
+from ray.train._internal.storage import ARTIFACT_STORAGE_PATH_ENV_VARS
 from ray.tune import (
     register_env,
     register_trainable,
@@ -60,9 +61,10 @@ from ray.tune.search import BasicVariantGenerator, grid_search, ConcurrencyLimit
 from ray.tune.search._mock import _MockSuggestionAlgorithm
 from ray.tune.search.ax import AxSearch
 from ray.tune.search.hyperopt import HyperOptSearch
-from ray.tune.syncer import Syncer
+from ray.tune.syncer import Syncer, SyncConfig
 from ray.tune.experiment import Trial
 from ray.tune.execution.tune_controller import TuneController
+from ray.tune.tune import _resolve_and_validate_storage_path
 from ray.tune.utils import flatten_dict
 from ray.tune.execution.placement_groups import PlacementGroupFactory
 
@@ -1924,6 +1926,28 @@ class MaxConcurrentTrialsTest(unittest.TestCase):
                     mode="max",
                     stop={TRAINING_ITERATION: 1},
                 )
+
+
+@pytest.mark.parametrize("use_storage_context", [False, True])
+@pytest.mark.parametrize("storage_env_var", ARTIFACT_STORAGE_PATH_ENV_VARS)
+def test_artifact_storage_path_tune(use_storage_context, storage_env_var):
+    with patch.dict(
+        os.environ,
+        {
+            storage_env_var: "mock://foo/bar",
+            "RAY_AIR_NEW_PERSISTENCE_MODE": str(int(use_storage_context)),
+        },
+    ):
+        if not use_storage_context:
+            _, _, remote_path, _ = _resolve_and_validate_storage_path(
+                storage_path=None, local_dir=None, sync_config=None
+            )
+            assert remote_path == "mock://foo/bar"
+        else:
+            experiment = Experiment(
+                run=lambda config: 1, name="test", sync_config=SyncConfig()
+            )
+            assert experiment.storage.storage_path == "mock://foo/bar"
 
 
 if __name__ == "__main__":

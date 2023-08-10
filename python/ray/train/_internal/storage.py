@@ -36,10 +36,23 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__file__)
 
+ARTIFACT_STORAGE_PATH_ENV_VARS = [
+    "RAY_ARTIFACT_STORAGE",
+    "ANYSCALE_ARTIFACT_STORAGE",
+]
+
 
 def _use_storage_context() -> bool:
     # Whether to enable the new simple persistence mode.
     return bool(int(os.environ.get("RAY_AIR_NEW_PERSISTENCE_MODE", "0")))
+
+
+def _get_artifact_storage_uri() -> Optional[str]:
+    for env_var in ARTIFACT_STORAGE_PATH_ENV_VARS:
+        val = os.environ.get(env_var)
+        if val:
+            return val
+    return None
 
 
 class _ExcludingLocalFilesystem(LocalFileSystem):
@@ -405,10 +418,13 @@ class StorageContext:
         storage_path_provided = storage_path is not None
 
         self.storage_local_path = _get_defaults_results_dir()
-        # If `storage_path=None`, then set it to the local path.
+        # If `storage_path=None`, then set it to the ray artifact storage URI or
+        # the local path.
         # Invariant: (`storage_filesystem`, `storage_path`) is the location where
         # *all* results can be accessed.
-        self.storage_path = storage_path or self.storage_local_path
+        self.storage_path = (
+            storage_path or _get_artifact_storage_uri() or self.storage_local_path
+        )
         self.experiment_dir_name = experiment_dir_name
         self.trial_dir_name = trial_dir_name
         self.current_checkpoint_index = current_checkpoint_index
