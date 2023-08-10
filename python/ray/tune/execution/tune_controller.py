@@ -253,8 +253,11 @@ class TuneController:
 
             self._legacy_remote_experiment_path = remote_experiment_path
 
-            if Path(self._legacy_local_experiment_path) == Path(
-                self._legacy_remote_experiment_path
+            if (
+                self._legacy_local_experiment_path
+                and self._legacy_remote_experiment_path
+                and Path(self._legacy_local_experiment_path)
+                == Path(self._legacy_remote_experiment_path)
             ):
                 warnings.warn(
                     "The local experiment path is the same as the remote "
