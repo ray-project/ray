@@ -187,20 +187,21 @@ def ray_cc_test(name, copts = [], **kwargs):
         **kwargs
     )
 
-def ray_cc_binary(name, copts = [], deps = [], **kwargs):
-    jemalloc_deps = select({
+def ray_cc_binary(name, copts = [], deps = [], linkopts = [], **kwargs):
+    extra_deps = select({
         "@platforms//os:linux": ["@jemalloc//:libjemalloc"],
         "//conditions:default": []
     })
-    jemalloc_opts = select({
-        "@platforms//os:linux": ["-ldlsym"],
+    extra_linkopts = select({
+        "@platforms//os:linux": ["-ldl"],
         "//conditions:default": []
     })
 
         
     cc_binary(
         name = name,
-        copts = COPTS + copts + jemalloc_opts,
-        deps = deps + jemalloc_deps,
+        copts = COPTS + copts,
+        deps = deps + extra_deps,
+        linkopts = linkopts + extra_linkopts,
         **kwargs
     )
