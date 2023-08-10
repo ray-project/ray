@@ -50,12 +50,57 @@ Basics
 
 Let's use a single Torch training workload as a running example. A very basic example of using Ray Data with TorchTrainer looks like this:
 
-.. literalinclude:: ../doc_code/data_ingest_torch_new.py
-    :language: python
-    :start-after: __basic__
-    :end-before: __basic_end__
+.. tab-set::
 
-In this basic example, the `train_ds` object is created in your Ray script before the Trainer is even instantiated. The `train_ds` object is passed to the Trainer via the `datasets` argument, and is accessible to the `train_loop_per_worker` function via the :meth:`train.get_dataset_shard <ray.train.get_dataset_shard>` method.
+    .. tab-item:: PyTorch
+
+        .. literalinclude:: ../doc_code/data_ingest_torch_new.py
+            :language: python
+            :start-after: __basic__
+            :end-before: __basic_end__
+
+        In this basic example, the `train_ds` object is created in your Ray script before the Trainer is even instantiated. The `train_ds` object is passed to the Trainer via the `datasets` argument, and is accessible to the `train_loop_per_worker` function via the :meth:`train.get_dataset_shard <ray.train.get_dataset_shard>` method.
+
+    .. tab-item:: PyTorch Lightning
+
+        .. code-block:: python
+            :emphasize-lines: 9,10,13,14,25,26
+
+            from ray import train
+         
+            train_data = ray.data.read_csv("./train.csv")
+            val_data = ray.data.read_csv("./validation.csv")
+
+            def train_func_per_worker():
+                # Access Ray datsets in your train_func via ``get_dataset_shard``.
+                # The "train" dataset gets sharded across workers by default
+                train_ds = train.get_dataset_shard("train")
+                val_ds = train.get_dataset_shard("validation")
+
+                # Create Ray dataset iterables via ``iter_torch_batches``.
+                train_dataloader = train_ds.iter_torch_batches(batch_size=16)
+                val_dataloader = val_ds.iter_torch_batches(batch_size=16)
+
+                ...
+
+                trainer = pl.Trainer(
+                    # ...
+                )
+
+                # Feed the Ray dataset iterables to ``pl.Trainer.fit``.
+                trainer.fit(
+                    model, 
+                    train_dataloaders=train_dataloader, 
+                    val_dataloaders=val_dataloader
+                )
+
+            trainer = TorchTrainer(
+                train_func,
+                datasets={"train": train_data, "validation": val_data},
+                scaling_config=ScalingConfig(num_workers=4),
+            )
+            trainer.fit()
+
 
 Splitting data across workers
 -----------------------------

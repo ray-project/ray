@@ -20,6 +20,7 @@ def get_deploy_args(
     deployment_def: Union[Callable, Type[Callable], str],
     init_args: Tuple[Any],
     init_kwargs: Dict[Any, Any],
+    ingress: bool = False,
     ray_actor_options: Optional[Dict] = None,
     config: Optional[Union[DeploymentConfig, Dict[str, Any]]] = None,
     version: Optional[str] = None,
@@ -73,6 +74,7 @@ def get_deploy_args(
         "is_driver_deployment": is_driver_deployment,
         "docs_path": docs_path,
         "app_name": app_name,
+        "ingress": ingress,
     }
 
     return controller_deploy_args

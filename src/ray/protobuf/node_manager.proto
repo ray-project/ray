@@ -19,6 +19,7 @@ package ray.rpc;
 
 import "src/ray/protobuf/common.proto";
 import "src/ray/protobuf/gcs.proto";
+import "src/ray/protobuf/autoscaler.proto";
 
 message WorkerBacklogReport {
   // TaskSpec indicating the scheduling class.
@@ -350,6 +351,21 @@ message GetTaskFailureCauseReply {
   bool fail_task_immediately = 2;
 }
 
+message DrainRayletRequest {
+  // The reason why the node will be drained.
+  // This information will be used to
+  // decide whether the request is rejectable.
+  ray.rpc.autoscaler.DrainNodeReason reason = 1;
+  // The detailed drain reason message.
+  // Used for observability.
+  string reason_message = 2;
+}
+
+message DrainRayletReply {
+  // Whether the drain request is accepted.
+  bool is_accepted = 1;
+}
+
 // Service for inter-node-manager communication.
 service NodeManagerService {
   // Update the node's view of the cluster resource usage.
@@ -373,8 +389,10 @@ service NodeManagerService {
   // are still needed. And Raylet will release other leased workers.
   rpc ReleaseUnusedWorkers(ReleaseUnusedWorkersRequest)
       returns (ReleaseUnusedWorkersReply);
-  /// Shutdown the raylet (node manager) gracefully.
+  /// Shutdown the raylet (node manager).
   rpc ShutdownRaylet(ShutdownRayletRequest) returns (ShutdownRayletReply);
+  // Request to drain the raylet.
+  rpc DrainRaylet(DrainRayletRequest) returns (DrainRayletReply);
   // Request a raylet to lock resources for a bundle.
   // This is the first phase of 2PC protocol for atomic placement group creation.
   rpc PrepareBundleResources(PrepareBundleResourcesRequest)

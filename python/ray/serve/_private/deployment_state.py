@@ -54,20 +54,18 @@ from ray.serve._private.utils import (
     get_random_letters,
     msgpack_serialize,
     msgpack_deserialize,
-    get_all_node_ids,
     check_obj_ref_ready_nowait,
 )
 from ray.serve._private.version import DeploymentVersion, VersionedReplica
 from ray.serve._private import deployment_scheduler
+from ray.serve._private.cluster_node_info_cache import ClusterNodeInfoCache
 from ray.serve._private.deployment_scheduler import (
     SpreadDeploymentSchedulingPolicy,
     DriverDeploymentSchedulingPolicy,
     ReplicaSchedulingRequest,
     DeploymentDownscaleRequest,
 )
-
 from ray.serve import metrics
-from ray._raylet import GcsClient
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -1104,6 +1102,7 @@ class DeploymentState:
         detached: bool,
         long_poll_host: LongPollHost,
         deployment_scheduler: deployment_scheduler.DeploymentScheduler,
+        cluster_node_info_cache: ClusterNodeInfoCache,
         _save_checkpoint_func: Callable,
     ):
 
@@ -1112,6 +1111,7 @@ class DeploymentState:
         self._detached: bool = detached
         self._long_poll_host: LongPollHost = long_poll_host
         self._deployment_scheduler = deployment_scheduler
+        self._cluster_node_info_cache = cluster_node_info_cache
         self._save_checkpoint_func = _save_checkpoint_func
 
         # Each time we set a new deployment goal, we're trying to save new
@@ -1924,6 +1924,20 @@ class DeploymentState:
             if not stopped:
                 self._replicas.add(ReplicaState.STOPPING, replica)
 
+    def _stop_replicas_on_draining_nodes(self):
+        draining_nodes = self._cluster_node_info_cache.get_draining_node_ids()
+        for replica in self._replicas.pop(
+            states=[ReplicaState.UPDATING, ReplicaState.RUNNING]
+        ):
+            if replica.actor_node_id in draining_nodes:
+                logger.info(
+                    f"Stopping replica {replica.replica_tag} of deployment "
+                    f"{self._name} on draining node {replica.actor_node_id}."
+                )
+                self._stop_replica(replica, graceful_stop=True)
+            else:
+                self._replicas.add(replica.actor_details.state, replica)
+
     def update(self) -> DeploymentStateUpdateResult:
         """Attempts to reconcile this deployment to match its goal state.
 
@@ -1942,6 +1956,8 @@ class DeploymentState:
 
             # Check the state of existing replicas and transition if necessary.
             self._check_and_update_replicas()
+
+            self._stop_replicas_on_draining_nodes()
 
             upscale, downscale = self._scale_deployment_replicas()
 
@@ -2000,8 +2016,8 @@ class DriverDeploymentState(DeploymentState):
         detached: bool,
         long_poll_host: LongPollHost,
         deployment_scheduler: deployment_scheduler.DeploymentScheduler,
+        cluster_node_info_cache: ClusterNodeInfoCache,
         _save_checkpoint_func: Callable,
-        gcs_client: GcsClient = None,
     ):
         super().__init__(
             name,
@@ -2009,16 +2025,9 @@ class DriverDeploymentState(DeploymentState):
             detached,
             long_poll_host,
             deployment_scheduler,
+            cluster_node_info_cache,
             _save_checkpoint_func,
         )
-        if gcs_client:
-            self._gcs_client = gcs_client
-        else:
-            self._gcs_client = GcsClient(address=ray.get_runtime_context().gcs_address)
-
-    def _get_all_node_ids(self):
-        # Test mock purpose
-        return get_all_node_ids(self._gcs_client)
 
     def _deploy_driver(self) -> List[ReplicaSchedulingRequest]:
         """Deploy the driver deployment to each node."""
@@ -2026,7 +2035,7 @@ class DriverDeploymentState(DeploymentState):
         if num_running_replicas >= self._target_state.num_replicas:
             # Cancel starting replicas when driver deployment state creates
             # more replicas than alive nodes.
-            # For example, get_all_node_ids returns 4 nodes when
+            # For example, get_active_node_ids returns 4 nodes when
             # the driver deployment state decides the target number of replicas
             # but later on when the deployment scheduler schedules these 4 replicas,
             # there are only 3 alive nodes (1 node dies in between).
@@ -2069,7 +2078,7 @@ class DriverDeploymentState(DeploymentState):
         return replica_changed
 
     def _calculate_max_replicas_to_stop(self) -> int:
-        num_nodes = len(self._get_all_node_ids())
+        num_nodes = len(self._cluster_node_info_cache.get_active_node_ids())
         rollout_size = max(int(0.2 * num_nodes), 1)
         old_running_replicas = self._replicas.count(
             exclude_version=self._target_state.version,
@@ -2089,7 +2098,7 @@ class DriverDeploymentState(DeploymentState):
             if self._target_state.deleting:
                 self._stop_all_replicas()
             else:
-                num_nodes = len(self._get_all_node_ids())
+                num_nodes = len(self._cluster_node_info_cache.get_active_node_ids())
                 # For driver deployment, when there are new node,
                 # it is supposed to update the target state.
                 if self._target_state.num_replicas != num_nodes:
@@ -2100,6 +2109,8 @@ class DriverDeploymentState(DeploymentState):
                     if new_config.version is None:
                         new_config.version = self._target_state.version.code_version
                     self._set_target_state(new_config)
+
+                self._stop_replicas_on_draining_nodes()
 
                 max_to_stop = self._calculate_max_replicas_to_stop()
                 self._stop_or_update_outdated_version_replicas(max_to_stop)
@@ -2141,13 +2152,17 @@ class DeploymentStateManager:
         kv_store: KVStoreBase,
         long_poll_host: LongPollHost,
         all_current_actor_names: List[str],
+        cluster_node_info_cache: ClusterNodeInfoCache,
     ):
 
         self._controller_name = controller_name
         self._detached = detached
         self._kv_store = kv_store
         self._long_poll_host = long_poll_host
-        self._deployment_scheduler = deployment_scheduler.DeploymentScheduler()
+        self._cluster_node_info_cache = cluster_node_info_cache
+        self._deployment_scheduler = deployment_scheduler.DeploymentScheduler(
+            cluster_node_info_cache
+        )
 
         self._deployment_states: Dict[str, DeploymentState] = dict()
         self._deleted_deployment_metadata: Dict[str, DeploymentInfo] = OrderedDict()
@@ -2169,6 +2184,7 @@ class DeploymentStateManager:
             self._detached,
             self._long_poll_host,
             self._deployment_scheduler,
+            self._cluster_node_info_cache,
             self._save_checkpoint_func,
         )
 
@@ -2183,6 +2199,7 @@ class DeploymentStateManager:
             self._detached,
             self._long_poll_host,
             self._deployment_scheduler,
+            self._cluster_node_info_cache,
             self._save_checkpoint_func,
         )
 
