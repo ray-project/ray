@@ -32,6 +32,7 @@ from ray.serve._private.http_util import (
     Response,
     set_socket_reuse_port,
     validate_http_proxy_callback_return,
+    GaugeSet,
 )
 from ray.serve._private.common import (
     ApplicationName,
@@ -931,6 +932,8 @@ class HTTPProxyActor:
         self.host = host
         self.port = port
         self.root_path = root_path
+        self.node_id = node_id
+        self.node_ip_address = node_ip_address
 
         self.setup_complete = asyncio.Event()
 
@@ -1005,6 +1008,18 @@ Please make sure your http-host and http-port are specified correctly."""
             access_log=False,
         )
         server = uvicorn.Server(config=config)
+
+        num_connections_gauge = metrics.Gauge(
+            name="serve_num_active_http_connections",
+            description=(
+                "The number of active HTTP or WebSocket "
+                "connections in this HTTP Proxy."
+            ),
+            tag_keys=("node_id", "node_ip_address"),
+        ).set_default_tags(
+            {"node_id": self.node_id}, {"node_ip_address": self.node_ip_address}
+        )
+        server.server_state.connections = GaugeSet(num_connections_gauge)
         # TODO(edoakes): we need to override install_signal_handlers here
         # because the existing implementation fails if it isn't running in
         # the main thread and uvicorn doesn't expose a way to configure it.
