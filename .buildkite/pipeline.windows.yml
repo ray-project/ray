@@ -21,7 +21,6 @@ prelude_commands: &prelude_commands |-
     cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
 
 upload_wheels_if_needed: &upload_wheels_if_needed |-
-    if [ "$BUILDKITE_PULL_REQUEST" != "false" ]; then exit 0; fi
     pip install -q docker aws_requests_auth boto3
     python .buildkite/copy_files.py --destination branch_wheels --path python/dist
     if [ "$BUILDKITE_BRANCH" = "master" ]; then python .buildkite/copy_files.py --destination wheels --path python/dist; fi
