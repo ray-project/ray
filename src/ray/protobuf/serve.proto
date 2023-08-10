@@ -152,6 +152,8 @@ message DeploymentVersion {
   string code_version = 1;
   DeploymentConfig deployment_config = 2;
   string ray_actor_options = 3;
+  string placement_group_bundles = 4;
+  string placement_group_strategy = 5;
 }
 
 message ReplicaConfig {
@@ -160,6 +162,8 @@ message ReplicaConfig {
   bytes init_args = 3;
   bytes init_kwargs = 4;
   string ray_actor_options = 5;
+  string placement_group_bundles = 6;
+  string placement_group_strategy = 7;
 }
 
 message DeploymentInfo {
