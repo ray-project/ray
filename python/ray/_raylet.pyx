@@ -4062,7 +4062,7 @@ cdef class CoreWorker:
         if self.thread_pool_for_async_event_loop is None:
             self.thread_pool_for_async_event_loop = ThreadPoolExecutor(
                 max_workers=int(os.getenv("RAY_ASYNC_THREAD_POOL_SIZE", 1)))
-        return self.current_runtime_envthread_pool_for_async_event_loop
+        return self.thread_pool_for_async_event_loop
 
     def get_event_loop(self, function_descriptor, specified_cgname):
         # __init__ will be invoked in default eventloop
@@ -4135,6 +4135,9 @@ cdef class CoreWorker:
     def stop_and_join_asyncio_threads_if_exist(self):
         event_loops = []
         threads = []
+        if self.thread_pool_for_async_event_loop:
+            self.thread_pool_for_async_event_loop.shutdown(
+                wait=False, cancel_futures=True)
         if self.eventloop_for_default_cg is not None:
             event_loops.append(self.eventloop_for_default_cg)
         if self.thread_for_default_cg is not None:
@@ -4148,8 +4151,6 @@ cdef class CoreWorker:
                 event_loop.stop)
         for thread in threads:
             thread.join()
-        self.thread_pool_for_async_event_loop.shutdown(
-            wait=False, cancel_futures=True)
 
     def current_actor_is_asyncio(self):
         return (CCoreWorkerProcess.GetCoreWorker().GetWorkerContext()
