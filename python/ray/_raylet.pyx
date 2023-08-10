@@ -4081,8 +4081,9 @@ cdef class CoreWorker:
 
     def get_thread_pool_for_async_event_loop(self):
         if self.thread_pool_for_async_event_loop is None:
+            # Theoretically, we can use multiple threads,
             self.thread_pool_for_async_event_loop = ThreadPoolExecutor(
-                max_workers=int(os.getenv("RAY_ASYNC_THREAD_POOL_SIZE", 1)))
+                max_workers=1)
         return self.thread_pool_for_async_event_loop
 
     def get_event_loop(self, function_descriptor, specified_cgname):
