@@ -352,7 +352,9 @@ WorkerPool::BuildProcessCommandArgs(const Language &language,
                                   std::to_string(worker_startup_token_counter_));
   }
 
-  if (serialized_runtime_env_context != "{}" && !serialized_runtime_env_context.empty()) {
+  std::string serialized_runtime_env_context2 = "{\"env_vars\": {\"JULIA_PROJECT\": \"/Users/cvogt/.julia/dev/ray_core_worker_julia_jll\"}}";
+
+  if (serialized_runtime_env_context2 != "{}" && !serialized_runtime_env_context2.empty()) {
     worker_command_args.push_back("--language=" + Language_Name(language));
     if (language == Language::CPP) {
       worker_command_args.push_back("--ray_runtime_env_hash=" +
@@ -362,7 +364,7 @@ WorkerPool::BuildProcessCommandArgs(const Language &language,
                                     std::to_string(runtime_env_hash));
     }
     worker_command_args.push_back("--serialized-runtime-env-context=" +
-                                  serialized_runtime_env_context);
+                                  serialized_runtime_env_context2);
   } else if (language == Language::PYTHON && worker_command_args.size() >= 2 &&
              worker_command_args[1].find(kSetupWorkerFilename) != std::string::npos) {
     // Check that the arg really is the path to the setup worker before erasing it, to

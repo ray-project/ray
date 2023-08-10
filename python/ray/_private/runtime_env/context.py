@@ -42,9 +42,11 @@ class RuntimeEnvContext:
 
     @staticmethod
     def deserialize(json_string):
+        logger.info(f"deserialize: {json.loads(json_string)}")
         return RuntimeEnvContext(**json.loads(json_string))
 
     def exec_worker(self, passthrough_args: List[str], language: Language):
+        logger.info(f"Worker env: {self.env_vars}")
         update_envs(self.env_vars)
 
         if language == Language.PYTHON and sys.platform == "win32":
@@ -64,8 +66,8 @@ class RuntimeEnvContext:
             passthrough_args = class_path_args + passthrough_args
         elif language == Language.JULIA:
             executable = "julia"
-            julia_args = ["--project=/Users/cvogt/.julia/dev/ray_core_worker_julia_jll"]
-            julia_args = julia_args + ["-e", "'using ray_core_worker_julia_jll; ray_core_worker_julia_jll.start_worker()'"]
+            julia_args = []
+            julia_args += ["-e", "'using ray_core_worker_julia_jll; ray_core_worker_julia_jll.start_worker()'"]
             passthrough_args = julia_args + ["--"] + passthrough_args
         elif sys.platform == "win32":
             executable = ""
