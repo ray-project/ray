@@ -31,6 +31,7 @@
 #include "ray/common/status.h"
 #include "ray/gcs/pb_util.h"
 #include "ray/raylet/format/node_manager_generated.h"
+#include "ray/raylet/raylet_util.h"
 #include "ray/raylet/worker_killing_policy.h"
 #include "ray/stats/metric_defs.h"
 #include "ray/stats/stats.h"
@@ -2074,18 +2075,8 @@ void NodeManager::HandleShutdownRaylet(rpc::ShutdownRayletRequest request,
     rpc::DrainServerCallExecutor();
     // Note that the callback is posted to the io service after the shutdown GRPC request
     // is replied. Otherwise, the RPC might not be replied to GCS before it shutsdown
-    // itself. Implementation note: When raylet is shutdown by ray stop, the CLI sends a
-    // sigterm. Raylet knows how to gracefully shutdown when it receives a sigterm. Here,
-    // we raise a sigterm to itself so that it can re-use the same graceful shutdown code
-    // path. The sigterm is handled in the entry point (raylet/main.cc)'s signal handler.
-    auto signo = SIGTERM;
-    RAY_LOG(INFO) << "Sending a signal to itself. shutting down. "
-                  << ". Signo: " << signo;
-    // raise return 0 if succeeds. If it fails to gracefully shutdown, it kills itself
-    // forcefully.
-    RAY_CHECK(std::raise(signo) == 0)
-        << "There was a failure while sending a sigterm to itself. The process will not "
-           "gracefully shutdown.";
+    // itself.
+    ShutdownRayletGracefully();
   };
   is_shutdown_request_received_ = true;
   send_reply_callback(Status::OK(), shutdown_after_reply, shutdown_after_reply);

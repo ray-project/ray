@@ -6,7 +6,10 @@ import time
 from ray._raylet import GcsClient
 from ray.core.generated import autoscaler_pb2
 from ray._private.test_utils import wait_for_condition
-from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
+from ray.util.scheduling_strategies import (
+    NodeAffinitySchedulingStrategy,
+    PlacementGroupSchedulingStrategy,
+)
 
 
 def test_idle_termination(ray_start_cluster):
@@ -120,7 +123,57 @@ def test_preemption(ray_start_cluster):
     )
 
 
-def test_scheduling_during_draining(ray_start_cluster):
+def test_scheduling_placement_groups_during_draining(ray_start_cluster):
+    """Test that the draining node is unschedulable for new pgs."""
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=1, resources={"node1": 1})
+    cluster.add_node(num_cpus=1, resources={"node2": 1})
+    cluster.add_node(num_cpus=2, resources={"node3": 1})
+    cluster.wait_for_nodes()
+    ray.init(address=cluster.address)
+
+    @ray.remote
+    def get_node_id():
+        return ray.get_runtime_context().get_node_id()
+
+    node1_id = ray.get(get_node_id.options(resources={"node1": 1}).remote())
+    node2_id = ray.get(get_node_id.options(resources={"node2": 1}).remote())
+    node3_id = ray.get(get_node_id.options(resources={"node3": 1}).remote())
+
+    gcs_client = GcsClient(address=ray.get_runtime_context().gcs_address)
+
+    # The node is idle so the draining request should be accepted.
+    is_accepted = gcs_client.drain_node(
+        node3_id,
+        autoscaler_pb2.DrainNodeReason.Value("DRAIN_NODE_REASON_PREEMPTION"),
+        "preemption",
+    )
+    assert is_accepted
+
+    # Even though node3 is the best for pack but it's draining
+    # so the pg should be on node1 and node2
+    pg = ray.util.placement_group(bundles=[{"CPU": 1}, {"CPU": 1}], strategy="PACK")
+    {
+        ray.get(
+            get_node_id.options(
+                scheduling_strategy=PlacementGroupSchedulingStrategy(
+                    placement_group=pg,
+                    placement_group_bundle_index=0,
+                )
+            ).remote()
+        ),
+        ray.get(
+            get_node_id.options(
+                scheduling_strategy=PlacementGroupSchedulingStrategy(
+                    placement_group=pg,
+                    placement_group_bundle_index=1,
+                )
+            ).remote()
+        ),
+    } == {node1_id, node2_id}
+
+
+def test_scheduling_tasks_and_actors_during_draining(ray_start_cluster):
     """Test that the draining node is unschedulable for new tasks and actors."""
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=1, resources={"head": 1})
