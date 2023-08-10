@@ -314,7 +314,6 @@ class FileBasedDatasource(Datasource):
                     # if an S3 URI is provided.
                     tmp = _add_creatable_buckets_param_if_s3_uri(path)
                     filesystem.create_dir(tmp, recursive=True)
-                filesystem = _wrap_s3_serialization_workaround(filesystem)
 
             fs = _unwrap_s3_serialization_workaround(filesystem)
 
