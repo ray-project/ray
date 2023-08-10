@@ -406,11 +406,14 @@ The ``runtime_env`` is a Python dictionary or a Python class :class:`ray.runtime
   no need to include ``os.environ`` or similar in the ``env_vars`` field.
   By default, these environment variables override the same name environment variables on the cluster.
   You can also reference existing environment variables using ${ENV_VAR} to achieve the appending behavior.
-  Only PATH, LD_LIBRARY_PATH, DYLD_LIBRARY_PATH, and LD_PRELOAD are supported. See below for an example:
+  Malformed variable names and references to non-existing variables are left unchanged.
+  ${ENV_VAR} is expanded based on the standard Python API `os.path.expandvars <https://docs.python.org/3/library/os.path.html#os.path.expandvars>`__ See below for an example:
 
   - Example: ``{"OMP_NUM_THREADS": "32", "TF_WARNINGS": "none"}``
 
   - Example: ``{"LD_LIBRARY_PATH": "${LD_LIBRARY_PATH}:/home/admin/my_lib"}``
+
+  - Malformed or non-existing variables Example: ``{"ENV_VAR_NOT_EXIST": "${ENV_VAR_NOT_EXIST}:/home/admin/my_lib"}``, if ENV_VAR_NOT_EXIST doesn't exist or malformed, it will not expand the variable, i.e., ``ENV_VAR_NOT_EXIST="${ENV_VAR_NOT_EXIST}:/home/admin/my_lib"``.
 
 - ``container`` (dict): Require a given (Docker) image, and the worker process will run in a container with this image.
   The `worker_path` is the default_worker.py path. It is required only if ray installation directory in the container is different from raylet host.
