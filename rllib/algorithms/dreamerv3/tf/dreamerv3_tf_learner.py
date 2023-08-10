@@ -258,8 +258,6 @@ class DreamerV3TfLearner(DreamerV3Learner, TfLearner):
                 "z": fwd_out["z_posterior_states_BxT"],
             },
             start_is_terminated=tf.reshape(batch["is_terminated"], [-1]),  # ->BxT
-            timesteps_H=hps.horizon_H,
-            gamma=hps.gamma,
         )
         if hps.report_dream_data:
             # To reduce this massive mount of data a little, slice out a T=1 piece

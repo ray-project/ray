@@ -44,7 +44,7 @@ class TestDreamerV3(unittest.TestCase):
                 batch_size_B=16,#TODO4
                 horizon_H=15,#TODO5
                 batch_length_T=64,#TODO16,
-                model_size="XL", #TODOnano",  # Use a tiny model for testing
+                model_size="XL",#TODOnano",  # Use a tiny model for testing
                 #symlog_obs=True,
             )
             .resources(

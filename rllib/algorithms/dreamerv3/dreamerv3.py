@@ -598,6 +598,7 @@ class DreamerV3(Algorithm):
                     sample[SampleBatch.ACTIONS] = one_hot(
                         sample["actions_ints"],
                         depth=env_runner.env.single_action_space.n,
+                        dtype=np.float32,
                     )
 
                 # Perform the actual update via our learner group.

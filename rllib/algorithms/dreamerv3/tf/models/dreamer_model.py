@@ -75,21 +75,18 @@ class DreamerModel(tf.keras.Model):
                 intrinsic_rewards_scale=intrinsic_rewards_scale,
             )
 
-    """def call(
+    def call(
         self,
         inputs,
         actions,
         is_first,
         start_is_terminated_BxT,
-        horizon_H,
-        gamma,
-        training=None,
     ):
-        ""Main call method for building this model in order to generate its variables.
+        """Main call method for building this model in order to generate its variables.
 
         Note: This method should NOT be used by users directly. It's purpose is only to
         perform all forward passes necessary to define all variables of the DreamerV3.
-        ""
+        """
 
         # Forward passes through all models are enough to build all trainable and
         # non-trainable variables:
@@ -106,13 +103,13 @@ class DreamerModel(tf.keras.Model):
             z=results["z_posterior_states_BxT"],
         )
         # Critic.
-        values = self.critic(
+        values, _ = self.critic(
             h=results["h_states_BxT"],
             z=results["z_posterior_states_BxT"],
             use_ema=False,
         )
         # Critic (EMA copy).
-        values_ema = self.critic(
+        values_ema, _ = self.critic(
             h=results["h_states_BxT"], z=results["z_posterior_states_BxT"], use_ema=True
         )
 
@@ -123,8 +120,6 @@ class DreamerModel(tf.keras.Model):
                 "z": results["z_posterior_states_BxT"],
             },
             start_is_terminated=start_is_terminated_BxT,
-            timesteps_H=horizon_H,
-            gamma=gamma,
         )
 
         return {
@@ -133,7 +128,7 @@ class DreamerModel(tf.keras.Model):
             "actions": actions,
             "values": values,
             "values_ema": values_ema,
-        }"""
+        }
 
     @tf.function
     def forward_inference(self, observations, previous_states, is_first, training=None):
@@ -193,10 +188,10 @@ class DreamerModel(tf.keras.Model):
             is_first=is_first,
         )
         # Compute action using our actor network and the current states.
-        actions = self.actor(h=states["h"], z=states["z"])
+        actions, _ = self.actor(h=states["h"], z=states["z"])
         return actions, {"h": states["h"], "z": states["z"], "a": actions}
 
-    def forward_train(self, observations, actions, is_first, training=None):
+    def forward_train(self, observations, actions, is_first):
         """Performs a training forward pass given observations and actions.
 
         Note that all input data must have a time rank (batch-major: [B, T, ...]).
@@ -336,12 +331,8 @@ class DreamerModel(tf.keras.Model):
         a_dreamed_dist_params_H_B = tf.stack(a_dreamed_dist_params_t0_to_H, axis=0)
 
         # Compute r using reward predictor.
-        r_dreamed_H_B = tf.reshape(
-            inverse_symlog(
-                self.world_model.reward_predictor(h=h_states_HxB, z=z_states_prior_HxB)
-            ),
-            shape=[timesteps_H + 1, -1],
-        )
+        r_dreamed_HxB, _ = self.world_model.reward_predictor(h=h_states_HxB, z=z_states_prior_HxB)
+        r_dreamed_H_B = tf.reshape(inverse_symlog(r_dreamed_HxB), shape=[self.horizon + 1, -1])
 
         # Compute intrinsic rewards.
         if self.use_curiosity:
@@ -354,7 +345,7 @@ class DreamerModel(tf.keras.Model):
             #  for the NEXT timestep and derive ri (for the NEXT timestep) from the
             #  disagreement between our N disagreee nets.
             r_intrinsic_H_B = tf.reshape(
-                results_HxB["rewards_intrinsic"], shape=[timesteps_H + 1, -1]
+                results_HxB["rewards_intrinsic"], shape=[self.horizon + 1, -1]
             )[
                 1:
             ]  # cut out first ts instead
@@ -362,11 +353,11 @@ class DreamerModel(tf.keras.Model):
             del results_HxB
 
         # Compute continues using continue predictor.
-        c_dreamed_HxB = self.world_model.continue_predictor(
+        c_dreamed_HxB, _ = self.world_model.continue_predictor(
             h=h_states_HxB,
             z=z_states_prior_HxB,
         )
-        c_dreamed_H_B = tf.reshape(c_dreamed_HxB, [timesteps_H + 1, -1])
+        c_dreamed_H_B = tf.reshape(c_dreamed_HxB, [self.horizon + 1, -1])
         # Force-set first `continue` flags to False iff `start_is_terminated`.
         # Note: This will cause the loss-weights for this row in the batch to be
         # completely zero'd out. In general, we don't use dreamed data past any
@@ -389,7 +380,7 @@ class DreamerModel(tf.keras.Model):
             use_ema=False,
         )
         v_dreamed_HxB = inverse_symlog(v)
-        v_dreamed_H_B = tf.reshape(v_dreamed_HxB, shape=[timesteps_H + 1, -1])
+        v_dreamed_H_B = tf.reshape(v_dreamed_HxB, shape=[self.horizon + 1, -1])
 
         v_symlog_dreamed_ema_HxB, _ = self.critic(
             h=h_states_HxB,
@@ -397,7 +388,7 @@ class DreamerModel(tf.keras.Model):
             use_ema=True,
         )
         v_symlog_dreamed_ema_H_B = tf.reshape(
-            v_symlog_dreamed_ema_HxB, shape=[timesteps_H + 1, -1]
+            v_symlog_dreamed_ema_HxB, shape=[self.horizon + 1, -1]
         )
 
         ret = {
@@ -514,7 +505,7 @@ class DreamerModel(tf.keras.Model):
                         dtype=self.action_space.dtype,
                     )
             else:
-                a = self.actor(h=h, z=z)
+                a, _ = self.actor(h=h, z=z)
             a_t0_to_H.append(a)
 
             states = {"h": h, "z": z, "a": a}
@@ -534,14 +525,13 @@ class DreamerModel(tf.keras.Model):
         a_t0_to_H_B = tf.stack(a_t0_to_H, axis=0)
 
         # Compute r using reward predictor.
-        r_dreamed_t0_to_HxB = inverse_symlog(
-            self.world_model.reward_predictor(
-                h=h_states_t0_to_HxB,
-                z=z_states_prior_t0_to_HxB,
-            )
+        r_dreamed_t0_to_HxB, _ = self.world_model.reward_predictor(
+            h=h_states_t0_to_HxB,
+            z=z_states_prior_t0_to_HxB,
         )
+        r_dreamed_t0_to_HxB = inverse_symlog(r_dreamed_t0_to_HxB)
         # Compute continues using continue predictor.
-        c_dreamed_t0_to_HxB = self.world_model.continue_predictor(
+        c_dreamed_t0_to_HxB, _ = self.world_model.continue_predictor(
             h=h_states_t0_to_HxB,
             z=z_states_prior_t0_to_HxB,
         )

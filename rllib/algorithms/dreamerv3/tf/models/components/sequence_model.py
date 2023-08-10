@@ -79,12 +79,12 @@ class SequenceModel(tf.keras.Model):
         )
 
         # Trace self.call.
-        #self.call = tf.function(input_signature=[
-        #    # TODO: Cont. actions support.
-        #    tf.TensorSpec(shape=[None, action_space.n], dtype=tf.float32),
-        #    tf.TensorSpec(shape=[None, num_gru_units], dtype=tf.float32),
-        #    tf.TensorSpec(shape=[None, 32, 32], dtype=tf.float32),
-        #])(self.call)
+        self.call = tf.function(input_signature=[
+            # TODO: Cont. actions support.
+            tf.TensorSpec(shape=[None, action_space.n], dtype=tf.float32),
+            tf.TensorSpec(shape=[None, num_gru_units], dtype=tf.float32),
+            tf.TensorSpec(shape=[None, 32, 32], dtype=tf.float32),
+        ])(self.call)
 
     def call(self, a, h, z):
         """

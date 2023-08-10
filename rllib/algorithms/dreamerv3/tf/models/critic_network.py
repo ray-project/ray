@@ -116,8 +116,6 @@ class CriticNetwork(tf.keras.Model):
             use_ema: Whether to use the EMA-copy of the critic instead of the actual
                 critic to perform this computation.
         """
-        print(f"INSIDE CRITIC call use_ema={use_ema}")
-
         # Flatten last two dims of z.
         assert len(z.shape) == 3
         z_shape = tf.shape(z)
@@ -127,11 +125,13 @@ class CriticNetwork(tf.keras.Model):
         out.set_shape([None, 32*32 + 4096])
 
         if not use_ema:
+            print("INSIDE CRITIC call use_ema=False")
             # Send h-cat-z through MLP.
             out = self.mlp(out)
             # Return expected return OR (expected return, probs of bucket values).
             return self.return_layer(out)
         else:
+            print("INSIDE CRITIC call use_ema=True")
             out = self.mlp_ema(out)
             return self.return_layer_ema(out)
 
