@@ -8,6 +8,7 @@ import ray
 from ray._private.test_utils import run_string_as_driver_nonblocking, wait_for_condition
 from ray.autoscaler.v2.sdk import get_cluster_status
 from ray.cluster_utils import AutoscalingCluster
+from ray.util.placement_group import placement_group, remove_placement_group
 from ray.util.state.api import list_placement_groups, list_tasks
 
 
@@ -151,6 +152,45 @@ while True:
             print(has_pg_demand, has_pg_usage)
             assert not (has_pg_demand and has_pg_usage), status
             time.sleep(0.1)
+    finally:
+        ray.shutdown()
+        cluster.shutdown()
+
+
+def test_placement_group_removal_idle_node():
+    # Test that nodes become idle after placement group removal.
+    cluster = AutoscalingCluster(
+        head_resources={"CPU": 2},
+        worker_node_types={
+            "type-1": {
+                "resources": {"CPU": 2},
+                "node_config": {},
+                "min_workers": 0,
+                "max_workers": 2,
+            },
+        },
+    )
+    try:
+        cluster.start()
+        ray.init("auto")
+
+        # Schedule a pg on nodes
+        pg = placement_group([{"CPU": 2}] * 3, strategy="STRICT_SPREAD")
+        ray.get(pg.ready())
+
+        time.sleep(2)
+        remove_placement_group(pg)
+
+        time.sleep(1)
+        from ray.autoscaler.v2.sdk import get_cluster_status
+
+        cluster_state = get_cluster_status()
+
+        # Verify that nodes are idle.
+        assert len((cluster_state.healthy_nodes)) == 3
+        for node in cluster_state.healthy_nodes:
+            assert node.node_status == "IDLE"
+            assert node.resource_usage.idle_time_ms >= 1000
     finally:
         ray.shutdown()
         cluster.shutdown()

@@ -304,6 +304,7 @@ class LocalResourceManager : public syncer::ReporterInterface {
   FRIEND_TEST(ClusterResourceSchedulerTest, TaskResourceInstanceWithHardRequestTest);
   FRIEND_TEST(ClusterResourceSchedulerTest, TaskResourceInstanceWithoutCpuUnitTest);
   FRIEND_TEST(ClusterResourceSchedulerTest, CustomResourceInstanceTest);
+  FRIEND_TEST(ClusterResourceSchedulerTest, TaskGPUResourceInstancesTest);
 
   friend class LocalResourceManagerTest;
   FRIEND_TEST(LocalResourceManagerTest, BasicGetResourceUsageMapTest);
