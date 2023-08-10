@@ -428,6 +428,8 @@ def test_handle_prefers_replicas_on_same_node(ray_cluster):
 
     # Make a blocking request to the inner deployment replica on the same node.
     blocked_ref = h.call_inner.remote(block_on_signal=True)
+    with pytest.raises(TimeoutError):
+        ray.get(blocked_ref, timeout=0.1)
 
     # Because there's a blocking request and `max_concurrent_queries` is set to 1, all
     # requests should now spill back to the other node.
