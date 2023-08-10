@@ -244,7 +244,7 @@ def test_tuner(monkeypatch, storage_path_type, tmp_path):
         NUM_TRIALS = 2
         tuner = tune.Tuner(
             train_fn,
-            param_space={"num_iterations": NUM_ITERATIONS},
+            param_space={"num_iterations": NUM_ITERATIONS, "fail_iters": [2, 4]},
             run_config=train.RunConfig(
                 storage_path=storage_path,
                 storage_filesystem=storage_filesystem,
@@ -277,8 +277,8 @@ def test_tuner(monkeypatch, storage_path_type, tmp_path):
         assert trial_fs_path.startswith(experiment_fs_path)
         # TODO(justinvyu): Trainable syncing of artifacts and checkpoints
         # is not yet implemented for the new persistence path.
-        # for checkpoint, _ in result.best_checkpoints:
-        #     assert checkpoint.path.startswith(trial_fs_path)
+        for checkpoint, _ in result.best_checkpoints:
+            assert checkpoint.path.startswith(trial_fs_path)
 
     # Next, inspect the storage path contents.
     assert len(list(local_inspect_dir.glob("*"))) == 1  # Only expect 1 experiment dir

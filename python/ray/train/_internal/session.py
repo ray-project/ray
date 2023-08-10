@@ -116,34 +116,23 @@ class _TrainSession:
         checkpoint_upload_from_workers: bool = False,
         storage: Optional[StorageContext] = None,
     ):
-
+        # Ray Train worker properties
         self.dataset_shard = dataset_shard
-
         self.world_rank = world_rank
         self.local_rank = local_rank
         self.node_rank = node_rank
         self.local_world_size = local_world_size
         self.world_size = world_size
-        self.trial_info = trial_info
-        # TODO(xwjiang): Legacy Ray Train trainer clean up!
-        self.loaded_checkpoint = checkpoint
+
+        # Checkpoint configurations
+        # TODO(justinvyu): These should all be removed.
         self.enable_lazy_checkpointing = enable_lazy_checkpointing
         self.checkpoint_keep_all_ranks = checkpoint_keep_all_ranks
         self.checkpoint_upload_from_workers = checkpoint_upload_from_workers
-
-        if _use_storage_context():
-            assert storage
-            logger.debug(f"StorageContext on TRAIN WORKER {world_rank}:\n{storage}")
-            storage._check_validation_file()
-
-        self.storage = storage
-        ## TODO(justinvyu): Temp hack
-        if self.storage.current_checkpoint_index is None:
-            self.storage.current_checkpoint_index = 0
-
         # Only used if checkpoint_upload_from_workers is True.
         self.legacy_checkpoint_uri = None
 
+        # TODO(justinvyu): Encode data fn to be removed.
         # Function to encode checkpoint dict before sending to the driver.
         if not encode_data_fn:
 
@@ -153,7 +142,20 @@ class _TrainSession:
             encode_data_fn = noop
         self._encode_data_fn = encode_data_fn
 
+        # NOTE: `reset` will initialize many properties needed to start running the
+        # training_func as a thread.
+        self.reset(
+            training_func=training_func,
+            trial_info=trial_info,
+            storage=storage,
+            loaded_checkpoint=checkpoint,
+        )
+
         if _use_storage_context():
+            assert storage
+            logger.debug(f"StorageContext on TRAIN WORKER {world_rank}:\n{storage}")
+            storage._check_validation_file()
+
             # Change the working directory to the local trial directory.
             # -> All workers on the same node share a working directory.
             os.makedirs(storage.trial_local_path, exist_ok=True)
@@ -165,8 +167,36 @@ class _TrainSession:
                 os.makedirs(logdir, exist_ok=True)
                 os.chdir(logdir)
 
+        # Autofilled metrics attributes.
+        self.detailed_autofilled_metrics = detailed_autofilled_metrics
+        self.last_report_time = time.time()
+        self.iteration = 0
+        self.time_total = 0.0
+        self.local_ip = self.get_current_ip()
+
+        self.accelerator = None
+
+    def get_current_ip(self):
+        self.local_ip = ray.util.get_node_ip_address()
+        return self.local_ip
+
+    def start(self):
+        """Starts the training thread."""
+        self.training_started = True
+        self.training_thread.start()
+
+    def reset(
+        self,
+        training_func: Callable,
+        trial_info: TrialInfo,
+        storage: StorageContext,
+        loaded_checkpoint=None,
+    ):
         # This lock is used to control the execution of the training thread.
         self.continue_lock = threading.Semaphore(0)
+
+        # This event is used to signal the training thread to stop.
+        self.stop_event = threading.Event()
 
         # Queue for sending results across threads.
         self.result_queue = queue.Queue(1)
@@ -181,42 +211,35 @@ class _TrainSession:
             target=training_func, daemon=True, error_queue=self.error_queue
         )
 
-        # Autofilled metrics attributes.
-        self.detailed_autofilled_metrics = detailed_autofilled_metrics
-        self.last_report_time = time.time()
-        self.iteration = 0
-        self.time_total = 0.0
-        self.local_ip = self.get_current_ip()
+        # Possibly override with new state
+        self.trial_info = trial_info
+        self.storage = storage
+        self.loaded_checkpoint = loaded_checkpoint
 
+        # Reset state
         self.ignore_report = False
         self.training_started = False
-
-        self.accelerator = None
-
-    def get_current_ip(self):
-        self.local_ip = ray.util.get_node_ip_address()
-        return self.local_ip
-
-    def start(self):
-        """Starts the training thread."""
-        self.training_started = True
-        self.training_thread.start()
 
     def pause_reporting(self):
         """Ignore all future ``session.report()`` calls."""
         self.ignore_report = True
 
-    def finish(self):
+    def finish(self, timeout: Optional[float] = None):
         """Finishes the training thread.
 
         Either returns the output from training or raises any Exception from
         training.
         """
+        # Set the stop event for the training thread to gracefully exit.
+        self.stop_event.set()
+
+        # Release the lock so that training thread can process this event.
+        self.continue_lock.release()
 
         # Wait for training to finish.
         # This will raise any errors that occur during training, including
         # SystemError
-        func_output = self.training_thread.join()
+        func_output = self.training_thread.join(timeout=timeout)
         # If training finished successfully, then return results.
         return func_output
 
@@ -481,6 +504,12 @@ class _TrainSession:
         # Acquire lock to stop the training thread until main thread
         # triggers resume.
         self.continue_lock.acquire()
+
+        # If the trial should be terminated, exit gracefully.
+        if self.stop_event.is_set():
+            self.stop_event.clear()
+            print("\nEXITING THREAD FROM STOP EVENT!!\n")
+            sys.exit(0)
 
     def report(self, metrics: Dict, checkpoint: Optional[Checkpoint] = None) -> None:
         # TODO(xwjiang): tons of optimizations.

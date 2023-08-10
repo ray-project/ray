@@ -363,7 +363,7 @@ class FunctionTrainable(Trainable):
                     name=self.trial_name,
                     id=self.trial_id,
                     resources=self.trial_resources,
-                    logdir=None,
+                    logdir=self._logdir,  # TODO(justinvyu): What should this be?
                     driver_ip=None,
                     experiment_name=self._storage.experiment_dir_name,
                 ),
@@ -621,8 +621,7 @@ class FunctionTrainable(Trainable):
         if _use_storage_context():
             checkpoint_result = checkpoint
             assert isinstance(checkpoint_result, _TrainingResult)
-            self._status_reporter._latest_checkpoint_result = checkpoint_result
-            self._status_reporter._fresh_checkpoint = False
+            self._session.loaded_checkpoint = checkpoint_result.checkpoint
             return
 
         # This should be removed once Trainables are refactored.
@@ -692,6 +691,39 @@ class FunctionTrainable(Trainable):
             logger.debug("Clearing temporary checkpoint: %s", self.temp_checkpoint_dir)
 
     def reset_config(self, new_config):
+        if _use_storage_context():
+            from ray.train._internal.session import TrialInfo
+
+            # Wait for thread termination so it is save to re-use the same actor.
+            thread_timeout = int(os.environ.get("TUNE_FUNCTION_THREAD_TIMEOUT_S", 2))
+            print("\nWAITING FOR SESSION TO FINISH!!\n")
+            self._session.finish(timeout=thread_timeout)
+            if self._session.training_thread.is_alive():
+                # Did not finish within timeout, reset unsuccessful.
+                return False
+
+            print("\nFINISHED!!\n")
+
+            self._session.reset(
+                training_func=lambda: self._trainable_func(
+                    self.config, self._session, self._session.loaded_checkpoint
+                ),
+                trial_info=TrialInfo(
+                    name=self.trial_name,
+                    id=self.trial_id,
+                    resources=self.trial_resources,
+                    logdir=self._logdir,
+                    driver_ip=None,
+                    experiment_name=self._storage.experiment_dir_name,
+                ),
+                storage=self._storage,
+            )
+
+            print("\nRESET WITH NEW TRIAL INFO\n", self._session.trial_info)
+
+            self._last_result = {}
+            return True
+
         if self._runner and self._runner.is_alive():
             self._end_event.set()
             self._continue_semaphore.release()

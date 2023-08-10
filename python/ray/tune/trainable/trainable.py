@@ -1058,17 +1058,25 @@ class Trainable:
         export_dir = export_dir or self.logdir
         return self._export_model(export_formats, export_dir)
 
-    def reset(self, new_config, logger_creator=None, remote_checkpoint_dir=None):
+    def reset(
+        self, new_config, logger_creator=None, remote_checkpoint_dir=None, storage=None
+    ):
         """Resets trial for use with new config.
 
         Subclasses should override reset_config() to actually
         reset actor behavior for the new config."""
+
+        # TODO(justinvyu): remote_checkpoint_dir can be removed.
         # Save artifacts one last time, if this actor has been swapped to a
         # different trial.
         if remote_checkpoint_dir != self.remote_checkpoint_dir:
             self._maybe_save_artifacts_to_cloud()
 
         self.config = new_config
+
+        self._storage = storage
+        if _use_storage_context():
+            init_shared_storage_context(storage)
 
         trial_info = new_config.pop(TRIAL_INFO, None)
         if trial_info:
