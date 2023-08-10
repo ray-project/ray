@@ -41,6 +41,7 @@ namespace rpc {
           cq,                                                                   \
           main_service_,                                                        \
           #SERVICE ".grpc_server." #HANDLER,                                    \
+          cluster_id,                                                           \
           MAX_ACTIVE_RPCS,                                                      \
           RECORD_METRICS));                                                     \
   server_call_factories->emplace_back(std::move(HANDLER##_call_factory));
@@ -77,11 +78,21 @@ class GrpcServer {
   /// \param[in] name Name of this server, used for logging and debugging purpose.
   /// \param[in] port The port to bind this server to. If it's 0, a random available port
   ///  will be chosen.
+  ///
   GrpcServer(std::string name,
              const uint32_t port,
              bool listen_to_localhost_only,
              int num_threads = 1,
-             int64_t keepalive_time_ms = 7200000 /*2 hours, grpc default*/);
+             int64_t keepalive_time_ms = 7200000 /*2 hours, grpc default*/)
+      : name_(std::move(name)),
+        port_(port),
+        listen_to_localhost_only_(listen_to_localhost_only),
+        cluster_id_(ClusterID::Nil()),
+        is_closed_(true),
+        num_threads_(num_threads),
+        keepalive_time_ms_(keepalive_time_ms) {
+    Init();
+  }
 
   /// Destruct this gRPC server.
   ~GrpcServer() { Shutdown(); }
@@ -100,12 +111,30 @@ class GrpcServer {
   /// `GrpcServer`, as it holds the underlying `grpc::Service`.
   ///
   /// \param[in] service A `GrpcService` to register to this server.
-  void RegisterService(GrpcService &service);
+  /// NOTE: if token_auth is not set to false, cluster_id_ must not be Nil.
+  void RegisterService(GrpcService &service, bool token_auth = true);
   void RegisterService(grpc::Service &service);
 
   grpc::Server &GetServer() { return *server_; }
 
+  const ClusterID GetClusterId() {
+    RAY_CHECK(!cluster_id_.IsNil()) << "Cannot fetch cluster ID before it is set.";
+    return cluster_id_;
+  }
+
+  void SetClusterId(const ClusterID &cluster_id) {
+    RAY_CHECK(!cluster_id.IsNil()) << "Cannot set cluster ID back to Nil!";
+    if (!cluster_id_.IsNil() && cluster_id_ != cluster_id) {
+      RAY_LOG(FATAL) << "Resetting non-nil cluster ID! Setting to " << cluster_id
+                     << ", but old value is " << cluster_id_;
+    }
+    cluster_id_ = cluster_id;
+  }
+
  protected:
+  /// Initialize this server.
+  void Init();
+
   /// This function runs in a background thread. It keeps polling events from the
   /// `ServerCompletionQueue`, and dispaches the event to the `ServiceHandler` instances
   /// via the `ServerCall` objects.
@@ -118,6 +147,8 @@ class GrpcServer {
   /// Listen to localhost (127.0.0.1) only if it's true, otherwise listen to all network
   /// interfaces (0.0.0.0)
   const bool listen_to_localhost_only_;
+  /// Token representing ID of this cluster.
+  ClusterID cluster_id_;
   /// Indicates whether this server has been closed.
   bool is_closed_;
   /// The `grpc::Service` objects which should be registered to `ServerBuilder`.
@@ -168,7 +199,8 @@ class GrpcService {
   /// and the maximum number of concurrent requests that this gRPC server can handle.
   virtual void InitServerCallFactories(
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
-      std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories) = 0;
+      std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
+      const ClusterID &cluster_id) = 0;
 
   /// The main event loop, to which the service handler functions will be posted.
   instrumented_io_context &main_service_;

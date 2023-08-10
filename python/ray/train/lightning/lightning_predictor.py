@@ -90,7 +90,7 @@ class LightningPredictor(TorchPredictor):
         The checkpoint is expected to be a result of ``LightningTrainer``.
 
         Example:
-            .. code-block:: python
+            .. testcode::
 
                 import pytorch_lightning as pl
                 from ray.train.lightning import LightningCheckpoint, LightningPredictor
@@ -102,20 +102,23 @@ class LightningPredictor(TorchPredictor):
 
                     # ...
 
-                checkpoint = LightningCheckpoint.from_directory(
-                    "path/to/checkpoint_dir"
-                )
+                # After the training is finished, LightningTrainer saves AIR
+                # checkpoints in the result directory, for example:
+                # ckpt_dir = "{storage_path}/LightningTrainer_.*/checkpoint_000000"
 
-                # `from_checkpoint()` takes the argument list of
-                # `LightningModule.load_from_checkpoint()` as additional kwargs.
+                def load_predictor_from_checkpoint(ckpt_dir):
+                    checkpoint = LightningCheckpoint.from_directory(ckpt_dir)
 
-                predictor = LightningPredictor.from_checkpoint(
-                    checkpoint=checkpoint,
-                    use_gpu=False,
-                    model_class=MyLightningModule,
-                    input_dim=32,
-                    output_dim=10,
-                )
+                    # `from_checkpoint()` takes the argument list of
+                    # `LightningModule.load_from_checkpoint()` as additional kwargs.
+
+                    return LightningPredictor.from_checkpoint(
+                        checkpoint=checkpoint,
+                        use_gpu=False,
+                        model_class=MyLightningModule,
+                        input_dim=32,
+                        output_dim=10,
+                    )
 
         Args:
             checkpoint: The checkpoint to load the model and preprocessor from.

@@ -25,7 +25,7 @@
 #include "ray/common/task/task_util.h"
 #include "ray/common/test_util.h"
 #include "ray/gcs/pb_util.h"
-#include "src/ray/protobuf/experimental/autoscaler.grpc.pb.h"
+#include "src/ray/protobuf/autoscaler.grpc.pb.h"
 #include "src/ray/protobuf/gcs_service.grpc.pb.h"
 
 namespace ray {
@@ -204,6 +204,7 @@ struct Mocker {
     node->set_node_manager_address(address);
     node->set_node_name(node_name);
     node->set_instance_id("instance_x");
+    node->set_state(rpc::GcsNodeInfo::ALIVE);
     return node;
   }
 
@@ -213,6 +214,12 @@ struct Mocker {
     job_table_data->set_is_dead(false);
     job_table_data->set_timestamp(current_sys_time_ms());
     job_table_data->set_driver_ip_address("127.0.0.1");
+    rpc::Address address;
+    address.set_ip_address("127.0.0.1");
+    address.set_port(1234);
+    address.set_raylet_id(UniqueID::FromRandom().Binary());
+    address.set_worker_id(UniqueID::FromRandom().Binary());
+    job_table_data->mutable_driver_address()->CopyFrom(address);
     job_table_data->set_driver_pid(5667L);
     return job_table_data;
   }
@@ -243,14 +250,24 @@ struct Mocker {
   static std::shared_ptr<rpc::AddJobRequest> GenAddJobRequest(
       const JobID &job_id,
       const std::string &ray_namespace,
-      const std::optional<std::string> &submission_id = std::nullopt) {
+      const std::optional<std::string> &submission_id = std::nullopt,
+      const std::optional<rpc::Address> &address = std::nullopt) {
     auto job_config_data = std::make_shared<rpc::JobConfig>();
     job_config_data->set_ray_namespace(ray_namespace);
 
     auto job_table_data = std::make_shared<rpc::JobTableData>();
     job_table_data->set_job_id(job_id.Binary());
     job_table_data->mutable_config()->CopyFrom(*job_config_data);
-
+    if (address.has_value()) {
+      job_table_data->mutable_driver_address()->CopyFrom(address.value());
+    } else {
+      rpc::Address dummy_address;
+      dummy_address.set_port(1234);
+      dummy_address.set_raylet_id(NodeID::FromRandom().Binary());
+      dummy_address.set_ip_address("123.456.7.8");
+      dummy_address.set_worker_id(WorkerID::FromRandom().Binary());
+      job_table_data->mutable_driver_address()->CopyFrom(dummy_address);
+    }
     if (submission_id.has_value()) {
       job_table_data->mutable_config()->mutable_metadata()->insert(
           {"job_submission_id", submission_id.value()});
@@ -296,7 +313,9 @@ struct Mocker {
       const NodeID &node_id,
       const absl::flat_hash_map<std::string, double> &available_resources,
       const absl::flat_hash_map<std::string, double> &total_resources,
-      bool available_resources_changed) {
+      bool available_resources_changed,
+      int64_t idle_ms = 0,
+      bool is_draining = false) {
     resources_data.set_node_id(node_id.Binary());
     for (const auto &resource : available_resources) {
       (*resources_data.mutable_resources_available())[resource.first] = resource.second;
@@ -305,6 +324,8 @@ struct Mocker {
       (*resources_data.mutable_resources_total())[resource.first] = resource.second;
     }
     resources_data.set_resources_available_changed(available_resources_changed);
+    resources_data.set_idle_duration_ms(idle_ms);
+    resources_data.set_is_draining(is_draining);
   }
 
   static void FillResourcesData(rpc::ResourcesData &data,
@@ -323,6 +344,16 @@ struct Mocker {
     }
     data.set_resource_load_changed(resource_load_changed);
     data.set_node_id(node_id);
+  }
+
+  static std::shared_ptr<rpc::PlacementGroupLoad> GenPlacementGroupLoad(
+      std::vector<rpc::PlacementGroupTableData> placement_group_table_data_vec) {
+    auto placement_group_load = std::make_shared<rpc::PlacementGroupLoad>();
+    for (auto &placement_group_table_data : placement_group_table_data_vec) {
+      placement_group_load->add_placement_group_data()->CopyFrom(
+          placement_group_table_data);
+    }
+    return placement_group_load;
   }
 
   static rpc::PlacementGroupTableData GenPlacementGroupTableData(
@@ -359,11 +390,17 @@ struct Mocker {
     return placement_group_table_data;
   }
   static rpc::autoscaler::ClusterResourceConstraint GenClusterResourcesConstraint(
-      const std::vector<std::unordered_map<std::string, double>> &request_resources) {
+      const std::vector<std::unordered_map<std::string, double>> &request_resources,
+      const std::vector<int64_t> &count_array) {
     rpc::autoscaler::ClusterResourceConstraint constraint;
-    for (const auto &resource : request_resources) {
+    RAY_CHECK(request_resources.size() == count_array.size());
+    for (size_t i = 0; i < request_resources.size(); i++) {
+      auto &resource = request_resources[i];
+      auto count = count_array[i];
       auto bundle = constraint.add_min_bundles();
-      bundle->mutable_resources_bundle()->insert(resource.begin(), resource.end());
+      bundle->set_count(count);
+      bundle->mutable_request()->mutable_resources_bundle()->insert(resource.begin(),
+                                                                    resource.end());
     }
     return constraint;
   }

@@ -172,6 +172,12 @@ def validate_cluster_compute(cluster_compute: Dict[str, Any]) -> Optional[str]:
 
 
 def validate_test_cluster_env(test: Test) -> Optional[str]:
+    if test.is_byod_cluster():
+        """
+        BYOD clusters are not validated because they do not need cluster environment
+        """
+        return None
+
     from ray_release.template import get_cluster_env_path
 
     cluster_env_path = get_cluster_env_path(test)

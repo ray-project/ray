@@ -7,8 +7,7 @@ Requires the Ax library to be installed (`pip install ax-platform sqlalchemy`).
 import numpy as np
 import time
 
-from ray import air, tune
-from ray.air import session
+from ray import train, tune
 from ray.tune.schedulers import AsyncHyperBandScheduler
 from ray.tune.search.ax import AxSearch
 
@@ -43,7 +42,7 @@ def hartmann6(x):
 def easy_objective(config):
     for i in range(config["iterations"]):
         x = np.array([config.get("x{}".format(i + 1)) for i in range(6)])
-        session.report(
+        train.report(
             {
                 "timesteps_total": i,
                 "hartmann6": hartmann6(x),
@@ -71,7 +70,7 @@ if __name__ == "__main__":
     scheduler = AsyncHyperBandScheduler()
     tuner = tune.Tuner(
         easy_objective,
-        run_config=air.RunConfig(
+        run_config=train.RunConfig(
             name="ax",
             stop={"timesteps_total": 100},
         ),

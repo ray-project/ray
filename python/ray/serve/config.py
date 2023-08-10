@@ -175,7 +175,7 @@ class DeploymentConfig(BaseModel):
         default=None, update_type=DeploymentOptionUpdateType.LightWeight
     )
 
-    # This flag is used to let replica know they are deplyed from
+    # This flag is used to let replica know they are deployed from
     # a different language.
     is_cross_language: bool = False
 
@@ -374,6 +374,11 @@ class ReplicaConfig:
         self.resource_dict = resources_from_ray_options(self.ray_actor_options)
         self.needs_pickle = needs_pickle
 
+    def update_ray_actor_options(self, ray_actor_options):
+        self.ray_actor_options = ray_actor_options
+        self._validate_ray_actor_options()
+        self.resource_dict = resources_from_ray_options(self.ray_actor_options)
+
     @classmethod
     def create(
         cls,
@@ -560,6 +565,7 @@ class HTTPOptions(pydantic.BaseModel):
     root_path: str = ""
     fixed_number_replicas: Optional[int] = None
     fixed_number_selection_seed: int = 0
+    request_timeout_s: Optional[float] = None
 
     @validator("location", always=True)
     def location_backfill_no_server(cls, v, values):

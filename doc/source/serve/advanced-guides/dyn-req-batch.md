@@ -34,11 +34,22 @@ You can supply two optional parameters to the decorators.
 - `max_batch_size` controls the size of the batch.
 Once the first request arrives, the batching decorator will wait for a full batch (up to `max_batch_size`) until `batch_wait_timeout_s` is reached. If the timeout is reached, the batch will be sent to the model regardless the batch size.
 
-## Streaming batched requests
+:::{tip}
+You can reconfigure your `batch_wait_timeout_s` and `max_batch_size` parameters using the `set_batch_wait_timeout_s` and `set_max_batch_size` methods:
 
-```{warning}
-Support for HTTP streaming responses is experimental. To enable this feature, set `RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING=1` on the cluster before starting Ray. If you encounter any issues, [file an issue on GitHub](https://github.com/ray-project/ray/issues/new/choose).
+```{literalinclude} ../doc_code/batching_guide.py
+---
+start-after: __batch_params_update_begin__
+end-before: __batch_params_update_end__
+---
 ```
+
+Use these methods in the `reconfigure` [method](serve-user-config) to control the `@serve.batch` parameters through your Serve configuration file.
+:::
+
+(serve-streaming-batched-requests-guide)=
+
+## Streaming batched requests
 
 Use an async generator to stream the outputs from your batched requests. Let's convert the `StreamingResponder` class to accept a batch.
 

@@ -8,7 +8,6 @@ import starlette.requests
 
 from ray.util.annotations import PublicAPI
 from ray.serve._private.utils import require_packages
-from ray.serve._private.http_util import make_buffered_asgi_receive
 
 
 _1DArray = List[float]
@@ -63,16 +62,11 @@ def json_to_multi_ndarray(payload: Dict[str, NdArray]) -> Dict[str, np.ndarray]:
 
 
 @PublicAPI(stability="beta")
-async def starlette_request(
+def starlette_request(
     request: starlette.requests.Request,
 ) -> starlette.requests.Request:
     """Returns the raw request object."""
-    # NOTE(edoakes): the raw Request passed in may not be serializable so we
-    # need to convert it to a version that just wraps the body bytes.
-    return starlette.requests.Request(
-        request.scope,
-        make_buffered_asgi_receive(await request.body()),
-    )
+    return request
 
 
 @PublicAPI(stability="beta")

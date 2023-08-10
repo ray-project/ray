@@ -30,12 +30,17 @@ import {
   ServeApplicationDetailPage,
 } from "./pages/serve/ServeApplicationDetailPage";
 import { ServeApplicationsListPage } from "./pages/serve/ServeApplicationsListPage";
-import { ServeLayout } from "./pages/serve/ServeLayout";
+import { ServeLayout, ServeSideTabLayout } from "./pages/serve/ServeLayout";
+import { ServeReplicaDetailLayout } from "./pages/serve/ServeReplicaDetailLayout";
 import { ServeReplicaDetailPage } from "./pages/serve/ServeReplicaDetailPage";
 import {
   ServeControllerDetailPage,
   ServeHttpProxyDetailPage,
 } from "./pages/serve/ServeSystemActorDetailPage";
+import {
+  ServeSystemDetailLayout,
+  ServeSystemDetailPage,
+} from "./pages/serve/ServeSystemDetailPage";
 import { TaskPage } from "./pages/task/TaskPage";
 import { getNodeList } from "./service/node";
 import { lightTheme } from "./theme";
@@ -225,24 +230,46 @@ const App = () => {
                 </Route>
                 <Route element={<Metrics />} path="metrics" />
                 <Route element={<ServeLayout />} path="serve">
-                  <Route element={<ServeApplicationsListPage />} path="" />
-                  <Route
-                    element={<ServeControllerDetailPage />}
-                    path="controller"
-                  />
-                  <Route
-                    element={<ServeHttpProxyDetailPage />}
-                    path="httpProxies/:httpProxyId"
-                  />
+                  <Route element={<ServeSideTabLayout />} path="">
+                    <Route
+                      element={
+                        <SideTabPage tabId="system">
+                          <ServeSystemDetailPage />
+                        </SideTabPage>
+                      }
+                      path="system"
+                    />
+                    <Route
+                      element={
+                        <SideTabPage tabId="applications">
+                          <ServeApplicationsListPage />
+                        </SideTabPage>
+                      }
+                      path=""
+                    />
+                  </Route>
+                  <Route element={<ServeSystemDetailLayout />} path="system">
+                    <Route
+                      element={<ServeControllerDetailPage />}
+                      path="controller"
+                    />
+                    <Route
+                      element={<ServeHttpProxyDetailPage />}
+                      path="httpProxies/:httpProxyId"
+                    />
+                  </Route>
                   <Route
                     element={<ServeApplicationDetailLayout />}
                     path="applications/:applicationName"
                   >
                     <Route element={<ServeApplicationDetailPage />} path="" />
                     <Route
-                      element={<ServeReplicaDetailPage />}
+                      element={<ServeReplicaDetailLayout />}
                       path=":deploymentName/:replicaId"
-                    />
+                    >
+                      <Route element={<ServeReplicaDetailPage />} path="" />
+                      <Route path="tasks/:taskId" element={<TaskPage />} />
+                    </Route>
                   </Route>
                 </Route>
                 <Route element={<LogsLayout />} path="logs">

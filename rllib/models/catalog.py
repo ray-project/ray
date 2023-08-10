@@ -33,6 +33,7 @@ from ray.rllib.utils.annotations import DeveloperAPI, PublicAPI
 from ray.rllib.utils.deprecation import (
     DEPRECATED_VALUE,
     deprecation_warning,
+    Deprecated,
 )
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
@@ -200,7 +201,7 @@ MODEL_DEFAULTS: ModelConfigDict = {
 # fmt: on
 
 
-@PublicAPI
+@Deprecated(old="rllib.models.catalog.ModelCatalog", error=False)
 class ModelCatalog:
     """Registry of models, preprocessors, and action distributions for envs.
 
@@ -350,7 +351,7 @@ class ModelCatalog:
                 "Unsupported args: {} {}".format(action_space, dist_type)
             )
 
-        return dist_cls, dist_cls.required_model_output_shape(action_space, config)
+        return dist_cls, int(dist_cls.required_model_output_shape(action_space, config))
 
     @staticmethod
     @DeveloperAPI
@@ -436,7 +437,7 @@ class ModelCatalog:
             action_space: Action space of the target gym env.
             num_outputs: The size of the output vector of the model.
             model_config: The "model" sub-config dict
-                within the Trainer's config dict.
+                within the Algorithm's config dict.
             framework: One of "tf2", "tf", "torch", or "jax".
             name: Name (scope) for the model.
             model_interface: Interface required for the model
@@ -944,7 +945,7 @@ class ModelCatalog:
 
         Args:
             config: The "model" sub-config dict
-                within the Trainer's config dict.
+                within the Algorithm's config dict.
             action_space: The action space of the model, whose config are
                     validated.
             framework: One of "jax", "tf2", "tf", or "torch".

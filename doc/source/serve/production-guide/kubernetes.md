@@ -21,6 +21,7 @@ Although it's actively developed and maintained, [KubeRay] is still considered a
 :::
 
 (serve-installing-kuberay-operator)=
+
 ## Installing the KubeRay operator
 
 Follow the [KubeRay quickstart guide](kuberay-quickstart) to:
@@ -28,17 +29,27 @@ Follow the [KubeRay quickstart guide](kuberay-quickstart) to:
 * Prepare a Kubernetes cluster
 * Deploy a KubeRay operator
 
-(serve-deploy-app-on-kuberay)=
-## Deploying a Serve application
+## Setting up a RayService custom resource (CR)
+Once the KubeRay controller is running, manage your Ray Serve application by creating and updating a `RayService` CR ([example](https://github.com/ray-project/kuberay/blob/release-0.5/ray-operator/config/samples/ray_v1alpha1_rayservice.yaml)).
 
-Once the KubeRay controller is running, you can manage your Ray Serve application by creating and updating a `RayService` custom resource (CR).
-`RayService` custom resources consist of the following:
-- a `KubeRay` `RayCluster` config defining the cluster that the Serve application runs on.
-- a Ray Serve [config](serve-in-production-config-file) defining the Serve application to run on the cluster.
+Under the `spec` section in the `RayService` CR, set the following fields:
+
+**`serviceUnhealthySecondThreshold`**: Represents the threshold in seconds that defines when a service is considered unhealthy (application status is not RUNNING status). The default is 60 seconds. When the service is unhealthy, the KubeRay Service controller tries to recreate a new cluster and deploy the application to the new cluster.
+
+**`deploymentUnhealthySecondThreshold`**: Represents the number of seconds that the Serve application status can be unavailable before the service is considered unhealthy. The Serve application status is unavailable whenever the Ray dashboard is unavailable. The default is 60 seconds. When the service is unhealthy, the KubeRay Service controller tries to recreate a new cluster and deploy the application to the new cluster.
+
+**`serveConfigV2`**: Represents the configuration that Ray Serve uses to deploy the application. Using `serve build` to print the Serve configuration and copy-paste it directly into your [Kubernetes config](serve-in-production-kubernetes) and `RayService` CR.
+
+**`rayClusterConfig`**: Populate this field with the contents of the `spec` field from the `RayCluster` CR YAML file. Refer to [KubeRay configuration](kuberay-config) for more details.
 
 :::{tip}
-You can use the `--kubernetes-format`/`-k` flag with `serve build` to print the Serve config in a format that can be copy-pasted directly into your [Kubernetes config](serve-in-production-kubernetes). You can paste this config into the `RayService` CR.
+To enhance the reliability of your application, particularly when dealing with large dependencies that may require a significant amount of time to download, consider increasing the value of the `deploymentUnhealthySecondThreshold` to avoid a cluster restart. 
+
+Alternatively, include the dependencies in your image's Dockerfile, so the dependencies are available as soon as the pods start.
 :::
+
+(serve-deploy-app-on-kuberay)=
+## Deploying a Serve application
 
 When the `RayService` is created, the `KubeRay` controller first creates a Ray cluster using the provided configuration.
 Then, once the cluster is running, it deploys the Serve application to the cluster using the [REST API](serve-in-production-deploying).
@@ -49,9 +60,9 @@ The Serve config for the example is embedded into [this example `RayService` CR]
 To follow along, save this CR locally in a file named `ray_v1alpha1_rayservice.yaml`:
 
 :::{note}
-The example `RayService` uses very small resource requests because it's only for demonstration.
-In production, you'll want to provide more resources to the cluster.
+- The example `RayService` uses very low `numCpus` values for demonstration purposes. In production, provide more resources to the Serve application.
 Learn more about how to configure KubeRay clusters [here](kuberay-config).
+- If you have dependencies that must be installed during deployment, you can add them to the `runtime_env` in the Deployment code. Learn more [here](serve-handling-dependencies)
 :::
 
 ```console
@@ -95,6 +106,7 @@ $ curl -X POST -H 'Content-Type: application/json' localhost:8000 -d '["MANGO", 
 6
 ```
 
+(serve-getting-status-kubernetes)=
 ## Getting the status of the application
 
 As the `RayService` is running, the `KubeRay` controller continually monitors it and writes relevant status updates to the CR.
@@ -234,6 +246,36 @@ $ kubectl describe rayservice rayservice-sample
 
 In the status, you can see that the `RayService` is preparing a pending cluster.
 After the pending cluster is healthy, it becomes the active cluster and the previous cluster is terminated.
+
+## Autoscaling
+You can configure autoscaling for your Serve application by setting the autoscaling field in the Serve config. Learn more about the configuration options in [Scaling and Resource Allocation](serve-scaling-and-resource-allocation).
+
+To enable autoscaling in a KubeRay Cluster, you need to set `enableInTreeAutoscaling` to True. Additionally, there are other options available to configure the autoscaling behavior. For further details, please refer to the documentation [here](serve-scaling-and-resource-allocation).
+
+
+:::{note}
+In most use cases, it is recommended to enable Kubernetes autoscaling to fully utilize the resources in your cluster. If you are using GKE, you can utilize the AutoPilot Kubernetes cluster. For instructions, see [Create an Autopilot Cluster](https://cloud.google.com/kubernetes-engine/docs/how-to/creating-an-autopilot-cluster). For EKS, you can enable Kubernetes cluster autoscaling by utilizing the Cluster Autoscaler. For detailed information, see [Cluster Autoscaler on AWS](https://github.com/kubernetes/autoscaler/blob/master/cluster-autoscaler/cloudprovider/aws/README.md). To understand the relationship between Kubernetes autoscaling and Ray autoscaling, see [Ray Autoscaler with Kubernetes Cluster Autoscaler](kuberay-autoscaler-with-ray-autoscaler).
+:::
+
+## Load balancer
+Set up ingress to expose your Serve application with a load balancer. See [this configuration](https://github.com/ray-project/kuberay/blob/master/ray-operator/config/samples/ray-service-alb-ingress.yaml)
+
+:::{note}
+- Ray Serve runs HTTP proxy on every node, allowing you to use `/-/routes` as the endpoint for node health checks.
+- Ray Serve uses port 8000 as the default HTTP proxy traffic port. You can change the port by setting `http_options` in the Serve config. Learn more details [here](serve-multi-application).
+:::
+
+## Monitoring
+Monitor your Serve application using the Ray Dashboard.
+- Learn more about how to configure and manage Dashboard [here](observability-configure-manage-dashboard).
+- Learn about the Ray Serve Dashboard [here](serve-monitoring).
+- Learn how to set up [Prometheus](prometheus-setup) and [Grafana](grafana) for Dashboard.
+- Learn about the [Ray Serve logs](serve-logging) and how to [persistent logs](kuberay-logging) on Kubernetes.
+
+:::{note}
+- To troubleshoot application deployment failures in Serve, you can check the Kuberay operator logs by running `kubectl logs -f <kuberay-operator-pod-name>` (e.g., `kubectl logs -f kuberay-operator-7447d85d58-lv7pf`). The Kuberay operator logs contain information about the Serve application deployment event and Serve application health checks.
+- You can also check the controller log and deployment log, which are located under `/tmp/ray/session_latest/logs/serve/` in both the head node pod and worker node pod. These logs contain information about specific deployment failure reasons and autoscaling events.
+:::
 
 ## Next Steps
 

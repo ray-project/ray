@@ -2,7 +2,7 @@ from typing import Dict, List, Optional, Union
 
 from tensorflow.keras.callbacks import Callback as KerasCallback
 
-from ray.air import session
+import ray
 from ray.train.tensorflow import TensorflowCheckpoint
 from ray.util.annotations import PublicAPI, Deprecated
 
@@ -162,7 +162,7 @@ class ReportCheckpointCallback(_Callback):
         else:
             checkpoint = None
 
-        session.report(metrics, checkpoint=checkpoint)
+        ray.train.report(metrics, checkpoint=checkpoint)
 
     def _get_reported_metrics(self, logs: Dict) -> Dict:
         assert isinstance(self._metrics, (type(None), str, list, dict))

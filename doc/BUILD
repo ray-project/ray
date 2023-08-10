@@ -133,7 +133,9 @@ py_test_run_all_subdirectory(
         "source/serve/doc_code/distilbert.py",
         "source/serve/doc_code/stable_diffusion.py",
         "source/serve/doc_code/object_detection.py",
-        "source/serve/doc_code/streaming_example.py",
+        "source/serve/doc_code/http_guide/streaming_example.py",
+        "source/serve/doc_code/http_guide/websockets_example.py",
+        "source/serve/doc_code/vllm_example.py",
     ],
     extra_srcs = [],
     tags = ["exclusive", "team:serve"],
@@ -141,7 +143,10 @@ py_test_run_all_subdirectory(
 
 py_test_run_all_subdirectory(
     size = "medium",
-    include = ["source/serve/doc_code/streaming_example.py"],
+    include = [
+        "source/serve/doc_code/http_guide/streaming_example.py",
+        "source/serve/doc_code/http_guide/websockets_example.py",
+    ],
     exclude = [],
     extra_srcs = [],
     tags = ["exclusive", "team:serve"],
@@ -198,8 +203,6 @@ py_test_run_all_subdirectory(
     exclude = [
         # Too large. Use a custom test below.
         "source/ray-air/doc_code/computer_vision.py",
-        "source/ray-air/doc_code/hf_trainer.py",  # Too large
-        "source/ray-air/doc_code/predictors.py",
     ],
     extra_srcs = [],
     tags = ["exclusive", "team:ml"],
@@ -220,7 +223,9 @@ py_test(
 py_test_run_all_subdirectory(
     size = "large",
     include = ["source/train/doc_code/*.py"],
-    exclude = [],
+    exclude = [
+        "source/train/doc_code/hf_trainer.py",  # Too large
+    ],
     extra_srcs = [],
     tags = ["exclusive", "team:ml"],
 )
@@ -245,39 +250,15 @@ py_test_run_all_subdirectory(
     size = "large",
     include = ["source/data/doc_code/*.py"],
     exclude = [
-        "source/ray-air/doc_code/predictors.py",
         "source/data/doc_code/loading_data_untested.py",
     ],
     extra_srcs = [],
     tags = ["exclusive", "team:data"],
 )
 
-# --------------------------------------------------------------------
-# Workspace templates tests
-# --------------------------------------------------------------------
-
-# Validate that all the paths and yamls within the templates.yaml file are valid.
-
-py_test(
-    name = "templates_directory_validation",
-    size = "small",
-    main = "source/templates/testing/validate.py",
-    srcs = ["source/templates/testing/validate.py"],
-    data = glob(["source/templates/**/*"]),
-    tags = ["exclusive", "team:ml"]
-)
-
 # --------------
 # Run GPU tests
 # --------------
-
-py_test_run_all_subdirectory(
-    size = "large",
-    include = ["source/ray-air/doc_code/predictors.py"],
-    exclude = [],
-    extra_srcs = [],
-    tags = ["exclusive", "team:ml", "ray_air", "gpu"],
-)
 
 py_test(
     name = "pytorch_resnet_finetune",
@@ -323,7 +304,10 @@ doctest(
             "source/serve/production-guide/fault-tolerance.md",
             "source/data/batch_inference.rst",
             "source/data/transforming-data.rst",
-            "source/train/faq.rst"
+            "source/train/faq.rst",
+            "source/workflows/**/*.rst",
+            "source/workflows/**/*.md",
+            "source/templates/04_finetuning_llms_with_deepspeed/README.md"
         ]
     ),
     size = "large",
@@ -331,6 +315,16 @@ doctest(
 )
 
 
+doctest(
+    name="doctest[workflow]",
+    files = glob(
+        include=[
+            "source/workflows/**/*.rst",
+            "source/workflows/**/*.md"
+        ]
+    ),
+    tags = ["team:core"]
+)
 
 doctest(
     files = [

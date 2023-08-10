@@ -1,6 +1,7 @@
 import json
 import logging
 from collections import defaultdict
+from typing import Set
 
 from google.protobuf.json_format import MessageToDict
 
@@ -170,7 +171,7 @@ class GlobalState:
             entry = gcs_pb2.JobTableData.FromString(job_table[i])
             job_info = {}
             job_info["JobID"] = entry.job_id.hex()
-            job_info["DriverIPAddress"] = entry.driver_ip_address
+            job_info["DriverIPAddress"] = entry.driver_address.ip_address
             job_info["DriverPid"] = entry.driver_pid
             job_info["Timestamp"] = entry.timestamp
             job_info["StartTime"] = entry.start_time
@@ -215,7 +216,7 @@ class GlobalState:
         result = defaultdict(list)
         task_events = self.global_state_accessor.get_task_events()
         for i in range(len(task_events)):
-            event = common_pb2.TaskEvents.FromString(task_events[i])
+            event = gcs_pb2.TaskEvents.FromString(task_events[i])
             profile = event.profile_events
             if not profile:
                 continue
@@ -733,6 +734,11 @@ class GlobalState:
         return self.global_state_accessor.get_node_to_connect_for_driver(
             node_ip_address
         )
+
+    def get_draining_nodes(self) -> Set[str]:
+        """Get all the hex ids of nodes that are being drained."""
+        self._check_connected()
+        return self.global_state_accessor.get_draining_nodes()
 
 
 state = GlobalState()

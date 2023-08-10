@@ -1,5 +1,6 @@
 import { get } from "./requestHandlers";
 
+export const MAX_LINES_FOR_LOGS = 50_000;
 const getLogUrl = (url: string) => {
   return url === "log_index" ? url : `log_proxy?url=${encodeURIComponent(url)}`;
 };
@@ -93,7 +94,7 @@ export const getStateApiDownloadLogUrl = ({
       ? [`actor_id=${encodeURIComponent(actorId)}`]
       : []),
     ...(suffix !== undefined ? [`suffix=${encodeURIComponent(suffix)}`] : []),
-    "lines=-1",
+    `lines=${MAX_LINES_FOR_LOGS}`,
   ];
 
   return `api/v0/logs/file?${variables.join("&")}`;

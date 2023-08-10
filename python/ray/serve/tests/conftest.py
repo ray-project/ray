@@ -83,7 +83,7 @@ def serve_instance(_shared_serve_instance):
     # Clear all state between tests to avoid naming collisions.
     _shared_serve_instance.delete_deployments(serve.list_deployments().keys())
     # Clear the ServeHandle cache between tests to avoid them piling up.
-    _shared_serve_instance.handle_cache.clear()
+    _shared_serve_instance.shutdown_cached_handles()
 
 
 def check_ray_stop():
@@ -113,3 +113,35 @@ def ray_start_stop():
         check_ray_stop,
         timeout=15,
     )
+
+
+@pytest.fixture
+def ray_instance(request):
+    """Starts and stops a Ray instance for this test.
+
+    Args:
+        request: request.param should contain a dictionary of env vars and
+            their values. The Ray instance will be started with these env vars.
+    """
+
+    original_env_vars = os.environ.copy()
+
+    try:
+        requested_env_vars = request.param
+    except AttributeError:
+        requested_env_vars = {}
+
+    os.environ.update(requested_env_vars)
+
+    yield ray.init(
+        _metrics_export_port=9999,
+        _system_config={
+            "metrics_report_interval_ms": 1000,
+            "task_retry_delay_ms": 50,
+        },
+    )
+
+    ray.shutdown()
+
+    os.environ.clear()
+    os.environ.update(original_env_vars)

@@ -87,6 +87,14 @@ Query the applications at their respective endpoints, `/calculator` and `/greet`
 'Good morning Bob!'
 ```
 
+:::{tip}
+If you prefer to use `cURL` to ping these endpoints, add the `-L` flag. The `DAGDriver` does an HTTP redirect, and the flag ensures that `cURL` follows the redirect:
+
+```
+curl -L -X POST -H "Content-Type: application/json" -d '["ADD", 5]' localhost:8000/calculator
+```
+:::
+
 ### Check Status
 Check the status of the applications by running `serve status`.
 

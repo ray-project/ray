@@ -10,10 +10,11 @@ https://arxiv.org/pdf/2010.02193.pdf
 from typing import Optional
 
 import numpy as np
-import tensorflow as tf
-import tensorflow_probability as tfp
 
 from ray.rllib.algorithms.dreamerv3.utils import get_cnn_multiplier
+from ray.rllib.utils.framework import try_import_tf
+
+_, tf, _ = try_import_tf()
 
 
 class ConvTransposeAtari(tf.keras.Model):
@@ -28,14 +29,14 @@ class ConvTransposeAtari(tf.keras.Model):
     def __init__(
         self,
         *,
-        model_dimension: Optional[str] = "XS",
+        model_size: Optional[str] = "XS",
         cnn_multiplier: Optional[int] = None,
         gray_scaled: bool,
     ):
         """Initializes a ConvTransposeAtari instance.
 
         Args:
-            model_dimension: The "Model Size" used according to [1] Appendinx B.
+            model_size: The "Model Size" used according to [1] Appendinx B.
                 Use None for manually setting the `cnn_multiplier`.
             cnn_multiplier: Optional override for the additional factor used to multiply
                 the number of filters with each CNN transpose layer. Starting with
@@ -47,7 +48,7 @@ class ConvTransposeAtari(tf.keras.Model):
         """
         super().__init__(name="image_decoder")
 
-        cnn_multiplier = get_cnn_multiplier(model_dimension, override=cnn_multiplier)
+        cnn_multiplier = get_cnn_multiplier(model_size, override=cnn_multiplier)
 
         # The shape going into the first Conv2DTranspose layer.
         # We start with a 4x4 channels=8 "image".
@@ -146,15 +147,9 @@ class ConvTransposeAtari(tf.keras.Model):
         # From [2]:
         # "Distributions: The image predictor outputs the mean of a diagonal Gaussian
         # likelihood with unit variance, ..."
+
         # Reshape `out` for the diagonal multi-variate Gaussian (each pixel is its own
         # independent (b/c diagonal co-variance matrix) variable).
         loc = tf.reshape(out, shape=(out_shape[0], -1))
-        distribution = tfp.distributions.MultivariateNormalDiag(
-            loc=loc,
-            # Scale == 1.0.
-            # [2]: "Distributions The image predictor outputs the mean of a diagonal
-            # Gaussian likelihood with **unit variance** ..."
-            scale_diag=tf.ones_like(loc),
-        )
-        pred_obs = distribution.sample()
-        return pred_obs, distribution
+
+        return loc

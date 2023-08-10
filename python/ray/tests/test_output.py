@@ -11,6 +11,7 @@ import ray
 from ray._private.test_utils import (
     run_string_as_driver,
     run_string_as_driver_nonblocking,
+    wait_for_condition,
 )
 
 
@@ -124,12 +125,30 @@ def test_env_hook_skipped_for_ray_client(start_cluster, monkeypatch):
         assert ray.get(f.remote()) == "HOOK_VALUE"
 
 
-def test_autoscaler_infeasible():
+@pytest.mark.parametrize(
+    "ray_start_cluster_head_with_env_vars",
+    [
+        {
+            "num_cpus": 1,
+            "env_vars": {
+                "RAY_enable_autoscaler_v2": "0",
+            },
+        },
+        {
+            "num_cpus": 1,
+            "env_vars": {
+                "RAY_enable_autoscaler_v2": "1",
+            },
+        },
+    ],
+    indirect=True,
+)
+def test_autoscaler_infeasible(ray_start_cluster_head_with_env_vars):
     script = """
 import ray
 import time
 
-ray.init(num_cpus=1)
+ray.init()
 
 @ray.remote(num_gpus=1)
 def foo():
@@ -148,12 +167,32 @@ time.sleep(15)
     assert "Error: No available node types can fulfill" in out_str
 
 
-def test_autoscaler_warn_deadlock(enable_syncer_test):
+@pytest.mark.parametrize(
+    "ray_start_cluster_head_with_env_vars",
+    [
+        {
+            "num_cpus": 1,
+            "env_vars": {
+                "RAY_enable_autoscaler_v2": "0",
+            },
+        },
+        {
+            "num_cpus": 1,
+            "env_vars": {
+                "RAY_enable_autoscaler_v2": "1",
+            },
+        },
+    ],
+    indirect=True,
+)
+def test_autoscaler_warn_deadlock(
+    enable_syncer_test, ray_start_cluster_head_with_env_vars
+):
     script = """
 import ray
 import time
 
-ray.init(num_cpus=1)
+ray.init()
 
 @ray.remote(num_cpus=1)
 class A:
@@ -173,13 +212,34 @@ time.sleep(25)
     assert "Warning: The following resource request cannot" in out_str
 
 
-def test_autoscaler_no_spam():
+# TODO(rickyx): Remove this after migration
+@pytest.mark.parametrize(
+    "ray_start_cluster_head_with_env_vars",
+    [
+        {
+            "num_cpus": 1,
+            "resources": {"node:x": 1},
+            "env_vars": {
+                "RAY_enable_autoscaler_v2": "0",
+            },
+        },
+        {
+            "num_cpus": 1,
+            "resources": {"node:x": 1},
+            "env_vars": {
+                "RAY_enable_autoscaler_v2": "1",
+            },
+        },
+    ],
+    indirect=True,
+)
+def test_autoscaler_no_spam(ray_start_cluster_head_with_env_vars):
     script = """
 import ray
 import time
 
 # Check that there are no false positives with custom resources.
-ray.init(num_cpus=1, resources={"node:x": 1})
+ray.init()
 
 @ray.remote(num_cpus=1, resources={"node:x": 1})
 def f():
@@ -220,6 +280,118 @@ time.sleep(25)
 
     print(out_str, err_str)
     assert "(autoscaler" in out_str
+
+
+# TODO(rickyx): Remove this after migration
+@pytest.mark.parametrize(
+    "ray_start_cluster_head_with_env_vars",
+    [
+        {
+            "env_vars": {
+                "RAY_enable_autoscaler_v2": "1",
+            },
+        }
+    ],
+    indirect=True,
+)
+def test_autoscaler_v2_stream_events(ray_start_cluster_head_with_env_vars):
+    """
+    Test in autoscaler v2, autoscaler events are streamed directly from
+    events file
+    """
+
+    script = """
+import ray
+import time
+from ray.core.generated.event_pb2 import Event as RayEvent
+from ray._private.event.event_logger import get_event_logger
+
+ray.init("auto")
+
+# Get event logger to write autoscaler events.
+log_dir = ray._private.worker.global_worker.node.get_logs_dir_path()
+event_logger = get_event_logger(RayEvent.SourceType.AUTOSCALER, log_dir)
+event_logger.info("Test autoscaler event")
+
+# Block and sleep
+time.sleep(3)
+    """
+
+    proc = run_string_as_driver_nonblocking(script)
+
+    def verify():
+        out_str = proc.stdout.read().decode("ascii")
+        print(out_str)
+        assert out_str and "Test autoscaler event" in out_str
+        return True
+
+    wait_for_condition(verify)
+
+
+@pytest.mark.parametrize(
+    "event_level,expected_msg,unexpected_msg",
+    [
+        ("TRACE", "TRACE,DEBUG,INFO,WARNING,ERROR,FATAL", ""),
+        ("DEBUG", "DEBUG,INFO,WARNING,ERROR,FATAL", "TRACE"),
+        ("INFO", "INFO,WARNING,ERROR,FATAL", "TRACE,DEBUG"),
+        ("WARNING", "WARNING,ERROR,FATAL", "TRACE,DEBUG,INFO"),
+        ("ERROR", "ERROR,FATAL", "TRACE,DEBUG,INFO,WARNING"),
+        ("FATAL", "FATAL", "TRACE,DEBUG,INFO,WARNING,ERROR"),
+    ],
+)
+def test_autoscaler_v2_stream_events_filter_level(
+    shutdown_only, event_level, expected_msg, unexpected_msg, monkeypatch
+):
+    """
+    Test in autoscaler v2, autoscaler events are streamed directly from
+    events file
+    """
+
+    script = """
+import ray
+import time
+from ray.core.generated.event_pb2 import Event as RayEvent
+from ray._private.event.event_logger import get_event_logger
+
+ray.init("auto")
+
+# Get event logger to write autoscaler events.
+log_dir = ray._private.worker.global_worker.node.get_logs_dir_path()
+event_logger = get_event_logger(RayEvent.SourceType.AUTOSCALER, log_dir)
+event_logger.trace("TRACE")
+event_logger.debug("DEBUG")
+event_logger.info("INFO")
+event_logger.warning("WARNING")
+event_logger.error("ERROR")
+event_logger.fatal("FATAL")
+
+# Block and sleep
+time.sleep(3)
+    """
+
+    ray.init(_system_config={"enable_autoscaler_v2": True})
+
+    env = os.environ.copy()
+    env["RAY_LOG_TO_DRIVER_EVENT_LEVEL"] = event_level
+    proc = run_string_as_driver_nonblocking(script, env=env)
+
+    def verify():
+        out_str = proc.stdout.read().decode("ascii")
+        print(out_str)
+        # Filter only autoscaler prints.
+        assert out_str
+
+        out_str = "".join(
+            [line for line in out_str.splitlines() if "autoscaler" in line]
+        )
+        for expected in expected_msg.split(","):
+            assert expected in out_str
+        if unexpected_msg:
+            for unexpected in unexpected_msg.split(","):
+                assert unexpected not in out_str
+        return True
+
+    wait_for_condition(verify)
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
