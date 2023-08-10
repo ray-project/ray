@@ -443,7 +443,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
                 replica_ids_attempted, request_metadata
             )
             chosen_ids = random.sample(
-                candidate_replica_ids, k=min(2, len(candidate_replica_ids))
+                list(candidate_replica_ids), k=min(2, len(candidate_replica_ids))
             )
             yield [self._replicas[chosen_id] for chosen_id in chosen_ids]
 
@@ -952,6 +952,7 @@ class Router:
             ray.get(controller_handle.get_deployment_info.remote(self.deployment_name))
         )
         deployment_info = DeploymentInfo.from_proto(deployment_route.deployment_info)
+        self.metrics_pusher = None
         if deployment_info.deployment_config.autoscaling_config:
             self.metrics_pusher = MetricsPusher()
             self.metrics_pusher.register_task(
@@ -984,21 +985,34 @@ class Router:
             },
         )
 
-        query = Query(
-            args=list(request_args),
-            kwargs=request_kwargs,
-            metadata=request_meta,
-        )
-        await query.resolve_async_tasks()
-        await query.buffer_starlette_requests_and_warn()
-        result = await self._replica_scheduler.assign_replica(query)
+        try:
+            query = Query(
+                args=list(request_args),
+                kwargs=request_kwargs,
+                metadata=request_meta,
+            )
+            await query.resolve_async_tasks()
+            await query.buffer_starlette_requests_and_warn()
+            result = await self._replica_scheduler.assign_replica(query)
 
-        self.num_queued_queries -= 1
-        self.num_queued_queries_gauge.set(
-            self.num_queued_queries,
-            tags={
-                "application": request_meta.app_name,
-            },
-        )
+            return result
+        finally:
+            # If the query is disconnected before assignment, this coroutine
+            # gets cancelled by the caller and an asyncio.CancelledError is
+            # raised. The finally block ensures that num_queued_queries
+            # is correctly decremented in this case.
+            self.num_queued_queries -= 1
+            self.num_queued_queries_gauge.set(
+                self.num_queued_queries,
+                tags={
+                    "application": request_meta.app_name,
+                },
+            )
 
-        return result
+    def shutdown(self):
+        """Shutdown router gracefully.
+
+        The metrics_pusher needs to be shutdown separately.
+        """
+        if self.metrics_pusher:
+            self.metrics_pusher.shutdown()

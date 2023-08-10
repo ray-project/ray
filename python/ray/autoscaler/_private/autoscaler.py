@@ -735,6 +735,7 @@ class StandardAutoscaler:
         ):
             if node_id is not None:
                 resources = self._node_resources(node_id)
+                labels = self._node_labels(node_id)
                 logger.debug(f"{node_id}: Starting new thread runner.")
                 T.append(
                     threading.Thread(
@@ -744,6 +745,7 @@ class StandardAutoscaler:
                             setup_commands,
                             ray_start_commands,
                             resources,
+                            labels,
                             docker_config,
                         ),
                     )
@@ -1018,6 +1020,13 @@ class StandardAutoscaler:
         else:
             return {}
 
+    def _node_labels(self, node_id):
+        node_type = self.provider.node_tags(node_id).get(TAG_RAY_USER_NODE_TYPE)
+        if self.available_node_types:
+            return self.available_node_types.get(node_type, {}).get("labels", {})
+        else:
+            return {}
+
     def reset(self, errors_fatal=False):
         sync_continuously = False
         if hasattr(self, "config"):
@@ -1241,6 +1250,7 @@ class StandardAutoscaler:
             is_head_node=False,
             docker_config=self.config.get("docker"),
             node_resources=self._node_resources(node_id),
+            node_labels=self._node_labels(node_id),
             for_recovery=True,
         )
         updater.start()
@@ -1311,7 +1321,13 @@ class StandardAutoscaler:
         )
 
     def spawn_updater(
-        self, node_id, setup_commands, ray_start_commands, node_resources, docker_config
+        self,
+        node_id,
+        setup_commands,
+        ray_start_commands,
+        node_resources,
+        node_labels,
+        docker_config,
     ):
         logger.info(
             f"Creating new (spawn_updater) updater thread for node" f" {node_id}."
@@ -1345,6 +1361,7 @@ class StandardAutoscaler:
             use_internal_ip=True,
             docker_config=docker_config,
             node_resources=node_resources,
+            node_labels=node_labels,
         )
         updater.start()
         self.updaters[node_id] = updater

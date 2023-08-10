@@ -1562,7 +1562,7 @@ TEST_F(TaskManagerTest, TestObjectRefStreamEndtoEnd) {
 
 TEST_F(TaskManagerTest, TestObjectRefStreamDelCleanReferences) {
   /**
-   * Verify DEL cleans all references and ignore all future WRITE.
+   * Verify DEL cleans all references/objects and ignore all future WRITE.
    *
    * CREATE WRITE WRITE DEL (make sure no refs are leaked)
    */
@@ -1602,6 +1602,8 @@ TEST_F(TaskManagerTest, TestObjectRefStreamDelCleanReferences) {
 
   // NumObjectIDsInScope == Generator + 2 WRITE
   ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 3);
+  // 2 in memory objects.
+  ASSERT_EQ(store_->Size(), 2);
   std::vector<std::shared_ptr<RayObject>> results;
   WorkerContext ctx(WorkerType::WORKER, WorkerID::FromRandom(), JobID::FromInt(0));
   RAY_CHECK_OK(store_->Get({dynamic_return_id}, 1, 1, ctx, false, &results));
@@ -1614,11 +1616,8 @@ TEST_F(TaskManagerTest, TestObjectRefStreamDelCleanReferences) {
   // DELETE. This should clean all references except generator id.
   manager_.DelObjectRefStream(generator_id);
   ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 1);
-  // Unfortunately, when the obj ref goes out of scope,
-  // this is called from the language frontend. We mimic this behavior
-  // by manually calling these APIs.
-  store_->Delete({dynamic_return_id});
-  store_->Delete({dynamic_return_id2});
+  // All the in memory objects should be cleaned up.
+  ASSERT_EQ(store_->Size(), 0);
   ASSERT_TRUE(store_->Get({dynamic_return_id}, 1, 1, ctx, false, &results).IsTimedOut());
   results.clear();
   ASSERT_TRUE(store_->Get({dynamic_return_id2}, 1, 1, ctx, false, &results).IsTimedOut());
@@ -1640,6 +1639,8 @@ TEST_F(TaskManagerTest, TestObjectRefStreamDelCleanReferences) {
   ASSERT_FALSE(manager_.HandleReportGeneratorItemReturns(req));
   // The write should have been no op. No refs and no obj values except the generator id.
   ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 1);
+  // All the in memory objects should be cleaned up.
+  ASSERT_EQ(store_->Size(), 0);
   ASSERT_TRUE(store_->Get({dynamic_return_id3}, 1, 1, ctx, false, &results).IsTimedOut());
   results.clear();
 
@@ -1741,6 +1742,8 @@ TEST_F(TaskManagerTest, TestObjectRefStreamDelOutOfOrder) {
 
   // There must be only a generator ID.
   ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 1);
+  // All the objects should be cleaned up.
+  ASSERT_EQ(store_->Size(), 0);
   CompletePendingStreamingTask(spec, caller_address, 0);
 }
 

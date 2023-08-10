@@ -181,6 +181,10 @@ class RayServeHandle:
             multiplexed_model_id=multiplexed_model_id,
             stream=stream,
         )
+
+        if self._router is None:
+            self._get_or_create_router()
+
         return self.__class__(
             self.deployment_name,
             handle_options=new_handle_options,
@@ -274,6 +278,10 @@ class RayServeHandle:
 
     def __getattr__(self, name):
         return self.options(method_name=name)
+
+    def shutdown(self):
+        if self._router:
+            self._router.shutdown()
 
 
 @PublicAPI(stability="beta")

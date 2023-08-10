@@ -61,6 +61,10 @@ inline bool operator==(const ray::rpc::SchedulingStrategy &lhs,
             rhs.placement_group_scheduling_strategy()
                 .placement_group_capture_child_tasks());
   }
+  case ray::rpc::SchedulingStrategy::kNodeLabelSchedulingStrategy: {
+    return google::protobuf::util::MessageDifferencer::Equivalent(
+        lhs.node_label_scheduling_strategy(), rhs.node_label_scheduling_strategy());
+  }
   default:
     return true;
   }
@@ -108,6 +112,43 @@ struct SchedulingClassDescriptor {
 
 namespace std {
 template <>
+struct hash<ray::rpc::LabelOperator> {
+  size_t operator()(const ray::rpc::LabelOperator &label_operator) const {
+    size_t hash = std::hash<size_t>()(label_operator.label_operator_case());
+    if (label_operator.has_label_in()) {
+      for (const auto &value : label_operator.label_in().values()) {
+        hash ^= std::hash<std::string>()(value);
+      }
+    } else if (label_operator.has_label_not_in()) {
+      for (const auto &value : label_operator.label_not_in().values()) {
+        hash ^= std::hash<std::string>()(value);
+      }
+    }
+    return hash;
+  }
+};
+
+template <>
+struct hash<ray::rpc::LabelMatchExpression> {
+  size_t operator()(const ray::rpc::LabelMatchExpression &expression) const {
+    size_t hash = std::hash<std::string>()(expression.key());
+    hash ^= std::hash<ray::rpc::LabelOperator>()(expression.operator_());
+    return hash;
+  }
+};
+
+template <>
+struct hash<ray::rpc::LabelMatchExpressions> {
+  size_t operator()(const ray::rpc::LabelMatchExpressions &expressions) const {
+    size_t hash = 0;
+    for (const auto &expression : expressions.expressions()) {
+      hash ^= std::hash<ray::rpc::LabelMatchExpression>()(expression);
+    }
+    return hash;
+  }
+};
+
+template <>
 struct hash<ray::rpc::SchedulingStrategy> {
   size_t operator()(const ray::rpc::SchedulingStrategy &scheduling_strategy) const {
     size_t hash = std::hash<size_t>()(scheduling_strategy.scheduling_strategy_case());
@@ -132,6 +173,19 @@ struct hash<ray::rpc::SchedulingStrategy> {
       hash ^=
           static_cast<size_t>(scheduling_strategy.placement_group_scheduling_strategy()
                                   .placement_group_capture_child_tasks());
+    } else if (scheduling_strategy.has_node_label_scheduling_strategy()) {
+      if (scheduling_strategy.node_label_scheduling_strategy().hard().expressions_size() >
+          0) {
+        hash ^= std::hash<std::string>()("hard");
+        hash ^= std::hash<ray::rpc::LabelMatchExpressions>()(
+            scheduling_strategy.node_label_scheduling_strategy().hard());
+      }
+      if (scheduling_strategy.node_label_scheduling_strategy().soft().expressions_size() >
+          0) {
+        hash ^= std::hash<std::string>()("soft");
+        hash ^= std::hash<ray::rpc::LabelMatchExpressions>()(
+            scheduling_strategy.node_label_scheduling_strategy().soft());
+      }
     }
     return hash;
   }
@@ -285,6 +339,9 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   const uint8_t *ArgMetadata(size_t arg_index) const;
 
   size_t ArgMetadataSize(size_t arg_index) const;
+
+  /// Return true if the task should be retried upon exceptions.
+  bool ShouldRetryExceptions() const;
 
   /// Return the ObjectRefs that were inlined in this task argument.
   const std::vector<rpc::ObjectReference> ArgInlinedRefs(size_t arg_index) const;

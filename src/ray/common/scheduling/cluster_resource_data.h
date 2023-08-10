@@ -417,15 +417,6 @@ class NodeResources {
  public:
   NodeResources() {}
   NodeResources(const ResourceRequest &request) : total(request), available(request) {}
-  NodeResources(const NodeResources &other)
-      : total(other.total),
-        available(other.available),
-        load(other.load),
-        normal_task_resources(other.normal_task_resources),
-        labels(other.labels),
-        latest_resources_normal_task_timestamp(
-            other.latest_resources_normal_task_timestamp),
-        object_pulls_queued(other.object_pulls_queued) {}
   ResourceRequest total;
   ResourceRequest available;
   /// Only used by light resource report.
@@ -438,6 +429,9 @@ class NodeResources {
 
   // The idle duration of the node from resources reported by raylet.
   int64_t idle_resource_duration_ms = 0;
+
+  // Whether the node is being drained or not.
+  bool is_draining = false;
 
   // The timestamp of the last resource update if there was a resource report.
   absl::optional<absl::Time> last_resource_update_time = absl::nullopt;
@@ -473,6 +467,9 @@ class NodeResourceInstances {
  public:
   TaskResourceInstances available;
   TaskResourceInstances total;
+  // The key-value labels of this node.
+  absl::flat_hash_map<std::string, std::string> labels;
+
   /// Extract available resource instances.
   const TaskResourceInstances &GetAvailableResourceInstances() const;
   const TaskResourceInstances &GetTotalResourceInstances() const;

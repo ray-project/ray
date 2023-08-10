@@ -73,6 +73,12 @@ _CALLED_FREQ = defaultdict(lambda: 0)
 _CALLED_FREQ_LOCK = threading.Lock()
 
 
+PLACEMENT_GROUP_INDEXED_BUNDLED_RESOURCE_PATTERN = re.compile(
+    r"(.+)_group_(\d+)_([0-9a-zA-Z]+)"
+)
+PLACEMENT_GROUP_WILDCARD_RESOURCE_PATTERN = re.compile(r"(.+)_group_([0-9a-zA-Z]+)")
+
+
 def get_user_temp_dir():
     if "RAY_TMPDIR" in os.environ:
         return os.environ["RAY_TMPDIR"]
@@ -1942,13 +1948,11 @@ def parse_node_labels_json(
             if not isinstance(value, str):
                 raise ValueError(f'The value of the "{key}" is not string type')
     except Exception as e:
-        cli_logger.error(
-            "`{}` is not a valid JSON string, detail error:{}",
+        cli_logger.abort(
+            "`{}` is not a valid JSON string, detail error:{}"
+            "Valid values look like this: `{}`",
             cf.bold(f"{command_arg}={labels_json}"),
             str(e),
-        )
-        cli_logger.abort(
-            "Valid values look like this: `{}`",
             cf.bold(f'{command_arg}=\'{{"gpu_type": "A100", "region": "us"}}\''),
         )
     return labels
@@ -1960,7 +1964,26 @@ def validate_node_labels(labels: Dict[str, str]):
     for key in labels.keys():
         if key.startswith(ray_constants.RAY_DEFAULT_LABEL_KEYS_PREFIX):
             raise ValueError(
-                f"Custom label keys cannot start with the prefix "
-                f"{ray_constants.RAY_DEFAULT_LABEL_KEYS_PREFIX}. "
+                f"Custom label keys `{key}` cannot start with the prefix "
+                f"`{ray_constants.RAY_DEFAULT_LABEL_KEYS_PREFIX}`. "
                 f"This is reserved for Ray defined labels."
             )
+
+
+def pasre_pg_formatted_resources_to_original(
+    pg_formatted_resources: Dict[str, float]
+) -> Dict[str, float]:
+    original_resources = {}
+
+    for key, value in pg_formatted_resources.items():
+        result = PLACEMENT_GROUP_WILDCARD_RESOURCE_PATTERN.match(key)
+        if result and len(result.groups()) == 2:
+            original_resources[result.group(1)] = value
+            continue
+        result = PLACEMENT_GROUP_INDEXED_BUNDLED_RESOURCE_PATTERN.match(key)
+        if result and len(result.groups()) == 3:
+            original_resources[result.group(1)] = value
+            continue
+        original_resources[key] = value
+
+    return original_resources

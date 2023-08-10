@@ -169,6 +169,31 @@ void GrpcClientContextWithTimeoutMs(grpc::ClientContext &context, int64_t timeou
   }
 }
 
+Status PythonGcsClient::CheckAlive(const std::vector<std::string> &raylet_addresses,
+                                   int64_t timeout_ms,
+                                   std::vector<bool> &result) {
+  grpc::ClientContext context;
+  GrpcClientContextWithTimeoutMs(context, timeout_ms);
+
+  rpc::CheckAliveRequest request;
+  for (const auto &address : raylet_addresses) {
+    request.add_raylet_address(address);
+  }
+
+  rpc::CheckAliveReply reply;
+  grpc::Status status = node_info_stub_->CheckAlive(&context, request, &reply);
+
+  if (status.ok()) {
+    if (reply.status().code() == static_cast<int>(StatusCode::OK)) {
+      result =
+          std::vector<bool>(reply.raylet_alive().begin(), reply.raylet_alive().end());
+      return Status::OK();
+    }
+    return HandleGcsError(reply.status());
+  }
+  return Status::RpcError(status.error_message(), status.error_code());
+}
+
 Status PythonGcsClient::InternalKVGet(const std::string &ns,
                                       const std::string &key,
                                       int64_t timeout_ms,
@@ -399,18 +424,24 @@ Status PythonGcsClient::GetAllJobInfo(int64_t timeout_ms,
 
 Status PythonGcsClient::RequestClusterResourceConstraint(
     int64_t timeout_ms,
-    const std::vector<std::unordered_map<std::string, double>> &bundles) {
+    const std::vector<std::unordered_map<std::string, double>> &bundles,
+    const std::vector<int64_t> &count_array) {
   grpc::ClientContext context;
   GrpcClientContextWithTimeoutMs(context, timeout_ms);
 
   rpc::autoscaler::RequestClusterResourceConstraintRequest request;
   rpc::autoscaler::RequestClusterResourceConstraintReply reply;
+  RAY_CHECK(bundles.size() == count_array.size());
+  for (size_t i = 0; i < bundles.size(); ++i) {
+    const auto &bundle = bundles[i];
+    auto count = count_array[i];
 
-  for (auto bundle : bundles) {
-    request.mutable_cluster_resource_constraint()
-        ->add_min_bundles()
-        ->mutable_resources_bundle()
-        ->insert(bundle.begin(), bundle.end());
+    auto new_resource_requests_by_count =
+        request.mutable_cluster_resource_constraint()->add_min_bundles();
+
+    new_resource_requests_by_count->mutable_request()->mutable_resources_bundle()->insert(
+        bundle.begin(), bundle.end());
+    new_resource_requests_by_count->set_count(count);
   }
 
   grpc::Status status =
@@ -435,6 +466,30 @@ Status PythonGcsClient::GetClusterStatus(int64_t timeout_ms,
     if (!reply.SerializeToString(&serialized_reply)) {
       return Status::IOError("Failed to serialize GetClusterStatusReply");
     }
+    return Status::OK();
+  }
+  return Status::RpcError(status.error_message(), status.error_code());
+}
+
+Status PythonGcsClient::DrainNode(const std::string &node_id,
+                                  int32_t reason,
+                                  const std::string &reason_message,
+                                  int64_t timeout_ms,
+                                  bool &is_accepted) {
+  rpc::autoscaler::DrainNodeRequest request;
+  request.set_node_id(NodeID::FromHex(node_id).Binary());
+  request.set_reason(static_cast<rpc::autoscaler::DrainNodeReason>(reason));
+  request.set_reason_message(reason_message);
+
+  rpc::autoscaler::DrainNodeReply reply;
+
+  grpc::ClientContext context;
+  GrpcClientContextWithTimeoutMs(context, timeout_ms);
+
+  grpc::Status status = autoscaler_stub_->DrainNode(&context, request, &reply);
+
+  if (status.ok()) {
+    is_accepted = reply.is_accepted();
     return Status::OK();
   }
   return Status::RpcError(status.error_message(), status.error_code());

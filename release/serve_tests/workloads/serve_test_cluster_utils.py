@@ -31,7 +31,7 @@ def setup_local_single_node_cluster(
             redis_port=6380 if i == 0 else None,
             num_cpus=num_cpu_per_node,
             num_gpus=0,
-            resources={str(i): 2},
+            resources={str(i): 2, "proxy": 1},
         )
     ray.init(address=cluster.address, dashboard_host="0.0.0.0", namespace=namespace)
     serve_client = serve.start(

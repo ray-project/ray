@@ -73,7 +73,7 @@ class ESConfig(AlgorithmConfig):
         >>> # when running with tune.
         >>> tune.Tuner(  # doctest: +SKIP
         ...     "ES",
-        ...     run_config=ray.air.RunConfig(stop={"episode_reward_mean": 200}),
+        ...     run_config=ray.train.RunConfig(stop={"episode_reward_mean": 200}),
         ...     param_space=config.to_dict(),
         ... ).fit()
 

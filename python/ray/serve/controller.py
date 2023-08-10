@@ -8,6 +8,7 @@ from collections import defaultdict
 from typing import Any, Dict, Iterable, List, Optional, Tuple, Union
 
 import ray
+from ray.util import metrics
 from ray._private.utils import run_background_task
 from ray.actor import ActorHandle
 from ray._private.resource_spec import HEAD_NODE_RESOURCE_NAME
@@ -37,12 +38,13 @@ from ray.serve._private.constants import (
 from ray.serve._private.deploy_utils import deploy_args_to_deployment_info
 from ray.serve._private.deployment_state import DeploymentStateManager, ReplicaState
 from ray.serve._private.endpoint_state import EndpointState
-from ray.serve._private.http_state import HTTPState
+from ray.serve._private.http_state import HTTPProxyStateManager
 from ray.serve._private.logging_utils import (
     configure_component_logger,
+    configure_component_memory_profiler,
     get_component_logger_file_path,
 )
-from ray.serve._private.long_poll import LongPollHost, LongPollNamespace
+from ray.serve._private.long_poll import LongPollHost
 from ray.serve.exceptions import RayServeException
 from ray.serve.schema import (
     ServeApplicationSchema,
@@ -112,6 +114,9 @@ class ServeController:
         configure_component_logger(
             component_name="controller", component_id=str(os.getpid())
         )
+        configure_component_memory_profiler(
+            component_name="controller", component_id=str(os.getpid())
+        )
         if RAY_SERVE_CONTROLLER_CALLBACK_IMPORT_PATH:
             logger.info(
                 "Calling user-provided callback from import path "
@@ -134,9 +139,9 @@ class ServeController:
         self.done_recovering_event = asyncio.Event()
 
         if _disable_http_proxy:
-            self.http_state = None
+            self.http_proxy_state_manager = None
         else:
-            self.http_state = HTTPState(
+            self.http_proxy_state_manager = HTTPProxyStateManager(
                 controller_name,
                 detached,
                 http_config,
@@ -183,11 +188,19 @@ class ServeController:
         self._shutdown = asyncio.Event()
         self._shutdown_start_time = None
 
+        self._create_control_loop_metrics()
         run_background_task(self.run_control_loop())
 
         self._recover_config_from_checkpoint()
-        self._active_nodes = set()
-        self._update_active_nodes()
+        # Nodes where http proxy actors should run.
+        self._http_proxy_nodes = set()
+        self._update_http_proxy_nodes()
+
+        # Track the number of times the controller has started
+        metrics.Counter(
+            "serve_controller_num_starts",
+            description="The number of times that controller has started.",
+        ).inc()
 
     def check_alive(self) -> None:
         """No-op to check if this controller is alive."""
@@ -265,43 +278,41 @@ class ServeController:
 
     def get_http_proxies(self) -> Dict[NodeId, ActorHandle]:
         """Returns a dictionary of node ID to http_proxy actor handles."""
-        if self.http_state is None:
+        if self.http_proxy_state_manager is None:
             return {}
-        return self.http_state.get_http_proxy_handles()
+        return self.http_proxy_state_manager.get_http_proxy_handles()
 
     def get_http_proxy_names(self) -> bytes:
         """Returns the http_proxy actor name list serialized by protobuf."""
-        if self.http_state is None:
+        if self.http_proxy_state_manager is None:
             return None
 
         from ray.serve.generated.serve_pb2 import ActorNameList
 
         actor_name_list = ActorNameList(
-            names=self.http_state.get_http_proxy_names().values()
+            names=self.http_proxy_state_manager.get_http_proxy_names().values()
         )
         return actor_name_list.SerializeToString()
 
-    def _update_active_nodes(self):
-        """Update the active nodes set.
+    def _update_http_proxy_nodes(self):
+        """Update the nodes set where http proxy actors should run.
 
-        Controller keeps the state of active nodes (head node and nodes with deployment
-        replicas). If the active nodes set changes, it will notify the long poll client.
+        Controller decides where http proxy actors should run
+        (head node and nodes with deployment replicas).
         """
-        new_active_nodes = self.deployment_state_manager.get_active_node_ids()
-        new_active_nodes.add(self._controller_node_id)
-        if self._active_nodes != new_active_nodes:
-            self._active_nodes = new_active_nodes
-            self.long_poll_host.notify_changed(
-                LongPollNamespace.ACTIVE_NODES, self._active_nodes
-            )
+        new_http_proxy_nodes = self.deployment_state_manager.get_active_node_ids()
+        new_http_proxy_nodes.add(self._controller_node_id)
+        self._http_proxy_nodes = new_http_proxy_nodes
 
     async def run_control_loop(self) -> None:
         # NOTE(edoakes): we catch all exceptions here and simply log them,
         # because an unhandled exception would cause the main control loop to
         # halt, which should *never* happen.
         recovering_timeout = RECOVERING_LONG_POLL_BROADCAST_TIMEOUT_S
+        num_loops = 0
         start_time = time.time()
         while True:
+            loop_start_time = time.time()
             if self._shutting_down:
                 try:
                     self.shutdown()
@@ -318,36 +329,114 @@ class ServeController:
                 )
                 self.done_recovering_event.set()
 
-            # Update the active nodes set before updating the HTTP states, so they
-            # are more consistent.
-            self._update_active_nodes()
-
-            # Don't update http_state until after the done recovering event is set,
-            # otherwise we may start a new HTTP proxy but not broadcast it any
-            # info about available deployments & their replicas.
-            if self.http_state and self.done_recovering_event.is_set():
-                try:
-                    self.http_state.update(active_nodes=self._active_nodes)
-                except Exception:
-                    logger.exception("Exception updating HTTP state.")
-
             try:
+                dsm_update_start_time = time.time()
                 any_recovering = self.deployment_state_manager.update()
+                self.dsm_update_duration_gauge_s.set(
+                    time.time() - dsm_update_start_time
+                )
                 if not self.done_recovering_event.is_set() and not any_recovering:
                     self.done_recovering_event.set()
+                    logger.info(
+                        "Finished recovering deployments after "
+                        f"{time.time() - start_time}s."
+                    )
             except Exception:
                 logger.exception("Exception updating deployment state.")
 
             try:
+                asm_update_start_time = time.time()
                 self.application_state_manager.update()
+                self.asm_update_duration_gauge_s.set(
+                    time.time() - asm_update_start_time
+                )
             except Exception:
                 logger.exception("Exception updating application state.")
 
+            # Update the http proxy nodes set before updating the HTTP proxy states,
+            # so they are more consistent.
+            node_update_start_time = time.time()
+            self._update_http_proxy_nodes()
+            self.node_update_duration_gauge_s.set(time.time() - node_update_start_time)
+
+            # Don't update http_state until after the done recovering event is set,
+            # otherwise we may start a new HTTP proxy but not broadcast it any
+            # info about available deployments & their replicas.
+            if self.http_proxy_state_manager and self.done_recovering_event.is_set():
+                try:
+                    proxy_update_start_time = time.time()
+                    self.http_proxy_state_manager.update(
+                        http_proxy_nodes=self._http_proxy_nodes
+                    )
+                    self.proxy_update_duration_gauge_s.set(
+                        time.time() - proxy_update_start_time
+                    )
+                except Exception:
+                    logger.exception("Exception updating HTTP state.")
+
             try:
+                snapshot_start_time = time.time()
                 self._put_serve_snapshot()
+                self.snapshot_duration_gauge_s.set(time.time() - snapshot_start_time)
             except Exception:
                 logger.exception("Exception putting serve snapshot.")
+            loop_duration = time.time() - loop_start_time
+            if loop_duration > 10:
+                logger.warning(
+                    f"The last control loop was slow (took {loop_duration}s). "
+                    "This is likely caused by running a large number of "
+                    "replicas in a single Ray cluster. Consider using "
+                    "multiple Ray clusters."
+                )
+            self.control_loop_duration_gauge_s.set(loop_duration)
+
+            num_loops += 1
+            self.num_control_loops_gauge.set(num_loops)
+
+            sleep_start_time = time.time()
             await asyncio.sleep(CONTROL_LOOP_PERIOD_S)
+            self.sleep_duration_gauge_s.set(time.time() - sleep_start_time)
+
+    def _create_control_loop_metrics(self):
+        self.node_update_duration_gauge_s = metrics.Gauge(
+            "serve_controller_node_update_duration_s",
+            description="The control loop time spent on collecting proxy node info.",
+        )
+        self.proxy_update_duration_gauge_s = metrics.Gauge(
+            "serve_controller_proxy_state_update_duration_s",
+            description="The control loop time spent on updating proxy state.",
+        )
+        self.dsm_update_duration_gauge_s = metrics.Gauge(
+            "serve_controller_deployment_state_update_duration_s",
+            description="The control loop time spent on updating deployment state.",
+        )
+        self.asm_update_duration_gauge_s = metrics.Gauge(
+            "serve_controller_application_state_update_duration_s",
+            description="The control loop time spent on updating application state.",
+        )
+        self.snapshot_duration_gauge_s = metrics.Gauge(
+            "serve_controller_application_state_update_duration_s",
+            description="The control loop time spent on putting the Serve snapshot.",
+        )
+        self.sleep_duration_gauge_s = metrics.Gauge(
+            "serve_controller_sleep_duration_s",
+            description="The duration of the last control loop's sleep.",
+        )
+        self.control_loop_duration_gauge_s = metrics.Gauge(
+            "serve_controller_control_loop_duration_s",
+            description="The duration of the last control loop.",
+        )
+        self.num_control_loops_gauge = metrics.Gauge(
+            "serve_controller_num_control_loops",
+            description=(
+                "The number of control loops performed by the controller. "
+                "Increases monotonically over the controller's lifetime."
+            ),
+            tag_keys=("actor_id",),
+        )
+        self.num_control_loops_gauge.set_default_tags(
+            {"actor_id": ray.get_runtime_context().get_actor_id()}
+        )
 
     def _put_serve_snapshot(self) -> None:
         val = dict()
@@ -421,13 +510,13 @@ class ServeController:
 
     def get_http_config(self):
         """Return the HTTP proxy configuration."""
-        if self.http_state is None:
+        if self.http_proxy_state_manager is None:
             return None
-        return self.http_state.get_config()
+        return self.http_proxy_state_manager.get_config()
 
     def get_root_url(self):
         """Return the root url for the serve instance."""
-        if self.http_state is None:
+        if self.http_proxy_state_manager is None:
             return None
         http_config = self.get_http_config()
         if http_config.root_url == "":
@@ -467,15 +556,16 @@ class ServeController:
         self.application_state_manager.shutdown()
         self.deployment_state_manager.shutdown()
         self.endpoint_state.shutdown()
-        if self.http_state:
-            self.http_state.shutdown()
+        if self.http_proxy_state_manager:
+            self.http_proxy_state_manager.shutdown()
 
         config_checkpoint_deleted = self.config_checkpoint_deleted()
         application_is_shutdown = self.application_state_manager.is_ready_for_shutdown()
         deployment_is_shutdown = self.deployment_state_manager.is_ready_for_shutdown()
         endpoint_is_shutdown = self.endpoint_state.is_ready_for_shutdown()
         http_state_is_shutdown = (
-            self.http_state is None or self.http_state.is_ready_for_shutdown()
+            self.http_proxy_state_manager is None
+            or self.http_proxy_state_manager.is_ready_for_shutdown()
         )
         if (
             config_checkpoint_deleted
@@ -763,6 +853,13 @@ class ServeController:
             )
         return deployment_route_list.SerializeToString()
 
+    def list_deployment_names(self) -> List[str]:
+        """Gets the current list of all deployments' names.
+
+        Returns: deployment names, in the format {app-name}_{deployment-name}.
+        """
+        return self.deployment_state_manager._deployment_states.keys()
+
     def get_serve_instance_details(self) -> Dict:
         """Gets details on all applications on the cluster and system-level info.
 
@@ -810,8 +907,8 @@ class ServeController:
                 port=http_config.port,
                 request_timeout_s=http_config.request_timeout_s,
             ),
-            http_proxies=self.http_state.get_http_proxy_details()
-            if self.http_state
+            http_proxies=self.http_proxy_state_manager.get_http_proxy_details()
+            if self.http_proxy_state_manager
             else None,
             deploy_mode=self.deploy_mode,
             applications=applications,
@@ -872,6 +969,15 @@ class ServeController:
 
         Currently, this is the OpenAPI docs path for FastAPI-integrated applications."""
         return self.application_state_manager.get_docs_path(name)
+
+    def get_ingress_deployment_name(self, app_name: str) -> Optional[str]:
+        """Name of the ingress deployment in an application.
+
+        Returns:
+            Ingress deployment name (str): if the application exists.
+            None: if the application does not exist.
+        """
+        return self.application_state_manager.get_ingress_deployment_name(app_name)
 
     def delete_apps(self, names: Iterable[str]):
         """Delete applications based on names

@@ -184,7 +184,6 @@ if setup_spec.type == SetupType.RAY_CPP:
 # bindings are created.
 generated_python_directories = [
     "ray/core/generated",
-    "ray/core/generated/experimental",
     "ray/serve/generated",
 ]
 
@@ -289,7 +288,7 @@ if setup_spec.type == SetupType.RAY:
 
     setup_spec.extras["rllib"] = setup_spec.extras["tune"] + [
         "dm_tree",
-        "gymnasium==0.26.3",
+        "gymnasium==0.28.1",
         "lz4",
         "scikit-image",
         "pyyaml",

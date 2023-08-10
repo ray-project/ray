@@ -20,7 +20,7 @@ from ray.autoscaler.v2.schema import (
     Stats,
 )
 from ray.autoscaler.v2.utils import ClusterStatusFormatter, ClusterStatusParser
-from ray.core.generated.experimental.autoscaler_pb2 import GetClusterStatusReply
+from ray.core.generated.autoscaler_pb2 import GetClusterStatusReply
 
 
 def _gen_cluster_status_reply(data: Dict):
@@ -125,8 +125,11 @@ def test_cluster_status_parser_cluster_resource_state():
                 {
                     "min_bundles": [
                         {
-                            "resources_bundle": {"GPU": 2, "CPU": 100},
-                            "placement_constraints": [],
+                            "request": {
+                                "resources_bundle": {"GPU": 2, "CPU": 100},
+                                "placement_constraints": [],
+                            },
+                            "count": 1,
                         },
                     ]
                 }
@@ -136,7 +139,7 @@ def test_cluster_status_parser_cluster_resource_state():
         "autoscaling_state": {},
     }
     reply = _gen_cluster_status_reply(test_data)
-    stats = Stats()
+    stats = Stats(gcs_request_time_s=0.1)
     cluster_status = ClusterStatusParser.from_get_cluster_status_reply(reply, stats)
 
     # Assert on health nodes
@@ -225,6 +228,7 @@ def test_cluster_status_parser_cluster_resource_state():
 
     # Assert on the node stats
     assert cluster_status.stats.cluster_resource_state_version == "10"
+    assert cluster_status.stats.gcs_request_time_s == 0.1
 
 
 def test_cluster_status_parser_autoscaler_state():
@@ -268,7 +272,7 @@ def test_cluster_status_parser_autoscaler_state():
         },
     }
     reply = _gen_cluster_status_reply(test_data)
-    stats = Stats()
+    stats = Stats(gcs_request_time_s=0.1)
     cluster_status = ClusterStatusParser.from_get_cluster_status_reply(reply, stats)
 
     # Assert on the pending requests
@@ -301,6 +305,7 @@ def test_cluster_status_parser_autoscaler_state():
 
     # Assert on stats
     assert cluster_status.stats.autoscaler_version == "10"
+    assert cluster_status.stats.gcs_request_time_s == 0.1
 
 
 def test_cluster_status_formatter():
@@ -485,7 +490,7 @@ Pending:
  127.0.0.3: worker_node, starting ray
 Recent failures:
  worker_node: LaunchFailed (latest_attempt: 02:46:40) - Insufficient capacity
- worker_node: RayletUnexpectedlyDied (ip: 127.0.0.5)
+ worker_node: NodeTerminated (ip: 127.0.0.5)
 
 Resources
 --------------------------------------------------------

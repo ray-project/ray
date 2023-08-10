@@ -16,8 +16,8 @@ cost: A few dollars.
 
 import numpy as np
 
-from ray.air import session, RunConfig
-from ray.air.checkpoint import Checkpoint
+from ray import train
+from ray.train import Checkpoint, RunConfig
 from ray.tune.schedulers.trial_scheduler import FIFOScheduler, TrialScheduler
 from ray.tune.tune_config import TuneConfig
 from ray.tune.tuner import Tuner
@@ -25,8 +25,8 @@ from ray.tune.tuner import Tuner
 
 def func(config):
     starting_epoch = 0
-    if session.get_checkpoint():
-        checkpoint_dict = session.get_checkpoint().to_dict()
+    if train.get_checkpoint():
+        checkpoint_dict = train.get_checkpoint().to_dict()
 
         checkpoint_epoch = checkpoint_dict["epoch"]
         starting_epoch = checkpoint_epoch + 1
@@ -38,11 +38,11 @@ def func(config):
                 "large_data": np.zeros(10000000),
             }
         )
-        session.report({}, checkpoint=checkpoint)
+        train.report({}, checkpoint=checkpoint)
 
 
 class FrequentPausesScheduler(FIFOScheduler):
-    def on_trial_result(self, trial_runner, trial, result):
+    def on_trial_result(self, tune_controller, trial, result):
         return TrialScheduler.PAUSE
 
 
