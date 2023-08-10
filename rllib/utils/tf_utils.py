@@ -715,7 +715,7 @@ def two_hot(
     return tf.scatter_nd(
         tf.cast(indices, tf.int32),
         updates,
-        shape=(value.shape[0], num_buckets),
+        shape=(tf.shape(value)[0], num_buckets),
     )
 
 

@@ -62,6 +62,11 @@ class TfLearner(Learner):
             # enable_v2_behavior after variables have already been created.
             pass
 
+        # Set GPU to grow in memory (so tf does not block all GPU mem).
+        gpus = tf.config.list_physical_devices('GPU')
+        for gpu in gpus:
+            tf.config.experimental.set_memory_growth(gpu, True)
+
         super().__init__(
             framework_hyperparameters=(
                 framework_hyperparameters or FrameworkHyperparameters()
