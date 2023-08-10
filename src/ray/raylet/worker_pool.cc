@@ -167,8 +167,8 @@ void WorkerPool::Start() {
         "RayletWorkerPool.deadline_timer.kill_idle_workers");
   }
 
-  RAY_LOG(INFO) << "WUBBA";
-  PrestartDefaultCpuWorkers(Language::JULIA, 1);
+  // RAY_LOG(INFO) << "WUBBA";
+  // PrestartDefaultCpuWorkers(Language::JULIA, 1);
 
   if (RayConfig::instance().enable_worker_prestart()) {
     PrestartDefaultCpuWorkers(Language::PYTHON, num_prestart_python_workers);
@@ -352,9 +352,9 @@ WorkerPool::BuildProcessCommandArgs(const Language &language,
                                   std::to_string(worker_startup_token_counter_));
   }
 
-  std::string serialized_runtime_env_context2 = "{\"env_vars\": {\"JULIA_PROJECT\": \"/Users/cvogt/.julia/dev/ray_core_worker_julia_jll\"}}";
+  RAY_LOG(DEBUG) << "serialized_runtime_env_context: " << serialized_runtime_env_context;
 
-  if (serialized_runtime_env_context2 != "{}" && !serialized_runtime_env_context2.empty()) {
+  if (serialized_runtime_env_context != "{}" && !serialized_runtime_env_context.empty()) {
     worker_command_args.push_back("--language=" + Language_Name(language));
     if (language == Language::CPP) {
       worker_command_args.push_back("--ray_runtime_env_hash=" +
@@ -364,7 +364,7 @@ WorkerPool::BuildProcessCommandArgs(const Language &language,
                                     std::to_string(runtime_env_hash));
     }
     worker_command_args.push_back("--serialized-runtime-env-context=" +
-                                  serialized_runtime_env_context2);
+                                  serialized_runtime_env_context);
   } else if (language == Language::PYTHON && worker_command_args.size() >= 2 &&
              worker_command_args[1].find(kSetupWorkerFilename) != std::string::npos) {
     // Check that the arg really is the path to the setup worker before erasing it, to
@@ -854,8 +854,7 @@ Status WorkerPool::RegisterDriver(const std::shared_ptr<WorkerInterface> &driver
     if (!first_job_registered_ && RayConfig::instance().prestart_worker_first_driver() &&
         !RayConfig::instance().enable_worker_prestart()) {
       RAY_LOG(DEBUG) << "PrestartDefaultCpuWorkers " << num_prestart_python_workers;
-      // PrestartDefaultCpuWorkers(Language::PYTHON, num_prestart_python_workers);
-      PrestartDefaultCpuWorkers(Language::JULIA, 1);
+      PrestartDefaultCpuWorkers(Language::PYTHON, num_prestart_python_workers);
     }
 
     // Invoke the `send_reply_callback` later to only finish driver
@@ -1284,6 +1283,7 @@ void WorkerPool::PopWorker(const TaskSpecification &task_spec,
            is_actor_creation](bool successful,
                               const std::string &serialized_runtime_env_context,
                               const std::string &setup_error_message) {
+            RAY_LOG(DEBUG) << "callback serialized env: " << serialized_runtime_env_context;
             if (successful) {
               start_worker_process_fn(task_spec,
                                       state,
