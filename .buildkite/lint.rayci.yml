@@ -17,3 +17,19 @@ steps:
       - pip install -c python/requirements_compiled.txt semgrep
       - semgrep ci --config semgrep.yml
     depends_on: forge
+
+  - label: "lint: banned words"
+    commands:
+      - ./ci/lint/check-banned-words.sh
+    depends_on: forge
+
+  - label: "lint: doc readme"
+    commands:
+      - pip install -c python/requirements_compiled.txt docutils
+      - cd python && python setup.py check --restructuredtext --strict --metadata
+    depends_on: forge
+
+  - label: "lint: dashboard format"
+    commands:
+      - ./ci/lint/check-dashboard-format.sh
+    depends_on: forge
