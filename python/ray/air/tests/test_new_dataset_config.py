@@ -98,6 +98,21 @@ def test_configure_execution_options(ray_start_4_cpus):
         test.fit()
 
 
+def test_configure_execution_options_carryover_context(ray_start_4_cpus):
+    """Tests that execution options in DataContext are carried over to DatConfig
+    automatically."""
+
+    ctx = ray.data.DataContext.get_current()
+    ctx.execution_options.preserve_order = True
+    ctx.execution_options.verbose_progress = True
+
+    data_config = DataConfig()
+
+    ingest_options = data_config.default_ingest_options()
+    assert ingest_options.preserve_order is True
+    assert ingest_options.verbose_progress is True
+
+
 class CustomConfig(DataConfig):
     def __init__(self):
         pass
