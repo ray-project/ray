@@ -62,6 +62,7 @@ parts:
           - file: train/getting-started-pytorch
           - file: train/getting-started-pytorch-lightning
           - file: train/more-frameworks
+            title: Getting Started with Other Frameworks
             sections:
               - file: train/huggingface-transformers-accelerate
                 title: HuggingFace Transformers & Accelerate
