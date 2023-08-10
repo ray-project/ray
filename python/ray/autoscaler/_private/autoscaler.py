@@ -686,11 +686,10 @@ class StandardAutoscaler:
             if failed_to_drain:
                 self.prom_metrics.drain_node_exceptions.inc()
                 logger.error(f"Failed to drain {len(failed_to_drain)} raylet(s).")
-        except RpcError as e:
+        except RpcError:
             # Otherwise, it's a plane old RPC error and we should log it.
             self.prom_metrics.drain_node_exceptions.inc()
             logger.exception("Failed to drain Ray nodes. Traceback follows.")
-            logger.exception("Error: ", e)
         except Exception:
             # We don't need to interrupt the autoscaler update with an
             # exception, but we should log what went wrong and record the
