@@ -92,7 +92,7 @@ class DreamerV3RLModule(RLModule, abc.ABC):
                 reps=(B, T, 1),
             )
 
-        if self.config.model_config_dict["_used_on_env_runner"]:
+        if self.config.model_config_dict.get("_used_on_env_runner"):
             print("Making pre-forward pass on env runner module ...")
             self.dreamer_model(
                 inputs=_convert_to_tf(test_obs),
