@@ -209,7 +209,6 @@ class HTTPProxy:
 
     def __init__(
         self,
-        actor_name: str,
         controller_name: str,
         node_id: NodeId,
         node_ip_address: str,
@@ -302,10 +301,9 @@ class HTTPProxy:
         self.num_ongoing_requests_gauge = metrics.Gauge(
             name="serve_num_ongoing_requests",
             description="The number of ongoing requests in this HTTP Proxy.",
-            tag_keys=("actor_name", "node_id", "node_ip_address"),
+            tag_keys=("node_id", "node_ip_address"),
         ).set_default_tags(
             {
-                "actor_name": actor_name,
                 "node_id": node_id,
                 "node_ip_address": node_ip_address,
             }
@@ -910,7 +908,6 @@ class HTTPProxyActor:
         host: str,
         port: int,
         root_path: str,
-        actor_name: str,
         controller_name: str,
         node_ip_address: str,
         node_id: NodeId,
@@ -954,7 +951,6 @@ class HTTPProxyActor:
         self.setup_complete = asyncio.Event()
 
         self.app = HTTPProxy(
-            actor_name=actor_name,
             controller_name=controller_name,
             node_id=node_id,
             node_ip_address=node_ip_address,

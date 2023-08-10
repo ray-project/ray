@@ -161,7 +161,6 @@ def test_callback_fail(ray_instance):
         port=123,
         root_path="/",
         controller_name="controller",
-        actor_name="mock_actor_name",
         node_ip_address="127.0.0.1",
         node_id="123",
     )
@@ -195,7 +194,6 @@ def test_http_proxy_return_aribitary_objects(ray_instance):
         port=123,
         root_path="/",
         controller_name="controller",
-        actor_name="mock_actor_name",
         node_ip_address="127.0.0.1",
         node_id="123",
     )
