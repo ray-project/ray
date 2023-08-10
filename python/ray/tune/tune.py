@@ -267,7 +267,7 @@ def _resolve_and_validate_storage_path(
         remote_path = _get_storage_uri() or _get_artifact_storage_uri()
         if remote_path:
             logger.info(
-                "Using configured Ray storage URI as storage path: " f"{remote_path}"
+                "Using configured Ray storage URI as storage path: {remote_path}"
             )
 
     sync_config.validate_upload_dir(remote_path)

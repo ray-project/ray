@@ -22,6 +22,7 @@ import pyarrow.fs
 from ray._private.storage import _get_storage_uri
 from ray._private.thirdparty.tabulate.tabulate import tabulate
 from ray.air.constants import WILDCARD_KEY
+from ray.train._internal.storage import _get_artifact_storage_uri
 from ray.util.annotations import PublicAPI, Deprecated
 from ray.widgets import Template, make_table_html_repr
 from ray.data.preprocessor import Preprocessor
@@ -813,7 +814,7 @@ class RunConfig:
             self.local_dir = None
 
         if not remote_path:
-            remote_path = _get_storage_uri()
+            remote_path = _get_storage_uri() or _get_artifact_storage_uri()
             if remote_path:
                 logger.info(
                     "Using configured Ray storage URI as storage path: "
