@@ -99,7 +99,14 @@ class DreamerV3Learner(Learner):
             module_id=module_id, hps=hps, timestep=timestep
         )
 
+        # Initialize the critic EMA net after the first learning update (when model is
+        # finally completely built):
+        if timestep <= hps.batch_size_B * hps.batch_length_T:
+            print("INIT EMA critic")
+            self.module[module_id].critic.init_ema()
         # Update EMA weights of the critic.
-        self.module[module_id].critic.update_ema()
+        else:
+            print("UPDATE EMA critic")
+            self.module[module_id].critic.update_ema()
 
         return results

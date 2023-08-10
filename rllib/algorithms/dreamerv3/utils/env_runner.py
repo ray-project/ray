@@ -126,6 +126,7 @@ class DreamerV3EnvRunner(EnvRunner):
             policy_dict, _ = self.config.get_multi_agent_setup(env=self.env)
             module_spec = self.config.get_marl_module_spec(policy_dict=policy_dict)
             # TODO (sven): DreamerV3 is currently single-agent only.
+            module_spec.model_config_dict["_used_on_env_runner"] = True
             self.module = module_spec.build()[DEFAULT_POLICY_ID]
 
         self._needs_initial_reset = True
