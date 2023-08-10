@@ -1,7 +1,7 @@
 load("@com_github_google_flatbuffers//:build_defs.bzl", "flatbuffer_library_public")
 load("@bazel_skylib//rules:copy_file.bzl", "copy_file")
 load("@bazel_common//tools/maven:pom_file.bzl", "pom_file")
-load("@rules_cc//cc:defs.bzl", "cc_library", "cc_test")
+load("@rules_cc//cc:defs.bzl", "cc_library", "cc_test", "cc_binary")
 
 COPTS_WITHOUT_LOG = select({
     "//:opt": ["-DBAZEL_OPT"],
@@ -184,5 +184,23 @@ def ray_cc_test(name, copts = [], **kwargs):
     cc_test(
         name = name,
         copts = COPTS + copts,
+        **kwargs
+    )
+
+def ray_cc_binary(name, copts = [], deps = [], **kwargs):
+    jemalloc_deps = select({
+        "@platforms//os:linux": ["@jemalloc//:libjemalloc"],
+        "//conditions:default": []
+    })
+    jemalloc_opts = select({
+        "@platforms//os:linux": ["-ldlsym"],
+        "//conditions:default": []
+    })
+
+        
+    cc_binary(
+        name = name,
+        copts = COPTS + copts + jemalloc_opts,
+        deps = deps + jemalloc_deps,
         **kwargs
     )

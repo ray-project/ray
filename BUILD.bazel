@@ -8,11 +8,11 @@
 
 load("@rules_proto//proto:defs.bzl", "proto_library")
 load("@rules_python//python:defs.bzl", "py_library", "py_runtime", "py_runtime_pair")
-load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library", "cc_proto_library", "cc_test")
+load("@rules_cc//cc:defs.bzl", "cc_library", "cc_proto_library", "cc_test")
 load("@com_github_grpc_grpc//bazel:cc_grpc_library.bzl", "cc_grpc_library")
 load("@com_github_grpc_grpc//bazel:cython_library.bzl", "pyx_library")
 load("@com_github_google_flatbuffers//:build_defs.bzl", "flatbuffer_cc_library")
-load("//bazel:ray.bzl", "COPTS", "PYX_COPTS", "PYX_SRCS", "copy_to_workspace")
+load("//bazel:ray.bzl", "COPTS", "PYX_COPTS", "PYX_SRCS", "copy_to_workspace", "ray_cc_binary")
 load("@python3_9//:defs.bzl", python39 = "interpreter")
 
 package(
@@ -479,7 +479,7 @@ cc_library(
     ],
 )
 
-cc_binary(
+ray_cc_binary(
     name = "raylet",
     srcs = ["src/ray/raylet/main.cc"],
     copts = COPTS,
@@ -549,7 +549,7 @@ cc_library(
     ],
 )
 
-cc_binary(
+ray_cc_binary(
     name = "gcs_server",
     srcs = [
         "src/ray/gcs/gcs_server/gcs_server_main.cc",
@@ -836,7 +836,7 @@ cc_library(
     ],
 )
 
-cc_binary(
+ray_cc_binary(
     name = "mock_worker",
     copts = COPTS,
     deps = [
@@ -2530,7 +2530,7 @@ pyx_library(
     ],
 )
 
-cc_binary(
+ray_cc_binary(
     name = "libcore_worker_library_java.so",
     srcs = glob([
         "src/ray/core_worker/lib/java/*.h",
