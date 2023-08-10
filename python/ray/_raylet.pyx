@@ -1759,7 +1759,7 @@ cdef void execute_task(
                     worker, outputs,
                     caller_address,
                     returns)
-        except Exception as e:
+        except BaseException as e:
             num_errors_stored = store_task_errors(
                     worker, e, task_exception, actor, actor_id, function_name,
                     task_type, title, caller_address, returns, application_error)
