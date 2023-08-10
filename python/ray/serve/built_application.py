@@ -85,6 +85,8 @@ def _get_deploy_args_from_built_app(app: BuiltApplication):
                 init_kwargs=deployment.init_kwargs,
                 ingress=is_ingress,
                 ray_actor_options=deployment._ray_actor_options,
+                placement_group_bundles=deployment._placement_group_bundles,
+                placement_group_strategy=deployment._placement_group_strategy,
                 config=deployment._config,
                 version=deployment._version,
                 route_prefix=deployment.route_prefix,

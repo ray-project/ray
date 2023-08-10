@@ -1,7 +1,7 @@
 import collections
 import inspect
 import logging
-from typing import Any, Callable, Dict, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 from functools import wraps
 
 from fastapi import APIRouter, FastAPI
@@ -249,6 +249,8 @@ def deployment(
     init_kwargs: Default[Dict[Any, Any]] = DEFAULT.VALUE,
     route_prefix: Default[Union[str, None]] = DEFAULT.VALUE,
     ray_actor_options: Default[Dict] = DEFAULT.VALUE,
+    placement_group_bundles: Optional[List[Dict[str, float]]] = DEFAULT.VALUE,
+    placement_group_strategy: Optional[str] = DEFAULT.VALUE,
     user_config: Default[Optional[Any]] = DEFAULT.VALUE,
     max_concurrent_queries: Default[int] = DEFAULT.VALUE,
     autoscaling_config: Default[Union[Dict, AutoscalingConfig, None]] = DEFAULT.VALUE,
@@ -288,6 +290,15 @@ def deployment(
             resource requirements. Valid options are: `accelerator_type`, `memory`,
             `num_cpus`, `num_gpus`, `object_store_memory`, `resources`,
             and `runtime_env`.
+        placement_group_bundles: Defines a set of placement group bundles to be
+            scheduled *for each replica* of this deployment. The replica actor will
+            be scheduled in the first bundle provided, so the resources specified in
+            `ray_actor_options` must be a subset of the first bundle's resources. All
+            actors and tasks created by the replica actor will be scheduled in the
+            placement group by default (`placement_group_capture_child_tasks` is set
+            to True).
+        placement_group_strategy: Strategy to use for the replica placement group
+            specified via `placement_group_bundles`. Defaults to `PACK`.
         user_config: Config to pass to the reconfigure method of the deployment. This
             can be updated dynamically without restarting the replicas of the
             deployment. The user_config must be fully JSON-serializable.
@@ -366,6 +377,16 @@ def deployment(
             route_prefix=route_prefix,
             ray_actor_options=(
                 ray_actor_options if ray_actor_options is not DEFAULT.VALUE else None
+            ),
+            placement_group_bundles=(
+                placement_group_bundles
+                if placement_group_bundles is not DEFAULT.VALUE
+                else None
+            ),
+            placement_group_strategy=(
+                placement_group_strategy
+                if placement_group_strategy is not DEFAULT.VALUE
+                else None
             ),
             is_driver_deployment=is_driver_deployment,
             _internal=True,
@@ -488,6 +509,8 @@ def run(
             "init_args": deployment.init_args,
             "init_kwargs": deployment.init_kwargs,
             "ray_actor_options": deployment._ray_actor_options,
+            "placement_group_bundles": deployment._placement_group_bundles,
+            "placement_group_strategy": deployment._placement_group_strategy,
             "config": deployment._config,
             "version": deployment._version or get_random_letters(),
             "route_prefix": deployment.route_prefix,

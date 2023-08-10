@@ -205,6 +205,70 @@ def test_ray_actor_options():
     assert hash(v1) != hash(v3)
 
 
+def test_placement_group_options():
+    v1 = DeploymentVersion("1", DeploymentConfig(), {"num_cpus": 0.1})
+    v2 = DeploymentVersion(
+        "1",
+        DeploymentConfig(),
+        {"num_cpus": 0.1},
+        placement_group_bundles=[{"CPU": 0.1}],
+    )
+    v3 = DeploymentVersion(
+        "1",
+        DeploymentConfig(),
+        {"num_cpus": 0.1},
+        placement_group_bundles=[{"CPU": 0.1}],
+    )
+    v4 = DeploymentVersion(
+        "1",
+        DeploymentConfig(),
+        {"num_cpus": 0.1},
+        placement_group_bundles=[{"GPU": 0.1}],
+    )
+
+    assert v1 != v2
+    assert hash(v1) != hash(v2)
+    assert v1.requires_actor_restart(v2)
+
+    assert v2 == v3
+    assert hash(v2) == hash(v3)
+    assert not v2.requires_actor_restart(v3)
+
+    assert v3 != v4
+    assert hash(v3) != hash(v4)
+    assert v3.requires_actor_restart(v4)
+
+    v5 = DeploymentVersion(
+        "1",
+        DeploymentConfig(),
+        {"num_cpus": 0.1},
+        placement_group_bundles=[{"CPU": 0.1}],
+        placement_group_strategy="PACK",
+    )
+    v6 = DeploymentVersion(
+        "1",
+        DeploymentConfig(),
+        {"num_cpus": 0.1},
+        placement_group_bundles=[{"CPU": 0.1}],
+        placement_group_strategy="PACK",
+    )
+    v7 = DeploymentVersion(
+        "1",
+        DeploymentConfig(),
+        {"num_cpus": 0.1},
+        placement_group_bundles=[{"CPU": 0.1}],
+        placement_group_strategy="SPREAD",
+    )
+
+    assert v5 == v6
+    assert hash(v5) == hash(v6)
+    assert not v5.requires_actor_restart(v6)
+
+    assert v6 != v7
+    assert hash(v6) != hash(v7)
+    assert v6.requires_actor_restart(v7)
+
+
 def test_hash_consistent_across_processes(serve_instance):
     @ray.remote
     def get_version():

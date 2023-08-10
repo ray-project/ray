@@ -2297,10 +2297,13 @@ def mock_deployment_state_manager_full(
         cluster_node_info_cache = MockClusterNodeInfoCache()
 
         def create_deployment_state_manager(
-            actor_names=None, is_driver_deployment=False
+            actor_names=None, placement_group_names=None, is_driver_deployment=False
         ):
             if actor_names is None:
                 actor_names = []
+
+            if placement_group_names is None:
+                placement_group_names = []
 
             return DeploymentStateManager(
                 "name",
@@ -2308,6 +2311,7 @@ def mock_deployment_state_manager_full(
                 kv_store,
                 mock_long_poll,
                 actor_names,
+                placement_group_names,
                 cluster_node_info_cache,
             )
 
@@ -2535,12 +2539,14 @@ def mock_deployment_state_manager(request) -> Tuple[DeploymentStateManager, Mock
         kv_store = RayInternalKVStore("test")
         cluster_node_info_cache = MockClusterNodeInfoCache()
         all_current_actor_names = []
+        all_current_placement_group_names = []
         deployment_state_manager = DeploymentStateManager(
             "name",
             True,
             kv_store,
             mock_long_poll,
             all_current_actor_names,
+            all_current_placement_group_names,
             cluster_node_info_cache,
         )
 
@@ -2614,6 +2620,7 @@ def test_resource_requirements_none():
     class FakeActor:
 
         actor_resources = {"num_cpus": 2, "fake": None}
+        placement_group_bundles = None
         available_resources = {}
 
     # Make a DeploymentReplica just to accesss its resource_requirement function
