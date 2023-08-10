@@ -9,10 +9,13 @@ from typing import Optional, Tuple
 
 import pyarrow.fs
 
+import ray
 from ray import train, tune
+from ray.air._internal.uri_utils import URI
 from ray.air.constants import EXPR_RESULT_FILE
-from ray.train._internal.storage import _download_from_fs_path
+from ray.train._internal.storage import _download_from_fs_path, StorageContext
 from ray.train._checkpoint import Checkpoint as NewCheckpoint
+from ray.train.base_trainer import TrainingFailedError
 from ray.train.data_parallel_trainer import DataParallelTrainer
 
 from ray.air.tests.test_checkpoints import mock_s3_bucket_uri
@@ -26,11 +29,20 @@ def dummy_context_manager():
     yield "dummy value"
 
 
-@pytest.fixture(autouse=True)
-def enable_new_persistence_mode(monkeypatch):
-    monkeypatch.setenv("RAY_AIR_NEW_PERSISTENCE_MODE", "1")
+@pytest.fixture(scope="module")
+def enable_new_persistence_mode():
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setenv("RAY_AIR_NEW_PERSISTENCE_MODE", "1")
+        yield
+        mp.setenv("RAY_AIR_NEW_PERSISTENCE_MODE", "0")
+
+
+@pytest.fixture(autouse=True, scope="module")
+def ray_start_4_cpus(enable_new_persistence_mode):
+    # Make sure to set the env var before calling ray.init()
+    ray.init(num_cpus=4)
     yield
-    monkeypatch.setenv("RAY_AIR_NEW_PERSISTENCE_MODE", "0")
+    ray.shutdown()
 
 
 def _create_mock_custom_fs(custom_fs_root_dir: Path) -> pyarrow.fs.FileSystem:
@@ -167,6 +179,38 @@ def train_fn(config):
             raise RuntimeError(f"Failing on iter={i}!!")
 
 
+def _resume_from_checkpoint(checkpoint: NewCheckpoint, expected_state: dict):
+    print(f"\nStarting run with `resume_from_checkpoint`: {checkpoint}\n")
+
+    def assert_fn(config):
+        checkpoint_to_check = train.get_checkpoint()
+        with checkpoint_to_check.as_directory() as checkpoint_dir:
+            with open(os.path.join(checkpoint_dir, "checkpoint.pkl"), "rb") as f:
+                state = pickle.load(f)
+
+        print("Loaded state from `resume_from_checkpoint`:", state)
+        print("Expected state:", expected_state)
+        assert state == expected_state, (state, expected_state)
+
+        dummy_ckpt = tempfile.mkdtemp()
+        with open(os.path.join(dummy_ckpt, "dummy.txt"), "w") as f:
+            f.write("data")
+        train.report({"dummy": 1}, checkpoint=NewCheckpoint.from_directory(dummy_ckpt))
+
+    trainer = DataParallelTrainer(
+        assert_fn,
+        scaling_config=train.ScalingConfig(num_workers=2),
+        run_config=train.RunConfig(name="test_resume_from_checkpoint"),
+        resume_from_checkpoint=checkpoint,
+    )
+    result = trainer.fit()
+
+    # Make sure that the checkpoint indexing starts from scratch.
+    assert Path(
+        result.checkpoint.path
+    ).name == StorageContext._make_checkpoint_dir_name(0)
+
+
 @pytest.mark.parametrize("storage_path_type", [None, "nfs", "cloud", "custom_fs"])
 def test_tuner(monkeypatch, storage_path_type, tmp_path):
     """End-to-end test that the new persistence mode works with the Tuner API.
@@ -277,11 +321,12 @@ def test_trainer(
     """
     TODO(justinvyu): Test for these once implemented:
     - artifacts
-    - restoration, train.get_checkpoint
 
     {storage_path}/{exp_name}
-    ├── experiment_state-2023-07-28_10-00-38.json
+    ├── experiment_state-2023-07-28_10-00-38.json       <- Initial exp state
     ├── basic-variant-state-2023-07-28_10-00-38.json
+    ├── experiment_state-2023-07-28_10-01-38.json       <- Restored exp state
+    ├── basic-variant-state-2023-07-28_10-01-38.json
     ├── trainer.pkl
     ├── tuner.pkl
     └── DataParallelTrainer_46367_00000_0_...
@@ -326,10 +371,27 @@ def test_trainer(
                 name=exp_name,
                 verbose=0,
                 checkpoint_config=checkpoint_config,
-                failure_config=train.FailureConfig(max_failures=2),
+                failure_config=train.FailureConfig(max_failures=1),
             ),
         )
-        result = trainer.fit()
+        print("\nStarting initial run.\n")
+        with pytest.raises(TrainingFailedError):
+            result = trainer.fit()
+
+        print("\nStarting manually restored run.\n")
+        restored_trainer = DataParallelTrainer.restore(
+            path=str(URI(storage_path or str(LOCAL_CACHE_DIR)) / exp_name),
+            storage_filesystem=storage_filesystem,
+        )
+        result = restored_trainer.fit()
+
+        with monkeypatch.context() as m:
+            # This is so that the `resume_from_checkpoint` run doesn't mess up the
+            # assertions later for the `storage_path=None` case.
+            m.setenv("RAY_AIR_LOCAL_CACHE_DIR", tmp_path / "resume_from_checkpoint")
+            _resume_from_checkpoint(
+                result.checkpoint, expected_state={"iter": NUM_ITERATIONS - 1}
+            )
 
         local_inspect_dir, storage_fs_path = _get_local_inspect_dir(
             root_local_path=tmp_path,
@@ -349,10 +411,12 @@ def test_trainer(
     exp_dir = local_inspect_dir / exp_name
 
     # Files synced by the driver
-    assert len(list(exp_dir.glob("basic-variant-state-*"))) == 1
-    assert len(list(exp_dir.glob("experiment_state-*"))) == 1
     assert len(list(exp_dir.glob("tuner.pkl"))) == 1
     assert len(list(exp_dir.glob("trainer.pkl"))) == 1
+    # 2 copies of these files:
+    # 1 for the initial run, and 1 for the manually restored run.
+    assert len(list(exp_dir.glob("basic-variant-state-*"))) == 2
+    assert len(list(exp_dir.glob("experiment_state-*"))) == 2
 
     # Files synced by the worker
     assert len(list(exp_dir.glob("DataParallelTrainer_*"))) == 1
