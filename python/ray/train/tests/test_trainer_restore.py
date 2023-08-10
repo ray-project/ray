@@ -229,6 +229,26 @@ def test_trainer_with_init_fn_restore(ray_start_4_cpus, tmpdir, trainer_cls):
     assert tmpdir / exp_name in result.log_dir.parents
 
 
+def test_restore_from_uri_s3(ray_start_4_cpus, tmpdir, mock_s3_bucket_uri):
+    """Restoration from S3 should work."""
+    trainer = DataParallelTrainer(
+        train_loop_per_worker=lambda config: train.report({"score": 1}),
+        scaling_config=ScalingConfig(num_workers=2),
+        run_config=RunConfig(name="restore_from_uri", local_dir=tmpdir),
+    )
+    trainer._save(tmpdir)
+
+    # Restore from local dir
+    DataParallelTrainer.restore(str(tmpdir))
+
+    # Upload to S3
+    uri = mock_s3_bucket_uri
+    upload_to_uri(tmpdir, uri)
+
+    # Restore from S3
+    DataParallelTrainer.restore(uri)
+
+
 def test_restore_with_datasets(ray_start_4_cpus, tmpdir):
     """Datasets are required to re-specify if they were originally provided."""
     datasets = {
