@@ -253,6 +253,17 @@ class TuneController:
 
             self._legacy_remote_experiment_path = remote_experiment_path
 
+            if Path(self._legacy_local_experiment_path) == Path(
+                self._legacy_remote_experiment_path
+            ):
+                warnings.warn(
+                    "The local experiment path is the same as the remote "
+                    "experiment path. Set a different `storage_path` or raise an "
+                    "issue on GitHub if this issue persists. Deactivating the"
+                    "remote experiment path."
+                )
+                self._legacy_remote_experiment_path = None
+
         self._metric = metric
 
         self._total_time = 0
