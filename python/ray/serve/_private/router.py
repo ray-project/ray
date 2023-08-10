@@ -300,7 +300,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         self,
         event_loop: asyncio.AbstractEventLoop,
         deployment_name: str,
-        self_node_id: str,
+        self_node_id: Optional[str] = None,
     ):
         self._loop = event_loop
         self._deployment_name = deployment_name
@@ -379,7 +379,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         for r in replicas:
             new_replicas[r.replica_id] = r
             new_replica_id_set.add(r.replica_id)
-            if r.node_id == self._self_node_id:
+            if self._self_node_id is not None and r.node_id == self._self_node_id:
                 new_replica_ids_colocated_on_same_node.add(r.replica_id)
             for model_id in r.multiplexed_model_ids:
                 new_multiplexed_model_id_to_replica_ids[model_id].add(r.replica_id)
