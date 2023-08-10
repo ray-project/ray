@@ -55,6 +55,7 @@ async def main():
         actors.append(actor)
 
     ret = await actors[0].pass_potato.remote(0, args.pass_times)
+    print(f"passed potato {ret} times! expected {args.pass_times} times.")
     assert ret == args.pass_times
 
 

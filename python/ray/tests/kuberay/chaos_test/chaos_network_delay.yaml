@@ -1,0 +1,15 @@
+apiVersion: chaos-mesh.org/v1alpha1
+kind: NetworkChaos
+metadata:
+  name: network-delay
+spec:
+  action: delay
+  mode: all # inject to all pods
+  selector:
+    namespaces:
+      - default
+    labelSelectors:
+      'ray.io/node-type': 'worker' # inject to all workers
+  delay:
+    latency: '100ms'
+  duration: '12h'
