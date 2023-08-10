@@ -19,6 +19,7 @@
 
 #include "ray/common/grpc_util.h"
 #include "ray/common/ray_config.h"
+#include "ray/raylet/raylet_util.h"
 
 namespace ray {
 
@@ -506,11 +507,8 @@ ray::gcs::NodeResourceInfoAccessor::ResourceMap LocalResourceManager::GetResourc
 void LocalResourceManager::OnResourceOrStateChanged() {
   if (IsLocalNodeDraining() && IsLocalNodeIdle()) {
     // The node is drained.
-    // Sending a SIGTERM to itself is equivalent to gracefully shutting down raylet.
     RAY_LOG(INFO) << "The node is drained, exiting...";
-    RAY_CHECK(std::raise(SIGTERM) == 0) << "There was a failure while sending a "
-                                           "sigterm to itself. The process will not "
-                                           "gracefully shutdown.";
+    raylet::ShutdownRayletGracefully();
   }
 
   ++version_;
