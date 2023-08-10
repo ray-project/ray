@@ -317,6 +317,10 @@ The following metrics are exposed by Ray Serve:
        * error_code
        * method
      - The number of non-200 HTTP responses.
+   * - ``serve_num_ongoing_requests`` [*]
+     - * node_id
+       * node_ip_address
+     - The number of ongoing requests in the HTTP Proxy.
    * - ``serve_num_router_requests`` [*]
      - * deployment
        * route
