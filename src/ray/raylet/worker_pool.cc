@@ -167,9 +167,6 @@ void WorkerPool::Start() {
         "RayletWorkerPool.deadline_timer.kill_idle_workers");
   }
 
-  // RAY_LOG(INFO) << "WUBBA";
-  // PrestartDefaultCpuWorkers(Language::JULIA, 1);
-
   if (RayConfig::instance().enable_worker_prestart()) {
     PrestartDefaultCpuWorkers(Language::PYTHON, num_prestart_python_workers);
   }
@@ -351,8 +348,6 @@ WorkerPool::BuildProcessCommandArgs(const Language &language,
     worker_command_args.push_back("--startup_token=" +
                                   std::to_string(worker_startup_token_counter_));
   }
-
-  RAY_LOG(DEBUG) << "serialized_runtime_env_context: " << serialized_runtime_env_context;
 
   if (serialized_runtime_env_context != "{}" && !serialized_runtime_env_context.empty()) {
     worker_command_args.push_back("--language=" + Language_Name(language));
@@ -1283,7 +1278,6 @@ void WorkerPool::PopWorker(const TaskSpecification &task_spec,
            is_actor_creation](bool successful,
                               const std::string &serialized_runtime_env_context,
                               const std::string &setup_error_message) {
-            RAY_LOG(DEBUG) << "callback serialized env: " << serialized_runtime_env_context;
             if (successful) {
               start_worker_process_fn(task_spec,
                                       state,

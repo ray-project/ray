@@ -1761,9 +1761,6 @@ std::shared_ptr<rpc::RuntimeEnvInfo> CoreWorker::OverrideTaskOrActorRuntimeEnvIn
   std::shared_ptr<rpc::RuntimeEnvInfo> runtime_env_info = nullptr;
   runtime_env_info.reset(new rpc::RuntimeEnvInfo());
 
-  RAY_LOG(DEBUG) << "serialized_runtime_env_info: " << serialized_runtime_env_info;
-  RAY_LOG(DEBUG) << "runtime_env_info: " << runtime_env_info.get();
-
   if (!IsRuntimeEnvInfoEmpty(serialized_runtime_env_info)) {
     RAY_CHECK(google::protobuf::util::JsonStringToMessage(serialized_runtime_env_info,
                                                           runtime_env_info.get())
