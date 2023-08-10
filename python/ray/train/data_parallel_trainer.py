@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Tuple, Type, Un
 from ray._private.thirdparty.tabulate.tabulate import tabulate
 
 import ray
-from ray import train, tune
+from ray import tune
 from ray.air.checkpoint import Checkpoint
 from ray.air._internal.checkpointing import add_preprocessor_to_checkpoint
 from ray.air.config import DatasetConfig, RunConfig, ScalingConfig, CheckpointConfig
