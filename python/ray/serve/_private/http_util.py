@@ -460,15 +460,15 @@ def validate_http_proxy_callback_return(
 
 
 class GaugeSet:
-    """Set that tracks its size using a Prometheus gauge.
+    """Set that tracks the number of items contained as in a Prometheus gauge.
 
     The HTTPProxyActor's uvicorn server stores each connection in a set.
     The HTTPProxyActor replaces that set with an instance of this class to
     track the number of connections.
 
-    This class keeps items in an internal set, and it updates a Prometheus
-    gauge with the the set's size whenever the `add`, `remove`, or `discard`
-    methods are called.
+    This class maintains a standard Python set, and it updates a Prometheus
+    gauge with the number of items contained in the set whenever the `add`,
+    `remove`, or `discard` methods are called.
     """
 
     def __init__(self, connection_gauge: metrics.Gauge):
