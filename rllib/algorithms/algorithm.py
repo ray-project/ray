@@ -781,8 +781,8 @@ class Algorithm(Trainable, AlgorithmBase):
                 )
             # sync the weights from the learner group to the rollout workers
             weights = self.learner_group.get_weights()
-            local_worker.set_weights(weights)
-            self.workers.sync_weights()
+            #local_worker.set_weights(weights)
+            #self.workers.sync_weights()
 
         # Run `on_algorithm_init` callback after initialization is done.
         self.callbacks.on_algorithm_init(algorithm=self)
