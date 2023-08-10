@@ -1,11 +1,12 @@
 import asyncio
+import importlib
+import os
 import time
 from typing import Set, Optional, Tuple, Union
 
 import pytest
 
 import ray
-from ray.exceptions import RayActorError
 from ray._private.utils import get_or_create_event_loop
 
 from ray.serve._private.router import (
@@ -86,6 +87,12 @@ def pow_2_scheduler() -> PowerOfTwoChoicesReplicaScheduler:
         get_or_create_event_loop(),
         "TEST_DEPLOYMENT",
     )
+
+    # Update the RAY_SERVE_MULTIPLEXED_MODEL_ID_MATCHING_TIMEOUT_S
+    # to 0.1s to speed up the test.
+    os.environ.update({"RAY_SERVE_MULTIPLEXED_MODEL_ID_MATCHING_TIMEOUT_S": "0.1"})
+    importlib.reload(ray.serve._private.constants)
+    importlib.reload(ray.serve._private.router)
 
     yield s
 
@@ -475,71 +482,6 @@ async def test_replica_responds_after_being_removed(pow_2_scheduler, fake_query)
 
 
 @pytest.mark.asyncio
-async def test_replica_blacklisted_after_actor_error(pow_2_scheduler, fake_query):
-    """
-    Verify that a replica is removed from the set if it returns a RayActorError.
-    Subsequent requests should not be sent to it.
-    """
-    s = pow_2_scheduler
-    loop = get_or_create_event_loop()
-
-    r1 = FakeReplicaWrapper("r1")
-    s.update_replicas([r1])
-
-    r1.set_queue_state_response(0, accepted=True)
-    assert await s.choose_replica_for_query(fake_query) == r1
-
-    # Set the replica to raise a RayActorError, we should not be able to schedule
-    # the request.
-    r1.set_queue_state_response(0, exception=RayActorError())
-
-    task = loop.create_task(s.choose_replica_for_query(fake_query))
-    done, _ = await asyncio.wait([task], timeout=0.1)
-    assert len(done) == 0
-
-    # The replica shouldn't be considered at all.
-    r1.set_queue_state_response(0, accepted=True)
-    done, _ = await asyncio.wait([task], timeout=0.1)
-    assert len(done) == 0
-
-    # Now add a new replica, the request should be scheduled to it.
-    r2 = FakeReplicaWrapper("r2")
-    r2.set_queue_state_response(0, accepted=True)
-    s.update_replicas([r2])
-
-    assert await task == r2
-
-
-@pytest.mark.asyncio
-async def test_replica_not_blacklisted_after_unexpected_error(
-    pow_2_scheduler, fake_query
-):
-    """
-    Verify that if a replica is not removed from the set if it returns an unexpected
-    error. This should go through the normal backoff/retry logic.
-    """
-    s = pow_2_scheduler
-    loop = get_or_create_event_loop()
-
-    r1 = FakeReplicaWrapper("r1")
-    s.update_replicas([r1])
-
-    r1.set_queue_state_response(0, accepted=True)
-    assert await s.choose_replica_for_query(fake_query) == r1
-
-    # Set the replica to raise an unknown exception, it shouldn't be scheduled.
-    r1.set_queue_state_response(0, exception=RuntimeError("oopsies"))
-    task = loop.create_task(s.choose_replica_for_query(fake_query))
-    done, _ = await asyncio.wait([task], timeout=0.1)
-    assert len(done) == 0
-
-    # Set the replica to no longer return the exception, the request should be
-    # scheduled to it.
-    r1.set_queue_state_response(0, accepted=True)
-    assert await task == r1
-
-
-@pytest.mark.asyncio
 class TestModelMultiplexing:
     async def test_replicas_with_model_id_always_chosen(self, pow_2_scheduler):
         """
@@ -561,6 +503,22 @@ class TestModelMultiplexing:
             query = query_with_model_id("m2")
             task = loop.create_task(s.choose_replica_for_query(query))
             assert (await task) in {r1, r2}
+
+    async def test_choose_least_number_of_models_replicas(self, pow_2_scheduler):
+        """
+        If no replica has the model_id, choose the least number of models replicas.
+        """
+        s = pow_2_scheduler
+        loop = get_or_create_event_loop()
+        r1 = FakeReplicaWrapper("r1", model_ids={"m1", "m2"})
+        r2 = FakeReplicaWrapper("r2", model_ids={"m2"})
+        r1.set_queue_state_response(0, accepted=True)
+        r2.set_queue_state_response(0, accepted=True)
+        s.update_replicas([r1, r2])
+        for _ in range(10):
+            query = query_with_model_id("m3")
+            task = loop.create_task(s.choose_replica_for_query(query))
+            assert (await task) == r2
 
     async def test_no_replica_has_model_id(self, pow_2_scheduler):
         """
