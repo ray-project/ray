@@ -401,7 +401,7 @@ def test_generator_streaming(shutdown_only, use_actors, store_in_plasma):
         del ref
 
         wait_for_condition(
-            lambda: len(list_objects(filters=[("object_id", "=", id)])) == 0
+            lambda id=id: len(list_objects(filters=[("object_id", "=", id)])) == 0
         )
         i += 1
 
