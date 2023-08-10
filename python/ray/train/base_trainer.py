@@ -19,6 +19,7 @@ from ray.air._internal.remote_storage import (
     list_at_uri,
 )
 from ray.air._internal import usage as air_usage
+from ray.air._internal.uri_utils import URI
 from ray.air._internal.usage import AirEntrypoint
 from ray.air.checkpoint import Checkpoint
 from ray.air.config import RunConfig, ScalingConfig
@@ -510,8 +511,8 @@ class BaseTrainer(abc.ABC):
 
         tempdir = Path(tempfile.mkdtemp("tmp_experiment_dir"))
 
-        path = Path(restore_path)
-        download_from_uri(str(path / _TRAINER_PKL), str(tempdir / _TRAINER_PKL))
+        uri = URI(restore_path)
+        download_from_uri(str(uri / _TRAINER_PKL), str(tempdir / _TRAINER_PKL))
         return tempdir / _TRAINER_PKL
 
     def setup(self) -> None:
