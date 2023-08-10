@@ -66,7 +66,10 @@ class RuntimeEnvContext:
             passthrough_args = class_path_args + passthrough_args
         elif language == Language.JULIA:
             executable = "julia"
-            args = ["-e", "'using ray_core_worker_julia_jll; ray_core_worker_julia_jll.start_worker()'", "--"]
+            args = [
+                "-e", "'using ray_core_worker_julia_jll; start_worker()'",
+                "--"
+            ]
             # TODO(omus): required to avoid escaping the Julia code. Ideally
             # this information would be passed in via the serialized runtime
             # context.
