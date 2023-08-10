@@ -474,8 +474,7 @@ ObjectID TaskManager::PeekObjectRefStream(const ObjectID &generator_id) {
   auto stream_it = object_ref_streams_.find(generator_id);
   RAY_CHECK(stream_it != object_ref_streams_.end())
       << "PeekObjectRefStream API can be used only when the stream has been "
-         "created "
-         "and not removed.";
+         "created and not removed.";
   next_object_id = stream_it->second.PeekNextItem();
 
   // Temporarily own the ref since the corresponding reference is probably
