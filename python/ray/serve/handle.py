@@ -155,6 +155,7 @@ class RayServeHandle:
             self._router = Router(
                 serve.context.get_global_client()._controller,
                 self.deployment_name,
+                ray.get_runtime_context().get_node_id(),
                 event_loop=get_or_create_event_loop(),
                 _use_new_routing=RAY_SERVE_ENABLE_NEW_ROUTING,
             )
@@ -321,6 +322,7 @@ class RayServeSyncHandle(RayServeHandle):
             self._router = Router(
                 serve.context.get_global_client()._controller,
                 self.deployment_name,
+                ray.get_runtime_context().get_node_id(),
                 event_loop=_create_or_get_async_loop_in_thread(),
                 _use_new_routing=RAY_SERVE_ENABLE_NEW_ROUTING,
             )

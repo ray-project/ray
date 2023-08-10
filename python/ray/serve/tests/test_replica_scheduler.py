@@ -21,12 +21,14 @@ class FakeReplicaWrapper(ReplicaWrapper):
         self,
         replica_id: str,
         *,
+        node_id: str = "",
         reset_after_response: bool = False,
         model_ids: Optional[Set[str]] = None,
         sleep_time_s: float = 0.0
     ):
 
         self._replica_id = replica_id
+        self._node_id = node_id
         self._queue_len = 0
         self._accepted = False
         self._has_queue_len_response = asyncio.Event()
@@ -37,6 +39,10 @@ class FakeReplicaWrapper(ReplicaWrapper):
     @property
     def replica_id(self) -> str:
         return self._replica_id
+
+    @property
+    def node_id(self) -> str:
+        return self._node_id
 
     @property
     def multiplexed_model_ids(self) -> Set[str]:

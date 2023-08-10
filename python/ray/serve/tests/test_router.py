@@ -84,6 +84,7 @@ async def test_replica_scheduler(ray_instance):
         RunningReplicaInfo(
             deployment_name="my_deployment",
             replica_tag=str(i),
+            node_id="node_id",
             actor_handle=MockWorker.remote(),
             max_concurrent_queries=1,
         )

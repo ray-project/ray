@@ -171,6 +171,10 @@ class ActorReplicaWrapper:
         return self._replica_info.replica_tag
 
     @property
+    def node_id(self) -> str:
+        return self._replica_info.node_id
+
+    @property
     def multiplexed_model_ids(self) -> Set[str]:
         return self._multiplexed_model_ids
 
@@ -294,6 +298,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         self,
         event_loop: asyncio.AbstractEventLoop,
         deployment_name: str,
+        self_node_id: str,
     ):
         self._loop = event_loop
         self._deployment_name = deployment_name
@@ -892,6 +897,7 @@ class Router:
         self,
         controller_handle: ActorHandle,
         deployment_name: str,
+        self_node_id: str,
         event_loop: asyncio.BaseEventLoop = None,
         _use_new_routing: bool = False,
     ):
@@ -903,7 +909,7 @@ class Router:
         self._event_loop = event_loop
         if _use_new_routing:
             self._replica_scheduler = PowerOfTwoChoicesReplicaScheduler(
-                event_loop, deployment_name
+                event_loop, deployment_name, self_node_id,
             )
             logger.info(
                 "Using PowerOfTwoChoicesReplicaScheduler.",
