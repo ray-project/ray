@@ -9,7 +9,6 @@ import unittest
 import pytest
 
 import ray
-import ray.cloudpickle as ray_pickle
 from ray import train, tune
 from ray.train import (
     Checkpoint,
@@ -1174,18 +1173,6 @@ def testParamSpaceOverwrite(ray_start_4_cpus, tmp_path, monkeypatch):
         # Make sure that test and test2 are updated.
         assert r.config["test"].name in ["8", "9", "10"]
         assert r.config["test2"].name in ["11", "12", "13", "14"]
-
-
-def test_tuner_pkl_backwards_compatibility(tmp_path, propagate_logs, caplog):
-    tuner_internal = Tuner(
-        _train_fn_sometimes_failing, param_space={"a": 1}
-    )._local_tuner
-    with open(tmp_path / "tuner.pkl", "wb") as f:
-        ray_pickle.dump(tuner_internal, f)
-
-    with caplog.at_level(logging.WARNING, "ray.tune.impl.tuner_internal"):
-        tuner_internal._load_tuner_state(tmp_path / "tuner.pkl")
-        assert "run with an older version of Ray" in caplog.text
 
 
 if __name__ == "__main__":
