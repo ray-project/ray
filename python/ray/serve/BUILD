@@ -210,6 +210,14 @@ py_test(
 )
 
 py_test(
+    name = "test_cluster_node_info_cache",
+    size = "small",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive", "team:serve"],
+    deps = [":serve_lib"],
+)
+
+py_test(
     name = "test_deployment_scheduler",
     size = "small",
     srcs = serve_tests_srcs,
@@ -669,7 +677,7 @@ py_test(
 
 py_test(
     name = "test_callback",
-    size = "small",
+    size = "medium",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],
     deps = [":serve_lib"],
