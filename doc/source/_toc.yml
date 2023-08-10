@@ -62,9 +62,11 @@ parts:
           - file: train/key-concepts
             title: Key Concepts
           - file: train/getting-started-pytorch
+            title: PyTorch
           - file: train/getting-started-pytorch-lightning
+            title: PyTorch Lightning
           - file: train/more-frameworks
-            title: Getting Started with Other Frameworks
+            # title: Getting Started with Other Frameworks
             sections:
               - file: train/huggingface-transformers-accelerate
                 title: HuggingFace Transformers & Accelerate
