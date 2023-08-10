@@ -433,16 +433,13 @@ def test_gcs_aio_client_reconnect(
     passed = [False]
 
     async def async_kv_get():
+        gcs_aio_client = gcs_utils.GcsAioClient(
+            address=gcs_address, nums_reconnect_retry=20 if auto_reconnect else 0
+        )
         if not auto_reconnect:
             with pytest.raises(Exception):
-                gcs_aio_client = gcs_utils.GcsAioClient(
-                    address=gcs_address, nums_reconnect_retry=0
-                )
                 await gcs_aio_client.internal_kv_get(b"a", None)
         else:
-            gcs_aio_client = gcs_utils.GcsAioClient(
-                address=gcs_address, nums_reconnect_retry=20
-            )
             assert await gcs_aio_client.internal_kv_get(b"a", None) == b"b"
         return True
 

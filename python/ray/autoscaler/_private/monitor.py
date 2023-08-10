@@ -150,7 +150,6 @@ class Monitor:
             gcs_channel
         )
         worker = ray._private.worker.global_worker
-        # TODO: eventually plumb ClusterID through to here
         gcs_client = GcsClient(address=self.gcs_address)
 
         if monitor_ip:

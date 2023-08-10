@@ -532,7 +532,6 @@ wait_for_condition(
     err_str = proc.stderr.read().decode("ascii")
 
     print(out_str, err_str)
-
     assert "(raylet)" not in out_str
     assert "(raylet)" not in err_str
 

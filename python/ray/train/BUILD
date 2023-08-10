@@ -327,14 +327,6 @@ py_test(
 )
 
 py_test(
-    name = "test_gpu_2",
-    size = "medium",
-    srcs = ["tests/test_gpu_2.py"],
-    tags = ["team:ml", "exclusive", "gpu_only"],
-    deps = [":train_lib", ":conftest"]
-)
-
-py_test(
     name = "test_gpu_auto_transfer",
     size = "medium",
     srcs = ["tests/test_gpu_auto_transfer.py"],

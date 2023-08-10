@@ -117,7 +117,7 @@ class Executor {
         }                                                                                \
         delete executor;                                                                 \
       } else {                                                                           \
-        /* In case of GCS failure, we queue the request and these requests will be */    \
+        /* In case of GCS failure, we queue the request and these requets will be */     \
         /* executed once GCS is back. */                                                 \
         gcs_is_down_ = true;                                                             \
         auto request_bytes = request.ByteSizeLong();                                     \

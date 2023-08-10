@@ -677,7 +677,7 @@ py_test(
 
 py_test(
     name = "test_callback",
-    size = "medium",
+    size = "small",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],
     deps = [":serve_lib"],
