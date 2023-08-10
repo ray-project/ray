@@ -560,7 +560,7 @@ py_test(
 
 py_test(
     name = "test_replica_placement_group",
-    size = "small",
+    size = "medium",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],
     deps = [":serve_lib"],
