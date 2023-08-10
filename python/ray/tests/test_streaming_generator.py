@@ -1188,7 +1188,6 @@ def test_python_object_leak(shutdown_only):
             gc.collect()
             self.gc_garbage_len = len(gc.garbage)
             print("Objects: ", self.gc_garbage_len)
-            print(gc.garbage)
             if fail:
                 print("exception")
                 raise Exception

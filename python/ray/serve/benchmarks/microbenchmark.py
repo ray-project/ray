@@ -172,12 +172,12 @@ async def trial(
 
 async def main():
     results = {}
-    for intermediate_handles in [False]:
-        for num_replicas in [1]:
+    for intermediate_handles in [False, True]:
+        for num_replicas in [1, 8]:
             for max_batch_size, max_concurrent_queries in [
                 (1, 1),
-                # (1, 10000),
-                # (10000, 10000),
+                (1, 10000),
+                (10000, 10000),
             ]:
                 # TODO(edoakes): large data causes broken pipe errors.
                 for data_size in ["small"]:
