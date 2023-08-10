@@ -232,9 +232,9 @@ To monitor progress, you can report intermediate metrics and checkpoints using t
      def train_func(config):
 
          ...
-
+         torch.save(model.state_dict(), f"{checkpoint_dir}/model.pth"))
     +    metrics = {"loss": loss.item()} # Training/validation metrics.
-    +    checkpoint = Checkpoint.from_directory(checkpoint_dir) # A directory with checkpoint files.
+    +    checkpoint = Checkpoint.from_directory(checkpoint_dir) # Build a Ray Train checkpoint from a directory
     +    ray.train.report(metrics=metrics, checkpoint=checkpoint)
 
          ...
