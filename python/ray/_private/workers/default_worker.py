@@ -18,12 +18,6 @@ parser = argparse.ArgumentParser(
     description=("Parse addresses for the worker to connect to.")
 )
 parser.add_argument(
-    "--cluster-id",
-    required=True,
-    type=str,
-    help="the auto-generated ID of the cluster",
-)
-parser.add_argument(
     "--node-ip-address",
     required=True,
     type=str,
@@ -213,7 +207,6 @@ if __name__ == "__main__":
         gcs_address=args.gcs_address,
         session_name=args.session_name,
         webui=args.webui,
-        cluster_id=args.cluster_id,
     )
     node = ray._private.node.Node(
         ray_params,
