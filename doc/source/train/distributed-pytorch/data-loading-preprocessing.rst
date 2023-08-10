@@ -3,14 +3,33 @@
 Data Loading and Preprocessing
 ==============================
 
-This guide covers how to leverage :ref:`Ray Data <data>` to load data for distributed training jobs. You may want to use Ray Data for training over framework built-in data loading utilities for a few reasons:
+Using Framework Built-in Data Utilities
+---------------------------------------
+
+Deep Learning frameworks provide their own dataloading utilities. For example:
+
+- PyTorch: `PyTorch Dataset <https://pytorch.org/tutorials/beginner/basics/data_tutorial.html>`
+- Lightning: `LightningDataModule <https://lightning.ai/docs/pytorch/stable/data/datamodule.html>`
+- HuggingFace: `HuggingFace Dataset <https://huggingface.co/docs/datasets/index>`
+
+You can keep using it in Ray Train, 
+
+
+.. note::
+ 
+    Please ensure that you initialize your dataset within the `train_func` so that each worker can build the datasets from scratch.
+
+    We do not recommend passing datasets via `train_loop_config` or global variables, as this may result in serialization or `FileNotFound` issues.
+
+
+Using Ray Data
+--------------
+
+This section covers how to leverage :ref:`Ray Data <data>` to load data for distributed training jobs. You may want to use Ray Data for training over framework built-in data loading utilities for a few reasons:
 
 1. To leverage the full Ray cluster to speed up preprocessing of your data.
 2. To make data loading agnostic of the underlying framework.
-3. Advanced Ray Data features such as global shuffles.
-
-Overview
---------
+3. Advanced Ray Data features such as streaming ingestion and global shuffles.
 
 :ref:`Ray Data <data>` is the recommended way to work with large datasets in Ray Train. Ray Data provides automatic loading, sharding, and streamed ingest of Data across multiple Train workers.
 To get started, pass in one or more datasets under the ``datasets`` keyword argument for Trainer (e.g., ``Trainer(datasets={...})``).

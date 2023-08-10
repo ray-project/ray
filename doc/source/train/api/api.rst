@@ -71,6 +71,18 @@ PyTorch Lightning
     ~train.lightning.LightningConfigBuilder
     ~train.lightning.LightningCheckpoint
     ~train.lightning.LightningPredictor
+    ~train.lightning.prepare_trainer
+    ~train.lightning.RayLightningEnvironment
+    ~train.lightning.RayDDPStrategy
+    ~train.lightning.RayFSDPStrategy
+    ~train.lightning.RayDeepSpeedStrategy
+    ~train.lightning.RayTrainReportCallback
+
+.. note::
+
+    We will deprecate `LightningTrainer`, `LightningConfigBuilder`,
+    `LightningCheckpoint`, and `LightningPredictor` in Ray 2.8. Please 
+    refer to the :ref:`migration guides <migration-guide>` for more info.
 
 HuggingFace Transformers
 ************************
