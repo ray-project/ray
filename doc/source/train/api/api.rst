@@ -172,6 +172,9 @@ Mosaic
 
     ~train.mosaic.MosaicTrainer
 
+
+.. _ray-train-configs-api:
+
 Ray Train Config
 ----------------
 

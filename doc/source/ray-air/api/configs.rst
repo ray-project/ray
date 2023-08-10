@@ -6,6 +6,12 @@ Ray AIR Configurations
 
 .. currentmodule:: ray
 
+
+.. note::
+
+    We are changing the import path of the config classes from `ray.air` to `ray.train` since Ray 2.7, 
+    please refer to the :ref:`Ray Train API page <ray-train-configs-api>` for more info.
+
 .. autosummary::
 
     air.RunConfig
