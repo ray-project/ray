@@ -9,10 +9,10 @@ Ray AIR Configurations
 .. autosummary::
     :toctree: doc/
 
-    air.RunConfig
-    air.ScalingConfig
-    air.CheckpointConfig
-    air.FailureConfig
+    ~air.RunConfig
+    ~air.ScalingConfig
+    ~air.CheckpointConfig
+    ~air.FailureConfig
 
 .. autosummary::
 

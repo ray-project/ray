@@ -187,6 +187,7 @@ Ray Train Config
 ----------------
 
 .. autosummary::
+    :toctree: doc/
     
     ~train.ScalingConfig
     ~train.RunConfig
