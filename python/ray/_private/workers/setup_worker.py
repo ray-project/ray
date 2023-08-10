@@ -1,6 +1,5 @@
 import argparse
 import logging
-import time
 
 from ray._private.ray_constants import LOGGER_FORMAT, LOGGER_LEVEL
 from ray._private.ray_logging import setup_logger

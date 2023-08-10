@@ -42,11 +42,11 @@ class RuntimeEnvContext:
 
     @staticmethod
     def deserialize(json_string):
-        logger.info(f"deserialize: {json.loads(json_string)}")
+        logger.debug(f"deserialize: {json.loads(json_string)}")
         return RuntimeEnvContext(**json.loads(json_string))
 
     def exec_worker(self, passthrough_args: List[str], language: Language):
-        logger.info(f"Worker env: {self.env_vars}")
+        logger.debug(f"Worker context env: {self.env_vars}")
         update_envs(self.env_vars)
 
         if language == Language.PYTHON and sys.platform == "win32":
@@ -66,16 +66,17 @@ class RuntimeEnvContext:
             passthrough_args = class_path_args + passthrough_args
         elif language == Language.JULIA:
             executable = "julia"
-            julia_args = []
-            julia_args += ["-e", "'using ray_core_worker_julia_jll; ray_core_worker_julia_jll.start_worker()'"]
-            passthrough_args = julia_args + ["--"] + passthrough_args
+            args = ["-e", "'using ray_core_worker_julia_jll; ray_core_worker_julia_jll.start_worker()'", "--"]
+            # TODO(omus): required to avoid escaping the Julia code. Ideally
+            # this information would be passed in via the serialized runtime
+            # context.
+            executable = " ".join([executable] + args)
         elif sys.platform == "win32":
             executable = ""
         else:
             executable = "exec "
 
-        # TODO: This messes up our inline Julia code
-        # passthrough_args = [s.replace(" ", r"\ ") for s in passthrough_args]
+        passthrough_args = [s.replace(" ", r"\ ") for s in passthrough_args]
         exec_command = " ".join([f"{executable}"] + passthrough_args)
         command_str = " ".join(self.command_prefix + [exec_command])
         # TODO(SongGuyang): We add this env to command for macOS because it doesn't
@@ -90,7 +91,7 @@ class RuntimeEnvContext:
                 + " "
                 + command_str
             )
-        logger.info(f"Exec'ing worker with command: {command_str}")
+        logger.debug(f"Exec'ing worker with command: {command_str}")
         if sys.platform == "win32":
             cmd = [*self.command_prefix, executable, *passthrough_args]
             subprocess.Popen(cmd, shell=True).wait()
