@@ -292,7 +292,8 @@ using the :class:`ray.train.lightning.RayTrainReportCallback` utility callback.
          )
          ...
 
-For more details, see :ref:`train-checkpointing`.
+Reporting metrics and checkpoints to Ray Train ensures that you can use Ray Tune and fault-tolerant training. For more details, see :ref:`train-checkpointing` and :ref:`train-fault-tolerance`.
+
 
 Preparing your Lightning Trainer
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -342,6 +343,7 @@ with a :class:`~ray.train.torch.TorchTrainer`.
 
     trainer = TorchTrainer(train_func, scaling_config=scaling_config)
     result = trainer.fit()
+Please also refer to :ref:`train-run-config` for more configuration options for `TorchTrainer`.
 
 Accessing training results
 --------------------------

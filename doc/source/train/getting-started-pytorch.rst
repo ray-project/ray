@@ -8,7 +8,7 @@ This tutorial will walk you through the process of converting an existing PyTorc
 By the end of this, you will learn how to:
 
 1. Configure your model so that it runs distributed and is placed on the correct CPU/GPU device.
-2. Configure your dataset so that it is sharded across the workers and place data on the correct CPU/GPU device.
+2. Configure your dataloader so that it is sharded across the workers and place data on the correct CPU/GPU device.
 3. Configure your training function to report metrics and save checkpoints.
 4. Configure scale and CPU/GPU resource requirements for your training job.
 5. Launch your distributed training job with a :class:`~ray.train.torch.TorchTrainer`.
@@ -232,9 +232,9 @@ To monitor progress, you can report intermediate metrics and checkpoints using t
      def train_func(config):
 
          ...
-
+         torch.save(model.state_dict(), f"{checkpoint_dir}/model.pth"))
     +    metrics = {"loss": loss.item()} # Training/validation metrics.
-    +    checkpoint = Checkpoint.from_directory(checkpoint_dir) # A directory with checkpoint files.
+    +    checkpoint = Checkpoint.from_directory(checkpoint_dir) # Build a Ray Train checkpoint from a directory
     +    ray.train.report(metrics=metrics, checkpoint=checkpoint)
 
          ...
