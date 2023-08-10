@@ -3,9 +3,6 @@ import os
 import subprocess
 import sys
 
-import ray._private.utils
-import ray._private.ray_constants as ray_constants
-
 
 def update_resources_with_accelerator_type(resources: dict):
     """Update the resources dictionary with the accelerator type and custom
@@ -45,11 +42,14 @@ def _detect_and_configure_aws_neuron_core(resources: dict):
         ValueError: If the number of NeuronCore is greater than the number of
             visible NeuronCore.
     """
+    import ray._private.ray_constants as ray_constants
+    import ray._private.utils as utils
+
     # AWS NeuronCore detection and configuration
     # 1. Check if the user specified num_neuron_cores in resources
     num_neuron_cores = resources.get(ray_constants.NUM_NEURON_CORES, None)
     # 2. Check if the user specified NEURON_RT_VISIBLE_CORES
-    neuron_core_ids = ray._private.utils.get_aws_neuron_core_visible_ids()
+    neuron_core_ids = utils.get_aws_neuron_core_visible_ids()
     if (
         num_neuron_cores is not None
         and neuron_core_ids is not None
@@ -72,7 +72,7 @@ def _detect_and_configure_aws_neuron_core(resources: dict):
         resources.update(
             {
                 ray_constants.NUM_NEURON_CORES: num_neuron_cores,
-                ray._private.utils.get_neuron_core_constraint_name(): num_neuron_cores,
+                utils.get_neuron_core_constraint_name(): num_neuron_cores,
             }
         )
 

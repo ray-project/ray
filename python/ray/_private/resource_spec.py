@@ -7,7 +7,7 @@ import sys
 from collections import namedtuple
 from typing import Optional
 
-from ray._private.accelerator import update_resources_with_accelerator_type
+import ray._private.accelerator as accelerator
 
 import ray
 import ray._private.ray_constants as ray_constants
@@ -201,7 +201,7 @@ class ResourceSpec(
         except Exception:
             logger.exception("Could not parse gpu information.")
 
-        update_resources_with_accelerator_type(resources)
+        accelerator.update_resources_with_accelerator_type(resources)
 
         # Choose a default object store size.
         system_memory = ray._private.utils.get_system_memory()
