@@ -12,6 +12,7 @@ class Constants:
     NODE_CATEGORY = "ray"
     RAY_HEAD_FROZEN_VM_TAG = "ray-frozen-vm"
     VSPHERE_NODE_STATUS = "vsphere-node-status"
+    CREATING_TAG_TIMEOUT = 120
 
     class VsphereNodeStatus(Enum):
         # Enum for SDK clients

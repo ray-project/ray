@@ -127,12 +127,21 @@ class VsphereNodeProvider(NodeProvider):
     def bootstrap_config(cluster_config):
         return bootstrap_vsphere(cluster_config)
 
-    def get_matched_tags(self, tag_filters, yn_id):
+    def get_matched_tags(self, tag_filters, dynamic_id):
+        """
+        tag_filters will be a dict like {"tag_key1": "val1", "tag_key2": "val2"}
+        dynamic_id will be the vSphere object id
+        This function will list all the attached tags of the vSphere object, convert
+        the string formatted tag to k,v formatted. Then compare the attached tags to
+        the ones in the filters.
+        Return all the matched tags and all the tags the vSphere object has.
+        vsphere_tag_to_kv_pair will ignore the tags not convertable to k,v pairs.
+        """
         matched_tags = {}
         all_tags = {}
 
         for tag_id in self.vsphere_sdk_client.tagging.TagAssociation.list_attached_tags(
-            yn_id
+            dynamic_id
         ):
             vsphere_vm_tag = self.vsphere_sdk_client.tagging.Tag.get(tag_id=tag_id).name
             tag_key_value = vsphere_tag_to_kv_pair(vsphere_vm_tag)
@@ -147,6 +156,11 @@ class VsphereNodeProvider(NodeProvider):
         return matched_tags, all_tags
 
     def non_terminated_nodes(self, tag_filters):
+        """
+        This function is going to find all the running vSphere VMs created by Ray via
+        the tag filters, the VMs should either be powered_on or be powered_off but has
+        a tag "vsphere-node-status:creating"
+        """
         with self.lock:
             nodes = []
             cli_logger.info("Getting non terminated nodes...")
@@ -156,9 +170,9 @@ class VsphereNodeProvider(NodeProvider):
                 filters[TAG_RAY_CLUSTER_NAME] = self.cluster_name
             for vm in vms:
                 vm_id = vm.vm
-                yn_id = DynamicID(type=Constants.TYPE_OF_RESOURCE, id=vm.vm)
+                dynamic_id = DynamicID(type=Constants.TYPE_OF_RESOURCE, id=vm.vm)
 
-                matched_tags, all_tags = self.get_matched_tags(filters, yn_id)
+                matched_tags, all_tags = self.get_matched_tags(filters, dynamic_id)
                 # Update the tag cache with latest tags
                 self.tag_cache[vm_id] = all_tags
 
@@ -243,7 +257,7 @@ class VsphereNodeProvider(NodeProvider):
         if TAG_RAY_CLUSTER_NAME not in tags:
             filters[TAG_RAY_CLUSTER_NAME] = self.cluster_name
 
-        counter = count
+        to_be_launched_node_count = count
 
         cli_logger.info(f"Create Node tags : {filters}")
         reused_nodes_dict = {}
@@ -265,28 +279,13 @@ class VsphereNodeProvider(NodeProvider):
             # Select POWERED_OFF or SUSENDED vms which has ray-node-type,
             # ray-launch-config, ray-user-node-type tags
             for vm in vms:
-                if number_of_reused_nodes >= counter:
+                if number_of_reused_nodes >= count:
                     break
 
                 vm_id = vm.name
-                yn_id = DynamicID(type=Constants.TYPE_OF_RESOURCE, id=vm.vm)
-                filter_matched_count = 0
-                for (
-                    tag_id
-                ) in self.vsphere_sdk_client.tagging.TagAssociation.list_attached_tags(
-                    yn_id
-                ):
-                    vsphere_vm_tag = self.vsphere_sdk_client.tagging.Tag.get(
-                        tag_id=tag_id
-                    ).name
-
-                    tag_key_value = vsphere_tag_to_kv_pair(vsphere_vm_tag)
-                    if tag_key_value:
-                        tag_key = tag_key_value[0]
-                        tag_value = tag_key_value[1]
-                        if tag_key in tags and tag_value == filters[tag_key]:
-                            filter_matched_count += 1
-                if filter_matched_count == len(filters):
+                dynamic_id = DynamicID(type=Constants.TYPE_OF_RESOURCE, id=vm.vm)
+                matched_tags, _ = self.get_matched_tags(filters, dynamic_id)
+                if len(matched_tags) == len(filters):
                     reuse_nodes.append(vm)
                     reused_nodes_dict[vm_id] = vm
                     # Tag needs vm.vm and not vm.name as id
@@ -301,13 +300,15 @@ class VsphereNodeProvider(NodeProvider):
                     cli_logger.render_list(reuse_node_ids),
                 )
                 for node_id in reuse_node_ids:
-                    cli_logger.info("Powering on VM")
+                    cli_logger.info("Powering on VM with id {}".format(node_id))
                     self.vsphere_sdk_client.vcenter.vm.Power.start(node_id)
-                counter -= len(reuse_node_ids)
+                to_be_launched_node_count -= len(reuse_node_ids)
 
         created_nodes_dict = {}
-        if counter:
-            created_nodes_dict = self._create_node(node_config, filters, counter)
+        if to_be_launched_node_count > 0:
+            created_nodes_dict = self._create_node(
+                node_config, filters, to_be_launched_node_count
+            )
 
         all_created_nodes = reused_nodes_dict
         all_created_nodes.update(created_nodes_dict)
@@ -329,17 +330,20 @@ class VsphereNodeProvider(NodeProvider):
         return vm
 
     def attach_tag(self, vm_id, resource_type, tag_id):
-        dyn_id = DynamicID(type=resource_type, id=vm_id)
+        dynamic_id = DynamicID(type=resource_type, id=vm_id)
         try:
-            self.vsphere_sdk_client.tagging.TagAssociation.attach(tag_id, dyn_id)
-            cli_logger.info("Tag attached")
+            self.vsphere_sdk_client.tagging.TagAssociation.attach(tag_id, dynamic_id)
+            cli_logger.info(f"Tag {tag_id} attached on VM {dynamic_id}")
         except Exception as e:
-            cli_logger.info(
-                "Check that the tag is associable to {}".format(resource_type)
-            )
+            cli_logger.error(f"Check that the tag is attachable to {resource_type}")
             raise e
 
     def set_cloudinit_userdata(self, vm_id):
+        """
+        This function will only be called when the frozen VM was at "off" state at
+        start. Then we are able to inject cloudinit user data into the VM. For example,
+        The SSH keys for the Ray nodes to communicate with each other.
+        """
         logger.info("Setting cloudinit userdata for vm {}".format(vm_id))
 
         metadata = '{"cloud_name": "vSphere"}'
@@ -352,19 +356,20 @@ class VsphereNodeProvider(NodeProvider):
         # We want to add the key that we generate with create_key_pair
         # function into authorized_keys section
 
-        f = open(USER_DATA_FILE_PATH, "r")
-        data = yaml.load(f, Loader=yaml.FullLoader)
-        for _, v in data.items():
-            for user in v:
-                if isinstance(user, dict):
-                    user["ssh_authorized_keys"] = [public_key]
-        f.close()
-
-        modified_userdata = yaml.dump(data, default_flow_style=False)
+        with open(USER_DATA_FILE_PATH, "r") as user_data_file:
+            data = yaml.load(user_data_file, Loader=yaml.FullLoader)
+            for _, v in data.items():
+                for user in v:
+                    if isinstance(user, dict):
+                        user["ssh_authorized_keys"] = [public_key]
+            modified_userdata = yaml.dump(data, default_flow_style=False)
 
         # The userdata needs to be prefixed with #cloud-config.
         # Without it, the cloudinit spec would get applied but
         # it wouldn't add the userdata on the VM.
+        # For information about the cloud init doc of vSphere VM, check below pages:
+        # https://kb.vmware.com/s/article/82250
+        # https://cloudinit.readthedocs.io/en/latest/explanation/format.html
 
         modified_userdata = "#cloud-config\n" + modified_userdata
         logger.info("Successfully modified the userdata file for vm {}".format(vm_id))
@@ -408,11 +413,11 @@ class VsphereNodeProvider(NodeProvider):
     # We'll need to delete the older tag node-status:initializing first before creating
     # node-status:finished
     def remove_tag_from_vm(self, tag_key_to_remove, vm_id):
-        yn_id = DynamicID(type=Constants.TYPE_OF_RESOURCE, id=vm_id)
+        dynamic_id = DynamicID(type=Constants.TYPE_OF_RESOURCE, id=vm_id)
 
         # List all the tags present on the VM.
         for tag_id in self.vsphere_sdk_client.tagging.TagAssociation.list_attached_tags(
-            yn_id
+            dynamic_id
         ):
             vsphere_vm_tag = self.vsphere_sdk_client.tagging.Tag.get(tag_id=tag_id).name
             tag_key_value = vsphere_tag_to_kv_pair(vsphere_vm_tag)
@@ -420,7 +425,9 @@ class VsphereNodeProvider(NodeProvider):
             if tag_key == tag_key_to_remove:
                 # Remove the tag matching the key passed.
                 cli_logger.info("Removing tag {} from the VM {}".format(tag_key, vm_id))
-                self.vsphere_sdk_client.tagging.TagAssociation.detach(tag_id, yn_id)
+                self.vsphere_sdk_client.tagging.TagAssociation.detach(
+                    tag_id, dynamic_id
+                )
                 break
 
     def get_frozen_vm_obj(self):
@@ -434,6 +441,13 @@ class VsphereNodeProvider(NodeProvider):
         return vms[0] if len(vms) > 0 else None
 
     def get_pyvmomi_obj(self, vimtype, name):
+        """
+        This function finds the vSphere object by the object name and the object type.
+        The object type can be "VM", "Host", "Datastore", etc.
+        The object name is a unique name under the vCenter server.
+        To check all such object information, you can go to the managed object board
+        page of your vCenter Server, such as: https://<your_vc_ip/mob
+        """
         obj = None
 
         # TODO: Find a better way to solve pyvmomi timeout issues
@@ -457,7 +471,10 @@ class VsphereNodeProvider(NodeProvider):
             else:
                 obj = c
                 break
-
+        if not obj:
+            raise RuntimeError(
+                f"Unexpected: cannot find vSphere object {vimtype} with name: {name}"
+            )
         return obj
 
     def connect_nics(self, vm_id):
@@ -480,9 +497,7 @@ class VsphereNodeProvider(NodeProvider):
         # When the vCenter Server is busy, the time could be longer. We set a 120
         # seconds timeout here. Because it's not used anywhere else, we don't make
         # it as a formal constant.
-        timeout = 120
-
-        while time.time() - start < timeout:
+        while time.time() - start < Constants.CREATING_TAG_TIMEOUT:
             time.sleep(0.5)
             vms = self.vsphere_sdk_client.vcenter.VM.list(VM.FilterSpec(names=names))
 
@@ -492,16 +507,20 @@ class VsphereNodeProvider(NodeProvider):
                 return
             elif len(vms) > 1:
                 # This should never happen
-                raise RuntimeError(
-                    "Duplicated VM with name {} found.".format(self.vm_name)
-                )
+                raise RuntimeError("Duplicated VM with name {} found.".format(vm_name))
 
-        raise RuntimeError("VM {} could not be found.".format(self.vm_name))
+        raise RuntimeError("VM {} could not be found.".format(vm_name))
 
     def create_instant_clone_node(self, source_vm, vm_name_target, node_config, tags):
-        resource_pool = self.get_pyvmomi_obj(
-            [vim.ResourcePool], node_config["resource_pool"]
+        # If resource pool is not provided in the config yaml, then the resource pool
+        # of the frozen VM will also be the resource pool of the new VM.
+        resource_pool = (
+            self.get_pyvmomi_obj([vim.ResourcePool], node_config["resource_pool"])
+            if "resource_pool" in node_config
+            else None
         )
+        # If datastore is not provided in the config yaml, then the datastore
+        # of the frozen VM will also be the resource pool of the new VM.
         datastore = (
             self.get_pyvmomi_obj([vim.Datastore], node_config["datastore"])
             if "datastore" in node_config
@@ -522,10 +541,10 @@ class VsphereNodeProvider(NodeProvider):
         tags[Constants.VSPHERE_NODE_STATUS] = Constants.VsphereNodeStatus.CREATING.value
         self.tag_vm(vm_name_target, tags)
 
-        clone = self.get_pyvmomi_obj([vim.VirtualMachine], vm_name_target)
+        cloned_vm = self.get_pyvmomi_obj([vim.VirtualMachine], vm_name_target)
 
         # Get VM ID
-        vm_id = clone._moId
+        vm_id = cloned_vm._moId
 
         vm = self.get_vm(vm_id)
 
@@ -709,9 +728,7 @@ class VsphereNodeProvider(NodeProvider):
             self.terminate_node(node_id)
 
     def _get_node(self, node_id):
-        """Refresh and get info for this node, updating the cache."""
-        self.non_terminated_nodes({})  # Side effect: updates cache
-
+        """Get the node object from vSphere."""
         vms = self.vsphere_sdk_client.vcenter.VM.list(VM.FilterSpec(vms={node_id}))
         if len(vms) == 0:
             cli_logger.error("VM with name ({}) not found".format(node_id))
@@ -719,7 +736,7 @@ class VsphereNodeProvider(NodeProvider):
         return vms[0]
 
     def _get_cached_node(self, node_id):
-        """Return node info from cache if possible, otherwise fetches it."""
+        """Return node info from cache if possible, otherwise fetch it from vSphere."""
         if node_id in self.cached_nodes:
             return self.cached_nodes[node_id]
 

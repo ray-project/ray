@@ -101,11 +101,15 @@ def update_vsphere_configs(config):
     worker_node_config["resources"] = worker_node["resources"]
     head_node_config["resources"] = head_node["resources"]
 
+    head_resource_pool = None
+    if "resource_pool" in head_node_config:
+        head_resource_pool = head_node_config["resource_pool"]
+
     # by default create worker nodes in the head node's resource pool
-    worker_resource_pool = head_node_config["resource_pool"]
+    worker_resource_pool = head_resource_pool
 
     # If different resource pool is provided for worker nodes, use it
-    if "resource_pool" in worker_node_config and worker_node_config["resource_pool"]:
+    if "resource_pool" in worker_node_config:
         worker_resource_pool = worker_node_config["resource_pool"]
 
     worker_node_config["resource_pool"] = worker_resource_pool

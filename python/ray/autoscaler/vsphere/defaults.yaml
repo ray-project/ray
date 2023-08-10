@@ -46,13 +46,14 @@ available_node_types:
         # For example, {"CPU": 4, "Memory": 8192}
         resources: {}
         node_config:
-            # The resource pool where the head node should live
-            resource_pool: <resource_pool_name>
-            # The frozen VM from which the head node will be instant-cloned
-            frozen_vm_name: <frozen_vm_name>
-            # The datastore to store the vmdk of the head node vm
-            datastore: <datastore_name>
-
+            # The resource pool where the head node should live, if unset, will be
+            # the frozen VM's resource pool.
+            resource_pool:
+            # Mandatory: The frozen VM name from which the head node will be instant-cloned.
+            frozen_vm_name: frozen-vm
+            # The datastore to store the vmdk of the head node vm, if unset, will be
+            # the frozen VM's datastore.
+            datastore:
     worker:
         # The minimum number of nodes of this type to launch.
         # This number should be >= 0.
@@ -60,12 +61,14 @@ available_node_types:
         # For example, {"CPU": 4, "Memory": 8192}
         resources: {}
         node_config:
-          # The resource pool where the worker node should live
-          resource_pool: <resource_pool_name>
-          # The frozen VM from which the worker node will be instant-cloned
-          frozen_vm_name: <frozen_vm_name>
-          # The datastore to store the vmdk of the worker node vm(s)
-          datastore: <datastore_name>
+            # The resource pool where the worker node should live, if unset, will be
+            # the frozen VM's resource pool.
+            resource_pool:
+            # Mandatory: The frozen VM name from which the work node will be instant-cloned.
+            frozen_vm_name: frozen-vm
+            # The datastore to store the vmdk(s) of the worker node vm(s), if unset, will be
+            # the frozen VM's datastore.
+            datastore:
 
 # Specify the node type of the head node (as configured above).
 head_node_type: ray.head.default
