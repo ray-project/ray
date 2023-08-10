@@ -22,6 +22,7 @@ def run_on_every_node(remote_func_or_actor_class, **remote_kwargs):
     refs = []
     for node in ray.nodes():
         if node["Alive"] and node["Resources"].get("GPU", None):
+            print(node)
             refs.append(
                 force_on_node(node["NodeID"], remote_func_or_actor_class).remote(
                     **remote_kwargs
@@ -64,7 +65,8 @@ if __name__ == "__main__":
 
     ray.init(
         runtime_env={
-            "env_vars": {"HF_HOME": "/mnt/local_storage/.cache/huggingface"},
+            "pip": ["awscli", "aioboto3 >= 11.2.0"],
+            "env_vars": {"HF_HOME": "/tmp/ray/.cache/huggingface"},
             "working_dir": ".",
         }
     )

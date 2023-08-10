@@ -9,7 +9,7 @@
         "stage": 3,
         "offload_optimizer": {
             "device": "nvme",
-            "nvme_path": "/mnt/local_storage/zero",
+            "nvme_path": "/tmp/ray/zero",
             "pin_memory": false,
             "buffer_count": 4,
             "fast_init": true

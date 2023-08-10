@@ -34,7 +34,8 @@ def get_checkpoint_and_refs_dir(
 
     f_hash = get_hash_from_bucket(bucket_uri, s3_sync_args)
 
-    path = os.path.join(TRANSFORMERS_CACHE, f"models--{model_id.replace('/', '--')}")
+    # path = os.path.join(TRANSFORMERS_CACHE, f"models--{model_id.replace('/', '--')}")
+    path = '/tmp/ray/.cache/huggingface/hub/models--meta-llama--Llama-2-7b-hf'
 
     refs_dir = os.path.join(path, "refs")
     checkpoint_dir = os.path.join(path, "snapshots", f_hash)
@@ -64,9 +65,11 @@ def download_model(
 
     s3_sync_args = s3_sync_args or []
 
-    path = os.path.join(TRANSFORMERS_CACHE, f"models--{model_id.replace('/', '--')}")
+    # path = os.path.join(TRANSFORMERS_CACHE, f"models--{model_id.replace('/', '--')}")
+    path = '/tmp/ray/.cache/huggingface/hub/models--meta-llama--Llama-2-7b-hf'
 
     cmd = (
+        # ["aws", "s3", "cp", "--recursive"]
         ["aws", "s3", "sync"]
         + s3_sync_args
         + (["--exclude", "*", "--include", "*token*"] if tokenizer_only else [])

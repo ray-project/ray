@@ -26,7 +26,10 @@ from transformers import (
 
 import ray
 from ray import train
+from ray.air.config import CheckpointConfig, RunConfig, ScalingConfig
+from ray.air import checkpoint, session
 from ray.train.torch import TorchTrainer
+from ray.tune.syncer import SyncConfig
 import ray.util.scheduling_strategies
 
 from utils import get_checkpoint_and_refs_dir, get_mirror_link
@@ -66,7 +69,10 @@ def get_pretrained_path(model_id: str):
 
 def get_tokenizer(model_name, special_tokens):
 
-    pretrained_path = get_pretrained_path(model_name)
+    # pretrained_path = get_pretrained_path(model_name)
+    pretrained_path = "/tmp/ray/.cache/huggingface/hub/models--meta-llama--Llama-2-7b-hf/snapshots/335a02887eb6684d487240bbc28b5699298c3135"
+    print(pretrained_path)
+    print("isdir", os.path.isdir(str(pretrained_path)))
     # Context for legacy=True: https://github.com/huggingface/transformers/issues/25176
     tokenizer = AutoTokenizer.from_pretrained(pretrained_path, legacy=True)
     tokenizer.pad_token = tokenizer.eos_token
@@ -193,8 +199,8 @@ def training_function(kwargs: dict):
     set_seed(seed)
 
     # train_ds is the local shard for this model
-    train_ds = train.get_dataset_shard("train")
-    valid_ds = train.get_dataset_shard("valid")
+    train_ds = session.get_dataset_shard("train")
+    valid_ds = session.get_dataset_shard("valid")
 
     train_ds_len = len(list(train_ds.iter_batches(batch_size=1)))
 
@@ -328,7 +334,7 @@ def training_function(kwargs: dict):
             # as long as this is not the last step report here
             if step != (train_ds_len // batch_size - 1):
                 aggregated_loss = torch.mean(accelerator.gather(loss[None])).item()
-                train.report(
+                session.report(
                     {
                         "epoch": epoch,
                         "iteration": step,
@@ -423,7 +429,7 @@ def training_function(kwargs: dict):
             "learning_rate": lr_scheduler.get_lr()[0],
         }
 
-        train.report(
+        session.report(
             metrics,
             # We do not need to explictly call report(checkpoint).
             # This is because the checkpointing is not on all distributed workers, it's
@@ -432,7 +438,7 @@ def training_function(kwargs: dict):
             # will include the checkpoint files created by the Rank_0.
             # Note that this will not delete the checkpoints from the previous
             # iterations.
-            checkpoint=train.Checkpoint.from_directory(ckpt_path_epoch),
+            checkpoint=checkpoint.Checkpoint.from_directory(ckpt_path_epoch),
         )
         print("Checkpointing time: ", time.time() - checkpointing_time_s)
 
@@ -550,8 +556,9 @@ def main():
 
     ray.init(
         runtime_env={
+            "pip": ["awscli", "aioboto3 >= 11.2.0", "transformers >= 4.31.0", "deepspeed >= 0.10.0", "tokenizers >= 0.13.3"],
             "env_vars": {
-                "HF_HOME": "/mnt/local_storage/.cache/huggingface",
+                "HF_HOME": "/tmp/ray/.cache/huggingface",
                 "TUNE_RESULT_DIR": os.environ["TUNE_RESULT_DIR"],
             },
             "working_dir": ".",
@@ -568,11 +575,11 @@ def main():
     with open(args.special_token_path, "r") as json_file:
         special_tokens = json.load(json_file)["tokens"]
 
-    artifact_storage = os.environ["ANYSCALE_ARTIFACT_STORAGE"]
-    user_name = os.environ["ANYSCALE_USERNAME"]
-    storage_path = (
-        f"{artifact_storage}/{user_name}/ft_llms_with_deepspeed/{args.model_name}"
-    )
+    # artifact_storage = os.environ["ANYSCALE_ARTIFACT_STORAGE"]
+    # user_name = os.environ["ANYSCALE_USERNAME"]
+    # storage_path = (
+    #     f"{artifact_storage}/{user_name}/ft_llms_with_deepspeed/{args.model_name}"
+    # )
 
     trainer = TorchTrainer(
         training_function,
@@ -581,13 +588,14 @@ def main():
             "args": vars(args),
             "special_tokens": special_tokens,
         },
-        run_config=train.RunConfig(
+        run_config=RunConfig(
             # Turn off syncing artifact as as of 2.6 it introduces a resource
             # contention between checkpoint syncronizer and artifact syncronizer that
             # can sometimes result in failed checkpoint syncing
             # sync_config=tune.SyncConfig(sync_artifacts=False),
-            storage_path=storage_path,
-            checkpoint_config=train.CheckpointConfig(
+            # storage_path=storage_path,
+            sync_config=SyncConfig(syncer=None),
+            checkpoint_config=CheckpointConfig(
                 num_to_keep=args.num_checkpoints_to_keep,
                 checkpoint_score_attribute="perplexity",
                 checkpoint_score_order="min",
@@ -596,12 +604,12 @@ def main():
                 _checkpoint_upload_from_workers=True,
             ),
         ),
-        scaling_config=train.ScalingConfig(
+        scaling_config=ScalingConfig(
             # This forces the trainer + Rank 0 worker to get scheduled on the large cpu
             # RAM instance, making the checkpointing easier.
             # "large_cpu_mem" is the tag used to identify this machine type in the
             # cluster config.
-            trainer_resources={"large_cpu_mem": 0.01},
+            # trainer_resources={"large_cpu_mem": 0.01},
             num_workers=args.num_devices,
             use_gpu=True,
             resources_per_worker={"GPU": 1},
@@ -616,13 +624,13 @@ def main():
     )
 
     results = trainer.fit()
-    best_checkpoint = results.best_checkpoints[0]
+    # best_checkpoint = results.best_checkpoints[0]
 
     print("Results are stored in:")
     print(results.path)
-    print("Best checkpoint is stored in:")
-    print(best_checkpoint[0].uri)
-    print(f"With perplexity: {best_checkpoint[1]['perplexity']}")
+    # print("Best checkpoint is stored in:")
+    # print(best_checkpoint[0].uri)
+    # print(f"With perplexity: {best_checkpoint[1]['perplexity']}")
 
 
 if __name__ == "__main__":
