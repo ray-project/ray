@@ -1188,7 +1188,9 @@ def test_python_object_leak(shutdown_only):
             gc.collect()
             self.gc_garbage_len = len(gc.garbage)
             print("Objects: ", self.gc_garbage_len)
+            print(gc.garbage)
             if fail:
+                print("exception")
                 raise Exception
             yield 1
 
@@ -1198,6 +1200,7 @@ def test_python_object_leak(shutdown_only):
             self.gc_garbage_len = len(gc.garbage)
             print("Objects: ", self.gc_garbage_len)
             if fail:
+                print("exception")
                 raise Exception
             return 1
 
@@ -1215,6 +1218,7 @@ def test_python_object_leak(shutdown_only):
             self.gc_garbage_len = len(gc.garbage)
             print("Objects: ", self.gc_garbage_len)
             if fail:
+                print("exception")
                 raise Exception
             return 1
 
@@ -1224,24 +1228,26 @@ def test_python_object_leak(shutdown_only):
             self.gc_garbage_len = len(gc.garbage)
             print("Objects: ", self.gc_garbage_len)
             if fail:
+                print("exception")
                 raise Exception
             yield 1
 
     def verify_regular(actor, fail):
         for _ in range(100):
             try:
-                ray.get(actor.f.remote(fail=True))
+                ray.get(actor.f.remote(fail=fail))
             except Exception:
                 pass
         assert ray.get(actor.get_gc_garbage_len.remote()) == 0
 
     def verify_generator(actor, fail):
-        for ref in actor.gen.options(num_returns="streaming").remote(fail=True):
-            try:
-                ray.get(ref)
-            except Exception:
-                pass
-        assert ray.get(actor.get_gc_garbage_len.remote()) == 0
+        for _ in range(100):
+            for ref in actor.gen.options(num_returns="streaming").remote(fail=fail):
+                try:
+                    ray.get(ref)
+                except Exception:
+                    pass
+            assert ray.get(actor.get_gc_garbage_len.remote()) == 0
 
     print("Test regular actors")
     verify_regular(A.remote(), True)

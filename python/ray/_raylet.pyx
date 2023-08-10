@@ -216,31 +216,6 @@ GRPC_STATUS_CODE_UNKNOWN = CGrpcStatusCode.UNKNOWN
 GRPC_STATUS_CODE_DEADLINE_EXCEEDED = CGrpcStatusCode.DEADLINE_EXCEEDED
 
 logger = logging.getLogger(__name__)
-event_loop_thread_for_cpp = None
-event_loop_for_cpp = None
-
-
-def async_thread_get_thread_for_cpp():
-    """Return the additional thread that's used to
-    dispatch cpp operations (e.g.,
-    report_streaming_generator_output) inside an async
-    event loop.
-    """
-    global event_loop_thread_for_cpp
-    global event_loop_for_cpp
-    if event_loop_thread_for_cpp is None:
-        assert event_loop_for_cpp is None
-        event_loop_for_cpp = get_new_event_loop()
-        event_loop_thread_for_cpp = threading.Thread(
-            target=lambda: event_loop_for_cpp.run_forever(),
-            name="AsyncIO Thread: default"
-            )
-        event_loop_thread_for_cpp.start()
-    return event_loop_thread_for_cpp, event_loop_for_cpp
-
-
-tp = ThreadPoolExecutor(max_workers=int(os.getenv("RAY_ASYNC_THREAD_POOL_SIZE", 1)))
-
 
 # The currently executing task, if any. These are used to synchronize task
 # interruption for ray.cancel.
@@ -1064,19 +1039,9 @@ cdef report_streaming_generator_output(
         # Ray Object created from an output.
         c_pair[CObjectID, shared_ptr[CRayObject]] return_obj
 
-    try:
-        if isinstance(output_or_exception, Exception):
-            raise output_or_exception
-    except AsyncioActorExit:
-        # Make the task handle this exception.
-        raise
-    except StopAsyncIteration:
-        return True
-    except StopIteration:
-        return True
-    except Exception as e:
+    if isinstance(output_or_exception, Exception):
         create_generator_error_object(
-            e,
+            output_or_exception,
             worker,
             context.task_type,
             context.caller_address,
@@ -1167,6 +1132,8 @@ cdef execute_streaming_generator_sync(StreamingGeneratorExecutionContext context
     while True:
         try:
             output_or_exception = next(gen)
+        except StopIteration:
+            break
         except Exception as e:
             output_or_exception = e
 
@@ -1207,31 +1174,19 @@ async def execute_streaming_generator_async(
             output_or_exception = await gen.__anext__()
         except StopAsyncIteration:
             break
+        except AsyncioActorExit:
+            # The execute_task will handle this case.
+            raise
         except Exception as e:
             output_or_exception = e
 
-        # # It is a new event loop thread to run cpp code.
-        # _, event_loop_for_cpp = async_thread_get_thread_for_cpp()
-
-        # async def f(output, context):
-        #     return report_streaming_generator_output(output, context)
-
-        # # Run it in a separate thread to that we can
-        # # avoid blocking the event loop when serializing
-        # # the output (which has nogil).
-        # # NOTE(sang): Using threadpool executor causes memory leak
-        # # due to circular references for some reasons.
-        # future = asyncio.wrap_future(
-        #     asyncio.run_coroutine_threadsafe(
-        #         f(output_or_exception, context),
-        #         event_loop_for_cpp))
-        # done = await future
         loop = asyncio.get_running_loop()
+        worker = ray._private.worker.global_worker
         # Run it in a separate thread to that we can
         # avoid blocking the event loop when serializing
         # the output (which has nogil).
         done = await loop.run_in_executor(
-            tp,
+            worker.core_worker.get_thread_pool_for_async_event_loop(),
             report_streaming_generator_output,
             output_or_exception,
             context)
@@ -2956,6 +2911,7 @@ cdef class CoreWorker:
         self.fd_to_cgname_dict = None
         self.eventloop_for_default_cg = None
         self.current_runtime_env = None
+        self.thread_pool_for_async_event_loop = None
 
     def shutdown(self):
         # If it's a worker, the core worker process should have been
@@ -4102,6 +4058,12 @@ cdef class CoreWorker:
             for fd in function_descriptors:
                 self.fd_to_cgname_dict[fd] = cg_name
 
+    def get_thread_pool_for_async_event_loop(self):
+        if self.thread_pool_for_async_event_loop is None:
+            self.thread_pool_for_async_event_loop = ThreadPoolExecutor(
+                max_workers=int(os.getenv("RAY_ASYNC_THREAD_POOL_SIZE", 1)))
+        return self.current_runtime_envthread_pool_for_async_event_loop
+
     def get_event_loop(self, function_descriptor, specified_cgname):
         # __init__ will be invoked in default eventloop
         if function_descriptor.function_name == "__init__":
@@ -4186,6 +4148,8 @@ cdef class CoreWorker:
                 event_loop.stop)
         for thread in threads:
             thread.join()
+        self.thread_pool_for_async_event_loop.shutdown(
+            wait=False, cancel_futures=True)
 
     def current_actor_is_asyncio(self):
         return (CCoreWorkerProcess.GetCoreWorker().GetWorkerContext()
