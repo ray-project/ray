@@ -60,6 +60,7 @@ parts:
         title: Ray Train
         sections:
           - file: train/key-concepts
+            title: Key Concepts
           - file: train/getting-started-pytorch
           - file: train/getting-started-pytorch-lightning
           - file: train/more-frameworks
