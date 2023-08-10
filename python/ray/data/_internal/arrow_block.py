@@ -79,36 +79,44 @@ class ArrowRow(TableRow):
             ArrowVariableShapedTensorType,
         )
 
-        schema = self._row.schema
-        if isinstance(key, str):
+        def get_item(keys: List[str]) -> Any:
+            schema = self._row.schema
             if isinstance(
-                schema.field(key).type,
+                schema.field(keys[0]).type,
                 (ArrowTensorType, ArrowVariableShapedTensorType),
             ):
                 # Build a tensor row.
-                return ArrowBlockAccessor._build_tensor_row(self._row, col_name=key)
+                return tuple(
+                    [
+                        ArrowBlockAccessor._build_tensor_row(self._row, col_name=key)
+                        for key in keys
+                    ]
+                )
 
-        is_single_item = not isinstance(key, list)
+            table = self._row.select(keys)
+            if len(table) == 0:
+                return None
+
+            items = [col[0] for col in table.columns]
+            try:
+                # Try to interpret this as a pyarrow.Scalar value.
+                return tuple([item.as_py() for item in items])
+
+            except AttributeError:
+                # Assume that this row is an element of an extension array, and
+                # that it is bypassing pyarrow's scalar model for Arrow < 8.0.0.
+                return items
+
+        is_single_item = isinstance(key, str)
         keys = [key] if is_single_item else key
 
-        table = self._row.select(keys)
-        if len(table) == 0:
+        items = get_item(keys)
+
+        if items is None:
             return None
-
-        items = [col[0] for col in table.columns]
-        try:
-            # Try to interpret this as a pyarrow.Scalar value.
-            if is_single_item:
-                return items[0].as_py()
-
-            return tuple([item.as_py() for item in items])
-
-        except AttributeError:
-            # Assume that this row is an element of an extension array, and
-            # that it is bypassing pyarrow's scalar model for Arrow < 8.0.0.
-            if is_single_item:
-                return items[0]
-
+        elif is_single_item:
+            return items[0]
+        else:
             return items
 
     def __iter__(self) -> Iterator:

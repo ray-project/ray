@@ -58,10 +58,7 @@ class PandasRow(TableRow):
     def __getitem__(self, key: Union[str, List[str]]) -> Any:
         from ray.data.extensions import TensorArrayElement
 
-        is_single_item = isinstance(key, str)
-        keys = [key] if is_single_item else key
-
-        def get_item(keys: List[str]):
+        def get_item(keys: List[str]) -> Any:
             col = self._row[keys]
             if len(col) == 0:
                 return None
@@ -81,9 +78,14 @@ class PandasRow(TableRow):
                 # Fallback to the original form.
                 return items
 
+        is_single_item = isinstance(key, str)
+        keys = [key] if is_single_item else key
+
         items = get_item(keys)
 
-        if is_single_item:
+        if items is None:
+            return None
+        elif is_single_item:
             return items[0]
         else:
             return items
