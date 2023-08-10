@@ -492,7 +492,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
             if multiplexed_start_matching_time is None:
                 multiplexed_start_matching_time = time.time()
 
-            candidate_replica_ids = set()
+            candidate_replica_ids = None
             if request_metadata is not None and request_metadata.multiplexed_model_id:
                 # Get candidates for multiplexed model ID.
                 if (
@@ -534,8 +534,12 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
             elif (
                 backoff_index == 0 and len(self._replica_ids_colocated_on_same_node) > 0
             ):
+                # Attempt to schedule requests to a replica on the same node in the
+                # first iteration only.
                 candidate_replica_ids = self._replica_ids_colocated_on_same_node
             else:
+                # On subsequent iterations or when there are no replicas on the same
+                # node, consider all available replicas.
                 candidate_replica_ids = self._replica_id_set
 
             if candidate_replica_ids:
