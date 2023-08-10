@@ -5,7 +5,7 @@ Getting Started with PyTorch Lightning
 
 This tutorial will walk you through the process of converting an existing PyTorch Lightning script to use Ray Train.
 
-By the end of this, you will learn how to::
+By the end of this, you will learn how to:
 
 1. Configure your model so that it runs distributed and place it on the correct CPU/GPU device.
 2. Configure your dataset so that it is sharded across the workers and place data on the correct CPU/GPU device.
@@ -158,8 +158,6 @@ with a :class:`~ray.train.torch.TorchTrainer`.
 
     trainer = TorchTrainer(train_func, scaling_config=scaling_config)
     result = trainer.fit()
-
-.. _train-result-object:
 
 Accessing training results
 --------------------------

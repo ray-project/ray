@@ -26,7 +26,7 @@ training via Pytorch DDP.
 
 .. dropdown:: Code example
 
-    .. literalinclude:: ../doc_code/hf_trainer.py
+    .. literalinclude:: ./doc_code/hf_trainer.py
         :language: python
         :start-after: __hf_trainer_start__
         :end-before: __hf_trainer_end__
@@ -55,5 +55,5 @@ and use the :func:`~ray.train.report` API to report metrics, save checkpoints et
 
 .. dropdown:: Code example
 
-    .. literalinclude:: ../doc_code/accelerate_trainer.py
+    .. literalinclude:: ./doc_code/accelerate_trainer.py
         :language: python
