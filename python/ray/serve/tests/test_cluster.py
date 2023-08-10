@@ -7,21 +7,12 @@ import pytest
 import requests
 
 import ray
-from ray import serve
 from ray._private.test_utils import SignalActor, wait_for_condition
-from ray.cluster_utils import Cluster
+
+from ray import serve
 from ray.serve._private.constants import SERVE_NAMESPACE
 from ray.serve._private.deployment_state import ReplicaStartupStatus
 from ray.serve._private.common import ReplicaState
-
-
-@pytest.fixture
-def ray_cluster():
-    cluster = Cluster()
-    yield Cluster()
-    serve.shutdown()
-    ray.shutdown()
-    cluster.shutdown()
 
 
 def test_scale_up(ray_cluster):
