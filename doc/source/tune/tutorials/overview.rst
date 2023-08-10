@@ -15,128 +15,127 @@ You can follow our :ref:`Tune Feature Guides <tune-feature-guides>`, but can als
 Tune Feature Guides
 -------------------
 
-.. panels::
-    :container: container pb-4
-    :column: col-md-4 px-2 py-2
-    :img-top-cls: pt-5 w-50 d-block mx-auto
 
-    ---
-    :img-top: /images/tune.png
+.. grid:: 1 2 3 4
+    :gutter: 1
+    :class-container: container pb-3
 
-    .. link-button:: tune-run
-        :type: ref
-        :text: Running Basic Experiments
-        :classes: btn-link btn-block stretched-link
+    .. grid-item-card::
+        :img-top: /images/tune.png
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
 
-    ---
-    :img-top: /images/tune.png
+        .. button-ref:: tune-run
 
-    .. link-button:: tune-output
-        :type: ref
-        :text: Logging Tune Runs
-        :classes: btn-link btn-block stretched-link
+            Running Basic Experiments
 
-    ---
-    :img-top: /images/tune.png
+    .. grid-item-card::
+        :img-top: /images/tune.png
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
 
-    .. link-button:: tune-resources
-        :type: ref
-        :text: Setting Trial Resources
-        :classes: btn-link btn-block stretched-link
+        .. button-ref:: tune-output
 
-    ---
-    :img-top: /images/tune.png
+            Logging Tune Runs
 
-    .. link-button:: tune-search-space-tutorial
-        :type: ref
-        :text: Using Search Spaces
-        :classes: btn-link btn-block stretched-link
+    .. grid-item-card::
+        :img-top: /images/tune.png
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
 
-    ---
-    :img-top: /images/tune.png
+        .. button-ref:: tune-resources
 
-    .. link-button:: tune-stopping
-        :type: ref
-        :text: How to Define Stopping Criteria for a Ray Tune Experiment
-        :classes: btn-link btn-block stretched-link
+            Setting Trial Resources
 
-    ---
-    :img-top: /images/tune.png
+    .. grid-item-card::
+        :img-top: /images/tune.png
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
 
-    .. link-button:: tune-trial-checkpoints
-        :type: ref
-        :text: How to Save and Load Trial Checkpoints
-        :classes: btn-link btn-block stretched-link
+        .. button-ref:: tune-search-space-tutorial
 
-    ---
-    :img-top: /images/tune.png
+            Using Search Spaces
 
-    .. link-button:: tune-storage
-        :type: ref
-        :text: How to Configure Storage Options for a Distributed Tune Experiment
-        :classes: btn-link btn-block stretched-link
+    .. grid-item-card::
+        :img-top: /images/tune.png
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
 
-    ---
-    :img-top: /images/tune.png
+        .. button-ref:: tune-stopping
 
-    .. link-button:: tune-fault-tolerance
-        :type: ref
-        :text: How to Enable Fault Tolerance in Ray Tune
-        :classes: btn-link btn-block stretched-link
+            How to Define Stopping Criteria for a Ray Tune Experiment
 
-    ---
-    :img-top: /images/tune.png
+    .. grid-item-card::
+        :img-top: /images/tune.png
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
 
-    .. link-button:: tune-metrics
-        :type: ref
-        :text: Using Callbacks and Metrics
-        :classes: btn-link btn-block stretched-link
+        .. button-ref:: tune-trial-checkpoints
 
-    ---
-    :img-top: /images/tune.png
+            How to Save and Load Trial Checkpoints
 
-    .. link-button:: ../tutorials/tune_get_data_in_and_out
-        :type: ref
-        :text: Getting Data in and out of Tune
-        :classes: btn-link btn-block stretched-link
+    .. grid-item-card::
+        :img-top: /images/tune.png
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
 
-    ---
-    :img-top: /images/tune.png
+        .. button-ref:: tune-storage
 
-    .. link-button:: ../examples/tune_analyze_results
-        :type: ref
-        :text: Analyzing Tune Experiment Results
-        :classes: btn-link btn-block stretched-link
+            How to Configure Storage Options for a Distributed Tune Experiment
 
-    ---
-    :img-top: /images/tune.png
+    .. grid-item-card::
+        :img-top: /images/tune.png
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
 
-    .. link-button:: ../examples/pbt_guide
-        :type: ref
-        :text: A Guide to Population-Based Training
-        :classes: btn-link btn-block stretched-link
+        .. button-ref:: tune-fault-tolerance
 
-    ---
-    :img-top: /images/tune.png
+            How to Enable Fault Tolerance in Ray Tune
 
-    .. link-button:: tune-distributed
-        :type: ref
-        :text: Deploying Tune in the Cloud
-        :classes: btn-link btn-block stretched-link
+    .. grid-item-card::
+        :img-top: /images/tune.png
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
 
-    ---
-    :img-top: /images/tune.png
+        .. button-ref:: tune-metrics
 
-    .. link-button:: tune-lifecycle
-        :type: ref
-        :text: Tune Architecture
-        :classes: btn-link btn-block stretched-link
+            Using Callbacks and Metrics
 
-    ---
-    :img-top: /images/tune.png
+    .. grid-item-card::
+        :img-top: /images/tune.png
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
 
-    .. link-button:: tune-scalability
-        :type: ref
-        :text: Scalability Benchmarks
-        :classes: btn-link btn-block stretched-link
+        .. button-ref:: ../tutorials/tune_get_data_in_and_out
 
+            Getting Data in and out of Tune
+
+    .. grid-item-card::
+        :img-top: /images/tune.png
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
+
+        .. button-ref:: ../examples/tune_analyze_results
+
+            Analyzing Tune Experiment Results
+
+    .. grid-item-card::
+        :img-top: /images/tune.png
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
+
+        .. button-ref:: ../examples/pbt_guide
+
+            A Guide to Population-Based Training
+
+    .. grid-item-card::
+        :img-top: /images/tune.png
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
+
+        .. button-ref:: tune-distributed
+
+            Deploying Tune in the Cloud
+
+    .. grid-item-card::
+        :img-top: /images/tune.png
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
+
+        .. button-ref:: tune-lifecycle
+
+            Tune Architecture
+
+    .. grid-item-card::
+        :img-top: /images/tune.png
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
+
+        .. button-ref:: tune-scalability
+
+            Scalability Benchmarks

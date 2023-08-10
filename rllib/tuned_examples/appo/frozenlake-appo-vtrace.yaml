@@ -24,7 +24,6 @@ frozenlake-appo-vtrace:
         rollout_fragment_length: 10
         batch_mode: complete_episodes
         vtrace: true
-        vtrace_drop_last_ts: false
 
         num_envs_per_worker: 5
         num_workers: 4

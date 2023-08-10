@@ -1,20 +1,21 @@
 import os
+import tempfile
 from typing import Dict
-from unittest.mock import patch, ANY
+from unittest.mock import ANY, patch
 
 import numpy as np
 import pyarrow as pa
 import pytest
-
 from fsspec.implementations.local import LocalFileSystem
+from PIL import Image
 
 import ray
 from ray.data.datasource import Partitioning, PathPartitionFilter
 from ray.data.datasource.file_meta_provider import FastFileMetadataProvider
 from ray.data.datasource.image_datasource import (
+    ImageDatasource,
     _ImageDatasourceReader,
     _ImageFileMetadataProvider,
-    ImageDatasource,
 )
 from ray.data.extensions import ArrowTensorType
 from ray.data.tests.conftest import *  # noqa
@@ -149,9 +150,7 @@ class TestReadImages:
         ]
 
     def test_e2e_prediction(self, shutdown_only):
-        from ray.train.torch import TorchCheckpoint, TorchPredictor
-        from ray.train.batch_predictor import BatchPredictor
-
+        import torch
         from torchvision import transforms
         from torchvision.models import resnet18
 
@@ -166,10 +165,18 @@ class TestReadImages:
 
         dataset = dataset.map_batches(preprocess, batch_format="numpy")
 
-        model = resnet18(pretrained=True)
-        checkpoint = TorchCheckpoint.from_model(model=model)
-        predictor = BatchPredictor.from_checkpoint(checkpoint, TorchPredictor)
-        predictions = predictor.predict(dataset)
+        class Predictor:
+            def __init__(self):
+                self.model = resnet18(pretrained=True)
+
+            def __call__(self, batch: Dict[str, np.ndarray]):
+                with torch.inference_mode():
+                    torch_tensor = torch.as_tensor(batch["out"])
+                    return {"prediction": self.model(torch_tensor)}
+
+        predictions = dataset.map_batches(
+            Predictor, compute=ray.data.ActorPoolStrategy(min_size=1), batch_size=4096
+        )
 
         for _ in predictions.iter_batches():
             pass
@@ -216,11 +223,9 @@ class TestReadImages:
     def test_dynamic_block_split(ray_start_regular_shared):
         ctx = ray.data.context.DataContext.get_current()
         target_max_block_size = ctx.target_max_block_size
-        block_splitting_enabled = ctx.block_splitting_enabled
         # Reduce target max block size to trigger block splitting on small input.
         # Otherwise we have to generate big input files, which is unnecessary.
         ctx.target_max_block_size = 1
-        ctx.block_splitting_enabled = True
         try:
             root = "example://image-datasets/simple"
             ds = ray.data.read_images(root, parallelism=1)
@@ -234,7 +239,6 @@ class TestReadImages:
             assert union_ds.num_blocks() == 12
         finally:
             ctx.target_max_block_size = target_max_block_size
-            ctx.block_splitting_enabled = block_splitting_enabled
 
     def test_args_passthrough(ray_start_regular_shared):
         kwargs = {
@@ -256,6 +260,28 @@ class TestReadImages:
         kwargs["open_stream_args"] = kwargs.pop("arrow_open_file_args")
         mock.assert_called_once_with(ANY, **kwargs)
         assert isinstance(mock.call_args[0][0], ImageDatasource)
+
+    def test_unidentified_image_error(ray_start_regular_shared):
+        with tempfile.NamedTemporaryFile(suffix=".png") as file:
+            with pytest.raises(ValueError):
+                ray.data.read_images(paths=file.name).materialize()
+
+
+class TestWriteImages:
+    @pytest.mark.parametrize("file_format", [None, "png"])
+    def test_write_images(ray_start_regular_shared, file_format, tmp_path):
+        ds = ray.data.read_images("example://image-datasets/simple")
+        ds.write_images(
+            path=tmp_path,
+            column="image",
+            file_format=file_format,
+        )
+
+        assert len(os.listdir(tmp_path)) == ds.count()
+
+        for filename in os.listdir(tmp_path):
+            path = os.path.join(tmp_path, filename)
+            Image.open(path)
 
 
 if __name__ == "__main__":

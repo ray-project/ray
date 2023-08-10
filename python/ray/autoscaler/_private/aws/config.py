@@ -4,12 +4,13 @@ import json
 import logging
 import os
 import time
-from distutils.version import StrictVersion
+from collections import Counter
 from functools import lru_cache, partial
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 import boto3
 import botocore
+from packaging.version import Version
 
 from ray.autoscaler._private.aws.cloudwatch.cloudwatch_helper import (
     CloudwatchHelper as cwh,
@@ -58,7 +59,7 @@ DEFAULT_AMI = {
 
 # todo: cli_logger should handle this assert properly
 # this should probably also happens somewhere else
-assert StrictVersion(boto3.__version__) >= StrictVersion(
+assert Version(boto3.__version__) >= Version(
     "1.4.8"
 ), "Boto3 version >= 1.4.8 required, try `pip install -U boto3`"
 
@@ -378,7 +379,7 @@ def _configure_key_pair(config):
     os.makedirs(os.path.expanduser("~/.ssh"), exist_ok=True)
 
     # Try a few times to get or create a good key pair.
-    MAX_NUM_KEYS = 60
+    MAX_NUM_KEYS = 600
     for i in range(MAX_NUM_KEYS):
 
         key_name = config["provider"].get("key_pair", {}).get("key_name")
@@ -766,6 +767,8 @@ def _get_vpc_id_or_die(ec2, subnet_id: str):
 
 @lru_cache()
 def _get_subnets_or_die(ec2, subnet_ids: Tuple[str]):
+    # Remove any duplicates as multiple interfaces are allowed to use same subnet
+    subnet_ids = tuple(Counter(subnet_ids).keys())
     subnets = list(
         ec2.subnets.filter(Filters=[{"Name": "subnet-id", "Values": list(subnet_ids)}])
     )

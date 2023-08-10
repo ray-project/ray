@@ -287,10 +287,6 @@ def bootstrap_gcp(config):
     if _has_tpus_in_node_configs(config):
         config["provider"][HAS_TPU_PROVIDER_FIELD] = True
 
-        # We can't run autoscaling through a serviceAccount on TPUs (atm)
-        if _is_head_node_a_tpu(config):
-            raise RuntimeError("TPUs are not supported as head nodes.")
-
     crm, iam, compute, tpu = construct_clients_from_provider_config(config["provider"])
 
     config = _configure_project(config, crm)

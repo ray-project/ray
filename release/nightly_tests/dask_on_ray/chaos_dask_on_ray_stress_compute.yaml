@@ -17,4 +17,4 @@ worker_node_types:
       instance_type: m6i.8xlarge
       min_workers: 20
       max_workers: 20
-      use_spot: true
+      use_spot: false

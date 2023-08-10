@@ -16,6 +16,7 @@ from typing import (
     Mapping,
     Optional,
     Sequence,
+    Tuple,
     Type,
     Union,
     TYPE_CHECKING,
@@ -24,7 +25,10 @@ from typing import (
 import ray
 from ray._private.storage import _get_storage_uri
 from ray.air import CheckpointConfig
+from ray.air._internal import usage as air_usage
+from ray.air._internal.usage import AirEntrypoint
 from ray.air.util.node import _force_on_current_node
+from ray.train._internal.storage import _use_storage_context
 from ray.tune.analysis import ExperimentAnalysis
 from ray.tune.callback import Callback
 from ray.tune.error import TuneError
@@ -32,11 +36,12 @@ from ray.tune.execution.tune_controller import TuneController
 from ray.tune.experiment import Experiment, _convert_to_experiment_list
 from ray.tune.experimental.output import (
     get_air_verbosity,
-    _detect_reporter as _detect_air_reporter,
     IS_NOTEBOOK,
+    AirVerbosity,
 )
 
 from ray.tune.impl.placeholder import create_resolvers_map, inject_placeholders
+from ray.tune.logger import TBXLoggerCallback
 from ray.tune.progress_reporter import (
     ProgressReporter,
     _detect_reporter,
@@ -44,7 +49,6 @@ from ray.tune.progress_reporter import (
     _prepare_progress_reporter_for_ray_client,
     _stream_client_output,
 )
-from ray.tune.execution.ray_trial_executor import RayTrialExecutor
 from ray.tune.registry import get_trainable_cls, is_function_trainable
 from ray.tune.result import _get_defaults_results_dir
 
@@ -75,7 +79,6 @@ from ray.tune.search.variant_generator import _has_unresolved_values
 from ray.tune.syncer import SyncConfig
 from ray.tune.trainable import Trainable
 from ray.tune.experiment import Trial
-from ray.tune.execution.trial_runner import TrialRunner
 from ray.tune.utils.callback import _create_default_callbacks
 from ray.tune.utils.log import (
     Verbosity,
@@ -88,6 +91,8 @@ from ray.util.annotations import PublicAPI
 from ray.util.queue import Queue
 
 if TYPE_CHECKING:
+    import pyarrow.fs
+
     from ray.tune.experimental.output import ProgressReporter as AirProgressReporter
 
 logger = logging.getLogger(__name__)
@@ -153,7 +158,7 @@ def _check_gpus_in_resources(
 
 
 def _report_progress(
-    runner: TrialRunner, reporter: ProgressReporter, done: bool = False
+    runner: TuneController, reporter: ProgressReporter, done: bool = False
 ):
     """Reports experiment progress.
 
@@ -170,7 +175,7 @@ def _report_progress(
 
 
 def _report_air_progress(
-    runner: TrialRunner, reporter: "AirProgressReporter", force: bool = False
+    runner: TuneController, reporter: "AirProgressReporter", force: bool = False
 ):
     trials = runner.get_trials()
     reporter_args = []
@@ -191,7 +196,7 @@ def _setup_signal_catching() -> threading.Event:
             "to skip. "
         )
         experiment_interrupted_event.set()
-        # Restore original signal handler to react to future SIGINT signals
+        # Restore original signal handler to react to future SIGINT signals.
         signal.signal(signal.SIGINT, original_handler)
 
     # We should only install the handler when it is safe to do so.
@@ -225,6 +230,59 @@ def _ray_auto_init(entrypoint: str):
         )
 
 
+def _resolve_and_validate_storage_path(
+    storage_path: str, local_dir: Optional[str], sync_config: Optional[SyncConfig]
+) -> Tuple[str, str, Optional[str], SyncConfig]:
+    # TODO(ml-team): Simplify/remove this in 2.6 when `local_dir`
+    # and `SyncConfig(upload_dir)` are hard-deprecated.
+    sync_config = sync_config or SyncConfig()
+
+    # Resolve storage_path
+    local_path, remote_path = _resolve_storage_path(
+        storage_path, local_dir, sync_config.upload_dir, error_location="tune.run"
+    )
+
+    if sync_config.upload_dir:
+        assert remote_path == sync_config.upload_dir
+        warnings.warn(
+            "Setting a `SyncConfig.upload_dir` is deprecated and will be removed "
+            "in the future. Pass `RunConfig.storage_path` instead."
+        )
+        # Set upload_dir to None to avoid further downstream resolution.
+        # Copy object first to not alter user input.
+        sync_config = copy.copy(sync_config)
+        sync_config.upload_dir = None
+
+    if local_dir:
+        assert local_path == local_dir
+        warnings.warn(
+            "Passing a `local_dir` is deprecated and will be removed "
+            "in the future. Pass `storage_path` instead or set the "
+            "`RAY_AIR_LOCAL_CACHE_DIR` environment variable instead."
+        )
+        local_path = local_dir
+
+    if not remote_path:
+        # If no remote path is set, try to get Ray Storage URI
+        remote_path = _get_storage_uri()
+        if remote_path:
+            logger.info(
+                "Using configured Ray storage URI as storage path: " f"{remote_path}"
+            )
+
+    sync_config.validate_upload_dir(remote_path)
+
+    if not local_path:
+        local_path = _get_defaults_results_dir()
+
+    storage_path = storage_path or remote_path or local_path
+
+    if storage_path != local_path and local_path:
+        os.environ["RAY_AIR_LOCAL_CACHE_DIR"] = local_path
+
+    return storage_path, local_path, remote_path, sync_config
+
+
 class _Config(abc.ABC):
     def to_dict(self) -> dict:
         """Converts this configuration to a dict format."""
@@ -246,13 +304,11 @@ def run(
     ] = None,
     num_samples: int = 1,
     storage_path: Optional[str] = None,
+    storage_filesystem: Optional["pyarrow.fs.FileSystem"] = None,
     search_alg: Optional[Union[Searcher, SearchAlgorithm, str]] = None,
     scheduler: Optional[Union[TrialScheduler, str]] = None,
-    keep_checkpoints_num: Optional[int] = None,
-    checkpoint_score_attr: Optional[str] = None,
-    checkpoint_freq: int = 0,
-    checkpoint_at_end: bool = False,
-    verbose: Union[int, Verbosity] = Verbosity.V3_TRIAL_DETAILS,
+    checkpoint_config: Optional[CheckpointConfig] = None,
+    verbose: Optional[Union[int, AirVerbosity, Verbosity]] = None,
     progress_reporter: Optional[ProgressReporter] = None,
     log_to_file: bool = False,
     trial_name_creator: Optional[Callable[[Trial], str]] = None,
@@ -270,14 +326,21 @@ def run(
     callbacks: Optional[Sequence[Callback]] = None,
     max_concurrent_trials: Optional[int] = None,
     # Deprecated
-    trial_executor: Optional[RayTrialExecutor] = None,
+    keep_checkpoints_num: Optional[int] = None,  # Deprecated (2.7)
+    checkpoint_score_attr: Optional[str] = None,  # Deprecated (2.7)
+    checkpoint_freq: int = 0,  # Deprecated (2.7)
+    checkpoint_at_end: bool = False,  # Deprecated (2.7)
+    checkpoint_keep_all_ranks: bool = False,  # Deprecated (2.7)
+    checkpoint_upload_from_workers: bool = False,  # Deprecated (2.7)
     local_dir: Optional[str] = None,
     # == internal only ==
     _experiment_checkpoint_dir: Optional[str] = None,
     _remote: Optional[bool] = None,
     # Passed by the Tuner.
     _remote_string_queue: Optional[Queue] = None,
-    _tuner_api: bool = False,
+    # Todo (krfricke): Find a better way to pass entrypoint information, e.g.
+    # a context object or similar.
+    _entrypoint: AirEntrypoint = AirEntrypoint.TUNE_RUN,
 ) -> ExperimentAnalysis:
     """Executes training.
 
@@ -370,22 +433,12 @@ def run(
             AsyncHyperBand, HyperBand and PopulationBasedTraining. Refer to
             ray.tune.schedulers for more options. You can also use the
             name of the scheduler.
-        keep_checkpoints_num: Number of checkpoints to keep. A value of
-            `None` keeps all checkpoints. Defaults to `None`. If set, need
-            to provide `checkpoint_score_attr`.
-        checkpoint_score_attr: Specifies by which attribute to rank the
-            best checkpoint. Default is increasing order. If attribute starts
-            with `min-` it will rank attribute in decreasing order, i.e.
-            `min-validation_loss`.
-        checkpoint_freq: How many training iterations between
-            checkpoints. A value of 0 (default) disables checkpointing.
-            This has no effect when using the Functional Training API.
-        checkpoint_at_end: Whether to checkpoint at the end of the
-            experiment regardless of the checkpoint_freq. Default is False.
-            This has no effect when using the Functional Training API.
-        verbose: 0, 1, 2, or 3. Verbosity mode.
-            0 = silent, 1 = only status updates, 2 = status and brief trial
-            results, 3 = status and detailed trial results. Defaults to 3.
+        verbose: 0, 1, or 2. Verbosity mode.
+            0 = silent, 1 = default, 2 = verbose. Defaults to 1.
+            If the ``RAY_AIR_NEW_OUTPUT=1`` environment variable is set,
+            uses the old verbosity settings:
+            0 = silent, 1 = only status updates, 2 = status and brief
+            results, 3 = status and detailed results.
         progress_reporter: Progress reporter for reporting
             intermediate experiment progress. Defaults to CLIReporter if
             running in command-line, or JupyterNotebookReporter if running in
@@ -412,7 +465,7 @@ def run(
             If set to `False`, files are accessible with paths relative to the
             original working directory. However, all workers on the same node now
             share the same working directory, so be sure to use
-            `session.get_trial_dir()` as the path to save any outputs.
+            `ray.train.get_context().get_trial_dir()` as the path to save any outputs.
         sync_config: Configuration object for syncing. See
             tune.SyncConfig.
         export_formats: List of formats that exported at the end of
@@ -472,6 +525,12 @@ def run(
         _remote: Whether to run the Tune driver in a remote function.
             This is disabled automatically if a custom trial executor is
             passed in. This is enabled by default in Ray client mode.
+        keep_checkpoints_num: Deprecated. use checkpoint_config instead.
+        checkpoint_score_attr: Deprecated. use checkpoint_config instead.
+        checkpoint_freq: Deprecated. use checkpoint_config instead.
+        checkpoint_at_end: Deprecated. use checkpoint_config instead.
+        checkpoint_keep_all_ranks: Deprecated. use checkpoint_config instead.
+        checkpoint_upload_from_workers: Deprecated. use checkpoint_config instead.
 
     Returns:
         ExperimentAnalysis: Object for experiment analysis.
@@ -486,38 +545,48 @@ def run(
     remote_run_kwargs = locals().copy()
     remote_run_kwargs.pop("_remote")
 
-    error_message_map = (
-        {
+    if _entrypoint == AirEntrypoint.TRAINER:
+        error_message_map = {
+            "entrypoint": "Trainer(...)",
+            "search_space_arg": "param_space",
+            "restore_entrypoint": 'Trainer.restore(path="{path}", ...)',
+        }
+    elif _entrypoint == AirEntrypoint.TUNER:
+        error_message_map = {
             "entrypoint": "Tuner(...)",
             "search_space_arg": "param_space",
             "restore_entrypoint": 'Tuner.restore(path="{path}", trainable=...)',
         }
-        if _tuner_api
-        else {
+    elif _entrypoint == AirEntrypoint.TUNE_RUN_EXPERIMENTS:
+        error_message_map = {
+            "entrypoint": "tune.run_experiments(...)",
+            "search_space_arg": "experiment=Experiment(config)",
+            "restore_entrypoint": "tune.run_experiments(..., resume=True)",
+        }
+    else:
+        error_message_map = {
             "entrypoint": "tune.run(...)",
             "search_space_arg": "config",
             "restore_entrypoint": "tune.run(..., resume=True)",
         }
-    )
+
     _ray_auto_init(entrypoint=error_message_map["entrypoint"])
 
     if _remote is None:
         _remote = ray.util.client.ray.is_connected()
 
-    if _remote is True and trial_executor:
-        raise ValueError("cannot use custom trial executor")
-    elif trial_executor:
-        warnings.warn(
-            "Passing a custom `trial_executor` is deprecated and will be removed "
-            "in the future.",
-            DeprecationWarning,
-        )
+    if verbose is None:
+        # Default `verbose` value. For new output engine, this is AirVerbosity.VERBOSE.
+        # For old output engine, this is Verbosity.V3_TRIAL_DETAILS
+        verbose = get_air_verbosity(AirVerbosity.VERBOSE) or Verbosity.V3_TRIAL_DETAILS
 
     if _remote:
-        if get_air_verbosity() is not None:
-            logger.warning(
-                "Ignoring AIR_VERBOSITY setting, "
-                "as it doesn't support ray client mode yet."
+        if get_air_verbosity(verbose) is not None:
+            logger.info(
+                "[output] This uses the legacy output and progress reporter, "
+                "as Ray client is not supported by the new engine. "
+                "For more information, see "
+                "https://github.com/ray-project/ray/issues/36949"
             )
 
         remote_run = ray.remote(num_cpus=0)(run)
@@ -556,6 +625,16 @@ def run(
 
     ray._private.usage.usage_lib.record_library_usage("tune")
 
+    # Tracking environment variable usage here will also catch:
+    # 1.) Tuner.fit() usage
+    # 2.) Trainer.fit() usage
+    # 3.) Ray client usage (env variables are inherited by the Ray runtime env)
+    air_usage.tag_ray_air_env_vars()
+
+    # Track the entrypoint to AIR:
+    # Tuner.fit / Trainer.fit / tune.run / tune.run_experiments
+    air_usage.tag_air_entrypoint(_entrypoint)
+
     all_start = time.time()
 
     if mode and mode not in ["min", "max"]:
@@ -564,21 +643,28 @@ def run(
             "must be one of ['min', 'max']"
         )
 
-    air_verbosity = get_air_verbosity()
+    air_verbosity = get_air_verbosity(verbose)
     if air_verbosity is not None and IS_NOTEBOOK:
-        logger.warning(
-            "Ignoring AIR_VERBOSITY setting, "
-            "as it doesn't support JupyterNotebook mode yet."
+        logger.info(
+            "[output] This uses the legacy output and progress reporter, "
+            "as Jupyter notebooks are not supported by the new engine, yet. "
+            "For more information, please see "
+            "https://github.com/ray-project/ray/issues/36949"
         )
         air_verbosity = None
 
     if air_verbosity is not None:
-        logger.warning(
-            f"Testing new AIR console output flow with verbosity={air_verbosity}. "
-            f"This will also disable the old flow - setting it to 0 now."
+        logger.info(
+            f"[output] This will use the new output engine with verbosity "
+            f"{air_verbosity}. To disable the new output and use the legacy "
+            f"output engine, set the environment variable RAY_AIR_NEW_OUTPUT=0. "
+            f"For more information, please see "
+            f"https://github.com/ray-project/ray/issues/36949"
         )
+        # Disable old output engine
         set_verbosity(0)
     else:
+        # Use old output engine
         set_verbosity(verbose)
 
     config = config or {}
@@ -591,65 +677,85 @@ def run(
             f"Got '{type(config)}' instead."
         )
 
-    sync_config = sync_config or SyncConfig()
-
-    # Resolve storage_path
-    local_path, remote_path = _resolve_storage_path(
-        storage_path, local_dir, sync_config.upload_dir, error_location="tune.run"
-    )
-
-    if sync_config.upload_dir:
-        assert remote_path == sync_config.upload_dir
-        warnings.warn(
-            "Setting a `SyncConfig.upload_dir` is deprecated and will be removed "
-            "in the future. Pass `RunConfig.storage_path` instead."
-        )
-        # Set upload_dir to None to avoid further downstream resolution.
-        # Copy object first to not alter user input.
-        sync_config = copy.copy(sync_config)
-        sync_config.upload_dir = None
-
-    if local_dir:
-        assert local_path == local_dir
-        warnings.warn(
-            "Passing a `local_dir` is deprecated and will be removed "
-            "in the future. Pass `storage_path` instead or set the"
-            "`RAY_AIR_LOCAL_CACHE_DIR` environment variable instead."
-        )
-        local_path = local_dir
-
-    if not remote_path:
-        # If no remote path is set, try to get Ray Storage URI
-        remote_path = _get_storage_uri()
-        if remote_path:
-            logger.info(
-                "Using configured Ray storage URI as storage path: " f"{remote_path}"
-            )
-
-    sync_config.validate_upload_dir(remote_path)
-
-    if not local_path:
-        local_path = _get_defaults_results_dir()
-
-    storage_path = storage_path or remote_path or local_path
-
-    if storage_path != local_path and local_path:
-        os.environ["RAY_AIR_LOCAL_CACHE_DIR"] = local_path
-
-    checkpoint_score_attr = checkpoint_score_attr or ""
-    if checkpoint_score_attr.startswith("min-"):
-        checkpoint_score_attr = checkpoint_score_attr[4:]
-        checkpoint_score_order = "min"
+    if _use_storage_context():
+        local_path, remote_path = None, None
+        # TODO(justinvyu): Fix telemetry for the new persistence.
     else:
-        checkpoint_score_order = "max"
+        (
+            storage_path,
+            local_path,
+            remote_path,
+            sync_config,
+        ) = _resolve_and_validate_storage_path(
+            storage_path=storage_path, local_dir=local_dir, sync_config=sync_config
+        )
 
-    checkpoint_config = CheckpointConfig(
-        num_to_keep=keep_checkpoints_num,
-        checkpoint_score_attribute=checkpoint_score_attr,
-        checkpoint_score_order=checkpoint_score_order,
-        checkpoint_frequency=checkpoint_freq,
-        checkpoint_at_end=checkpoint_at_end,
-    )
+        air_usage.tag_ray_air_storage_config(
+            local_path=local_path, remote_path=remote_path, sync_config=sync_config
+        )
+
+    checkpoint_config = checkpoint_config or CheckpointConfig()
+
+    # For backward compatibility
+    # TODO(jungong): remove after 2.7 release.
+    if keep_checkpoints_num is not None:
+        warnings.warn(
+            "keep_checkpoints_num is deprecated and will be removed. "
+            "use checkpoint_config.num_to_keep instead.",
+            DeprecationWarning,
+        )
+        checkpoint_config.num_to_keep = keep_checkpoints_num
+    if checkpoint_score_attr is not None:
+        warnings.warn(
+            "checkpoint_score_attr is deprecated and will be removed. "
+            "use checkpoint_config.checkpoint_score_attribute instead.",
+            DeprecationWarning,
+        )
+
+        if checkpoint_score_attr.startswith("min-"):
+            warnings.warn(
+                "using min- and max- prefixes to specify checkpoint score "
+                "order is deprecated. Use CheckpointConfig.checkpoint_score_order "
+                "instead",
+                DeprecationWarning,
+            )
+            checkpoint_config.checkpoint_score_attribute = checkpoint_score_attr[4:]
+            checkpoint_config.checkpoint_score_order = "min"
+        else:
+            checkpoint_config.checkpoint_score_attribute = checkpoint_score_attr
+            checkpoint_config.checkpoint_score_order = "max"
+
+        checkpoint_config.score_attr = checkpoint_score_attr
+    if checkpoint_freq > 0:
+        warnings.warn(
+            "checkpoint_freq is deprecated and will be removed. "
+            "use checkpoint_config.checkpoint_frequency instead.",
+            DeprecationWarning,
+        )
+        checkpoint_config.checkpoint_frequency = checkpoint_freq
+    if checkpoint_at_end:
+        warnings.warn(
+            "checkpoint_at_end is deprecated and will be removed. "
+            "use checkpoint_config.checkpoint_at_end instead.",
+            DeprecationWarning,
+        )
+        checkpoint_config.checkpoint_at_end = checkpoint_at_end
+    if checkpoint_keep_all_ranks:
+        warnings.warn(
+            "checkpoint_keep_all_ranks is deprecated and will be removed. "
+            "use checkpoint_config._checkpoint_keep_all_ranks instead.",
+            DeprecationWarning,
+        )
+        checkpoint_config._checkpoint_keep_all_ranks = checkpoint_keep_all_ranks
+    if checkpoint_upload_from_workers:
+        warnings.warn(
+            "checkpoint_upload_from_workers is deprecated and will be removed. "
+            "use checkpoint_config._checkpoint_upload_from_workers instead.",
+            DeprecationWarning,
+        )
+        checkpoint_config._checkpoint_upload_from_workers = (
+            checkpoint_upload_from_workers
+        )
 
     if num_samples == -1:
         num_samples = sys.maxsize
@@ -736,6 +842,8 @@ def run(
         placeholder_resolvers,
     )
 
+    # TODO(justinvyu): We should remove the ability to pass a list of
+    # trainables to tune.run.
     if isinstance(run_or_experiment, list):
         experiments = run_or_experiment
     else:
@@ -752,6 +860,7 @@ def run(
                 resources_per_trial=resources_per_trial,
                 num_samples=num_samples,
                 storage_path=storage_path,
+                storage_filesystem=storage_filesystem,
                 _experiment_checkpoint_dir=_experiment_checkpoint_dir,
                 sync_config=sync_config,
                 checkpoint_config=checkpoint_config,
@@ -846,12 +955,19 @@ def run(
 
     progress_metrics = _detect_progress_metrics(_get_trainable(run_or_experiment))
 
-    # Create syncer callbacks
+    # NOTE: Report callback telemetry before populating the list with default callbacks.
+    # This tracks user-specified callback usage.
+    air_usage.tag_callbacks(callbacks)
+
+    # Create default logging + syncer callbacks
     callbacks = _create_default_callbacks(
         callbacks,
         sync_config=sync_config,
         air_verbosity=air_verbosity,
+        entrypoint=_entrypoint,
+        config=config,
         metric=metric,
+        mode=mode,
         progress_metrics=progress_metrics,
     )
 
@@ -887,41 +1003,34 @@ def run(
     if air_verbosity is None:
         progress_reporter = progress_reporter or _detect_reporter()
 
-    trial_executor = trial_executor or RayTrialExecutor(
-        reuse_actors=reuse_actors,
-        result_buffer_length=result_buffer_length,
-        chdir_to_trial_dir=chdir_to_trial_dir,
-    )
     runner_kwargs = dict(
         search_alg=search_alg,
         placeholder_resolvers=placeholder_resolvers,
         scheduler=scheduler,
         experiment_path=experiments[0].path,
-        experiment_dir_name=experiments[0].dir_name,
+        experiment_dir_name=experiments[0].legacy_dir_name,
         sync_config=sync_config,
         stopper=experiments[0].stopper,
         resume=resume,
         server_port=server_port,
         fail_fast=fail_fast,
-        trial_executor=trial_executor,
         callbacks=callbacks,
         metric=metric,
         trial_checkpoint_config=experiments[0].checkpoint_config,
+        reuse_actors=reuse_actors,
+        chdir_to_trial_dir=chdir_to_trial_dir,
+        storage=experiments[0].storage,
+        _trainer_api=_entrypoint == AirEntrypoint.TRAINER,
     )
 
-    if bool(int(os.environ.get("TUNE_NEW_EXECUTION", "1"))):
-        trial_runner_cls = TuneController
-        runner_kwargs.pop("trial_executor")
-        runner_kwargs["reuse_actors"] = reuse_actors
-        runner_kwargs["chdir_to_trial_dir"] = chdir_to_trial_dir
-    else:
-        trial_runner_cls = TrialRunner
-
-    runner = trial_runner_cls(**runner_kwargs)
+    runner = TuneController(**runner_kwargs)
 
     if not runner.resumed:
         for exp in experiments:
             search_alg.add_configurations([exp])
+        # search_alg.total_samples has been updated, so we should
+        # update the number of pending trials
+        runner.update_max_pending_trials()
     else:
         logger.debug(
             "You have resumed the Tune run, which means that any newly specified "
@@ -947,20 +1056,47 @@ def run(
             mode=mode,
         )
     else:
-        air_progress_reporter = _detect_air_reporter(
-            air_verbosity, search_alg.total_samples, metric=metric, mode=mode
-        )
+        from ray.tune.experimental.output import ProgressReporter as AirProgressReporter
 
-    # rich live context manager has to be called encapsulting
+        for callback in callbacks:
+            if isinstance(callback, AirProgressReporter):
+                air_progress_reporter = callback
+                air_progress_reporter.setup(
+                    start_time=tune_start, total_samples=search_alg.total_samples
+                )
+                break
+
+    # rich live context manager has to be called encapsulating
     # the while loop. For other kind of reporters, no op.
     # `ExitStack` allows us to *conditionally* apply context manager.
     with contextlib.ExitStack() as stack:
         from ray.tune.experimental.output import TuneRichReporter
 
+        if _use_storage_context():
+            experiment_local_path = runner._storage.experiment_local_path
+            experiment_dir_name = runner._storage.experiment_dir_name
+        else:
+            experiment_local_path = runner._legacy_local_experiment_path
+            experiment_dir_name = runner._legacy_experiment_dir_name
+
+        if any(isinstance(cb, TBXLoggerCallback) for cb in callbacks):
+            tensorboard_path = experiment_local_path
+        else:
+            tensorboard_path = None
+
         if air_progress_reporter and isinstance(
             air_progress_reporter, TuneRichReporter
         ):
             stack.enter_context(air_progress_reporter.with_live())
+        elif air_progress_reporter:
+            air_progress_reporter.experiment_started(
+                experiment_name=experiment_dir_name,
+                experiment_path=runner.experiment_path,
+                searcher_str=search_alg.__class__.__name__,
+                scheduler_str=scheduler.__class__.__name__,
+                total_num_samples=search_alg.total_samples,
+                tensorboard_path=tensorboard_path,
+            )
 
         try:
             while (
@@ -990,7 +1126,6 @@ def run(
             _report_air_progress(runner, air_progress_reporter, force=True)
 
     all_trials = runner.get_trials()
-    experiment_checkpoint = runner.experiment_state_path
 
     runner.cleanup()
 
@@ -1016,16 +1151,30 @@ def run(
         restore_entrypoint = error_message_map["restore_entrypoint"].format(
             path=runner.experiment_path,
         )
-        logger.warning(
-            "Experiment has been interrupted, but the most recent state was saved.\n"
-            f"Continue running this experiment with: {restore_entrypoint}"
-        )
+        if _entrypoint == AirEntrypoint.TRAINER:
+            logger.warning(
+                f"Training has been interrupted, but the most recent state was saved.\n"
+                f"Resume training with: {restore_entrypoint}"
+            )
+        else:
+            logger.warning(
+                f"Experiment has been interrupted, but the most recent state was "
+                f"saved.\nResume experiment with: {restore_entrypoint}"
+            )
+
+    if _use_storage_context():
+        # TODO(justinvyu): Leave refactoring the ExperimentAnalysis to use
+        # StorageContext for a follow-up PR.
+        # Just plug in the "remote_storage_path" for now.
+        remote_path = experiments[0].storage.storage_path
+
+    experiment_checkpoint = runner.experiment_state_path
+
     ea = ExperimentAnalysis(
         experiment_checkpoint,
         trials=all_trials,
         default_metric=metric,
         default_mode=mode,
-        sync_config=sync_config,
         remote_storage_path=remote_path,
     )
 
@@ -1037,11 +1186,10 @@ def run_experiments(
     experiments: Union[Experiment, Mapping, Sequence[Union[Experiment, Mapping]]],
     scheduler: Optional[TrialScheduler] = None,
     server_port: Optional[int] = None,
-    verbose: Union[int, Verbosity] = Verbosity.V3_TRIAL_DETAILS,
+    verbose: Optional[Union[int, AirVerbosity, Verbosity]] = None,
     progress_reporter: Optional[ProgressReporter] = None,
     resume: Union[bool, str] = False,
     reuse_actors: Optional[bool] = None,
-    trial_executor: Optional[RayTrialExecutor] = None,
     raise_on_failed_trial: bool = True,
     concurrent: bool = True,
     callbacks: Optional[Sequence[Callback]] = None,
@@ -1065,17 +1213,20 @@ def run_experiments(
     if _remote is None:
         _remote = ray.util.client.ray.is_connected()
 
-    if _remote is True and trial_executor:
-        raise ValueError("cannot use custom trial executor")
+    _ray_auto_init(entrypoint="tune.run_experiments(...)")
 
-    if not trial_executor or isinstance(trial_executor, RayTrialExecutor):
-        _ray_auto_init(entrypoint="tune.run_experiments(...)")
+    if verbose is None:
+        # Default `verbose` value. For new output engine, this is AirVerbosity.VERBOSE.
+        # For old output engine, this is Verbosity.V3_TRIAL_DETAILS
+        verbose = get_air_verbosity(AirVerbosity.VERBOSE) or Verbosity.V3_TRIAL_DETAILS
 
     if _remote:
-        if get_air_verbosity() is not None:
-            logger.warning(
-                "Ignoring AIR_VERBOSITY setting, "
-                "as it doesn't support ray client mode yet."
+        if get_air_verbosity(verbose) is not None:
+            logger.info(
+                "[output] This uses the legacy output and progress reporter, "
+                "as Ray client is not supported by the new engine. "
+                "For more information, see "
+                "https://github.com/ray-project/ray/issues/36949"
             )
         remote_run = ray.remote(num_cpus=0)(run_experiments)
 
@@ -1091,7 +1242,6 @@ def run_experiments(
                 progress_reporter,
                 resume,
                 reuse_actors,
-                trial_executor,
                 raise_on_failed_trial,
                 concurrent,
                 callbacks,
@@ -1112,10 +1262,10 @@ def run_experiments(
             progress_reporter=progress_reporter,
             resume=resume,
             reuse_actors=reuse_actors,
-            trial_executor=trial_executor,
             raise_on_failed_trial=raise_on_failed_trial,
             scheduler=scheduler,
             callbacks=callbacks,
+            _entrypoint=AirEntrypoint.TUNE_RUN_EXPERIMENTS,
         ).trials
     else:
         trials = []
@@ -1127,9 +1277,9 @@ def run_experiments(
                 progress_reporter=progress_reporter,
                 resume=resume,
                 reuse_actors=reuse_actors,
-                trial_executor=trial_executor,
                 raise_on_failed_trial=raise_on_failed_trial,
                 scheduler=scheduler,
                 callbacks=callbacks,
+                _entrypoint=AirEntrypoint.TUNE_RUN_EXPERIMENTS,
             ).trials
         return trials

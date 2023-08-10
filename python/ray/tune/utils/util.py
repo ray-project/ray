@@ -321,10 +321,24 @@ class Tee(object):
         self.stream1 = stream1
         self.stream2 = stream2
 
+        # If True, we are currently handling a warning.
+        # We use this flag to avoid infinite recursion.
+        self._handling_warning = False
+
     def _warn(self, op, s, args, kwargs):
+        # If we are already handling a warning, this is because
+        # `logger.warning` below triggered the same object again
+        # (e.g. because stderr is redirected to this object).
+        # In that case, exit early to avoid recursion.
+        if self._handling_warning:
+            return
+
         msg = f"ValueError when calling '{op}' on stream ({s}). "
         msg += f"args: {args} kwargs: {kwargs}"
+
+        self._handling_warning = True
         logger.warning(msg)
+        self._handling_warning = False
 
     def seek(self, *args, **kwargs):
         for s in [self.stream1, self.stream2]:
@@ -663,7 +677,7 @@ def validate_save_restore(
     trainable_1 = remote_cls.remote(config=config)
     trainable_2 = remote_cls.remote(config=config)
 
-    from ray.tune.result import TRAINING_ITERATION
+    from ray.air.constants import TRAINING_ITERATION
 
     for _ in range(3):
         res = ray.get(trainable_1.train.remote())

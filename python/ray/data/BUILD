@@ -1,3 +1,10 @@
+load("//bazel:python.bzl", "doctest")
+
+doctest(
+    files = glob(["**/*.py"], exclude=glob(["examples/**/*", "tests/**/*"])),
+    tags = ["team:data"],
+    size = "large"
+)
 # --------------------------------------------------------------------
 # Tests from the python/ray/data/tests directory.
 # Covers all tests starting with `test_`.
@@ -43,9 +50,9 @@ py_test(
 )
 
 py_test(
-    name = "test_nonstrict_mode",
+    name = "test_numpy_support",
     size = "small",
-    srcs = ["tests/test_nonstrict_mode.py"],
+    srcs = ["tests/test_numpy_support.py"],
     tags = ["team:data", "exclusive"],
     deps = ["//:ray_lib", ":conftest"],
 )
@@ -283,6 +290,14 @@ py_test(
 )
 
 py_test(
+    name = "test_splitblocks",
+    size = "medium",
+    srcs = ["tests/test_splitblocks.py"],
+    tags = ["team:data", "exclusive"],
+    deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test(
     name = "test_execution_optimizer",
     size = "medium",
     srcs = ["tests/test_execution_optimizer.py"],
@@ -367,6 +382,14 @@ py_test(
     name = "test_pipeline_nohang",
     size = "medium",
     srcs = ["tests/test_pipeline_nohang.py"],
+    tags = ["team:data", "exclusive"],
+    deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test(
+    name = "test_progress_bar",
+    size = "small",
+    srcs = ["tests/test_progress_bar.py"],
     tags = ["team:data", "exclusive"],
     deps = ["//:ray_lib", ":conftest"],
 )

@@ -3,8 +3,11 @@ import math
 from typing import Any, Callable, Dict, List, Optional, Tuple, TypeVar, Union
 
 import ray
-from ray.data._internal.execution.interfaces import RefBundle
-from ray.data._internal.planner.exchange.interfaces import ExchangeTaskScheduler
+from ray.data._internal.execution.interfaces import RefBundle, TaskContext
+from ray.data._internal.planner.exchange.interfaces import (
+    ExchangeTaskScheduler,
+    ExchangeTaskSpec,
+)
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.stats import StatsDict
@@ -27,6 +30,11 @@ class _MergeTaskSchedule:
         self.merge_partition_size = output_num_blocks // num_merge_tasks_per_round
         self._partitions_with_extra_task = output_num_blocks % num_merge_tasks_per_round
 
+        if self.merge_partition_size == 0:
+            self.num_merge_tasks_per_round = self._partitions_with_extra_task
+            self.merge_partition_size = 1
+            self._partitions_with_extra_task = 0
+
     def get_num_reducers_per_merge_idx(self, merge_idx: int) -> int:
         """
         Each intermediate merge task will produce outputs for a partition of P
@@ -40,7 +48,10 @@ class _MergeTaskSchedule:
         return partition_size
 
     def get_merge_idx_for_reducer_idx(self, reducer_idx: int) -> int:
-        if reducer_idx < self.merge_partition_size * self._partitions_with_extra_task:
+        if (
+            reducer_idx
+            < (self.merge_partition_size + 1) * self._partitions_with_extra_task
+        ):
             merge_idx = reducer_idx // (self.merge_partition_size + 1)
         else:
             reducer_idx -= (
@@ -96,7 +107,6 @@ class _PushBasedShuffleStage:
     ):
         self.num_rounds = num_rounds
         self.num_map_tasks_per_round = num_map_tasks_per_round
-        self.num_merge_tasks_per_round = len(merge_task_placement)
 
         node_strategies = {
             node_id: {
@@ -111,7 +121,7 @@ class _PushBasedShuffleStage:
         ]
 
         self.merge_schedule = _MergeTaskSchedule(
-            output_num_blocks, self.num_merge_tasks_per_round
+            output_num_blocks, len(merge_task_placement)
         )
 
     def get_merge_task_options(self, merge_idx):
@@ -231,7 +241,7 @@ class _MergeStageIterator:
         # (ObjectRefs). Each merge task index corresponds to a partition of P
         # final reduce tasks.
         self._all_merge_results = [
-            [] for _ in range(self._stage.num_merge_tasks_per_round)
+            [] for _ in range(self._stage.merge_schedule.num_merge_tasks_per_round)
         ]
 
     def __next__(self):
@@ -259,7 +269,7 @@ class _MergeStageIterator:
         del merge_result
 
         self._merge_idx += 1
-        self._merge_idx %= self._stage.num_merge_tasks_per_round
+        self._merge_idx %= self._stage.merge_schedule.num_merge_tasks_per_round
         return metadata_ref
 
     def pop_merge_results(self) -> List[List[ObjectRef]]:
@@ -365,6 +375,7 @@ class PushBasedShuffleTaskScheduler(ExchangeTaskScheduler):
         self,
         refs: List[RefBundle],
         output_num_blocks: int,
+        ctx: TaskContext,
         map_ray_remote_args: Optional[Dict[str, Any]] = None,
         reduce_ray_remote_args: Optional[Dict[str, Any]] = None,
         merge_factor: int = 2,
@@ -419,7 +430,7 @@ class PushBasedShuffleTaskScheduler(ExchangeTaskScheduler):
         shuffle_map = cached_remote_fn(map_partition)
         shuffle_map = shuffle_map.options(
             **map_ray_remote_args,
-            num_returns=1 + stage.num_merge_tasks_per_round,
+            num_returns=1 + stage.merge_schedule.num_merge_tasks_per_round,
         )
 
         map_stage_iter = _MapStageIterator(
@@ -427,7 +438,11 @@ class PushBasedShuffleTaskScheduler(ExchangeTaskScheduler):
             shuffle_map,
             [output_num_blocks, stage.merge_schedule, *self._exchange_spec._map_args],
         )
-        map_bar = ProgressBar("Shuffle Map", position=0, total=len(input_blocks_list))
+
+        sub_progress_bar_dict = ctx.sub_progress_bar_dict
+        bar_name = ExchangeTaskSpec.MAP_SUB_PROGRESS_BAR_NAME
+        assert bar_name in sub_progress_bar_dict, sub_progress_bar_dict
+        map_bar = sub_progress_bar_dict[bar_name]
         map_stage_executor = _PipelinedStageExecutor(
             map_stage_iter, stage.num_map_tasks_per_round, progress_bar=map_bar
         )
@@ -437,9 +452,10 @@ class PushBasedShuffleTaskScheduler(ExchangeTaskScheduler):
             map_stage_iter, shuffle_merge, stage, self._exchange_spec._reduce_args
         )
         merge_stage_executor = _PipelinedStageExecutor(
-            merge_stage_iter, stage.num_merge_tasks_per_round, max_concurrent_rounds=2
+            merge_stage_iter,
+            stage.merge_schedule.num_merge_tasks_per_round,
+            max_concurrent_rounds=2,
         )
-
         # Execute the map-merge stage. This submits tasks in rounds of M map
         # tasks and N merge tasks each. Task execution between map and merge is
         # pipelined, so that while executing merge for one round of inputs, we
@@ -460,12 +476,13 @@ class PushBasedShuffleTaskScheduler(ExchangeTaskScheduler):
             except StopIteration:
                 merge_done = True
                 break
-
-        map_bar.close()
         all_merge_results = merge_stage_iter.pop_merge_results()
 
         # Execute and wait for the reduce stage.
-        reduce_bar = ProgressBar("Shuffle Reduce", total=output_num_blocks)
+        bar_name = ExchangeTaskSpec.REDUCE_SUB_PROGRESS_BAR_NAME
+        assert bar_name in sub_progress_bar_dict, sub_progress_bar_dict
+        reduce_bar = sub_progress_bar_dict[bar_name]
+
         shuffle_reduce = cached_remote_fn(self._exchange_spec.reduce)
         reduce_stage_iter = _ReduceStageIterator(
             stage,
@@ -503,13 +520,15 @@ class PushBasedShuffleTaskScheduler(ExchangeTaskScheduler):
             for i, block in enumerate(new_blocks)
         ]
         sorted_blocks.sort(key=lambda x: x[0])
-        _, new_blocks, reduce_stage_metadata = zip(*sorted_blocks)
+
+        new_blocks, reduce_stage_metadata = [], []
+        if sorted_blocks:
+            _, new_blocks, reduce_stage_metadata = zip(*sorted_blocks)
         del sorted_blocks
 
         assert (
             len(new_blocks) == output_num_blocks
         ), f"Expected {output_num_blocks} outputs, produced {len(new_blocks)}"
-        reduce_bar.close()
 
         output = []
         for block, meta in zip(new_blocks, reduce_stage_metadata):

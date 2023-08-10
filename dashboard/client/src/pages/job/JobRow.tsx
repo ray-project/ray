@@ -1,7 +1,8 @@
-import { TableCell, TableRow, Tooltip } from "@material-ui/core";
+import { Link, TableCell, TableRow, Tooltip } from "@material-ui/core";
 import { makeStyles } from "@material-ui/core/styles";
 import React from "react";
-import { Link } from "react-router-dom";
+import { Link as RouterLink } from "react-router-dom";
+import { CodeDialogButtonWithPreview } from "../../common/CodeDialogButton";
 import { DurationText } from "../../common/DurationText";
 import { formatDateFromTimeMs } from "../../common/formatUtils";
 import { JobStatusWithIcon } from "../../common/JobStatus";
@@ -11,7 +12,6 @@ import {
 } from "../../common/ProfilingLink";
 import { UnifiedJob } from "../../type/job";
 import { useJobProgress } from "./hook/useJobProgress";
-import { JobLogsLink } from "./JobDetail";
 import { MiniTaskProgressBar } from "./TaskProgressBar";
 
 const useStyles = makeStyles((theme) => ({
@@ -22,6 +22,10 @@ const useStyles = makeStyles((theme) => ({
     textOverflow: "ellipsis",
     overflow: "hidden",
     whiteSpace: "nowrap",
+  },
+  statusMessage: {
+    maxWidth: 250,
+    display: "inline-flex",
   },
 }));
 
@@ -35,6 +39,7 @@ export const JobRow = ({ job }: JobRowProps) => {
     submission_id,
     driver_info,
     status,
+    message,
     start_time,
     end_time,
     entrypoint,
@@ -57,10 +62,22 @@ export const JobRow = ({ job }: JobRowProps) => {
     }
   })();
 
+  const jobId = job_id ? job_id : submission_id;
+
   return (
     <TableRow>
       <TableCell align="center">
-        {job_id ? <Link to={`${job_id}`}>{job_id}</Link> : "-"}
+        {job_id ? (
+          <Link component={RouterLink} to={job_id}>
+            {job_id}
+          </Link>
+        ) : submission_id ? (
+          <Link component={RouterLink} to={submission_id}>
+            (no ray driver)
+          </Link>
+        ) : (
+          "(no ray driver)"
+        )}
       </TableCell>
       <TableCell align="center">{submission_id ?? "-"}</TableCell>
       <TableCell align="center">
@@ -77,6 +94,17 @@ export const JobRow = ({ job }: JobRowProps) => {
         <JobStatusWithIcon job={job} />
       </TableCell>
       <TableCell align="center">
+        {message ? (
+          <CodeDialogButtonWithPreview
+            className={classes.statusMessage}
+            title="Status message"
+            code={message}
+          />
+        ) : (
+          "-"
+        )}
+      </TableCell>
+      <TableCell align="center">
         {start_time && start_time > 0 ? (
           <DurationText startTime={start_time} endTime={end_time} />
         ) : (
@@ -85,10 +113,14 @@ export const JobRow = ({ job }: JobRowProps) => {
       </TableCell>
       <TableCell align="center">{progressBar}</TableCell>
       <TableCell align="center">
-        {/* TODO(aguo): Also show logs for the job id instead
-      of just the submission's logs */}
-        <JobLogsLink job={job} />
-        <br />
+        {jobId && (
+          <React.Fragment>
+            <Link component={RouterLink} to={jobId}>
+              Log
+            </Link>
+            <br />
+          </React.Fragment>
+        )}
         <CpuProfilingLink
           pid={job.driver_info?.pid}
           ip={job.driver_info?.node_ip_address}

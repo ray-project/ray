@@ -16,7 +16,7 @@ from ray._private.utils import get_system_memory
 from ray._private.utils import get_used_memory
 from ray._private.state_api_test_utils import verify_failed_task
 
-from ray.experimental.state.state_manager import StateDataSourceClient
+from ray.util.state.state_manager import StateDataSourceClient
 
 
 memory_usage_threshold = 0.65
@@ -40,7 +40,8 @@ def get_local_state_client():
         node_id = node["NodeID"]
         ip = node["NodeManagerAddress"]
         port = int(node["NodeManagerPort"])
-        client.register_raylet_client(node_id, ip, port)
+        runtime_env_agent_port = int(node["RuntimeEnvAgentPort"])
+        client.register_raylet_client(node_id, ip, port, runtime_env_agent_port)
         client.register_agent_client(node_id, ip, port)
 
     return client

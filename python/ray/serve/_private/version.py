@@ -124,7 +124,14 @@ class DeploymentVersion:
         should prompt a deployment version update.
         """
         reconfigure_dict = {}
-        for option_name, field in self.deployment_config.__fields__.items():
+        # TODO(aguo): Once we only support pydantic 2, we can remove this if check.
+        # In pydantic 2.0, `__fields__` has been renamed to `model_fields`.
+        fields = (
+            self.deployment_config.model_fields
+            if hasattr(self.deployment_config, "model_fields")
+            else self.deployment_config.__fields__
+        )
+        for option_name, field in fields.items():
             option_weight = field.field_info.extra.get("update_type")
             if option_weight in update_types:
                 reconfigure_dict[option_name] = getattr(
@@ -148,4 +155,7 @@ def _serialize(json_object):
 class VersionedReplica(ABC):
     @property
     def version(self) -> DeploymentVersion:
+        pass
+
+    def update_state(self, state):
         pass

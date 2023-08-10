@@ -4,6 +4,9 @@ from typing import Dict, List, Optional
 import pkg_resources
 
 import ray._private.ray_constants as ray_constants
+from ray._private.utils import (
+    validate_node_labels,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +30,7 @@ class RayParams:
         num_gpus: Number of GPUs to configure the raylet with.
         resources: A dictionary mapping the name of a resource to the quantity
             of that resource available.
+        labels: The key-value labels of the node.
         memory: Total available memory for workers requesting memory.
         object_store_memory: The amount of memory (in bytes) to start the
             object store with.
@@ -90,12 +94,14 @@ class RayParams:
         dashboard_grpc_port: The port for the dashboard head process to listen
             for gRPC on.
             Defaults to random available port.
-        plasma_store_socket_name: If provided, it will specify the socket
+        runtime_env_agent_port: The port at which the runtime env agent
+            listens to for HTTP.
+        plasma_store_socket_name: If provided, it specifies the socket
             name used by the plasma store.
-        raylet_socket_name: If provided, it will specify the socket path
+        raylet_socket_name: If provided, it specifies the socket path
             used by the raylet process.
         temp_dir: If provided, it will specify the root temporary
-            directory for the Ray process.
+            directory for the Ray process. Must be an absolute path.
         storage: Specify a URI for persistent cluster-wide storage. This storage path
             must be accessible by all nodes of the cluster, otherwise an error will be
             raised.
@@ -130,6 +136,7 @@ class RayParams:
         num_cpus: Optional[int] = None,
         num_gpus: Optional[int] = None,
         resources: Optional[Dict[str, float]] = None,
+        labels: Optional[Dict[str, str]] = None,
         memory: Optional[float] = None,
         object_store_memory: Optional[float] = None,
         redis_max_memory: Optional[float] = None,
@@ -162,6 +169,7 @@ class RayParams:
         dashboard_agent_listen_port: Optional[
             int
         ] = ray_constants.DEFAULT_DASHBOARD_AGENT_LISTEN_PORT,
+        runtime_env_agent_port: Optional[int] = None,
         dashboard_grpc_port: Optional[int] = None,
         plasma_store_socket_name: Optional[str] = None,
         raylet_socket_name: Optional[str] = None,
@@ -216,6 +224,7 @@ class RayParams:
         self.dashboard_port = dashboard_port
         self.dashboard_agent_listen_port = dashboard_agent_listen_port
         self.dashboard_grpc_port = dashboard_grpc_port
+        self.runtime_env_agent_port = runtime_env_agent_port
         self.plasma_store_socket_name = plasma_store_socket_name
         self.raylet_socket_name = raylet_socket_name
         self.temp_dir = temp_dir
@@ -238,6 +247,7 @@ class RayParams:
         self.webui = webui
         self._system_config = _system_config or {}
         self._enable_object_reconstruction = enable_object_reconstruction
+        self.labels = labels
         self._check_usage()
 
         # Set the internal config options for object reconstruction.
@@ -304,6 +314,7 @@ class RayParams:
             "dashboard_agent_grpc": wrap_port(self.metrics_agent_port),
             "dashboard_agent_http": wrap_port(self.dashboard_agent_listen_port),
             "dashboard_grpc": wrap_port(self.dashboard_grpc_port),
+            "runtime_env_agent": wrap_port(self.runtime_env_agent_port),
             "metrics_export": wrap_port(self.metrics_export_port),
         }
         redis_shard_ports = self.redis_shard_ports
@@ -393,6 +404,15 @@ class RayParams:
                     "ray_client_server_port must be an integer "
                     "between 1024 and 65535."
                 )
+        if self.runtime_env_agent_port is not None:
+            if (
+                self.runtime_env_agent_port < 1024
+                or self.runtime_env_agent_port > 65535
+            ):
+                raise ValueError(
+                    "runtime_env_agent_port must be an integer "
+                    "between 1024 and 65535."
+                )
 
         if self.resources is not None:
 
@@ -424,6 +444,11 @@ class RayParams:
                 "Using ray with numpy < 1.16.0 will result in slow "
                 "serialization. Upgrade numpy if using with ray."
             )
+
+        if self.temp_dir is not None and not os.path.isabs(self.temp_dir):
+            raise ValueError("temp_dir must be absolute path or None.")
+
+        validate_node_labels(self.labels)
 
     def _format_ports(self, pre_selected_ports):
         """Format the pre-selected ports information to be more human-readable."""

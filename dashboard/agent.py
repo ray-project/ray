@@ -5,6 +5,7 @@ import json
 import logging
 import logging.handlers
 import os
+import pathlib
 import sys
 import signal
 
@@ -15,11 +16,13 @@ import ray._private.utils
 import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.utils as dashboard_utils
 from ray.dashboard.consts import _PARENT_DEATH_THREASHOLD
-from ray._private.gcs_pubsub import GcsAioPublisher, GcsPublisher
+from ray._private.gcs_pubsub import GcsAioPublisher
 from ray._raylet import GcsClient
 from ray._private.gcs_utils import GcsAioClient
-from ray._private.ray_logging import setup_component_logger
-from ray.core.generated import agent_manager_pb2, agent_manager_pb2_grpc
+from ray._private.ray_logging import (
+    setup_component_logger,
+    configure_log_file,
+)
 from ray.experimental.internal_kv import (
     _initialize_internal_kv,
     _internal_kv_initialized,
@@ -80,7 +83,6 @@ class DashboardAgent:
         log_dir: str,
         temp_dir: str,
         session_dir: str,
-        runtime_env_dir: str,
         logging_params: dict,
         agent_id: int,
         session_name: str,
@@ -95,7 +97,6 @@ class DashboardAgent:
 
         self.temp_dir = temp_dir
         self.session_dir = session_dir
-        self.runtime_env_dir = runtime_env_dir
         self.log_dir = log_dir
         self.dashboard_agent_port = dashboard_agent_port
         self.metrics_export_port = metrics_export_port
@@ -263,7 +264,9 @@ class DashboardAgent:
                             ray._private.utils.publish_error_to_driver(
                                 ray_constants.RAYLET_DIED_ERROR,
                                 msg,
-                                gcs_publisher=GcsPublisher(address=self.gcs_address),
+                                gcs_publisher=ray._raylet.GcsPublisher(
+                                    address=self.gcs_address
+                                ),
                             )
                         else:
                             logger.info(msg)
@@ -315,19 +318,6 @@ class DashboardAgent:
             namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
         )
 
-        # Register agent to agent manager.
-        raylet_stub = agent_manager_pb2_grpc.AgentManagerServiceStub(
-            self.aiogrpc_raylet_channel
-        )
-
-        await raylet_stub.RegisterAgent(
-            agent_manager_pb2.RegisterAgentRequest(
-                agent_id=self.agent_id,
-                agent_port=self.grpc_port,
-                agent_ip_address=self.ip,
-            )
-        )
-
         tasks = [m.run(self.server) for m in modules]
         if sys.platform not in ["win32", "cygwin"]:
             tasks.append(check_parent_task)
@@ -337,6 +327,14 @@ class DashboardAgent:
 
         if self.http_server:
             await self.http_server.cleanup()
+
+
+def open_capture_files(log_dir):
+    filename = f"agent-{args.agent_id}"
+    return (
+        ray._private.utils.open_log(pathlib.Path(log_dir) / f"{filename}.out"),
+        ray._private.utils.open_log(pathlib.Path(log_dir) / f"{filename}.err"),
+    )
 
 
 if __name__ == "__main__":
@@ -452,13 +450,7 @@ if __name__ == "__main__":
         default=None,
         help="Specify the path of this session.",
     )
-    parser.add_argument(
-        "--runtime-env-dir",
-        required=True,
-        type=str,
-        default=None,
-        help="Specify the path of the resource directory used by runtime_env.",
-    )
+
     parser.add_argument(
         "--minimal",
         action="store_true",
@@ -505,6 +497,10 @@ if __name__ == "__main__":
         # w.r.t grpc server init in the DashboardAgent initializer.
         loop = ray._private.utils.get_or_create_event_loop()
 
+        # Setup stdout/stderr redirect files
+        out_file, err_file = open_capture_files(args.log_dir)
+        configure_log_file(out_file, err_file)
+
         agent = DashboardAgent(
             args.node_ip_address,
             args.dashboard_agent_port,
@@ -512,7 +508,6 @@ if __name__ == "__main__":
             args.minimal,
             temp_dir=args.temp_dir,
             session_dir=args.session_dir,
-            runtime_env_dir=args.runtime_env_dir,
             log_dir=args.log_dir,
             metrics_export_port=args.metrics_export_port,
             node_manager_port=args.node_manager_port,

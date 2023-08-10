@@ -3,6 +3,7 @@ from typing import TYPE_CHECKING, Callable, Iterator, List, Optional, Union
 
 import numpy as np
 
+import ray.cloudpickle as cloudpickle
 from ray.data._internal.output_buffer import BlockOutputBuffer
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.remote_fn import cached_remote_fn
@@ -18,7 +19,6 @@ from ray.data.datasource.file_meta_provider import (
 )
 from ray.data.datasource.parquet_base_datasource import ParquetBaseDatasource
 from ray.util.annotations import PublicAPI
-import ray.cloudpickle as cloudpickle
 
 if TYPE_CHECKING:
     import pyarrow
@@ -41,7 +41,7 @@ FILE_READING_RETRY = 8
 # compared to Parquet encoded representation. Parquet file statistics only record
 # encoded (i.e. uncompressed) data size information.
 #
-# To estimate real-time in-memory data size, Datastreams will try to estimate the
+# To estimate real-time in-memory data size, Datasets will try to estimate the
 # correct inflation ratio from Parquet to Arrow, using this constant as the default
 # value for safety. See https://github.com/ray-project/ray/pull/26516 for more context.
 PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT = 5
@@ -49,11 +49,11 @@ PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT = 5
 # The lower bound size to estimate Parquet encoding ratio.
 PARQUET_ENCODING_RATIO_ESTIMATE_LOWER_BOUND = 2
 
-# The percentage of files (1% by default) to be sampled from the datastream to estimate
+# The percentage of files (1% by default) to be sampled from the dataset to estimate
 # Parquet encoding ratio.
 PARQUET_ENCODING_RATIO_ESTIMATE_SAMPLING_RATIO = 0.01
 
-# The minimal and maximal number of file samples to take from the datastream to estimate
+# The minimal and maximal number of file samples to take from the dataset to estimate
 # Parquet encoding ratio.
 # This is to restrict `PARQUET_ENCODING_RATIO_ESTIMATE_SAMPLING_RATIO` within the
 # proper boundary.
@@ -146,8 +146,8 @@ class ParquetDatasource(ParquetBaseDatasource):
     """Parquet datasource, for reading and writing Parquet files.
 
     The primary difference from ParquetBaseDatasource is that this uses
-    PyArrow's `ParquetDataset` abstraction for datastream reads, and thus offers
-    automatic Arrow datastream schema inference and row count collection at the
+    PyArrow's `ParquetDataset` abstraction for dataset reads, and thus offers
+    automatic Arrow dataset schema inference and row count collection at the
     cost of some potential performance and/or compatibility penalties.
 
     Examples:
@@ -217,14 +217,14 @@ class _ParquetDatasourceReader(Reader):
             )
 
         if _block_udf is not None:
-            # Try to infer datastream schema by passing dummy table through UDF.
+            # Try to infer dataset schema by passing dummy table through UDF.
             dummy_table = schema.empty_table()
             try:
                 inferred_schema = _block_udf(dummy_table).schema
                 inferred_schema = inferred_schema.with_metadata(schema.metadata)
             except Exception:
                 logger.debug(
-                    "Failed to infer schema of datastream by passing dummy table "
+                    "Failed to infer schema of dataset by passing dummy table "
                     "through UDF due to the following exception:",
                     exc_info=True,
                 )
@@ -288,6 +288,25 @@ class _ParquetDatasourceReader(Reader):
 
             if meta.size_bytes is not None:
                 meta.size_bytes = int(meta.size_bytes * self._encoding_ratio)
+
+            if meta.num_rows and meta.size_bytes:
+                # Make sure the batches read are small enough to enable yielding of
+                # output blocks incrementally during the read.
+                row_size = meta.size_bytes / meta.num_rows
+                # Make sure the row batch size is small enough that block splitting
+                # is still effective.
+                max_parquet_reader_row_batch_size = (
+                    DataContext.get_current().target_max_block_size // 10
+                )
+                default_read_batch_size = max(
+                    1,
+                    min(
+                        PARQUET_READER_ROW_BATCH_SIZE,
+                        max_parquet_reader_row_batch_size // row_size,
+                    ),
+                )
+            else:
+                default_read_batch_size = PARQUET_READER_ROW_BATCH_SIZE
             block_udf, reader_args, columns, schema = (
                 self._block_udf,
                 self._reader_args,
@@ -299,6 +318,7 @@ class _ParquetDatasourceReader(Reader):
                     lambda p=serialized_pieces: _read_pieces(
                         block_udf,
                         reader_args,
+                        default_read_batch_size,
                         columns,
                         schema,
                         p,
@@ -363,7 +383,12 @@ class _ParquetDatasourceReader(Reader):
 
 
 def _read_pieces(
-    block_udf, reader_args, columns, schema, serialized_pieces: List[_SerializedPiece]
+    block_udf,
+    reader_args,
+    default_read_batch_size,
+    columns,
+    schema,
+    serialized_pieces: List[_SerializedPiece],
 ) -> Iterator["pyarrow.Table"]:
     # This import is necessary to load the tensor extension type.
     from ray.data.extensions.tensor_extension import ArrowTensorType  # noqa
@@ -387,7 +412,7 @@ def _read_pieces(
 
     logger.debug(f"Reading {len(pieces)} parquet pieces")
     use_threads = reader_args.pop("use_threads", False)
-    batch_size = reader_args.pop("batch_size", PARQUET_READER_ROW_BATCH_SIZE)
+    batch_size = reader_args.pop("batch_size", default_read_batch_size)
     for piece in pieces:
         part = _get_partition_keys(piece.partition_expression)
         batches = piece.to_batches(

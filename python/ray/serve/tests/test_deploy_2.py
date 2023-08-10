@@ -13,6 +13,7 @@ from ray._private.test_utils import SignalActor, wait_for_condition
 from ray import serve
 from pydantic import ValidationError
 from ray.serve.drivers import DAGDriver
+from ray.serve._private.common import ApplicationStatus
 
 
 class TestGetDeployment:
@@ -376,6 +377,54 @@ def test_nonserializable_deployment(serve_instance):
         match=r"Could not serialize the deployment init kwargs:[\s\S]*was found to be non-serializable.*",  # noqa
     ):
         serve.run(E.bind(arg=lock))
+
+
+def test_deploy_application_unhealthy(serve_instance):
+    """Test deploying an application that becomes unhealthy."""
+
+    @ray.remote
+    class Event:
+        def __init__(self):
+            self.is_set = False
+
+        def set(self):
+            self.is_set = True
+
+        def is_set(self):
+            return self.is_set
+
+    event = Event.remote()
+
+    @serve.deployment(health_check_period_s=1, health_check_timeout_s=3)
+    class Model:
+        def __call__(self):
+            return "hello world"
+
+        def check_health(self):
+            if ray.get(event.is_set.remote()):
+                raise RuntimeError("Intentionally failing.")
+
+    handle = serve.run(Model.bind(), name="app")
+    assert ray.get(handle.remote()) == "hello world"
+    assert (
+        serve_instance.get_serve_status("app").app_status.status
+        == ApplicationStatus.RUNNING
+    )
+
+    # When a deployment becomes unhealthy, application should transition -> UNHEALTHY
+    event.set.remote()
+    wait_for_condition(
+        lambda: serve_instance.get_serve_status("app").app_status.status
+        == ApplicationStatus.UNHEALTHY
+    )
+
+    # Check that application stays unhealthy
+    for _ in range(10):
+        assert (
+            serve_instance.get_serve_status("app").app_status.status
+            == ApplicationStatus.UNHEALTHY
+        )
+        time.sleep(0.1)
 
 
 if __name__ == "__main__":

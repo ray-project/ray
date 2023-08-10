@@ -1,21 +1,28 @@
 import collections
-import pandas as pd
 import random
-import pytest
-import numpy as np
-from typing import List, Iterable, Any
 import time
+from typing import Any, Iterable, List
 from unittest.mock import MagicMock
 
+import numpy as np
+import pandas as pd
+import pytest
+
 import ray
-from ray.data.block import Block
-from ray.data._internal.compute import TaskPoolStrategy, ActorPoolStrategy
+from ray._private.test_utils import wait_for_condition
+from ray.data._internal.compute import ActorPoolStrategy, TaskPoolStrategy
 from ray.data._internal.execution.interfaces import (
-    RefBundle,
-    PhysicalOperator,
     ExecutionOptions,
+    PhysicalOperator,
+    RefBundle,
 )
-from ray.data._internal.execution.operators.all_to_all_operator import AllToAllOperator
+from ray.data._internal.execution.operators.actor_pool_map_operator import (
+    ActorPoolMapOperator,
+)
+from ray.data._internal.execution.operators.base_physical_operator import (
+    AllToAllOperator,
+)
+from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.operators.limit_operator import LimitOperator
 from ray.data._internal.execution.operators.map_operator import (
     MapOperator,
@@ -25,13 +32,10 @@ from ray.data._internal.execution.operators.output_splitter import OutputSplitte
 from ray.data._internal.execution.operators.task_pool_map_operator import (
     TaskPoolMapOperator,
 )
-from ray.data._internal.execution.operators.actor_pool_map_operator import (
-    ActorPoolMapOperator,
-)
-from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
+from ray.data._internal.execution.operators.union_operator import UnionOperator
 from ray.data._internal.execution.util import make_ref_bundles
+from ray.data.block import Block
 from ray.tests.conftest import *  # noqa
-from ray._private.test_utils import wait_for_condition
 
 
 def _get_blocks(bundle: RefBundle, output_list: List[Block]):
@@ -87,7 +91,7 @@ def test_all_to_all_operator():
     op.start(ExecutionOptions())
     while input_op.has_next():
         op.add_input(input_op.get_next(), 0)
-    op.inputs_done()
+    op.all_inputs_done()
 
     # Check we return transformed bundles.
     assert not op.completed()
@@ -142,7 +146,7 @@ def test_map_operator_bulk(ray_start_regular_shared, use_actors):
             assert op.internal_queue_size() == i
         else:
             assert op.internal_queue_size() == 0
-    op.inputs_done()
+    op.all_inputs_done()
     work_refs = op.get_work_refs()
     while work_refs:
         for work_ref in work_refs:
@@ -225,30 +229,46 @@ def test_map_operator_streamed(ray_start_regular_shared, use_actors):
 @pytest.mark.parametrize("equal", [False, True])
 @pytest.mark.parametrize("chunk_size", [1, 10])
 def test_split_operator(ray_start_regular_shared, equal, chunk_size):
-    input_op = InputDataBuffer(make_ref_bundles([[i] * chunk_size for i in range(100)]))
-    op = OutputSplitter(input_op, 3, equal=equal)
+    num_input_blocks = 100
+    num_splits = 3
+    # Add this many input blocks each time.
+    # Make sure it is greater than num_splits * 2,
+    # so we can test the output order of `OutputSplitter.get_next`.
+    num_add_input_blocks = 10
+    input_op = InputDataBuffer(
+        make_ref_bundles([[i] * chunk_size for i in range(num_input_blocks)])
+    )
+    op = OutputSplitter(input_op, num_splits, equal=equal)
 
     # Feed data and implement streaming exec.
-    output_splits = collections.defaultdict(list)
+    output_splits = [[] for _ in range(num_splits)]
     op.start(ExecutionOptions())
     while input_op.has_next():
-        op.add_input(input_op.get_next(), 0)
+        for _ in range(num_add_input_blocks):
+            if not input_op.has_next():
+                break
+            op.add_input(input_op.get_next(), 0)
         while op.has_next():
             ref = op.get_next()
             assert ref.owns_blocks, ref
             for block, _ in ref.blocks:
+                assert ref.output_split_idx is not None
                 output_splits[ref.output_split_idx].extend(list(ray.get(block)["id"]))
-    op.inputs_done()
+    op.all_inputs_done()
+
+    expected_splits = [[] for _ in range(num_splits)]
+    for i in range(num_splits):
+        for j in range(i, num_input_blocks, num_splits):
+            expected_splits[i].extend([j] * chunk_size)
     if equal:
-        for i in range(3):
-            assert len(output_splits[i]) == 33 * chunk_size, output_splits
-    else:
-        assert sum(len(output_splits[i]) for i in range(3)) == (100 * chunk_size)
-        for i in range(3):
-            assert len(output_splits[i]) in [
-                33 * chunk_size,
-                34 * chunk_size,
-            ], output_splits
+        min_len = min(len(expected_splits[i]) for i in range(num_splits))
+        for i in range(num_splits):
+            expected_splits[i] = expected_splits[i][:min_len]
+    for i in range(num_splits):
+        assert output_splits[i] == expected_splits[i], (
+            output_splits[i],
+            expected_splits[i],
+        )
 
 
 @pytest.mark.parametrize("equal", [False, True])
@@ -265,7 +285,7 @@ def test_split_operator_random(ray_start_regular_shared, equal, random_seed):
     op.start(ExecutionOptions())
     while input_op.has_next():
         op.add_input(input_op.get_next(), 0)
-    op.inputs_done()
+    op.all_inputs_done()
     while op.has_next():
         ref = op.get_next()
         assert ref.owns_blocks, ref
@@ -302,7 +322,7 @@ def test_split_operator_locality_hints(ray_start_regular_shared):
     op.start(ExecutionOptions())
     while input_op.has_next():
         op.add_input(input_op.get_next(), 0)
-    op.inputs_done()
+    op.all_inputs_done()
     while op.has_next():
         ref = op.get_next()
         assert ref.owns_blocks, ref
@@ -390,7 +410,7 @@ def test_map_operator_min_rows_per_bundle(ray_start_regular_shared, use_actors):
     op.start(ExecutionOptions())
     while input_op.has_next():
         op.add_input(input_op.get_next(), 0)
-    op.inputs_done()
+    op.all_inputs_done()
     work_refs = op.get_work_refs()
     while work_refs:
         for work_ref in work_refs:
@@ -435,7 +455,7 @@ def test_map_operator_output_unbundling(
     assert len(inputs) == 10
     for input_ in inputs:
         op.add_input(input_, 0)
-    op.inputs_done()
+    op.all_inputs_done()
     work_refs = op.get_work_refs()
     while work_refs:
         for work_ref in work_refs:
@@ -470,7 +490,7 @@ def test_map_operator_ray_args(shutdown_only, use_actors):
     op.start(ExecutionOptions())
     while input_op.has_next():
         op.add_input(input_op.get_next(), 0)
-    op.inputs_done()
+    op.all_inputs_done()
     work_refs = op.get_work_refs()
     while work_refs:
         for work_ref in work_refs:
@@ -601,7 +621,7 @@ def test_limit_operator(ray_start_regular_shared):
         refs = make_ref_bundles([[i] * num_rows_per_block for i in range(num_refs)])
         input_op = InputDataBuffer(refs)
         limit_op = LimitOperator(limit, input_op)
-        limit_op.inputs_done = MagicMock(wraps=limit_op.inputs_done)
+        limit_op.all_inputs_done = MagicMock(wraps=limit_op.all_inputs_done)
         if limit == 0:
             # If the limit is 0, the operator should be completed immediately.
             assert limit_op.completed()
@@ -623,16 +643,16 @@ def test_limit_operator(ray_start_regular_shared):
                 limit_op.get_next()
             cur_rows += num_rows_per_block
             if cur_rows >= limit:
-                assert limit_op.inputs_done.call_count == 1, limit
+                assert limit_op.all_inputs_done.call_count == 1, limit
                 assert limit_op.completed(), limit
                 assert limit_op._limit_reached(), limit
                 assert not limit_op.need_more_inputs(), limit
             else:
-                assert limit_op.inputs_done.call_count == 0, limit
+                assert limit_op.all_inputs_done.call_count == 0, limit
                 assert not limit_op.completed(), limit
                 assert not limit_op._limit_reached(), limit
                 assert limit_op.need_more_inputs(), limit
-        limit_op.inputs_done()
+        limit_op.all_inputs_done()
         # After inputs done, the number of output bundles
         # should be the same as the number of `add_input`s.
         assert limit_op.num_outputs_total() == loop_count, limit
@@ -644,6 +664,81 @@ def _get_bundles(bundle: RefBundle):
     for block, _ in bundle.blocks:
         output.extend(list(ray.get(block)["id"]))
     return output
+
+
+@pytest.mark.parametrize("preserve_order", (True, False))
+def test_union_operator(ray_start_regular_shared, preserve_order):
+    """Test basic functionalities of UnionOperator."""
+    execution_options = ExecutionOptions(preserve_order=preserve_order)
+    ctx = ray.data.DataContext.get_current()
+    ctx.execution_options = execution_options
+
+    num_rows_per_block = 3
+    data0 = make_ref_bundles([[i] * num_rows_per_block for i in range(3)])
+    data1 = make_ref_bundles([[i] * num_rows_per_block for i in range(2)])
+    data2 = make_ref_bundles([[i] * num_rows_per_block for i in range(1)])
+
+    op0 = InputDataBuffer(data0)
+    op1 = InputDataBuffer(data1)
+    op2 = InputDataBuffer(data2)
+    union_op = UnionOperator(op0, op1, op2)
+    union_op.start(execution_options)
+
+    assert not union_op.has_next()
+    union_op.add_input(op0.get_next(), 0)
+    assert union_op.has_next()
+
+    assert union_op.get_next() == data0[0]
+    assert not union_op.has_next()
+
+    union_op.add_input(op0.get_next(), 0)
+    union_op.add_input(op0.get_next(), 0)
+    assert union_op.get_next() == data0[1]
+    assert union_op.get_next() == data0[2]
+
+    union_op.input_done(0)
+    assert not union_op.completed()
+    if preserve_order:
+        assert union_op._input_idx_to_output == 1
+
+    if preserve_order:
+        union_op.add_input(op1.get_next(), 1)
+        union_op.add_input(op2.get_next(), 2)
+        assert union_op._input_idx_to_output == 1
+
+        assert union_op.get_next() == data1[0]
+        assert not union_op.has_next()
+
+        # Check the case where an input op which is not the op
+        # corresponding to _input_idx_to_output finishes first.
+        union_op.input_done(2)
+        assert union_op._input_idx_to_output == 1
+
+        union_op.add_input(op1.get_next(), 1)
+        assert union_op.has_next()
+        assert union_op.get_next() == data1[1]
+        assert not union_op.has_next()
+        # Marking the current output buffer source op will
+        # increment _input_idx_to_output to the next source.
+        union_op.input_done(1)
+        assert union_op._input_idx_to_output == 2
+        assert union_op.has_next()
+        assert union_op.get_next() == data2[0]
+    else:
+        union_op.add_input(op1.get_next(), 1)
+        union_op.add_input(op2.get_next(), 2)
+        union_op.add_input(op1.get_next(), 1)
+        # The output will be in the same order as the inputs
+        # were added with `add_input()`.
+        assert union_op.get_next() == data1[0]
+        assert union_op.get_next() == data2[0]
+        assert union_op.get_next() == data1[1]
+
+    assert all([len(b) == 0 for b in union_op._input_buffers])
+
+    _take_outputs(union_op)
+    union_op.all_inputs_done()
+    assert union_op.completed()
 
 
 @pytest.mark.parametrize(

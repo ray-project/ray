@@ -114,6 +114,19 @@ def test_repr(preprocessor):
     assert pattern.match(representation)
 
 
+def test_fitted_preprocessor_without_stats():
+    """Tests that Preprocessors can be fitted without needing to set self.stats_."""
+
+    class FittablePreprocessor(Preprocessor):
+        def _fit(self, ds):
+            return ds
+
+    preprocessor = FittablePreprocessor()
+    ds = ray.data.from_items([1])
+    _ = preprocessor.fit(ds)
+    assert preprocessor.fit_status() == Preprocessor.FitStatus.FITTED
+
+
 @patch.object(warnings, "warn")
 def test_fit_twice(mocked_warn):
     """Tests that a warning msg should be printed."""
@@ -187,7 +200,7 @@ def test_pipeline_fail():
     class FittablePreprocessor(Preprocessor):
         _is_fittable = True
 
-        def _fit(self, datastream):
+        def _fit(self, dataset):
             self.fitted_ = True
             return self
 
@@ -234,7 +247,7 @@ def test_transform_all_formats(create_dummy_preprocessors, pipeline, dataset_for
     if pipeline:
         patcher = patch.object(ray.data.dataset_pipeline.DatasetPipeline, "map_batches")
     else:
-        patcher = patch.object(ray.data.datastream.Datastream, "map_batches")
+        patcher = patch.object(ray.data.dataset.Dataset, "map_batches")
 
     with patcher as mock_map_batches:
         _apply_transform(with_pandas, ds)
@@ -263,7 +276,7 @@ def test_transform_all_formats(create_dummy_preprocessors, pipeline, dataset_for
 
 
 def test_numpy_pandas_support_transform_batch_wrong_format(create_dummy_preprocessors):
-    # Case 1: simple datastream. No support
+    # Case 1: simple dataset. No support
     (
         with_nothing,
         with_pandas,
@@ -290,7 +303,7 @@ def test_numpy_pandas_support_transform_batch_wrong_format(create_dummy_preproce
 
 
 def test_numpy_pandas_support_transform_batch_pandas(create_dummy_preprocessors):
-    # Case 2: pandas datastream
+    # Case 2: pandas dataset
     (
         with_nothing,
         with_pandas,
@@ -328,7 +341,7 @@ def test_numpy_pandas_support_transform_batch_pandas(create_dummy_preprocessors)
 
 
 def test_numpy_pandas_support_transform_batch_arrow(create_dummy_preprocessors):
-    # Case 3: arrow datastream
+    # Case 3: arrow dataset
     (
         with_nothing,
         with_pandas,
@@ -371,7 +384,7 @@ def test_numpy_pandas_support_transform_batch_arrow(create_dummy_preprocessors):
 
 
 def test_numpy_pandas_support_transform_batch_tensor(create_dummy_preprocessors):
-    # Case 4: tensor datastream created by from numpy data directly
+    # Case 4: tensor dataset created by from numpy data directly
     (
         with_nothing,
         with_pandas,

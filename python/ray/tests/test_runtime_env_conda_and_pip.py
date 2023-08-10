@@ -10,6 +10,11 @@ from ray._private.test_utils import (
     generate_runtime_env_dict,
 )
 from ray._private.runtime_env.conda import _get_conda_dict_with_ray_inserted
+from ray._private.runtime_env.pip import (
+    INTERNAL_PIP_FILENAME,
+    MAX_INTERNAL_PIP_FILENAME_TRIES,
+    _PathHelper,
+)
 from ray.runtime_env import RuntimeEnv
 
 import yaml
@@ -223,6 +228,54 @@ def test_runtime_env_conda_not_exists_not_hang(shutdown_only):
         assert "doesn't exist from the output of `conda env list --json`" in str(
             exc_info.value
         )  # noqa
+
+
+def test_get_requirements_file():
+    """Unit test for _PathHelper.get_requirements_file."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        path_helper = _PathHelper()
+
+        # If pip_list is None, we should return the internal pip filename.
+        assert path_helper.get_requirements_file(tmpdir, pip_list=None) == os.path.join(
+            tmpdir, INTERNAL_PIP_FILENAME
+        )
+
+        # If the internal pip filename is not in pip_list, we should return the internal
+        # pip filename.
+        assert path_helper.get_requirements_file(
+            tmpdir, pip_list=["foo", "bar"]
+        ) == os.path.join(tmpdir, INTERNAL_PIP_FILENAME)
+
+        # If the internal pip filename is in pip_list, we should append numbers to the
+        # end of the filename until we find one that doesn't conflict.
+        assert path_helper.get_requirements_file(
+            tmpdir, pip_list=["foo", "bar", f"-r {INTERNAL_PIP_FILENAME}"]
+        ) == os.path.join(tmpdir, f"{INTERNAL_PIP_FILENAME}.1")
+        assert path_helper.get_requirements_file(
+            tmpdir,
+            pip_list=[
+                "foo",
+                "bar",
+                f"{INTERNAL_PIP_FILENAME}.1",
+                f"{INTERNAL_PIP_FILENAME}.2",
+            ],
+        ) == os.path.join(tmpdir, f"{INTERNAL_PIP_FILENAME}.3")
+
+        # If we can't find a valid filename, we should raise an error.
+        with pytest.raises(RuntimeError) as excinfo:
+            path_helper.get_requirements_file(
+                tmpdir,
+                pip_list=[
+                    "foo",
+                    "bar",
+                    *[
+                        f"{INTERNAL_PIP_FILENAME}.{i}"
+                        for i in range(MAX_INTERNAL_PIP_FILENAME_TRIES)
+                    ],
+                ],
+            )
+        assert "Could not find a valid filename for the internal " in str(excinfo.value)
+>>>>>>> master
 
 
 if __name__ == "__main__":

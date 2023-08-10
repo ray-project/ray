@@ -25,7 +25,7 @@ class TestAPPO(unittest.TestCase):
         config = appo.APPOConfig().rollouts(num_rollout_workers=1)
         num_iterations = 2
 
-        for _ in framework_iterator(config, with_eager_tracing=True):
+        for _ in framework_iterator(config):
             print("w/o v-trace")
             config.vtrace = False
             algo = config.build(env="CartPole-v1")
@@ -55,7 +55,7 @@ class TestAPPO(unittest.TestCase):
         )
         num_iterations = 2
 
-        for _ in framework_iterator(config, with_eager_tracing=True):
+        for _ in framework_iterator(config):
             algo = config.build(env="CartPole-v1")
             for i in range(num_iterations):
                 results = algo.train()
@@ -130,7 +130,7 @@ class TestAPPO(unittest.TestCase):
                 "entropy_coeff"
             ]
 
-        for _ in framework_iterator(config):
+        for _ in framework_iterator(config, frameworks=("torch", "tf")):
             algo = config.build(env="CartPole-v1")
 
             coeff = _step_n_times(algo, 10)  # 200 timesteps

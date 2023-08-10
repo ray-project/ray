@@ -264,15 +264,24 @@ const MainNavBreadcrumbs = () => {
     return null;
   }
 
+  let currentPath = "";
+
   return (
     <div className={classes.root}>
       {mainNavPageHierarchy.map(({ title, id, path }, index) => {
+        if (path) {
+          if (path.startsWith("/")) {
+            currentPath = path;
+          } else {
+            currentPath = `${currentPath}/${path}`;
+          }
+        }
         const linkOrText = path ? (
           <Link
             className={classNames(classes.link, {
               [classes.currentItem]: index === mainNavPageHierarchy.length - 1,
             })}
-            to={path}
+            to={currentPath}
           >
             {title}
           </Link>

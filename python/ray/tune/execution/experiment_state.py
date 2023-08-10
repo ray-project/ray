@@ -10,8 +10,7 @@ import warnings
 
 from ray.air._internal.remote_storage import list_at_uri
 from ray.air._internal.uri_utils import _join_path_or_uri
-
-from ray.tune import TuneError
+from ray.train._internal.storage import _use_storage_context, StorageContext
 from ray.tune.experiment import Trial
 from ray.tune.impl.out_of_band_serialize_dataset import out_of_band_serialize_dataset
 from ray.tune.syncer import SyncConfig, get_node_to_storage_syncer
@@ -20,6 +19,12 @@ logger = logging.getLogger(__name__)
 
 
 VALID_RESUME_TYPES = [True, "LOCAL", "REMOTE", "PROMPT", "ERRORED_ONLY", "AUTO"]
+
+_EXPERIMENT_SYNC_TIMEOUT_MESSAGE = (
+    "If this warning keeps showing up, consider diagnosing the "
+    "reason behind the hanging sync operation, or increase the "
+    "`sync_timeout` in `SyncConfig`."
+)
 
 
 @dataclass
@@ -117,22 +122,34 @@ class _ExperimentCheckpointManager:
     def __init__(
         self,
         *,
-        local_checkpoint_dir: str,
-        remote_checkpoint_dir: str,
         checkpoint_period: Union[int, float, str],
-        sync_config: SyncConfig,
+        # TODO(justinvyu): Make `storage` required
+        storage: Optional[StorageContext] = None,
         sync_every_n_trial_checkpoints: Optional[int] = None,
+        # TODO(justinvyu): Remove these args.
+        sync_config: SyncConfig = None,
+        local_checkpoint_dir: str = None,
+        remote_checkpoint_dir: str = None,
     ):
-        # Checkpoint directories
-        self._local_checkpoint_dir = local_checkpoint_dir
-        self._remote_checkpoint_dir = remote_checkpoint_dir
+        self._storage = storage
+        if _use_storage_context():
+            assert storage
 
-        # Synch to/from cloud
-        self._sync_config = sync_config or SyncConfig
-        # Resolves syncer="auto" to an actual syncer if needed
-        self._syncer = get_node_to_storage_syncer(
-            self._sync_config, self._remote_checkpoint_dir
-        )
+            self._legacy_local_checkpoint_dir = None
+            self._legacy_remote_checkpoint_dir = None
+            self._legacy_sync_config = None
+            self._legacy_syncer = None
+        else:
+            # Checkpoint directories
+            self._legacy_local_checkpoint_dir = local_checkpoint_dir
+            self._legacy_remote_checkpoint_dir = remote_checkpoint_dir
+
+            # Synch to/from cloud
+            self._legacy_sync_config = sync_config or SyncConfig()
+            # Resolves syncer="auto" to an actual syncer if needed
+            self._legacy_syncer = get_node_to_storage_syncer(
+                self._legacy_sync_config, self._legacy_remote_checkpoint_dir
+            )
 
         # Last save + sync time
         self._last_save_time = 0.0
@@ -196,7 +213,7 @@ class _ExperimentCheckpointManager:
         force: bool = False,
         wait: bool = False,
     ):
-        """Saves execution state to `self._local_checkpoint_dir`.
+        """Saves execution state to `self._legacy_local_checkpoint_dir`.
 
         Overwrites the current session checkpoint, which starts when self
         is instantiated. Throttle depends on self._checkpoint_period.
@@ -211,7 +228,12 @@ class _ExperimentCheckpointManager:
             wait: Wait until sync to cloud has finished.
 
         """
-        if not self._local_checkpoint_dir:
+        experiment_local_path = (
+            self._storage.experiment_local_path
+            if _use_storage_context()
+            else self._legacy_local_checkpoint_dir
+        )
+        if not experiment_local_path:
             return
 
         force = force or self._should_force_cloud_sync
@@ -223,7 +245,7 @@ class _ExperimentCheckpointManager:
         # Checkpoint
         checkpoint_time_start = time.monotonic()
 
-        # NOTE: This context manager is for Datastreams captured in a trial config.
+        # NOTE: This context manager is for Datasets captured in a trial config.
         # This is the case when *tuning over datasets*.
         # If the datasets have already been full executed, then serializing
         # block refs means that this checkpoint is not usable in a new Ray cluster.
@@ -241,51 +263,75 @@ class _ExperimentCheckpointManager:
 
         # Finish
         self._last_save_time = time.time()
-        return self._local_checkpoint_dir
+        return experiment_local_path
 
     def sync_up(self, force: bool = False, wait: bool = False) -> bool:
-        # self._remote_checkpoint_dir can be empty in tests, but shouldn't
+        # self._legacy_remote_checkpoint_dir can be empty in tests, but shouldn't
         # be empty when using in end-to-end tune.
         # Todo (krfricke): We may want to not store directories in this manager
         # but instead always pass them from the trial runner.
-        if not self._syncer:  # or not self._remote_checkpoint_dir:
+        syncer = self._storage.syncer if _use_storage_context() else self._legacy_syncer
+
+        if not syncer:  # or not self._legacy_remote_checkpoint_dir:
             return False
 
-        if bool(self._remote_checkpoint_dir):
-            # If an upload dir is given, trainable actors upload checkpoints
-            # themselves. Then the driver does not need to sync checkpoints.
+        if _use_storage_context():
+            # Always exclude checkpoints in the new persistence path.
+            # TODO(justinvyu, krfricke): Ideally, this excludes all trial directories.
+            # But for now, this is needed to upload driver artifacts that live in the
+            # trial directory.
             exclude = ["*/checkpoint_*"]
+            experiment_local_path = self._storage.experiment_local_path
+            experiment_fs_path = self._storage.experiment_fs_path
         else:
-            # Otherwise, we sync the full trial dir.
-            exclude = None
+            if bool(self._legacy_remote_checkpoint_dir):
+                # If an upload dir is given, trainable actors upload checkpoints
+                # themselves. Then the driver does not need to sync checkpoints.
+                exclude = ["*/checkpoint_*"]
+            else:
+                # Otherwise, we sync the full trial dir.
+                exclude = None
+            experiment_local_path = self._legacy_local_checkpoint_dir
+            experiment_fs_path = self._legacy_remote_checkpoint_dir
 
         if force:
             # Wait until previous sync command finished
             try:
-                self._syncer.wait()
+                syncer.wait()
             except TimeoutError as e:
                 logger.warning(
-                    "The previous sync of the experiment checkpoint to the cloud "
-                    f"timed out: {str(e)}. Tune will continue to retry syncing. "
-                    "If this warning keeps showing up, consider diagnosing the "
-                    "reason behind the hanging sync operation, or increase the "
-                    "`sync_timeout` in `SyncConfig`."
+                    "The previous sync of the experiment directory to the cloud "
+                    f"timed out with the error: {str(e)}\nSyncing will be retried. "
+                    + _EXPERIMENT_SYNC_TIMEOUT_MESSAGE
                 )
-            synced = self._syncer.sync_up(
-                local_dir=self._local_checkpoint_dir,
-                remote_dir=self._remote_checkpoint_dir,
+            except Exception as e:
+                logger.warning(
+                    "The previous sync of the experiment directory to the cloud "
+                    f"failed with the error: {str(e)}\nSyncing will be retried."
+                )
+            synced = syncer.sync_up(
+                local_dir=experiment_local_path,
+                remote_dir=experiment_fs_path,
                 exclude=exclude,
             )
         else:
-            synced = self._syncer.sync_up_if_needed(
-                local_dir=self._local_checkpoint_dir,
-                remote_dir=self._remote_checkpoint_dir,
+            synced = syncer.sync_up_if_needed(
+                local_dir=experiment_local_path,
+                remote_dir=experiment_fs_path,
                 exclude=exclude,
             )
 
         start_time = time.monotonic()
         if wait:
-            self._syncer.wait()
+            try:
+                syncer.wait()
+            except Exception as e:
+                raise RuntimeError(
+                    "Uploading the experiment directory from the driver "
+                    f"(local path: {experiment_local_path}) to the the cloud "
+                    f"(remote path: {experiment_fs_path}) failed. "
+                    "Please check the error message above."
+                ) from e
 
         now = time.monotonic()
         sync_time_taken = now - start_time
@@ -324,7 +370,7 @@ class _ExperimentCheckpointManager:
                 f"times in the last {self._excessive_sync_threshold} seconds. "
                 "A sync will be triggered whenever a trial has checkpointed "
                 "more than `num_to_keep` times since last sync or if "
-                f"{self._syncer.sync_period} seconds have passed since last "
+                f"{syncer.sync_period} seconds have passed since last "
                 "sync. If you have set `num_to_keep` in your `CheckpointConfig`, "
                 "consider increasing the checkpoint frequency or keeping more "
                 "checkpoints. You can supress this warning by changing the "
@@ -335,69 +381,96 @@ class _ExperimentCheckpointManager:
         return True
 
     def sync_down(self, force: bool = False, wait: bool = False) -> bool:
-        if not self._syncer or not self._remote_checkpoint_dir:
-            return False
-
-        if bool(self._remote_checkpoint_dir):
-            # If an upload dir is given, trainable actors upload checkpoints
-            # themselves. Then the driver does not need to sync checkpoints.
+        if _use_storage_context():
+            if not self._storage.syncer:
+                return False
+            # TODO(justinvyu): sync_down doesn't actually implement exclude right now
             exclude = ["*/checkpoint_*"]
+            syncer = self._storage.syncer
+            experiment_local_path = self._storage.experiment_local_path
+            experiment_fs_path = self._storage.experiment_fs_path
         else:
-            # Otherwise, we sync the full trial dir.
-            exclude = None
+            if not self._legacy_syncer or not self._legacy_remote_checkpoint_dir:
+                return False
+
+            if bool(self._legacy_remote_checkpoint_dir):
+                # If an upload dir is given, trainable actors upload checkpoints
+                # themselves. Then the driver does not need to sync checkpoints.
+                exclude = ["*/checkpoint_*"]
+            else:
+                # Otherwise, we sync the full trial dir.
+                exclude = None
+            syncer = self._legacy_syncer
+            experiment_local_path = self._legacy_local_checkpoint_dir
+            experiment_fs_path = self._legacy_remote_checkpoint_dir
 
         if force:
             # Wait until previous sync command finished
             try:
-                self._syncer.wait()
+                syncer.wait()
             except TimeoutError as e:
                 logger.warning(
-                    "The previous sync of the experiment checkpoint from the cloud "
-                    f"timed out: {str(e)}."
+                    "The previous sync of the experiment directory from the cloud "
+                    f"timed out with the error: {str(e)}\nSyncing will be retried. "
+                    + _EXPERIMENT_SYNC_TIMEOUT_MESSAGE
                 )
-            synced = self._syncer.sync_down(
-                remote_dir=self._remote_checkpoint_dir,
-                local_dir=self._local_checkpoint_dir,
+            except Exception as e:
+                logger.warning(
+                    "The previous sync of the experiment directory from the cloud "
+                    f"failed with the error: {str(e)}\nSyncing will be retried. "
+                )
+
+            synced = syncer.sync_down(
+                remote_dir=experiment_fs_path,
+                local_dir=experiment_local_path,
                 exclude=exclude,
             )
         else:
-            synced = self._syncer.sync_down_if_needed(
-                remote_dir=self._remote_checkpoint_dir,
-                local_dir=self._local_checkpoint_dir,
+            synced = syncer.sync_down_if_needed(
+                remote_dir=experiment_fs_path,
+                local_dir=experiment_local_path,
                 exclude=exclude,
             )
 
         if wait:
             try:
-                self._syncer.wait()
-            except TuneError as e:
+                syncer.wait()
+            except Exception as e:
                 raise RuntimeError(
-                    "Syncing the remote experiment checkpoint to the driver "
-                    "failed. Please check the error message. If you want to "
-                    'start a new experiment, use `resume="AUTO"` or '
-                    "`resume=None`. If you expected an experiment to "
-                    "already exist, check if you supplied the correct "
-                    "`upload_dir` to the `tune.SyncConfig` passed to "
-                    "`tune.Tuner()`."
+                    "Downloading the remote experiment directory from the cloud "
+                    f"(remote path: {experiment_fs_path}) to the driver "
+                    f"(local path: {experiment_local_path}) failed. "
+                    "Please check the error message above. "
+                    "If you expected an experiment to already exist, check if "
+                    "you supplied the correct restoration path."
                 ) from e
 
         return synced
 
     def _resume_auto(self) -> bool:
-        if self._remote_checkpoint_dir and self._syncer:
+        if _use_storage_context():
+            experiment_local_path = self._storage.experiment_local_path
+            experiment_fs_path = self._storage.experiment_fs_path
+            syncer = self._storage.syncer
+        else:
+            experiment_local_path = self._legacy_local_checkpoint_dir
+            experiment_fs_path = self._legacy_remote_checkpoint_dir
+            syncer = self._legacy_syncer
+
+        if experiment_fs_path and syncer:
             logger.info(
                 f"Trying to find and download experiment checkpoint at "
-                f"{self._remote_checkpoint_dir}"
+                f"{experiment_fs_path}"
             )
             # Todo: This syncs the entire experiment including trial
             # checkpoints. We should exclude these in the future.
             try:
-                self._syncer.sync_down_if_needed(
-                    remote_dir=self._remote_checkpoint_dir,
-                    local_dir=self._local_checkpoint_dir,
+                syncer.sync_down_if_needed(
+                    remote_dir=experiment_fs_path,
+                    local_dir=experiment_local_path,
                 )
-                self._syncer.wait()
-            except TuneError as e:
+                syncer.wait()
+            except Exception as e:
                 logger.warning(
                     f"Got error when trying to sync down: {e} "
                     f"\nPlease check this error message for potential "
@@ -413,7 +486,7 @@ class _ExperimentCheckpointManager:
                     "Ray Tune will now start a new experiment."
                 )
                 return False
-            if not _experiment_checkpoint_exists(self._local_checkpoint_dir):
+            if not _experiment_checkpoint_exists(experiment_local_path):
                 logger.warning(
                     "A remote checkpoint was fetched, but no checkpoint "
                     "data was found. This can happen when e.g. the cloud "
@@ -426,7 +499,7 @@ class _ExperimentCheckpointManager:
                 "used to restore the previous experiment state."
             )
             return True
-        elif not _experiment_checkpoint_exists(self._local_checkpoint_dir):
+        elif not _experiment_checkpoint_exists(experiment_local_path):
             logger.info(
                 "No local checkpoint was found. "
                 "Ray Tune will now start a new experiment."
@@ -457,11 +530,17 @@ class _ExperimentCheckpointManager:
 
         resume_type, resume_config = _resume_str_to_config(resume_type)
 
-        # Not clear if we need this assertion, since we should always have a
-        # local checkpoint dir.
-        assert self._local_checkpoint_dir or (
-            self._remote_checkpoint_dir and self._syncer
-        )
+        if _use_storage_context():
+            experiment_local_path = self._storage.experiment_local_path
+            experiment_fs_path = self._storage.experiment_fs_path
+        else:
+            # Not clear if we need this assertion, since we should always have a
+            # local checkpoint dir.
+            assert self._legacy_local_checkpoint_dir or (
+                self._legacy_remote_checkpoint_dir and self._legacy_syncer
+            )
+            experiment_local_path = self._legacy_local_checkpoint_dir
+            experiment_fs_path = self._legacy_remote_checkpoint_dir
 
         if resume_type == "AUTO":
             if self._resume_auto():
@@ -470,29 +549,28 @@ class _ExperimentCheckpointManager:
             return None
 
         if resume_type in ["LOCAL", "PROMPT"]:
-            if not _experiment_checkpoint_exists(self._local_checkpoint_dir):
+            if not _experiment_checkpoint_exists(experiment_local_path):
                 raise ValueError(
                     f"You called resume ({resume_type}) when no checkpoint "
                     f"exists in local directory "
-                    f"({self._local_checkpoint_dir}). If you want to start "
+                    f"({experiment_local_path}). If you want to start "
                     f'a new experiment, use `resume="AUTO"` or '
                     f"`resume=None`. If you expected an experiment to "
                     f"already exist, check if you supplied the correct "
-                    f"`local_dir` to `air.RunConfig()`."
+                    f"`local_dir` to `train.RunConfig()`."
                 )
             elif resume_type == "PROMPT":
                 if click.confirm(
-                    f"Resume from local directory? " f"({self._local_checkpoint_dir})"
+                    f"Resume from local directory? " f"({experiment_local_path})"
                 ):
                     return resume_config
 
         if resume_type in ["REMOTE", "PROMPT"]:
             if resume_type == "PROMPT" and not click.confirm(
-                f"Try downloading from remote directory? "
-                f"({self._remote_checkpoint_dir})"
+                f"Try downloading from remote directory? " f"({experiment_fs_path})"
             ):
                 return None
-            if not self._remote_checkpoint_dir or not self._syncer:
+            if not experiment_fs_path or not self._legacy_syncer:
                 raise ValueError(
                     "Called resume from remote without remote directory or "
                     "without valid syncer. "
@@ -502,12 +580,11 @@ class _ExperimentCheckpointManager:
 
             # Try syncing down the upload directory.
             logger.info(
-                f"Downloading experiment checkpoint from "
-                f"{self._remote_checkpoint_dir}"
+                f"Downloading experiment checkpoint from " f"{experiment_fs_path}"
             )
             self.sync_down(force=True, wait=True)
 
-            if not _experiment_checkpoint_exists(self._local_checkpoint_dir):
+            if not _experiment_checkpoint_exists(experiment_local_path):
                 raise ValueError(
                     "Called resume when no checkpoint exists "
                     "in remote or local directory."

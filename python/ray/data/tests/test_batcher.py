@@ -1,9 +1,10 @@
 import time
-import pytest
 
 import pyarrow as pa
+import pytest
 
-from ray.data._internal.batcher import ShufflingBatcher, Batcher
+import ray
+from ray.data._internal.batcher import Batcher, ShufflingBatcher
 
 
 def gen_block(num_rows):
@@ -27,20 +28,32 @@ def test_shuffling_batcher():
         shuffle_buffer_min_size=buffer_size,
     )
 
-    def add_and_check(num_rows, expect_has_batch=False, no_nexting_yet=True):
+    def add_and_check(
+        num_rows,
+        materialized_buffer_size,
+        pending_buffer_size,
+        expect_has_batch=False,
+        no_nexting_yet=True,
+    ):
         block = gen_block(num_rows)
-        assert batcher.can_add(block)
         batcher.add(block)
-        assert not expect_has_batch or batcher.has_batch()
+        if expect_has_batch:
+            assert batcher.has_batch()
+        else:
+            assert not batcher.has_batch()
 
         if no_nexting_yet:
             # Check that no shuffle buffer has been materialized yet.
             assert batcher._shuffle_buffer is None
-            assert batcher._shuffle_indices is None
             assert batcher._batch_head == 0
+
+        assert batcher._builder.num_rows() == pending_buffer_size
+        assert batcher._materialized_buffer_size() == materialized_buffer_size
 
     def next_and_check(
         current_cursor,
+        materialized_buffer_size,
+        pending_buffer_size,
         should_batch_be_full=True,
         should_have_batch_after=True,
         new_data_added=False,
@@ -52,27 +65,13 @@ def test_shuffling_batcher():
         if new_data_added:
             # If new data was added, the builder should be non-empty.
             assert batcher._builder.num_rows() > 0
-        # Store the old shuffle indices for comparison in post.
-        old_shuffle_indices = batcher._shuffle_indices
-
         batch = batcher.next_batch()
 
         if should_batch_be_full:
             assert len(batch) == batch_size
 
-        # Check that shuffle buffer has been materialized and its state is as expected.
-        assert batcher._shuffle_buffer is not None
-        # Builder should always be empty after consuming a batch since the shuffle
-        # buffer should always be materialized.
-        assert batcher._builder.num_rows() == 0
-        assert len(
-            batcher._shuffle_indices
-        ) == batcher._buffer_size() + current_cursor + len(batch)
-        if new_data_added:
-            # If new data was added, confirm that the old shuffle indices were
-            # invalidated.
-            assert batcher._shuffle_indices != old_shuffle_indices
-        assert batcher._batch_head == current_cursor + len(batch)
+        assert batcher._builder.num_rows() == pending_buffer_size
+        assert batcher._materialized_buffer_size() == materialized_buffer_size
 
         if should_have_batch_after:
             assert batcher.has_batch()
@@ -81,48 +80,89 @@ def test_shuffling_batcher():
 
     # Add less than a batch.
     # Buffer not full and no batch slack.
-    add_and_check(3)
+    add_and_check(3, materialized_buffer_size=0, pending_buffer_size=3)
 
     # Add to more than a batch (total=10).
     # Buffer not full and no batch slack.
-    add_and_check(7)
+    add_and_check(7, materialized_buffer_size=0, pending_buffer_size=10)
 
     # Fill up to buffer (total=20).
     # Buffer is full but no batch slack.
-    add_and_check(10)
+    add_and_check(10, materialized_buffer_size=0, pending_buffer_size=20)
 
-    # Fill past buffer but not to full batch (total=22)
-    # Buffer is over-full but no batch slack.
-    add_and_check(2)
-
-    # Fill past buffer to full batch (total=25).
-    add_and_check(3, expect_has_batch=True)
+    # Fill past buffer and over 1.5 * min buffer size. A batch is now available, but
+    # compaction still doesn't happen until a next().
+    add_and_check(
+        15, materialized_buffer_size=0, pending_buffer_size=35, expect_has_batch=True
+    )
 
     # Consume only available batch.
-    next_and_check(0, should_have_batch_after=False, new_data_added=True)
+    next_and_check(
+        0,
+        materialized_buffer_size=30,
+        pending_buffer_size=0,
+        should_have_batch_after=True,
+        new_data_added=True,
+    )
 
     # Add 4 batches-worth to the already-full buffer.
-    add_and_check(20, no_nexting_yet=False)
+    add_and_check(
+        20,
+        materialized_buffer_size=30,
+        pending_buffer_size=20,
+        expect_has_batch=True,
+        no_nexting_yet=False,
+    )
 
     # Consume 4 batches from the buffer.
-    next_and_check(0, new_data_added=True)
-    next_and_check(batch_size)
-    next_and_check(2 * batch_size)
-    next_and_check(3 * batch_size, should_have_batch_after=False)
+    next_and_check(
+        0, materialized_buffer_size=25, pending_buffer_size=20, new_data_added=True
+    )
+    next_and_check(batch_size, materialized_buffer_size=20, pending_buffer_size=20)
+    # Triggers materialization of pending batches to avoid falling below min buf size.
+    next_and_check(2 * batch_size, materialized_buffer_size=35, pending_buffer_size=0)
+    next_and_check(
+        3 * batch_size,
+        materialized_buffer_size=30,
+        pending_buffer_size=0,
+        should_have_batch_after=True,
+    )
 
     # Add a full batch + a partial batch to the buffer.
-    add_and_check(8, no_nexting_yet=False)
-    next_and_check(0, should_have_batch_after=False, new_data_added=True)
+    add_and_check(
+        8,
+        materialized_buffer_size=30,
+        pending_buffer_size=8,
+        expect_has_batch=True,
+        no_nexting_yet=False,
+    )
+    next_and_check(
+        0,
+        materialized_buffer_size=25,
+        pending_buffer_size=8,
+        should_have_batch_after=True,
+        new_data_added=True,
+    )
 
     # Indicate to the batcher that we're done adding blocks.
     batcher.done_adding()
 
-    # Consume 4 full batches and one partial batch.
-    next_and_check(batch_size)
-    next_and_check(2 * batch_size)
-    next_and_check(3 * batch_size)
+    # Consume 6 full batches and one partial batch, fully draining the buffer.
+    next_and_check(batch_size, materialized_buffer_size=28, pending_buffer_size=0)
+    next_and_check(2 * batch_size, materialized_buffer_size=23, pending_buffer_size=0)
+    next_and_check(3 * batch_size, materialized_buffer_size=18, pending_buffer_size=0)
+    next_and_check(4 * batch_size, materialized_buffer_size=13, pending_buffer_size=0)
+    next_and_check(5 * batch_size, materialized_buffer_size=8, pending_buffer_size=0)
     next_and_check(
-        4 * batch_size,
+        6 * batch_size,
+        materialized_buffer_size=3,
+        pending_buffer_size=0,
+        should_have_batch_after=False,
+    )
+    next_and_check(
+        7 * batch_size,
+        materialized_buffer_size=0,
+        pending_buffer_size=0,
         should_batch_be_full=False,
         should_have_batch_after=False,
     )
@@ -163,7 +203,23 @@ def test_batching_pyarrow_table_with_many_chunks():
     while shuffling_batcher.has_any():
         shuffling_batcher.next_batch()
     duration = time.perf_counter() - start
-    assert duration < 20
+    assert duration < 30
+
+
+@pytest.mark.parametrize(
+    "batch_size,local_shuffle_buffer_size",
+    [(1, 1), (10, 1), (1, 10), (10, 1000), (1000, 10)],
+)
+def test_shuffling_batcher_grid(batch_size, local_shuffle_buffer_size):
+    ds = ray.data.range_tensor(10000, shape=(130,))
+    start = time.time()
+    count = 0
+    for batch in ds.iter_batches(
+        batch_size=batch_size, local_shuffle_buffer_size=local_shuffle_buffer_size
+    ):
+        count += len(batch["data"])
+    print((ds.size_bytes() / 1e9) / (time.time() - start), "GB/s")
+    assert count == 10000
 
 
 if __name__ == "__main__":

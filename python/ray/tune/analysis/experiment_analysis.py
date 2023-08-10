@@ -15,6 +15,12 @@ from ray.air._internal.remote_storage import (
 )
 from ray.air._internal.uri_utils import _join_path_or_uri, URI
 from ray.air.checkpoint import Checkpoint
+from ray.air.constants import (
+    EXPR_PROGRESS_FILE,
+    EXPR_RESULT_FILE,
+    EXPR_PARAM_FILE,
+    TRAINING_ITERATION,
+)
 from ray.tune.syncer import SyncConfig
 from ray.tune.utils import flatten_dict
 from ray.tune.utils.serialization import TuneFunctionDecoder
@@ -31,14 +37,10 @@ except ImportError:
 from ray.tune.error import TuneError
 from ray.tune.result import (
     DEFAULT_METRIC,
-    EXPR_PROGRESS_FILE,
-    EXPR_RESULT_FILE,
-    EXPR_PARAM_FILE,
     CONFIG_PREFIX,
-    TRAINING_ITERATION,
 )
 from ray.tune.experiment import Trial
-from ray.tune.execution.trial_runner import _find_newest_experiment_checkpoint
+from ray.tune.execution.experiment_state import _find_newest_experiment_checkpoint
 from ray.tune.trainable.util import TrainableUtil
 from ray.tune.utils.util import unflattened_lookup
 
@@ -85,7 +87,7 @@ class ExperimentAnalysis:
         default_metric: Optional[str] = None,
         default_mode: Optional[str] = None,
         remote_storage_path: Optional[str] = None,
-        # Deprecate: Raise in 2.6, remove in 2.7
+        # Deprecate: Remove in 2.7
         sync_config: Optional[SyncConfig] = None,
     ):
         self._local_experiment_path: str = None
@@ -128,8 +130,12 @@ class ExperimentAnalysis:
             self.default_metric = DEFAULT_METRIC
 
         # TODO(ml-team): Remove in 2.7 along with sync_config parameter
-        if sync_config and sync_config.upload_dir:
-            remote_storage_path = sync_config.upload_dir
+        if sync_config:
+            raise DeprecationWarning(
+                "Using `sync_config` to specify an `upload_dir` for initializing an "
+                "`ExperimentAnalysis` is deprecated. Remove this parameter and specify "
+                "`remote_storage_path` instead."
+            )
 
         if not self._local_experiment_path:
             self._local_experiment_path = str(self._checkpoints_and_paths[0][1])
@@ -374,7 +380,7 @@ class ExperimentAnalysis:
         `get_best_checkpoint(trial, metric, mode)` instead.
 
         Returns:
-            :class:`Checkpoint <ray.air.Checkpoint>` object.
+            :class:`Checkpoint <ray.train.Checkpoint>` object.
         """
         if not self.default_metric or not self.default_mode:
             raise ValueError(
@@ -602,7 +608,7 @@ class ExperimentAnalysis:
                 (client) node. Can also contain a cloud URI.
 
         Returns:
-            :class:`Checkpoint <ray.air.Checkpoint>` object or string
+            :class:`Checkpoint <ray.train.Checkpoint>` object or string
             if ``return_path=True``.
         """
         metric = metric or self.default_metric or TRAINING_ITERATION
@@ -942,11 +948,11 @@ class ExperimentAnalysis:
         return True
 
     def runner_data(self) -> Dict:
-        """Returns a dictionary of the TrialRunner data.
+        """Returns a dictionary of the TuneController data.
 
         If ``experiment_checkpoint_path`` pointed to a directory of
         experiments, the dict will be in the format of
-        ``{experiment_session_id: TrialRunner_data}``."""
+        ``{experiment_session_id: TuneController_data}``."""
         if len(self._experiment_states) == 1:
             return self._experiment_states[0]["runner_data"]
         else:

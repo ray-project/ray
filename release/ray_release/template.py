@@ -7,12 +7,12 @@ from typing import Optional, Dict, TYPE_CHECKING
 import jinja2
 import yaml
 
+from ray_release.bazel import bazel_runfile
 from ray_release.config import (
-    RELEASE_PACKAGE_DIR,
     parse_python_version,
-    DEFAULT_PYTHON_VERSION,
     get_test_cloud_id,
 )
+from ray_release.test import DEFAULT_PYTHON_VERSION
 from ray_release.exception import ReleaseTestConfigError
 from ray_release.util import python_version_str
 
@@ -73,7 +73,7 @@ def load_and_render_yaml_template(
     if not template_path:
         return None
 
-    if not os.path.exists(template_path):
+    if not os.path.isfile(template_path):
         raise ReleaseTestConfigError(
             f"Cannot load yaml template from {template_path}: Path not found."
         )
@@ -99,11 +99,9 @@ def render_yaml_template(template: str, env: Optional[Dict] = None):
 
 
 def get_cluster_env_path(test: "Test") -> str:
+    working_dir = test.get("working_dir", "")
     cluster_env_file = test["cluster"]["cluster_env"]
-    cluster_env_path = os.path.join(
-        RELEASE_PACKAGE_DIR, test.get("working_dir", ""), cluster_env_file
-    )
-    return cluster_env_path
+    return bazel_runfile("release", working_dir, cluster_env_file)
 
 
 def load_test_cluster_env(test: "Test", ray_wheels_url: str) -> Optional[Dict]:
@@ -144,12 +142,10 @@ def populate_cluster_env_variables(test: "Test", ray_wheels_url: str) -> Dict:
 
 def load_test_cluster_compute(test: "Test") -> Optional[Dict]:
     cluster_compute_file = test["cluster"]["cluster_compute"]
-    cluster_compute_path = os.path.join(
-        RELEASE_PACKAGE_DIR, test.get("working_dir", ""), cluster_compute_file
-    )
+    working_dir = test.get("working_dir", "")
+    f = bazel_runfile("release", working_dir, cluster_compute_file)
     env = populate_cluster_compute_variables(test)
-
-    return load_and_render_yaml_template(cluster_compute_path, env=env)
+    return load_and_render_yaml_template(f, env=env)
 
 
 def populate_cluster_compute_variables(test: "Test") -> Dict:

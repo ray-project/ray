@@ -14,7 +14,7 @@ from ray.rllib.utils.test_utils import check
 
 class TestMARLModule(unittest.TestCase):
     def test_from_config(self):
-
+        """Tests whether a MultiAgentRLModule can be constructed from a config."""
         env_class = make_multi_agent("CartPole-v0")
         env = env_class({"num_agents": 2})
         module1 = SingleAgentRLModuleSpec(

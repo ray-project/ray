@@ -34,6 +34,8 @@ Template for testing with these mocks:
 """
 
 import gc
+from pathlib import Path
+
 import numpy as np
 import os
 import pytest
@@ -47,9 +49,6 @@ from unittest.mock import (
 
 import ray
 from ray.exceptions import RayActorError
-from ray.tune import Trainable
-from ray.tune.integration.wandb import WandbTrainableMixin
-from ray.tune.integration.wandb import wandb_mixin
 from ray.air.integrations.wandb import (
     WandbLoggerCallback,
     _QueueItem,
@@ -452,24 +451,40 @@ class TestWandbLogger:
         with pytest.raises(RayActorError):
             ray.get(actor.get_state.remote())
 
+    def test_wandb_logging_actor_fault_tolerance(self, trial):
+        """Tests that failing wandb logging actors are restarted"""
 
-class TestWandbClassMixin:
-    def test_wandb_mixin(self):
-        class WandbTestTrainable(WandbTrainableMixin, Trainable):
-            pass
+        fail_marker = Path(tempfile.mktemp())
 
-        config = {}
-        with pytest.raises(DeprecationWarning):
-            WandbTestTrainable(config)
+        class _FailingWandbLoggingActor(_MockWandbLoggingActor):
+            def _handle_result(self, result):
+                if result.get("training_iteration") == 3 and not fail_marker.exists():
+                    fail_marker.write_text("Ok")
+                    raise SystemExit
 
+                return super()._handle_result(result)
 
-class TestWandbMixinDecorator:
-    def test_wandb_decorator(self):
-        with pytest.raises(DeprecationWarning):
+        logger = WandbLoggerCallback(
+            project="test_project", api_key="1234", excludes=["metric2"]
+        )
+        logger._logger_actor_cls = _FailingWandbLoggingActor
+        logger.setup()
+        logger.log_trial_start(trial)
 
-            @wandb_mixin
-            def train_fn(config):
-                return 1
+        actor = logger._trial_logging_actors[trial]
+        queue = logger._trial_queues[trial]
+
+        logger.log_trial_result(1, trial, result={"training_iteration": 1})
+        logger.log_trial_result(2, trial, result={"training_iteration": 2})
+        logger.log_trial_result(3, trial, result={"training_iteration": 3})
+
+        logger.log_trial_result(4, trial, result={"training_iteration": 4})
+        logger.log_trial_result(5, trial, result={"training_iteration": 5})
+
+        queue.put(_QueueItem.END)
+
+        state = ray.get(actor.get_state.remote())
+        assert [metrics["training_iteration"] for metrics in state.logs] == [4, 5]
 
 
 def test_wandb_logging_process_run_info_hook(monkeypatch):

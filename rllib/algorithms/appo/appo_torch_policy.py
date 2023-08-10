@@ -19,6 +19,7 @@ from ray.rllib.algorithms.impala.impala_torch_policy import (
 )
 from ray.rllib.evaluation.episode import Episode
 from ray.rllib.evaluation.postprocessing import (
+    compute_bootstrap_value,
     compute_gae_for_sample_batch,
     Postprocessing,
 )
@@ -69,9 +70,15 @@ class APPOTorchPolicy(
     def __init__(self, observation_space, action_space, config):
         config = dict(ray.rllib.algorithms.appo.appo.APPOConfig().to_dict(), **config)
 
-        # Although this is a no-op, we call __init__ here to make it clear
-        # that base.__init__ will use the make_model() call.
-        VTraceOptimizer.__init__(self)
+        # If Learner API is used, we don't need any loss-specific mixins.
+        # However, we also would like to avoid creating special Policy-subclasses
+        # for this as the entire Policy concept will soon not be used anymore with
+        # the new Learner- and RLModule APIs.
+        if not config.get("_enable_learner_api", False):
+            # Although this is a no-op, we call __init__ here to make it clear
+            # that base.__init__ will use the make_model() call.
+            VTraceOptimizer.__init__(self)
+
         LearningRateSchedule.__init__(self, config["lr"], config["lr_schedule"])
 
         TorchPolicyV2.__init__(
@@ -88,7 +95,6 @@ class APPOTorchPolicy(
         ValueNetworkMixin.__init__(self, config)
         KLCoeffMixin.__init__(self, config)
 
-        # TODO: Don't require users to call this manually.
         self._initialize_loss_from_dummy_batch()
 
         # Initiate TargetNetwork ops after loss initialization.
@@ -152,14 +158,16 @@ class APPOTorchPolicy(
         prev_action_dist = dist_class(behaviour_logits, model)
         values = model.value_function()
         values_time_major = _make_time_major(values)
-
-        drop_last = self.config["vtrace"] and self.config["vtrace_drop_last_ts"]
+        bootstrap_values_time_major = _make_time_major(
+            train_batch[SampleBatch.VALUES_BOOTSTRAPPED]
+        )
+        bootstrap_value = bootstrap_values_time_major[-1]
 
         if self.is_recurrent():
             max_seq_len = torch.max(train_batch[SampleBatch.SEQ_LENS])
             mask = sequence_mask(train_batch[SampleBatch.SEQ_LENS], max_seq_len)
             mask = torch.reshape(mask, [-1])
-            mask = _make_time_major(mask, drop_last=drop_last)
+            mask = _make_time_major(mask)
             num_valid = torch.sum(mask)
 
             def reduce_mean_valid(t):
@@ -169,9 +177,7 @@ class APPOTorchPolicy(
             reduce_mean_valid = torch.mean
 
         if self.config["vtrace"]:
-            logger.debug(
-                "Using V-Trace surrogate loss (vtrace=True; " f"drop_last={drop_last})"
-            )
+            logger.debug("Using V-Trace surrogate loss (vtrace=True)")
 
             old_policy_behaviour_logits = target_model_out.detach()
             old_policy_action_dist = dist_class(old_policy_behaviour_logits, model)
@@ -197,40 +203,30 @@ class APPOTorchPolicy(
             )
 
             # Prepare KL for loss.
-            action_kl = _make_time_major(
-                old_policy_action_dist.kl(action_dist), drop_last=drop_last
-            )
+            action_kl = _make_time_major(old_policy_action_dist.kl(action_dist))
 
             # Compute vtrace on the CPU for better perf.
             vtrace_returns = vtrace.multi_from_logits(
-                behaviour_policy_logits=_make_time_major(
-                    unpacked_behaviour_logits, drop_last=drop_last
-                ),
+                behaviour_policy_logits=_make_time_major(unpacked_behaviour_logits),
                 target_policy_logits=_make_time_major(
-                    unpacked_old_policy_behaviour_logits, drop_last=drop_last
+                    unpacked_old_policy_behaviour_logits
                 ),
-                actions=torch.unbind(
-                    _make_time_major(loss_actions, drop_last=drop_last), dim=2
-                ),
-                discounts=(1.0 - _make_time_major(dones, drop_last=drop_last).float())
+                actions=torch.unbind(_make_time_major(loss_actions), dim=2),
+                discounts=(1.0 - _make_time_major(dones).float())
                 * self.config["gamma"],
-                rewards=_make_time_major(rewards, drop_last=drop_last),
-                values=values_time_major[:-1] if drop_last else values_time_major,
-                bootstrap_value=values_time_major[-1],
+                rewards=_make_time_major(rewards),
+                values=values_time_major,
+                bootstrap_value=bootstrap_value,
                 dist_class=TorchCategorical if is_multidiscrete else dist_class,
                 model=model,
                 clip_rho_threshold=self.config["vtrace_clip_rho_threshold"],
                 clip_pg_rho_threshold=self.config["vtrace_clip_pg_rho_threshold"],
             )
 
-            actions_logp = _make_time_major(
-                action_dist.logp(actions), drop_last=drop_last
-            )
-            prev_actions_logp = _make_time_major(
-                prev_action_dist.logp(actions), drop_last=drop_last
-            )
+            actions_logp = _make_time_major(action_dist.logp(actions))
+            prev_actions_logp = _make_time_major(prev_action_dist.logp(actions))
             old_policy_actions_logp = _make_time_major(
-                old_policy_action_dist.logp(actions), drop_last=drop_last
+                old_policy_action_dist.logp(actions)
             )
             is_ratio = torch.clamp(
                 torch.exp(prev_actions_logp - old_policy_actions_logp), 0.0, 2.0
@@ -254,16 +250,11 @@ class APPOTorchPolicy(
 
             # The value function loss.
             value_targets = vtrace_returns.vs.to(values_time_major.device)
-            if drop_last:
-                delta = values_time_major[:-1] - value_targets
-            else:
-                delta = values_time_major - value_targets
+            delta = values_time_major - value_targets
             mean_vf_loss = 0.5 * reduce_mean_valid(torch.pow(delta, 2.0))
 
             # The entropy loss.
-            mean_entropy = reduce_mean_valid(
-                _make_time_major(action_dist.entropy(), drop_last=drop_last)
-            )
+            mean_entropy = reduce_mean_valid(_make_time_major(action_dist.entropy()))
 
         else:
             logger.debug("Using PPO surrogate loss (vtrace=False)")
@@ -318,9 +309,7 @@ class APPOTorchPolicy(
         model.tower_stats["value_targets"] = value_targets
         model.tower_stats["vf_explained_var"] = explained_variance(
             torch.reshape(value_targets, [-1]),
-            torch.reshape(
-                values_time_major[:-1] if drop_last else values_time_major, [-1]
-            ),
+            torch.reshape(values_time_major, [-1]),
         )
 
         return total_loss
@@ -373,10 +362,7 @@ class APPOTorchPolicy(
         model: TorchModelV2,
         action_dist: TorchDistributionWrapper,
     ) -> Dict[str, TensorType]:
-        out = {}
-        if not self.config["vtrace"]:
-            out[SampleBatch.VF_PREDS] = model.value_function()
-        return out
+        return {SampleBatch.VF_PREDS: model.value_function()}
 
     @override(TorchPolicyV2)
     def postprocess_trajectory(
@@ -386,17 +372,23 @@ class APPOTorchPolicy(
         episode: Optional["Episode"] = None,
     ):
         # Call super's postprocess_trajectory first.
-        sample_batch = super().postprocess_trajectory(
-            sample_batch, other_agent_batches, episode
-        )
-        if not self.config["vtrace"]:
-            # Do all post-processing always with no_grad().
-            # Not using this here will introduce a memory leak
-            # in torch (issue #6962).
-            with torch.no_grad():
+        # sample_batch = super().postprocess_trajectory(
+        #    sample_batch, other_agent_batches, episode
+        # )
+
+        # Do all post-processing always with no_grad().
+        # Not using this here will introduce a memory leak
+        # in torch (issue #6962).
+        with torch.no_grad():
+            if not self.config["vtrace"]:
                 sample_batch = compute_gae_for_sample_batch(
                     self, sample_batch, other_agent_batches, episode
                 )
+            else:
+                # Add the SampleBatch.VALUES_BOOTSTRAPPED column, which we'll need
+                # inside the loss for vtrace calculations.
+                sample_batch = compute_bootstrap_value(sample_batch, self)
+
         return sample_batch
 
     @override(TorchPolicyV2)

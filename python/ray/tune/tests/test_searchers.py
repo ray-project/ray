@@ -9,7 +9,7 @@ from unittest.mock import patch
 
 import ray
 from ray import tune
-from ray.tune.result import TRAINING_ITERATION
+from ray.air.constants import TRAINING_ITERATION
 from ray.tune.search import ConcurrencyLimiter
 
 
@@ -69,7 +69,7 @@ class InvalidValuesTest(unittest.TestCase):
     @contextlib.contextmanager
     def check_searcher_checkpoint_errors_scope(self):
         buffer = []
-        from ray.tune.execution.trial_runner import logger
+        from ray.tune.execution.tune_controller import logger
 
         with patch.object(logger, "warning", lambda x: buffer.append(x)):
             yield

@@ -1,12 +1,12 @@
 import logging
 from pathlib import Path
 from typing import Any, Callable, Dict, Optional, Type, Union, TYPE_CHECKING
-import warnings
 
 import ray
 
 from ray.air.config import RunConfig
 from ray.air._internal.remote_storage import list_at_uri
+from ray.air._internal.usage import AirEntrypoint
 from ray.air.util.node import _force_on_current_node
 from ray.tune import TuneError
 from ray.tune.execution.experiment_state import _ResumeConfig
@@ -61,7 +61,7 @@ class Tuner:
             Refer to ray.tune.tune_config.TuneConfig for more info.
         run_config: Runtime configuration that is specific to individual trials.
             If passed, this will overwrite the run config passed to the Trainer,
-            if applicable. Refer to ray.air.config.RunConfig for more info.
+            if applicable. Refer to ray.train.RunConfig for more info.
 
     Usage pattern:
 
@@ -71,7 +71,7 @@ class Tuner:
 
         from ray import tune
         from ray.data import from_pandas
-        from ray.air.config import RunConfig, ScalingConfig
+        from ray.train import RunConfig, ScalingConfig
         from ray.train.xgboost import XGBoostTrainer
         from ray.tune.tuner import Tuner
 
@@ -146,15 +146,20 @@ class Tuner:
         # TODO(xwjiang): Remove this later.
         _tuner_kwargs: Optional[Dict] = None,
         _tuner_internal: Optional[TunerInternal] = None,
+        _entrypoint: AirEntrypoint = AirEntrypoint.TUNER,
     ):
         """Configure and construct a tune run."""
         kwargs = locals().copy()
         self._is_ray_client = ray.util.client.ray.is_connected()
-        if self._is_ray_client and get_air_verbosity() is not None:
-            logger.warning(
-                "Ignoring AIR_VERBOSITY setting, "
-                "as it doesn't support ray client mode yet."
-            )
+        if self._is_ray_client:
+            _run_config = run_config or RunConfig()
+            if get_air_verbosity(_run_config.verbose) is not None:
+                logger.info(
+                    "[output] This uses the legacy output and progress reporter, "
+                    "as Ray client is not supported by the new engine. "
+                    "For more information, see "
+                    "https://github.com/ray-project/ray/issues/36949"
+                )
 
         if _tuner_internal:
             if not self._is_ray_client:
@@ -175,16 +180,10 @@ class Tuner:
     def restore(
         cls,
         path: str,
-        trainable: Optional[
-            Union[str, Callable, Type[Trainable], "BaseTrainer"]
-        ] = None,
+        trainable: Union[str, Callable, Type[Trainable], "BaseTrainer"],
         resume_unfinished: bool = True,
         resume_errored: bool = False,
         restart_errored: bool = False,
-        # Deprecated
-        overwrite_trainable: Optional[
-            Union[str, Callable, Type[Trainable], "BaseTrainer"]
-        ] = None,
         param_space: Optional[Dict[str, Any]] = None,
     ) -> "Tuner":
         """Restores Tuner after a previously failed run.
@@ -215,11 +214,10 @@ class Tuner:
             trainable: The trainable to use upon resuming the experiment.
                 This should be the same trainable that was used to initialize
                 the original Tuner.
-                NOTE: Starting in 2.5, this will be a required parameter.
             param_space: The same `param_space` that was passed to
                 the original Tuner. This can be optionally re-specified due
                 to the `param_space` potentially containing Ray object
-                references (tuning over Datastreams or tuning over
+                references (tuning over Datasets or tuning over
                 several `ray.put` object references). **Tune expects the
                 `param_space` to be unmodified**, and the only part that
                 will be used during restore are the updated object references.
@@ -230,29 +228,11 @@ class Tuner:
                 restore from their latest checkpoints.
             restart_errored: If True, will re-schedule errored trials but force
                 restarting them from scratch (no checkpoint will be loaded).
-            overwrite_trainable: Deprecated. Use the `trainable` argument instead.
         """
         # TODO(xwjiang): Add some comments to clarify the config behavior across
         #  retored runs.
         #  For example, is callbacks supposed to be automatically applied
         #  when a Tuner is restored and fit again?
-
-        if overwrite_trainable:
-            if not trainable:
-                trainable = overwrite_trainable
-            warning_message = (
-                "`overwrite_trainable` has been renamed to `trainable`. "
-                "The old argument will be removed starting from version 2.5."
-            )
-            warnings.warn(warning_message, DeprecationWarning)
-
-        if not trainable:
-            warning_message = (
-                "Passing in the experiment's `trainable` will be a required argument "
-                "to `Tuner.restore` starting from version 2.5. "
-                "Please specify the trainable to avoid this warning."
-            )
-            warnings.warn(warning_message)
 
         resume_config = _ResumeConfig(
             resume_unfinished=resume_unfinished,
@@ -293,7 +273,7 @@ class Tuner:
 
             import os
             from ray.tune import Tuner
-            from ray.air import RunConfig
+            from ray.train import RunConfig
 
             def train_fn(config):
                 # Make sure to implement checkpointing so that progress gets
@@ -420,10 +400,10 @@ class Tuner:
                 progress_reporter,
                 string_queue,
             ) = self._prepare_remote_tuner_for_jupyter_progress_reporting()
-            fit_future = self._remote_tuner.fit.remote()
+            get_results_future = self._remote_tuner.get_results.remote()
             _stream_client_output(
-                fit_future,
+                get_results_future,
                 progress_reporter,
                 string_queue,
             )
-            return ray.get(fit_future)
+            return ray.get(get_results_future)

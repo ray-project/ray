@@ -13,6 +13,7 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 import ray
 from ray import logger
 from ray.air import session
+from ray.air._internal import usage as air_usage
 from ray.air.util.node import _force_on_current_node
 
 from ray.tune.logger import LoggerCallback
@@ -104,10 +105,10 @@ def setup_wandb(
 
         .. code-block: python
 
-            from ray.air.integrations.wandb import wandb_setup
+            from ray.air.integrations.wandb import setup_wandb
 
             def training_loop(config):
-                wandb = wandb_setup(config)
+                wandb = setup_wandb(config)
                 # ...
                 wandb.log({"loss": 0.123})
 
@@ -157,29 +158,13 @@ def _setup_wandb(
 ) -> Union[Run, RunDisabled]:
     _config = config.copy() if config else {}
 
-    wandb_config = _config.pop("wandb", {}).copy()
-
-    # Deprecate: 2.4
-    if wandb_config:
-        warnings.warn(
-            "Passing a `wandb` key in the config dict is deprecated and will raise an "
-            "error in the future. Please pass the actual arguments to `setup_wandb()` "
-            "instead.",
-            DeprecationWarning,
-        )
-
     # If key file is specified, set
-    api_key_file = api_key_file or wandb_config.pop("api_key_file", None)
     if api_key_file:
         api_key_file = os.path.expanduser(api_key_file)
 
-    _set_api_key(api_key_file, api_key or wandb_config.pop("api_key", None))
-    wandb_config["project"] = _get_wandb_project(wandb_config.get("project"))
-    wandb_config["group"] = (
-        os.environ.get(WANDB_GROUP_ENV_VAR)
-        if (not wandb_config.get("group") and os.environ.get(WANDB_GROUP_ENV_VAR))
-        else wandb_config.get("group")
-    )
+    _set_api_key(api_key_file, api_key)
+    project = _get_wandb_project(kwargs.pop("project", None))
+    group = kwargs.pop("group", os.environ.get(WANDB_GROUP_ENV_VAR))
 
     # remove unpickleable items
     _config = _clean_log(_config)
@@ -191,10 +176,11 @@ def _setup_wandb(
         reinit=True,
         allow_val_change=True,
         config=_config,
+        project=project,
+        group=group,
     )
 
-    # Update config (e.g.g set group, project, override other settings)
-    wandb_init_kwargs.update(wandb_config)
+    # Update config (e.g. set any other parameters in the call to wandb.init)
     wandb_init_kwargs.update(**kwargs)
 
     # On windows, we can't fork
@@ -207,6 +193,10 @@ def _setup_wandb(
 
     run = _wandb.init(**wandb_init_kwargs)
     _run_wandb_process_run_info_hook(run)
+
+    # Record `setup_wandb` usage when everything has setup successfully.
+    air_usage.tag_setup_wandb()
+
     return run
 
 
@@ -459,8 +449,8 @@ class WandbLoggerCallback(LoggerCallback):
 
             import random
 
-            from ray import tune
-            from ray.air import session, RunConfig
+            from ray import train, tune
+            from ray.train import RunConfig
             from ray.air.integrations.wandb import WandbLoggerCallback
 
 
@@ -469,7 +459,7 @@ class WandbLoggerCallback(LoggerCallback):
                 for epoch in range(2, config["epochs"]):
                     acc = 1 - (2 + config["lr"]) ** -epoch - random.random() / epoch - offset
                     loss = (2 + config["lr"]) ** -epoch + random.random() / epoch + offset
-                    session.report({"acc": acc, "loss": loss})
+                    train.report({"acc": acc, "loss": loss})
 
 
             tuner = tune.Tuner(
@@ -486,7 +476,6 @@ class WandbLoggerCallback(LoggerCallback):
 
         .. testoutput::
             :hide:
-            :options: +ELLIPSIS
 
             ...
 
@@ -647,10 +636,17 @@ class WandbLoggerCallback(LoggerCallback):
                 num_cpus=0,
                 **_force_on_current_node(),
                 runtime_env={"env_vars": env_vars},
+                max_restarts=-1,
+                max_task_retries=-1,
             )(self._logger_actor_cls)
 
         self._trial_queues[trial] = Queue(
-            actor_options={"num_cpus": 0, **_force_on_current_node()}
+            actor_options={
+                "num_cpus": 0,
+                **_force_on_current_node(),
+                "max_restarts": -1,
+                "max_task_retries": -1,
+            }
         )
         self._trial_logging_actors[trial] = self._remote_logger_class.remote(
             logdir=trial.local_path,

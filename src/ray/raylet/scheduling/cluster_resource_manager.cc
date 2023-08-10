@@ -91,6 +91,8 @@ bool ClusterResourceManager::UpdateNode(scheduling::NodeID node_id,
     local_view.object_pulls_queued = resource_data.object_pulls_queued();
   }
 
+  local_view.is_draining = resource_data.is_draining();
+
   AddOrUpdateNode(node_id, local_view);
   received_node_resources_[node_id] = std::move(local_view);
   return true;
@@ -253,6 +255,15 @@ bool ClusterResourceManager::UpdateNodeAvailableResourcesIfExist(
   for (auto &resource_id : node_resources->total.ResourceIds()) {
     node_resources->available.Set(resource_id, resources.Get(resource_id));
   }
+
+  // Update the idle duration for the node in terms of resources usage.
+  node_resources->idle_resource_duration_ms = resource_data.idle_duration_ms();
+
+  // Last update time to the local node resources view.
+  node_resources->last_resource_update_time = absl::Now();
+
+  node_resources->is_draining = resource_data.is_draining();
+
   return true;
 }
 
@@ -280,16 +291,29 @@ bool ClusterResourceManager::UpdateNodeNormalTaskResources(
   return false;
 }
 
-void ClusterResourceManager::DebugString(std::stringstream &buffer) const {
+std::string ClusterResourceManager::DebugString() const {
+  std::stringstream buffer;
   for (auto &node : GetResourceView()) {
     buffer << "node id: " << node.first.ToInt();
     buffer << node.second.GetLocalView().DebugString();
   }
-  buffer << bundle_location_index_.DebugString();
+  buffer << " " << bundle_location_index_.DebugString();
+  return buffer.str();
 }
 
 BundleLocationIndex &ClusterResourceManager::GetBundleLocationIndex() {
   return bundle_location_index_;
+}
+
+void ClusterResourceManager::SetNodeLabels(
+    const scheduling::NodeID &node_id,
+    const absl::flat_hash_map<std::string, std::string> &labels) {
+  auto it = nodes_.find(node_id);
+  if (it == nodes_.end()) {
+    NodeResources node_resources;
+    it = nodes_.emplace(node_id, node_resources).first;
+  }
+  it->second.GetMutableLocalView()->labels = labels;
 }
 
 }  // namespace ray

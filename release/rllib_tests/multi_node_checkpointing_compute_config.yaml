@@ -5,11 +5,11 @@ max_workers: 3
 
 head_node_type:
     name: head_node
-    instance_type: m5.2xlarge
+    instance_type: m5.xlarge
 
 worker_node_types:
     - name: worker_node
-      instance_type: g4dn.xlarge
+      instance_type: g3s.xlarge
       min_workers: 2
       max_workers: 2
       use_spot: false

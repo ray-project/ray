@@ -1,7 +1,6 @@
 """
 This example script demonstrates how one can define a custom logger
-object for any RLlib Trainer via the Trainer's config dict's
-"logger_config" key.
+object for any RLlib Algorithm via the Algorithm's config's `logger_config` property.
 By default (logger_config=None), RLlib will construct a tune
 UnifiedLogger object, which logs JSON, CSV, and TBX output.
 
@@ -83,7 +82,7 @@ if __name__ == "__main__":
             "CartPole-v1" if args.run not in ["DDPG", "TD3"] else "Pendulum-v1"
         )
         # Run with tracing enabled for tf2.
-        .framework(args.framework, eager_tracing=args.framework == "tf2")
+        .framework(args.framework)
         # Setting up a custom logger config.
         # ----------------------------------
         # The following are different examples of custom logging setups:

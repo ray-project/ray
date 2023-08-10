@@ -2,7 +2,7 @@ import os
 import unittest
 
 import ray
-from ray.air import CheckpointConfig
+from ray.train import CheckpointConfig
 from ray.rllib import _register_all
 
 from ray.tune.result import TIMESTEPS_TOTAL

@@ -35,27 +35,18 @@ from typing import (
     List,
 )
 
-import grpc
-
 # Import psutil after ray so the packaged version is used.
 import psutil
 from google.protobuf import json_format
 
 import ray
 import ray._private.ray_constants as ray_constants
-from ray._private.tls_utils import load_certs_from_env
-from ray.core.generated.gcs_pb2 import ErrorTableData
 from ray.core.generated.runtime_env_common_pb2 import (
     RuntimeEnvInfo as ProtoRuntimeEnvInfo,
 )
 
 if TYPE_CHECKING:
     from ray.runtime_env import RuntimeEnv
-
-try:
-    from grpc import aio as aiogrpc
-except ImportError:
-    from grpc.experimental import aio as aiogrpc
 
 
 pwd = None
@@ -79,6 +70,13 @@ _PYARROW_VERSION = None
 
 # This global variable is used for testing only
 _CALLED_FREQ = defaultdict(lambda: 0)
+_CALLED_FREQ_LOCK = threading.Lock()
+
+
+PLACEMENT_GROUP_INDEXED_BUNDLED_RESOURCE_PATTERN = re.compile(
+    r"(.+)_group_(\d+)_([0-9a-zA-Z]+)"
+)
+PLACEMENT_GROUP_WILDCARD_RESOURCE_PATTERN = re.compile(r"(.+)_group_([0-9a-zA-Z]+)")
 
 
 def get_user_temp_dir():
@@ -182,27 +180,6 @@ def push_error_to_driver(
     worker.core_worker.push_error(job_id, error_type, message, time.time())
 
 
-def construct_error_message(job_id, error_type, message, timestamp):
-    """Construct an ErrorTableData object.
-
-    Args:
-        job_id: The ID of the job that the error should go to. If this is
-            nil, then the error will go to all drivers.
-        error_type: The type of the error.
-        message: The error message.
-        timestamp: The time of the error.
-
-    Returns:
-        The ErrorTableData object.
-    """
-    data = ErrorTableData()
-    data.job_id = job_id.binary()
-    data.type = error_type
-    data.error_message = message
-    data.timestamp = timestamp
-    return data
-
-
 def publish_error_to_driver(
     error_type: str,
     message: str,
@@ -228,11 +205,12 @@ def publish_error_to_driver(
     if job_id is None:
         job_id = ray.JobID.nil()
     assert isinstance(job_id, ray.JobID)
-    error_data = construct_error_message(job_id, error_type, message, time.time())
     try:
-        gcs_publisher.publish_error(job_id.hex().encode(), error_data, num_retries)
+        gcs_publisher.publish_error(
+            job_id.hex().encode(), error_type, message, job_id, num_retries
+        )
     except Exception:
-        logger.exception(f"Failed to publish error {error_data}")
+        logger.exception(f"Failed to publish error: {message} [type {error_type}]")
 
 
 def decode(byte_str: str, allow_none: bool = False, encode_type: str = "utf-8"):
@@ -623,7 +601,7 @@ def get_num_cpus(
             # TODO (Alex): We should probably add support for fractional cpus.
             if int(docker_count) != float(docker_count):
                 logger.warning(
-                    f"Ray currently does not support initializing Ray"
+                    f"Ray currently does not support initializing Ray "
                     f"with fractional cpus. Your num_cpus will be "
                     f"truncated from {docker_count} to "
                     f"{int(docker_count)}."
@@ -1322,6 +1300,15 @@ def init_grpc_channel(
     options: Optional[Sequence[Tuple[str, Any]]] = None,
     asynchronous: bool = False,
 ):
+    import grpc
+
+    try:
+        from grpc import aio as aiogrpc
+    except ImportError:
+        from grpc.experimental import aio as aiogrpc
+
+    from ray._private.tls_utils import load_certs_from_env
+
     grpc_module = aiogrpc if asynchronous else grpc
 
     options = options or []
@@ -1365,6 +1352,15 @@ def check_dashboard_dependencies_installed() -> bool:
         return False
 
 
+connect_error = (
+    "Unable to connect to GCS (ray head) at {}. "
+    "Check that (1) Ray with matching version started "
+    "successfully at the specified address, (2) this "
+    "node can reach the specified address, and (3) there is "
+    "no firewall setting preventing access."
+)
+
+
 def internal_kv_list_with_retry(gcs_client, prefix, namespace, num_retries=20):
     result = None
     if isinstance(prefix, str):
@@ -1376,15 +1372,10 @@ def internal_kv_list_with_retry(gcs_client, prefix, namespace, num_retries=20):
             result = gcs_client.internal_kv_keys(prefix, namespace)
         except Exception as e:
             if isinstance(e, ray.exceptions.RpcError) and e.rpc_code in (
-                grpc.StatusCode.UNAVAILABLE.value[0],
-                grpc.StatusCode.UNKNOWN.value[0],
+                ray._raylet.GRPC_STATUS_CODE_UNAVAILABLE,
+                ray._raylet.GRPC_STATUS_CODE_UNKNOWN,
             ):
-                logger.warning(
-                    f"Unable to connect to GCS at {gcs_client.address}. "
-                    "Check that (1) Ray GCS with matching version started "
-                    "successfully at the specified address, and (2) there is "
-                    "no firewall setting preventing access."
-                )
+                logger.warning(connect_error.format(gcs_client.address))
             else:
                 logger.exception("Internal KV List failed")
             result = None
@@ -1410,15 +1401,10 @@ def internal_kv_get_with_retry(gcs_client, key, namespace, num_retries=20):
             result = gcs_client.internal_kv_get(key, namespace)
         except Exception as e:
             if isinstance(e, ray.exceptions.RpcError) and e.rpc_code in (
-                grpc.StatusCode.UNAVAILABLE.value[0],
-                grpc.StatusCode.UNKNOWN.value[0],
+                ray._raylet.GRPC_STATUS_CODE_UNAVAILABLE,
+                ray._raylet.GRPC_STATUS_CODE_UNKNOWN,
             ):
-                logger.warning(
-                    f"Unable to connect to GCS at {gcs_client.address}. "
-                    "Check that (1) Ray GCS with matching version started "
-                    "successfully at the specified address, and (2) there is "
-                    "no firewall setting preventing access."
-                )
+                logger.warning(connect_error.format(gcs_client.address))
             else:
                 logger.exception("Internal KV Get failed")
             result = None
@@ -1441,16 +1427,40 @@ def parse_resources_json(
     try:
         resources = json.loads(resources)
         if not isinstance(resources, dict):
-            raise ValueError
-    except Exception:
-        cli_logger.error("`{}` is not a valid JSON string.", cf.bold(command_arg))
+            raise ValueError("The format after deserialization is not a dict")
+    except Exception as e:
+        cli_logger.error(
+            "`{}` is not a valid JSON string, detail error:{}",
+            cf.bold(f"{command_arg}={resources}"),
+            str(e),
+        )
         cli_logger.abort(
             "Valid values look like this: `{}`",
             cf.bold(
-                f'{command_arg}=\'{{"CustomResource3": 1, ' '"CustomResource2": 2}}\''
+                f'{command_arg}=\'{{"CustomResource3": 1, "CustomResource2": 2}}\''
             ),
         )
     return resources
+
+
+def parse_metadata_json(
+    metadata: str, cli_logger, cf, command_arg="--metadata-json"
+) -> Dict[str, str]:
+    try:
+        metadata = json.loads(metadata)
+        if not isinstance(metadata, dict):
+            raise ValueError("The format after deserialization is not a dict")
+    except Exception as e:
+        cli_logger.error(
+            "`{}` is not a valid JSON string, detail error:{}",
+            cf.bold(f"{command_arg}={metadata}"),
+            str(e),
+        )
+        cli_logger.abort(
+            "Valid values look like this: `{}`",
+            cf.bold(f'{command_arg}=\'{{"key1": "value1", "key2": "value2"}}\''),
+        )
+    return metadata
 
 
 def internal_kv_put_with_retry(gcs_client, key, value, namespace, num_retries=20):
@@ -1468,15 +1478,10 @@ def internal_kv_put_with_retry(gcs_client, key, value, namespace, num_retries=20
             )
         except ray.exceptions.RpcError as e:
             if e.rpc_code in (
-                grpc.StatusCode.UNAVAILABLE.value[0],
-                grpc.StatusCode.UNKNOWN.value[0],
+                ray._raylet.GRPC_STATUS_CODE_UNAVAILABLE,
+                ray._raylet.GRPC_STATUS_CODE_UNKNOWN,
             ):
-                logger.warning(
-                    f"Unable to connect to GCS at {gcs_client.address}. "
-                    "Check that (1) Ray GCS with matching version started "
-                    "successfully at the specified address, and (2) there is "
-                    "no firewall setting preventing access."
-                )
+                logger.warning(connect_error.format(gcs_client.address))
             else:
                 logger.exception("Internal KV Put failed")
             time.sleep(2)
@@ -1635,7 +1640,7 @@ def split_address(address: str) -> Tuple[str, str]:
 
     Examples:
         >>> split_address("ray://my_cluster")
-        ("ray", "my_cluster")
+        ('ray', 'my_cluster')
     """
     if "://" not in address:
         raise ValueError("Address must contain '://'")
@@ -1659,8 +1664,6 @@ def get_or_create_event_loop() -> asyncio.BaseEventLoop:
     version >= 3.7, if not possible, one should create and manage the event
     loops explicitly.
     """
-    import sys
-
     vers_info = sys.version_info
     if vers_info.major >= 3 and vers_info.minor >= 10:
         # This follows the implementation of the deprecating `get_event_loop`
@@ -1678,6 +1681,19 @@ def get_or_create_event_loop() -> asyncio.BaseEventLoop:
             return asyncio.get_event_loop_policy().get_event_loop()
 
     return asyncio.get_event_loop()
+
+
+def make_asyncio_event_version_compat(
+    event_loop: asyncio.AbstractEventLoop,
+) -> asyncio.Event:
+    # Python 3.8 has deprecated the 'loop' parameter, and Python 3.10 has
+    # removed it altogether. Construct an `asyncio.Event` accordingly.
+    if sys.version_info.major >= 3 and sys.version_info.minor >= 10:
+        event = asyncio.Event()
+    else:
+        event = asyncio.Event(loop=event_loop)
+
+    return event
 
 
 def get_entrypoint_name():
@@ -1915,3 +1931,59 @@ def update_envs(env_vars: Dict[str, str]):
             os.environ[key] = value.replace("${" + key + "}", os.environ.get(key, ""))
         else:
             os.environ[key] = value
+
+
+def parse_node_labels_json(
+    labels_json: str, cli_logger, cf, command_arg="--labels"
+) -> Dict[str, str]:
+    try:
+        labels = json.loads(labels_json)
+        if not isinstance(labels, dict):
+            raise ValueError(
+                "The format after deserialization is not a key-value pair map"
+            )
+        for key, value in labels.items():
+            if not isinstance(key, str):
+                raise ValueError("The key is not string type.")
+            if not isinstance(value, str):
+                raise ValueError(f'The value of the "{key}" is not string type')
+    except Exception as e:
+        cli_logger.abort(
+            "`{}` is not a valid JSON string, detail error:{}"
+            "Valid values look like this: `{}`",
+            cf.bold(f"{command_arg}={labels_json}"),
+            str(e),
+            cf.bold(f'{command_arg}=\'{{"gpu_type": "A100", "region": "us"}}\''),
+        )
+    return labels
+
+
+def validate_node_labels(labels: Dict[str, str]):
+    if labels is None:
+        return
+    for key in labels.keys():
+        if key.startswith(ray_constants.RAY_DEFAULT_LABEL_KEYS_PREFIX):
+            raise ValueError(
+                f"Custom label keys `{key}` cannot start with the prefix "
+                f"`{ray_constants.RAY_DEFAULT_LABEL_KEYS_PREFIX}`. "
+                f"This is reserved for Ray defined labels."
+            )
+
+
+def pasre_pg_formatted_resources_to_original(
+    pg_formatted_resources: Dict[str, float]
+) -> Dict[str, float]:
+    original_resources = {}
+
+    for key, value in pg_formatted_resources.items():
+        result = PLACEMENT_GROUP_WILDCARD_RESOURCE_PATTERN.match(key)
+        if result and len(result.groups()) == 2:
+            original_resources[result.group(1)] = value
+            continue
+        result = PLACEMENT_GROUP_INDEXED_BUNDLED_RESOURCE_PATTERN.match(key)
+        if result and len(result.groups()) == 3:
+            original_resources[result.group(1)] = value
+            continue
+        original_resources[key] = value
+
+    return original_resources

@@ -177,6 +177,13 @@ service ActorInfoGcsService {
   rpc KillActorViaGcs(KillActorViaGcsRequest) returns (KillActorViaGcsReply);
 }
 
+message GetClusterIdRequest {}
+
+message GetClusterIdReply {
+  GcsStatus status = 1;
+  bytes cluster_id = 2;
+}
+
 message RegisterNodeRequest {
   // Info of node.
   GcsNodeInfo node_info = 1;
@@ -598,6 +605,13 @@ message GetAllResourceUsageReply {
   bool cluster_full_of_actors_detected_by_gcs = 3;
 }
 
+message GetDrainingNodesRequest {}
+
+message GetDrainingNodesReply {
+  GcsStatus status = 1;
+  repeated bytes node_ids = 2;
+}
+
 // Service for node resource info access.
 service NodeResourceInfoGcsService {
   // Get node's resources from GCS Service.
@@ -609,6 +623,8 @@ service NodeResourceInfoGcsService {
   rpc ReportResourceUsage(ReportResourceUsageRequest) returns (ReportResourceUsageReply);
   // Get resource usage of all nodes from GCS Service.
   rpc GetAllResourceUsage(GetAllResourceUsageRequest) returns (GetAllResourceUsageReply);
+  // Get ids of draining nodes.
+  rpc GetDrainingNodes(GetDrainingNodesRequest) returns (GetDrainingNodesReply);
 }
 
 message GcsStatus {
@@ -618,6 +634,8 @@ message GcsStatus {
 
 // Service for node info access.
 service NodeInfoGcsService {
+  // Register a client to GCS Service. Must be called before any other RPC in GCSClient.
+  rpc GetClusterId(GetClusterIdRequest) returns (GetClusterIdReply);
   // Register a node to GCS Service.
   rpc RegisterNode(RegisterNodeRequest) returns (RegisterNodeReply);
   // Drain a node from GCS Service.
@@ -644,22 +662,27 @@ message AddTaskEventDataReply {
 }
 
 message GetTaskEventsRequest {
-  message TaskIDs {
-    repeated string vals = 1;
-  }
-  oneof select_by {
+  // Filter object where predicates are AND together.
+  message Filters {
     // Get task events from a job.
-    string job_id = 1;
+    optional bytes job_id = 1;
     // Get task events from a set of tasks.
-    TaskIDs task_ids = 2;
+    repeated bytes task_ids = 2;
+    // Get the task events with an actor id.
+    optional bytes actor_id = 3;
+    // Get the task events of task with names.
+    optional string name = 4;
+    // True if task events from driver (only profiling events) should be excluded.
+    optional bool exclude_driver = 5;
   }
 
   // Maximum number of TaskEvents to return.
   // If set, the exact `limit` TaskEvents returned do not have any ordering or selection
   // guarantee.
   optional int64 limit = 3;
-  // True if task events from driver (only profiling events) should be excluded.
-  bool exclude_driver = 4;
+
+  // Filters to apply to the get query.
+  optional Filters filters = 4;
 }
 
 message GetTaskEventsReply {

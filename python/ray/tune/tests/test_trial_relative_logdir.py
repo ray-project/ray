@@ -310,5 +310,17 @@ def test_change_trial_local_dir(tmpdir):
         assert trial.get_trial_checkpoints()[0].dir_or_data.startswith(new_local_dir)
 
 
+def test_trial_logdir_length(tmpdir):
+    """Test that trial local paths with a long logdir are truncated"""
+    trial = Trial(
+        trainable_name="none",
+        experiment_path=str(tmpdir),
+        stub=True,
+        config={"a" * 50: 5.0 / 7, "b" * 50: "long" * 40},
+    )
+    trial.init_local_path()
+    assert len(os.path.basename(trial.local_path)) < 200
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))

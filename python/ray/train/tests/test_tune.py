@@ -4,9 +4,9 @@ import logging
 import pytest
 
 import ray
-from ray import tune
-from ray.air import Checkpoint, session
-from ray.air.config import FailureConfig, RunConfig, ScalingConfig
+from ray import train, tune
+from ray.air.constants import TRAINING_ITERATION
+from ray.train import Checkpoint, FailureConfig, RunConfig, ScalingConfig
 from ray.train._internal.worker_group import WorkerGroup
 from ray.train.backend import Backend, BackendConfig
 from ray.train.data_parallel_trainer import DataParallelTrainer
@@ -14,7 +14,7 @@ from ray.train.examples.tf.tensorflow_mnist_example import (
     train_func as tensorflow_mnist_train_func,
 )
 from ray.train.examples.pytorch.torch_fashion_mnist_example import (
-    train_func as fashion_mnist_train_func,
+    train_func_per_worker as fashion_mnist_train_func,
 )
 from ray.train.tensorflow.tensorflow_trainer import TensorflowTrainer
 from ray.train.torch.torch_trainer import TorchTrainer
@@ -63,7 +63,7 @@ def torch_fashion_mnist(num_workers, use_gpu, num_samples):
         param_space={
             "train_loop_config": {
                 "lr": tune.loguniform(1e-4, 1e-1),
-                "batch_size": tune.choice([32, 64, 128]),
+                "batch_size_per_worker": tune.choice([32, 64, 128]),
                 "epochs": 2,
             }
         },
@@ -132,8 +132,8 @@ def test_tune_error(ray_start_4_cpus):
 def test_tune_checkpoint(ray_start_4_cpus):
     def train_func():
         for i in range(9):
-            session.report(dict(test=i))
-        session.report(
+            train.report(dict(test=i))
+        train.report(
             dict(test=i + 1), checkpoint=Checkpoint.from_dict(dict(hello="world"))
         )
 
@@ -157,13 +157,13 @@ def test_tune_checkpoint(ray_start_4_cpus):
 def test_reuse_checkpoint(ray_start_4_cpus):
     def train_func(config):
         itr = 0
-        ckpt = session.get_checkpoint()
+        ckpt = train.get_checkpoint()
         if ckpt is not None:
             ckpt = ckpt.to_dict()
             itr = ckpt["iter"] + 1
 
         for i in range(itr, config["max_iter"]):
-            session.report(
+            train.report(
                 dict(test=i, training_iteration=i),
                 checkpoint=Checkpoint.from_dict(dict(iter=i)),
             )
@@ -185,15 +185,17 @@ def test_reuse_checkpoint(ray_start_4_cpus):
     tuner = Tuner(
         trainer,
         param_space={"train_loop_config": {"max_iter": 10}},
-    ).restore(trial.local_dir)
+    ).restore(trial.local_dir, trainable=trainer)
     analysis = tuner.fit()._experiment_analysis
     trial_dfs = list(analysis.trial_dataframes.values())
     assert len(trial_dfs[0]["training_iteration"]) == 5
 
 
-def test_retry(ray_start_4_cpus):
+def test_retry_with_max_failures(ray_start_4_cpus):
+    """Tests trainer retry with max_failures > 0 when integrating with Tune."""
+
     def train_func():
-        ckpt = session.get_checkpoint()
+        ckpt = train.get_checkpoint()
         restored = bool(ckpt)  # Does a previous checkpoint exist?
         itr = 0
         if ckpt:
@@ -203,7 +205,7 @@ def test_retry(ray_start_4_cpus):
         for i in range(itr, 4):
             if i == 2 and not restored:
                 raise Exception("try to fail me")
-            session.report(
+            train.report(
                 dict(test=i, training_iteration=i),
                 checkpoint=Checkpoint.from_dict(dict(iter=i)),
             )
@@ -217,13 +219,11 @@ def test_retry(ray_start_4_cpus):
         trainer, run_config=RunConfig(failure_config=FailureConfig(max_failures=3))
     )
 
-    analysis = tuner.fit()._experiment_analysis
-    checkpoint_path = analysis.trials[0].checkpoint.dir_or_data
-    checkpoint = Checkpoint.from_directory(checkpoint_path).to_dict()
+    result_grid = tuner.fit()
+    checkpoint = result_grid[0].checkpoint.to_dict()
     assert checkpoint["iter"] == 3
-
-    trial_dfs = list(analysis.trial_dataframes.values())
-    assert len(trial_dfs[0]["training_iteration"]) == 4
+    df = result_grid[0].metrics_dataframe
+    assert len(df[TRAINING_ITERATION]) == 4
 
 
 def test_restore_with_new_trainer(ray_start_4_cpus, tmpdir, propagate_logs, caplog):
@@ -241,8 +241,8 @@ def test_restore_with_new_trainer(ray_start_4_cpus, tmpdir, propagate_logs, capl
     assert results.errors
 
     def train_func(config):
-        dataset = session.get_dataset_shard("train")
-        assert session.get_world_size() == 2
+        dataset = train.get_dataset_shard("train")
+        assert train.get_context().get_world_size() == 2
         rows = 0
         for _ in dataset.iter_rows():
             rows += 1
@@ -261,14 +261,12 @@ def test_restore_with_new_trainer(ray_start_4_cpus, tmpdir, propagate_logs, capl
     )
     caplog.clear()
     with caplog.at_level(logging.WARNING, logger="ray.tune.impl.tuner_internal"):
-        with pytest.warns() as warn_record:
-            tuner = Tuner.restore(
-                str(tmpdir / "restore_new_trainer"),
-                trainable=trainer,
-                resume_errored=True,
-            )
-        # Should warn about the RunConfig being ignored
-        assert any("RunConfig" in str(record.message) for record in warn_record)
+        tuner = Tuner.restore(
+            str(tmpdir / "restore_new_trainer"),
+            trainable=trainer,
+            resume_errored=True,
+        )
+        assert "they will be ignored in the resumed run" in caplog.text
 
     results = tuner.fit()
     assert not results.errors

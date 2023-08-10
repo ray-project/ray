@@ -33,6 +33,7 @@ from ray.dashboard.modules.job.common import (
     JOB_ID_METADATA_KEY,
     JOB_NAME_METADATA_KEY,
     JOB_ACTOR_NAME_TEMPLATE,
+    JOB_LOGS_PATH_TEMPLATE,
     SUPERVISOR_ACTOR_RAY_NAMESPACE,
     JobInfo,
     JobInfoStorageClient,
@@ -86,7 +87,6 @@ class JobLogStorageClient:
     Disk storage for stdout / stderr of driver script logs.
     """
 
-    JOB_LOGS_PATH = "job-driver-{job_id}.log"
     # Number of last N lines to put in job message upon failure.
     NUM_LOG_LINES_ON_ERROR = 10
     # Maximum number of characters to print out of the logs to avoid
@@ -133,7 +133,7 @@ class JobLogStorageClient:
         """
         return os.path.join(
             ray._private.worker._global_node.get_logs_dir_path(),
-            self.JOB_LOGS_PATH.format(job_id=job_id),
+            JOB_LOGS_PATH_TEMPLATE.format(submission_id=job_id),
         )
 
 
@@ -197,6 +197,7 @@ class JobSupervisor:
         # & actors.
         env_vars = curr_runtime_env.get("env_vars", {})
         env_vars.pop(ray_constants.NOSET_CUDA_VISIBLE_DEVICES_ENV_VAR)
+        env_vars.pop(ray_constants.RAY_WORKER_NICENESS)
         curr_runtime_env["env_vars"] = env_vars
         return curr_runtime_env
 
@@ -464,6 +465,10 @@ class JobSupervisor:
                 assert len(finished) == 1, "Should have only one coroutine done"
                 [child_process_task] = finished
                 return_code = child_process_task.result()
+                logger.info(
+                    f"Job {self._job_id} entrypoint command "
+                    f"exited with code {return_code}"
+                )
                 if return_code == 0:
                     await self._job_info_client.put_status(
                         self._job_id, JobStatus.SUCCEEDED
@@ -472,12 +477,16 @@ class JobSupervisor:
                     log_tail = self._log_client.get_last_n_log_lines(self._job_id)
                     if log_tail is not None and log_tail != "":
                         message = (
-                            "Job failed due to an application error, "
+                            "Job entrypoint command "
+                            f"failed with exit code {return_code}, "
                             "last available logs (truncated to 20,000 chars):\n"
                             + log_tail
                         )
                     else:
-                        message = None
+                        message = (
+                            "Job entrypoint command "
+                            f"failed with exit code {return_code}"
+                        )
                     await self._job_info_client.put_status(
                         self._job_id, JobStatus.FAILED, message=message
                     )
@@ -520,7 +529,7 @@ class JobManager:
     def __init__(self, gcs_aio_client: GcsAioClient, logs_dir: str):
         self._gcs_aio_client = gcs_aio_client
         self._job_info_client = JobInfoStorageClient(gcs_aio_client)
-        self._gcs_address = gcs_aio_client._channel._gcs_address
+        self._gcs_address = gcs_aio_client.address
         self._log_client = JobLogStorageClient()
         self._supervisor_actor_cls = ray.remote(JobSupervisor)
         self.monitored_jobs = set()
@@ -755,6 +764,8 @@ class JobManager:
         env_vars = runtime_env.get("env_vars")
         if env_vars is None:
             env_vars = {}
+
+        env_vars[ray_constants.RAY_WORKER_NICENESS] = "0"
 
         if not resources_specified:
             # Don't set CUDA_VISIBLE_DEVICES for the supervisor actor so the

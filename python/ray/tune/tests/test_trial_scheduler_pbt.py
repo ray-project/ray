@@ -1,4 +1,7 @@
+import tempfile
 from functools import partial
+from typing import List
+
 import numpy as np
 import os
 import pickle
@@ -12,17 +15,16 @@ from unittest.mock import MagicMock
 
 import ray
 from ray import cloudpickle, tune
-from ray.air import Checkpoint
+from ray.train import Checkpoint
 from ray.air._internal.checkpoint_manager import _TrackedCheckpoint, CheckpointStorage
 from ray.air.config import FailureConfig, RunConfig, CheckpointConfig
-from ray.tune import Trainable
+from ray.tune import Trainable, Callback
 from ray.tune.experiment import Trial
-from ray.tune.execution.trial_runner import TrialRunner
-from ray.tune.execution.ray_trial_executor import RayTrialExecutor
 from ray.tune.schedulers import PopulationBasedTraining
 from ray.tune.schedulers.pbt import _filter_mutated_params_from_config
 from ray.tune.schedulers.pb2 import PB2
 from ray.tune.schedulers.pb2_utils import UCB
+from ray.tune.tests.execution.utils import create_execution_test_objects
 from ray.tune.tune_config import TuneConfig
 from ray._private.test_utils import object_memory_usage
 from ray.tune.utils.util import flatten_dict
@@ -76,11 +78,11 @@ class PopulationBasedTrainingMemoryTest(unittest.TestCase):
                 with open(path, "rb") as fp:
                     self.large_object, self.iter, self.a = pickle.load(fp)
 
-        class CustomExecutor(RayTrialExecutor):
-            def save(self, *args, **kwargs):
-                checkpoint = super(CustomExecutor, self).save(*args, **kwargs)
+        class CheckObjectMemoryUsage(Callback):
+            def on_trial_save(
+                self, iteration: int, trials: List["Trial"], trial: "Trial", **info
+            ):
                 assert object_memory_usage() <= (12 * 80e6)
-                return checkpoint
 
         param_a = MockParam([1, -1])
 
@@ -98,10 +100,10 @@ class PopulationBasedTrainingMemoryTest(unittest.TestCase):
             scheduler=pbt,
             stop={"training_iteration": 10},
             num_samples=3,
-            checkpoint_freq=1,
+            checkpoint_config=CheckpointConfig(checkpoint_frequency=3),
             fail_fast=True,
             config={"a": tune.sample_from(lambda _: param_a())},
-            trial_executor=CustomExecutor(reuse_actors=False),
+            callbacks=[CheckObjectMemoryUsage()],
         )
 
 
@@ -168,14 +170,18 @@ class PopulationBasedTrainingFileDescriptorTest(unittest.TestCase):
             hyperparam_mutations={"b": [-1]},
         )
 
+        checkpoint_config = CheckpointConfig(
+            num_to_keep=1,
+            checkpoint_frequency=2,
+        )
+
         tune.run(
             MyTrainable,
             name="ray_demo",
             scheduler=pbt,
             stop={"training_iteration": 10},
             num_samples=4,
-            checkpoint_freq=2,
-            keep_checkpoints_num=1,
+            checkpoint_config=checkpoint_config,
             verbose=False,
             fail_fast=True,
             config={"a": tune.sample_from(lambda _: param_a())},
@@ -464,6 +470,12 @@ class PopulationBasedTrainingResumeTest(unittest.TestCase):
 
         random.seed(100)
         np.random.seed(1000)
+        checkpoint_config = CheckpointConfig(
+            num_to_keep=1,
+            checkpoint_score_attribute="min-training_iteration",
+            checkpoint_frequency=1,
+            checkpoint_at_end=True,
+        )
         tune.run(
             MockTrainable,
             config={
@@ -473,10 +485,7 @@ class PopulationBasedTrainingResumeTest(unittest.TestCase):
             },
             fail_fast=True,
             num_samples=4,
-            checkpoint_freq=1,
-            checkpoint_at_end=True,
-            keep_checkpoints_num=1,
-            checkpoint_score_attr="min-training_iteration",
+            checkpoint_config=checkpoint_config,
             scheduler=scheduler,
             name="testPermutationContinuation",
             stop={"training_iteration": 3},
@@ -513,6 +522,10 @@ class PopulationBasedTrainingResumeTest(unittest.TestCase):
         param_b = MockParam([1.2, 0.9, 1.1, 0.8])
         random.seed(100)
         np.random.seed(1000)
+        checkpoint_config = CheckpointConfig(
+            num_to_keep=1,
+            checkpoint_score_attribute="min-training_iteration",
+        )
         tune.run(
             MockTrainingFunc,
             config={
@@ -522,15 +535,14 @@ class PopulationBasedTrainingResumeTest(unittest.TestCase):
             },
             fail_fast=True,
             num_samples=4,
-            keep_checkpoints_num=1,
-            checkpoint_score_attr="min-training_iteration",
+            checkpoint_config=checkpoint_config,
             scheduler=scheduler,
             name="testPermutationContinuationFunc",
             stop={"training_iteration": 3},
         )
 
     def testBurnInPeriod(self):
-        runner = TrialRunner(trial_executor=MagicMock())
+        runner, *_ = create_execution_test_objects(tempfile.mkdtemp())
 
         scheduler = PopulationBasedTraining(
             time_attr="training_iteration",

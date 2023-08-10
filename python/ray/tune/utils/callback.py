@@ -1,6 +1,6 @@
 import logging
 import os
-from typing import List, Optional, Type, Union, TYPE_CHECKING
+from typing import Collection, List, Optional, Type, Union, TYPE_CHECKING
 
 from ray.tune.callback import Callback, CallbackList
 
@@ -44,9 +44,12 @@ def _create_default_callbacks(
     *,
     sync_config: SyncConfig,
     air_verbosity: Optional["AirVerbosity"] = None,
+    entrypoint: Optional[str] = None,
     metric: Optional[str] = None,
-    progress_metrics: Optional[List[str]] = None,
-):
+    mode: Optional[str] = None,
+    config: Optional[dict] = None,
+    progress_metrics: Optional[Collection[str]] = None,
+) -> List[Callback]:
     """Create default callbacks for `Tuner.fit()`.
 
     This function takes a list of existing callbacks and adds default
@@ -91,9 +94,20 @@ def _create_default_callbacks(
         ]
         callbacks = new_callbacks
     if air_verbosity is not None:  # new flow
-        from ray.tune.experimental.output import AirResultCallbackWrapper
+        from ray.tune.experimental.output import (
+            _detect_reporter as _detect_air_reporter,
+        )
 
-        callbacks.append(AirResultCallbackWrapper(air_verbosity))
+        air_progress_reporter = _detect_air_reporter(
+            air_verbosity,
+            num_samples=1,  # Update later with setup()
+            entrypoint=entrypoint,
+            metric=metric,
+            mode=mode,
+            config=config,
+            progress_metrics=progress_metrics,
+        )
+        callbacks.append(air_progress_reporter)
     elif not has_trial_progress_callback:  # old flow
         trial_progress_callback = TrialProgressCallback(
             metric=metric, progress_metrics=progress_metrics

@@ -39,6 +39,7 @@ class TestPreprocessors(unittest.TestCase):
     def test_rlms_and_preprocessing(self):
         config = (
             ppo.PPOConfig()
+            .framework("tf2")
             .environment(
                 env="ray.rllib.examples.env.random_env.RandomEnv",
                 env_config={
@@ -48,17 +49,17 @@ class TestPreprocessors(unittest.TestCase):
                 },
             )
             # Run this very quickly locally.
-            .rollouts(rollout_fragment_length=10)
-            .rollouts(num_rollout_workers=0)
-            .training(train_batch_size=10, sgd_minibatch_size=1, num_sgd_iter=1)
+            .rollouts(num_rollout_workers=0, rollout_fragment_length=10)
+            .training(
+                train_batch_size=10,
+                sgd_minibatch_size=1,
+                num_sgd_iter=1,
+                _enable_learner_api=True,
+            )
+            .rl_module(_enable_rl_module_api=True)
             # Set this to True to enforce no preprocessors being used.
             .experimental(_disable_preprocessor_api=True)
-            .framework("tf2")
         )
-
-        # TODO (Artur): No need to manually enable RLModules here since we have not
-        #  fully migrated. Clear this up after migration.
-        config.rl_module(_enable_rl_module_api=True)
 
         for _ in framework_iterator(config, frameworks=("torch", "tf2")):
             algo = config.build()
@@ -128,16 +129,13 @@ class TestPreprocessors(unittest.TestCase):
         p2 = ModelCatalog.get_preprocessor(gym.make("FrozenLake-v1"))
         self.assertEqual(type(p2), OneHotPreprocessor)
 
-        p3 = ModelCatalog.get_preprocessor(
-            gym.make("GymV26Environment-v0", env_id="ALE/MsPacman-ram-v5")
-        )
+        p3 = ModelCatalog.get_preprocessor(gym.make("ALE/MsPacman-ram-v5"))
         self.assertEqual(type(p3), AtariRamPreprocessor)
 
         p4 = ModelCatalog.get_preprocessor(
             gym.make(
-                "GymV26Environment-v0",
-                env_id="ALE/MsPacman-v5",
-                make_kwargs={"frameskip": 1},
+                "ALE/MsPacman-v5",
+                frameskip=1,
             )
         )
         self.assertEqual(type(p4), GenericPixelPreprocessor)

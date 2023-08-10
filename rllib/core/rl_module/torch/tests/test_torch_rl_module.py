@@ -1,12 +1,17 @@
-import gymnasium as gym
 import tempfile
-import torch
-from typing import Mapping
 import unittest
+from typing import Mapping
+import gc
+
+import gymnasium as gym
+import torch
+from ray.rllib.utils.torch_utils import _dynamo_is_available
 
 from ray.rllib.core.rl_module.rl_module import RLModuleConfig
 from ray.rllib.core.rl_module.torch import TorchRLModule
+from ray.rllib.core.rl_module.torch.torch_compile_config import TorchCompileConfig
 from ray.rllib.core.testing.torch.bc_module import DiscreteBCTorchModule
+from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.test_utils import check
 
 
@@ -44,10 +49,13 @@ class TestRLModule(unittest.TestCase):
         output = module.forward_train({"obs": obs})
 
         self.assertIsInstance(output, Mapping)
-        self.assertIn("action_dist", output)
-        self.assertIsInstance(output["action_dist"], torch.distributions.Categorical)
+        self.assertIn(SampleBatch.ACTION_DIST_INPUTS, output)
 
-        loss = -output["action_dist"].log_prob(actions.view(-1)).mean()
+        action_dist_inputs = output[SampleBatch.ACTION_DIST_INPUTS]
+        action_dist_class = module.get_train_action_dist_cls()
+        action_dist = action_dist_class.from_logits(action_dist_inputs)
+
+        loss = -action_dist.logp(actions.view(-1)).mean()
         loss.backward()
 
         # check that all neural net parameters have gradients
@@ -119,8 +127,54 @@ class TestRLModule(unittest.TestCase):
         self.assertNotEqual(id(module), id(new_module))
 
 
+class TestRLModuleGPU(unittest.TestCase):
+    @unittest.skipIf(not _dynamo_is_available(), "torch._dynamo not available")
+    def test_torch_compile_no_memory_leak_gpu(self):
+        assert torch.cuda.is_available()
+
+        def get_memory_usage_cuda():
+            torch.cuda.empty_cache()
+            return torch.cuda.memory_allocated()
+
+        compile_cfg = TorchCompileConfig()
+
+        env = gym.make("CartPole-v1")
+
+        memory_before_create = get_memory_usage_cuda()
+
+        torch_rl_module = DiscreteBCTorchModule(
+            config=RLModuleConfig(
+                env.observation_space,
+                env.action_space,
+                model_config_dict={"fcnet_hiddens": [32]},
+            )
+        )
+
+        torch_rl_module.cuda()
+
+        torch_rl_module.compile(compile_cfg)
+
+        memory_after_create = get_memory_usage_cuda()
+        memory_diff_create = memory_after_create - memory_before_create
+        print("memory_diff_create: ", memory_diff_create)
+        # Sanity check that we actually allocated memory.
+        assert memory_diff_create > 0
+
+        del torch_rl_module
+        gc.collect()
+        memory_after_delete = get_memory_usage_cuda()
+        memory_diff_delete = memory_after_delete - memory_after_create
+        print("memory_diff_delete: ", memory_diff_delete)
+
+        # Memory should be released after deleting the module.
+        check(memory_before_create, memory_after_delete)
+
+
 if __name__ == "__main__":
     import pytest
     import sys
 
-    sys.exit(pytest.main(["-v", __file__]))
+    # One can specify the specific TestCase class to run.
+    # None for all unittest.TestCase classes in this file.
+    class_ = sys.argv[1] if len(sys.argv) > 1 else None
+    sys.exit(pytest.main(["-v", __file__ + ("" if class_ is None else "::" + class_)]))

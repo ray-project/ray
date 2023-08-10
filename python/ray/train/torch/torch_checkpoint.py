@@ -1,13 +1,13 @@
 from typing import TYPE_CHECKING, Any, Dict, Optional
 import io
-
 import torch
+import pickle
 import warnings
 
 from torch.nn import Module
 
 import ray.cloudpickle
-from ray.air.checkpoint import Checkpoint
+from ray.air.checkpoint import Checkpoint, _BYTES_DATA_KEY, _FS_CHECKPOINT_KEY
 from ray.air.constants import MODEL_KEY, PREPROCESSOR_KEY
 from ray.train.data_parallel_trainer import _load_checkpoint_dict
 from ray.air._internal.torch_utils import (
@@ -34,6 +34,13 @@ class TorchCheckpoint(Checkpoint):
     def _encode_data_dict(self, data_dict: dict) -> dict:
         """Encode data_dict using torch.save."""
 
+        # If we have _BYTES_DATA_KEY or _FS_CHECKPOINT_KEY in the data dict,
+        # that means this is a directory checkpoint which has already been
+        # converted into bytes. We don't want to double-encode it.
+        # See the definition of super().__getstate__().
+        if _BYTES_DATA_KEY in data_dict or _FS_CHECKPOINT_KEY in data_dict:
+            return data_dict
+
         for k, v in data_dict.items():
             # Only check for attribute as we want to support
             # DDP, FSDP and any future approaches
@@ -51,13 +58,22 @@ class TorchCheckpoint(Checkpoint):
         # are in the checkpoint dict can be properly deserialized on the
         # driver side, even if the driver does not have access to a GPU device.
         _buffer = io.BytesIO()
-        torch.save(data_dict, _buffer, pickle_module=ray.cloudpickle)
+        torch.save(
+            data_dict,
+            _buffer,
+            pickle_module=ray.cloudpickle,
+            pickle_protocol=pickle.HIGHEST_PROTOCOL
+            # Using pickle.HIGHEST_PROTOCOL here because it's 5 for Python 3.8+,
+            # but 4 for 3.7. For backward compatibility, we are not using
+            # ray.cloudpickle because its default protocol is always 5.
+        )
         return {ENCODED_DATA_KEY: _buffer.getvalue()}
 
     def _decode_data_dict(self, data_dict: dict) -> dict:
         """Decode data_dict using torch_load if needed."""
         if ENCODED_DATA_KEY not in data_dict:
             return data_dict
+
         encoded_data = data_dict[ENCODED_DATA_KEY]
         _buffer = io.BytesIO(encoded_data)
         data_dict = torch.load(
@@ -135,7 +151,6 @@ class TorchCheckpoint(Checkpoint):
 
             .. testoutput::
                 :hide:
-                :options: +ELLIPSIS
 
                 ...
         """
@@ -198,7 +213,6 @@ class TorchCheckpoint(Checkpoint):
 
             .. testoutput::
                 :hide:
-                :options: +ELLIPSIS
 
                 ...
         """
@@ -218,10 +232,7 @@ class TorchCheckpoint(Checkpoint):
             if model:
                 warnings.warn(
                     "TorchCheckpoint already contains all information needed. "
-                    "Discarding provided `model` argument. This means: "
-                    "If you are using BatchPredictor, you should do "
-                    "`BatchPredictor.from_checkpoint(checkpoint, TorchPredictor)` by"
-                    "removing kwargs `model=`. "
+                    "Discarding provided `model` argument. This means "
                     "If you are using TorchPredictor directly, you should do "
                     "`TorchPredictor.from_checkpoint(checkpoint)` by removing kwargs "
                     "`model=`."

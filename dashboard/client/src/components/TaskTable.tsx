@@ -1,8 +1,7 @@
 import {
   Box,
-  createStyles,
   InputAdornment,
-  makeStyles,
+  Link,
   Table,
   TableBody,
   TableCell,
@@ -15,19 +14,21 @@ import {
 } from "@material-ui/core";
 import Autocomplete from "@material-ui/lab/Autocomplete";
 import Pagination from "@material-ui/lab/Pagination";
-import React, { useContext, useState } from "react";
-import { Link } from "react-router-dom";
-import { GlobalContext } from "../App";
-import DialogWithTitle from "../common/DialogWithTitle";
+import React, { useState } from "react";
+import { Link as RouterLink } from "react-router-dom";
+import { CodeDialogButton } from "../common/CodeDialogButton";
 import { DurationText } from "../common/DurationText";
 import { ActorLink, NodeLink } from "../common/links";
+import {
+  TaskCpuProfilingLink,
+  TaskCpuStackTraceLink,
+} from "../common/ProfilingLink";
 import rowStyles from "../common/RowStyles";
 import { Task } from "../type/task";
 import { useFilter } from "../util/hook";
 import StateCounter from "./StatesCounter";
 import { StatusChip } from "./StatusChip";
 import { HelpInfo } from "./Tooltip";
-
 export type TaskTableProps = {
   tasks: Task[];
   jobId?: string;
@@ -60,7 +61,7 @@ const TaskTable = ({
   const columns = [
     { label: "ID" },
     { label: "Name" },
-    { label: "Job Id" },
+    { label: "Job ID" },
     { label: "State" },
     {
       label: "Actions",
@@ -73,17 +74,21 @@ const TaskTable = ({
           tasks.
           <br />- Error: For tasks that have failed, show a stack trace for the
           faiure.
+          <br /> Stack Trace: Get a stacktrace of the worker process where the
+          task is running.
+          <br />- CPU Flame Graph: Get a flame graph of the next 5 seconds of
+          the worker process where the task is running.
         </Typography>
       ),
     },
     { label: "Duration" },
-    { label: "Function or Class Name" },
-    { label: "Node Id" },
-    { label: "Actor_id" },
-    { label: "Worker_id" },
+    { label: "Function or class name" },
+    { label: "Node ID" },
+    { label: "Actor ID" },
+    { label: "Worker ID" },
     { label: "Type" },
-    { label: "Placement Group Id" },
-    { label: "Required Resources" },
+    { label: "Placement group ID" },
+    { label: "Required resources" },
   ];
 
   return (
@@ -231,7 +236,9 @@ const TaskTable = ({
                       arrow
                       interactive
                     >
-                      <div>{task_id}</div>
+                      <Link component={RouterLink} to={`tasks/${task_id}`}>
+                        {task_id}
+                      </Link>
                     </Tooltip>
                   </TableCell>
                   <TableCell align="center">{name ? name : "-"}</TableCell>
@@ -299,24 +306,14 @@ const TaskTable = ({
                     </Tooltip>
                   </TableCell>
                   <TableCell align="center">
-                    <Tooltip
-                      className={classes.OverflowCol}
-                      title={Object.entries(required_resources || {}).map(
-                        ([key, val]) => (
-                          <div style={{ margin: 4 }}>
-                            {key}: {val}
-                          </div>
-                        ),
-                      )}
-                      arrow
-                      interactive
-                    >
-                      <div>
-                        {Object.entries(required_resources || {})
-                          .map(([key, val]) => `${key}: ${val}`)
-                          .join(", ")}
-                      </div>
-                    </Tooltip>
+                    {Object.entries(required_resources || {}).length > 0 ? (
+                      <CodeDialogButton
+                        title="Required resources"
+                        code={JSON.stringify(required_resources, undefined, 2)}
+                      />
+                    ) : (
+                      "{}"
+                    )}
                   </TableCell>
                 </TableRow>
               );
@@ -330,70 +327,47 @@ const TaskTable = ({
 
 export default TaskTable;
 
-const useTaskTableActionsStyles = makeStyles(() =>
-  createStyles({
-    errorDetails: {
-      whiteSpace: "pre",
-    },
-    link: {
-      border: "none",
-      cursor: "pointer",
-      color: "#036DCF",
-      textDecoration: "underline",
-      background: "none",
-    },
-  }),
-);
-
 type TaskTableActionsProps = {
   task: Task;
 };
 
 const TaskTableActions = ({ task }: TaskTableActionsProps) => {
-  const classes = useTaskTableActionsStyles();
-  const { ipLogMap } = useContext(GlobalContext);
-  const [showErrorDetailsDialog, setShowErrorDetailsDialog] = useState(false);
+  const errorDetails =
+    task.error_type !== null && task.error_message !== null
+      ? `Error Type: ${task.error_type}\n\n${task.error_message}`
+      : undefined;
 
-  const handleErrorClick = () => {
-    setShowErrorDetailsDialog(true);
-  };
-
-  const errorDetails = task.error_type
-    ? `Error Type: ${task.error_type}\n\n${task.error_message}`
-    : undefined;
+  const isTaskActive = task.state === "RUNNING" && task.worker_id;
 
   return (
     <React.Fragment>
-      {task?.profiling_data?.node_ip_address &&
-        ipLogMap[task?.profiling_data?.node_ip_address] &&
-        task.worker_id &&
-        task.job_id && (
-          <React.Fragment>
-            <Link
-              target="_blank"
-              to={`/logs/${encodeURIComponent(
-                ipLogMap[task.profiling_data.node_ip_address],
-              )}?fileName=worker-${task.worker_id}`}
-            >
-              Log
-            </Link>
-            <br />
-          </React.Fragment>
-        )}
-      {errorDetails && (
-        <button className={classes.link} onClick={handleErrorClick}>
-          Error
-        </button>
+      <Link component={RouterLink} to={`tasks/${task.task_id}`}>
+        Log
+      </Link>
+      {isTaskActive && (
+        <React.Fragment>
+          <br />
+          <TaskCpuProfilingLink
+            taskId={task.task_id}
+            attemptNumber={task.attempt_number}
+            nodeId={task.node_id}
+          />
+          <br />
+          <TaskCpuStackTraceLink
+            taskId={task.task_id}
+            attemptNumber={task.attempt_number}
+            nodeId={task.node_id}
+          />
+        </React.Fragment>
       )}
-      {showErrorDetailsDialog && errorDetails && (
-        <DialogWithTitle
+      <br />
+
+      {errorDetails && (
+        <CodeDialogButton
           title="Error details"
-          handleClose={() => {
-            setShowErrorDetailsDialog(false);
-          }}
-        >
-          <div className={classes.errorDetails}>{errorDetails}</div>
-        </DialogWithTitle>
+          code={errorDetails}
+          buttonText="Error"
+        />
       )}
     </React.Fragment>
   );

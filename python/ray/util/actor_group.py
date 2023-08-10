@@ -56,7 +56,7 @@ class ActorGroupMethod:
     f"in https://docs.ray.io/en/{get_ray_doc_version()}/ray-more-libs/multiprocessing.html. "  # noqa: E501
     "For stateful/actor processing such as batch prediction, use "
     "Datasets.map_batches(compute=ActorPoolStrategy, ...), see details in "
-    f"https://docs.ray.io/en/{get_ray_doc_version()}/data/api/datastream.html#ray.data.Datastream.map_batches.",  # noqa: E501
+    f"https://docs.ray.io/en/{get_ray_doc_version()}/data/api/dataset.html#ray.data.Dataset.map_batches.",  # noqa: E501
     warning=True,
 )
 class ActorGroup:
@@ -96,7 +96,9 @@ class ActorGroup:
         init_args: Optional[Tuple] = None,
         init_kwargs: Optional[Dict] = None,
     ):
-        ray._private.usage.usage_lib.record_library_usage("util.ActorGroup")
+        from ray._private.usage.usage_lib import record_library_usage
+
+        record_library_usage("util.ActorGroup")
 
         if num_actors <= 0:
             raise ValueError(

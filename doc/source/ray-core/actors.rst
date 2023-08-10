@@ -15,10 +15,12 @@ that specific worker and can access and mutate the state of that worker.
 
         The ``ray.remote`` decorator indicates that instances of the ``Counter`` class will be actors. Each actor runs in its own Python process.
 
-        .. code-block:: python
+        .. testcode::
+
+          import ray
 
           @ray.remote
-          class Counter(object):
+          class Counter:
               def __init__(self):
                   self.value = 0
 
@@ -87,6 +89,28 @@ that specific worker and can access and mutate the state of that worker.
           // as the argument.
           auto counter = ray::Actor(CreateCounter).Remote();
 
+
+
+Use `ray list actors` from :ref:`State API <state-api-overview-ref>` to see actors states:
+
+.. code-block:: bash
+
+  # This API is only available when you install Ray with `pip install "ray[default]"`.
+  ray list actors
+
+.. code-block:: bash
+
+  ======== List: 2023-05-25 10:10:50.095099 ========
+  Stats:
+  ------------------------------
+  Total: 1
+  
+  Table:
+  ------------------------------
+      ACTOR_ID                          CLASS_NAME    STATE      JOB_ID  NAME    NODE_ID                                                     PID  RAY_NAMESPACE
+   0  9e783840250840f87328c9f201000000  Counter       ALIVE    01000000          13a475571662b784b4522847692893a823c78f1d3fd8fd32a2624923  38906  ef9de910-64fb-4575-8eb5-50573faa3ddf
+
+
 Specifying required resources
 -----------------------------
 
@@ -98,11 +122,11 @@ You can specify resource requirements in actors too (see :ref:`resource-requirem
 
     .. tab-item:: Python
 
-        .. code-block:: python
+        .. testcode::
 
             # Specify required resources for an actor.
             @ray.remote(num_cpus=2, num_gpus=0.5)
-            class Actor(object):
+            class Actor:
                 pass
 
     .. tab-item:: Java
@@ -131,11 +155,15 @@ value.
 
     .. tab-item:: Python
 
-        .. code-block:: python
+        .. testcode::
 
             # Call the actor.
             obj_ref = counter.increment.remote()
-            assert ray.get(obj_ref) == 1
+            print(ray.get(obj_ref))
+
+        .. testoutput::
+
+            1
 
     .. tab-item:: Java
 
@@ -159,7 +187,7 @@ Methods called on different actors can execute in parallel, and methods called o
 
     .. tab-item:: Python
 
-        .. code-block:: python
+        .. testcode::
 
             # Create ten Counter actors.
             counters = [Counter.remote() for _ in range(10)]
@@ -167,12 +195,17 @@ Methods called on different actors can execute in parallel, and methods called o
             # Increment each Counter once and get the results. These tasks all happen in
             # parallel.
             results = ray.get([c.increment.remote() for c in counters])
-            print(results)  # prints [1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+            print(results)
 
             # Increment the first Counter five times. These tasks are executed serially
             # and share state.
             results = ray.get([counters[0].increment.remote() for _ in range(5)])
-            print(results)  # prints [2, 3, 4, 5, 6]
+            print(results)
+
+        .. testoutput::
+
+            [1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+            [2, 3, 4, 5, 6]
 
     .. tab-item:: Java
 
@@ -245,13 +278,13 @@ Actor handles can be passed into other tasks. We can define remote functions (or
 
     .. tab-item:: Python
 
-        .. code-block:: python
+        .. testcode::
 
             import time
 
             @ray.remote
             def f(counter):
-                for _ in range(1000):
+                for _ in range(10):
                     time.sleep(0.1)
                     counter.increment.remote()
 
@@ -286,7 +319,7 @@ If we instantiate an actor, we can pass the handle around to various tasks.
 
     .. tab-item:: Python
 
-        .. code-block:: python
+        .. testcode::
 
             counter = Counter.remote()
 
@@ -295,8 +328,22 @@ If we instantiate an actor, we can pass the handle around to various tasks.
 
             # Print the counter value.
             for _ in range(10):
-                time.sleep(1)
+                time.sleep(0.1)
                 print(ray.get(counter.get_counter.remote()))
+
+        .. testoutput::
+            :options: +MOCK
+
+            0
+            3
+            8
+            10
+            15
+            18
+            20
+            25
+            30
+            30
 
     .. tab-item:: Java
 

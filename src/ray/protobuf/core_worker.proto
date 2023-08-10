@@ -69,22 +69,6 @@ message ActorHandle {
   int32 max_pending_calls = 13;
 }
 
-message ReturnObject {
-  // Object ID.
-  bytes object_id = 1;
-  // If set, indicates the data is in plasma instead of inline. This
-  // means that data and metadata will be empty.
-  bool in_plasma = 2;
-  // Data of the object.
-  bytes data = 3;
-  // Metadata of the object.
-  bytes metadata = 4;
-  // ObjectIDs that were nested in data. This is only set for inlined objects.
-  repeated ObjectReference nested_inlined_refs = 5;
-  // Size of this object.
-  int64 size = 6;
-}
-
 message PushTaskRequest {
   // The ID of the worker this message is intended for.
   bytes intended_worker_id = 1;
@@ -145,6 +129,9 @@ message PushTaskReply {
   // from the core worker. This is only set when the task execution failed.
   // Default to empty string (not set) when no error happens.
   string task_execution_error = 9;
+  // A list of streaming generator return IDs and whether
+  // they are stored in a plasma store.
+  repeated StreamingGeneratorReturnIdInfo streaming_generator_return_ids = 10;
 }
 
 message DirectActorCallArgWaitCompleteRequest {
@@ -398,6 +385,33 @@ message RayletNotifyGCSRestartRequest {}
 
 message RayletNotifyGCSRestartReply {}
 
+message NumPendingTasksRequest {}
+
+message NumPendingTasksReply {
+  int64 num_pending_tasks = 1;
+}
+
+message ReportGeneratorItemReturnsRequest {
+  // The intermediate return object that's dynamically
+  // generated from the executor side.
+  repeated ReturnObject dynamic_return_objects = 1;
+  // The address of the executor.
+  Address worker_addr = 2;
+  // The index of the task return. It is used to
+  // reorder the intermediate return object
+  // because the ordering of this request
+  // is not guaranteed.
+  int64 item_index = 3;
+  // The object ref id of the executor task that
+  // generates intermediate results.
+  bytes generator_id = 5;
+  // A count of the number of times this task has been attempted so far. 0
+  // means this is the first execution.
+  uint64 attempt_number = 6;
+}
+
+message ReportGeneratorItemReturnsReply {}
+
 service CoreWorkerService {
   // Notify core worker GCS has restarted.
   rpc RayletNotifyGCSRestart(RayletNotifyGCSRestartRequest)
@@ -418,6 +432,9 @@ service CoreWorkerService {
   /// It is replied once there are batch of objects that need to be published to
   /// the caller (subscriber).
   rpc PubsubLongPolling(PubsubLongPollingRequest) returns (PubsubLongPollingReply);
+  // The RPC to report the intermediate task return to the caller.
+  rpc ReportGeneratorItemReturns(ReportGeneratorItemReturnsRequest)
+      returns (ReportGeneratorItemReturnsReply);
   /// The pubsub command batch request used by the subscriber.
   rpc PubsubCommandBatch(PubsubCommandBatchRequest) returns (PubsubCommandBatchReply);
   // Update the batched object location information to the ownership-based object
@@ -453,4 +470,6 @@ service CoreWorkerService {
   rpc Exit(ExitRequest) returns (ExitReply);
   // Assign the owner of an object to the intended worker.
   rpc AssignObjectOwner(AssignObjectOwnerRequest) returns (AssignObjectOwnerReply);
+  // Get the number of pending tasks.
+  rpc NumPendingTasks(NumPendingTasksRequest) returns (NumPendingTasksReply);
 }

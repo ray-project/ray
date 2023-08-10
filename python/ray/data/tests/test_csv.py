@@ -2,26 +2,20 @@ import itertools
 import os
 import shutil
 from functools import partial
-from distutils.version import LooseVersion
 
 import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
-
+from packaging.version import Version
 from pytest_lazyfixture import lazy_fixture
 
 import ray
-from ray.data.tests.util import Counter
 from ray.data.block import BlockAccessor
-from ray.data.tests.conftest import *  # noqa
-from ray.data.tests.mock_http_server import *  # noqa
-from ray.tests.conftest import *  # noqa
 from ray.data.datasource import (
     BaseFileMetadataProvider,
     FastFileMetadataProvider,
     PartitionStyle,
-    PathPartitionEncoder,
     PathPartitionFilter,
 )
 from ray.data.datasource.file_based_datasource import (
@@ -29,6 +23,11 @@ from ray.data.datasource.file_based_datasource import (
     FileExtensionFilter,
     _unwrap_protocol,
 )
+from ray.data.tests.conftest import *  # noqa
+from ray.data.tests.mock_http_server import *  # noqa
+from ray.data.tests.test_partitioning import PathPartitionEncoder
+from ray.data.tests.util import Counter
+from ray.tests.conftest import *  # noqa
 
 
 def df_to_csv(dataframe, path, **kwargs):
@@ -661,7 +660,7 @@ def test_csv_read_partitioned_with_filter_multikey(
             data_path,
             partition_filter=partition_path_filter,
             filesystem=fs,
-            parallelism=100,
+            parallelism=6,
         )
         assert_base_partitioned_ds(ds, num_input_files=6, num_computed=6)
         assert ray.get(kept_file_counter.get.remote()) == 6
@@ -694,7 +693,7 @@ def test_csv_write(ray_start_regular_shared, fs, data_path, endpoint_url):
     ds = ray.data.from_pandas([df1])
     ds._set_uuid("data")
     ds.write_csv(data_path, filesystem=fs)
-    file_path = os.path.join(data_path, "data_000000.csv")
+    file_path = os.path.join(data_path, "data_000000_000000.csv")
     assert df1.equals(pd.read_csv(file_path, storage_options=storage_options))
 
     # Two blocks.
@@ -702,7 +701,7 @@ def test_csv_write(ray_start_regular_shared, fs, data_path, endpoint_url):
     ds = ray.data.from_pandas([df1, df2])
     ds._set_uuid("data")
     ds.write_csv(data_path, filesystem=fs)
-    file_path2 = os.path.join(data_path, "data_000001.csv")
+    file_path2 = os.path.join(data_path, "data_000001_000000.csv")
     df = pd.concat([df1, df2])
     ds_df = pd.concat(
         [
@@ -727,7 +726,7 @@ def test_csv_roundtrip(ray_start_regular_shared, fs, data_path):
     ds = ray.data.from_pandas([df])
     ds._set_uuid("data")
     ds.write_csv(data_path, filesystem=fs)
-    file_path = os.path.join(data_path, "data_000000.csv")
+    file_path = os.path.join(data_path, "data_000000_000000.csv")
     ds2 = ray.data.read_csv([file_path], filesystem=fs)
     ds2df = ds2.to_pandas()
     assert ds2df.equals(df)
@@ -764,7 +763,7 @@ def test_csv_write_block_path_provider(
     fs,
     data_path,
     endpoint_url,
-    test_block_write_path_provider,
+    mock_block_write_path_provider,
 ):
     if endpoint_url is None:
         storage_options = {}
@@ -776,9 +775,9 @@ def test_csv_write_block_path_provider(
     ds = ray.data.from_pandas([df1])
     ds._set_uuid("data")
     ds.write_csv(
-        data_path, filesystem=fs, block_path_provider=test_block_write_path_provider
+        data_path, filesystem=fs, block_path_provider=mock_block_write_path_provider
     )
-    file_path = os.path.join(data_path, "000000_03_data.test.csv")
+    file_path = os.path.join(data_path, "000000_000000_data.test.csv")
     assert df1.equals(pd.read_csv(file_path, storage_options=storage_options))
 
     # Two blocks.
@@ -786,9 +785,9 @@ def test_csv_write_block_path_provider(
     ds = ray.data.from_pandas([df1, df2])
     ds._set_uuid("data")
     ds.write_csv(
-        data_path, filesystem=fs, block_path_provider=test_block_write_path_provider
+        data_path, filesystem=fs, block_path_provider=mock_block_write_path_provider
     )
-    file_path2 = os.path.join(data_path, "000001_03_data.test.csv")
+    file_path2 = os.path.join(data_path, "000001_000000_data.test.csv")
     df = pd.concat([df1, df2])
     ds_df = pd.concat(
         [
@@ -895,7 +894,7 @@ def test_csv_read_filter_non_csv_file(shutdown_only, tmp_path):
 
 
 @pytest.mark.skipif(
-    LooseVersion(pa.__version__) < LooseVersion("7.0.0"),
+    Version(pa.__version__) < Version("7.0.0"),
     reason="invalid_row_handler was added in pyarrow 7.0.0",
 )
 def test_csv_invalid_file_handler(shutdown_only, tmp_path):
