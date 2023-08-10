@@ -344,7 +344,7 @@ class ApplicationState:
                 )
                 self._check_routes(overrided_infos)
                 self._set_target_state_deployment_infos(overrided_infos)
-            except RayServeException:
+            except (TypeError, ValueError, RayServeException):
                 self._set_target_state_deployment_infos(None)
                 self._update_status(
                     ApplicationStatus.DEPLOY_FAILED, traceback.format_exc()
@@ -495,7 +495,7 @@ class ApplicationState:
             )
             self._route_prefix, self._docs_path = self._check_routes(overrided_infos)
             return overrided_infos, BuildAppStatus.SUCCEEDED, ""
-        except RayServeException:
+        except (TypeError, ValueError, RayServeException):
             return None, BuildAppStatus.FAILED, traceback.format_exc()
 
     def _check_routes(
@@ -933,6 +933,10 @@ def override_deployment_info(
             options to override those loaded from code.
 
     Returns: the updated deployment infos.
+
+    Raises:
+        ValueError: If config options have invalid values.
+        TypeError: If config options have invalid types.
     """
 
     deployment_infos = deepcopy(deployment_infos)
