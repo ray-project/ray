@@ -1,9 +1,5 @@
 #ci:group=:book: lint (civ2)
 
-- label: "code format"
-  commands:
-    - ./ci/ray_ci/lint.sh code_format
-
 - label: "banned words"
   commands:
     - ./ci/ray_ci/lint.sh banned_words
@@ -31,10 +27,6 @@
 - label: "copyright"
   commands:
     - ./ci/ray_ci/lint.sh copyright
-
-- label: "untested code snippet"
-  commands:
-    - ./ci/ray_ci/lint.sh run_semgrep
 
 - label: "test script"
   commands:
