@@ -426,7 +426,7 @@ Status PythonGcsClient::GetAllJobInfo(int64_t timeout_ms,
 Status PythonGcsClient::GetAllResourceUsage(int64_t timeout_ms,
                                             std::string &serialized_reply) {
   grpc::ClientContext context;
-  PrepareContext(context, timeout_ms);
+  GrpcClientContextWithTimeoutMs(context, timeout_ms);
 
   rpc::GetAllResourceUsageRequest request;
   rpc::GetAllResourceUsageReply reply;
@@ -520,7 +520,7 @@ Status PythonGcsClient::DrainNodes(const std::vector<std::string> &node_ids,
                                    int64_t timeout_ms,
                                    std::vector<std::string> &drained_node_ids) {
   grpc::ClientContext context;
-  PrepareContext(context, timeout_ms);
+  GrpcClientContextWithTimeoutMs(context, timeout_ms);
 
   rpc::DrainNodeRequest request;
   for (const std::string &node_id : node_ids) {
