@@ -126,15 +126,7 @@ class TrainingIterator:
         )
 
     def _send_next_checkpoint_path_to_workers(self):
-        # NOTE: Always upload to storage from workers in the new persistence path
-        # (no need to check for the `checkpoint_upload_from_workers` flag)
-        if _use_storage_context():
-            self._backend_executor._set_checkpoint_index(
-                self._storage.current_checkpoint_index
-            )
-            self._storage.current_checkpoint_index += 1
-
-        elif self._checkpoint_strategy._checkpoint_upload_from_workers:
+        if self._checkpoint_strategy._checkpoint_upload_from_workers:
             self._backend_executor._set_legacy_checkpoint_uri(
                 self.__get_cloud_checkpoint_dir()
             )
