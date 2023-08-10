@@ -700,6 +700,7 @@ def test_update_draining(all_nodes, setup_controller, number_of_worker_nodes):
             port=8000,
             root_path="/",
             controller_name=SERVE_CONTROLLER_NAME,
+            actor_name="mock_actor_name",
             node_ip_address=node_ip_address,
         )
     node_ids = [node_id for node_id, _ in all_nodes]
@@ -756,6 +757,7 @@ def test_proxy_actor_unhealthy_during_draining(
             port=8000,
             root_path="/",
             controller_name=SERVE_CONTROLLER_NAME,
+            actor_name="mock_actor_name",
             node_ip_address=node_ip_address,
         )
         if node_id != HEAD_NODE_ID:
@@ -823,6 +825,7 @@ def test_is_ready_for_shutdown(all_nodes):
             port=8000,
             root_path="/",
             controller_name=SERVE_CONTROLLER_NAME,
+            actor_name="mock_actor_name",
             node_ip_address=node_ip_address,
         )
 
