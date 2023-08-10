@@ -64,8 +64,8 @@ training.
 
              import torch
              from torch.utils.data import DataLoader, DistributedSampler
-            +from ray import train
-            +import ray.train.torch
+            + from ray import train
+            + import ray.train.torch
 
 
              def train_func():
@@ -91,6 +91,71 @@ training.
             .. code-block:: python
 
                 global_batch_size = worker_batch_size * train.get_context().get_world_size()
+    
+    .. tab-item:: PyTorch Lightning
+
+        Ray Train will set up your distributed process group on each worker. You only need to 
+        make a few changes to your Lightning Trainer definition.
+
+        .. code-block:: diff
+
+              import pytorch_lightning as pl
+            + from ray.train.lightning import (
+            +   prepare_trainer,
+            +   RayDDPStrategy,
+            +   RayLightningEnvironment,
+            + )
+
+              def train_func(config):
+                ...
+                model = MyLightningModule(...)
+                datamodule = MyLightningDataModule(...)
+                
+                trainer = pl.Trainer(
+            -     devices=[0,1,2,3],
+            -     strategy=DDPStrategy(),
+            -     plugins=[LightningEnvironment()],
+            +     devices="auto",
+            +     strategy=RayDDPStrategy(),
+            +     plugins=[RayLightningEnvironment()]
+                )
+            +   trainer = prepare_trainer(trainer)
+                
+                trainer.fit(model, datamodule=datamodule)
+    
+
+        **Step 1: Configure Distributed Strategy**
+
+        Ray Train offers several subclassed distributed strategies for Lightning. 
+        These strategies retain the same argument list as their base strategy classes. 
+        Internally, they configure the root device and the distributed 
+        sampler arguments.
+            
+        - :class:`~ray.train.lightning.RayDDPStrategy` 
+        - :class:`~ray.train.lightning.RayFSDPStrategy` 
+        - :class:`~ray.train.lightning.RayDeepSpeedStrategy` 
+
+        **Step 2: Configure Ray Cluster Environment Plugin**
+
+        Ray Train also provides :class:`~ray.train.lightning.RayLightningEnvironment` 
+        as a specification for Ray Cluster. This utility class configures the worker's 
+        local, global, and node rank and world size.
+
+        **Step 3: Configure Parallel Devices**
+
+        In addition, Ray TorchTrainer has already configured the correct 
+        ``CUDA_VISIBLE_DEVICES`` for you. One should always use all available 
+        GPUs by setting ``devices="auto"``.
+        
+        **Step 4: Prepare your Lightning Trainer**
+
+        Finally, pass your Lightning Trainer into
+        :meth:`~ray.train.lightning.prepare_trainer` to validate 
+        your configurations. 
+
+        **Step 5: Define a Ray TorchTrainer**
+
+
 
 Creating a :class:`~ray.train.torch.TorchTrainer`
 -------------------------------------------------

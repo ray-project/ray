@@ -573,6 +573,7 @@ def test_status_basic(ray_start_stop):
     for name, status in default_app["deployments"].items():
         expected_deployments.remove(name)
         assert status["status"] in {"HEALTHY", "UPDATING"}
+        assert status["replica_states"]["RUNNING"] in {0, 1}
         assert "message" in status
     assert len(expected_deployments) == 0
 
@@ -608,11 +609,9 @@ def test_status_error_msg_format(ray_start_stop):
         )
         cli_status = yaml.safe_load(cli_output)["applications"]["default"]
         api_status = serve.status().applications["default"]
-        return (
-            cli_status["status"] == "DEPLOY_FAILED"
-            and remove_ansi_escape_sequences(cli_status["message"])
-            in api_status.message
-        )
+        assert cli_status["status"] == "DEPLOY_FAILED"
+        assert remove_ansi_escape_sequences(cli_status["message"]) in api_status.message
+        return True
 
     wait_for_condition(check_for_failed_deployment)
 
@@ -635,10 +634,9 @@ def test_status_invalid_runtime_env(ray_start_stop):
             ["serve", "status", "-a", "http://localhost:52365/"]
         )
         cli_status = yaml.safe_load(cli_output)["applications"]["default"]
-        return (
-            cli_status["status"] == "DEPLOY_FAILED"
-            and "Failed to set up runtime environment" in cli_status["message"]
-        )
+        assert cli_status["status"] == "DEPLOY_FAILED"
+        assert "Failed to set up runtime environment" in cli_status["message"]
+        return True
 
     wait_for_condition(check_for_failed_deployment, timeout=15)
 
@@ -658,7 +656,9 @@ def test_status_syntax_error(ray_start_stop):
             ["serve", "status", "-a", "http://localhost:52365/"]
         )
         status = yaml.safe_load(cli_output)["applications"]["default"]
-        return status["status"] == "DEPLOY_FAILED" and "x = (1 + 2" in status["message"]
+        assert status["status"] == "DEPLOY_FAILED"
+        assert "x = (1 + 2" in status["message"]
+        return True
 
     wait_for_condition(check_for_failed_deployment)
 
@@ -680,10 +680,9 @@ def test_status_constructor_error(ray_start_stop):
             ["serve", "status", "-a", "http://localhost:52365/"]
         )
         status = yaml.safe_load(cli_output)["applications"]["default"]
-        return (
-            status["status"] == "DEPLOY_FAILED"
-            and "ZeroDivisionError" in status["deployments"]["default_A"]["message"]
-        )
+        assert status["status"] == "DEPLOY_FAILED"
+        assert "ZeroDivisionError" in status["deployments"]["default_A"]["message"]
+        return True
 
     wait_for_condition(check_for_failed_deployment)
 
@@ -705,11 +704,12 @@ def test_status_package_unavailable_in_controller(ray_start_stop):
             ["serve", "status", "-a", "http://localhost:52365/"]
         )
         status = yaml.safe_load(cli_output)["applications"]["default"]
-        return (
-            status["status"] == "DEPLOY_FAILED"
-            and "some_wrong_url"
+        assert status["status"] == "DEPLOY_FAILED"
+        assert (
+            "some_wrong_url"
             in status["deployments"]["default_TestDeployment"]["message"]
         )
+        return True
 
     wait_for_condition(check_for_failed_deployment, timeout=15)
 

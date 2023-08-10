@@ -51,6 +51,7 @@ check_docstyle() {
     return 0
 }
 
+# TODO(can): add shellcheck, clang-format, and google-java-format to this check
 check_python_command_exist black
 check_python_command_exist flake8
 check_python_command_exist mypy
@@ -102,7 +103,7 @@ fi
 
 if command -v clang-format >/dev/null; then
   CLANG_FORMAT_VERSION=$(clang-format --version | awk '{print $3}')
-  tool_version_check "clang-format" "$CLANG_FORMAT_VERSION" "12.0.0"
+  tool_version_check "clang-format" "$CLANG_FORMAT_VERSION" "12.0.1"
 else
     echo "WARNING: clang-format is not installed!"
 fi
