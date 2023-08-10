@@ -739,7 +739,6 @@ class HTTPProxy:
     async def _consume_and_send_asgi_message_generator(
         self,
         obj_ref_generator: StreamingObjectRefGenerator,
-        client_disconnected_task: asyncio.Task,
         send: Send,
         timeout_s: Optional[float] = None,
     ) -> Optional[str]:
@@ -750,9 +749,6 @@ class HTTPProxy:
         If timeout_s is `None`, there's no timeout. If it's not `None`, a timeout error
         will be raised if the full generator isn't consumed within the timeout.
 
-        `disconnected_task` is expected to be done if the client disconnects; in this
-        case, we will stop `await`ing the generator and return.
-
         Returns the status code for HTTP responses.
         """
         status_code = ""
@@ -760,42 +756,28 @@ class HTTPProxy:
         is_first_message = True
         while True:
             try:
-                generator_task = asyncio.ensure_future(
-                    obj_ref_generator._next_async(
-                        timeout_s=calculate_remaining_timeout(
-                            timeout_s=timeout_s,
-                            start_time_s=start,
-                            curr_time_s=time.time(),
-                        )
+                obj_ref = await obj_ref_generator._next_async(
+                    timeout_s=calculate_remaining_timeout(
+                        timeout_s=timeout_s,
+                        start_time_s=start,
+                        curr_time_s=time.time(),
                     )
                 )
+                if obj_ref.is_nil():
+                    raise RayServeTimeout(is_first_message=is_first_message)
 
-                done, _ = await asyncio.wait(
-                    [generator_task, client_disconnected_task],
-                    return_when=FIRST_COMPLETED,
-                )
-                if client_disconnected_task in done:
-                    # TODO (shrekris-anyscale): cancel generator task
-                    # once async cancellation is supported.
-                    break
-                else:
-                    obj_ref = generator_task.result()
+                asgi_messages: List[Message] = pickle.loads(await obj_ref)
+                for asgi_message in asgi_messages:
+                    if asgi_message["type"] == "http.response.start":
+                        # HTTP responses begin with exactly one
+                        # "http.response.start" message containing the "status"
+                        # field Other response types (e.g., WebSockets) may not.
+                        status_code = str(asgi_message["status"])
+                    elif asgi_message["type"] == "websocket.disconnect":
+                        status_code = str(asgi_message["code"])
 
-                    if obj_ref.is_nil():
-                        raise RayServeTimeout(is_first_message=is_first_message)
-
-                    asgi_messages: List[Message] = pickle.loads(await obj_ref)
-                    for asgi_message in asgi_messages:
-                        if asgi_message["type"] == "http.response.start":
-                            # HTTP responses begin with exactly one
-                            # "http.response.start" message containing the "status"
-                            # field Other response types (e.g., WebSockets) may not.
-                            status_code = str(asgi_message["status"])
-                        elif asgi_message["type"] == "websocket.disconnect":
-                            status_code = str(asgi_message["code"])
-
-                        await send(asgi_message)
-                        is_first_message = False
+                    await send(asgi_message)
+                    is_first_message = False
             except StopAsyncIteration:
                 break
 

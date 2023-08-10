@@ -874,7 +874,7 @@ def test_multiplexed_metrics(serve_start_shutdown):
 
 
 def test_queued_queries_disconnected(serve_start_shutdown):
-    """Check that disconnected queued queries are tracked correctly."""
+    """Check that queued_queries decrements when queued requests disconnect."""
 
     signal = SignalActor.remote()
 
@@ -889,14 +889,14 @@ def test_queued_queries_disconnected(serve_start_shutdown):
 
     print("Deployed hang_on_first_request deployment.")
 
-    def get_metric(metric: str) -> float:
+    def queue_size() -> float:
         metrics = requests.get("http://127.0.0.1:9999").text
-        metric_value = -1
+        queue_size = -1
         for line in metrics.split("\n"):
-            if metric in line:
-                metric_value = line.split(" ")[-1]
+            if "ray_serve_deployment_queued_queries" in line:
+                queue_size = line.split(" ")[-1]
 
-        return float(metric_value)
+        return float(queue_size)
 
     def first_request_executing(request_future) -> bool:
         try:
@@ -912,10 +912,6 @@ def test_queued_queries_disconnected(serve_start_shutdown):
     fut = pool.apply_async(partial(requests.get, url))
     wait_for_condition(lambda: first_request_executing(fut), timeout=5)
     print("Executed first request.")
-    wait_for_condition(
-        lambda: get_metric("ray_serve_num_ongoing_requests") == 1, timeout=15
-    )
-    print("ray_serve_num_ongoing_requests updated successfully.")
 
     num_requests = 5
     for _ in range(num_requests):
@@ -923,29 +919,15 @@ def test_queued_queries_disconnected(serve_start_shutdown):
     print(f"Executed {num_requests} more requests.")
 
     # First request should be processing. All others should be queued.
-    wait_for_condition(
-        lambda: get_metric("ray_serve_deployment_queued_queries") == num_requests,
-        timeout=15,
-    )
+    wait_for_condition(lambda: queue_size() == num_requests, timeout=15)
     print("ray_serve_deployment_queued_queries updated successfully.")
-    wait_for_condition(
-        lambda: get_metric("ray_serve_num_ongoing_requests") == num_requests + 1,
-        timeout=15,
-    )
-    print("ray_serve_num_ongoing_requests updated successfully.")
 
     # Disconnect all requests by terminating the process pool.
     pool.terminate()
     print("Terminated all requests.")
 
-    wait_for_condition(
-        lambda: get_metric("ray_serve_deployment_queued_queries") == 0, timeout=15
-    )
+    wait_for_condition(lambda: queue_size() == 0, timeout=15)
     print("ray_serve_deployment_queued_queries updated successfully.")
-    wait_for_condition(
-        lambda: get_metric("ray_serve_num_ongoing_requests") == 0, timeout=15
-    )
-    print("ray_serve_num_ongoing_requests updated successfully.")
 
 
 def test_actor_summary(serve_instance):
