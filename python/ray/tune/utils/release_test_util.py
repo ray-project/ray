@@ -108,7 +108,7 @@ def timed_tune_run(
     checkpoint_size_b: int = 0,
     checkpoint_num_files: int = 1,
     **tune_kwargs,
-):
+) -> bool:
     durable = (
         "storage_path" in tune_kwargs
         and tune_kwargs["storage_path"]
@@ -164,7 +164,9 @@ def timed_tune_run(
     with open(test_output_json, "wt") as f:
         json.dump(result, f)
 
-    if time_taken > max_runtime:
+    success = time_taken <= max_runtime
+
+    if not success:
         print(
             f"The {name} test took {time_taken:.2f} seconds, but should not "
             f"have exceeded {max_runtime:.2f} seconds. Test failed. \n\n"
@@ -179,3 +181,5 @@ def timed_tune_run(
             f"--- PASSED: {name.upper()} ::: "
             f"{time_taken:.2f} <= {max_runtime:.2f} ---"
         )
+
+    return success

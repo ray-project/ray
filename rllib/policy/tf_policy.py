@@ -42,7 +42,7 @@ tf1, tf, tfv = try_import_tf()
 logger = logging.getLogger(__name__)
 
 
-@DeveloperAPI
+@Deprecated(error=False)
 class TFPolicy(Policy):
     """An agent policy and loss implemented in TensorFlow.
 

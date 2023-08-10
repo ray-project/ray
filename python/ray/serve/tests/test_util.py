@@ -4,6 +4,7 @@ import subprocess
 import sys
 import tempfile
 from copy import deepcopy
+from unittest.mock import patch
 
 import numpy as np
 import pytest
@@ -12,15 +13,18 @@ from fastapi.encoders import jsonable_encoder
 import ray
 from ray import serve
 from ray.serve._private.utils import (
+    calculate_remaining_timeout,
     get_deployment_import_path,
-    override_runtime_envs_except_env_vars,
-    serve_encoders,
     merge_dict,
     msgpack_serialize,
     msgpack_deserialize,
+    override_runtime_envs_except_env_vars,
+    serve_encoders,
     snake_to_camel_case,
     dict_keys_snake_to_camel_case,
+    get_head_node_id,
 )
+from ray._private.resource_spec import HEAD_NODE_RESOURCE_NAME
 
 
 def test_serialize():
@@ -291,7 +295,7 @@ class TestOverrideRuntimeEnvsExceptEnvVars:
             runtime_env={
                 "py_modules": [
                     "https://github.com/ray-project/test_dag/archive/"
-                    "40d61c141b9c37853a7014b8659fc7f23c1d04f6.zip"
+                    "445c9611151720716060b1471b29c70219ed33ef.zip"
                 ],
                 "env_vars": {"var1": "hello"},
             }
@@ -529,6 +533,89 @@ class TestDictKeysSnakeToCamelCase:
         camel_dict = dict_keys_snake_to_camel_case(snake_dict)
         assert camel_dict["list"] is list1
         assert camel_dict["nested"]["list2"] is list2
+
+
+def test_get_head_node_id():
+    """Test get_head_node_id() returning the correct head node id.
+
+    When there are woker node, dead head node, and other alive head nodes,
+    get_head_node_id() should return the node id of the first alive head node.
+    When there are no alive head nodes, get_head_node_id() should raise assertion error.
+    """
+    nodes = [
+        {"NodeID": "worker_node1", "Alive": True, "Resources": {"CPU": 1}},
+        {
+            "NodeID": "dead_head_node1",
+            "Alive": False,
+            "Resources": {"CPU": 1, HEAD_NODE_RESOURCE_NAME: 1.0},
+        },
+        {
+            "NodeID": "alive_head_node1",
+            "Alive": True,
+            "Resources": {"CPU": 1, HEAD_NODE_RESOURCE_NAME: 1.0},
+        },
+        {
+            "NodeID": "alive_head_node2",
+            "Alive": True,
+            "Resources": {"CPU": 1, HEAD_NODE_RESOURCE_NAME: 1.0},
+        },
+    ]
+    with patch("ray.nodes", return_value=nodes):
+        assert get_head_node_id() == "alive_head_node1"
+
+    with patch("ray.nodes", return_value=[]):
+        with pytest.raises(AssertionError):
+            get_head_node_id()
+
+
+def test_calculate_remaining_timeout():
+    # Always return `None` or negative value.
+    assert (
+        calculate_remaining_timeout(
+            timeout_s=None,
+            start_time_s=100,
+            curr_time_s=101,
+        )
+        is None
+    )
+
+    assert (
+        calculate_remaining_timeout(
+            timeout_s=-1,
+            start_time_s=100,
+            curr_time_s=101,
+        )
+        == -1
+    )
+
+    # Return delta from start.
+    assert (
+        calculate_remaining_timeout(
+            timeout_s=10,
+            start_time_s=100,
+            curr_time_s=101,
+        )
+        == 9
+    )
+
+    assert (
+        calculate_remaining_timeout(
+            timeout_s=100,
+            start_time_s=100,
+            curr_time_s=101.1,
+        )
+        == 98.9
+    )
+
+    # Never return a negative timeout once it has elapsed.
+    assert (
+        calculate_remaining_timeout(
+            timeout_s=10,
+            start_time_s=100,
+            curr_time_s=111,
+        )
+        == 0
+    )
 
 
 if __name__ == "__main__":

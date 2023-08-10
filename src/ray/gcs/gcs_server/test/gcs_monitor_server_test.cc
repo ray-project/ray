@@ -72,7 +72,7 @@ std::shared_ptr<gcs::GcsPlacementGroup> ConstructPlacementGroupDemand(
 class GcsMonitorServerTest : public ::testing::Test {
  public:
   GcsMonitorServerTest()
-      : mock_node_manager_(std::make_shared<gcs::MockGcsNodeManager>()),
+      : mock_node_manager_(gcs::MockGcsNodeManager()),
         cluster_resource_manager_(io_context_),
         mock_resource_manager_(
             std::make_shared<gcs::MockGcsResourceManager>(cluster_resource_manager_)),
@@ -88,13 +88,13 @@ class GcsMonitorServerTest : public ::testing::Test {
   }
 
   absl::flat_hash_map<NodeID, std::shared_ptr<rpc::GcsNodeInfo>> &AliveNodes() {
-    return mock_node_manager_->alive_nodes_;
+    return mock_node_manager_.alive_nodes_;
   }
 
   absl::btree_multimap<
       int64_t,
-      std::pair<ExponentialBackOff, std::shared_ptr<gcs::GcsPlacementGroup>>>
-      &PendingPlacementGroups() {
+      std::pair<ExponentialBackOff, std::shared_ptr<gcs::GcsPlacementGroup>>> &
+  PendingPlacementGroups() {
     return mock_placement_group_manager_->pending_placement_groups_;
   }
 
@@ -104,7 +104,7 @@ class GcsMonitorServerTest : public ::testing::Test {
 
  protected:
   instrumented_io_context io_context_;
-  std::shared_ptr<gcs::MockGcsNodeManager> mock_node_manager_;
+  gcs::MockGcsNodeManager mock_node_manager_;
   ClusterResourceManager cluster_resource_manager_;
   std::shared_ptr<gcs::MockGcsResourceManager> mock_resource_manager_;
   std::shared_ptr<gcs::MockGcsPlacementGroupManager> mock_placement_group_manager_;
@@ -136,7 +136,7 @@ TEST_F(GcsMonitorServerTest, TestDrainAndKillNode) {
   *request.add_node_ids() = NodeID::FromRandom().Binary();
   *request.add_node_ids() = NodeID::FromRandom().Binary();
 
-  EXPECT_CALL(*mock_node_manager_, DrainNode(_)).Times(Exactly(2));
+  EXPECT_CALL(mock_node_manager_, DrainNode(_)).Times(Exactly(2));
   monitor_server_.HandleDrainAndKillNode(request, &reply, send_reply_callback);
 
   ASSERT_EQ(reply.drained_nodes().size(), 2);

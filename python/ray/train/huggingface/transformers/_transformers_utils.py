@@ -1,5 +1,6 @@
+import logging
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Optional, Tuple, Type
+from typing import TYPE_CHECKING, Any, Iterator, Optional, Tuple, Type
 
 import datasets.iterable_dataset
 import transformers.trainer
@@ -8,12 +9,16 @@ from transformers.trainer_utils import IntervalStrategy
 
 from ray.air import session
 from ray.data import DataIterator
+from ray.data.dataset import MaterializedDataset
+from ray.data._internal.iterator.stream_split_iterator import StreamSplitDataIterator
 from ray.train.huggingface.transformers.transformers_checkpoint import (
     TransformersCheckpoint,
 )
 
 if TYPE_CHECKING:
     from torch.utils.data import IterableDataset
+
+logger = logging.getLogger(__name__)
 
 
 def maybe_add_length(obj: Any, length: Optional[int]) -> Any:
@@ -62,19 +67,22 @@ def wrap_transformers_trainer(
 
 
 # TODO(ml-team): Replace with a Datasets-HuggingFace integration when available.
-class RayDatasetHFIterable(datasets.iterable_dataset.ExamplesIterable):
-    """HF ExamplesIterable backed by a Dataset."""
+class RayDatasetHFIterable(datasets.iterable_dataset._BaseExamplesIterable):
+    """HF ``_BaseExamplesIterable`` backed by a ``ray.data.DataIterator``.
+
+    The other abstract methods of shuffling and sharding the data are not implemented,
+    since those operations should be done by Ray Data. For example, the dataset
+    is already sharded to each data parallel worker and is disabled
+    (see ``wrap_transformers_trainer`` above).
+    """
 
     def __init__(self, dataset: DataIterator) -> None:
+        super().__init__()
         self.dataset = dataset
-        self.generate_examples_fn = self.dataset.iter_rows
 
-        # Required for the superclass
-        self.kwargs = {}
-
-    def __iter__(self):
-        for row in self.generate_examples_fn(**self.kwargs):
-            yield (0, {k: v for k, v in row.items()})
+    def __iter__(self) -> Iterator[Tuple[int, dict]]:
+        for idx, row in enumerate(self.dataset.iter_rows()):
+            yield (idx, {k: v for k, v in row.items()})
 
 
 def process_dataset_for_hf(
@@ -87,11 +95,27 @@ def process_dataset_for_hf(
         hf_iterable, format_type="torch"
     ).with_format("torch")
 
-    try:
-        dataset_length = dataset._base_dataset.count()
-    except (ValueError, AttributeError):
-        # pipeline case
-        dataset_length = None
+    if isinstance(dataset, StreamSplitDataIterator):
+        if isinstance(dataset._base_dataset, MaterializedDataset):
+            # In the materialized case, we can count efficiently. TODO(ekl) avoid
+            # using the internal API here by passing in the base dataset from Train.
+            dataset_length = dataset._base_dataset.count() // dataset.world_size()
+        else:
+            # Otherwise don't count to avoid breaking streaming.
+            dataset_length = None
+            logger.warning(
+                f"The length for {dataset._base_dataset} cannot be determined "
+                "since it is a streaming dataset. HF transformers requires "
+                "`max_steps` to be passed in this case, or you can materialize the "
+                "dataset with `ds.materialize()`."
+            )
+    else:
+        # Legacy + non-split case.
+        try:
+            dataset_length = dataset._base_dataset.count()
+        except (ValueError, AttributeError):
+            # pipeline case
+            dataset_length = None
 
     iterable_dataset = maybe_add_length(iterable_dataset, dataset_length)
     # Trigger logic in `wrap_transformers_trainer` to disable built-in

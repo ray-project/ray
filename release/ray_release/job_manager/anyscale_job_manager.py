@@ -4,7 +4,7 @@ import subprocess
 import tempfile
 from collections import deque
 from contextlib import contextmanager
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple, List
 
 
 from anyscale.sdk.anyscale_client.models import (
@@ -52,18 +52,21 @@ class AnyscaleJobManager:
         env_vars: Dict[str, Any],
         working_dir: Optional[str] = None,
         upload_path: Optional[str] = None,
+        pip: Optional[List[str]] = None,
     ) -> None:
         env = os.environ.copy()
         env.setdefault("ANYSCALE_HOST", str(ANYSCALE_HOST))
 
-        full_cmd = " ".join(f"{k}={v}" for k, v in env_vars.items()) + " " + cmd_to_run
         logger.info(f"Executing {cmd_to_run} with {env_vars} via Anyscale job submit")
 
         anyscale_client = self.sdk
 
-        runtime_env = None
+        runtime_env = {
+            "env_vars": env_vars,
+            "pip": pip or [],
+        }
         if working_dir:
-            runtime_env = {"working_dir": working_dir}
+            runtime_env["working_dir"] = working_dir
             if upload_path:
                 runtime_env["upload_path"] = upload_path
 
@@ -74,7 +77,7 @@ class AnyscaleJobManager:
                     description=f"Smoke test: {self.cluster_manager.smoke_test}",
                     project_id=self.cluster_manager.project_id,
                     config=dict(
-                        entrypoint=full_cmd,
+                        entrypoint=cmd_to_run,
                         runtime_env=runtime_env,
                         build_id=self.cluster_manager.cluster_env_build_id,
                         compute_config_id=self.cluster_manager.cluster_compute_id,
@@ -255,9 +258,14 @@ class AnyscaleJobManager:
         working_dir: Optional[str] = None,
         timeout: int = 120,
         upload_path: Optional[str] = None,
+        pip: Optional[List[str]] = None,
     ) -> Tuple[int, float]:
         self._run_job(
-            cmd_to_run, env_vars, working_dir=working_dir, upload_path=upload_path
+            cmd_to_run,
+            env_vars,
+            working_dir=working_dir,
+            upload_path=upload_path,
+            pip=pip,
         )
         return self._wait_job(timeout)
 

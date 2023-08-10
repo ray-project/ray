@@ -1,12 +1,13 @@
 import json
 import logging
 from collections import defaultdict
+from typing import Set
 
 from google.protobuf.json_format import MessageToDict
 
 import ray
 from ray._private.client_mode_hook import client_mode_hook
-from ray._private.resource_spec import NODE_ID_PREFIX
+from ray._private.resource_spec import NODE_ID_PREFIX, HEAD_NODE_RESOURCE_NAME
 from ray._private.utils import binary_to_hex, decode, hex_to_binary
 from ray._raylet import GlobalStateAccessor
 from ray.core.generated import common_pb2
@@ -170,7 +171,7 @@ class GlobalState:
             entry = gcs_pb2.JobTableData.FromString(job_table[i])
             job_info = {}
             job_info["JobID"] = entry.job_id.hex()
-            job_info["DriverIPAddress"] = entry.driver_ip_address
+            job_info["DriverIPAddress"] = entry.driver_address.ip_address
             job_info["DriverPid"] = entry.driver_pid
             job_info["Timestamp"] = entry.timestamp
             job_info["StartTime"] = entry.start_time
@@ -215,7 +216,7 @@ class GlobalState:
         result = defaultdict(list)
         task_events = self.global_state_accessor.get_task_events()
         for i in range(len(task_events)):
-            event = common_pb2.TaskEvents.FromString(task_events[i])
+            event = gcs_pb2.TaskEvents.FromString(task_events[i])
             profile = event.profile_events
             if not profile:
                 continue
@@ -734,6 +735,11 @@ class GlobalState:
             node_ip_address
         )
 
+    def get_draining_nodes(self) -> Set[str]:
+        """Get all the hex ids of nodes that are being drained."""
+        self._check_connected()
+        return self.global_state_accessor.get_draining_nodes()
+
 
 state = GlobalState()
 """A global object used to access the cluster's global state."""
@@ -808,7 +814,7 @@ def node_ids():
     node_ids = []
     for node in nodes():
         for k, v in node["Resources"].items():
-            if k.startswith(NODE_ID_PREFIX):
+            if k.startswith(NODE_ID_PREFIX) and k != HEAD_NODE_RESOURCE_NAME:
                 node_ids.append(k)
     return node_ids
 

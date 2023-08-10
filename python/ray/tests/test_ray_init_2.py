@@ -216,6 +216,7 @@ def test_ports_assignment(ray_start_cluster):
         "dashboard_port": 30005,
         "metrics_agent_port": 30006,
         "metrics_export_port": 30007,
+        "runtime_env_agent_port": 30008,
     }
 
     # Make sure we can start a node properly.
@@ -270,7 +271,7 @@ def test_non_default_ports_visible_on_init(shutdown_only):
         return True
 
     try:
-        wait_for_condition(verify, timeout=10, retry_interval_ms=2000)
+        wait_for_condition(verify, timeout=15, retry_interval_ms=2000)
     finally:
         proc.terminate()
         proc.wait()
@@ -323,6 +324,13 @@ def test_get_ray_address_from_environment(monkeypatch):
         ray._private.services.get_ray_address_from_environment("addr", None)
         == "env_addr"
     )
+
+
+# https://github.com/ray-project/ray/issues/36431
+def test_temp_dir_must_be_absolute(shutdown_only):
+    # This test fails with a relative path _temp_dir.
+    with pytest.raises(ValueError):
+        ray.init(_temp_dir="relative_path")
 
 
 if __name__ == "__main__":

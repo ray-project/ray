@@ -2,6 +2,7 @@ import itertools
 import logging
 import sys
 import time
+import warnings
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -13,7 +14,6 @@ from typing import (
     Optional,
     Union,
 )
-import warnings
 
 import numpy as np
 
@@ -22,31 +22,29 @@ from ray.air.util.data_batch_conversion import BlockFormat
 from ray.data._internal.block_batching import batch_block_refs
 from ray.data._internal.block_list import BlockList
 from ray.data._internal.compute import ComputeStrategy
+from ray.data._internal.iterator.pipelined_iterator import PipelinedDataIterator
 from ray.data._internal.pipeline_executor import (
     PipelineExecutor,
     PipelineSplitExecutorCoordinator,
 )
-from ray.data._internal.iterator.pipelined_iterator import (
-    PipelinedDataIterator,
-)
 from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.stats import DatasetPipelineStats, DatasetStats
 from ray.data.block import (
-    UserDefinedFunction,
     Block,
     DataBatch,
+    UserDefinedFunction,
     _apply_strict_mode_batch_format,
 )
 from ray.data.context import DataContext
 from ray.data.dataset import Dataset
-from ray.data.iterator import DataIterator
 from ray.data.datasource import Datasource
 from ray.data.datasource.file_based_datasource import (
     BlockWritePathProvider,
     DefaultBlockWritePathProvider,
 )
+from ray.data.iterator import DataIterator
 from ray.types import ObjectRef
-from ray.util.annotations import DeveloperAPI, Deprecated
+from ray.util.annotations import Deprecated, DeveloperAPI
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 if sys.version_info >= (3, 8):
@@ -59,6 +57,7 @@ if TYPE_CHECKING:
     import pyarrow
     import tensorflow as tf
     import torch
+
     from ray.data._internal.torch_iterable_dataset import TorchTensorBatchType
 
 
@@ -177,7 +176,7 @@ class DatasetPipeline:
         local_shuffle_seed: Optional[int] = None,
         _collate_fn: Optional[Callable[[DataBatch], Any]] = None,
     ) -> Iterator[DataBatch]:
-        """Return a local batched iterator over the data in the pipeline.
+        """Return a batched iterator over the data in the pipeline.
 
         Examples:
             >>> import ray
@@ -1085,15 +1084,21 @@ class DatasetPipeline:
         """Call
         :py:meth:`Dataset.iter_tf_batches <ray.data.Dataset.iter_tf_batches>`
         over the stream of output batches from the pipeline."""
+        from ray.air._internal.tensorflow_utils import (
+            convert_ndarray_batch_to_tf_tensor_batch,
+        )
+
         batch_format = _apply_strict_mode_batch_format(batch_format)
-        return DataIterator.iter_tf_batches(
-            self,
+
+        for batch in self.iter_batches(
             prefetch_blocks=prefetch_blocks,
             batch_size=batch_size,
             drop_last=drop_last,
             local_shuffle_buffer_size=local_shuffle_buffer_size,
             local_shuffle_seed=local_shuffle_seed,
-        )
+        ):
+
+            yield convert_ndarray_batch_to_tf_tensor_batch(batch)
 
     def iter_torch_batches(
         self,
@@ -1113,13 +1118,29 @@ class DatasetPipeline:
         :py:meth:`Dataset.iter_torch_batches
         <ray.data.Dataset.iter_torch_batches>` over the stream of output batches
         from the pipeline."""
-        return DataIterator.iter_torch_batches(
-            self,
+
+        from ray.air._internal.torch_utils import (
+            convert_ndarray_batch_to_torch_tensor_batch,
+        )
+
+        if collate_fn is not None and (dtypes is not None or device is not None):
+            raise ValueError(
+                "collate_fn cannot be used with dtypes and device. It is expected that"
+                "the provided `collate_fn` will move the output Torch tensors to the"
+                "appropriate dtype and device."
+            )
+
+        if collate_fn is None:
+
+            def collate_fn(batch: Union[np.ndarray, Dict[str, np.ndarray]]):
+                return convert_ndarray_batch_to_torch_tensor_batch(
+                    batch, dtypes=dtypes, device=device
+                )
+
+        return self.iter_batches(
             prefetch_blocks=prefetch_blocks,
             batch_size=batch_size,
-            dtypes=dtypes,
-            device=device,
-            collate_fn=collate_fn,
+            _collate_fn=collate_fn,
             drop_last=drop_last,
             local_shuffle_buffer_size=local_shuffle_buffer_size,
             local_shuffle_seed=local_shuffle_seed,
@@ -1311,6 +1332,7 @@ class DatasetPipeline:
             0,
             True,
         )
+        dummy_ds._plan._generated_from_pipeline = True
         # Apply all pipeline operations to the dummy dataset.
         for stage in self._stages:
             dummy_ds = stage(dummy_ds)

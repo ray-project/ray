@@ -4,6 +4,7 @@ import pandas as pd
 from typing import Optional, Union
 
 from ray.air.result import Result
+from ray.train._internal.storage import _use_storage_context
 from ray.cloudpickle import cloudpickle
 from ray.exceptions import RayTaskError
 from ray.tune.analysis import ExperimentAnalysis
@@ -26,7 +27,7 @@ class ResultGrid:
     .. testcode::
 
         import random
-        from ray import air, tune
+        from ray import train, tune
         def random_error_trainable(config):
             if random.random() < 0.5:
                 return {"loss": 0.0}
@@ -34,7 +35,7 @@ class ResultGrid:
                 raise ValueError("This is an error")
         tuner = tune.Tuner(
             random_error_trainable,
-            run_config=air.RunConfig(name="example-experiment"),
+            run_config=train.RunConfig(name="example-experiment"),
             tune_config=tune.TuneConfig(num_samples=10),
         )
         try:
@@ -51,7 +52,6 @@ class ResultGrid:
 
     .. testoutput::
         :hide:
-        :options: +ELLIPSIS
 
         ...
 
@@ -190,12 +190,12 @@ class ResultGrid:
 
             .. testcode::
 
-                from ray.air import session
-                from ray.air.config import RunConfig
+                from ray import train
+                from ray.train import RunConfig
                 from ray.tune import Tuner
 
                 def training_loop_per_worker(config):
-                    session.report({"accuracy": 0.8})
+                    train.report({"accuracy": 0.8})
 
                 result_grid = Tuner(
                     trainable=training_loop_per_worker,
@@ -212,7 +212,6 @@ class ResultGrid:
 
             .. testoutput::
                 :hide:
-                :options: +ELLIPSIS
 
                 ...
 
@@ -260,6 +259,8 @@ class ResultGrid:
 
     @staticmethod
     def _populate_exception(trial: Trial) -> Optional[Union[TuneError, RayTaskError]]:
+        if trial.status == Trial.TERMINATED:
+            return None
         if trial.pickled_error_file and os.path.exists(trial.pickled_error_file):
             with open(trial.pickled_error_file, "rb") as f:
                 e = cloudpickle.load(f)
@@ -270,25 +271,43 @@ class ResultGrid:
         return None
 
     def _trial_to_result(self, trial: Trial) -> Result:
-        local_to_remote_path_fn = (
-            partial(
-                TrainableUtil.get_remote_storage_path,
-                local_path_prefix=trial.local_path,
-                remote_path_prefix=trial.remote_path,
+        if _use_storage_context():
+            from ray.train._internal.checkpoint_manager import (
+                _CheckpointManager as _NewCheckpointManager,
             )
-            if trial.uses_cloud_checkpointing
-            else None
-        )
-        checkpoint = trial.checkpoint.to_air_checkpoint(
-            local_to_remote_path_fn,
-        )
-        best_checkpoints = [
-            (
-                checkpoint.to_air_checkpoint(local_to_remote_path_fn),
-                checkpoint.metrics,
+
+            assert isinstance(trial.checkpoint_manager, _NewCheckpointManager)
+            checkpoint = None
+            if trial.checkpoint_manager.latest_checkpoint_result:
+                checkpoint = (
+                    trial.checkpoint_manager.latest_checkpoint_result.checkpoint
+                )
+            best_checkpoint_results = trial.checkpoint_manager.best_checkpoint_results
+            best_checkpoints = [
+                (checkpoint_result.checkpoint, checkpoint_result.metrics)
+                for checkpoint_result in best_checkpoint_results
+            ]
+        else:
+            local_to_remote_path_fn = (
+                partial(
+                    TrainableUtil.get_remote_storage_path,
+                    local_path_prefix=trial.local_path,
+                    remote_path_prefix=trial.remote_path,
+                )
+                if trial.uses_cloud_checkpointing
+                else None
             )
-            for checkpoint in trial.get_trial_checkpoints()
-        ]
+
+            checkpoint = trial.checkpoint.to_air_checkpoint(
+                local_to_remote_path_fn,
+            )
+            best_checkpoints = [
+                (
+                    checkpoint.to_air_checkpoint(local_to_remote_path_fn),
+                    checkpoint.metrics,
+                )
+                for checkpoint in trial.get_trial_checkpoints()
+            ]
 
         result = Result(
             checkpoint=checkpoint,

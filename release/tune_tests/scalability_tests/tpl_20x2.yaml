@@ -1,15 +1,20 @@
 cloud_id: {{env["ANYSCALE_CLOUD_ID"]}}
 region: us-west-2
 
-max_workers: 19
+max_workers: 20
 
 head_node_type:
     name: head_node
-    instance_type: m5a.large
+    instance_type: m5a.4xlarge
+    # See `tune_scalability_network_overhead`
+    # Don't schedule any trials to run on the head node.
+    # The head node is only used for synchronization purposes.
+    resources:
+        cpu: 0
 
 worker_node_types:
     - name: worker_node
       instance_type: m5a.large
-      min_workers: 19
-      max_workers: 19
+      min_workers: 20
+      max_workers: 20
       use_spot: true

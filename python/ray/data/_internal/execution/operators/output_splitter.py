@@ -1,17 +1,18 @@
 import math
-from typing import List, Dict, Optional
+from collections import deque
+from typing import Dict, List, Optional
 
-from ray.data.block import Block, BlockMetadata, BlockAccessor
-from ray.data._internal.remote_fn import cached_remote_fn
-from ray.data._internal.stats import StatsDict
-from ray.data._internal.execution.util import locality_string
 from ray.data._internal.execution.interfaces import (
-    RefBundle,
-    PhysicalOperator,
     ExecutionOptions,
     ExecutionResources,
     NodeIdStr,
+    PhysicalOperator,
+    RefBundle,
 )
+from ray.data._internal.execution.util import locality_string
+from ray.data._internal.remote_fn import cached_remote_fn
+from ray.data._internal.stats import StatsDict
+from ray.data.block import Block, BlockAccessor, BlockMetadata
 from ray.types import ObjectRef
 
 
@@ -42,7 +43,7 @@ class OutputSplitter(PhysicalOperator):
         # Buffer of bundles not yet assigned to output splits.
         self._buffer: List[RefBundle] = []
         # The outputted bundles with output_split attribute set.
-        self._output_queue: List[RefBundle] = []
+        self._output_queue: deque[RefBundle] = deque()
         # The number of rows output to each output split so far.
         self._num_output: List[int] = [0 for _ in range(n)]
 
@@ -84,7 +85,7 @@ class OutputSplitter(PhysicalOperator):
         return len(self._output_queue) > 0
 
     def get_next(self) -> RefBundle:
-        return self._output_queue.pop()
+        return self._output_queue.popleft()
 
     def get_stats(self) -> StatsDict:
         return {"split": []}  # TODO(ekl) add split metrics?
@@ -101,8 +102,8 @@ class OutputSplitter(PhysicalOperator):
         self._buffer.append(bundle)
         self._dispatch_bundles()
 
-    def inputs_done(self) -> None:
-        super().inputs_done()
+    def all_inputs_done(self) -> None:
+        super().all_inputs_done()
         if not self._equal:
             self._dispatch_bundles(dispatch_all=True)
             assert not self._buffer, "Should have dispatched all bundles."

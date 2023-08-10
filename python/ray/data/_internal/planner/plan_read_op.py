@@ -7,8 +7,8 @@ from ray.data._internal.execution.interfaces import (
     RefBundle,
     TaskContext,
 )
-from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
+from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.logical.operators.read_operator import Read
 from ray.data.block import Block
 from ray.data.datasource.datasource import ReadTask
@@ -58,7 +58,9 @@ def _plan_read_op(op: Read) -> PhysicalOperator:
             for read_task in read_tasks
         ]
 
-    inputs = InputDataBuffer(input_data_factory=get_input_data)
+    inputs = InputDataBuffer(
+        input_data_factory=get_input_data, num_output_blocks=op._estimated_num_blocks
+    )
 
     def do_read(blocks: Iterator[ReadTask], _: TaskContext) -> Iterator[Block]:
         for read_task in blocks:
@@ -67,6 +69,6 @@ def _plan_read_op(op: Read) -> PhysicalOperator:
     return MapOperator.create(
         do_read,
         inputs,
-        name="DoRead",
+        name=op.name,
         ray_remote_args=op._ray_remote_args,
     )

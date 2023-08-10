@@ -262,11 +262,16 @@ class Node:
             "dashboard_agent_listen_port",
             default_port=ray_params.dashboard_agent_listen_port,
         )
+        self._runtime_env_agent_port = self._get_cached_port(
+            "runtime_env_agent_port",
+            default_port=ray_params.runtime_env_agent_port,
+        )
 
         ray_params.update_if_absent(
             metrics_agent_port=self.metrics_agent_port,
             metrics_export_port=self._metrics_export_port,
             dashboard_agent_listen_port=self._dashboard_agent_listen_port,
+            runtime_env_agent_port=self._runtime_env_agent_port,
         )
 
         # Pick a GCS server port.
@@ -415,6 +420,41 @@ class Node:
         )
         try_to_create_directory(self._runtime_env_dir)
 
+    def _get_node_labels(self):
+        def merge_labels(env_override_labels, params_labels):
+            """Merges two dictionaries, picking from the
+            first in the event of a conflict. Also emit a warning on every
+            conflict.
+            """
+
+            result = params_labels.copy()
+            result.update(env_override_labels)
+
+            for key in set(env_override_labels.keys()).intersection(
+                set(params_labels.keys())
+            ):
+                if params_labels[key] != env_override_labels[key]:
+                    logger.warning(
+                        "Autoscaler is overriding your label:"
+                        f"{key}: {params_labels[key]} to "
+                        f"{key}: {env_override_labels[key]}."
+                    )
+            return result
+
+        env_override_labels = {}
+        env_override_labels_string = os.getenv(
+            ray_constants.LABELS_ENVIRONMENT_VARIABLE
+        )
+        if env_override_labels_string:
+            try:
+                env_override_labels = json.loads(env_override_labels_string)
+            except Exception:
+                logger.exception(f"Failed to load {env_override_labels_string}")
+                raise
+            logger.info(f"Autoscaler overriding labels: {env_override_labels}.")
+
+        return merge_labels(env_override_labels, self._ray_params.labels or {})
+
     def get_resource_spec(self):
         """Resolve and return the current resource spec for the node."""
 
@@ -543,6 +583,16 @@ class Node:
         return self._metrics_export_port
 
     @property
+    def runtime_env_agent_port(self):
+        """Get the port that exposes runtime env agent as http"""
+        return self._runtime_env_agent_port
+
+    @property
+    def runtime_env_agent_address(self):
+        """Get the address that exposes runtime env agent as http"""
+        return f"http://{self._raylet_ip_address}:{self._runtime_env_agent_port}"
+
+    @property
     def dashboard_agent_listen_port(self):
         """Get the dashboard agent's listen port"""
         return self._dashboard_agent_listen_port
@@ -598,7 +648,11 @@ class Node:
             last_ex = None
             try:
                 gcs_address = self.gcs_address
-                client = GcsClient(address=gcs_address)
+                client = GcsClient(
+                    address=gcs_address,
+                    cluster_id=self._ray_params.cluster_id,
+                )
+                self.cluster_id = client.get_cluster_id()
                 if self.head:
                     # Send a simple request to make sure GCS is alive
                     # if it's a head node.
@@ -614,19 +668,26 @@ class Node:
                 time.sleep(1)
 
         if self._gcs_client is None:
-            with open(os.path.join(self._logs_dir, "gcs_server.err")) as err:
-                # Use " C " or " E " to exclude the stacktrace.
-                # This should work for most cases, especitally
-                # it's when GCS is starting. Only display last 10 lines of logs.
-                errors = [e for e in err.readlines() if " C " in e or " E " in e][-10:]
-            error_msg = "\n" + "".join(errors) + "\n"
-            raise RuntimeError(
-                f"Failed to {'start' if self.head else 'connect to'} GCS. "
-                f" Last {len(errors)} lines of error files:"
-                f"{error_msg}."
-                f"Please check {os.path.join(self._logs_dir, 'gcs_server.out')}"
-                " for details"
-            )
+            if hasattr(self, "_logs_dir"):
+                with open(os.path.join(self._logs_dir, "gcs_server.err")) as err:
+                    # Use " C " or " E " to exclude the stacktrace.
+                    # This should work for most cases, especitally
+                    # it's when GCS is starting. Only display last 10 lines of logs.
+                    errors = [e for e in err.readlines() if " C " in e or " E " in e][
+                        -10:
+                    ]
+                error_msg = "\n" + "".join(errors) + "\n"
+                raise RuntimeError(
+                    f"Failed to {'start' if self.head else 'connect to'} GCS. "
+                    f" Last {len(errors)} lines of error files:"
+                    f"{error_msg}."
+                    f"Please check {os.path.join(self._logs_dir, 'gcs_server.out')}"
+                    " for details"
+                )
+            else:
+                raise RuntimeError(
+                    f"Failed to {'start' if self.head else 'connect to'} GCS."
+                )
 
         ray.experimental.internal_kv._initialize_internal_kv(self._gcs_client)
 
@@ -1014,6 +1075,7 @@ class Node:
             self._ray_params.node_manager_port,
             self._raylet_socket_name,
             self._plasma_store_socket_name,
+            self.cluster_id,
             self._ray_params.worker_path,
             self._ray_params.setup_worker_path,
             self._ray_params.storage,
@@ -1032,6 +1094,7 @@ class Node:
             object_manager_port=self._ray_params.object_manager_port,
             redis_password=self._ray_params.redis_password,
             metrics_agent_port=self._ray_params.metrics_agent_port,
+            runtime_env_agent_port=self._ray_params.runtime_env_agent_port,
             metrics_export_port=self._metrics_export_port,
             dashboard_agent_listen_port=self._ray_params.dashboard_agent_listen_port,
             use_valgrind=use_valgrind,
@@ -1048,6 +1111,7 @@ class Node:
             env_updates=self._ray_params.env_vars,
             node_name=self._ray_params.node_name,
             webui=self._webui_url,
+            labels=self._get_node_labels(),
         )
         assert ray_constants.PROCESS_TYPE_RAYLET not in self.all_processes
         self.all_processes[ray_constants.PROCESS_TYPE_RAYLET] = [process_info]
@@ -1091,7 +1155,7 @@ class Node:
             stderr_file=stderr_file,
             redis_password=self._ray_params.redis_password,
             fate_share=self.kernel_fate_share,
-            metrics_agent_port=self._ray_params.metrics_agent_port,
+            runtime_env_agent_address=self.runtime_env_agent_address,
         )
         assert ray_constants.PROCESS_TYPE_RAY_CLIENT_SERVER not in self.all_processes
         self.all_processes[ray_constants.PROCESS_TYPE_RAY_CLIENT_SERVER] = [

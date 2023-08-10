@@ -1,19 +1,17 @@
 import collections
-from typing import Dict, Iterator, List, Union, Any, TypeVar, Mapping, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Mapping, TypeVar, Union
 
 import numpy as np
 
-import ray
 from ray.air.constants import TENSOR_COLUMN_NAME
+from ray.data._internal.block_builder import BlockBuilder
+from ray.data._internal.numpy_support import convert_udf_returns_to_numpy, is_array_like
+from ray.data._internal.size_estimator import SizeEstimator
 from ray.data.block import Block, BlockAccessor
 from ray.data.row import TableRow
-from ray.data._internal.block_builder import BlockBuilder
-from ray.data._internal.numpy_support import is_array_like, convert_udf_returns_to_numpy
-from ray.data._internal.size_estimator import SizeEstimator
-from ray.data._internal.util import _is_tensor_schema
 
 if TYPE_CHECKING:
-    from ray.data._internal.sort import SortKeyT
+    from ray.data._internal.sort import SortKey
 
 
 T = TypeVar("T")
@@ -47,7 +45,6 @@ class TableBlockBuilder(BlockBuilder):
         self._block_type = block_type
 
     def add(self, item: Union[dict, TableRow, np.ndarray]) -> None:
-        ctx = ray.data.DataContext.get_current()
         if isinstance(item, TableRow):
             item = item.as_pydict()
         elif isinstance(item, np.ndarray):
@@ -72,11 +69,7 @@ class TableBlockBuilder(BlockBuilder):
             self._column_names = item_column_names
 
         for key, value in item.items():
-            if (
-                ctx.strict_mode
-                and is_array_like(value)
-                and not isinstance(value, np.ndarray)
-            ):
+            if is_array_like(value) and not isinstance(value, np.ndarray):
                 value = np.array(value)
             self._columns[key].append(value)
         self._num_rows += 1
@@ -165,8 +158,6 @@ class TableBlockAccessor(BlockAccessor):
     def _get_row(self, index: int, copy: bool = False) -> Union[TableRow, np.ndarray]:
         base_row = self.slice(index, index + 1, copy=copy)
         row = self.ROW_TYPE(base_row)
-        if self.is_tensor_wrapper():
-            row = row[TENSOR_COLUMN_NAME]
         return row
 
     @staticmethod
@@ -174,12 +165,9 @@ class TableBlockAccessor(BlockAccessor):
         raise NotImplementedError
 
     def to_default(self) -> Block:
-        if self.is_tensor_wrapper():
-            default = self.to_numpy()
-        else:
-            # Always promote Arrow blocks to pandas for consistency, since
-            # we lazily convert pandas->Arrow internally for efficiency.
-            default = self.to_pandas()
+        # Always promote Arrow blocks to pandas for consistency, since
+        # we lazily convert pandas->Arrow internally for efficiency.
+        default = self.to_pandas()
         return default
 
     def column_names(self) -> List[str]:
@@ -188,16 +176,9 @@ class TableBlockAccessor(BlockAccessor):
     def to_block(self) -> Block:
         return self._table
 
-    def is_tensor_wrapper(self) -> bool:
-        ctx = ray.data.DataContext.get_current()
-        if ctx.strict_mode:
-            return False
-        return _is_tensor_schema(self.column_names())
-
     def iter_rows(
         self, public_row_format: bool
     ) -> Iterator[Union[Mapping, np.ndarray]]:
-        ctx = ray.data.DataContext.get_current()
         outer = self
 
         class Iter:
@@ -211,11 +192,7 @@ class TableBlockAccessor(BlockAccessor):
                 self._cur += 1
                 if self._cur < outer.num_rows():
                     row = outer._get_row(self._cur)
-                    if (
-                        public_row_format
-                        and ctx.strict_mode
-                        and isinstance(row, TableRow)
-                    ):
+                    if public_row_format and isinstance(row, TableRow):
                         return row.as_pydict()
                     else:
                         return row
@@ -244,17 +221,17 @@ class TableBlockAccessor(BlockAccessor):
     def _empty_table() -> Any:
         raise NotImplementedError
 
-    def _sample(self, n_samples: int, key: "SortKeyT") -> Any:
+    def _sample(self, n_samples: int, sort_key: "SortKey") -> Any:
         raise NotImplementedError
 
-    def sample(self, n_samples: int, key: "SortKeyT") -> Any:
-        if key is None or callable(key):
+    def sample(self, n_samples: int, sort_key: "SortKey") -> Any:
+        if sort_key is None or callable(sort_key):
             raise NotImplementedError(
-                f"Table sort key must be a column name, was: {key}"
+                f"Table sort key must be a column name, was: {sort_key}"
             )
         if self.num_rows() == 0:
             # If the pyarrow table is empty we may not have schema
             # so calling table.select() will raise an error.
             return self._empty_table()
         k = min(n_samples, self.num_rows())
-        return self._sample(k, key)
+        return self._sample(k, sort_key)

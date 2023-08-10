@@ -1,36 +1,37 @@
+import os
 import threading
 import time
-import os
 import uuid
 from typing import Iterator, Optional
 
 import ray
-from ray.data.context import DataContext
 from ray.data._internal.dataset_logger import DatasetLogger
-from ray.data._internal.execution.interfaces import (
-    Executor,
-    ExecutionOptions,
-    ExecutionResources,
-    OutputIterator,
-    RefBundle,
-    PhysicalOperator,
-)
-from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
-from ray.data._internal.execution.streaming_executor_state import (
-    AutoscalingState,
-    Topology,
-    TopologyResourceUsage,
-    OpState,
-    build_streaming_topology,
-    process_completed_tasks,
-    select_operator_to_run,
-    DEFAULT_OBJECT_STORE_MEMORY_LIMIT_FRACTION,
-)
 from ray.data._internal.execution.autoscaling_requester import (
     get_or_create_autoscaling_requester_actor,
 )
+from ray.data._internal.execution.interfaces import (
+    ExecutionOptions,
+    ExecutionResources,
+    Executor,
+    OutputIterator,
+    PhysicalOperator,
+    RefBundle,
+)
+from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
+from ray.data._internal.execution.streaming_executor_state import (
+    DEFAULT_OBJECT_STORE_MEMORY_LIMIT_FRACTION,
+    AutoscalingState,
+    OpState,
+    Topology,
+    TopologyResourceUsage,
+    build_streaming_topology,
+    process_completed_tasks,
+    select_operator_to_run,
+    update_operator_states,
+)
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.stats import DatasetStats
+from ray.data.context import DataContext
 
 logger = DatasetLogger(__name__)
 
@@ -98,7 +99,6 @@ class StreamingExecutor(Executor, threading.Thread):
                 )
 
         # Setup the streaming DAG topology and start the runner thread.
-        _validate_dag(dag, self._get_or_refresh_resource_limits())
         self._topology, _ = build_streaming_topology(dag, self._options)
 
         if not isinstance(dag, InputDataBuffer):
@@ -137,7 +137,13 @@ class StreamingExecutor(Executor, threading.Thread):
                     self._outer.shutdown()
                     raise
 
+            def __del__(self):
+                self._outer.shutdown()
+
         return StreamIterator(self)
+
+    def __del__(self):
+        self.shutdown()
 
     def shutdown(self):
         context = DataContext.get_current()
@@ -146,7 +152,7 @@ class StreamingExecutor(Executor, threading.Thread):
         with self._shutdown_lock:
             if self._shutdown:
                 return
-            logger.get_logger().info(f"Shutting down {self}.")
+            logger.get_logger().debug(f"Shutting down {self}.")
             _num_shutdown += 1
             self._shutdown = True
             # Give the scheduling loop some time to finish processing.
@@ -257,6 +263,8 @@ class StreamingExecutor(Executor, threading.Thread):
                 autoscaling_state=self._autoscaling_state,
             )
 
+        update_operator_states(topology)
+
         # Update the progress bar to reflect scheduling decisions.
         for op_state in topology.values():
             op_state.refresh_progress_bar()
@@ -329,10 +337,39 @@ def _validate_dag(dag: PhysicalOperator, limits: ExecutionResources) -> None:
         base_usage = base_usage.add(op.base_resource_usage())
 
     if not base_usage.satisfies_limit(limits):
-        raise ValueError(
-            f"The base resource usage of this topology {base_usage} "
-            f"exceeds the execution limits {limits}!"
+        error_message = (
+            "The current cluster doesn't have the required resources to execute your "
+            "Dataset pipeline:\n"
         )
+        if (
+            base_usage.cpu is not None
+            and limits.cpu is not None
+            and base_usage.cpu > limits.cpu
+        ):
+            error_message += (
+                f"- Your application needs {base_usage.cpu} CPU(s), but your cluster "
+                f"only has {limits.cpu}.\n"
+            )
+        if (
+            base_usage.gpu is not None
+            and limits.gpu is not None
+            and base_usage.gpu > limits.gpu
+        ):
+            error_message += (
+                f"- Your application needs {base_usage.gpu} GPU(s), but your cluster "
+                f"only has {limits.gpu}.\n"
+            )
+        if (
+            base_usage.object_store_memory is not None
+            and base_usage.object_store_memory is not None
+            and base_usage.object_store_memory > limits.object_store_memory
+        ):
+            error_message += (
+                f"- Your application needs {base_usage.object_store_memory}B object "
+                f"store memory, but your cluster only has "
+                f"{limits.object_store_memory}B.\n"
+            )
+        raise ValueError(error_message.strip())
 
 
 def _debug_dump_topology(topology: Topology) -> None:

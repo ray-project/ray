@@ -36,7 +36,7 @@ from ray_release.exception import (
 from ray_release.file_manager.job_file_manager import JobFileManager
 from ray_release.logger import logger
 from ray_release.reporter.reporter import Reporter
-from ray_release.result import Result, handle_exception
+from ray_release.result import Result, ResultStatus, handle_exception
 from ray_release.signal_handling import (
     setup_signal_handling,
     reset_signal_handling,
@@ -152,7 +152,6 @@ def _setup_cluster_environment(
 ) -> Tuple[str, int, int, int, int]:
     setup_signal_handling()
     # Load configs
-    cluster_env = load_test_cluster_env(test, ray_wheels_url=ray_wheels_url)
     cluster_compute = load_test_cluster_compute(test)
 
     if cluster_env_id:
@@ -171,6 +170,11 @@ def _setup_cluster_environment(
                 f"{cluster_env_id}: {e}"
             ) from e
     else:
+        cluster_env = (
+            None
+            if test.is_byod_cluster()
+            else load_test_cluster_env(test, ray_wheels_url=ray_wheels_url)
+        )
         cluster_manager.set_cluster_env(cluster_env)
 
     # Load some timeouts
@@ -294,14 +298,6 @@ def _prepare_remote_environment(
         except CommandTimeout as e:
             raise PrepareCommandTimeout(e)
 
-    for pre_run_cmd in test.get_byod_pre_run_cmds():
-        try:
-            command_runner.run_prepare_command(pre_run_cmd, timeout=300)
-        except CommandError as e:
-            raise PrepareCommandError(e)
-        except CommandTimeout as e:
-            raise PrepareCommandTimeout(e)
-
 
 def _running_test_script(
     test: Test,
@@ -310,7 +306,7 @@ def _running_test_script(
     command_timeout: int,
 ) -> None:
     command = test["run"]["script"]
-    command_env = {}
+    command_env = test.get_byod_runtime_env()
 
     if smoke_test:
         command = f"{command} --smoke-test"
@@ -324,6 +320,7 @@ def _running_test_script(
             env=command_env,
             timeout=command_timeout,
             raise_on_timeout=not is_long_running,
+            pip=test.get_byod_pips(),
         )
     except (
         TestCommandError,
@@ -384,7 +381,7 @@ def _fetching_results(
         command_results["smoke_test"] = True
 
     result.results = command_results
-    result.status = "finished"
+    result.status = ResultStatus.SUCCESS.value
 
     return metrics, fetch_result_exception
 

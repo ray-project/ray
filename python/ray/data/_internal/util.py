@@ -2,26 +2,26 @@ import importlib
 import logging
 import os
 import pathlib
-from typing import Any, List, Union, Optional, TYPE_CHECKING
-from types import ModuleType
 import sys
 import urllib.parse
+from types import ModuleType
+from typing import TYPE_CHECKING, Any, List, Optional, Union
 
 import numpy as np
 
 import ray
-from ray.air.constants import TENSOR_COLUMN_NAME
+from ray._private.utils import _get_pyarrow_version
 from ray.data._internal.arrow_ops.transform_pyarrow import unify_schemas
 from ray.data.context import DataContext
-from ray._private.utils import _get_pyarrow_version
 
 if TYPE_CHECKING:
-    from ray.data.datasource import Reader
-    from ray.util.placement_group import PlacementGroup
-    import pyarrow
     import pandas
+    import pyarrow
+
     from ray.data._internal.compute import ComputeStrategy
     from ray.data.block import Block, BlockMetadata, UserDefinedFunction
+    from ray.data.datasource import Reader
+    from ray.util.placement_group import PlacementGroup
 
 logger = logging.getLogger(__name__)
 
@@ -90,7 +90,7 @@ def _autodetect_parallelism(
     ctx: DataContext,
     reader: Optional["Reader"] = None,
     avail_cpus: Optional[int] = None,
-) -> (int, int):
+) -> (int, int, Optional[int]):
     """Returns parallelism to use and the min safe parallelism to avoid OOMs.
 
     This detects parallelism using the following heuristics, applied in order:
@@ -111,8 +111,9 @@ def _autodetect_parallelism(
         avail_cpus: Override avail cpus detection (for testing only).
 
     Returns:
-        Tuple of detected parallelism (only if -1 was specified), and the min safe
-        parallelism (which can be used to generate warnings about large blocks).
+        Tuple of detected parallelism (only if -1 was specified), the min safe
+        parallelism (which can be used to generate warnings about large blocks),
+        and the estimated inmemory size of the dataset.
     """
     min_safe_parallelism = 1
     max_reasonable_parallelism = sys.maxsize
@@ -140,7 +141,7 @@ def _autodetect_parallelism(
             f"estimated_available_cpus={avail_cpus} and "
             f"estimated_data_size={mem_size}."
         )
-    return parallelism, min_safe_parallelism
+    return parallelism, min_safe_parallelism, mem_size
 
 
 def _estimate_avail_cpus(cur_pg: Optional["PlacementGroup"]) -> int:
@@ -241,10 +242,6 @@ def _is_local_scheme(paths: Union[str, List[str]]) -> bool:
             f"but found mixed {paths}"
         )
     return num == len(paths)
-
-
-def _is_tensor_schema(column_names: List[str]):
-    return column_names == [TENSOR_COLUMN_NAME]
 
 
 def _truncated_repr(obj: Any) -> str:
@@ -470,10 +467,7 @@ def ndarray_to_block(ndarray: np.ndarray, ctx: DataContext) -> "Block":
     DataContext._set_current(ctx)
 
     stats = BlockExecStats.builder()
-    if ctx.strict_mode:
-        block = BlockAccessor.batch_to_block({"data": ndarray})
-    else:
-        block = BlockAccessor.batch_to_block(ndarray)
+    block = BlockAccessor.batch_to_block({"data": ndarray})
     metadata = BlockAccessor.for_block(block).get_metadata(
         input_files=None, exec_stats=stats.build()
     )

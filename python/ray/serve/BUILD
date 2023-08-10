@@ -1,7 +1,16 @@
 load("//bazel:python.bzl", "doctest")
 
 doctest(
-    files = glob(["**/*.py"], exclude=["examples/**/*", "tests/**/*", "benchmarks/**/*"]),
+    files = glob(
+        ["**/*.py"],
+        exclude=[
+            "examples/**",
+            "tests/**",
+            "benchmarks/**",
+            # FIXME: Failing on Windows
+            "gradio_integrations.py"
+        ]
+    ),
     tags = ["team:serve"]
 )
 
@@ -146,7 +155,7 @@ py_test(
 
 py_test(
     name = "test_metrics",
-    size = "medium",
+    size = "large",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],
     deps = [":serve_lib"],
@@ -178,7 +187,7 @@ py_test(
 
 py_test(
     name = "test_constructor_failure",
-    size = "medium",
+    size = "small",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],
     deps = [":serve_lib"],
@@ -194,6 +203,22 @@ py_test(
 
 py_test(
     name = "test_deployment_state",
+    size = "small",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive", "team:serve"],
+    deps = [":serve_lib"],
+)
+
+py_test(
+    name = "test_cluster_node_info_cache",
+    size = "small",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive", "team:serve"],
+    deps = [":serve_lib"],
+)
+
+py_test(
+    name = "test_deployment_scheduler",
     size = "small",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],
@@ -245,6 +270,15 @@ py_test(
 
 
 py_test(
+    name = "test_handle_streaming",
+    size = "medium",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive", "team:serve"],
+    deps = [":serve_lib"],
+)
+
+
+py_test(
     name = "test_kv_store",
     size = "small",
     srcs = serve_tests_srcs,
@@ -264,6 +298,15 @@ py_test(
 
 py_test(
     name = "test_router",
+    size = "small",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive", "team:serve"],
+    deps = [":serve_lib"],
+)
+
+
+py_test(
+    name = "test_replica_scheduler",
     size = "small",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],
@@ -295,6 +338,14 @@ py_test(
 )
 
 py_test(
+    name = "test_request_timeout",
+    size = "medium",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive", "team:serve"],
+    deps = [":serve_lib"],
+)
+
+py_test(
     name = "test_standalone",
     size = "large",
     srcs = serve_tests_srcs,
@@ -303,7 +354,7 @@ py_test(
 )
 
 py_test(
-    name = "test_standalone2",
+    name = "test_standalone_2",
     size = "large",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],
@@ -311,8 +362,8 @@ py_test(
 )
 
 py_test(
-    name = "test_standalone3",
-    size = "medium",
+    name = "test_standalone_3",
+    size = "large",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],
     deps = [":serve_lib"],
@@ -369,6 +420,15 @@ py_test(
 
 py_test(
     name = "test_cli",
+    size = "large",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive", "team:serve"],
+    deps = [":serve_lib"],
+    data = [":test_config_files"],
+)
+
+py_test(
+    name = "test_cli_2",
     size = "large",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],
@@ -476,27 +536,20 @@ py_test(
    deps = [":serve_lib"],
 )
 
-# Runs test_api, test_fastapi, and test_http_adapters with experimental streaming turned on.
-py_test(
-   name = "test_experimental_streaming",
-   size = "large",
-   srcs = glob(["tests/test_experimental_streaming.py",
-               "tests/test_api.py",
-               "tests/test_fastapi.py",
-               "tests/test_http_adapters.py",
-               "**/conftest.py"]),
-   tags = ["exclusive", "team:serve"],
-   deps = [":serve_lib"],
-   env = {"RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING": "1"},
-)
-
 py_test(
     name = "test_streaming_response",
-    size = "large",
+    size = "medium",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],
     deps = [":serve_lib"],
-    env = {"RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING": "1"},
+)
+
+py_test(
+    name = "test_websockets",
+    size = "small",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive", "team:serve"],
+    deps = [":serve_lib"],
 )
 
 py_test(
@@ -575,7 +628,7 @@ py_test(
 )
 
 py_test(
-    name = "test_json_serde",
+    name = "test_gradio",
     size = "medium",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],
@@ -583,18 +636,10 @@ py_test(
 )
 
 py_test(
-    name = "test_gradio",
-    size = "small",
-    srcs = serve_tests_srcs,
-    tags = ["exclusive", "team:serve", "py37"],
-    deps = [":serve_lib"],
-)
-
-py_test(
     name = "test_gradio_visualization",
-    size = "small",
+    size = "medium",
     srcs = serve_tests_srcs,
-    tags = ["exclusive", "team:serve", "py37"],
+    tags = ["exclusive", "team:serve"],
     deps = [":serve_lib"],
 )
 
@@ -617,6 +662,46 @@ py_test(
 py_test(
     name = "test_multiplex",
     size = "medium",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive", "team:serve"],
+    deps = [":serve_lib"],
+)
+
+py_test(
+    name = "test_serve_ha",
+    size = "medium",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive", "team:serve", "xcommit"],
+    deps = [":serve_lib"],
+)
+
+py_test(
+    name = "test_callback",
+    size = "medium",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive", "team:serve"],
+    deps = [":serve_lib"],
+)
+
+py_test(
+    name = "test_http_headers",
+    size = "small",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive", "team:serve"],
+    deps = [":serve_lib"],
+)
+
+py_test(
+    name = "test_endpoint_state",
+    size = "small",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive", "team:serve"],
+    deps = [":serve_lib"],
+)
+
+py_test(
+    name = "test_deploy_app",
+    size = "large",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],
     deps = [":serve_lib"],

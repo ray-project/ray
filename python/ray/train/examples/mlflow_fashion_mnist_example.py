@@ -1,15 +1,15 @@
 import argparse
 
-from ray.air.config import RunConfig, ScalingConfig
-from ray.train.examples.pytorch.torch_fashion_mnist_example import train_func
+from ray.train import RunConfig, ScalingConfig
+from ray.train.examples.pytorch.torch_fashion_mnist_example import train_func_per_worker
 from ray.train.torch import TorchTrainer
 from ray.air.integrations.mlflow import MLflowLoggerCallback
 
 
 def main(num_workers=2, use_gpu=False):
     trainer = TorchTrainer(
-        train_func,
-        train_loop_config={"lr": 1e-3, "batch_size": 64, "epochs": 4},
+        train_func_per_worker,
+        train_loop_config={"lr": 1e-3, "batch_size_per_worker": 32, "epochs": 4},
         scaling_config=ScalingConfig(num_workers=num_workers, use_gpu=use_gpu),
         run_config=RunConfig(
             callbacks=[MLflowLoggerCallback(experiment_name="train_fashion_mnist")]

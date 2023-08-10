@@ -159,11 +159,10 @@ def test_resources_changing(ray_start_4_cpus_2_gpus_extra, resource_manager_cls)
         def has_received_one_trial_result(self):
             return self._has_received_one_trial_result
 
-        def on_trial_result(self, trial_runner, trial, result):
+        def on_trial_result(self, tune_controller, trial, result):
             if result["training_iteration"] == 1:
                 self._has_received_one_trial_result = True
-                executor = trial_runner.trial_executor
-                executor.pause_trial(trial)
+                tune_controller.pause_trial(trial)
                 trial.update_resources(dict(cpu=4, gpu=0))
             return TrialScheduler.NOOP
 
@@ -256,4 +255,4 @@ def test_queue_filling(ray_start_4_cpus_2_gpus_extra, resource_manager_cls):
 
 
 if __name__ == "__main__":
-    sys.exit(pytest.main(["-v", __file__]))
+    sys.exit(pytest.main(["-v", "--reruns", "3", __file__]))

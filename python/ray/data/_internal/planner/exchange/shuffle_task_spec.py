@@ -16,6 +16,8 @@ class ShuffleTaskSpec(ExchangeTaskSpec):
     This is used by random_shuffle() and repartition().
     """
 
+    SPLIT_REPARTITION_SUB_PROGRESS_BAR_NAME = "Split Repartition"
+
     def __init__(
         self,
         random_shuffle: bool = False,
@@ -40,11 +42,13 @@ class ShuffleTaskSpec(ExchangeTaskSpec):
         stats = BlockExecStats.builder()
         if upstream_map_fn:
             mapped_blocks = list(upstream_map_fn([block]))
-            assert len(mapped_blocks) == 1, (
-                "Expected upstream_map_fn to return one block, but instead"
-                f" returned {len(mapped_blocks)} blocks"
-            )
-            block = mapped_blocks[0]
+            if len(mapped_blocks) > 1:
+                builder = BlockAccessor.for_block(mapped_blocks[0]).builder()
+                for b in mapped_blocks:
+                    builder.add_block(b)
+                block = builder.build()
+            else:
+                block = mapped_blocks[0]
         block = BlockAccessor.for_block(block)
 
         # Randomize the distribution of records to blocks.

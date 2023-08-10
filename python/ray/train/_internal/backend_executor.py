@@ -4,10 +4,11 @@ from collections import defaultdict
 from typing import Callable, Dict, List, Optional, Tuple, Type, TypeVar
 
 import ray
+from ray.data import Dataset
 from ray._private.ray_constants import env_integer
 from ray.air.config import CheckpointConfig
 from ray.exceptions import RayActorError
-from ray.train._internal.dataset_spec import RayDatasetSpec
+from ray.train import DataConfig
 from ray.air.checkpoint import Checkpoint
 from ray.train._internal.session import (
     TrainingResult,
@@ -16,6 +17,7 @@ from ray.train._internal.session import (
     init_session,
     shutdown_session,
 )
+from ray.train._internal.storage import _use_storage_context, get_storage_context
 from ray.train._internal.utils import check_for_failure
 from ray.train._internal.worker_group import WorkerGroup
 from ray.train.backend import BackendConfig
@@ -341,8 +343,10 @@ class BackendExecutor:
     def start_training(
         self,
         train_func: Callable[[], T],
-        dataset_spec: RayDatasetSpec,
+        datasets: Dict[str, Dataset],
+        data_config: DataConfig,
         checkpoint: Optional[Checkpoint] = None,
+        on_session_init: Callable[[], None] = None,
     ) -> None:
         """Executes a training function on all workers in a separate thread.
 
@@ -350,9 +354,8 @@ class BackendExecutor:
 
         Args:
             train_func: The training function to run on each worker.
-            dataset_spec: A specification for the Dataset to be
-                passed to the training workers, and the logic on how to shard the Ray
-                Dataset.
+            datasets: The base datasets.
+            data_config: The config object for creating dataset shards for workers.
             checkpoint: The checkpoint data that
                 should be loaded onto each worker and accessed by the
                 training function via ``session.get_checkpoint()``. If this
@@ -377,6 +380,7 @@ class BackendExecutor:
             encode_data_fn,
             checkpoint_keep_all_ranks,
             checkpoint_upload_from_workers,
+            storage,
         ):
             try:
                 init_session(
@@ -394,6 +398,7 @@ class BackendExecutor:
                     enable_lazy_checkpointing=use_lazy_checkpointing,
                     checkpoint_keep_all_ranks=checkpoint_keep_all_ranks,
                     checkpoint_upload_from_workers=(checkpoint_upload_from_workers),
+                    storage=storage,
                 )
             except ValueError:
                 raise TrainBackendError(
@@ -405,7 +410,13 @@ class BackendExecutor:
 
         if self.dataset_shards is None:
             actors = [worker.actor for worker in self.worker_group.workers]
-            self.dataset_shards = dataset_spec.get_dataset_shards(actors)
+            node_ids = [worker.metadata.node_id for worker in self.worker_group.workers]
+            self.dataset_shards = data_config.configure(
+                datasets,
+                world_size=len(self.worker_group),
+                worker_handles=actors,
+                worker_node_ids=node_ids,
+            )
 
         (
             local_rank_map,
@@ -433,12 +444,17 @@ class BackendExecutor:
                     checkpoint_upload_from_workers=(
                         self._checkpoint_upload_from_workers
                     ),
+                    # Pass the Trainable's shared storage context to the Train workers
+                    storage=get_storage_context() if _use_storage_context() else None,
                 )
             )
 
         self._backend.on_training_start(self.worker_group, self._backend_config)
 
         self.get_with_failure_handling(futures)
+
+        if on_session_init:
+            on_session_init()
 
         # Run the training function asynchronously in its own thread.
         def train_async():
@@ -502,12 +518,25 @@ class BackendExecutor:
 
         return results
 
-    def _set_checkpoint_uri(self, uri: str):
+    def _set_checkpoint_index(self, checkpoint_index: int):
+        """Update the checkpoint id in the StorageContext of all workers.
+
+        This determines the path that the next checkpoint will be saved to.
+        """
+
+        def set_checkpoint_index():
+            session = _get_session("_set_checkpoint_index")
+            session.storage.current_checkpoint_index = checkpoint_index
+
+        futures = self.worker_group.execute_async(set_checkpoint_index)
+        self.get_with_failure_handling(futures)
+
+    def _set_legacy_checkpoint_uri(self, uri: str):
         """Tell remote sessions where to upload the chekcpoint."""
 
         def set_uri():
-            session = _get_session("_set_checkpoint_uri")
-            session._set_checkpoint_uri(uri)
+            session = _get_session("_set_legacy_checkpoint_uri")
+            session._set_legacy_checkpoint_uri(uri)
 
         futures = self.worker_group.execute_async(set_uri)
         self.get_with_failure_handling(futures)

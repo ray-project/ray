@@ -23,8 +23,8 @@
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "ray/common/bundle_location_index.h"
-#include "ray/raylet/scheduling/cluster_resource_data.h"
-#include "ray/raylet/scheduling/fixed_point.h"
+#include "ray/common/scheduling/cluster_resource_data.h"
+#include "ray/common/scheduling/fixed_point.h"
 #include "ray/raylet/scheduling/local_resource_manager.h"
 #include "ray/util/logging.h"
 #include "src/ray/protobuf/gcs.pb.h"
@@ -129,9 +129,17 @@ class ClusterResourceManager {
     return nodes_.count(node_id) > 0;
   }
 
-  void DebugString(std::stringstream &buffer) const;
+  bool IsNodeDraining(const scheduling::NodeID &node_id) const {
+    const auto &node = map_find_or_die(nodes_, node_id);
+    return node.GetLocalView().is_draining;
+  }
+
+  std::string DebugString() const;
 
   BundleLocationIndex &GetBundleLocationIndex();
+
+  void SetNodeLabels(const scheduling::NodeID &node_id,
+                     const absl::flat_hash_map<std::string, std::string> &labels);
 
  private:
   friend class ClusterResourceScheduler;

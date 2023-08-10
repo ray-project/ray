@@ -1,13 +1,8 @@
-from abc import ABCMeta, abstractmethod
-import gymnasium as gym
-from gymnasium.spaces import Box
 import json
 import logging
-import numpy as np
 import os
-from packaging import version
 import platform
-import tree  # pip install dm_tree
+from abc import ABCMeta, abstractmethod
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -22,13 +17,21 @@ from typing import (
     Union,
 )
 
+import gymnasium as gym
+import numpy as np
+import tree  # pip install dm_tree
+from gymnasium.spaces import Box
+from packaging import version
+
 import ray
+import ray.cloudpickle as pickle
 from ray.actor import ActorHandle
 from ray.air.checkpoint import Checkpoint
-import ray.cloudpickle as pickle
+from ray.rllib.core.models.base import STATE_IN, STATE_OUT
 from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
+from ray.rllib.policy.rnn_sequencing import add_time_dimension
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.utils.annotations import (
@@ -38,20 +41,19 @@ from ray.rllib.utils.annotations import (
     OverrideToImplementCustomLogic_CallToSuperRecommended,
     is_overridden,
 )
-from ray.rllib.utils.deprecation import (
-    Deprecated,
-    DEPRECATED_VALUE,
-    deprecation_warning,
-)
 from ray.rllib.utils.checkpoints import (
     CHECKPOINT_VERSION,
     get_checkpoint_info,
     try_import_msgpack,
 )
+from ray.rllib.utils.deprecation import (
+    Deprecated,
+    DEPRECATED_VALUE,
+    deprecation_warning,
+)
 from ray.rllib.utils.exploration.exploration import Exploration
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.from_config import from_config
-from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.serialization import (
     deserialize_type,
@@ -63,6 +65,7 @@ from ray.rllib.utils.spaces.space_utils import (
     get_dummy_batch_for_space,
     unbatch,
 )
+from ray.rllib.utils.tensor_dtype import get_np_dtype
 from ray.rllib.utils.tf_utils import get_tf_eager_cls_if_necessary
 from ray.rllib.utils.typing import (
     AgentID,
@@ -208,7 +211,7 @@ class Policy(metaclass=ABCMeta):
             observation_space: Observation space of the policy.
             action_space: Action space of the policy.
             config: A complete Algorithm/Policy config dict. For the default
-                config keys and values, see rllib/trainer/trainer.py.
+                config keys and values, see rllib/algorithm/algorithm.py.
         """
         self.observation_space: gym.Space = observation_space
         self.action_space: gym.Space = action_space
@@ -312,7 +315,7 @@ class Policy(metaclass=ABCMeta):
                 for pid, policy_state in policy_states.items():
                     # Get spec and config, merge config with
                     serialized_policy_spec = worker_state["policy_specs"][pid]
-                    policy_config = Algorithm.merge_trainer_configs(
+                    policy_config = Algorithm.merge_algorithm_configs(
                         worker_state["policy_config"], serialized_policy_spec["config"]
                     )
                     serialized_policy_spec.update({"config": policy_config})
@@ -517,8 +520,11 @@ class Policy(metaclass=ABCMeta):
         if input_dict is None:
             input_dict = {SampleBatch.OBS: obs}
             if state is not None:
-                for i, s in enumerate(state):
-                    input_dict[f"state_in_{i}"] = s
+                if self.config.get("_enable_rl_module_api", False):
+                    input_dict["state_in"] = state
+                else:
+                    for i, s in enumerate(state):
+                        input_dict[f"state_in_{i}"] = s
             if prev_action is not None:
                 input_dict[SampleBatch.PREV_ACTIONS] = prev_action
             if prev_reward is not None:
@@ -611,7 +617,7 @@ class Policy(metaclass=ABCMeta):
         """
         # Default implementation just passes obs, prev-a/r, and states on to
         # `self.compute_actions()`.
-        state_batches = [s for k, s in input_dict.items() if k[:9] == "state_in_"]
+        state_batches = [s for k, s in input_dict.items() if k.startswith("state_in")]
         return self.compute_actions(
             input_dict[SampleBatch.OBS],
             state_batches,
@@ -975,6 +981,9 @@ class Policy(metaclass=ABCMeta):
         the exploration component's state, as well as global variables, such
         as sampling timesteps.
 
+        Note that the state may contain references to the original variables.
+        This means that you may need to deepcopy() the state before mutating it.
+
         Returns:
             Serialized local state.
         """
@@ -1265,8 +1274,8 @@ class Policy(metaclass=ABCMeta):
             # If in local debugging mode, and _fake_gpus is not on.
             num_gpus = 0
         elif worker_idx == 0:
-            # if we are in the new rl trainer world num_gpus is deprecated.
-            # so use num_gpus_per_worker for policy sampling
+            # If we are on the new RLModule/Learner stack, `num_gpus` is deprecated.
+            # so use `num_gpus_per_worker` for policy sampling
             # we need this .get() syntax here to ensure backwards compatibility.
             if self.config.get("_enable_learner_api", False):
                 num_gpus = self.config["num_gpus_per_worker"]
@@ -1293,7 +1302,7 @@ class Policy(metaclass=ABCMeta):
     def _create_exploration(self) -> Exploration:
         """Creates the Policy's Exploration object.
 
-        This method only exists b/c some Trainers do not use TfPolicy nor
+        This method only exists b/c some Algorithms do not use TfPolicy nor
         TorchPolicy, but inherit directly from Policy. Others inherit from
         TfPolicy w/o using DynamicTFPolicy.
         TODO(sven): unify these cases.
@@ -1402,15 +1411,17 @@ class Policy(metaclass=ABCMeta):
             sample_batch_size
         )
         self._lazy_tensor_dict(self._dummy_batch)
-        # With RL modules you want the explore flag to be True for initialization of the
-        # tensors and placeholder you'd need for training.
+        # With RL Modules you want the explore flag to be True for initialization
+        # of the tensors and placeholder you'd need for training.
         explore = self.config.get("_enable_rl_module_api", False)
+
         actions, state_outs, extra_outs = self.compute_actions_from_input_dict(
             self._dummy_batch, explore=explore
         )
-        for key, view_req in self.view_requirements.items():
-            if key not in self._dummy_batch.accessed_keys:
-                view_req.used_for_compute_actions = False
+        if not self.config.get("_enable_rl_module_api", False):
+            for key, view_req in self.view_requirements.items():
+                if key not in self._dummy_batch.accessed_keys:
+                    view_req.used_for_compute_actions = False
         # Add all extra action outputs to view reqirements (these may be
         # filtered out later again, if not needed for postprocessing or loss).
         for key, value in extra_outs.items():
@@ -1457,16 +1468,22 @@ class Policy(metaclass=ABCMeta):
         seq_lens = None
         if state_outs:
             B = 4  # For RNNs, have B=4, T=[depends on sample_batch_size]
-            i = 0
-            while "state_in_{}".format(i) in postprocessed_batch:
-                postprocessed_batch["state_in_{}".format(i)] = postprocessed_batch[
-                    "state_in_{}".format(i)
-                ][:B]
-                if "state_out_{}".format(i) in postprocessed_batch:
-                    postprocessed_batch["state_out_{}".format(i)] = postprocessed_batch[
-                        "state_out_{}".format(i)
+            if self.config.get("_enable_rl_module_api", False):
+                sub_batch = postprocessed_batch[:B]
+                postprocessed_batch["state_in"] = sub_batch["state_in"]
+                postprocessed_batch["state_out"] = sub_batch["state_out"]
+            else:
+                i = 0
+                while "state_in_{}".format(i) in postprocessed_batch:
+                    postprocessed_batch["state_in_{}".format(i)] = postprocessed_batch[
+                        "state_in_{}".format(i)
                     ][:B]
-                i += 1
+                    if "state_out_{}".format(i) in postprocessed_batch:
+                        postprocessed_batch[
+                            "state_out_{}".format(i)
+                        ] = postprocessed_batch["state_out_{}".format(i)][:B]
+                    i += 1
+
             seq_len = sample_batch_size // B
             seq_lens = np.array([seq_len for _ in range(B)], dtype=np.int32)
             postprocessed_batch[SampleBatch.SEQ_LENS] = seq_lens
@@ -1496,7 +1513,7 @@ class Policy(metaclass=ABCMeta):
                 self.stats_fn(train_batch)
         else:
             # This is not needed to run a training with the Learner API, but useful if
-            # we want to create a batche of data for training from view requirements.
+            # we want to create a batch of data for training from view requirements.
             for key in set(postprocessed_batch.keys()).difference(
                 set(new_batch.keys())
             ):
@@ -1591,6 +1608,101 @@ class Policy(metaclass=ABCMeta):
                 "either of type `int` or `tf.Variable`, "
                 "but is of type {}.".format(self, type(self.global_timestep))
             )
+
+    @ExperimentalAPI
+    def maybe_add_time_dimension(
+        self,
+        input_dict: Dict[str, TensorType],
+        seq_lens: TensorType,
+        framework: str = None,
+    ):
+        """Adds a time dimension for recurrent RLModules.
+
+        Args:
+            input_dict: The input dict.
+            seq_lens: The sequence lengths.
+            framework: The framework to use for adding the time dimensions.
+                If None, will default to the framework of the policy.
+
+        Returns:
+            The input dict, with a possibly added time dimension.
+        """
+        # We need to check for hasattr(self, "model") because a dummy Policy may not
+        # have a model.
+        if (
+            self.config.get("_enable_rl_module_api", False)
+            and hasattr(self, "model")
+            and self.model.is_stateful()
+        ):
+            # Note that this is a temporary workaround to fit the old sampling stack
+            # to RL Modules.
+            ret = {}
+            framework = framework or self.model.framework
+
+            def _add_time_dimension(inputs):
+                inputs = add_time_dimension(
+                    inputs,
+                    seq_lens=seq_lens,
+                    framework=framework,
+                    time_major=self.config.get("model", {}).get("_time_major", False),
+                )
+                return inputs
+
+            def _add_state_out_time_dimension(inputs):
+                # We do a hack here in that we add a time dimension,
+                # even though the tensor already has one. Then, we remove the
+                # original time dimension.
+                v_w_two_time_dims = _add_time_dimension(inputs)
+                if framework == "tf2":
+                    return tf.squeeze(v_w_two_time_dims, axis=2)
+                elif framework == "torch":
+                    # Remove second time dimensions
+                    return torch.squeeze(v_w_two_time_dims, axis=2)
+                elif framework == "np":
+                    shape = v_w_two_time_dims.shape
+                    padded_batch_dim = shape[0]
+                    padded_time_dim = shape[1]
+                    other_dims = shape[3:]
+                    new_shape = (padded_batch_dim, padded_time_dim) + other_dims
+                    return v_w_two_time_dims.reshape(new_shape)
+                else:
+                    raise ValueError(f"Framework {framework} not implemented!")
+
+            for k, v in input_dict.items():
+                if k == SampleBatch.INFOS:
+                    ret[k] = _add_time_dimension(v)
+                elif k == SampleBatch.SEQ_LENS:
+                    # sequence lengths have no time dimension
+                    ret[k] = v
+                elif k == STATE_IN:
+                    # Assume that batch_repeat_value is max seq len.
+                    # This is commonly the case for STATE_IN
+                    # Values should already have correct batch and time dimension
+                    assert self.view_requirements[k].batch_repeat_value != 1
+                    ret[k] = v
+                elif k == STATE_OUT:
+                    # Assume that batch_repeat_value is 1
+                    # This is commonly the case for STATE_OUT
+                    assert self.view_requirements[k].batch_repeat_value == 1
+                    ret[k] = tree.map_structure(_add_state_out_time_dimension, v)
+                else:
+                    ret[k] = tree.map_structure(_add_time_dimension, v)
+
+            return SampleBatch(ret)
+        else:
+            return input_dict
+
+    @ExperimentalAPI
+    def maybe_remove_time_dimension(self, input_dict: Dict[str, TensorType]):
+        """Removes a time dimension for recurrent RLModules.
+
+        Args:
+            input_dict: The input dict.
+
+        Returns:
+            The input dict with a possibly removed time dimension.
+        """
+        raise NotImplementedError
 
     def _get_dummy_batch_from_view_requirements(
         self, batch_size: int = 1
@@ -1728,37 +1840,32 @@ class Policy(metaclass=ABCMeta):
 
 @DeveloperAPI
 def get_gym_space_from_struct_of_tensors(
-    value: Union[Mapping, np.ndarray]
-) -> gym.spaces.Dict:
-    if isinstance(value, Mapping):
-        value_dict = NestedDict(value)
-        struct = tree.map_structure(
-            lambda x: gym.spaces.Box(-1.0, 1.0, shape=x.shape[1:], dtype=x.dtype),
-            value_dict,
-        )
-        space = get_gym_space_from_struct_of_spaces(struct.asdict())
-    elif isinstance(value, np.ndarray):
-        space = gym.spaces.Box(-1.0, 1.0, shape=value.shape[1:], dtype=value.dtype)
-    else:
-        raise ValueError(
-            f"Unsupported type of value {type(value)} passed "
-            "to get_gym_space_from_struct_of_tensors. Only Nested dict with "
-            "np.ndarray leaves or an np.ndarray are supported."
-        )
+    value: Union[Mapping, Tuple, List, TensorType],
+    batched_input=True,
+) -> gym.Space:
+
+    start_idx = 1 if batched_input else 0
+    struct = tree.map_structure(
+        lambda x: gym.spaces.Box(
+            -1.0, 1.0, shape=x.shape[start_idx:], dtype=get_np_dtype(x)
+        ),
+        value,
+    )
+    space = get_gym_space_from_struct_of_spaces(struct)
     return space
 
 
 @DeveloperAPI
 def get_gym_space_from_struct_of_spaces(value: Union[Dict, Tuple]) -> gym.spaces.Dict:
-    if isinstance(value, dict):
+    if isinstance(value, Mapping):
         return gym.spaces.Dict(
             {k: get_gym_space_from_struct_of_spaces(v) for k, v in value.items()}
         )
-    elif isinstance(value, tuple):
+    elif isinstance(value, (tuple, list)):
         return gym.spaces.Tuple([get_gym_space_from_struct_of_spaces(v) for v in value])
     else:
-        assert isinstance(
-            value, gym.spaces.Space
-        ), "The struct of spaces should only contain dicts, tiples and primitive "
-        "gym spaces."
+        assert isinstance(value, gym.spaces.Space), (
+            f"The struct of spaces should only contain dicts, tiples and primitive "
+            f"gym spaces. Space is of type {type(value)}"
+        )
         return value

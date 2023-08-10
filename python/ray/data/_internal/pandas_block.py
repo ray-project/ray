@@ -1,41 +1,39 @@
-from typing import (
-    Callable,
-    Dict,
-    List,
-    Tuple,
-    Union,
-    Iterator,
-    Any,
-    TypeVar,
-    Optional,
-    TYPE_CHECKING,
-)
-
 import collections
 import heapq
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Dict,
+    Iterator,
+    List,
+    Optional,
+    Tuple,
+    TypeVar,
+    Union,
+)
+
 import numpy as np
 
 from ray.air.constants import TENSOR_COLUMN_NAME
+from ray.data._internal.table_block import TableBlockAccessor, TableBlockBuilder
 from ray.data.block import (
     Block,
     BlockAccessor,
-    BlockMetadata,
     BlockExecStats,
+    BlockMetadata,
     KeyType,
     U,
 )
 from ray.data.context import DataContext
 from ray.data.row import TableRow
-from ray.data._internal.table_block import (
-    TableBlockAccessor,
-    TableBlockBuilder,
-)
-from ray.data.aggregate import AggregateFn
 
 if TYPE_CHECKING:
-    import pyarrow
     import pandas
-    from ray.data._internal.sort import SortKeyT
+    import pyarrow
+
+    from ray.data._internal.sort import SortKey
+    from ray.data.aggregate import AggregateFn
 
 T = TypeVar("T")
 
@@ -206,11 +204,9 @@ class PandasBlockAccessor(TableBlockAccessor):
     ) -> Union[np.ndarray, Dict[str, np.ndarray]]:
         if columns is None:
             columns = self._table.columns.tolist()
-            should_be_single_ndarray = self.is_tensor_wrapper()
+            should_be_single_ndarray = False
         elif isinstance(columns, list):
-            should_be_single_ndarray = (
-                columns == self._table.columns.tolist() and self.is_tensor_wrapper()
-            )
+            should_be_single_ndarray = False
         else:
             columns = [columns]
             should_be_single_ndarray = True
@@ -268,8 +264,8 @@ class PandasBlockAccessor(TableBlockAccessor):
     def _empty_table() -> "pandas.DataFrame":
         return PandasBlockBuilder._empty_table()
 
-    def _sample(self, n_samples: int, key: "SortKeyT") -> "pandas.DataFrame":
-        return self._table[[k[0] for k in key]].sample(n_samples, ignore_index=True)
+    def _sample(self, n_samples: int, sort_key: "SortKey") -> "pandas.DataFrame":
+        return self._table[sort_key.get_columns()].sample(n_samples, ignore_index=True)
 
     def _apply_agg(
         self, agg_fn: Callable[["pandas.Series", bool], U], on: str
@@ -348,20 +344,20 @@ class PandasBlockAccessor(TableBlockAccessor):
         )
 
     def sort_and_partition(
-        self, boundaries: List[T], key: "SortKeyT", descending: bool
+        self, boundaries: List[T], sort_key: "SortKey"
     ) -> List[Block]:
-        if len(key) > 1:
+        columns, ascending = sort_key.to_pandas_sort_args()
+        if len(columns) > 1:
             raise NotImplementedError(
-                "sorting by multiple columns is not supported yet"
+                "Sorting by multiple columns is not supported yet"
             )
-
         if self._table.shape[0] == 0:
             # If the pyarrow table is empty we may not have schema
             # so calling sort_indices() will raise an error.
             return [self._empty_table() for _ in range(len(boundaries) + 1)]
 
-        col, _ = key[0]
-        table = self._table.sort_values(by=col, ascending=not descending)
+        col = columns[0]
+        table = self._table.sort_values(by=col, ascending=ascending)
         if len(boundaries) == 0:
             return [table]
 
@@ -372,7 +368,7 @@ class PandasBlockAccessor(TableBlockAccessor):
         # partition[i]. If `descending` is true, `boundaries` would also be
         # in descending order and we only need to count the number of items
         # *greater than* the boundary value instead.
-        if descending:
+        if not ascending:
             num_rows = len(table[col])
             bounds = num_rows - table[col].searchsorted(
                 boundaries, sorter=np.arange(num_rows - 1, -1, -1)
@@ -386,7 +382,7 @@ class PandasBlockAccessor(TableBlockAccessor):
         partitions.append(table[last_idx:])
         return partitions
 
-    def combine(self, key: str, aggs: Tuple[AggregateFn]) -> "pandas.DataFrame":
+    def combine(self, key: str, aggs: Tuple["AggregateFn"]) -> "pandas.DataFrame":
         """Combine rows with the same key into an accumulator.
 
         This assumes the block is already sorted by key in ascending order.
@@ -461,7 +457,7 @@ class PandasBlockAccessor(TableBlockAccessor):
 
     @staticmethod
     def merge_sorted_blocks(
-        blocks: List[Block], key: "SortKeyT", _descending: bool
+        blocks: List[Block], sort_key: "SortKey"
     ) -> Tuple["pandas.DataFrame", BlockMetadata]:
         pd = lazy_import_pandas()
         stats = BlockExecStats.builder()
@@ -470,7 +466,8 @@ class PandasBlockAccessor(TableBlockAccessor):
             ret = PandasBlockAccessor._empty_table()
         else:
             ret = pd.concat(blocks, ignore_index=True)
-            ret = ret.sort_values(by=key[0][0], ascending=not _descending)
+            columns, ascending = sort_key.to_pandas_sort_args()
+            ret = ret.sort_values(by=columns, ascending=ascending)
         return ret, PandasBlockAccessor(ret).get_metadata(
             None, exec_stats=stats.build()
         )
@@ -479,7 +476,7 @@ class PandasBlockAccessor(TableBlockAccessor):
     def aggregate_combined_blocks(
         blocks: List["pandas.DataFrame"],
         key: str,
-        aggs: Tuple[AggregateFn],
+        aggs: Tuple["AggregateFn"],
         finalize: bool,
     ) -> Tuple["pandas.DataFrame", BlockMetadata]:
         """Aggregate sorted, partially combined blocks with the same key range.

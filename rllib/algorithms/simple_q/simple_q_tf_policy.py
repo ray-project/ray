@@ -39,7 +39,7 @@ def get_simple_q_tf_policy(
         base: Base class for this policy. DynamicTFPolicyV2 or EagerTFPolicyV2.
 
     Returns:
-        A TF Policy to be used with MAMLTrainer.
+        A TF Policy to be used with MAML.
     """
 
     class SimpleQTFPolicy(LearningRateSchedule, TargetNetworkMixin, base):

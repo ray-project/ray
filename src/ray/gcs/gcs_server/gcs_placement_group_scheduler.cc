@@ -181,8 +181,8 @@ void GcsPlacementGroupScheduler::PrepareResources(
 
   const auto lease_client = GetLeaseClientFromNode(node.value());
   const auto node_id = NodeID::FromBinary(node.value()->node_id());
-  RAY_LOG(DEBUG) << "Preparing resource from node " << node_id
-                 << " for bundles: " << GetDebugStringForBundles(bundles);
+  RAY_LOG(INFO) << "Preparing resource from node " << node_id
+                << " for bundles: " << GetDebugStringForBundles(bundles);
 
   lease_client->PrepareBundleResources(
       bundles,
@@ -191,11 +191,11 @@ void GcsPlacementGroupScheduler::PrepareResources(
         auto result = reply.success() ? Status::OK()
                                       : Status::IOError("Failed to reserve resource");
         if (result.ok()) {
-          RAY_LOG(DEBUG) << "Finished leasing resource from " << node_id
-                         << " for bundles: " << GetDebugStringForBundles(bundles);
+          RAY_LOG(INFO) << "Finished leasing resource from " << node_id
+                        << " for bundles: " << GetDebugStringForBundles(bundles);
         } else {
-          RAY_LOG(DEBUG) << "Failed to lease resource from " << node_id
-                         << " for bundles: " << GetDebugStringForBundles(bundles);
+          RAY_LOG(INFO) << "Failed to lease resource from " << node_id
+                        << " for bundles: " << GetDebugStringForBundles(bundles);
         }
         callback(result);
       });
@@ -209,18 +209,18 @@ void GcsPlacementGroupScheduler::CommitResources(
   const auto lease_client = GetLeaseClientFromNode(node.value());
   const auto node_id = NodeID::FromBinary(node.value()->node_id());
 
-  RAY_LOG(DEBUG) << "Committing resource to a node " << node_id
-                 << " for bundles: " << GetDebugStringForBundles(bundles);
+  RAY_LOG(INFO) << "Committing resource to a node " << node_id
+                << " for bundles: " << GetDebugStringForBundles(bundles);
   lease_client->CommitBundleResources(
       bundles,
       [bundles, node_id, callback](const Status &status,
                                    const rpc::CommitBundleResourcesReply &reply) {
         if (status.ok()) {
-          RAY_LOG(DEBUG) << "Finished committing resource to " << node_id
-                         << " for bundles: " << GetDebugStringForBundles(bundles);
+          RAY_LOG(INFO) << "Finished committing resource to " << node_id
+                        << " for bundles: " << GetDebugStringForBundles(bundles);
         } else {
-          RAY_LOG(DEBUG) << "Failed to commit resource to " << node_id
-                         << " for bundles: " << GetDebugStringForBundles(bundles);
+          RAY_LOG(INFO) << "Failed to commit resource to " << node_id
+                        << " for bundles: " << GetDebugStringForBundles(bundles);
         }
         RAY_CHECK(callback);
         callback(status);
@@ -469,7 +469,17 @@ SchedulingOptions GcsPlacementGroupScheduler::CreateSchedulingOptions(
 }
 
 absl::flat_hash_map<PlacementGroupID, std::vector<int64_t>>
-GcsPlacementGroupScheduler::GetBundlesOnNode(const NodeID &node_id) {
+GcsPlacementGroupScheduler::GetAndRemoveBundlesOnNode(const NodeID &node_id) {
+  auto bundles = GetBundlesOnNode(node_id);
+  RAY_UNUSED(committed_bundle_location_index_.Erase(node_id));
+  RAY_UNUSED(cluster_resource_scheduler_.GetClusterResourceManager()
+                 .GetBundleLocationIndex()
+                 .Erase(node_id));
+  return bundles;
+}
+
+absl::flat_hash_map<PlacementGroupID, std::vector<int64_t>>
+GcsPlacementGroupScheduler::GetBundlesOnNode(const NodeID &node_id) const {
   absl::flat_hash_map<PlacementGroupID, std::vector<int64_t>> bundles_on_node;
   const auto &maybe_bundle_locations =
       committed_bundle_location_index_.GetBundleLocationsOnNode(node_id);
@@ -480,10 +490,6 @@ GcsPlacementGroupScheduler::GetBundlesOnNode(const NodeID &node_id) {
       const auto &bundle_index = bundle.first.second;
       bundles_on_node[bundle_placement_group_id].push_back(bundle_index);
     }
-    committed_bundle_location_index_.Erase(node_id);
-    cluster_resource_scheduler_.GetClusterResourceManager()
-        .GetBundleLocationIndex()
-        .Erase(node_id);
   }
   return bundles_on_node;
 }
@@ -856,8 +862,8 @@ const std::shared_ptr<BundleLocations> &LeaseStatusTracker::GetPreparedBundleLoc
   return preparing_bundle_locations_;
 }
 
-const std::shared_ptr<BundleLocations> &
-LeaseStatusTracker::GetUnCommittedBundleLocations() const {
+const std::shared_ptr<BundleLocations>
+    &LeaseStatusTracker::GetUnCommittedBundleLocations() const {
   return uncommitted_bundle_locations_;
 }
 
@@ -870,8 +876,8 @@ const std::shared_ptr<BundleLocations> &LeaseStatusTracker::GetBundleLocations()
   return bundle_locations_;
 }
 
-const std::vector<std::shared_ptr<const BundleSpecification>> &
-LeaseStatusTracker::GetBundlesToSchedule() const {
+const std::vector<std::shared_ptr<const BundleSpecification>>
+    &LeaseStatusTracker::GetBundlesToSchedule() const {
   return bundles_to_schedule_;
 }
 

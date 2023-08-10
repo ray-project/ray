@@ -108,8 +108,7 @@ class Checkpoint:
         # It is guaranteed that the original data has been recovered
         assert recovered_data == checkpoint_data
 
-    Checkpoints can be used to instantiate a :class:`Predictor`,
-    :class:`BatchPredictor`, or :class:`PredictorDeployment` class.
+    Checkpoints can be used to instantiate a :class:`Predictor`.
 
     The constructor is a private API, instead the ``from_`` methods should
     be used to create checkpoint objects
@@ -331,7 +330,7 @@ class Checkpoint:
             data: Data object containing pickled checkpoint data.
 
         Returns:
-            Checkpoint: checkpoint object.
+            ray.air.checkpoint.Checkpoint: checkpoint object.
         """
         bytes_data = pickle.loads(data)
         if isinstance(bytes_data, dict):
@@ -360,7 +359,7 @@ class Checkpoint:
             data: Dictionary containing checkpoint data.
 
         Returns:
-            Checkpoint: checkpoint object.
+            ray.air.checkpoint.Checkpoint: checkpoint object.
         """
         state = {}
         if _METADATA_KEY in data:
@@ -455,7 +454,7 @@ class Checkpoint:
                 Checkpoint).
 
         Returns:
-            Checkpoint: checkpoint object.
+            ray.air.checkpoint.Checkpoint: checkpoint object.
         """
         state = {}
 
@@ -474,7 +473,7 @@ class Checkpoint:
     @classmethod
     @DeveloperAPI
     def from_checkpoint(cls, other: "Checkpoint") -> "Checkpoint":
-        """Create a checkpoint from a generic :class:`Checkpoint`.
+        """Create a checkpoint from a generic :class:`ray.air.checkpoint.Checkpoint`.
 
         This method can be used to create a framework-specific checkpoint from a
         generic :class:`Checkpoint` object.
@@ -577,6 +576,9 @@ class Checkpoint:
                     else:
                         _copy_dir_ignore_conflicts(local_path_pathlib, path_pathlib)
             elif external_path:
+                logger.info(
+                    f"Downloading checkpoint from {external_path} to {path} ..."
+                )
                 # If this exists on external storage (e.g. cloud), download
                 download_from_uri(uri=external_path, local_path=path, filelock=False)
             else:
@@ -712,7 +714,7 @@ class Checkpoint:
             uri: Source location URI to read data from.
 
         Returns:
-            Checkpoint: checkpoint object.
+            ray.air.checkpoint.Checkpoint: checkpoint object.
         """
         state = {}
         try:

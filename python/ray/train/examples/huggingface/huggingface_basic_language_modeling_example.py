@@ -6,7 +6,6 @@
 import argparse
 import tempfile
 
-import pandas as pd
 import torch
 from datasets import load_dataset
 from transformers import (
@@ -19,12 +18,8 @@ from transformers import (
 
 import ray
 import ray.data
-from ray.train.batch_predictor import BatchPredictor
-from ray.train.huggingface import (
-    TransformersPredictor,
-    TransformersTrainer,
-)
-from ray.air.config import ScalingConfig
+from ray.train.huggingface import TransformersTrainer
+from ray.train import ScalingConfig
 
 
 def main(
@@ -116,6 +111,10 @@ def main(
         ray_train = ray_train.limit(16)
         ray_validation = ray_validation.limit(8)
 
+    # Materialize the datasets so that they will have __len__.
+    ray_train = ray_train.materialize()
+    ray_validation = ray_validation.materialize()
+
     trainer = TransformersTrainer(
         trainer_init_per_worker=train_function,
         scaling_config=ScalingConfig(num_workers=num_workers, use_gpu=use_gpu),
@@ -123,19 +122,6 @@ def main(
     )
     results = trainer.fit()
     print(results.metrics)
-
-    tokenizer = AutoTokenizer.from_pretrained(tokenizer_checkpoint)
-    prompt = ["My text: Complete me..."]
-    predictor = BatchPredictor.from_checkpoint(
-        results.checkpoint,
-        TransformersPredictor,
-        task="text-generation",
-        tokenizer=tokenizer,
-    )
-    data = ray.data.from_pandas(pd.DataFrame(prompt, columns=["prompt"]))
-    prediction = predictor.predict(data, num_gpus_per_worker=int(use_gpu))
-
-    print(f"Generated text for prompt '{prompt}': '{prediction.take(1)}'")
 
 
 if __name__ == "__main__":

@@ -1,0 +1,39 @@
+rules:
+  - id: code-block-python
+    paths:
+      include:
+        # Ray Core
+        - "python/ray/util/**/*.py"
+        - "python/ray/_private/**/*.py"
+        - "python/ray/core/**/*.py"
+        - "doc/source/ray-core/**/*.rst"
+        - "doc/source/ray-overview/**/*.rst"
+        - "doc/source/ray-observability/**/*.rst"
+        # Ray Data
+        - "python/ray/data/**/*.py"
+        - "doc/source/data/**/*.rst"
+        # Ray Train
+        - "python/ray/train/**/*.py"
+        - "doc/source/train/**/*.rst"
+      exclude:
+        # FIXME(@matthewdeng): We're ignoring the examples for now since they'll likely
+        # get re-written.
+        - "doc/source/train/examples/pytorch/torch_data_prefetch_benchmark/benchmark_example.rst"
+        - "doc/source/train/dl_guide.rst"
+        # FIXME(@ml-team): These are byproduct from train doc rewritten. Will fix them as a team.
+        - "doc/source/train/distributed-pytorch/checkpoints.rst"
+        - "doc/source/train/distributed-pytorch/converting-existing-training-loop.rst"
+        - "doc/source/train/distributed-pytorch/data-loading-preprocessing.rst"
+        - "doc/source/train/distributed-pytorch/experiment-tracking.rst"
+        - "doc/source/train/distributed-pytorch/monitoring-logging.rst"
+        - "doc/source/train/distributed-pytorch/persistent-storage.rst"
+        - "doc/source/train/distributed-pytorch/using-gpus.rst"
+        - "doc/source/train/distributed-pytorch/migration-guides.rst"
+        - "doc/source/train/distributed-tensorflow-keras.rst"
+        - "doc/source/train/horovod.rst"
+
+    languages:
+      - generic
+    message: "Don't use 'code-block:: python', it's not tested! Use 'testcode' instead! For more information, see https://docs.ray.io/en/master/ray-contribute/writing-code-snippets.html."
+    pattern: "code-block:: python"
+    severity: ERROR

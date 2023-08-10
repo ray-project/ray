@@ -126,7 +126,7 @@ def test_fsdp_checkpoint():
         .fit_params(datamodule=datamodule)
     )
 
-    scaling_config = ray.air.ScalingConfig(num_workers=2, use_gpu=True)
+    scaling_config = ray.train.ScalingConfig(num_workers=2, use_gpu=True)
 
     trainer = LightningTrainer(
         lightning_config=config_builder.build(), scaling_config=scaling_config

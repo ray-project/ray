@@ -1,603 +1,651 @@
 .. _loading_data:
 
-====================
+============
 Loading Data
-====================
+============
 
-:class:`Datasets <ray.data.Dataset>` can be created from:
+Ray Data loads data from various sources. This guide shows you how to:
 
-* generated synthetic data,
-* local and distributed in-memory data, and
-* local and external storage systems (local disk, cloud storage, HDFS, etc.).
+* `Read files <#reading-files>`_ like images
+* `Load in-memory data <#loading-data-from-other-libraries>`_ like pandas DataFrames
+* `Read databases <#reading-databases>`_ like MySQL
 
-.. _dataset_generate_data:
+.. _reading-files:
 
--------------------------
-Generating Synthetic Data
--------------------------
+Reading files
+=============
 
-.. tab-set::
-
-    .. tab-item:: Int Range
-
-      Create a ``Dataset`` from a range of integers, with a single column containing this integer range.
-
-      .. literalinclude:: ./doc_code/loading_data.py
-        :language: python
-        :start-after: __gen_synth_tabular_range_begin__
-        :end-before: __gen_synth_tabular_range_end__
-
-    .. tab-item:: Tensor Range
-
-      Create a dataset from a range of integers, packing this integer range into
-      ndarrays of the provided shape.
-
-      .. doctest::
-
-        >>> import ray
-        >>> ds = ray.data.range_tensor(1, shape=(64, 64))
-        >>> ds.schema()
-        Column  Type
-        ------  ----
-        data    numpy.ndarray(shape=(64, 64), dtype=int64)
-        >>> ds.show(1)
-        {'data': array([[0, 0, 0, ..., 0, 0, 0],
-               [0, 0, 0, ..., 0, 0, 0],
-               [0, 0, 0, ..., 0, 0, 0],
-               ...,
-               [0, 0, 0, ..., 0, 0, 0],
-               [0, 0, 0, ..., 0, 0, 0],
-               [0, 0, 0, ..., 0, 0, 0]])}
-
-.. _dataset_reading_from_storage:
-
---------------------------
-Reading Files From Storage
---------------------------
-
-Using the ``ray.data.read_*()`` APIs, data can be loaded from files on local disk
-or remote storage system such as S3, GCS, Azure Blob Storage, or HDFS. Any filesystem
-`supported by pyarrow <http://arrow.apache.org/docs/python/generated/pyarrow.fs.FileSystem.html>`__
-can be used to specify file locations, and many common file formats are supported:
-Parquet, CSV, JSON, NPY, text, binary.
-
-Each of these APIs take a path or list of paths to files or directories. Any directories
-provided will be walked in order to obtain concrete file paths, at which point all files
-will be read in parallel.
-
-.. _dataset_supported_file_formats:
-
-Common File Formats
-===================
+Ray Data reads files from local disk or cloud storage in a variety of file formats.
+To view the full list of supported file formats, see the
+:ref:`Input/Output reference <input-output>`.
 
 .. tab-set::
 
     .. tab-item:: Parquet
 
-      Read Parquet files and directories. Partitioned parquet read support is also available.
+        To read Parquet files, call :func:`~ray.data.read_parquet`.
 
-      .. literalinclude:: ./doc_code/loading_data.py
-        :language: python
-        :start-after: __read_parquet_begin__
-        :end-before: __read_parquet_end__
+        .. testcode::
+            :skipif: True
 
-      The Parquet reader also supports projection and filter pushdown, allowing column
-      selection and row filtering to be pushed down to the file scan.
+            import ray
 
-      .. literalinclude:: ./doc_code/loading_data.py
-        :language: python
-        :start-after: __read_parquet_pushdown_begin__
-        :end-before: __read_parquet_pushdown_end__
+            ds = ray.data.read_parquet("local:///tmp/iris.parquet")
 
-      See the API docs for :func:`read_parquet() <ray.data.read_parquet>`.
+            print(ds.schema())
 
-    .. tab-item:: CSV
+        .. testoutput::
 
-      Read CSV files and directories.
-
-      .. literalinclude:: ./doc_code/loading_data.py
-        :language: python
-        :start-after: __read_csv_begin__
-        :end-before: __read_csv_end__
-
-      See the API docs for :func:`read_csv() <ray.data.read_csv>`.
-
-    .. tab-item:: JSON
-
-      Read JSON files and directories.
-
-      Currently, only newline-delimited JSON (NDJSON) is supported.
-
-      .. literalinclude:: ./doc_code/loading_data.py
-        :language: python
-        :start-after: __read_json_begin__
-        :end-before: __read_json_end__
-
-      See the API docs for :func:`read_json() <ray.data.read_json>`.
-
-    .. tab-item:: NumPy
-
-      Read NumPy files and directories.
-
-      This function represents NumPy data as ndarrays. To learn more, read
-      :ref:`Working with tensor data <working_with_tensors>`.
-
-      .. literalinclude:: ./doc_code/loading_data.py
-        :language: python
-        :start-after: __read_numpy_begin__
-        :end-before: __read_numpy_end__
-
-      See the API docs for :func:`read_numpy() <ray.data.read_numpy>`.
-
-    .. tab-item:: Text
-
-      Read text files and directories. Each line in each text file will be treated as a row in the dataset.
-
-      .. literalinclude:: ./doc_code/loading_data.py
-        :language: python
-        :start-after: __read_text_begin__
-        :end-before: __read_text_end__
-
-      See the API docs for :func:`read_text() <ray.data.read_text>`.
+            Column        Type
+            ------        ----
+            sepal.length  double
+            sepal.width   double
+            petal.length  double
+            petal.width   double
+            variety       string
 
     .. tab-item:: Images
 
-      Call :func:`~ray.data.read_images` to read images.
+        To read raw images, call :func:`~ray.data.read_images`. Ray Data represents
+        images as NumPy ndarrays.
 
-      This function represents images as ndarrays. To learn more, read
-      :ref:`Working with tensor data <working_with_tensors>`.
+        .. testcode::
+            :skipif: True
 
-      .. literalinclude:: ./doc_code/loading_data.py
-        :language: python
-        :start-after: __read_images_begin__
-        :end-before: __read_images_end__
+            import ray
+
+            ds = ray.data.read_images("local:///tmp/batoidea/JPEGImages/")
+
+            print(ds.schema())
+
+        .. testoutput::
+            :skipif: True
+
+            Column  Type
+            ------  ----
+            image   numpy.ndarray(shape=(32, 32, 3), dtype=uint8)
+
+    .. tab-item:: Text
+
+        To read lines of text, call :func:`~ray.data.read_text`.
+
+        .. testcode::
+            :skipif: True
+
+            import ray
+
+            ds = ray.data.read_text("local:///tmp/this.txt")
+
+            print(ds.schema())
+
+        .. testoutput::
+
+            Column  Type
+            ------  ----
+            text    string
+
+    .. tab-item:: CSV
+
+        To read CSV files, call :func:`~ray.data.read_csv`.
+
+        .. testcode::
+            :skipif: True
+
+            import ray
+
+            ds = ray.data.read_csv("local:///tmp/iris.csv")
+
+            print(ds.schema())
+
+        .. testoutput::
+
+            Column             Type
+            ------             ----
+            sepal length (cm)  double
+            sepal width (cm)   double
+            petal length (cm)  double
+            petal width (cm)   double
+            target             int64
 
     .. tab-item:: Binary
 
-      Read binary files and directories. Each binary file will be converted to a record
-      containing opaque bytes. These bytes can be decoded into tensor, tabular, text, or any other
-      kind of data using :meth:`~ray.data.Dataset.map_batches` to apply a per-row decoding
-      :ref:`user-defined function <transform_datasets_writing_udfs>`.
+        To read raw binary files, call :func:`~ray.data.read_binary_files`.
 
-      .. literalinclude:: ./doc_code/loading_data.py
-        :language: python
-        :start-after: __read_binary_begin__
-        :end-before: __read_binary_end__
+        .. testcode::
+            :skipif: True
 
-      See the API docs for :func:`read_binary_files() <ray.data.read_binary_files>`.
+            import ray
+
+            ds = ray.data.read_binary_files("local:///tmp/file.dat")
+
+            print(ds.schema())
+
+        .. testoutput::
+
+            Column  Type
+            ------  ----
+            bytes   binary
 
     .. tab-item:: TFRecords
 
-      Call :func:`~ray.data.read_tfrecords` to read TFRecord files into a
-      :class:`~ray.data.Dataset`.
+        To read TFRecords files, call :func:`~ray.data.read_tfrecords`.
 
-      .. warning::
-          Only `tf.train.Example <https://www.tensorflow.org/api_docs/python/tf/train/Example>`_
-          records are supported.
+        .. testcode::
+            :skipif: True
 
-      .. literalinclude:: ./doc_code/loading_data.py
-        :language: python
-        :start-after: __read_tfrecords_begin__
-        :end-before: __read_tfrecords_end__
+            import ray
 
-.. _dataset_reading_remote_storage:
+            ds = ray.data.read_tfrecords("local:///tmp/iris.tfrecords")
 
+            print(ds.schema())
 
-Reading from Remote Storage
-===========================
+        .. testoutput::
 
-All of the file formats mentioned above can be read from remote storage, such as S3,
-GCS, Azure Blob Storage, and HDFS. These storage systems are supported via Arrow's
-filesystem APIs natively for S3 and HDFS, and as a wrapper around fsspec for GCS and
-HDFS. All ``ray.data.read_*()`` APIs expose a ``filesystem`` argument that accepts both
-`Arrow FileSystem <https://arrow.apache.org/docs/python/filesystems.html>`__ instances
-and `fsspec FileSystem <https://filesystem-spec.readthedocs.io/en/latest/>`__ instances,
-allowing you to configure this connection to the remote storage system, such as
-authn/authz and buffer/block size.
+            Column             Type
+            ------             ----
+            sepal length (cm)  double
+            sepal width (cm)   double
+            petal length (cm)  double
+            petal width (cm)   double
+            target             int64
 
-For S3 and HDFS, the underlying `FileSystem
-<https://arrow.apache.org/docs/python/generated/pyarrow.fs.FileSystem.html>`__
-implementation will be inferred from the URL scheme (``"s3://"`` and ``"hdfs://"``); if
-the default connection configuration suffices for your workload, you won't need to
-specify a ``filesystem`` argument.
+Reading files from local disk
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-We use Parquet files for the below examples, but all of the aforementioned file formats
-are supported for each of these storage systems.
+To read files from local disk, call a function like :func:`~ray.data.read_parquet` and
+specify paths with the ``local://`` schema. Paths can point to files or directories.
+
+To read formats other than Parquet, see the :ref:`Input/Output reference <input-output>`.
+
+.. tip::
+
+    If your files are accessible on every node, exclude ``local://`` to parallelize the
+    read tasks across the cluster.
+
+.. testcode::
+    :skipif: True
+
+    import ray
+
+    ds = ray.data.read_parquet("local:///tmp/iris.parquet")
+
+    print(ds.schema())
+
+.. testoutput::
+
+    Column        Type
+    ------        ----
+    sepal.length  double
+    sepal.width   double
+    petal.length  double
+    petal.width   double
+    variety       string
+
+Reading files from cloud storage
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+To read files in cloud storage, authenticate all nodes with your cloud service provider.
+Then, call a method like :func:`~ray.data.read_parquet` and specify URIs with the
+appropriate schema. URIs can point to buckets, folders, or objects.
+
+To read formats other than Parquet, see the :ref:`Input/Output reference <input-output>`.
 
 .. tab-set::
 
     .. tab-item:: S3
 
-      The AWS S3 storage system is inferred from the URI scheme (``s3://``), with required connection
-      configuration such as S3 credentials being pulled from the machine's environment
-      (e.g. the ``AWS_ACCESS_KEY_ID`` and ``AWS_SECRET_ACCESS_KEY`` environment variables).
+        To read files from Amazon S3, specify URIs with the ``s3://`` scheme.
 
-      .. literalinclude:: ./doc_code/loading_data.py
-        :language: python
-        :start-after: __read_parquet_s3_begin__
-        :end-before: __read_parquet_s3_end__
+        .. testcode::
 
-      If needing to customize this S3 storage system connection (credentials, region,
-      endpoint override, etc.), you can pass in an
-      `S3FileSystem <https://arrow.apache.org/docs/python/filesystems.html#s3>`__ instance
-      to :func:`read_parquet() <ray.data.read_parquet>`.
+            import ray
 
-      .. literalinclude:: ./doc_code/loading_data_untested.py
-        :language: python
-        :start-after: __read_parquet_s3_with_fs_begin__
-        :end-before: __read_parquet_s3_with_fs_end__
+            ds = ray.data.read_parquet("s3://anonymous@ray-example-data/iris.parquet")
 
-    .. tab-item:: HDFS
+            print(ds.schema())
 
-      The HDFS storage system is inferred from the URI scheme (``hdfs://``), with required connection
-      configuration such as the host and the port being derived from the URI.
+        .. testoutput::
 
-      .. note::
-
-        This example is not runnable as-is; you'll need to point it at your HDFS
-        cluster/data.
-
-      .. literalinclude:: ./doc_code/loading_data_untested.py
-        :language: python
-        :start-after: __read_parquet_hdfs_begin__
-        :end-before: __read_parquet_hdfs_end__
-
-      If needing to customize this HDFS storage system connection (host, port, user, kerb
-      ticket, etc.), you can pass in an `HDFSFileSystem
-      <https://arrow.apache.org/docs/python/filesystems.html#hadoop-distributed-file-system-hdfs>`__
-      instance to :func:`read_parquet() <ray.data.read_parquet>`.
-
-      .. literalinclude:: ./doc_code/loading_data_untested.py
-        :language: python
-        :start-after: __read_parquet_hdfs_with_fs_begin__
-        :end-before: __read_parquet_hdfs_with_fs_end__
+            Column        Type
+            ------        ----
+            sepal.length  double
+            sepal.width   double
+            petal.length  double
+            petal.width   double
+            variety       string
 
     .. tab-item:: GCS
 
-      Data can be read from Google Cloud Storage by providing a configured
-      `gcsfs GCSFileSystem <https://gcsfs.readthedocs.io/en/latest/>`__, where the
-      appropriate Google Cloud project and credentials can be specified.
+        To read files from Google Cloud Storage, install the
+        `Filesystem interface to Google Cloud Storage <https://gcsfs.readthedocs.io/en/latest/>`_
 
-      .. note::
-        This example is not runnable as-is; you'll need to point it at your GCS bucket and
-        configure your GCP project and credentials.
+        .. code-block:: console
 
-      .. literalinclude:: ./doc_code/loading_data_untested.py
-        :language: python
-        :start-after: __read_parquet_gcs_begin__
-        :end-before: __read_parquet_gcs_end__
+            pip install gcsfs
 
-      .. tip::
-        To verify that your GCP project and credentials are set up, validate
-        that the GCS `filesystem` has permissions to read the input `path`.
+        Then, create a ``GCSFileSystem`` and specify URIs with the ``gcs://`` scheme.
 
-        .. literalinclude:: ./doc_code/loading_data_untested.py
-          :language: python
-          :start-after: __validate_parquet_gcs_begin__
-          :end-before: __validate_parquet_gcs_end__
+        .. testcode::
+            :skipif: True
 
-        For more examples, see the `GCSFS Documentation <https://gcsfs.readthedocs.io/en/latest/#examples>`__.
+            import ray
 
-    .. tab-item:: ADL/ABS (Azure)
+            ds = ray.data.read_parquet("s3://anonymous@ray-example-data/iris.parquet")
 
-      Data can be read from Azure Blob Storage by providing a configured
-      `adlfs AzureBlobFileSystem <https://github.com/fsspec/adlfs>`__, where the appropriate
-      account name and account key can be specified.
+            print(ds.schema())
 
-      .. literalinclude:: ./doc_code/loading_data_untested.py
-        :language: python
-        :start-after: __read_parquet_az_begin__
-        :end-before: __read_parquet_az_end__
+        .. testoutput::
 
-Reading from Local Storage
-==========================
+            Column        Type
+            ------        ----
+            sepal.length  double
+            sepal.width   double
+            petal.length  double
+            petal.width   double
+            variety       string
 
-In Ray Data, users often read from remote storage systems as described above. In
-some use cases, users may want to read from local storage. There are three ways to read
-from a local filesystem:
+    .. tab-item:: ABL
 
-* **Providing a raw filesystem path**: For example, in ``ray.data.read_csv("my_file.csv")``,
-  the given path will be resolved as a local filesystem path. If the file exists only on the
-  local node and you run this read operation in distributed cluster, this will fail as it
-  cannot access the file from remote nodes.
-* **Using ``local://`` custom URI scheme**: Similarly, this will be resolved to local
-  filesystem, e.g. ``ray.data.read_csv("local://my_file.csv")`` will read the
-  same file as the approach above. The difference is that this scheme will ensure
-  all read tasks happen on the local node, so it's safe to run in a distributed
-  cluster.
-* **Using ``example://`` custom URI scheme**: The paths with this scheme will be resolved
-  to ``ray/data/examples/data`` directory in the Ray package. This scheme is used
-  only for testing or demoing examples.
+        To read files from Azure Blob Storage, install the
+        `Filesystem interface to Azure-Datalake Gen1 and Gen2 Storage <https://pypi.org/project/adlfs/>`_
 
-Reading Compressed Files
-========================
+        .. code-block:: console
 
-Ray Data supports reading compressed files using the ``arrow_open_stream_args`` arg.
-`Codecs supported by Arrow <https://arrow.apache.org/docs/python/generated/pyarrow.CompressedInputStream.html>`__
-(bz2, brotli, gzip, lz4 or zstd) are compatible with Ray Data.
-For example:
+            pip install adlfs
 
-.. literalinclude:: ./doc_code/loading_data.py
-  :language: python
-  :start-after: __read_compressed_begin__
-  :end-before: __read_compressed_end__
+        Then, create a ``AzureBlobFileSystem`` and specify URIs with the `az://` scheme.
 
-.. _dataset_from_in_memory_data:
+        .. testcode::
+            :skipif: True
 
--------------------
-From In-Memory Data
--------------------
+            import adlfs
+            import ray
 
-Datasets can be constructed from existing in-memory data. In addition to being able to
-construct a ``Dataset`` from plain Python objects, Datasets also interoperates with popular
-single-node libraries (`Pandas <https://pandas.pydata.org/>`__,
-`NumPy <https://numpy.org/>`__, `Arrow <https://arrow.apache.org/>`__) as well as
-distributed frameworks (:ref:`Dask <dask-on-ray>`, :ref:`Spark <spark-on-ray>`,
-:ref:`Modin <modin-on-ray>`, :ref:`Mars <mars-on-ray>`).
+            ds = ray.data.read_parquet(
+                "az://ray-example-data/iris.parquet",
+                adlfs.AzureBlobFileSystem(account_name="azureopendatastorage")
+            )
 
-.. _dataset_from_in_memory_data_single_node:
+            print(ds.schema())
 
-From Single-Node Data Libraries
-===============================
+        .. testoutput::
 
-In this section, we demonstrate creating a ``Dataset`` from single-node in-memory data.
+            Column        Type
+            ------        ----
+            sepal.length  double
+            sepal.width   double
+            petal.length  double
+            petal.width   double
+            variety       string
+
+Reading files from NFS
+~~~~~~~~~~~~~~~~~~~~~~
+
+To read files from NFS filesystems, call a function like :func:`~ray.data.read_parquet`
+and specify files on the mounted filesystem. Paths can point to files or directories.
+
+To read formats other than Parquet, see the :ref:`Input/Output reference <input-output>`.
+
+.. testcode::
+    :skipif: True
+
+    import ray
+
+    ds = ray.data.read_parquet("/mnt/cluster_storage/iris.parquet")
+
+    print(ds.schema())
+
+.. testoutput::
+
+    Column        Type
+    ------        ----
+    sepal.length  double
+    sepal.width   double
+    petal.length  double
+    petal.width   double
+    variety       string
+
+Handling compressed files
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+To read a compressed file, specify ``compression`` in ``arrow_open_stream_args``.
+You can use any `Codec supported by Arrow <https://arrow.apache.org/docs/python/generated/pyarrow.CompressedInputStream.html>`__.
+
+.. testcode::
+
+    import ray
+
+    ds = ray.data.read_csv(
+        "s3://anonymous@ray-example-data/iris.csv.gz",
+        arrow_open_stream_args={"compression": "gzip"},
+    )
+
+Loading data from other libraries
+=================================
+
+Loading data from single-node data libraries
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Ray Data interoperates with libraries like pandas, NumPy, and Arrow.
 
 .. tab-set::
 
-    .. tab-item:: Pandas
+    .. tab-item:: Python objects
 
-      Create a ``Dataset`` from a Pandas DataFrame. This constructs a ``Dataset``
-      backed by a single block.
+        To create a :class:`~ray.data.dataset.Dataset` from Python objects, call
+        :func:`~ray.data.from_items` and pass in a list of ``Dict``. Ray Data treats
+        each ``Dict`` as a row.
 
-      .. literalinclude:: ./doc_code/loading_data.py
-        :language: python
-        :start-after: __from_pandas_begin__
-        :end-before: __from_pandas_end__
+        .. testcode::
 
-      We can also build a ``Dataset`` from more than one Pandas DataFrame, where each said
-      DataFrame will become a block in the ``Dataset``.
+            import ray
 
-      .. literalinclude:: ./doc_code/loading_data.py
-        :language: python
-        :start-after: __from_pandas_mult_begin__
-        :end-before: __from_pandas_mult_end__
+            ds = ray.data.from_items([
+                {"food": "spam", "price": 9.34},
+                {"food": "ham", "price": 5.37},
+                {"food": "eggs", "price": 0.94}
+            ])
+
+            print(ds)
+
+        .. testoutput::
+
+            MaterializedDataset(
+               num_blocks=3,
+               num_rows=3,
+               schema={food: string, price: double}
+            )
+
+        You can also create a :class:`~ray.data.dataset.Dataset` from a list of regular
+        Python objects.
+
+        .. testcode::
+
+            import ray
+
+            ds = ray.data.from_items([1, 2, 3, 4, 5])
+
+            print(ds)
+
+        .. testoutput::
+
+            MaterializedDataset(num_blocks=5, num_rows=5, schema={item: int64})
 
     .. tab-item:: NumPy
 
-      Create a ``Dataset`` from a NumPy ndarray. This constructs a ``Dataset``
-      backed by a single block; the outer dimension of the ndarray
-      will be treated as the row dimension, and the column will have name ``"data"``.
+        To create a :class:`~ray.data.dataset.Dataset` from a NumPy array, call
+        :func:`~ray.data.from_numpy`. Ray Data treats the outer axis as the row
+        dimension.
 
-      .. literalinclude:: ./doc_code/loading_data.py
-        :language: python
-        :start-after: __from_numpy_begin__
-        :end-before: __from_numpy_end__
+        .. testcode::
 
-      We can also build a ``Dataset`` from more than one NumPy ndarray, where each said
-      ndarray will become a block in the ``Dataset``.
+            import numpy as np
+            import ray
 
-      .. literalinclude:: ./doc_code/loading_data.py
-        :language: python
-        :start-after: __from_numpy_mult_begin__
-        :end-before: __from_numpy_mult_end__
+            array = np.ones((3, 2, 2))
+            ds = ray.data.from_numpy(array)
 
-    .. tab-item:: Arrow
+            print(ds)
 
-      Create a ``Dataset`` from an
-      `Arrow Table <https://arrow.apache.org/docs/python/generated/pyarrow.Table.html>`__.
-      This constructs a ``Dataset`` backed by a single block.
+        .. testoutput::
 
-      .. literalinclude:: ./doc_code/loading_data.py
-        :language: python
-        :start-after: __from_arrow_begin__
-        :end-before: __from_arrow_end__
+            MaterializedDataset(
+               num_blocks=1,
+               num_rows=3,
+               schema={data: numpy.ndarray(shape=(2, 2), dtype=double)}
+            )
 
-      We can also build a ``Dataset`` from more than one Arrow Table, where each said
-      ``Table`` will become a block in the ``Dataset``.
+    .. tab-item:: pandas
 
-      .. literalinclude:: ./doc_code/loading_data.py
-        :language: python
-        :start-after: __from_arrow_mult_begin__
-        :end-before: __from_arrow_mult_end__
+        To create a :class:`~ray.data.dataset.Dataset` from a pandas DataFrame, call
+        :func:`~ray.data.from_pandas`.
 
-    .. tab-item:: Python Objects
+        .. testcode::
 
-      Create a ``Dataset`` from a list of Python objects; which are interpreted as dict records.
-      If the object is not a dict, it will be wrapped as ``{"item": item}``.
+            import pandas as pd
+            import ray
 
-      .. literalinclude:: ./doc_code/loading_data.py
-        :language: python
-        :start-after: __from_items_begin__
-        :end-before: __from_items_end__
+            df = pd.DataFrame({
+                "food": ["spam", "ham", "eggs"],
+                "price": [9.34, 5.37, 0.94]
+            })
+            ds = ray.data.from_pandas(df)
 
-.. _dataset_from_in_memory_data_distributed:
+            print(ds)
 
-From Distributed Data Processing Frameworks
-===========================================
+        .. testoutput::
 
-In addition to working with single-node in-memory data, Datasets can be constructed from
-distributed (multi-node) in-memory data, interoperating with popular distributed
-data processing frameworks such as :ref:`Dask <dask-on-ray>`, :ref:`Spark <spark-on-ray>`,
-:ref:`Modin <modin-on-ray>`, and :ref:`Mars <mars-on-ray>`.
+            MaterializedDataset(
+               num_blocks=1,
+               num_rows=3,
+               schema={food: object, price: float64}
+            )
 
-Note that these data processing frameworks must be running on Ray in order for these
-integrations to work. See how these frameworks can be run on Ray in our
-:ref:`data processing integrations docs <data_integrations>`.
+    .. tab-item:: PyArrow
+
+        To create a :class:`~ray.data.dataset.Dataset` from an Arrow table, call
+        :func:`~ray.data.from_arrow`.
+
+        .. testcode::
+
+            import pyarrow as pa
+
+            table = pa.table({
+                "food": ["spam", "ham", "eggs"],
+                "price": [9.34, 5.37, 0.94]
+            })
+            ds = ray.data.from_arrow(table)
+
+            print(ds)
+
+        .. testoutput::
+
+            MaterializedDataset(
+               num_blocks=1,
+               num_rows=3,
+               schema={food: string, price: double}
+            )
+
+.. _loading_datasets_from_distributed_df:
+
+Loading data from distributed DataFrame libraries
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Ray Data interoperates with distributed data processing frameworks like
+:ref:`Dask <dask-on-ray>`, :ref:`Spark <spark-on-ray>`, :ref:`Modin <modin-on-ray>`, and
+:ref:`Mars <mars-on-ray>`.
 
 .. tab-set::
 
     .. tab-item:: Dask
 
-      Create a ``MaterializedDataset`` from a
-      `Dask DataFrame <https://docs.dask.org/en/stable/dataframe.html>`__. This constructs a
-      ``Dataset`` backed by the distributed Pandas DataFrame partitions that underly the
-      Dask DataFrame.
+        To create a :class:`~ray.data.dataset.Dataset` from a
+        `Dask DataFrame <https://docs.dask.org/en/stable/dataframe.html>`__, call
+        :func:`~ray.data.from_dask`. This function constructs a
+        ``Dataset`` backed by the distributed Pandas DataFrame partitions that underly
+        the Dask DataFrame.
 
-      .. literalinclude:: ./doc_code/loading_data.py
-        :language: python
-        :start-after: __from_dask_begin__
-        :end-before: __from_dask_end__
+        .. testcode::
+            :skipif: True
+
+            import dask.dataframe as dd
+            import pandas as pd
+            import ray
+
+            df = pd.DataFrame({"col1": list(range(10000)), "col2": list(map(str, range(10000)))})
+            ddf = dd.from_pandas(df, npartitions=4)
+            # Create a Dataset from a Dask DataFrame.
+            ds = ray.data.from_dask(ddf)
+
+            ds.show(3)
+
+        .. testoutput::
+
+            {'string': 'spam', 'number': 0}
+            {'string': 'ham', 'number': 1}
+            {'string': 'eggs', 'number': 2}
 
     .. tab-item:: Spark
 
-      Create a ``MaterializedDataset`` from a `Spark DataFrame
-      <https://spark.apache.org/docs/latest/api/python/reference/pyspark.sql/dataframe.html>`__.
-      This constructs a ``Dataset`` backed by the distributed Spark DataFrame partitions
-      that underly the Spark DataFrame. When this conversion happens, Spark-on-Ray (RayDP)
-      will save the Spark DataFrame partitions to Ray's object store in the Arrow format,
-      which Datasets will then interpret as its blocks.
+        To create a :class:`~ray.data.dataset.Dataset` from a `Spark DataFrame
+        <https://spark.apache.org/docs/latest/api/python/reference/pyspark.sql/dataframe.html>`__,
+        call :func:`~ray.data.from_spark`. This function creates a ``Dataset`` backed by
+        the distributed Spark DataFrame partitions that underly the Spark DataFrame.
 
-      .. literalinclude:: ./doc_code/loading_data_untested.py
-        :language: python
-        :start-after: __from_spark_begin__
-        :end-before: __from_spark_end__
+        .. testcode::
+            :skipif: True
+
+            import ray
+            import raydp
+
+            spark = raydp.init_spark(app_name="Spark -> Datasets Example",
+                                    num_executors=2,
+                                    executor_cores=2,
+                                    executor_memory="500MB")
+            df = spark.createDataFrame([(i, str(i)) for i in range(10000)], ["col1", "col2"])
+            ds = ray.data.from_spark(df)
+
+            ds.show(3)
+
+        .. testoutput::
+
+            {'col1': 0, 'col2': '0'}
+            {'col1': 1, 'col2': '1'}
+            {'col1': 2, 'col2': '2'}
 
     .. tab-item:: Modin
 
-      Create a ``MaterializedDataset`` from a Modin DataFrame. This constructs a ``Dataset``
-      backed by the distributed Pandas DataFrame partitions that underly the Modin DataFrame.
+        To create a :class:`~ray.data.dataset.Dataset` from a Modin DataFrame, call
+        :func:`~ray.data.from_modin`. This function constructs a ``Dataset`` backed by
+        the distributed Pandas DataFrame partitions that underly the Modin DataFrame.
 
-      .. literalinclude:: ./doc_code/loading_data.py
-        :language: python
-        :start-after: __from_modin_begin__
-        :end-before: __from_modin_end__
+        .. testcode::
+            :skipif: True
+
+            import modin.pandas as md
+            import pandas as pd
+            import ray
+
+            df = pd.DataFrame({"col1": list(range(10000)), "col2": list(map(str, range(10000)))})
+            mdf = md.DataFrame(df)
+            # Create a Dataset from a Modin DataFrame.
+            ds = ray.data.from_modin(mdf)
+
+            ds.show(3)
+
+        .. testoutput::
+
+            {'col1': 0, 'col2': '0'}
+            {'col1': 1, 'col2': '1'}
+            {'col1': 2, 'col2': '2'}
 
     .. tab-item:: Mars
 
-      Create a ``MaterializedDataset`` from a Mars DataFrame. This constructs a ``Dataset``
-      backed by the distributed Pandas DataFrame partitions that underly the Mars DataFrame.
+        To create a :class:`~ray.data.dataset.Dataset` from a Mars DataFrame, call
+        :func:`~ray.data.from_mars`. This function constructs a ``Dataset``
+        backed by the distributed Pandas DataFrame partitions that underly the Mars
+        DataFrame.
 
-      .. literalinclude:: ./doc_code/loading_data_untested.py
-        :language: python
-        :start-after: __from_mars_begin__
-        :end-before: __from_mars_end__
+        .. testcode::
+            :skipif: True
 
-.. _dataset_from_torch_tf:
+            import mars
+            import mars.dataframe as md
+            import pandas as pd
+            import ray
 
--------------------------
-From Torch and TensorFlow
--------------------------
+            cluster = mars.new_cluster_in_ray(worker_num=2, worker_cpu=1)
+
+            df = pd.DataFrame({"col1": list(range(10000)), "col2": list(map(str, range(10000)))})
+            mdf = md.DataFrame(df, num_partitions=8)
+            # Create a tabular Dataset from a Mars DataFrame.
+            ds = ray.data.from_mars(mdf)
+
+            ds.show(3)
+
+        .. testoutput::
+
+            {'col1': 0, 'col2': '0'}
+            {'col1': 1, 'col2': '1'}
+            {'col1': 2, 'col2': '2'}
+
+Loading data from ML libraries
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Ray Data interoperates with HuggingFace and TensorFlow datasets.
 
 .. tab-set::
 
-    .. tab-item:: PyTorch
+    .. tab-item:: HuggingFace
 
-        If you already have a Torch dataset available, you can create a Dataset using
-        :class:`~ray.data.from_torch`.
+        To convert a 🤗 Dataset to a Ray Datasets, call
+        :func:`~ray.data.from_huggingface`. This function accesses the underlying Arrow
+        table and converts it to a Dataset directly.
 
         .. warning::
-            :class:`~ray.data.from_torch` doesn't support parallel
-            reads. You should only use this datasource for small datasets like MNIST or
-            CIFAR.
+            :class:`~ray.data.from_huggingface` doesn't support parallel
+            reads. This isn't an issue with in-memory 🤗 Datasets, but may fail with
+            large memory-mapped 🤗 Datasets. Also, 🤗 ``IterableDataset`` objects aren't
+            supported.
 
-        .. code-block:: python
+        .. testcode::
 
-            import ray
-            import torchvision
+            import ray.data
+            from datasets import load_dataset
 
-            torch_ds = torchvision.datasets.MNIST("data", download=True)
-            dataset = ray.data.from_torch(torch_ds)
-            dataset.take(1)
-            # {"item": (<PIL.Image.Image image mode=L size=28x28 at 0x1142CCA60>, 5)}
+            hf_ds = load_dataset("wikitext", "wikitext-2-raw-v1")
+            ray_ds = ray.data.from_huggingface(hf_ds["train"])
+            ray_ds.take(2)
+
+        .. testoutput::
+            :options: +MOCK
+
+            [{'text': ''}, {'text': ' = Valkyria Chronicles III = \n'}]
 
     .. tab-item:: TensorFlow
 
-        If you already have a TensorFlow dataset available, you can create a Dataset
-        using :class:`~ray.data.from_tf`.
+        To convert a TensorFlow dataset to a Ray Dataset, call :func:`~ray.data.from_tf`.
 
         .. warning::
-            :class:`~ray.data.from_tf` doesn't support parallel reads. You
-            should only use this function with small datasets like MNIST or CIFAR.
+            :class:`~ray.data.from_tf` doesn't support parallel reads. Only use this
+            function with small datasets like MNIST or CIFAR.
 
-        .. code-block:: python
+        .. testcode::
 
             import ray
             import tensorflow_datasets as tfds
 
             tf_ds, _ = tfds.load("cifar10", split=["train", "test"])
-            dataset = ray.data.from_tf(tf_ds)
+            ds = ray.data.from_tf(tf_ds)
 
-            dataset
-            # -> MaterializedDataset(num_blocks=200, num_rows=50000, schema={id: binary, image: numpy.ndarray(shape=(32, 32, 3), dtype=uint8), label: int64})
+            print(ds)
 
-.. _dataset_from_huggingface:
+        ..
+            The following `testoutput` is mocked to avoid illustrating download logs like
+            "Downloading and preparing dataset 162.17 MiB".
 
--------------------------------
-From 🤗 (Hugging Face) Datasets
--------------------------------
+        .. testoutput::
+            :options: +MOCK
 
-You can convert 🤗 Datasets into Ray Data by using
-:py:class:`~ray.data.from_huggingface`. This function accesses the underlying Arrow table and
-converts it into a Dataset directly.
+            MaterializedDataset(
+               num_blocks=...,
+               num_rows=50000,
+               schema={
+                  id: binary,
+                  image: numpy.ndarray(shape=(32, 32, 3), dtype=uint8),
+                  label: int64
+               }
+            )
 
-.. warning::
-    :py:class:`~ray.data.from_huggingface` doesn't support parallel
-    reads. This will not usually be an issue with in-memory 🤗 Datasets,
-    but may fail with large memory-mapped 🤗 Datasets. 🤗 ``IterableDataset``
-    objects are not supported.
+Reading databases
+=================
 
-.. code-block:: python
+Ray Data reads from databases like MySQL, Postgres, and MongoDB.
 
-    import ray.data
-    from datasets import load_dataset
+.. _reading_sql:
 
-    hf_ds = load_dataset("wikitext", "wikitext-2-raw-v1")
-    ray_ds = ray.data.from_huggingface(hf_ds)
-    ray_ds["train"].take(2)
-    # [{'text': ''}, {'text': ' = Valkyria Chronicles III = \n'}]
-
-.. _dataset_mongo_db:
-
-------------
-From MongoDB
-------------
-
-A Dataset can also be created from `MongoDB <https://www.mongodb.com/>`__ with
-:py:class:`~ray.data.read_mongo`.
-This interacts with MongoDB similar to external filesystems, except here you will
-need to specify the MongoDB source by its `uri <https://www.mongodb.com/docs/manual/reference/connection-string/>`__,
-`database and collection <https://www.mongodb.com/docs/manual/core/databases-and-collections/>`__,
-and specify a `pipeline <https://www.mongodb.com/docs/manual/core/aggregation-pipeline/>`__ to run against
-the collection. The execution results are then used to create a Dataset.
-
-.. note::
-
-  This example is not runnable as-is; you'll need to point it at your MongoDB
-  instance.
-
-.. code-block:: python
-
-    import ray
-
-    # Read a local MongoDB.
-    ds = ray.data.read_mongo(
-        uri="mongodb://localhost:27017",
-        database="my_db",
-        collection="my_collection",
-        pipeline=[{"$match": {"col": {"$gte": 0, "$lt": 10}}}, {"$sort": "sort_col"}],
-    )
-
-    # Reading a remote MongoDB is the same.
-    ds = ray.data.read_mongo(
-        uri="mongodb://username:password@mongodb0.example.com:27017/?authSource=admin",
-        database="my_db",
-        collection="my_collection",
-        pipeline=[{"$match": {"col": {"$gte": 0, "$lt": 10}}}, {"$sort": "sort_col"}],
-    )
-
-    # Write back to MongoDB.
-    ds.write_mongo(
-        MongoDatasource(),
-        uri="mongodb://username:password@mongodb0.example.com:27017/?authSource=admin",
-        database="my_db",
-        collection="my_collection",
-    )
-
-.. _datasets_sql_databases:
-
---------------------------
-Reading From SQL Databases
---------------------------
+Reading SQL databases
+~~~~~~~~~~~~~~~~~~~~~
 
 Call :func:`~ray.data.read_sql` to read data from a database that provides a
 `Python DB API2-compliant <https://peps.python.org/pep-0249/>`_ connector.
@@ -614,9 +662,10 @@ Call :func:`~ray.data.read_sql` to read data from a database that provides a
 
             pip install mysql-connector-python
 
-        Then, define your connection login and query the database.
+        Then, define your connection logic and query the database.
 
-        .. code-block:: python
+        .. testcode::
+            :skipif: True
 
             import mysql.connector
 
@@ -652,9 +701,10 @@ Call :func:`~ray.data.read_sql` to read data from a database that provides a
 
             pip install psycopg2-binary
 
-        Then, define your connection login and query the database.
+        Then, define your connection logic and query the database.
 
-        .. code-block:: python
+        .. testcode::
+            :skipif: True
 
             import psycopg2
 
@@ -688,9 +738,10 @@ Call :func:`~ray.data.read_sql` to read data from a database that provides a
 
             pip install snowflake-connector-python
 
-        Then, define your connection login and query the database.
+        Then, define your connection logic and query the database.
 
-        .. code-block:: python
+        .. testcode::
+            :skipif: True
 
             import snowflake.connector
 
@@ -728,7 +779,8 @@ Call :func:`~ray.data.read_sql` to read data from a database that provides a
 
         Then, define your connection logic and read from the Databricks SQL warehouse.
 
-        .. code-block:: python
+        .. testcode::
+            :skipif: True
 
             from databricks import sql
 
@@ -762,9 +814,10 @@ Call :func:`~ray.data.read_sql` to read data from a database that provides a
 
             pip install google-cloud-bigquery
 
-        Then, define your connection login and query the dataset.
+        Then, define your connection logic and query the dataset.
 
-        .. code-block:: python
+        .. testcode::
+            :skipif: True
 
             from google.cloud import bigquery
             from google.cloud.bigquery import dbapi
@@ -786,17 +839,99 @@ Call :func:`~ray.data.read_sql` to read data from a database that provides a
                 "SELECT year, COUNT(*) FROM movie GROUP BY year", create_connection
             )
 
+.. _reading_mongodb:
 
-.. _data_custom_datasource:
+Reading MongoDB
+~~~~~~~~~~~~~~~
 
-------------------
-Custom Datasources
-------------------
+To read data from MongoDB, call :func:`~ray.data.read_mongo` and specify the
+the source URI, database, and collection. You also need to specify a pipeline to
+run against the collection.
 
-Datasets can read and write in parallel to :ref:`custom datasources <data_source_api>` defined in Python.
-Once you have implemented `YourCustomDataSource`, you can use it like any other source in Ray Data:
+.. testcode::
+    :skipif: True
 
-.. code-block:: python
+    import ray
+
+    # Read a local MongoDB.
+    ds = ray.data.read_mongo(
+        uri="mongodb://localhost:27017",
+        database="my_db",
+        collection="my_collection",
+        pipeline=[{"$match": {"col": {"$gte": 0, "$lt": 10}}}, {"$sort": "sort_col"}],
+    )
+
+    # Reading a remote MongoDB is the same.
+    ds = ray.data.read_mongo(
+        uri="mongodb://username:password@mongodb0.example.com:27017/?authSource=admin",
+        database="my_db",
+        collection="my_collection",
+        pipeline=[{"$match": {"col": {"$gte": 0, "$lt": 10}}}, {"$sort": "sort_col"}],
+    )
+
+    # Write back to MongoDB.
+    ds.write_mongo(
+        MongoDatasource(),
+        uri="mongodb://username:password@mongodb0.example.com:27017/?authSource=admin",
+        database="my_db",
+        collection="my_collection",
+    )
+
+Creating synthetic data
+=======================
+
+Synthetic datasets can be useful for testing and benchmarking.
+
+.. tab-set::
+
+    .. tab-item:: Int Range
+
+        To create a synthetic :class:`~ray.data.Dataset` from a range of integers, call
+        :func:`~ray.data.range`. Ray Data stores the integer range in a single column.
+
+        .. testcode::
+
+            import ray
+
+            ds = ray.data.range(10000)
+
+            print(ds.schema())
+
+        .. testoutput::
+
+            Column  Type
+            ------  ----
+            id      int64
+
+    .. tab-item:: Tensor Range
+
+        To create a synthetic :class:`~ray.data.Dataset` containing arrays, call
+        :func:`~ray.data.range_tensor`. Ray Data packs an integer range into ndarrays of
+        the provided shape.
+
+        .. testcode::
+
+            import ray
+
+            ds = ray.data.range_tensor(10, shape=(64, 64))
+
+            print(ds.schema())
+
+        .. testoutput::
+
+            Column  Type
+            ------  ----
+            data    numpy.ndarray(shape=(64, 64), dtype=int64)
+
+Loading other data sources
+==========================
+
+If Ray Data can't load your data, subclass
+:class:`~ray.data.datasource.Datasource`. Then, construct an instance of your custom
+datasource and pass it to :func:`~ray.data.read_datasource`.
+
+.. testcode::
+    :skipif: True
 
     # Read from a custom datasource.
     ds = ray.data.read_datasource(YourCustomDatasource(), **read_args)
@@ -804,13 +939,16 @@ Once you have implemented `YourCustomDataSource`, you can use it like any other 
     # Write to a custom datasource.
     ds.write_datasource(YourCustomDatasource(), **write_args)
 
-For more details, read :ref:`Implementing a Custom Datasource <custom_datasources>`.
+For an example, see :ref:`Implementing a Custom Datasource <custom_datasources>`.
 
---------------------------
-Performance Considerations
---------------------------
+Performance considerations
+==========================
 
-The dataset ``parallelism`` determines the number of blocks the base data will be split into for parallel reads. Ray Data will decide internally how many read tasks to run concurrently to best utilize the cluster, ranging from ``1...parallelism`` tasks. In other words, the higher the parallelism, the smaller the data blocks in the Dataset and hence the more opportunity for parallel execution.
+The dataset ``parallelism`` determines the number of blocks the base data will be split
+into for parallel reads. Ray Data will decide internally how many read tasks to run
+concurrently to best utilize the cluster, ranging from ``1...parallelism`` tasks. In
+other words, the higher the parallelism, the smaller the data blocks in the Dataset and
+hence the more opportunity for parallel execution.
 
 .. image:: images/dataset-read.svg
    :width: 650px

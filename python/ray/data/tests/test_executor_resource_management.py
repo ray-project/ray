@@ -1,17 +1,13 @@
 import pytest
 
 import ray
-from ray.data._internal.execution.interfaces import (
-    ExecutionResources,
-    ExecutionOptions,
-)
-from ray.data._internal.compute import TaskPoolStrategy, ActorPoolStrategy
-from ray.data._internal.execution.operators.map_operator import MapOperator
+from ray.data._internal.compute import ActorPoolStrategy, TaskPoolStrategy
+from ray.data._internal.execution.interfaces import ExecutionOptions, ExecutionResources
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
+from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.util import make_ref_bundles
-from ray.data.tests.test_operators import _mul2_transform
 from ray.data.tests.conftest import *  # noqa
-
+from ray.data.tests.test_operators import _mul2_transform
 
 SMALL_STR = "hello" * 120
 
@@ -78,6 +74,28 @@ def test_resource_canonicalization(ray_start_10_cpus_shared):
             compute_strategy=TaskPoolStrategy(),
             ray_remote_args={"num_gpus": 2, "num_cpus": 1},
         )
+
+
+def test_scheduling_strategy_overrides(ray_start_10_cpus_shared, restore_data_context):
+    input_op = InputDataBuffer(make_ref_bundles([[i] for i in range(100)]))
+    op = MapOperator.create(
+        _mul2_transform,
+        input_op=input_op,
+        name="TestMapper",
+        compute_strategy=TaskPoolStrategy(),
+        ray_remote_args={"num_gpus": 2, "scheduling_strategy": "DEFAULT"},
+    )
+    assert op._ray_remote_args == {"num_gpus": 2, "scheduling_strategy": "DEFAULT"}
+
+    ray.data.DataContext.get_current().scheduling_strategy = "DEFAULT"
+    op = MapOperator.create(
+        _mul2_transform,
+        input_op=input_op,
+        name="TestMapper",
+        compute_strategy=TaskPoolStrategy(),
+        ray_remote_args={"num_gpus": 2},
+    )
+    assert op._ray_remote_args == {"num_gpus": 2}
 
 
 def test_task_pool_resource_reporting(ray_start_10_cpus_shared):
@@ -192,7 +210,7 @@ def test_actor_pool_resource_reporting(ray_start_10_cpus_shared):
     assert usage.object_store_memory == pytest.approx(2560, rel=0.5), usage
 
     # Indicate that no more inputs will arrive.
-    op.inputs_done()
+    op.all_inputs_done()
 
     # Wait until tasks are done.
     work_refs = op.get_work_refs()
@@ -276,7 +294,7 @@ def test_actor_pool_resource_reporting_with_bundling(ray_start_10_cpus_shared):
     assert usage.object_store_memory == pytest.approx(3200, rel=0.5), usage
 
     # Indicate that no more inputs will arrive.
-    op.inputs_done()
+    op.all_inputs_done()
 
     # Wait until tasks are done.
     work_refs = op.get_work_refs()

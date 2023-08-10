@@ -145,32 +145,36 @@ If you're writing a longer example, or if object representations aren't relevant
 
     .. testcode::
 
-        import pandas as pd
+        from typing import Dict
+        import numpy as np
         import ray
-        from ray.train.batch_predictor import BatchPredictor
 
-        def calculate_accuracy(df):
-            return pd.DataFrame({"correct": df["preds"] == df["label"]})
+        ds = ray.data.read_csv("s3://anonymous@air-example-data/iris.csv")
 
-        # Create a batch predictor that returns identity as the predictions.
-        batch_pred = BatchPredictor.from_pandas_udf(
-        lambda data: pd.DataFrame({"preds": data["feature_1"]}))
+        # Compute a "petal area" attribute.
+        def transform_batch(batch: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
+            vec_a = batch["petal length (cm)"]
+            vec_b = batch["petal width (cm)"]
+            batch["petal area (cm^2)"] = vec_a * vec_b
+            return batch
 
-        # Create a dummy dataset.
-        ds = ray.data.from_pandas(pd.DataFrame({
-        "feature_1": [1, 2, 3], "label": [1, 2, 3]}))
-
-        # Execute batch prediction using this predictor.
-        predictions = batch_pred.predict(ds,
-        feature_columns=["feature_1"], keep_columns=["label"])
-
-        # Calculate final accuracy
-        correct = predictions.map_batches(calculate_accuracy)
-        print(f"Final accuracy: {correct.sum(on='correct') / correct.count()}")
+        transformed_ds = ds.map_batches(transform_batch)
+        print(transformed_ds.materialize())
 
     .. testoutput::
 
-        Final accuracy: 1.0
+        MaterializedDataset(
+           num_blocks=...,
+           num_rows=150,
+           schema={
+              sepal length (cm): double,
+              sepal width (cm): double,
+              petal length (cm): double,
+              petal width (cm): double,
+              target: int64,
+              petal area (cm^2): double
+           }
+        )
 
 When to use *literalinclude*
 ============================
@@ -184,8 +188,7 @@ How to handle hard-to-test examples
 When is it okay to not test an example?
 =======================================
 
-You don't need to test examples that require GPUs, or examples that depend on external
-systems like Weights and Biases.
+You don't need to test examples that depend on external systems like Weights and Biases.
 
 Skipping *doctest-style* examples
 =================================
@@ -221,24 +224,10 @@ If your Python code is non-deterministic, or if your output is excessively long,
 Ignoring *doctest-style* outputs
 ================================
 
-To ignore parts of a *doctest-style* output, add `:options: +ELLIPSIS` to
-the `doctest` directive and replace problematic sections with ellipsis. ::
-
-    .. doctest::
-        :options: +ELLIPSIS
-
-        >>> import ray
-        >>> ray.data.read_images("example://image-datasets/simple")
-        Dataset(
-           num_blocks=...,
-           num_rows=...,
-           schema={image: numpy.ndarray(shape=(32, 32, 3), dtype=uint8)}
-        )
-
-If you omit the `doctest` directive, append `# doctest: +ELLIPSIS` to your code instead.
+To ignore parts of a *doctest-style* output, replace problematic sections with ellipses. ::
 
     >>> import ray
-    >>> ray.data.read_images("example://image-datasets/simple")  # doctest: +ELLIPSIS
+    >>> ray.data.read_images("s3://anonymous@ray-example-data/image-datasets/simple")
     Dataset(
        num_blocks=...,
        num_rows=...,
@@ -250,17 +239,16 @@ To ignore an output altogether, write a *code-block-style* snippet. Don't use `#
 Ignoring *code-block-style* outputs
 ===================================
 
-If parts of your output are long or non-deterministic, add `:options: +ELLIPSIS` to
-the `testoutput` directive and replace problematic sections with ellipsis. ::
+If parts of your output are long or non-deterministic, replace problematic sections
+with ellipses. ::
 
     .. testcode::
 
         import ray
-        ds = ray.data.read_images("example://image-datasets/simple")
+        ds = ray.data.read_images("s3://anonymous@ray-example-data/image-datasets/simple")
         print(ds)
 
     .. testoutput::
-        :options: +ELLIPSIS
 
         Dataset(
            num_blocks=...,
@@ -269,7 +257,7 @@ the `testoutput` directive and replace problematic sections with ellipsis. ::
         )
 
 If your output is nondeterministic and you want to display a sample output, add
-`:options: +SKIP`. ::
+`:options: +MOCK`. ::
 
     .. testcode::
 
@@ -277,12 +265,12 @@ If your output is nondeterministic and you want to display a sample output, add
         print(random.random())
 
     .. testoutput::
-        :options: +SKIP
+        :options: +MOCK
 
         0.969461416250246
 
-If your output is hard to test and you don't want to display a sample output, add
-`:options: +ELLIPSIS` and `:hide:`. ::
+If your output is hard to test and you don't want to display a sample output, use
+ellipses and `:hide:`. ::
 
     .. testcode::
 
@@ -290,22 +278,67 @@ If your output is hard to test and you don't want to display a sample output, ad
 
     .. testoutput::
         :hide:
-        :options: +ELLIPSIS
 
         ...
 
---------------------
-How to test examples
---------------------
+------------------------------
+How to test examples with GPUs
+------------------------------
 
-Testing specific examples
-=========================
+To configure Bazel to run an example with GPUs, complete the following steps:
 
-To test specific examples, install `pytest-sphinx`.
+#. Open the corresponding ``BUILD`` file. If your example is in the ``doc/`` folder,
+   open ``doc/BUILD``. If your example is in the ``python/`` folder, open a file like
+   ``python/ray/train/BUILD``.
+
+#. Locate the ``doctest`` rule. It looks like this: ::
+
+    doctest(
+        files = glob(
+            include=["source/**/*.rst"],
+        ),
+        size = "large",
+        tags = ["team:none"]
+    )
+
+#. Add the file that contains your example to the list of excluded files. ::
+
+    doctest(
+        files = glob(
+            include=["source/**/*.rst"],
+            exclude=["source/data/requires-gpus.rst"]
+        ),
+        tags = ["team:none"]
+    )
+
+#. If it doesn't already exist, create a ``doctest`` rule with ``gpu`` set to ``True``. ::
+
+    doctest(
+        files = [],
+        tags = ["team:none"],
+        gpu = True
+    )
+
+#. Add the file that contains your example to the GPU rule. ::
+
+    doctest(
+        files = ["source/data/requires-gpus.rst"]
+        size = "large",
+        tags = ["team:none"],
+        gpu = True
+    )
+
+For a practical example, see ``doc/BUILD`` or ``python/ray/train/BUILD``.
+
+----------------------------
+How to locally test examples
+----------------------------
+
+To locally test examples, install the Ray fork of `pytest-sphinx`.
 
 .. code-block:: bash
 
-    pip install pytest-sphinx
+    pip install git+https://github.com/ray-project/pytest-sphinx
 
 Then, run pytest on a module, docstring, or user guide.
 
@@ -314,14 +347,3 @@ Then, run pytest on a module, docstring, or user guide.
     pytest --doctest-modules python/ray/data/read_api.py
     pytest --doctest-modules python/ray/data/read_api.py::ray.data.read_api.range
     pytest --doctest-modules doc/source/data/getting-started.rst
-
-Testing all examples
-====================
-
-To test all code snippets, run
-
-.. code-block:: bash
-
-    RAY_MOCK_MODULES=0 make doctest
-
-in the `ray/doc` directory.

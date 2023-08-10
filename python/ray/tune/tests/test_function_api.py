@@ -6,6 +6,7 @@ import tempfile
 import unittest
 
 import ray
+from ray.train import CheckpointConfig
 from ray.air.constants import TRAINING_ITERATION
 from ray.rllib import _register_all
 
@@ -13,7 +14,12 @@ from ray import tune
 from ray.tune.logger import NoopLogger
 from ray.tune.execution.placement_groups import PlacementGroupFactory
 from ray.tune.trainable.util import TrainableUtil
-from ray.tune.trainable import with_parameters, wrap_function, FuncCheckpointUtil
+from ray.tune.trainable import (
+    with_parameters,
+    wrap_function,
+    FuncCheckpointUtil,
+    FunctionTrainable,
+)
 from ray.tune.result import DEFAULT_METRIC
 from ray.tune.schedulers import ResourceChangingScheduler
 
@@ -286,6 +292,7 @@ class FunctionCheckpointingTest(unittest.TestCase):
 
         new_trainable2 = wrapped(logger_creator=self.logger_creator)
         new_trainable2.restore_from_object(checkpoint_obj)
+        assert sum("tmp" in path for path in os.listdir(self.logdir)) == 1
         checkpoint_obj = new_trainable2.save_to_object()
         new_trainable2.train()
         result = new_trainable2.train()
@@ -308,9 +315,9 @@ class FunctionApiTest(unittest.TestCase):
             pass
 
         with self.assertRaises(ValueError):
-            tune.run(train, checkpoint_freq=1)
+            tune.run(train, checkpoint_config=CheckpointConfig(checkpoint_frequency=1))
         with self.assertRaises(ValueError):
-            tune.run(train, checkpoint_at_end=True)
+            tune.run(train, checkpoint_config=CheckpointConfig(checkpoint_at_end=True))
 
     def testCheckpointFunctionAtEnd(self):
         def train(config, checkpoint_dir=False):
@@ -349,7 +356,8 @@ class FunctionApiTest(unittest.TestCase):
                 with open(checkpoint_path, "w") as f:
                     f.write("goodbye")
 
-        [trial] = tune.run(train, keep_checkpoints_num=3).trials
+        checkpoint_config = CheckpointConfig(num_to_keep=3)
+        [trial] = tune.run(train, checkpoint_config=checkpoint_config).trials
         assert os.path.exists(os.path.join(trial.checkpoint.dir_or_data, "ckpt.log2"))
 
     def testReuseCheckpoint(self):
@@ -592,6 +600,42 @@ class FunctionApiTest(unittest.TestCase):
 
         self.assertEqual(trial_1.last_result["m"], 4 + 9)
         self.assertEqual(trial_2.last_result["m"], 8 + 9)
+
+
+def test_restore_from_object_delete(tmp_path):
+    """Test that temporary checkpoint directories are deleted after restoring.
+
+    `FunctionTrainable.restore_from_object` creates a temporary checkpoint directory.
+    This directory is kept around as we don't control how the user interacts with
+    the checkpoint - they might load it several times, or no time at all.
+
+    Once a new checkpoint is tracked in the status reporter, there is no need to keep
+    the temporary object around anymore. This test asserts that the temporary
+    checkpoint directories are then deleted.
+    """
+    # Create 2 checkpoints
+    cp_1 = TrainableUtil.make_checkpoint_dir(str(tmp_path), index=1, override=True)
+    cp_2 = TrainableUtil.make_checkpoint_dir(str(tmp_path), index=2, override=True)
+
+    # Instantiate function trainable
+    trainable = FunctionTrainable()
+    trainable._logdir = str(tmp_path)
+    trainable._status_reporter.set_checkpoint(cp_1)
+
+    # Save to object and restore. This will create a temporary checkpoint directory.
+    cp_obj = trainable.save_to_object()
+    trainable.restore_from_object(cp_obj)
+
+    # Assert there is at least one `checkpoint_tmpxxxxx` directory in the logdir
+    assert any(path.name.startswith("checkpoint_tmp") for path in tmp_path.iterdir())
+
+    # Track a new checkpoint. This should delete the temporary checkpoint directory.
+    trainable._status_reporter.set_checkpoint(cp_2)
+
+    # Directory should have been deleted
+    assert not any(
+        path.name.startswith("checkpoint_tmp") for path in tmp_path.iterdir()
+    )
 
 
 if __name__ == "__main__":

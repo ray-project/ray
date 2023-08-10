@@ -32,7 +32,7 @@ from ray_release.util import get_anyscale_sdk
 from ray_release.test import Test
 
 TEST_CLUSTER_ENV = {
-    "base_image": "anyscale/ray:nightly-py37",
+    "base_image": "anyscale/ray:nightly-py38",
     "env_vars": {},
     "python": {
         "pip_packages": [],
@@ -131,7 +131,7 @@ class MinimalSessionManagerTest(unittest.TestCase):
         sdk.returns["get_project"] = APIDict(result=APIDict(name="release_unit_tests"))
         sdk.returns["get_cloud"] = APIDict(result=APIDict(provider="AWS"))
         cluster_manager = self.cls(
-            test=Test({"name": "test"}),
+            test=Test({"name": "test", "cluster": {}}),
             project_id=UNIT_TEST_PROJECT_ID,
             smoke_test=False,
             sdk=sdk,
@@ -142,7 +142,7 @@ class MinimalSessionManagerTest(unittest.TestCase):
             "test_name=test;smoke_test=False",
         )
         cluster_manager = self.cls(
-            test=Test({"name": "Test"}),
+            test=Test({"name": "Test", "cluster": {}}),
             project_id=UNIT_TEST_PROJECT_ID,
             smoke_test=True,
             sdk=sdk,

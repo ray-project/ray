@@ -8,6 +8,7 @@ load("//bazel:python.bzl", "doctest")
 
 doctest(
     files = glob(["**/*.py"], exclude=["tests/**/*", "examples/**/*"]),
+    tags = ["team:none"]
 )
 
 SRCS = glob(["**/conftest.py"])

@@ -24,6 +24,8 @@
 #include "ray/common/task/task.h"
 #include "ray/common/task/task_util.h"
 #include "ray/common/test_util.h"
+#include "ray/gcs/pb_util.h"
+#include "src/ray/protobuf/autoscaler.grpc.pb.h"
 #include "src/ray/protobuf/gcs_service.grpc.pb.h"
 
 namespace ray {
@@ -201,6 +203,8 @@ struct Mocker {
     node->set_node_manager_port(port);
     node->set_node_manager_address(address);
     node->set_node_name(node_name);
+    node->set_instance_id("instance_x");
+    node->set_state(rpc::GcsNodeInfo::ALIVE);
     return node;
   }
 
@@ -210,6 +214,12 @@ struct Mocker {
     job_table_data->set_is_dead(false);
     job_table_data->set_timestamp(current_sys_time_ms());
     job_table_data->set_driver_ip_address("127.0.0.1");
+    rpc::Address address;
+    address.set_ip_address("127.0.0.1");
+    address.set_port(1234);
+    address.set_raylet_id(UniqueID::FromRandom().Binary());
+    address.set_worker_id(UniqueID::FromRandom().Binary());
+    job_table_data->mutable_driver_address()->CopyFrom(address);
     job_table_data->set_driver_pid(5667L);
     return job_table_data;
   }
@@ -240,14 +250,24 @@ struct Mocker {
   static std::shared_ptr<rpc::AddJobRequest> GenAddJobRequest(
       const JobID &job_id,
       const std::string &ray_namespace,
-      const std::optional<std::string> &submission_id = std::nullopt) {
+      const std::optional<std::string> &submission_id = std::nullopt,
+      const std::optional<rpc::Address> &address = std::nullopt) {
     auto job_config_data = std::make_shared<rpc::JobConfig>();
     job_config_data->set_ray_namespace(ray_namespace);
 
     auto job_table_data = std::make_shared<rpc::JobTableData>();
     job_table_data->set_job_id(job_id.Binary());
     job_table_data->mutable_config()->CopyFrom(*job_config_data);
-
+    if (address.has_value()) {
+      job_table_data->mutable_driver_address()->CopyFrom(address.value());
+    } else {
+      rpc::Address dummy_address;
+      dummy_address.set_port(1234);
+      dummy_address.set_raylet_id(NodeID::FromRandom().Binary());
+      dummy_address.set_ip_address("123.456.7.8");
+      dummy_address.set_worker_id(WorkerID::FromRandom().Binary());
+      job_table_data->mutable_driver_address()->CopyFrom(dummy_address);
+    }
     if (submission_id.has_value()) {
       job_table_data->mutable_config()->mutable_metadata()->insert(
           {"job_submission_id", submission_id.value()});
@@ -267,17 +287,122 @@ struct Mocker {
       auto new_events = data.add_events_by_task();
       new_events->CopyFrom(events);
     }
+    data.set_num_profile_task_events_dropped(num_profile_task_events_dropped);
+    data.set_num_status_task_events_dropped(num_status_task_events_dropped);
 
-    for (int i = 0; i < num_status_task_events_dropped; ++i) {
-      rpc::TaskAttempt rpc_task_attempt;
-      rpc_task_attempt.set_task_id(RandomTaskId().Binary());
-      rpc_task_attempt.set_attempt_number(0);
-      *(data.add_dropped_task_attempts()) = rpc_task_attempt;
-    }
-
-    data.set_num_profile_events_dropped(num_profile_task_events_dropped);
-    data.set_job_id(JobID::FromInt(0).Binary());
     return data;
+  }
+
+  static rpc::ResourceDemand GenResourceDemand(
+      const absl::flat_hash_map<std::string, double> &resource_demands,
+      int64_t num_ready_queued,
+      int64_t num_infeasible,
+      int64_t num_backlog) {
+    rpc::ResourceDemand resource_demand;
+    for (const auto &resource : resource_demands) {
+      (*resource_demand.mutable_shape())[resource.first] = resource.second;
+    }
+    resource_demand.set_num_ready_requests_queued(num_ready_queued);
+    resource_demand.set_num_infeasible_requests_queued(num_infeasible);
+    resource_demand.set_backlog_size(num_backlog);
+    return resource_demand;
+  }
+
+  static void FillResourcesData(
+      rpc::ResourcesData &resources_data,
+      const NodeID &node_id,
+      const absl::flat_hash_map<std::string, double> &available_resources,
+      const absl::flat_hash_map<std::string, double> &total_resources,
+      bool available_resources_changed,
+      int64_t idle_ms = 0,
+      bool is_draining = false) {
+    resources_data.set_node_id(node_id.Binary());
+    for (const auto &resource : available_resources) {
+      (*resources_data.mutable_resources_available())[resource.first] = resource.second;
+    }
+    for (const auto &resource : total_resources) {
+      (*resources_data.mutable_resources_total())[resource.first] = resource.second;
+    }
+    resources_data.set_resources_available_changed(available_resources_changed);
+    resources_data.set_idle_duration_ms(idle_ms);
+    resources_data.set_is_draining(is_draining);
+  }
+
+  static void FillResourcesData(rpc::ResourcesData &data,
+                                const std::string &node_id,
+                                std::vector<rpc::ResourceDemand> demands,
+                                bool resource_load_changed = true) {
+    auto load_by_shape = data.mutable_resource_load_by_shape();
+    auto agg_load = data.mutable_resource_load();
+    for (const auto &demand : demands) {
+      load_by_shape->add_resource_demands()->CopyFrom(demand);
+      for (const auto &resource : demand.shape()) {
+        (*agg_load)[resource.first] +=
+            (resource.second * (demand.num_ready_requests_queued() +
+                                demand.num_infeasible_requests_queued()));
+      }
+    }
+    data.set_resource_load_changed(resource_load_changed);
+    data.set_node_id(node_id);
+  }
+
+  static std::shared_ptr<rpc::PlacementGroupLoad> GenPlacementGroupLoad(
+      std::vector<rpc::PlacementGroupTableData> placement_group_table_data_vec) {
+    auto placement_group_load = std::make_shared<rpc::PlacementGroupLoad>();
+    for (auto &placement_group_table_data : placement_group_table_data_vec) {
+      placement_group_load->add_placement_group_data()->CopyFrom(
+          placement_group_table_data);
+    }
+    return placement_group_load;
+  }
+
+  static rpc::PlacementGroupTableData GenPlacementGroupTableData(
+      const PlacementGroupID &placement_group_id,
+      const JobID &job_id,
+      const std::vector<std::unordered_map<std::string, double>> &bundles,
+      const std::vector<std::string> &nodes,
+      rpc::PlacementStrategy strategy,
+      const rpc::PlacementGroupTableData::PlacementGroupState state,
+      const std::string &name = "",
+      const ActorID &actor_id = ActorID::Nil()) {
+    rpc::PlacementGroupTableData placement_group_table_data;
+    placement_group_table_data.set_placement_group_id(placement_group_id.Binary());
+    placement_group_table_data.set_state(state);
+    placement_group_table_data.set_name(name);
+    placement_group_table_data.set_strategy(strategy);
+    RAY_CHECK(bundles.size() == nodes.size());
+    size_t i = 0;
+    for (auto &bundle : bundles) {
+      // Add unit resources
+      auto bundle_spec = placement_group_table_data.add_bundles();
+      for (auto &resource : bundle) {
+        (*bundle_spec->mutable_unit_resources())[resource.first] = resource.second;
+      }
+
+      // Add node id
+      const auto &node = nodes[i];
+      if (!node.empty()) {
+        bundle_spec->set_node_id(node);
+      }
+
+      i++;
+    }
+    return placement_group_table_data;
+  }
+  static rpc::autoscaler::ClusterResourceConstraint GenClusterResourcesConstraint(
+      const std::vector<std::unordered_map<std::string, double>> &request_resources,
+      const std::vector<int64_t> &count_array) {
+    rpc::autoscaler::ClusterResourceConstraint constraint;
+    RAY_CHECK(request_resources.size() == count_array.size());
+    for (size_t i = 0; i < request_resources.size(); i++) {
+      auto &resource = request_resources[i];
+      auto count = count_array[i];
+      auto bundle = constraint.add_min_bundles();
+      bundle->set_count(count);
+      bundle->mutable_request()->mutable_resources_bundle()->insert(resource.begin(),
+                                                                    resource.end());
+    }
+    return constraint;
   }
 };
 

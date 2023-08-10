@@ -57,21 +57,6 @@ def _configure_system():
         )
         sys.path.insert(0, pickle5_path)
 
-    # Check that grpc can actually be imported on Apple Silicon. Some package
-    # managers (such as `pip`) can't properly install the grpcio library yet,
-    # so provide a proactive error message if that's the case.
-    if platform.system() == "Darwin" and platform.machine() == "arm64":
-        try:
-            import grpc  # noqa: F401
-        except ImportError:
-            raise ImportError(
-                "Failed to import grpc on Apple Silicon. On Apple"
-                " Silicon machines, try `pip uninstall grpcio; conda "
-                "install grpcio`. Check out "
-                "https://docs.ray.io/en/master/ray-overview/installation.html"
-                "#m1-mac-apple-silicon-support for more details."
-            )
-
     # Importing psutil & setproctitle. Must be before ray._raylet is
     # initialized.
     thirdparty_files = os.path.join(
@@ -194,7 +179,8 @@ serialization = _DeprecationWrapper("serialization", ray._private.serialization)
 state = _DeprecationWrapper("state", ray._private.state)
 
 
-RAY_APIS = {
+# Pulic Ray APIs
+__all__ = [
     "__version__",
     "_config",
     "get_runtime_context",
@@ -225,7 +211,7 @@ RAY_APIS = {
     "LOCAL_MODE",
     "SCRIPT_MODE",
     "WORKER_MODE",
-}
+]
 
 # Public APIs that should automatically trigger ray.init().
 AUTO_INIT_APIS = {
@@ -236,6 +222,7 @@ AUTO_INIT_APIS = {
     "kill",
     "put",
     "wait",
+    "get_runtime_context",
 }
 
 # Public APIs that should not automatically trigger ray.init().
@@ -252,7 +239,6 @@ NON_AUTO_INIT_APIS = {
     "client",
     "cluster_resources",
     "cpp_function",
-    "get_runtime_context",
     "init",
     "is_initialized",
     "java_actor_class",
@@ -265,14 +251,11 @@ NON_AUTO_INIT_APIS = {
     "timeline",
 }
 
-assert RAY_APIS == AUTO_INIT_APIS | NON_AUTO_INIT_APIS
+assert set(__all__) == AUTO_INIT_APIS | NON_AUTO_INIT_APIS
 from ray._private.auto_init_hook import wrap_auto_init_for_all_apis  # noqa: E402
 
 wrap_auto_init_for_all_apis(AUTO_INIT_APIS)
 del wrap_auto_init_for_all_apis
-
-
-__all__ = list(RAY_APIS)
 
 # Subpackages
 __all__ += [

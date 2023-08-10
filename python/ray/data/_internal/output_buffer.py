@@ -1,7 +1,7 @@
-from typing import Callable, Any, Optional
+from typing import Any, Callable, Optional
 
-from ray.data.block import Block, DataBatch, BlockAccessor
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
+from ray.data.block import Block, BlockAccessor, DataBatch
 
 
 class BlockOutputBuffer:

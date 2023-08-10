@@ -1,5 +1,5 @@
 (serve-e2e-ft)=
-# Adding End-to-End Fault Tolerance
+# Add End-to-End Fault Tolerance
 
 This section helps you:
 

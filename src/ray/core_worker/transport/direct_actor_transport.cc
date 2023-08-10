@@ -94,12 +94,14 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
 
     std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> return_objects;
     std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> dynamic_return_objects;
+    std::vector<std::pair<ObjectID, bool>> streaming_generator_returns;
     bool is_retryable_error = false;
     std::string application_error = "";
     auto status = task_handler_(task_spec,
                                 resource_ids,
                                 &return_objects,
                                 &dynamic_return_objects,
+                                &streaming_generator_returns,
                                 reply->mutable_borrowed_refs(),
                                 &is_retryable_error,
                                 &application_error);
@@ -114,6 +116,14 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
       // the serialized error message. So we just record the error message directly while
       // executing the task.
       reply->set_task_execution_error(application_error);
+    }
+
+    for (const auto &it : streaming_generator_returns) {
+      const auto &object_id = it.first;
+      bool is_plasma_object = it.second;
+      auto return_id_proto = reply->add_streaming_generator_return_ids();
+      return_id_proto->set_object_id(object_id.Binary());
+      return_id_proto->set_is_plasma_object(is_plasma_object);
     }
 
     bool objects_valid = return_objects.size() == num_returns;
@@ -155,6 +165,10 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
             task_spec.IsAsyncioActor() ? 0 : task_spec.MaxActorConcurrency();
         pool_manager_ = std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>(
             task_spec.ConcurrencyGroups(), default_max_concurrency);
+        if (task_spec.IsAsyncioActor()) {
+          fiber_state_manager_ = std::make_shared<ConcurrencyGroupManager<FiberState>>(
+              task_spec.ConcurrencyGroups(), fiber_max_concurrency_);
+        }
         concurrency_groups_cache_[task_spec.TaskId().ActorId()] =
             task_spec.ConcurrencyGroups();
         // Tell raylet that an actor creation task has finished execution, so that
@@ -220,6 +234,7 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
                               new OutOfOrderActorSchedulingQueue(task_main_io_service_,
                                                                  *waiter_,
                                                                  pool_manager_,
+                                                                 fiber_state_manager_,
                                                                  is_asyncio_,
                                                                  fiber_max_concurrency_,
                                                                  cg_it->second)))
@@ -231,6 +246,7 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
                               new ActorSchedulingQueue(task_main_io_service_,
                                                        *waiter_,
                                                        pool_manager_,
+                                                       fiber_state_manager_,
                                                        is_asyncio_,
                                                        fiber_max_concurrency_,
                                                        cg_it->second)))

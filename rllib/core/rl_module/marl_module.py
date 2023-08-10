@@ -1,7 +1,7 @@
 from dataclasses import dataclass, field
 import pathlib
 import pprint
-from typing import Iterator, Mapping, Any, Union, Dict, Optional, Type, Set
+from typing import Any, Dict, KeysView, Mapping, Optional, Set, Type, Union
 
 from ray.util.annotations import PublicAPI
 from ray.rllib.utils.annotations import override, ExperimentalAPI
@@ -83,8 +83,8 @@ class MultiAgentRLModule(RLModule):
                     f"Module {module_id} is not a SingleAgentRLModuleSpec object."
                 )
 
-    def keys(self) -> Iterator[ModuleID]:
-        """Returns an iteratable of module ids."""
+    def keys(self) -> KeysView[ModuleID]:
+        """Returns a keys view over the module IDs in this MultiAgentRLModule."""
         return self._rl_modules.keys()
 
     @override(RLModule)

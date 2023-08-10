@@ -65,7 +65,7 @@ def map_udf(df):
     df["sepal.area"] = df["sepal.length"] * df["sepal.width"]
     return df
 
-ds = ray.data.read_parquet("example://iris.parquet") \
+ds = ray.data.read_parquet("s3://anonymous@ray-example-data/iris.parquet") \
     .lazy() \
     .map_batches(map_udf) \
     .filter(lambda row: row["sepal.area"] > 15)
@@ -81,7 +81,7 @@ from io import BytesIO
 import ray
 
 # ML ingest re-reading from storage on every epoch.
-torch_ds = ray.data.read_parquet("example://iris.parquet") \
+torch_ds = ray.data.read_parquet("s3://anonymous@ray-example-data/iris.parquet") \
     .repeat() \
     .random_shuffle_each_window() \
     .iter_torch_batches()
@@ -89,7 +89,7 @@ torch_ds = ray.data.read_parquet("example://iris.parquet") \
 # Streaming batch inference pipeline that pipelines the transforming of a single
 # file with the reading of a single file (at most 2 file's worth of data in-flight
 # at a time).
-infer_ds = ray.data.read_binary_files("example://mnist_subset_partitioned/") \
+infer_ds = ray.data.read_binary_files("s3://anonymous@ray-example-data/mnist_subset_partitioned/") \
     .window(blocks_per_window=1) \
     .map(lambda bytes_: np.asarray(PIL.Image.open(BytesIO(bytes_)).convert("L"))) \
     .map_batches(lambda imgs: [img.mean() > 0.5 for img in imgs])

@@ -2,7 +2,9 @@ import time
 from typing import Callable, Optional
 
 from ray.rllib.models.utils import get_activation_fn
+from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.framework import try_import_jax
+from ray.util import log_once
 
 jax, flax = try_import_jax()
 nn = np = None
@@ -38,6 +40,8 @@ class SlimFC:
                 use for initialization. If None, create a new random one.
             name (Optional[str]): An optional name for this layer.
         """
+        if log_once("jax_slim_fc_deprecation_warning"):
+            deprecation_warning(old=("ray.rllib.models.jax.misc.SlimFC"))
 
         # By default, use Glorot uniform initializer.
         if initializer is None:

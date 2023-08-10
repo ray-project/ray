@@ -36,7 +36,9 @@ class ActorPool:
     """
 
     def __init__(self, actors: list):
-        ray._private.usage.usage_lib.record_library_usage("util.ActorPool")
+        from ray._private.usage.usage_lib import record_library_usage
+
+        record_library_usage("util.ActorPool")
 
         # actors to be used
         self._idle_actors = list(actors)
@@ -146,7 +148,7 @@ class ActorPool:
                                               [1, 2, 3, 4])))
 
             .. testoutput::
-                :options: +SKIP
+                :options: +MOCK
 
                 [6, 8, 4, 2]
         """
@@ -337,7 +339,7 @@ class ActorPool:
                 print(pool.get_next_unordered())
 
             .. testoutput::
-                :options: +SKIP
+                :options: +MOCK
 
                 4
                 2

@@ -3,6 +3,7 @@ import shutil
 import tempfile
 import unittest
 import pytorch_lightning as pl
+from ray.train import CheckpointConfig
 import torch
 from ray.air.constants import TRAINING_ITERATION
 
@@ -114,10 +115,11 @@ class PyTorchLightningIntegrationTest(unittest.TestCase):
             )
             trainer.fit(module)
 
+        checkpoint_config = CheckpointConfig(num_to_keep=100)
         analysis = tune.run(
             train,
             stop={TRAINING_ITERATION: 10},
-            keep_checkpoints_num=100,
+            checkpoint_config=checkpoint_config,
             storage_path=tmpdir,
         )
 
@@ -145,10 +147,11 @@ class PyTorchLightningIntegrationTest(unittest.TestCase):
             )
             trainer.fit(module)
 
+        checkpoint_config = CheckpointConfig(num_to_keep=100)
         analysis = tune.run(
             train,
             stop={TRAINING_ITERATION: 10},
-            keep_checkpoints_num=100,
+            checkpoint_config=checkpoint_config,
             storage_path=tmpdir,
         )
 

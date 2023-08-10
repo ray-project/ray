@@ -266,7 +266,7 @@ class Deployment:
         """
 
         copied_self = copy(self)
-        copied_self._func_or_class = "dummpy.module"
+        copied_self._func_or_class = "dummy.module"
         schema_shell = deployment_to_schema(copied_self)
 
         if inspect.isfunction(self._func_or_class):

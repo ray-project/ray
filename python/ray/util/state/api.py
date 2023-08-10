@@ -1211,7 +1211,7 @@ def get_log(
                print(l)
 
         .. testoutput::
-            :options: +SKIP
+            :options: +MOCK
 
             [2023-05-19 12:35:18,347 I 4259 68399276] (raylet) io_service_pool.cc:35: IOServicePool is running with 1 io_service.
             [2023-05-19 12:35:18,348 I 4259 68399276] (raylet) store_runner.cc:32: Allowing the Plasma store to use up to 2.14748GB of memory.

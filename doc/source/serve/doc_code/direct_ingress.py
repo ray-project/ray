@@ -4,7 +4,7 @@
 import ray
 from ray import serve
 from ray.serve.drivers import DefaultgRPCDriver
-from ray.serve.handle import RayServeDeploymentHandle
+from ray.serve.handle import RayServeHandle
 from ray.serve.deployment_graph import InputNode
 from typing import Dict
 import struct
@@ -14,8 +14,8 @@ import struct
 class FruitMarket:
     def __init__(
         self,
-        orange_stand: RayServeDeploymentHandle,
-        apple_stand: RayServeDeploymentHandle,
+        orange_stand: RayServeHandle,
+        apple_stand: RayServeHandle,
     ):
         self.directory = {
             "ORANGE": orange_stand,
