@@ -487,32 +487,6 @@ class LightningTrainer(TorchTrainer):
         else:
             return air_ckpt_config
 
-    @PublicAPI(stability="alpha")
-    @classmethod
-    def restore(
-        cls: Type["LightningTrainer"],
-        path: str,
-        datasets: Optional[Dict[str, GenDataset]] = None,
-        preprocessor: Optional["Preprocessor"] = None,
-        scaling_config: Optional[ScalingConfig] = None,
-        **kwargs,
-    ) -> "LightningTrainer":
-        """Restores a LightningTrainer from a previously interrupted/failed run.
-
-        See :meth:`BaseTrainer.restore() <ray.train.trainer.BaseTrainer.restore>`
-        for descriptions of the arguments.
-
-        Returns:
-            LightningTrainer: A restored instance of `LightningTrainer`
-        """
-        return super(LightningTrainer, cls).restore(
-            path=path,
-            datasets=datasets,
-            preprocessor=preprocessor,
-            scaling_config=scaling_config,
-            **kwargs,
-        )
-
 
 def _lightning_train_loop_per_worker(config):
     """Per-worker training loop for a Lightning Trainer."""
