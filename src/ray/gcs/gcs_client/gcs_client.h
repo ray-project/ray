@@ -242,8 +242,8 @@ class RAY_EXPORT PythonGcsClient {
                    int64_t timeout_ms,
                    bool &is_accepted);
   Status DrainNodes(const std::vector<std::string> &node_ids,
-                   int64_t timeout_ms,
-                   std::vector<std::string> &drained_node_ids);
+                    int64_t timeout_ms,
+                    std::vector<std::string> &drained_node_ids);
 
   const ClusterID &GetClusterId() const { return cluster_id_; }
 
