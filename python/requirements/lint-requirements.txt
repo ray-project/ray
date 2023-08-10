@@ -1,4 +1,5 @@
 clang-format==12.0.1
+docutils
 flake8==3.9.1
 flake8-comprehensions==3.10.1
 flake8-quotes==2.0.0

@@ -54,28 +54,6 @@ bazel_pytest() {
   done
 }
 
-web() {
-  (
-    cd "${WORKSPACE_DIR}"/python/ray/dashboard/client
-    set +x # suppress set -x since it'll get very noisy here
-
-    if [ -z "${BUILDKITE-}" ]; then
-      . "${HOME}/.nvm/nvm.sh"
-      NODE_VERSION="14"
-      nvm install $NODE_VERSION
-      nvm use --silent $NODE_VERSION
-    fi
-
-    npm ci
-    local filenames
-    # shellcheck disable=SC2207
-    filenames=($(find src -name "*.ts" -or -name "*.tsx"))
-    node_modules/.bin/eslint --max-warnings 0 "${filenames[@]}"
-    node_modules/.bin/prettier --check "${filenames[@]}"
-    node_modules/.bin/prettier --check public/index.html
-  )
-}
-
 copyright() {
   (
     "${ROOT_DIR}"/lint/copyright-format.sh -c
