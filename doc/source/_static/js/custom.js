@@ -37,20 +37,33 @@ document.addEventListener("DOMContentLoaded", function() {
         let navItem = navItems[i];
         const stringList = [
             "User Guides", "Examples",
+            // Ray Core
             "Ray Core", "Ray Core API",
             "Ray Clusters", "Deploying on Kubernetes", "Deploying on VMs",
             "Applications Guide", "Ray Cluster Management API",
+            // Ray AIR
             "Ray AIR API",
+            // Ray Data
             "Ray Data", "Ray Data API", "Integrations",
+            // Ray Train
             "Ray Train", "Ray Train API",
+            "Distributed PyTorch", "Advanced Topics", "More Frameworks",
+            "Ray Train Internals",
+            // Ray Tune
             "Ray Tune", "Ray Tune Examples", "Ray Tune API",
+            // Ray Serve
             "Ray Serve", "Ray Serve API",
             "Production Guide", "Advanced Guides",
             "Deploy Many Models",
+            // Ray RLlib
             "Ray RLlib", "Ray RLlib API",
+            // More libraries
             "More Libraries", "Ray Workflows (Alpha)",
+            // Monitoring/debugging
             "Monitoring and Debugging",
+            // References
             "References", "Use Cases",
+            // Developer guides
             "Developer Guides", "Getting Involved / Contributing",
         ];
 

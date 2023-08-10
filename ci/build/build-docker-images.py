@@ -73,40 +73,49 @@ DEFAULT_PYTHON_VERSION = "py38"
 
 IMAGE_NAMES = list(DOCKER_HUB_DESCRIPTION.keys())
 
+RELEASE_PR_PIPELINE_ID = "d912884a-5198-497d-9ac3-178420500b6e"
 
-def _with_suffix(tag: str, suffix: Optional[str] = None):
+
+def _with_suffix(tag: str, suffix: Optional[str] = None) -> str:
     if suffix:
         return tag + "-" + suffix
     return tag
 
 
-def _get_branch():
+def _get_branch() -> str:
     branch = os.environ.get("TRAVIS_BRANCH") or os.environ.get("BUILDKITE_BRANCH")
     if not branch:
         print("Branch not found!")
         print(os.environ)
         print("Environment is above ^^")
+        return ""
     return branch
 
 
-def _release_build():
-    branch = _get_branch()
+_BRANCH = _get_branch()
+
+
+def _release_build(branch: Optional[str] = None) -> bool:
+    if not branch:
+        branch = _BRANCH
     return branch and branch.startswith("releases/")
 
 
-def _valid_branch():
-    return _get_branch() == "master" or _release_build()
+def _valid_branch(branch: Optional[str] = None) -> bool:
+    if not branch:
+        branch = _BRANCH
+    return branch == "master" or _release_build(branch)
 
 
-def _get_curr_dir():
+def _get_curr_dir() -> str:
     return os.path.dirname(os.path.realpath(__file__))
 
 
-def _get_root_dir():
+def _get_root_dir() -> str:
     return os.path.join(_get_curr_dir(), "../../")
 
 
-def _get_commit_sha():
+def _get_commit_sha() -> str:
     sha = os.environ.get("TRAVIS_COMMIT") or os.environ.get("BUILDKITE_COMMIT") or ""
     if len(sha) < 6:
         print("INVALID SHA FOUND")
@@ -114,18 +123,19 @@ def _get_commit_sha():
     return sha[:6]
 
 
+_COMMIT_SHA = _get_commit_sha()
+
+
 def _configure_human_version():
-    global _get_branch
-    global _get_commit_sha
-    fake_branch_name = input(
+    global _BRANCH
+    global _COMMIT_SHA
+    _BRANCH = input(
         "Provide a 'branch name'. For releases, it " "should be `releases/x.x.x`"
     )
-    _get_branch = lambda: fake_branch_name  # noqa: E731
-    fake_sha = input("Provide a SHA (used for tag value)")
-    _get_commit_sha = lambda: fake_sha  # noqa: E731
+    _COMMIT_SHA = input("Provide a SHA (used for tag value)")
 
 
-def _get_wheel_name(minor_version_number):
+def _get_wheel_name(minor_version_number) -> str:
     if minor_version_number:
         matches = [
             file
@@ -205,7 +215,15 @@ def _build_docker_image(
     build_args = {}
     build_args["PYTHON_VERSION"] = PY_MATRIX[py_version]
     # I.e. "py310"[3:] == 10
-    build_args["PYTHON_MINOR_VERSION"] = py_version[3:]
+    assert py_version[:3] == "py3"
+    python_minor_version = py_version[3:]
+
+    if py_version == "py37":
+        constraints_file = "requirements_compiled_py37.txt"
+    else:
+        constraints_file = "requirements_compiled.txt"
+
+    build_args["CONSTRAINTS_FILE"] = constraints_file
 
     if platform.processor() in ADDITIONAL_PLATFORMS:
         build_args["HOSTTYPE"] = platform.processor()
@@ -215,15 +233,13 @@ def _build_docker_image(
     if image_name == "base-deps":
         base_image = BASE_IMAGES[image_type]
     else:
-        base_image = f"-{py_version}-{device_tag}"
-
-        base_image = _with_suffix(base_image, suffix=suffix)
+        base_image = _with_suffix(f"-{py_version}-{device_tag}", suffix=suffix)
 
     if image_name != "ray-worker-container":
         build_args["BASE_IMAGE"] = base_image
 
     if image_name in ["ray", "ray-deps", "ray-worker-container"]:
-        wheel = _get_wheel_name(build_args["PYTHON_MINOR_VERSION"])
+        wheel = _get_wheel_name(python_minor_version)
         build_args["WHEEL_PATH"] = f".whl/{wheel}"
         # Add pip option "--find-links .whl/" to ensure ray-cpp wheel
         # can be found.
@@ -241,7 +257,7 @@ def _build_docker_image(
         labels = {
             "image-name": image_name,
             "python-version": PY_MATRIX[py_version],
-            "ray-commit": _get_commit_sha(),
+            "ray-commit": _COMMIT_SHA,
         }
         if image_type in CUDA_FULL:
             labels["cuda-version"] = CUDA_FULL[image_type]
@@ -419,6 +435,19 @@ def build_or_pull_base_images(
         return False
 
 
+def prep_ray_base():
+    root_dir = _get_root_dir()
+    requirements_files = [
+        "python/requirements_compiled.txt",
+        "python/requirements_compiled_py37.txt",
+    ]
+    for requirement_file in requirements_files:
+        shutil.copy(
+            os.path.join(root_dir, requirement_file),
+            os.path.join(root_dir, "docker/ray/"),
+        )
+
+
 def prep_ray_ml():
     root_dir = _get_root_dir()
 
@@ -488,10 +517,16 @@ def _docker_push(image, tag):
             print(progress_line)
 
 
-def _tag_and_push(full_image_name, old_tag, new_tag, merge_build=False):
+def _tag_and_push(
+    full_image_name,
+    old_tag,
+    new_tag,
+    merge_build=False,
+    release_pr_build=False,
+):
     # Do not tag release builds because they are no longer up to
     # date after the branch cut.
-    if "nightly" in new_tag and _release_build():
+    if "nightly" in new_tag and (_release_build() or release_pr_build):
         return
     if old_tag != new_tag:
         DOCKER_CLIENT.api.tag(
@@ -499,10 +534,10 @@ def _tag_and_push(full_image_name, old_tag, new_tag, merge_build=False):
             repository=full_image_name,
             tag=new_tag,
         )
-    if not merge_build:
+    if not merge_build and not release_pr_build:
         print(
-            "This is a PR Build! On a merge build, we would normally push"
-            f"to: {full_image_name}:{new_tag}"
+            "Not pushing build. "
+            "Otherwise we would have pushed to: {full_image_name}:{new_tag}"
         )
     else:
         _docker_push(full_image_name, new_tag)
@@ -602,15 +637,20 @@ def push_and_tag_images(
     py_versions: List[str],
     image_types: List[str],
     merge_build: bool = False,
+    release_pr_build: bool = False,
     image_list: Optional[List[str]] = None,
     suffix: Optional[str] = None,
 ):
     date_tag = datetime.datetime.now().strftime("%Y-%m-%d")
-    sha_tag = _get_commit_sha()
+    sha_tag = _COMMIT_SHA
     if _release_build():
-        release_name = _get_branch()[len("releases/") :]
+        release_name = _BRANCH[len("releases/") :]
         date_tag = release_name + "." + date_tag
         sha_tag = release_name + "." + sha_tag
+    if release_pr_build:
+        pr = f"pr-{os.environ['BUILDKITE_PULL_REQUEST']}"
+        date_tag = pr + "." + date_tag
+        sha_tag = pr + "." + sha_tag
 
     for image_name in image_list:
         full_image_name = f"rayproject/{image_name}"
@@ -709,6 +749,7 @@ def push_and_tag_images(
                     old_tag=old_tag,
                     new_tag=new_tag,
                     merge_build=merge_build,
+                    release_pr_build=release_pr_build,
                 )
 
 
@@ -755,9 +796,10 @@ def push_readmes(merge_build: bool):
 MERGE = "MERGE"
 HUMAN = "HUMAN"
 PR = "PR"
+RELEASE_PR = "RELEASE_PR"
 BUILDKITE = "BUILDKITE"
 LOCAL = "LOCAL"
-BUILD_TYPES = [MERGE, HUMAN, PR, BUILDKITE, LOCAL]
+BUILD_TYPES = [MERGE, HUMAN, PR, RELEASE_PR, BUILDKITE, LOCAL]
 
 
 @click.command()
@@ -855,6 +897,8 @@ def main(
     if build_type == BUILDKITE:
         if os.environ.get("BUILDKITE_PULL_REQUEST", "") == "false":
             build_type = MERGE
+        elif os.environ.get("BUILDKITE_PIPELINE_ID", "") == RELEASE_PR_PIPELINE_ID:
+            build_type = RELEASE_PR
         else:
             build_type = PR
 
@@ -862,7 +906,7 @@ def main(
         # If manually triggered, request user for branch and SHA value to use.
         _configure_human_version()
     if (
-        build_type in {HUMAN, MERGE, BUILDKITE, LOCAL}
+        build_type in {HUMAN, MERGE, BUILDKITE, LOCAL, RELEASE_PR}
         or _check_if_docker_files_modified()
         or only_build_worker_container
     ):
@@ -885,6 +929,8 @@ def main(
             # TODO Currently don't push ray_worker_container
         else:
             # Build Ray Docker images.
+            prep_ray_base()
+
             all_tagged_images = []
 
             all_tagged_images += build_for_all_versions(
@@ -933,7 +979,7 @@ def main(
                     all_tagged_images, target_dir="/artifact-mount/.image-info"
                 )
 
-            if build_type in {MERGE, PR}:
+            if build_type in {MERGE, RELEASE_PR}:
                 valid_branch = _valid_branch()
                 if (not valid_branch) and is_merge:
                     print(f"Invalid Branch found: {_get_branch()}")
@@ -941,6 +987,7 @@ def main(
                     py_versions,
                     image_types,
                     merge_build=valid_branch and is_merge,
+                    release_pr_build=build_type == RELEASE_PR,
                     image_list=images_to_tag_and_push,
                     suffix=suffix,
                 )

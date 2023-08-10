@@ -4,20 +4,18 @@ from datasets import Dataset
 from transformers import (
     AutoConfig,
     AutoModelForCausalLM,
-    AutoTokenizer,
     Trainer,
     TrainingArguments,
 )
 
 import ray.data
-from ray.train.batch_predictor import BatchPredictor
 from ray.train.huggingface import (
     TransformersPredictor,
     TransformersTrainer,
     TransformersCheckpoint,
 )
 from ray.train.trainer import TrainingFailedError
-from ray.air.config import ScalingConfig
+from ray.train import ScalingConfig
 from ray.train.tests._huggingface_data import train_data, validation_data
 from ray import tune
 from ray.tune import Tuner
@@ -155,16 +153,6 @@ def test_e2e(ray_start_4_cpus, save_strategy):
     assert result2.checkpoint
     assert isinstance(result2.checkpoint, TransformersCheckpoint)
     assert "eval_loss" in result2.metrics
-
-    predictor = BatchPredictor.from_checkpoint(
-        result2.checkpoint,
-        TransformersPredictor,
-        task="text-generation",
-        tokenizer=AutoTokenizer.from_pretrained(tokenizer_checkpoint),
-    )
-
-    predictions = predictor.predict(ray.data.from_pandas(prompts))
-    assert predictions.count() == 3
 
 
 def test_training_local_dataset(ray_start_4_cpus):

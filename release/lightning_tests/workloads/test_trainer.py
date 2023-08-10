@@ -4,7 +4,7 @@ import json
 from pytorch_lightning.loggers.csv_logs import CSVLogger
 
 import ray
-from ray.air.config import RunConfig, ScalingConfig
+from ray.train import RunConfig, ScalingConfig
 from ray.train.lightning import LightningTrainer, LightningConfigBuilder
 
 from lightning_test_utils import MNISTClassifier, MNISTDataModule

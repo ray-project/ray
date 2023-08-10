@@ -99,7 +99,6 @@ class StreamingExecutor(Executor, threading.Thread):
                 )
 
         # Setup the streaming DAG topology and start the runner thread.
-        _validate_dag(dag, self._get_or_refresh_resource_limits())
         self._topology, _ = build_streaming_topology(dag, self._options)
 
         if not isinstance(dag, InputDataBuffer):

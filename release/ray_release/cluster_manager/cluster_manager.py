@@ -50,18 +50,7 @@ class ClusterManager(abc.ABC):
         self.autosuspend_minutes = DEFAULT_AUTOSUSPEND_MINS
         self.maximum_uptime_minutes = DEFAULT_MAXIMUM_UPTIME_MINS
 
-    def set_cluster_env(self, cluster_env: Dict[str, Any]):
-        self.cluster_env = cluster_env
-
-        # Add flags for redisless Ray
-        self.cluster_env.setdefault("env_vars", {})
-        self.cluster_env["env_vars"]["MATCH_AUTOSCALER_AND_RAY_IMAGES"] = "1"
-        self.cluster_env["env_vars"]["RAY_USAGE_STATS_ENABLED"] = "1"
-        self.cluster_env["env_vars"]["RAY_USAGE_STATS_SOURCE"] = "nightly-tests"
-        self.cluster_env["env_vars"][
-            "RAY_USAGE_STATS_EXTRA_TAGS"
-        ] = f"test_name={self.test.get_name()};smoke_test={self.smoke_test}"
-
+    def set_cluster_env(self, cluster_env: Optional[Dict[str, Any]]):
         if self.test.is_byod_cluster():
             byod_image_name_normalized = (
                 self.test.get_anyscale_byod_image()
@@ -74,6 +63,16 @@ class ClusterManager(abc.ABC):
                 f"__env__{dict_hash(self.test.get_byod_runtime_env())}"
             )
         else:
+            self.cluster_env = cluster_env
+
+            # Add flags for redisless Ray
+            self.cluster_env.setdefault("env_vars", {})
+            self.cluster_env["env_vars"]["MATCH_AUTOSCALER_AND_RAY_IMAGES"] = "1"
+            self.cluster_env["env_vars"]["RAY_USAGE_STATS_ENABLED"] = "1"
+            self.cluster_env["env_vars"]["RAY_USAGE_STATS_SOURCE"] = "nightly-tests"
+            self.cluster_env["env_vars"][
+                "RAY_USAGE_STATS_EXTRA_TAGS"
+            ] = f"test_name={self.test.get_name()};smoke_test={self.smoke_test}"
             self.cluster_env_name = (
                 f"{self.project_name}_{self.project_id[4:8]}"
                 f"__env__{self.test.get_name().replace('.', '_')}__"

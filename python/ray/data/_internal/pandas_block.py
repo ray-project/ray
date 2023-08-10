@@ -379,13 +379,23 @@ class PandasBlockAccessor(TableBlockAccessor):
         # in descending order and we only need to count the number of items
         # *greater than* the boundary value instead.
 
-        records = list(table[columns].itertuples(index=False, name=None))
-        if not ascending:
-            bounds = [
-                len(records) - bisect.bisect_left(records[::-1], b) for b in boundaries
+        def find_partition_index(records, boundary, sort_key):
+            if sort_key.get_descending():
+                return len(records) - bisect.bisect_left(records[::-1], boundary)
+            else:
+                return bisect.bisect_left(records, boundary)
+
+        def searchsorted(table, boundaries, sort_key):
+            records = list(
+                table[sort_key.get_columns()].itertuples(index=False, name=None)
+            )
+
+            return [
+                find_partition_index(records, boundary, sort_key)
+                for boundary in boundaries
             ]
-        else:
-            bounds = [bisect.bisect_left(records, b) for b in boundaries]
+
+        bounds = searchsorted(table, boundaries, sort_key)
 
         last_idx = 0
         for idx in bounds:

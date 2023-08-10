@@ -50,7 +50,7 @@ import ray
 
 from ray.data.preprocessors import MinMaxScaler
 from ray.train.xgboost import XGBoostTrainer
-from ray.air.config import ScalingConfig
+from ray.train import ScalingConfig
 
 train_dataset = ray.data.from_items([{"x": x, "y": 2 * x} for x in range(0, 32, 3)])
 valid_dataset = ray.data.from_items([{"x": x, "y": 2 * x} for x in range(1, 32, 3)])
@@ -84,13 +84,25 @@ with checkpoint.as_directory() as checkpoint_path:
 
 
 # __predictor_start__
-from ray.train.batch_predictor import BatchPredictor
 from ray.train.xgboost import XGBoostPredictor
 
 test_dataset = ray.data.from_items([{"x": x} for x in range(2, 32, 3)])
 
-batch_predictor = BatchPredictor.from_checkpoint(checkpoint, XGBoostPredictor)
-predicted_probabilities = batch_predictor.predict(test_dataset)
+
+class XGBoostPredictorWrapper:
+    def __init__(self, checkpoint):
+        self.predictor = XGBoostPredictor.from_checkpoint(checkpoint)
+
+    def __call__(self, batch):
+        return self.predictor.predict(batch)
+
+
+predicted_probabilities = test_dataset.map_batches(
+    XGBoostPredictorWrapper,
+    compute=ray.data.ActorPoolStrategy(size=2),
+    fn_constructor_kwargs={"checkpoint": checkpoint},
+    batch_format="pandas",
+)
 predicted_probabilities.show()
 # {'predictions': 0.09843720495700836}
 # {'predictions': 5.604666709899902}

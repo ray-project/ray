@@ -58,8 +58,7 @@ class SortKey:
         elif isinstance(descending, list):
             if len(descending) != len(key):
                 raise ValueError(
-                    f"Descending must be a boolean or a list of booleans, "
-                    f"but got {descending}."
+                    "Length of `descending` does not match the length of the key."
                 )
             if len(set(descending)) != 1:
                 raise ValueError("Sorting with mixed key orders not supported yet.")
@@ -140,6 +139,7 @@ def sample_boundaries(
     """
     Return (num_reducers - 1) items in ascending order from the blocks that
     partition the domain into ranges with approximately equally many elements.
+    Each boundary item is a tuple of a form (col1_value, col2_value, ...).
     """
     columns = sort_key.get_columns()
 
@@ -174,14 +174,19 @@ def sample_boundaries(
         builder.add_block(sample)
     samples = builder.build()
     sample_dict = BlockAccessor.for_block(samples).to_numpy(columns=columns)
-    indices = np.lexsort(list(reversed((sample_dict.values()))))
-    sample_dict = {
-        k: [
-            np.quantile(v[indices], q, interpolation="nearest")
+    # Compute sorted indices of the samples. In np.lexsort last key is the
+    # primary key hence have to reverse the order.
+    indices = np.lexsort(list(reversed(list(sample_dict.values()))))
+    # Sort each column by indices, and calculate q-ths quantile items.
+    # Ignore the 1st item as it's not required for the boundary
+    for k, v in sample_dict.items():
+        sorted_v = v[indices]
+        sample_dict[k] = [
+            np.quantile(sorted_v, q, interpolation="nearest")
             for q in np.linspace(0, 1, num_reducers)
         ][1:]
-        for k, v in sample_dict.items()
-    }
+    # Return the list of boundaries as tuples
+    # of a form (col1_value, col2_value, ...)
     return [
         tuple(sample_dict[k][i] for k in sample_dict) for i in range(num_reducers - 1)
     ]

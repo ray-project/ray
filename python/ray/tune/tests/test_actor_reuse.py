@@ -7,7 +7,7 @@ import time
 
 import ray
 from ray import tune, logger
-from ray.air.config import CheckpointConfig
+from ray.train import CheckpointConfig
 from ray.tune import Trainable, run_experiments, register_trainable
 from ray.tune.error import TuneError
 from ray.tune.result_grid import ResultGrid
@@ -39,7 +39,7 @@ def ray_start_4_cpus_extra():
 
 
 class FrequentPausesScheduler(FIFOScheduler):
-    def on_trial_result(self, trial_runner, trial, result):
+    def on_trial_result(self, tune_controller, trial, result):
         return TrialScheduler.PAUSE
 
 

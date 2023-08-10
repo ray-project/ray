@@ -36,7 +36,7 @@ import ray
 from ray import tune
 from ray.tune import Tuner
 from ray.train.xgboost import XGBoostTrainer
-from ray.air.config import ScalingConfig, RunConfig
+from ray.train import ScalingConfig, RunConfig
 
 dataset = ray.data.read_csv("s3://anonymous@air-example-data/breast_cancer.csv")
 
@@ -205,13 +205,12 @@ for result in result_grid:
 # __result_grid_inspection_end__
 
 # __run_config_start__
-from ray import air
-from ray.air.config import RunConfig
+from ray.train import CheckpointConfig, RunConfig
 
 run_config = RunConfig(
     name="MyExperiment",
     storage_path="s3://...",
-    checkpoint_config=air.CheckpointConfig(checkpoint_frequency=2),
+    checkpoint_config=CheckpointConfig(checkpoint_frequency=2),
 )
 # __run_config_end__
 

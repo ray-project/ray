@@ -25,7 +25,7 @@
 #include "ray/common/task/task_util.h"
 #include "ray/common/test_util.h"
 #include "ray/gcs/pb_util.h"
-#include "src/ray/protobuf/experimental/autoscaler.grpc.pb.h"
+#include "src/ray/protobuf/autoscaler.grpc.pb.h"
 #include "src/ray/protobuf/gcs_service.grpc.pb.h"
 
 namespace ray {
@@ -314,7 +314,8 @@ struct Mocker {
       const absl::flat_hash_map<std::string, double> &available_resources,
       const absl::flat_hash_map<std::string, double> &total_resources,
       bool available_resources_changed,
-      int64_t idle_ms = 0) {
+      int64_t idle_ms = 0,
+      bool is_draining = false) {
     resources_data.set_node_id(node_id.Binary());
     for (const auto &resource : available_resources) {
       (*resources_data.mutable_resources_available())[resource.first] = resource.second;
@@ -324,6 +325,7 @@ struct Mocker {
     }
     resources_data.set_resources_available_changed(available_resources_changed);
     resources_data.set_idle_duration_ms(idle_ms);
+    resources_data.set_is_draining(is_draining);
   }
 
   static void FillResourcesData(rpc::ResourcesData &data,
@@ -342,6 +344,16 @@ struct Mocker {
     }
     data.set_resource_load_changed(resource_load_changed);
     data.set_node_id(node_id);
+  }
+
+  static std::shared_ptr<rpc::PlacementGroupLoad> GenPlacementGroupLoad(
+      std::vector<rpc::PlacementGroupTableData> placement_group_table_data_vec) {
+    auto placement_group_load = std::make_shared<rpc::PlacementGroupLoad>();
+    for (auto &placement_group_table_data : placement_group_table_data_vec) {
+      placement_group_load->add_placement_group_data()->CopyFrom(
+          placement_group_table_data);
+    }
+    return placement_group_load;
   }
 
   static rpc::PlacementGroupTableData GenPlacementGroupTableData(

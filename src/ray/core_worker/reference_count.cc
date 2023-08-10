@@ -648,6 +648,7 @@ void ReferenceCounter::DeleteReferenceInternal(ReferenceTable::iterator it,
     it->second.on_ref_removed(id);
     it->second.on_ref_removed = nullptr;
   }
+
   PRINT_REF_COUNT(it);
 
   // Whether it is safe to unpin the value.

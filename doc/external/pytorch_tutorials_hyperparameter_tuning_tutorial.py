@@ -49,8 +49,8 @@ import torch.optim as optim
 from torch.utils.data import random_split
 import torchvision
 import torchvision.transforms as transforms
-from ray import tune
-from ray.air import Checkpoint, session
+from ray import train, tune
+from ray.train import Checkpoint
 from ray.tune.schedulers import ASHAScheduler
 
 ######################################################################
@@ -125,7 +125,7 @@ class Net(nn.Module):
 #
 #     net = Net(config["l1"], config["l2"])
 #
-#     checkpoint = session.get_checkpoint()
+#     checkpoint = ray.train.get_checkpoint()
 #
 #     if checkpoint:
 #         checkpoint_state = checkpoint.to_dict()
@@ -189,7 +189,7 @@ class Net(nn.Module):
 #     }
 #     checkpoint = Checkpoint.from_dict(checkpoint_data)
 #
-#     session.report(
+#     ray.train.report(
 #         {"loss": val_loss / val_steps, "accuracy": correct / total},
 #         checkpoint=checkpoint,
 #     )
@@ -226,7 +226,7 @@ def train_cifar(config, data_dir=None):
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.SGD(net.parameters(), lr=config["lr"], momentum=0.9)
 
-    checkpoint = session.get_checkpoint()
+    checkpoint = train.get_checkpoint()
 
     if checkpoint:
         checkpoint_state = checkpoint.to_dict()
@@ -303,7 +303,7 @@ def train_cifar(config, data_dir=None):
         }
         checkpoint = Checkpoint.from_dict(checkpoint_data)
 
-        session.report(
+        train.report(
             {"loss": val_loss / val_steps, "accuracy": correct / total},
             checkpoint=checkpoint,
         )

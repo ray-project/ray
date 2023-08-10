@@ -271,18 +271,10 @@ py_test(
 )
 
 py_test(
-    name = "test_batch_predictor",
-    size = "medium",
-    srcs = ["tests/test_batch_predictor.py"],
-    tags = ["team:ml", "exclusive", "ray_air", "gpu"],
-    deps = [":train_lib"]
-)
-
-py_test(
-    name = "test_batchpredictor_runtime",
-    size = "medium",
-    srcs = ["tests/test_batchpredictor_runtime.py"],
-    tags = ["team:ml", "exclusive", "ray_air"],
+    name = "test_checkpoint",
+    size = "small",
+    srcs = ["tests/test_checkpoint.py"],
+    tags = ["team:ml", "exclusive"],
     deps = [":train_lib"]
 )
 
@@ -290,6 +282,14 @@ py_test(
     name = "test_checkpoints",
     size = "small",
     srcs = ["tests/test_checkpoints.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":train_lib"]
+)
+
+py_test(
+    name = "test_checkpoint_manager",
+    size = "small",
+    srcs = ["tests/test_checkpoint_manager.py"],
     tags = ["team:ml", "exclusive"],
     deps = [":train_lib"]
 )
@@ -448,7 +448,7 @@ py_test(
 
 py_test(
     name = "test_new_persistence",
-    size = "small",
+    size = "large",
     srcs = ["tests/test_new_persistence.py"],
     tags = ["team:ml", "exclusive"],
     deps = [":train_lib", ":conftest"]
@@ -460,22 +460,6 @@ py_test(
     srcs = ["tests/test_predictor.py"],
     tags = ["team:ml", "exclusive", "ray_air"],
     deps = [":train_lib"]
-)
-
-py_test(
-    name = "test_rl_trainer",
-    size = "medium",
-    srcs = ["tests/test_rl_trainer.py"],
-    tags = ["team:ml", "exclusive", "ray_air"],
-    deps = [":train_lib", ":conftest"]
-)
-
-py_test(
-    name = "test_rl_predictor",
-    size = "small",
-    srcs = ["tests/test_rl_predictor.py"],
-    tags = ["team:ml", "exclusive", "ray_air"],
-    deps = [":train_lib", ":conftest"]
 )
 
 py_test(
@@ -579,14 +563,6 @@ py_test(
     size = "small",
     srcs = ["tests/test_transformers_checkpoint.py"],
     tags = ["team:ml", "exclusive", "ray_air"],
-    deps = [":train_lib", ":conftest"]
-)
-
-py_test(
-    name = "test_transformers_gpu",
-    size = "medium",
-    srcs = ["tests/test_transformers_gpu.py"],
-    tags = ["team:ml", "exclusive", "gpu_only"],
     deps = [":train_lib", ":conftest"]
 )
 
