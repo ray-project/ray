@@ -443,7 +443,7 @@ class PandasBlockAccessor(TableBlockAccessor):
                     if next_row is None:
                         next_row = next(iter)
                     next_key = next_row[key]
-                    while (next_row[key] == next_key).all():
+                    while np.all(next_row[key] == next_key):
                         end += 1
                         try:
                             next_row = next(iter)
