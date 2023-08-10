@@ -249,9 +249,7 @@ class CLIArguments:
     RayObjectStoreMemory = typer.Option(
         None, help=train_help.get("ray_object_store_memory")
     )
-    WandBKey = typer.Option(
-        None, "--wandb-key", help=train_help.get("wandb_key")
-    )
+    WandBKey = typer.Option(None, "--wandb-key", help=train_help.get("wandb_key"))
     WandBProject = typer.Option(
         None, "--wandb-project", help=eval_help.get("wandb_project")
     )
