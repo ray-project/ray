@@ -213,6 +213,17 @@ Transformers
 .. autosummary::
     :toctree: doc/
 
+    ~train.huggingface.transformers.prepare_trainer
+    ~train.huggingface.transformers.RayTrainReportCallback
+
+.. note::
+
+    We will deprecate `TransformersTrainer`, `TransformersCheckpoint` in Ray 2.8. Please 
+    refer to the :ref:`migration guide <transformers-trainer-migration-guide>` for more info.
+
+.. autosummary::
+    :toctree: doc/
+
     ~train.huggingface.TransformersTrainer
     ~train.huggingface.TransformersCheckpoint
 

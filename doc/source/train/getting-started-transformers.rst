@@ -1,4 +1,4 @@
-.. _train-pytorch-lightning:
+.. _train-pytorch-transformers:
 
 Getting Started with HuggingFace Transformers
 =============================================
@@ -22,7 +22,7 @@ Before we begin, you can expect that the final code will look something like thi
     from ray.train import ScalingConfig
 
     def train_func(config):
-        # Your PyTorch Lightning training code here.
+        # Your Transformers training code here.
     
     scaling_config = ScalingConfig(num_workers=2, use_gpu=True)
     trainer = TorchTrainer(train_func, scaling_config=scaling_config)
@@ -176,7 +176,7 @@ You can begin by wrapping your code in a function:
 .. code-block:: python
 
     def train_func(config):
-        # Your PyTorch Lightning training code here.
+        # Your Transformers training code here.
 
 This function will be executed on each distributed training worker. Ray Train will set up the distributed 
 process group on each worker before entering this function.
@@ -294,7 +294,7 @@ Congratulations! You have successfully converted your HuggingFace Transformers t
 .. _transformers-trainer-migration-guide:
 
 ``TransformersTrainer`` Migration Guide
-------------------------------------
+---------------------------------------
 
 The `TransformersTrainer` was added in Ray 2.1. It exposes a `trainer_init_per_worker` interface 
 to define `transformers.Trainer`, then runs a pre-defined training loop in a black box.
