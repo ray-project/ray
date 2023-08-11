@@ -119,4 +119,4 @@ And provide greater flexibility and transparency for training logic.
 
             ray_trainer.fit()
 
-        For more information, please refer to our :ref:`TorchTrainer User Guide <train-pytorch-overview>`.
+        For more information, please refer to :ref:`Getting Started with PyTorch Lightning <train-pytorch-lightning>`.

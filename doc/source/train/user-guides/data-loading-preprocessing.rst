@@ -139,11 +139,18 @@ Using Ray Data and Ray Train for distributed training on large datasets involves
 
 Migrating from PyTorch DataLoader
 ---------------------------------
-If you're currently using PyTorch Datasets and DataLoaders, you can migrate to Ray Data for working with distributed datasets.
+
+Some deep learning frameworks provide their own dataloading utilities. For example:
+
+- PyTorch: `PyTorch Dataset <https://pytorch.org/tutorials/beginner/basics/data_tutorial.html>`
+- Lightning: `LightningDataModule <https://lightning.ai/docs/pytorch/stable/data/datamodule.html>`
+- HuggingFace: `HuggingFace Dataset <https://huggingface.co/docs/datasets/index>`
+
+You can still use the above utilities in Ray Train, for more performant large-scale data preprocessing, you can migrate to Ray Data for working with distributed datasets.
 
 PyTorch Datasets are replaced by the :class:`Dataset <ray.data.Dataset>` abtraction, and the PyTorch DataLoader is replaced by :meth:`Dataset.iter_torch_batches() <ray.data.Dataset.iter_torch_batches>`.
 
-For more details, see the :ref:`Ray Data PyTorch guide <migrate_pytorch>`.
+For more details, see the :ref:`Ray Data PyTorch guide <migrate_pytorch>` and :ref:`Ray Data for HuggingFace and TensorFlow <loading_datasets_from_ml_libraries>`.
 
 .. _train_datasets_configuration:
 
@@ -440,22 +447,3 @@ When developing or hyperparameter tuning models, reproducibility is important du
 * `local_shuffle_seed` argument to :meth:`iter_batches <ray.data.DataIterator.iter_batches>`
 
 **Step 3:** Follow the best practices for enabling reproducibility for your training framework of choice. For example, see the `Pytorch reproducibility guide <https://pytorch.org/docs/stable/notes/randomness.html>`_.
-
-.. _data-ingest-framework-utility:
-
-Using Framework Built-in Data Utilities
----------------------------------------
-
-Some deep learning frameworks provide their own dataloading utilities. For example:
-
-- PyTorch: `PyTorch Dataset <https://pytorch.org/tutorials/beginner/basics/data_tutorial.html>`
-- Lightning: `LightningDataModule <https://lightning.ai/docs/pytorch/stable/data/datamodule.html>`
-- HuggingFace: `HuggingFace Dataset <https://huggingface.co/docs/datasets/index>`
-
-You can continue to use the above utilities in Ray Train, but be sure to put the dataset initialization logic in the training function per worker.
-
-.. warning:: 
-
-    We do not recommend passing framework-specifc datasets via ``train_loop_config`` or global variables, as it will serialize 
-    your dataset objects on the head node and send them to remote workers via the object store. This method is inefficient for 
-    transferring large datasets and may also lead to serialization or ``FileNotFound`` errors.
