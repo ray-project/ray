@@ -2213,7 +2213,7 @@ class DeploymentStateManager:
         )
 
         # TODO(simon): move autoscaling related stuff into a manager.
-        self.autoscaling_metrics_store = InMemoryMetricsStore()
+        self.replica_average_ongoing_requests = dict()
         self.handle_metrics_store = InMemoryMetricsStore()
 
     def _create_driver_deployment_state(self, name):
@@ -2246,8 +2246,10 @@ class DeploymentStateManager:
             self._save_checkpoint_func,
         )
 
-    def record_autoscaling_metrics(self, data: Dict[str, float], send_timestamp: float):
-        self.autoscaling_metrics_store.add_metrics_point(data, send_timestamp)
+    def record_autoscaling_metrics(self, data, send_timestamp: float):
+        replica_tag, window_avg = data
+        if window_avg is not None:
+            self.replica_average_ongoing_requests[replica_tag] = window_avg
 
     def record_handle_metrics(self, data: Dict[str, float], send_timestamp: float):
         self.handle_metrics_store.add_metrics_point(data, send_timestamp)
@@ -2256,7 +2258,7 @@ class DeploymentStateManager:
         """
         Return autoscaling metrics (used for dumping from controller)
         """
-        return self.autoscaling_metrics_store.data
+        return self.replica_average_ongoing_requests
 
     def _map_actor_names_to_deployment(
         self, all_current_actor_names: List[str]
@@ -2562,12 +2564,10 @@ class DeploymentStateManager:
         current_num_ongoing_requests = []
         for replica in running_replicas:
             replica_tag = replica.replica_tag
-            num_ongoing_requests = self.autoscaling_metrics_store.window_average(
-                replica_tag,
-                time.time() - look_back_period_s,
-            )
-            if num_ongoing_requests is not None:
-                current_num_ongoing_requests.append(num_ongoing_requests)
+            if replica_tag in self.replica_average_ongoing_requests:
+                current_num_ongoing_requests.append(
+                    self.replica_average_ongoing_requests[replica_tag]
+                )
         return current_num_ongoing_requests
 
     def get_handle_queueing_metrics(

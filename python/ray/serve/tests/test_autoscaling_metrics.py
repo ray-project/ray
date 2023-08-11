@@ -99,13 +99,14 @@ def test_e2e(serve_instance):
     wait_for_condition(lambda: len(get_data()) > 0)
 
     # Many queries should be inflight.
-    def last_timestamp_value():
+    def last_timestamp_value_high():
         data = get_data()
         only_key = list(data.keys())[0]
-        print(data[only_key][-1])
-        return data[only_key][-1]
+        print(data[only_key])
+        assert data[only_key] > 50
+        return True
 
-    wait_for_condition(lambda: last_timestamp_value().value > 50)
+    wait_for_condition(last_timestamp_value_high)
 
 
 if __name__ == "__main__":
