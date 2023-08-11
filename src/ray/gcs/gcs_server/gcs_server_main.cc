@@ -23,6 +23,11 @@
 #include "ray/util/util.h"
 #include "src/ray/protobuf/gcs_service.pb.h"
 
+#ifdef __linux__
+#include "jemalloc/jemalloc.h"
+#endif
+
+
 DEFINE_string(redis_address, "", "The ip address of redis.");
 DEFINE_bool(redis_enable_ssl, false, "Use tls/ssl in redis connection.");
 DEFINE_int32(redis_port, -1, "The port of redis.");
@@ -47,6 +52,14 @@ int main(int argc, char *argv[]) {
   ray::RayLog::InstallTerminateHandler();
 
   gflags::ParseCommandLineFlags(&argc, &argv, true);
+
+#ifdef __linux__
+  bool prof = true;
+  mallctl("prof", nullptr, 0, (void*)&prof, sizeof(prof));
+  bool active = false;
+  mallctl("prof.active", nullptr, 0, (void*)&active, sizeof(active));
+#endif
+
   const std::string redis_address = FLAGS_redis_address;
   const int redis_port = static_cast<int>(FLAGS_redis_port);
   const std::string log_dir = FLAGS_log_dir;

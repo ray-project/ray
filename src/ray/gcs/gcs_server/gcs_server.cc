@@ -236,6 +236,9 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
   // Init autoscaling manager
   InitGcsAutoscalerStateManager();
 
+  debug_service_ = std::make_unique<GcsDebugService>(main_service_);
+  rpc_server_.RegisterService(*debug_service_);
+
   // Start RPC server when all tables have finished loading initial
   // data.
   rpc_server_.Run();
@@ -249,6 +252,7 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
   gcs_placement_group_manager_->SetUsageStatsClient(usage_stats_client_.get());
   gcs_task_manager_->SetUsageStatsClient(usage_stats_client_.get());
   RecordMetrics();
+
 
   periodical_runner_.RunFnPeriodically(
       [this] {

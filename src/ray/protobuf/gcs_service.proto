@@ -632,6 +632,7 @@ message GcsStatus {
   string message = 2;
 }
 
+
 // Service for node info access.
 service NodeInfoGcsService {
   // Register a client to GCS Service. Must be called before any other RPC in GCSClient.
@@ -702,6 +703,28 @@ service TaskInfoGcsService {
 
   // Get task events.
   rpc GetTaskEvents(GetTaskEventsRequest) returns (GetTaskEventsReply);
+}
+
+message CollectMemoryStatsRequest{
+  string opts = 1;
+}
+message CollectMemoryStatsReply{
+  string stats = 2;
+}
+
+message StartMemoryProfileRequest{
+  string dump_prefix = 1;
+  map<string, string> opts = 2;
+  int64 duration = 3;
+}
+
+message StartMemoryProfileReply{}
+
+service DebugService {
+  // Use jemalloc to profile the memory
+  rpc StartMemoryProfile(StartMemoryProfileRequest) returns (StartMemoryProfileReply);
+  // Collect memory stats
+  rpc CollectMemoryStats(CollectMemoryStatsRequest) returns (CollectMemoryStatsReply);
 }
 
 ///////////////////////////////////////////////////////////////////////////////

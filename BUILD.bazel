@@ -546,7 +546,10 @@ cc_library(
         "@boost//:bimap",
         "@com_github_grpc_grpc//src/proto/grpc/health/v1:health_proto",
         "@com_google_absl//absl/container:btree",
-    ],
+    ] + select({
+        "@platforms//os:linux": ["@jemalloc//:libjemalloc"],
+        "//conditions:default": []
+    }),
 )
 
 ray_cc_binary(

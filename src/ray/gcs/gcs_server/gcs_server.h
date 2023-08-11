@@ -19,6 +19,7 @@
 #include "ray/common/runtime_env_manager.h"
 #include "ray/gcs/gcs_client/usage_stats_client.h"
 #include "ray/gcs/gcs_server/gcs_function_manager.h"
+#include "ray/gcs/gcs_server/gcs_debug_service.h"
 #include "ray/gcs/gcs_server/gcs_health_check_manager.h"
 #include "ray/gcs/gcs_server/gcs_init_data.h"
 #include "ray/gcs/gcs_server/gcs_kv_manager.h"
@@ -248,6 +249,8 @@ class GcsServer {
   std::unique_ptr<GcsMonitorServer> monitor_server_;
   /// Monitor service for monitor server
   std::unique_ptr<rpc::MonitorGrpcService> monitor_grpc_service_;
+  /// The service for debugging
+  std::unique_ptr<GcsDebugService> debug_service_;
 
   /// Synchronization service for ray.
   /// TODO(iycheng): Deprecate this gcs_ray_syncer_ one once we roll out
