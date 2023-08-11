@@ -47,12 +47,14 @@ class HandleOptions:
     method_name: str = "__call__"
     multiplexed_model_id: str = ""
     stream: bool = False
+    _router_cls: str = ""
 
     def copy_and_update(
         self,
         method_name: Union[str, DEFAULT] = DEFAULT.VALUE,
         multiplexed_model_id: Union[str, DEFAULT] = DEFAULT.VALUE,
         stream: Union[bool, DEFAULT] = DEFAULT.VALUE,
+        _router_cls: Union[str, DEFAULT] = DEFAULT.VALUE,
     ) -> "HandleOptions":
         return HandleOptions(
             method_name=(
@@ -64,6 +66,9 @@ class HandleOptions:
                 else multiplexed_model_id
             ),
             stream=self.stream if stream == DEFAULT.VALUE else stream,
+            _router_cls=self._router_cls
+            if _router_cls == DEFAULT.VALUE
+            else _router_cls,
         )
 
 
@@ -109,6 +114,7 @@ class DeploymentHandleBase:
                 self.deployment_name,
                 event_loop=event_loop,
                 _use_new_routing=RAY_SERVE_ENABLE_NEW_ROUTING,
+                _router_cls=self.handle_options._router_cls,
             )
 
         return self._router
@@ -131,12 +137,17 @@ class DeploymentHandleBase:
         multiplexed_model_id: Union[str, DEFAULT] = DEFAULT.VALUE,
         stream: Union[bool, DEFAULT] = DEFAULT.VALUE,
         use_new_handle_api: Union[bool, DEFAULT] = DEFAULT.VALUE,
+        _router_cls: Union[str, DEFAULT] = DEFAULT.VALUE,
     ):
         new_handle_options = self.handle_options.copy_and_update(
             method_name=method_name,
             multiplexed_model_id=multiplexed_model_id,
             stream=stream,
+            _router_cls=_router_cls,
         )
+
+        if self._router is None and _router_cls == DEFAULT.VALUE:
+            self._get_or_create_router()
 
         if use_new_handle_api is True:
             cls = DeploymentHandle
@@ -146,7 +157,7 @@ class DeploymentHandleBase:
         return cls(
             self.deployment_name,
             handle_options=new_handle_options,
-            _router=self._router,
+            _router=None if _router_cls != DEFAULT.VALUE else self._router,
             _is_for_http_requests=self._is_for_http_requests,
             _is_for_sync_context=self._is_for_sync_context,
         )
@@ -246,6 +257,7 @@ class RayServeHandle(DeploymentHandleBase):
         multiplexed_model_id: Union[str, DEFAULT] = DEFAULT.VALUE,
         stream: Union[bool, DEFAULT] = DEFAULT.VALUE,
         use_new_handle_api: Union[bool, DEFAULT] = DEFAULT.VALUE,
+        _router_cls: Union[str, DEFAULT] = DEFAULT.VALUE,
     ) -> "RayServeHandle":
         """Set options for this handle and return an updated copy of it.
 
@@ -264,6 +276,7 @@ class RayServeHandle(DeploymentHandleBase):
             multiplexed_model_id=multiplexed_model_id,
             stream=stream,
             use_new_handle_api=use_new_handle_api,
+            _router_cls=_router_cls,
         )
 
     def remote(self, *args, **kwargs) -> asyncio.Task:
@@ -322,6 +335,7 @@ class RayServeSyncHandle(DeploymentHandleBase):
         multiplexed_model_id: Union[str, DEFAULT] = DEFAULT.VALUE,
         stream: Union[bool, DEFAULT] = DEFAULT.VALUE,
         use_new_handle_api: Union[bool, DEFAULT] = DEFAULT.VALUE,
+        _router_cls: Union[str, DEFAULT] = DEFAULT.VALUE,
     ) -> "RayServeSyncHandle":
         """Set options for this handle and return an updated copy of it.
 
@@ -340,6 +354,7 @@ class RayServeSyncHandle(DeploymentHandleBase):
             multiplexed_model_id=multiplexed_model_id,
             stream=stream,
             use_new_handle_api=use_new_handle_api,
+            _router_cls=_router_cls,
         )
 
     def remote(self, *args, **kwargs) -> ray.ObjectRef:

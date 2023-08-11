@@ -19,7 +19,7 @@ Trainers
 Trainers are responsible for executing (distributed) training runs.
 The output of a Trainer run is a :ref:`Result <train-key-concepts-results>` that contains
 metrics from the training run and the latest saved :ref:`Checkpoint <checkpoint-api-ref>`.
-Trainers can also be configured with :ref:`Datasets <data-ingest-torch>` and :ref:`Preprocessors <air-preprocessors>` for scalable data ingest and preprocessing.
+You can also configured trainers with :ref:`Datasets <data-ingest-torch>` and :ref:`Preprocessors <air-preprocessors>` for scalable data ingest and preprocessing.
 
 
 Deep Learning, Tree-Based, and other Trainers
@@ -41,7 +41,7 @@ There are three categories of built-in Trainers:
         For these trainers, you usually define your own training function that loads the model
         and executes single-worker training steps. Refer to the following guides for more details:
 
-        - :doc:`Distributed PyTorch </train/distributed-pytorch>`
+        - :doc:`Distributed PyTorch </train/getting-started-pytorch>`
         - :doc:`Distributed TensorFlow </train/distributed-tensorflow-keras>`
         - :doc:`Horovod </train/horovod>`
 
@@ -87,5 +87,5 @@ information about the run such as the reported metrics and the saved checkpoints
 Checkpoints have the following purposes:
 
 * They can be passed to a Trainer to resume training from the given model state.
-* They can be used to create a Predictor / BatchPredictor for scalable batch prediction.
+* They can be used with Ray Data for scalable batch prediction.
 * They can be deployed with Ray Serve.

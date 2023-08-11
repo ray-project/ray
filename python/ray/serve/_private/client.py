@@ -278,6 +278,7 @@ class ServeControllerClient:
             version=version,
             route_prefix=route_prefix,
         )
+        controller_deploy_args.pop("ingress")
 
         updating = ray.get(
             self._controller.deploy.remote(
@@ -309,7 +310,10 @@ class ServeControllerClient:
                     deployment["func_or_class"],
                     deployment["init_args"],
                     deployment["init_kwargs"],
+                    ingress=deployment["ingress"],
                     ray_actor_options=deployment["ray_actor_options"],
+                    placement_group_bundles=deployment["placement_group_bundles"],
+                    placement_group_strategy=deployment["placement_group_strategy"],
                     config=deployment["config"],
                     version=deployment["version"],
                     route_prefix=deployment["route_prefix"],
@@ -484,8 +488,8 @@ class ServeControllerClient:
             if cached_handle._is_same_loop:
                 return cached_handle
 
-        all_endpoints = ray.get(self._controller.get_all_endpoints.remote())
-        if not missing_ok and deployment_name not in all_endpoints:
+        all_deployments = ray.get(self._controller.list_deployment_names.remote())
+        if not missing_ok and deployment_name not in all_deployments:
             raise KeyError(f"Deployment '{deployment_name}' does not exist.")
 
         if RAY_SERVE_ENABLE_NEW_HANDLE_API:

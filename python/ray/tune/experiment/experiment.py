@@ -25,10 +25,7 @@ from typing import (
 from ray.air import CheckpointConfig
 from ray.air._internal.uri_utils import URI
 from ray.exceptions import RpcError
-from ray.train._internal.storage import (
-    _use_storage_context,
-    StorageContext,
-)
+from ray.train._internal.storage import _use_storage_context, StorageContext
 from ray.tune.error import TuneError
 from ray.tune.registry import register_trainable, is_function_trainable
 from ray.tune.result import _get_defaults_results_dir
