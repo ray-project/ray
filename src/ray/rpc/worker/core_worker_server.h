@@ -42,6 +42,7 @@ namespace rpc {
   RAY_CORE_WORKER_RPC_SERVICE_HANDLER(PubsubCommandBatch)             \
   RAY_CORE_WORKER_RPC_SERVICE_HANDLER(UpdateObjectLocationBatch)      \
   RAY_CORE_WORKER_RPC_SERVICE_HANDLER(GetObjectLocationsOwner)        \
+  RAY_CORE_WORKER_RPC_SERVICE_HANDLER(ReportGeneratorItemReturns)     \
   RAY_CORE_WORKER_RPC_SERVICE_HANDLER(KillActor)                      \
   RAY_CORE_WORKER_RPC_SERVICE_HANDLER(CancelTask)                     \
   RAY_CORE_WORKER_RPC_SERVICE_HANDLER(RemoteCancelTask)               \
@@ -53,7 +54,8 @@ namespace rpc {
   RAY_CORE_WORKER_RPC_SERVICE_HANDLER(DeleteSpilledObjects)           \
   RAY_CORE_WORKER_RPC_SERVICE_HANDLER(PlasmaObjectReady)              \
   RAY_CORE_WORKER_RPC_SERVICE_HANDLER(Exit)                           \
-  RAY_CORE_WORKER_RPC_SERVICE_HANDLER(AssignObjectOwner)
+  RAY_CORE_WORKER_RPC_SERVICE_HANDLER(AssignObjectOwner) \
+  RAY_CORE_WORKER_RPC_SERVICE_HANDLER(NumPendingTasks)
 
 #define RAY_CORE_WORKER_DECLARE_RPC_HANDLERS                              \
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(PushTask)                       \
