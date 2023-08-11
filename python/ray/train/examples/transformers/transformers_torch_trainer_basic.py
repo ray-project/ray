@@ -6,14 +6,15 @@ from transformers import TrainingArguments, Trainer
 import numpy as np
 import evaluate
 
-from ray.train.huggingface import (
+from ray.train.huggingface.transformers import (
     prepare_trainer,
     RayTrainReportCallback,
 )
 from ray.train import ScalingConfig
 from ray.train.torch import TorchTrainer
 
-
+# [1] Define a training function that includes all your training logics
+# =====================================================================
 def train_func(config):
     # Datasets
     dataset = load_dataset("yelp_review_full")
@@ -53,14 +54,20 @@ def train_func(config):
         compute_metrics=compute_metrics,
     )
 
-    # Ray Train Integration
+    # [2] Report metrics and checkpoints to Ray Train
+    # ===============================================
     trainer.add_callback(RayTrainReportCallback())
+
+    # [3] Prepare your trainer for Ray Data Integration
+    # =================================================
     trainer = prepare_trainer(trainer)
 
     # Start Training
     trainer.train()
 
 
+# [4] Build a Ray TorchTrainer to launch `train_func` on all workers
+# ==================================================================
 trainer = TorchTrainer(
     train_func, scaling_config=ScalingConfig(num_workers=4, use_gpu=True)
 )
