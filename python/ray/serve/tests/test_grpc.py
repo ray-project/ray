@@ -275,6 +275,11 @@ def test_serving_request_through_grpc_proxy(ray_cluster):
     response = stub.Method1(request=request, metadata=metadata)
     assert response.greeting == "Hello foo from method1"
 
+    # Ensure Streaming method is responding correctly.
+    responses = stub.Streaming(request=request, metadata=metadata)
+    for idx, response in enumerate(responses):
+        assert response.greeting == f"{idx}: Hello foo from bar"
+
 
 if __name__ == "__main__":
     import sys

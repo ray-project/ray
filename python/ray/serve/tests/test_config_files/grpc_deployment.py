@@ -1,5 +1,3 @@
-import time
-
 # Users need to include their custom message type which will be embedded in the request.
 from ray.serve.generated import serve_pb2
 
@@ -40,8 +38,6 @@ class GrpcDeployment:
                 num_x2=num_x2,
             )
             yield user_response
-
-            time.sleep(0.1)
 
 
 g = GrpcDeployment.options(name="grpc-deployment").bind()
