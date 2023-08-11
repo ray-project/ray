@@ -365,41 +365,50 @@ class RayServeSyncHandle(DeploymentHandleBase):
     message="RayServeDeploymentHandle is no longer used, use RayServeHandle instead."
 )
 class RayServeDeploymentHandle(RayServeHandle):
-    # We had some examples using this class for type hinting. To avoid breakig them,
+    # We had some examples using this class for type hinting. To avoid breaking them,
     # leave this as an alias.
     pass
 
 
-class DeploymentHandleResultBase(asyncio.Task):
+class DeploymentHandleResultBase:
     def __init__(
         self,
         assign_request_coro: Coroutine,
-        loop: Optional[asyncio.AbstractEventLoop] = None,
+        loop: asyncio.AbstractEventLoop,
     ):
-        asyncio.Task.__init__(self, assign_request_coro, loop=loop)
-        self._obj_ref_future = asyncio.Future(loop=loop)
-        super().add_done_callback(lambda t: self._obj_ref_future.set_result(t.result()))
+        self._assign_request_task = loop.create_task(assign_request_coro)
+
+    async def _to_obj_ref_or_gen(
+        self,
+    ) -> Union[ray.ObjectRef, StreamingObjectRefGenerator]:
+        return await self._assign_request_task
+
+    def _to_obj_ref_or_gen_sync(
+        self,
+    ) -> Union[ray.ObjectRef, StreamingObjectRefGenerator]:
+        future: concurrent.futures.Future = asyncio.run_coroutine_threadsafe(
+            self._to_obj_ref_or_gen(), self._loop
+        )
+        return future.result()
 
 
-class DeploymentHandleResultRef(DeploymentHandleResultBase):
+class DeploymentHandleRef(DeploymentHandleResultBase):
     def __await__(self):
-        obj_ref = yield from super().__await__()
+        obj_ref = yield from self._assign_request_task.__await__()
         result = yield from obj_ref.__await__()
         return result
 
     async def to_obj_ref(self) -> ray.ObjectRef:
-        return await self._obj_ref_future
+        return await self._to_obj_ref_or_gen()
 
     def to_obj_ref_sync(self) -> ray.ObjectRef:
-        future = asyncio.run_coroutine_threadsafe(self.to_obj_ref(), self._loop)
-        return future.result()
+        return self._to_obj_ref_or_gen_sync()
 
-    def get(self) -> Any:
-        obj_ref = self.to_obj_ref_sync()
-        return ray.get(obj_ref)
+    def result(self, timeout_s: Optional[float] = None) -> Any:
+        return ray.get(self.to_obj_ref_sync(), timeout=timeout_s)
 
 
-class DeploymentHandleResultGenerator(DeploymentHandleResultBase):
+class DeploymentHandleGenerator(DeploymentHandleResultBase):
     def __init__(
         self,
         assign_request_coro: Coroutine,
@@ -409,21 +418,20 @@ class DeploymentHandleResultGenerator(DeploymentHandleResultBase):
         self._obj_ref_gen: Optional[StreamingObjectRefGenerator] = None
 
     async def to_obj_ref_gen(self) -> StreamingObjectRefGenerator:
-        return await self._obj_ref_future
+        return await self._to_obj_ref_or_gen()
 
     def __aiter__(self) -> AsyncIterator[Any]:
         return self
 
     async def __anext__(self) -> Any:
         if self._obj_ref_gen is None:
-            self._obj_ref_gen = await self
+            self._obj_ref_gen = await self.to_obj_ref_gen()
 
-        next_ref = await self._obj_ref_gen.__anext__()
-        return await next_ref
+        next_obj_ref = await self._obj_ref_gen.__anext__()
+        return await next_obj_ref
 
     def to_obj_ref_gen_sync(self) -> StreamingObjectRefGenerator:
-        future = asyncio.run_coroutine_threadsafe(self.to_obj_ref_gen(), self._loop)
-        return future.result()
+        return self._to_obj_ref_or_gen_sync()
 
     def __iter__(self) -> Iterator[Any]:
         return self
@@ -432,8 +440,8 @@ class DeploymentHandleResultGenerator(DeploymentHandleResultBase):
         if self._obj_ref_gen is None:
             self._obj_ref_gen = self.to_obj_ref_gen_sync()
 
-        next_ref = self._obj_ref_gen.__next__()
-        return ray.get(next_ref)
+        next_obj_ref = self._obj_ref_gen.__next__()
+        return ray.get(next_obj_ref)
 
 
 @PublicAPI(stability="beta")
@@ -505,7 +513,7 @@ class DeploymentHandle(DeploymentHandleBase):
 
     def remote(
         self, *args, **kwargs
-    ) -> Union[DeploymentHandleResultRef, DeploymentHandleResultGenerator]:
+    ) -> Union[DeploymentHandleRef, DeploymentHandleGenerator]:
         """Issue an asynchronous request to the __call__ method of the deployment.
 
         Returns an `asyncio.Task` whose underlying result is a Ray ObjectRef that
@@ -526,6 +534,6 @@ class DeploymentHandle(DeploymentHandleBase):
             self.deployment_name, self.handle_options, args, kwargs
         )
         if self.handle_options.stream:
-            return DeploymentHandleResultGenerator(result_coro, loop=loop)
+            return DeploymentHandleGenerator(result_coro, loop=loop)
         else:
-            return DeploymentHandleResultRef(result_coro, loop=loop)
+            return DeploymentHandleRef(result_coro, loop=loop)

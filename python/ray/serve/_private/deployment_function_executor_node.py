@@ -38,7 +38,6 @@ class DeploymentFunctionExecutorNode(DAGNode):
             use_new_handle_api=True,
         )
 
-
     def _copy_impl(
         self,
         new_args: List[Any],

@@ -84,11 +84,11 @@ class Query:
     async def resolve_deployment_handle_results_to_obj_refs(self):
         """Replace DeploymentHandleResults with their resolved ObjectRefs.
 
-        DeploymentHandleResultGenerators are rejected (not currently supported).
+        DeploymentHandleGenerators are rejected (not currently supported).
         """
         from ray.serve.handle import (
             DeploymentHandleResultBase,
-            DeploymentHandleResultGenerator,
+            DeploymentHandleGenerator,
         )
 
         scanner = _PyObjScanner(source_type=DeploymentHandleResultBase)
@@ -98,7 +98,7 @@ class Query:
             results = scanner.find_nodes((self.args, self.kwargs))
             for result in results:
                 result_to_obj_ref_coros.append(result.to_obj_ref())
-                if isinstance(result, DeploymentHandleResultGenerator):
+                if isinstance(result, DeploymentHandleGenerator):
                     raise RuntimeError(
                         "Streaming deployment handle results cannot be passed to "
                         "downstream handle calls. If you have a use case requiring "
