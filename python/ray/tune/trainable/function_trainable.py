@@ -633,9 +633,11 @@ class FunctionTrainable(Trainable):
             session = get_session()
             try:
                 # session.finish raises any Exceptions from training.
-                _ = session.finish()
+                # Do not wait for thread termination here (timeout=0).
+                session.finish(timeout=0)
             finally:
-                session = None
+                # Check for any errors that might have been missed.
+                session._report_thread_runner_error()
                 # Shutdown session even if session.finish() raises an Exception.
                 shutdown_session()
             return
