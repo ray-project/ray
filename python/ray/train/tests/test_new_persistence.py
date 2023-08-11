@@ -213,7 +213,21 @@ def _resume_from_checkpoint(checkpoint: NewCheckpoint, expected_state: dict):
 
 
 @pytest.mark.parametrize("storage_path_type", [None, "nfs", "cloud", "custom_fs"])
-def test_tuner(monkeypatch, storage_path_type, tmp_path):
+@pytest.mark.parametrize(
+    "checkpoint_config",
+    [
+        train.CheckpointConfig(),
+        train.CheckpointConfig(num_to_keep=2),
+        train.CheckpointConfig(
+            num_to_keep=1,
+            checkpoint_score_attribute=_SCORE_KEY,
+            checkpoint_score_order="max",
+        ),
+    ],
+)
+def test_tuner(
+    monkeypatch, tmp_path, storage_path_type, checkpoint_config: train.CheckpointConfig
+):
     """End-to-end test that the new persistence mode works with the Tuner API.
     This test covers many `storage_path_type` options:
     - storage_path=None --> save locally to the default local path (e.g., ~/ray_results)
@@ -242,7 +256,6 @@ def test_tuner(monkeypatch, storage_path_type, tmp_path):
     └── train_fn_a2b9e_00001_1_...
         └── ...                     <- Same as above
     """
-
     # Set the cache dir to some temp directory
     LOCAL_CACHE_DIR = tmp_path / "ray_results"
     monkeypatch.setenv("RAY_AIR_LOCAL_CACHE_DIR", str(LOCAL_CACHE_DIR))
@@ -264,6 +277,7 @@ def test_tuner(monkeypatch, storage_path_type, tmp_path):
                 name=exp_name,
                 verbose=0,
                 failure_config=train.FailureConfig(max_failures=1),
+                checkpoint_config=checkpoint_config,
             ),
             # 2 samples, running 1 at at time to test with actor reuse
             tune_config=tune.TuneConfig(
@@ -271,6 +285,16 @@ def test_tuner(monkeypatch, storage_path_type, tmp_path):
             ),
         )
         result_grid = tuner.fit()
+        assert result_grid.errors
+
+        restored_tuner = tune.Tuner.restore(
+            path=str(URI(storage_path or str(LOCAL_CACHE_DIR)) / exp_name),
+            trainable=train_fn,
+            storage_filesystem=storage_filesystem,
+            resume_errored=True,
+        )
+        result_grid = restored_tuner.fit()
+        assert not result_grid.errors
 
         local_inspect_dir, storage_fs_path = _get_local_inspect_dir(
             root_local_path=tmp_path,
@@ -288,8 +312,6 @@ def test_tuner(monkeypatch, storage_path_type, tmp_path):
     for result in result_grid:
         trial_fs_path = _convert_path_to_fs_path(result.path, storage_filesystem)
         assert trial_fs_path.startswith(experiment_fs_path)
-        # TODO(justinvyu): Trainable syncing of artifacts and checkpoints
-        # is not yet implemented for the new persistence path.
         for checkpoint, _ in result.best_checkpoints:
             assert checkpoint.path.startswith(trial_fs_path)
 
@@ -298,9 +320,27 @@ def test_tuner(monkeypatch, storage_path_type, tmp_path):
     exp_dir = local_inspect_dir / exp_name
 
     # Files synced by the driver
-    assert len(list(exp_dir.glob("basic-variant-state-*"))) == 1
-    assert len(list(exp_dir.glob("experiment_state-*"))) == 1
-    assert len(list(exp_dir.glob("tuner.pkl"))) == 1
+    assert (exp_dir / "tuner.pkl").exists()
+    # 2 copies of these files:
+    # 1 for the initial run, and 1 for the manually restored run.
+    assert len(list(exp_dir.glob("basic-variant-state-*"))) == 2
+    assert len(list(exp_dir.glob("experiment_state-*"))) == 2
+
+    # Files synced by the worker
+    assert len(list(exp_dir.glob("train_fn_*"))) == NUM_TRIALS
+    for trial_dir in exp_dir.glob("train_fn_*"):
+        # If set, expect num_to_keep. Otherwise, expect to see all of them.
+        expected_num_checkpoints = checkpoint_config.num_to_keep or NUM_ITERATIONS
+
+        assert len(list(trial_dir.glob("checkpoint_*"))) == expected_num_checkpoints
+        for checkpoint_dir in trial_dir.glob("checkpoint_*"):
+            # 1 shared checkpoint.pkl file, written by all workers.
+            assert len(list(checkpoint_dir.glob("checkpoint.pkl"))) == 1
+
+        # NOTE: These next 2 are technically synced by the driver.
+        # TODO(justinvyu): In a follow-up PR, artifacts will be synced by the workers.
+        assert len(list(trial_dir.glob("artifact-*"))) == NUM_ITERATIONS
+        assert len(list(trial_dir.glob(EXPR_RESULT_FILE))) == 1
 
 
 @pytest.mark.parametrize("storage_path_type", [None, "nfs", "cloud", "custom_fs"])

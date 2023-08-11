@@ -25,11 +25,7 @@ from ray.air.constants import (
     TRAINING_ITERATION,
 )
 from ray.train._internal.checkpoint_manager import _TrainingResult
-from ray.train._internal.storage import (
-    _use_storage_context,
-    StorageContext,
-    init_shared_storage_context,
-)
+from ray.train._internal.storage import _use_storage_context, StorageContext
 from ray.tune.result import (
     DEBUG_METRICS,
     DEFAULT_RESULTS_DIR,
@@ -181,10 +177,6 @@ class Trainable:
             assert storage.trial_fs_path
             logger.debug(f"StorageContext on the TRAINABLE:\n{storage}")
             storage._check_validation_file()
-
-            # Set a globally accessible storage context on the remote Trainable process
-            # This is accessible from the training loop thread for FunctionTrainable's
-            init_shared_storage_context(storage)
 
         self.setup(copy.deepcopy(self.config))
         setup_time = time.time() - self._start_time
@@ -1075,8 +1067,6 @@ class Trainable:
         self.config = new_config
 
         self._storage = storage
-        if _use_storage_context():
-            init_shared_storage_context(storage)
 
         trial_info = new_config.pop(TRIAL_INFO, None)
         if trial_info:

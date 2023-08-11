@@ -26,7 +26,9 @@ from ray.air.constants import (
     TIME_THIS_ITER_S,
 )
 from ray.data import Dataset, DatasetPipeline
+from ray.train._checkpoint import Checkpoint as NewCheckpoint
 from ray.train._internal.accelerator import Accelerator
+from ray.train._internal.storage import _use_storage_context, StorageContext
 from ray.train.constants import (
     CHECKPOINT_METADATA_KEY,
     CHECKPOINT_RANK_KEY,
@@ -41,7 +43,6 @@ from ray.train.constants import (
 from ray.train.error import SessionMisuseError
 from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.util.debug import log_once
-from ray.train._internal.storage import _use_storage_context, StorageContext
 
 if TYPE_CHECKING:
     from ray.data import DataIterator
@@ -118,17 +119,20 @@ class _TrainSession:
         checkpoint_keep_all_ranks: bool = False,
         checkpoint_upload_from_workers: bool = False,
         storage: Optional[StorageContext] = None,
-        eager_mode: bool = True,
+        synchronous_result_reporting: bool = False,
     ):
-        # Eager mode refers to whether the training function is immediately
-        # unblocked to continue running, after the main thread receives its result.
-        # If eager_mode is False, the training function will be blocked until the
-        # the next call to `session.get_next`.
-        # Ex: For 2 Ray Train workers with eager_mode=True, the worker that produces
-        # a result first will immediately will continue onto the next iteration.
-        # Ex: For a Tune Trainable with eager_mode=False, training will only progress
-        # with explicit calls to `session.get_next`.
-        self.eager_mode = eager_mode
+        # `synchronous_result_reporting` refers to whether or not the
+        # training function is immediately unblocked to continue running
+        # after the main thread receives its result.
+        # Ex 1: For 2 Ray Train workers with synchronous_result_reporting=True,
+        # the worker that produces a result first will immediately will continue
+        # onto the next iteration.
+        # Ex 2: For a Tune function Trainable with `synchronous_result_reporting=False`,
+        # training will only continue with an explicit call to `session.get_next`.
+        # Synchronous reporting in example 2 is needed for Tune schedulers to
+        # be able to stop the execution of the training function at will,
+        # for advanced pausing schedulers (PBT, BOHB) and actor reuse.
+        self.synchronous_result_reporting = synchronous_result_reporting
 
         # Ray Train worker properties
         self.dataset_shard = dataset_shard
@@ -266,7 +270,7 @@ class _TrainSession:
         if not self.training_started:
             raise RuntimeError("Please call start before calling get_next.")
 
-        if not self.eager_mode:
+        if self.synchronous_result_reporting:
             # There's no need to release the lock on the first report
             # since `start` already started the training thread.
             if not self._first_report:
@@ -310,11 +314,12 @@ class _TrainSession:
                     )
                 )
 
-        if self.eager_mode:
+        if not self.synchronous_result_reporting:
             # At this point, the training thread has already reached
             # the next call to report and is blocked there.
-            # If eager mode is enabled, release the lock to keep training
-            # immediately after receiving the result.
+            # If performing asynchronous result reporting,
+            # release the lock to keep training immediately after
+            # receiving the result.
             self.continue_lock.release()
 
         # Return None if there are no more results to fetch.
@@ -503,7 +508,15 @@ class _TrainSession:
         """
         self.legacy_checkpoint_uri = uri
 
-    def report_training_result(self, training_result: _TrainingResult) -> None:
+    def _report_training_result(self, training_result: _TrainingResult) -> None:
+        """Place a training result on the result queue for the main thread to process,
+        then block until the main thread signals that training should continue.
+
+        NOTE: This is used internally to report results from Train to Tune
+        without persisting checkpoints to storage 2 times.
+        `report` is the public API that directly persists to storage, which
+        should only be called by user code.
+        """
         if training_result.checkpoint:
             # NOTE: This populates `train.get_checkpoint`
             self.loaded_checkpoint = training_result.checkpoint
@@ -520,13 +533,16 @@ class _TrainSession:
         self.continue_lock.acquire()
 
         # If the trial should be terminated, exit gracefully.
+        # NOTE: This is only really useful if `synchronous_result_reporting=True`.
+        # Otherwise, the lock is immediately released on reporting, and this
+        # check is skipped before the main thread decides to set the stop event.
         if self.stop_event.is_set():
             self.stop_event.clear()
             sys.exit(0)
 
-    def new_report(self, metrics: Dict, checkpoint=None) -> None:
-        from ray.train._checkpoint import Checkpoint as NewCheckpoint
-
+    def new_report(
+        self, metrics: Dict, checkpoint: Optional[NewCheckpoint] = None
+    ) -> None:
         persisted_checkpoint = None
         if checkpoint:
             if not isinstance(checkpoint, NewCheckpoint):
@@ -545,7 +561,7 @@ class _TrainSession:
             metrics=metrics,
         )
 
-        self.report_training_result(result)
+        self._report_training_result(result)
 
     def report(self, metrics: Dict, checkpoint: Optional[Checkpoint] = None) -> None:
         # TODO(xwjiang): tons of optimizations.
