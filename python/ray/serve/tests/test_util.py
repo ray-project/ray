@@ -667,7 +667,7 @@ def test_get_all_live_placement_group_names(ray_instance):
     assert set(get_all_live_placement_group_names()) == {"pg3", "pg4", "pg5", "pg6"}
 
 
-def test_metrics_pusher():
+def test_metrics_pusher_basic():
     counter = {"val": 0}
 
     def task(c):
@@ -680,6 +680,25 @@ def test_metrics_pusher():
 
     time.sleep(10.4)
     assert counter["val"] == 20
+
+
+def test_metrics_pusher_multiple_tasks():
+    counter = {"A": 0, "B": 0, "C": 0}
+
+    def task(c, key):
+        time.sleep(0.001)
+        c[key] += 1
+
+    metrics_pusher = MetricsPusher()
+    metrics_pusher.register_task(lambda: task(counter, "A"), 0.2)
+    metrics_pusher.register_task(lambda: task(counter, "B"), 0.5)
+    metrics_pusher.register_task(lambda: task(counter, "C"), 0.7)
+    metrics_pusher.start()
+
+    time.sleep(7.19)
+    assert counter["A"] == 35
+    assert counter["B"] == 14
+    assert counter["C"] == 10
 
 
 if __name__ == "__main__":
