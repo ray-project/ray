@@ -178,158 +178,60 @@ You can begin by wrapping your code in a function:
     def train_func(config):
         # Your PyTorch Lightning training code here.
 
-This function will be executed on each distributed training worker.
+This function will be executed on each distributed training worker. Ray Train will set up the distributed 
+process group on each worker before entering this function.
 
+Please put all the logics into this function, including dataset construction and preprocessing, 
+model initialization, transformers trainer definition and more.
 
-Ray Train will set up your distributed process group on each worker. You only need to 
-make a few changes to your Lightning Trainer definition.
+.. note::
 
-.. code-block:: diff
-
-     import pytorch_lightning as pl
-    -from pl.strategies import DDPStrategy
-    -from pl.plugins.environments import LightningEnvironment
-    +import ray.train.lightning 
-
-     def train_func(config):
-         ...
-         model = MyLightningModule(...)
-         datamodule = MyLightningDataModule(...)
-        
-         trainer = pl.Trainer(
-    -        devices=[0,1,2,3],
-    -        strategy=DDPStrategy(),
-    -        plugins=[LightningEnvironment()],
-    +        devices="auto",
-    +        accelerator="auto",
-    +        strategy=ray.train.lightning.RayDDPStrategy(),
-    +        plugins=[ray.train.lightning.RayLightningEnvironment()]
-         )
-    +    trainer = ray.train.lightning.prepare_trainer(trainer)
-        
-         trainer.fit(model, datamodule=datamodule)
-
-We will now go over each change.
-
-Configuring distributed strategy
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-Ray Train offers several subclassed distributed strategies for Lightning. 
-These strategies retain the same argument list as their base strategy classes. 
-Internally, they configure the root device and the distributed 
-sampler arguments.
-    
-- :class:`~ray.train.lightning.RayDDPStrategy` 
-- :class:`~ray.train.lightning.RayFSDPStrategy` 
-- :class:`~ray.train.lightning.RayDeepSpeedStrategy` 
-
-
-.. code-block:: diff
-
-     import pytorch_lightning as pl
-    -from pl.strategies import DDPStrategy
-    +import ray.train.lightning
-
-     def train_func(config):
-         ...
-         trainer = pl.Trainer(
-             ...
-    -        strategy=DDPStrategy(),
-    +        strategy=ray.train.lightning.RayDDPStrategy(),
-             ...
-         )
-         ...
-
-Configuring Ray cluster environment plugin
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-Ray Train also provides :class:`~ray.train.lightning.RayLightningEnvironment` 
-as a specification for Ray Cluster. This utility class configures the worker's 
-local, global, and node rank and world size.
-
-
-.. code-block:: diff
-
-     import pytorch_lightning as pl
-    -from pl.plugins.environments import LightningEnvironment
-    +import ray.train.lightning
-
-     def train_func(config):
-         ...
-         trainer = pl.Trainer(
-             ...
-    -        plugins=[LightningEnvironment()],
-    +        plugins=[ray.train.lightning.RayLightningEnvironment()],
-             ...
-         )
-         ...
-
-
-Configuring parallel devices
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-In addition, Ray TorchTrainer has already configured the correct 
-``CUDA_VISIBLE_DEVICES`` for you. One should always use all available 
-GPUs by setting ``devices="auto"`` and ``acelerator="auto"``.
-
-
-.. code-block:: diff
-
-     import pytorch_lightning as pl
-
-     def train_func(config):
-         ...
-         trainer = pl.Trainer(
-             ...
-    -        devices=[0,1,2,3],
-    +        devices="auto",
-    +        accelerator="auto",
-             ...
-         )
-         ...
-
+    If you are using HuggingFace Datasets or Evaluate, make sure to call ``datasets.load_dataset`` and ``evaluate.load`` 
+    inside the training function. We do not recommend passing the loaded datasets and metrics from outside of the training 
+    function, because it might cause serialization errors while transferring the objects to the workers.
 
 
 Reporting metrics and checkpoints
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 To monitor progress, you can report intermediate metrics and checkpoints
-using the :class:`ray.train.lightning.RayTrainReportCallback` utility callback.
+using the :class:`ray.train.huggingface.RayTrainReportCallback` utility callback.
 
                     
 .. code-block:: diff
 
-     import pytorch_lightning as pl
+     import transformers
+     import ray.train.huggingface
 
      def train_func(config):
          ...
-         trainer = pl.Trainer(
-             ...
-    +        callbacks=[ray.train.lightning.RayTrainReportCallback()],
-             ...
-         )
+         trainer = transformers.Trainer(...)
+    +    trainer.add_callback(ray.train.huggingface.RayTrainReportCallback())
          ...
 
-Reporting metrics and checkpoints to Ray Train ensures that you can use Ray Tune and fault-tolerant training. For more details, see :ref:`train-checkpointing` and :ref:`train-fault-tolerance`.
+Reporting metrics and checkpoints to Ray Train ensures that you can use Ray Tune and :ref:`fault-tolerant training <train-fault-tolerance>`.
+
+Note that `RayTrainReportCallback` only provides a simple implementation. To customize, see :ref:`train-checkpointing`.
 
 
-Preparing your Lightning Trainer
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Preparing your Transformers Trainer
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Finally, pass your Lightning Trainer into
-:meth:`~ray.train.lightning.prepare_trainer` to validate 
-your configurations. 
+Finally, pass your Transformers Trainer into
+:meth:`~ray.train.huggingface.prepare_trainer` to validate 
+your configurations and enable Ray Data Integration. 
 
 
 .. code-block:: diff
 
-     import pytorch_lightning as pl
-     import ray.train.lightning
+     import transformers
+     import ray.train.huggingface
 
      def train_func(config):
          ...
-         trainer = pl.Trainer(...)
-    +    trainer = ray.train.lightning.prepare_trainer(trainer)
+         trainer = transformers.Trainer(...)
+    +    trainer = ray.train.huggingface.prepare_trainer(trainer)
+         trainer.train()
          ...
 
 
@@ -382,114 +284,144 @@ information about the training run, including the metrics and checkpoints report
 Next steps
 ---------- 
 
-Congratulations! You have successfully converted your PyTorch Lightningtraining script to use Ray Train.
+Congratulations! You have successfully converted your HuggingFace Transformers training script to use Ray Train.
 
 * Head over to the :ref:`User Guides <train-user-guides>` to learn more about how to perform specific tasks.
 * Browse the :ref:`Examples <train-examples>` for end-to-end examples of how to use Ray Train.
 * Dive into the :ref:`API Reference <train-api>` for more details on the classes and methods used in this tutorial.
 
 
-.. _lightning-trainer-migration-guide:
+.. _transformers-trainer-migration-guide:
 
-``LightningTrainer`` Migration Guide
+``TransformersTrainer`` Migration Guide
 ------------------------------------
 
-The `LightningTrainer` was added in Ray 2.4, and exposes a  
-`LightningConfigBuilder` to define configurations for `pl.LightningModule` 
-and `pl.Trainer`. 
+The `TransformersTrainer` was added in Ray 2.1. It exposes a `trainer_init_per_worker` interface 
+to define `transformers.Trainer`, then runs a pre-defined training loop in a black box.
 
-It then instantiates the model and trainer objects and runs a pre-defined 
-training loop in a black box.
-
-
-This version of our LightningTrainer API was constraining and limited 
-the users' ability to manage the training functionality.
-
-In Ray 2.7, we're pleased to introduce the newly unified :class:`~ray.train.torch.TorchTrainer` API, which offers 
-enhanced transparency, flexibility, and simplicity. This API is more aligned
-with standard PyTorch Lightning scripts, ensuring users have better 
-control over their native Lightning code.
+In Ray 2.7, we're pleased to introduce the newly unified :class:`~ray.train.torch.TorchTrainer` API, 
+which offers enhanced transparency, flexibility, and simplicity. This API is more aligned
+with standard HuggingFace Transformers scripts, ensuring users have better control over their 
+native Transformers training code.
 
 
 .. tabs::
 
-    .. group-tab:: LightningTrainer
+    .. group-tab:: (Deprecating) TransformersTrainer
 
 
         .. code-block:: python
             
-            from ray.train.lightning import LightningConfigBuilder, LightningTrainer
+            import transformers
+            from transformers import AutoConfig, AutoModelForCausalLM
+            from datasets import load_dataset
 
-            config_builder = LightningConfigBuilder()
-            config_builder.module(cls=MNISTClassifier, lr=1e-3, feature_dim=128)
-            config_builder.checkpointing(monitor="val_accuracy", mode="max", save_top_k=3)
-            config_builder.trainer(
-                max_epochs=10,
-                accelerator="gpu",
-                log_every_n_steps=100,
-                logger=CSVLogger("./logs"),
-            )
+            import ray
+            from ray.train.huggingface import TransformersTrainer
+            from ray.train import ScalingConfig
 
-            datamodule = MNISTDataModule(batch_size=32)
-            config_builder.fit_params(datamodule=datamodule)
+            # Dataset
+            def preprocess(examples):
+                ...
 
-            ray_trainer = LightningTrainer(
-                lightning_config=config_builder.build(),
-                scaling_config=ScalingConfig(num_workers=4, use_gpu=True),
-                run_config=RunConfig(
-                    checkpoint_config=CheckpointConfig(
-                        num_to_keep=3,
-                        checkpoint_score_attribute="val_accuracy",
-                        checkpoint_score_order="max",
-                    ),
+            hf_datasets = load_dataset("wikitext", "wikitext-2-raw-v1")
+            processed_ds = hf_datasets.map(preprocess, ...)
+
+            ray_train_ds = ray.data.from_huggingface(processed_ds["train"])
+            ray_eval_ds = ray.data.from_huggingface(processed_ds["validation"])
+
+            # Define the Trainer generation function
+            def trainer_init_per_worker(train_dataset, eval_dataset, **config):
+                MODEL_NAME = "gpt2"
+                model_config = AutoConfig.from_pretrained(MODEL_NAME)
+                model = AutoModelForCausalLM.from_config(model_config)
+                args = transformers.TrainingArguments(
+                    output_dir=f"{MODEL_NAME}-wikitext2",
+                    evaluation_strategy="epoch",
+                    save_strategy="epoch",
+                    logging_strategy="epoch",
+                    learning_rate=2e-5,
+                    weight_decay=0.01,
+                    max_steps=100,
                 )
-            )
-            ray_trainer.fit()
+                return transformers.Trainer(
+                    model=model,
+                    args=args,
+                    train_dataset=train_dataset,
+                    eval_dataset=eval_dataset,
+                )
 
+            # Build a Ray HuggingFaceTrainer
+            scaling_config = ScalingConfig(num_workers=4, use_gpu=True)
+            ray_trainer = TransformersTrainer(
+                trainer_init_per_worker=trainer_init_per_worker,
+                scaling_config=scaling_config,
+                datasets={"train": ray_train_ds, "evaluation": ray_eval_ds},
+            )
+            result = ray_trainer.fit()
                 
 
     .. group-tab:: TorchTrainer
 
         .. code-block:: python
             
-            import pytorch_lightning as pl
-            from ray.train.torch import TorchTrainer
-            from ray.train.lightning import (
-                RayDDPStrategy, 
-                RayLightningEnvironment,
-                RayTrainReportCallback,
-                prepare_trainer
-            ) 
+            import transformers
+            from transformers import AutoConfig, AutoModelForCausalLM
+            from datasets import load_dataset
 
-            def train_func_per_worker():
-                model = MNISTClassifier(lr=1e-3, feature_dim=128)
-                datamodule = MNISTDataModule(batch_size=32)
+            import ray
+            from ray.train.huggingface import TransformersTrainer
+            from ray.train import ScalingConfig
 
-                trainer = pl.Trainer(
-                    max_epochs=10,
-                    accelerator="gpu",
-                    log_every_n_steps=100,
-                    logger=CSVLogger("./logs"),
-                    # New configurations below
-                    devices="auto",
-                    strategy=RayDDPStrategy(),
-                    plugins=[RayLightningEnvironment()],
-                    callbacks=[RayTrainReportCallback()],
+            # Dataset
+            def preprocess(examples):
+                ...
+
+            hf_datasets = load_dataset("wikitext", "wikitext-2-raw-v1")
+            processed_ds = hf_datasets.map(preprocess, ...)
+
+            ray_train_ds = ray.data.from_huggingface(processed_ds["train"])
+            ray_eval_ds = ray.data.from_huggingface(processed_ds["evaluation"])
+
+            # [1] Define the full training function
+            def train_func(config):
+                MODEL_NAME = "gpt2"
+                model_config = AutoConfig.from_pretrained(MODEL_NAME)
+                model = AutoModelForCausalLM.from_config(model_config)
+
+                # [2] Build Ray Data iterables
+                train_dataset = ray.train.get_dataset_shard("train")
+                eval_dataset = ray.train.get_dataset_shard("eval")
+
+                train_iterable = train_dataset.iter_torch_batches(batch_size=8)
+                eval_iterable = eval_dataset.iter_torch_batches(batch_size=8)
+
+                args = transformers.TrainingArguments(
+                    output_dir=f"{MODEL_NAME}-wikitext2",
+                    evaluation_strategy="epoch",
+                    save_strategy="epoch",
+                    logging_strategy="epoch",
+                    learning_rate=2e-5,
+                    weight_decay=0.01,
+                    max_steps=100,
                 )
-                trainer = prepare_trainer(trainer)
+                
+                trainer = transformers.Trainer(
+                    model=model,
+                    args=args,
+                    train_dataset=train_iterable,
+                    eval_dataset=eval_iterable,
+                )
 
-                trainer.fit(model, datamodule=datamodule)
+                # [3] Prepare your trainer
+                trainer = ray.train.huggingface.prepare_trainer(trainer)
+                trainer.train()
 
+            # Build a Ray TorchTrainer
+            scaling_config = ScalingConfig(num_workers=4, use_gpu=True)
             ray_trainer = TorchTrainer(
-                train_func_per_worker,
-                scaling_config=ScalingConfig(num_workers=4, use_gpu=True),
-                run_config=RunConfig(
-                    checkpoint_config=CheckpointConfig(
-                        num_to_keep=3,
-                        checkpoint_score_attribute="val_accuracy",
-                        checkpoint_score_order="max",
-                    ),
-                )
+                train_func,
+                scaling_config=scaling_config,
+                datasets={"train": ray_train_ds, "evaluation": ray_eval_ds},
             )
-
-            ray_trainer.fit()
+            result = ray_trainer.fit()
