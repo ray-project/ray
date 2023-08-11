@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Iterator, Optional, Tuple, Type
 from tempfile import TemporaryDirectory
 
-from torch.utils.data import DataLoader, Dataset
+from torch.utils.data import DataLoader, Dataset, IterableDataset
 import datasets.iterable_dataset
 import transformers.trainer
 from transformers import Trainer
@@ -23,9 +23,6 @@ from ray.train.huggingface.transformers.transformers_checkpoint import (
     TransformersCheckpoint,
 )
 from ray.util import PublicAPI
-
-if TYPE_CHECKING:
-    from torch.utils.data import IterableDataset
 
 logger = logging.getLogger(__name__)
 
@@ -265,6 +262,15 @@ class RayTrainReportCallback(TrainerCallback):
             ray.train.report(metrics=metrics, checkpoint=checkpoint)
 
 
+class RayTorchIterableDataset(IterableDataset):
+    def __init__(self, data_iterable) -> None:
+        super().__init__()
+        self.data_iterable = data_iterable
+
+    def __iter__(self) -> Iterator:
+        return iter(self.data_iterable)
+
+
 @PublicAPI(stability="alpha")
 def prepare_trainer(trainer: Trainer) -> Trainer:
     """Prepare your HuggingFace Transformer Trainer for Ray Train.
@@ -282,7 +288,9 @@ def prepare_trainer(trainer: Trainer) -> Trainer:
         def get_train_dataloader(self):
             if isinstance(self.train_dataset, _IterableFromIterator):
                 return DataLoader(
-                    self.train_dataset, batch_size=1, collate_fn=lambda x: x[0]
+                    RayTorchIterableDataset(self.train_dataset),
+                    batch_size=1,
+                    collate_fn=lambda x: x[0],
                 )
             else:
                 return super().get_train_dataloader()
@@ -294,7 +302,11 @@ def prepare_trainer(trainer: Trainer) -> Trainer:
                 eval_dataset = self.eval_dataset
 
             if isinstance(eval_dataset, _IterableFromIterator):
-                return DataLoader(eval_dataset, batch_size=1, collate_fn=lambda x: x[0])
+                return DataLoader(
+                    RayTorchIterableDataset(eval_dataset),
+                    batch_size=1,
+                    collate_fn=lambda x: x[0],
+                )
             else:
                 return super().get_eval_dataloader(eval_dataset)
 
