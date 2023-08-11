@@ -70,7 +70,7 @@ Ray's unified compute framework consists of three layers:
             :outline:
             :expand:
         
-            Ray AIR Libraries
+            Ray AI Libraries
 
     .. grid-item-card::
         
@@ -113,9 +113,9 @@ Each of [Ray's](../ray-air/getting-started) five native libraries distributes a 
 - [Train](../train/train): Distributed multi-node and multi-core model training with fault tolerance that integrates with popular training libraries.
 - [Tune](../tune/index): Scalable hyperparameter tuning to optimize model performance.
 - [Serve](../serve/index): Scalable and programmable serving to deploy models for online inference, with optional microbatching to improve performance.
-- [RLlib](../rllib/index): Scalable distributed reinforcement learning workloads that integrate with the other Ray AIR libraries.
+- [RLlib](../rllib/index): Scalable distributed reinforcement learning workloads.
 
-Ray's libraries are for both data scientists and ML engineers alike. For data scientists, AIR can be used to scale individual workloads, and also end-to-end ML applications. For ML Engineers, AIR provides scalable platform abstractions that can be used to easily onboard and integrate tooling from the broader ML ecosystem.
+Ray's libraries are for both data scientists and ML engineers alike. For data scientists, these libraries can be used to scale individual workloads, and also end-to-end ML applications. For ML Engineers, these libraries provides scalable platform abstractions that can be used to easily onboard and integrate tooling from the broader ML ecosystem.
 
 For custom applications, the [Ray Core](../ray-core/walkthrough) library enables Python developers to easily build scalable, distributed systems that can run on a laptop, cluster, cloud, or Kubernetes. It's the foundation that Ray AI Runtime libraries and third-party integrations (Ray ecosystem) are built on.
 
