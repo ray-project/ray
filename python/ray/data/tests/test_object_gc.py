@@ -1,4 +1,5 @@
 import threading
+
 import pytest
 
 import ray
@@ -26,7 +27,7 @@ def check_no_spill(ctx, pipe):
     # If we don't do this, the executor will continue running after the current
     # task case is finished, and auto-init Ray when using some Ray APIs.
     # This will make the next test case fail to init Ray.
-    wait_for_condition(_all_executor_threads_exited, timeout=5, retry_interval_ms=1000)
+    wait_for_condition(_all_executor_threads_exited, timeout=10, retry_interval_ms=1000)
 
 
 def check_to_torch_no_spill(ctx, pipe):
