@@ -522,7 +522,6 @@ class _TrainSession:
         # If the trial should be terminated, exit gracefully.
         if self.stop_event.is_set():
             self.stop_event.clear()
-            print("\nEXITING THREAD FROM STOP EVENT!!\n")
             sys.exit(0)
 
     def new_report(self, metrics: Dict, checkpoint=None) -> None:

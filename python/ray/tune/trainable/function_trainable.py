@@ -697,13 +697,10 @@ class FunctionTrainable(Trainable):
 
             # Wait for thread termination so it is save to re-use the same actor.
             thread_timeout = int(os.environ.get("TUNE_FUNCTION_THREAD_TIMEOUT_S", 2))
-            print("\nWAITING FOR SESSION TO FINISH!!\n")
             self._session.finish(timeout=thread_timeout)
             if self._session.training_thread.is_alive():
                 # Did not finish within timeout, reset unsuccessful.
                 return False
-
-            print("\nFINISHED!!\n")
 
             self._session.reset(
                 training_func=lambda: self._trainable_func(
@@ -719,8 +716,6 @@ class FunctionTrainable(Trainable):
                 ),
                 storage=self._storage,
             )
-
-            print("\nRESET WITH NEW TRIAL INFO\n", self._session.trial_info)
 
             self._last_result = {}
             return True
