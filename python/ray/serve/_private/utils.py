@@ -40,6 +40,7 @@ from ray.types import ObjectRef
 from ray.util.serialization import StandaloneSerializationContext
 from ray._raylet import MessagePackSerializer
 from ray._private.utils import import_attr
+from ray._private.worker import SCRIPT_MODE, LOCAL_MODE
 from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
 from ray._private.resource_spec import HEAD_NODE_RESOURCE_NAME
 
@@ -734,3 +735,11 @@ def get_all_live_placement_group_names() -> List[str]:
             live_pg_names.append(pg_name)
 
     return live_pg_names
+
+def in_ray_driver_process() -> bool:
+    """Returns True if called in the Ray driver, False otherwise.
+    
+    Call hangs if GCS is down.
+    """
+
+    return ray.get_runtime_context().worker.mode in [SCRIPT_MODE, LOCAL_MODE]

@@ -43,6 +43,7 @@ from ray.serve._private.utils import (
     compute_iterable_delta,
     JavaActorHandleProxy,
     MetricsPusher,
+    in_ray_driver_process,
 )
 from ray.serve.generated.serve_pb2 import (
     DeploymentRoute,
@@ -394,22 +395,27 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         called only when the scheduler is initialized, this should be
         okay because a ServeHandle (and its scheduler) relies
         on the Serve controller for intialization, and the Serve controller
-        fate-shares with the GCS.
+        is down when the GCS is down.
 
         Return:
             The name of the actor where this scheduler runs. If the scheduler
-            runs outside an actor, returns an empty string.
+            runs outside an actor or the call fails, returns an empty string.
         """
 
-        try:
-            actor_id = ray.get_runtime_context().get_actor_id()
-            if actor_id is None:
-                return ""
-            else:
-                return ray.util.state.get_actor(actor_id, timeout=5).name
-        except Exception:
-            logger.exception("Got exception while attempting to get actor name.")
+        if in_ray_driver_process():
             return ""
+        else:
+            try:
+                actor_id = ray.get_runtime_context().get_actor_id()
+                if actor_id is None:
+                    return ""
+                else:
+                    return ray.util.state.get_actor(actor_id, timeout=5).name
+            except Exception:
+                logger.exception(
+                    "Got exception while attempting to get actor name."
+                )
+                return ""
 
     def update_replicas(self, replicas: List[ReplicaWrapper]):
         """Update the set of available replicas to be considered for scheduling.
