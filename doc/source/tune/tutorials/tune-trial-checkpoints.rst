@@ -17,7 +17,7 @@ Function API Checkpointing
 --------------------------
 
 If using Ray Tune's Function API, one can save and load checkpoints in the following manner.
-To create an AIR checkpoint, one can either use :meth:`~ray.air.checkpoint.Checkpoint.from_dict`
+To create a checkpoint, one can either use :meth:`~ray.air.checkpoint.Checkpoint.from_dict`
 (Checkpoint a dictionary) or :meth:`~ray.air.checkpoint.Checkpoint.from_directory` APIs
 (Checkpoint a directory).
 
