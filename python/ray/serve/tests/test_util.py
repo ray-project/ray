@@ -668,6 +668,13 @@ def test_get_all_live_placement_group_names(ray_instance):
     assert set(get_all_live_placement_group_names()) == {"pg3", "pg4", "pg5", "pg6"}
 
 
+def test_metrics_pusher_no_tasks():
+    """Test that a metrics pusher can't be started with zero tasks."""
+    metrics_pusher = MetricsPusher()
+    with pytest.raises(ValueError):
+        metrics_pusher.start()
+
+
 def test_metrics_pusher_basic():
     start = 0
     timer = MockTimer(start)

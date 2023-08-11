@@ -634,6 +634,9 @@ class MetricsPusher:
 
                 time.sleep(max(least_interval_s, 0))
 
+        if len(self.tasks) == 0:
+            raise ValueError("MetricsPusher has zero tasks registered.")
+
         self.pusher_thread = threading.Thread(target=send_forever)
         # Making this a daemon thread so it doesn't leak upon shutdown, and it
         # doesn't need to block the replica's shutdown.
