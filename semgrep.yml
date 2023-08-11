@@ -23,6 +23,7 @@ rules:
         # FIXME(@ml-team): These are byproduct from train doc rewritten. Will fix them as a team.
         - "doc/source/train/getting-started-pytorch-lightning.rst"
         - "doc/source/train/getting-started-pytorch.rst"
+        - "doc/source/train/getting-started-transformers.rst"
         - "doc/source/train/user-guides/checkpoints.rst"
         - "doc/source/train/user-guides/converting-existing-training-loop.rst"
         - "doc/source/train/user-guides/data-loading-preprocessing.rst"

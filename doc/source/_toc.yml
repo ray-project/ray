@@ -65,6 +65,8 @@ parts:
             title: PyTorch
           - file: train/getting-started-pytorch-lightning
             title: PyTorch Lightning
+          - file: train/getting-started-transformers
+            title: HuggingFace Transformers
           - file: train/more-frameworks
             sections:
               - file: train/huggingface-transformers-accelerate
