@@ -74,8 +74,8 @@ class StreamingExecutor(Executor, threading.Thread):
         self._output_node: Optional[OpState] = None
 
         Executor.__init__(self, options)
-        therad_name = f"StreamingExecutor-{self._execution_id}"
-        threading.Thread.__init__(self, daemon=True, name=therad_name)
+        thread_name = f"StreamingExecutor-{self._execution_id}"
+        threading.Thread.__init__(self, daemon=True, name=thread_name)
 
     def execute(
         self, dag: PhysicalOperator, initial_stats: Optional[DatasetStats] = None
