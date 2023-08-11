@@ -6,8 +6,6 @@ Ray Train API
 
 This page covers framework specific integrations with Ray Train and Ray Train Developer APIs.
 
-For core Ray AIR APIs, take a look at the :ref:`AIR package reference <air-api-ref>`.
-
 Ray Train Base Classes (Developer APIs)
 ---------------------------------------
 
@@ -259,7 +257,7 @@ Ray Train Experiment Restoration
     pointing to the directory of the experiment to be restored.
     `restore` also exposes a subset of construtor arguments that can be re-specified.
     See :ref:`train-framework-specific-restore`
-    below for details on `restore` arguments for different AIR trainer integrations.
+    below for details on `restore` arguments for different trainer integrations.
 
 .. _train-framework-specific-restore:
 

@@ -71,7 +71,7 @@ Distributed Training Examples using Ray Train
 
         .. button-ref:: dolly_lightning_fsdp_finetuning
 
-            Fine-tune LLM with AIR LightningTrainer and FSDP
+            Fine-tune LLM with LightningTrainer and FSDP
     
     .. grid-item-card::
         :img-top: /images/pytorch_lightning_small.png
