@@ -79,7 +79,7 @@ class TfLearner(Learner):
 
         # This is a placeholder which will be filled by
         # `_make_distributed_strategy_if_necessary`.
-        self._strategy: tf.distribute.Strategy = None
+        #self._strategy: tf.distribute.Strategy = None
 
     @OverrideToImplementCustomLogic
     @override(Learner)
@@ -152,8 +152,8 @@ class TfLearner(Learner):
         # entire experiment from the initial config. Therefore, to reflect any changes
         # made to the learner's modules, the module created by Tune is destroyed and
         # then rebuilt from the checkpoint.
-        with self._strategy.scope():
-            super().load_state(path)
+        #with self._strategy.scope():
+        super().load_state(path)
 
     def _save_optimizer_hparams(
         self,
@@ -348,11 +348,11 @@ class TfLearner(Learner):
         # I get this warning any time I add a new module. I see the warning a few times
         # and then it disappears. I think that I will need to open an issue with the TF
         # team.
-        with self._strategy.scope():
-            super().add_module(
-                module_id=module_id,
-                module_spec=module_spec,
-            )
+        #with self._strategy.scope():
+        super().add_module(
+            module_id=module_id,
+            module_spec=module_spec,
+        )
         if self._enable_tf_function:
             self._possibly_traced_update = tf.function(
                 self._untraced_update, reduce_retracing=True
@@ -360,16 +360,16 @@ class TfLearner(Learner):
 
     @override(Learner)
     def remove_module(self, module_id: ModuleID) -> None:
-        with self._strategy.scope():
-            super().remove_module(module_id)
+        #with self._strategy.scope():
+        super().remove_module(module_id)
 
         if self._enable_tf_function:
             self._possibly_traced_update = tf.function(
                 self._untraced_update, reduce_retracing=True
             )
 
-    def _make_distributed_strategy_if_necessary(self) -> "tf.distribute.Strategy":
-        """Create a distributed strategy for the learner.
+    """def _make_distributed_strategy_if_necessary(self) -> "tf.distribute.Strategy":
+        ""Create a distributed strategy for the learner.
 
         A stratgey is a tensorflow object that is used for distributing training and
         gradient computation across multiple devices. By default a no-op strategy is
@@ -378,7 +378,7 @@ class TfLearner(Learner):
         Returns:
             A strategy for the learner to use for distributed training.
 
-        """
+        ""
         if self._distributed:
             strategy = tf.distribute.MultiWorkerMirroredStrategy()
         elif self._use_gpu:
@@ -395,7 +395,7 @@ class TfLearner(Learner):
             # the default strategy is a no-op that can be used in the local mode
             # cpu only case, build will override this if needed.
             strategy = tf.distribute.get_strategy()
-        return strategy
+        return strategy"""
 
     @override(Learner)
     def build(self) -> None:
@@ -410,22 +410,28 @@ class TfLearner(Learner):
         # we call build anytime we make a learner, or load a learner from a checkpoint.
         # we can't make a new strategy every time we build, so we only make one the
         # first time build is called.
-        if not self._strategy:
-            self._strategy = self._make_distributed_strategy_if_necessary()
+        #if not self._strategy:
+        #    self._strategy = self._make_distributed_strategy_if_necessary()
 
-        with self._strategy.scope():
-            super().build()
-            if self._enable_tf_function:
-                self._possibly_traced_update = tf.function(
-                    self._untraced_update, reduce_retracing=True
-                )
-            else:
-                self._possibly_traced_update = self._untraced_update
+        #with self._strategy.scope():
+        super().build()
+        if self._enable_tf_function:
+            self._possibly_traced_update = tf.function(
+                self._untraced_update, reduce_retracing=True
+            )
+        else:
+            self._possibly_traced_update = self._untraced_update
 
     @override(Learner)
     def _update(self, batch: NestedDict) -> Tuple[Any, Any]:
         ret = self._possibly_traced_update(batch)
-        print("Before returning from _update")
+        print("Before returning from _update (doing gc.collect() ...)")
+        import gc
+        gc.collect()
+        try:
+            print(f"\tGPU mem usage: {tf.config.experimental.get_memory_info('GPU:0')['current']}")
+        except ValueError:
+            pass
         return ret
 
     def _untraced_update(
@@ -437,26 +443,32 @@ class TfLearner(Learner):
         #  traced-by-ray functions (for making the TfLearner class a ray actor).
         _ray_trace_ctx=None,
     ):
-        def helper(_batch):
-            # TODO (Kourosh, Sven): We need to go back to NestedDict because that's the
-            #  constraint on forward_train and compute_loss APIs. This seems to be
-            #  in-efficient. However, for tf>=2.12, it works also w/o this conversion
-            #  so remove this after we upgrade officially to tf==2.12.
-            _batch = NestedDict(_batch)
-            with tf.GradientTape(persistent=True) as tape:
-                fwd_out = self._module.forward_train(_batch)
-                loss_per_module = self.compute_loss(fwd_out=fwd_out, batch=_batch)
-            gradients = self.compute_gradients(loss_per_module, gradient_tape=tape)
-            del tape
-            postprocessed_gradients = self.postprocess_gradients(gradients)
-            self.apply_gradients(postprocessed_gradients)
+        _batch = batch
+        #def helper(_batch):
+        # TODO (Kourosh, Sven): We need to go back to NestedDict because that's the
+        #  constraint on forward_train and compute_loss APIs. This seems to be
+        #  in-efficient. However, for tf>=2.12, it works also w/o this conversion
+        #  so remove this after we upgrade officially to tf==2.12.
+        _batch = NestedDict(_batch)
+        with tf.GradientTape(persistent=True) as tape:
+            fwd_out = self._module.forward_train(_batch)
+            loss_per_module = self.compute_loss(fwd_out=fwd_out, batch=_batch)
+        gradients = self.compute_gradients(loss_per_module, gradient_tape=tape)
+        #del tape
+        #postprocessed_gradients = self.postprocess_gradients(gradients)
+        #self.apply_gradients(postprocessed_gradients)
 
-            #return fwd_out
-            return loss_per_module, dict(self._metrics)
-
-        ret = self._strategy.run(helper, args=(batch,))
         print("Before returning from _untraced_update")
-        return ret
+        try:
+            print(f"\tGPU mem usage: {tf.config.experimental.get_memory_info('GPU:0')['current']}")
+        except ValueError:
+            pass
+
+        #return fwd_out
+        return loss_per_module, dict(self._metrics)
+
+        #losses = self._strategy.run(helper, args=(batch,))
+        #return losses, dict(self._metrics)
 
     @override(Learner)
     def _get_tensor_variable(self, value, dtype=None, trainable=False) -> "tf.Tensor":

@@ -646,21 +646,21 @@ class DreamerV3(Algorithm):
                         ),
                     )
 
-                res = train_results[DEFAULT_POLICY_ID]
-                logger.info(
-                    f"\t\tWORLD_MODEL_L_total={res['WORLD_MODEL_L_total']:.5f} ("
-                    f"L_pred={res['WORLD_MODEL_L_prediction']:.5f} ("
-                    f"decoder/obs={res['WORLD_MODEL_L_decoder']} "
-                    f"L_rew={res['WORLD_MODEL_L_reward']} "
-                    f"L_cont={res['WORLD_MODEL_L_continue']}); "
-                    f"L_dyn/rep={res['WORLD_MODEL_L_dynamics']:.5f})"
-                )
-                msg = "\t\t"
-                if self.config.train_actor:
-                    msg += f"L_actor={res['ACTOR_L_total']:.5f} "
-                if self.config.train_critic:
-                    msg += f"L_critic={res['CRITIC_L_total']:.5f} "
-                logger.info(msg)
+                #res = train_results[DEFAULT_POLICY_ID]
+                #logger.info(
+                #    f"\t\tWORLD_MODEL_L_total={res['WORLD_MODEL_L_total']:.5f} ("
+                #    f"L_pred={res['WORLD_MODEL_L_prediction']:.5f} ("
+                #    f"decoder/obs={res['WORLD_MODEL_L_decoder']} "
+                #    f"L_rew={res['WORLD_MODEL_L_reward']} "
+                #    f"L_cont={res['WORLD_MODEL_L_continue']}); "
+                #    f"L_dyn/rep={res['WORLD_MODEL_L_dynamics']:.5f})"
+                #)
+                #msg = "\t\t"
+                #if self.config.train_actor:
+                #    msg += f"L_actor={res['ACTOR_L_total']:.5f} "
+                #if self.config.train_critic:
+                #    msg += f"L_critic={res['CRITIC_L_total']:.5f} "
+                #logger.info(msg)
 
                 sub_iter += 1
                 self._counters[NUM_GRAD_UPDATES_LIFETIME] += 1
