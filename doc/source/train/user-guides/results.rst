@@ -1,7 +1,7 @@
 Inspecting training results
 ===========================
 
-The return value of your :meth:`Trainer.fit() <ray.train.base_trainer.BaseTrainerTrainer.fit>`
+The return value of your :meth:`Trainer.fit() <ray.train.base_trainer.BaseTrainer.fit>`
 call is a :class:`~ray.air.result.Result` object.
 
 The :class:`~ray.air.result.Result` object contains, among others:
