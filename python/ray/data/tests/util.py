@@ -4,6 +4,7 @@ import tempfile
 from contextlib import contextmanager
 
 import ray
+from ray.data._internal.execution.interfaces.physical_operator import PhysicalOperator
 
 
 @ray.remote
@@ -57,3 +58,33 @@ def named_values(col_names, tuples):
 
 def extract_values(col_name, tuples):
     return [t[col_name] for t in tuples]
+
+
+def run_op_tasks_sync(op: PhysicalOperator, only_existing=False):
+    """Run tasks of a PhysicalOperator synchronously.
+
+    By default, this function will run until the op no longer has any active tasks.
+    If only_existing is True, this function will only run the currently existing tasks.
+    """
+    tasks = op.get_active_tasks()
+    while tasks:
+        ray.wait(
+            [task.get_waitable() for task in tasks],
+            num_returns=len(tasks),
+            fetch_local=False,
+        )
+        for task in tasks:
+            task.on_waitable_ready()
+        if only_existing:
+            return
+        tasks = op.get_active_tasks()
+
+
+def run_one_op_task(op):
+    """Run one task of a PhysicalOperator."""
+    tasks = op.get_active_tasks()
+    waitable_to_tasks = {task.get_waitable(): task for task in tasks}
+    ready, _ = ray.wait(
+        list(waitable_to_tasks.keys()), num_returns=1, fetch_local=False
+    )
+    waitable_to_tasks[ready[0]].on_waitable_ready()
