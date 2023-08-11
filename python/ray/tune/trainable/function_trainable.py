@@ -325,7 +325,7 @@ class FunctionTrainable(Trainable):
         if _use_storage_context():
             init_session(
                 training_func=lambda: self._trainable_func(
-                    self.config, self._session, self._session.loaded_checkpoint
+                    self.config, get_session(), get_session().loaded_checkpoint
                 ),
                 trial_info=TrialInfo(
                     name=self.trial_name,
@@ -349,7 +349,6 @@ class FunctionTrainable(Trainable):
                 encode_data_fn=None,
                 enable_lazy_checkpointing=False,
             )
-            self._session = get_session()
             self._last_training_result = None
             return
 
@@ -427,10 +426,11 @@ class FunctionTrainable(Trainable):
         result accordingly (see tune/tune_controller.py).
         """
         if _use_storage_context():
-            if not self._session.training_started:
-                self._session.start()
+            session: _TrainSession = get_session()
+            if not session.training_started:
+                session.start()
 
-            training_result: Optional[_TrainingResult] = self._session.get_next()
+            training_result: Optional[_TrainingResult] = session.get_next()
 
             if not training_result:
                 # The `RESULT_DUPLICATE` result should have been the last
@@ -597,7 +597,8 @@ class FunctionTrainable(Trainable):
         if _use_storage_context():
             checkpoint_result = checkpoint
             assert isinstance(checkpoint_result, _TrainingResult)
-            self._session.loaded_checkpoint = checkpoint_result.checkpoint
+            session = get_session()
+            session.loaded_checkpoint = checkpoint_result.checkpoint
             return
 
         # This should be removed once Trainables are refactored.
@@ -630,11 +631,12 @@ class FunctionTrainable(Trainable):
 
     def cleanup(self):
         if _use_storage_context():
+            session = get_session()
             try:
                 # session.finish raises any Exceptions from training.
-                _ = self._session.finish()
+                _ = session.finish()
             finally:
-                self._session = None
+                session = None
                 # Shutdown session even if session.finish() raises an Exception.
                 shutdown_session()
             return
@@ -665,22 +667,24 @@ class FunctionTrainable(Trainable):
 
     def reset_config(self, new_config):
         if _use_storage_context():
+            session = get_session()
+
             # Wait for thread termination so it is save to re-use the same actor.
             thread_timeout = int(os.environ.get("TUNE_FUNCTION_THREAD_TIMEOUT_S", 2))
-            self._session.finish(timeout=thread_timeout)
-            if self._session.training_thread.is_alive():
+            session.finish(timeout=thread_timeout)
+            if session.training_thread.is_alive():
                 # Did not finish within timeout, reset unsuccessful.
                 return False
 
-            self._session.reset(
+            session.reset(
                 training_func=lambda: self._trainable_func(
-                    self.config, self._session, self._session.loaded_checkpoint
+                    self.config, get_session(), get_session().loaded_checkpoint
                 ),
                 trial_info=TrialInfo(
                     name=self.trial_name,
                     id=self.trial_id,
                     resources=self.trial_resources,
-                    logdir=self._logdir,
+                    logdir=self._storage.trial_local_path,
                     driver_ip=None,
                     experiment_name=self._storage.experiment_dir_name,
                 ),
