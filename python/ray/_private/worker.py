@@ -878,7 +878,7 @@ def get_neuron_core_ids() -> List[str]:
     [0, NEURON_CORES - 1], where NEURON_CORES is the number of neuron_cores
     that the node has.
 
-    .. code-bloc:: python
+    .. code-block:: python
         import os
         import ray
 
