@@ -536,11 +536,11 @@ class Trial:
 
         if _use_storage_context():
             self.run_metadata.checkpoint_manager = _NewCheckpointManager(
-                checkpoint_config=self.checkpoint_config
+                checkpoint_config=checkpoint_config
             )
         else:
             self.run_metadata.checkpoint_manager = _CheckpointManager(
-                checkpoint_config=self.checkpoint_config,
+                checkpoint_config=checkpoint_config,
                 delete_fn=_CheckpointDeleter(
                     self._trainable_name(), self.temporary_state.ray_actor
                 ),
