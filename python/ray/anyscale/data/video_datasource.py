@@ -44,7 +44,6 @@ class VideoDatasource(FileBasedDatasource):
 
 
 class _VideoDatasourceReader(_FileBasedDatasourceReader):
-
     # The compression ratio for a SewerAI video is 5.82GB (in-memory size) to 58.91 MB
     # (on-disk file size) = 98.81 ~= 100.
     COMPRESSION_RATIO = 100
