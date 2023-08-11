@@ -736,10 +736,12 @@ def get_all_live_placement_group_names() -> List[str]:
 
     return live_pg_names
 
+
 def in_ray_driver_process() -> bool:
     """Returns True if called in the Ray driver, False otherwise.
-    
-    Call hangs if GCS is down.
+
+    This function hangs when GCS is down due to the `ray.get_runtime_context()`
+    call.
     """
 
     return ray.get_runtime_context().worker.mode in [SCRIPT_MODE, LOCAL_MODE]

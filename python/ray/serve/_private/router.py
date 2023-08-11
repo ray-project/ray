@@ -392,10 +392,10 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         """Gets the name of the actor where this scheduler runs.
 
         NOTE: this call hangs when the GCS is down. As long as this method is
-        called only when the scheduler is initialized, this should be
+        called only when the scheduler is initialized, that should be
         okay because a ServeHandle (and its scheduler) relies
         on the Serve controller for intialization, and the Serve controller
-        is down when the GCS is down.
+        is runs only when the GCS is up.
 
         Return:
             The name of the actor where this scheduler runs. If the scheduler
@@ -412,9 +412,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
                 else:
                     return ray.util.state.get_actor(actor_id, timeout=5).name
             except Exception:
-                logger.exception(
-                    "Got exception while attempting to get actor name."
-                )
+                logger.exception("Got exception while attempting to get actor name.")
                 return ""
 
     def update_replicas(self, replicas: List[ReplicaWrapper]):
