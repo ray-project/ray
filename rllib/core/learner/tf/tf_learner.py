@@ -64,8 +64,22 @@ class TfLearner(Learner):
 
         # Set GPU to grow in memory (so tf does not block all GPU mem).
         gpus = tf.config.list_physical_devices('GPU')
-        for gpu in gpus:
-            tf.config.experimental.set_memory_growth(gpu, True)
+        if gpus:
+            for gpu in gpus:
+                tf.config.experimental.set_memory_growth(gpu, True)
+                try:
+                    tf.config.experimental.set_virtual_device_configuration(
+                        gpu,
+                        [
+                            tf.config.experimental.VirtualDeviceConfiguration(
+                                #memory_limit=1024,
+                                report_tensor_allocations_upon_oom=True,
+                            ),
+                        ],
+                    )
+                except RuntimeError as e:
+                    # Virtual devices must be set before GPUs have been initialized
+                    print(e)
 
         super().__init__(
             framework_hyperparameters=(
@@ -422,8 +436,10 @@ class TfLearner(Learner):
                 self._possibly_traced_update = self._untraced_update
 
     @override(Learner)
-    def _update(self, batch: NestedDict) -> Tuple[Any, Any, Any]:
-        return self._possibly_traced_update(batch)
+    def _update(self, batch: NestedDict) -> Tuple[Any, Any]:
+        ret = self._possibly_traced_update(batch)
+        print("Before returning from _update")
+        return ret
 
     def _untraced_update(
         self,
@@ -451,7 +467,9 @@ class TfLearner(Learner):
             #return fwd_out
             return loss_per_module, dict(self._metrics)
 
-        return self._strategy.run(helper, args=(batch,))
+        ret = self._strategy.run(helper, args=(batch,))
+        print("Before returning from _untraced_update")
+        return ret
 
     @override(Learner)
     def _get_tensor_variable(self, value, dtype=None, trainable=False) -> "tf.Tensor":
