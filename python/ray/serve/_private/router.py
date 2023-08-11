@@ -445,7 +445,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         """Shim for compatibility with the existing round robin scheduler."""
         return self.update_replicas([ActorReplicaWrapper(r) for r in running_replicas])
 
-    def _get_candidate_replica_ids_for_multiplexed_model_id(
+    def _get_candidate_multiplexed_replica_ids(
         self,
         model_id: str,
         get_from_all_replicas: bool = False,
@@ -541,7 +541,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
                         < multiplexed_matching_timeout
                     ):
                         candidate_replica_ids = (
-                            self._get_candidate_replica_ids_for_multiplexed_model_id(
+                            self._get_candidate_multiplexed_replica_ids(
                                 request_metadata.multiplexed_model_id
                             )
                         )
@@ -552,7 +552,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
                             and request_metadata.multiplexed_model_id
                             not in self._multiplexed_model_id_fallback_match
                         ):
-                            candidate_replica_ids = self._get_candidate_replica_ids_for_multiplexed_model_id(
+                            candidate_replica_ids = self._get_candidate_multiplexed_replica_ids(
                                 request_metadata.multiplexed_model_id,
                                 get_from_all_replicas=True,
                             )
@@ -565,7 +565,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
                             )
                     else:
                         candidate_replica_ids = (
-                            self._get_candidate_replica_ids_for_multiplexed_model_id(
+                            self._get_candidate_multiplexed_replica_ids(
                                 request_metadata.multiplexed_model_id,
                                 get_from_all_replicas=True,
                             )
