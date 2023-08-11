@@ -414,13 +414,12 @@ class TfLearner(Learner):
 
         with self._strategy.scope():
             super().build()
-
-        if self._enable_tf_function:
-            self._possibly_traced_update = tf.function(
-                self._untraced_update, reduce_retracing=True
-            )
-        else:
-            self._possibly_traced_update = self._untraced_update
+            if self._enable_tf_function:
+                self._possibly_traced_update = tf.function(
+                    self._untraced_update, reduce_retracing=True
+                )
+            else:
+                self._possibly_traced_update = self._untraced_update
 
     @override(Learner)
     def _update(self, batch: NestedDict) -> Tuple[Any, Any, Any]:

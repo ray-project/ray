@@ -616,10 +616,12 @@ class DreamerV3(Algorithm):
                     )
 
                 # Perform the actual update via our learner group.
+                print("Before learner_group.update()")
                 train_results = self.learner_group.update(
                     SampleBatch(sample).as_multi_agent(),
                     reduce_fn=self._reduce_results,
                 )
+                print("After learner_group.update()")
                 self._counters[NUM_AGENT_STEPS_TRAINED] += replayed_steps
                 self._counters[NUM_ENV_STEPS_TRAINED] += replayed_steps
 
@@ -627,7 +629,7 @@ class DreamerV3(Algorithm):
                 # update.
                 with self._timers["critic_ema_update"]:
                     self.learner_group.additional_update(
-                        timestep=self._counters[NUM_ENV_STEPS_TRAINED],
+                        timestep=self._counters[NUM_ENV_STEPS_SAMPLED],
                         reduce_fn=self._reduce_results,
                     )
 
