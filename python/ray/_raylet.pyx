@@ -181,6 +181,7 @@ from ray.util.scheduling_strategies import (
 import ray._private.ray_constants as ray_constants
 import ray.cloudpickle as ray_pickle
 from ray.core.generated.common_pb2 import ActorDiedErrorContext
+from ray.core.generated.gcs_pb2 import JobTableData
 from ray._private.async_compat import (
     sync_to_async,
     get_new_event_loop,
@@ -211,6 +212,7 @@ OPTIMIZED = __OPTIMIZE__
 
 GRPC_STATUS_CODE_UNAVAILABLE = CGrpcStatusCode.UNAVAILABLE
 GRPC_STATUS_CODE_UNKNOWN = CGrpcStatusCode.UNKNOWN
+GRPC_STATUS_CODE_DEADLINE_EXCEEDED = CGrpcStatusCode.DEADLINE_EXCEEDED
 
 logger = logging.getLogger(__name__)
 
@@ -2353,6 +2355,20 @@ cdef class GcsClient:
         return self._nums_reconnect_retry
 
     @_auto_reconnect
+    def check_alive(
+        self, node_ips: c_vector[c_string], timeout: Optional[float] = None
+    ):
+        cdef:
+            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
+            c_vector[c_bool] c_result
+        with nogil:
+            check_status(self.inner.get().CheckAlive(node_ips, timeout_ms, c_result))
+        result = []
+        for r in c_result:
+            result.append(r)
+        return result
+
+    @_auto_reconnect
     def internal_kv_get(self, c_string key, namespace=None, timeout=None):
         cdef:
             c_string ns = namespace or b""
@@ -2476,21 +2492,24 @@ cdef class GcsClient:
 
     @_auto_reconnect
     def get_all_job_info(self, timeout=None):
+        # Ideally we should use json_format.MessageToDict(job_info),
+        # but `job_info` is a cpp pb message not a python one.
+        # Manually converting each and every protobuf field is out of question,
+        # so we serialize the pb to string to cross the FFI interface.
         cdef:
             int64_t timeout_ms = round(1000 * timeout) if timeout else -1
-            CJobTableData job_info
-            c_vector[CJobTableData] job_infos
+            CJobTableData c_job_info
+            c_vector[CJobTableData] c_job_infos
+            c_vector[c_string] serialized_job_infos
         with nogil:
-            check_status(self.inner.get().GetAllJobInfo(timeout_ms, job_infos))
-
+            check_status(self.inner.get().GetAllJobInfo(timeout_ms, c_job_infos))
+            for c_job_info in c_job_infos:
+                serialized_job_infos.push_back(c_job_info.SerializeAsString())
         result = {}
-        for job_info in job_infos:
-            result[job_info.job_id()] = {
-                "is_dead": job_info.is_dead(),
-                "config": {
-                    "ray_namespace": job_info.config().ray_namespace().decode()
-                }
-            }
+        for serialized in serialized_job_infos:
+            job_info = JobTableData()
+            job_info.ParseFromString(serialized)
+            result[job_info.job_id] = job_info
         return result
 
     ########################################################
@@ -2521,6 +2540,25 @@ cdef class GcsClient:
                          serialized_reply))
 
         return serialized_reply
+
+    @_auto_reconnect
+    def drain_node(
+            self,
+            node_id: c_string,
+            reason: int32_t,
+            reason_message: c_string):
+        """Send the DrainNode request to GCS.
+
+        This is only for testing.
+        """
+        cdef:
+            int64_t timeout_ms = -1
+            c_bool is_accepted = False
+        with nogil:
+            check_status(self.inner.get().DrainNode(
+                node_id, reason, reason_message, timeout_ms, is_accepted))
+
+        return is_accepted
 
     #############################################################
     # Interface for rpc::autoscaler::AutoscalerStateService ends
@@ -3237,6 +3275,9 @@ cdef class CoreWorker:
         message = CCoreWorkerProcess.GetCoreWorker().MemoryUsageString()
         logger.warning("Local object store memory usage:\n{}\n".format(
             message.decode("utf-8")))
+
+    def get_memory_store_size(self):
+        return CCoreWorkerProcess.GetCoreWorker().GetMemoryStoreSize()
 
     cdef python_label_match_expressions_to_c(
             self, python_expressions,
@@ -4279,16 +4320,19 @@ cdef class CoreWorker:
         cdef:
             CObjectID c_generator_id = generator_id.native()
 
-        CCoreWorkerProcess.GetCoreWorker().DelObjectRefStream(c_generator_id)
+        with nogil:
+            CCoreWorkerProcess.GetCoreWorker().DelObjectRefStream(c_generator_id)
 
     def try_read_next_object_ref_stream(self, ObjectRef generator_id):
         cdef:
             CObjectID c_generator_id = generator_id.native()
             CObjectReference c_object_ref
 
-        check_status(
-            CCoreWorkerProcess.GetCoreWorker().TryReadObjectRefStream(
-                c_generator_id, &c_object_ref))
+        with nogil:
+            check_status(
+                CCoreWorkerProcess.GetCoreWorker().TryReadObjectRefStream(
+                    c_generator_id, &c_object_ref))
+
         return ObjectRef(
             c_object_ref.object_id(),
             c_object_ref.owner_address().SerializeAsString(),
@@ -4299,9 +4343,12 @@ cdef class CoreWorker:
     def peek_object_ref_stream(self, ObjectRef generator_id):
         cdef:
             CObjectID c_generator_id = generator_id.native()
-            CObjectReference c_object_ref = (
-                CCoreWorkerProcess.GetCoreWorker().PeekObjectRefStream(
-                    c_generator_id))
+            CObjectReference c_object_ref
+
+        with nogil:
+            c_object_ref = (
+                    CCoreWorkerProcess.GetCoreWorker().PeekObjectRefStream(
+                        c_generator_id))
 
         return ObjectRef(
             c_object_ref.object_id(),

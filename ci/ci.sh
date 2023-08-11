@@ -91,6 +91,7 @@ NEED_WHEELS="$(_need_wheels)"
 
 compile_pip_dependencies() {
   # Compile boundaries
+  TARGET="${1-requirements_compiled.txt}"
 
   if [[ "${HOSTTYPE}" == "aarch64" || "${HOSTTYPE}" = "arm64" ]]; then
     # Resolution currently does not work on aarch64 as some pinned packages
@@ -99,6 +100,8 @@ compile_pip_dependencies() {
     echo "Skipping for aarch64"
     return 0
   fi
+
+  echo "Target file: $TARGET"
 
   # shellcheck disable=SC2262
   alias pip="python -m pip"
@@ -109,33 +112,41 @@ compile_pip_dependencies() {
   python -c "import torch" 2>/dev/null && HAS_TORCH=1
   pip install --no-cache-dir numpy torch
 
-  if [ -f "${WORKSPACE_DIR}/python/requirements_compiled.txt" ]; then
-    echo requirements_compiled already exists
-  else
-    pip-compile --resolver=backtracking -q \
-       --pip-args --no-deps --strip-extras --no-annotate --no-header -o \
-      "${WORKSPACE_DIR}/python/requirements_compiled.txt" \
-      "${WORKSPACE_DIR}/python/requirements.txt" \
-      "${WORKSPACE_DIR}/python/requirements/lint-requirements.txt" \
-      "${WORKSPACE_DIR}/python/requirements/test-requirements.txt" \
-      "${WORKSPACE_DIR}/python/requirements/docker/ray-docker-requirements.txt" \
-      "${WORKSPACE_DIR}/python/requirements/ml/core-requirements.txt" \
-      "${WORKSPACE_DIR}/python/requirements/ml/data-requirements.txt" \
-      "${WORKSPACE_DIR}/python/requirements/ml/data-test-requirements.txt" \
-      "${WORKSPACE_DIR}/python/requirements/ml/dl-cpu-requirements.txt" \
-      "${WORKSPACE_DIR}/python/requirements/ml/rllib-requirements.txt" \
-      "${WORKSPACE_DIR}/python/requirements/ml/rllib-test-requirements.txt" \
-      "${WORKSPACE_DIR}/python/requirements/ml/train-requirements.txt" \
-      "${WORKSPACE_DIR}/python/requirements/ml/train-test-requirements.txt" \
-      "${WORKSPACE_DIR}/python/requirements/ml/tune-requirements.txt" \
-      "${WORKSPACE_DIR}/python/requirements/ml/tune-test-requirements.txt"
-  fi
+  pip-compile --resolver=backtracking -q \
+     --pip-args --no-deps --strip-extras --no-annotate --no-header -o \
+    "${WORKSPACE_DIR}/python/$TARGET" \
+    "${WORKSPACE_DIR}/python/requirements.txt" \
+    "${WORKSPACE_DIR}/python/requirements/lint-requirements.txt" \
+    "${WORKSPACE_DIR}/python/requirements/test-requirements.txt" \
+    "${WORKSPACE_DIR}/python/requirements/docker/ray-docker-requirements.txt" \
+    "${WORKSPACE_DIR}/python/requirements/ml/core-requirements.txt" \
+    "${WORKSPACE_DIR}/python/requirements/ml/data-requirements.txt" \
+    "${WORKSPACE_DIR}/python/requirements/ml/data-test-requirements.txt" \
+    "${WORKSPACE_DIR}/python/requirements/ml/dl-cpu-requirements.txt" \
+    "${WORKSPACE_DIR}/python/requirements/ml/rllib-requirements.txt" \
+    "${WORKSPACE_DIR}/python/requirements/ml/rllib-test-requirements.txt" \
+    "${WORKSPACE_DIR}/python/requirements/ml/train-requirements.txt" \
+    "${WORKSPACE_DIR}/python/requirements/ml/train-test-requirements.txt" \
+    "${WORKSPACE_DIR}/python/requirements/ml/tune-requirements.txt" \
+    "${WORKSPACE_DIR}/python/requirements/ml/tune-test-requirements.txt"
 
   # Remove some pins from upstream dependencies:
   # ray, xgboost-ray, lightgbm-ray, tune-sklearn
-  sed -i "/^ray==/d;/^xgboost-ray==/d;/^lightgbm-ray==/d;/^tune-sklearn==/d" "${WORKSPACE_DIR}/python/requirements_compiled.txt"
+  sed -i "/^ray==/d;/^xgboost-ray==/d;/^lightgbm-ray==/d;/^tune-sklearn==/d" "${WORKSPACE_DIR}/python/$TARGET"
 
-  cat "${WORKSPACE_DIR}/python/requirements_compiled.txt"
+  # Remove +cpu and +pt20cpu suffixes e.g. for torch dependencies
+  # This is needed because we specify the requirements as torch==version, but
+  # the resolver adds the device-specific version tag. If this is not removed,
+  # pip install will complain about irresolvable constraints.
+  sed -iE 's/==([\.0-9]+)\+[^\b]*cpu/==\1/g' "${WORKSPACE_DIR}/python/$TARGET"
+
+  # Add python_version < 3.11 to scikit-image, scikit-optimize, scipy, networkx
+  # as they need more recent versions in python 3.11.
+  # These will be automatically resolved. Remove as
+  # soon as we resolve to versions of scikit-image that are built for py311.
+  sed -iE 's/((scikit-image|scikit-optimize|scipy|networkx)==[\.0-9]+\b)/\1 ; python_version < "3.11"/g' "${WORKSPACE_DIR}/python/$TARGET"
+
+  cat "${WORKSPACE_DIR}/python/$TARGET"
 
   if [ "$HAS_TORCH" -eq 0 ]; then
     pip uninstall -y torch
@@ -597,8 +608,7 @@ init() {
 
   configure_system
 
-  # shellcheck disable=SC2031
-  . "${ROOT_DIR}"/env/install-dependencies.sh  # Script is sourced to propagate up environment changes
+  "${ROOT_DIR}/env/install-dependencies.sh"
 }
 
 build() {

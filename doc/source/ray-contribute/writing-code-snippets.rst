@@ -145,32 +145,36 @@ If you're writing a longer example, or if object representations aren't relevant
 
     .. testcode::
 
-        import pandas as pd
+        from typing import Dict
+        import numpy as np
         import ray
-        from ray.train.batch_predictor import BatchPredictor
 
-        def calculate_accuracy(df):
-            return pd.DataFrame({"correct": df["preds"] == df["label"]})
+        ds = ray.data.read_csv("s3://anonymous@air-example-data/iris.csv")
 
-        # Create a batch predictor that returns identity as the predictions.
-        batch_pred = BatchPredictor.from_pandas_udf(
-        lambda data: pd.DataFrame({"preds": data["feature_1"]}))
+        # Compute a "petal area" attribute.
+        def transform_batch(batch: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
+            vec_a = batch["petal length (cm)"]
+            vec_b = batch["petal width (cm)"]
+            batch["petal area (cm^2)"] = vec_a * vec_b
+            return batch
 
-        # Create a dummy dataset.
-        ds = ray.data.from_pandas(pd.DataFrame({
-        "feature_1": [1, 2, 3], "label": [1, 2, 3]}))
-
-        # Execute batch prediction using this predictor.
-        predictions = batch_pred.predict(ds,
-        feature_columns=["feature_1"], keep_columns=["label"])
-
-        # Calculate final accuracy
-        correct = predictions.map_batches(calculate_accuracy)
-        print(f"Final accuracy: {correct.sum(on='correct') / correct.count()}")
+        transformed_ds = ds.map_batches(transform_batch)
+        print(transformed_ds.materialize())
 
     .. testoutput::
 
-        Final accuracy: 1.0
+        MaterializedDataset(
+           num_blocks=...,
+           num_rows=150,
+           schema={
+              sepal length (cm): double,
+              sepal width (cm): double,
+              petal length (cm): double,
+              petal width (cm): double,
+              target: int64,
+              petal area (cm^2): double
+           }
+        )
 
 When to use *literalinclude*
 ============================

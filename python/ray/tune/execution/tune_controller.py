@@ -482,9 +482,6 @@ class TuneController:
         and return them as a list of Trial objects.
         """
         if _use_storage_context():
-            raise NotImplementedError(
-                "Restoration is not fully working. TODO for a follow-up PR."
-            )
             assert not experiment_dir, "Remove the `experiment_dir` argument."
             experiment_dir = self._storage.experiment_local_path
         else:
@@ -534,11 +531,17 @@ class TuneController:
 
             # The following properties may be updated on restoration
             # Ex: moved local/cloud experiment directory
-            # ATTN: Set `local_experiment_path` to update trial checkpoints!
-            trial.local_experiment_path = self._legacy_local_experiment_path
-            trial.remote_experiment_path = self._legacy_remote_experiment_path
-            trial.sync_config = self._legacy_sync_config
-            trial.experiment_dir_name = self._legacy_experiment_dir_name
+            if _use_storage_context():
+                # Propagate updated storage ctx properties to the trial's restored copy.
+                # TODO(justinvyu): [handle_moved_storage_path]
+                trial.storage.storage_path = self._storage.storage_path
+                trial.storage.experiment_dir_name = self._storage.experiment_dir_name
+            else:
+                # ATTN: Set `local_experiment_path` to update trial checkpoints!
+                trial.local_experiment_path = self._legacy_local_experiment_path
+                trial.remote_experiment_path = self._legacy_remote_experiment_path
+                trial.sync_config = self._legacy_sync_config
+                trial.experiment_dir_name = self._legacy_experiment_dir_name
 
             # Avoid creating logdir in client mode for returned trial results,
             # since the dir might not be creatable locally.
@@ -603,7 +606,10 @@ class TuneController:
                     trial_to_add.error_filename = None
                     trial_to_add.pickled_error_filename = None
                     trial_to_add.set_status(Trial.PENDING)
-                    trial_to_add.restore_path = trial.checkpoint.dir_or_data
+                    if not _use_storage_context():
+                        # TODO(justinvyu): Remove this.
+                        # Not needed since trial.checkpoint will be used anyways.
+                        trial_to_add.restore_path = trial.checkpoint.dir_or_data
                 elif restart_errored:
                     trial_to_add = trial.reset()
                     trial_to_add.restore_path = None
@@ -1956,11 +1962,29 @@ class TuneController:
     ###
     # RESTORE
     def _schedule_trial_restore(self, trial: Trial) -> bool:
-        checkpoint = trial.checkpoint
-
         if _use_storage_context():
-            # TODO(justinvyu): Skipping restoration altogether for now.
-            return False
+            checkpoint_result = trial.checkpoint_manager.latest_checkpoint_result
+
+            if not checkpoint_result:
+                logger.debug(f"Not restoring trial {trial}: No checkpoint found.")
+                return False
+
+            # TODO(justinvyu): Is this really needed?
+            trial.restoring_from = checkpoint_result
+
+            method_name = "restore"
+            args = (checkpoint_result,)
+            self._schedule_trial_task(
+                trial=trial,
+                method_name=method_name,
+                args=args,
+                kwargs={},
+                on_result=self._on_restoring_result,
+                on_error=self._trial_task_failure,
+            )
+            return True
+
+        checkpoint = trial.checkpoint
 
         if checkpoint.dir_or_data is None:
             logger.debug(f"Not restoring trial {trial}: No checkpoint found.")
