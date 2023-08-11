@@ -786,31 +786,35 @@ class RunConfig:
         if isinstance(self.storage_path, Path):
             self.storage_path = str(self.storage_path)
 
-        local_path, remote_path = _resolve_storage_path(
-            self.storage_path, self.local_dir, self.sync_config.upload_dir
-        )
+        from ray.train._internal.storage import _use_storage_context
 
-        if self.sync_config.upload_dir:
-            assert remote_path == self.sync_config.upload_dir
-            warnings.warn(
-                "Setting a `SyncConfig.upload_dir` is deprecated and will be removed "
-                "in the future. Pass `RunConfig.storage_path` instead."
+        local_path, remote_path = None, None
+        if not _use_storage_context():
+            local_path, remote_path = _resolve_storage_path(
+                self.storage_path, self.local_dir, self.sync_config.upload_dir
             )
-            # Set upload_dir to None to avoid further downstream resolution.
-            # Copy object first to not alter user input.
-            self.sync_config = copy.copy(self.sync_config)
-            self.sync_config.upload_dir = None
 
-        if self.local_dir:
-            assert local_path == self.local_dir
-            warnings.warn(
-                "Setting a `RunConfig.local_dir` is deprecated and will be removed "
-                "in the future. If you are not using remote storage,"
-                "set the `RunConfig.storage_path` instead. Otherwise, set the"
-                "`RAY_AIR_LOCAL_CACHE_DIR` environment variable to control "
-                "the local cache location."
-            )
-            self.local_dir = None
+            if self.sync_config.upload_dir:
+                assert remote_path == self.sync_config.upload_dir
+                warnings.warn(
+                    "Setting a `SyncConfig.upload_dir` is deprecated and will be removed "
+                    "in the future. Pass `RunConfig.storage_path` instead."
+                )
+                # Set upload_dir to None to avoid further downstream resolution.
+                # Copy object first to not alter user input.
+                self.sync_config = copy.copy(self.sync_config)
+                self.sync_config.upload_dir = None
+
+            if self.local_dir:
+                assert local_path == self.local_dir
+                warnings.warn(
+                    "Setting a `RunConfig.local_dir` is deprecated and will be removed "
+                    "in the future. If you are not using remote storage,"
+                    "set the `RunConfig.storage_path` instead. Otherwise, set the"
+                    "`RAY_AIR_LOCAL_CACHE_DIR` environment variable to control "
+                    "the local cache location."
+                )
+                self.local_dir = None
 
         if not remote_path:
             remote_path = _get_storage_uri()
