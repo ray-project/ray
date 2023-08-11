@@ -816,7 +816,7 @@ def test_put_with_http_options(ray_start_stop, option, override):
     assert requests.post("http://localhost:8000/serve/app2").text == "wonderful world"
 
 
-def test_put_with_grpc_options(ray_start_stop):
+def test_put_with_grpc_options(load_user_defined_protos, ray_start_stop):
     """Submits a config with gRPC options specified.
 
     Ensure gRPC options can be accepted by the api. HTTP deployment continue to

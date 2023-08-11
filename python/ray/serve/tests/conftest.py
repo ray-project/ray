@@ -145,3 +145,10 @@ def ray_instance(request):
 
     os.environ.clear()
     os.environ.update(original_env_vars)
+
+
+@pytest.fixture(scope="function")
+def load_user_defined_protos():
+    os.environ["TEST_LOAD_USER_DEFINED_PROTOS"] = "1"
+    yield
+    os.environ.pop("TEST_LOAD_USER_DEFINED_PROTOS")
