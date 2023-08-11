@@ -26,7 +26,9 @@ from ray.air.constants import (
     TIME_THIS_ITER_S,
 )
 from ray.data import Dataset, DatasetPipeline
+from ray.train._checkpoint import Checkpoint as NewCheckpoint
 from ray.train._internal.accelerator import Accelerator
+from ray.train._internal.storage import _use_storage_context, StorageContext
 from ray.train.constants import (
     CHECKPOINT_METADATA_KEY,
     CHECKPOINT_RANK_KEY,
@@ -41,7 +43,6 @@ from ray.train.constants import (
 from ray.train.error import SessionMisuseError
 from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.util.debug import log_once
-from ray.train._internal.storage import _use_storage_context, StorageContext
 
 if TYPE_CHECKING:
     from ray.data import DataIterator
@@ -506,7 +507,15 @@ class _TrainSession:
         """
         self.legacy_checkpoint_uri = uri
 
-    def report_training_result(self, training_result: _TrainingResult) -> None:
+    def _report_training_result(self, training_result: _TrainingResult) -> None:
+        """Place a training result on the result queue for the main thread to process,
+        then block until the main thread signals that training should continue.
+
+        NOTE: This is used internally to report results from Train to Tune
+        without persisting checkpoints to storage 2 times.
+        `report` is the public API that directly persists to storage, which
+        should only be called by user code.
+        """
         if training_result.checkpoint:
             # NOTE: This populates `train.get_checkpoint`
             self.loaded_checkpoint = training_result.checkpoint
@@ -523,13 +532,16 @@ class _TrainSession:
         self.continue_lock.acquire()
 
         # If the trial should be terminated, exit gracefully.
+        # NOTE: This is only really useful if `synchronous_result_reporting=True`.
+        # Otherwise, the lock is immediately released on reporting, and this
+        # check is skipped before the main thread decides to set the stop event.
         if self.stop_event.is_set():
             self.stop_event.clear()
             sys.exit(0)
 
-    def new_report(self, metrics: Dict, checkpoint=None) -> None:
-        from ray.train._checkpoint import Checkpoint as NewCheckpoint
-
+    def new_report(
+        self, metrics: Dict, checkpoint: Optional[NewCheckpoint] = None
+    ) -> None:
         persisted_checkpoint = None
         if checkpoint:
             if not isinstance(checkpoint, NewCheckpoint):
@@ -548,7 +560,7 @@ class _TrainSession:
             metrics=metrics,
         )
 
-        self.report_training_result(result)
+        self._report_training_result(result)
 
     def report(self, metrics: Dict, checkpoint: Optional[Checkpoint] = None) -> None:
         # TODO(xwjiang): tons of optimizations.

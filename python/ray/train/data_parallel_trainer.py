@@ -434,7 +434,9 @@ class DataParallelTrainer(BaseTrainer):
                     f"  metrics={first_worker_result.metrics}\n"
                     f"  checkpoint={first_worker_result.checkpoint}"
                 )
-                get_session().report_training_result(first_worker_result)
+                # Report the metrics and checkpoint to Tune.
+                tune_session = get_session()
+                tune_session._report_training_result(first_worker_result)
             else:
                 tune.report(**first_worker_result)
 
