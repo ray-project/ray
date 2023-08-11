@@ -11,5 +11,5 @@ spec:
     labelSelectors:
       'ray.io/node-type': 'worker' # inject to all workers
   delay:
-    latency: '100ms'
+    latency: '200ms'
   duration: '12h'
