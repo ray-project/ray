@@ -70,6 +70,7 @@ from ray.data.datasource._default_metadata_providers import (
     get_parquet_bulk_metadata_provider,
     get_parquet_metadata_provider,
 )
+from ray.data.datasource.datasource import Reader
 from ray.data.datasource.file_based_datasource import (
     _unwrap_arrow_serialization_workaround,
     _wrap_arrow_serialization_workaround,
@@ -352,6 +353,7 @@ def read_datasource(
             min_safe_parallelism,
             inmemory_size,
             read_tasks,
+            reader,
         ) = _get_read_tasks(datasource, ctx, cur_pg, parallelism, local_uri, read_args)
     else:
         # Prepare read in a remote task at same node.
@@ -370,6 +372,7 @@ def read_datasource(
             min_safe_parallelism,
             inmemory_size,
             read_tasks,
+            reader,
         ) = ray.get(
             get_read_tasks.remote(
                 datasource,
@@ -384,6 +387,7 @@ def read_datasource(
     # Compute the number of blocks the read will return. If the number of blocks is
     # expected to be less than the requested parallelism, boost the number of blocks
     # by adding an additional split into `k` pieces to each read task.
+    additional_split_factor = None
     if read_tasks:
         if inmemory_size:
             expected_block_size = inmemory_size / len(read_tasks)
@@ -407,6 +411,7 @@ def read_datasource(
             for r in read_tasks:
                 r._set_additional_split_factor(k)
             estimated_num_blocks = estimated_num_blocks * k
+            additional_split_factor = k
         logger.debug("Estimated num output blocks {estimated_num_blocks}")
     else:
         estimated_num_blocks = 0
@@ -439,7 +444,13 @@ def read_datasource(
 
     # TODO(hchen): move _get_read_tasks and related code to the Read physical operator,
     # after removing LazyBlockList code path.
-    read_op = Read(datasource, read_tasks, estimated_num_blocks, ray_remote_args)
+    read_op = Read(
+        datasource,
+        reader,
+        requested_parallelism,
+        additional_split_factor,
+        ray_remote_args,
+    )
     logical_plan = LogicalPlan(read_op)
 
     return Dataset(
@@ -2288,7 +2299,7 @@ def _get_read_tasks(
     parallelism: int,
     local_uri: bool,
     kwargs: dict,
-) -> Tuple[int, int, Optional[int], List[ReadTask]]:
+) -> Tuple[int, int, Optional[int], List[ReadTask], Reader]:
     """Generates read tasks.
 
     Args:
@@ -2315,6 +2326,7 @@ def _get_read_tasks(
         min_safe_parallelism,
         mem_size,
         reader.get_read_tasks(requested_parallelism),
+        reader,
     )
 
 

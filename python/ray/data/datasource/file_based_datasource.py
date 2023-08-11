@@ -30,6 +30,7 @@ from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.util import _check_pyarrow_version, _resolve_custom_scheme
 from ray.data.block import Block, BlockAccessor
 from ray.data.context import DataContext
+from ray.data.datasource._default_file_post_processor import post_process_files
 from ray.data.datasource.datasource import Datasource, Reader, ReadTask, WriteResult
 from ray.data.datasource.file_meta_provider import (
     BaseFileMetadataProvider,
@@ -505,7 +506,10 @@ class _FileBasedDatasourceReader(Reader):
         reader_args = self._reader_args
         partitioning = self._partitioning
 
-        paths, file_sizes = self._paths, self._file_sizes
+        paths, file_sizes = post_process_files(
+            self._paths, self._file_sizes, reader_args
+        )
+
         read_stream = self._delegate._read_stream
         filesystem = _wrap_s3_serialization_workaround(self._filesystem)
 
