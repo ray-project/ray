@@ -501,83 +501,101 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         backoff sleep time.
         """
 
-        backoff_index = 0
-        multiplexed_start_matching_time = None
-        multiplexed_matching_timeout = random.uniform(
-            RAY_SERVE_MULTIPLEXED_MODEL_ID_MATCHING_TIMEOUT_S,
-            RAY_SERVE_MULTIPLEXED_MODEL_ID_MATCHING_TIMEOUT_S * 2,
-        )
+        try:
+            backoff_index = 0
+            entered_backoff = False
+            multiplexed_start_matching_time = None
+            multiplexed_matching_timeout = random.uniform(
+                RAY_SERVE_MULTIPLEXED_MODEL_ID_MATCHING_TIMEOUT_S,
+                RAY_SERVE_MULTIPLEXED_MODEL_ID_MATCHING_TIMEOUT_S * 2,
+            )
 
-        while True:
-            # If no replicas are available, wait until `update_replicas` is called.
-            while len(self._replicas) == 0:
-                logger.info(
-                    "Tried to assign replica for deployment "
-                    f"{self._deployment_name} but none are available. "
-                    "Waiting for new replicas to be added.",
-                    extra={"log_to_stderr": False},
-                )
-                self._replicas_updated_event.clear()
-                await self._replicas_updated_event.wait()
-                logger.info(
-                    f"Got replicas for deployment {self._deployment_name}, waking up.",
-                    extra={"log_to_stderr": False},
-                )
-
-            if multiplexed_start_matching_time is None:
-                multiplexed_start_matching_time = time.time()
-
-            candidate_replica_ids = set()
-            if request_metadata is not None and request_metadata.multiplexed_model_id:
-                # Get candidates for multiplexed model ID.
-                if (
-                    time.time() - multiplexed_start_matching_time
-                    < multiplexed_matching_timeout
-                ):
-                    candidate_replica_ids = (
-                        self._get_candidate_replica_ids_for_multiplexed_model_id(
-                            request_metadata.multiplexed_model_id
-                        )
+            while True:
+                # If no replicas are available, wait until `update_replicas` is called.
+                while len(self._replicas) == 0:
+                    logger.info(
+                        "Tried to assign replica for deployment "
+                        f"{self._deployment_name} but none are available. "
+                        "Waiting for new replicas to be added.",
+                        extra={"log_to_stderr": False},
                     )
-                    # When there is no match for a multiplexed model id, we will try to
-                    # fallback to all replicas immediately.
+                    self._replicas_updated_event.clear()
+                    await self._replicas_updated_event.wait()
+                    logger.info(
+                        f"Got replicas for deployment {self._deployment_name}, "
+                        "waking up.",
+                        extra={"log_to_stderr": False},
+                    )
+
+                if multiplexed_start_matching_time is None:
+                    multiplexed_start_matching_time = time.time()
+
+                candidate_replica_ids = set()
+                if (
+                    request_metadata is not None
+                    and request_metadata.multiplexed_model_id
+                ):
+                    # Get candidates for multiplexed model ID.
                     if (
-                        len(candidate_replica_ids) == 0
-                        and request_metadata.multiplexed_model_id
-                        not in self._multiplexed_model_id_fallback_match
+                        time.time() - multiplexed_start_matching_time
+                        < multiplexed_matching_timeout
                     ):
+                        candidate_replica_ids = (
+                            self._get_candidate_replica_ids_for_multiplexed_model_id(
+                                request_metadata.multiplexed_model_id
+                            )
+                        )
+                        # When there is no match for a multiplexed model id, 
+                        # we will try to fallback to all replicas immediately.
+                        if (
+                            len(candidate_replica_ids) == 0
+                            and request_metadata.multiplexed_model_id
+                            not in self._multiplexed_model_id_fallback_match
+                        ):
+                            candidate_replica_ids = self._get_candidate_replica_ids_for_multiplexed_model_id(
+                                request_metadata.multiplexed_model_id,
+                                get_from_all_replicas=True,
+                            )
+                            self._multiplexed_model_id_fallback_match.add(
+                                request_metadata.multiplexed_model_id
+                            )
+                        elif len(candidate_replica_ids) > 0:
+                            self._multiplexed_model_id_fallback_match.discard(
+                                request_metadata.multiplexed_model_id
+                            )
+                    else:
                         candidate_replica_ids = (
                             self._get_candidate_replica_ids_for_multiplexed_model_id(
                                 request_metadata.multiplexed_model_id,
                                 get_from_all_replicas=True,
                             )
                         )
-                        self._multiplexed_model_id_fallback_match.add(
-                            request_metadata.multiplexed_model_id
-                        )
-                    elif len(candidate_replica_ids) > 0:
-                        self._multiplexed_model_id_fallback_match.discard(
-                            request_metadata.multiplexed_model_id
-                        )
                 else:
-                    candidate_replica_ids = (
-                        self._get_candidate_replica_ids_for_multiplexed_model_id(
-                            request_metadata.multiplexed_model_id,
-                            get_from_all_replicas=True,
-                        )
+                    # non-multiplexed use case
+                    candidate_replica_ids = self._replica_id_set
+
+                if candidate_replica_ids:
+                    chosen_ids = random.sample(
+                        list(candidate_replica_ids),
+                        k=min(2, len(candidate_replica_ids)),
                     )
-            else:
-                # non-multiplexed use case
-                candidate_replica_ids = self._replica_id_set
+                    yield [self._replicas[chosen_id] for chosen_id in chosen_ids]
 
-            if candidate_replica_ids:
-                chosen_ids = random.sample(
-                    list(candidate_replica_ids), k=min(2, len(candidate_replica_ids))
+                if not entered_backoff:
+                    entered_backoff = True
+                    self.num_scheduling_tasks_in_backoff += 1
+                    self.num_scheduling_tasks_in_backoff_gauge.set(
+                        self.num_scheduling_tasks_in_backoff
+                    )
+
+                await asyncio.sleep(self.backoff_sequence_s[backoff_index])
+                backoff_index = min(backoff_index + 1, len(self.backoff_sequence_s) - 1)
+        finally:
+            if entered_backoff:
+                self.num_scheduling_tasks_in_backoff -= 1
+                self.num_scheduling_tasks_in_backoff_gauge.set(
+                    self.num_scheduling_tasks_in_backoff
                 )
-                yield [self._replicas[chosen_id] for chosen_id in chosen_ids]
-
-            await asyncio.sleep(self.backoff_sequence_s[backoff_index])
-            backoff_index = min(backoff_index + 1, len(self.backoff_sequence_s) - 1)
 
     async def select_from_candidate_replicas(
         self, candidates: List[ReplicaWrapper]
