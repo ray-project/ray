@@ -349,6 +349,15 @@ class ApplicationState:
                 self._update_status(
                     ApplicationStatus.DEPLOY_FAILED, traceback.format_exc()
                 )
+            except Exception:
+                self._set_target_state_deployment_infos(None)
+                self._update_status(
+                    BuildAppStatus.FAILED,
+                    (
+                        f"Unexpected error occured while applying config for application "
+                        f"'{self._name}': \n{traceback.format_exc()}"
+                    ),
+                )
         else:
             # If there is an in progress build task, cancel it.
             if self._build_app_task_info and not self._build_app_task_info.finished:
@@ -497,6 +506,15 @@ class ApplicationState:
             return overrided_infos, BuildAppStatus.SUCCEEDED, ""
         except (TypeError, ValueError, RayServeException):
             return None, BuildAppStatus.FAILED, traceback.format_exc()
+        except Exception:
+            return (
+                None,
+                BuildAppStatus.FAILED,
+                (
+                    f"Unexpected error occured while applying config for application "
+                    f"'{self._name}': \n{traceback.format_exc()}"
+                ),
+            )
 
     def _check_routes(
         self, deployment_infos: Dict[str, DeploymentInfo]

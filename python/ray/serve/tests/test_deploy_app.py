@@ -1350,6 +1350,13 @@ def test_deploy_lightweight_multiple_route_prefix(
 
     wait_for_condition(check_failed)
 
+    # Check 10 more times to make sure the status doesn't oscillate
+    for _ in range(10):
+        s = serve.status().applications["default"]
+        assert s.status == ApplicationStatus.DEPLOY_FAILED
+        assert "Found multiple route prefixes" in s.message
+        time.sleep(0.1)
+
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))
