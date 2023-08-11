@@ -7,11 +7,6 @@ Data Loading and Preprocessing
 
 This guide covers how to leverage :ref:`Ray Data <data>` to load data for distributed training jobs. For advantages on using Ray Data to ingest data for training, and comparisons to alternatives, see :ref:`Ray Data Overview <data_overview>`.
 
-.. seealso::
-
-    You can still use framework-specifc dataset utilities (e.g. Torch Dataloader, Lightning DataModule, Hugging Face Datasets) in Ray Train, please 
-    refer to :ref:`this section <data-ingest-framework-utility>`.
-
 .. figure:: ../images/train_ingest.png
 
 Quickstart
@@ -142,11 +137,11 @@ Migrating from PyTorch DataLoader
 
 Some deep learning frameworks provide their own dataloading utilities. For example:
 
-- PyTorch: `PyTorch Dataset <https://pytorch.org/tutorials/beginner/basics/data_tutorial.html>`
-- Lightning: `LightningDataModule <https://lightning.ai/docs/pytorch/stable/data/datamodule.html>`
+- PyTorch: `PyTorch Dataset & DataLoader <https://pytorch.org/tutorials/beginner/basics/data_tutorial.html>`
 - HuggingFace: `HuggingFace Dataset <https://huggingface.co/docs/datasets/index>`
+- PyTorch Lightning: `LightningDataModule <https://lightning.ai/docs/pytorch/stable/data/datamodule.html>`
 
-You can still use the above utilities in Ray Train, for more performant large-scale data preprocessing, you can migrate to Ray Data for working with distributed datasets.
+You can still use the aforementioned utilities in Ray Train. However, for more performant large-scale data ingestion, you should consider migrating to Ray Data.
 
 PyTorch Datasets are replaced by the :class:`Dataset <ray.data.Dataset>` abtraction, and the PyTorch DataLoader is replaced by :meth:`Dataset.iter_torch_batches() <ray.data.Dataset.iter_torch_batches>`.
 
