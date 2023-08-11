@@ -1,4 +1,4 @@
-Inspecting training results
+Inspecting Training Results
 ===========================
 
 The return value of your :meth:`Trainer.fit() <ray.train.base_trainer.BaseTrainer.fit>`
