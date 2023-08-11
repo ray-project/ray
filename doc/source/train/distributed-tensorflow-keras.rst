@@ -189,7 +189,7 @@ Reporting results
 During training, the training loop should report intermediate results and checkpoints
 to Ray Train. This will log the results to the console output and append them to
 local log files. It can also be used to report results to
-:ref:`experiment tracking services <train-monitoring>` and it will trigger
+:ref:`experiment tracking services <train-experiment-tracking>` and it will trigger
 :ref:`checkpoint bookkeeping <train-dl-configure-checkpoints>`.
 
 The easiest way to report your results with Keras is by using the
@@ -347,12 +347,8 @@ Loading checkpoints
 
 Further reading
 ---------------
-We explore more topics in our :ref:`PyTorch guide <train-pytorch-overview>`.
-Ray Train is a generic library and the concepts explained there are applicable
-to TensorFlow, too.
+We explore more topics in our :ref:`User Guides <train-user-guides>`. You may want to look into:
 
-You may want to look into:
-
-- :ref:`Experiment tracking and callbacks <train-monitoring>`
+- :ref:`Experiment tracking and callbacks <train-experiment-tracking>`
 - :ref:`Fault tolerance and training on spot instances <train-fault-tolerance>`
 - :ref:`Hyperparameter optimization <train-tune>`
