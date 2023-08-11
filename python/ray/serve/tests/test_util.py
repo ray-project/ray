@@ -4,6 +4,7 @@ import subprocess
 import sys
 import tempfile
 from copy import deepcopy
+import time
 from unittest.mock import patch
 
 import numpy as np
@@ -24,6 +25,7 @@ from ray.serve._private.utils import (
     dict_keys_snake_to_camel_case,
     get_all_live_placement_group_names,
     get_head_node_id,
+    MetricsPusher,
 )
 from ray._private.resource_spec import HEAD_NODE_RESOURCE_NAME
 
@@ -663,6 +665,21 @@ def test_get_all_live_placement_group_names(ray_instance):
     assert pg8.wait()
 
     assert set(get_all_live_placement_group_names()) == {"pg3", "pg4", "pg5", "pg6"}
+
+
+def test_metrics_pusher():
+    counter = {"val": 0}
+
+    def task(c):
+        time.sleep(0.001)
+        c["val"] += 1
+
+    metrics_pusher = MetricsPusher()
+    metrics_pusher.register_task(lambda: task(counter), 0.5)
+    metrics_pusher.start()
+
+    time.sleep(10.4)
+    assert counter["val"] == 20
 
 
 if __name__ == "__main__":

@@ -628,10 +628,8 @@ class MetricsPusher:
                         logger.warning(
                             f"MetricsPusher thread failed to run metric task: {e}"
                         )
-                duration_s = time.time() - start
-                remaining_time = least_interval_s - duration_s
-                if remaining_time > 0:
-                    time.sleep(remaining_time)
+
+                time.sleep(least_interval_s)
 
         self.pusher_thread = threading.Thread(target=send_forever)
         # Making this a daemon thread so it doesn't leak upon shutdown, and it
