@@ -235,6 +235,27 @@ class DeploymentSchema(
         default=DEFAULT.VALUE, description="Options set for each replica actor."
     )
 
+    placement_group_bundles: List[Dict[str, float]] = Field(
+        default=DEFAULT.VALUE,
+        description=(
+            "Define a set of placement group bundles to be "
+            "scheduled *for each replica* of this deployment. The replica actor will "
+            "be scheduled in the first bundle provided, so the resources specified in "
+            "`ray_actor_options` must be a subset of the first bundle's resources. All "
+            "actors and tasks created by the replica actor will be scheduled in the "
+            "placement group by default (`placement_group_capture_child_tasks` is set "
+            "to True)."
+        ),
+    )
+
+    placement_group_strategy: str = Field(
+        default=DEFAULT.VALUE,
+        description=(
+            "Strategy to use for the replica placement group "
+            "specified via `placement_group_bundles`. Defaults to `PACK`."
+        ),
+    )
+
     is_driver_deployment: bool = Field(
         default=DEFAULT.VALUE,
         description="Indicate Whether the deployment is driver deployment "
