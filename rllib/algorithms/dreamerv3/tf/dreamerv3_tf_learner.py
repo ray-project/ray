@@ -54,7 +54,7 @@ class DreamerV3TfLearner(DreamerV3Learner, TfLearner):
 
         # World Model optimizer.
         optim_world_model = tf.keras.optimizers.Adam(epsilon=1e-8)
-        optim_world_model.build(dreamerv3_module.world_model.trainable_variables)
+        #optim_world_model.build(dreamerv3_module.world_model.trainable_variables)
         params_world_model = self.get_parameters(dreamerv3_module.world_model)
         self.register_optimizer(
             module_id=module_id,
@@ -66,7 +66,7 @@ class DreamerV3TfLearner(DreamerV3Learner, TfLearner):
 
         # Actor optimizer.
         optim_actor = tf.keras.optimizers.Adam(epsilon=1e-5)
-        optim_actor.build(dreamerv3_module.actor.trainable_variables)
+        #optim_actor.build(dreamerv3_module.actor.trainable_variables)
         params_actor = self.get_parameters(dreamerv3_module.actor)
         self.register_optimizer(
             module_id=module_id,
@@ -78,7 +78,7 @@ class DreamerV3TfLearner(DreamerV3Learner, TfLearner):
 
         # Critic optimizer.
         optim_critic = tf.keras.optimizers.Adam(epsilon=1e-5)
-        optim_critic.build(dreamerv3_module.critic.trainable_variables)
+        #optim_critic.build(dreamerv3_module.critic.trainable_variables)
         params_critic = self.get_parameters(dreamerv3_module.critic)
         self.register_optimizer(
             module_id=module_id,
