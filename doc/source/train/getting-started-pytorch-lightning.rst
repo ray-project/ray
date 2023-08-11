@@ -343,6 +343,7 @@ with a :class:`~ray.train.torch.TorchTrainer`.
 
     trainer = TorchTrainer(train_func, scaling_config=scaling_config)
     result = trainer.fit()
+
 Please also refer to :ref:`train-run-config` for more configuration options for `TorchTrainer`.
 
 Accessing training results
