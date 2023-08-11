@@ -676,15 +676,18 @@ class HTTPProxy:
         For websocket messages, the disconnect code is returned if a disconnect code is
         received.
         """
-        while True:
-            msg = await receive()
-            await queue(msg)
+        try:
+            while True:
+                msg = await receive()
+                await queue(msg)
 
-            if msg["type"] == "http.disconnect":
-                return None
+                if msg["type"] == "http.disconnect":
+                    return None
 
-            if msg["type"] == "websocket.disconnect":
-                return msg["code"]
+                if msg["type"] == "websocket.disconnect":
+                    return msg["code"]
+        finally:
+            queue.close()
 
     async def _assign_request_with_timeout(
         self,

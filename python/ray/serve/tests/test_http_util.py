@@ -20,45 +20,51 @@ def shared_ray_instance(request):
 
 @pytest.mark.asyncio
 async def test_asgi_message_queue():
-    send = ASGIMessageQueue()
+    queue = ASGIMessageQueue()
 
     # Check that wait_for_message hangs until a message is sent.
     with pytest.raises(asyncio.TimeoutError):
-        await asyncio.wait_for(send.wait_for_message(), 0.001)
+        await asyncio.wait_for(queue.wait_for_message(), 0.001)
 
-    assert len(list(send.get_messages_nowait())) == 0
+    assert len(list(queue.get_messages_nowait())) == 0
 
-    await send({"type": "http.response.start"})
-    await send.wait_for_message()
-    assert len(list(send.get_messages_nowait())) == 1
+    await queue({"type": "http.response.start"})
+    await queue.wait_for_message()
+    assert len(list(queue.get_messages_nowait())) == 1
 
     # Check that messages are cleared after being consumed.
-    assert len(list(send.get_messages_nowait())) == 0
+    assert len(list(queue.get_messages_nowait())) == 0
     with pytest.raises(asyncio.TimeoutError):
-        await asyncio.wait_for(send.wait_for_message(), 0.001)
+        await asyncio.wait_for(queue.wait_for_message(), 0.001)
 
     # Check that consecutive messages are returned in order.
-    await send({"type": "http.response.start", "idx": 0})
-    await send({"type": "http.response.start", "idx": 1})
-    await send.wait_for_message()
-    messages = list(send.get_messages_nowait())
+    await queue({"type": "http.response.start", "idx": 0})
+    await queue({"type": "http.response.start", "idx": 1})
+    await queue.wait_for_message()
+    messages = list(queue.get_messages_nowait())
     assert len(messages) == 2
     assert messages[0]["idx"] == 0
     assert messages[1]["idx"] == 1
 
-    assert len(list(send.get_messages_nowait())) == 0
+    assert len(list(queue.get_messages_nowait())) == 0
     with pytest.raises(asyncio.TimeoutError):
-        await asyncio.wait_for(send.wait_for_message(), 0.001)
+        await asyncio.wait_for(queue.wait_for_message(), 0.001)
 
     # Check that a concurrent waiter is notified when a message is available.
     loop = asyncio.get_running_loop()
-    waiting_task = loop.create_task(send.wait_for_message())
+    waiting_task = loop.create_task(queue.wait_for_message())
     for _ in range(1000):
         assert not waiting_task.done()
 
-    await send({"type": "http.response.start"})
+    await queue({"type": "http.response.start"})
     await waiting_task
-    assert len(list(send.get_messages_nowait())) == 1
+    assert len(list(queue.get_messages_nowait())) == 1
+
+    # Check that once the queue is closed, subsequent calls return immediately.
+    queue.close()
+    for _ in range(100):
+        await queue.wait_for_message()
+        assert queue.get_messages_nowait() == []
 
 
 @pytest.fixture
