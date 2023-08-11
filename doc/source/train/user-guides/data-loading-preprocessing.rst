@@ -452,10 +452,10 @@ Some deep learning frameworks provide their own dataloading utilities. For examp
 - Lightning: `LightningDataModule <https://lightning.ai/docs/pytorch/stable/data/datamodule.html>`
 - HuggingFace: `HuggingFace Dataset <https://huggingface.co/docs/datasets/index>`
 
-You can continue to use the above utilities in Ray Train, but be sure to put the dataset initialization logic in ``train_loop_per_worker``.
+You can continue to use the above utilities in Ray Train, but be sure to put the dataset initialization logic in the training function per worker.
 
 .. warning:: 
 
-    We do not recommend passing datasets through ``train_loop_config`` or global variables, as it will serialize your 
-    dataset objects on the head node and send it to remote workers via object store. This is inefficient for large dataset transfer 
-    and may also cause serialization or ``FileNotFound`` errors.
+    We do not recommend passing framework-specifc datasets via ``train_loop_config`` or global variables, as it will serialize 
+    your dataset objects on the head node and send them to remote workers via the object store. This method is inefficient for 
+    transferring large datasets and may also lead to serialization or ``FileNotFound`` errors.
