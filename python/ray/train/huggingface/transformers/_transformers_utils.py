@@ -254,7 +254,7 @@ class RayTrainReportCallback(TrainerCallback):
         - evaluation_strategy != save_strategy
         - evaluation_strategy == save_strategy == "steps", save_steps % eval_steps != 0
 
-    For more info see:
+    For more info, see:
     :ref:`Saving and Loading Checkpoints <train-dl-saving-checkpoints>`.
 
     """
