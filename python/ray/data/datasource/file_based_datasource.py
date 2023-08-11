@@ -382,10 +382,14 @@ class FileBasedDatasource(Datasource):
     def on_write_complete(
         self,
         write_results: List[WriteResult],
-        path: str,
+        path: Optional[str] = None,
         filesystem: Optional["pyarrow.fs.FileSystem"] = None,
         **kwargs,
     ) -> None:
+        paths, filesystem = _resolve_paths_and_filesystem(path, filesystem)
+        assert len(paths) == 1, len(paths)
+        path = paths[0]
+
         if all(write_results == "skip" for write_results in write_results):
             filesystem.delete_dir(path)
 
