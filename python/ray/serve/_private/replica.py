@@ -36,6 +36,7 @@ from ray.serve._private.constants import (
     SERVE_LOGGER_NAME,
     SERVE_NAMESPACE,
     RAY_SERVE_GAUGE_METRIC_SET_PERIOD_S,
+    RAY_SERVE_REPLICA_AUTOSCALING_METRIC_RECORD_PERIOD_S,
 )
 from ray.serve.deployment import Deployment
 from ray.serve.exceptions import RayServeException
@@ -63,6 +64,7 @@ from ray.serve._private.utils import (
     MetricsPusher,
 )
 from ray.serve._private.version import DeploymentVersion
+from ray.serve._private.autoscaling_metrics import InMemoryMetricsStore
 
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
@@ -524,6 +526,7 @@ class RayServeReplica:
 
         self.restart_counter.inc()
 
+        self.autoscaling_metrics_store = InMemoryMetricsStore()
         self.metrics_pusher = MetricsPusher()
         if autoscaling_config:
             process_remote_func = controller_handle.record_autoscaling_metrics.remote
@@ -533,12 +536,20 @@ class RayServeReplica:
                 config.metrics_interval_s,
                 process_remote_func,
             )
+            self.metrics_pusher.register_task(
+                lambda: {self.replica_tag: self.get_num_pending_and_running_requests()},
+                RAY_SERVE_REPLICA_AUTOSCALING_METRIC_RECORD_PERIOD_S,
+                self._add_autoscaling_metrics_point,
+            )
 
         self.metrics_pusher.register_task(
             self._set_replica_requests_metrics,
             RAY_SERVE_GAUGE_METRIC_SET_PERIOD_S,
         )
         self.metrics_pusher.start()
+
+    def _add_autoscaling_metrics_point(self, data, send_timestamp: float):
+        self.autoscaling_metrics_store.add_metrics_point(data, send_timestamp)
 
     def _set_replica_requests_metrics(self):
         self.num_processing_items.set(self.get_num_running_requests())
@@ -574,7 +585,10 @@ class RayServeReplica:
         return stats.get("pending", 0) + stats.get("running", 0)
 
     def collect_autoscaling_metrics(self):
-        return {self.replica_tag: self.get_num_pending_and_running_requests()}
+        look_back_period = self.deployment_config.autoscaling_config.look_back_period_s
+        return self.replica_tag, self.autoscaling_metrics_store.window_average(
+            self.replica_tag, time.time() - look_back_period
+        )
 
     def get_runner_method(self, request_metadata: RequestMetadata) -> Callable:
         method_name = request_metadata.call_method
