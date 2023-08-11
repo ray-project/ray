@@ -156,6 +156,13 @@ class WorldModel(tf.keras.Model):
         # Decoder: [ht, zt] -> x^t.
         self.decoder = decoder
 
+        # Trace self.call.
+        self.forward_train = tf.function(input_signature=[
+            tf.TensorSpec(shape=[None, None] + list(self.observation_space.shape), dtype=tf.float32),
+            tf.TensorSpec(shape=[None, None, self.action_space.n], dtype=tf.float32),
+            tf.TensorSpec(shape=[None, None], dtype=tf.float32),
+        ])(self.forward_train)
+
     @tf.function
     def get_initial_state(self):
         """Returns the (current) initial state of the world model (h- and z-states).
@@ -212,12 +219,7 @@ class WorldModel(tf.keras.Model):
 
         return {"h": h, "z": z}
 
-    @tf.function(input_signature=[
-        tf.TensorSpec(shape=[None, None, 64, 64, 3], dtype=tf.float32),
-        tf.TensorSpec(shape=[None, None, 9], dtype=tf.float32),
-        tf.TensorSpec(shape=[None, None], dtype=tf.float32),
-    ])
-    def forward_train(self, observations, actions, is_first):#, training=None):
+    def forward_train(self, observations, actions, is_first):
         """Performs a forward step for training.
 
         1) Forwards all observations [B, T, ...] through the encoder network to yield

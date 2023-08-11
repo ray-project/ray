@@ -6,6 +6,11 @@ https://arxiv.org/pdf/2301.04104v1.pdf
 from typing import Optional
 
 from ray.rllib.algorithms.dreamerv3.tf.models.components.mlp import MLP
+from ray.rllib.algorithms.dreamerv3.utils import (
+    get_gru_units,
+    get_num_z_classes,
+    get_num_z_categoricals,
+)
 from ray.rllib.utils.framework import try_import_tf, try_import_tfp
 
 _, tf, _ = try_import_tf()
@@ -34,10 +39,16 @@ class ContinuePredictor(tf.keras.Model):
         super().__init__(name="continue_predictor")
         self.mlp = MLP(model_size=model_size, output_layer_size=1)
 
-    @tf.function(input_signature=[
-        tf.TensorSpec(shape=[None, 4096], dtype=tf.float32),
-        tf.TensorSpec(shape=[None, 32, 32], dtype=tf.float32),
-    ])
+        # Trace self.call.
+        self.call = tf.function(input_signature=[
+            tf.TensorSpec(shape=[None, get_gru_units(model_size)], dtype=tf.float32),
+            tf.TensorSpec(shape=[
+                None,
+                get_num_z_categoricals(model_size),
+                get_num_z_classes(model_size),
+            ], dtype=tf.float32),
+        ])(self.call)
+
     def call(self, h, z):
         """Performs a forward pass through the continue predictor.
 

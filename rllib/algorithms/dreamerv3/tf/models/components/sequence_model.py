@@ -8,7 +8,11 @@ from typing import Optional
 import gymnasium as gym
 
 from ray.rllib.algorithms.dreamerv3.tf.models.components.mlp import MLP
-from ray.rllib.algorithms.dreamerv3.utils import get_gru_units
+from ray.rllib.algorithms.dreamerv3.utils import (
+    get_gru_units,
+    get_num_z_classes,
+    get_num_z_categoricals,
+)
 from ray.rllib.utils.framework import try_import_tf
 
 _, tf, _ = try_import_tf()
@@ -80,10 +84,13 @@ class SequenceModel(tf.keras.Model):
 
         # Trace self.call.
         self.call = tf.function(input_signature=[
-            # TODO: Cont. actions support.
             tf.TensorSpec(shape=[None, action_space.n], dtype=tf.float32),
             tf.TensorSpec(shape=[None, num_gru_units], dtype=tf.float32),
-            tf.TensorSpec(shape=[None, 32, 32], dtype=tf.float32),
+            tf.TensorSpec(shape=[
+                None,
+                get_num_z_categoricals(model_size),
+                get_num_z_classes(model_size),
+            ], dtype=tf.float32),
         ])(self.call)
 
     def call(self, a, h, z):

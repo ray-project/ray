@@ -10,6 +10,11 @@ from gymnasium.spaces import Box, Discrete
 import numpy as np
 
 from ray.rllib.algorithms.dreamerv3.tf.models.components.mlp import MLP
+from ray.rllib.algorithms.dreamerv3.utils import (
+    get_gru_units,
+    get_num_z_categoricals,
+    get_num_z_classes,
+)
 from ray.rllib.utils.framework import try_import_tf, try_import_tfp
 
 _, tf, _ = try_import_tf()
@@ -82,8 +87,12 @@ class ActorNetwork(tf.keras.Model):
 
         # Trace self.call.
         self.call = tf.function(input_signature=[
-            tf.TensorSpec(shape=[None, 4096], dtype=tf.float32),# TODO num_gru_units
-            tf.TensorSpec(shape=[None, 32, 32], dtype=tf.float32),
+            tf.TensorSpec(shape=[None, get_gru_units(model_size)], dtype=tf.float32),
+            tf.TensorSpec(shape=[
+                None,
+                get_num_z_categoricals(model_size),
+                get_num_z_classes(model_size),
+            ], dtype=tf.float32),
         ])(self.call)
 
     def call(self, h, z):

@@ -11,7 +11,12 @@ from typing import Optional
 
 import numpy as np
 
-from ray.rllib.algorithms.dreamerv3.utils import get_cnn_multiplier
+from ray.rllib.algorithms.dreamerv3.utils import (
+    get_cnn_multiplier,
+    get_gru_units,
+    get_num_z_categoricals,
+    get_num_z_classes,
+)
 from ray.rllib.utils.framework import try_import_tf
 
 _, tf, _ = try_import_tf()
@@ -111,10 +116,16 @@ class ConvTransposeAtari(tf.keras.Model):
         )
         # .. until output is 64 x 64 x 3 (or 1 for self.gray_scaled=True).
 
-    @tf.function(input_signature=[
-        tf.TensorSpec(shape=[None, 4096], dtype=tf.float32),
-        tf.TensorSpec(shape=[None, 32, 32], dtype=tf.float32),
-    ])
+        # Trace self.call.
+        self.call = tf.function(input_signature=[
+            tf.TensorSpec(shape=[None, get_gru_units(model_size)], dtype=tf.float32),
+            tf.TensorSpec(shape=[
+                None,
+                get_num_z_categoricals(model_size),
+                get_num_z_classes(model_size),
+            ], dtype=tf.float32),
+        ])(self.call)
+
     def call(self, h, z):
         """Performs a forward pass through the Conv2D transpose decoder.
 

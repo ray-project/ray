@@ -9,6 +9,11 @@ from ray.rllib.algorithms.dreamerv3.tf.models.components.mlp import MLP
 from ray.rllib.algorithms.dreamerv3.tf.models.components.reward_predictor_layer import (
     RewardPredictorLayer,
 )
+from ray.rllib.algorithms.dreamerv3.utils import (
+    get_gru_units,
+    get_num_z_categoricals,
+    get_num_z_classes,
+)
 from ray.rllib.utils.framework import try_import_tf
 
 _, tf, _ = try_import_tf()
@@ -99,8 +104,12 @@ class CriticNetwork(tf.keras.Model):
 
         # Trace self.call.
         self.call = tf.function(input_signature=[
-            tf.TensorSpec(shape=[None, 4096], dtype=tf.float32),# TODO num_gru_units
-            tf.TensorSpec(shape=[None, 32, 32], dtype=tf.float32),
+            tf.TensorSpec(shape=[None, get_gru_units(model_size)], dtype=tf.float32),
+            tf.TensorSpec(shape=[
+                None,
+                get_num_z_categoricals(model_size),
+                get_num_z_classes(model_size),
+            ], dtype=tf.float32),
             tf.TensorSpec(shape=[], dtype=tf.bool),
         ])(self.call)
 
@@ -111,8 +120,6 @@ class CriticNetwork(tf.keras.Model):
             h: The deterministic hidden state of the sequence model. [B, dim(h)].
             z: The stochastic discrete representations of the original
                 observation input. [B, num_categoricals, num_classes].
-            #return_logits: Whether also return (as a second tuple item) the logits
-            #    computed by the binned return layer (instead of only the value itself).
             use_ema: Whether to use the EMA-copy of the critic instead of the actual
                 critic to perform this computation.
         """

@@ -12,6 +12,11 @@ from ray.rllib.algorithms.dreamerv3.tf.models.disagree_networks import DisagreeN
 from ray.rllib.algorithms.dreamerv3.tf.models.actor_network import ActorNetwork
 from ray.rllib.algorithms.dreamerv3.tf.models.critic_network import CriticNetwork
 from ray.rllib.algorithms.dreamerv3.tf.models.world_model import WorldModel
+from ray.rllib.algorithms.dreamerv3.utils import (
+    get_gru_units,
+    get_num_z_categoricals,
+    get_num_z_classes,
+)
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.tf_utils import inverse_symlog
 
@@ -75,6 +80,21 @@ class DreamerModel(tf.keras.Model):
                 intrinsic_rewards_scale=intrinsic_rewards_scale,
             )
 
+        self.dream_trajectory = tf.function(input_signature=[
+            {
+                "h": tf.TensorSpec(shape=[
+                    None,
+                    get_gru_units(self.model_size),
+                ], dtype=tf.float32),
+                "z": tf.TensorSpec(shape=[
+                    None,
+                    get_num_z_categoricals(self.model_size),
+                    get_num_z_classes(self.model_size),
+                ], dtype=tf.float32),
+            },
+            tf.TensorSpec(shape=[None], dtype=tf.float32),
+        ])(self.dream_trajectory)
+
     def call(
         self,
         inputs,
@@ -106,11 +126,13 @@ class DreamerModel(tf.keras.Model):
         values, _ = self.critic(
             h=results["h_states_BxT"],
             z=results["z_posterior_states_BxT"],
-            use_ema=False,
+            use_ema=tf.convert_to_tensor(False),
         )
         # Critic (EMA copy).
         values_ema, _ = self.critic(
-            h=results["h_states_BxT"], z=results["z_posterior_states_BxT"], use_ema=True
+            h=results["h_states_BxT"],
+            z=results["z_posterior_states_BxT"],
+            use_ema=tf.convert_to_tensor(True),
         )
 
         # Dream pipeline.
@@ -245,13 +267,6 @@ class DreamerModel(tf.keras.Model):
         )
         return states
 
-    @tf.function(input_signature=[
-        {
-            "h": tf.TensorSpec(shape=[None, 4096], dtype=tf.float32),
-            "z": tf.TensorSpec(shape=[None, 32, 32], dtype=tf.float32),
-        },
-        tf.TensorSpec(shape=[None], dtype=tf.float32),
-    ])
     def dream_trajectory(
         self, start_states, start_is_terminated
     ):

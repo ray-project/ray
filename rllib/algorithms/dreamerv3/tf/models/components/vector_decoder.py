@@ -8,6 +8,11 @@ from typing import Optional
 import gymnasium as gym
 
 from ray.rllib.algorithms.dreamerv3.tf.models.components.mlp import MLP
+from ray.rllib.algorithms.dreamerv3.utils import (
+    get_gru_units,
+    get_num_z_categoricals,
+    get_num_z_classes,
+)
 from ray.rllib.utils.framework import try_import_tf
 
 _, tf, _ = try_import_tf()
@@ -45,6 +50,16 @@ class VectorDecoder(tf.keras.Model):
             model_size=model_size,
             output_layer_size=observation_space.shape[0],
         )
+
+        # Trace self.call.
+        self.call = tf.function(input_signature=[
+            tf.TensorSpec(shape=[None, get_gru_units(model_size)], dtype=tf.float32),
+            tf.TensorSpec(shape=[
+                None,
+                get_num_z_categoricals(model_size),
+                get_num_z_classes(model_size),
+            ], dtype=tf.float32),
+        ])(self.call)
 
     def call(self, h, z):
         """Performs a forward pass through the vector encoder.
