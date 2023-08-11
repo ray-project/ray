@@ -2,7 +2,7 @@
 Ray AIR Configurations
 ======================
 
-.. TODO(ml-team): Add a general AIR configuration guide that covers all of these configs.
+.. TODO(ml-team): Add a general configuration guide that covers all of these configs.
 
 .. currentmodule:: ray
 

@@ -27,7 +27,7 @@ or a single :py:class:`~ray.rllib.policy.policy.Policy` instance.
 The Algorithm- or Policy instances that were used to create the checkpoint in the first place
 may or may not have been trained prior to this.
 
-RLlib uses the new Ray AIR :py:class:`~ray.air.checkpoint.Checkpoint` class to create checkpoints and
+RLlib uses the :py:class:`~ray.air.checkpoint.Checkpoint` class to create checkpoints and
 restore objects from them.
 
 The main file in a checkpoint directory, containing the state information, is currently
