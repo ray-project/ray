@@ -17,7 +17,7 @@ See the HuggingFace tutorial for useful explanations and suggestions on hyperpar
 **Compute requirements:**
 
 * Because of the large model sizes, you'll need a machine with at least 1 A10G GPU.
-* Each training worker uses 1 GPU. If training with ``N`` distributed training workers. The example can leverage data-parallel training with more GPUs to speed up training time.
+* Each training worker uses 1 GPU. You can use multiple GPUs/workers to leverage data-parallel training to speed up training time.
 
 This example fine-tunes both the ``text_encoder`` and ``unet`` models used in the Stable Diffusion process, with respect to a prior preserving loss.
 
@@ -147,7 +147,7 @@ We ran training using 2, and 4 workers/GPUs to compare throughput.
 
 Setup:
 
-* One g5.12xlarge nodes with 4 A10G GPUs each
+* One g5.12xlarge nodes with 4 A10G GPUs
 * Model as configured below
 * Data from this example
 * 200 regularization images

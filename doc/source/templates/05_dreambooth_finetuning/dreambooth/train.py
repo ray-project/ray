@@ -24,7 +24,7 @@ from diffusers.models.attention_processor import (
 
 # LoRA related imports end ##
 from diffusers.utils.import_utils import is_xformers_available
-from ray.air import session, ScalingConfig
+from ray.air import ScalingConfig
 from ray import train
 from ray.train.torch import TorchTrainer
 import torch
@@ -168,6 +168,9 @@ def load_models(config):
             unet, text_encoder
         )
 
+    text_encoder.train()
+    unet.train()
+
     torch.cuda.empty_cache()
 
     return (
@@ -192,9 +195,6 @@ def train_fn(config):
         text_trainable_parameters,
     ) = load_models(config)
 
-    text_encoder.train()
-    unet.train()
-
     text_encoder = train.torch.prepare_model(text_encoder)
     unet = train.torch.prepare_model(unet)
     # manually move to device as `prepare_model` can't be used on
@@ -207,7 +207,7 @@ def train_fn(config):
         lr=config["lr"],
     )
 
-    train_dataset = session.get_dataset_shard("train")
+    train_dataset = train.get_dataset_shard("train")
 
     # Train!
     num_train_epochs = config["num_epochs"]
@@ -278,14 +278,14 @@ def train_fn(config):
                 "step": global_step,
                 "loss": loss.detach().item(),
             }
-            session.report(results)
+            train.report(results)
 
             if global_step >= config["max_train_steps"]:
                 break
     # END: Training loop
 
     # Create pipeline using the trained modules and save it.
-    if session.get_world_rank() == 0:
+    if train.get_world_rank() == 0:
         if not config["use_lora"]:
             pipeline = DiffusionPipeline.from_pretrained(
                 config["model_dir"],

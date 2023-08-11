@@ -4,7 +4,6 @@ import torch
 
 
 def load_lora_weights(unet, text_encoder, input_dir):
-
     lora_state_dict, network_alphas = LoraLoaderMixin.lora_state_dict(input_dir)
     LoraLoaderMixin.load_lora_into_unet(
         lora_state_dict, network_alphas=network_alphas, unet=unet
