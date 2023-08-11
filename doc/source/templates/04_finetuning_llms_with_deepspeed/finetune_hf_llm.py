@@ -5,6 +5,7 @@ import argparse
 import json
 import math
 import os
+import re
 import functools
 import time
 import tree
@@ -569,7 +570,7 @@ def main():
         special_tokens = json.load(json_file)["tokens"]
 
     artifact_storage = os.environ["ANYSCALE_ARTIFACT_STORAGE"]
-    user_name = os.environ["ANYSCALE_USERNAME"]
+    user_name = re.sub(r"\s+", "__", os.environ["ANYSCALE_USERNAME"])
     storage_path = (
         f"{artifact_storage}/{user_name}/ft_llms_with_deepspeed/{args.model_name}"
     )
