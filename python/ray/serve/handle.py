@@ -139,11 +139,12 @@ class RayServeHandle:
         *,
         handle_options: Optional[HandleOptions] = None,
         _router: Optional[Router] = None,
+        _request_counter: Optional[metrics.Counter] = None,
     ):
         self.deployment_name = deployment_name
         self.handle_options = handle_options or HandleOptions()
 
-        self.request_counter = metrics.Counter(
+        self.request_counter = _request_counter or metrics.Counter(
             "serve_handle_request_counter",
             description=(
                 "The number of handle.remote() calls that have been "
@@ -202,6 +203,7 @@ class RayServeHandle:
             self.deployment_name,
             handle_options=new_handle_options,
             _router=None if _router_cls != DEFAULT.VALUE else self._router,
+            _request_counter=self.request_counter,
         )
 
     def options(

@@ -823,8 +823,8 @@ class gRPCProxy(GenericProxy):
         return unary_stream
 
     @property
-    def proxy_name(self) -> str:
-        return "gRPC"
+    def proxy_name(self) -> RequestProtocol:
+        return RequestProtocol.GRPC
 
     async def _draining_response(self, serve_request: ServeRequest) -> ServeResponse:
         status_code = grpc.StatusCode.ABORTED
@@ -972,8 +972,8 @@ class HTTPProxy(GenericProxy):
         await self.proxy_request(serve_request=serve_request)
 
     @property
-    def proxy_name(self) -> str:
-        return "HTTP"
+    def proxy_name(self) -> RequestProtocol:
+        return RequestProtocol.HTTP
 
     async def _draining_response(self, serve_request: ServeRequest):
         response = Response(drained_message, status_code=503)
