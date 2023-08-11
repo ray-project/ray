@@ -113,28 +113,28 @@ def main(data_directory: str, data_format: str, smoke_test: bool):
 
     # For structured output integration with internal tooling
     results = {"data_directory": data_directory, "data_format": data_format}
-    results["perf_metrics"] = [
-        {
+    results["perf_metrics"] = {
+        "total_time_s": {
             "perf_metric_name": "total_time_s",
             "perf_metric_value": total_time,
             "perf_metric_type": "LATENCY",
         },
-        {
+        "throughput_images_s": {
             "perf_metric_name": "throughput_images_s",
             "perf_metric_value": throughput,
             "perf_metric_type": "THROUGHPUT",
         },
-        {
+        "total_time_s_w/o_metadata_fetch": {
             "perf_metric_name": "total_time_s_w/o_metadata_fetch",
             "perf_metric_value": total_time_without_metadata_fetch,
             "perf_metric_type": "LATENCY",
         },
-        {
+        "throughput_images_s_w/o_metadata_fetch": {
             "perf_metric_name": "throughput_images_s_w/o_metadata_fetch",
             "perf_metric_value": throughput_without_metadata_fetch,
             "perf_metric_type": "THROUGHPUT",
         },
-    ]
+    }
 
     test_output_json = os.environ.get("TEST_OUTPUT_JSON", "/tmp/release_test_out.json")
     with open(test_output_json, "wt") as f:
