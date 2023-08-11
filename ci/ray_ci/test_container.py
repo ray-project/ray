@@ -5,6 +5,7 @@ from unittest import mock
 from typing import List
 
 from ci.ray_ci.container import run_script_in_docker, run_tests
+from ci.ray_ci.utils import chunk_into_n
 
 
 class MockPopen:
@@ -33,12 +34,17 @@ def test_run_tests() -> None:
     def _mock_run_tests_in_docker(test_targets: List[str]) -> MockPopen:
         return MockPopen(test_targets)
 
+    def _mock_shard_tests(tests: List[str], workers: int, worker_id: int) -> List[str]:
+        return chunk_into_n(tests, workers)[worker_id]
+
     with mock.patch(
         "ci.ray_ci.container._run_tests_in_docker",
         side_effect=_mock_run_tests_in_docker,
     ), mock.patch(
         "ci.ray_ci.container._setup_test_environment",
         return_value=None,
+    ), mock.patch(
+        "ci.ray_ci.container.shard_tests", side_effect=_mock_shard_tests
     ):
         # test_targets are not empty
         assert run_tests("team", ["t1", "t2"], 2)

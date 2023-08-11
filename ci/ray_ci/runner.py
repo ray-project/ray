@@ -6,8 +6,13 @@ from typing import List, Optional
 import yaml
 import click
 
-from ci.ray_ci.container import run_tests, run_script_in_docker, docker_login
-from ci.ray_ci.utils import chunk_into_n, logger
+from ci.ray_ci.container import (
+    run_tests,
+    run_script_in_docker,
+    docker_login,
+    shard_tests,
+)
+from ci.ray_ci.utils import logger
 
 # Gets the path of product/tools/docker (i.e. the parent of 'common')
 bazel_workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")
@@ -84,10 +89,11 @@ def _get_test_targets(
     """
     Get test targets to run for a particular shard
     """
-    return chunk_into_n(
+    return shard_tests(
         _get_all_test_targets(targets, team, except_tags, yaml_dir=yaml_dir),
         workers,
-    )[worker_id]
+        worker_id,
+    )
 
 
 def _get_all_test_query(targets: List[str], team: str, except_tags: str) -> str:
