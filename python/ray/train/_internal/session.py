@@ -315,11 +315,11 @@ class _TrainSession:
                 )
 
         if not self.synchronous_result_reporting:
-            # At this point, the training thread has already reached
-            # the next call to report and is blocked there.
+            # At this point, the training thread has reached
+            # the `train.report` and is blocked there.
             # If performing asynchronous result reporting,
-            # release the lock to keep training immediately after
-            # receiving the result.
+            # release the lock to allow each worker to keep training
+            # immediately after the coordinator fetches their result.
             self.continue_lock.release()
 
         # Return None if there are no more results to fetch.
