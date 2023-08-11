@@ -363,7 +363,7 @@ class FunctionTrainable(Trainable):
                     name=self.trial_name,
                     id=self.trial_id,
                     resources=self.trial_resources,
-                    logdir=self._logdir,  # TODO(justinvyu): What should this be?
+                    logdir=self._storage.trial_local_path,
                     driver_ip=None,
                     experiment_name=self._storage.experiment_dir_name,
                 ),
@@ -451,15 +451,15 @@ class FunctionTrainable(Trainable):
         along with a result with "done=True". The TrialRunner will handle the
         result accordingly (see tune/tune_controller.py).
         """
-        from ray.train._internal.storage import _use_storage_context
-        from ray.train._internal.session import _TrainingResult
-
         if _use_storage_context():
             if not self._session.training_started:
                 self._session.start()
+
             training_result: Optional[_TrainingResult] = self._session.get_next()
 
             if not training_result:
+                # The `RESULT_DUPLICATE` result should have been the last
+                # result reported by the session, which triggers cleanup.
                 raise RuntimeError(
                     "Should not have reached here. The TuneController should not "
                     "have scheduled another `train` remote call."
@@ -479,7 +479,7 @@ class FunctionTrainable(Trainable):
             self._last_training_result = training_result
             if training_result.checkpoint is not None:
                 # TODO(justinvyu): Result/checkpoint reporting can be combined.
-                # Since result/checkpoint reporting is separate, this
+                # For now, since result/checkpoint reporting is separate, this
                 # special key will tell Tune to pull the checkpoint from
                 # the `last_training_result`.
                 metrics[SHOULD_CHECKPOINT] = True
