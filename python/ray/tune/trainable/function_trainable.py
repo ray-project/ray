@@ -20,7 +20,6 @@ from ray.air.constants import (
     _RESULT_FETCH_TIMEOUT,
     TIME_THIS_ITER_S,
 )
-from ray.train._checkpoint import Checkpoint as NewCheckpoint
 from ray.train._internal.checkpoint_manager import _TrainingResult
 from ray.train._internal.storage import _use_storage_context
 from ray.train._internal.session import (
