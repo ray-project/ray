@@ -9,8 +9,8 @@ Ray AIR Configurations
 
 .. note::
 
-    We are changing the import path of the config classes from `ray.air` to `ray.train` since Ray 2.7, 
-    please refer to the :ref:`Ray Train API page <ray-train-configs-api>` for more info.
+    We are changing the import path of the configurations classes from `ray.air` to `ray.train` starting from Ray 2.7, 
+    please see the :ref:`Ray Train API reference <ray-train-configs-api>` for the latest APIs.
 
 .. autosummary::
 
