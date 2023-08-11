@@ -315,10 +315,10 @@
     - helm repo add kuberay https://ray-project.github.io/kuberay-helm/
     - helm install kuberay-operator kuberay/kuberay-operator
     - kubectl wait pod  -l app.kubernetes.io/name=kuberay-operator --for=condition=Ready=True  --timeout=5m
-    - kubectl port-forward --address 0.0.0.0 service/raycluster-kuberay-head-svc 8265:8265 &
     # We are in m4i.xlarge and have 4 cpus. Can't have too many nodes.
     - helm install raycluster kuberay/ray-cluster --set image.repository=ray-ci --set image.tag=kuberay-test --set worker.replicas=2 --set worker.resources.limits.cpu=500m --set worker.resources.requests.cpu=500m --set head.resources.limits.cpu=500m --set head.resources.requests.cpu=500m
     - kubectl wait pod -l ray.io/cluster=raycluster-kuberay --for=condition=Ready=True --timeout=5m
+    - kubectl port-forward --address 0.0.0.0 service/raycluster-kuberay-head-svc 8265:8265 &
     # Helm install chaos-mesh
     - echo "--- Installing chaos-mesh operator and CR."
     - helm repo add chaos-mesh https://charts.chaos-mesh.org
@@ -326,11 +326,11 @@
     - helm install chaos-mesh chaos-mesh/chaos-mesh -n=chaos-mesh --set chaosDaemon.runtime=containerd --set chaosDaemon.socketPath=/run/containerd/containerd.sock --version 2.6.1
     - kubectl wait pod  --namespace chaos-mesh  -l app.kubernetes.io/instance=chaos-mesh --for=condition=Ready=True
     - echo "--- Running the script without faults"
-    - time ray job submit --address http://localhost:8265 --runtime-env-json '{"env_vars":{"RAY_DEDUP_LOGS":"0"}}' --working-dir python/ray/tests/kuberay/chaos_test -- python potato_passer.py --num-actors=3 --pass-times=1000 --sleep-secs=0.01
+    - time ray job submit --address http://localhost:8265 --runtime-env-json '{\"env_vars\":{\"RAY_DEDUP_LOGS\":\"0\"}}' --working-dir python/ray/tests/kuberay/chaos_test -- python potato_passer.py --num-actors=3 --pass-times=1000 --sleep-secs=0.01
     # Now add the delay, rerun the job
     - kubectl apply -f python/ray/tests/kuberay/chaos_test/chaos_network_delay.yaml
     - echo "--- Running the script with fault of networking delay"
-    - time ray job submit --address http://localhost:8265 --runtime-env-json '{"env_vars":{"RAY_DEDUP_LOGS":"0"}}' --working-dir python/ray/tests/kuberay/chaos_test -- python potato_passer.py --num-actors=3 --pass-times=1000 --sleep-secs=0.01
+    - time ray job submit --address http://localhost:8265 --runtime-env-json '{\"env_vars\":{\"RAY_DEDUP_LOGS\":\"0\"}}' --working-dir python/ray/tests/kuberay/chaos_test -- python potato_passer.py --num-actors=3 --pass-times=1000 --sleep-secs=0.01
     
 
 - label: ":book: Documentation"
