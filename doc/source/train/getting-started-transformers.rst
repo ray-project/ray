@@ -1,7 +1,7 @@
 .. _train-pytorch-transformers:
 
 Getting Started with Hugging Face Transformers
-=============================================
+==============================================
 
 This tutorial will walk you through the process of converting an existing Hugging Face Transformers script to use Ray Train.
 

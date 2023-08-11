@@ -73,7 +73,7 @@ PyTorch Lightning
     ~train.lightning.LightningPredictor
 
 Hugging Face Transformers
-************************
+*************************
 
 .. autosummary::
     :toctree: doc/
@@ -93,7 +93,7 @@ Hugging Face Transformers
     ~train.huggingface.TransformersCheckpoint
 
 Hugging Face Accelerate
-**********************
+***********************
 
 .. autosummary::
     :toctree: doc/
