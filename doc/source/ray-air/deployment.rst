@@ -18,9 +18,9 @@ Design Principles
 Pick and choose your own libraries
 ----------------------------------
 
-You can pick and choose which Ray AIR libraries you want to use.
+You can pick and choose which Ray AI libraries you want to use.
 
-This is applicable if you are an ML engineer who wants to independently use a Ray AIR library for a specific AI app or service use case and do not need to integrate with existing ML platforms.
+This is applicable if you are an ML engineer who wants to independently use a Ray library for a specific AI app or service use case and do not need to integrate with existing ML platforms.
 
 For example, Alice wants to use RLlib to train models for her work project. Bob wants to use Ray Serve to deploy his model pipeline. In both cases, Alice and Bob can leverage these libraries independently without any coordination.
 
