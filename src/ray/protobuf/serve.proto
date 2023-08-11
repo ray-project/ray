@@ -259,3 +259,42 @@ service ServeAPIService {
   rpc ServeRoutes(RoutesRequest) returns (RoutesResponse);
   rpc ServeHealthz(HealthzRequest) returns (HealthzResponse);
 }
+
+// Those are used in gRPC related tests
+message UserDefinedMessage {
+  string name = 1;
+  string foo = 2;
+  int64 num = 3;
+}
+
+message UserDefinedResponse {
+  string greeting = 1;
+  int64 num_x2 = 2;
+}
+
+message UserDefinedMessage2 {}
+
+message UserDefinedResponse2 {
+  string greeting = 1;
+}
+
+message FruitAmounts {
+    int64 orange = 1;
+    int64 apple = 2;
+    int64 banana = 3;
+}
+
+message FruitCosts {
+    float costs = 1;
+}
+
+service UserDefinedService {
+  rpc __call__(UserDefinedMessage) returns (UserDefinedResponse);
+  rpc Method1(UserDefinedMessage) returns (UserDefinedResponse);
+  rpc Method2(UserDefinedMessage2) returns (UserDefinedResponse2);
+  rpc Streaming(UserDefinedMessage) returns (stream UserDefinedResponse);
+}
+
+service FruitService {
+  rpc FruitStand(FruitAmounts) returns (FruitCosts);
+}

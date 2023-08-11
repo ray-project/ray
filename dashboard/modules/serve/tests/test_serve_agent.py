@@ -25,10 +25,8 @@ from ray.serve._private.constants import (
     SERVE_DEFAULT_APP_NAME,
     DEPLOYMENT_NAME_PREFIX_SEPARATOR,
 )
-from ray.serve.tests.test_config_files.protos import user_defined_protos_pb2
-from ray.serve.tests.test_config_files.protos.user_defined_protos_pb2_grpc import (
-    UserDefinedServiceStub,
-)
+from ray.serve.generated import serve_pb2, serve_pb2_grpc
+
 
 GET_OR_PUT_URL = "http://localhost:52365/api/serve/deployments/"
 STATUS_URL = "http://localhost:52365/api/serve/deployments/status"
@@ -816,17 +814,16 @@ def test_put_with_http_options(ray_start_stop, option, override):
     assert requests.post("http://localhost:8000/serve/app2").text == "wonderful world"
 
 
-def test_put_with_grpc_options(load_user_defined_protos, ray_start_stop):
+def test_put_with_grpc_options(ray_start_stop):
     """Submits a config with gRPC options specified.
 
     Ensure gRPC options can be accepted by the api. HTTP deployment continue to
     accept requests. gRPC deployment is also able to accept requests.
     """
-    test_files_import_path = "ray.serve.tests.test_config_files."
     grpc_servicer_functions = [
-        f"{test_files_import_path}protos.user_defined_protos_pb2_grpc."
-        "add_UserDefinedServiceServicer_to_server",
+        "ray.serve.generated.serve_pb2_grpc.add_UserDefinedServiceServicer_to_server",
     ]
+    test_files_import_path = "ray.serve.tests.test_config_files."
     grpc_import_path = f"{test_files_import_path}grpc_deployment:g"
     world_import_path = "ray.serve.tests.test_config_files.world.DagNode"
     original_config = {
@@ -863,15 +860,11 @@ def test_put_with_grpc_options(load_user_defined_protos, ray_start_stop):
         timeout=15,
     )
 
-    channel = grpc.insecure_channel("localhost:9000")
-
-    stub = UserDefinedServiceStub(channel)
-
-    test_in = user_defined_protos_pb2.UserDefinedMessage(name="foo", num=30)
-
-    response = stub.Method1(request=test_in)
-
     # Ensure gRPC requests also work
+    channel = grpc.insecure_channel("localhost:9000")
+    stub = serve_pb2_grpc.UserDefinedServiceStub(channel)
+    test_in = serve_pb2.UserDefinedMessage(name="foo", num=30)
+    response = stub.Method1(request=test_in)
     assert response.greeting == "Hello foo from method1"
 
 
