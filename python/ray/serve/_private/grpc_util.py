@@ -49,9 +49,9 @@ class gRPCServer(Server):
 
 
 def create_serve_grpc_server(service_handler_factory):
-    """Custom function to create a gRPC server.
+    """Custom function to create Serve's gRPC server.
 
-    This funcion works similar to `grpc.server()`, but it creates a Serve defined
+    This function works similar to `grpc.server()`, but it creates a Serve defined
     gRPC server in order to override the `unary_unary` and `unary_stream` methods
 
     See: https://grpc.github.io/grpc/python/grpc.html#grpc.server
