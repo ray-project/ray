@@ -215,7 +215,7 @@ def test_shutdown_remote(start_and_shutdown_ray_cli_function):
         "from ray import serve\n"
         "\n"
         'ray.init(address="auto", namespace="x")\n'
-        "serve.start(detached=True)\n"
+        "serve.start()\n"
         "\n"
         "@serve.deployment\n"
         "def f(*args):\n"
@@ -261,8 +261,6 @@ def test_handle_early_detect_failure(shutdown_ray):
 
     It should detect replica raises ActorError and take them out of the replicas set.
     """
-    ray.init()
-    serve.start(detached=True)
 
     @serve.deployment(num_replicas=2, max_concurrent_queries=1)
     def f(do_crash: bool = False):
@@ -286,7 +284,6 @@ def test_handle_early_detect_failure(shutdown_ray):
     assert len(set(pids)) == 1
 
     # Restart the controller, and then clean up all the replicas
-    serve.start(detached=True)
     serve.shutdown()
 
 

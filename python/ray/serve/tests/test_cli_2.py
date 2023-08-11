@@ -614,7 +614,7 @@ def test_idempotence_after_controller_death(ray_start_stop, use_command: bool):
     assert success_message_fragment in deploy_response
 
     ray.init(address="auto", namespace=SERVE_NAMESPACE)
-    serve.start(detached=True)
+    serve.start()
     wait_for_condition(
         lambda: len(list_actors(filters=[("state", "=", "ALIVE")])) == 4,
         timeout=15,
@@ -635,7 +635,7 @@ def test_idempotence_after_controller_death(ray_start_stop, use_command: bool):
     assert success_message_fragment in deploy_response
 
     # Restore testing controller
-    serve.start(detached=True)
+    serve.start()
     wait_for_condition(
         lambda: len(list_actors(filters=[("state", "=", "ALIVE")])) == 4,
         timeout=15,

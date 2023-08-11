@@ -362,9 +362,6 @@ def test_start_idempotent(serve_instance):
     func.deploy()
 
     assert "start" in serve.list_deployments()
-    serve.start(detached=True)
-    serve.start()
-    serve.start(detached=True)
     serve.start()
     assert "start" in serve.list_deployments()
 

@@ -8,17 +8,17 @@ from fastapi import FastAPI
 from starlette.requests import Request
 
 import ray
+from ray.dag.input_node import InputNode
 from ray._private.test_utils import wait_for_condition
+from ray._private.usage.usage_lib import get_extra_usage_tags_to_report
 
 from ray import serve
-from ray.dag.input_node import InputNode
+from ray.serve.context import get_global_client
 from ray.serve.drivers import DefaultgRPCDriver, DAGDriver
 from ray.serve.http_adapters import json_request
-from ray.serve._private.constants import SERVE_NAMESPACE
-from ray.serve.context import get_global_client
-from ray.serve._private.common import ApplicationStatus
-from ray._private.usage.usage_lib import get_extra_usage_tags_to_report
 from ray.serve.schema import ServeDeploySchema
+from ray.serve._private.constants import SERVE_NAMESPACE
+from ray.serve._private.common import ApplicationStatus
 
 
 TELEMETRY_ROUTE_PREFIX = "/telemetry"
@@ -434,7 +434,8 @@ def test_lightweight_config_options(manage_ray, lightweight_option, value):
     }
 
     # Deploy first config
-    client = serve.start(detached=True)
+    serve.start()
+    client = get_global_client()
     client.deploy_apps(ServeDeploySchema(**config))
     wait_for_condition(
         lambda: client.get_serve_status("receiver_app").app_status.status

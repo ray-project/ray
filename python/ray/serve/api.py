@@ -13,8 +13,12 @@ from ray.dag import DAGNode
 from ray.util.annotations import Deprecated, PublicAPI, DeveloperAPI
 
 from ray.serve.built_application import BuiltApplication
-from ray.serve._private.client import ServeControllerClient
-from ray.serve.config import AutoscalingConfig, DeploymentConfig, HTTPOptions
+from ray.serve.config import (
+    AutoscalingConfig,
+    DeploymentConfig,
+    DeploymentMode,
+    HTTPOptions,
+)
 from ray.serve._private.constants import (
     DEFAULT_HTTP_HOST,
     DEFAULT_HTTP_PORT,
@@ -58,40 +62,47 @@ from ray.serve._private import api as _private_api
 logger = logging.getLogger(__file__)
 
 
-@guarded_deprecation_warning(instructions=MIGRATION_MESSAGE)
-@Deprecated(message=MIGRATION_MESSAGE)
+@PublicAPI(stability="beta")
 def start(
     detached: bool = False,
+    proxy_location: Optional[Union[str, DeploymentMode]] = None,
     http_options: Optional[Union[dict, HTTPOptions]] = None,
     dedicated_cpu: bool = False,
     **kwargs,
-) -> ServeControllerClient:
+):
     """Start Serve on the cluster.
 
-    By default, the instance will be scoped to the lifetime of the returned
-    Client object (or when the script exits). If detached is set to True, the
-    instance will instead persist until serve.shutdown() is called. This is
-    only relevant if connecting to a long-running Ray cluster (e.g., with
-    ray.init(address="auto") or ray.init("ray://<remote_addr>")).
+    Used to set cluster-scoped configurations such as HTTP options.
+    In most cases, this does not need to be called manually and Serve will be started
+    when an application is first deployed to the cluster.
+
+    These options cannot be updated dynamically. To update them, start a new cluster or
+    shut down Serve on this cluster and start it again.
+
+    The same options available here can be set in relevant fields in a config file
+    deployed via the REST API.
 
     Args:
-        detached: Whether not the instance should be detached from this
+        detached: [DEPRECATED: in the future, this will always be `True`]
+          Whether not the instance should be detached from this
           script. If set, the instance will live on the Ray cluster until it is
           explicitly stopped with serve.shutdown().
-        http_options: Configuration options
-          for HTTP proxy. You can pass in a dictionary or HTTPOptions object
-          with fields:
 
-            - host: Host for HTTP servers to listen on. Defaults to
+        proxy_location = DeploymentMode.HeadOnly
+        http_options: HTTP-related configuration options for the cluster. These can
+          be passed as an unstructured dictionary or the structured `HTTPOptions` class.
+          Supported options:
+
+            - host: Host that the proxies will listen for HTTP on. Defaults to
               "127.0.0.1". To expose Serve publicly, you probably want to set
               this to "0.0.0.0".
-            - port: Port for HTTP server. Defaults to 8000.
-            - root_path: Root path to mount the serve application
-              (for example, "/serve"). All deployment routes will be prefixed
-              with this path. Defaults to "".
-            - middlewares: A list of Starlette middlewares that will be
-              applied to the HTTP servers in the cluster. Defaults to [].
-            - location(str, serve.config.DeploymentMode): The deployment
+            - port: Port that the proxies will listen for HTTP on. Defaults to 8000.
+            - root_path: An optional root path to mount the serve application
+              (for example, "/prefix"). All deployment routes will be prefixed
+              with this path.
+            - middlewares: [DEPRECATED] A list of Starlette middlewares that will be
+              applied to the HTTP servers in the cluster.
+          - location: [DEPRECATED: use `proxy_location` field instead] The deployment
               location of HTTP servers:
 
                 - "HeadOnly": start one HTTP server on the head node. Serve
@@ -99,21 +110,19 @@ def start(
                   on. This is the default.
                 - "EveryNode": start one HTTP server per node.
                 - "NoServer" or None: disable HTTP server.
-            - num_cpus: The number of CPU cores to reserve for each
-              internal Serve HTTP proxy actor.  Defaults to 0.
-        dedicated_cpu: Whether to reserve a CPU core for the internal
-          Serve controller actor.  Defaults to False.
+            - num_cpus: [DEPRECATED] The number of CPU cores to reserve for each
+              internal Serve HTTP proxy actor.
+        dedicated_cpu: [DEPRECATED] Whether to reserve a CPU core for the
+          Serve controller actor.
     """
-    client = _private_api.serve_start(detached, http_options, dedicated_cpu, **kwargs)
-
-    # Record after Ray has been started.
-    record_extra_usage_tag(TagKey.SERVE_API_VERSION, "v1")
-
-    return client
+    if proxy_location is not None:
+        if http_options is None:
+            http_options = HTTPOptions(location=proxy_location)
+    _private_api.serve_start(detached, http_options, dedicated_cpu, **kwargs)
 
 
 @PublicAPI(stability="stable")
-def shutdown() -> None:
+def shutdown():
     """Completely shut down Serve on the cluster.
 
     Deletes all applications and shuts down Serve system actors.

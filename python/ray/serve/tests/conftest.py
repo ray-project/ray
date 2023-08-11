@@ -1,16 +1,18 @@
 import os
-
 import pytest
-import tempfile
-import subprocess
 import random
+import subprocess
+import tempfile
 
 import requests
-import ray
-from ray import serve
 
-from ray._private.test_utils import wait_for_condition
+import ray
 from ray.tests.conftest import pytest_runtest_makereport, propagate_logs  # noqa
+from ray._private.test_utils import wait_for_condition
+
+from ray import serve
+from ray.serve.context import get_global_client
+
 
 # https://tools.ietf.org/html/rfc6335#section-6
 MIN_DYNAMIC_PORT = 49152
@@ -72,7 +74,8 @@ def _shared_serve_instance():
         _metrics_export_port=9999,
         _system_config={"metrics_report_interval_ms": 1000, "task_retry_delay_ms": 50},
     )
-    yield serve.start(detached=True, http_options={"host": "0.0.0.0"})
+    serve.start(http_options={"host": "0.0.0.0"})
+    yield get_global_client()
 
 
 @pytest.fixture
