@@ -233,7 +233,6 @@ py_test(
     deps = [":serve_lib"],
 )
 
-
 py_test(
     name = "test_config",
     size = "small",
@@ -241,7 +240,6 @@ py_test(
     tags = ["exclusive", "team:serve"],
     deps = [":serve_lib"],
 )
-
 
 py_test(
     name = "test_failure",
@@ -560,6 +558,14 @@ py_test(
     deps = [":serve_lib"],
 )
 
+py_test(
+    name = "test_replica_placement_group",
+    size = "medium",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive", "team:serve"],
+    deps = [":serve_lib"],
+)
+
 # Make sure the example showing in doc is tested
 py_test(
     name = "quickstart_class",
@@ -677,7 +683,7 @@ py_test(
 
 py_test(
     name = "test_callback",
-    size = "medium",
+    size = "small",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],
     deps = [":serve_lib"],
