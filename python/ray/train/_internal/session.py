@@ -118,17 +118,20 @@ class _TrainSession:
         checkpoint_keep_all_ranks: bool = False,
         checkpoint_upload_from_workers: bool = False,
         storage: Optional[StorageContext] = None,
-        eager_mode: bool = True,
+        synchronous_result_reporting: bool = False,
     ):
-        # Eager mode refers to whether the training function is immediately
-        # unblocked to continue running, after the main thread receives its result.
-        # If eager_mode is False, the training function will be blocked until the
-        # the next call to `session.get_next`.
-        # Ex: For 2 Ray Train workers with eager_mode=True, the worker that produces
-        # a result first will immediately will continue onto the next iteration.
-        # Ex: For a Tune Trainable with eager_mode=False, training will only progress
-        # with explicit calls to `session.get_next`.
-        self.eager_mode = eager_mode
+        # `synchronous_result_reporting` refers to whether or not the
+        # training function is immediately unblocked to continue running
+        # after the main thread receives its result.
+        # Ex 1: For 2 Ray Train workers with synchronous_result_reporting=True,
+        # the worker that produces a result first will immediately will continue
+        # onto the next iteration.
+        # Ex 2: For a Tune function Trainable with `synchronous_result_reporting=False`,
+        # training will only continue with an explicit call to `session.get_next`.
+        # Synchronous reporting in example 2 is needed for Tune schedulers to
+        # be able to stop the execution of the training function at will,
+        # for advanced pausing schedulers (PBT, BOHB) and actor reuse.
+        self.synchronous_result_reporting = synchronous_result_reporting
 
         # Ray Train worker properties
         self.dataset_shard = dataset_shard
@@ -266,7 +269,7 @@ class _TrainSession:
         if not self.training_started:
             raise RuntimeError("Please call start before calling get_next.")
 
-        if not self.eager_mode:
+        if not self.synchronous_result_reporting:
             # There's no need to release the lock on the first report
             # since `start` already started the training thread.
             if not self._first_report:
@@ -310,7 +313,7 @@ class _TrainSession:
                     )
                 )
 
-        if self.eager_mode:
+        if self.synchronous_result_reporting:
             # At this point, the training thread has already reached
             # the next call to report and is blocked there.
             # If eager mode is enabled, release the lock to keep training
