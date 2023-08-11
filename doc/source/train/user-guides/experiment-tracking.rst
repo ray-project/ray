@@ -1,4 +1,4 @@
-.. _train-monitoring:
+.. _train-experiment-tracking:
 
 Experiment Tracking
 ===================
@@ -9,7 +9,7 @@ other artifacts.
 
 Ray Train also exposes logging callbacks that automate some of these tasks.
 
-.. _train-monitoring-native:
+.. _train-experiment-tracking-native:
 
 Using native experiment tracking libraries
 ------------------------------------------
@@ -177,7 +177,7 @@ experiment tracking services. This will use the results reported via the
 
 Logger callbacks provide a simple tracking integration that don't require changes to your
 training code. If you need access to more fine grained APIs, use
-the :ref:`native integrations directly <train-monitoring-native>`.
+the :ref:`native integrations directly <train-experiment-tracking-native>`.
 
 Example: Logging to MLflow and TensorBoard
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

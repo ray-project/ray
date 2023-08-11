@@ -5,11 +5,6 @@ Ray AIR Session
 
 .. currentmodule:: ray.air
 
-.. seealso::
-    See this :ref:`Ray Train user guide <train-monitoring>` and
-    this :ref:`Ray Tune user guide <tune-function-api>` for usage examples
-    of ``ray.air.session`` in the respective libraries.
-
 
 Report Metrics and Save Checkpoints
 -----------------------------------

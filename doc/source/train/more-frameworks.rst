@@ -11,9 +11,17 @@ More Frameworks
         :img-top: /ray-overview/images/ray_svg_logo.svg
         :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
 
+        .. button-ref:: train-hf-transformers-accelerate
+
+            Hugging Face Transformers & Accelerate
+
+    .. grid-item-card::
+        :img-top: /ray-overview/images/ray_svg_logo.svg
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
+
         .. button-ref:: distributed-tensorflow-keras
 
-            Distributed TensorFlow & Keras
+            TensorFlow & Keras
 
     .. grid-item-card::
         :img-top: /ray-overview/images/ray_svg_logo.svg
@@ -21,7 +29,7 @@ More Frameworks
 
         .. button-ref:: distributed-xgboost-lightgbm
 
-            Distributed XGBoost & LightGBM
+            XGBoost & LightGBM
 
     .. grid-item-card::
         :img-top: /ray-overview/images/ray_svg_logo.svg
