@@ -43,6 +43,7 @@ sys.path.append(os.path.abspath("./_ext"))
 
 extensions = [
     "callouts",  # custom extension from _ext folder
+    "queryparamrefs",
     "sphinx.ext.autodoc",
     "sphinx.ext.viewcode",
     "sphinx.ext.napoleon",
