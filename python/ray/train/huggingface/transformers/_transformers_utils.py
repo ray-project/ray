@@ -32,6 +32,7 @@ try:
     from transformers.trainer_utils import IntervalStrategy
 except ImportError as e:
     TRANSFORMERS_IMPORT_ERROR = e
+    TrainerCallback = object
 
 
 def maybe_add_length(obj: Any, length: Optional[int]) -> Any:
@@ -53,9 +54,7 @@ def maybe_add_length(obj: Any, length: Optional[int]) -> Any:
     return obj
 
 
-def wrap_transformers_trainer(
-    trainer: transformers.trainer.Trainer,
-) -> transformers.trainer.Trainer:
+def wrap_transformers_trainer(trainer: "Trainer") -> "Trainer":
     """Change the class of trainer to a subclass implementing Ray-specific logic."""
     base_trainer_class: Type[transformers.trainer.Trainer] = trainer.__class__
 
@@ -289,7 +288,7 @@ class RayTorchIterableDataset(IterableDataset):
 
 
 @PublicAPI(stability="alpha")
-def prepare_trainer(trainer: Trainer) -> Trainer:
+def prepare_trainer(trainer: "Trainer") -> "Trainer":
     """Prepare your HuggingFace Transformer Trainer for Ray Train.
 
     This utility function enable the trainer integrates with Ray Data Integration.

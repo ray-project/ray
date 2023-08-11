@@ -200,40 +200,12 @@ appropriately in distributed training.
             def train_func(config):
                 ...
 
-                # Properly configure the `logging_strategy`, `save_strategy`, and 
-                # `evaluation_strategy` to ensure that the monitoring metrics
-                # are always logged at the same step of checkpoint saving.
-
-                # Valid configurations for eval metrics
+                # Configure logging, saving, evaluation strategies as usual.
                 args = TrainingArguments(
                     ...,
                     evaluation_strategy="epoch",
                     save_strategy="epoch",
-                )
-
-                args = TrainingArguments(
-                    ...,
-                    evaluation_strategy="steps",
-                    save_strategy="steps",
-                    eval_steps=100,
-                    save_steps=100,
-                )
-
-                args = TrainingArguments(
-                    ...,
-                    evaluation_strategy="steps",
-                    save_strategy="steps",
-                    eval_steps=50,
-                    save_steps=100,
-                )
-
-                # Invalid configuration for eval metrics
-                invalid_args = TrainingArguments(
-                    ...,
-                    evaluation_strategy="steps",
-                    save_strategy="steps",
-                    save_steps=100,
-                    eval_steps=70,
+                    logging_strategy="step",
                 )
 
                 trainer = transformers.Trainer(args, ...)
@@ -255,6 +227,34 @@ appropriately in distributed training.
                     )
                 )
             )
+        
+        Note that :class:`~ray.train.huggingface.transformers.RayTrainReportCallback` 
+        binds the latest metrics and checkpoints together, 
+        so users can properly configure `logging_strategy`, `save_strategy` and `evaluation_strategy` 
+        to ensure the monitoring metric is logged at the same step as checkpoint saving.
+
+        For example, the evaluation metrics (`eval_loss` in this case) are logged during 
+        evaluation. If users want to keep the best 3 checkpoints according to `eval_loss`, they 
+        should align the saving and evaluation frequency. Below are two examples of valid configurations:
+
+        .. code-block:: python
+            
+            args = TrainingArguments(
+                ...,
+                evaluation_strategy="epoch",
+                save_strategy="epoch",
+            )
+
+            args = TrainingArguments(
+                ...,
+                evaluation_strategy="steps",
+                save_strategy="steps",
+                eval_steps=50,
+                save_steps=100,
+            )
+
+            # And more ...
+
 
         **Option 2: Implement your customized report callback**
 
