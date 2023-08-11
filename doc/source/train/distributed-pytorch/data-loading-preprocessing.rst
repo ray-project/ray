@@ -9,7 +9,7 @@ This guide covers how to leverage :ref:`Ray Data <data>` to load data for distri
 
 .. seealso::
 
-    You can still use framework-specifc dataset utilities (e.g. Torch Dataloader, Lightning DataModule, HF datasets) in Ray Train, please 
+    You can still use framework-specifc dataset utilities (e.g. Torch Dataloader, Lightning DataModule, Hugging Face Datasets) in Ray Train, please 
     refer to :ref:`this section <data-ingest-framework-utility>`.
 
 .. figure:: ../images/train_ingest.png
