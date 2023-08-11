@@ -188,9 +188,9 @@ for checkpoint, metrics in result.best_checkpoints:
     print("Loss", metrics["loss"], "checkpoint", checkpoint)
 
 # Get checkpoint with minimal loss
-lowest_loss_checkpoint = min(result.best_checkpoints, key=lambda bc: bc[1]["loss"])[0]
+best_checkpoint = min(result.best_checkpoints, key=lambda bc: bc[1]["loss"])[0]
 
-with lowest_loss_checkpoint.as_directory() as tmpdir:
+with best_checkpoint.as_directory() as tmpdir:
     # Load model from directory
     ...
 # __result_best_checkpoint_end__
