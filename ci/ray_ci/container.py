@@ -52,8 +52,19 @@ def _setup_test_environment(team: str) -> None:
 
 
 def _run_tests_in_docker(test_targets: List[str]) -> subprocess.Popen:
-    command = f"bazel test --config=ci {' '.join(test_targets)}"
-    return subprocess.Popen(_docker_run_bash_script(command))
+    commands = (
+        [
+            "cleanup() { ./ci/build/upload_build_info.sh; }",
+            "trap cleanup EXIT",
+        ]
+        if os.environ.get("BUILDKITE_BRANCH") == "master"
+        else []
+    )
+    commands.append(
+        "bazel test --config=ci $(./ci/run/bazel_export_options) "
+        f"{' '.join(test_targets)}",
+    )
+    return subprocess.Popen(_docker_run_bash_script("\n".join(commands)))
 
 
 def run_script_in_docker(script: str) -> bytes:
@@ -109,6 +120,18 @@ def _get_docker_run_command() -> List[str]:
         "run",
         "-i",
         "--rm",
+        "--volume",
+        "/tmp/artifacts:/artifact-mount",
+        "--env",
+        "BUILDKITE_BUILD_URL",
+        "--env",
+        "BUILDKITE_BRANCH",
+        "--env",
+        "BUILDKITE_COMMIT",
+        "--env",
+        "BUILDKITE_JOB_ID",
+        "--env",
+        "BUILDKITE_LABEL",
         "--workdir",
         "/ray",
         "--shm-size=2.5gb",
