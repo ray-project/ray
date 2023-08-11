@@ -328,6 +328,39 @@ def test_initial_num_replicas(mock, serve_instance):
     assert len(get_running_replicas(controller, "A")) == 2
 
 
+def test_cold_start_time(serve_instance):
+    """Send 100 requests and check that we autoscale up, and then back down."""
+
+    @serve.deployment(
+        autoscaling_config={
+            "min_replicas": 0,
+            "max_replicas": 1,
+            "look_back_period_s": 0.2,
+        },
+    )
+    class A:
+        def __call__(self):
+            return "hello"
+
+    handle = serve.run(A.bind())
+
+    def check_running():
+        assert serve.status().applications["default"].status == "RUNNING"
+        return True
+
+    wait_for_condition(check_running)
+
+    start = time.time()
+    result = ray.get(handle.remote())
+    cold_start_time = time.time() - start
+    assert cold_start_time < 1
+    print(
+        "Time taken for deployment at 0 replicas to serve first request:",
+        cold_start_time,
+    )
+    assert result == "hello"
+
+
 def test_smoothing_factor_with_0_replica():
     """Unit test for smoothing_factor with 0 replica."""
     config = AutoscalingConfig(

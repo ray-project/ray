@@ -1026,14 +1026,20 @@ class Router:
         deployment_info = DeploymentInfo.from_proto(deployment_route.deployment_info)
         self.metrics_pusher = None
         if deployment_info.deployment_config.autoscaling_config:
+            self.autoscaling_enabled = True
+            self.push_metrics_to_controller = (
+                controller_handle.record_handle_metrics.remote
+            )
             self.metrics_pusher = MetricsPusher()
             self.metrics_pusher.register_task(
                 self._collect_handle_queue_metrics,
                 HANDLE_METRIC_PUSH_INTERVAL_S,
-                controller_handle.record_handle_metrics.remote,
+                self.push_metrics_to_controller,
             )
 
             self.metrics_pusher.start()
+        else:
+            self.autoscaling_enabled = False
 
     def _collect_handle_queue_metrics(self) -> Dict[str, int]:
         return {self.deployment_name: self.num_queued_queries}
@@ -1056,6 +1062,16 @@ class Router:
                 "application": request_meta.app_name,
             },
         )
+
+        # Optimization: if there are currently zero replicas for a deployment,
+        # push handle metric to controller to allow for fast cold start time.
+        # Only do it for the first query to arrive on the router.
+        if (
+            self.autoscaling_enabled
+            and len(self._replica_scheduler.curr_replicas) == 0
+            and self.num_queued_queries == 1
+        ):
+            self.push_metrics_to_controller({self.deployment_name: 1}, time.time())
 
         try:
             query = Query(
