@@ -847,6 +847,26 @@ def test_parquet_write_create_dir(
     some_empty_path = os.path.join(path, f"test_parquet_dir_{some_empty_key}")
     ds_contains_some_empty.write_parquet(some_empty_path, filesystem=fs)
 
+    # Ensure that directory was created for only the non-empty dataset.
+    if fs is None:
+        assert not os.path.isdir(all_empty_path)
+        assert os.path.isdir(some_empty_path)
+        # Only files for the non-empty blocks should be created.
+        file_list = os.listdir(some_empty_path)
+        file_list.sort()
+        assert file_list == [
+            f"{some_empty_key}_00000{i}_000000.parquet" for i in range(2)
+        ]
+    else:
+        assert (
+            fs.get_file_info(_unwrap_protocol(all_empty_path)).type
+            == pa.fs.FileType.NotFound
+        )
+        assert (
+            fs.get_file_info(_unwrap_protocol(some_empty_path)).type
+            == pa.fs.FileType.Directory
+        )
+
     # Check that data was properly written to the directory.
     dfds = pd.concat(
         [
