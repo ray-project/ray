@@ -270,7 +270,7 @@ class _TrainSession:
         if not self.training_started:
             raise RuntimeError("Please call start before calling get_next.")
 
-        if not self.synchronous_result_reporting:
+        if self.synchronous_result_reporting:
             # There's no need to release the lock on the first report
             # since `start` already started the training thread.
             if not self._first_report:
@@ -314,11 +314,12 @@ class _TrainSession:
                     )
                 )
 
-        if self.synchronous_result_reporting:
+        if not self.synchronous_result_reporting:
             # At this point, the training thread has already reached
             # the next call to report and is blocked there.
-            # If eager mode is enabled, release the lock to keep training
-            # immediately after receiving the result.
+            # If performing asynchronous result reporting,
+            # release the lock to keep training immediately after
+            # receiving the result.
             self.continue_lock.release()
 
         # Return None if there are no more results to fetch.
