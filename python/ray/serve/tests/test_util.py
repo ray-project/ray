@@ -27,6 +27,7 @@ from ray.serve._private.utils import (
     get_head_node_id,
     MetricsPusher,
 )
+from ray.serve.tests.utils import MockTimer
 from ray._private.resource_spec import HEAD_NODE_RESOURCE_NAME
 
 
@@ -668,44 +669,63 @@ def test_get_all_live_placement_group_names(ray_instance):
 
 
 def test_metrics_pusher_basic():
-    counter = {"val": 0}
+    start = 0
+    timer = MockTimer(start)
 
-    def task(c):
-        time.sleep(0.001)
-        c["val"] += 1
+    with patch("time.time", new=timer.time), patch(
+        "time.sleep", new=timer.realistic_sleep
+    ):
+        counter = {"val": 0}
+        result = {}
 
-    metrics_pusher = MetricsPusher()
-    metrics_pusher.register_task(lambda: task(counter), 0.5)
-    metrics_pusher.start()
+        def task(c, res):
+            timer.realistic_sleep(0.001)
+            c["val"] += 1
+            if timer.time() >= 10 and "succeeded" not in res:
+                res["succeeded"] = c["val"] == 20
 
-    # At 10 seconds, the task should have executed 20 times.
-    # Sleep until just under 10 + 0.5 seconds to give leeway
-    # for accumulated error.
-    time.sleep(10.4)
-    assert counter["val"] == 20
+        metrics_pusher = MetricsPusher()
+        metrics_pusher.register_task(lambda: task(counter, result), 0.5)
+
+        metrics_pusher.start()
+        while True:
+            if "succeeded" in result:
+                assert result["succeeded"]
+                break
 
 
 def test_metrics_pusher_multiple_tasks():
-    counter = {"A": 0, "B": 0, "C": 0}
+    start = 0
+    timer = MockTimer(start)
 
-    def task(c, key):
-        time.sleep(0.001)
-        c[key] += 1
+    with patch("time.time", new=timer.time), patch(
+        "time.sleep", new=timer.realistic_sleep
+    ):
+        counter = {"A": 0, "B": 0, "C": 0}
+        result = {}
+        expected_results = {"A": 35, "B": 14, "C": 10}
 
-    metrics_pusher = MetricsPusher()
-    # Each task interval is different, and they don't divide each other.
-    metrics_pusher.register_task(lambda: task(counter, "A"), 0.2)
-    metrics_pusher.register_task(lambda: task(counter, "B"), 0.5)
-    metrics_pusher.register_task(lambda: task(counter, "C"), 0.7)
-    metrics_pusher.start()
+        def task(key, c, res):
+            time.sleep(0.001)
+            c[key] += 1
+            # Check for how many times this task has been called
+            # At 7 seconds, tasks A, B, C should have executed 35, 14, and 10
+            # times respectively.
+            if timer.time() >= 7 and key not in res:
+                res[key] = c[key] == expected_results[key]
 
-    # At 7 seconds, tasks A, B, C should have executed 35, 14, and 10
-    # times respectively. Sleep until just under 7 + 0.2 seconds to
-    # give leeway for accumulated error
-    time.sleep(7.19)
-    assert counter["A"] == 35
-    assert counter["B"] == 14
-    assert counter["C"] == 10
+        metrics_pusher = MetricsPusher()
+        # Each task interval is different, and they don't divide each other.
+        metrics_pusher.register_task(lambda: task("A", counter, result), 0.2)
+        metrics_pusher.register_task(lambda: task("B", counter, result), 0.5)
+        metrics_pusher.register_task(lambda: task("C", counter, result), 0.7)
+        metrics_pusher.start()
+
+        while True:
+            for key in result.keys():
+                assert result[key]
+            if len(result) == 3:
+                break
 
 
 if __name__ == "__main__":

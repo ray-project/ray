@@ -600,7 +600,6 @@ class MetricsPusher:
         """
 
         def send_forever():
-
             while True:
                 if self.stop_event.is_set():
                     return
@@ -608,7 +607,7 @@ class MetricsPusher:
                 start = time.time()
                 for task in self.tasks:
                     try:
-                        if start - task.last_call_succeeded_time > task.interval_s:
+                        if start - task.last_call_succeeded_time >= task.interval_s:
                             if task.last_ref:
                                 ready_refs, _ = ray.wait([task.last_ref], timeout=0)
                                 if len(ready_refs) == 0:
