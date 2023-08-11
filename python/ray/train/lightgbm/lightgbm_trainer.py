@@ -106,7 +106,7 @@ class LightGBMTrainer(GBDTTrainer):
     _init_model_arg_name: str = "init_model"
 
     @staticmethod
-    def get_model(cls, checkpoint: Checkpoint) -> lightgbm.Booster:
+    def get_model(checkpoint: Checkpoint) -> lightgbm.Booster:
         """Retrieve the LightGBM model stored in this checkpoint."""
         with checkpoint.as_directory() as checkpoint_path:
             return lightgbm.Booster(model_file=os.path.join(checkpoint_path, MODEL_KEY))

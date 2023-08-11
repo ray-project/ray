@@ -97,7 +97,7 @@ class XGBoostTrainer(GBDTTrainer):
     _init_model_arg_name: str = "xgb_model"
 
     @staticmethod
-    def get_model(cls, checkpoint: Checkpoint) -> xgboost.Booster:
+    def get_model(checkpoint: Checkpoint) -> xgboost.Booster:
         """Retrieve the XGBoost model stored in this checkpoint."""
         with checkpoint.as_directory() as checkpoint_path:
             booster = xgboost.Booster()
