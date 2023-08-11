@@ -327,6 +327,14 @@ py_test(
 )
 
 py_test(
+    name = "test_gpu_2",
+    size = "medium",
+    srcs = ["tests/test_gpu_2.py"],
+    tags = ["team:ml", "exclusive", "gpu_only"],
+    deps = [":train_lib", ":conftest"]
+)
+
+py_test(
     name = "test_gpu_auto_transfer",
     size = "medium",
     srcs = ["tests/test_gpu_auto_transfer.py"],
@@ -655,7 +663,7 @@ py_test(
         "ray_air",
         "team:ml",
     ],
-    deps = [":train_lib"],
+    deps = [":train_lib", ":conftest"],
 )
 
 # This is a dummy test dependency that causes the above tests to be
