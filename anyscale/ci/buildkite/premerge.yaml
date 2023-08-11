@@ -1,4 +1,12 @@
 steps:
+  - name: "bootstrap civ2"
+    command:
+      - curl -sfL "https://raw.githubusercontent.com/ray-project/rayci/stable/run_rayci.sh" > /tmp/run_rayci.sh
+      - /bin/bash /tmp/run_rayci.sh -upload -config anyscale/ci/config.yaml
+    agents:
+      queue: "small"
+    priority: 10
+
   - name: "build env info"
     command:
       - source anyscale/ci/setup-env.sh
@@ -11,8 +19,8 @@ steps:
 
   - group: "wheels and container images"
     steps:
-    - name: "forge"
-      key: "forge"
+    - name: "runtime-wheel-forge"
+      key: "runtime-wheel-forge"
       command:
         - source anyscale/ci/setup-env.sh
         - /bin/bash anyscale/ci/build-forge.sh
@@ -23,7 +31,7 @@ steps:
           limit: 1
 
     - name: "{{matrix}} wheel"
-      depends_on: "forge"
+      depends_on: "runtime-wheel-forge"
       command:
         - source anyscale/ci/setup-env.sh
         - BUILD_ONE_PYTHON_ONLY={{matrix}} /bin/bash anyscale/ci/build-wheels.sh

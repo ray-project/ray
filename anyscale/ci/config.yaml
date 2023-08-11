@@ -1,0 +1,20 @@
+# CIv2 config file
+
+artifacts_bucket: bk-premerge-first-jawfish-artifacts
+ci_temp: s3://bk-premerge-first-jawfish-artifacts/tmp/runtime/
+ci_temp_repo: 830883877497.dkr.ecr.us-west-2.amazonaws.com/anyscale/runtime-ci-tmp
+builder_queues:
+  builder: large
+  builder-arm64: largeg
+runner_queues:
+  default: small
+  small: small
+  medium: medium
+  large: large
+  gpu: small  # TODO(aslonnie): add GPU queue
+  gpu-large: large  # TODO(aslonnie): add GPU queue
+  medium-arm64: mediumg
+forge_dirs:
+  - ci/forge
+env:
+  BUILDKITE_BAZEL_CACHE_URL: https://bk-premerge-first-jawfish-artifacts.s3.us-west-2.amazonaws.com/bazel/cache/runtime

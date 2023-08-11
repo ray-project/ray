@@ -2,7 +2,8 @@
 
 set -euo pipefail
 
-export TRAVIS_COMMIT="$(git rev-parse HEAD)"
+TRAVIS_COMMIT="$(git rev-parse HEAD)"
+export TRAVIS_COMMIT
 
 DOCKER_RUN_ARGS=(
     -e "TRAVIS=true"

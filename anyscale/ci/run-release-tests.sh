@@ -5,11 +5,16 @@
 set -euo pipefail
 
 
-if [[ "${BUILDKITE_COMMIT}" == "HEAD" ]]; then export BUILDKITE_COMMIT=$(git rev-parse HEAD); fi 
+if [[ "${BUILDKITE_COMMIT}" == "HEAD" ]]; then
+    BUILDKITE_COMMIT="$(git rev-parse HEAD)"
+    export BUILDKITE_COMMIT
+fi
+
 curl -O https://dl.google.com/dl/cloudsdk/channels/rapid/downloads/google-cloud-cli-441.0.0-linux-arm.tar.gz
 tar -xf google-cloud-cli-441.0.0-linux-arm.tar.gz
 ./google-cloud-sdk/install.sh -q
-export PATH="$(pwd)/google-cloud-sdk/bin:$PATH"
+PATH="$(pwd)/google-cloud-sdk/bin:$PATH"
+export PATH
 gcloud auth login --cred-file=release/aws2gce_runtime_iam.json --quiet
 gcloud auth configure-docker us-west1-docker.pkg.dev --quiet
 pip3 install --user -U pip

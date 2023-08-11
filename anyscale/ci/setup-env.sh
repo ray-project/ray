@@ -11,7 +11,8 @@ if [[ "${ARTIFACTS_DIR:-}" == "" ]]; then
 fi
 
 if [[ "${RUNTIME_BUILD_ID:-}" == "" ]]; then
-    export RUNTIME_BUILD_ID="$(sha256sum <<< "${BUILDKITE_BUILD_ID}" | cut -c1-8)"
+    RUNTIME_BUILD_ID="$(sha256sum <<< "${BUILDKITE_BUILD_ID}" | cut -c1-8)"
+    export RUNTIME_BUILD_ID
 fi
 
 export S3_TEMP="s3://bk-premerge-first-jawfish-artifacts/tmp/runtime/${RUNTIME_BUILD_ID}"
@@ -22,4 +23,7 @@ export BAZEL_REMOTE_CACHE_URL="https://bk-premerge-first-jawfish-artifacts.s3.us
 export IMAGE_PREFIX="${RUNTIME_BUILD_ID}"
 
 # Fixes the issue where BUILDKITE_COMMIT can be just "HEAD"
-export BUILDKITE_COMMIT="$(git rev-parse HEAD)"
+if [[ "${BUILDKITE_COMMIT}" == "HEAD" ]]; then
+    BUILDKITE_COMMIT="$(git rev-parse HEAD)"
+    export BUILDKITE_COMMIT
+fi
