@@ -311,6 +311,8 @@ class ServeControllerClient:
                     deployment["init_kwargs"],
                     ingress=deployment["ingress"],
                     ray_actor_options=deployment["ray_actor_options"],
+                    placement_group_bundles=deployment["placement_group_bundles"],
+                    placement_group_strategy=deployment["placement_group_strategy"],
                     config=deployment["config"],
                     version=deployment["version"],
                     route_prefix=deployment["route_prefix"],
