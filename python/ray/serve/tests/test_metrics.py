@@ -913,9 +913,9 @@ def test_queued_queries_disconnected(serve_start_shutdown):
     wait_for_condition(lambda: first_request_executing(fut), timeout=5)
     print("Executed first request.")
     wait_for_condition(
-        lambda: get_metric("ray_serve_num_ongoing_requests") == 1, timeout=15
+        lambda: get_metric("ray_serve_num_ongoing_http_requests") == 1, timeout=15
     )
-    print("ray_serve_num_ongoing_requests updated successfully.")
+    print("ray_serve_num_ongoing_http_requests updated successfully.")
 
     num_requests = 5
     for _ in range(num_requests):
@@ -929,10 +929,10 @@ def test_queued_queries_disconnected(serve_start_shutdown):
     )
     print("ray_serve_deployment_queued_queries updated successfully.")
     wait_for_condition(
-        lambda: get_metric("ray_serve_num_ongoing_requests") == num_requests + 1,
+        lambda: get_metric("ray_serve_num_ongoing_http_requests") == num_requests + 1,
         timeout=15,
     )
-    print("ray_serve_num_ongoing_requests updated successfully.")
+    print("ray_serve_num_ongoing_http_requests updated successfully.")
 
     # Disconnect all requests by terminating the process pool.
     pool.terminate()
@@ -946,9 +946,9 @@ def test_queued_queries_disconnected(serve_start_shutdown):
     # TODO (shrekris-anyscale): This should be 0 once async task cancellation
     # is implemented.
     wait_for_condition(
-        lambda: get_metric("ray_serve_num_ongoing_requests") == 1, timeout=15
+        lambda: get_metric("ray_serve_num_ongoing_http_requests") == 1, timeout=15
     )
-    print("ray_serve_num_ongoing_requests updated successfully.")
+    print("ray_serve_num_ongoing_http_requests updated successfully.")
 
 
 def test_actor_summary(serve_instance):

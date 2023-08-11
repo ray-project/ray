@@ -299,7 +299,7 @@ class HTTPProxy:
         )
 
         self.num_ongoing_requests_gauge = metrics.Gauge(
-            name="serve_num_ongoing_requests",
+            name="serve_num_ongoing_http_requests",
             description="The number of ongoing requests in this HTTP Proxy.",
             tag_keys=("node_id", "node_ip_address"),
         ).set_default_tags(
