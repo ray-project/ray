@@ -124,7 +124,7 @@ def _start_controller(
     detached: bool = False,
     http_options: Optional[Union[dict, HTTPOptions]] = None,
     dedicated_cpu: bool = False,
-    grpc_options: Optional[gRPCOptions] = None,
+    grpc_options: Optional[Union[dict, gRPCOptions]] = None,
     **kwargs,
 ) -> Tuple[ActorHandle, str]:
     """Start Ray Serve controller.
@@ -136,6 +136,7 @@ def _start_controller(
 
     Returns: A tuple with controller actor handle and controller name.
     """
+
     # Initialize ray if needed.
     ray._private.worker.global_worker._filter_logs_by_job = False
     if not ray.is_initialized():
@@ -179,6 +180,9 @@ def _start_controller(
         if http_options is None:
             http_options = HTTPOptions()
 
+        if isinstance(grpc_options, dict):
+            grpc_options = gRPCOptions(**grpc_options)
+
         controller = ServeController.options(**controller_actor_options).remote(
             controller_name,
             http_config=http_options,
@@ -204,7 +208,7 @@ async def serve_start_async(
     detached: bool = False,
     http_options: Optional[Union[dict, HTTPOptions]] = None,
     dedicated_cpu: bool = False,
-    grpc_options: Optional[gRPCOptions] = None,
+    grpc_options: Optional[Union[dict, gRPCOptions]] = None,
     **kwargs,
 ) -> ServeControllerClient:
     """Initialize a serve instance asynchronously.
@@ -254,7 +258,7 @@ def serve_start(
     detached: bool = False,
     http_options: Optional[Union[dict, HTTPOptions]] = None,
     dedicated_cpu: bool = False,
-    grpc_options: Optional[gRPCOptions] = None,
+    grpc_options: Optional[Union[dict, gRPCOptions]] = None,
     **kwargs,
 ) -> ServeControllerClient:
     """Initialize a serve instance.
@@ -294,13 +298,14 @@ def serve_start(
               internal Serve HTTP proxy actor.  Defaults to 0.
         dedicated_cpu: Whether to reserve a CPU core for the internal
           Serve controller actor.  Defaults to False.
-        grpc_options (Optional[serve.gRPCOptions]): Configuration options
+        grpc_options (Optional[Union[dict, gRPCOptions]]): Configuration options
             for gRPC proxy. You can pass in a gRPCOptions object with fields:
                 - port(int): Port for gRPC server. Defaults to -1, meaning not to
                     start a gRPC service.
                 - grpc_servicer_functions(list): The list of functions that will
                     be used to add custom methods to the gRPC servicer. Defaults to [].
     """
+
     usage_lib.record_library_usage("serve")
 
     try:

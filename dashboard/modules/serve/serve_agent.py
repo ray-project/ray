@@ -13,7 +13,6 @@ from ray.dashboard.modules.version import (
     VersionResponse,
 )
 from ray.exceptions import RayTaskError
-from ray.serve.config import gRPCOptions
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -263,7 +262,7 @@ class ServeAgent(dashboard_utils.DashboardAgentModule):
         full_http_options = dict(
             {"location": config.proxy_location}, **config_http_options
         )
-        grpc_options = gRPCOptions(**config.grpc_options.dict())
+        grpc_options = config.grpc_options.dict()
 
         async with self._controller_start_lock:
             client = await serve_start_async(
