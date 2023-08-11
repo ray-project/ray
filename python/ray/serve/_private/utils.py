@@ -624,6 +624,8 @@ class MetricsPusher:
                             f"MetricsPusher thread failed to run metric task: {e}"
                         )
 
+                # For all tasks, check when the task should be executed
+                # next. Sleep until the next closest time.
                 least_interval_s = math.inf
                 for task in self.tasks:
                     time_until_next_push = task.interval_s - (
