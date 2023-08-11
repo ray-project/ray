@@ -778,21 +778,27 @@ def wrap_function(
         def __repr__(self):
             return self._name
 
-        def _trainable_func(self, config, reporter, checkpoint_dir):
+        def _trainable_func(self, config, session, checkpoint_dir):
             if not use_checkpoint and not use_reporter:
                 fn = partial(train_func, config)
             elif use_checkpoint:
                 fn = partial(train_func, config, checkpoint_dir=checkpoint_dir)
             else:
-                fn = partial(train_func, config, reporter)
+                fn = partial(train_func, config, session)
 
             def handle_output(output):
                 if not output:
                     return
                 elif isinstance(output, dict):
-                    reporter(**output)
+                    if _use_storage_context():
+                        session.report(output)
+                    else:
+                        session(**output)
                 elif isinstance(output, Number):
-                    reporter(_metric=output)
+                    if _use_storage_context():
+                        session.report({DEFAULT_METRIC: output})
+                    else:
+                        session(_metric=output)
                 else:
                     raise ValueError(
                         "Invalid return or yield value. Either return/yield "
@@ -812,10 +818,10 @@ def wrap_function(
             # of the last result while avoiding double logging. This is done
             # with the keyword RESULT_DUPLICATE -- see tune/tune_controller.py.
             if _use_storage_context():
-                session: _TrainSession = reporter
                 session.report({RESULT_DUPLICATE: True})
             else:
-                reporter(**{RESULT_DUPLICATE: True})
+                legacy_status_reporter: _StatusReporter = session
+                legacy_status_reporter(**{RESULT_DUPLICATE: True})
             return output
 
         @classmethod
