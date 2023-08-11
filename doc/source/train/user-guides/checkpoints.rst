@@ -184,7 +184,7 @@ appropriately in distributed training.
         **Option 1: Use Ray Train's default report callback**
         
         We provide a simple callback implementation :class:`~ray.train.huggingface.RayTrainReportCallback` that 
-        reports on checkpoint save. It collects the latest reported logs and report it together with the 
+        reports on checkpoint save. It collects the latest reported logs and report them together with the 
         latest saved checkpoint.
 
         .. code-block:: python
@@ -234,8 +234,8 @@ appropriately in distributed training.
 
         **Option 2: Implement your customized report callback**
 
-        If you feel that Ray Train's default report callbacks are not sufficient for your use case, 
-        implement a callback yourselve! Below is a example implementation that collects latest metrics 
+        If you feel that Ray Train's default `RayTrainReportCallback` is not sufficient for your use case, you can also
+        implement a callback yourself! Below is a example implementation that collects latest metrics 
         and reports on checkpoint save.
 
         .. code-block:: python
@@ -270,7 +270,7 @@ appropriately in distributed training.
 
         You can customize when(`on_save`, `on_epoch_end`, `on_evaluate`) and 
         what(customized metrics and checkpoint files) to report by implementing your own 
-        transformers trainer callback.
+        Transformers Trainer callback.
         
 By default, checkpoints will be persisted to the :ref:`log directory <train-log-dir>` of each run.
 
