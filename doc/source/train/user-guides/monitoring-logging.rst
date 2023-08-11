@@ -1,3 +1,5 @@
+.. _train-monitoring-and-logging:
+
 Monitoring and Logging
 ======================
 
