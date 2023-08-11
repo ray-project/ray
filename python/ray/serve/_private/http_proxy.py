@@ -1042,4 +1042,9 @@ Please make sure your http-host and http-port are specified correctly."""
         pass
 
     async def receive_asgi_messages(self, request_id: str) -> bytes:
+        """Get ASGI messages for the provided `request_id`.
+
+        After the proxy has stopped receiving messages for this `request_id`,
+        this will always return immediately.
+        """
         return pickle.dumps(await self.app.receive_asgi_messages(request_id))
