@@ -134,8 +134,10 @@ class TfLearner(Learner):
                     gradient_list.append(grad)
             optimizer.apply_gradients(zip(gradient_list, variable_list))
 
-        print(f"GPU mem usage after apply_gradients: "
-              f"{tf.config.experimental.get_memory_info('GPU:0')['current']}")
+        try:
+            print(f"GPU mem usage after apply_gradients: {tf.config.experimental.get_memory_info('GPU:0')['current']}")
+        except ValueError:
+            pass
 
     @override(Learner)
     def load_state(
@@ -447,7 +449,8 @@ class TfLearner(Learner):
             postprocessed_gradients = self.postprocess_gradients(gradients)
             self.apply_gradients(postprocessed_gradients)
 
-            return fwd_out, loss_per_module, dict(self._metrics)
+            #return fwd_out
+            return loss_per_module, dict(self._metrics)
 
         return self._strategy.run(helper, args=(batch,))
 

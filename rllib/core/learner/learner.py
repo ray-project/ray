@@ -857,7 +857,7 @@ class Learner:
         self,
         *,
         batch: MultiAgentBatch,
-        fwd_out: Mapping[str, Any],
+        #fwd_out: Mapping[str, Any],
         loss_per_module: Mapping[str, TensorType],
         metrics_per_module: DefaultDict[ModuleID, Dict[str, Any]],
     ) -> Mapping[str, Any]:
@@ -865,7 +865,7 @@ class Learner:
 
         Args:
             batch: The batch that was used for the update.
-            fwd_out: The output of the forward train pass.
+            #fwd_out: The output of the forward train pass.
             loss_per_module: A dict mapping module IDs (including ALL_MODULES) to the
                 individual loss tensors as returned by calls to
                 `compute_loss_for_module(module_id=...)`.
@@ -1298,14 +1298,13 @@ class Learner:
             # all tensor values (no numpy).
             nested_tensor_minibatch = NestedDict(tensor_minibatch.policy_batches)
             (
-                fwd_out,
                 loss_per_module,
                 metrics_per_module,
             ) = self._update(nested_tensor_minibatch)
 
             result = self.compile_results(
                 batch=tensor_minibatch,
-                fwd_out=fwd_out,
+                #fwd_out=fwd_out,
                 loss_per_module=loss_per_module,
                 metrics_per_module=defaultdict(dict, **metrics_per_module),
             )

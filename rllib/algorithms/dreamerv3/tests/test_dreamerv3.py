@@ -37,7 +37,7 @@ class TestDreamerV3(unittest.TestCase):
         # Build a DreamerV3Config object.
         config = (
             dreamerv3.DreamerV3Config()
-            .framework(eager_tracing=False)#TODO
+            .framework(eager_tracing=True)#TODO
             .training(
                 # Keep things simple. Especially the long dream rollouts seem
                 # to take an enormous amount of time (initially).

@@ -162,8 +162,11 @@ class DreamerV3TfLearner(DreamerV3Learner, TfLearner):
                 )
             )
         del gradient_tape
-        print(f"GPU mem usage after compute_gradients: "
-              f"{tf.config.experimental.get_memory_info('GPU:0')['current']}")
+        try:
+            print(f"GPU mem usage after compute_gradients: "
+                  f"{tf.config.experimental.get_memory_info('GPU:0')['current']}")
+        except ValueError:
+            pass
         return grads
 
     @override(TfLearner)
@@ -249,8 +252,11 @@ class DreamerV3TfLearner(DreamerV3Learner, TfLearner):
                 },
             )
 
-        print(f"GPU mem usage after world model loss: "
+        try:
+            print(f"GPU mem usage after world model loss: "
               f"{tf.config.experimental.get_memory_info('GPU:0')['current']}")
+        except ValueError:
+            pass
 
         # Dream trajectories starting in all internal states (h + z_posterior) that were
         # computed during world model training.
@@ -280,8 +286,11 @@ class DreamerV3TfLearner(DreamerV3Learner, TfLearner):
                 },
             )
 
-        print(f"GPU mem usage after dream trajectory: "
-              f"{tf.config.experimental.get_memory_info('GPU:0')['current']}")
+        try:
+            print(f"GPU mem usage after dream trajectory: "
+                f"{tf.config.experimental.get_memory_info('GPU:0')['current']}")
+        except ValueError:
+            pass
 
         value_targets_t0_to_Hm1_BxT = self._compute_value_targets(
             hps=hps,
@@ -297,8 +306,11 @@ class DreamerV3TfLearner(DreamerV3Learner, TfLearner):
             module_id, "VALUE_TARGETS_H_BxT", value_targets_t0_to_Hm1_BxT
         )
 
-        print(f"GPU mem usage after compute value targets: "
-              f"{tf.config.experimental.get_memory_info('GPU:0')['current']}")
+        try:
+            print(f"GPU mem usage after compute value targets: "
+                f"{tf.config.experimental.get_memory_info('GPU:0')['current']}")
+        except ValueError:
+            pass
 
         CRITIC_L_total = self._compute_critic_loss(
             module_id=module_id,
@@ -307,8 +319,11 @@ class DreamerV3TfLearner(DreamerV3Learner, TfLearner):
             value_targets_t0_to_Hm1_BxT=value_targets_t0_to_Hm1_BxT,
         )
 
-        print(f"GPU mem usage after critic loss: "
-              f"{tf.config.experimental.get_memory_info('GPU:0')['current']}")
+        try:
+            print(f"GPU mem usage after critic loss: "
+                  f"{tf.config.experimental.get_memory_info('GPU:0')['current']}")
+        except ValueError:
+            pass
         if hps.train_actor:
             ACTOR_L_total = self._compute_actor_loss(
                 module_id=module_id,
@@ -319,8 +334,11 @@ class DreamerV3TfLearner(DreamerV3Learner, TfLearner):
         else:
             ACTOR_L_total = 0.0
 
-        print(f"GPU mem usage after actor loss: "
-              f"{tf.config.experimental.get_memory_info('GPU:0')['current']}")
+        try:
+            print(f"GPU mem usage after actor loss: "
+                f"{tf.config.experimental.get_memory_info('GPU:0')['current']}")
+        except ValueError:
+            pass
 
         # Return the total loss as a sum of all individual losses.
         return L_world_model_total + CRITIC_L_total + ACTOR_L_total

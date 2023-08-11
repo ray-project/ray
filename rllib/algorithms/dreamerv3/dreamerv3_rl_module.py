@@ -135,8 +135,14 @@ class DreamerV3RLModule(RLModule, abc.ABC):
         )"""
 
         # Initialize the critic EMA net:
+        print("INIT EMA critic")
         self.critic.init_ema()
-        print("RLModule `setup()` complete")
+        try:
+            import tensorflow as tf
+            print(f"GPU mem usage after RLModule setup: "
+                f"{tf.config.experimental.get_memory_info('GPU:0')['current']}")
+        except ValueError:
+            pass
 
     @override(RLModule)
     def get_initial_state(self) -> NestedDict:
