@@ -379,6 +379,16 @@ class FileBasedDatasource(Datasource):
         # succeeds.
         return "ok"
 
+    def on_write_complete(
+        self,
+        write_results: List[WriteResult],
+        path: str,
+        filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+        **kwargs,
+    ) -> None:
+        if all(write_results == "skip" for write_results in write_results):
+            filesystem.delete_dir(path)
+
     def _write_block(
         self,
         f: "pyarrow.NativeFile",
