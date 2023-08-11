@@ -1602,6 +1602,19 @@ class TuneController:
             self._schedule_trial_stop(trial)
 
     def _schedule_trial_pause(self, trial: Trial, should_checkpoint: bool = True):
+        if _use_storage_context():
+            if should_checkpoint:
+
+                def on_result(*args, **kwargs):
+                    self._on_saving_result(*args, **kwargs)
+                    self._schedule_trial_stop(trial)
+                    self._set_trial_status(trial, Trial.PAUSED)
+
+                self._schedule_trial_save(
+                    trial, storage=CheckpointStorage.PERSISTENT, on_result=on_result
+                )
+                return
+
         if should_checkpoint:
             self._schedule_trial_save(trial, storage=CheckpointStorage.MEMORY)
         self._schedule_trial_stop(trial)
@@ -1743,7 +1756,11 @@ class TuneController:
         # the scheduler decision is STOP or PAUSE. Note that
         # PAUSE only checkpoints to memory and does not update
         # the global checkpoint state.
-        self._checkpoint_trial_if_needed(trial, force=force_checkpoint)
+        if decision != TrialScheduler.PAUSE:
+            # TODO(justinvyu): This is a temporary hack to fix pausing trials.
+            # We already schedule a save task in `pause_trial`, so no need
+            # to do it again here.
+            self._checkpoint_trial_if_needed(trial, force=force_checkpoint)
 
         if trial.is_saving:
             logger.debug(f"Caching trial decision for trial {trial}: {decision}")
@@ -1825,6 +1842,7 @@ class TuneController:
         trial: Trial,
         storage: CheckpointStorage = CheckpointStorage.PERSISTENT,
         result: Optional[Dict] = None,
+        on_result=None,
     ) -> Optional[_TrackedCheckpoint]:
         if trial not in self._trial_to_actor:
             logger.debug(
@@ -1842,7 +1860,7 @@ class TuneController:
             self._schedule_trial_task(
                 trial=trial,
                 method_name="save",
-                on_result=self._on_saving_result,
+                on_result=on_result or self._on_saving_result,
                 on_error=self._trial_task_failure,
             )
             # TODO(justinvyu): Remove the return value?
@@ -1919,7 +1937,8 @@ class TuneController:
         from ray.train._internal.checkpoint_manager import _TrainingResult
 
         try:
-            if _use_storage_context() and isinstance(checkpoint_value, _TrainingResult):
+            if _use_storage_context():
+                assert isinstance(checkpoint_value, _TrainingResult), checkpoint_value
                 # TODO(justinvyu): Update callbacks to take in a _TrainingResult
                 trial.on_checkpoint(checkpoint_value)
 
