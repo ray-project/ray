@@ -291,16 +291,12 @@ class DatasetStats:
             ac = self.stats_actor
             # TODO(chengsu): this is a super hack, clean it up.
             stats_map, self.time_total_s = ray.get(ac.get.remote(self.stats_uuid))
-            if DataContext.get_current().block_splitting_enabled:
-                # Only populate stats when stats from all read tasks are ready at
-                # stats actor.
-                if len(stats_map.items()) == len(self.stages["Read"]):
-                    self.stages["Read"] = []
-                    for _, blocks_metadata in sorted(stats_map.items()):
-                        self.stages["Read"] += blocks_metadata
-            else:
-                for i, metadata in stats_map.items():
-                    self.stages["Read"][i] = metadata[0]
+            # Only populate stats when stats from all read tasks are ready at
+            # stats actor.
+            if len(stats_map.items()) == len(self.stages["Read"]):
+                self.stages["Read"] = []
+                for _, blocks_metadata in sorted(stats_map.items()):
+                    self.stages["Read"] += blocks_metadata
 
         stages_stats = []
         is_substage = len(self.stages) > 1

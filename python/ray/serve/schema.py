@@ -1,3 +1,4 @@
+from collections import Counter
 from dataclasses import dataclass, field
 import json
 from pydantic import BaseModel, Field, Extra, root_validator, validator
@@ -232,6 +233,27 @@ class DeploymentSchema(
     )
     ray_actor_options: RayActorOptionsSchema = Field(
         default=DEFAULT.VALUE, description="Options set for each replica actor."
+    )
+
+    placement_group_bundles: List[Dict[str, float]] = Field(
+        default=DEFAULT.VALUE,
+        description=(
+            "Define a set of placement group bundles to be "
+            "scheduled *for each replica* of this deployment. The replica actor will "
+            "be scheduled in the first bundle provided, so the resources specified in "
+            "`ray_actor_options` must be a subset of the first bundle's resources. All "
+            "actors and tasks created by the replica actor will be scheduled in the "
+            "placement group by default (`placement_group_capture_child_tasks` is set "
+            "to True)."
+        ),
+    )
+
+    placement_group_strategy: str = Field(
+        default=DEFAULT.VALUE,
+        description=(
+            "Strategy to use for the replica placement group "
+            "specified via `placement_group_bundles`. Defaults to `PACK`."
+        ),
     )
 
     is_driver_deployment: bool = Field(
@@ -621,6 +643,7 @@ class ServeDeploySchema(BaseModel, extra=Extra.forbid):
 @dataclass
 class DeploymentStatusOverview:
     status: DeploymentStatus
+    replica_states: Dict[ReplicaState, int]
     message: str
 
 
@@ -847,7 +870,11 @@ class ServeInstanceDetails(BaseModel, extra=Extra.forbid):
                     last_deployed_time_s=app.last_deployed_time_s,
                     deployments={
                         deployment_name: DeploymentStatusOverview(
-                            status=deployment.status, message=deployment.message
+                            status=deployment.status,
+                            replica_states=dict(
+                                Counter([r.state.value for r in deployment.replicas])
+                            ),
+                            message=deployment.message,
                         )
                         for deployment_name, deployment in app.deployments.items()
                     },

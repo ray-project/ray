@@ -67,6 +67,7 @@ class BuildAppTaskInfo:
 
     obj_ref: ObjectRef
     code_version: str
+    finished: bool
 
 
 @dataclass
@@ -121,8 +122,9 @@ class ApplicationState:
         self._status_msg = ""
         self._deployment_state_manager = deployment_state_manager
         self._endpoint_state = endpoint_state
-        self._route_prefix = None
-        self._docs_path = None
+        self._route_prefix: Optional[str] = None
+        self._docs_path: Optional[str] = None
+        self._ingress_deployment_name: str = None
 
         self._status: ApplicationStatus = ApplicationStatus.DEPLOYING
         self._deployment_timestamp = time.time()
@@ -166,15 +168,15 @@ class ApplicationState:
         return self._deployment_timestamp
 
     @property
-    def build_app_obj_ref(self) -> Optional[ObjectRef]:
-        return self._build_app_obj_ref
-
-    @property
     def target_deployments(self) -> List[str]:
         """List of target deployment names in application."""
         if self._target_state.deployment_infos is None:
             return []
         return list(self._target_state.deployment_infos.keys())
+
+    @property
+    def ingress_deployment(self) -> Optional[str]:
+        return self._ingress_deployment_name
 
     def recover_target_state_from_checkpoint(
         self, checkpoint_data: ApplicationTargetState
@@ -311,10 +313,12 @@ class ApplicationState:
         """
 
         for params in deployment_params:
-            if params["docs_path"] is not None:
-                self._docs_path = params["docs_path"]
             params["deployment_name"] = params.pop("name")
             params["app_name"] = self._name
+            if params["docs_path"] is not None:
+                self._docs_path = params["docs_path"]
+            if params["ingress"]:
+                self._ingress_deployment_name = params["deployment_name"]
 
         deployment_infos = {
             params["deployment_name"]: deploy_args_to_deployment_info(**params)
@@ -413,6 +417,13 @@ class ApplicationState:
         if config_version == self._target_state.code_version:
             return None, BuildAppStatus.NO_TASK_STARTED, ""
 
+        if (
+            self._build_app_task_info
+            and config_version == self._build_app_task_info.code_version
+            and self._build_app_task_info.finished
+        ):
+            return None, BuildAppStatus.NO_TASK_STARTED, ""
+
         # If there is a non-null target config, and the current code
         # version is out of sync with that target config, we need to
         # rebuild the application with the new target config
@@ -445,13 +456,12 @@ class ApplicationState:
                 self._target_state.config.args,
             )
             self._build_app_task_info = BuildAppTaskInfo(
-                build_app_obj_ref, config_version
+                build_app_obj_ref, config_version, False
             )
         elif check_obj_ref_ready_nowait(self._build_app_task_info.obj_ref):
-            build_app_obj_ref = self._build_app_task_info.obj_ref
-            self._build_app_task_info = None
+            self._build_app_task_info.finished = True
             try:
-                args, err = ray.get(build_app_obj_ref)
+                args, err = ray.get(self._build_app_task_info.obj_ref)
                 if err is None:
                     logger.info(f"Deploy task for app '{self._name}' ran successfully.")
                     return (args, config_version), BuildAppStatus.SUCCEEDED, ""
@@ -773,6 +783,12 @@ class ApplicationStateManager:
     def get_route_prefix(self, name: str) -> Optional[str]:
         return self._application_states[name].route_prefix
 
+    def get_ingress_deployment_name(self, name: str) -> Optional[str]:
+        if name not in self._application_states:
+            return None
+
+        return self._application_states[name].ingress_deployment
+
     def list_app_statuses(self) -> Dict[str, ApplicationStatusInfo]:
         """Return a dictionary with {app name: application info}"""
         return {
@@ -962,11 +978,21 @@ def override_deployment_info(
             # if the code sets options to None).
             override_actor_options = replica_config.ray_actor_options or {}
 
+        override_placement_group_bundles = options.pop(
+            "placement_group_bundles", replica_config.placement_group_bundles
+        )
+        override_placement_group_strategy = options.pop(
+            "placement_group_strategy", replica_config.placement_group_strategy
+        )
+
         merged_env = override_runtime_envs_except_env_vars(
             app_runtime_env, override_actor_options.get("runtime_env", {})
         )
         override_actor_options.update({"runtime_env": merged_env})
         replica_config.update_ray_actor_options(override_actor_options)
+        replica_config.update_placement_group_options(
+            override_placement_group_bundles, override_placement_group_strategy
+        )
         override_options["replica_config"] = replica_config
 
         # Override deployment config options

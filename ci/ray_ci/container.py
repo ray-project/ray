@@ -5,39 +5,58 @@ import tempfile
 
 from typing import List
 
-from ci.ray_ci.utils import chunk_into_n
+import ci.ray_ci.bazel_sharding as bazel_sharding
 
 DOCKER_ECR = "029272617770.dkr.ecr.us-west-2.amazonaws.com"
 DOCKER_REPO = "ci_base_images"
 DOCKER_TAG = f"oss-ci-build_{os.environ.get('BUILDKITE_COMMIT')}"
+ROOT_DIR = "/ray/ci/ray_ci"
 
 
 def run_tests(
+    team: str,
     test_targets: List[str],
-    pre_run_commands: List[str],
     parallelism,
 ) -> bool:
     """
-    Run tests parallelly in docker. Return whether all tests pass.
+    Run tests parallelly in docker.  Return whether all tests pass.
     """
-    chunks = chunk_into_n(test_targets, parallelism)
-    # Run tests in parallel. Currently, the logs are also printed in parallel.
-    # TODO(can): We can use a queue to print the logs in order.
-    runs = [_run_tests_in_docker(chunk, pre_run_commands) for chunk in chunks]
+    chunks = [shard_tests(test_targets, parallelism, i) for i in range(parallelism)]
+    _setup_test_environment(team)
+    runs = [_run_tests_in_docker(chunk) for chunk in chunks]
     exits = [run.wait() for run in runs]
     return all(exit == 0 for exit in exits)
 
 
-def _run_tests_in_docker(
-    test_targets: List[str],
-    pre_test_commands: List[str],
-) -> subprocess.Popen:
-    bazel_command = ["bazel", "test", "--config=ci"] + test_targets
-    script = "\n".join(pre_test_commands + [" ".join(bazel_command)])
-    return subprocess.Popen(_docker_run_bash_script(script))
+def _setup_test_environment(team: str) -> None:
+    env = os.environ.copy()
+    env["DOCKER_BUILDKIT"] = "1"
+    subprocess.check_call(
+        [
+            "docker",
+            "build",
+            "--build-arg",
+            f"BASE_IMAGE={_get_docker_image()}",
+            "--build-arg",
+            f"TEST_ENVIRONMENT_SCRIPT={team}.tests.env.sh",
+            "-t",
+            _get_docker_image(),
+            "-f",
+            f"{ROOT_DIR}/tests.env.Dockerfile",
+            ROOT_DIR,
+        ],
+        env=env,
+        stdout=sys.stdout,
+        stderr=sys.stderr,
+    )
 
 
-def run_command(script: str) -> bytes:
+def _run_tests_in_docker(test_targets: List[str]) -> subprocess.Popen:
+    command = f"bazel test --config=ci {' '.join(test_targets)}"
+    return subprocess.Popen(_docker_run_bash_script(command))
+
+
+def run_script_in_docker(script: str) -> bytes:
     """
     Run command in docker
     """
@@ -46,6 +65,13 @@ def run_command(script: str) -> bytes:
 
 def _docker_run_bash_script(script: str) -> str:
     return _get_docker_run_command() + ["/bin/bash", "-ice", script]
+
+
+def shard_tests(test_targets: List[str], shard_count: int, shard_id: int) -> List[str]:
+    """
+    Shard tests into N shards and return the shard corresponding to shard_id
+    """
+    return bazel_sharding.main(test_targets, index=shard_id, count=shard_count)
 
 
 def docker_login() -> None:

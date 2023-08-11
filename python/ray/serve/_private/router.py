@@ -7,6 +7,7 @@ import logging
 import math
 import pickle
 import random
+import time
 from typing import (
     Any,
     AsyncGenerator,
@@ -28,12 +29,13 @@ from ray.actor import ActorHandle
 from ray.dag.py_obj_scanner import _PyObjScanner
 from ray.exceptions import RayActorError, RayTaskError
 from ray.util import metrics
-from ray._private.utils import make_asyncio_event_version_compat
+from ray._private.utils import make_asyncio_event_version_compat, load_class
 
 from ray.serve._private.common import RunningReplicaInfo, DeploymentInfo
 from ray.serve._private.constants import (
     SERVE_LOGGER_NAME,
     HANDLE_METRIC_PUSH_INTERVAL_S,
+    RAY_SERVE_MULTIPLEXED_MODEL_ID_MATCHING_TIMEOUT_S,
 )
 from ray.serve._private.http_util import make_buffered_asgi_receive
 from ray.serve._private.long_poll import LongPollClient, LongPollNamespace
@@ -306,6 +308,11 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         self._multiplexed_model_id_to_replica_ids: DefaultDict[Set[str]] = defaultdict(
             set
         )
+        # When there is no match for a multiplexed model id, we will try to fallback
+        # to all replicas immediately. This set is used to make sure we only fallback
+        # once for concurrent requests for the same model id.
+        # Whenever there is a match, we will remove the the model id from this set.
+        self._multiplexed_model_id_fallback_match: Set[str] = set()
 
         # Tasks running the scheduling loop. The size of this set may vary over time
         # as new tasks will be scheduled when a request comes in or new replicas are
@@ -438,93 +445,139 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         """Shim for compatibility with the existing round robin scheduler."""
         return self.update_replicas([ActorReplicaWrapper(r) for r in running_replicas])
 
-    def _get_candidate_replica_ids(
+    def _get_candidate_replica_ids_for_multiplexed_model_id(
         self,
-        blacklist_replica_ids: Set[str],
-        request_metadata: Optional[RequestMetadata] = None,
+        model_id: str,
+        get_from_all_replicas: bool = False,
     ) -> Set[str]:
-        """Get candidates from the current replica set excluding the blacklist.
+        """Get multiplexed model candidates from the current replica.
 
-        If a model ID is present in request_metadata, any replicas that have it are
-        prioritized.
+        By default, we will only choose from replicas that have the requested
+        multiplexed model id, if not matched, the function will return an empty set.
+
+        If get_from_all_replicas is True, we will choose from all replicas,
+        and we will choose all replicas with the least number of multiplexed model
+        ids.
+
         """
-        if (
-            request_metadata is not None
-            and request_metadata.multiplexed_model_id
-            in self._multiplexed_model_id_to_replica_ids
-        ):
-            candidates = self._multiplexed_model_id_to_replica_ids[
-                request_metadata.multiplexed_model_id
-            ].difference(blacklist_replica_ids)
-            if len(candidates) > 0:
-                return candidates
 
-        return self._replica_id_set.difference(blacklist_replica_ids)
+        candidates = set()
+
+        if not get_from_all_replicas:
+            if model_id in self._multiplexed_model_id_to_replica_ids:
+                candidates = self._multiplexed_model_id_to_replica_ids[model_id]
+                if len(candidates) > 0:
+                    return candidates
+            return candidates
+
+        # Sort the replicas by the number of multiplexed model ids they have.
+        # Choose all replicas with the least number of multiplexed model ids.
+        sorted_replicas = sorted(
+            self._replicas.values(), key=lambda x: len(x.multiplexed_model_ids)
+        )
+        least_num_multiplexed_model_ids = math.inf
+        for replica in sorted_replicas:
+            if len(replica.multiplexed_model_ids) <= least_num_multiplexed_model_ids:
+                candidates.add(replica.replica_id)
+                least_num_multiplexed_model_ids = len(replica.multiplexed_model_ids)
+            else:
+                break
+
+        return candidates
 
     async def choose_two_replicas_with_backoff(
         self,
         request_metadata: Optional[RequestMetadata] = None,
     ) -> AsyncGenerator[List[RunningReplicaInfo], None]:
-        """Generator that repeatedly chooses two random replicas from `self._replicas`.
+        """Generator that repeatedly chooses (at most) two random replicas
+        from `self._replicas`.
+
+        For multiplexing, this will choose replicas that have the requested model ID.
+        If there are no replicas with the requested model ID, it will choose from all
+        replicas.
 
         After each iteration, there will be an increasing backoff sleep time (dictated
         by `self.backoff_sequence_s`). The caller should exit the generator to reset the
         backoff sleep time.
         """
 
-        try:
-            backoff_index = 0
-            entered_backoff = False
-            replica_ids_attempted = set()
-            while True:
-                # If no replicas are available, wait until `update_replicas` is called.
-                while len(self._replicas) == 0:
-                    logger.info(
-                        "Tried to assign replica for deployment "
-                        f"{self._deployment_name} but none are available. "
-                        "Waiting for new replicas to be added.",
-                        extra={"log_to_stderr": False},
-                    )
-                    self._replicas_updated_event.clear()
-                    await self._replicas_updated_event.wait()
-                    logger.info(
-                        (
-                            "Got replicas for deployment "
-                            "{self._deployment_name}, waking up."
-                        ),
-                        extra={"log_to_stderr": False},
-                    )
+        backoff_index = 0
+        multiplexed_start_matching_time = None
+        multiplexed_matching_timeout = random.uniform(
+            RAY_SERVE_MULTIPLEXED_MODEL_ID_MATCHING_TIMEOUT_S,
+            RAY_SERVE_MULTIPLEXED_MODEL_ID_MATCHING_TIMEOUT_S * 2,
+        )
 
-                # Get candidates to sample from; this will exclude replicas used in a
-                # previous iteration until all replicas have been tried.
-                candidate_replica_ids = self._get_candidate_replica_ids(
-                    replica_ids_attempted, request_metadata
+        while True:
+            # If no replicas are available, wait until `update_replicas` is called.
+            while len(self._replicas) == 0:
+                logger.info(
+                    "Tried to assign replica for deployment "
+                    f"{self._deployment_name} but none are available. "
+                    "Waiting for new replicas to be added.",
+                    extra={"log_to_stderr": False},
                 )
+                self._replicas_updated_event.clear()
+                await self._replicas_updated_event.wait()
+                logger.info(
+                    "Got replicas for deployment {self._deployment_name}, waking up.",
+                    extra={"log_to_stderr": False},
+                )
+
+            if multiplexed_start_matching_time is None:
+                multiplexed_start_matching_time = time.time()
+
+            candidate_replica_ids = set()
+            if request_metadata is not None and request_metadata.multiplexed_model_id:
+                # Get candidates for multiplexed model ID.
+                if (
+                    time.time() - multiplexed_start_matching_time
+                    < multiplexed_matching_timeout
+                ):
+                    candidate_replica_ids = (
+                        self._get_candidate_replica_ids_for_multiplexed_model_id(
+                            request_metadata.multiplexed_model_id
+                        )
+                    )
+                    # When there is no match for a multiplexed model id, we will try to
+                    # fallback to all replicas immediately.
+                    if (
+                        len(candidate_replica_ids) == 0
+                        and request_metadata.multiplexed_model_id
+                        not in self._multiplexed_model_id_fallback_match
+                    ):
+                        candidate_replica_ids = (
+                            self._get_candidate_replica_ids_for_multiplexed_model_id(
+                                request_metadata.multiplexed_model_id,
+                                get_from_all_replicas=True,
+                            )
+                        )
+                        self._multiplexed_model_id_fallback_match.add(
+                            request_metadata.multiplexed_model_id
+                        )
+                    elif len(candidate_replica_ids) > 0:
+                        self._multiplexed_model_id_fallback_match.discard(
+                            request_metadata.multiplexed_model_id
+                        )
+                else:
+                    candidate_replica_ids = (
+                        self._get_candidate_replica_ids_for_multiplexed_model_id(
+                            request_metadata.multiplexed_model_id,
+                            get_from_all_replicas=True,
+                        )
+                    )
+            else:
+                # non-multiplexed use case
+                candidate_replica_ids = self._replica_id_set
+
+            if candidate_replica_ids:
                 chosen_ids = random.sample(
                     list(candidate_replica_ids), k=min(2, len(candidate_replica_ids))
                 )
                 yield [self._replicas[chosen_id] for chosen_id in chosen_ids]
 
-                entered_backoff = True
-                self.num_scheduling_tasks_in_backoff += 1
-                self.num_scheduling_tasks_in_backoff_gauge.set(
-                    self.num_scheduling_tasks_in_backoff
-                )
-
-                # If another iteration occurrs, the chosen replicas did not accept the
-                # request. Blacklist them until we've attempted all replicas.
-                replica_ids_attempted.update(chosen_ids)
-                if replica_ids_attempted.issuperset(self._replica_id_set):
-                    replica_ids_attempted.clear()
-
-                await asyncio.sleep(self.backoff_sequence_s[backoff_index])
-                backoff_index = min(backoff_index + 1, len(self.backoff_sequence_s) - 1)
-        finally:
-            if entered_backoff:
-                self.num_scheduling_tasks_in_backoff -= 1
-                self.num_scheduling_tasks_in_backoff_gauge.set(
-                    self.num_scheduling_tasks_in_backoff
-                )
+            await asyncio.sleep(self.backoff_sequence_s[backoff_index])
+            backoff_index = min(backoff_index + 1, len(self.backoff_sequence_s) - 1)
 
     async def select_from_candidate_replicas(
         self, candidates: List[ReplicaWrapper]
@@ -967,6 +1020,7 @@ class Router:
         deployment_name: str,
         event_loop: asyncio.BaseEventLoop = None,
         _use_new_routing: bool = False,
+        _router_cls: Optional[str] = None,
     ):
         """Used to assign requests to downstream replicas for a deployment.
 
@@ -974,20 +1028,21 @@ class Router:
         wrapper that adds metrics and logging.
         """
         self._event_loop = event_loop
-        if _use_new_routing:
+
+        if _router_cls:
+            self._replica_scheduler = load_class(_router_cls)(
+                event_loop=event_loop, deployment_name=deployment_name
+            )
+        elif _use_new_routing:
             self._replica_scheduler = PowerOfTwoChoicesReplicaScheduler(
                 event_loop, deployment_name
             )
-            logger.info(
-                "Using PowerOfTwoChoicesReplicaScheduler.",
-                extra={"log_to_stderr": False},
-            )
         else:
             self._replica_scheduler = RoundRobinReplicaScheduler(event_loop)
-            logger.info(
-                "Using RoundRobinReplicaScheduler.",
-                extra={"log_to_stderr": False},
-            )
+        logger.info(
+            f"Using router {self._replica_scheduler.__class__}.",
+            extra={"log_to_stderr": False},
+        )
 
         # -- Metrics Registration -- #
         self.num_router_requests = metrics.Counter(

@@ -39,37 +39,30 @@
       --test_tag_filters=team:serve
       release/...
 
-- label: ":serverless: Serve Tests"
-  parallelism: 3
+# the bulk of serve tests are now run on civ2 infra, and defined in 
+# pipeline.build_serve.yml
+- label: ":serverless: Serve HA Tests"
   conditions:
     [
         "RAY_CI_SERVE_AFFECTED",
         "RAY_CI_PYTHON_AFFECTED",
         "RAY_CI_ML_AFFECTED",
     ]
-  instance_size: large
+  instance_size: medium
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - TORCH_VERSION=1.9.0 ./ci/env/install-dependencies.sh
     - bash ./ci/ci.sh prepare_docker
     - 'git clone https://github.com/wg/wrk.git /tmp/wrk && pushd /tmp/wrk && make -j && sudo cp wrk /usr/local/bin && popd'
     - ./ci/env/env_info.sh
-    - >-
-      set -x;
-      python ./ci/run/bazel_sharding/bazel_sharding.py
-      --exclude_manual
-      --index "\${BUILDKITE_PARALLEL_JOB}" --count "\${BUILDKITE_PARALLEL_JOB_COUNT}"
-      --tag_filters=-post_wheel_build,-gpu
-      python/ray/serve/...
-      > test_shard.txt
-    - cat test_shard.txt
     - bazel test --config=ci $(./ci/run/bazel_export_options)
       --test_tag_filters=-post_wheel_build,-gpu
       --test_env=DOCKER_HOST=tcp://docker:2376
       --test_env=DOCKER_TLS_VERIFY=1
       --test_env=DOCKER_CERT_PATH=/certs/client
       --test_env=DOCKER_TLS_CERTDIR=/certs
-      $(cat test_shard.txt)
+      --test_tag_filters=-post_wheel_build,-gpu,xcommit
+      python/ray/serve/...
 
 - label: ":serverless: Serve Tests (streaming FF off)"
   parallelism: 3
@@ -88,7 +81,7 @@
     - ./ci/env/env_info.sh
     - >-
       set -x;
-      python ./ci/run/bazel_sharding/bazel_sharding.py
+      python ./ci/ray_ci/bazel_sharding.py
       --exclude_manual
       --index "\${BUILDKITE_PARALLEL_JOB}" --count "\${BUILDKITE_PARALLEL_JOB_COUNT}"
       --tag_filters=-post_wheel_build,-gpu
@@ -121,7 +114,7 @@
     - ./ci/env/env_info.sh
     - >-
       set -x;
-      python ./ci/run/bazel_sharding/bazel_sharding.py
+      python ./ci/ray_ci/bazel_sharding.py
       --exclude_manual
       --index "\${BUILDKITE_PARALLEL_JOB}" --count "\${BUILDKITE_PARALLEL_JOB_COUNT}"
       --tag_filters=-post_wheel_build,-gpu
@@ -174,18 +167,14 @@
     - bazel test --test_output=streamed --config=ci --test_env=RAY_DEFAULT=1 $(./ci/run/bazel_export_options)
       python/ray/serve/test_api
 
-- label: ":python: (Small & Client)"
+- label: ":python: civ1 tests"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
   instance_size: medium
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - DL=1 ./ci/env/install-dependencies.sh
     - bash ./ci/ci.sh prepare_docker
     - ./ci/env/env_info.sh
     - pip install ray[client]
-    - bazel test --config=ci $(./ci/run/bazel_export_options) 
-      --test_tag_filters=client_tests,small_size_python_tests,-team:core 
-      -- python/ray/tests/...
     - bazel test --config=ci $(./ci/run/bazel_export_options)
       --test_tag_filters=xcommit
       --test_env=DOCKER_HOST=tcp://docker:2376
@@ -193,28 +182,6 @@
       --test_env=DOCKER_CERT_PATH=/certs/client
       --test_env=DOCKER_TLS_CERTDIR=/certs
       -- python/ray/tests/...
-    - bazel test --config=ci $(./ci/run/bazel_export_options)
-      -- python/ray/autoscaler/v2/...
-
-- label: ":python: (Medium A-J)"
-  conditions: ["RAY_CI_PYTHON_AFFECTED"]
-  instance_size: medium
-  commands:
-    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - ./ci/env/env_info.sh
-    - bazel test --config=ci $(./ci/run/bazel_export_options)
-      --test_tag_filters=medium_size_python_tests_a_to_j,-team:core
-      python/ray/tests/...
-
-- label: ":python: (Medium K-Z)"
-  conditions: ["RAY_CI_PYTHON_AFFECTED"]
-  instance_size: medium
-  commands:
-    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - DL=1 ./ci/env/install-dependencies.sh
-    - bazel test --config=ci $(./ci/run/bazel_export_options)
-      --test_tag_filters=medium_size_python_tests_k_to_z,-team:core
-      python/ray/tests/...
 
 - label: ":python: Debug Test"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]

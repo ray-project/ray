@@ -1581,7 +1581,7 @@ def init(
                 spawn_reaper=False,
                 connect_only=True,
             )
-        except ConnectionError:
+        except (ConnectionError, RuntimeError):
             if gcs_address == ray._private.utils.read_ray_address(_temp_dir):
                 logger.info(
                     "Failed to connect to the default Ray cluster address at "
@@ -1590,7 +1590,7 @@ def init(
                     "address to connect to, run `ray stop` or restart Ray with "
                     "`ray start`."
                 )
-            raise
+            raise ConnectionError
 
     # Log a message to find the Ray address that we connected to and the
     # dashboard URL.
@@ -1809,7 +1809,7 @@ def filter_autoscaler_events(lines: List[str]) -> Iterator[str]:
     from ray.autoscaler.v2.utils import is_autoscaler_v2
 
     if is_autoscaler_v2():
-        from ray._private.event.event_logger import parse_event
+        from ray._private.event.event_logger import parse_event, filter_event_by_level
 
         for event_line in lines:
             if autoscaler_log_fyi_needed():
@@ -1818,8 +1818,12 @@ def filter_autoscaler_events(lines: List[str]) -> Iterator[str]:
             event = parse_event(event_line)
             if not event or not event.message:
                 continue
-            # We need to filter anything below Event.Severity.INFO if
-            # there's any more verbose.
+
+            if filter_event_by_level(
+                event, ray_constants.RAY_LOG_TO_DRIVER_EVENT_LEVEL
+            ):
+                continue
+
             yield event.message
     else:
         # Print out autoscaler events only, ignoring other messages.
@@ -2258,6 +2262,7 @@ def connect(
         runtime_env_hash,
         startup_token,
         session_name,
+        node.cluster_id,
         "" if mode != SCRIPT_MODE else entrypoint,
         worker_launch_time_ms,
         worker_launched_time_ms,
