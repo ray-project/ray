@@ -21,7 +21,7 @@ rules:
         - "doc/source/train/examples/pytorch/torch_data_prefetch_benchmark/benchmark_example.rst"
         - "doc/source/train/dl_guide.rst"
         # FIXME(@ml-team): These are byproduct from train doc rewritten. Will fix them as a team.
-        - "doc/source/train/getting-started-pytorch-lightning.rst "
+        - "doc/source/train/getting-started-pytorch-lightning.rst"
         - "doc/source/train/getting-started-pytorch.rst"
         - "doc/source/train/user-guides/checkpoints.rst"
         - "doc/source/train/user-guides/converting-existing-training-loop.rst"
