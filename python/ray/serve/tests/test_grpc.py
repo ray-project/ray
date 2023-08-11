@@ -20,6 +20,9 @@ from ray._private.test_utils import (
     setup_tls,
     teardown_tls,
 )
+from ray.serve.generated import serve_pb2, serve_pb2_grpc
+from ray.serve.tests.test_config_files.grpc_deployment import g
+import grpc
 
 
 @pytest.fixture
@@ -216,6 +219,61 @@ def test_schemas_attach_grpc_server():
     # Failed with no schema gRPC binding function
     with pytest.raises(RayServeException):
         _ = MyDriver()
+
+
+def test_serving_request_through_grpc_proxy(ray_cluster):
+    """Test serving request through gRPC proxy
+
+    When Serve runs with a gRPC deployment, the app should be deployed successfully,
+    both routes and healthz methods returning success response, and registered gRPC
+    methods are routing to the correct replica and return the correct response.
+    """
+    cluster = ray_cluster
+    cluster.add_node(num_cpus=2)
+    cluster.connect(namespace=SERVE_NAMESPACE)
+
+    grpc_port = 9000
+    grpc_servicer_functions = [
+        "ray.serve.generated.serve_pb2_grpc.add_UserDefinedServiceServicer_to_server",
+    ]
+
+    serve.run(
+        target=g,
+        grpc_port=grpc_port,
+        grpc_servicer_functions=grpc_servicer_functions,
+    )
+    replicas = ray.get(
+        serve.context._global_client._controller._all_running_replicas.remote()
+    )
+
+    # Ensures the app is deployed.
+    app_name = "default_grpc-deployment"
+    assert len(replicas[app_name]) == 1
+
+    # Ensures routes path succeeding.
+    channel = grpc.insecure_channel("localhost:9000")
+    stub = serve_pb2_grpc.ServeAPIServiceStub(channel)
+    request = serve_pb2.RoutesRequest()
+    response, call = stub.ServeRoutes.with_call(request=request)
+    assert call.code() == grpc.StatusCode.OK
+    assert response.application_names == [app_name]
+
+    # Ensures healthz path succeeding.
+    request = serve_pb2.RoutesRequest()
+    response, call = stub.ServeHealthz.with_call(request=request)
+    assert call.code() == grpc.StatusCode.OK
+    assert response.response == "success"
+
+    # Ensures __call__ method is responding correctly.
+    stub = serve_pb2_grpc.UserDefinedServiceStub(channel)
+    request = serve_pb2.UserDefinedMessage(name="foo", num=30, foo="bar")
+    metadata = (("application", app_name),)
+    response = stub.__call__(request=request, metadata=metadata)
+    assert response.greeting == "Hello foo from bar"
+
+    # Ensures Method1 method is responding correctly.
+    response = stub.Method1(request=request, metadata=metadata)
+    assert response.greeting == "Hello foo from method1"
 
 
 if __name__ == "__main__":

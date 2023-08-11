@@ -476,6 +476,10 @@ def run(
         route_prefix: Route prefix for HTTP requests. If not provided, it will use
             route_prefix of the ingress deployment. If specified neither as an argument
             nor in the ingress deployment, the route prefix will default to '/'.
+        port: Port for gRPC server. Defaults to -1, meaning not starting the gRPC
+            server.
+        grpc_servicer_functions: List of gRPC add_servicer_to_server functions to add
+            to Serve's gRPC proxy. Default empty, meaning not to start the gRPC server.
 
     Returns:
         RayServeSyncHandle: A handle that can be used to call the application.
