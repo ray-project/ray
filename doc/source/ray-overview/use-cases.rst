@@ -183,7 +183,7 @@ Read more about building ML platforms with Ray in :ref:`this section <ray-for-ml
 End-to-End ML Workflows
 -----------------------
 
-The following highlights examples utilizing Ray AIR to implement end-to-end ML workflows.
+The following highlights examples utilizing Ray AI libraries to implement end-to-end ML workflows.
 
 - `[Example] Text classification with Ray </ray-air/examples/huggingface_text_classification>`_
 - `[Example] Image classification with Ray </ray-air/examples/torch_image_example>`_
