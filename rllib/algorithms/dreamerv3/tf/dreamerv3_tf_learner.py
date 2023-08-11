@@ -162,6 +162,8 @@ class DreamerV3TfLearner(DreamerV3Learner, TfLearner):
                 )
             )
         del gradient_tape
+        print(f"GPU mem usage after compute_gradients: "
+              f"{tf.config.experimental.get_memory_info('GPU:0')['current']}")
         return grads
 
     @override(TfLearner)
@@ -247,6 +249,9 @@ class DreamerV3TfLearner(DreamerV3Learner, TfLearner):
                 },
             )
 
+        print(f"GPU mem usage after world model loss: "
+              f"{tf.config.experimental.get_memory_info('GPU:0')['current']}")
+
         # Dream trajectories starting in all internal states (h + z_posterior) that were
         # computed during world model training.
         # Everything goes in as BxT: We are starting a new dream trajectory at every
@@ -275,6 +280,9 @@ class DreamerV3TfLearner(DreamerV3Learner, TfLearner):
                 },
             )
 
+        print(f"GPU mem usage after dream trajectory: "
+              f"{tf.config.experimental.get_memory_info('GPU:0')['current']}")
+
         value_targets_t0_to_Hm1_BxT = self._compute_value_targets(
             hps=hps,
             # Learn critic in symlog'd space.
@@ -289,12 +297,18 @@ class DreamerV3TfLearner(DreamerV3Learner, TfLearner):
             module_id, "VALUE_TARGETS_H_BxT", value_targets_t0_to_Hm1_BxT
         )
 
+        print(f"GPU mem usage after compute value targets: "
+              f"{tf.config.experimental.get_memory_info('GPU:0')['current']}")
+
         CRITIC_L_total = self._compute_critic_loss(
             module_id=module_id,
             hps=hps,
             dream_data=dream_data,
             value_targets_t0_to_Hm1_BxT=value_targets_t0_to_Hm1_BxT,
         )
+
+        print(f"GPU mem usage after critic loss: "
+              f"{tf.config.experimental.get_memory_info('GPU:0')['current']}")
         if hps.train_actor:
             ACTOR_L_total = self._compute_actor_loss(
                 module_id=module_id,
@@ -304,6 +318,9 @@ class DreamerV3TfLearner(DreamerV3Learner, TfLearner):
             )
         else:
             ACTOR_L_total = 0.0
+
+        print(f"GPU mem usage after actor loss: "
+              f"{tf.config.experimental.get_memory_info('GPU:0')['current']}")
 
         # Return the total loss as a sum of all individual losses.
         return L_world_model_total + CRITIC_L_total + ACTOR_L_total

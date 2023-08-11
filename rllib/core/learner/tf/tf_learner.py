@@ -134,6 +134,9 @@ class TfLearner(Learner):
                     gradient_list.append(grad)
             optimizer.apply_gradients(zip(gradient_list, variable_list))
 
+        print(f"GPU mem usage after apply_gradients: "
+              f"{tf.config.experimental.get_memory_info('GPU:0')['current']}")
+
     @override(Learner)
     def load_state(
         self,

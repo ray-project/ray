@@ -136,6 +136,7 @@ class DreamerV3RLModule(RLModule, abc.ABC):
 
         # Initialize the critic EMA net:
         self.critic.init_ema()
+        print("RLModule `setup()` complete")
 
     @override(RLModule)
     def get_initial_state(self) -> NestedDict:

@@ -616,6 +616,7 @@ class DreamerV3(Algorithm):
                     )
 
                 # Perform the actual update via our learner group.
+                print("Before learner_group.update()")
                 train_results = self.learner_group.update(
                     SampleBatch(sample).as_multi_agent(),
                     reduce_fn=self._reduce_results,
