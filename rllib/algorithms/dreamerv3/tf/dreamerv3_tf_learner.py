@@ -104,7 +104,7 @@ class DreamerV3TfLearner(DreamerV3Learner, TfLearner):
         for optimizer_name, optimizer in self.get_optimizers_for_module(
             module_id=module_id
         ):
-            if optimizer_name != "world_model":
+            if optimizer_name != "critic":
                 continue
             grads_sub_dict = self.filter_param_dict_for_optimizer(
                 module_gradients_dict, optimizer
@@ -152,7 +152,7 @@ class DreamerV3TfLearner(DreamerV3Learner, TfLearner):
         # as otherwise, the world model's parameters would have their gradients also
         # be influenced by the actor- and critic loss terms/gradient computations.
         grads = {}
-        for component in ["world_model", "actor", "critic"]:
+        for component in ["critic"]:#"world_model"]:#, "actor", "critic"]:
             grads.update(
                 gradient_tape.gradient(
                     # Take individual loss term from the registered metrics for
