@@ -797,8 +797,9 @@ class RunConfig:
             if self.sync_config.upload_dir:
                 assert remote_path == self.sync_config.upload_dir
                 warnings.warn(
-                    "Setting a `SyncConfig.upload_dir` is deprecated and will be removed "
-                    "in the future. Pass `RunConfig.storage_path` instead."
+                    "Setting a `SyncConfig.upload_dir` is deprecated and "
+                    "will be removed in the future. "
+                    "Pass `RunConfig.storage_path` instead."
                 )
                 # Set upload_dir to None to avoid further downstream resolution.
                 # Copy object first to not alter user input.

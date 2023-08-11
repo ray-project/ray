@@ -1,7 +1,6 @@
 import json
 import logging
 import os
-from pathlib import Path
 import shutil
 import time
 import unittest
@@ -31,7 +30,6 @@ from ray.train._internal.storage import (
     _download_from_fs_path,
     _upload_to_fs_path,
 )
-from ray.train.constants import RAY_AIR_NEW_PERSISTENCE_MODE
 from ray.tune import Callback, Trainable
 from ray.tune.execution.experiment_state import _find_newest_experiment_checkpoint
 from ray.tune.experiment import Trial
