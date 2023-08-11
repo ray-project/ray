@@ -677,20 +677,25 @@ def test_metrics_pusher_basic():
     ):
         counter = {"val": 0}
         result = {}
+        expected_result = 20
 
         def task(c, res):
             timer.realistic_sleep(0.001)
             c["val"] += 1
-            if timer.time() >= 10 and "succeeded" not in res:
-                res["succeeded"] = c["val"] == 20
+            # At 10 seconds, this task should have been called 20 times
+            if timer.time() >= 10 and "val" not in res:
+                res["val"] = c["val"]
 
         metrics_pusher = MetricsPusher()
         metrics_pusher.register_task(lambda: task(counter, result), 0.5)
 
         metrics_pusher.start()
-        while True:
-            if "succeeded" in result:
-                assert result["succeeded"]
+        # This busy wait loop should run for at most a few hundred milliseconds
+        # The test should finish by then, and if the test fails this prevents
+        # an infinite loop
+        for _ in range(10000000):
+            if "val" in result:
+                assert result["val"] == expected_result
                 break
 
 
@@ -712,7 +717,7 @@ def test_metrics_pusher_multiple_tasks():
             # At 7 seconds, tasks A, B, C should have executed 35, 14, and 10
             # times respectively.
             if timer.time() >= 7 and key not in res:
-                res[key] = c[key] == expected_results[key]
+                res[key] = c[key]
 
         metrics_pusher = MetricsPusher()
         # Each task interval is different, and they don't divide each other.
@@ -721,9 +726,12 @@ def test_metrics_pusher_multiple_tasks():
         metrics_pusher.register_task(lambda: task("C", counter, result), 0.7)
         metrics_pusher.start()
 
-        while True:
+        # This busy wait loop should run for at most a few hundred milliseconds
+        # The test should finish by then, and if the test fails this prevents
+        # an infinite loop
+        for _ in range(10000000):
             for key in result.keys():
-                assert result[key]
+                assert result[key] == expected_results[key]
             if len(result) == 3:
                 break
 
