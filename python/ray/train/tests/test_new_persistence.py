@@ -429,7 +429,9 @@ def test_trainer(
         with monkeypatch.context() as m:
             # This is so that the `resume_from_checkpoint` run doesn't mess up the
             # assertions later for the `storage_path=None` case.
-            m.setenv("RAY_AIR_LOCAL_CACHE_DIR", tmp_path / "resume_from_checkpoint")
+            m.setenv(
+                "RAY_AIR_LOCAL_CACHE_DIR", str(tmp_path / "resume_from_checkpoint")
+            )
             _resume_from_checkpoint(
                 result.checkpoint, expected_state={"iter": NUM_ITERATIONS - 1}
             )
