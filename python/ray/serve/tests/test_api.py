@@ -915,8 +915,10 @@ def test_status_basic(serve_instance):
     assert len(app_status) == 2
     assert set(app_status["plus"].deployments.keys()) == expected_dep_1
     assert set(app_status["hello"].deployments.keys()) == expected_dep_2
-    assert all(d.status == "HEALTHY" for d in app_status["plus"].deployments.values())
-    assert all(d.status == "HEALTHY" for d in app_status["plus"].deployments.values())
+    for d in app_status["plus"].deployments.values():
+        assert d.status == "HEALTHY" and d.replica_states == {"RUNNING": 1}
+    for d in app_status["plus"].deployments.values():
+        assert d.status == "HEALTHY" and d.replica_states == {"RUNNING": 1}
 
     proxy_status = serve.status().proxies
     assert all(p == "HEALTHY" for p in proxy_status.values())
