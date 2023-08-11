@@ -1,18 +1,24 @@
 import logging
 import os
+from pathlib import Path
+import pickle
+import tempfile
 from typing import Callable
 import pytest
 import sys
 import time
 
 import ray
-from ray import tune, logger
+from ray import train, tune, logger
 from ray.train import CheckpointConfig
+from ray.train.constants import RAY_AIR_NEW_PERSISTENCE_MODE
 from ray.tune import Trainable, run_experiments, register_trainable
 from ray.tune.error import TuneError
 from ray.tune.result_grid import ResultGrid
 from ray.tune.schedulers.trial_scheduler import FIFOScheduler, TrialScheduler
 from ray.tune.tune import _check_mixin
+
+from ray.train.tests.util import create_dict_checkpoint, load_dict_checkpoint
 
 
 @pytest.fixture
@@ -96,11 +102,74 @@ class MyResettableClass(Trainable):
         return None
 
 
+def train_fn(config):
+    # Determine whether or not we reset to a new trial
+    marker_dir = config.get("marker_dir")
+    num_resets = 0
+    marker = Path(marker_dir) / f"{os.getpid()}.txt"
+    if marker.exists():
+        num_resets = int(marker.read_text()) + 1
+
+    checkpoint = train.get_checkpoint()
+    it = load_dict_checkpoint(checkpoint)["iter"] if checkpoint else 0
+
+    msg = config.get("message", None)
+    sleep = int(config.get("sleep", 0))
+    fail = config.get("fail", False)
+
+    while it < 2:
+        it += 1
+        if msg:
+            print("PRINT_STDOUT: {}".format(msg))
+            print("PRINT_STDERR: {}".format(msg), file=sys.stderr)
+            logger.info("LOG_STDERR: {}".format(msg))
+
+        if fail:
+            raise RuntimeError("Failing")
+
+        # Dump the current config
+        marker.write_text(str(num_resets))
+
+        if sleep:
+            time.sleep(sleep)
+
+        metrics = {
+            "id": config.get("id", 0),
+            "num_resets": num_resets,
+            "iter": it,
+            "done": it > 1,
+        }
+        if config.get("save_checkpoint", True):
+            with create_dict_checkpoint({"iter": it}) as checkpoint:
+                train.report(metrics, checkpoint=checkpoint)
+        else:
+            train.report(metrics, checkpoint=checkpoint)
+
+
+@pytest.fixture(params=["function"])
+def trainable(request, monkeypatch):
+    """Fixture that sets up a checkpoint on different filesystems."""
+    trainable_type = request.param
+    if trainable_type == "function":
+        monkeypatch.setenv(RAY_AIR_NEW_PERSISTENCE_MODE, "1")
+        yield train_fn
+        monkeypatch.setenv(RAY_AIR_NEW_PERSISTENCE_MODE, "0")
+    elif trainable_type == "class":
+        yield MyResettableClass
+    else:
+        raise NotImplementedError
+
+
 def _run_trials_with_frequent_pauses(trainable, reuse=False, **kwargs):
+    tempdir = tempfile.mkdtemp()
+    marker_dir = Path(tempdir)
     analysis = tune.run(
         trainable,
         num_samples=1,
-        config={"id": tune.grid_search([0, 1, 2, 3])},
+        config={
+            "id": tune.grid_search([0, 1, 2, 3]),
+            "marker_dir": marker_dir,
+        },
         reuse_actors=reuse,
         scheduler=FrequentPausesScheduler(),
         verbose=0,
@@ -109,21 +178,21 @@ def _run_trials_with_frequent_pauses(trainable, reuse=False, **kwargs):
     return analysis
 
 
-def test_trial_reuse_disabled(ray_start_1_cpu):
+def test_trial_reuse_disabled(ray_start_1_cpu, trainable):
     """Test that reuse=False disables actor re-use.
 
     Setup: Pass `reuse_actors=False` to tune.run()
 
     We assert the `num_resets` of each trainable class to be 0 (no reuse).
     """
-    analysis = _run_trials_with_frequent_pauses(MyResettableClass, reuse=False)
+    analysis = _run_trials_with_frequent_pauses(trainable, reuse=False)
     trials = analysis.trials
     assert [t.last_result["id"] for t in trials] == [0, 1, 2, 3]
     assert [t.last_result["iter"] for t in trials] == [2, 2, 2, 2]
     assert [t.last_result["num_resets"] for t in trials] == [0, 0, 0, 0]
 
 
-def test_trial_reuse_disabled_per_default(ray_start_1_cpu):
+def test_trial_reuse_disabled_per_default(ray_start_1_cpu, trainable):
     """Test that reuse=None disables actor re-use for class trainables.
 
     Setup: Pass `reuse_actors=None` to tune.run()
@@ -137,7 +206,7 @@ def test_trial_reuse_disabled_per_default(ray_start_1_cpu):
     assert [t.last_result["num_resets"] for t in trials] == [0, 0, 0, 0]
 
 
-def test_trial_reuse_enabled(ray_start_1_cpu):
+def test_trial_reuse_enabled(ray_start_1_cpu, trainable):
     """Test that reuse=True enables actor re-use.
 
     Setup: Pass `reuse_actors=True` to tune.run()
@@ -150,14 +219,14 @@ def test_trial_reuse_enabled(ray_start_1_cpu):
     - After each iteration, trials are paused and actors cached for reuse
     - Thus, the first trial finishes after 4 resets, the second after 5, etc.
     """
-    analysis = _run_trials_with_frequent_pauses(MyResettableClass, reuse=True)
+    analysis = _run_trials_with_frequent_pauses(trainable, reuse=True)
     trials = analysis.trials
     assert [t.last_result["id"] for t in trials] == [0, 1, 2, 3]
     assert [t.last_result["iter"] for t in trials] == [2, 2, 2, 2]
     assert [t.last_result["num_resets"] for t in trials] == [4, 5, 6, 7]
 
 
-def test_trial_reuse_with_failing(ray_start_1_cpu):
+def test_trial_reuse_with_failing(ray_start_1_cpu, tmp_path, trainable):
     """Test that failing actors won't be reused.
 
     - 1 trial can run at a time
@@ -167,13 +236,14 @@ def test_trial_reuse_with_failing(ray_start_1_cpu):
     - We assert that trials after successful trials are schedule on reused actors
         (num_reset = last_num_resets + 1)
     """
+    fail = [False, True, False, False, True, True, False, False, False]
     trials = tune.run(
-        MyResettableClass,
+        trainable,
         reuse_actors=True,
         config={
-            "fail": tune.grid_search(
-                [False, True, False, False, True, True, False, False, False]
-            )
+            "id": tune.grid_search(list(range(9))),
+            "fail": tune.sample_from(lambda config: fail[config["id"]]),
+            "marker_dir": tmp_path,
         },
         raise_on_failed_trial=False,
     ).trials
