@@ -188,7 +188,7 @@ appropriately in distributed training.
         latest saved checkpoint.
 
         .. code-block:: python
-            :emphasize-lines: 51,52
+            :emphasize-lines: 21-24
 
             from ray.train.huggingface.transformers import (
                 RayTrainReportCallback,
