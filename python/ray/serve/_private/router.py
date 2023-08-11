@@ -545,16 +545,18 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
                                 request_metadata.multiplexed_model_id
                             )
                         )
-                        # When there is no match for a multiplexed model id, 
+                        # When there is no match for a multiplexed model id,
                         # we will try to fallback to all replicas immediately.
                         if (
                             len(candidate_replica_ids) == 0
                             and request_metadata.multiplexed_model_id
                             not in self._multiplexed_model_id_fallback_match
                         ):
-                            candidate_replica_ids = self._get_candidate_multiplexed_replica_ids(
-                                request_metadata.multiplexed_model_id,
-                                get_from_all_replicas=True,
+                            candidate_replica_ids = (
+                                self._get_candidate_multiplexed_replica_ids(
+                                    request_metadata.multiplexed_model_id,
+                                    get_from_all_replicas=True,
+                                )
                             )
                             self._multiplexed_model_id_fallback_match.add(
                                 request_metadata.multiplexed_model_id
