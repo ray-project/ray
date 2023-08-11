@@ -687,6 +687,8 @@ class HTTPProxy:
                 if msg["type"] == "websocket.disconnect":
                     return msg["code"]
         finally:
+            # Close the queue so any subsequent calls to fetch messages return
+            # immediately: https://github.com/ray-project/ray/issues/38368.
             queue.close()
 
     async def _assign_request_with_timeout(
