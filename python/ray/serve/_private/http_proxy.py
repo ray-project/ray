@@ -44,6 +44,7 @@ from ray.serve._private.common import (
     EndpointTag,
     NodeId,
     gRPCRequest,
+    RequestProtocol,
     StreamingHTTPRequest,
 )
 from ray.serve._private.constants import (
@@ -285,7 +286,6 @@ class GenericProxy:
                 name,
                 sync=False,
                 missing_ok=True,
-                _is_for_http_requests=True,
             )
 
         self.prefix_router = LongestPrefixRouter(get_handle)
@@ -874,9 +874,9 @@ class gRPCProxy(GenericProxy):
 
         handle = handle.options(
             stream=serve_request.stream,
-            serve_grpc_request=True,
             multiplexed_model_id=multiplexed_model_id,
             method_name=serve_request.method_name,
+            request_protocol=RequestProtocol.GRPC,
         )
 
         request_context_info = {

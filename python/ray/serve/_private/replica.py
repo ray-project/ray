@@ -239,7 +239,7 @@ def create_replica_wrapper(name: str):
         ) -> Tuple[bytes, Any]:
 
             request_metadata = pickle.loads(pickled_request_metadata)
-            if request_metadata.serve_grpc_request:
+            if request_metadata.is_grpc_request:
                 # Ensure the request args are a single gRPCRequest object.
                 assert len(request_args) == 1 and isinstance(
                     request_args[0], gRPCRequest
@@ -350,7 +350,7 @@ def create_replica_wrapper(name: str):
         ) -> AsyncGenerator[Any, None]:
             """Generator that is the entrypoint for all `stream=True` handle calls."""
             request_metadata = pickle.loads(pickled_request_metadata)
-            if request_metadata.serve_grpc_request:
+            if request_metadata.is_grpc_request:
                 # Ensure the request args are a single gRPCRequest object.
                 assert len(request_args) == 1 and isinstance(
                     request_args[0], gRPCRequest

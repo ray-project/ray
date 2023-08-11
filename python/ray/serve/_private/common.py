@@ -436,3 +436,8 @@ class gRPCRequest:
 
     grpc_user_request: bytes
     grpc_proxy_handle: ActorHandle
+
+
+class RequestProtocol(str, Enum):
+    HTTP = "HTTP"
+    GRPC = "gRPC"

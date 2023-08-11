@@ -10,7 +10,7 @@ import ray
 from ray._private.utils import get_or_create_event_loop
 
 from ray import serve
-from ray.serve._private.common import EndpointTag
+from ray.serve._private.common import EndpointTag, RequestProtocol
 from ray.serve._private.constants import (
     RAY_SERVE_ENABLE_NEW_ROUTING,
 )
@@ -62,7 +62,7 @@ class HandleOptions:
     method_name: str = "__call__"
     multiplexed_model_id: str = ""
     stream: bool = False
-    serve_grpc_request: bool = False
+    request_protocol: RequestProtocol = RequestProtocol.HTTP
     _router_cls: str = ""
 
     def copy_and_update(
@@ -70,7 +70,7 @@ class HandleOptions:
         method_name: Union[str, DEFAULT] = DEFAULT.VALUE,
         multiplexed_model_id: Union[str, DEFAULT] = DEFAULT.VALUE,
         stream: Union[bool, DEFAULT] = DEFAULT.VALUE,
-        serve_grpc_request: Union[bool, DEFAULT] = DEFAULT.VALUE,
+        request_protocol: Union[RequestProtocol, DEFAULT] = DEFAULT.VALUE,
         _router_cls: Union[str, DEFAULT] = DEFAULT.VALUE,
     ) -> "HandleOptions":
         return HandleOptions(
@@ -83,9 +83,9 @@ class HandleOptions:
                 else multiplexed_model_id
             ),
             stream=self.stream if stream == DEFAULT.VALUE else stream,
-            serve_grpc_request=self.serve_grpc_request
-            if serve_grpc_request == DEFAULT.VALUE
-            else serve_grpc_request,
+            request_protocol=self.request_protocol
+            if request_protocol == DEFAULT.VALUE
+            else request_protocol,
             _router_cls=self._router_cls
             if _router_cls == DEFAULT.VALUE
             else _router_cls,
@@ -139,11 +139,9 @@ class RayServeHandle:
         *,
         handle_options: Optional[HandleOptions] = None,
         _router: Optional[Router] = None,
-        _is_for_http_requests: bool = False,
     ):
         self.deployment_name = deployment_name
         self.handle_options = handle_options or HandleOptions()
-        self._is_for_http_requests = _is_for_http_requests
 
         self.request_counter = metrics.Counter(
             "serve_handle_request_counter",
@@ -186,14 +184,14 @@ class RayServeHandle:
         method_name: Union[str, DEFAULT] = DEFAULT.VALUE,
         multiplexed_model_id: Union[str, DEFAULT] = DEFAULT.VALUE,
         stream: Union[bool, DEFAULT] = DEFAULT.VALUE,
-        serve_grpc_request: Union[bool, DEFAULT] = DEFAULT.VALUE,
+        request_protocol: Union[RequestProtocol, DEFAULT] = DEFAULT.VALUE,
         _router_cls: Union[str, DEFAULT] = DEFAULT.VALUE,
     ):
         new_handle_options = self.handle_options.copy_and_update(
             method_name=method_name,
             multiplexed_model_id=multiplexed_model_id,
             stream=stream,
-            serve_grpc_request=serve_grpc_request,
+            request_protocol=request_protocol,
             _router_cls=_router_cls,
         )
 
@@ -204,7 +202,6 @@ class RayServeHandle:
             self.deployment_name,
             handle_options=new_handle_options,
             _router=None if _router_cls != DEFAULT.VALUE else self._router,
-            _is_for_http_requests=self._is_for_http_requests,
         )
 
     def options(
@@ -213,7 +210,7 @@ class RayServeHandle:
         method_name: Union[str, DEFAULT] = DEFAULT.VALUE,
         multiplexed_model_id: Union[str, DEFAULT] = DEFAULT.VALUE,
         stream: Union[bool, DEFAULT] = DEFAULT.VALUE,
-        serve_grpc_request: Union[bool, DEFAULT] = DEFAULT.VALUE,
+        request_protocol: Union[RequestProtocol, DEFAULT] = DEFAULT.VALUE,
         _router_cls: Union[str, DEFAULT] = DEFAULT.VALUE,
     ) -> "RayServeHandle":
         """Set options for this handle and return an updated copy of it.
@@ -232,7 +229,7 @@ class RayServeHandle:
             method_name=method_name,
             multiplexed_model_id=multiplexed_model_id,
             stream=stream,
-            serve_grpc_request=serve_grpc_request,
+            request_protocol=request_protocol,
             _router_cls=_router_cls,
         )
 
@@ -242,12 +239,11 @@ class RayServeHandle:
             _request_context.request_id,
             deployment_name,
             call_method=handle_options.method_name,
-            is_http_request=self._is_for_http_requests,
             route=_request_context.route,
             app_name=_request_context.app_name,
             multiplexed_model_id=handle_options.multiplexed_model_id,
             is_streaming=handle_options.stream,
-            serve_grpc_request=handle_options.serve_grpc_request,
+            request_protocol=handle_options.request_protocol,
         )
         self.request_counter.inc(
             tags={
@@ -292,7 +288,6 @@ class RayServeHandle:
         serialized_data = {
             "deployment_name": self.deployment_name,
             "handle_options": self.handle_options,
-            "_is_for_http_requests": self._is_for_http_requests,
         }
         return RayServeHandle._deserialize, (serialized_data,)
 
@@ -354,7 +349,7 @@ class RayServeSyncHandle(RayServeHandle):
         method_name: Union[str, DEFAULT] = DEFAULT.VALUE,
         multiplexed_model_id: Union[str, DEFAULT] = DEFAULT.VALUE,
         stream: Union[bool, DEFAULT] = DEFAULT.VALUE,
-        serve_grpc_request: Union[bool, DEFAULT] = DEFAULT.VALUE,
+        request_protocol: Union[RequestProtocol, DEFAULT] = DEFAULT.VALUE,
         _router_cls: Union[str, DEFAULT] = DEFAULT.VALUE,
     ) -> "RayServeSyncHandle":
         """Set options for this handle and return an updated copy of it.
@@ -373,7 +368,7 @@ class RayServeSyncHandle(RayServeHandle):
             method_name=method_name,
             multiplexed_model_id=multiplexed_model_id,
             stream=stream,
-            serve_grpc_request=serve_grpc_request,
+            request_protocol=request_protocol,
             _router_cls=_router_cls,
         )
 
@@ -399,7 +394,6 @@ class RayServeSyncHandle(RayServeHandle):
         serialized_data = {
             "deployment_name": self.deployment_name,
             "handle_options": self.handle_options,
-            "_is_for_http_requests": self._is_for_http_requests,
         }
         return RayServeSyncHandle._deserialize, (serialized_data,)
 

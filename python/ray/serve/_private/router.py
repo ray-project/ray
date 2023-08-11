@@ -31,7 +31,11 @@ from ray.exceptions import RayActorError, RayTaskError
 from ray.util import metrics
 from ray._private.utils import make_asyncio_event_version_compat, load_class
 
-from ray.serve._private.common import RunningReplicaInfo, DeploymentInfo
+from ray.serve._private.common import (
+    DeploymentInfo,
+    RequestProtocol,
+    RunningReplicaInfo,
+)
 from ray.serve._private.constants import (
     SERVE_LOGGER_NAME,
     HANDLE_METRIC_PUSH_INTERVAL_S,
@@ -61,9 +65,6 @@ class RequestMetadata:
     endpoint: str
     call_method: str = "__call__"
 
-    # This flag is set if the request is made from the HTTP proxy to a replica.
-    is_http_request: bool = False
-
     # HTTP route path of the request.
     route: str = ""
 
@@ -76,8 +77,16 @@ class RequestMetadata:
     # If this request expects a streaming response.
     is_streaming: bool = False
 
-    # If this request is serving through gRPC
-    serve_grpc_request: bool = False
+    # The protocol to serve this request
+    request_protocol: RequestProtocol = RequestProtocol.HTTP
+
+    @property
+    def is_http_request(self) -> bool:
+        return self.request_protocol == RequestProtocol.HTTP
+
+    @property
+    def is_grpc_request(self) -> bool:
+        return self.request_protocol == RequestProtocol.GRPC
 
 
 @dataclass
