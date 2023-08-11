@@ -6,7 +6,7 @@ from transformers import TrainingArguments, Trainer
 import numpy as np
 import evaluate
 
-from ray.train.huggingface.transformers import (
+from ray.train.huggingface import (
     prepare_trainer,
     RayTrainReportCallback,
 )
@@ -22,12 +22,10 @@ def train_func(config):
     def tokenize_function(examples):
         return tokenizer(examples["text"], padding="max_length", truncation=True)
 
-    tokenized_datasets = dataset.map(tokenize_function, batched=True)
+    tokenized_ds = dataset.map(tokenize_function, batched=True)
 
-    small_train_dataset = (
-        tokenized_datasets["train"].shuffle(seed=42).select(range(1000))
-    )
-    small_eval_dataset = tokenized_datasets["test"].shuffle(seed=42).select(range(1000))
+    small_train_ds = tokenized_ds["train"].shuffle(seed=42).select(range(1000))
+    small_eval_ds = tokenized_ds["test"].shuffle(seed=42).select(range(1000))
 
     # Model
     model = AutoModelForSequenceClassification.from_pretrained(
@@ -50,8 +48,8 @@ def train_func(config):
     trainer = Trainer(
         model=model,
         args=training_args,
-        train_dataset=small_train_dataset,
-        eval_dataset=small_eval_dataset,
+        train_dataset=small_train_ds,
+        eval_dataset=small_eval_ds,
         compute_metrics=compute_metrics,
     )
 

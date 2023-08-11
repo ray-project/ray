@@ -6,11 +6,6 @@ from typing import Any, Iterator, Optional, Tuple, Type
 from tempfile import TemporaryDirectory
 
 from torch.utils.data import DataLoader, Dataset, IterableDataset
-import datasets.iterable_dataset
-import transformers.trainer
-from transformers import Trainer
-from transformers.trainer_callback import TrainerCallback
-from transformers.trainer_utils import IntervalStrategy
 
 import ray
 from ray.air import session
@@ -25,6 +20,18 @@ from ray.train.huggingface.transformers.transformers_checkpoint import (
 from ray.util import PublicAPI
 
 logger = logging.getLogger(__name__)
+
+
+TRANSFORMERS_IMPORT_ERROR: Optional[ImportError] = None
+
+try:
+    import datasets.iterable_dataset
+    import transformers.trainer
+    from transformers import Trainer
+    from transformers.trainer_callback import TrainerCallback
+    from transformers.trainer_utils import IntervalStrategy
+except ImportError as e:
+    TRANSFORMERS_IMPORT_ERROR = e
 
 
 def maybe_add_length(obj: Any, length: Optional[int]) -> Any:
@@ -282,6 +289,10 @@ def prepare_trainer(trainer: Trainer) -> Trainer:
     methods and inject the data integration logics if the `train_dataset` and
     `eval_dataset` are Ray Data Iterables.
     """
+
+    if TRANSFORMERS_IMPORT_ERROR is not None:
+        raise TRANSFORMERS_IMPORT_ERROR
+
     base_trainer_class: Type[transformers.trainer.Trainer] = trainer.__class__
 
     class RayTransformersTrainer(base_trainer_class):

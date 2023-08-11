@@ -16,6 +16,6 @@ __all__ = [
     "TransformersCheckpoint",
     "TransformersPredictor",
     "TransformersTrainer",
-    "prepare_trainer",
     "RayTrainReportCallback",
+    "prepare_trainer",
 ]
