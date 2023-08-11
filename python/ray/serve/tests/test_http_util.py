@@ -61,8 +61,11 @@ async def test_asgi_message_queue():
     assert len(list(queue.get_messages_nowait())) == 1
 
     # Check that once the queue is closed, new messages should be rejected and
-    # subsequent calls to wait for messages should return immediately.
+    # ongoing and subsequent calls to wait for messages should return immediately.
+    waiting_task = loop.create_task(queue.wait_for_message())
     queue.close()
+    await waiting_task  # Ongoing call should return.
+
     for _ in range(100):
         with pytest.raises(RuntimeError):
             await queue({"hello": "world"})
