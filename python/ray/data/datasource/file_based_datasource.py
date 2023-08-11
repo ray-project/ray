@@ -665,7 +665,7 @@ def _resolve_paths_and_filesystem(
     elif not isinstance(paths, list) or any(not isinstance(p, str) for p in paths):
         raise ValueError(
             "Expected `paths` to be a `str`, `pathlib.Path`, or `list[str]`, but got "
-            f"{paths}."
+            f"`{paths}`."
         )
     elif len(paths) == 0:
         raise ValueError("Must provide at least one path.")
