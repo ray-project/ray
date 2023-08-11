@@ -1,8 +1,13 @@
+from types import GeneratorType
 from typing import Any, Iterator
 
 import ray
 from ray.data._internal.compute import ActorPoolStrategy, get_compute
 from ray.data._internal.execution.interfaces import PhysicalOperator, TaskContext
+from ray.data._internal.execution.operators.map_data_processor import (
+    BatchBasedMapDataProcessor,
+    RowBasedMapDataProcessor,
+)
 from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.util import make_callable_class_concurrent
 from ray.data._internal.logical.operators.map_operator import (
@@ -28,20 +33,6 @@ def _plan_udf_map_op(
     Note this method only converts the given `op`, but not its input dependencies.
     See Planner.plan() for more details.
     """
-    if isinstance(op, MapBatches):
-        transform_fn = generate_map_batches_fn(
-            batch_size=op._batch_size,
-            batch_format=op._batch_format,
-            zero_copy_batch=op._zero_copy_batch,
-        )
-    elif isinstance(op, MapRows):
-        transform_fn = generate_map_rows_fn()
-    elif isinstance(op, FlatMap):
-        transform_fn = generate_flat_map_fn()
-    elif isinstance(op, Filter):
-        transform_fn = generate_filter_fn()
-    else:
-        raise ValueError(f"Found unknown logical operator during planning: {op}")
 
     compute = get_compute(op._compute)
     validate_compute(op._fn, compute)
@@ -72,13 +63,47 @@ def _plan_udf_map_op(
         fn_args += op._fn_args
     fn_kwargs = op._fn_kwargs or {}
 
-    def do_map(blocks: Iterator[Block], ctx: TaskContext) -> Iterator[Block]:
-        yield from transform_fn(blocks, ctx, *fn_args, **fn_kwargs)
+    if isinstance(op, MapBatches):
+
+        def transform_fn(batch):
+            res = fn(batch, *fn_args, **fn_kwargs)
+            if not isinstance(res, GeneratorType):
+                res = [batch]
+            yield from res
+
+        map_data_processor = BatchBasedMapDataProcessor(
+            transform_fn,
+            op._batch_size,
+            op._batch_format,
+            op._zero_copy_batch,
+            init_fn,
+        )
+    else:
+        if isinstance(op, MapRows):
+
+            def transform_fn(row):
+                yield fn(row, *fn_args, **fn_kwargs)
+
+        elif isinstance(op, FlatMap):
+
+            def transform_fn(row):
+                for out_row in fn(row, *fn_args, **fn_kwargs):
+                    yield out_row
+
+        elif isinstance(op, Filter):
+
+            def transform_fn(row):
+                if fn(row, *fn_args, **fn_kwargs):
+                    yield row
+
+        else:
+            raise ValueError(f"Found unknown logical operator during planning: {op}")
+
+        map_data_processor = RowBasedMapDataProcessor(transform_fn, init_fn)
 
     return MapOperator.create(
-        do_map,
+        map_data_processor,
         input_physical_dag,
-        init_fn=init_fn,
         name=op.name,
         compute_strategy=compute,
         min_rows_per_bundle=op._target_block_size,
