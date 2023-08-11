@@ -18,9 +18,9 @@ Design Principles
 Pick and choose your own libraries
 ----------------------------------
 
-You can pick and choose which Ray AIR libraries you want to use.
+You can pick and choose which Ray AI libraries you want to use.
 
-This is applicable if you are an ML engineer who wants to independently use a Ray AIR library for a specific AI app or service use case and do not need to integrate with existing ML platforms.
+This is applicable if you are an ML engineer who wants to independently use a Ray library for a specific AI app or service use case and do not need to integrate with existing ML platforms.
 
 For example, Alice wants to use RLlib to train models for her work project. Bob wants to use Ray Serve to deploy his model pipeline. In both cases, Alice and Bob can leverage these libraries independently without any coordination.
 
@@ -32,14 +32,14 @@ In the above diagram:
 
 * Only one library is used -- showing that you can pick and choose and do not need to replace all of your ML infrastructure to use Ray.
 * You can use one of :ref:`Ray's many deployment modes <jobs-overview>` to launch and manage Ray clusters and Ray applications.
-* AIR libraries can read data from external storage systems such as Amazon S3 / Google Cloud Storage, as well as store results there.
+* Ray AI libraries can read data from external storage systems such as Amazon S3 / Google Cloud Storage, as well as store results there.
 
 
 
 Existing ML Platform integration
 --------------------------------
 
-You may already have an existing machine learning platform but want to use some subset of Ray's AIR libraries. For example, an ML engineer wants to use Ray within the ML Platform their organization has purchased (e.g., SageMaker, Vertex).
+You may already have an existing machine learning platform but want to use some subset of Ray's ML libraries. For example, an ML engineer wants to use Ray within the ML Platform their organization has purchased (e.g., SageMaker, Vertex).
 
 Ray can complement existing machine learning platforms by integrating with existing pipeline/workflow orchestrators, storage, and tracking services, without requiring a replacement of your entire ML platform.
 
@@ -49,7 +49,7 @@ Ray can complement existing machine learning platforms by integrating with exist
 
 In the above diagram:
 
-1. A workflow orchestrator such as AirFlow, Oozie, SageMaker Pipelines, etc. is responsible for scheduling and creating Ray clusters and running Ray AIR apps and services. The Ray AIR app may be part of a larger orchestrated workflow (e.g., Spark ETL, then Training on Ray).
+1. A workflow orchestrator such as AirFlow, Oozie, SageMaker Pipelines, etc. is responsible for scheduling and creating Ray clusters and running Ray apps and services. The Ray application may be part of a larger orchestrated workflow (e.g., Spark ETL, then Training on Ray).
 2. Lightweight orchestration of task graphs can be handled entirely within Ray. External workflow orchestrators will integrate nicely but are only needed if running non-Ray steps.
 3. Ray clusters can also be created for interactive use (e.g., Jupyter notebooks, Google Colab, Databricks Notebooks, etc.).
 4. Ray Train, Data, and Serve provide integration with Feature Stores like Feast for Training and Serving.

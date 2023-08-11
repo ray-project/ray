@@ -1,5 +1,5 @@
-Ray Data Ingest into AIR Trainers
-=================================
+Ray Data Ingest into Ray Train
+==============================
 
 .. seealso::
 

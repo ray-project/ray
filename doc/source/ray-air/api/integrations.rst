@@ -1,7 +1,7 @@
 .. _air-ml-integrations:
 
-Ray AIR Integrations with ML Libraries
-======================================
+Integrations with ML Libraries
+==============================
 
 .. currentmodule:: ray
 

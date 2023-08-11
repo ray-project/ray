@@ -287,9 +287,9 @@ tuner = Tuner(
 
 Aside from metrics, you may want to save the state of your trained model and any other artifacts to allow resumption from training failure and further inspection and usage. Those cannot be saved as metrics, as they are often far too large and may not be easily serializable. Finally, they should be persisted on disk or cloud storage to allow access after the Tune run is interrupted or terminated.
 
-Ray Train provides a [`Checkpoint`](checkpoint-api-ref) API for that purpose. `Checkpoint` objects can be created from various sources (dictionaries, directories, cloud storage) and used between different AIR components.
+Ray Train provides a [`Checkpoint`](checkpoint-api-ref) API for that purpose. `Checkpoint` objects can be created from various sources (dictionaries, directories, cloud storage).
 
-In Tune, `Checkpoints` are created by the user in their Trainable functions and reported using the optional `checkpoint` argument of `session.report`. `Checkpoints` can contain arbitrary data and can be freely passed around the Ray cluster. After a tuning run is over, `Checkpoints` can be [obtained from the results](/tune/examples/tune_analyze_results).
+In Ray Tune, `Checkpoints` are created by the user in their Trainable functions and reported using the optional `checkpoint` argument of `session.report`. `Checkpoints` can contain arbitrary data and can be freely passed around the Ray cluster. After a tuning run is over, `Checkpoints` can be [obtained from the results](/tune/examples/tune_analyze_results).
 
 Ray Tune can be configured to [automatically sync checkpoints to cloud storage](tune-storage-options), keep only a certain number of checkpoints to save space (with {class}`ray.air.config.CheckpointConfig`) and more.
 
