@@ -11,7 +11,7 @@ from transformers import (
 import ray.data
 from ray.train import ScalingConfig, Checkpoint
 from ray.train.torch import TorchTrainer
-from ray.train.huggingface import RayTrainReportCallback, prepare_trainer
+from ray.train.huggingface.transformers import RayTrainReportCallback, prepare_trainer
 from ray.train.tests._huggingface_data import train_data, validation_data
 
 from ray import tune

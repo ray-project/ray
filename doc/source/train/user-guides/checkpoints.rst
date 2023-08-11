@@ -183,14 +183,14 @@ appropriately in distributed training.
         
         **Option 1: Use Ray Train's default report callback**
         
-        We provide a simple callback implementation :class:`~ray.train.huggingface.RayTrainReportCallback` that 
+        We provide a simple callback implementation :class:`~ray.train.huggingface.transformers.RayTrainReportCallback` that 
         reports on checkpoint save. It collects the latest reported logs and report them together with the 
         latest saved checkpoint.
 
         .. code-block:: python
             :emphasize-lines: 11
 
-            from ray.train.huggingface import (
+            from ray.train.huggingface.transformers import (
                 RayTrainReportCallback,
                 prepare_trainer
             )

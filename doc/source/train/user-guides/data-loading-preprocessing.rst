@@ -164,7 +164,8 @@ Using Ray Data and Ray Train for distributed training on large datasets involves
                     eval_dataset=eval_iterable_ds,
                 )
 
-                trainer = ray.train.huggingface.prepare_trainer(trainer)
+                # Prepare your Transformers Trainer
+                trainer = ray.train.huggingface.transformers.prepare_trainer(trainer)
                 trainer.train()
 
             trainer = TorchTrainer(

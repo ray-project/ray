@@ -19,7 +19,7 @@ Ray Train Integrations
 PyTorch Ecosystem
 ~~~~~~~~~~~~~~~~~
 
-Scale out your PyTorch, Lightning, HuggingFace code with Ray TorchTrainer.
+Scale out your PyTorch, Lightning, Hugging Face code with Ray TorchTrainer.
 
 .. autosummary::
     :toctree: doc/
@@ -72,7 +72,7 @@ PyTorch Lightning
     ~train.lightning.LightningCheckpoint
     ~train.lightning.LightningPredictor
 
-HuggingFace Transformers
+Hugging Face Transformers
 ************************
 
 .. autosummary::
@@ -92,7 +92,7 @@ HuggingFace Transformers
     ~train.huggingface.TransformersTrainer
     ~train.huggingface.TransformersCheckpoint
 
-HuggingFace Accelerate
+Hugging Face Accelerate
 **********************
 
 .. autosummary::

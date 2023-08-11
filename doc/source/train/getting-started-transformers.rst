@@ -1,9 +1,9 @@
 .. _train-pytorch-transformers:
 
-Getting Started with HuggingFace Transformers
+Getting Started with Hugging Face Transformers
 =============================================
 
-This tutorial will walk you through the process of converting an existing HuggingFace Transformers script to use Ray Train.
+This tutorial will walk you through the process of converting an existing Hugging Face Transformers script to use Ray Train.
 
 By the end of this, you will learn how to:
 
@@ -32,15 +32,15 @@ Before we begin, you can expect that the final code will look something like thi
 2. Your `ScalingConfig` will define the number of distributed training workers and whether to use GPUs.
 3. Your `TorchTrainer` will launch the distributed training job.
 
-Let's compare a HuggingFace Transformers training script with and without Ray Train.
+Let's compare a Hugging Face Transformers training script with and without Ray Train.
 
 .. tabs::
 
-    .. group-tab:: HuggingFace Transformers
+    .. group-tab:: Hugging Face Transformers
 
         .. code-block:: python
 
-            # Adapted from HuggingFace tutorial: https://huggingface.co/docs/transformers/training
+            # Adapted from Hugging Face tutorial: https://huggingface.co/docs/transformers/training
 
             from datasets import load_dataset
             from transformers import AutoTokenizer
@@ -74,7 +74,7 @@ Let's compare a HuggingFace Transformers training script with and without Ray Tr
                 predictions = np.argmax(logits, axis=-1)
                 return metric.compute(predictions=predictions, references=labels)
 
-            # HuggingFace Trainer
+            # Hugging Face Trainer
             training_args = TrainingArguments(
                 output_dir="test_trainer", evaluation_strategy="epoch", report_to="none"
             )
@@ -92,7 +92,7 @@ Let's compare a HuggingFace Transformers training script with and without Ray Tr
 
                 
 
-    .. group-tab:: HuggingFace Transformers + Ray Train
+    .. group-tab:: Hugging Face Transformers + Ray Train
 
         .. code-block:: python
 
@@ -103,7 +103,7 @@ Let's compare a HuggingFace Transformers training script with and without Ray Tr
             import numpy as np
             import evaluate
 
-            import ray.train.huggingface
+            import ray.train.huggingface.transformers
             from ray.train import ScalingConfig
             from ray.train.torch import TorchTrainer
 
@@ -135,7 +135,7 @@ Let's compare a HuggingFace Transformers training script with and without Ray Tr
                     predictions = np.argmax(logits, axis=-1)
                     return metric.compute(predictions=predictions, references=labels)
 
-                # HuggingFace Trainer
+                # Hugging Face Trainer
                 training_args = TrainingArguments(
                     output_dir="test_trainer", evaluation_strategy="epoch", report_to="none"
                 )
@@ -149,11 +149,11 @@ Let's compare a HuggingFace Transformers training script with and without Ray Tr
                 )
 
                 # [2] Report Metrics and Checkpoints to Ray Train
-                callback = ray.train.huggingface.RayTrainReportCallback()
+                callback = ray.train.huggingface.transformers.RayTrainReportCallback()
                 trainer.add_callback(callback)
 
                 # [3] Prepare Transformers Trainer
-                trainer = ray.train.huggingface.prepare_trainer(trainer)
+                trainer = ray.train.huggingface.transformers.prepare_trainer(trainer)
 
                 # Start Training
                 trainer.train()
@@ -186,7 +186,7 @@ model initialization, transformers trainer definition and more.
 
 .. note::
 
-    If you are using HuggingFace Datasets or Evaluate, make sure to call ``datasets.load_dataset`` and ``evaluate.load`` 
+    If you are using Hugging Face Datasets or Evaluate, make sure to call ``datasets.load_dataset`` and ``evaluate.load`` 
     inside the training function. We do not recommend passing the loaded datasets and metrics from outside of the training 
     function, because it might cause serialization errors while transferring the objects to the workers.
 
@@ -195,18 +195,18 @@ Reporting metrics and checkpoints
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 To monitor progress, you can report intermediate metrics and checkpoints
-using the :class:`ray.train.huggingface.RayTrainReportCallback` utility callback.
+using the :class:`ray.train.huggingface.transformers.RayTrainReportCallback` utility callback.
 
                     
 .. code-block:: diff
 
      import transformers
-     import ray.train.huggingface
+     from ray.train.huggingface.transformers import RayTrainReportCallback
 
      def train_func(config):
          ...
          trainer = transformers.Trainer(...)
-    +    trainer.add_callback(ray.train.huggingface.RayTrainReportCallback())
+    +    trainer.add_callback(RayTrainReportCallback())
          ...
 
 Reporting metrics and checkpoints to Ray Train ensures that you can use Ray Tune and :ref:`fault-tolerant training <train-fault-tolerance>`.
@@ -218,19 +218,19 @@ Preparing your Transformers Trainer
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 Finally, pass your Transformers Trainer into
-:meth:`~ray.train.huggingface.prepare_trainer` to validate 
+:meth:`~ray.train.huggingface.transformers.prepare_trainer` to validate 
 your configurations and enable Ray Data Integration. 
 
 
 .. code-block:: diff
 
      import transformers
-     import ray.train.huggingface
+     import ray.train.huggingface.transformers
 
      def train_func(config):
          ...
          trainer = transformers.Trainer(...)
-    +    trainer = ray.train.huggingface.prepare_trainer(trainer)
+    +    trainer = ray.train.huggingface.transformers.prepare_trainer(trainer)
          trainer.train()
          ...
 
@@ -284,7 +284,7 @@ information about the training run, including the metrics and checkpoints report
 Next steps
 ---------- 
 
-Congratulations! You have successfully converted your HuggingFace Transformers training script to use Ray Train.
+Congratulations! You have successfully converted your Hugging Face Transformers training script to use Ray Train.
 
 * Head over to the :ref:`User Guides <train-user-guides>` to learn more about how to perform specific tasks.
 * Browse the :ref:`Examples <train-examples>` for end-to-end examples of how to use Ray Train.
@@ -301,7 +301,7 @@ to define `transformers.Trainer`, then runs a pre-defined training loop in a bla
 
 In Ray 2.7, we're pleased to introduce the newly unified :class:`~ray.train.torch.TorchTrainer` API, 
 which offers enhanced transparency, flexibility, and simplicity. This API is more aligned
-with standard HuggingFace Transformers scripts, ensuring users have better control over their 
+with standard Hugging Face Transformers scripts, ensuring users have better control over their 
 native Transformers training code.
 
 
@@ -351,7 +351,7 @@ native Transformers training code.
                     eval_dataset=eval_dataset,
                 )
 
-            # Build a Ray HuggingFaceTrainer
+            # Build a Ray TransformersTrainer
             scaling_config = ScalingConfig(num_workers=4, use_gpu=True)
             ray_trainer = TransformersTrainer(
                 trainer_init_per_worker=trainer_init_per_worker,
@@ -370,7 +370,10 @@ native Transformers training code.
             from datasets import load_dataset
 
             import ray
-            from ray.train.huggingface import TransformersTrainer
+            from ray.train.huggingface.transformers import (
+                RayTrainReportCallback,
+                prepare_trainer,
+            )
             from ray.train import ScalingConfig
 
             # Dataset
@@ -413,8 +416,11 @@ native Transformers training code.
                     eval_dataset=eval_iterable_ds,
                 )
 
-                # [3] Prepare your trainer
-                trainer = ray.train.huggingface.prepare_trainer(trainer)
+                # [3] Inject Ray Train Report Callback
+                trainer.add_callback(RayTrainReportCallback())
+
+                # [4] Prepare your trainer
+                trainer = prepare_trainer(trainer)
                 trainer.train()
 
             # Build a Ray TorchTrainer

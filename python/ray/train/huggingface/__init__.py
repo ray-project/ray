@@ -14,8 +14,6 @@ from ray.train.huggingface.transformers import (
     TransformersCheckpoint,
     TransformersPredictor,
     TransformersTrainer,
-    RayTrainReportCallback,
-    prepare_trainer,
 )
 
 __all__ = [
@@ -26,6 +24,4 @@ __all__ = [
     "TransformersCheckpoint",
     "TransformersPredictor",
     "TransformersTrainer",
-    "RayTrainReportCallback",
-    "prepare_trainer",
 ]
