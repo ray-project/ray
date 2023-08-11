@@ -195,7 +195,8 @@ class OperatorFusionRule(Rule):
 
         # Only fuse if the ops' remote arguments are compatible.
         if not _are_remote_args_compatible(
-            up_logical_op._ray_remote_args or {}, down_logical_op._ray_remote_args or {}
+            getattr(up_logical_op, "_ray_remote_args", {}),
+            getattr(down_logical_op, "_ray_remote_args", {}),
         ):
             return False
 
