@@ -1,6 +1,7 @@
 import pytest
 from typing import Callable
-
+import grpc
+from google.protobuf.any_pb2 import Any as AnyProto
 
 from ray.serve._private.grpc_util import (
     create_serve_grpc_server,
@@ -11,7 +12,7 @@ from ray.serve._private.grpc_util import (
 
 @pytest.fixture
 def fake_service_handler_factory(*args, **kwargs) -> Callable:
-    def foo() -> bytes:
+    def foo(*args, **kwargs) -> bytes:
         return b"foo"
 
     return foo
@@ -32,10 +33,11 @@ def test_dummy_servicer_can_take_any_methods():
 
 
 def test_create_serve_grpc_server(fake_service_handler_factory):
-    """
+    """Test `create_serve_grpc_server()` creates the correct server.
 
-    :param fake_service_handler_factory:
-    :return:
+    The server created by `create_serve_grpc_server()` should be an instance of
+    Serve defined `gRPCServer`. Also, the handler factory passed with the function
+    should be used to initialize the `gRPCServer`.
     """
     grpc_server = create_serve_grpc_server(
         service_handler_factory=fake_service_handler_factory
@@ -45,7 +47,29 @@ def test_create_serve_grpc_server(fake_service_handler_factory):
 
 
 def test_grpc_server(fake_service_handler_factory):
-    server = gRPCServer(
+    """Test `gRPCServer` did the correct overrides.
+
+    When a add_servicer_to_server function is called on an instance of `gRPCServer`,
+    it correctly overrides `response_serializer` to None, and `unary_unary` and
+    `unary_stream` to be generated from the factory function.
+    """
+    service_name = "ray.serve.ServeAPIService"
+    method_name = "ServeRoutes"
+
+    def add_test_servicer_to_server(servicer, server):
+        rpc_method_handlers = {
+            method_name: grpc.unary_unary_rpc_method_handler(
+                servicer.ServeRoutes,
+                request_deserializer=AnyProto.FromString,
+                response_serializer=AnyProto.SerializeToString,
+            ),
+        }
+        generic_handler = grpc.method_handlers_generic_handler(
+            service_name, rpc_method_handlers
+        )
+        server.add_generic_rpc_handlers((generic_handler,))
+
+    grpc_server = gRPCServer(
         thread_pool=None,
         generic_handlers=(),
         interceptors=(),
@@ -54,7 +78,27 @@ def test_grpc_server(fake_service_handler_factory):
         compression=None,
         service_handler_factory=fake_service_handler_factory,
     )
-    assert server.service_handler_factory == fake_service_handler_factory
+    dummy_servicer = DummyServicer()
+
+    # Ensure `generic_rpc_handlers` is not populated before calling
+    # the add_servicer_to_server function.
+    assert grpc_server.generic_rpc_handlers is None
+
+    add_test_servicer_to_server(dummy_servicer, grpc_server)
+
+    # `generic_rpc_handlers` should be populated after add_servicer_to_server is called.
+    assert len(grpc_server.generic_rpc_handlers) == 1
+
+    # The populated rpc handler should have the correct service name.
+    rpc_handler = grpc_server.generic_rpc_handlers[0]
+    assert rpc_handler.service_name() == service_name
+
+    # The populated method handlers should have the correct response_serializer,
+    # unary_unary, and unary_stream.
+    method_handlers = rpc_handler._method_handlers.get(f"/{service_name}/{method_name}")
+    assert method_handlers.response_serializer is None
+    assert method_handlers.unary_unary == b"foo"
+    assert method_handlers.unary_stream == b"foo"
 
 
 if __name__ == "__main__":

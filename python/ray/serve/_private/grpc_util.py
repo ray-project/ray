@@ -15,6 +15,7 @@ class gRPCServer(Server):
     def __init__(self, service_handler_factory, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.service_handler_factory = service_handler_factory
+        self.generic_rpc_handlers = None
 
     def add_generic_rpc_handlers(
         self, generic_rpc_handlers: Sequence[grpc.GenericRpcHandler]
@@ -45,6 +46,7 @@ class gRPCServer(Server):
             )
             serve_rpc_handlers[service_method] = serve_method_handler
         generic_rpc_handlers[0]._method_handlers = serve_rpc_handlers
+        self.generic_rpc_handlers = generic_rpc_handlers
         super().add_generic_rpc_handlers(generic_rpc_handlers)
 
 
