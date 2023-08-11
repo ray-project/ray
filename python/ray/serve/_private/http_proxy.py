@@ -998,6 +998,7 @@ class HTTPProxy(GenericProxy):
         handle: RayServeHandle,
         app_name: str,
     ) -> Tuple[RayServeHandle, str]:
+        handle = handle.options(request_protocol=RequestProtocol.HTTP)
         request_context_info = {
             "route": route_path,
             "app_name": app_name,

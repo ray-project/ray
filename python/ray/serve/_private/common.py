@@ -439,5 +439,6 @@ class gRPCRequest:
 
 
 class RequestProtocol(str, Enum):
+    UNDEFINED = "UNDEFINED"
     HTTP = "HTTP"
     GRPC = "gRPC"

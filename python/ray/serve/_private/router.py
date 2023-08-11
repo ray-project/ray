@@ -78,7 +78,7 @@ class RequestMetadata:
     is_streaming: bool = False
 
     # The protocol to serve this request
-    request_protocol: RequestProtocol = RequestProtocol.HTTP
+    request_protocol: RequestProtocol = RequestProtocol.UNDEFINED
 
     @property
     def is_http_request(self) -> bool:

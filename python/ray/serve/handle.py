@@ -62,7 +62,7 @@ class HandleOptions:
     method_name: str = "__call__"
     multiplexed_model_id: str = ""
     stream: bool = False
-    request_protocol: RequestProtocol = RequestProtocol.HTTP
+    request_protocol: RequestProtocol = RequestProtocol.UNDEFINED
     _router_cls: str = ""
 
     def copy_and_update(
