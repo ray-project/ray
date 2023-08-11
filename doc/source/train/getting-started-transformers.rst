@@ -391,7 +391,7 @@ native Transformers training code.
 
                 # [2] Build Ray Data iterables
                 train_dataset = ray.train.get_dataset_shard("train")
-                eval_dataset = ray.train.get_dataset_shard("eval")
+                eval_dataset = ray.train.get_dataset_shard("evaluation")
 
                 train_iterable_ds = train_dataset.iter_torch_batches(batch_size=8)
                 eval_iterable_ds = eval_dataset.iter_torch_batches(batch_size=8)

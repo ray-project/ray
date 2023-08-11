@@ -25,13 +25,11 @@ rules:
         - "doc/source/train/getting-started-pytorch.rst"
         - "doc/source/train/getting-started-transformers.rst"
         - "doc/source/train/user-guides/checkpoints.rst"
-        - "doc/source/train/user-guides/converting-existing-training-loop.rst"
         - "doc/source/train/user-guides/data-loading-preprocessing.rst"
         - "doc/source/train/user-guides/experiment-tracking.rst"
         - "doc/source/train/user-guides/monitoring-logging.rst"
         - "doc/source/train/user-guides/persistent-storage.rst"
         - "doc/source/train/user-guides/using-gpus.rst"
-        - "doc/source/train/user-guides/migration-guides.rst"
         - "doc/source/train/distributed-tensorflow-keras.rst"
         - "doc/source/train/horovod.rst"
 

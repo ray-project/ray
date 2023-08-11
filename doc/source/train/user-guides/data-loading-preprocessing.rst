@@ -177,11 +177,18 @@ Using Ray Data and Ray Train for distributed training on large datasets involves
 
 Migrating from PyTorch DataLoader
 ---------------------------------
-If you're currently using PyTorch Datasets and DataLoaders, you can migrate to Ray Data for working with distributed datasets.
+
+Some deep learning frameworks provide their own dataloading utilities. For example:
+
+- PyTorch: `PyTorch Dataset & DataLoader <https://pytorch.org/tutorials/beginner/basics/data_tutorial.html>`
+- HuggingFace: `HuggingFace Dataset <https://huggingface.co/docs/datasets/index>`
+- PyTorch Lightning: `LightningDataModule <https://lightning.ai/docs/pytorch/stable/data/datamodule.html>`
+
+You can still use the aforementioned utilities in Ray Train. However, for more performant large-scale data ingestion, you should consider migrating to Ray Data.
 
 PyTorch Datasets are replaced by the :class:`Dataset <ray.data.Dataset>` abtraction, and the PyTorch DataLoader is replaced by :meth:`Dataset.iter_torch_batches() <ray.data.Dataset.iter_torch_batches>`.
 
-For more details, see the :ref:`Ray Data PyTorch guide <migrate_pytorch>`.
+For more details, see the :ref:`Ray Data PyTorch guide <migrate_pytorch>` and :ref:`Ray Data for HuggingFace and TensorFlow <loading_datasets_from_ml_libraries>`.
 
 .. _train_datasets_configuration:
 
@@ -478,4 +485,3 @@ When developing or hyperparameter tuning models, reproducibility is important du
 * `local_shuffle_seed` argument to :meth:`iter_batches <ray.data.DataIterator.iter_batches>`
 
 **Step 3:** Follow the best practices for enabling reproducibility for your training framework of choice. For example, see the `Pytorch reproducibility guide <https://pytorch.org/docs/stable/notes/randomness.html>`_.
-
