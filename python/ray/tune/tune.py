@@ -677,6 +677,20 @@ def run(
             f"Got '{type(config)}' instead."
         )
 
+    trainable = (
+        run_or_experiment.run_identifier
+        if isinstance(run_or_experiment, Experiment)
+        else run_or_experiment
+    )
+    if not is_function_trainable(trainable):
+        # Don't allow the new code-path on class trainables.
+        if _use_storage_context():
+            logger.warning(
+                "Using the new persistence mode is not supported yet for "
+                "class Trainables. Falling back to the legacy syncing behavior. "
+            )
+        os.environ["RAY_AIR_NEW_PERSISTENCE_MODE"] = "0"
+
     if _use_storage_context():
         local_path, remote_path = None, None
         # TODO(justinvyu): Fix telemetry for the new persistence.
@@ -789,11 +803,6 @@ def run(
     # If reuse_actors is unset, default to False for string and class trainables,
     # and default to True for everything else (i.e. function trainables)
     if reuse_actors is None:
-        trainable = (
-            run_or_experiment.run_identifier
-            if isinstance(run_or_experiment, Experiment)
-            else run_or_experiment
-        )
         reuse_actors = (
             # Only default to True for function trainables that meet certain conditions
             is_function_trainable(trainable)
