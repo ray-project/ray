@@ -714,5 +714,33 @@ def test_status_package_unavailable_in_controller(ray_start_stop):
     wait_for_condition(check_for_failed_deployment, timeout=15)
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
+def test_replica_placement_group_options(ray_start_stop):
+    """Test that placement group options can be set via config file."""
+
+    config_file_name = os.path.join(
+        os.path.dirname(__file__), "test_config_files", "replica_placement_groups.yaml"
+    )
+
+    subprocess.check_output(["serve", "deploy", config_file_name])
+
+    def check_application_status():
+        cli_output = subprocess.check_output(
+            ["serve", "status", "-a", "http://localhost:52365/"]
+        )
+        status = yaml.safe_load(cli_output)["applications"]
+        # TODO(zcin): fix error handling in the application state manager for
+        # invalid override options and check for `DEPLOY_FAILED` here.
+        return (
+            status["valid"]["status"] == "RUNNING"
+            # and status["invalid_bundles"] == "DEPLOY_FAILED"
+            and status["invalid_bundles"]["status"] == "DEPLOYING"
+            # and status["invalid_strategy"] == "DEPLOY_FAILED"
+            and status["invalid_strategy"]["status"] == "DEPLOYING"
+        )
+
+    wait_for_condition(check_application_status, timeout=15)
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))
