@@ -94,7 +94,14 @@ class RewardPredictor(tf.keras.Model):
         z = tf.reshape(tf.cast(z, tf.float32), shape=(z_shape[0], -1))
         assert len(z.shape) == 2
         out = tf.concat([h, z], axis=-1)
-        out.set_shape([None, 32*32 + 4096])
+        out.set_shape([
+            None,
+            (
+                get_num_z_categoricals(self.model_size)
+                * get_num_z_classes(self.model_size)
+                + get_gru_units(self.model_size)
+            ),
+        ])
         # Send h-cat-z through MLP.
         out = self.mlp(out)
         # Return a) mean reward OR b) a tuple: (mean reward, logits over the reward

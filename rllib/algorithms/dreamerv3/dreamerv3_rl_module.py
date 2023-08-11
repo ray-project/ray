@@ -45,6 +45,7 @@ class DreamerV3RLModule(RLModule, abc.ABC):
         # Build the world model (containing encoder and decoder).
         self.world_model = WorldModel(
             model_size=model_size,
+            observation_space=self.config.observation_space,
             action_space=self.config.action_space,
             batch_length_T=T,
             encoder=self.encoder,

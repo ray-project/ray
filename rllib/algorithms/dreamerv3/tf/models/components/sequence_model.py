@@ -59,15 +59,16 @@ class SequenceModel(tf.keras.Model):
         """
         super().__init__(name="sequence_model")
 
-        num_gru_units = get_gru_units(model_size, override=num_gru_units)
+        self.model_size = model_size
         self.action_space = action_space
+        num_gru_units = get_gru_units(self.model_size, override=num_gru_units)
 
         # In Danijar's code, there is an additional layer (units=[model_size])
         # prior to the GRU (but always only with 1 layer), which is not mentioned in
         # the paper.
         self.pre_gru_layer = MLP(
             num_dense_layers=1,
-            model_size=model_size,
+            model_size=self.model_size,
             output_layer_size=None,
         )
         self.gru_unit = tf.keras.layers.GRU(
@@ -88,8 +89,8 @@ class SequenceModel(tf.keras.Model):
             tf.TensorSpec(shape=[None, num_gru_units], dtype=tf.float32),
             tf.TensorSpec(shape=[
                 None,
-                get_num_z_categoricals(model_size),
-                get_num_z_classes(model_size),
+                get_num_z_categoricals(self.model_size),
+                get_num_z_classes(self.model_size),
             ], dtype=tf.float32),
         ])(self.call)
 
@@ -108,7 +109,14 @@ class SequenceModel(tf.keras.Model):
         z_shape = tf.shape(z)
         z = tf.reshape(tf.cast(z, tf.float32), shape=(z_shape[0], -1))
         out = tf.concat([z, a], axis=-1)
-        out.set_shape([None, 32*32 + self.action_space.n])
+        out.set_shape([
+            None,
+            (
+                get_num_z_categoricals(self.model_size)
+                * get_num_z_classes(self.model_size)
+                + self.action_space.n
+            ),
+        ])
         # Pass through pre-GRU layer.
         out = self.pre_gru_layer(out)
         # Pass through (time-major) GRU.

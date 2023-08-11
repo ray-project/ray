@@ -129,7 +129,14 @@ class CriticNetwork(tf.keras.Model):
         z = tf.reshape(tf.cast(z, tf.float32), shape=(z_shape[0], -1))
         assert len(z.shape) == 2
         out = tf.concat([h, z], axis=-1)
-        out.set_shape([None, 32*32 + 4096])
+        out.set_shape([
+            None,
+            (
+                get_num_z_categoricals(self.model_size)
+                * get_num_z_classes(self.model_size)
+                + get_gru_units(self.model_size)
+            ),
+        ])
 
         if not use_ema:
             print("INSIDE CRITIC call use_ema=False")

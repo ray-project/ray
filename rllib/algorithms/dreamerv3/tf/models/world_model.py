@@ -60,6 +60,7 @@ class WorldModel(tf.keras.Model):
         self,
         *,
         model_size: str = "XS",
+        observation_space: gym.Space,
         action_space: gym.Space,
         batch_length_T: int = 64,
         encoder: tf.keras.Model,
@@ -72,7 +73,8 @@ class WorldModel(tf.keras.Model):
         Args:
              model_size: The "Model Size" used according to [1] Appendinx B.
                 Use None for manually setting the different network sizes.
-             action_space: The action space the our environment used.
+             observation_space: The observation space of the environment used.
+             action_space: The action space of the environment used.
              batch_length_T: The length (T) of the sequences used for training. The
                 actual shape of the input data (e.g. rewards) is then: [B, T, ...],
                 where B is the "batch size", T is the "batch length" (this arg) and
@@ -104,6 +106,7 @@ class WorldModel(tf.keras.Model):
         self.model_size = model_size
         self.batch_length_T = batch_length_T
         self.symlog_obs = symlog_obs
+        self.observation_space = observation_space
         self.action_space = action_space
 
         # Encoder (latent 1D vector generator) (xt -> lt).
