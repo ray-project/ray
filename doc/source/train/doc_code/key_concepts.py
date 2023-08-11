@@ -70,7 +70,8 @@ def train_fn(config):
     for i in range(state["step"], 10):
         state["step"] += 1
         train.report(
-            metrics={"step": state["step"]}, checkpoint=Checkpoint.from_dict(state)
+            metrics={"step": state["step"], "loss": (100 - i) / 100},
+            checkpoint=Checkpoint.from_dict(state),
         )
 
 
@@ -160,12 +161,48 @@ run_config = RunConfig(
 # __checkpoint_config_ckpt_freq_end__
 
 
-# __results_start__
+# __result_metrics_start__
 result = trainer.fit()
 
-# Print metrics
 print("Observed metrics:", result.metrics)
+# __result_metrics_end__
 
-checkpoint_data = result.checkpoint.to_dict()
-print("Checkpoint data:", checkpoint_data["step"])
-# __results_end__
+
+# __result_dataframe_start__
+df = result.metrics_dataframe
+print("Minimum loss", min(df["loss"]))
+# __result_dataframe_end__
+
+
+# __result_checkpoint_start__
+print("Last checkpoint:", result.checkpoint)
+
+with result.checkpoint.as_directory() as tmpdir:
+    # Load model from directory
+    ...
+# __result_checkpoint_end__
+
+# __result_best_checkpoint_start__
+# Print available checkpoints
+for checkpoint, metrics in result.best_checkpoints:
+    print("Loss", metrics["loss"], "checkpoint", checkpoint)
+
+# Get checkpoint with minimal loss
+lowest_loss_checkpoint = min(result.best_checkpoints, key=lambda bc: bc[1]["loss"])[0]
+
+with lowest_loss_checkpoint.as_directory() as tmpdir:
+    # Load model from directory
+    ...
+# __result_best_checkpoint_end__
+
+# __result_path_start__
+print("Results location", result.path)
+# __result_path_end__
+
+
+# __result_error_start__
+if result.error:
+    assert isinstance(result.error, Exception)
+
+    print("Got exception:", result.error)
+# __result_error_end__
