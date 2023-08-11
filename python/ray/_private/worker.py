@@ -878,7 +878,13 @@ def get_neuron_core_ids() -> List[str]:
     [0, NEURON_CORES - 1], where NEURON_CORES is the number of neuron_cores
     that the node has.
 
+    Returns:
+        A list of NEURON_CORE IDs.
+
+    Examples:
+
     .. code-block:: python
+
         import os
         import ray
 
@@ -892,10 +898,6 @@ def get_neuron_core_ids() -> List[str]:
 
         neuron_core_actor = NeuronCoreActor.remote()
         ray.get(neuron_core_actor.g.remote())
-
-
-    Returns:
-        A list of NEURON_CORE IDs.
     """
     neuron_regex = (
         f"^{ray._private.utils.get_neuron_core_constraint_name()}_group_[0-9A-Za-z]+$"
