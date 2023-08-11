@@ -100,39 +100,7 @@ class DreamerV3RLModule(RLModule, abc.ABC):
             actions=_convert_to_tf(test_actions.astype(np.float32)),
             is_first=_convert_to_tf(np.ones((B, T), np.float32)),
             start_is_terminated_BxT=_convert_to_tf(np.zeros((B * T,), np.float32)),
-            #horizon_H=horizon_H,
-            #gamma=gamma,
         )
-        """# World model.
-        results = self.world_model.forward_train(
-            _convert_to_tf(test_obs),  # observations
-            _convert_to_tf(test_actions.astype(np.float32)),
-            _convert_to_tf(np.ones((B, T), np.float32)),
-        )
-        # Actor.
-        _, distr_params = self.actor(
-            h=results["h_states_BxT"],
-            z=results["z_posterior_states_BxT"],
-        )
-        # Critic.
-        values = self.critic(
-            h=results["h_states_BxT"],
-            z=results["z_posterior_states_BxT"],
-            use_ema=False,
-        )
-        # Critic (EMA copy).
-        values_ema = self.critic(
-            h=results["h_states_BxT"], z=results["z_posterior_states_BxT"], use_ema=True
-        )
-
-        # Dream pipeline.
-        self.dreamer_model.dream_trajectory(
-            start_states={
-                "h": results["h_states_BxT"],
-                "z": results["z_posterior_states_BxT"],
-            },
-            start_is_terminated=_convert_to_tf(np.zeros((B * T,), np.float32)),
-        )"""
 
         # Initialize the critic EMA net:
         print("INIT EMA critic")

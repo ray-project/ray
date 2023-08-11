@@ -99,14 +99,7 @@ class DreamerV3Learner(Learner):
             module_id=module_id, hps=hps, timestep=timestep
         )
 
-        # Initialize the critic EMA net after the first learning update (when model is
-        # finally completely built):
-        #if not hasattr(self, "_ema_initialized"):
-        #    print("INIT EMA critic")
-        #    self.module[module_id].critic.init_ema()
-        #    self._ema_initialized = True
         # Update EMA weights of the critic.
-        #else:
         print("UPDATE EMA critic")
         self.module[module_id].critic.update_ema()
 

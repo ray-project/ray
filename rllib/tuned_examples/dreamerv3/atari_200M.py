@@ -19,7 +19,6 @@ num_gpus = 1
 
 config = (
     DreamerV3Config()
-    #.framework(eager_tracing=False)
     .resources(
         num_learner_workers=0 if num_gpus == 1 else num_gpus,
         num_gpus_per_learner_worker=1 if num_gpus else 0,
