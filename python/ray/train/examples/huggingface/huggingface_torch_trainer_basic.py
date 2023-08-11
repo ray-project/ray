@@ -2,7 +2,6 @@
 from datasets import load_dataset
 from transformers import AutoTokenizer
 from transformers import AutoModelForSequenceClassification
-from transformers import TrainingArguments
 from transformers import TrainingArguments, Trainer
 import numpy as np
 import evaluate
@@ -11,6 +10,8 @@ from ray.train.huggingface.transformers import (
     prepare_trainer,
     RayTrainReportCallback,
 )
+from ray.train import ScalingConfig
+from ray.train.torch import TorchTrainer
 
 
 def train_func(config):
@@ -61,9 +62,6 @@ def train_func(config):
     # Start Training
     trainer.train()
 
-
-from ray.train import ScalingConfig
-from ray.train.torch import TorchTrainer
 
 trainer = TorchTrainer(
     train_func, scaling_config=ScalingConfig(num_workers=4, use_gpu=True)
