@@ -209,24 +209,26 @@ class TestReadBigQuery:
 class TestWriteBigQuery:
     """Tests for BigQuery Write."""
 
-    def test_do_write(self, ray_remote_function_mock):
+    def test_do_write(self):
         bq_ds = BigQueryDatasource()
-        write_tasks_list = bq_ds.do_write(
-            blocks=[1, 2, 3, 4],
-            metadata=[1, 2, 3, 4],
-            ray_remote_args={},
+        arr = pa.array([2, 4, 5, 100])
+        block = pa.Table.from_arrays([arr], names=["data"])
+        status = bq_ds.write(
+            blocks=[block],
+            ctx=None,
             project_id=_TEST_GCP_PROJECT_ID,
             dataset=_TEST_BQ_DATASET,
         )
-        assert len(write_tasks_list) == 4
+        assert status == "ok"
 
     def test_do_write_dataset_exists(self, ray_remote_function_mock):
         bq_ds = BigQueryDatasource()
-        write_tasks_list = bq_ds.do_write(
-            blocks=[1, 2, 3, 4],
-            metadata=[1, 2, 3, 4],
-            ray_remote_args={},
+        arr = pa.array([2, 4, 5, 100])
+        block = pa.Table.from_arrays([arr], names=["data"])
+        status = bq_ds.write(
+            blocks=[block],
+            ctx=None,
             project_id=_TEST_GCP_PROJECT_ID,
-            dataset=_TEST_BQ_DATASET,
+            dataset="existingdataset" + "." + _TEST_BQ_TABLE_ID,
         )
-        assert len(write_tasks_list) == 4
+        assert status == "ok"
