@@ -520,7 +520,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
                 self._replicas_updated_event.clear()
                 await self._replicas_updated_event.wait()
                 logger.info(
-                    "Got replicas for deployment {self._deployment_name}, waking up.",
+                    f"Got replicas for deployment {self._deployment_name}, waking up.",
                     extra={"log_to_stderr": False},
                 )
 
