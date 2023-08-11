@@ -95,6 +95,8 @@ parts:
             sections:
               - file: train/examples/pytorch/torch_fashion_mnist_example
                 title: "PyTorch Fashion MNIST Example"
+              - file: train/examples/transformers/transformers_torch_trainer_basic
+                title: "HuggingFace Transformers Basic Example"
               - file: train/examples/lightning/lightning_mnist_example
                 title: "PyTorch Lightning Basic Example"
               - file: train/examples/lightning/lightning_cola_advanced
