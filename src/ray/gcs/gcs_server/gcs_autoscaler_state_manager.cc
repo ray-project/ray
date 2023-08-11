@@ -60,6 +60,7 @@ void GcsAutoscalerStateManager::HandleReportAutoscalingState(
   // Right now, this info will only be used for observability, i.e. ray status.
 
   // Never seen any autoscaling state before - so just takes this.
+  // just to trigger build
   if (!autoscaling_state_.has_value()) {
     autoscaling_state_ = std::move(request.autoscaling_state());
     send_reply_callback(ray::Status::OK(), nullptr, nullptr);
