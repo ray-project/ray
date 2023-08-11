@@ -91,6 +91,11 @@ class _TrainingRunMetadata:
 
         return self._cached_json
 
-    def restore_from_json(self, json_state: str):
-        data = json.loads(json_state, cls=TuneFunctionDecoder)
-        self.__dict__.update(data)
+    @classmethod
+    def from_json_state(cls, json_state: str) -> "_TrainingRunMetadata":
+        state = json.loads(json_state, cls=TuneFunctionDecoder)
+
+        run_metadata = cls()
+        run_metadata.__dict__.update(state)
+
+        return run_metadata

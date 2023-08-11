@@ -278,9 +278,9 @@ def test_load_trial_from_json_state(tmpdir):
     )
 
     # After loading, the trial state should be the same
-    json_state = trial.get_json_state()
+    json_state, _ = trial.get_json_state()
     new_trial = Trial.from_json_state(json_state, stub=True)
-    assert new_trial.get_json_state() == json_state
+    assert new_trial.get_json_state()[0] == json_state
 
 
 def test_change_trial_local_dir(tmpdir):

@@ -980,11 +980,11 @@ class ExperimentAnalysis:
             self.trials = []
             for (
                 trial_json_state,
-                trial_runtime_state,
+                trial_run_metadata,
             ), path in self._checkpoints_and_paths:
                 try:
                     trial = Trial.from_json_state(trial_json_state, stub=True)
-                    trial.restore_runtime_state(trial_runtime_state)
+                    trial.restore_run_metadata(trial_run_metadata)
                     # TODO(justinvyu): [handle_moved_storage_path]
                     if not _use_storage_context():
                         trial.local_experiment_path = str(path)

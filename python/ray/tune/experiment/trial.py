@@ -1199,9 +1199,9 @@ class Trial:
 
     def get_json_state(self) -> Tuple[str, str]:
         if self._state_json is None:
-            self._state_json = json.dumps(
-                self.__getstate__(), indent=2, cls=TuneFunctionEncoder
-            )
+            state = self.__getstate__()
+            state.pop("run_metadata", None)
+            self._state_json = json.dumps(state, indent=2, cls=TuneFunctionEncoder)
 
         runtime_metadata_json = self.run_metadata.get_json_state()
 
@@ -1221,8 +1221,8 @@ class Trial:
 
         return new_trial
 
-    def restore_runtime_state(self, runtime_state: str):
-        self.run_metadata.restore_from_json(runtime_state)
+    def restore_run_metadata(self, run_metadata: str):
+        self.run_metadata = _TrainingRunMetadata.from_json_state(run_metadata)
 
     @classmethod
     def from_directory(
@@ -1249,7 +1249,6 @@ class Trial:
             state[key] = binary_to_hex(cloudpickle.dumps(state.get(key)))
 
         state.pop("temporary_state", None)
-        state.pop("run_metadata", None)
 
         state["_state_json"] = None
         state["_default_result_or_future"] = None
@@ -1270,5 +1269,7 @@ class Trial:
 
         if not self.stub:
             validate_trainable(self.trainable_name)
+
+        self.temporary_state = _TemporaryTrialState()
 
         assert self.placement_group_factory

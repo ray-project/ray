@@ -528,7 +528,7 @@ class TuneController:
         trials = []
         for trial_json_state, trial_runtime_metadata in runner_state["trial_data"]:
             trial = Trial.from_json_state(trial_json_state)
-            trial.restore_runtime_state(trial_runtime_metadata)
+            trial.restore_run_metadata(trial_runtime_metadata)
 
             # The following properties may be updated on restoration
             # Ex: moved local/cloud experiment directory
