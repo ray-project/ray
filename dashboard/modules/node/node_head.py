@@ -7,6 +7,12 @@ import grpc
 import aiohttp.web
 
 import ray._private.utils
+from ray.dashboard.consts import GCS_RPC_TIMEOUT_SECONDS
+
+from ray.autoscaler._private.util import (
+    LoadMetricsSummary,
+    get_per_node_breakdown_as_dict,
+)
 import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.optional_utils as dashboard_optional_utils
 import ray.dashboard.utils as dashboard_utils
@@ -22,6 +28,10 @@ from ray.dashboard.modules.node import node_consts
 from ray.dashboard.modules.node.node_consts import (
     FREQUENTY_UPDATE_NODES_INTERVAL_SECONDS,
     FREQUENT_UPDATE_TIMEOUT_SECONDS,
+)
+from ray._private.ray_constants import (
+    DEBUG_AUTOSCALING_ERROR,
+    DEBUG_AUTOSCALING_STATUS,
 )
 from ray.dashboard.utils import async_loop_forever
 
@@ -235,14 +245,45 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
             **self.get_internal_states(),
         )
 
+    async def get_nodes_logical_resources(self) -> dict:
+        (status_string, error) = await asyncio.gather(
+            *[
+                self._gcs_aio_client.internal_kv_get(
+                    key.encode(), namespace=None, timeout=GCS_RPC_TIMEOUT_SECONDS
+                )
+                for key in [
+                    DEBUG_AUTOSCALING_STATUS,
+                    DEBUG_AUTOSCALING_ERROR,
+                ]
+            ]
+        )
+
+        status_dict = json.loads(status_string)
+
+        lm_summary_dict = status_dict.get("load_metrics_report")
+        if lm_summary_dict:
+            lm_summary = LoadMetricsSummary(**lm_summary_dict)
+
+        node_logical_resources = get_per_node_breakdown_as_dict(lm_summary)
+        return node_logical_resources if error is None else {}
+
     @routes.get("/nodes")
     @dashboard_optional_utils.aiohttp_cache
     async def get_all_nodes(self, req) -> aiohttp.web.Response:
         view = req.query.get("view")
         if view == "summary":
-            all_node_summary = await DataOrganizer.get_all_node_summary()
+            all_node_summary_task = DataOrganizer.get_all_node_summary()
+            nodes_logical_resource_task = self.get_nodes_logical_resources()
+
+            all_node_summary, nodes_logical_resources = await asyncio.gather(
+                all_node_summary_task, nodes_logical_resource_task
+            )
+
             return dashboard_optional_utils.rest_response(
-                success=True, message="Node summary fetched.", summary=all_node_summary
+                success=True,
+                message="Node summary fetched.",
+                summary=all_node_summary,
+                node_logical_resources=nodes_logical_resources,
             )
         elif view is not None and view.lower() == "hostNameList".lower():
             alive_hostnames = set()
