@@ -67,19 +67,6 @@ class TfLearner(Learner):
         if gpus:
             for gpu in gpus:
                 tf.config.experimental.set_memory_growth(gpu, True)
-                try:
-                    tf.config.experimental.set_virtual_device_configuration(
-                        gpu,
-                        [
-                            tf.config.experimental.VirtualDeviceConfiguration(
-                                #memory_limit=1024,
-                                report_tensor_allocations_upon_oom=True,
-                            ),
-                        ],
-                    )
-                except RuntimeError as e:
-                    # Virtual devices must be set before GPUs have been initialized
-                    print(e)
 
         super().__init__(
             framework_hyperparameters=(
