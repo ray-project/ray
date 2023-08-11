@@ -436,8 +436,8 @@ class StorageContext:
     def __init__(
         self,
         storage_path: Optional[str],
-        sync_config: SyncConfig,
         experiment_dir_name: str,
+        sync_config: Optional[SyncConfig] = None,
         storage_filesystem: Optional[pyarrow.fs.FileSystem] = None,
         trial_dir_name: Optional[str] = None,
         current_checkpoint_index: int = 0,
@@ -452,7 +452,9 @@ class StorageContext:
         self.experiment_dir_name = experiment_dir_name
         self.trial_dir_name = trial_dir_name
         self.current_checkpoint_index = current_checkpoint_index
-        self.sync_config = dataclasses.replace(sync_config)
+        self.sync_config = (
+            dataclasses.replace(sync_config) if sync_config else SyncConfig()
+        )
 
         self.storage_filesystem, self.storage_fs_path = get_fs_and_path(
             self.storage_path, storage_filesystem
