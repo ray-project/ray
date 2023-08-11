@@ -288,7 +288,6 @@
     - |
       cleanup() {
         if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi
-        python python/ray/tests/kuberay/setup/teardown_kuberay.py || true
         kind delete cluster
       }
       trap cleanup EXIT
