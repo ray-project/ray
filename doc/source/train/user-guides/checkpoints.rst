@@ -21,8 +21,8 @@ Saving checkpoints
 ------------------
 
 :ref:`Checkpoints <checkpoint-api-ref>` can be saved by calling ``train.report(metrics, checkpoint=Checkpoint(...))`` in the
-training function. This will cause the checkpoint state from the distributed
-workers to be saved on the ``Trainer`` (where your python script is executed).
+training function. This will saves the checkpoint from the distributed workers to the ``storage_path``. The metrics here are 
+tied to the checkpoint and are used to filter the top k checkpoints. 
 
 The latest saved checkpoint can be accessed through the ``checkpoint`` attribute of
 the :py:class:`~ray.air.result.Result`, and the best saved checkpoints can be accessed by the ``best_checkpoints``
@@ -176,34 +176,73 @@ appropriately in distributed training.
                         ray.train.report(metrics=metrics, checkpoint=checkpoint)
 
 
-    .. tab-item:: HuggingFace Transformers
+    .. tab-item:: Hugging Face Transformers
 
-        Ray Train leverages HuggingFace Transformers Trainer's Callback interface 
+        Ray Train leverages HuggingFace Transformers Trainer's Callback 
         to report metrics and checkpoints. 
         
         **Option 1: Use Ray Train's default report callback**
         
         We provide a simple callback implementation :class:`~ray.train.huggingface.transformers.RayTrainReportCallback` that 
-        reports on checkpoint save. It collects the latest reported logs and report them together with the 
+        reports on checkpoint save. It collects the latest logged metrics and report them together with the 
         latest saved checkpoint.
 
         .. code-block:: python
-            :emphasize-lines: 11
+            :emphasize-lines: 51,52
 
             from ray.train.huggingface.transformers import (
                 RayTrainReportCallback,
                 prepare_trainer
             )
             from ray.train.torch import TorchTrainer
+            from transformers import TrainingArguments
 
             def train_func(config):
                 ...
 
-                trainer = transformers.Trainer(...)
+                # Properly configure the `logging_strategy`, `save_strategy`, and 
+                # `evaluation_strategy` to ensure that the monitoring metrics
+                # are always logged at the same step of checkpoint saving.
 
+                # Valid configurations for eval metrics
+                args = TrainingArguments(
+                    ...,
+                    evaluation_strategy="epoch",
+                    save_strategy="epoch",
+                )
+
+                args = TrainingArguments(
+                    ...,
+                    evaluation_strategy="steps",
+                    save_strategy="steps",
+                    eval_steps=100,
+                    save_steps=100,
+                )
+
+                args = TrainingArguments(
+                    ...,
+                    evaluation_strategy="steps",
+                    save_strategy="steps",
+                    eval_steps=50,
+                    save_steps=100,
+                )
+
+                # Invalid configuration for eval metrics
+                invalid_args = TrainingArguments(
+                    ...,
+                    evaluation_strategy="steps",
+                    save_strategy="steps",
+                    save_steps=100,
+                    eval_steps=70,
+                )
+
+                trainer = transformers.Trainer(args, ...)
+
+                # Add a report callback to transformers Trainer
+                # =============================================
                 trainer.add_callback(RayTrainReportCallback())
-                
                 trainer = prepare_trainer(trainer)
+
                 trainer.train()
             
             ray_trainer = TorchTrainer(
@@ -211,26 +250,11 @@ appropriately in distributed training.
                 run_config=RunConfig(
                     checkpoint_config=CheckpointConfig(
                         num_to_keep=3,
-                        checkpoint_score_attribute="eval_loss",
+                        checkpoint_score_attribute="eval_loss", # The monitoring metric
                         checkpoint_score_order="min",
                     )
                 )
             )
-        
-        You should properly configure the `logging_strategy`, `save_strategy` 
-        and `evaluation_strategy`, so that at the checkpoint saving step, transformers 
-        trainer also reports the latest monitoring metrics (e.g. `eval_loss` in the above case).
-
-        For example, if we want to keep the top-k checkpoint regards to metric `eval_loss`, 
-        you need to make sure that evaluation happens at the same step of checkpoint saving.
-
-        Several valid strategy settings are:
-        - `save_strategy = evaluation_strategy = "epoch"`
-        - `save_strategy = evaluation_strategy = "steps"`, `save_steps % eval_steps == 0`
-
-        Several invalid configurations can be:
-        - Set different strategies: `save_strategy != evaluation_strategy`
-        - Set the same strategy but with mismatched frequency: `save_steps % eval_steps != 0` 
 
         **Option 2: Implement your customized report callback**
 

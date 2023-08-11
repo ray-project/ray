@@ -109,6 +109,7 @@ Let's compare a Hugging Face Transformers training script with and without Ray T
 
             # [1] Encapsulate data preprocessing, training, and evaluation 
             # logic in a training function
+            # ============================================================
             def train_func(config):
                 # Datasets
                 dataset = load_dataset("yelp_review_full")
@@ -149,16 +150,19 @@ Let's compare a Hugging Face Transformers training script with and without Ray T
                 )
 
                 # [2] Report Metrics and Checkpoints to Ray Train
+                # ===============================================
                 callback = ray.train.huggingface.transformers.RayTrainReportCallback()
                 trainer.add_callback(callback)
 
                 # [3] Prepare Transformers Trainer
+                # ================================
                 trainer = ray.train.huggingface.transformers.prepare_trainer(trainer)
 
                 # Start Training
                 trainer.train()
 
-            # Define a Ray TorchTrainer that launchs `train_func` on all workers
+            # [4] Define a Ray TorchTrainer to launch `train_func` on all workers
+            # ===================================================================
             ray_trainer = TorchTrainer(
                 train_func, scaling_config=ScalingConfig(num_workers=4, use_gpu=True)
             )
@@ -361,7 +365,7 @@ native Transformers training code.
             result = ray_trainer.fit()
                 
 
-    .. group-tab:: TorchTrainer
+    .. group-tab:: (New API) TorchTrainer
 
         .. code-block:: python
             
@@ -387,12 +391,14 @@ native Transformers training code.
             ray_eval_ds = ray.data.from_huggingface(processed_ds["evaluation"])
 
             # [1] Define the full training function
+            # =====================================
             def train_func(config):
                 MODEL_NAME = "gpt2"
                 model_config = AutoConfig.from_pretrained(MODEL_NAME)
                 model = AutoModelForCausalLM.from_config(model_config)
 
                 # [2] Build Ray Data iterables
+                # ============================
                 train_dataset = ray.train.get_dataset_shard("train")
                 eval_dataset = ray.train.get_dataset_shard("evaluation")
 
@@ -417,9 +423,11 @@ native Transformers training code.
                 )
 
                 # [3] Inject Ray Train Report Callback
+                # ====================================
                 trainer.add_callback(RayTrainReportCallback())
 
                 # [4] Prepare your trainer
+                # ========================
                 trainer = prepare_trainer(trainer)
                 trainer.train()
 
