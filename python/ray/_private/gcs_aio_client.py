@@ -56,7 +56,9 @@ class GcsAioClient:
         self._nums_reconnect_retry = nums_reconnect_retry
 
     def _connect(self):
+        print("vct connecting")
         self._gcs_client._connect()
+        print("vct connected")
 
     @property
     def address(self):

@@ -648,7 +648,11 @@ class Node:
             last_ex = None
             try:
                 gcs_address = self.gcs_address
-                client = GcsClient(address=gcs_address)
+                client = GcsClient(
+                    address=gcs_address,
+                    cluster_id=self._ray_params.cluster_id,
+                )
+                self.cluster_id = client.get_cluster_id()
                 if self.head:
                     # Send a simple request to make sure GCS is alive
                     # if it's a head node.
@@ -664,19 +668,26 @@ class Node:
                 time.sleep(1)
 
         if self._gcs_client is None:
-            with open(os.path.join(self._logs_dir, "gcs_server.err")) as err:
-                # Use " C " or " E " to exclude the stacktrace.
-                # This should work for most cases, especitally
-                # it's when GCS is starting. Only display last 10 lines of logs.
-                errors = [e for e in err.readlines() if " C " in e or " E " in e][-10:]
-            error_msg = "\n" + "".join(errors) + "\n"
-            raise RuntimeError(
-                f"Failed to {'start' if self.head else 'connect to'} GCS. "
-                f" Last {len(errors)} lines of error files:"
-                f"{error_msg}."
-                f"Please check {os.path.join(self._logs_dir, 'gcs_server.out')}"
-                " for details"
-            )
+            if hasattr(self, "_logs_dir"):
+                with open(os.path.join(self._logs_dir, "gcs_server.err")) as err:
+                    # Use " C " or " E " to exclude the stacktrace.
+                    # This should work for most cases, especitally
+                    # it's when GCS is starting. Only display last 10 lines of logs.
+                    errors = [e for e in err.readlines() if " C " in e or " E " in e][
+                        -10:
+                    ]
+                error_msg = "\n" + "".join(errors) + "\n"
+                raise RuntimeError(
+                    f"Failed to {'start' if self.head else 'connect to'} GCS. "
+                    f" Last {len(errors)} lines of error files:"
+                    f"{error_msg}."
+                    f"Please check {os.path.join(self._logs_dir, 'gcs_server.out')}"
+                    " for details"
+                )
+            else:
+                raise RuntimeError(
+                    f"Failed to {'start' if self.head else 'connect to'} GCS."
+                )
 
         ray.experimental.internal_kv._initialize_internal_kv(self._gcs_client)
 
@@ -1064,6 +1075,7 @@ class Node:
             self._ray_params.node_manager_port,
             self._raylet_socket_name,
             self._plasma_store_socket_name,
+            self.cluster_id,
             self._ray_params.worker_path,
             self._ray_params.setup_worker_path,
             self._ray_params.storage,
