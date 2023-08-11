@@ -374,8 +374,9 @@ def set_cuda_visible_devices(gpu_ids):
     last_set_gpu_ids = gpu_ids
 
 
-def set_aws_neuron_core_visible_ids(neuron_core_ids):
-    """Set the NEURON_RT_VISIBLE_CORES environment variable.
+def set_aws_neuron_core_visible_ids(neuron_core_ids: List[str]):
+    """Set the NEURON_RT_VISIBLE_CORES environment variable based on
+    given neuron_core_ids.
 
     Args:
         neuron_core_ids (List[str]): List of strings representing core IDs.
@@ -414,6 +415,7 @@ def get_neuron_core_constraint_name():
         (str) The constraint name.
     """
     import ray.util.accelerators.accelerators as accelerators
+
     return get_constraint_name(accelerators.AWS_NEURON_CORE)
 
 

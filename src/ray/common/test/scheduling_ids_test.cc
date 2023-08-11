@@ -55,12 +55,13 @@ TEST_F(SchedulingIDsTest, UnitInstanceResourceTest) {
       R"(
 {
   "predefined_unit_instance_resources": "CPU,GPU",
-  "custom_unit_instance_resources": "custom1"
+  "custom_unit_instance_resources": "num_neuron_cores,custom1"
 }
   )");
   ASSERT_TRUE(ResourceID::CPU().IsUnitInstanceResource());
   ASSERT_TRUE(ResourceID::GPU().IsUnitInstanceResource());
   ASSERT_TRUE(ResourceID("custom1").IsUnitInstanceResource());
+  ASSERT_TRUE(ResourceID("num_neuron_cores").IsUnitInstanceResource());
 
   ASSERT_FALSE(ResourceID::Memory().IsUnitInstanceResource());
   ASSERT_FALSE(ResourceID("custom2").IsUnitInstanceResource());

@@ -869,7 +869,7 @@ def get_gpu_ids():
 
 @DeveloperAPI()
 @client_mode_hook
-def get_neuron_core_ids():
+def get_neuron_core_ids() -> List[str]:
     """Get the IDs of the NeuronCores that are available to the worker.
 
     If the NEURON_RT_VISIBLE_CORES environment variable was set when the worker
@@ -877,6 +877,22 @@ def get_neuron_core_ids():
     IDs in NEURON_RT_VISIBLE_CORES. If not, the IDs will fall in the range
     [0, NEURON_CORES - 1], where NEURON_CORES is the number of neuron_cores
     that the node has.
+
+    .. code-bloc:: python
+        import os
+        import ray
+
+        ray.init(resources={"num_neuron_cores": 2})
+
+        @ray.remote(resources={"num_neuron_cores": 1})
+        class NeuronCoreActor:
+            def g(self):
+                print("ray.get_neuron_core_ids(): {}".format(ray.get_neuron_core_ids()))
+                print("NEURON_RT_VISIBLE_CORES: {}".format(os.environ["NEURON_RT_VISIBLE_CORES"])) # noqa
+
+        neuron_core_actor = NeuronCoreActor.remote()
+        ray.get(neuron_core_actor.g.remote())
+
 
     Returns:
         A list of NEURON_CORE IDs.
@@ -906,7 +922,17 @@ def get_neuron_core_ids():
     return assigned_ids
 
 
-def _get_all_resource_ids(resource_name: str, resource_regex: str):
+def _get_all_resource_ids(resource_name: str, resource_regex: str) -> List[str]:
+    """
+    Get the IDs of all resources that are available to the worker.
+
+    Args:
+        resource_name: The name of the resource.
+        resource_regex: A regex string to match the resource name.
+
+    Returns:
+        A list of resource IDs.
+    """
     worker = global_worker
     worker.check_connected()
 
