@@ -646,24 +646,3 @@ class StorageContext:
     def _make_checkpoint_dir_name(index: int):
         """Get the name of the checkpoint directory, given an index."""
         return f"checkpoint_{index:06d}"
-
-
-_storage_context: Optional[StorageContext] = None
-
-
-def init_shared_storage_context(storage_context: StorageContext):
-    """StorageContext can be made a global singleton by calling this method.
-
-    This singleton is only created on the initialization of remote Trainable actors.
-    On the driver, there is no global singleton, since each trial has its own
-    trial_dir_name."""
-    global _storage_context
-    _storage_context = storage_context
-
-
-def get_storage_context() -> StorageContext:
-    assert _storage_context, (
-        "You must first call `init_shared_storage_context` in order to access a "
-        "global shared copy of StorageContext."
-    )
-    return _storage_context

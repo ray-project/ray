@@ -34,11 +34,7 @@ from ray.train.base_trainer import (  # noqa: F401
     TrainingFailedError,
 )
 from ray.util.annotations import DeveloperAPI
-from ray.train._internal.storage import (
-    _use_storage_context,
-    StorageContext,
-    get_storage_context,
-)
+from ray.train._internal.storage import _use_storage_context, StorageContext
 
 
 T = TypeVar("T")
@@ -77,10 +73,6 @@ class TrainingIterator:
         # TODO(justinvyu): report/checkpoint should be combined into a single
         # TrainingResult event. There's no need to do these one at a time.
         self._checkpoint_to_report = None
-
-        self._storage = None
-        if _use_storage_context():
-            self._storage = get_storage_context()
 
         self._start_training(
             train_func=train_func,
