@@ -73,6 +73,20 @@ def _check_usage_record(op_names: List[str], clear_after_check: Optional[bool] =
             _recorded_operators.clear()
 
 
+def _check_valid_plan_and_result(
+    ds,
+    expected_plan,
+    expected_result,
+    expected_physical_plan_stages=None,
+):
+    assert ds.take_all() == expected_result
+    assert str(ds._plan._logical_plan.dag) == expected_plan
+
+    expected_physical_plan_stages = expected_physical_plan_stages or []
+    for stage in expected_physical_plan_stages:
+        assert stage in ds.stats(), f"Stage {stage} not found: {ds.stats()}"
+
+
 def test_read_operator(ray_start_regular_shared, enable_optimizer):
     planner = Planner()
     op = Read(ParquetDatasource(), [], 0)
@@ -1307,43 +1321,38 @@ def test_limit_pushdown(ray_start_regular_shared, enable_optimizer):
     def f2(x):
         return x
 
-    def check_valid_plan_and_result(ds, expected_plan, expected_result):
-        ds.take_all()
-        assert str(ds._plan._logical_plan.dag) == expected_plan
-        assert ds.take_all() == expected_result
-
     # Test basic limit pushdown past Map.
     ds = ray.data.range(100, parallelism=100).map(f1).limit(1)
-    check_valid_plan_and_result(
+    _check_valid_plan_and_result(
         ds, "Read[ReadRange] -> Limit[limit=1] -> MapRows[Map(f1)]", [{"id": 0}]
     )
 
     # Test basic Limit -> Limit fusion.
     ds2 = ray.data.range(100).limit(5).limit(100)
-    check_valid_plan_and_result(
+    _check_valid_plan_and_result(
         ds2, "Read[ReadRange] -> Limit[limit=5]", [{"id": i} for i in range(5)]
     )
 
     ds2 = ray.data.range(100).limit(100).limit(5)
-    check_valid_plan_and_result(
+    _check_valid_plan_and_result(
         ds2, "Read[ReadRange] -> Limit[limit=5]", [{"id": i} for i in range(5)]
     )
 
     ds2 = ray.data.range(100).limit(50).limit(80).limit(5).limit(20)
-    check_valid_plan_and_result(
+    _check_valid_plan_and_result(
         ds2, "Read[ReadRange] -> Limit[limit=5]", [{"id": i} for i in range(5)]
     )
 
     # Test limit pushdown and Limit -> Limit fusion together.
     ds3 = ray.data.range(100).limit(5).map(f1).limit(100)
-    check_valid_plan_and_result(
+    _check_valid_plan_and_result(
         ds3,
         "Read[ReadRange] -> Limit[limit=5] -> MapRows[Map(f1)]",
         [{"id": i} for i in range(5)],
     )
 
     ds3 = ray.data.range(100).limit(100).map(f1).limit(5)
-    check_valid_plan_and_result(
+    _check_valid_plan_and_result(
         ds3,
         "Read[ReadRange] -> Limit[limit=5] -> MapRows[Map(f1)]",
         [{"id": i} for i in range(5)],
@@ -1351,14 +1360,14 @@ def test_limit_pushdown(ray_start_regular_shared, enable_optimizer):
 
     # Test basic limit pushdown up to Sort.
     ds4 = ray.data.range(100).sort("id").limit(5)
-    check_valid_plan_and_result(
+    _check_valid_plan_and_result(
         ds4,
         "Read[ReadRange] -> Sort[Sort] -> Limit[limit=5]",
         [{"id": i} for i in range(5)],
     )
 
     ds4 = ray.data.range(100).sort("id").map(f1).limit(5)
-    check_valid_plan_and_result(
+    _check_valid_plan_and_result(
         ds4,
         "Read[ReadRange] -> Sort[Sort] -> Limit[limit=5] -> MapRows[Map(f1)]",
         [{"id": i} for i in range(5)],
@@ -1367,7 +1376,7 @@ def test_limit_pushdown(ray_start_regular_shared, enable_optimizer):
     ds5 = ray.data.range(100, parallelism=100).map(f1).limit(1).map(f2)
     # Limit operators get pushed down in the logical plan optimization,
     # then fused together.
-    check_valid_plan_and_result(
+    _check_valid_plan_and_result(
         ds5,
         "Read[ReadRange] -> Limit[limit=1] -> MapRows[Map(f1)] -> MapRows[Map(f2)]",
         [{"id": 0}],
@@ -1377,7 +1386,7 @@ def test_limit_pushdown(ray_start_regular_shared, enable_optimizer):
 
     # More complex interweaved case.
     ds6 = ray.data.range(100).sort("id").map(f1).limit(20).sort("id").map(f2).limit(5)
-    check_valid_plan_and_result(
+    _check_valid_plan_and_result(
         ds6,
         "Read[ReadRange] -> Sort[Sort] -> Limit[limit=20] -> MapRows[Map(f1)] -> "
         "Sort[Sort] -> Limit[limit=5] -> MapRows[Map(f2)]",
