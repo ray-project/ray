@@ -2,6 +2,7 @@ import os
 import sys
 from tempfile import TemporaryDirectory
 from unittest import mock
+from typing import List
 
 import pytest
 
@@ -11,9 +12,13 @@ from ci.ray_ci.runner import (
     _get_test_targets,
     _get_flaky_test_targets,
 )
+from ci.ray_ci.utils import chunk_into_n
 
 
 def test_get_test_targets() -> None:
+    def _mock_shard_tests(tests: List[str], workers: int, worker_id: int) -> List[str]:
+        return chunk_into_n(tests, workers)[worker_id]
+
     _TEST_YAML = "flaky_tests: [//python/ray/tests:flaky_test_01]"
 
     with TemporaryDirectory() as tmp:
@@ -28,6 +33,8 @@ def test_get_test_targets() -> None:
             "",
         ]
         with mock.patch(
+            "ci.ray_ci.runner.shard_tests", side_effect=_mock_shard_tests
+        ), mock.patch(
             "subprocess.check_output",
             return_value="\n".join(test_targets).encode("utf-8"),
         ):
