@@ -65,7 +65,7 @@ logger = logging.getLogger(__file__)
 @PublicAPI(stability="beta")
 def start(
     detached: bool = False,
-    proxy_location: Optional[Union[str, DeploymentMode]] = None,
+    proxy_location: Optional[Union[str, DeploymentMode]] = DeploymentMode.EveryNode,
     http_options: Optional[Union[dict, HTTPOptions]] = None,
     dedicated_cpu: bool = False,
     **kwargs,
@@ -84,11 +84,17 @@ def start(
 
     Args:
         detached: [DEPRECATED: in the future, this will always be `True`]
-          Whether not the instance should be detached from this
+          Whether or not the instance should be detached from this
           script. If set, the instance will live on the Ray cluster until it is
           explicitly stopped with serve.shutdown().
 
-        proxy_location = DeploymentMode.HeadOnly
+        proxy_location: Where to run proxies that handle ingress traffic to the
+          cluster. Supported options are:
+            - "EveryNode": run one proxy on every node in the cluster.
+              This is the default.
+            - "HeadOnly": run only one proxy on the head node of the cluster.
+            - "NoServer" or None: disable the proxies entirely.
+
         http_options: HTTP-related configuration options for the cluster. These can
           be passed as an unstructured dictionary or the structured `HTTPOptions` class.
           Supported options:
