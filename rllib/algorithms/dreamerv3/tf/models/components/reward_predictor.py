@@ -55,6 +55,7 @@ class RewardPredictor(tf.keras.Model):
                 `lower_bound` and `upper_bound`.
         """
         super().__init__(name="reward_predictor")
+        self.model_size = model_size
 
         self.mlp = MLP(
             model_size=model_size,

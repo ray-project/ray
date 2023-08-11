@@ -37,6 +37,7 @@ class ContinuePredictor(tf.keras.Model):
                 Determines the exact size of the underlying MLP.
         """
         super().__init__(name="continue_predictor")
+        self.model_size = model_size
         self.mlp = MLP(model_size=model_size, output_layer_size=1)
 
         # Trace self.call.

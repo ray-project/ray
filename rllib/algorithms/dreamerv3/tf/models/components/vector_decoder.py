@@ -41,6 +41,8 @@ class VectorDecoder(tf.keras.Model):
         """
         super().__init__(name="vector_decoder")
 
+        self.model_size = model_size
+
         assert (
             isinstance(observation_space, gym.spaces.Box)
             and len(observation_space.shape) == 1
@@ -75,6 +77,14 @@ class VectorDecoder(tf.keras.Model):
         z = tf.reshape(tf.cast(z, tf.float32), shape=(z_shape[0], -1))
         assert len(z.shape) == 2
         out = tf.concat([h, z], axis=-1)
+        out.set_shape([
+            None,
+            (
+                get_num_z_categoricals(self.model_size)
+                * get_num_z_classes(self.model_size)
+                + get_gru_units(self.model_size)
+            ),
+        ])
         # Send h-cat-z through MLP to get mean values of diag gaussian.
         loc = self.mlp(out)
 

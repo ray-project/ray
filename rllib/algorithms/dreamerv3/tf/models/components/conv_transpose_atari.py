@@ -53,7 +53,8 @@ class ConvTransposeAtari(tf.keras.Model):
         """
         super().__init__(name="image_decoder")
 
-        cnn_multiplier = get_cnn_multiplier(model_size, override=cnn_multiplier)
+        self.model_size = model_size
+        cnn_multiplier = get_cnn_multiplier(self.model_size, override=cnn_multiplier)
 
         # The shape going into the first Conv2DTranspose layer.
         # We start with a 4x4 channels=8 "image".
