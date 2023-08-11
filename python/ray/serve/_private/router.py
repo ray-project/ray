@@ -254,6 +254,10 @@ class ReplicaScheduler(ABC):
     def update_running_replicas(self, running_replicas: List[RunningReplicaInfo]):
         pass
 
+    @property
+    def curr_replicas(self) -> Dict[str, ReplicaWrapper]:
+        pass
+
 
 @dataclass
 class PendingRequest:
@@ -749,6 +753,12 @@ class RoundRobinReplicaScheduler(ReplicaScheduler):
         self.multiplexed_replicas_table: Dict[
             str, List[RunningReplicaInfo]
         ] = defaultdict(list)
+
+    @property
+    def curr_replicas(self) -> Dict[str, ReplicaWrapper]:
+        return {
+            r.replica_tag: ActorReplicaWrapper(r) for r in self.in_flight_queries.keys()
+        }
 
     def _reset_replica_iterator(self):
         """Reset the iterator used to load balance replicas.
