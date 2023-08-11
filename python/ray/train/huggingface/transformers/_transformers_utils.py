@@ -259,13 +259,18 @@ class RayTrainReportCallback(TrainerCallback):
     def on_save(self, args, state, control, **kwargs):
         """Event called after a checkpoint save."""
         with TemporaryDirectory() as tmpdir:
-            metrics = state.log_history[-1] if state.log_history else {}
+            # Aggregate all the logged metrics
+            metrics = {}
+            for log in state.log_history:
+                metrics.update(log)
 
+            # Copy ckpt files and construct a Ray Train Checkpoint
             source_ckpt_path = transformers.trainer.get_last_checkpoint(args.output_dir)
             target_ckpt_path = os.path.join(tmpdir, "checkpoint")
             shutil.copytree(source_ckpt_path, target_ckpt_path)
             checkpoint = Checkpoint.from_directory(tmpdir)
 
+            # Report latest metrics and checkpoint to Ray Train
             ray.train.report(metrics=metrics, checkpoint=checkpoint)
 
 
