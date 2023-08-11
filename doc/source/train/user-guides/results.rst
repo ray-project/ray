@@ -1,7 +1,7 @@
 Inspecting Training Results
 ===========================
 
-The return value of your :meth:`Trainer.fit() <ray.train.base_trainer.BaseTrainer.fit>`
+The return value of your :meth:`Trainer.fit() <ray.train.trainer.BaseTrainer.fit>`
 call is a :class:`~ray.air.result.Result` object.
 
 The :class:`~ray.air.result.Result` object contains, among others:
@@ -13,7 +13,7 @@ The :class:`~ray.air.result.Result` object contains, among others:
 Last reported metrics
 ---------------------
 
-Use :attr:`Result.metrics <ray.air.result.Result.metrics>` to retrieve the
+Use :py:attr:`Result.metrics <ray.air.result.Result.metrics>` to retrieve the
 latest reported metrics.
 
 This corresponds to the metrics you passed to :func:`train.report <ray.train.report>`
@@ -26,7 +26,7 @@ as an argument :ref:`in your training function <train-monitoring-and-logging>`.
 
 Dataframe of all reported metrics
 ---------------------------------
-Use :attr:`Result.metrics_dataframe <ray.air.result.Result.metrics_dataframe>` to retrieve
+Use :py:attr:`Result.metrics_dataframe <ray.air.result.Result.metrics_dataframe>` to retrieve
 a pandas DataFrame of all reported metrics.
 
 .. literalinclude:: ../doc_code/key_concepts.py
@@ -37,7 +37,7 @@ a pandas DataFrame of all reported metrics.
 
 Last saved checkpoint
 ---------------------
-Use :attr:`Result.checkpoint <ray.air.result.Result.checkpoint>` to retrieve the
+Use :py:attr:`Result.checkpoint <ray.air.result.Result.checkpoint>` to retrieve the
 last checkpoint.
 
 This corresponds to the checkpoint you passed to :func:`train.report <ray.train.report>`
@@ -56,7 +56,7 @@ after more training due to overfitting, you may want to retrieve the checkpoint 
 the lowest loss.
 
 You can retrieve a list of all available checkpoints and their metrics with
-:attr:`Result.best_checkpoints <ray.air.result.Result.best_checkpoints>`
+:py:attr:`Result.best_checkpoints <ray.air.result.Result.best_checkpoints>`
 
 .. literalinclude:: ../doc_code/key_concepts.py
     :language: python
