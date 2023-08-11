@@ -131,8 +131,9 @@ if __name__ == "__main__":
         local_path="../../../dashboard",
     )
 
-    for package in args.extras:
-        do_link(package, force=args.yes, skip_list=args.skip)
+    if args.extras is not None:
+        for package in args.extras:
+            do_link(package, force=args.yes, skip_list=args.skip)
 
     print(
         "Created links.\n\nIf you run into issues initializing Ray, please "
