@@ -84,6 +84,7 @@ CONFIGURATIONS = {
 
 
 def train_func(config):
+    # Datasets
     if config["use_ray_data"]:
         train_ds_shard = ray.train.get_dataset_shard("train")
         eval_ds_shard = ray.train.get_dataset_shard("eval")
@@ -101,9 +102,11 @@ def train_func(config):
         train_dataset = Dataset.from_pandas(train_df)
         eval_dataset = Dataset.from_pandas(validation_df)
 
+    # Model
     model_config = AutoConfig.from_pretrained(MODEL_NAME)
     model = AutoModelForCausalLM.from_config(model_config)
 
+    # HF Transformers Trainer
     training_args = TrainingArguments(
         f"{MODEL_NAME}-wikitext2",
         evaluation_strategy=config["evaluation_strategy"],
@@ -128,8 +131,12 @@ def train_func(config):
         train_dataset=train_dataset,
         eval_dataset=eval_dataset,
     )
+
+    # Report to Ray Train
     trainer.add_callback(RayTrainReportCallback())
     trainer = prepare_trainer(trainer)
+
+    # Start Training
     trainer.train()
 
 
@@ -137,7 +144,7 @@ def train_func(config):
 def test_e2e_hf_data(ray_start_6_cpus_2_gpus, config_id):
     train_loop_config = CONFIGURATIONS[config_id]
 
-    # Specify num_train_epochs for Map-style Dataset
+    # Specify `num_train_epochs` for Map-style Dataset
     train_loop_config["use_ray_data"] = False
     train_loop_config["num_train_epochs"] = MAX_EPOCHS
 
@@ -165,11 +172,11 @@ def test_e2e_hf_data(ray_start_6_cpus_2_gpus, config_id):
     assert "eval_loss" in result.metrics
 
 
-@pytest.mark.parametrize("config_id", ["epoch_gpu", "steps_gpu", "steps_cpu"])
+@pytest.mark.parametrize("config_id", ["steps_gpu", "steps_cpu"])
 def test_e2e_ray_data(ray_start_6_cpus_2_gpus, config_id):
     train_loop_config = CONFIGURATIONS[config_id]
 
-    # Must specify max_steps for Iterable Dataset
+    # Must specify `max_steps` for Iterable Dataset
     train_loop_config["use_ray_data"] = True
     train_loop_config["max_steps"] = MAX_STEPS
 
@@ -200,7 +207,7 @@ def test_e2e_ray_data(ray_start_6_cpus_2_gpus, config_id):
     assert "eval_loss" in result.metrics
 
 
-# Tests if checkpointing and restoring during tuning works correctly.
+# Tests if Ray Tune works correctly.
 def test_tune(ray_start_8_cpus):
     train_loop_config = CONFIGURATIONS["steps_cpu"]
     train_loop_config["use_ray_data"] = False

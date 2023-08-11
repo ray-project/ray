@@ -2,7 +2,7 @@ import os
 import logging
 import shutil
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Iterator, Optional, Tuple, Type
+from typing import Any, Iterator, Optional, Tuple, Type
 from tempfile import TemporaryDirectory
 
 from torch.utils.data import DataLoader, Dataset, IterableDataset
@@ -263,6 +263,8 @@ class RayTrainReportCallback(TrainerCallback):
 
 
 class RayTorchIterableDataset(IterableDataset):
+    """Wrapper class for ray data iterables."""
+
     def __init__(self, data_iterable) -> None:
         super().__init__()
         self.data_iterable = data_iterable
@@ -285,13 +287,10 @@ def prepare_trainer(trainer: Trainer) -> Trainer:
     class RayTransformersTrainer(base_trainer_class):
         """A Wrapper of `transformers.Trainer` for Ray Data Integration."""
 
-        def get_train_dataloader(self):
+        def get_train_dataloader(self) -> DataLoader:
             if isinstance(self.train_dataset, _IterableFromIterator):
-                return DataLoader(
-                    RayTorchIterableDataset(self.train_dataset),
-                    batch_size=1,
-                    collate_fn=lambda x: x[0],
-                )
+                dataset = RayTorchIterableDataset(self.train_dataset)
+                return DataLoader(dataset, batch_size=1, collate_fn=lambda x: x[0])
             else:
                 return super().get_train_dataloader()
 
@@ -302,11 +301,8 @@ def prepare_trainer(trainer: Trainer) -> Trainer:
                 eval_dataset = self.eval_dataset
 
             if isinstance(eval_dataset, _IterableFromIterator):
-                return DataLoader(
-                    RayTorchIterableDataset(eval_dataset),
-                    batch_size=1,
-                    collate_fn=lambda x: x[0],
-                )
+                dataset = RayTorchIterableDataset(eval_dataset)
+                return DataLoader(dataset, batch_size=1, collate_fn=lambda x: x[0])
             else:
                 return super().get_eval_dataloader(eval_dataset)
 
