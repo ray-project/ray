@@ -19,6 +19,8 @@ from ray.data.block import Block, BlockMetadata, _CallableClassProtocol
 from ray.data.context import DataContext
 from ray.types import ObjectRef
 
+from ray.data._internal.execution.operators.map_data_processor import MapDataProcessor
+
 logger = DatasetLogger(__name__)
 
 # Higher values here are better for prefetching and locality. It's ok for this to be
@@ -46,8 +48,7 @@ class ActorPoolMapOperator(MapOperator):
 
     def __init__(
         self,
-        transform_fn: Callable[[Iterator[Block]], Iterator[Block]],
-        init_fn: Callable[[], None],
+        map_data_processor: MapDataProcessor,
         input_op: PhysicalOperator,
         autoscaling_policy: "AutoscalingPolicy",
         name: str = "ActorPoolMap",
@@ -70,9 +71,8 @@ class ActorPoolMapOperator(MapOperator):
             ray_remote_args: Customize the ray remote args for this op's tasks.
         """
         super().__init__(
-            transform_fn, input_op, name, min_rows_per_bundle, ray_remote_args
+            map_data_processor, input_op, name, min_rows_per_bundle, ray_remote_args
         )
-        self._init_fn = init_fn
         self._ray_remote_args = self._apply_default_remote_args(self._ray_remote_args)
         self._min_rows_per_bundle = min_rows_per_bundle
 
@@ -86,9 +86,6 @@ class ActorPoolMapOperator(MapOperator):
         self._cls = None
         # Whether no more submittable bundles will be added.
         self._inputs_done = False
-
-    def get_init_fn(self) -> Callable[[], None]:
-        return self._init_fn
 
     def internal_queue_size(self) -> int:
         return len(self._bundle_queue)
@@ -131,7 +128,7 @@ class ActorPoolMapOperator(MapOperator):
         """Start a new actor and add it to the actor pool as a pending actor."""
         assert self._cls is not None
         ctx = DataContext.get_current()
-        actor = self._cls.remote(ctx, src_fn_name=self.name, init_fn=self._init_fn)
+        actor = self._cls.remote(ctx, src_fn_name=self.name, map_data_processor=self._map_data_processor)
         res_ref = actor.get_location.remote()
 
         def _task_done_callback(res_ref):
@@ -177,7 +174,7 @@ class ActorPoolMapOperator(MapOperator):
             input_blocks = [block for block, _ in bundle.blocks]
             ctx = TaskContext(task_idx=self._next_data_task_idx)
             gen = actor.submit.options(num_returns="streaming", name=self.name).remote(
-                self._transform_fn_ref, ctx, *input_blocks
+                *input_blocks
             )
 
             def _task_done_callback(actor_to_return):
@@ -357,24 +354,22 @@ class _MapWorker:
     """An actor worker for MapOperator."""
 
     def __init__(
-        self, ctx: DataContext, src_fn_name: str, init_fn: _CallableClassProtocol
+        self, ctx: DataContext, src_fn_name: str, map_data_processor: MapDataProcessor
     ):
         DataContext._set_current(ctx)
         self.src_fn_name: str = src_fn_name
-
+        self._map_data_processor = map_data_processor
         # Initialize state for this actor.
-        init_fn()
+        self._map_data_processor.init()
 
     def get_location(self) -> NodeIdStr:
         return ray.get_runtime_context().get_node_id()
 
     def submit(
         self,
-        fn: Callable[[Iterator[Block], TaskContext], Iterator[Block]],
-        ctx,
         *blocks: Block,
     ) -> Iterator[Union[Block, List[BlockMetadata]]]:
-        yield from _map_task(fn, ctx, *blocks)
+        yield from self._map_data_processor.process(*blocks)
 
     def __repr__(self):
         return f"MapWorker({self.src_fn_name})"

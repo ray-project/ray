@@ -16,7 +16,6 @@ from ray.data._internal.compute import (
 from ray.data._internal.execution.interfaces import (
     ExecutionOptions,
     ExecutionResources,
-    MapTransformFn,
     PhysicalOperator,
     RefBundle,
     TaskContext,
@@ -35,6 +34,8 @@ from ray.data.block import Block, BlockAccessor, BlockExecStats, BlockMetadata
 from ray.data.context import DataContext
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
+from ray.data._internal.execution.operators.map_data_processor import MapDataProcessor
+
 
 class MapOperator(OneToOneOperator, ABC):
     """A streaming operator that maps input bundles 1:1 to output bundles.
@@ -45,7 +46,7 @@ class MapOperator(OneToOneOperator, ABC):
 
     def __init__(
         self,
-        transform_fn: MapTransformFn,
+        map_data_processor: MapDataProcessor,
         input_op: PhysicalOperator,
         name: str,
         min_rows_per_bundle: Optional[int],
@@ -55,7 +56,7 @@ class MapOperator(OneToOneOperator, ABC):
         # instead.
         # NOTE: This constructor must be called by subclasses.
 
-        self._transform_fn = transform_fn
+        self._map_data_processor = map_data_processor
         self._ray_remote_args = _canonicalize_ray_remote_args(ray_remote_args or {})
         self._ray_remote_args_factory = None
         self._remote_args_for_metrics = copy.deepcopy(self._ray_remote_args)
@@ -80,9 +81,8 @@ class MapOperator(OneToOneOperator, ABC):
     @classmethod
     def create(
         cls,
-        transform_fn: MapTransformFn,
+        map_data_processor: MapDataProcessor,
         input_op: PhysicalOperator,
-        init_fn: Optional[Callable[[], None]] = None,
         name: str = "Map",
         # TODO(ekl): slim down ComputeStrategy to only specify the compute
         # config and not contain implementation code.
@@ -118,7 +118,7 @@ class MapOperator(OneToOneOperator, ABC):
             )
 
             return TaskPoolMapOperator(
-                transform_fn,
+                map_data_processor,
                 input_op,
                 name=name,
                 min_rows_per_bundle=min_rows_per_bundle,
@@ -136,14 +136,8 @@ class MapOperator(OneToOneOperator, ABC):
             )
             autoscaling_policy = AutoscalingPolicy(autoscaling_config)
 
-            if init_fn is None:
-
-                def init_fn():
-                    pass
-
             return ActorPoolMapOperator(
-                transform_fn,
-                init_fn,
+                map_data_processor,
                 input_op,
                 autoscaling_policy=autoscaling_policy,
                 name=name,
@@ -187,7 +181,7 @@ class MapOperator(OneToOneOperator, ABC):
 
         # Put the function def in the object store to avoid repeated serialization
         # in case it's large (i.e., closure captures large objects).
-        self._transform_fn_ref = ray.put(self._transform_fn)
+        self._map_data_processor_ref = ray.put(self._map_data_processor)
 
     def add_input(self, refs: RefBundle, input_index: int):
         assert input_index == 0, input_index
@@ -346,8 +340,8 @@ class MapOperator(OneToOneOperator, ABC):
     def get_stats(self) -> StatsDict:
         return {self._name: self._output_metadata}
 
-    def get_transformation_fn(self) -> MapTransformFn:
-        return self._transform_fn
+    # def get_transformation_fn(self) -> MapTransformFn:
+    #     return self._transform_fn
 
     @abstractmethod
     def shutdown(self):
@@ -384,7 +378,7 @@ class _ObjectStoreMetrics:
 
 
 def _map_task(
-    fn: MapTransformFn,
+    map_data_processor: MapDataProcessor,
     ctx: TaskContext,
     *blocks: Block,
 ) -> Iterator[Union[Block, List[BlockMetadata]]]:
@@ -400,7 +394,7 @@ def _map_task(
         as the last generator return.
     """
     stats = BlockExecStats.builder()
-    for b_out in fn(iter(blocks), ctx):
+    for b_out in map_data_processor.process(iter(blocks)):
         # TODO(Clark): Add input file propagation from input blocks.
         m_out = BlockAccessor.for_block(b_out).get_metadata([], None)
         m_out.exec_stats = stats.build()
