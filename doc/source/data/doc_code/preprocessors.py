@@ -56,13 +56,15 @@ train_dataset = ray.data.from_items([{"x": x, "y": 2 * x} for x in range(0, 32, 
 valid_dataset = ray.data.from_items([{"x": x, "y": 2 * x} for x in range(1, 32, 3)])
 
 preprocessor = MinMaxScaler(["x"])
+preprocessor.fit(train_dataset)
+train_dataset = preprocessor.transform(train_dataset)
+valid_dataset = preprocessor.transform(valid_dataset)
 
 trainer = XGBoostTrainer(
     label_column="y",
     params={"objective": "reg:squarederror"},
     scaling_config=ScalingConfig(num_workers=2),
     datasets={"train": train_dataset, "valid": valid_dataset},
-    preprocessor=preprocessor,
 )
 result = trainer.fit()
 # __trainer_end__

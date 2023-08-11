@@ -15,15 +15,7 @@ Ray AIR provides several common preprocessors out of the box and interfaces to d
 Overview
 --------
 
-The most common way of using a preprocessor is by passing it as an argument to the constructor of a Ray Train :ref:`Trainer <train-docs>` in conjunction with a :ref:`Ray Data dataset <data>`.
-For example, the following code trains a model with a preprocessor that normalizes the data.
-
-.. literalinclude:: doc_code/preprocessors.py
-    :language: python
-    :start-after: __trainer_start__
-    :end-before: __trainer_end__
-
-The  ``Preprocessor`` class with four public methods that can we used separately from a trainer:
+The  ``Preprocessor`` class has four public methods:
 
 #. ``fit()``: Compute state information about a :class:`Dataset <ray.data.Dataset>` (e.g., the mean or standard deviation of a column)
    and save it to the ``Preprocessor``. This information is used to perform ``transform()``, and the method is typically called on a
@@ -55,76 +47,13 @@ Finally, call ``transform_batch`` on a single batch of data.
     :start-after: __preprocessor_transform_batch_start__
     :end-before: __preprocessor_transform_batch_end__
 
-Life of an AIR preprocessor
----------------------------
-
-Now that we've gone over the basics, let's dive into how ``Preprocessor``\s fit into an end-to-end application built with AIR.
-The diagram below depicts an overview of the main steps of a ``Preprocessor``:
-
-#. Passed into a ``Trainer`` to ``fit`` and ``transform`` input ``Dataset``\s
-#. Saved as a ``Checkpoint``
-#. Reconstructed in a ``Predictor`` to ``fit_batch`` on batches of data
-
-.. figure:: images/air-preprocessor.svg
-
-Throughout this section we'll go through this workflow in more detail, with code examples using XGBoost.
-The same logic is applicable to other machine learning framework integrations as well.
-
-Trainer
-~~~~~~~
-
-The journey of the ``Preprocessor`` starts with the :class:`Trainer <ray.train.trainer.BaseTrainer>`.
-If the ``Trainer`` is instantiated with a ``Preprocessor``, then the following logic is executed when ``Trainer.fit()`` is called:
-
-#. If a ``"train"`` ``Dataset`` is passed in, then the ``Preprocessor`` calls ``fit()`` on it.
-#. The ``Preprocessor`` then calls ``transform()`` on all ``Dataset``\s, including the ``"train"`` ``Dataset``.
-#. The ``Trainer`` then performs training on the preprocessed ``Dataset``\s.
+The most common way of using a preprocessor is by using it in conjunction with a Ray Train :ref:`Trainer <train-docs>` and a :ref:`Ray Data dataset <data>`.
+For example, the following code trains a model with a preprocessor that normalizes the data.
 
 .. literalinclude:: doc_code/preprocessors.py
     :language: python
     :start-after: __trainer_start__
     :end-before: __trainer_end__
-
-.. note::
-
-    If you're passing a ``Preprocessor`` that is already fitted, it is refitted on the ``"train"`` ``Dataset``.
-    Adding the functionality to support passing in a fitted Preprocessor is being tracked
-    `here <https://github.com/ray-project/ray/issues/25299>`__.
-
-.. TODO: Remove the note above once the issue is resolved.
-
-Tune
-~~~~
-
-If you're using ``Ray Tune`` for hyperparameter optimization, be aware that each ``Trial`` instantiates its own copy of
-the ``Preprocessor`` and the fitting and transforming logic occur once per ``Trial``.
-
-Checkpoint
-~~~~~~~~~~
-
-``Trainer.fit()`` returns a ``Result`` object which contains a ``Checkpoint``.
-If a ``Preprocessor`` is passed into the ``Trainer``, then it is saved in the ``Checkpoint`` along with any fitted state.
-
-As a sanity check, let's confirm the ``Preprocessor`` is available in the ``Checkpoint``. In practice, you don't need to check.
-
-.. literalinclude:: doc_code/preprocessors.py
-    :language: python
-    :start-after: __checkpoint_start__
-    :end-before: __checkpoint_end__
-
-
-Predictor
-~~~~~~~~~
-
-A ``Predictor`` can be constructed from a saved ``Checkpoint``. If the ``Checkpoint`` contains a ``Preprocessor``,
-then the ``Preprocessor`` calls ``transform_batch`` on input batches prior to performing inference.
-
-In the following example, we show the batch inference flow.
-
-.. literalinclude:: doc_code/preprocessors.py
-    :language: python
-    :start-after: __predictor_start__
-    :end-before: __predictor_end__
 
 Types of preprocessors
 ----------------------
