@@ -462,10 +462,12 @@ def run(
     Args:
         target:
             A Serve application returned by `Deployment.bind()`.
-        host: Host for HTTP servers to listen on. Defaults to
+        host: [DEPRECATED: use `serve.start` to set HTTP options]
+            Host for HTTP servers to listen on. Defaults to
             "127.0.0.1". To expose Serve publicly, you probably want to set
             this to "0.0.0.0".
-        port: Port for HTTP server. Defaults to 8000.
+        port: [DEPRECATED: use `serve.start` to set HTTP options]
+            Port for HTTP server. Defaults to 8000.
         name: Application name. If not provided, this will be the only
             application running on the cluster (it will delete all others).
         route_prefix: Route prefix for HTTP requests. If not provided, it will use
