@@ -174,6 +174,103 @@ appropriately in distributed training.
                         # Report to train session
                         checkpoint = Checkpoint.from_directory(tmpdir)
                         ray.train.report(metrics=metrics, checkpoint=checkpoint)
+
+
+    .. tab-item:: HuggingFace Transformers
+
+        Ray Train leverages HuggingFace Transformers Trainer's Callback interface 
+        to report metrics and checkpoints. 
+        
+        **Option 1: Use Ray Train's default report callback**
+        
+        We provide a simple callback implementation :class:`~ray.train.huggingface.RayTrainReportCallback` that 
+        reports on checkpoint save. It collects the latest reported logs and report it together with the 
+        latest saved checkpoint.
+
+        .. code-block:: python
+            :emphasize-lines: 11
+
+            from ray.train.huggingface import (
+                RayTrainReportCallback,
+                prepare_trainer
+            )
+            from ray.train.torch import TorchTrainer
+
+            def train_func(config):
+                ...
+
+                trainer = transformers.Trainer(...)
+
+                trainer.add_callback(RayTrainReportCallback())
+                
+                trainer = prepare_trainer(trainer)
+                trainer.train()
+            
+            ray_trainer = TorchTrainer(
+                train_func,
+                run_config=RunConfig(
+                    checkpoint_config=CheckpointConfig(
+                        num_to_keep=3,
+                        checkpoint_score_attribute="eval_loss",
+                        checkpoint_score_order="min",
+                    )
+                )
+            )
+        
+        You should properly configure the `logging_strategy`, `save_strategy` 
+        and `evaluation_strategy`, so that at the checkpoint saving step, transformers 
+        trainer also reports the latest monitoring metrics (e.g. `eval_loss` in the above case).
+
+        For example, if we want to keep the top-k checkpoint regards to metric `eval_loss`, 
+        you need to make sure that evaluation happens at the same step of checkpoint saving.
+
+        Several valid strategy settings are:
+        - `save_strategy = evaluation_strategy = "epoch"`
+        - `save_strategy = evaluation_strategy = "steps"`, `save_steps % eval_steps == 0`
+
+        Several invalid configurations can be:
+        - Set different strategies: `save_strategy != evaluation_strategy`
+        - Set the same strategy but with mismatched frequency: `save_steps % eval_steps != 0` 
+
+        **Option 2: Implement your customized report callback**
+
+        If you feel that Ray Train's default report callbacks are not sufficient for your use case, 
+        implement a callback yourselve! Below is a example implementation that collects latest metrics 
+        and reports on checkpoint save.
+
+        .. code-block:: python
+
+            from transformers.trainer_callback import TrainerCallback
+            
+            class MyTrainReportCallback(TrainerCallback):
+                def __init__(self):
+                    super().__init__()
+                    self.metrics = {}
+                
+                def on_log(self, args, state, control, model=None, logs=None, **kwargs):
+                    """Log is called on evaluation step and logging step."""
+                    self.metrics.update(logs)
+
+                def on_save(self, args, state, control, **kwargs):
+                    """Event called after a checkpoint save."""
+                    with TemporaryDirectory() as tmpdir:
+                        # Copy the latest checkpoint to tempdir
+                        source_ckpt_path = transformers.trainer.get_last_checkpoint(args.output_dir)
+                        target_ckpt_path = os.path.join(tmpdir, "checkpoint")
+                        shutil.copytree(source_ckpt_path, target_ckpt_path)
+
+                        # Build Ray Train Checkpoint
+                        checkpoint = Checkpoint.from_directory(tmpdir)
+
+                        # Report to Ray Train with up-to-date metrics
+                        ray.train.report(metrics=self.metrics, checkpoint=checkpoint)
+
+                        # Clear the metrics buffer
+                        self.metrics = {}
+
+        You can customize when(`on_save`, `on_epoch_end`, `on_evaluate`) and 
+        what(customized metrics and checkpoint files) to report by implementing your own 
+        transformers trainer callback.
         
 By default, checkpoints will be persisted to the :ref:`log directory <train-log-dir>` of each run.
 

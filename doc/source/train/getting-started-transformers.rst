@@ -393,8 +393,8 @@ native Transformers training code.
                 train_dataset = ray.train.get_dataset_shard("train")
                 eval_dataset = ray.train.get_dataset_shard("eval")
 
-                train_iterable = train_dataset.iter_torch_batches(batch_size=8)
-                eval_iterable = eval_dataset.iter_torch_batches(batch_size=8)
+                train_iterable_ds = train_dataset.iter_torch_batches(batch_size=8)
+                eval_iterable_ds = eval_dataset.iter_torch_batches(batch_size=8)
 
                 args = transformers.TrainingArguments(
                     output_dir=f"{MODEL_NAME}-wikitext2",
@@ -409,8 +409,8 @@ native Transformers training code.
                 trainer = transformers.Trainer(
                     model=model,
                     args=args,
-                    train_dataset=train_iterable,
-                    eval_dataset=eval_iterable,
+                    train_dataset=train_iterable_ds,
+                    eval_dataset=eval_iterable_ds,
                 )
 
                 # [3] Prepare your trainer
