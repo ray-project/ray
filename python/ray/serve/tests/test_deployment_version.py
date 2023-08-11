@@ -280,6 +280,22 @@ def test_requires_actor_restart():
     v2 = DeploymentVersion("1", DeploymentConfig(), {"num_cpus": 0.2})
     assert v1.requires_actor_restart(v2)
 
+    # Placement group bundles different
+    v1 = DeploymentVersion(
+        "1", DeploymentConfig(), {}, placement_group_bundles=[{"CPU": 0.1}]
+    )
+    v2 = DeploymentVersion(
+        "1", DeploymentConfig(), {}, placement_group_bundles=[{"CPU": 0.2}]
+    )
+    assert v1.requires_actor_restart(v2)
+
+    # Placement group strategy different
+    v1 = DeploymentVersion("1", DeploymentConfig(), {}, placement_group_strategy="PACK")
+    v2 = DeploymentVersion(
+        "1", DeploymentConfig(), {}, placement_group_strategy="SPREAD"
+    )
+    assert v1.requires_actor_restart(v2)
+
     # Both code version and runtime env different
     v1 = DeploymentVersion("1", DeploymentConfig(), {"num_cpus": 0.1})
     v2 = DeploymentVersion("2", DeploymentConfig(), {"num_cpus": 0.2})
