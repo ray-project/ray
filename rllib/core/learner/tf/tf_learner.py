@@ -123,7 +123,13 @@ class TfLearner(Learner):
         #  only some agents have a sample batch that is passed but not others.
         #  This is probably because of the way that we are iterating over the
         #  parameters in the optim_to_param_dictionary.
-        for optimizer in self._optimizer_parameters:
+        for optimizer_name, optimizer in self.get_optimizers_for_module(
+            module_id="default_policy"
+        ):
+
+        #for optimizer in self._optimizer_parameters:
+            if optimizer_name != "critic":
+                continue
             optim_grad_dict = self.filter_param_dict_for_optimizer(
                 optimizer=optimizer, param_dict=gradients_dict
             )
@@ -454,6 +460,7 @@ class TfLearner(Learner):
             fwd_out = self._module.forward_train(_batch)
             loss_per_module = self.compute_loss(fwd_out=fwd_out, batch=_batch)
         gradients = self.compute_gradients(loss_per_module, gradient_tape=tape)
+        #some_result = tf.reduce_sum(list(gradients.values())[0])
         #del tape
         postprocessed_gradients = self.postprocess_gradients(gradients)
         self.apply_gradients(postprocessed_gradients)
