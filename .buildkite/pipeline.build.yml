@@ -325,11 +325,11 @@
     - helm install chaos-mesh chaos-mesh/chaos-mesh -n=chaos-mesh --set chaosDaemon.runtime=containerd --set chaosDaemon.socketPath=/run/containerd/containerd.sock --version 2.6.1
     - kubectl wait pod  --namespace chaos-mesh  -l app.kubernetes.io/instance=chaos-mesh --for=condition=Ready=True
     - echo "--- Running the script without faults"
-    - time ray job submit --address http://localhost:8265 --runtime-env-json \'{\"env_vars\":{\"RAY_DEDUP_LOGS\":\"0\"}}\' --working-dir python/ray/tests/kuberay/chaos_test -- python potato_passer.py --num-actors=3 --pass-times=1000 --sleep-secs=0.01
+    - ray job submit --address http://localhost:8265 --runtime-env-json \'{\"env_vars\":{\"RAY_DEDUP_LOGS\":\"0\"}}\' --working-dir python/ray/tests/kuberay/chaos_test -- python potato_passer.py --num-actors=3 --pass-times=1000 --sleep-secs=0.01
     # Now add the delay, rerun the job
     - kubectl apply -f python/ray/tests/kuberay/chaos_test/chaos_network_delay.yaml
     - echo "--- Running the script with fault of networking delay"
-    - time ray job submit --address http://localhost:8265 --runtime-env-json \'{\"env_vars\":{\"RAY_DEDUP_LOGS\":\"0\"}}\' --working-dir python/ray/tests/kuberay/chaos_test -- python potato_passer.py --num-actors=3 --pass-times=1000 --sleep-secs=0.01
+    - ray job submit --address http://localhost:8265 --runtime-env-json \'{\"env_vars\":{\"RAY_DEDUP_LOGS\":\"0\"}}\' --working-dir python/ray/tests/kuberay/chaos_test -- python potato_passer.py --num-actors=3 --pass-times=1000 --sleep-secs=0.01
     
 
 - label: ":book: Documentation"
