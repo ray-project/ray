@@ -2328,7 +2328,7 @@ def _auto_reconnect(f):
                         f"Failed to send request to gcs, reconnecting. Error {e}"
                     )
                     try:
-                        self._connect()
+                        self._connect_channel()
                     except Exception:
                         logger.error(f"Connecting to gcs failed. Error {e}")
                     time.sleep(1)
@@ -2359,6 +2359,9 @@ cdef class GcsClient:
             c_cluster_id = cluster_id
             self.cluster_id = CClusterID.FromHex(c_cluster_id)
         self._connect(5)
+
+    def _connect_channel(self):
+        check_status(self.inner.get().ConnectChannel())
 
     def _connect(self, timeout_s=None):
         cdef:

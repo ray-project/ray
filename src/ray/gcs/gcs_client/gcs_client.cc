@@ -147,6 +147,10 @@ std::pair<std::string, int> GcsClient::GetGcsServerAddress() const {
 }
 
 PythonGcsClient::PythonGcsClient(const GcsClientOptions &options) : options_(options) {
+  RAY_UNUSED(ConnectChannel());
+}
+
+Status PythonGcsClient::ConnectChannel() {
   channel_ =
       rpc::GcsRpcClient::CreateGcsChannel(options_.gcs_address_, options_.gcs_port_);
   kv_stub_ = rpc::InternalKVGcsService::NewStub(channel_);
@@ -155,6 +159,8 @@ PythonGcsClient::PythonGcsClient(const GcsClientOptions &options) : options_(opt
   job_info_stub_ = rpc::JobInfoGcsService::NewStub(channel_);
   node_resource_info_stub_ = rpc::NodeResourceInfoGcsService::NewStub(channel_);
   autoscaler_stub_ = rpc::autoscaler::AutoscalerStateService::NewStub(channel_);
+
+  return Status::OK();
 }
 
 namespace {
