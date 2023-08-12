@@ -22,11 +22,7 @@ from ray.air._internal.checkpoint_manager import CheckpointStorage, _TrackedChec
 from ray.air.constants import TIME_THIS_ITER_S
 from ray.air.execution import ResourceManager, PlacementGroupResourceManager
 from ray.air.execution._internal import RayActorManager, TrackedActor
-from ray.train._internal.storage import (
-    StorageContext,
-    _use_storage_context,
-    _using_class_trainable,
-)
+from ray.train._internal.storage import StorageContext, _use_storage_context
 from ray.exceptions import RayActorError, RayTaskError
 from ray.tune.error import _AbortTrialExecution, _TuneStopTrialError, _TuneRestoreError
 from ray.tune.execution.class_cache import _ActorClassCache

@@ -13,11 +13,7 @@ import ray
 from ray import train, tune
 from ray.air._internal.uri_utils import URI
 from ray.air.constants import EXPR_RESULT_FILE
-from ray.train._internal.storage import (
-    _download_from_fs_path,
-    _use_storage_context,
-    StorageContext,
-)
+from ray.train._internal.storage import _download_from_fs_path, StorageContext
 from ray.train._checkpoint import Checkpoint as NewCheckpoint
 from ray.train.base_trainer import TrainingFailedError
 from ray.train.constants import RAY_AIR_NEW_PERSISTENCE_MODE
@@ -490,21 +486,40 @@ def test_disabled_for_class_trainable(ray_start_4_cpus, tmp_path, monkeypatch):
     LOCAL_CACHE_DIR = tmp_path / "ray_results"
     monkeypatch.setenv("RAY_AIR_LOCAL_CACHE_DIR", str(LOCAL_CACHE_DIR))
 
+    fail_marker = tmp_path / "fail_marker"
+    fail_marker.touch()
+
     class ClassTrainable(tune.Trainable):
-        # def setup(self, config):
-        # assert not _use_storage_context(), "Should not be in new persistence mode!"
+        def setup(self, config):
+            self.save_as_dict = config.get("save_checkpoint_as_dict", False)
 
         def step(self) -> dict:
-            return {"score": 1, "done": True, "should_checkpoint": True}
+            if self.iteration > 0 and fail_marker.exists():
+                fail_marker.unlink()
+                raise RuntimeError("Failing!!")
+            return {"score": 1, "done": self.iteration >= 3, "should_checkpoint": True}
 
         def save_checkpoint(self, temp_checkpoint_dir) -> str:
+            if self.save_as_dict:
+                return {"dummy": "data"}
             (Path(temp_checkpoint_dir) / "dummy.txt").write_text("dummy")
             return temp_checkpoint_dir
 
+        def load_checkpoint(self, checkpoint_dict_or_path):
+            if self.save_as_dict:
+                assert checkpoint_dict_or_path == {"dummy": "data"}
+            else:
+                assert (
+                    Path(checkpoint_dict_or_path) / "dummy.txt"
+                ).read_text() == "dummy"
+
     tuner = tune.Tuner(
         ClassTrainable,
+        param_space={"save_checkpoint_as_dict": tune.grid_search([True])},
         run_config=train.RunConfig(
-            storage_path=str(tmp_path / "fake_nfs"), name="test_cls_trainable"
+            storage_path=str(tmp_path / "fake_nfs"),
+            name="test_cls_trainable",
+            failure_config=train.FailureConfig(max_failures=1),
         ),
     )
     result_grid = tuner.fit()

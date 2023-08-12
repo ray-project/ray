@@ -508,8 +508,9 @@ class Trainable:
 
         if _use_storage_context():
             if _using_class_trainable():
-                # TODO(justinvyu): This is a hack to get class Trainables to work
-                # in the new persistence mode for 2.7.
+                # TODO(justinvyu): [cls_trainable_support]
+                # This is a hack to get class Trainables to work in the
+                # new persistence mode for 2.7.
                 # Need to handle checkpoint_dict_or_path == path, dict, or None
                 # Also need to upload to cloud, since `train.report` never gets called.
                 if isinstance(checkpoint_dict_or_path, dict):
@@ -911,9 +912,26 @@ class Trainable:
             self._timesteps_since_restore = 0
             self._episodes_total = checkpoint_metrics.get(EPISODES_TOTAL)
 
-            # TODO(justinvyu): The Trainable `load_checkpoint` interface
-            # should be updated to take in a `_TrainingResult` / Checkpoint
-            self.load_checkpoint(checkpoint_result)
+            # TODO(justinvyu): [cls_trainable_support]
+            # This is to conform to the public class Trainable `load_checkpoint` API.
+            if _using_class_trainable():
+                # Need to convert Checkpoint -> local path or dict
+                # (depending on what the output of save_checkpoint was)
+                with checkpoint_result.checkpoint.as_directory() as checkpoint_dir:
+                    checkpoint_path = Path(checkpoint_dir)
+                    if checkpoint_path.joinpath(_DICT_CHECKPOINT_MARKER).exists():
+                        # If this was a dict checkpoint, load it as a dict
+                        with open(
+                            checkpoint_path / _DICT_CHECKPOINT_FILE_NAME, "rb"
+                        ) as f:
+                            checkpoint_dict = ray_pickle.load(f)
+                        self.load_checkpoint(checkpoint_dict)
+                    else:
+                        self.load_checkpoint(checkpoint_dir)
+            else:
+                # TODO(justinvyu): The Function Trainable case doesn't conform
+                # to the load_checkpoint API at the moment.
+                self.load_checkpoint(checkpoint_result)
 
             self._restored = True
 
