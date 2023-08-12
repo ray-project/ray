@@ -12,6 +12,7 @@ from contextlib import redirect_stderr, redirect_stdout
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Union, Type
 
 import ray
+import ray.cloudpickle as ray_pickle
 from ray.air._internal.remote_storage import list_at_uri
 from ray.air._internal.uri_utils import URI
 from ray.air._internal.util import skip_exceptions, exception_cause
@@ -25,7 +26,12 @@ from ray.air.constants import (
     TRAINING_ITERATION,
 )
 from ray.train._internal.checkpoint_manager import _TrainingResult
-from ray.train._internal.storage import _use_storage_context, StorageContext
+from ray.train._internal.storage import (
+    _use_storage_context,
+    _using_class_trainable,
+    StorageContext,
+)
+from ray.train._checkpoint import Checkpoint as NewCheckpoint
 from ray.tune.result import (
     DEBUG_METRICS,
     DEFAULT_RESULTS_DIR,
@@ -64,6 +70,11 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 SETUP_TIME_THRESHOLD = 10
+
+# File containing dict data returned by user from `Trainable.save_checkpoint`
+_DICT_CHECKPOINT_FILE_NAME = "dict_checkpoint.pkl"
+# Marker file indicating that a checkpoint is a dict checkpoint.
+_DICT_CHECKPOINT_MARKER = ".is_dict_checkpoint"
 
 
 @PublicAPI
@@ -495,13 +506,38 @@ class Trainable:
         # User saves checkpoint
         checkpoint_dict_or_path = self.save_checkpoint(checkpoint_dir)
 
-        if _use_storage_context() and isinstance(
-            checkpoint_dict_or_path, _TrainingResult
-        ):
-            checkpoint_result = checkpoint_dict_or_path
-            assert self._last_result
-            # Update the checkpoint result to include auto-filled metrics.
-            checkpoint_result.metrics.update(self._last_result)
+        if _use_storage_context():
+            if _using_class_trainable():
+                # TODO(justinvyu): This is a hack to get class Trainables to work
+                # in the new persistence mode for 2.7.
+                # Need to handle checkpoint_dict_or_path == path, dict, or None
+                # Also need to upload to cloud, since `train.report` never gets called.
+                if isinstance(checkpoint_dict_or_path, dict):
+                    with open(
+                        os.path.join(checkpoint_dir, _DICT_CHECKPOINT_FILE_NAME), "wb"
+                    ) as f:
+                        ray_pickle.dump(checkpoint_dict_or_path, f)
+                    # Mark this directory as a dict checkpoint to check when loading.
+                    Path(checkpoint_dir).joinpath(_DICT_CHECKPOINT_MARKER).touch()
+
+                # TODO(justinvyu): Ignoring relpaths returned by save_checkpoint for now
+                local_checkpoint = NewCheckpoint.from_directory(checkpoint_dir)
+                self._storage.current_checkpoint_index = self._iteration - 1
+                persisted_checkpoint = self._storage.persist_current_checkpoint(
+                    local_checkpoint
+                )
+
+                checkpoint_result = _TrainingResult(
+                    checkpoint=persisted_checkpoint, metrics=self._last_result.copy()
+                )
+
+            else:
+                checkpoint_result: _TrainingResult = checkpoint_dict_or_path
+                assert self._last_result
+                # Update the checkpoint result to include auto-filled metrics.
+                checkpoint_result.metrics.update(self._last_result)
+
+            assert isinstance(checkpoint_result, _TrainingResult)
             return checkpoint_result
 
         if checkpoint_dict_or_path is None:

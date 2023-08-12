@@ -486,10 +486,13 @@ def test_trainer(
         assert len(list(trial_dir.glob(EXPR_RESULT_FILE))) == 1
 
 
-def test_disabled_for_class_trainable(ray_start_4_cpus, tmp_path):
+def test_disabled_for_class_trainable(ray_start_4_cpus, tmp_path, monkeypatch):
+    LOCAL_CACHE_DIR = tmp_path / "ray_results"
+    monkeypatch.setenv("RAY_AIR_LOCAL_CACHE_DIR", str(LOCAL_CACHE_DIR))
+
     class ClassTrainable(tune.Trainable):
-        def setup(self, config):
-            assert not _use_storage_context(), "Should not be in new persistence mode!"
+        # def setup(self, config):
+        # assert not _use_storage_context(), "Should not be in new persistence mode!"
 
         def step(self) -> dict:
             return {"score": 1, "done": True, "should_checkpoint": True}
@@ -498,7 +501,12 @@ def test_disabled_for_class_trainable(ray_start_4_cpus, tmp_path):
             (Path(temp_checkpoint_dir) / "dummy.txt").write_text("dummy")
             return temp_checkpoint_dir
 
-    tuner = tune.Tuner(ClassTrainable)
+    tuner = tune.Tuner(
+        ClassTrainable,
+        run_config=train.RunConfig(
+            storage_path=str(tmp_path / "fake_nfs"), name="test_cls_trainable"
+        ),
+    )
     result_grid = tuner.fit()
 
     assert not result_grid.errors

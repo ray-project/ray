@@ -22,7 +22,11 @@ from ray.air._internal.checkpoint_manager import CheckpointStorage, _TrackedChec
 from ray.air.constants import TIME_THIS_ITER_S
 from ray.air.execution import ResourceManager, PlacementGroupResourceManager
 from ray.air.execution._internal import RayActorManager, TrackedActor
-from ray.train._internal.storage import StorageContext, _use_storage_context
+from ray.train._internal.storage import (
+    StorageContext,
+    _use_storage_context,
+    _using_class_trainable,
+)
 from ray.exceptions import RayActorError, RayTaskError
 from ray.tune.error import _AbortTrialExecution, _TuneStopTrialError, _TuneRestoreError
 from ray.tune.execution.class_cache import _ActorClassCache
@@ -1924,7 +1928,8 @@ class TuneController:
         from ray.train._internal.checkpoint_manager import _TrainingResult
 
         try:
-            if _use_storage_context() and isinstance(checkpoint_value, _TrainingResult):
+            if _use_storage_context():
+                assert isinstance(checkpoint_value, _TrainingResult)
                 # TODO(justinvyu): Update callbacks to take in a _TrainingResult
                 trial.on_checkpoint(checkpoint_value)
 
