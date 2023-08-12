@@ -1863,6 +1863,11 @@ class TuneController:
                 on_result=on_result or self._on_saving_result,
                 on_error=self._trial_task_failure,
             )
+            # TODO(justinvyu): `trial.saving_to` is needed in order to prevent
+            # a done=True result from executing a STOP decision
+            # (which clears all futures) before the save gets processed.
+            # Keep this in for now while `train` and `save` are 2 separate steps.
+            trial.saving_to = True
             # TODO(justinvyu): Remove the return value?
             return
 

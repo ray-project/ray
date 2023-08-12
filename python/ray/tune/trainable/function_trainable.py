@@ -31,7 +31,7 @@ from ray.train._internal.session import (
 )
 from ray.tune import TuneError
 from ray.tune.execution.placement_groups import PlacementGroupFactory
-from ray.tune.trainable import session
+from ray.tune.trainable import session as legacy_tune_session
 from ray.tune.result import (
     DEFAULT_METRIC,
     RESULT_DUPLICATE,
@@ -382,7 +382,7 @@ class FunctionTrainable(Trainable):
         )
         self._last_result = {}
 
-        session._init(self._status_reporter)
+        legacy_tune_session._init(self._status_reporter)
         self._runner = None
         self._restore_tmpdir = None
         self.temp_checkpoint_dir = None
@@ -633,9 +633,11 @@ class FunctionTrainable(Trainable):
             session = get_session()
             try:
                 # session.finish raises any Exceptions from training.
-                _ = session.finish()
+                # Do not wait for thread termination here (timeout=0).
+                session.finish(timeout=0)
             finally:
-                session = None
+                # Check for any errors that might have been missed.
+                session._report_thread_runner_error()
                 # Shutdown session even if session.finish() raises an Exception.
                 shutdown_session()
             return
@@ -656,7 +658,7 @@ class FunctionTrainable(Trainable):
 
         # Check for any errors that might have been missed.
         self._report_thread_runner_error()
-        session._shutdown()
+        legacy_tune_session._shutdown()
 
         if self.temp_checkpoint_dir is not None and os.path.exists(
             self.temp_checkpoint_dir

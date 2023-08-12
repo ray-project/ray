@@ -81,7 +81,7 @@
     - ./ci/env/env_info.sh
     - >-
       set -x;
-      python ./ci/run/bazel_sharding/bazel_sharding.py
+      python ./ci/ray_ci/bazel_sharding.py
       --exclude_manual
       --index "\${BUILDKITE_PARALLEL_JOB}" --count "\${BUILDKITE_PARALLEL_JOB_COUNT}"
       --tag_filters=-post_wheel_build,-gpu
@@ -114,7 +114,7 @@
     - ./ci/env/env_info.sh
     - >-
       set -x;
-      python ./ci/run/bazel_sharding/bazel_sharding.py
+      python ./ci/ray_ci/bazel_sharding.py
       --exclude_manual
       --index "\${BUILDKITE_PARALLEL_JOB}" --count "\${BUILDKITE_PARALLEL_JOB_COUNT}"
       --tag_filters=-post_wheel_build,-gpu

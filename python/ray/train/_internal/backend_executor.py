@@ -425,8 +425,11 @@ class BackendExecutor:
             node_rank_map,
         ) = self._create_rank_world_size_mappings()
 
-        tune_session: _TrainSession = get_session()
-        assert tune_session, "`start_training` should only be called from within Tune"
+        if _use_storage_context():
+            tune_session: _TrainSession = get_session()
+            assert (
+                tune_session
+            ), "`start_training` should only be called from within Tune"
 
         futures = []
         for index in range(len(self.worker_group)):
