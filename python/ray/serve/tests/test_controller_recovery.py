@@ -12,7 +12,7 @@ from ray.util.state import list_actors
 
 
 from ray import serve
-from ray.serve._private.common import ApplicationStatus, ReplicaState
+from ray.serve._private.common import ReplicaState
 from ray.serve._private.constants import (
     SERVE_CONTROLLER_NAME,
     SERVE_PROXY_NAME,
@@ -293,11 +293,7 @@ def test_replica_deletion_after_controller_recover(serve_instance):
     # The graceful shutdown timeout of 3 seconds should be used
     wait_for_condition(lambda: len(check_replica()) == 0, timeout=20)
     # Application should be removed soon after
-    wait_for_condition(
-        lambda: serve_instance.get_serve_status("app").app_status.status
-        == ApplicationStatus.NOT_STARTED,
-        timeout=20,
-    )
+    wait_for_condition(lambda: "app" not in serve.status().applications, timeout=20)
 
 
 def test_recover_deleting_application(serve_instance):
@@ -327,8 +323,7 @@ def test_recover_deleting_application(serve_instance):
 
     def application_deleting():
         # Confirm application is in deleting state
-        app_status = serve_instance.get_serve_status()
-        if app_status.app_status.status != "DELETING":
+        if serve.status().applications["default"].status != "DELETING":
             return False
 
         # Confirm deployment is in updating state

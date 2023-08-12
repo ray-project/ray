@@ -135,9 +135,8 @@ def test_fastapi_detected(manage_ray):
 
     storage_handle = start_telemetry_app()
 
-    client = get_global_client()
     wait_for_condition(
-        lambda: client.get_serve_status("fastapi_app").app_status.status
+        lambda: serve.status().applications["fastapi_app"].status
         == ApplicationStatus.RUNNING,
         timeout=15,
     )
@@ -181,9 +180,8 @@ def test_grpc_detected(manage_ray):
 
     storage_handle = start_telemetry_app()
 
-    client = get_global_client()
     wait_for_condition(
-        lambda: client.get_serve_status("grpc_app").app_status.status
+        lambda: serve.status().applications["grpc_app"].status
         == ApplicationStatus.RUNNING,
         timeout=15,
     )
@@ -230,9 +228,8 @@ def test_graph_detected(manage_ray, use_adapter):
 
     serve.run(graph_app, name="graph_app", route_prefix="/graph")
 
-    client = get_global_client()
     wait_for_condition(
-        lambda: client.get_serve_status("graph_app").app_status.status
+        lambda: serve.status().applications["graph_app"].status
         == ApplicationStatus.RUNNING,
         timeout=15,
     )
@@ -308,18 +305,18 @@ def test_rest_api(manage_ray, tmp_dir, version):
     if version == "v2":
         # Make sure the applications are RUNNING.
         wait_for_condition(
-            lambda: client.get_serve_status("receiver_app").app_status.status
+            lambda: serve.status().applications["receiver_app"].status
             == ApplicationStatus.RUNNING,
             timeout=15,
         )
         wait_for_condition(
-            lambda: client.get_serve_status("stub_app").app_status.status
+            lambda: serve.status().applications["stub_app"].status
             == ApplicationStatus.RUNNING,
             timeout=15,
         )
     else:
         wait_for_condition(
-            lambda: client.get_serve_status().app_status.status
+            lambda: serve.status().applications["default"].status
             == ApplicationStatus.RUNNING,
             timeout=15,
         )
@@ -437,12 +434,12 @@ def test_lightweight_config_options(manage_ray, lightweight_option, value):
     client = serve.start(detached=True)
     client.deploy_apps(ServeDeploySchema(**config))
     wait_for_condition(
-        lambda: client.get_serve_status("receiver_app").app_status.status
+        lambda: serve.status().applications["receiver_app"].status
         == ApplicationStatus.RUNNING,
         timeout=15,
     )
     wait_for_condition(
-        lambda: client.get_serve_status("test_app").app_status.status
+        lambda: serve.status().applications["test_app"].status
         == ApplicationStatus.RUNNING,
         timeout=15,
     )
@@ -461,12 +458,12 @@ def test_lightweight_config_options(manage_ray, lightweight_option, value):
     config["applications"][1]["deployments"][0][lightweight_option] = value
     client.deploy_apps(ServeDeploySchema(**config))
     wait_for_condition(
-        lambda: client.get_serve_status("receiver_app").app_status.status
+        lambda: serve.status().applications["receiver_app"].status
         == ApplicationStatus.RUNNING,
         timeout=15,
     )
     wait_for_condition(
-        lambda: client.get_serve_status("test_app").app_status.status
+        lambda: serve.status().applications["test_app"].status
         == ApplicationStatus.RUNNING,
         timeout=15,
     )

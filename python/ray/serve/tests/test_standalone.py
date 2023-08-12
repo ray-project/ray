@@ -832,8 +832,6 @@ def test_recovering_controller_no_redeploy():
 def test_updating_status_message(lower_slow_startup_threshold_and_reset):
     """Check if status message says if a serve deployment has taken a long time"""
 
-    client = lower_slow_startup_threshold_and_reset
-
     @serve.deployment(
         num_replicas=5,
         ray_actor_options={"num_cpus": 1},
@@ -844,7 +842,9 @@ def test_updating_status_message(lower_slow_startup_threshold_and_reset):
     serve.run(f.bind(), _blocking=False)
 
     def updating_message():
-        deployment_status = client.get_serve_status().deployment_statuses[0]
+        deployment_status = (
+            serve.status().applications["default"].deployments["default_f"]
+        )
         message_substring = "more than 1s to be scheduled."
         return (deployment_status.status == "UPDATING") and (
             message_substring in deployment_status.message
@@ -860,8 +860,6 @@ def test_unhealthy_override_updating_status(lower_slow_startup_threshold_and_res
     be unhealthy should be prioritized over this resource availability issue.
     """
 
-    client = lower_slow_startup_threshold_and_reset
-
     @serve.deployment
     class f:
         def __init__(self):
@@ -873,13 +871,17 @@ def test_unhealthy_override_updating_status(lower_slow_startup_threshold_and_res
     serve.run(f.bind(), _blocking=False)
 
     wait_for_condition(
-        lambda: client.get_serve_status().deployment_statuses[0].status == "UNHEALTHY",
+        lambda: serve.status().applications["default"].deployments["default_f"].status
+        == "UNHEALTHY",
         timeout=20,
     )
 
     with pytest.raises(RuntimeError):
         wait_for_condition(
-            lambda: client.get_serve_status().deployment_statuses[0].status
+            lambda: serve.status()
+            .applications["default"]
+            .deployments["default_f"]
+            .status
             == "UPDATING",
             timeout=10,
         )
