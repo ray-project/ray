@@ -11,13 +11,14 @@ from ray.exceptions import RayActorError
 from ray.train import DataConfig
 from ray.air.checkpoint import Checkpoint
 from ray.train._internal.session import (
+    _TrainSession,
     TrainingResult,
     TrialInfo,
     get_session,
     init_session,
     shutdown_session,
 )
-from ray.train._internal.storage import _use_storage_context, get_storage_context
+from ray.train._internal.storage import _use_storage_context
 from ray.train._internal.utils import check_for_failure
 from ray.train._internal.worker_group import WorkerGroup
 from ray.train.backend import BackendConfig
@@ -424,6 +425,12 @@ class BackendExecutor:
             node_rank_map,
         ) = self._create_rank_world_size_mappings()
 
+        if _use_storage_context():
+            tune_session: _TrainSession = get_session()
+            assert (
+                tune_session
+            ), "`start_training` should only be called from within Tune"
+
         futures = []
         for index in range(len(self.worker_group)):
             futures.append(
@@ -444,8 +451,7 @@ class BackendExecutor:
                     checkpoint_upload_from_workers=(
                         self._checkpoint_upload_from_workers
                     ),
-                    # Pass the Trainable's shared storage context to the Train workers
-                    storage=get_storage_context() if _use_storage_context() else None,
+                    storage=tune_session.storage if _use_storage_context() else None,
                 )
             )
 
@@ -506,30 +512,19 @@ class BackendExecutor:
             else:
                 # Return None if all results are None.
                 return None
-        first_result = results[0]
-        result_type = first_result.type
-        if any(r.type != result_type for r in results):
-            raise RuntimeError(
-                "Some workers returned results with "
-                "different types. Make sure that "
-                "`session.report()` are called the "
-                "same number of times on all workers."
-            )
+
+        if not _use_storage_context():
+            first_result = results[0]
+            result_type = first_result.type
+            if any(r.type != result_type for r in results):
+                raise RuntimeError(
+                    "Some workers returned results with "
+                    "different types. Make sure that "
+                    "`session.report()` are called the "
+                    "same number of times on all workers."
+                )
 
         return results
-
-    def _set_checkpoint_index(self, checkpoint_index: int):
-        """Update the checkpoint id in the StorageContext of all workers.
-
-        This determines the path that the next checkpoint will be saved to.
-        """
-
-        def set_checkpoint_index():
-            session = _get_session("_set_checkpoint_index")
-            session.storage.current_checkpoint_index = checkpoint_index
-
-        futures = self.worker_group.execute_async(set_checkpoint_index)
-        self.get_with_failure_handling(futures)
 
     def _set_legacy_checkpoint_uri(self, uri: str):
         """Tell remote sessions where to upload the chekcpoint."""
