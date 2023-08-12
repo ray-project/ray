@@ -131,6 +131,50 @@ Using Ray Data and Ray Train for distributed training on large datasets involves
                 scaling_config=ScalingConfig(num_workers=4),
             )
             trainer.fit()
+    
+    .. group-tab:: HuggingFace Transformers
+
+        .. code-block:: python
+            :emphasize-lines: 12,13,16,17,24,25
+
+            import ray
+            import ray.train
+         
+            ...
+
+            train_data = ray.data.from_huggingface(hf_train_ds)
+            eval_data = ray.data.from_huggingface(hf_eval_ds)
+
+            def train_func(config):
+                # Access Ray datsets in your train_func via ``get_dataset_shard``.
+                # The "train" dataset gets sharded across workers by default
+                train_ds = ray.train.get_dataset_shard("train")
+                eval_ds = ray.train.get_dataset_shard("evaluation")
+
+                # Create Ray dataset iterables via ``iter_torch_batches``.
+                train_iterable_ds = train_ds.iter_torch_batches(batch_size=16)
+                eval_iterable_ds = eval_ds.iter_torch_batches(batch_size=16)
+
+                ...
+
+                trainer = transformers.Trainer(
+                    ...,
+                    model=model,
+                    train_dataset=train_iterable_ds,
+                    eval_dataset=eval_iterable_ds,
+                )
+
+                # Prepare your Transformers Trainer
+                trainer = ray.train.huggingface.transformers.prepare_trainer(trainer)
+                trainer.train()
+
+            trainer = TorchTrainer(
+                train_func,
+                datasets={"train": train_data, "evaluation": val_data},
+                scaling_config=ScalingConfig(num_workers=4, use_gpu=True),
+            )
+            trainer.fit()
+
 
 Migrating from PyTorch DataLoader
 ---------------------------------

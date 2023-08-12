@@ -1,0 +1,10 @@
+name: "oss-ci-base_test"
+froms: ["ubuntu:focal"]
+dockerfile: ci/docker/base.test.Dockerfile
+srcs:
+  - ci/env/install-bazel.sh
+  - .bazeliskrc
+build_args:
+  - REMOTE_CACHE_URL
+tags:
+  - cr.ray.io/rayproject/oss-ci-base_test
