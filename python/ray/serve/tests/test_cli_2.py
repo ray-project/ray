@@ -25,7 +25,8 @@ from ray.serve._private.constants import (
     SERVE_NAMESPACE,
     RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING,
 )
-
+from ray.serve.generated import serve_pb2, serve_pb2_grpc
+import grpc
 
 CONNECTION_ERROR_MSG = "connection error"
 
@@ -820,6 +821,62 @@ def test_deployment_contains_utils(ray_start_stop):
     wait_for_condition(
         lambda: requests.post("http://localhost:8000/").text == "hello_from_utils"
     )
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
+@pytest.mark.skipif(
+    not RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING, reason="Not supported w/o streaming."
+)
+def test_serving_request_through_grpc_proxy(ray_start_stop):
+    """Test serving request through gRPC proxy
+
+    When Serve runs with a gRPC deployment, the app should be deployed successfully,
+    both routes and healthz methods returning success response, and registered gRPC
+    methods are routing to the correct replica and return the correct response.
+    """
+    config_file = os.path.join(
+        os.path.dirname(__file__),
+        "test_config_files",
+        "deploy_grpc_app.yaml",
+    )
+
+    subprocess.check_output(["serve", "deploy", config_file], stderr=subprocess.STDOUT)
+
+    app_name = "app1_grpc-deployment"
+
+    channel = grpc.insecure_channel("localhost:9000")
+    stub = serve_pb2_grpc.ServeAPIServiceStub(channel)
+
+    # Ensures routes path succeeding.
+    def check_app_deployed():
+        request = serve_pb2.RoutesRequest()
+        response, call = stub.ServeRoutes.with_call(request=request)
+        assert call.code() == grpc.StatusCode.OK
+        assert response.application_names == [app_name]
+        return True
+    wait_for_condition(check_app_deployed)
+
+    # Ensures healthz path succeeding.
+    request = serve_pb2.RoutesRequest()
+    response, call = stub.ServeHealthz.with_call(request=request)
+    assert call.code() == grpc.StatusCode.OK
+    assert response.response == "success"
+
+    # Ensures __call__ method is responding correctly.
+    stub = serve_pb2_grpc.UserDefinedServiceStub(channel)
+    request = serve_pb2.UserDefinedMessage(name="foo", num=30, foo="bar")
+    metadata = (("application", app_name),)
+    response = stub.__call__(request=request, metadata=metadata)
+    assert response.greeting == "Hello foo from bar"
+
+    # Ensures Method1 method is responding correctly.
+    response = stub.Method1(request=request, metadata=metadata)
+    assert response.greeting == "Hello foo from method1"
+
+    # Ensure Streaming method is responding correctly.
+    responses = stub.Streaming(request=request, metadata=metadata)
+    for idx, response in enumerate(responses):
+        assert response.greeting == f"{idx}: Hello foo from bar"
 
 
 if __name__ == "__main__":
