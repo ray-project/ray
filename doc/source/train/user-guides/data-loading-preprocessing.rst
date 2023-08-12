@@ -416,6 +416,8 @@ First, randomize each :ref:`block <dataset_concept>` of your dataset via :meth:`
 .. testcode::
     import ray
     from ray import train
+    from ray.train import ScalingConfig
+    from ray.train.torch import TorchTrainer
 
     ds = ray.data.read_text(
         "s3://anonymous@ray-example-data/sms_spam_collection_subset.txt"
@@ -472,8 +474,6 @@ When developing or hyperparameter tuning models, reproducibility is important du
 .. testcode::
 
     import ray
-    from ray.train import ScalingConfig
-    from ray.train.torch import TorchTrainer
 
     # Preserve ordering in Ray Datasets for reproducibility.
     ctx = ray.data.DataContext.get_current()
