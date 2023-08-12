@@ -11,8 +11,9 @@ from ray._private.test_utils import wait_for_condition, run_string_as_driver
 from ray.serve.exceptions import RayServeException
 
 from ray.serve._private.constants import (
-    SERVE_DEFAULT_APP_NAME,
     DEPLOYMENT_NAME_PREFIX_SEPARATOR,
+    RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING,
+    SERVE_DEFAULT_APP_NAME,
 )
 
 from unittest.mock import patch
@@ -221,6 +222,9 @@ def test_schemas_attach_grpc_server():
         _ = MyDriver()
 
 
+@pytest.mark.skipif(
+    RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING, reason="Not supported w/ streaming."
+)
 def test_serving_request_through_grpc_proxy(ray_cluster):
     """Test serving request through gRPC proxy
 
