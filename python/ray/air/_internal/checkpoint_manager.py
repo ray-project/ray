@@ -136,36 +136,6 @@ class _TrackedCheckpoint:
         except Exception as e:
             logger.warning(f"Checkpoint deletion failed: {e}")
 
-    def to_train_checkpoint(
-        self, local_to_remote_path_fn: Optional[Callable[[str], str]] = None
-    ) -> Optional["NewCheckpoint"]:
-        from ray.train._internal.storage import (
-            _use_new_persistence_mode,
-            _using_class_trainable,
-        )
-        from ray.train._checkpoint import Checkpoint as NewCheckpoint
-
-        assert _use_new_persistence_mode() and _using_class_trainable, (
-            "This method should only be called internally to patch "
-            "the checkpoints of class Trainable results."
-        )
-        checkpoint_data = self.dir_or_data
-
-        if not checkpoint_data:
-            return None
-
-        if isinstance(checkpoint_data, ray.ObjectRef):
-            checkpoint_data = ray.get(checkpoint_data)
-        assert isinstance(checkpoint_data, str)
-
-        # Prefer cloud checkpoints
-        path = (
-            local_to_remote_path_fn(checkpoint_data)
-            if local_to_remote_path_fn
-            else checkpoint_data
-        )
-        return NewCheckpoint(path)
-
     def to_air_checkpoint(
         self, local_to_remote_path_fn: Optional[Callable[[str], str]] = None
     ) -> Optional[Checkpoint]:

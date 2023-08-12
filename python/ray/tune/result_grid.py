@@ -4,11 +4,7 @@ import pandas as pd
 from typing import Optional, Union
 
 from ray.air.result import Result
-from ray.train._internal.storage import (
-    _use_storage_context,
-    _use_new_persistence_mode,
-    _using_class_trainable,
-)
+from ray.train._internal.storage import _use_storage_context
 from ray.cloudpickle import cloudpickle
 from ray.exceptions import RayTaskError
 from ray.tune.analysis import ExperimentAnalysis
@@ -302,29 +298,16 @@ class ResultGrid:
                 else None
             )
 
-            if _use_new_persistence_mode() and _use_storage_context():
-                checkpoint = trial.checkpoint.to_train_checkpoint(
-                    local_to_remote_path_fn,
+            checkpoint = trial.checkpoint.to_air_checkpoint(
+                local_to_remote_path_fn,
+            )
+            best_checkpoints = [
+                (
+                    checkpoint.to_air_checkpoint(local_to_remote_path_fn),
+                    checkpoint.metrics,
                 )
-                best_checkpoints = [
-                    (
-                        checkpoint.to_train_checkpoint(local_to_remote_path_fn),
-                        checkpoint.metrics,
-                    )
-                    for checkpoint in trial.get_trial_checkpoints()
-                ]
-
-            else:
-                checkpoint = trial.checkpoint.to_air_checkpoint(
-                    local_to_remote_path_fn,
-                )
-                best_checkpoints = [
-                    (
-                        checkpoint.to_air_checkpoint(local_to_remote_path_fn),
-                        checkpoint.metrics,
-                    )
-                    for checkpoint in trial.get_trial_checkpoints()
-                ]
+                for checkpoint in trial.get_trial_checkpoints()
+            ]
 
         result = Result(
             checkpoint=checkpoint,
