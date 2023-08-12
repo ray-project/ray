@@ -12,6 +12,7 @@ from ray.includes.optional cimport (
 from ray.includes.unique_ids cimport (
     CActorID,
     CJobID,
+    CClusterID,
     CWorkerID,
     CObjectID,
     CTaskID,
@@ -359,6 +360,7 @@ cdef extern from "ray/gcs/gcs_client/gcs_client.h" nogil:
     cdef enum CGrpcStatusCode "grpc::StatusCode":
         UNAVAILABLE "grpc::StatusCode::UNAVAILABLE",
         UNKNOWN "grpc::StatusCode::UNKNOWN",
+        DEADLINE_EXCEEDED "grpc::StatusCode::DEADLINE_EXCEEDED",
 
     cdef cppclass CGcsClientOptions "ray::gcs::GcsClientOptions":
         CGcsClientOptions(const c_string &gcs_address)
@@ -366,8 +368,14 @@ cdef extern from "ray/gcs/gcs_client/gcs_client.h" nogil:
     cdef cppclass CPythonGcsClient "ray::gcs::PythonGcsClient":
         CPythonGcsClient(const CGcsClientOptions &options)
 
-        CRayStatus Connect()
-
+        CRayStatus Connect(
+            const CClusterID &cluster_id,
+            int64_t timeout_ms,
+            size_t num_retries)
+        CRayStatus CheckAlive(
+            const c_vector[c_string] &raylet_addresses,
+            int64_t timeout_ms,
+            c_vector[c_bool] &result)
         CRayStatus InternalKVGet(
             const c_string &ns, const c_string &key,
             int64_t timeout_ms, c_string &value)
@@ -400,7 +408,13 @@ cdef extern from "ray/gcs/gcs_client/gcs_client.h" nogil:
         CRayStatus GetClusterStatus(
             int64_t timeout_ms,
             c_string &serialized_reply)
-
+        CClusterID GetClusterId()
+        CRayStatus DrainNode(
+            const c_string &node_id,
+            int32_t reason,
+            const c_string &reason_message,
+            int64_t timeout_ms,
+            c_bool &is_accepted)
 
 cdef extern from "ray/gcs/gcs_client/gcs_client.h" namespace "ray::gcs" nogil:
     unordered_map[c_string, double] PythonGetResourcesTotal(
@@ -487,6 +501,7 @@ cdef extern from "src/ray/protobuf/gcs.pb.h" nogil:
         c_string job_id() const
         c_bool is_dead() const
         CJobConfig config() const
+        const c_string &SerializeAsString()
 
     cdef cppclass CPythonFunction "ray::rpc::PythonFunction":
         void set_key(const c_string &key)

@@ -1,3 +1,4 @@
+import bisect
 import collections
 import heapq
 from typing import (
@@ -332,18 +333,13 @@ class PandasBlockAccessor(TableBlockAccessor):
     def sort_and_partition(
         self, boundaries: List[T], sort_key: "SortKey"
     ) -> List[Block]:
-        columns, ascending = sort_key.to_pandas_sort_args()
-        if len(columns) > 1:
-            raise NotImplementedError(
-                "Sorting by multiple columns is not supported yet"
-            )
         if self._table.shape[0] == 0:
             # If the pyarrow table is empty we may not have schema
             # so calling sort_indices() will raise an error.
             return [self._empty_table() for _ in range(len(boundaries) + 1)]
 
-        col = columns[0]
-        table = self._table.sort_values(by=col, ascending=ascending)
+        columns, ascending = sort_key.to_pandas_sort_args()
+        table = self._table.sort_values(by=columns, ascending=ascending)
         if len(boundaries) == 0:
             return [table]
 
@@ -354,13 +350,25 @@ class PandasBlockAccessor(TableBlockAccessor):
         # partition[i]. If `descending` is true, `boundaries` would also be
         # in descending order and we only need to count the number of items
         # *greater than* the boundary value instead.
-        if not ascending:
-            num_rows = len(table[col])
-            bounds = num_rows - table[col].searchsorted(
-                boundaries, sorter=np.arange(num_rows - 1, -1, -1)
+
+        def find_partition_index(records, boundary, sort_key):
+            if sort_key.get_descending():
+                return len(records) - bisect.bisect_left(records[::-1], boundary)
+            else:
+                return bisect.bisect_left(records, boundary)
+
+        def searchsorted(table, boundaries, sort_key):
+            records = list(
+                table[sort_key.get_columns()].itertuples(index=False, name=None)
             )
-        else:
-            bounds = table[col].searchsorted(boundaries)
+
+            return [
+                find_partition_index(records, boundary, sort_key)
+                for boundary in boundaries
+            ]
+
+        bounds = searchsorted(table, boundaries, sort_key)
+
         last_idx = 0
         for idx in bounds:
             partitions.append(table[last_idx:idx])

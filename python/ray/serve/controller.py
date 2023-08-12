@@ -41,6 +41,7 @@ from ray.serve._private.endpoint_state import EndpointState
 from ray.serve._private.http_state import HTTPProxyStateManager
 from ray.serve._private.logging_utils import (
     configure_component_logger,
+    configure_component_memory_profiler,
     get_component_logger_file_path,
 )
 from ray.serve._private.long_poll import LongPollHost
@@ -56,10 +57,14 @@ from ray.serve.schema import (
 from ray.serve._private.storage.kv_store import RayInternalKVStore
 from ray.serve._private.utils import (
     call_function_from_import_path,
+    get_all_live_placement_group_names,
     get_head_node_id,
     record_serve_tag,
 )
 from ray.serve._private.application_state import ApplicationStateManager
+from ray.serve._private.default_impl import (
+    create_cluster_node_info_cache,
+)
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -113,6 +118,9 @@ class ServeController:
         configure_component_logger(
             component_name="controller", component_id=str(os.getpid())
         )
+        configure_component_memory_profiler(
+            component_name="controller", component_id=str(os.getpid())
+        )
         if RAY_SERVE_CONTROLLER_CALLBACK_IMPORT_PATH:
             logger.info(
                 "Calling user-provided callback from import path "
@@ -123,10 +131,12 @@ class ServeController:
         # Used to read/write checkpoints.
         self.ray_worker_namespace = ray.get_runtime_context().namespace
         self.controller_name = controller_name
-        gcs_client = GcsClient(address=ray.get_runtime_context().gcs_address)
+        self.gcs_client = GcsClient(address=ray.get_runtime_context().gcs_address)
         kv_store_namespace = f"{self.controller_name}-{self.ray_worker_namespace}"
-        self.kv_store = RayInternalKVStore(kv_store_namespace, gcs_client)
-        self.snapshot_store = RayInternalKVStore(kv_store_namespace, gcs_client)
+        self.kv_store = RayInternalKVStore(kv_store_namespace, self.gcs_client)
+        self.snapshot_store = RayInternalKVStore(kv_store_namespace, self.gcs_client)
+        self.cluster_node_info_cache = create_cluster_node_info_cache(self.gcs_client)
+        self.cluster_node_info_cache.update()
 
         # Dictionary of deployment_name -> proxy_name -> queue length.
         self.deployment_stats = defaultdict(lambda: defaultdict(dict))
@@ -142,7 +152,7 @@ class ServeController:
                 detached,
                 http_config,
                 self._controller_node_id,
-                gcs_client,
+                self.cluster_node_info_cache,
             )
 
         self.endpoint_state = EndpointState(self.kv_store, self.long_poll_host)
@@ -162,6 +172,8 @@ class ServeController:
             self.kv_store,
             self.long_poll_host,
             all_serve_actor_names,
+            get_all_live_placement_group_names(),
+            self.cluster_node_info_cache,
         )
 
         # Manage all applications' state
@@ -191,6 +203,12 @@ class ServeController:
         # Nodes where http proxy actors should run.
         self._http_proxy_nodes = set()
         self._update_http_proxy_nodes()
+
+        # Track the number of times the controller has started
+        metrics.Counter(
+            "serve_controller_num_starts",
+            description="The number of times that controller has started.",
+        ).inc()
 
     def check_alive(self) -> None:
         """No-op to check if this controller is alive."""
@@ -291,6 +309,9 @@ class ServeController:
         (head node and nodes with deployment replicas).
         """
         new_http_proxy_nodes = self.deployment_state_manager.get_active_node_ids()
+        new_http_proxy_nodes = (
+            new_http_proxy_nodes - self.cluster_node_info_cache.get_draining_node_ids()
+        )
         new_http_proxy_nodes.add(self._controller_node_id)
         self._http_proxy_nodes = new_http_proxy_nodes
 
@@ -303,6 +324,12 @@ class ServeController:
         start_time = time.time()
         while True:
             loop_start_time = time.time()
+
+            try:
+                self.cluster_node_info_cache.update()
+            except Exception:
+                logger.exception("Exception updating cluster node info cache.")
+
             if self._shutting_down:
                 try:
                     self.shutdown()
@@ -327,6 +354,10 @@ class ServeController:
                 )
                 if not self.done_recovering_event.is_set() and not any_recovering:
                     self.done_recovering_event.set()
+                    logger.info(
+                        "Finished recovering deployments after "
+                        f"{time.time() - start_time}s."
+                    )
             except Exception:
                 logger.exception("Exception updating deployment state.")
 
@@ -839,6 +870,13 @@ class ServeController:
             )
         return deployment_route_list.SerializeToString()
 
+    def list_deployment_names(self) -> List[str]:
+        """Gets the current list of all deployments' names.
+
+        Returns: deployment names, in the format {app-name}_{deployment-name}.
+        """
+        return self.deployment_state_manager._deployment_states.keys()
+
     def get_serve_instance_details(self) -> Dict:
         """Gets details on all applications on the cluster and system-level info.
 
@@ -948,6 +986,15 @@ class ServeController:
 
         Currently, this is the OpenAPI docs path for FastAPI-integrated applications."""
         return self.application_state_manager.get_docs_path(name)
+
+    def get_ingress_deployment_name(self, app_name: str) -> Optional[str]:
+        """Name of the ingress deployment in an application.
+
+        Returns:
+            Ingress deployment name (str): if the application exists.
+            None: if the application does not exist.
+        """
+        return self.application_state_manager.get_ingress_deployment_name(app_name)
 
     def delete_apps(self, names: Iterable[str]):
         """Delete applications based on names

@@ -49,6 +49,7 @@ PY_MATRIX = {
 ML_IMAGES_PY_VERSIONS = {"py38", "py39", "py310"}
 
 BASE_IMAGES = {
+    "cu121": "nvidia/cuda:12.1.1-cudnn8-devel-ubuntu20.04",
     "cu118": "nvidia/cuda:11.8.0-cudnn8-devel-ubuntu20.04",
     "cu117": "nvidia/cuda:11.7.1-cudnn8-devel-ubuntu20.04",
     "cu116": "nvidia/cuda:11.6.2-cudnn8-devel-ubuntu20.04",
@@ -57,6 +58,7 @@ BASE_IMAGES = {
 }
 
 CUDA_FULL = {
+    "cu121": "CUDA 12.1",
     "cu118": "CUDA 11.8",
     "cu117": "CUDA 11.7",
     "cu116": "CUDA 11.6",
@@ -217,6 +219,13 @@ def _build_docker_image(
     # I.e. "py310"[3:] == 10
     assert py_version[:3] == "py3"
     python_minor_version = py_version[3:]
+
+    if py_version == "py37":
+        constraints_file = "requirements_compiled_py37.txt"
+    else:
+        constraints_file = "requirements_compiled.txt"
+
+    build_args["CONSTRAINTS_FILE"] = constraints_file
 
     if platform.processor() in ADDITIONAL_PLATFORMS:
         build_args["HOSTTYPE"] = platform.processor()
@@ -426,6 +435,19 @@ def build_or_pull_base_images(
     else:
         print("Just pulling images!")
         return False
+
+
+def prep_ray_base():
+    root_dir = _get_root_dir()
+    requirements_files = [
+        "python/requirements_compiled.txt",
+        "python/requirements_compiled_py37.txt",
+    ]
+    for requirement_file in requirements_files:
+        shutil.copy(
+            os.path.join(root_dir, requirement_file),
+            os.path.join(root_dir, "docker/ray/"),
+        )
 
 
 def prep_ray_ml():
@@ -909,6 +931,8 @@ def main(
             # TODO Currently don't push ray_worker_container
         else:
             # Build Ray Docker images.
+            prep_ray_base()
+
             all_tagged_images = []
 
             all_tagged_images += build_for_all_versions(

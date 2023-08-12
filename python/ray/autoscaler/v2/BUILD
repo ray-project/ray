@@ -80,9 +80,9 @@ py_test(
 
 py_test(
     name = "test_sdk",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_sdk.py"],
-    tags = ["team:core"],
+    tags = ["team:core", "exclusive"],
     deps = ["//:ray_lib", ":conftest"],
 )
 
@@ -98,6 +98,6 @@ py_test(
     name = "test_e2e",
     size = "small",
     srcs = ["tests/test_e2e.py"],
-    tags = ["team:core"],
+    tags = ["team:core", "exclusive"],
     deps = ["//:ray_lib", ":conftest"],
 )
