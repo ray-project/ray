@@ -104,8 +104,6 @@ class DreamerV3TfLearner(DreamerV3Learner, TfLearner):
         for optimizer_name, optimizer in self.get_optimizers_for_module(
             module_id=module_id
         ):
-            if optimizer_name != "world_model":
-                continue
             grads_sub_dict = self.filter_param_dict_for_optimizer(
                 module_gradients_dict, optimizer
             )
