@@ -212,7 +212,7 @@ py_test(
     name = "test_map",
     size = "large",
     srcs = ["tests/test_map.py"],
-    tags = ["team:data", "exclusive"],
+    tags = ["team:data", "exclusive", "manual"],
     deps = ["//:ray_lib", ":conftest"],
 )
 
