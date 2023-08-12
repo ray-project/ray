@@ -28,7 +28,7 @@ There are a number of key concepts that dictate proper use of a Tuner:
 * The `Tuner` returns its results in a `ResultGrid`.
 
 .. note::
-   Tuners can also be used to launch hyperparameter tuning without using Ray AIR Trainers. See
+   Tuners can also be used to launch hyperparameter tuning without using Ray Train. See
    :ref:`the Ray Tune documentation <tune-main>` for more guides and examples.
 
 Basic usage
