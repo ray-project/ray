@@ -554,8 +554,8 @@ class ApplicationState:
             self._route_prefix, self._docs_path = self._check_deployment_routes(
                 overrided_infos
             )
-        except RayServeException as e:
-            return repr(e)
+        except RayServeException:
+            return traceback.format_exc()
 
         # Set target state for each deployment
         for deployment_name, info in overrided_infos.items():
@@ -908,8 +908,8 @@ def build_serve_application(
         # happens when deploy_apps() is called.
         logger.info("Existing config deployment request terminated.")
         return None, None
-    except Exception as e:
-        return None, repr(e)
+    except Exception:
+        return None, traceback.format_exc()
 
 
 def override_deployment_info(
