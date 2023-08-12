@@ -704,7 +704,7 @@ class HTTPOptions(pydantic.BaseModel):
         arbitrary_types_allowed = True
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="beta")
 class gRPCOptions(BaseModel):
     port: int = -1
     grpc_servicer_functions: List[str] = []
