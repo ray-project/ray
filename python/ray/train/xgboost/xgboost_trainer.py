@@ -111,7 +111,7 @@ class XGBoostTrainer(GBDTTrainer):
     def _load_checkpoint(
         self, checkpoint: Checkpoint
     ) -> Tuple[xgboost.Booster, Optional["Preprocessor"]]:
-        # TODO(matt): Remove this when we have a clean way to get the preprocessor.
+        # TODO(matt): Replace this when preprocessor arg is removed.
         checkpoint = XGBoostCheckpoint.from_checkpoint(checkpoint)
         return checkpoint.get_model(), checkpoint.get_preprocessor()
 

@@ -118,7 +118,7 @@ class LightGBMTrainer(GBDTTrainer):
     def _load_checkpoint(
         self, checkpoint: Checkpoint
     ) -> Tuple[lightgbm.Booster, Optional["Preprocessor"]]:
-        # TODO(matt): Remove this when we have a clean way to get the preprocessor.
+        # TODO(matt): Replace this when preprocessor arg is removed.
         checkpoint = LightGBMCheckpoint.from_checkpoint(checkpoint)
         return checkpoint.get_model(), checkpoint.get_preprocessor()
 
