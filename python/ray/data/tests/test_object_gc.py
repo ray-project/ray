@@ -1,7 +1,10 @@
+import threading
+
 import pytest
 
 import ray
 from ray._private.internal_api import memory_summary
+from ray._private.test_utils import wait_for_condition
 from ray.tests.conftest import *  # noqa
 
 
@@ -14,6 +17,18 @@ def check_no_spill(ctx, pipe):
             pass
     meminfo = memory_summary(ctx.address_info["address"], stats_only=True)
     assert "Spilled" not in meminfo, meminfo
+
+    def _all_executor_threads_exited():
+        for thread in threading.enumerate():
+            if thread.name.startswith("StreamingExecutor-"):
+                return False
+        return True
+
+    # Wait for all executor threads to exit here.
+    # If we don't do this, the executor will continue running after the current
+    # task case is finished, and auto-init Ray when using some Ray APIs.
+    # This will make the next test case fail to init Ray.
+    wait_for_condition(_all_executor_threads_exited, timeout=10, retry_interval_ms=1000)
 
 
 def check_to_torch_no_spill(ctx, pipe):
