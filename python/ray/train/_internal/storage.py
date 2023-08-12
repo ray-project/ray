@@ -39,7 +39,19 @@ logger = logging.getLogger(__file__)
 
 def _use_storage_context() -> bool:
     # Whether to enable the new simple persistence mode.
+    return _use_new_persistence_mode() and not _using_class_trainable()
+
+
+def _use_new_persistence_mode() -> bool:
+    # Whether the new simple persistence mode feature flag is enabled.
+    # TODO(justinvyu): The naming here is a bit weird.
     return bool(int(os.environ.get("RAY_AIR_NEW_PERSISTENCE_MODE", "0")))
+
+
+def _using_class_trainable() -> bool:
+    return bool(
+        int(os.environ.get("__RAY_AIR_NEW_PERSISTENCE_MODE_CLASS_TRAINABLE", "0"))
+    )
 
 
 class _ExcludingLocalFilesystem(LocalFileSystem):

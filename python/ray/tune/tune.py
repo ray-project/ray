@@ -689,7 +689,8 @@ def run(
                 "Using the new persistence mode is not supported yet for "
                 "class Trainables. Falling back to the legacy syncing behavior. "
             )
-        os.environ["RAY_AIR_NEW_PERSISTENCE_MODE"] = "0"
+        # Set an internal env var to denote that we are using a class trainable.
+        os.environ["__RAY_AIR_NEW_PERSISTENCE_MODE_CLASS_TRAINABLE"] = "1"
 
     if _use_storage_context():
         local_path, remote_path = None, None
