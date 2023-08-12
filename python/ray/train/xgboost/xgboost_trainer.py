@@ -1,3 +1,4 @@
+import os
 from typing import Any, Dict, Optional, Tuple, TYPE_CHECKING
 
 try:
@@ -110,7 +111,7 @@ class XGBoostTrainer(GBDTTrainer):
     def _load_checkpoint(
         self, checkpoint: Checkpoint
     ) -> Tuple[xgboost.Booster, Optional["Preprocessor"]]:
-        # TODO(matthewdeng): Remove this when we have a clean way to get the preprocessor.
+        # TODO(matt): Remove this when we have a clean way to get the preprocessor.
         checkpoint = XGBoostCheckpoint.from_checkpoint(checkpoint)
         return checkpoint.get_model(), checkpoint.get_preprocessor()
 

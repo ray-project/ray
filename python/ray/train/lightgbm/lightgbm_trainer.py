@@ -1,3 +1,4 @@
+import os
 from typing import Dict, Any, Optional, Tuple, Union, TYPE_CHECKING
 
 try:
@@ -117,7 +118,7 @@ class LightGBMTrainer(GBDTTrainer):
     def _load_checkpoint(
         self, checkpoint: Checkpoint
     ) -> Tuple[lightgbm.Booster, Optional["Preprocessor"]]:
-        # TODO(matthewdeng): Remove this when we have a clean way to get the preprocessor.
+        # TODO(matt): Remove this when we have a clean way to get the preprocessor.
         checkpoint = LightGBMCheckpoint.from_checkpoint(checkpoint)
         return checkpoint.get_model(), checkpoint.get_preprocessor()
 
