@@ -151,38 +151,40 @@ def test_no_pandas_future_warning():
 
 @pytest.mark.parametrize("cast_tensor_columns", [True, False])
 def test_numpy_pandas(cast_tensor_columns):
-    input_data = np.array([1, 2, 3])
-    expected_output = pd.DataFrame({TENSOR_COLUMN_NAME: input_data})
+    input_data = {TENSOR_COLUMN_NAME: np.array([1, 2, 3])}
+    expected_output = pd.DataFrame(input_data)
     actual_output = _convert_batch_type_to_pandas(input_data, cast_tensor_columns)
     pd.testing.assert_frame_equal(expected_output, actual_output)
 
     output_array = _convert_pandas_to_batch_type(
         actual_output, type=BatchFormat.NUMPY, cast_tensor_columns=cast_tensor_columns
     )
-    np.testing.assert_equal(output_array, input_data)
+    np.testing.assert_equal(output_array, input_data[TENSOR_COLUMN_NAME])
 
 
 @pytest.mark.parametrize("cast_tensor_columns", [True, False])
 def test_numpy_multi_dim_pandas(cast_tensor_columns):
-    input_data = np.arange(12).reshape((3, 2, 2))
-    expected_output = pd.DataFrame({TENSOR_COLUMN_NAME: list(input_data)})
+    input_data = {TENSOR_COLUMN_NAME: list(np.arange(12).reshape((3, 2, 2)))}
+    expected_output = pd.DataFrame(input_data)
     actual_output = _convert_batch_type_to_pandas(input_data, cast_tensor_columns)
     pd.testing.assert_frame_equal(expected_output, actual_output)
 
     output_array = _convert_pandas_to_batch_type(
         actual_output, type=BatchFormat.NUMPY, cast_tensor_columns=cast_tensor_columns
     )
-    np.testing.assert_array_equal(np.array(list(output_array)), input_data)
+    np.testing.assert_array_equal(
+        np.array(list(output_array)), input_data[TENSOR_COLUMN_NAME])
 
 
 def test_numpy_object_pandas():
-    input_data = np.array([[1, 2, 3], [1]], dtype=object)
-    expected_output = pd.DataFrame({TENSOR_COLUMN_NAME: input_data})
+    input_data = {TENSOR_COLUMN_NAME: np.array([[1, 2, 3], [1]], dtype=object)}
+    expected_output = pd.DataFrame(input_data)
     actual_output = _convert_batch_type_to_pandas(input_data)
     pd.testing.assert_frame_equal(expected_output, actual_output)
 
     np.testing.assert_array_equal(
-        _convert_pandas_to_batch_type(actual_output, type=BatchFormat.NUMPY), input_data
+        _convert_pandas_to_batch_type(
+            actual_output, type=BatchFormat.NUMPY), input_data[TENSOR_COLUMN_NAME]
     )
 
 
