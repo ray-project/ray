@@ -2347,7 +2347,7 @@ cdef class GcsClient:
         object _nums_reconnect_retry
         CClusterID cluster_id
 
-    def __cinit__(self, address, nums_reconnect_retry=5, cluster_id=None):
+    def __cinit__(self, address, nums_reconnect_retry=10, cluster_id=None):
         cdef GcsClientOptions gcs_options = GcsClientOptions.from_gcs_address(address)
         self.inner.reset(new CPythonGcsClient(dereference(gcs_options.native())))
         self.address = address
