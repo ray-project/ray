@@ -54,7 +54,7 @@ namespace rpc {
   RAY_CORE_WORKER_RPC_SERVICE_HANDLER(DeleteSpilledObjects)           \
   RAY_CORE_WORKER_RPC_SERVICE_HANDLER(PlasmaObjectReady)              \
   RAY_CORE_WORKER_RPC_SERVICE_HANDLER(Exit)                           \
-  RAY_CORE_WORKER_RPC_SERVICE_HANDLER(AssignObjectOwner) \
+  RAY_CORE_WORKER_RPC_SERVICE_HANDLER(AssignObjectOwner)              \
   RAY_CORE_WORKER_RPC_SERVICE_HANDLER(NumPendingTasks)
 
 #define RAY_CORE_WORKER_DECLARE_RPC_HANDLERS                              \

@@ -29,8 +29,6 @@ namespace rpc {
 
 /// NOTE: See src/ray/core_worker/core_worker.h on how to add a new grpc handler.
 #define RAY_NODE_MANAGER_RPC_HANDLERS                          \
-  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(UpdateResourceUsage)    \
-  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(RequestResourceReport)  \
   RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(GetResourceLoad)        \
   RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(NotifyGCSRestart)       \
   RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(RequestWorkerLease)     \
