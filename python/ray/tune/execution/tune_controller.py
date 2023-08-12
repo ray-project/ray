@@ -1756,11 +1756,12 @@ class TuneController:
         # the scheduler decision is STOP or PAUSE. Note that
         # PAUSE only checkpoints to memory and does not update
         # the global checkpoint state.
-        if _use_storage_context() and decision != TrialScheduler.PAUSE:
-            # TODO(justinvyu): This is a temporary hack to fix pausing trials.
-            # We already schedule a save task in `pause_trial`, so no need
-            # to do it again here.
-            self._checkpoint_trial_if_needed(trial, force=force_checkpoint)
+        if _use_storage_context():
+            if decision != TrialScheduler.PAUSE:
+                # TODO(justinvyu): This is a temporary hack to fix pausing trials.
+                # We already schedule a save task in `pause_trial`, so no need
+                # to do it again here.
+                self._checkpoint_trial_if_needed(trial, force=force_checkpoint)
         else:
             # NOTE: The legacy path is different because this saves a persistent
             # checkpoint while `pause_trial` saves an in-memory one.
