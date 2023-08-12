@@ -1128,7 +1128,7 @@ class TuneController:
 
         assert trial.status == Trial.PENDING
 
-        trial.init_logdir()
+        trial.init_local_path()
         # We checkpoint metadata here to try mitigating logdir duplication
         self._mark_trial_to_checkpoint(trial)
 
@@ -1756,10 +1756,14 @@ class TuneController:
         # the scheduler decision is STOP or PAUSE. Note that
         # PAUSE only checkpoints to memory and does not update
         # the global checkpoint state.
-        if decision != TrialScheduler.PAUSE:
+        if _use_storage_context() and decision != TrialScheduler.PAUSE:
             # TODO(justinvyu): This is a temporary hack to fix pausing trials.
             # We already schedule a save task in `pause_trial`, so no need
             # to do it again here.
+            self._checkpoint_trial_if_needed(trial, force=force_checkpoint)
+        else:
+            # NOTE: The legacy path is different because this saves a persistent
+            # checkpoint while `pause_trial` saves an in-memory one.
             self._checkpoint_trial_if_needed(trial, force=force_checkpoint)
 
         if trial.is_saving:
@@ -2158,7 +2162,7 @@ class TuneController:
 
         logger_creator = partial(
             _noop_logger_creator,
-            logdir=trial.logdir,
+            logdir=trial.local_path,
             should_chdir=self._chdir_to_trial_dir,
         )
 
