@@ -705,6 +705,8 @@ def test_metrics_pusher_basic():
                 assert result["val"] == expected_result
                 break
 
+        assert result["val"] == expected_result
+
 
 def test_metrics_pusher_multiple_tasks():
     start = 0
@@ -741,6 +743,10 @@ def test_metrics_pusher_multiple_tasks():
                 assert result[key] == expected_results[key]
             if len(result) == 3:
                 break
+
+        # Check there are three results set and all are expected.
+        for key in expected_results.keys():
+            assert result[key] == expected_results[key]
 
 
 if __name__ == "__main__":
