@@ -65,10 +65,12 @@ parts:
             title: PyTorch
           - file: train/getting-started-pytorch-lightning
             title: PyTorch Lightning
+          - file: train/getting-started-transformers
+            title: Hugging Face Transformers
           - file: train/more-frameworks
             sections:
               - file: train/huggingface-transformers-accelerate
-                title: HuggingFace Transformers & Accelerate
+                title: Hugging Face Transformers & Accelerate
               - file: train/distributed-tensorflow-keras
                 title: TensorFlow & Keras
               - file: train/distributed-xgboost-lightgbm
@@ -86,6 +88,8 @@ parts:
             sections:
               - file: train/examples/pytorch/torch_fashion_mnist_example
                 title: "PyTorch Fashion MNIST Example"
+              - file: train/examples/transformers/transformers_torch_trainer_basic
+                title: "Hugging Face Transformers Basic Example"
               - file: train/examples/lightning/lightning_mnist_example
                 title: "PyTorch Lightning Basic Example"
               - file: train/examples/lightning/lightning_cola_advanced
