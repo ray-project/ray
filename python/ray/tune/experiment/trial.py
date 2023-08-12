@@ -899,6 +899,7 @@ class Trial:
             trial_dirname_creator=self.trial_dirname_creator,
             log_to_file=self.log_to_file,
             max_failures=self.max_failures,
+            storage=self.storage,
         )
 
     @Deprecated("Replaced by `init_local_path()`")
