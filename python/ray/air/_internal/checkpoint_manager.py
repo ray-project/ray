@@ -15,11 +15,6 @@ from ray.air import Checkpoint, CheckpointConfig
 from ray.air.config import MAX
 from ray.air.constants import COPY_DIRECTORY_CHECKPOINTS_INSTEAD_OF_MOVING_ENV
 from ray.air._internal.util import is_nan
-from ray.train._checkpoint import Checkpoint as NewCheckpoint
-from ray.train._internal.storage import (
-    _use_new_persistence_mode,
-    _using_class_trainable,
-)
 from ray.util import log_once
 from ray._private.ray_constants import env_integer
 
@@ -143,7 +138,13 @@ class _TrackedCheckpoint:
 
     def to_train_checkpoint(
         self, local_to_remote_path_fn: Optional[Callable[[str], str]] = None
-    ) -> Optional[NewCheckpoint]:
+    ) -> Optional["NewCheckpoint"]:
+        from ray.train._internal.storage import (
+            _use_new_persistence_mode,
+            _using_class_trainable,
+        )
+        from ray.train._checkpoint import Checkpoint as NewCheckpoint
+
         assert _use_new_persistence_mode() and _using_class_trainable, (
             "This method should only be called internally to patch "
             "the checkpoints of class Trainable results."
