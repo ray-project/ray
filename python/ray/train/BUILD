@@ -455,6 +455,14 @@ py_test(
 )
 
 py_test(
+    name = "test_torch_transformers_train",
+    size = "large",
+    srcs = ["tests/test_torch_transformers_train.py"],
+    tags = ["team:ml", "exclusive", "ray_air", "gpu"],
+    deps = [":train_lib"]
+)
+
+py_test(
     name = "test_minimal",
     size = "small",
     srcs = ["tests/test_minimal.py"],
