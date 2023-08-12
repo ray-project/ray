@@ -854,6 +854,7 @@ def test_serving_request_through_grpc_proxy(ray_start_stop):
         assert call.code() == grpc.StatusCode.OK
         assert response.application_names == [app_name]
         return True
+
     wait_for_condition(check_app_deployed)
 
     # Ensures healthz path succeeding.
