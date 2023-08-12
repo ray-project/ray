@@ -13,7 +13,11 @@ import ray
 from ray import train, tune
 from ray.air._internal.uri_utils import URI
 from ray.air.constants import EXPR_RESULT_FILE
-from ray.train._internal.storage import _download_from_fs_path, StorageContext
+from ray.train._internal.storage import (
+    _download_from_fs_path,
+    _use_storage_context,
+    StorageContext,
+)
 from ray.train._checkpoint import Checkpoint as NewCheckpoint
 from ray.train.base_trainer import TrainingFailedError
 from ray.train.data_parallel_trainer import DataParallelTrainer
@@ -437,6 +441,24 @@ def test_trainer(
         # TODO(justinvyu): In a follow-up PR, artifacts will be synced by the workers.
         assert len(list(trial_dir.glob("artifact-*"))) == NUM_ITERATIONS * NUM_WORKERS
         assert len(list(trial_dir.glob(EXPR_RESULT_FILE))) == 1
+
+
+def test_disabled_for_class_trainable(ray_start_4_cpus, tmp_path):
+    class ClassTrainable(tune.Trainable):
+        def setup(self, config):
+            assert not _use_storage_context(), "Should not be in new persistence mode!"
+
+        def step(self) -> dict:
+            return {"score": 1, "done": True, "should_checkpoint": True}
+
+        def save_checkpoint(self, temp_checkpoint_dir) -> str:
+            (Path(temp_checkpoint_dir) / "dummy.txt").write_text("dummy")
+            return temp_checkpoint_dir
+
+    tuner = tune.Tuner(ClassTrainable)
+    result_grid = tuner.fit()
+
+    assert not result_grid.errors
 
 
 if __name__ == "__main__":
