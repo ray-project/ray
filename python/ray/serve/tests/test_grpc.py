@@ -223,7 +223,7 @@ def test_schemas_attach_grpc_server():
 
 
 @pytest.mark.skipif(
-    RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING, reason="Not supported w/ streaming."
+    not RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING, reason="Not supported w/o streaming."
 )
 def test_serving_request_through_grpc_proxy(ray_cluster):
     """Test serving request through gRPC proxy
