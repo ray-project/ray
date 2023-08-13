@@ -161,11 +161,11 @@ class WorldModel(tf.keras.Model):
         self.decoder = decoder
 
         # Trace self.call.
-        dl_type = tf.keras.mixed_precision.global_policy().compute_dtype
+        #dl_type = tf.keras.mixed_precision.global_policy().compute_dtype
         self.forward_train = tf.function(input_signature=[
-            tf.TensorSpec(shape=[None, None] + list(self.observation_space.shape), dtype=dl_type),
-            tf.TensorSpec(shape=[None, None, self.action_space.n], dtype=dl_type),
-            tf.TensorSpec(shape=[None, None], dtype=dl_type),
+            tf.TensorSpec(shape=[None, None] + list(self.observation_space.shape)),#, dtype=dl_type),
+            tf.TensorSpec(shape=[None, None, self.action_space.n]),#, dtype=dl_type),
+            tf.TensorSpec(shape=[None, None]),#, dtype=dl_type),
         ])(self.forward_train)
 
     @tf.function
