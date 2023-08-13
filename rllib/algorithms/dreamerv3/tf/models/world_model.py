@@ -254,6 +254,8 @@ class WorldModel(tf.keras.Model):
                 h-states and computed z-states to yield the next h-states.
             is_first: The batch (B, T) of `is_first` flags.
         """
+        observations = tf.cast(observations, self._comp_dtype)
+
         if self.symlog_obs:
             observations = symlog(observations)
 

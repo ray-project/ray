@@ -103,10 +103,10 @@ class DreamerV3RLModule(RLModule, abc.ABC):
 
         dl_type = self.config.model_config_dict["dl_dtype"]
         self.dreamer_model(
-            inputs=_convert_to_tf(test_obs, dl_type),
-            actions=_convert_to_tf(test_actions, dl_type),
-            is_first=_convert_to_tf(np.ones((B, T)), dl_type),
-            start_is_terminated_BxT=_convert_to_tf(np.zeros((B * T,)), dl_type),
+            inputs=_convert_to_tf(test_obs, tf.float32),
+            actions=_convert_to_tf(test_actions, tf.float32),
+            is_first=_convert_to_tf(np.ones((B, T)), tf.float32),
+            start_is_terminated_BxT=_convert_to_tf(np.zeros((B * T,)), tf.float32),
         )
 
         # Initialize the critic EMA net:
