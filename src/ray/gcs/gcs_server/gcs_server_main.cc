@@ -53,13 +53,6 @@ int main(int argc, char *argv[]) {
 
   gflags::ParseCommandLineFlags(&argc, &argv, true);
 
-#ifdef __linux__
-  bool prof = true;
-  mallctl("prof", nullptr, 0, (void*)&prof, sizeof(prof));
-  bool active = false;
-  mallctl("prof.active", nullptr, 0, (void*)&active, sizeof(active));
-#endif
-
   const std::string redis_address = FLAGS_redis_address;
   const int redis_port = static_cast<int>(FLAGS_redis_port);
   const std::string log_dir = FLAGS_log_dir;
