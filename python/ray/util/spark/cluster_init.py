@@ -514,113 +514,6 @@ def _setup_ray_cluster(
 
     _logger.info("Ray head node started.")
 
-    # NB:
-    # In order to start ray worker nodes on spark cluster worker machines,
-    # We launch a background spark job:
-    #  1. Each spark task launches one ray worker node. This design ensures all ray
-    #     worker nodes have the same shape (same cpus / gpus / memory configuration).
-    #     If ray worker nodes have a non-uniform shape, the Ray cluster setup will
-    #     be non-deterministic and could create issues with node sizing.
-    #  2. A ray worker node is started via the `ray start` CLI. In each spark task,
-    #     a child process is started and will execute a `ray start ...` command in
-    #     blocking mode.
-    #  3. Each task will acquire a file lock for 10s to ensure that the ray worker
-    #     init will acquire a port connection to the ray head node that does not
-    #     contend with other worker processes on the same Spark worker node.
-    #  4. When the ray cluster is shutdown, killing ray worker nodes is implemented by:
-    #     Installing a PR_SET_PDEATHSIG signal for the `ray start ...` child processes
-    #     so that when parent process (pyspark task) is killed, the child processes
-    #     (`ray start ...` processes) will receive a SIGTERM signal, killing it.
-    #     Shutting down the ray cluster is performed by calling
-    #     `sparkContext.cancelJobGroup` to cancel the background spark job, sending a
-    #     SIGKILL signal to all spark tasks. Once the spark tasks are killed, this
-    #     triggers the sending of a SIGTERM to the child processes spawned by the
-    #     `ray_start ...` process.
-
-    def ray_cluster_job_mapper(_):
-        from pyspark.taskcontext import TaskContext
-
-        _worker_logger = logging.getLogger("ray.util.spark.worker")
-
-        context = TaskContext.get()
-
-        (
-            worker_port_range_begin,
-            worker_port_range_end,
-        ) = _prepare_for_ray_worker_node_startup()
-
-        # Ray worker might run on a machine different with the head node, so create the
-        # local log dir and temp dir again.
-        os.makedirs(ray_temp_dir, exist_ok=True)
-
-        ray_worker_node_dashboard_agent_port = get_random_unused_port(
-            ray_head_ip, min_port=10000, max_port=20000
-        )
-        ray_worker_node_cmd = [
-            sys.executable,
-            "-m",
-            "ray.util.spark.start_ray_node",
-            f"--temp-dir={ray_temp_dir}",
-            f"--num-cpus={num_cpus_per_node}",
-            "--block",
-            f"--address={ray_head_ip}:{ray_head_port}",
-            f"--memory={heap_memory_per_node}",
-            f"--object-store-memory={object_store_memory_per_node}",
-            f"--min-worker-port={worker_port_range_begin}",
-            f"--max-worker-port={worker_port_range_end - 1}",
-            f"--dashboard-agent-listen-port={ray_worker_node_dashboard_agent_port}",
-            *_convert_ray_node_options(worker_node_options),
-        ]
-
-        ray_worker_node_extra_envs = {
-            RAY_ON_SPARK_COLLECT_LOG_TO_PATH: collect_log_to_path or ""
-        }
-
-        if num_gpus_per_node > 0:
-            task_resources = context.resources()
-
-            if "gpu" not in task_resources:
-                raise RuntimeError(
-                    "Couldn't get the gpu id, Please check the GPU resource "
-                    "configuration"
-                )
-            gpu_addr_list = [
-                int(addr.strip()) for addr in task_resources["gpu"].addresses
-            ]
-
-            available_physical_gpus = get_spark_task_assigned_physical_gpus(
-                gpu_addr_list
-            )
-            ray_worker_node_cmd.append(
-                f"--num-gpus={len(available_physical_gpus)}",
-            )
-            ray_worker_node_extra_envs["CUDA_VISIBLE_DEVICES"] = ",".join(
-                [str(gpu_id) for gpu_id in available_physical_gpus]
-            )
-
-        _worker_logger.info(
-            f"Start Ray worker, command: {' '.join(ray_worker_node_cmd)}"
-        )
-
-        # `preexec_fn=setup_sigterm_on_parent_death` handles the case:
-        # If a user cancels the PySpark job, the worker process gets killed, regardless
-        # of PySpark daemon and worker reuse settings.
-        # We use prctl to ensure the command process receives SIGTERM after spark job
-        # cancellation.
-        # Note:
-        # When a pyspark job cancelled, the UDF python process are killed by signal
-        # "SIGKILL", This case neither "atexit" nor signal handler can capture SIGKILL
-        # signal. prctl is the only way to capture SIGKILL signal.
-        exec_cmd(
-            ray_worker_node_cmd,
-            synchronous=True,
-            extra_env=ray_worker_node_extra_envs,
-            preexec_fn=setup_sigterm_on_parent_death,
-        )
-
-        # NB: Not reachable.
-        yield 0
-
     spark_job_group_id = f"ray-cluster-{ray_head_port}-{cluster_unique_id}"
 
     cluster_address = f"{ray_head_ip}:{ray_head_port}"
@@ -640,43 +533,23 @@ def _setup_ray_cluster(
 
     def background_job_thread_fn():
         try:
-            spark.sparkContext.setJobGroup(
+            _start_ray_worker_nodes(
+                spark,
                 spark_job_group_id,
                 "This job group is for spark job which runs the Ray cluster with ray "
                 f"head node {ray_head_ip}:{ray_head_port}",
+                num_worker_nodes,
+                using_stage_scheduling,
+                ray_head_ip,
+                ray_head_port,
+                ray_temp_dir,
+                num_cpus_per_node,
+                num_gpus_per_node,
+                heap_memory_per_node,
+                object_store_memory_per_node,
+                worker_node_options,
+                collect_log_to_path,
             )
-
-            # Starting a normal spark job (not barrier spark job) to run ray worker
-            # nodes, the design purpose is:
-            # 1. Using normal spark job, spark tasks can automatically retry
-            # individually, we don't need to write additional retry logic, But, in
-            # barrier mode, if one spark task fails, it will cause all other spark
-            # tasks killed.
-            # 2. Using normal spark job, we can support failover when a spark worker
-            # physical machine crashes. (spark will try to re-schedule the spark task
-            # to other spark worker nodes)
-            # 3. Using barrier mode job, if the cluster resources does not satisfy
-            # "idle spark task slots >= argument num_spark_task", then the barrier
-            # job gets stuck and waits until enough idle task slots available, this
-            # behavior is not user-friendly, on a shared spark cluster, user is hard
-            # to estimate how many idle tasks available at a time, But, if using normal
-            # spark job, it can launch job with less spark tasks (i.e. user will see a
-            # ray cluster setup with less worker number initially), and when more task
-            # slots become available, it continues to launch tasks on new available
-            # slots, and user can see the ray cluster worker number increases when more
-            # slots available.
-            job_rdd = spark.sparkContext.parallelize(
-                list(range(num_worker_nodes)), num_worker_nodes
-            )
-
-            if using_stage_scheduling:
-                resource_profile = _create_resource_profile(
-                    num_cpus_per_node,
-                    num_gpus_per_node,
-                )
-                job_rdd = job_rdd.withResources(resource_profile)
-
-            job_rdd.mapPartitions(ray_cluster_job_mapper).collect()
         except Exception as e:
             # NB:
             # The background spark job is designed to running forever until it is
@@ -1061,6 +934,168 @@ def setup_ray_cluster(
         # started cluster.
         _active_ray_cluster = cluster
     return cluster.address
+
+
+def _start_ray_worker_nodes(
+    *,
+    spark,
+    spark_job_group_id,
+    spark_job_group_desc,
+    num_worker_nodes,
+    using_stage_scheduling,
+    ray_head_ip,
+    ray_head_port,
+    ray_temp_dir,
+    num_cpus_per_node,
+    num_gpus_per_node,
+    heap_memory_per_node,
+    object_store_memory_per_node,
+    worker_node_options,
+    collect_log_to_path,
+):
+    # NB:
+    # In order to start ray worker nodes on spark cluster worker machines,
+    # We launch a background spark job:
+    #  1. Each spark task launches one ray worker node. This design ensures all ray
+    #     worker nodes have the same shape (same cpus / gpus / memory configuration).
+    #     If ray worker nodes have a non-uniform shape, the Ray cluster setup will
+    #     be non-deterministic and could create issues with node sizing.
+    #  2. A ray worker node is started via the `ray start` CLI. In each spark task,
+    #     a child process is started and will execute a `ray start ...` command in
+    #     blocking mode.
+    #  3. Each task will acquire a file lock for 10s to ensure that the ray worker
+    #     init will acquire a port connection to the ray head node that does not
+    #     contend with other worker processes on the same Spark worker node.
+    #  4. When the ray cluster is shutdown, killing ray worker nodes is implemented by:
+    #     Installing a PR_SET_PDEATHSIG signal for the `ray start ...` child processes
+    #     so that when parent process (pyspark task) is killed, the child processes
+    #     (`ray start ...` processes) will receive a SIGTERM signal, killing it.
+    #     Shutting down the ray cluster is performed by calling
+    #     `sparkContext.cancelJobGroup` to cancel the background spark job, sending a
+    #     SIGKILL signal to all spark tasks. Once the spark tasks are killed, this
+    #     triggers the sending of a SIGTERM to the child processes spawned by the
+    #     `ray_start ...` process.
+
+    def ray_cluster_job_mapper(_):
+        from pyspark.taskcontext import TaskContext
+
+        _worker_logger = logging.getLogger("ray.util.spark.worker")
+
+        context = TaskContext.get()
+
+        (
+            worker_port_range_begin,
+            worker_port_range_end,
+        ) = _prepare_for_ray_worker_node_startup()
+
+        # Ray worker might run on a machine different with the head node, so create the
+        # local log dir and temp dir again.
+        os.makedirs(ray_temp_dir, exist_ok=True)
+
+        ray_worker_node_dashboard_agent_port = get_random_unused_port(
+            ray_head_ip, min_port=10000, max_port=20000
+        )
+        ray_worker_node_cmd = [
+            sys.executable,
+            "-m",
+            "ray.util.spark.start_ray_node",
+            f"--temp-dir={ray_temp_dir}",
+            f"--num-cpus={num_cpus_per_node}",
+            "--block",
+            f"--address={ray_head_ip}:{ray_head_port}",
+            f"--memory={heap_memory_per_node}",
+            f"--object-store-memory={object_store_memory_per_node}",
+            f"--min-worker-port={worker_port_range_begin}",
+            f"--max-worker-port={worker_port_range_end - 1}",
+            f"--dashboard-agent-listen-port={ray_worker_node_dashboard_agent_port}",
+            *_convert_ray_node_options(worker_node_options),
+        ]
+
+        ray_worker_node_extra_envs = {
+            RAY_ON_SPARK_COLLECT_LOG_TO_PATH: collect_log_to_path or ""
+        }
+
+        if num_gpus_per_node > 0:
+            task_resources = context.resources()
+
+            if "gpu" not in task_resources:
+                raise RuntimeError(
+                    "Couldn't get the gpu id, Please check the GPU resource "
+                    "configuration"
+                )
+            gpu_addr_list = [
+                int(addr.strip()) for addr in task_resources["gpu"].addresses
+            ]
+
+            available_physical_gpus = get_spark_task_assigned_physical_gpus(
+                gpu_addr_list
+            )
+            ray_worker_node_cmd.append(
+                f"--num-gpus={len(available_physical_gpus)}",
+            )
+            ray_worker_node_extra_envs["CUDA_VISIBLE_DEVICES"] = ",".join(
+                [str(gpu_id) for gpu_id in available_physical_gpus]
+            )
+
+        _worker_logger.info(
+            f"Start Ray worker, command: {' '.join(ray_worker_node_cmd)}"
+        )
+
+        # `preexec_fn=setup_sigterm_on_parent_death` handles the case:
+        # If a user cancels the PySpark job, the worker process gets killed, regardless
+        # of PySpark daemon and worker reuse settings.
+        # We use prctl to ensure the command process receives SIGTERM after spark job
+        # cancellation.
+        # Note:
+        # When a pyspark job cancelled, the UDF python process are killed by signal
+        # "SIGKILL", This case neither "atexit" nor signal handler can capture SIGKILL
+        # signal. prctl is the only way to capture SIGKILL signal.
+        exec_cmd(
+            ray_worker_node_cmd,
+            synchronous=True,
+            extra_env=ray_worker_node_extra_envs,
+            preexec_fn=setup_sigterm_on_parent_death,
+        )
+
+        # NB: Not reachable.
+        yield 0
+
+    spark.sparkContext.setJobGroup(
+        spark_job_group_id,
+        spark_job_group_desc,
+    )
+
+    # Starting a normal spark job (not barrier spark job) to run ray worker
+    # nodes, the design purpose is:
+    # 1. Using normal spark job, spark tasks can automatically retry
+    # individually, we don't need to write additional retry logic, But, in
+    # barrier mode, if one spark task fails, it will cause all other spark
+    # tasks killed.
+    # 2. Using normal spark job, we can support failover when a spark worker
+    # physical machine crashes. (spark will try to re-schedule the spark task
+    # to other spark worker nodes)
+    # 3. Using barrier mode job, if the cluster resources does not satisfy
+    # "idle spark task slots >= argument num_spark_task", then the barrier
+    # job gets stuck and waits until enough idle task slots available, this
+    # behavior is not user-friendly, on a shared spark cluster, user is hard
+    # to estimate how many idle tasks available at a time, But, if using normal
+    # spark job, it can launch job with less spark tasks (i.e. user will see a
+    # ray cluster setup with less worker number initially), and when more task
+    # slots become available, it continues to launch tasks on new available
+    # slots, and user can see the ray cluster worker number increases when more
+    # slots available.
+    job_rdd = spark.sparkContext.parallelize(
+        list(range(num_worker_nodes)), num_worker_nodes
+    )
+
+    if using_stage_scheduling:
+        resource_profile = _create_resource_profile(
+            num_cpus_per_node,
+            num_gpus_per_node,
+        )
+        job_rdd = job_rdd.withResources(resource_profile)
+
+    job_rdd.mapPartitions(ray_cluster_job_mapper).collect()
 
 
 @PublicAPI(stability="alpha")
