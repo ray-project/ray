@@ -471,9 +471,9 @@ def run(
                     working_dir,
                     rust_timeout=10000,
                     yield_on_timeout=True,
-                    watch_filter=watchfiles.PythonFilter(),
                 ):
                     if changes:
+                        cli_logger.info("Files changed. Redeploying Serve app.")
                         serve.run(app, host=host, port=port)
 
             if blocking:
