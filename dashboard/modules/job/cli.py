@@ -1,5 +1,6 @@
 import json
 import os
+import sys
 import pprint
 import time
 from subprocess import list2cmdline
@@ -70,7 +71,7 @@ def _log_big_error_msg(success_msg):
     cli_logger.newline()
 
 
-def _log_job_status(client: JobSubmissionClient, job_id: str):
+def _log_job_status(client: JobSubmissionClient, job_id: str) -> JobStatus:
     info = client.get_job_info(job_id)
     if info.status == JobStatus.SUCCEEDED:
         _log_big_success_msg(f"Job '{job_id}' succeeded")
@@ -85,13 +86,14 @@ def _log_job_status(client: JobSubmissionClient, job_id: str):
         cli_logger.print(f"Status for job '{job_id}': {info.status}")
         if info.message is not None:
             cli_logger.print(f"Status message: {info.message}", no_format=True)
+    return info.status
 
 
-async def _tail_logs(client: JobSubmissionClient, job_id: str):
+async def _tail_logs(client: JobSubmissionClient, job_id: str) -> JobStatus:
     async for lines in client.tail_job_logs(job_id):
         print(lines, end="")
 
-    _log_job_status(client, job_id)
+    return _log_job_status(client, job_id)
 
 
 @click.group("job")
@@ -287,7 +289,10 @@ def submit(
             cli_logger.print(
                 "Tailing logs until the job exits " "(disable with --no-wait):"
             )
-            get_or_create_event_loop().run_until_complete(_tail_logs(client, job_id))
+            job_status = get_or_create_event_loop().run_until_complete(
+                _tail_logs(client, job_id))
+            if job_status == JobStatus.FAILED:
+                sys.exit(1)
         else:
             cli_logger.warning(
                 "Tailing logs is not enabled for job sdk client version "

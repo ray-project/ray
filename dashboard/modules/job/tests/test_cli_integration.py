@@ -189,6 +189,12 @@ class TestJobSubmit:
         assert "hello" in stdout
         assert "succeeded" in stdout
 
+    def test_job_failed(self, ray_start_stop):
+        cmd = (
+            "python -c 'import ray; ray.init(); assert 1 == 2;'"
+        )
+        _run_cmd(f"ray job submit -- {cmd}", should_fail=True)
+
 
 class TestRuntimeEnv:
     def test_bad_runtime_env(self, ray_start_stop):
