@@ -113,6 +113,7 @@ class DreamerModel(tf.keras.Model):
         # non-trainable variables:
 
         # World model.
+        print(f"DreamerModel.call: inputs.dtype={inputs.dtype}")
         results = self.world_model.forward_train(
             inputs,  # observations
             actions,
