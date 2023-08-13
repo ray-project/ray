@@ -316,6 +316,7 @@ class GenericProxy:
     @property
     def proxy_name(self) -> str:
         """Proxy name used for metrics.
+
         Each proxy needs to implement its own logic for setting up the proxy name.
         """
         raise NotImplementedError
@@ -396,9 +397,9 @@ class GenericProxy:
     async def proxy_request(self, scope, receive, send):
         """Wrapper for proxy request.
 
-        This method is served as common entry point by both HTTP and
-        gRPC proxies. It handles the routing, including `/-/routes` and
-        `/-/healthz`, ongoing request counter, and metrics.
+        This method is served as common entry point by the proxy. It handles the
+        routing, including `/-/routes` and `/-/healthz`, ongoing request counter,
+        and metrics.
         """
         assert scope["type"] in {"http", "websocket"}
 
@@ -541,15 +542,6 @@ class GenericProxy:
             # request counter is decremented and possibly reset the keep alive object.
             self._ongoing_requests_end()
 
-    async def send_request_to_replica_unary(
-        self,
-        handle: RayServeHandle,
-        scope: Scope,
-        receive: Receive,
-        send: Send,
-    ) -> str:
-        raise NotImplementedError
-
     async def _assign_request_with_timeout(
         self,
         handle: RayServeHandle,
@@ -582,6 +574,20 @@ class GenericProxy:
             assignment_task.cancel()
             raise TimeoutError()
 
+    async def send_request_to_replica_unary(
+        self,
+        handle: RayServeHandle,
+        scope: Scope,
+        receive: Receive,
+        send: Send,
+    ) -> str:
+        """Send the request to the replica and handle unary response.
+
+        Each proxy needs to implement its own logic for sending the request and
+        handling the unary response.
+        """
+        raise NotImplementedError
+
     def setup_request_context_and_handle(
         self,
         app_name: str,
@@ -590,6 +596,7 @@ class GenericProxy:
         scope: Scope,
     ) -> Tuple[RayServeHandle, str]:
         """Setup the request context and handle for the request.
+
         Each proxy needs to implement its own logic for setting up the request context
         and handle.
         """
@@ -604,6 +611,7 @@ class GenericProxy:
         send: Send,
     ) -> str:
         """Send the request to the replica and handle streaming response.
+
         Each proxy needs to implement its own logic for sending the request and
         handling the streaming response.
         """
@@ -853,7 +861,7 @@ class HTTPProxy(GenericProxy):
         route_path: str,
         scope: Scope,
     ) -> Tuple[RayServeHandle, str]:
-        """Setup request context and handle for the request
+        """Setup request context and handle for the request.
 
         Unpack HTTP request headers and extract info to set up request context and
         handle.
