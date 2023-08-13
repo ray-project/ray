@@ -17,6 +17,7 @@ pyyaml
 aiosignal
 frozenlist
 requests
+watchfiles
 
 # Python version-specific requirements
 dataclasses; python_version < '3.7'
