@@ -93,8 +93,6 @@ class DreamerV3RLModule(RLModule, abc.ABC):
                 reps=(B, T, 1),
             )
 
-        #if self.config.model_config_dict.get("_used_on_env_runner"):
-        print("Making pre-forward pass on module ...")
         self.dreamer_model(
             inputs=_convert_to_tf(test_obs),
             actions=_convert_to_tf(test_actions.astype(np.float32)),
@@ -103,14 +101,7 @@ class DreamerV3RLModule(RLModule, abc.ABC):
         )
 
         # Initialize the critic EMA net:
-        print("INIT EMA critic")
         self.critic.init_ema()
-        try:
-            import tensorflow as tf
-            print(f"GPU mem usage after RLModule setup: "
-                f"{tf.config.experimental.get_memory_info('GPU:0')['current']}")
-        except ValueError:
-            pass
 
     @override(RLModule)
     def get_initial_state(self) -> NestedDict:

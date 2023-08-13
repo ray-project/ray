@@ -64,13 +64,13 @@ class DreamerV3Learner(Learner):
         self,
         *,
         batch: MultiAgentBatch,
-        #fwd_out: Dict[str, Any],
+        fwd_out: Dict[str, Any],
         loss_per_module: Dict[str, TensorType],
         metrics_per_module: DefaultDict[ModuleID, Dict[str, Any]],
     ) -> Dict[str, Any]:
         results = super().compile_results(
             batch=batch,
-            #fwd_out=fwd_out,
+            fwd_out=fwd_out,
             loss_per_module=loss_per_module,
             metrics_per_module=metrics_per_module,
         )
@@ -100,7 +100,6 @@ class DreamerV3Learner(Learner):
         )
 
         # Update EMA weights of the critic.
-        print("UPDATE EMA critic")
         self.module[module_id].critic.update_ema()
 
         return results

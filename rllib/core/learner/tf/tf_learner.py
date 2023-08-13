@@ -62,12 +62,6 @@ class TfLearner(Learner):
             # enable_v2_behavior after variables have already been created.
             pass
 
-        # Set GPU to grow in memory (so tf does not block all GPU mem).
-        gpus = tf.config.list_physical_devices('GPU')
-        if gpus:
-            for gpu in gpus:
-                tf.config.experimental.set_memory_growth(gpu, True)
-
         super().__init__(
             framework_hyperparameters=(
                 framework_hyperparameters or FrameworkHyperparameters()
@@ -134,11 +128,6 @@ class TfLearner(Learner):
                     variable_list.append(self._params[param_ref])
                     gradient_list.append(grad)
             optimizer.apply_gradients(zip(gradient_list, variable_list))
-
-        try:
-            print(f"GPU mem usage after apply_gradients: {tf.config.experimental.get_memory_info('GPU:0')['current']}")
-        except ValueError:
-            pass
 
     @override(Learner)
     def load_state(
@@ -424,16 +413,8 @@ class TfLearner(Learner):
             self._possibly_traced_update = self._untraced_update
 
     @override(Learner)
-    def _update(self, batch: NestedDict) -> Tuple[Any, Any]:
-        ret = self._possibly_traced_update(batch)
-        print("Before returning from _update (doing gc.collect() ...)")
-        import gc
-        gc.collect()
-        try:
-            print(f"\tGPU mem usage: {tf.config.experimental.get_memory_info('GPU:0')['current']}")
-        except ValueError:
-            pass
-        return ret
+    def _update(self, batch: NestedDict) -> Tuple[Any, Any, Any]:
+        return self._possibly_traced_update(batch)
 
     def _untraced_update(
         self,
@@ -444,7 +425,6 @@ class TfLearner(Learner):
         #  traced-by-ray functions (for making the TfLearner class a ray actor).
         _ray_trace_ctx=None,
     ):
-        #_batch = batch
         def helper(_batch):
             # TODO (Kourosh, Sven): We need to go back to NestedDict because that's the
             #  constraint on forward_train and compute_loss APIs. This seems to be
@@ -455,22 +435,13 @@ class TfLearner(Learner):
                 fwd_out = self._module.forward_train(_batch)
                 loss_per_module = self.compute_loss(fwd_out=fwd_out, batch=_batch)
             gradients = self.compute_gradients(loss_per_module, gradient_tape=tape)
-            #some_result = tf.reduce_sum(list(gradients.values())[0])
             del tape
             postprocessed_gradients = self.postprocess_gradients(gradients)
             self.apply_gradients(postprocessed_gradients)
 
-            print("Before returning from _untraced_update")
-            try:
-                print(f"\tGPU mem usage: {tf.config.experimental.get_memory_info('GPU:0')['current']}")
-            except ValueError:
-                pass
+            return fwd_out, loss_per_module, dict(self._metrics)
 
-            #return fwd_out
-            return loss_per_module #, dict(self._metrics)
-
-        losses = self._strategy.run(helper, args=(batch,))
-        return losses, dict(self._metrics)
+        return self._strategy.run(helper, args=(batch,))
 
     @override(Learner)
     def _get_tensor_variable(self, value, dtype=None, trainable=False) -> "tf.Tensor":
