@@ -103,13 +103,14 @@ class CriticNetwork(tf.keras.Model):
         )
 
         # Trace self.call.
+        dl_type = tf.keras.mixed_precision.global_policy().compute_dtype
         self.call = tf.function(input_signature=[
-            tf.TensorSpec(shape=[None, get_gru_units(model_size)]),
+            tf.TensorSpec(shape=[None, get_gru_units(model_size)], dtype=dl_type),
             tf.TensorSpec(shape=[
                 None,
                 get_num_z_categoricals(model_size),
                 get_num_z_classes(model_size),
-            ]),
+            ], dtype=dl_type),
             tf.TensorSpec(shape=[], dtype=tf.bool),
         ])(self.call)
 

@@ -60,8 +60,9 @@ class DynamicsPredictor(tf.keras.Model):
         )
 
         # Trace self.call.
+        dl_type = tf.keras.mixed_precision.global_policy().compute_dtype
         self.call = tf.function(input_signature=[
-            tf.TensorSpec(shape=[None, get_gru_units(model_size)]),
+            tf.TensorSpec(shape=[None, get_gru_units(model_size)], dtype=dl_type),
         ])(self.call)
 
     def call(self, h):

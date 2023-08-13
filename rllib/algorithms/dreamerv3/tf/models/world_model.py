@@ -161,10 +161,11 @@ class WorldModel(tf.keras.Model):
         self.decoder = decoder
 
         # Trace self.call.
+        dl_type = tf.keras.mixed_precision.global_policy().compute_dtype
         self.forward_train = tf.function(input_signature=[
-            tf.TensorSpec(shape=[None, None] + list(self.observation_space.shape)),
-            tf.TensorSpec(shape=[None, None, self.action_space.n]),
-            tf.TensorSpec(shape=[None, None]),
+            tf.TensorSpec(shape=[None, None] + list(self.observation_space.shape), dtype=dl_type),
+            tf.TensorSpec(shape=[None, None, self.action_space.n], dtype=dl_type),
+            tf.TensorSpec(shape=[None, None], dtype=dl_type),
         ])(self.forward_train)
 
     @tf.function
@@ -253,7 +254,6 @@ class WorldModel(tf.keras.Model):
                 h-states and computed z-states to yield the next h-states.
             is_first: The batch (B, T) of `is_first` flags.
         """
-        print("INSIDE world_model.forward_train()")
         if self.symlog_obs:
             observations = symlog(observations)
 

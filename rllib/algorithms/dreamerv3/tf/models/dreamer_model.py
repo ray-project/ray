@@ -80,19 +80,20 @@ class DreamerModel(tf.keras.Model):
                 intrinsic_rewards_scale=intrinsic_rewards_scale,
             )
 
+        dl_type = tf.keras.mixed_precision.global_policy().compute_dtype
         self.dream_trajectory = tf.function(input_signature=[
             {
                 "h": tf.TensorSpec(shape=[
                     None,
                     get_gru_units(self.model_size),
-                ]),
+                ], dtype=dl_type),
                 "z": tf.TensorSpec(shape=[
                     None,
                     get_num_z_categoricals(self.model_size),
                     get_num_z_classes(self.model_size),
-                ]),
+                ], dtype=dl_type),
             },
-            tf.TensorSpec(shape=[None]),
+            tf.TensorSpec(shape=[None], dtype=dl_type),
         ])(self.dream_trajectory)
 
     def call(
