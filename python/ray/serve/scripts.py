@@ -465,10 +465,14 @@ def run(
             visualizer.visualize_with_gradio(handle)
         else:
             if reload:
-                for _ in watchfiles.watch(
-                    working_dir, watch_filter=watchfiles.PythonFilter()
+                for changes in watchfiles.watch(
+                    working_dir,
+                    rust_timeout=10000,
+                    yield_on_timeout=True,
+                    watch_filter=watchfiles.PythonFilter(),
                 ):
-                    serve.run(app, host=host, port=port)
+                    if changes:
+                        serve.run(app, host=host, port=port)
 
             if blocking:
                 while True:
