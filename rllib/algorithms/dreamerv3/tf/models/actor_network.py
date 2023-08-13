@@ -53,10 +53,10 @@ class ActorNetwork(tf.keras.Model):
         # The EMA decay variables used for the [Percentile(R, 95%) - Percentile(R, 5%)]
         # diff to scale value targets for the actor loss.
         self.ema_value_target_pct5 = tf.Variable(
-            np.nan, dtype=tf.float32, trainable=False, name="value_target_pct5"
+            np.nan, trainable=False, name="value_target_pct5"
         )
         self.ema_value_target_pct95 = tf.Variable(
-            np.nan, dtype=tf.float32, trainable=False, name="value_target_pct95"
+            np.nan, trainable=False, name="value_target_pct95"
         )
 
         # For discrete actions, use a single MLP that computes logits.
@@ -105,12 +105,10 @@ class ActorNetwork(tf.keras.Model):
             return_distr_params: Whether to return (as a second tuple item) the action
                 distribution parameter tensor created by the policy.
         """
-        print(f"INSIDE ACTOR call")
-
         # Flatten last two dims of z.
         assert len(z.shape) == 3
         z_shape = tf.shape(z)
-        z = tf.reshape(tf.cast(z, tf.float32), shape=(z_shape[0], -1))
+        z = tf.reshape(z, shape=(z_shape[0], -1))
         assert len(z.shape) == 2
         out = tf.concat([h, z], axis=-1)
         out.set_shape([
@@ -122,7 +120,7 @@ class ActorNetwork(tf.keras.Model):
             ),
         ])
         # Send h-cat-z through MLP.
-        action_logits = self.mlp(out)
+        action_logits = tf.cast(self.mlp(out), tf.float32)
 
         if isinstance(self.action_space, Discrete):
             action_probs = tf.nn.softmax(action_logits)
@@ -149,7 +147,7 @@ class ActorNetwork(tf.keras.Model):
 
         elif isinstance(self.action_space, Box):
             # Send h-cat-z through MLP to compute stddev logits for Normal dist
-            std_logits = self.std_mlp(out)
+            std_logits = tf.cast(self.std_mlp(out), tf.float32)
             # minstd, maxstd taken from [1] from configs.yaml
             minstd = 0.1
             maxstd = 1.0

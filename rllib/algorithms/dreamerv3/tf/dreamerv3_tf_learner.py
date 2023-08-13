@@ -177,7 +177,7 @@ class DreamerV3TfLearner(DreamerV3Learner, TfLearner):
         prediction_losses = self._compute_world_model_prediction_losses(
             hps=hps,
             rewards_B_T=batch[SampleBatch.REWARDS],
-            continues_B_T=(1.0 - batch["is_terminated"]),
+            continues_B_T=(1.0 - tf.cast(batch["is_terminated"], tf.float32)),
             fwd_out=fwd_out,
         )
 
@@ -368,7 +368,7 @@ class DreamerV3TfLearner(DreamerV3Learner, TfLearner):
         # [B x num_buckets].
         reward_logits_BxT = fwd_out["reward_logits_BxT"]
         # Learn to produce symlog'd reward predictions.
-        rewards_symlog_B_T = symlog(rewards_B_T)
+        rewards_symlog_B_T = symlog(tf.cast(rewards_B_T, tf.float32))
         # Fold time dim.
         rewards_symlog_BxT = tf.reshape(rewards_symlog_B_T, shape=[-1])
 
@@ -870,10 +870,9 @@ class DreamerV3TfLearner(DreamerV3Learner, TfLearner):
         actor.ema_value_target_pct95.assign(new_val_pct95)
 
         # [1] eq. 11 (first term).
-        # Danijar's code: TODO: describe ...
         offset = actor.ema_value_target_pct5
         invscale = tf.math.maximum(
-            1e-8, (actor.ema_value_target_pct95 - actor.ema_value_target_pct5)
+            1e-8, actor.ema_value_target_pct95 - actor.ema_value_target_pct5
         )
         scaled_value_targets_H_B = (value_targets_H_B - offset) / invscale
         scaled_value_predictions_H_B = (value_predictions_H_B - offset) / invscale

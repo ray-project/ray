@@ -235,7 +235,7 @@ class DreamerV3EnvRunner(EnvRunner):
             self._episodes = [Episode() for _ in range(self.num_envs)]
             states = initial_states
             # Set is_first to True for all rows (all sub-envs just got reset).
-            is_first = np.ones((self.num_envs,), dtype=np.float32)
+            is_first = np.ones((self.num_envs,))
             self._needs_initial_reset = False
 
             # Set initial obs and states in the episodes.
@@ -261,7 +261,7 @@ class DreamerV3EnvRunner(EnvRunner):
             }
             # If a batch row is at the beginning of an episode, set its `is_first` flag
             # to 1.0, otherwise 0.0.
-            is_first = np.zeros((self.num_envs,), dtype=np.float32)
+            is_first = np.zeros((self.num_envs,))
             for i, eps in enumerate(self._episodes):
                 if eps.states is None:
                     is_first[i] = 1.0
@@ -361,7 +361,7 @@ class DreamerV3EnvRunner(EnvRunner):
             lambda s: np.repeat(s, self.num_envs, axis=0),
             self.module.get_initial_state(),
         )
-        is_first = np.ones((self.num_envs,), dtype=np.float32)
+        is_first = np.ones((self.num_envs,))
 
         render_images = [None] * self.num_envs
         if with_render_data:

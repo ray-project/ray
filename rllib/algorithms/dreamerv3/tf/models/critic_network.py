@@ -126,7 +126,7 @@ class CriticNetwork(tf.keras.Model):
         # Flatten last two dims of z.
         assert len(z.shape) == 3
         z_shape = tf.shape(z)
-        z = tf.reshape(tf.cast(z, tf.float32), shape=(z_shape[0], -1))
+        z = tf.reshape(z, shape=(z_shape[0], -1))
         assert len(z.shape) == 2
         out = tf.concat([h, z], axis=-1)
         out.set_shape([
@@ -139,13 +139,11 @@ class CriticNetwork(tf.keras.Model):
         ])
 
         if not use_ema:
-            print("INSIDE CRITIC call use_ema=False")
             # Send h-cat-z through MLP.
             out = self.mlp(out)
             # Return expected return OR (expected return, probs of bucket values).
             return self.return_layer(out)
         else:
-            print("INSIDE CRITIC call use_ema=True")
             out = self.mlp_ema(out)
             return self.return_layer_ema(out)
 

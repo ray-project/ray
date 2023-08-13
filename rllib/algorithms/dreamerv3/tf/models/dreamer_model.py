@@ -263,7 +263,7 @@ class DreamerModel(tf.keras.Model):
                 1,
                 action_dim,
             ),
-            dtype=tf.float32,
+            dtype=tf.keras.mixed_precision.global_policy().compute_dtype,
         )
         return states
 
@@ -286,11 +286,7 @@ class DreamerModel(tf.keras.Model):
             start_is_terminated: Float flags of shape (B,) indicating whether the
                 first timesteps of each batch row is already a terminated timestep
                 (given by the actual environment).
-            #timesteps_H: The number of timesteps to dream for.
-            #gamma: The discount factor gamma.
         """
-        print("INSIDE dream_trajectory")
-
         # Dreamed actions (one-hot encoded for discrete actions).
         a_dreamed_t0_to_H = []
         a_dreamed_dist_params_t0_to_H = []
@@ -378,7 +374,14 @@ class DreamerModel(tf.keras.Model):
         # completely zero'd out. In general, we don't use dreamed data past any
         # predicted (or actual first) continue=False flags.
         c_dreamed_H_B = tf.concat(
-            [1.0 - tf.expand_dims(start_is_terminated, 0), c_dreamed_H_B[1:]],
+            [
+                1.0
+                - tf.expand_dims(
+                    tf.cast(start_is_terminated, tf.float32),
+                    0,
+                ),
+                c_dreamed_H_B[1:],
+            ],
             axis=0,
         )
 
@@ -412,9 +415,6 @@ class DreamerModel(tf.keras.Model):
             "rewards_dreamed_t0_to_H_BxT": r_dreamed_H_B,
             "continues_dreamed_t0_to_H_BxT": c_dreamed_H_B,
             "actions_dreamed_t0_to_H_BxT": a_dreamed_H_B,
-            # "actions_dreamed_distributions_t0_to_H_BxT": (
-            #    a_dreamed_distributions_t0_to_H
-            # ),
             "actions_dreamed_dist_params_t0_to_H_BxT": a_dreamed_dist_params_H_B,
             "values_dreamed_t0_to_H_BxT": v_dreamed_H_B,
             "values_symlog_dreamed_logits_t0_to_HxBxT": v_symlog_dreamed_logits_HxB,
@@ -512,7 +512,11 @@ class DreamerModel(tf.keras.Model):
             elif use_random_actions_in_dream:
                 if isinstance(self.action_space, gym.spaces.Discrete):
                     a = tf.random.randint((B,), 0, self.action_space.n, tf.int64)
-                    a = tf.one_hot(a, depth=self.action_space.n)
+                    a = tf.one_hot(
+                        a,
+                        depth=self.action_space.n,
+                        dtype=tf.keras.mixed_precision.global_policy().compute_dtype,
+                    )
                 # TODO: Support cont. action spaces with bound other than 0.0 and 1.0.
                 else:
                     a = tf.random.uniform(

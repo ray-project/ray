@@ -104,10 +104,9 @@ class SequenceModel(tf.keras.Model):
             z: The previous stochastic discrete representations of the original
                 observation input. (B, num_categoricals, num_classes_per_categorical).
         """
-        print("INSIDE sequence_model call")
         # Flatten last two dims of z.
         z_shape = tf.shape(z)
-        z = tf.reshape(tf.cast(z, tf.float32), shape=(z_shape[0], -1))
+        z = tf.reshape(z, shape=(z_shape[0], -1))
         out = tf.concat([z, a], axis=-1)
         out.set_shape([
             None,

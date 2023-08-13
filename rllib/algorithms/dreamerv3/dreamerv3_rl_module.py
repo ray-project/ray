@@ -18,8 +18,12 @@ from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.policy.eager_tf_policy import _convert_to_tf
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import ExperimentalAPI, override
+from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.numpy import one_hot
+
+
+_, tf, _ = try_import_tf()
 
 
 @ExperimentalAPI
@@ -36,6 +40,10 @@ class DreamerV3RLModule(RLModule, abc.ABC):
             self.config.model_config_dict.get("symlog_obs", "auto"),
         )
         model_size = self.config.model_config_dict["model_size"]
+
+        if self.config.model_config_dict["np_dtype"] == np.float16:
+            tf.compat.v1.keras.layers.enable_v2_dtype_behavior()
+            tf.keras.mixed_precision.set_global_policy("mixed_float16")
 
         # Build encoder and decoder from catalog.
         catalog = self.config.get_catalog()
@@ -93,11 +101,14 @@ class DreamerV3RLModule(RLModule, abc.ABC):
                 reps=(B, T, 1),
             )
 
+        dl_type = self.config.model_config_dict["dl_dtype"]
         self.dreamer_model(
-            inputs=_convert_to_tf(test_obs),
-            actions=_convert_to_tf(test_actions.astype(np.float32)),
-            is_first=_convert_to_tf(np.ones((B, T), np.float32)),
-            start_is_terminated_BxT=_convert_to_tf(np.zeros((B * T,), np.float32)),
+            inputs=_convert_to_tf(test_obs, dl_type),
+            actions=_convert_to_tf(test_actions, dl_type),
+            is_first=_convert_to_tf(np.ones((B, T)), dl_type),
+            start_is_terminated_BxT=_convert_to_tf(np.zeros((B * T,)), dl_type),
+            horizon_H=horizon_H,
+            gamma=gamma,
         )
 
         # Initialize the critic EMA net:

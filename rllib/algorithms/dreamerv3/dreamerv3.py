@@ -128,6 +128,7 @@ class DreamerV3Config(AlgorithmConfig):
         self.critic_grad_clip_by_global_norm = 100.0
         self.actor_grad_clip_by_global_norm = 100.0
         self.symlog_obs = "auto"
+        self.use_float16 = False
 
         # Reporting.
         # DreamerV3 is super sample efficient and only needs very few episodes
@@ -169,9 +170,22 @@ class DreamerV3Config(AlgorithmConfig):
                 "horizon_H": self.horizon_H,
                 "model_size": self.model_size,
                 "symlog_obs": self.symlog_obs,
+                "np_dtype": self.np_dtype,
+                "dl_dtype": self.dl_dtype,
             }
         )
         return model
+
+    @property
+    def np_dtype(self):
+        return np.float16 if self.use_float16 else np.float32
+
+    @property
+    def dl_dtype(self):
+        if self.framework_str == "tf2":
+            return tf.float16 if self.use_float16 else tf.float32
+        else:
+            raise NotImplementedError
 
     @override(AlgorithmConfig)
     def training(
@@ -196,6 +210,7 @@ class DreamerV3Config(AlgorithmConfig):
         critic_grad_clip_by_global_norm: Optional[float] = NotProvided,
         actor_grad_clip_by_global_norm: Optional[float] = NotProvided,
         symlog_obs: Optional[Union[bool, str]] = NotProvided,
+        use_float16: Optional[bool] = NotProvided,
         replay_buffer_config: Optional[dict] = NotProvided,
         **kwargs,
     ) -> "DreamerV3Config":
@@ -257,6 +272,8 @@ class DreamerV3Config(AlgorithmConfig):
             symlog_obs: Whether to symlog observations or not. If set to "auto"
                 (default), will check for the environment's observation space and then
                 only symlog if not an image space.
+            use_float16: Whether to train with float16 precision (on model parameters
+                and computations).
             replay_buffer_config: Replay buffer config.
                 Only serves in DreamerV3 to set the capacity of the replay buffer.
                 Note though that in the paper ([1]) a size of 1M is used for all
@@ -314,6 +331,8 @@ class DreamerV3Config(AlgorithmConfig):
             self.actor_grad_clip_by_global_norm = actor_grad_clip_by_global_norm
         if symlog_obs is not NotProvided:
             self.symlog_obs = symlog_obs
+        if use_float16 is not NotProvided:
+            self.use_float16 = use_float16
         if replay_buffer_config is not NotProvided:
             # Override entire `replay_buffer_config` if `type` key changes.
             # Update, if `type` key remains the same or is not specified.
@@ -441,6 +460,8 @@ class DreamerV3Config(AlgorithmConfig):
             ),
             actor_grad_clip_by_global_norm=self.actor_grad_clip_by_global_norm,
             critic_grad_clip_by_global_norm=self.critic_grad_clip_by_global_norm,
+            np_dtype=self.np_dtype,
+            dl_dtype=self.dl_dtype,
             report_individual_batch_item_stats=(
                 self.report_individual_batch_item_stats
             ),
@@ -603,16 +624,11 @@ class DreamerV3(Algorithm):
                 replayed_steps = self.config.batch_size_B * self.config.batch_length_T
                 replayed_steps_this_iter += replayed_steps
 
-                # Convert some bool columns to float32 and one-hot actions.
-                sample["is_first"] = sample["is_first"].astype(np.float32)
-                sample["is_last"] = sample["is_last"].astype(np.float32)
-                sample["is_terminated"] = sample["is_terminated"].astype(np.float32)
                 if isinstance(env_runner.env.single_action_space, gym.spaces.Discrete):
                     sample["actions_ints"] = sample[SampleBatch.ACTIONS]
                     sample[SampleBatch.ACTIONS] = one_hot(
                         sample["actions_ints"],
                         depth=env_runner.env.single_action_space.n,
-                        dtype=np.float32,
                     )
 
                 # Perform the actual update via our learner group.
