@@ -104,12 +104,12 @@ class CriticNetwork(tf.keras.Model):
 
         # Trace self.call.
         self.call = tf.function(input_signature=[
-            tf.TensorSpec(shape=[None, get_gru_units(model_size)], dtype=tf.float32),
+            tf.TensorSpec(shape=[None, get_gru_units(model_size)]),
             tf.TensorSpec(shape=[
                 None,
                 get_num_z_categoricals(model_size),
                 get_num_z_classes(model_size),
-            ], dtype=tf.float32),
+            ]),
             tf.TensorSpec(shape=[], dtype=tf.bool),
         ])(self.call)
 

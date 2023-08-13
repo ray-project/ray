@@ -61,7 +61,7 @@ class DynamicsPredictor(tf.keras.Model):
 
         # Trace self.call.
         self.call = tf.function(input_signature=[
-            tf.TensorSpec(shape=[None, get_gru_units(model_size)], dtype=tf.float32),
+            tf.TensorSpec(shape=[None, get_gru_units(model_size)]),
         ])(self.call)
 
     def call(self, h):

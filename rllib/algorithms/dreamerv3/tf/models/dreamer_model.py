@@ -85,14 +85,14 @@ class DreamerModel(tf.keras.Model):
                 "h": tf.TensorSpec(shape=[
                     None,
                     get_gru_units(self.model_size),
-                ], dtype=tf.float32),
+                ]),
                 "z": tf.TensorSpec(shape=[
                     None,
                     get_num_z_categoricals(self.model_size),
                     get_num_z_classes(self.model_size),
-                ], dtype=tf.float32),
+                ]),
             },
-            tf.TensorSpec(shape=[None], dtype=tf.float32),
+            tf.TensorSpec(shape=[None]),
         ])(self.dream_trajectory)
 
     def call(

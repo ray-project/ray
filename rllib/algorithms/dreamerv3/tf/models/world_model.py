@@ -162,9 +162,9 @@ class WorldModel(tf.keras.Model):
 
         # Trace self.call.
         self.forward_train = tf.function(input_signature=[
-            tf.TensorSpec(shape=[None, None] + list(self.observation_space.shape), dtype=tf.float32),
-            tf.TensorSpec(shape=[None, None, self.action_space.n], dtype=tf.float32),
-            tf.TensorSpec(shape=[None, None], dtype=tf.float32),
+            tf.TensorSpec(shape=[None, None] + list(self.observation_space.shape)),
+            tf.TensorSpec(shape=[None, None, self.action_space.n]),
+            tf.TensorSpec(shape=[None, None]),
         ])(self.forward_train)
 
     @tf.function

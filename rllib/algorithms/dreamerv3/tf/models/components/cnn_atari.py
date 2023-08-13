@@ -88,7 +88,7 @@ class CNNAtari(tf.keras.Model):
         self.flatten_layer = tf.keras.layers.Flatten(data_format="channels_last")
 
     @tf.function(input_signature=[
-        tf.TensorSpec(shape=[None, 64, 64, 3], dtype=tf.float32),
+        tf.TensorSpec(shape=[None, 64, 64, 3]),
     ])
     def call(self, inputs):
         """Performs a forward pass through the CNN Atari encoder.
