@@ -107,8 +107,6 @@ class DreamerV3RLModule(RLModule, abc.ABC):
             actions=_convert_to_tf(test_actions, dl_type),
             is_first=_convert_to_tf(np.ones((B, T)), dl_type),
             start_is_terminated_BxT=_convert_to_tf(np.zeros((B * T,)), dl_type),
-            horizon_H=horizon_H,
-            gamma=gamma,
         )
 
         # Initialize the critic EMA net:
