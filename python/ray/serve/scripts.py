@@ -328,8 +328,10 @@ def deploy(config_file_name: str, address: str):
     "--reload",
     is_flag=True,
     help=(
-        "Listens for changes to files in the working directory and redeploys the "
-        "deployment."
+        "Listens for changes to files in the working directory, --working-dir "
+        "or the working_dir in the --runtime-env, and automatically redeploys "
+        "the application. This will block until Ctrl-C'd, then clean up the "
+        "app. The --blocking/--non-blocking flag is ignored."
     ),
 )
 def run(
