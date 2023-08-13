@@ -10,6 +10,7 @@ import click
 import yaml
 import traceback
 import re
+import watchfiles
 from pydantic import ValidationError
 
 import ray
@@ -323,6 +324,14 @@ def deploy(config_file_name: str, address: str):
         "as the ingress deployment."
     ),
 )
+@click.option(
+    "--reload",
+    is_flag=True,
+    help=(
+        "Listens for changes to files in the working directory and redeploys the "
+        "deployment."
+    ),
+)
 def run(
     config_or_import_path: str,
     arguments: Tuple[str],
@@ -335,6 +344,7 @@ def run(
     port: int,
     blocking: bool,
     gradio: bool,
+    reload: bool,
 ):
     sys.path.insert(0, app_dir)
     args_dict = convert_args_to_dict(arguments)
@@ -454,6 +464,12 @@ def run(
             visualizer = GraphVisualizer()
             visualizer.visualize_with_gradio(handle)
         else:
+            if reload:
+                for _ in watchfiles.watch(
+                    working_dir, watch_filter=watchfiles.PythonFilter()
+                ):
+                    serve.run(app, host=host, port=port)
+
             if blocking:
                 while True:
                     # Block, letting Ray print logs to the terminal.
