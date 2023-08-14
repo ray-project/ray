@@ -1606,15 +1606,25 @@ class TuneController:
 
     def _schedule_trial_pause(self, trial: Trial, should_checkpoint: bool = True):
         if _use_storage_context():
-            if should_checkpoint:
+            if trial not in self._trial_to_actor:
+                logger.debug(
+                    f"Trial PAUSE requested for trial {trial} but trial is already "
+                    f"stopping. Ignoring."
+                )
+                return
 
-                def on_result(*args, **kwargs):
+            if should_checkpoint:
+                # We need to wait for the save to finish before stopping the trial.
+                def stop_after_save_result(*args, **kwargs):
                     self._on_saving_result(*args, **kwargs)
                     self._schedule_trial_stop(trial)
                     self._set_trial_status(trial, Trial.PAUSED)
 
-                self._schedule_trial_save(
-                    trial, storage=CheckpointStorage.PERSISTENT, on_result=on_result
+                self._schedule_trial_task(
+                    trial=trial,
+                    method_name="save",
+                    on_result=stop_after_save_result,
+                    on_error=self._trial_task_failure,
                 )
                 return
 
@@ -1850,7 +1860,6 @@ class TuneController:
         trial: Trial,
         storage: CheckpointStorage = CheckpointStorage.PERSISTENT,
         result: Optional[Dict] = None,
-        on_result=None,
     ) -> Optional[_TrackedCheckpoint]:
         if trial not in self._trial_to_actor:
             logger.debug(
@@ -1868,7 +1877,7 @@ class TuneController:
             self._schedule_trial_task(
                 trial=trial,
                 method_name="save",
-                on_result=on_result or self._on_saving_result,
+                on_result=self._on_saving_result,
                 on_error=self._trial_task_failure,
             )
             # TODO(justinvyu): `trial.saving_to` is needed in order to prevent
