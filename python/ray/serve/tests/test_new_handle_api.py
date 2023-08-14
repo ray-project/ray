@@ -281,7 +281,7 @@ def test_convert_to_obj_ref_gen(serve_instance):
     gen = handle.options(stream=True).remote()
     assert isinstance(gen, DeploymentHandleGenerator)
     obj_ref_gen = gen._to_obj_ref_gen_sync()
-    assert ray.get([obj_ref for obj_ref in obj_ref_gen]) == list(range(10))
+    assert ray.get(list(obj_ref for obj_ref in obj_ref_gen)) == list(range(10))
 
 
 if __name__ == "__main__":
