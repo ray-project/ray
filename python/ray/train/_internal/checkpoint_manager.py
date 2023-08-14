@@ -74,6 +74,10 @@ class _CheckpointManager:
                 f"{self._checkpoint_config.num_to_keep}"
             )
 
+    @property
+    def checkpoint_config(self):
+        return self._checkpoint_config
+
     def register_checkpoint(self, checkpoint_result: _TrainingResult):
         """Register new checkpoint and add to bookkeeping.
 
