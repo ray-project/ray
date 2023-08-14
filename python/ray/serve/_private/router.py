@@ -118,7 +118,7 @@ class Query:
             result_to_obj_ref_coros = []
             results = scanner.find_nodes((self.args, self.kwargs))
             for result in results:
-                result_to_obj_ref_coros.append(result.to_obj_ref())
+                result_to_obj_ref_coros.append(result._to_obj_ref())
                 if isinstance(result, DeploymentHandleGenerator):
                     raise RuntimeError(
                         "Streaming deployment handle results cannot be passed to "

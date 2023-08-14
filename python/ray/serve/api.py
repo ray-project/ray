@@ -787,9 +787,6 @@ def get_app_handle(
 
     Args:
         name: Name of application to get a handle to.
-        sync: If false, then returns a RayServeHandle, which is
-            asynchronous. If true, then returns a RayServeSyncHandle,
-            which is synchronous.
 
     Raises:
         RayServeException: If no Serve controller is running, or if the
@@ -806,7 +803,7 @@ def get_app_handle(
 
             serve.run(f.bind(), name="my_app")
             handle = serve.get_app_handle("my_app")
-            assert ray.get(handle.remote(3)) == 6
+            assert handle.remote(3).result() == 6
     """
 
     client = get_global_client()
@@ -834,9 +831,6 @@ def get_deployment_handle(
             from inside a Serve application and `app_name` is not
             specified, this will default to the application from which
             this API is called.
-        sync: If false, then returns a RayServeHandle, which is
-            asynchronous. If true, then returns a RayServeSyncHandle,
-            which is synchronous.
 
     Raises:
         RayServeException: If no Serve controller is running, or if

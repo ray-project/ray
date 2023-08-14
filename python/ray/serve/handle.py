@@ -443,7 +443,7 @@ class DeploymentHandleGenerator(DeploymentHandleResultBase):
 
     async def __anext__(self) -> Any:
         if self._obj_ref_gen is None:
-            self._obj_ref_gen = await self.to_obj_ref_gen()
+            self._obj_ref_gen = await self._to_obj_ref_gen()
 
         next_obj_ref = await self._obj_ref_gen.__anext__()
         return await next_obj_ref
@@ -453,7 +453,7 @@ class DeploymentHandleGenerator(DeploymentHandleResultBase):
 
     def __next__(self) -> Any:
         if self._obj_ref_gen is None:
-            self._obj_ref_gen = self.to_obj_ref_gen_sync()
+            self._obj_ref_gen = self._to_obj_ref_gen_sync()
 
         next_obj_ref = self._obj_ref_gen.__next__()
         return ray.get(next_obj_ref)
