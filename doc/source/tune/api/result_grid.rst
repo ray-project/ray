@@ -28,6 +28,7 @@ Result (air.Result)
 -------------------
 
 .. autosummary::
+    :noindex:
 
     ~air.Result
 
