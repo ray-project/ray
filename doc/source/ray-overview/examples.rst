@@ -109,25 +109,11 @@ Ray Examples
         Integrating with Scikit-Learn (non-distributed)
 
     .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item ts
-        :link: /ray-air/examples/automl_with_ray_air
-        :link-type: doc
-
-        Build an AutoML system for time-series forecasting with Ray AIR
-
-    .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item data-processing
         :link: /ray-air/examples/batch_tuning
         :link-type: doc
 
         Perform batch tuning on NYC Taxi Dataset with Ray AIR
-
-    .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item data-processing
-        :link: /ray-air/examples/batch_forecasting
-        :link-type: doc
-
-        Perform batch forecasting on NYC Taxi Dataset with Prophet, ARIMA and Ray AIR
 
     .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item

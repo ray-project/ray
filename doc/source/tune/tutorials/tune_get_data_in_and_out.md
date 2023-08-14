@@ -289,7 +289,7 @@ Aside from metrics, you may want to save the state of your trained model and any
 
 Ray Train provides a [`Checkpoint`](checkpoint-api-ref) API for that purpose. `Checkpoint` objects can be created from various sources (dictionaries, directories, cloud storage).
 
-In Ray Tune, `Checkpoints` are created by the user in their Trainable functions and reported using the optional `checkpoint` argument of `session.report`. `Checkpoints` can contain arbitrary data and can be freely passed around the Ray cluster. After a tuning run is over, `Checkpoints` can be [obtained from the results](/tune/examples/tune_analyze_results).
+In Ray Tune, `Checkpoints` are created by the user in their Trainable functions and reported using the optional `checkpoint` argument of `session.report`. `Checkpoints` can contain arbitrary data and can be freely passed around the Ray cluster. After a tuning run is over, `Checkpoints` can be [obtained from the results](tune-analysis-guide).
 
 Ray Tune can be configured to [automatically sync checkpoints to cloud storage](tune-storage-options), keep only a certain number of checkpoints to save space (with {class}`ray.air.config.CheckpointConfig`) and more.
 

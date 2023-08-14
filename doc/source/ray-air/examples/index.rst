@@ -10,14 +10,11 @@ Framework-specific Examples
 - :doc:`/ray-air/examples/convert_existing_tf_code_to_ray_air`: Get started with Ray AIR from an existing Tensorflow/Keras codebase.
 - :doc:`/ray-air/examples/lightgbm_example`: Distributed training with LightGBM
 - :doc:`/ray-air/examples/xgboost_example`: Distributed training with XGBoost
-- :doc:`/ray-air/examples/analyze_tuning_results`: Distributed tuning with XGBoost
 - :doc:`/ray-air/examples/sklearn_example`: Integrating with Scikit-Learn (non-distributed)
 
 Simple Machine Learning
 -----------------------
-- :doc:`/ray-air/examples/automl_with_ray_air`: Build an AutoML system for time-series forecasting with Ray AIR
 - :doc:`/ray-air/examples/batch_tuning`: Perform batch tuning on NYC Taxi Dataset with Ray AIR
-- :doc:`/ray-air/examples/batch_forecasting`: Perform batch forecasting on NYC Taxi Dataset with Prophet, ARIMA and Ray AIR
 
 Text/NLP
 --------
