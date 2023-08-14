@@ -39,7 +39,9 @@ logger = logging.getLogger(__file__)
 
 def _use_storage_context() -> bool:
     # Whether to enable the new simple persistence mode.
-    return bool(int(os.environ.get("RAY_AIR_NEW_PERSISTENCE_MODE", "0")))
+    from ray.train.constants import RAY_AIR_NEW_PERSISTENCE_MODE
+
+    return bool(int(os.environ.get(RAY_AIR_NEW_PERSISTENCE_MODE, "0")))
 
 
 class _ExcludingLocalFilesystem(LocalFileSystem):
@@ -434,8 +436,8 @@ class StorageContext:
     def __init__(
         self,
         storage_path: Optional[str],
-        sync_config: SyncConfig,
         experiment_dir_name: str,
+        sync_config: Optional[SyncConfig] = None,
         storage_filesystem: Optional[pyarrow.fs.FileSystem] = None,
         trial_dir_name: Optional[str] = None,
         current_checkpoint_index: int = 0,
@@ -450,7 +452,9 @@ class StorageContext:
         self.experiment_dir_name = experiment_dir_name
         self.trial_dir_name = trial_dir_name
         self.current_checkpoint_index = current_checkpoint_index
-        self.sync_config = dataclasses.replace(sync_config)
+        self.sync_config = (
+            dataclasses.replace(sync_config) if sync_config else SyncConfig()
+        )
 
         self.storage_filesystem, self.storage_fs_path = get_fs_and_path(
             self.storage_path, storage_filesystem
@@ -642,24 +646,3 @@ class StorageContext:
     def _make_checkpoint_dir_name(index: int):
         """Get the name of the checkpoint directory, given an index."""
         return f"checkpoint_{index:06d}"
-
-
-_storage_context: Optional[StorageContext] = None
-
-
-def init_shared_storage_context(storage_context: StorageContext):
-    """StorageContext can be made a global singleton by calling this method.
-
-    This singleton is only created on the initialization of remote Trainable actors.
-    On the driver, there is no global singleton, since each trial has its own
-    trial_dir_name."""
-    global _storage_context
-    _storage_context = storage_context
-
-
-def get_storage_context() -> StorageContext:
-    assert _storage_context, (
-        "You must first call `init_shared_storage_context` in order to access a "
-        "global shared copy of StorageContext."
-    )
-    return _storage_context
