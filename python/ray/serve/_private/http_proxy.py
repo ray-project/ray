@@ -676,15 +676,20 @@ class HTTPProxy:
         For websocket messages, the disconnect code is returned if a disconnect code is
         received.
         """
-        while True:
-            msg = await receive()
-            await queue(msg)
+        try:
+            while True:
+                msg = await receive()
+                await queue(msg)
 
-            if msg["type"] == "http.disconnect":
-                return None
+                if msg["type"] == "http.disconnect":
+                    return None
 
-            if msg["type"] == "websocket.disconnect":
-                return msg["code"]
+                if msg["type"] == "websocket.disconnect":
+                    return msg["code"]
+        finally:
+            # Close the queue so any subsequent calls to fetch messages return
+            # immediately: https://github.com/ray-project/ray/issues/38368.
+            queue.close()
 
     async def _assign_request_with_timeout(
         self,
@@ -1039,4 +1044,9 @@ Please make sure your http-host and http-port are specified correctly."""
         pass
 
     async def receive_asgi_messages(self, request_id: str) -> bytes:
+        """Get ASGI messages for the provided `request_id`.
+
+        After the proxy has stopped receiving messages for this `request_id`,
+        this will always return immediately.
+        """
         return pickle.dumps(await self.app.receive_asgi_messages(request_id))
