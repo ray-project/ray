@@ -8,8 +8,9 @@ import pytest
 import requests
 
 import ray
-from ray._private.test_utils import SignalActor, wait_for_condition
 from ray.dashboard.modules.serve.sdk import ServeSubmissionClient
+from ray.util.state import list_tasks
+from ray._private.test_utils import SignalActor, wait_for_condition
 
 from ray import serve
 from ray.serve.schema import ServeInstanceDetails
@@ -253,6 +254,56 @@ def test_streaming_request_already_sent_and_timed_out(ray_instance, shutdown_ser
         with pytest.raises(requests.exceptions.ChunkedEncodingError) as request_error:
             iterator.__next__()
         assert "Connection broken" in str(request_error.value)
+
+
+@pytest.mark.parametrize(
+    "ray_instance",
+    [
+        {"RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S": "0.5"},
+    ],
+    indirect=True,
+)
+@pytest.mark.skipif(
+    not RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING,
+    reason="Only relevant on streaming codepath.",
+)
+def test_request_timeout_does_not_leak_tasks(ray_instance, shutdown_serve):
+    """Verify that the ASGI-related tasks exit when a request is timed out.
+
+    See https://github.com/ray-project/ray/issues/38368 for details.
+    """
+    signal_actor = SignalActor.remote()
+
+    @serve.deployment
+    class Hang:
+        async def __call__(self):
+            await signal_actor.wait.remote()
+            return "Success!"
+
+    serve.run(Hang.bind())
+
+    def get_num_running_tasks():
+        return len(
+            list_tasks(
+                address=ray_instance["gcs_address"],
+                filters=[
+                    ("NAME", "!=", "ServeController.listen_for_change"),
+                    ("TYPE", "=", "ACTOR_TASK"),
+                    ("STATE", "=", "RUNNING"),
+                ],
+            )
+        )
+
+    assert get_num_running_tasks() == 0
+
+    # Send a number of requests that all will be timed out.
+    results = ray.get([do_request.remote() for _ in range(10)])
+    assert all(r.status_code == 408 for r in results)
+
+    # Signal the handlers to exit. After that, no actor tasks should be running
+    # aside from long poll.
+    ray.get(signal_actor.send.remote())
+    wait_for_condition(lambda: get_num_running_tasks() == 0)
 
 
 if __name__ == "__main__":
