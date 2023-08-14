@@ -42,24 +42,29 @@ Let's compare a Hugging Face Transformers training script with and without Ray T
 
             # Adapted from Hugging Face tutorial: https://huggingface.co/docs/transformers/training
 
-            from datasets import load_dataset
-            from transformers import AutoTokenizer
-            from transformers import AutoModelForSequenceClassification
-            from transformers import TrainingArguments, Trainer
             import numpy as np
             import evaluate
+            from datasets import load_dataset
+            from transformers import (
+                Trainer,
+                TrainingArguments,
+                AutoTokenizer, 
+                AutoModelForSequenceClassification,
+                DataCollatorWithPadding,
+            )
 
             # Datasets
             dataset = load_dataset("yelp_review_full")
             tokenizer = AutoTokenizer.from_pretrained("bert-base-cased")
+            data_collator = DataCollatorWithPadding(tokenizer=tokenizer)
 
             def tokenize_function(examples):
                 return tokenizer(examples["text"], padding="max_length", truncation=True)
 
             tokenized_datasets = dataset.map(tokenize_function, batched=True)
 
-            small_train_dataset = tokenized_datasets["train"].shuffle(seed=42).select(range(1000))
-            small_eval_dataset = tokenized_datasets["test"].shuffle(seed=42).select(range(1000))
+            small_train_dataset = dataset["train"].select(range(1000)).map(tokenize_function, batched=True)
+            small_eval_dataset = dataset["test"].select(range(1000)).map(tokenize_function, batched=True)
 
             # Model
             model = AutoModelForSequenceClassification.from_pretrained(
@@ -85,6 +90,7 @@ Let's compare a Hugging Face Transformers training script with and without Ray T
                 train_dataset=small_train_dataset,
                 eval_dataset=small_eval_dataset,
                 compute_metrics=compute_metrics,
+                data_collator=data_collator
             )
 
             # Start Training
@@ -96,12 +102,16 @@ Let's compare a Hugging Face Transformers training script with and without Ray T
 
         .. code-block:: python
 
-            from datasets import load_dataset
-            from transformers import AutoTokenizer
-            from transformers import AutoModelForSequenceClassification
-            from transformers import TrainingArguments, Trainer
             import numpy as np
             import evaluate
+            from datasets import load_dataset
+            from transformers import (
+                Trainer,
+                TrainingArguments,
+                AutoTokenizer, 
+                AutoModelForSequenceClassification,
+                DataCollatorWithPadding,
+            )
 
             import ray.train.huggingface.transformers
             from ray.train import ScalingConfig
@@ -114,14 +124,13 @@ Let's compare a Hugging Face Transformers training script with and without Ray T
                 # Datasets
                 dataset = load_dataset("yelp_review_full")
                 tokenizer = AutoTokenizer.from_pretrained("bert-base-cased")
+                data_collator = DataCollatorWithPadding(tokenizer=tokenizer)
 
                 def tokenize_function(examples):
                     return tokenizer(examples["text"], padding="max_length", truncation=True)
 
-                tokenized_ds = dataset.map(tokenize_function, batched=True)
-
-                small_train_ds = tokenized_ds["train"].shuffle(seed=42).select(range(1000))
-                small_eval_ds = tokenized_ds["test"].shuffle(seed=42).select(range(1000))
+                small_train_dataset = dataset["train"].select(range(1000)).map(tokenize_function, batched=True)
+                small_eval_dataset = dataset["test"].select(range(1000)).map(tokenize_function, batched=True)
 
                 # Model
                 model = AutoModelForSequenceClassification.from_pretrained(
@@ -144,9 +153,10 @@ Let's compare a Hugging Face Transformers training script with and without Ray T
                 trainer = Trainer(
                     model=model,
                     args=training_args,
-                    train_dataset=small_train_ds,
-                    eval_dataset=small_eval_ds,
+                    train_dataset=small_train_dataset,
+                    eval_dataset=small_eval_dataset,
                     compute_metrics=compute_metrics,
+                    data_collator=data_collator
                 )
 
                 # [2] Report Metrics and Checkpoints to Ray Train
