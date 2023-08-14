@@ -442,8 +442,8 @@ def read_datasource(
     )
     block_list._estimated_num_blocks = estimated_num_blocks
 
-    # TODO(hchen): move _get_read_tasks and related code to the Read physical operator,
-    # after removing LazyBlockList code path.
+    # TODO(hchen/chengsu): Remove the duplicated _get_read_tasks call here after
+    # removing LazyBlockList code path.
     read_op = Read(
         datasource,
         reader,

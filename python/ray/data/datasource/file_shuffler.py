@@ -1,10 +1,12 @@
 from typing import Any, Dict, List, Tuple
 
+
 class FileShuffler:
     """Abstract class for file shuffler.
 
     Shufflers live on the driver side of the Dataset only.
     """
+
     def __init__(self, reader_args: Dict[str, Any]):
         self._reader_args = reader_args
 
