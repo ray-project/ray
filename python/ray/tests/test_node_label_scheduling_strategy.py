@@ -264,6 +264,13 @@ def test_node_label_scheduling_invalid_paramter(call_ray_start):
             scheduling_strategy=NodeLabelSchedulingStrategy({"gpu_type": "1111"})
         )
 
+    with pytest.raises(
+        ValueError,
+        match="The `hard` and `soft` parameter "
+        "of NodeLabelSchedulingStrategy cannot both be empty.",
+    ):
+        MyActor.options(scheduling_strategy=NodeLabelSchedulingStrategy(hard={}))
+
 
 if __name__ == "__main__":
     if os.environ.get("PARALLEL_CI"):
