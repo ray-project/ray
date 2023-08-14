@@ -25,10 +25,10 @@ provider:
 
     vsphere_config:
       credentials:
-        admin_user: <username>
-        admin_password: <password>
-        server: <server-ip>
-      datacenter: <datacenter>
+        admin_user: administrator@vsphere.local
+        admin_password: vc_password
+        server: 10.186.231.56
+      datacenter: Datacenter
 
 # How Ray will authenticate with newly launched nodes.
 auth:
