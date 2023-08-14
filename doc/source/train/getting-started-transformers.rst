@@ -50,18 +50,14 @@ Let's compare a Hugging Face Transformers training script with and without Ray T
                 TrainingArguments,
                 AutoTokenizer, 
                 AutoModelForSequenceClassification,
-                DataCollatorWithPadding,
             )
 
             # Datasets
             dataset = load_dataset("yelp_review_full")
             tokenizer = AutoTokenizer.from_pretrained("bert-base-cased")
-            data_collator = DataCollatorWithPadding(tokenizer=tokenizer)
 
             def tokenize_function(examples):
                 return tokenizer(examples["text"], padding="max_length", truncation=True)
-
-            tokenized_datasets = dataset.map(tokenize_function, batched=True)
 
             small_train_dataset = dataset["train"].select(range(1000)).map(tokenize_function, batched=True)
             small_eval_dataset = dataset["test"].select(range(1000)).map(tokenize_function, batched=True)
@@ -90,7 +86,6 @@ Let's compare a Hugging Face Transformers training script with and without Ray T
                 train_dataset=small_train_dataset,
                 eval_dataset=small_eval_dataset,
                 compute_metrics=compute_metrics,
-                data_collator=data_collator
             )
 
             # Start Training
@@ -110,7 +105,6 @@ Let's compare a Hugging Face Transformers training script with and without Ray T
                 TrainingArguments,
                 AutoTokenizer, 
                 AutoModelForSequenceClassification,
-                DataCollatorWithPadding,
             )
 
             import ray.train.huggingface.transformers
@@ -124,7 +118,6 @@ Let's compare a Hugging Face Transformers training script with and without Ray T
                 # Datasets
                 dataset = load_dataset("yelp_review_full")
                 tokenizer = AutoTokenizer.from_pretrained("bert-base-cased")
-                data_collator = DataCollatorWithPadding(tokenizer=tokenizer)
 
                 def tokenize_function(examples):
                     return tokenizer(examples["text"], padding="max_length", truncation=True)
@@ -156,7 +149,6 @@ Let's compare a Hugging Face Transformers training script with and without Ray T
                     train_dataset=small_train_dataset,
                     eval_dataset=small_eval_dataset,
                     compute_metrics=compute_metrics,
-                    data_collator=data_collator
                 )
 
                 # [2] Report Metrics and Checkpoints to Ray Train
