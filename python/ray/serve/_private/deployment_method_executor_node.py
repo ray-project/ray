@@ -32,7 +32,7 @@ class DeploymentMethodExecutorNode(DAGNode):
         )
         self._deployment_node_replaced_by_handle = other_args_to_resolve[
             PARENT_CLASS_NODE_KEY
-        ].options(use_new_handle_api=True)
+        ]
         self._deployment_method_name = deployment_method_name
 
     def _copy_impl(
@@ -59,9 +59,7 @@ class DeploymentMethodExecutorNode(DAGNode):
         method_body = getattr(
             self._deployment_node_replaced_by_handle, self._deployment_method_name
         )
-        return method_body.remote(
-            *self._bound_args, **self._bound_kwargs
-        ).to_obj_ref_sync()
+        return method_body.remote(*self._bound_args, **self._bound_kwargs)
 
     def __str__(self) -> str:
         return get_dag_node_str(self, str(self._deployment_method_name))
