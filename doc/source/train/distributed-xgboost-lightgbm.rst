@@ -65,7 +65,7 @@ both implement checkpointing out of the box and will create
 :class:`~ray.train.xgboost.XGBoostCheckpoint`\s and :class:`~ray.train.lightgbm.LightGBMCheckpoint`\s
 respectively.
 
-The only required change is to configure :class:`~ray.air.CheckpointConfig` to set
+The only required change is to configure :class:`~ray.train.CheckpointConfig` to set
 the checkpointing frequency. For example, the following configuration will
 save a checkpoint on every boosting round and will only keep the latest checkpoint:
 
@@ -85,8 +85,8 @@ save a checkpoint on every boosting round and will only keep the latest checkpoi
 How to scale out training?
 --------------------------
 
-The benefit of using Ray AIR is that you can seamlessly scale up your training by
-adjusting the :class:`ScalingConfig <ray.air.config.ScalingConfig>`.
+The benefit of using Ray Train is that you can seamlessly scale up your training by
+adjusting the :class:`ScalingConfig <ray.train.ScalingConfig>`.
 
 .. note::
     Ray Train does not modify or otherwise alter the working
@@ -169,7 +169,7 @@ more than one actor per node:
 How to use GPUs for training?
 -----------------------------
 
-Ray AIR enables multi GPU training for XGBoost and LightGBM. The core backends
+Ray Train enables multi GPU training for XGBoost and LightGBM. The core backends
 will automatically leverage NCCL2 for cross-device communication.
 All you have to do is to start one actor per GPU and set GPU-compatible parameters,
 e.g. XGBoost's ``tree_method`` to ``gpu_hist`` (see XGBoost

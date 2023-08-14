@@ -569,6 +569,8 @@ Ray Data interoperates with distributed data processing frameworks like
             {'col1': 1, 'col2': '1'}
             {'col1': 2, 'col2': '2'}
 
+.. _loading_datasets_from_ml_libraries:
+
 Loading data from ML libraries
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

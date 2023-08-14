@@ -1,10 +1,12 @@
+.. _train_scaling_config:
+
 Configuring Scale and GPUs
 ==========================
 Increasing the scale of a Ray Train training run is simple and can often
 be done in a few lines of code.
 
 The main interface for configuring scale and resources
-is the :class:`~ray.air.config.ScalingConfig`.
+is the :class:`~ray.train.ScalingConfig`.
 
 Scaling Configurations in Train (``ScalingConfig``)
 ---------------------------------------------------
@@ -21,18 +23,18 @@ The properties of the scaling configuration are :ref:`tunable <tune-search-space
 
 .. seealso::
 
-    See the :class:`~ray.air.ScalingConfig` API reference.
+    See the :class:`~ray.train.ScalingConfig` API reference.
 
 
 Increasing the number of workers
 --------------------------------
 The main interface to control parallelism in your training code is to set the
 number of workers. This can be done by passing the ``num_workers`` attribute to
-the :class:`~ray.air.config.ScalingConfig`:
+the :class:`~ray.train.ScalingConfig`:
 
 .. code-block:: python
 
-    from ray.air.config import ScalingConfig
+    from ray.train import ScalingConfig
 
     scaling_config = ScalingConfig(
         num_workers=8
@@ -41,13 +43,13 @@ the :class:`~ray.air.config.ScalingConfig`:
 
 Using GPUs
 ----------
-To use GPUs, pass ``use_gpu=True`` to the :class:`~ray.air.config.ScalingConfig`.
+To use GPUs, pass ``use_gpu=True`` to the :class:`~ray.train.ScalingConfig`.
 This will request one GPU per training worker. In the example below, training will
 run on 8 GPUs (8 workers, each using one GPU).
 
 .. code-block:: python
 
-    from ray.air.config import ScalingConfig
+    from ray.train import ScalingConfig
 
     scaling_config = ScalingConfig(
         num_workers=8,
@@ -63,7 +65,7 @@ the ``resources_per_worker`` attribute:
 
 .. code-block:: python
 
-    from ray.air.config import ScalingConfig
+    from ray.train import ScalingConfig
 
     scaling_config = ScalingConfig(
         num_workers=8,
@@ -82,7 +84,7 @@ will be assigned the same CUDA device.
 
 .. code-block:: python
 
-    from ray.air.config import ScalingConfig
+    from ray.train import ScalingConfig
 
     scaling_config = ScalingConfig(
         num_workers=8,
@@ -104,7 +106,7 @@ You can get the associated devices with :meth:`ray.train.torch.get_device`.
 .. code-block:: python
 
     import torch
-    from ray.air.config import ScalingConfig
+    from ray.train import ScalingConfig
     from ray.train.torch import TorchTrainer, get_device
 
 
@@ -137,7 +139,7 @@ Trainer that does heavier processing.
 
 .. code-block:: python
 
-    from ray.air.config import ScalingConfig
+    from ray.train import ScalingConfig
 
     scaling_config = ScalingConfig(
         num_workers=8,
@@ -154,7 +156,7 @@ resources to use 0 CPUs:
 
 .. code-block:: python
 
-    from ray.air.config import ScalingConfig
+    from ray.train import ScalingConfig
 
     scaling_config = ScalingConfig(
         num_workers=4,
