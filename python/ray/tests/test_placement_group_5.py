@@ -225,14 +225,15 @@ def test_placement_group_max_cpu_frac_edge_cases(ray_start_cluster):
 
 
 @pytest.mark.parametrize(
-    "scheduling_strategy", ["SPREAD", "STRICT_SPREAD", "PACK", "STRICT_PACK"]
+    "scheduling_strategy", ["SPREAD", "STRICT_SPREAD", "PACK", "STRICT_PACK"],
+    "dummy_int", range(100),
 )
-def test_placement_group_parallel_submission(ray_start_cluster, scheduling_strategy):
+def test_placement_group_parallel_submission(ray_start_cluster, scheduling_strategy, dummy_int):
     @ray.remote(resources={"custom_resource": 1})
     def task(input):
         return input
 
-    @ray.remote
+    @ray.remote(num_cpus=0)
     def manage_tasks(input):
         pg = ray.util.placement_group(
             [{"custom_resource": 1, "CPU": 1}], strategy=scheduling_strategy
