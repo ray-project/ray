@@ -1,5 +1,0 @@
-steps:
-  - commands:
-      - echo "hello"
-    agents:
-      - queue: runner_queue_small_pr
