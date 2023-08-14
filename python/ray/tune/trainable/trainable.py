@@ -509,8 +509,7 @@ class Trainable:
         if _use_storage_context():
             if _using_class_trainable():
                 # TODO(justinvyu): [cls_trainable_support]
-                # This is a hack to get class Trainables to work in the
-                # new persistence mode for 2.7.
+                # This is to get class Trainables to work in the new persistence mode.
                 # Need to handle checkpoint_dict_or_path == path, dict, or None
                 # Also need to upload to cloud, since `train.report` never gets called.
                 if isinstance(checkpoint_dict_or_path, dict):
@@ -523,10 +522,13 @@ class Trainable:
 
                 # TODO(justinvyu): Ignoring relpaths returned by save_checkpoint for now
                 local_checkpoint = NewCheckpoint.from_directory(checkpoint_dir)
-                self._storage.current_checkpoint_index = self._iteration - 1
                 persisted_checkpoint = self._storage.persist_current_checkpoint(
                     local_checkpoint
                 )
+                # The checkpoint index needs to be incremented.
+                # NOTE: This is no longer using "iteration" as the folder indexing
+                # to be consistent with fn trainables.
+                self._storage.current_checkpoint_index += 1
 
                 checkpoint_result = _TrainingResult(
                     checkpoint=persisted_checkpoint, metrics=self._last_result.copy()
