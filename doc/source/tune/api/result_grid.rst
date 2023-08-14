@@ -28,7 +28,6 @@ Result (air.Result)
 -------------------
 
 .. autosummary::
-    :template: autosummary/class_without_autosummary.rst
 
     ~air.Result
 
