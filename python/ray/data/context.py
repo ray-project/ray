@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING, Optional
 
 import ray
 from ray._private.ray_constants import env_integer
+from ray.data._default_config import DEFAULT_FILE_SHUFFLER
 from ray.util.annotations import DeveloperAPI
 from ray.util.scheduling_strategies import SchedulingStrategyT
 
@@ -171,6 +172,7 @@ class DataContext:
         use_ray_tqdm: bool,
         use_legacy_iter_batches: bool,
         enable_progress_bars: bool,
+        file_shuffler: str,
     ):
         """Private constructor (use get_current() instead)."""
         self.target_max_block_size = target_max_block_size
@@ -204,6 +206,7 @@ class DataContext:
         self.use_ray_tqdm = use_ray_tqdm
         self.use_legacy_iter_batches = use_legacy_iter_batches
         self.enable_progress_bars = enable_progress_bars
+        self.file_shuffler = file_shuffler
 
     @staticmethod
     def get_current() -> "DataContext":
@@ -253,6 +256,7 @@ class DataContext:
                     use_ray_tqdm=DEFAULT_USE_RAY_TQDM,
                     use_legacy_iter_batches=DEFAULT_USE_LEGACY_ITER_BATCHES,
                     enable_progress_bars=DEFAULT_ENABLE_PROGRESS_BARS,
+                    file_shuffler=DEFAULT_FILE_SHUFFLER,
                 )
 
             return _default_context
