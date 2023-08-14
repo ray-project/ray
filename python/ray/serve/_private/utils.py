@@ -2,6 +2,7 @@ import copy
 import importlib
 import inspect
 import logging
+import math
 import os
 import random
 import string
@@ -600,21 +601,14 @@ class MetricsPusher:
         """
 
         def send_forever():
-
             while True:
                 if self.stop_event.is_set():
                     return
 
                 start = time.time()
-                least_interval_s = None
-
                 for task in self.tasks:
                     try:
-                        if least_interval_s is None:
-                            least_interval_s = task.interval_s
-                        else:
-                            least_interval_s = min(least_interval_s, task.interval_s)
-                        if start - task.last_call_succeeded_time > task.interval_s:
+                        if start - task.last_call_succeeded_time >= task.interval_s:
                             if task.last_ref:
                                 ready_refs, _ = ray.wait([task.last_ref], timeout=0)
                                 if len(ready_refs) == 0:
@@ -629,10 +623,20 @@ class MetricsPusher:
                         logger.warning(
                             f"MetricsPusher thread failed to run metric task: {e}"
                         )
-                duration_s = time.time() - start
-                remaining_time = least_interval_s - duration_s
-                if remaining_time > 0:
-                    time.sleep(remaining_time)
+
+                # For all tasks, check when the task should be executed
+                # next. Sleep until the next closest time.
+                least_interval_s = math.inf
+                for task in self.tasks:
+                    time_until_next_push = task.interval_s - (
+                        time.time() - task.last_call_succeeded_time
+                    )
+                    least_interval_s = min(least_interval_s, time_until_next_push)
+
+                time.sleep(max(least_interval_s, 0))
+
+        if len(self.tasks) == 0:
+            raise ValueError("MetricsPusher has zero tasks registered.")
 
         self.pusher_thread = threading.Thread(target=send_forever)
         # Making this a daemon thread so it doesn't leak upon shutdown, and it
