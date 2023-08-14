@@ -1,24 +1,16 @@
 import logging
 import numbers
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, List, Optional, Tuple
 
 from ray._private.dict import flatten_dict
 from ray.air.config import MAX
 from ray.air._internal.util import is_nan
 from ray.train import CheckpointConfig
 from ray.train._internal.storage import _delete_fs_path
-from ray.train._checkpoint import Checkpoint
+from ray.train._internal.session import _TrainingResult
 
 
 logger = logging.getLogger(__name__)
-
-
-class _TrainingResult:
-    """A (checkpoint, metrics) result reported by the user."""
-
-    def __init__(self, checkpoint: Checkpoint, metrics: Dict[str, Any]):
-        self.checkpoint = checkpoint
-        self.metrics = metrics
 
 
 def _insert_into_sorted_list(list: List[Any], item: Any, key: Callable[[Any], Any]):

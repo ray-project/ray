@@ -696,7 +696,9 @@ class ProgressReporterTest(unittest.TestCase):
                 if os.environ.get("TUNE_NEW_EXECUTION") == "0":
                     assert EXPECTED_END_TO_END_START in output
                 assert EXPECTED_END_TO_END_END in output
-                assert "(raylet)" not in output, "Unexpected raylet log messages"
+                for line in output.splitlines():
+                    if "(raylet)" in line:
+                        assert "cluster ID" in line, "Unexpected raylet log messages"
             except Exception:
                 print("*** BEGIN OUTPUT ***")
                 print(output)

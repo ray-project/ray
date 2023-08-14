@@ -3,7 +3,7 @@
 Monitoring and Logging
 ======================
 
-Ray AIR provides an API for reporting intermediate
+Ray Train provides an API for reporting intermediate
 results and checkpoints from the training function (run on distributed workers) up to the
 ``Trainer`` (where your python script is executed) by calling ``train.report(metrics)``.
 The results will be collected from the distributed workers and passed to the driver to
