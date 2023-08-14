@@ -832,7 +832,7 @@ class SyncerCallback(Callback):
 
         if not source_ip:
             try:
-                source_ip = trial.get_runner_ip()
+                source_ip = trial.get_ray_actor_ip()
             except RayActorError as e:
                 logger.error(
                     f"Trial {trial}: An error occurred when trying to get the "

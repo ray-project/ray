@@ -154,7 +154,7 @@ class TrialRunnerCallbacks(unittest.TestCase):
             storage_mode=CheckpointStorage.PERSISTENT,
             metrics={TRAINING_ITERATION: 0},
         )
-        trials[0].saving_to = cp
+        trials[0].temporary_state.saving_to = cp
 
         # Let the first trial save a checkpoint
         self.executor.next_future_result = _ExecutorEvent(
@@ -181,7 +181,7 @@ class TrialRunnerCallbacks(unittest.TestCase):
         self.assertEqual(trials[1].last_result["metric"], 800)
 
         # Let the second trial restore from a checkpoint
-        trials[1].restoring_from = cp
+        trials[1].temporary_state.restoring_from = cp
         self.executor.next_future_result = _ExecutorEvent(
             event_type=_ExecutorEventType.RESTORING_RESULT,
             trial=trials[1],
@@ -192,7 +192,7 @@ class TrialRunnerCallbacks(unittest.TestCase):
         self.assertEqual(self.callback.state["trial_restore"]["trial"].trial_id, "two")
 
         # Let the second trial finish
-        trials[1].restoring_from = None
+        trials[1].temporary_state.restoring_from = None
         self.executor.next_future_result = _ExecutorEvent(
             event_type=_ExecutorEventType.TRAINING_RESULT,
             trial=trials[1],

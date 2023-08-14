@@ -65,7 +65,7 @@ class Trial:
     def __hash__(self):
         return hash(self.trial_id)
 
-    def get_runner_ip(self) -> str:
+    def get_ray_actor_ip(self) -> str:
         return ray.util.get_node_ip_address()
 
 

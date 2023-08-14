@@ -68,7 +68,7 @@ class TestUniformResourceAllocation(unittest.TestCase):
 
     def _allocateAndAssertNewResources(self, trial, scheduler, target_pgf, metric=1):
         result = {"metric": metric, "training_iteration": 4}
-        trial.last_result = result
+        trial.run_metadata.last_result = result
         decision = scheduler.on_trial_result(self.tune_controller, trial, result)
         assert decision == TrialScheduler.PAUSE
         trial.status = Trial.PENDING
@@ -314,10 +314,10 @@ class TestUniformResourceAllocationAddBundles(TestUniformResourceAllocation):
 class TestTopJobResourceAllocation(TestUniformResourceAllocation):
     def _prepareTrials(self, scheduler, base_pgf):
         t1, t2, t3, t4 = super()._prepareTrials(scheduler, base_pgf)
-        t1.last_result = {"metric": 1, "training_iteration": 3}
-        t2.last_result = {"metric": 0.9, "training_iteration": 3}
-        t3.last_result = {"metric": 0.8, "training_iteration": 3}
-        t4.last_result = {"metric": 0.7, "training_iteration": 3}
+        t1.run_metadata.last_result = {"metric": 1, "training_iteration": 3}
+        t2.run_metadata.last_result = {"metric": 0.9, "training_iteration": 3}
+        t3.run_metadata.last_result = {"metric": 0.8, "training_iteration": 3}
+        t4.run_metadata.last_result = {"metric": 0.7, "training_iteration": 3}
         return t1, t2, t3, t4
 
     def testAllocateFreeResources(self):
