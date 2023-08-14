@@ -316,7 +316,7 @@ def configure_component_cpu_profiler(
                 "is not installed. No CPU profiling is happening."
             )
 
-        return None, None
+    return None, None
 
 
 def get_serve_logs_dir() -> str:
