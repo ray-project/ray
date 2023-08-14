@@ -55,6 +55,9 @@ For example, the following code trains a model with a preprocessor that normaliz
     :start-after: __trainer_start__
     :end-before: __trainer_end__
 
+See Ray Train's data preprocessing and ingest section
+(:ref:`torch <data-ingest-torch>`, :ref:`lightgbm/xgboost <data-ingest-gbdt>`) for more details.
+
 Types of preprocessors
 ----------------------
 

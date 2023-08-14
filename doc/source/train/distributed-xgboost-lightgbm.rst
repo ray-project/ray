@@ -190,6 +190,47 @@ machines have 16 CPUs in addition to the 4 GPUs, each actor should have
     :end-before: __gpu_xgboost_end__
 
 
+.. _data-ingest-gbdt:
+
+How to preprocess data for training?
+------------------------------------
+
+The recommended way to preprocess data for training is to use Ray Data operations such as `map_batches`. 
+
+However, particularly for tabular data, Ray Data comes with out-of-the-box :ref:`preprocessors <air-preprocessors>` that implement common feature preprocessing operations.
+You can use this with Ray Train Trainers by applying them on the dataset before passing the dataset into a Trainer. For example:
+
+.. testcode::
+
+    import ray
+
+    from ray.data.preprocessors import MinMaxScaler
+    from ray.train.xgboost import XGBoostTrainer
+    from ray.train import ScalingConfig
+
+    train_dataset = ray.data.from_items([{"x": x, "y": 2 * x} for x in range(0, 32, 3)])
+    valid_dataset = ray.data.from_items([{"x": x, "y": 2 * x} for x in range(1, 32, 3)])
+
+    preprocessor = MinMaxScaler(["x"])
+    preprocessor.fit(train_dataset)
+    train_dataset = preprocessor.transform(train_dataset)
+    valid_dataset = preprocessor.transform(valid_dataset)
+
+    trainer = XGBoostTrainer(
+        label_column="y",
+        params={"objective": "reg:squarederror"},
+        scaling_config=ScalingConfig(num_workers=2),
+        datasets={"train": train_dataset, "valid": valid_dataset},
+    )
+    result = trainer.fit()
+
+
+.. testoutput::
+    :hide:
+
+    ...
+
+
 How to optimize XGBoost memory usage?
 -------------------------------------
 
