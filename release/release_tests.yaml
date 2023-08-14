@@ -122,7 +122,7 @@
     byod:
       type: gpu
     cluster_compute: compute_gpu_1_cpu_16_aws.yaml
-  
+
   run:
     timeout: 500
     script: python workloads/gpu_batch_inference.py --data-directory=10G-image-data-synthetic-raw --data-format raw
@@ -149,7 +149,7 @@
     byod:
       type: gpu
     cluster_compute: compute_gpu_1_cpu_16_aws.yaml
-  
+
   run:
     timeout: 500
     script: python workloads/gpu_batch_inference.py --data-directory=10G-image-data-synthetic-raw-parquet --data-format parquet
@@ -248,7 +248,7 @@
 
     wait_for_nodes:
       num_nodes: 20
-  
+
   alert: default
 
 
@@ -7007,3 +7007,31 @@
   run:
     timeout: 3600
     script: python launch_and_verify_cluster.py gcp/example-full.yaml --num-expected-nodes 2 --retries 20  --docker-override commit
+
+########################### Anyscale Release Tests ################################
+
+- name: serve_node_draining
+  group: Serve tests
+  working_dir: anyscale/serve_tests
+
+  frequency: nightly
+  team: serve
+
+  cluster:
+    byod: {}
+    cluster_compute: ../../serve_tests/compute_tpl_8_cpu_autoscaling.yaml
+
+  run:
+    timeout: 7200
+    long_running: false
+    script: python workloads/serve_node_draining.py
+
+  alert: default
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: ../../serve_tests/compute_tpl_8_cpu_autoscaling_gce.yaml
