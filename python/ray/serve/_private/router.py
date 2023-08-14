@@ -399,11 +399,12 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
 
         Return:
             The name of the actor where this scheduler runs. If the scheduler
-            runs outside an actor or the call fails, returns an empty string.
+            runs in the driver, returns "DRIVER". If the method fails, returns
+            an empty string.
         """
 
         if in_ray_driver_process():
-            return ""
+            return "DRIVER"
         else:
             try:
                 actor_id = ray.get_runtime_context().get_actor_id()
