@@ -13,7 +13,7 @@ from unittest.mock import patch, Mock
 
 import ray
 from ray._private.test_utils import wait_for_condition
-from ray.experimental.state.api import list_objects
+from ray.experimental.state.api import list_objects, list_actors
 from ray._raylet import StreamingObjectRefGenerator, ObjectRefStreamEndOfStreamError
 from ray.cloudpickle import dumps
 from ray.exceptions import WorkerCrashedError
@@ -1166,6 +1166,111 @@ def test_no_memory_store_obj_leak(shutdown_only):
     core_worker = ray._private.worker.global_worker.core_worker
     assert core_worker.get_memory_store_size() == 0
     assert_no_leak()
+
+
+def test_python_object_leak(shutdown_only):
+    """Make sure the objects are not leaked
+    (due to circular references) when tasks run
+    for all the execution model in Ray actors.
+    """
+    ray.init()
+
+    @ray.remote
+    class AsyncActor:
+        def __init__(self):
+            self.gc_garbage_len = 0
+
+        def get_gc_garbage_len(self):
+            return self.gc_garbage_len
+
+        async def gen(self, fail=False):
+            gc.set_debug(gc.DEBUG_SAVEALL)
+            gc.collect()
+            self.gc_garbage_len = len(gc.garbage)
+            print("Objects: ", self.gc_garbage_len)
+            if fail:
+                print("exception")
+                raise Exception
+            yield 1
+
+        async def f(self, fail=False):
+            gc.set_debug(gc.DEBUG_SAVEALL)
+            gc.collect()
+            self.gc_garbage_len = len(gc.garbage)
+            print("Objects: ", self.gc_garbage_len)
+            if fail:
+                print("exception")
+                raise Exception
+            return 1
+
+    @ray.remote
+    class A:
+        def __init__(self):
+            self.gc_garbage_len = 0
+
+        def get_gc_garbage_len(self):
+            return self.gc_garbage_len
+
+        def f(self, fail=False):
+            gc.set_debug(gc.DEBUG_SAVEALL)
+            gc.collect()
+            self.gc_garbage_len = len(gc.garbage)
+            print("Objects: ", self.gc_garbage_len)
+            if fail:
+                print("exception")
+                raise Exception
+            return 1
+
+        def gen(self, fail=False):
+            gc.set_debug(gc.DEBUG_SAVEALL)
+            gc.collect()
+            self.gc_garbage_len = len(gc.garbage)
+            print("Objects: ", self.gc_garbage_len)
+            if fail:
+                print("exception")
+                raise Exception
+            yield 1
+
+    def verify_regular(actor, fail):
+        for _ in range(100):
+            try:
+                ray.get(actor.f.remote(fail=fail))
+            except Exception:
+                pass
+        assert ray.get(actor.get_gc_garbage_len.remote()) == 0
+
+    def verify_generator(actor, fail):
+        for _ in range(100):
+            for ref in actor.gen.options(num_returns="streaming").remote(fail=fail):
+                try:
+                    ray.get(ref)
+                except Exception:
+                    pass
+            assert ray.get(actor.get_gc_garbage_len.remote()) == 0
+
+    print("Test regular actors")
+    verify_regular(A.remote(), True)
+    verify_regular(A.remote(), False)
+    print("Test regular actors + generator")
+    verify_generator(A.remote(), True)
+    verify_generator(A.remote(), False)
+
+    # Test threaded actor
+    print("Test threaded actors")
+    verify_regular(A.options(max_concurrency=10).remote(), True)
+    verify_regular(A.options(max_concurrency=10).remote(), False)
+    print("Test threaded actors + generator")
+    verify_generator(A.options(max_concurrency=10).remote(), True)
+    verify_generator(A.options(max_concurrency=10).remote(), False)
+
+    # Test async actor
+    print("Test async actors")
+    verify_regular(AsyncActor.remote(), True)
+    verify_regular(AsyncActor.remote(), False)
+    print("Test async actors + generator")
+    verify_generator(AsyncActor.remote(), True)
+    verify_generator(AsyncActor.remote(), False)
+    assert len(list_actors()) == 12
 
 
 if __name__ == "__main__":
