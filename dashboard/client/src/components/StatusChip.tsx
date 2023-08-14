@@ -20,15 +20,15 @@ const grey = "#5F6469";
 const colorMap = {
   node: {
     ALIVE: green,
-    DEAD: red,
+    DEAD: grey, // TODO, make sure the dead is a normal termination
   },
   worker: {
     ALIVE: green,
-    DEAD: red,
+    DEAD: grey, // TODO,  make sure the dead is a normal termination
   },
   actor: {
     [ActorEnum.ALIVE]: green,
-    [ActorEnum.DEAD]: red,
+    [ActorEnum.DEAD]: grey,
     [ActorEnum.DEPENDENCIES_UNREADY]: orange,
     [ActorEnum.PENDING_CREATION]: orange,
     [ActorEnum.RESTARTING]: orange,
