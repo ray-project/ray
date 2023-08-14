@@ -824,9 +824,6 @@ def test_deployment_contains_utils(ray_start_stop):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
-@pytest.mark.skipif(
-    not RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING, reason="Not supported w/o streaming."
-)
 def test_serving_request_through_grpc_proxy(ray_start_stop):
     """Test serving request through gRPC proxy
 

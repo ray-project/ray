@@ -181,6 +181,28 @@ class LongestPrefixRouter:
         self.route_info = route_info
         self.app_to_is_cross_language = app_to_is_cross_language
 
+    def match_target(self, target: str) -> Optional[str]:
+        """Return the route and handle from the target.
+
+        Args:
+            target: the target to match against endpoint.
+
+        Returns:
+            route if found, else return first route. Or None if no routes.
+        """
+        if target is None:
+            return None
+
+        first_route = None
+        for route, endpoint_and_app_name in self.route_info.items():
+            if first_route is None:
+                first_route = route
+            endpoint, app_name = endpoint_and_app_name
+            if target.endswith(endpoint):
+                return route
+
+        return first_route
+
     def match_route(
         self, target_route: str
     ) -> Optional[Tuple[str, RayServeHandle, str, bool]]:
@@ -219,28 +241,6 @@ class LongestPrefixRouter:
                     )
 
         return None
-
-    def match_target(self, target: str) -> Optional[str]:
-        """Return the route and handle from the target.
-
-        Args:
-            target: the target to match against endpoint.
-
-        Returns:
-            route if found, else return first route. Or None if no routes.
-        """
-        if target is None:
-            return None
-
-        first_route = None
-        for route, endpoint_and_app_name in self.route_info.items():
-            if first_route is None:
-                first_route = route
-            endpoint, app_name = endpoint_and_app_name
-            if target.endswith(endpoint):
-                return route
-
-        return first_route
 
 
 class GenericProxy:
@@ -348,6 +348,14 @@ class GenericProxy:
         # The node is not draining if it's None.
         self._draining_start_time: Optional[float] = None
 
+    @property
+    def proxy_name(self) -> str:
+        """Proxy name used for metrics.
+
+        Each proxy needs to implement its own logic for setting up the proxy name.
+        """
+        raise NotImplementedError
+
     def _is_draining(self) -> bool:
         """Whether is proxy actor is in the draining status or not."""
         return self._draining_start_time is not None
@@ -389,24 +397,19 @@ class GenericProxy:
             self._draining_start_time = None
 
     async def _not_found(self, serve_request: ServeRequest):
-        current_path = serve_request.path
-        response = Response(
-            f"Path '{current_path}' not found. "
-            "Please ping http://.../-/routes for route table.",
-            status_code=404,
-        )
-        await response.send(
-            serve_request.scope, serve_request.receive, serve_request.send
-        )
+        raise NotImplementedError
+
+    async def _draining_response(self, serve_request: ServeRequest) -> ServeResponse:
+        raise NotImplementedError
 
     async def _timeout_response(self, serve_request: ServeRequest, request_id: str):
-        response = Response(
-            f"Request {request_id} timed out after {self.request_timeout_s}s.",
-            status_code=408,
-        )
-        await response.send(
-            serve_request.scope, serve_request.receive, serve_request.send
-        )
+        raise NotImplementedError
+
+    async def _routes_response(self, serve_request: ServeRequest):
+        raise NotImplementedError
+
+    async def _health_response(self, serve_request: ServeRequest):
+        raise NotImplementedError
 
     def _ongoing_requests_start(self):
         """Ongoing requests start.
@@ -573,6 +576,373 @@ class GenericProxy:
 
         return serve_response
 
+    async def _assign_request_with_timeout(
+        self,
+        handle: RayServeHandle,
+        serve_request: ServeRequest,
+        disconnected_task: Optional[asyncio.Task] = None,
+        timeout_s: Optional[float] = None,
+    ) -> Optional[StreamingObjectRefGenerator]:
+        """Attempt to send a request on the handle within the timeout.
+
+        If `timeout_s` is exceeded while trying to assign a replica, `TimeoutError`
+        will be raised.
+
+        `disconnected_task` is expected to be done if the client disconnects; in this
+        case, we will abort assigning a replica and return `None`.
+        """
+        assignment_task = None
+        if isinstance(serve_request, ASGIServeRequest):
+            assignment_task = handle.remote(
+                StreamingHTTPRequest(
+                    pickled_asgi_scope=pickle.dumps(serve_request.scope),
+                    http_proxy_handle=self.self_actor_handle,
+                )
+            )
+        if isinstance(serve_request, gRPCServeRequest):
+            assignment_task = handle.remote(
+                gRPCRequest(
+                    grpc_user_request=serve_request.user_request,
+                    grpc_proxy_handle=self.self_actor_handle,
+                )
+            )
+
+        tasks = []
+        if assignment_task is not None:
+            tasks.append(assignment_task)
+        if disconnected_task is not None:
+            tasks.append(disconnected_task)
+        done, _ = await asyncio.wait(
+            tasks,
+            return_when=FIRST_COMPLETED,
+            timeout=timeout_s,
+        )
+        if assignment_task in done:
+            return assignment_task.result()
+        elif disconnected_task in done:
+            assignment_task.cancel()
+            return None
+        else:
+            assignment_task.cancel()
+            raise TimeoutError()
+
+    async def send_request_to_replica_unary(
+        self,
+        handle: RayServeHandle,
+        serve_request: ServeRequest,
+    ) -> ServeResponse:
+        """Send the request to the replica and handle unary response.
+
+        Each proxy needs to implement its own logic for sending the request and
+        handling the unary response.
+        """
+        raise NotImplementedError
+
+    def setup_request_context_and_handle(
+        self,
+        app_name: str,
+        handle: RayServeHandle,
+        route_path: str,
+        serve_request: ServeRequest,
+    ) -> Tuple[RayServeHandle, str]:
+        """Setup the request context and handle for the request.
+
+        Each proxy needs to implement its own logic for setting up the request context
+        and handle.
+        """
+        raise NotImplementedError
+
+    async def send_request_to_replica_streaming(
+        self,
+        request_id: str,
+        handle: RayServeHandle,
+        serve_request: ServeRequest,
+    ) -> ServeResponse:
+        """Send the request to the replica and handle streaming response.
+
+        Each proxy needs to implement its own logic for sending the request and
+        handling the streaming response.
+        """
+        raise NotImplementedError
+
+
+class gRPCProxy(GenericProxy):
+    """This class is meant to be instantiated and run by an gRPC server.
+
+    This is the servicer class for the gRPC server. It implements `unary_unary`
+    as the entry point for unary gRPC request and `unary_stream` as the entry
+    point for streaming gRPC request.
+    """
+
+    @property
+    def proxy_name(self) -> RequestProtocol:
+        return RequestProtocol.GRPC
+
+    async def _not_found(self, serve_request: ServeRequest):
+        # TODO (genesu): fix it
+        current_path = serve_request.path
+        response = Response(
+            f"Path '{current_path}' not found. "
+            "Please ping http://.../-/routes for route table.",
+            status_code=404,
+        )
+        await response.send(
+            serve_request.scope, serve_request.receive, serve_request.send
+        )
+
+    async def _draining_response(self, serve_request: ServeRequest) -> ServeResponse:
+        status_code = grpc.StatusCode.ABORTED
+        serve_request.send_status_code(status_code=status_code)
+        serve_request.send_details(message=drained_message)
+        if serve_request.route_path == "/-/routes":
+            response_proto = RoutesResponse(application_names=self.route_info.values())
+        else:
+            response_proto = HealthzResponse(response=drained_message)
+        return ServeResponse(
+            status_code=str(status_code),
+            response=response_proto.SerializeToString(),
+        )
+
+    async def _timeout_response(self, serve_request: ServeRequest, request_id: str):
+        # TODO (genesu): fix it
+        response = Response(
+            f"Request {request_id} timed out after {self.request_timeout_s}s.",
+            status_code=408,
+        )
+        await response.send(
+            serve_request.scope, serve_request.receive, serve_request.send
+        )
+
+    async def _routes_response(self, serve_request: ServeRequest):
+        status_code = grpc.StatusCode.OK
+        serve_request.send_status_code(status_code=status_code)
+        serve_request.send_details(message=success_message)
+        response_proto = RoutesResponse(application_names=self.route_info.values())
+        return ServeResponse(
+            status_code=str(status_code),
+            response=response_proto.SerializeToString(),
+        )
+
+    async def _health_response(self, serve_request: ServeRequest):
+        status_code = grpc.StatusCode.OK
+        serve_request.send_status_code(status_code=status_code)
+        serve_request.send_details(message=success_message)
+        response_proto = HealthzResponse(response=success_message)
+        return ServeResponse(
+            status_code=str(status_code),
+            response=response_proto.SerializeToString(),
+        )
+
+    def service_handler_factory(self, service_method: str, stream: bool) -> Callable:
+        async def unary_unary(
+            request_proto: Any, context: "grpc._cython.cygrpc._ServicerContext"
+        ) -> bytes:
+            """Entry point of the gRPC proxy unary request.
+
+            This method is called by the gRPC server when a unary request is received.
+            It wraps the request in a ServeRequest object and calls proxy_request.
+            The return value is serialized user defined protobuf bytes.
+            """
+            serve_request = gRPCServeRequest(
+                request_proto=request_proto,
+                context=context,
+                match_target=self.prefix_router.match_target,
+                service_method=service_method,
+                stream=False,
+            )
+            serve_response = await self.proxy_request(serve_request=serve_request)
+            return serve_response.response
+
+        async def unary_stream(
+            request_proto: Any, context: "grpc._cython.cygrpc._ServicerContext"
+        ) -> Generator[bytes, None, None]:
+            """Entry point of the gRPC proxy streaming request.
+
+            This method is called by the gRPC server when a streaming request is
+            received. It wraps the request in a ServeRequest object and calls
+            proxy_request. The return value is a generator of serialized user defined
+            protobuf bytes.
+            """
+            serve_request = gRPCServeRequest(
+                request_proto=request_proto,
+                context=context,
+                match_target=self.prefix_router.match_target,
+                service_method=service_method,
+                stream=True,
+            )
+            serve_response = await self.proxy_request(serve_request=serve_request)
+            async for response in serve_response.streaming_response:
+                yield response
+
+        if not stream:
+            return unary_unary
+        return unary_stream
+
+    def setup_request_context_and_handle(
+        self,
+        app_name: str,
+        handle: RayServeHandle,
+        route_path: str,
+        serve_request: ServeRequest,
+    ) -> Tuple[RayServeHandle, str]:
+        """Setup request context and handle for the request.
+
+        Unpack gRPC request metadata and extract info to set up request context and
+        handle.
+        """
+        multiplexed_model_id = serve_request.multiplexed_model_id
+        request_id = serve_request.request_id
+        if not request_id:
+            request_id = generate_request_id()
+            serve_request.request_id = request_id
+
+        handle = handle.options(
+            stream=serve_request.stream,
+            multiplexed_model_id=multiplexed_model_id,
+            method_name=serve_request.method_name,
+            request_protocol=RequestProtocol.GRPC,
+        )
+
+        request_context_info = {
+            "route": route_path,
+            "request_id": request_id,
+            "app_name": app_name,
+            "multiplexed_model_id": multiplexed_model_id,
+        }
+        ray.serve.context._serve_request_context.set(
+            ray.serve.context.RequestContext(**request_context_info)
+        )
+        serve_request.send_request_id(request_id=request_id)
+        return handle, request_id
+
+    async def _streaming_generator_helper(
+        self,
+        obj_ref_generator: StreamingObjectRefGenerator,
+    ) -> Generator[bytes, None, None]:
+        while True:
+            try:
+                obj_ref = await obj_ref_generator._next_async()
+                user_response_bytes = await obj_ref
+                yield user_response_bytes
+            except StopAsyncIteration:
+                break
+
+    async def _consume_generator_stream(
+        self,
+        obj_ref: StreamingObjectRefGenerator,
+    ) -> ServeResponse:
+        streaming_response = self._streaming_generator_helper(obj_ref)
+        return ServeResponse(status_code="200", streaming_response=streaming_response)
+
+    async def _consume_generator_unary(
+        self,
+        obj_ref: ray.ObjectRef,
+    ) -> ServeResponse:
+        user_response_bytes = await obj_ref
+        return ServeResponse(status_code="200", response=user_response_bytes)
+
+    async def send_request_to_replica_streaming(
+        self,
+        request_id: str,
+        handle: RayServeHandle,
+        serve_request: ServeRequest,
+    ) -> ServeResponse:
+        try:
+            try:
+                obj_ref = await self._assign_request_with_timeout(
+                    handle=handle,
+                    serve_request=serve_request,
+                    timeout_s=self.request_timeout_s,
+                )
+                if obj_ref is None:
+                    logger.info(
+                        f"Client from {serve_request.client} disconnected, "
+                        "cancelling the request.",
+                        extra={"log_to_stderr": False},
+                    )
+                    return DISCONNECT_ERROR_CODE, None
+            except TimeoutError:
+                logger.warning(
+                    f"Request {request_id} timed out after "
+                    f"{self.request_timeout_s}s while waiting for assignment."
+                )
+                return TIMEOUT_ERROR_CODE, None
+
+            if serve_request.stream:
+                return await self._consume_generator_stream(obj_ref=obj_ref)
+            else:
+                return await self._consume_generator_unary(obj_ref=obj_ref)
+
+        except Exception as e:
+            logger.exception(e)
+            return ServeResponse(status_code="500")
+
+
+class HTTPProxy(GenericProxy):
+    """This class is meant to be instantiated and run by an ASGI HTTP server.
+
+    >>> import uvicorn
+    >>> controller_name = ... # doctest: +SKIP
+    >>> uvicorn.run(HTTPProxy(controller_name)) # doctest: +SKIP
+    """
+
+    @property
+    def proxy_name(self) -> RequestProtocol:
+        return RequestProtocol.HTTP
+
+    async def _not_found(self, serve_request: ServeRequest):
+        current_path = serve_request.path
+        response = Response(
+            f"Path '{current_path}' not found. "
+            "Please ping http://.../-/routes for route table.",
+            status_code=404,
+        )
+        await response.send(
+            serve_request.scope, serve_request.receive, serve_request.send
+        )
+
+    async def _draining_response(self, serve_request: ServeRequest):
+        response = Response(drained_message, status_code=503)
+        await response.send(
+            serve_request.scope, serve_request.receive, serve_request.send
+        )
+
+    async def _timeout_response(self, serve_request: ServeRequest, request_id: str):
+        response = Response(
+            f"Request {request_id} timed out after {self.request_timeout_s}s.",
+            status_code=408,
+        )
+        await response.send(
+            serve_request.scope, serve_request.receive, serve_request.send
+        )
+
+    async def _routes_response(self, serve_request: ServeRequest):
+        return await starlette.responses.JSONResponse(self.route_info)(
+            serve_request.scope, serve_request.receive, serve_request.send
+        )
+
+    async def _health_response(self, serve_request: ServeRequest):
+        return await starlette.responses.PlainTextResponse(success_message)(
+            serve_request.scope, serve_request.receive, serve_request.send
+        )
+
+    async def receive_asgi_messages(self, request_id: str) -> List[Message]:
+        queue = self.asgi_receive_queues.get(request_id, None)
+        if queue is None:
+            raise KeyError(f"Request ID {request_id} not found.")
+
+        await queue.wait_for_message()
+        return queue.get_messages_nowait()
+
+    async def __call__(self, scope, receive, send):
+        """Implements the ASGI protocol.
+
+        See details at:
+            https://asgi.readthedocs.io/en/latest/specs/index.html.
+        """
+        serve_request = ASGIServeRequest(scope=scope, receive=receive, send=send)
+        await self.proxy_request(serve_request=serve_request)
+
     async def send_request_to_replica_unary(
         self,
         handle: RayServeHandle,
@@ -683,352 +1053,6 @@ class GenericProxy:
             )
             return ServeResponse(status_code="200")
 
-    async def _assign_request_with_timeout(
-        self,
-        handle: RayServeHandle,
-        serve_request: ServeRequest,
-        disconnected_task: Optional[asyncio.Task] = None,
-        timeout_s: Optional[float] = None,
-    ) -> Optional[StreamingObjectRefGenerator]:
-        """Attempt to send a request on the handle within the timeout.
-
-        If `timeout_s` is exceeded while trying to assign a replica, `TimeoutError`
-        will be raised.
-
-        `disconnected_task` is expected to be done if the client disconnects; in this
-        case, we will abort assigning a replica and return `None`.
-        """
-        assignment_task = None
-        if isinstance(serve_request, ASGIServeRequest):
-            assignment_task = handle.remote(
-                StreamingHTTPRequest(
-                    pickled_asgi_scope=pickle.dumps(serve_request.scope),
-                    http_proxy_handle=self.self_actor_handle,
-                )
-            )
-        if isinstance(serve_request, gRPCServeRequest):
-            assignment_task = handle.remote(
-                gRPCRequest(
-                    grpc_user_request=serve_request.user_request,
-                    grpc_proxy_handle=self.self_actor_handle,
-                )
-            )
-
-        tasks = []
-        if assignment_task is not None:
-            tasks.append(assignment_task)
-        if disconnected_task is not None:
-            tasks.append(disconnected_task)
-        done, _ = await asyncio.wait(
-            tasks,
-            return_when=FIRST_COMPLETED,
-            timeout=timeout_s,
-        )
-        if assignment_task in done:
-            return assignment_task.result()
-        elif disconnected_task in done:
-            assignment_task.cancel()
-            return None
-        else:
-            assignment_task.cancel()
-            raise TimeoutError()
-
-    @property
-    def proxy_name(self) -> str:
-        """Proxy name used for metrics.
-
-        Each proxy needs to implement its own logic for setting up the proxy name.
-        """
-        raise NotImplementedError
-
-    def setup_request_context_and_handle(
-        self,
-        app_name: str,
-        handle: RayServeHandle,
-        route_path: str,
-        serve_request: ServeRequest,
-    ) -> Tuple[RayServeHandle, str]:
-        """Setup the request context and handle for the request.
-
-        Each proxy needs to implement its own logic for setting up the request context
-        and handle.
-        """
-        raise NotImplementedError
-
-    async def send_request_to_replica_streaming(
-        self,
-        request_id: str,
-        handle: RayServeHandle,
-        serve_request: ServeRequest,
-    ) -> ServeResponse:
-        """Send the request to the replica and handle streaming response.
-
-        Each proxy needs to implement its own logic for sending the request and
-        handling the streaming response.
-        """
-        raise NotImplementedError
-
-
-class gRPCProxy(GenericProxy):
-    """This class is meant to be instantiated and run by an gRPC server.
-
-    This is the servicer class for the gRPC server. It implements `unary_unary`
-    as the entry point for unary gRPC request and `unary_stream` as the entry
-    point for streaming gRPC request.
-    """
-
-    def service_handler_factory(self, service_method: str, stream: bool) -> Callable:
-        async def unary_unary(
-            request_proto: Any, context: "grpc._cython.cygrpc._ServicerContext"
-        ) -> bytes:
-            """Entry point of the gRPC proxy unary request.
-
-            This method is called by the gRPC server when a unary request is received.
-            It wraps the request in a ServeRequest object and calls proxy_request.
-            The return value is serialized user defined protobuf bytes.
-            """
-            serve_request = gRPCServeRequest(
-                request_proto=request_proto,
-                context=context,
-                match_target=self.prefix_router.match_target,
-                service_method=service_method,
-                stream=False,
-            )
-            serve_response = await self.proxy_request(serve_request=serve_request)
-            return serve_response.response
-
-        async def unary_stream(
-            request_proto: Any, context: "grpc._cython.cygrpc._ServicerContext"
-        ) -> Generator[bytes, None, None]:
-            """Entry point of the gRPC proxy streaming request.
-
-            This method is called by the gRPC server when a streaming request is
-            received. It wraps the request in a ServeRequest object and calls
-            proxy_request. The return value is a generator of serialized user defined
-            protobuf bytes.
-            """
-            serve_request = gRPCServeRequest(
-                request_proto=request_proto,
-                context=context,
-                match_target=self.prefix_router.match_target,
-                service_method=service_method,
-                stream=True,
-            )
-            serve_response = await self.proxy_request(serve_request=serve_request)
-            async for response in serve_response.streaming_response:
-                yield response
-
-        if not stream:
-            return unary_unary
-        return unary_stream
-
-    @property
-    def proxy_name(self) -> RequestProtocol:
-        return RequestProtocol.GRPC
-
-    async def _draining_response(self, serve_request: ServeRequest) -> ServeResponse:
-        status_code = grpc.StatusCode.ABORTED
-        serve_request.send_status_code(status_code=status_code)
-        serve_request.send_details(message=drained_message)
-        if serve_request.route_path == "/-/routes":
-            response_proto = RoutesResponse(application_names=self.route_info.values())
-        else:
-            response_proto = HealthzResponse(response=drained_message)
-        return ServeResponse(
-            status_code=str(status_code),
-            response=response_proto.SerializeToString(),
-        )
-
-    async def _routes_response(self, serve_request: ServeRequest):
-        status_code = grpc.StatusCode.OK
-        serve_request.send_status_code(status_code=status_code)
-        serve_request.send_details(message=success_message)
-        response_proto = RoutesResponse(application_names=self.route_info.values())
-        return ServeResponse(
-            status_code=str(status_code),
-            response=response_proto.SerializeToString(),
-        )
-
-    async def _health_response(self, serve_request: ServeRequest):
-        status_code = grpc.StatusCode.OK
-        serve_request.send_status_code(status_code=status_code)
-        serve_request.send_details(message=success_message)
-        response_proto = HealthzResponse(response=success_message)
-        return ServeResponse(
-            status_code=str(status_code),
-            response=response_proto.SerializeToString(),
-        )
-
-    def setup_request_context_and_handle(
-        self,
-        app_name: str,
-        handle: RayServeHandle,
-        route_path: str,
-        serve_request: ServeRequest,
-    ) -> Tuple[RayServeHandle, str]:
-        multiplexed_model_id = serve_request.multiplexed_model_id
-        request_id = serve_request.request_id
-        if not request_id:
-            request_id = generate_request_id()
-            serve_request.request_id = request_id
-
-        handle = handle.options(
-            stream=serve_request.stream,
-            multiplexed_model_id=multiplexed_model_id,
-            method_name=serve_request.method_name,
-            request_protocol=RequestProtocol.GRPC,
-        )
-
-        request_context_info = {
-            "route": route_path,
-            "request_id": request_id,
-            "app_name": app_name,
-            "multiplexed_model_id": multiplexed_model_id,
-        }
-        ray.serve.context._serve_request_context.set(
-            ray.serve.context.RequestContext(**request_context_info)
-        )
-        serve_request.send_request_id(request_id=request_id)
-        return handle, request_id
-
-    async def _streaming_generator_helper(
-        self,
-        obj_ref_generator: StreamingObjectRefGenerator,
-    ) -> Generator[bytes, None, None]:
-        while True:
-            try:
-                obj_ref = await obj_ref_generator._next_async()
-                user_response_bytes = await obj_ref
-                yield user_response_bytes
-            except StopAsyncIteration:
-                break
-
-    async def _consume_generator_stream(
-        self,
-        obj_ref: StreamingObjectRefGenerator,
-    ) -> ServeResponse:
-        streaming_response = self._streaming_generator_helper(obj_ref)
-        return ServeResponse(status_code="200", streaming_response=streaming_response)
-
-    async def _consume_generator_unary(
-        self,
-        obj_ref: ray.ObjectRef,
-    ) -> ServeResponse:
-        user_response_bytes = await obj_ref
-        return ServeResponse(status_code="200", response=user_response_bytes)
-
-    async def send_request_to_replica_streaming(
-        self,
-        request_id: str,
-        handle: RayServeHandle,
-        serve_request: ServeRequest,
-    ) -> ServeResponse:
-        try:
-            try:
-                obj_ref = await self._assign_request_with_timeout(
-                    handle=handle,
-                    serve_request=serve_request,
-                    timeout_s=self.request_timeout_s,
-                )
-                if obj_ref is None:
-                    logger.info(
-                        f"Client from {serve_request.client} disconnected, "
-                        "cancelling the request.",
-                        extra={"log_to_stderr": False},
-                    )
-                    return DISCONNECT_ERROR_CODE, None
-            except TimeoutError:
-                logger.warning(
-                    f"Request {request_id} timed out after "
-                    f"{self.request_timeout_s}s while waiting for assignment."
-                )
-                return TIMEOUT_ERROR_CODE, None
-
-            if serve_request.stream:
-                return await self._consume_generator_stream(obj_ref=obj_ref)
-            else:
-                return await self._consume_generator_unary(obj_ref=obj_ref)
-
-        except Exception as e:
-            logger.exception(e)
-            return ServeResponse(status_code="500")
-
-
-class HTTPProxy(GenericProxy):
-    """This class is meant to be instantiated and run by an ASGI HTTP server.
-
-    >>> import uvicorn
-    >>> controller_name = ... # doctest: +SKIP
-    >>> uvicorn.run(HTTPProxy(controller_name)) # doctest: +SKIP
-    """
-
-    async def __call__(self, scope, receive, send):
-        """Implements the ASGI protocol.
-
-        See details at:
-            https://asgi.readthedocs.io/en/latest/specs/index.html.
-        """
-        serve_request = ASGIServeRequest(scope=scope, receive=receive, send=send)
-        await self.proxy_request(serve_request=serve_request)
-
-    @property
-    def proxy_name(self) -> RequestProtocol:
-        return RequestProtocol.HTTP
-
-    async def _draining_response(self, serve_request: ServeRequest):
-        response = Response(drained_message, status_code=503)
-        await response.send(
-            serve_request.scope, serve_request.receive, serve_request.send
-        )
-
-    async def _routes_response(self, serve_request: ServeRequest):
-        return await starlette.responses.JSONResponse(self.route_info)(
-            serve_request.scope, serve_request.receive, serve_request.send
-        )
-
-    async def _health_response(self, serve_request: ServeRequest):
-        return await starlette.responses.PlainTextResponse(success_message)(
-            serve_request.scope, serve_request.receive, serve_request.send
-        )
-
-    def setup_request_context_and_handle(
-        self,
-        serve_request: ServeRequest,
-        route_path: str,
-        handle: RayServeHandle,
-        app_name: str,
-    ) -> Tuple[RayServeHandle, str]:
-        handle = handle.options(request_protocol=RequestProtocol.HTTP)
-        request_context_info = {
-            "route": route_path,
-            "app_name": app_name,
-        }
-        for key, value in serve_request.headers:
-            if key.decode() == SERVE_MULTIPLEXED_MODEL_ID:
-                multiplexed_model_id = value.decode()
-                handle = handle.options(multiplexed_model_id=multiplexed_model_id)
-                request_context_info["multiplexed_model_id"] = multiplexed_model_id
-            if key.decode() == "x-request-id":
-                request_context_info["request_id"] = value.decode()
-            if (
-                key.decode() == RAY_SERVE_REQUEST_ID_HEADER.lower()
-                and "request_id" not in request_context_info
-            ):
-                # "x-request-id" has higher priority than "RAY_SERVE_REQUEST_ID".
-                request_context_info["request_id"] = value.decode()
-        ray.serve.context._serve_request_context.set(
-            ray.serve.context.RequestContext(**request_context_info)
-        )
-        return handle, request_context_info["request_id"]
-
-    async def receive_asgi_messages(self, request_id: str) -> List[Message]:
-        queue = self.asgi_receive_queues.get(request_id, None)
-        if queue is None:
-            raise KeyError(f"Request ID {request_id} not found.")
-
-        await queue.wait_for_message()
-        return queue.get_messages_nowait()
-
     async def proxy_asgi_receive(
         self, receive: Receive, queue: ASGIMessageQueue
     ) -> Optional[int]:
@@ -1097,6 +1121,41 @@ class HTTPProxy(GenericProxy):
                 break
 
         return status_code
+
+    def setup_request_context_and_handle(
+        self,
+        serve_request: ServeRequest,
+        route_path: str,
+        handle: RayServeHandle,
+        app_name: str,
+    ) -> Tuple[RayServeHandle, str]:
+        """Setup request context and handle for the request.
+
+        Unpack HTTP request headers and extract info to set up request context and
+        handle.
+        """
+        handle = handle.options(request_protocol=RequestProtocol.HTTP)
+        request_context_info = {
+            "route": route_path,
+            "app_name": app_name,
+        }
+        for key, value in serve_request.headers:
+            if key.decode() == SERVE_MULTIPLEXED_MODEL_ID:
+                multiplexed_model_id = value.decode()
+                handle = handle.options(multiplexed_model_id=multiplexed_model_id)
+                request_context_info["multiplexed_model_id"] = multiplexed_model_id
+            if key.decode() == "x-request-id":
+                request_context_info["request_id"] = value.decode()
+            if (
+                key.decode() == RAY_SERVE_REQUEST_ID_HEADER.lower()
+                and "request_id" not in request_context_info
+            ):
+                # "x-request-id" has higher priority than "RAY_SERVE_REQUEST_ID".
+                request_context_info["request_id"] = value.decode()
+        ray.serve.context._serve_request_context.set(
+            ray.serve.context.RequestContext(**request_context_info)
+        )
+        return handle, request_context_info["request_id"]
 
     async def send_request_to_replica_streaming(
         self,
