@@ -298,6 +298,8 @@ test_cpp() {
 }
 
 test_wheels() {
+  build_wheels_and_jars
+
   local TEST_WHEEL_RESULT=0
 
   "${WORKSPACE_DIR}"/ci/build/test-wheels.sh || TEST_WHEEL_RESULT=$?

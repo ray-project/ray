@@ -32,8 +32,6 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 SUPPORTED_PYTHONS = [(3, 7), (3, 8), (3, 9), (3, 10), (3, 11)]
-# When the bazel version is updated, make sure to update it
-# in WORKSPACE file as well.
 
 ROOT_DIR = os.path.dirname(__file__)
 BUILD_JAVA = os.getenv("RAY_INSTALL_JAVA") == "1"

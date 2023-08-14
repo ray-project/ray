@@ -1,28 +1,15 @@
 #!/bin/bash
 
-set -x
+set -exuo pipefail
 
-# Cause the script to exit if a single command fails.
-set -euo pipefail
-
-cat << EOF > "/usr/bin/nproc"
-#!/bin/bash
-echo 10
-EOF
-chmod +x /usr/bin/nproc
+if [[ ! -e /usr/bin/nproc ]]; then
+  echo -e '#!/bin/bash\necho 10' > "/usr/bin/nproc"
+  chmod +x /usr/bin/nproc
+fi
 
 export RAY_INSTALL_JAVA="${RAY_INSTALL_JAVA:-0}"
 
 NODE_VERSION="14"
-
-# Python version key, interpreter version code, numpy tuples.
-PYTHON_NUMPYS=(
-  "py37 cp37-cp37m 1.14.5"
-  "py38 cp38-cp38 1.14.5"
-  "py39 cp39-cp39 1.19.3"
-  "py310 cp310-cp310 1.22.0"
-  "py311 cp311-cp311 1.22.0"
-)
 
 YUM_PKGS=(unzip zip sudo openssl xz)
 
@@ -38,8 +25,7 @@ if [[ "${HOSTTYPE-}" == "x86_64" ]]; then
   )
 fi
 
-yum -y install "${YUM_PKGS[@]}"
-
+yum install -y "${YUM_PKGS[@]}"
 
 if [[ "${RAY_INSTALL_JAVA}" == "1" ]]; then
   java -version
@@ -51,17 +37,35 @@ fi
 /ray/ci/env/install-bazel.sh
 echo "build --incompatible_linkopts_to_linklibs" >> /root/.bazelrc
 
-if [[ "${RAY_INSTALL_JAVA}" == "1" ]]; then
-  bazel build //java:ray_java_pkg
-fi
-
 # Install and use the latest version of Node.js in order to build the dashboard.
 set +x
 curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.34.0/install.sh | bash
 source "$HOME"/.nvm/nvm.sh
+
 nvm install "$NODE_VERSION"
 nvm use "$NODE_VERSION"
 
+# Install bazelisk via npm.
+npm install -g @bazel/bazelisk
+ln -s "$(which bazelisk)" /usr/local/bin/bazel
+
+echo "build --config=ci" > ~/.bazelrc
+echo "build --announce_rc" >> ~/.bazelrc
+
+########## Starts building here. ##########
+
+# Add the repo folder to the safe.dictory global variable to avoid the failure
+# because of secruity check from git, when executing the following command
+# `git clean ...`,  while building wheel locally.
+git config --global --add safe.directory /ray
+
+echo "--- Build java parts"
+
+if [[ "${RAY_INSTALL_JAVA}" == "1" ]]; then
+  bazel build //java:ray_java_pkg
+fi
+
+echo "--- Build dashboard frontend"
 # Build the dashboard so its static assets can be included in the wheel.
 # TODO(mfitton): switch this back when deleting old dashboard code.
 (
@@ -71,12 +75,17 @@ nvm use "$NODE_VERSION"
 )
 set -x
 
-# Add the repo folder to the safe.dictory global variable to avoid the failure
-# because of secruity check from git, when executing the following command
-# `git clean ...`,  while building wheel locally.
-git config --global --add safe.directory /ray
-
 mkdir -p .whl
+
+echo "--- Build python wheels"
+# Python version key, interpreter version code, numpy tuples.
+PYTHON_NUMPYS=(
+  "py37 cp37-cp37m 1.14.5"
+  "py38 cp38-cp38 1.14.5"
+  "py39 cp39-cp39 1.19.3"
+  "py310 cp310-cp310 1.22.0"
+  "py311 cp311-cp311 1.22.0"
+)
 for PYTHON_NUMPY in "${PYTHON_NUMPYS[@]}" ; do
   PYTHON_VERSION_KEY="$(echo "${PYTHON_NUMPY}" | cut -d' ' -f1)"
   if [[ "${BUILD_ONE_PYTHON_ONLY:-}" != "" && "${PYTHON_VERSION_KEY}" != "${BUILD_ONE_PYTHON_ONLY}" ]]; then
