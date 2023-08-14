@@ -30,7 +30,6 @@ py_test_run_all_notebooks(
     include = ["*.ipynb"],
     exclude = [
         "huggingface_text_classification.ipynb",
-        "feast_example.ipynb",  # REGRESSION
         "upload_to_comet_ml.ipynb",  # Needs credentials
         "upload_to_wandb.ipynb",  # Needs credentials
         "torch_detection.ipynb",  # Requires GPUs

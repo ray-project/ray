@@ -80,13 +80,6 @@ Ray Examples
 
         Get started with Ray AIR from an existing PyTorch codebase
 
-    .. grid-item-card:: :bdg-success:`Tutorial`
-        :class-item: gallery-item tensorflow
-        :link: /ray-air/examples/convert_existing_tf_code_to_ray_air
-        :link-type: doc
-
-        Get started with Ray AIR from an existing Tensorflow/Keras
-
     .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item training
         :link: /ray-air/examples/lightgbm_example
@@ -212,13 +205,6 @@ Ray Examples
         :link-type: doc
 
         Incrementally train and deploy a PyTorch CV model
-
-    .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item training inference
-        :link: /ray-air/examples/feast_example
-        :link-type: doc
-
-        Integrate with Feast feature store in both train and inference
 
     .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item pytorch tensorflow serving

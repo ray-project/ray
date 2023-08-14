@@ -7,7 +7,6 @@ Framework-specific Examples
 ---------------------------
 
 - :doc:`/ray-air/examples/convert_existing_pytorch_code_to_ray_air`: Get started with Ray AIR from an existing PyTorch codebase
-- :doc:`/ray-air/examples/convert_existing_tf_code_to_ray_air`: Get started with Ray AIR from an existing Tensorflow/Keras codebase.
 - :doc:`/ray-air/examples/lightgbm_example`: Distributed training with LightGBM
 - :doc:`/ray-air/examples/xgboost_example`: Distributed training with XGBoost
 - :doc:`/ray-air/examples/sklearn_example`: Integrating with Scikit-Learn (non-distributed)
@@ -45,4 +44,3 @@ Advanced
 --------
 
 - :doc:`/ray-air/examples/torch_incremental_learning`: Incrementally train and deploy a PyTorch CV model
-- :doc:`/ray-air/examples/feast_example`: Integrate with Feast feature store in both train and inference
