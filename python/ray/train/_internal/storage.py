@@ -44,12 +44,6 @@ def _use_storage_context() -> bool:
     return bool(int(os.environ.get(RAY_AIR_NEW_PERSISTENCE_MODE, "0")))
 
 
-def _using_class_trainable() -> bool:
-    return bool(
-        int(os.environ.get("__RAY_AIR_NEW_PERSISTENCE_MODE_CLASS_TRAINABLE", "0"))
-    )
-
-
 class _ExcludingLocalFilesystem(LocalFileSystem):
     """LocalFileSystem wrapper to exclude files according to patterns.
 

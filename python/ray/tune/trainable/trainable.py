@@ -26,11 +26,7 @@ from ray.air.constants import (
     TRAINING_ITERATION,
 )
 from ray.train._internal.checkpoint_manager import _TrainingResult
-from ray.train._internal.storage import (
-    _use_storage_context,
-    _using_class_trainable,
-    StorageContext,
-)
+from ray.train._internal.storage import _use_storage_context, StorageContext
 from ray.train._checkpoint import Checkpoint as NewCheckpoint
 from ray.tune.result import (
     DEBUG_METRICS,
@@ -507,7 +503,7 @@ class Trainable:
         checkpoint_dict_or_path = self.save_checkpoint(checkpoint_dir)
 
         if _use_storage_context():
-            if _using_class_trainable():
+            if not isinstance(self, ray.tune.trainable.FunctionTrainable):
                 # TODO(justinvyu): [cls_trainable_support]
                 # This is to get class Trainables to work in the new persistence mode.
                 # Need to handle checkpoint_dict_or_path == path, dict, or None
@@ -916,7 +912,7 @@ class Trainable:
 
             # TODO(justinvyu): [cls_trainable_support]
             # This is to conform to the public class Trainable `load_checkpoint` API.
-            if _using_class_trainable():
+            if not isinstance(self, ray.tune.trainable.FunctionTrainable):
                 # Need to convert Checkpoint -> local path or dict
                 # (depending on what the output of save_checkpoint was)
                 with checkpoint_result.checkpoint.as_directory() as checkpoint_dir:
