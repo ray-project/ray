@@ -84,7 +84,7 @@ class TrialStub:
         config: Dict[str, Any],
         _legacy_local_experiment_path: str,
         experiment_tag: str,
-        _last_result: Dict[str, Any],
+        last_result: Dict[str, Any],
         relative_logdir: str,
         *args,
         **kwargs,
@@ -95,7 +95,7 @@ class TrialStub:
         self.config = config
         self.local_experiment_path = _legacy_local_experiment_path
         self.experiment_tag = experiment_tag
-        self.last_result = _last_result
+        self.last_result = last_result
         self.relative_logdir = relative_logdir
 
         # Ignore remaining arguments
@@ -553,8 +553,10 @@ def load_experiment_checkpoint_from_state_file(
         runner_state = json.load(f, cls=TuneFunctionDecoder)
 
     trials = []
-    for trial_cp_str in runner_state["checkpoints"]:
+    for trial_cp_str, trial_runtime_str in runner_state["trial_data"]:
         parsed = json.loads(trial_cp_str, cls=TuneFunctionDecoder)
+        runtime = json.loads(trial_cp_str, cls=TuneFunctionDecoder)
+        parsed.update(runtime)
         trial = TrialStub(**parsed)
         trials.append(trial)
 
