@@ -60,29 +60,24 @@ parts:
         title: Ray Train
         sections:
           - file: train/key-concepts
-            title: "Key Concepts"
-          - file: train/distributed-pytorch
-            sections:
-              - file: train/distributed-pytorch/converting-existing-training-loop
-              - file: train/distributed-pytorch/data-loading-preprocessing
-              - file: train/distributed-pytorch/using-gpus
-              - file: train/distributed-pytorch/persistent-storage
-                title: Configuring Persistent Storage
-              - file: train/distributed-pytorch/monitoring-logging
-              - file: train/distributed-pytorch/checkpoints
-              - file: train/distributed-pytorch/experiment-tracking
-              - file: train/distributed-pytorch/fault-tolerance
-              - file: train/distributed-pytorch/advanced
-                sections:
-                    - file: train/distributed-pytorch/reproducibility
-                    - file: train/distributed-pytorch/automatic-mixed-precision
-                    - file: train/distributed-pytorch/hyperparameter-optimization
-                      title: Hyperparameter optimization
+            title: Key Concepts
+          - file: train/getting-started-pytorch
+            title: PyTorch
+          - file: train/getting-started-pytorch-lightning
+            title: PyTorch Lightning
+          - file: train/getting-started-transformers
+            title: Hugging Face Transformers
           - file: train/more-frameworks
             sections:
+              - file: train/huggingface-transformers-accelerate
+                title: Hugging Face Transformers & Accelerate
               - file: train/distributed-tensorflow-keras
+                title: TensorFlow & Keras
               - file: train/distributed-xgboost-lightgbm
+                title: XGBoost & LightGBM
               - file: train/horovod
+          - file: train/user-guides
+            title: User Guides
           - file: train/internals/index
             sections:
               - file: train/internals/architecture
@@ -93,6 +88,8 @@ parts:
             sections:
               - file: train/examples/pytorch/torch_fashion_mnist_example
                 title: "PyTorch Fashion MNIST Example"
+              - file: train/examples/transformers/transformers_torch_trainer_basic
+                title: "Hugging Face Transformers Basic Example"
               - file: train/examples/lightning/lightning_mnist_example
                 title: "PyTorch Lightning Basic Example"
               - file: train/examples/lightning/lightning_cola_advanced

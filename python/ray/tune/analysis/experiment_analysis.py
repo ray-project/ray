@@ -21,6 +21,7 @@ from ray.air.constants import (
     EXPR_PARAM_FILE,
     TRAINING_ITERATION,
 )
+from ray.train._internal.storage import _use_storage_context
 from ray.tune.syncer import SyncConfig
 from ray.tune.utils import flatten_dict
 from ray.tune.utils.serialization import TuneFunctionDecoder
@@ -980,7 +981,9 @@ class ExperimentAnalysis:
             for trial_json_state, path in self._checkpoints_and_paths:
                 try:
                     trial = Trial.from_json_state(trial_json_state, stub=True)
-                    trial.local_experiment_path = str(path)
+                    # TODO(justinvyu): [handle_moved_storage_path]
+                    if not _use_storage_context():
+                        trial.local_experiment_path = str(path)
                 except Exception:
                     logger.warning(
                         f"Could not load trials from experiment checkpoint. "

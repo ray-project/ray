@@ -1,7 +1,7 @@
 :orphan:
 
-Fine-tuning DreamBooth with Ray AIR
-===================================
+Fine-tuning DreamBooth with Ray Train
+=====================================
 
 This example shows how to do DreamBooth fine-tuning of a Stable Diffusion model using Ray AIR.
 See the original `DreamBooth project homepage <https://dreambooth.github.io/>`_ for more details on what this fine-tuning method achieves.
@@ -12,7 +12,7 @@ See the original `DreamBooth project homepage <https://dreambooth.github.io/>`_ 
 
 This example is built on top of `this HuggingFace 🤗 tutorial <https://huggingface.co/docs/diffusers/training/dreambooth>`_.
 See the HuggingFace tutorial for useful explanations and suggestions on hyperparameters.
-**Adapting this example to Ray AIR allows you to easily scale up the fine-tuning to an arbitrary number of distributed training workers.**
+**Adapting this example to Ray Train allows you to easily scale up the fine-tuning to an arbitrary number of distributed training workers.**
 
 **Compute requirements:**
 
@@ -92,14 +92,14 @@ Distributed training
 
 The central part of the training code is the *training function*. This function accepts a configuration dict that contains the hyperparameters. It then defines a regular PyTorch training loop.
 
-There are only a few locations where we interact with the Ray AIR API. We marked them with in-line comments in the snippet below.
+There are only a few locations where we interact with the Ray Train API. We marked them with in-line comments in the snippet below.
 
 Remember that we want to do data-parallel training for all our models.
 
 
 #. We load the data shard for each worker with session.get_dataset_shard("train")
 #. We iterate over the dataset with train_dataset.iter_torch_batches()
-#. We report results to Ray AIR with session.report(results)
+#. We report results to Ray Train with session.report(results)
 
 The code was compacted for brevity. The `full code <https://github.com/ray-project/ray/tree/master/doc/source/templates/05_dreambooth_finetuning/dreambooth/train.py>`_ is more thoroughly annotated.
 
@@ -216,8 +216,8 @@ Clone the Ray repository, go to the example directory, and install dependencies.
 .. code-block:: bash
 
    git clone https://github.com/ray-project/ray.git
-   cd ray/python/ray/air/examples/dreambooth
-   pip install -Ur requirements.txt
+   cd doc/source/templates/05_dreambooth_finetuning
+   pip install -Ur dreambooth/requirements.txt
 
 Prepare some directories and environment variables.
 
