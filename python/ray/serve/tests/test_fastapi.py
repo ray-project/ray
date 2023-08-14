@@ -1,11 +1,7 @@
 import time
 from typing import Any, List, Optional
 import tempfile
-import numpy as np
 
-import pytest
-import inspect
-import requests
 from fastapi import (
     Cookie,
     Depends,
@@ -19,19 +15,24 @@ from fastapi import (
 )
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+import inspect
+import numpy as np
 from pydantic import BaseModel, Field
+import pytest
+import requests
 from starlette.applications import Starlette
 import starlette.responses
 from starlette.routing import Route
 
 import ray
+from ray._private.test_utils import SignalActor, wait_for_condition
+
 from ray import serve
 from ray.exceptions import GetTimeoutError
 from ray.serve.exceptions import RayServeException
 from ray.serve._private.client import ServeControllerClient
 from ray.serve._private.http_util import make_fastapi_class_based_view
 from ray.serve._private.utils import DEFAULT
-from ray._private.test_utils import SignalActor, wait_for_condition
 
 
 def test_fastapi_function(serve_instance):
@@ -115,13 +116,23 @@ def test_class_based_view(serve_instance):
     assert ray.get(handle.other.remote("world")) == "world"
 
 
-def test_make_fastapi_cbv_util():
+@pytest.mark.parametrize("websocket", [False, True])
+def test_make_fastapi_class_based_view(websocket: bool):
     app = FastAPI()
 
-    class A:
-        @app.get("/{i}")
-        def b(self, i: int):
-            pass
+    if websocket:
+
+        class A:
+            @app.get("/{i}")
+            def b(self, i: int):
+                pass
+
+    else:
+
+        class A:
+            @app.websocket("/{i}")
+            def b(self, i: int):
+                pass
 
     # before, "self" is treated as a query params
     assert app.routes[-1].endpoint == A.b
@@ -352,6 +363,23 @@ def test_fastapi_init_lifespan_should_not_shutdown(serve_instance):
     # Without a proper fix, the actor won't be initialized correctly.
     # Because it will crash on each startup.
     assert ray.get(A.get_handle().f.remote()) == 1
+
+
+def test_fastapi_lifespan_startup_failure_crashes_actor(serve_instance):
+    async def lifespan(app):
+        raise Exception("crash")
+
+        yield
+
+    app = FastAPI(lifespan=lifespan)
+
+    @serve.deployment
+    @serve.ingress(app)
+    class A:
+        pass
+
+    with pytest.raises(RuntimeError):
+        A.deploy()
 
 
 def test_fastapi_duplicate_routes(serve_instance):

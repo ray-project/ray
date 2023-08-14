@@ -1,13 +1,14 @@
-base_image: {{ env["RAY_IMAGE_NIGHTLY_CPU"] | default("anyscale/ray:nightly-py37") }}
+base_image: {{ env["RAY_IMAGE_NIGHTLY_CPU"] }}
 env_vars: {"RAY_lineage_pinning_enabled": "1"}
 debian_packages: []
 
 python:
-  pip_packages: ["dask[complete]", tqdm, scipy, xarray, zarr, boto, s3fs, pyarrow]
+  pip_packages: ["dask[complete]", tqdm, scipy, xarray, zarr, pyarrow]
   conda_packages: []
 
 post_build_cmds:
   # - pip install fastparquet
+  - pip3 install boto3 s3fs
   - pip3 uninstall -y ray && pip3 install -U {{ env["RAY_WHEELS"] | default("ray") }}
   - pip3 install ray[default]
   - {{ env["RAY_WHEELS_SANITY_CHECK"] | default("echo No Ray wheels sanity check") }}

@@ -33,7 +33,7 @@ cc_library(
         "thirdparty/include/**/*.h",
         "thirdparty/include/**/*.hpp",
     ]),
-    linkopts = ["-Wl,-rpath, ./"],
+    linkopts = ["-Wl,-rpath,./"],
     strip_include_prefix = "thirdparty/include",
     visibility = ["//visibility:public"],
 )

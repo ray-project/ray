@@ -5,17 +5,21 @@ import uuid
 from functools import wraps
 
 import ray._private.signature
-from ray import Language
-from ray import cloudpickle as pickle
-from ray import cross_language
+from ray import Language, cross_language
 from ray._private import ray_option_utils
+from ray._private.auto_init_hook import auto_init_ray
 from ray._private.client_mode_hook import (
     client_mode_convert_function,
     client_mode_should_convert,
 )
 from ray._private.ray_option_utils import _warn_if_using_deprecated_placement_group
+from ray._private.serialization import pickle_dumps
 from ray._private.utils import get_runtime_env_info, parse_runtime_env
-from ray._raylet import PythonFunctionDescriptor
+from ray._raylet import (
+    STREAMING_GENERATOR_RETURN,
+    PythonFunctionDescriptor,
+    StreamingObjectRefGenerator,
+)
 from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.util.placement_group import _configure_placement_group_based_on_context
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
@@ -243,7 +247,8 @@ class RemoteFunction:
         # We pop the "max_calls" coming from "@ray.remote" here. We no longer need
         # it in "_remote()".
         task_options.pop("max_calls", None)
-        if client_mode_should_convert(auto_init=True):
+        auto_init_ray()
+        if client_mode_should_convert():
             return client_mode_convert_function(self, args, kwargs, **task_options)
 
         worker = ray._private.worker.global_worker
@@ -267,16 +272,10 @@ class RemoteFunction:
             # independent of whether or not the function was invoked by the
             # first driver. This is an argument for repickling the function,
             # which we do here.
-            try:
-                self._pickled_function = pickle.dumps(self._function)
-            except TypeError as e:
-                msg = (
-                    "Could not serialize the function "
-                    f"{self._function_descriptor.repr}. Check "
-                    "https://docs.ray.io/en/master/ray-core/objects/serialization.html#troubleshooting "  # noqa
-                    "for more information."
-                )
-                raise TypeError(msg) from e
+            self._pickled_function = pickle_dumps(
+                self._function,
+                f"Could not serialize the function {self._function_descriptor.repr}",
+            )
 
             self._last_export_session_and_job = worker.current_session_and_job
             worker.function_actor_manager.export(self)
@@ -311,6 +310,11 @@ class RemoteFunction:
         num_returns = task_options["num_returns"]
         if num_returns == "dynamic":
             num_returns = -1
+        elif num_returns == "streaming":
+            # TODO(sang): This is a temporary private API.
+            # Remove it when we migrate to the streaming generator.
+            num_returns = ray._raylet.STREAMING_GENERATOR_RETURN
+
         max_retries = task_options["max_retries"]
         retry_exceptions = task_options["retry_exceptions"]
         if isinstance(retry_exceptions, (list, tuple)):
@@ -401,6 +405,12 @@ class RemoteFunction:
             # Reset worker's debug context from the last "remote" command
             # (which applies only to this .remote call).
             worker.debugger_breakpoint = b""
+            if num_returns == STREAMING_GENERATOR_RETURN:
+                # Streaming generator will return a single ref
+                # that is for the generator task.
+                assert len(object_refs) == 1
+                generator_ref = object_refs[0]
+                return StreamingObjectRefGenerator(generator_ref, worker)
             if len(object_refs) == 1:
                 return object_refs[0]
             elif len(object_refs) > 1:

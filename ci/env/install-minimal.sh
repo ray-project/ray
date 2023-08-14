@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 
+set -xe
+
 # Python version can be specified as 3.7, 3.8, 3.9, etc..
 if [ -z "$1" ]; then
     PYTHON_VERSION=${PYTHON-3.7}
 else
-    if [ "$1" = "3.6" ]; then
-        PYTHON_VERSION="3.6"
-    elif [ "$1" = "3.7" ]; then
+    if [ "$1" = "3.7" ]; then
         PYTHON_VERSION="3.7"
     elif [ "$1" = "3.8" ]; then
         PYTHON_VERSION="3.8"
@@ -27,7 +27,7 @@ echo "Python version is ${PYTHON_VERSION}"
 ROOT_DIR=$(cd "$(dirname "$0")/$(dirname "$(test -L "$0" && readlink "$0" || echo "/")")" || exit; pwd)
 WORKSPACE_DIR="${ROOT_DIR}/../.."
 
-# Installs conda and python 3.7
+# Installs conda and the specified python version
 MINIMAL_INSTALL=1 PYTHON=${PYTHON_VERSION} "${WORKSPACE_DIR}/ci/env/install-dependencies.sh"
 
 # Re-install Ray wheels

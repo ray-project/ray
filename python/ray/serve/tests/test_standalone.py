@@ -28,7 +28,7 @@ from ray.serve._private.constants import (
     SERVE_PROXY_NAME,
     SERVE_ROOT_URL_ENV_KEY,
 )
-from ray._private.gcs_utils import GcsClient
+from ray._raylet import GcsClient
 from ray.serve.context import get_global_client
 from ray.serve.exceptions import RayServeException
 from ray.serve.generated.serve_pb2 import ActorNameList
@@ -36,11 +36,11 @@ from ray.serve._private.http_util import set_socket_reuse_port
 from ray.serve._private.utils import (
     block_until_http_ready,
     format_actor_name,
-    get_all_node_ids,
 )
+from ray.serve._private.default_impl import create_cluster_node_info_cache
 from ray.serve.schema import ServeApplicationSchema
 
-from ray.experimental.state.api import list_actors
+from ray.util.state import list_actors
 
 # Explicitly importing it here because it is a ray core tests utility (
 # not in the tree)
@@ -91,6 +91,8 @@ def test_shutdown(ray_shutdown):
     ray.init(num_cpus=16)
     serve.start(http_options=dict(port=8003))
     gcs_client = GcsClient(address=ray.get_runtime_context().gcs_address)
+    cluster_node_info_cache = create_cluster_node_info_cache(gcs_client)
+    cluster_node_info_cache.update()
 
     @serve.deployment
     def f():
@@ -104,7 +106,7 @@ def test_shutdown(ray_shutdown):
         format_actor_name(
             SERVE_PROXY_NAME,
             serve.context._global_client._controller_name,
-            get_all_node_ids(gcs_client)[0][0],
+            cluster_node_info_cache.get_alive_nodes()[0][0],
         ),
     ]
 
@@ -186,12 +188,12 @@ def test_single_app_shutdown_actors(ray_shutdown):
     def f():
         pass
 
-    serve.run(f.bind())
+    serve.run(f.bind(), name="app")
 
     actor_names = {
         "ServeController",
         "HTTPProxyActor",
-        "ServeReplica:f",
+        "ServeReplica:app_f",
     }
 
     def check_alive():
@@ -359,11 +361,24 @@ def test_multiple_routers(ray_cluster):
     node_ids = ray._private.state.node_ids()
     assert len(node_ids) == 2
     serve.start(http_options=dict(port=8005, location="EveryNode"))
+
+    @serve.deployment(
+        num_replicas=2,
+        ray_actor_options={"num_cpus": 3},
+    )
+    class A:
+        def __call__(self, *args):
+            return "hi"
+
+    serve.run(A.bind())
+
     gcs_client = GcsClient(address=ray.get_runtime_context().gcs_address)
+    cluster_node_info_cache = create_cluster_node_info_cache(gcs_client)
+    cluster_node_info_cache.update()
 
     def get_proxy_names():
         proxy_names = []
-        for node_id, _ in get_all_node_ids(gcs_client):
+        for node_id in cluster_node_info_cache.get_alive_node_ids():
             proxy_names.append(
                 format_actor_name(
                     SERVE_PROXY_NAME,
@@ -398,10 +413,13 @@ def test_multiple_routers(ray_cluster):
 
     # Add a new node to the cluster. This should trigger a new router to get
     # started.
-    new_node = cluster.add_node()
+    new_node = cluster.add_node(num_cpus=4)
+    cluster_node_info_cache.update()
 
     wait_for_condition(lambda: len(get_proxy_names()) == 3)
     (third_proxy,) = set(get_proxy_names()) - set(original_proxy_names)
+
+    serve.run(A.options(num_replicas=3).bind())
 
     def get_third_actor():
         try:
@@ -416,6 +434,7 @@ def test_multiple_routers(ray_cluster):
     # Remove the newly-added node from the cluster. The corresponding actor
     # should be removed as well.
     cluster.remove_node(new_node)
+    cluster_node_info_cache.update()
 
     def third_actor_removed():
         try:
@@ -588,7 +607,8 @@ def test_http_head_only(ray_cluster):
         "This test can only be ran when port sharing is supported."
     ),
 )
-def test_fixed_number_proxies(ray_cluster):
+def test_fixed_number_proxies(monkeypatch, ray_cluster):
+    monkeypatch.setenv("RAY_SERVE_PROXY_MIN_DRAINING_PERIOD_S", "1")
     cluster = ray_cluster
     head_node = cluster.add_node(num_cpus=4)
     cluster.add_node(num_cpus=4)
@@ -616,10 +636,21 @@ def test_fixed_number_proxies(ray_cluster):
         }
     )
 
+    @serve.deployment(
+        num_replicas=3,
+        ray_actor_options={"num_cpus": 3},
+    )
+    class A:
+        def __call__(self, *args):
+            return "hi"
+
+    serve.run(A.bind())
+
     # Only the controller and two http proxy should be started.
     controller_handle = get_global_client()._controller
-    node_to_http_actors = ray.get(controller_handle.get_http_proxies.remote())
-    assert len(node_to_http_actors) == 2
+    wait_for_condition(
+        lambda: len(ray.get(controller_handle.get_http_proxies.remote())) == 2
+    )
 
     proxy_names_bytes = ray.get(controller_handle.get_http_proxy_names.remote())
     proxy_names = ActorNameList.FromString(proxy_names_bytes)
@@ -710,7 +741,7 @@ def test_snapshot_always_written_to_internal_kv(
             return False
 
     serve.start(detached=True)
-    serve.run(hello.bind())
+    serve.run(hello.bind(), name="app")
     check()
 
     webui_url = ray_start_with_dashboard["webui_url"]
@@ -731,11 +762,11 @@ def test_snapshot_always_written_to_internal_kv(
     snapshot = get_deployment_snapshot()
     assert len(snapshot) == 1
     hello_deployment = list(snapshot.values())[0]
-    assert hello_deployment["name"] == "hello"
+    assert hello_deployment["name"] == "app_hello"
     assert hello_deployment["status"] == "RUNNING"
 
 
-def test_serve_start_different_http_checkpoint_options_warning(caplog):
+def test_serve_start_different_http_checkpoint_options_warning(propagate_logs, caplog):
     logger = logging.getLogger("ray.serve")
     caplog.set_level(logging.WARNING, logger="ray.serve")
 

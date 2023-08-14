@@ -120,6 +120,17 @@ message GetAllActorInfoRequest {
   // Maximum number of entries to return.
   // If not specified, return the whole entries without truncation.
   optional int64 limit = 2;
+
+  // The filter to apply to the returned entries.
+  message Filters {
+    // Actor id
+    optional bytes actor_id = 1;
+    // Job id
+    optional bytes job_id = 2;
+    // Actor state
+    optional ActorTableData.ActorState state = 3;
+  }
+  optional Filters filters = 3;
 }
 
 message GetAllActorInfoReply {
@@ -128,6 +139,8 @@ message GetAllActorInfoReply {
   repeated ActorTableData actor_table_data = 2;
   // Length of the corresponding resource without truncation.
   int64 total = 3;
+  // Number of results filtered on the source.
+  int64 num_filtered = 4;
 }
 
 // `KillActorViaGcsRequest` is sent to GCS Service to ask to kill an actor.
@@ -162,6 +175,13 @@ service ActorInfoGcsService {
   rpc GetAllActorInfo(GetAllActorInfoRequest) returns (GetAllActorInfoReply);
   // Kill actor via GCS Service.
   rpc KillActorViaGcs(KillActorViaGcsRequest) returns (KillActorViaGcsReply);
+}
+
+message GetClusterIdRequest {}
+
+message GetClusterIdReply {
+  GcsStatus status = 1;
+  bytes cluster_id = 2;
 }
 
 message RegisterNodeRequest {
@@ -525,11 +545,20 @@ message GcsPublishReply {
 message GcsSubscriberPollRequest {
   /// The id of the subscriber.
   bytes subscriber_id = 1;
+  /// The max squence_id that has been processed by the subscriber. The Publisher
+  /// will drop queued messages with smaller sequence_id for this subscriber.
+  int64 max_processed_sequence_id = 2;
+  /// The expected publisher_id. The publisher will ignore the
+  /// max_processed_sequence_id if the publisher_id doesn't match.
+  /// This usuall happens when gcs failover.
+  bytes publisher_id = 3;
 }
 
 message GcsSubscriberPollReply {
   /// The messages that are published.
   repeated PubMessage pub_messages = 1;
+  /// The publisher's id.
+  bytes publisher_id = 2;
   // Not populated.
   GcsStatus status = 100;
 }
@@ -539,6 +568,10 @@ message GcsSubscriberCommandBatchRequest {
   bytes subscriber_id = 1;
   /// Set of pubsub commands. Look at pubsub.proto for more details about the term.
   repeated Command commands = 2;
+  /// The id of the sender. For the same sender they might have multiple subscriber_id.
+  /// For example, one is in CoreWorker and the other one is in python.
+  /// If this field is not set, gcs pubsub will use subscriber_id instead.
+  bytes sender_id = 3;
 }
 
 message GcsSubscriberCommandBatchReply {
@@ -572,6 +605,13 @@ message GetAllResourceUsageReply {
   bool cluster_full_of_actors_detected_by_gcs = 3;
 }
 
+message GetDrainingNodesRequest {}
+
+message GetDrainingNodesReply {
+  GcsStatus status = 1;
+  repeated bytes node_ids = 2;
+}
+
 // Service for node resource info access.
 service NodeResourceInfoGcsService {
   // Get node's resources from GCS Service.
@@ -583,6 +623,8 @@ service NodeResourceInfoGcsService {
   rpc ReportResourceUsage(ReportResourceUsageRequest) returns (ReportResourceUsageReply);
   // Get resource usage of all nodes from GCS Service.
   rpc GetAllResourceUsage(GetAllResourceUsageRequest) returns (GetAllResourceUsageReply);
+  // Get ids of draining nodes.
+  rpc GetDrainingNodes(GetDrainingNodesRequest) returns (GetDrainingNodesReply);
 }
 
 message GcsStatus {
@@ -592,6 +634,8 @@ message GcsStatus {
 
 // Service for node info access.
 service NodeInfoGcsService {
+  // Register a client to GCS Service. Must be called before any other RPC in GCSClient.
+  rpc GetClusterId(GetClusterIdRequest) returns (GetClusterIdReply);
   // Register a node to GCS Service.
   rpc RegisterNode(RegisterNodeRequest) returns (RegisterNodeReply);
   // Drain a node from GCS Service.
@@ -618,22 +662,27 @@ message AddTaskEventDataReply {
 }
 
 message GetTaskEventsRequest {
-  message TaskIDs {
-    repeated string vals = 1;
-  }
-  oneof select_by {
+  // Filter object where predicates are AND together.
+  message Filters {
     // Get task events from a job.
-    string job_id = 1;
+    optional bytes job_id = 1;
     // Get task events from a set of tasks.
-    TaskIDs task_ids = 2;
+    repeated bytes task_ids = 2;
+    // Get the task events with an actor id.
+    optional bytes actor_id = 3;
+    // Get the task events of task with names.
+    optional string name = 4;
+    // True if task events from driver (only profiling events) should be excluded.
+    optional bool exclude_driver = 5;
   }
 
   // Maximum number of TaskEvents to return.
   // If set, the exact `limit` TaskEvents returned do not have any ordering or selection
   // guarantee.
   optional int64 limit = 3;
-  // True if task events from driver (only profiling events) should be excluded.
-  bool exclude_driver = 4;
+
+  // Filters to apply to the get query.
+  optional Filters filters = 4;
 }
 
 message GetTaskEventsReply {

@@ -1,0 +1,383 @@
+apiVersion: v1
+kind: Secret
+metadata:
+  name: ca-tls
+data:
+  # output from cat ca.crt | base64
+  ca.crt: |
+    LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSUM3RENDQWRRQ0NRQ05Yck8zQTAwbWRqQU5CZ2txaGtpRzl3MEJBUXNGQURBNE1SRXdEd1lEVlFRRERBZ3EKTG5KaGVTNXBiekVMTUFrR0ExVUVCaE1DVlZNeEZqQVVCZ05WQkFjTURWTmhiaUJHY21GdVkybHpZMjh3SGhjTgpNak13TXpJM01EZ3dNVFF4V2hjTk16TXdNekkwTURnd01UUXhXakE0TVJFd0R3WURWUVFEREFncUxuSmhlUzVwCmJ6RUxNQWtHQTFVRUJoTUNWVk14RmpBVUJnTlZCQWNNRFZOaGJpQkdjbUZ1WTJselkyOHdnZ0VpTUEwR0NTcUcKU0liM0RRRUJBUVVBQTRJQkR3QXdnZ0VLQW9JQkFRQ3ZJbGNGSmZxaFNidWowQ3ZpalA0c2xXN3I3Qk1kYVJOeAp5aDhJMGNaSU5QcjQ5Rjg1dXNrY0pxbnFHNC9LeThBYnlacURBUUxsalFUa0Exb3FxVHhGdTZMSm5LOGJHN012Cm90dStjVlZLWW5SeDlLWVoyWi90THRPdzhjZHFzOURuNXVERVh0L0loZzBRc0tVRDNJN3U3QjF5bVpxTjQwWEgKWDVMRUJkN1llSm5XZExqOStLOTl6ZVR0aHlUMWtsRGsySVp2ZjVsa2xjT2hHRzA5RmNtZlF5REFlM2VvTm1IWQpVaUhVU0NORGtnWTV3U3A4V3R6RXEydHBhZEQ2eTVCNVRMS2kvV1l4ZTJLM2tXbTZnUytwQTIvdkZIaU93RHNaClNqb1ZncUtMZ0lNSnZMOGR0bitaWjNLbDlMRkZNY0JiMWJ1NCtKN2U1bno3RTRVSG4wN0pBZ01CQUFFd0RRWUoKS29aSWh2Y05BUUVMQlFBRGdnRUJBQWhSY3g2NzVJbjJVaERhMzArTkZ0UlNTcUJwK1E2WTl3VGNTL0NqM1J3MgpLSnkzUVhBU0xJUW1ESWdrVlBJeEY0V1VYUFdGdmxUL0taQ2JRejRvN2M3ck9DWEVEWnVhbExUSHRrTHVSZFNWClVHSTVSWTJXNUx6UXM2MnNtUG13OWVQYnNLek5kOEpjWkwvNndHZnNsZVQyY1RLTjliZVE2ZWdiQmdEcy91d0sKeVdOREtnaE4vaE16YmRSaFh2SFNiTW8rUkgvRG1Va1VhTXZZc3NNbzFYQkwzRXZwbmpnZXI1ZWQ5ZDVjQWYvUQpuU0VCMk13Z08rWHEwKy9sWmpiUFNWOVdWQnY1YjZlc1ZPcnZrV2o2TUFKcjUwb3BwT09KUy9TbTNEU3F5aDRBClR5c1BOblQxYStxWDRVZXljZ05VbXRoOXdONFBnc3B6ZEpORWtVdTVSSmM9Ci0tLS0tRU5EIENFUlRJRklDQVRFLS0tLS0K
+  # output from cat ca.key | base64
+  ca.key: |
+    LS0tLS1CRUdJTiBQUklWQVRFIEtFWS0tLS0tCk1JSUV2Z0lCQURBTkJna3Foa2lHOXcwQkFRRUZBQVNDQktnd2dnU2tBZ0VBQW9JQkFRQ3ZJbGNGSmZxaFNidWoKMEN2aWpQNHNsVzdyN0JNZGFSTnh5aDhJMGNaSU5QcjQ5Rjg1dXNrY0pxbnFHNC9LeThBYnlacURBUUxsalFUawpBMW9xcVR4RnU2TEpuSzhiRzdNdm90dStjVlZLWW5SeDlLWVoyWi90THRPdzhjZHFzOURuNXVERVh0L0loZzBRCnNLVUQzSTd1N0IxeW1acU40MFhIWDVMRUJkN1llSm5XZExqOStLOTl6ZVR0aHlUMWtsRGsySVp2ZjVsa2xjT2gKR0cwOUZjbWZReURBZTNlb05tSFlVaUhVU0NORGtnWTV3U3A4V3R6RXEydHBhZEQ2eTVCNVRMS2kvV1l4ZTJLMwprV202Z1MrcEEyL3ZGSGlPd0RzWlNqb1ZncUtMZ0lNSnZMOGR0bitaWjNLbDlMRkZNY0JiMWJ1NCtKN2U1bno3CkU0VUhuMDdKQWdNQkFBRUNnZ0VCQUpYbG9XK2hveE83UlNRZmdBQkhSeUdud1NtaWhIWE93cnJKRWFqOXkyVncKRzBOTC9ka3Vld1ZpUGxwR3Z0c0hhMlVkTitkYXpUem1aMEkxY0U1RlRYWXQ5RlgxaXBaOExmRGV4cEFJOXNSVQo0bS9Ld3dRckZVdnZvWGE0YWtOMHBxQm1Kd2xNWHVPRmdOZEJLZXZWTW0xaW9JMisxTjhPb0dIVjlvdGFydks5ClUzY09CbmVBSjZmamF6ODd4RG1NY0dBcG82ZWdMOG0xaWJ1NUNwcFo2L2J2YVZYbHhFdXRtUjZYR2VKczdBRzMKVEtFYVhzTU1qdFdaM3ZXUDArMFJIMGpzRVI2a0ZMeEI3KzRHRWdPSk1WblZqbjlzT3FhVW41KzJ1REkrdkFkbAo0K2Fya3dwQnpzbGlaUVJLVW95aGwvMTRRZW9pcXpwVk9oVVpheFJOTnpVQ2dZRUE0RC83TmRudGFxa0JSdEdiClZUQTE0clA3Vy90THZSQnpBNWtLc3Q4V3crWFVGeTcvVEY2NkxpMVVtKzhhK2ttY1pMTm9mamNZc1pTMExkVXMKMlR4dk1IRWplcmdNUm5oWmUrOGJBZlZkd1RTcCtpdUpMKzRZWW1JRUZWUWlsSXhtRURzMkZQSnVZMHRDZW9ETAprVEFSeUNtMENPYUR1VXdLZjlMY3h3SFR4M3NDZ1lFQXgrNGpyOHV3aXh3WmwwUFBJb1Z1by9wSHZMT0ZxNXNBCmIrVEZnMEhFTVdIK1JKclhLRjA1YTRGNS9zc3pLZ09ZMGFZVUxlWnp3V1dJZElId0pzQnhGWktOdHRYTkhRbS8KOEFlVGRENnZ1OXlmN0tFZjhRNnFmaDRPRExvVDg0UTFWbGs4ek5ZN0FNUWZwN2p5RnpFOStvSm9tdlM0Snc1SApCZUNLZGZGR1RZc0NnWUVBaitkL0JhZTd1MTZJK3pFM1JRdVRDTkFHMVpnRm1tWWI2SXNsV25QZTRBZDBld3dsCnVKUnhWWUN4Y3YrVmlGZ0VqSHEwNjRuZnh0VnVhcHNLRkwyN2ZKS2QrZnB4cGlkRkJVc0RRZFo3TzZqWUN6bzAKNXhVYmdNYjFaOXA5OW1YQ2VWZ0Y5SnMrUzJuWVYxU2ZUYVJUUk9lK0tKZ0VuN3cwWUtLb0d1MEpRbEVDZ1lCZApZdXJnYm5Ca1NoZmFCQjU0cllMa3JUOWM4UzM2M2tmeC9CWVdIVjRiQXY3VjVNMmpXUWc5SXhsczNsVmp4cEpYCk94QXA4SDhaVXVmT0kvT2M1ajdzS0t4eFBxUzBiNTFyN04zL2FsaURrNlpQeldNeUlmdVpOVWl5d1NnWWt5U20KMU1BRm5mdXBlL0tkVVZJamF5amNIcFhsNjNFcExRNFh2SzV3TU9iNXlRS0JnR0kzSTAwSTlnbURzS1JrOFkxdQpId1l0dVdrNjFvWEhUTHorR3d6RUNCQ0VnNkZxMjZVeDZmVzBySlVwV3pOVURCNkRRRGxCTGx3S1M4Z1R3eGtGCkRkY3VrbzFHekdlQWYvazEwWktTZmFXNVcwVlloVGVjSDhyZXpReWxwUk5YT3ZNZkFwWUplcnhBZ09yK3hFajUKK2wwalU0MDBTMUx0cWhLVzZMK3kxRVd5Ci0tLS0tRU5EIFBSSVZBVEUgS0VZLS0tLS0K
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: tls
+data: 
+  gencert_head.sh: |
+    #!/bin/sh
+    ## Create tls.key
+    openssl genrsa -out /etc/ray/tls/tls.key 2048
+
+    ## Write CSR Config
+    cat > /etc/ray/tls/csr.conf <<EOF
+    [ req ]
+    default_bits = 2048
+    prompt = no
+    default_md = sha256
+    req_extensions = req_ext
+    distinguished_name = dn
+
+    [ dn ]
+    C = US
+    ST = California
+    L = San Fransisco
+    O = ray
+    OU = ray
+    CN = *.ray.io
+
+    [ req_ext ]
+    subjectAltName = @alt_names
+
+    [ alt_names ]
+    DNS.1 = localhost
+    DNS.2 = service-ray-head.default.svc.cluster.local
+    IP.1 = 127.0.0.1
+    IP.2 = $POD_IP
+
+    EOF
+
+    ## Create CSR using tls.key
+    openssl req -new -key /etc/ray/tls/tls.key -out /etc/ray/tls/ca.csr -config /etc/ray/tls/csr.conf
+
+    ## Write cert config
+    cat > /etc/ray/tls/cert.conf <<EOF
+
+    authorityKeyIdentifier=keyid,issuer
+    basicConstraints=CA:FALSE
+    keyUsage = digitalSignature, nonRepudiation, keyEncipherment, dataEncipherment
+    subjectAltName = @alt_names
+
+    [alt_names]
+    DNS.1 = localhost
+    DNS.2 = service-ray-head.default.svc.cluster.local
+    IP.1 = 127.0.0.1
+    IP.2 = $POD_IP
+
+    EOF
+
+    ## Generate tls.cert
+    openssl x509 -req \
+        -in /etc/ray/tls/ca.csr \
+        -CA /etc/ray/tls/ca.crt -CAkey /etc/ray/tls/ca.key \
+        -CAcreateserial -out /etc/ray/tls/tls.crt \
+        -days 365 \
+        -sha256 -extfile /etc/ray/tls/cert.conf
+
+  gencert_worker.sh: |
+    #!/bin/sh
+    ## Create tls.key
+    openssl genrsa -out /etc/ray/tls/tls.key 2048
+
+    ## Write CSR Config
+    cat > /etc/ray/tls/csr.conf <<EOF
+    [ req ]
+    default_bits = 2048
+    prompt = no
+    default_md = sha256
+    req_extensions = req_ext
+    distinguished_name = dn
+
+    [ dn ]
+    C = US
+    ST = California
+    L = San Fransisco
+    O = ray
+    OU = ray
+    CN = *.ray.io
+
+    [ req_ext ]
+    subjectAltName = @alt_names
+
+    [ alt_names ]
+    DNS.1 = localhost
+    IP.1 = 127.0.0.1
+    IP.2 = $POD_IP
+
+    EOF
+
+    ## Create CSR using tls.key
+    openssl req -new -key /etc/ray/tls/tls.key -out /etc/ray/tls/ca.csr -config /etc/ray/tls/csr.conf
+
+    ## Write cert config
+    cat > /etc/ray/tls/cert.conf <<EOF
+
+    authorityKeyIdentifier=keyid,issuer
+    basicConstraints=CA:FALSE
+    keyUsage = digitalSignature, nonRepudiation, keyEncipherment, dataEncipherment
+    subjectAltName = @alt_names
+
+    [alt_names]
+    DNS.1 = localhost
+    IP.1 = 127.0.0.1
+    IP.2 = $POD_IP
+
+    EOF
+
+    ## Generate tls.cert
+    openssl x509 -req \
+        -in /etc/ray/tls/ca.csr \
+        -CA /etc/ray/tls/ca.crt -CAkey /etc/ray/tls/ca.key \
+        -CAcreateserial -out /etc/ray/tls/tls.crt \
+        -days 365 \
+        -sha256 -extfile /etc/ray/tls/cert.conf
+---
+# Ray head node service, allowing worker pods to discover the head node to perform the bidirectional communication.
+# More contexts can be found at [the Ports configurations doc](https://docs.ray.io/en/latest/ray-core/configure.html#ports-configurations).
+apiVersion: v1
+kind: Service
+metadata:
+  name: service-ray-head
+  labels:
+    app: ray-head
+spec:
+  clusterIP: None
+  ports:
+  - name: client
+    protocol: TCP
+    port: 10001
+    targetPort: 10001
+  - name: dashboard
+    protocol: TCP
+    port: 8265
+    targetPort: 8265
+  - name: gcs-server
+    protocol: TCP
+    port: 6379
+    targetPort: 6379
+  selector:
+    app: ray-head
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: deployment-ray-head
+  labels:
+    app: ray-head
+spec:
+  # Do not change this - Ray currently only supports one head node per cluster.
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ray-head
+  template:
+    metadata:
+      labels:
+        app: ray-head
+    spec:
+      # If the head node goes down, the entire cluster (including all worker
+      # nodes) goes down as well. If you want Kubernetes to bring up a new
+      # head node in this case, set this to "Always," else set it to "Never."
+      restartPolicy: Always
+      terminationGracePeriodSeconds: 60
+
+      # This volume allocates shared memory for Ray to use for its plasma
+      # object store. If you do not provide this, Ray falls back to
+      # /tmp which cause slowdowns if it's not a shared memory volume.
+      volumes:
+      - name: dshm
+        emptyDir:
+          medium: Memory
+      - name: ca-tls
+        secret:
+          secretName: ca-tls
+      - name: ray-tls
+        emptyDir: {}
+      # The gencert_head.sh can be prebaked into the docker container so the configMap is optional
+      - name: gen-tls-script
+        configMap:
+          name: tls
+          defaultMode: 0777
+          # An array of keys from the ConfigMap to create as files
+          items:
+          - key: gencert_head.sh
+            path: gencert_head.sh
+      initContainers:
+        - name: ray-head-tls
+          image: rayproject/ray:2.3.0
+          command: ["/bin/sh", "-c", "cp -R /etc/ca/tls /etc/ray && /etc/gen/tls/gencert_head.sh"]
+          volumeMounts:
+            - mountPath: /etc/ca/tls
+              name: ca-tls
+              readOnly: true
+            - mountPath: /etc/ray/tls
+              name: ray-tls
+            - mountPath: /etc/gen/tls
+              name: gen-tls-script
+          env:
+            - name: POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+      containers:
+        - name: ray-head
+          image: rayproject/ray:2.3.0
+          imagePullPolicy: IfNotPresent
+          command: [ "/bin/sh", "-c", "--" ]
+          args:
+            - "ray start --head --port=6379 --num-cpus=$MY_CPU_REQUEST --dashboard-host=127.0.0.1 --object-manager-port=8076 --node-manager-port=8077 --dashboard-agent-grpc-port=8078 --dashboard-agent-listen-port=52365 --block"
+          ports:
+            - containerPort: 6379 # GCS server
+            - containerPort: 10001 # Used by Ray Client
+            - containerPort: 8265 # Used by Ray Dashboard
+          # This volume allocates shared memory for Ray to use for its plasma
+          # object store. If you do not provide this, Ray falls back to
+          # /tmp which cause slowdowns if it's not a shared memory volume.
+          volumeMounts:
+            - mountPath: /dev/shm
+              name: dshm
+            - mountPath: /etc/ca/tls
+              name: ca-tls
+              readOnly: true
+            - mountPath: /etc/ray/tls
+              name: ray-tls
+          env:
+            - name: RAY_USE_TLS
+              value: "1"
+            - name: RAY_TLS_SERVER_CERT
+              value: "/etc/ray/tls/tls.crt"
+            - name: RAY_TLS_SERVER_KEY
+              value: "/etc/ray/tls/tls.key"
+            - name: RAY_TLS_CA_CERT
+              value: "/etc/ca/tls/ca.crt"
+            - name: RAY_BACKEND_LOG_LEVEL
+              value: warning
+            # This is used in the ray start command so that Ray can spawn the
+            # correct number of processes. Omitting this may lead to degraded
+            # performance.
+            - name: MY_CPU_REQUEST
+              valueFrom:
+                resourceFieldRef:
+                  resource: requests.cpu
+          resources:
+            limits:
+              cpu: "2"
+              memory: "4G"
+            requests:
+              # For production use-cases, we recommend specifying integer CPU reqests and limits.
+              # We also recommend setting requests equal to limits for both CPU and memory.
+              # For this example, we use a 500m CPU request to accomodate resource-constrained local
+              # Kubernetes testing environments such as KinD and minikube.
+              cpu: "2"
+              # The rest state memory usage of the Ray head node is around 1Gb. We do not
+              # recommend allocating less than 2Gb memory for the Ray head pod.
+              # For production use-cases, we recommend allocating at least 8Gb memory for each Ray container.
+              memory: "4G"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: deployment-ray-worker
+  labels:
+    app: ray-worker
+spec:
+  # Change this to scale the number of worker nodes started in the Ray cluster.
+  replicas: 2
+  selector:
+    matchLabels:
+      app: ray-worker
+  template:
+    metadata:
+      labels:
+        app: ray-worker
+    spec:
+      restartPolicy: Always
+      volumes:
+      - name: dshm
+        emptyDir:
+          medium: Memory
+      - name: ca-tls
+        secret:
+          secretName: ca-tls
+      - name: ray-tls
+        emptyDir: {}
+      # The gencert_worker.sh can be prebaked into the docker container so the configMap is optional
+      - name: gen-tls-script
+        configMap:
+          name: tls
+          defaultMode: 0777
+          # An array of keys from the ConfigMap to create as files
+          items:
+          - key: gencert_worker.sh
+            path: gencert_worker.sh
+      initContainers:
+        - name: ray-worker-tls
+          image: rayproject/ray:2.3.0
+          command: ["/bin/sh", "-c", "cp -R /etc/ca/tls /etc/ray && /etc/gen/tls/gencert_worker.sh"]
+          volumeMounts:
+            - mountPath: /etc/ca/tls
+              name: ca-tls
+              readOnly: true
+            - mountPath: /etc/ray/tls
+              name: ray-tls
+            - mountPath: /etc/gen/tls
+              name: gen-tls-script
+          env:
+            - name: POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+      containers:
+      - name: ray-worker
+        image: rayproject/ray:2.3.0
+        imagePullPolicy: IfNotPresent
+        command: ["/bin/bash", "-c", "--"]
+        args:
+          - "ray start --num-cpus=$MY_CPU_REQUEST --address=service-ray-head.default.svc.cluster.local:6379 --object-manager-port=8076 --node-manager-port=8077 --dashboard-agent-grpc-port=8078 --dashboard-agent-listen-port=52365 --block"
+        ports:
+          - containerPort: 6379 # GCS server
+        # This volume allocates shared memory for Ray to use for its plasma
+        # object store. If you do not provide this, Ray falls back to
+        # /tmp which cause slowdowns if it's not a shared memory volume.
+        volumeMounts:
+          - mountPath: /dev/shm
+            name: dshm
+          - mountPath: /etc/ca/tls
+            name: ca-tls
+            readOnly: true
+          - mountPath: /etc/ray/tls
+            name: ray-tls
+        env:
+          - name: RAY_USE_TLS
+            value: "1"
+          - name: RAY_TLS_SERVER_CERT
+            value: "/etc/ray/tls/tls.crt"
+          - name: RAY_TLS_SERVER_KEY
+            value: "/etc/ray/tls/tls.key"
+          - name: RAY_TLS_CA_CERT
+            value: "/etc/ca/tls/ca.crt"
+          - name: RAY_BACKEND_LOG_LEVEL
+            value: warning
+          # This is used in the ray start command so that Ray can spawn the
+          # correct number of processes. Omitting this may lead to degraded
+          # performance.
+          - name: MY_CPU_REQUEST
+            valueFrom:
+              resourceFieldRef:
+                resource: requests.cpu
+          # The resource requests and limits in this config are too small for production!
+          # It is better to use a few large Ray pods than many small ones.
+          # For production, it is ideal to size each Ray pod to take up the
+          # entire Kubernetes node on which it is scheduled.
+        resources:
+          limits:
+            cpu: "1"
+            memory: "1G"
+            # For production use-cases, we recommend specifying integer CPU reqests and limits.
+            # We also recommend setting requests equal to limits for both CPU and memory.
+            # For this example, we use a 500m CPU request to accomodate resource-constrained local
+            # Kubernetes testing environments such as KinD and minikube.
+          requests:
+            cpu: "500m"
+            memory: "1G"

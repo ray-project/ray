@@ -6,6 +6,8 @@ import pytest
 import ray
 import ray._private.gcs_utils as gcs_utils
 import ray._private.ray_constants
+from ray._raylet import GcsClient
+from ray.core.generated import autoscaler_pb2
 from ray._private.test_utils import (
     convert_actor_state,
     make_global_state_accessor,
@@ -168,15 +170,11 @@ def test_node_name_cluster(ray_start_cluster):
     global_state_accessor = make_global_state_accessor(head_context)
     node_table = global_state_accessor.get_node_table()
     assert len(node_table) == 2
-    for node_data in node_table:
-        node = gcs_utils.GcsNodeInfo.FromString(node_data)
-        if (
-            ray._private.utils.binary_to_hex(node.node_id)
-            == head_context.address_info["node_id"]
-        ):
-            assert node.node_name == "head_node"
+    for node in node_table:
+        if node["NodeID"] == head_context.address_info["node_id"]:
+            assert node["NodeName"] == "head_node"
         else:
-            assert node.node_name == "worker_node"
+            assert node["NodeName"] == "worker_node"
 
     global_state_accessor.disconnect()
     ray.shutdown()
@@ -188,9 +186,8 @@ def test_node_name_init():
     new_head_context = ray.init(_node_name="new_head_node", include_dashboard=False)
 
     global_state_accessor = make_global_state_accessor(new_head_context)
-    node_data = global_state_accessor.get_node_table()[0]
-    node = gcs_utils.GcsNodeInfo.FromString(node_data)
-    assert node.node_name == "new_head_node"
+    node = global_state_accessor.get_node_table()[0]
+    assert node["NodeName"] == "new_head_node"
     ray.shutdown()
 
 
@@ -198,9 +195,8 @@ def test_no_node_name():
     # Test that starting ray with no node name will result in a node_name=ip_address
     new_head_context = ray.init(include_dashboard=False)
     global_state_accessor = make_global_state_accessor(new_head_context)
-    node_data = global_state_accessor.get_node_table()[0]
-    node = gcs_utils.GcsNodeInfo.FromString(node_data)
-    assert node.node_name == ray.util.get_node_ip_address()
+    node = global_state_accessor.get_node_table()[0]
+    assert node["NodeName"] == ray.util.get_node_ip_address()
     ray.shutdown()
 
 
@@ -449,6 +445,51 @@ def test_next_job_id(ray_start_regular):
     job_id_1 = ray._private.state.next_job_id()
     job_id_2 = ray._private.state.next_job_id()
     assert job_id_1.int() + 1 == job_id_2.int()
+
+
+def test_get_draining_nodes(ray_start_cluster):
+    cluster = ray_start_cluster
+    cluster.add_node()
+    ray.init(address=cluster.address)
+    cluster.add_node(resources={"worker": 1})
+    cluster.wait_for_nodes()
+
+    @ray.remote
+    def get_node_id():
+        return ray.get_runtime_context().get_node_id()
+
+    worker_node_id = ray.get(get_node_id.options(resources={"worker": 1}).remote())
+
+    # Initially there is no draining node.
+    assert ray._private.state.state.get_draining_nodes() == set()
+
+    @ray.remote(num_cpus=1, resources={"worker": 1})
+    class Actor:
+        def ping(self):
+            pass
+
+    actor = Actor.remote()
+    ray.get(actor.ping.remote())
+
+    gcs_client = GcsClient(address=ray.get_runtime_context().gcs_address)
+
+    # Drain the worker node.
+    is_accepted = gcs_client.drain_node(
+        worker_node_id,
+        autoscaler_pb2.DrainNodeReason.Value("DRAIN_NODE_REASON_PREEMPTION"),
+        "preemption",
+    )
+    assert is_accepted
+
+    wait_for_condition(
+        lambda: ray._private.state.state.get_draining_nodes() == {worker_node_id}
+    )
+
+    # Kill the actor running on the draining worker node so
+    # that the worker node becomes idle and can be drained.
+    ray.kill(actor)
+
+    wait_for_condition(lambda: ray._private.state.state.get_draining_nodes() == set())
 
 
 if __name__ == "__main__":

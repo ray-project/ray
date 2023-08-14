@@ -102,6 +102,16 @@ class RaySyncer {
 
   void Disconnect(const std::string &node_id);
 
+  /// Get the latest sync message sent from a specific node.
+  ///
+  /// \param node_id The node id where the message comes from.
+  /// \param message_type The message type of the component.
+  ///
+  /// \return The latest sync message sent from the node. If the node doesn't
+  /// have one, nullptr will be returned.
+  std::shared_ptr<const RaySyncMessage> GetSyncMessage(const std::string &node_id,
+                                                       MessageType message_type) const;
+
   /// Register the components to the syncer module. Syncer will make sure eventually
   /// it'll have a global view of the cluster.
   ///
@@ -129,6 +139,10 @@ class RaySyncer {
   /// version of message, false will be returned.
   bool OnDemandBroadcasting(MessageType message_type);
 
+  /// WARNING: DON'T USE THIS METHOD. It breaks the abstraction of the syncer.
+  /// Instead, register the component to the syncer and call
+  /// OnDemandBroadcasting.
+  ///
   /// Request trigger a broadcasting for a constructed message immediately instead of
   /// waiting for ray syncer to poll the message.
   ///

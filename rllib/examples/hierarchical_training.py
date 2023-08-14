@@ -38,7 +38,7 @@ parser.add_argument("--flat", action="store_true")
 parser.add_argument(
     "--framework",
     choices=["tf", "tf2", "torch"],
-    default="tf",
+    default="torch",
     help="The DL framework specifier.",
 )
 parser.add_argument(

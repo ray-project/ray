@@ -1,1 +1,0 @@
-../ci/lint/clang-tidy-diff.py

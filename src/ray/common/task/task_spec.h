@@ -25,7 +25,7 @@
 #include "ray/common/function_descriptor.h"
 #include "ray/common/grpc_util.h"
 #include "ray/common/id.h"
-#include "ray/common/task/scheduling_resources.h"
+#include "ray/common/scheduling/scheduling_resources.h"
 #include "ray/common/task/task_common.h"
 #include "ray/util/container_util.h"
 
@@ -45,7 +45,11 @@ inline bool operator==(const ray::rpc::SchedulingStrategy &lhs,
     return (lhs.node_affinity_scheduling_strategy().node_id() ==
             rhs.node_affinity_scheduling_strategy().node_id()) &&
            (lhs.node_affinity_scheduling_strategy().soft() ==
-            rhs.node_affinity_scheduling_strategy().soft());
+            rhs.node_affinity_scheduling_strategy().soft()) &&
+           (lhs.node_affinity_scheduling_strategy().spill_on_unavailable() ==
+            rhs.node_affinity_scheduling_strategy().spill_on_unavailable()) &&
+           (lhs.node_affinity_scheduling_strategy().fail_on_unavailable() ==
+            rhs.node_affinity_scheduling_strategy().fail_on_unavailable());
   }
   case ray::rpc::SchedulingStrategy::kPlacementGroupSchedulingStrategy: {
     return (lhs.placement_group_scheduling_strategy().placement_group_id() ==
@@ -56,6 +60,10 @@ inline bool operator==(const ray::rpc::SchedulingStrategy &lhs,
                 .placement_group_capture_child_tasks() ==
             rhs.placement_group_scheduling_strategy()
                 .placement_group_capture_child_tasks());
+  }
+  case ray::rpc::SchedulingStrategy::kNodeLabelSchedulingStrategy: {
+    return google::protobuf::util::MessageDifferencer::Equivalent(
+        lhs.node_label_scheduling_strategy(), rhs.node_label_scheduling_strategy());
   }
   default:
     return true;
@@ -104,6 +112,43 @@ struct SchedulingClassDescriptor {
 
 namespace std {
 template <>
+struct hash<ray::rpc::LabelOperator> {
+  size_t operator()(const ray::rpc::LabelOperator &label_operator) const {
+    size_t hash = std::hash<size_t>()(label_operator.label_operator_case());
+    if (label_operator.has_label_in()) {
+      for (const auto &value : label_operator.label_in().values()) {
+        hash ^= std::hash<std::string>()(value);
+      }
+    } else if (label_operator.has_label_not_in()) {
+      for (const auto &value : label_operator.label_not_in().values()) {
+        hash ^= std::hash<std::string>()(value);
+      }
+    }
+    return hash;
+  }
+};
+
+template <>
+struct hash<ray::rpc::LabelMatchExpression> {
+  size_t operator()(const ray::rpc::LabelMatchExpression &expression) const {
+    size_t hash = std::hash<std::string>()(expression.key());
+    hash ^= std::hash<ray::rpc::LabelOperator>()(expression.operator_());
+    return hash;
+  }
+};
+
+template <>
+struct hash<ray::rpc::LabelMatchExpressions> {
+  size_t operator()(const ray::rpc::LabelMatchExpressions &expressions) const {
+    size_t hash = 0;
+    for (const auto &expression : expressions.expressions()) {
+      hash ^= std::hash<ray::rpc::LabelMatchExpression>()(expression);
+    }
+    return hash;
+  }
+};
+
+template <>
 struct hash<ray::rpc::SchedulingStrategy> {
   size_t operator()(const ray::rpc::SchedulingStrategy &scheduling_strategy) const {
     size_t hash = std::hash<size_t>()(scheduling_strategy.scheduling_strategy_case());
@@ -114,6 +159,10 @@ struct hash<ray::rpc::SchedulingStrategy> {
       // soft returns a bool
       hash ^= static_cast<size_t>(
           scheduling_strategy.node_affinity_scheduling_strategy().soft());
+      hash ^= static_cast<size_t>(
+          scheduling_strategy.node_affinity_scheduling_strategy().spill_on_unavailable());
+      hash ^= static_cast<size_t>(
+          scheduling_strategy.node_affinity_scheduling_strategy().fail_on_unavailable());
     } else if (scheduling_strategy.scheduling_strategy_case() ==
                ray::rpc::SchedulingStrategy::kPlacementGroupSchedulingStrategy) {
       hash ^= std::hash<std::string>()(
@@ -124,6 +173,19 @@ struct hash<ray::rpc::SchedulingStrategy> {
       hash ^=
           static_cast<size_t>(scheduling_strategy.placement_group_scheduling_strategy()
                                   .placement_group_capture_child_tasks());
+    } else if (scheduling_strategy.has_node_label_scheduling_strategy()) {
+      if (scheduling_strategy.node_label_scheduling_strategy().hard().expressions_size() >
+          0) {
+        hash ^= std::hash<std::string>()("hard");
+        hash ^= std::hash<ray::rpc::LabelMatchExpressions>()(
+            scheduling_strategy.node_label_scheduling_strategy().hard());
+      }
+      if (scheduling_strategy.node_label_scheduling_strategy().soft().expressions_size() >
+          0) {
+        hash ^= std::hash<std::string>()("soft");
+        hash ^= std::hash<ray::rpc::LabelMatchExpressions>()(
+            scheduling_strategy.node_label_scheduling_strategy().soft());
+      }
     }
     return hash;
   }
@@ -248,6 +310,12 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   size_t NumReturns() const;
 
+  size_t NumStreamingGeneratorReturns() const;
+
+  ObjectID StreamingGeneratorReturnId(size_t generator_index) const;
+
+  void SetNumStreamingGeneratorReturns(uint64_t num_streaming_generator_returns);
+
   bool ArgByRef(size_t arg_index) const;
 
   ObjectID ArgId(size_t arg_index) const;
@@ -257,6 +325,8 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   ObjectID ReturnId(size_t return_index) const;
 
   bool ReturnsDynamic() const;
+
+  bool IsStreamingGenerator() const;
 
   std::vector<ObjectID> DynamicReturnIds() const;
 
@@ -269,6 +339,9 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   const uint8_t *ArgMetadata(size_t arg_index) const;
 
   size_t ArgMetadataSize(size_t arg_index) const;
+
+  /// Return true if the task should be retried upon exceptions.
+  bool ShouldRetryExceptions() const;
 
   /// Return the ObjectRefs that were inlined in this task argument.
   const std::vector<rpc::ObjectReference> ArgInlinedRefs(size_t arg_index) const;
@@ -408,6 +481,8 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   /// \return true if the task or actor is retriable.
   bool IsRetriable() const;
+
+  void EmitTaskMetrics() const;
 
  private:
   void ComputeResources();

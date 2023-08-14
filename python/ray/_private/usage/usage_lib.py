@@ -45,6 +45,7 @@ import json
 import logging
 import threading
 import os
+import platform
 import sys
 import time
 import uuid
@@ -59,9 +60,8 @@ import yaml
 import ray
 import ray._private.ray_constants as ray_constants
 import ray._private.usage.usage_constants as usage_constant
-from ray._private import gcs_utils
 from ray.experimental.internal_kv import _internal_kv_initialized, _internal_kv_put
-from ray.core.generated import usage_pb2
+from ray.core.generated import usage_pb2, gcs_pb2
 
 logger = logging.getLogger(__name__)
 TagKey = usage_pb2.TagKey
@@ -144,6 +144,8 @@ class UsageStatsToReport:
     #: The total number of running jobs excluding internal ones
     #  when the report is generated.
     total_num_running_jobs: Optional[int]
+    #: The libc version in the OS.
+    libc_version: Optional[str]
 
 
 @dataclass(init=True)
@@ -356,6 +358,13 @@ def _generate_cluster_metadata():
                 "session_start_timestamp_ms": int(time.time() * 1000),
             }
         )
+        if sys.platform == "linux":
+            # Record llibc version
+            (lib, ver) = platform.libc_ver()
+            if not lib:
+                metadata.update({"libc_version": "NA"})
+            else:
+                metadata.update({"libc_version": f"{lib}:{ver}"})
     return metadata
 
 
@@ -469,8 +478,8 @@ def get_total_num_running_jobs_to_report(gcs_client) -> Optional[int]:
     try:
         result = gcs_client.get_all_job_info()
         total_num_running_jobs = 0
-        for job in result.job_info_list:
-            if not job.is_dead and not job.config.ray_namespace.startswith(
+        for job_info in result.values():
+            if not job_info.is_dead and not job_info.config.ray_namespace.startswith(
                 "_ray_internal"
             ):
                 total_num_running_jobs += 1
@@ -485,8 +494,8 @@ def get_total_num_nodes_to_report(gcs_client, timeout=None) -> Optional[int]:
     try:
         result = gcs_client.get_all_node_info(timeout=timeout)
         total_num_nodes = 0
-        for node in result.node_info_list:
-            if node.state == gcs_utils.GcsNodeInfo.GcsNodeState.ALIVE:
+        for node_id, node_info in result.items():
+            if node_info["state"] == gcs_pb2.GcsNodeInfo.GcsNodeState.ALIVE:
                 total_num_nodes += 1
         return total_num_nodes
     except Exception as e:
@@ -728,7 +737,7 @@ def generate_report_data(
     Returns:
         UsageStats
     """
-    gcs_client = gcs_utils.GcsClient(address=gcs_address, nums_reconnect_retry=20)
+    gcs_client = ray._raylet.GcsClient(address=gcs_address, nums_reconnect_retry=20)
 
     cluster_metadata = get_cluster_metadata(gcs_client)
     cluster_status_to_report = get_cluster_status_to_report(gcs_client)
@@ -759,6 +768,7 @@ def generate_report_data(
         extra_usage_tags=get_extra_usage_tags_to_report(gcs_client),
         total_num_nodes=get_total_num_nodes_to_report(gcs_client),
         total_num_running_jobs=get_total_num_running_jobs_to_report(gcs_client),
+        libc_version=cluster_metadata.get("libc_version"),
     )
     return data
 

@@ -1,13 +1,13 @@
-from typing import Any, Callable, List, Optional, TYPE_CHECKING
-import time
 import concurrent.futures
 import logging
+import time
+from typing import TYPE_CHECKING, Callable, List, Optional
 
 import ray
-from ray.data.context import DatasetContext
-from ray.data.dataset import Dataset, T
-from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal import progress_bar
+from ray.data._internal.progress_bar import ProgressBar
+from ray.data.context import DataContext
+from ray.data.dataset import Dataset
 
 logger = logging.getLogger(__name__)
 
@@ -15,17 +15,21 @@ if TYPE_CHECKING:
     from ray.data.dataset_pipeline import DatasetPipeline
 
 
-def pipeline_stage(fn: Callable[[], Dataset[T]]) -> Dataset[T]:
+def pipeline_stage(fn: Callable[[], Dataset]) -> Dataset:
     # Force eager evaluation of all blocks in the pipeline stage. This
     # prevents resource deadlocks due to overlapping stage execution (e.g.,
     # task -> actor stage).
-    return fn().fully_executed()
+    ds = fn()
+    # Flag used to skip the new plan optimizer, which does not
+    # support DatasetPipeline (will fall back to legacy plan optimizer)
+    ds._plan._generated_from_pipeline = True
+    return ds.materialize()
 
 
 class PipelineExecutor:
-    def __init__(self, pipeline: "DatasetPipeline[T]"):
-        self._pipeline: "DatasetPipeline[T]" = pipeline
-        self._stages: List[concurrent.futures.Future[Dataset[Any]]] = [None] * (
+    def __init__(self, pipeline: "DatasetPipeline"):
+        self._pipeline: "DatasetPipeline" = pipeline
+        self._stages: List[concurrent.futures.Future[Dataset]] = [None] * (
             len(self._pipeline._optimized_stages) + 1
         )
         self._iter = iter(self._pipeline._base_iterable)
@@ -159,19 +163,19 @@ class PipelineExecutor:
 class PipelineSplitExecutorCoordinator:
     def __init__(
         self,
-        pipeline: "DatasetPipeline[T]",
+        pipeline: "DatasetPipeline",
         n: int,
-        splitter: Callable[[Dataset], List["Dataset[T]"]],
-        context: DatasetContext,
+        splitter: Callable[[Dataset], List["Dataset"]],
+        context: DataContext,
     ):
-        DatasetContext._set_current(context)
+        DataContext._set_current(context)
         pipeline._optimize_stages()
         self.executor = PipelineExecutor(pipeline)
         self.n = n
         self.splitter = splitter
         self.cur_splits = [None] * self.n
 
-    def next_dataset_if_ready(self, split_index: int) -> Optional[Dataset[T]]:
+    def next_dataset_if_ready(self, split_index: int) -> Optional[Dataset]:
         # TODO(swang): This will hang if one of the consumers fails and is
         # re-executed from the beginning. To make this fault-tolerant, we need
         # to make next_dataset_if_ready idempotent.

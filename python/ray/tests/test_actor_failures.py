@@ -1,3 +1,4 @@
+import atexit
 import asyncio
 import collections
 import numpy as np
@@ -8,6 +9,7 @@ import sys
 import time
 
 import ray
+from ray.actor import exit_actor
 import ray.cluster_utils
 from ray._private.test_utils import (
     wait_for_condition,
@@ -712,6 +714,7 @@ def test_actor_failure_per_type(ray_start_cluster):
         ray.exceptions.RayActorError, match="it was killed by `ray.kill"
     ) as exc_info:
         ray.get(a.check_alive.remote())
+    assert exc_info.value.actor_id == a._actor_id.hex()
     print(exc_info._excinfo[1])
 
     # Test actor killed because of worker failure.
@@ -723,6 +726,7 @@ def test_actor_failure_per_type(ray_start_cluster):
         match=("The actor is dead because its worker process has died"),
     ) as exc_info:
         ray.get(a.check_alive.remote())
+    assert exc_info.value.actor_id == a._actor_id.hex()
     print(exc_info._excinfo[1])
 
     # Test acator killed because of owner failure.
@@ -734,6 +738,7 @@ def test_actor_failure_per_type(ray_start_cluster):
         match="The actor is dead because its owner has died",
     ) as exc_info:
         ray.get(a.check_alive.remote())
+    assert exc_info.value.actor_id == a._actor_id.hex()
     print(exc_info._excinfo[1])
 
     # Test actor killed because the node is dead.
@@ -746,6 +751,7 @@ def test_actor_failure_per_type(ray_start_cluster):
         match="The actor is dead because its node has died.",
     ) as exc_info:
         ray.get(a.check_alive.remote())
+    assert exc_info.value.actor_id == a._actor_id.hex()
     print(exc_info._excinfo[1])
 
 
@@ -788,6 +794,145 @@ def test_failure_during_dependency_resolution(ray_start_regular):
     ref = a.foo.remote(dep)
     with pytest.raises(ray.exceptions.RayActorError):
         ray.get(ref)
+
+
+def test_exit_actor(shutdown_only, tmp_path):
+    """
+    Verify TypeError is raised when exit_actor is not used
+    inside an actor.
+    """
+    with pytest.raises(
+        TypeError, match="exit_actor API is called on a non-actor worker"
+    ):
+        exit_actor()
+
+    @ray.remote
+    def f():
+        exit_actor()
+
+    with pytest.raises(
+        TypeError, match="exit_actor API is called on a non-actor worker"
+    ):
+        ray.get(f.remote())
+
+    """
+    Verify the basic case.
+    """
+
+    @ray.remote
+    class Actor:
+        def exit(self):
+            exit_actor()
+
+    @ray.remote
+    class AsyncActor:
+        async def exit(self):
+            exit_actor()
+
+    a = Actor.remote()
+    ray.get(a.__ray_ready__.remote())
+    with pytest.raises(ray.exceptions.RayActorError) as exc_info:
+        ray.get(a.exit.remote())
+    assert "exit_actor()" in str(exc_info.value)
+
+    b = AsyncActor.remote()
+    ray.get(b.__ray_ready__.remote())
+    with pytest.raises(ray.exceptions.RayActorError) as exc_info:
+        ray.get(b.exit.remote())
+    assert "exit_actor()" in str(exc_info.value)
+
+    """
+    Verify atexit handler is called correctly.
+    """
+    sync_temp_file = tmp_path / "actor.log"
+    async_temp_file = tmp_path / "async_actor.log"
+    sync_temp_file.touch()
+    async_temp_file.touch()
+
+    @ray.remote
+    class Actor:
+        def __init__(self):
+            def f():
+                print("atexit handler")
+                with open(sync_temp_file, "w") as f:
+                    f.write("Actor\n")
+
+            atexit.register(f)
+
+        def exit(self):
+            exit_actor()
+
+    @ray.remote
+    class AsyncActor:
+        def __init__(self):
+            def f():
+                print("atexit handler")
+                with open(async_temp_file, "w") as f:
+                    f.write("Async Actor\n")
+
+            atexit.register(f)
+
+        async def exit(self):
+            exit_actor()
+
+    a = Actor.remote()
+    ray.get(a.__ray_ready__.remote())
+    b = AsyncActor.remote()
+    ray.get(b.__ray_ready__.remote())
+    with pytest.raises(ray.exceptions.RayActorError):
+        ray.get(a.exit.remote())
+    with pytest.raises(ray.exceptions.RayActorError):
+        ray.get(b.exit.remote())
+
+    def verify():
+        with open(async_temp_file) as f:
+            assert f.readlines() == ["Async Actor\n"]
+        with open(sync_temp_file) as f:
+            assert f.readlines() == ["Actor\n"]
+        return True
+
+    wait_for_condition(verify)
+
+
+def test_exit_actor_queued(shutdown_only):
+    """Verify after exit_actor is called the queued tasks won't execute."""
+
+    @ray.remote
+    class RegressionSync:
+        def f(self):
+            import time
+
+            time.sleep(1)
+            exit_actor()
+
+        def ping(self):
+            pass
+
+    @ray.remote
+    class RegressionAsync:
+        async def f(self):
+            await asyncio.sleep(1)
+            exit_actor()
+
+        def ping(self):
+            pass
+
+    # Test async case.
+    # https://github.com/ray-project/ray/issues/32376
+    # If we didn't fix this issue, this will segfault.
+    a = RegressionAsync.remote()
+    a.f.remote()
+    refs = [a.ping.remote() for _ in range(10000)]
+    with pytest.raises(ray.exceptions.RayActorError) as exc_info:
+        ray.get(refs)
+    assert " Worker unexpectedly exits" not in str(exc_info.value)
+
+    # Test a sync case.
+    a = RegressionSync.remote()
+    a.f.remote()
+    with pytest.raises(ray.exceptions.RayActorError) as exc_info:
+        ray.get([a.ping.remote() for _ in range(10000)])
+    assert " Worker unexpectedly exits" not in str(exc_info.value)
 
 
 if __name__ == "__main__":

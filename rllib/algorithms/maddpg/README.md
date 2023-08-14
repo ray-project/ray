@@ -1,4 +1,4 @@
 # Implementation of MADDPG in RLlib
 
-Please check [justinkterry/maddpg-rllib](https://github.com/justinkterry/maddpg-rllib) for more information. 
+Please check [jkterry1/maddpg-rllib](https://github.com/jkterry1/maddpg-rllib) for more information. 
 

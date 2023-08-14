@@ -48,11 +48,8 @@ function retry {
 
 if [[ "$platform" == "linux" ]]; then
   # Install miniconda.
-  PY_WHEEL_VERSIONS=("36" "37" "38" "39")
-  PY_MMS=("3.6.13"
-          "3.7.10"
-          "3.8.10"
-          "3.9.5")
+  PY_WHEEL_VERSIONS=("37" "38" "39")
+  PY_MMS=("3.7.10" "3.8.10" "3.9.5")
   wget --quiet "https://repo.continuum.io/miniconda/Miniconda3-latest-Linux-x86_64.sh" -O miniconda3.sh
   "${ROOT_DIR}"/../suppress_output bash miniconda3.sh -b -p "$HOME/miniconda3"
   export PATH="$HOME/miniconda3/bin:$PATH"
@@ -95,31 +92,59 @@ if [[ "$platform" == "linux" ]]; then
 
 elif [[ "$platform" == "macosx" ]]; then
   MACPYTHON_PY_PREFIX=/Library/Frameworks/Python.framework/Versions
-  PY_WHEEL_VERSIONS=("36" "37" "38" "39" "310")
-  PY_MMS=("3.6"
-          "3.7"
-          "3.8"
-          "3.9"
-          "3.10"
-          )
+
+  if [ "$(uname -m)" = "arm64" ]; then
+    PY_WHEEL_VERSIONS=("38" "39" "310")
+    PY_MMS=("3.8" "3.9" "3.10")
+  else
+    PY_WHEEL_VERSIONS=("37" "38" "39" "310")
+    PY_MMS=("3.7" "3.8" "3.9" "3.10")
+  fi
 
   for ((i=0; i<${#PY_MMS[@]}; ++i)); do
     PY_MM="${PY_MMS[i]}"
 
     PY_WHEEL_VERSION="${PY_WHEEL_VERSIONS[i]}"
 
-    PYTHON_EXE="$MACPYTHON_PY_PREFIX/$PY_MM/bin/python$PY_MM"
-    PIP_CMD="$(dirname "$PYTHON_EXE")/pip$PY_MM"
+    # Todo: The main difference between arm64 and x86_64 is
+    # the Mac OS version. We should move everything to a
+    # single path when it's acceptable to move up our lower
+    # Python + MacOS compatibility bound.
+    if [ "$(uname -m)" = "arm64" ]; then
+      CONDA_ENV_NAME="test-wheels-p$PY_MM"
+
+      [ -f "$HOME/.bash_profile" ] && conda init bash
+
+      source ~/.bash_profile
+
+      conda create -y -n "$CONDA_ENV_NAME"
+      conda activate "$CONDA_ENV_NAME"
+      conda remove -y python || true
+      conda install -y python="${PY_MM}"
+
+      PYTHON_EXE="/opt/homebrew/opt/miniconda/envs/${CONDA_ENV_NAME}/bin/python"
+      PIP_CMD="/opt/homebrew/opt/miniconda/envs/${CONDA_ENV_NAME}/bin/pip"
+    else
+      PYTHON_EXE="$MACPYTHON_PY_PREFIX/$PY_MM/bin/python$PY_MM"
+      PIP_CMD="$(dirname "$PYTHON_EXE")/pip$PY_MM"
+    fi
 
     # Find the appropriate wheel by grepping for the Python version.
     PYTHON_WHEEL="$(printf "%s\n" "$ROOT_DIR"/../../.whl/*"$PY_WHEEL_VERSION"* | head -n 1)"
+
+    # Print some env info
+    "$PYTHON_EXE" --version
+    "$PYTHON_EXE" -c "from distutils import util; print(util.get_platform())" || true
+
+    # Update pip
+    "$PIP_CMD" install -U pip
 
     # Install the wheel.
     "$PIP_CMD" uninstall -y ray
     "$PIP_CMD" install -q "$PYTHON_WHEEL"
 
     # Install the dependencies to run the tests.
-    "$PIP_CMD" install -q aiohttp aiosignal frozenlist grpcio 'pytest==7.0.1' requests proxy.py
+    "$PIP_CMD" install -q aiohttp aiosignal frozenlist 'pytest==7.0.1' requests proxy.py
 
     # Run a simple test script to make sure that the wheel works.
     # We set the python path to prefer the directory of the wheel content: https://github.com/ray-project/ray/pull/30090

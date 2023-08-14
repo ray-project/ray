@@ -24,7 +24,7 @@ parser.add_argument(
 parser.add_argument(
     "--framework",
     choices=["tf", "tf2", "torch"],
-    default="tf",
+    default="torch",
     help="The DL framework specifier.",
 )
 parser.add_argument(
@@ -68,9 +68,15 @@ if __name__ == "__main__":
         .environment("Pendulum-v1" if args.run in ["DDPG", "SAC"] else "CartPole-v1")
         .framework(args.framework)
         .rollouts(num_rollout_workers=3)
-        .training(model={"custom_model": "bn_model"}, lr=0.0003)
+        .training(
+            model={"custom_model": "bn_model"},
+            lr=0.0003,
+        )
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
         .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
+        # Batch-norm models have not been migrated to the RL Module API yet.
+        .training(_enable_learner_api=False)
+        .rl_module(_enable_rl_module_api=False)
     )
 
     stop = {

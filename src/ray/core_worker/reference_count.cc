@@ -239,6 +239,40 @@ void ReferenceCounter::AddDynamicReturn(const ObjectID &object_id,
   AddNestedObjectIdsInternal(generator_id, {object_id}, owner_address);
 }
 
+void ReferenceCounter::OwnDynamicStreamingTaskReturnRef(const ObjectID &object_id,
+                                                        const ObjectID &generator_id) {
+  absl::MutexLock lock(&mutex_);
+  // NOTE: The upper layer (the layer that manges the object ref stream)
+  // should make sure the generator ref is not GC'ed until the
+  // stream is deleted.
+  auto outer_it = object_id_refs_.find(generator_id);
+  if (outer_it == object_id_refs_.end()) {
+    // Generator object already went out of scope.
+    // It means the generator is already GC'ed. No need to
+    // update the reference.
+    RAY_LOG(DEBUG)
+        << "Ignore OwnDynamicStreamingTaskReturnRef. The dynamic return reference "
+        << object_id << " is registered after the generator id " << generator_id
+        << " went out of scope.";
+    return;
+  }
+  RAY_LOG(DEBUG) << "Adding dynamic return " << object_id
+                 << " contained in generator object " << generator_id;
+  RAY_CHECK(outer_it->second.owned_by_us);
+  RAY_CHECK(outer_it->second.owner_address.has_value());
+  rpc::Address owner_address(outer_it->second.owner_address.value());
+  // We add a local reference here. The ref removal will be handled
+  // by the ObjectRefStream.
+  RAY_UNUSED(AddOwnedObjectInternal(object_id,
+                                    {},
+                                    owner_address,
+                                    outer_it->second.call_site,
+                                    /*object_size=*/-1,
+                                    outer_it->second.is_reconstructable,
+                                    /*add_local_ref=*/true,
+                                    absl::optional<NodeID>()));
+}
+
 bool ReferenceCounter::AddOwnedObjectInternal(
     const ObjectID &object_id,
     const std::vector<ObjectID> &inner_ids,
@@ -250,6 +284,11 @@ bool ReferenceCounter::AddOwnedObjectInternal(
     const absl::optional<NodeID> &pinned_at_raylet_id) {
   if (object_id_refs_.count(object_id) != 0) {
     return false;
+  }
+  if (ObjectID::IsActorID(object_id)) {
+    num_actors_owned_by_us_++;
+  } else {
+    num_objects_owned_by_us_++;
   }
   RAY_LOG(DEBUG) << "Adding owned object " << object_id;
   // If the entry doesn't exist, we initialize the direct reference count to zero
@@ -381,7 +420,7 @@ void ReferenceCounter::UpdateSubmittedTaskReferences(
     std::vector<ObjectID> *deleted) {
   absl::MutexLock lock(&mutex_);
   for (const auto &return_id : return_ids) {
-    UpdateObjectPendingCreation(return_id, true);
+    UpdateObjectPendingCreationInternal(return_id, true);
   }
   for (const ObjectID &argument_id : argument_ids_to_add) {
     RAY_LOG(DEBUG) << "Increment ref count for submitted task argument " << argument_id;
@@ -410,7 +449,7 @@ void ReferenceCounter::UpdateResubmittedTaskReferences(
     const std::vector<ObjectID> return_ids, const std::vector<ObjectID> &argument_ids) {
   absl::MutexLock lock(&mutex_);
   for (const auto &return_id : return_ids) {
-    UpdateObjectPendingCreation(return_id, true);
+    UpdateObjectPendingCreationInternal(return_id, true);
   }
   for (const ObjectID &argument_id : argument_ids) {
     auto it = object_id_refs_.find(argument_id);
@@ -432,7 +471,7 @@ void ReferenceCounter::UpdateFinishedTaskReferences(
     std::vector<ObjectID> *deleted) {
   absl::MutexLock lock(&mutex_);
   for (const auto &return_id : return_ids) {
-    UpdateObjectPendingCreation(return_id, false);
+    UpdateObjectPendingCreationInternal(return_id, false);
   }
   // Must merge the borrower refs before decrementing any ref counts. This is
   // to make sure that for serialized IDs, we increment the borrower count for
@@ -609,6 +648,7 @@ void ReferenceCounter::DeleteReferenceInternal(ReferenceTable::iterator it,
     it->second.on_ref_removed(id);
     it->second.on_ref_removed = nullptr;
   }
+
   PRINT_REF_COUNT(it);
 
   // Whether it is safe to unpin the value.
@@ -666,6 +706,13 @@ void ReferenceCounter::EraseReference(ReferenceTable::iterator it) {
     reconstructable_owned_objects_index_.erase(index_it);
   }
   freed_objects_.erase(it->first);
+  if (it->second.owned_by_us) {
+    if (ObjectID::IsActorID(it->first)) {
+      num_actors_owned_by_us_--;
+    } else {
+      num_objects_owned_by_us_--;
+    }
+  }
   object_id_refs_.erase(it);
   ShutdownIfNeeded();
 }
@@ -809,6 +856,16 @@ bool ReferenceCounter::HasReference(const ObjectID &object_id) const {
 size_t ReferenceCounter::NumObjectIDsInScope() const {
   absl::MutexLock lock(&mutex_);
   return object_id_refs_.size();
+}
+
+size_t ReferenceCounter::NumObjectsOwnedByUs() const {
+  absl::MutexLock lock(&mutex_);
+  return num_objects_owned_by_us_;
+}
+
+size_t ReferenceCounter::NumActorsOwnedByUs() const {
+  absl::MutexLock lock(&mutex_);
+  return num_actors_owned_by_us_;
 }
 
 std::unordered_set<ObjectID> ReferenceCounter::GetAllInScopeObjectIDs() const {
@@ -1169,7 +1226,7 @@ void ReferenceCounter::HandleRefRemoved(const ObjectID &object_id) {
   RAY_LOG(DEBUG) << "Publishing WaitForRefRemoved message for " << object_id
                  << ", message has " << worker_ref_removed_message->borrowed_refs().size()
                  << " borrowed references.";
-  object_info_publisher_->Publish(pub_message);
+  object_info_publisher_->Publish(std::move(pub_message));
 }
 
 void ReferenceCounter::SetRefRemovedCallback(
@@ -1269,8 +1326,8 @@ void ReferenceCounter::RemoveObjectLocationInternal(ReferenceTable::iterator it,
   PushToLocationSubscribers(it);
 }
 
-void ReferenceCounter::UpdateObjectPendingCreation(const ObjectID &object_id,
-                                                   bool pending_creation) {
+void ReferenceCounter::UpdateObjectPendingCreationInternal(const ObjectID &object_id,
+                                                           bool pending_creation) {
   auto it = object_id_refs_.find(object_id);
   bool push = false;
   if (it != object_id_refs_.end()) {
@@ -1430,6 +1487,11 @@ bool ReferenceCounter::IsObjectReconstructable(const ObjectID &object_id,
   return it->second.is_reconstructable;
 }
 
+void ReferenceCounter::UpdateObjectReady(const ObjectID &object_id) {
+  absl::MutexLock lock(&mutex_);
+  UpdateObjectPendingCreationInternal(object_id, /*pending_creation*/ false);
+}
+
 bool ReferenceCounter::IsObjectPendingCreation(const ObjectID &object_id) const {
   absl::MutexLock lock(&mutex_);
   auto it = object_id_refs_.find(object_id);
@@ -1459,7 +1521,7 @@ void ReferenceCounter::PushToLocationSubscribers(ReferenceTable::iterator it) {
   auto object_locations_msg = pub_message.mutable_worker_object_locations_message();
   FillObjectInformationInternal(it, object_locations_msg);
 
-  object_info_publisher_->Publish(pub_message);
+  object_info_publisher_->Publish(std::move(pub_message));
 }
 
 Status ReferenceCounter::FillObjectInformation(

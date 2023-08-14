@@ -13,7 +13,6 @@ ResultGrid (tune.ResultGrid)
 
 .. autosummary::
     :toctree: doc/
-    :template: autosummary/class_with_autosummary.rst
 
     ~tune.ResultGrid
 
@@ -30,6 +29,7 @@ Result (air.Result)
 
 .. autosummary::
     :toctree: doc/
+    :template: autosummary/class_without_autosummary.rst
 
     ~air.Result
 

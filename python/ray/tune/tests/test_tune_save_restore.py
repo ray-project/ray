@@ -7,6 +7,7 @@ import unittest
 
 import ray
 from ray import tune
+from ray.train import CheckpointConfig
 from ray.rllib import _register_all
 from ray.tune import Trainable
 from ray.tune.utils import validate_save_restore
@@ -73,8 +74,8 @@ class SerialTuneRelativeLocalDirTest(unittest.TestCase):
             self.MockTrainable,
             name=exp_name,
             stop={"training_iteration": 1},
-            checkpoint_freq=1,
-            local_dir=local_dir,
+            checkpoint_config=CheckpointConfig(checkpoint_frequency=1),
+            storage_path=local_dir,
             config={"env": "CartPole-v0", "log_level": "DEBUG"},
         ).trials
 
@@ -83,7 +84,7 @@ class SerialTuneRelativeLocalDirTest(unittest.TestCase):
 
         self.assertIsNone(trial.error_file)
         self.assertEqual(trial.local_dir, exp_dir)
-        self.assertEqual(trial.logdir, abs_trial_dir)
+        self.assertEqual(trial.local_path, abs_trial_dir)
 
         self.assertTrue(os.path.isdir(absolute_local_dir), absolute_local_dir)
         self.assertTrue(os.path.isdir(exp_dir))

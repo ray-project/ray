@@ -29,7 +29,11 @@ from ray.rllib.evaluation.worker_set import handle_remote_call_result_errors
 from ray.rllib.utils.actor_manager import FaultTolerantActorManager
 from ray.rllib.utils.actors import create_colocated_actors
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.deprecation import DEPRECATED_VALUE, Deprecated
+from ray.rllib.utils.deprecation import (
+    DEPRECATED_VALUE,
+    Deprecated,
+    ALGO_DEPRECATION_WARNING,
+)
 from ray.rllib.utils.metrics import (
     LAST_TARGET_UPDATE_TS,
     NUM_AGENT_STEPS_SAMPLED,
@@ -143,7 +147,7 @@ class ApexDQNConfig(DQNConfig):
         self.training_intensity = 1
         # Number of timesteps to collect from rollout workers before we start
         # sampling from replay buffers for learning. Whether we count this in agent
-        # steps  or environment steps depends on config["multiagent"]["count_steps_by"].
+        # steps  or environment steps depends on config.multi_agent(count_steps_by=..).
         self.num_steps_sampled_before_learning_starts = 50000
 
         self.max_requests_in_flight_per_replay_worker = float("inf")
@@ -310,6 +314,12 @@ class ApexDQNConfig(DQNConfig):
         super().validate()
 
 
+@Deprecated(
+    old="rllib/algorithms/apex_dqn/",
+    new="rllib_contrib/apex_dqn/",
+    help=ALGO_DEPRECATION_WARNING,
+    error=False,
+)
 class ApexDQN(DQN):
     @override(Trainable)
     def setup(self, config: AlgorithmConfig):
@@ -426,7 +436,7 @@ class ApexDQN(DQN):
                 batch = local_sampling_worker.sample()
                 actor_id = random.choice(self._replay_actor_manager.healthy_actor_ids())
                 self._replay_actor_manager.foreach_actor(
-                    lambda actor: actor.add_batch(batch),
+                    lambda actor: actor.add(batch),
                     remote_actor_ids=[actor_id],
                     timeout_seconds=0,
                 )
@@ -753,20 +763,3 @@ class ApexDQN(DQN):
             ),
             strategy=cf.placement_strategy,
         )
-
-
-# Deprecated: Use ray.rllib.algorithms.apex_dqn.ApexDQNConfig instead!
-class _deprecated_default_config(dict):
-    def __init__(self):
-        super().__init__(ApexDQNConfig().to_dict())
-
-    @Deprecated(
-        old="ray.rllib.agents.dqn.apex.APEX_DEFAULT_CONFIG",
-        new="ray.rllib.algorithms.apex_dqn.apex_dqn.ApexDQNConfig(...)",
-        error=True,
-    )
-    def __getitem__(self, item):
-        return super().__getitem__(item)
-
-
-APEX_DEFAULT_CONFIG = _deprecated_default_config()

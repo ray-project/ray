@@ -8,7 +8,7 @@ from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.algorithms.sac.rnnsac_torch_policy import RNNSACTorchPolicy
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.deprecation import DEPRECATED_VALUE, Deprecated
+from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 
 
 class RNNSACConfig(SACConfig):
@@ -124,19 +124,3 @@ class RNNSAC(SAC):
         cls, config: AlgorithmConfig
     ) -> Optional[Type[Policy]]:
         return RNNSACTorchPolicy
-
-
-class _deprecated_default_config(dict):
-    def __init__(self):
-        super().__init__(RNNSACConfig().to_dict())
-
-    @Deprecated(
-        old="ray.rllib.algorithms.sac.rnnsac.DEFAULT_CONFIG",
-        new="ray.rllib.algorithms.sac.rnnsac.RNNSACConfig(...)",
-        error=True,
-    )
-    def __getitem__(self, item):
-        return super().__getitem__(item)
-
-
-DEFAULT_CONFIG = _deprecated_default_config()

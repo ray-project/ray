@@ -1,6 +1,6 @@
 # Run with:
 # rllib train file cartpole_a3c.py \
-#     --stop={'timesteps_total': 20000, 'episode_reward_mean': 150}"
+#     --stop="{'timesteps_total': 20000, 'episode_reward_mean': 150}"
 from ray.rllib.algorithms.a3c import A3CConfig
 
 

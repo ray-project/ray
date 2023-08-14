@@ -86,7 +86,6 @@ class _HorovodBackend(Backend):
     share_cuda_visible_devices: bool = True
 
     def on_start(self, worker_group: WorkerGroup, backend_config: HorovodConfig):
-
         # TODO(matt): Implement placement group strategies in BackendExecutor.
 
         # Initialize workers with Horovod environment variables
@@ -95,7 +94,11 @@ class _HorovodBackend(Backend):
             worker_node_id = worker_group.workers[rank].metadata.node_id
             setup_futures.append(
                 worker_group.execute_single_async(
-                    rank, _init_env_vars, rank, len(worker_group), worker_node_id
+                    rank,
+                    _init_env_vars,
+                    rank,
+                    len(worker_group),
+                    worker_node_id,
                 )
             )
         ray.get(setup_futures)

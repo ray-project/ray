@@ -46,9 +46,10 @@ def test_get_wheel_filename():
     ray_version = "3.0.0.dev0"
     for sys_platform in ["darwin", "linux", "win32"]:
         for py_version in ray_constants.RUNTIME_ENV_CONDA_PY_VERSIONS:
-            if sys_platform == "win32" and py_version == (3, 6):
-                # Windows wheels are not built for py3.6 anymore
+            # TODO(https://github.com/ray-project/ray/issues/31362)
+            if py_version == (3, 11) and sys_platform != "linux":
                 continue
+
             filename = get_wheel_filename(sys_platform, ray_version, py_version)
             prefix = "https://s3-us-west-2.amazonaws.com/ray-wheels/latest/"
             url = f"{prefix}{filename}"
@@ -62,12 +63,13 @@ def test_get_master_wheel_url():
     # This should be a commit for which wheels have already been built for
     # all platforms and python versions at
     # `s3://ray-wheels/master/<test_commit>/`.
-    test_commit = "6fd684bbdb186a73732f6113a83a12b63200f170"
+    test_commit = "cf23cd6810dbfd7b1ac3016fba02ff4594f24b7f"
     for sys_platform in ["darwin", "linux", "win32"]:
         for py_version in ray_constants.RUNTIME_ENV_CONDA_PY_VERSIONS:
-            if sys_platform == "win32" and py_version == (3, 6):
-                # Windows wheels are not built for py3.6 anymore
+            # TODO(https://github.com/ray-project/ray/issues/31362)
+            if py_version == (3, 11) and sys_platform != "linux":
                 continue
+
             url = get_master_wheel_url(
                 test_commit, sys_platform, ray_version, py_version
             )
@@ -79,13 +81,14 @@ def test_get_release_wheel_url():
     # This should be a commit for which wheels have already been built for
     # all platforms and python versions at
     # `s3://ray-wheels/releases/2.2.0/<commit>/`.
-    test_commits = {"2.2.0": "b6af0887ee5f2e460202133791ad941a41f15beb"}
+    test_commits = {"2.5.0": "ddf0ccab7aa87be5cf6cf7df9d6e24a3611fb345"}
     for sys_platform in ["darwin", "linux", "win32"]:
         for py_version in ray_constants.RUNTIME_ENV_CONDA_PY_VERSIONS:
             for version, commit in test_commits.items():
-                if sys_platform == "win32" and py_version == (3, 6):
-                    # Windows wheels are not built for py3.6 anymore
+                # TODO(https://github.com/ray-project/ray/issues/31362)
+                if py_version == (3, 11) and sys_platform != "linux":
                     continue
+
                 url = get_release_wheel_url(commit, sys_platform, version, py_version)
                 assert requests.head(url).status_code == 200, url
 
@@ -210,7 +213,7 @@ def test_container_option_serialize(runtime_env_class):
         container={"image": "ray:latest", "run_options": ["--name=test"]}
     )
     job_config = ray.job_config.JobConfig(runtime_env=runtime_env)
-    job_config_serialized = job_config.serialize()
+    job_config_serialized = job_config._serialize()
     # job_config_serialized is JobConfig protobuf serialized string,
     # job_config.runtime_env_info.serialized_runtime_env
     # has container_option info
@@ -270,11 +273,12 @@ def test_no_spurious_worker_startup(shutdown_only, runtime_env_class):
     start = time.time()
     got_num_workers = False
     while time.time() - start < 10:
-        # Check that no more workers were started.
+        # Check that no more than one extra worker is started. We add one
+        # because Ray will prestart an idle worker for the one available CPU.
         num_workers = get_num_workers()
         if num_workers is not None:
             got_num_workers = True
-            assert num_workers <= 1
+            assert num_workers <= 2
         time.sleep(0.1)
     assert got_num_workers, "failed to read num workers for 10 seconds"
 

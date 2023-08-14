@@ -1,14 +1,22 @@
+import colorama
+from dataclasses import dataclass
 import logging
 import os
+import re
 import sys
 import threading
-from logging.handlers import RotatingFileHandler
-from typing import Callable
+import time
+from typing import Callable, Dict, List, Set, Tuple, Any, Optional
 
 import ray
-from ray._private.utils import binary_to_hex
-
-_default_handler = None
+from ray.experimental.tqdm_ray import RAY_TQDM_MAGIC
+from ray._private.ray_constants import (
+    RAY_DEDUP_LOGS,
+    RAY_DEDUP_LOGS_AGG_WINDOW_S,
+    RAY_DEDUP_LOGS_ALLOW_REGEX,
+    RAY_DEDUP_LOGS_SKIP_REGEX,
+)
+from ray.util.debug import log_once
 
 
 def setup_logger(
@@ -20,14 +28,6 @@ def setup_logger(
     if type(logging_level) is str:
         logging_level = logging.getLevelName(logging_level.upper())
     logger.setLevel(logging_level)
-    global _default_handler
-    if _default_handler is None:
-        _default_handler = logging.StreamHandler()
-        logger.addHandler(_default_handler)
-    _default_handler.setFormatter(logging.Formatter(logging_format))
-    # Setting this will avoid the message
-    # being propagated to the parent logger.
-    logger.propagate = False
 
 
 def setup_component_logger(
@@ -41,10 +41,17 @@ def setup_component_logger(
     logger_name=None,
     propagate=True,
 ):
-    """Configure the root logger that is used for Ray's python components.
+    """Configure the logger that is used for Ray's python components.
 
     For example, it should be used for monitor, dashboard, and log monitor.
     The only exception is workers. They use the different logging config.
+
+    Ray's python components generally should not write to stdout/stderr, because
+    messages written there will be redirected to the head node. For deployments where
+    there may be thousands of workers, this would create unacceptable levels of log
+    spam. For this reason, we disable the "ray" logger's handlers, and enable
+    propagation so that log messages that actually do need to be sent to the head node
+    can reach it.
 
     Args:
         logging_level: Logging level in string or logging enum.
@@ -61,6 +68,8 @@ def setup_component_logger(
     Returns:
         the created or modified logger.
     """
+    ray._private.log.clear_logger("ray")
+
     logger = logging.getLogger(logger_name)
     if type(logging_level) is str:
         logging_level = logging.getLevelName(logging_level.upper())
@@ -80,106 +89,29 @@ def setup_component_logger(
     return logger
 
 
+def run_callback_on_events_in_ipython(event: str, cb: Callable):
+    """
+    Register a callback to be run after each cell completes in IPython.
+    E.g.:
+        This is used to flush the logs after each cell completes.
+
+    If IPython is not installed, this function does nothing.
+
+    Args:
+        cb: The callback to run.
+    """
+    if "IPython" in sys.modules:
+        from IPython import get_ipython
+
+        ipython = get_ipython()
+        # Register a callback on cell completion.
+        if ipython is not None:
+            ipython.events.register(event, cb)
+
+
 """
 All components underneath here is used specifically for the default_worker.py.
 """
-
-
-class StandardStreamInterceptor:
-    """Used to intercept stdout and stderr.
-
-    Intercepted messages are handled by the given logger.
-
-    NOTE: The logger passed to this method should always have
-          logging.INFO severity level.
-
-    Example:
-        >>> from contextlib import redirect_stdout
-        >>> logger = logging.getLogger("ray_logger")
-        >>> hook = StandardStreamHook(logger)
-        >>> with redirect_stdout(hook):
-        >>>     print("a") # stdout will be delegated to logger.
-
-    Args:
-        logger: Python logger that will receive messages streamed to
-                the standard out/err and delegate writes.
-        intercept_stdout: True if the class intercepts stdout. False
-                         if stderr is intercepted.
-    """
-
-    def __init__(self, logger, intercept_stdout=True):
-        self.logger = logger
-        assert (
-            len(self.logger.handlers) == 1
-        ), "Only one handler is allowed for the interceptor logger."
-        self.intercept_stdout = intercept_stdout
-
-    def write(self, message):
-        """Redirect the original message to the logger."""
-        self.logger.info(message)
-        return len(message)
-
-    def flush(self):
-        for handler in self.logger.handlers:
-            handler.flush()
-
-    def isatty(self):
-        # Return the standard out isatty. This is used by colorful.
-        fd = 1 if self.intercept_stdout else 2
-        return os.isatty(fd)
-
-    def close(self):
-        handler = self.logger.handlers[0]
-        handler.close()
-
-    def fileno(self):
-        handler = self.logger.handlers[0]
-        return handler.stream.fileno()
-
-
-class StandardFdRedirectionRotatingFileHandler(RotatingFileHandler):
-    """RotatingFileHandler that redirects stdout and stderr to the log file.
-
-    It is specifically used to default_worker.py.
-
-    The only difference from this handler vs original RotatingFileHandler is
-    that it actually duplicates the OS level fd using os.dup2.
-    """
-
-    def __init__(
-        self,
-        filename,
-        mode="a",
-        maxBytes=0,
-        backupCount=0,
-        encoding=None,
-        delay=False,
-        is_for_stdout=True,
-    ):
-        super().__init__(
-            filename,
-            mode=mode,
-            maxBytes=maxBytes,
-            backupCount=backupCount,
-            encoding=encoding,
-            delay=delay,
-        )
-        self.is_for_stdout = is_for_stdout
-        self.switch_os_fd()
-
-    def doRollover(self):
-        super().doRollover()
-        self.switch_os_fd()
-
-    def get_original_stream(self):
-        if self.is_for_stdout:
-            return sys.stdout
-        else:
-            return sys.stderr
-
-    def switch_os_fd(self):
-        # Old fd will automatically closed by dup2 when necessary.
-        os.dup2(self.stream.fileno(), self.get_original_stream().fileno())
 
 
 def get_worker_log_file_name(worker_type, job_id=None):
@@ -196,10 +128,7 @@ def get_worker_log_file_name(worker_type, job_id=None):
     # Make sure these values are set already.
     assert ray._private.worker._global_node is not None
     assert ray._private.worker.global_worker is not None
-    filename = (
-        f"{worker_name}-"
-        f"{binary_to_hex(ray._private.worker.global_worker.worker_id)}-"
-    )
+    filename = f"{worker_name}-{ray.get_runtime_context().get_worker_id()}-"
     if job_id:
         filename += f"{job_id}-"
     filename += f"{os.getpid()}"
@@ -253,3 +182,176 @@ class WorkerStandardStreamDispatcher:
 
 
 global_worker_stdstream_dispatcher = WorkerStandardStreamDispatcher()
+
+
+# Regex for canonicalizing log lines.
+NUMBERS = re.compile(r"(\d+|0x[0-9a-fA-F]+)")
+
+# Batch of log lines including ip, pid, lines, etc.
+LogBatch = Dict[str, Any]
+
+
+def _canonicalise_log_line(line):
+    # Remove words containing numbers or hex, since those tend to differ between
+    # workers.
+    return " ".join(x for x in line.split() if not NUMBERS.search(x))
+
+
+@dataclass
+class DedupState:
+    # Timestamp of the earliest log message seen of this pattern.
+    timestamp: int
+
+    # The number of un-printed occurrances for this pattern.
+    count: int
+
+    # Latest instance of this log pattern.
+    line: int
+
+    # Latest metadata dict for this log pattern, not including the lines field.
+    metadata: LogBatch
+
+    # Set of (ip, pid) sources which have emitted this pattern.
+    sources: Set[Tuple[str, int]]
+
+    # The string that should be printed to stdout.
+    def formatted(self) -> str:
+        return self.line + _color(
+            f" [repeated {self.count}x across cluster]" + _warn_once()
+        )
+
+
+class LogDeduplicator:
+    def __init__(
+        self,
+        agg_window_s: int,
+        allow_re: Optional[str],
+        skip_re: Optional[str],
+        *,
+        _timesource=None,
+    ):
+        self.agg_window_s = agg_window_s
+        if allow_re:
+            self.allow_re = re.compile(allow_re)
+        else:
+            self.allow_re = None
+        if skip_re:
+            self.skip_re = re.compile(skip_re)
+        else:
+            self.skip_re = None
+        # Buffer of up to RAY_DEDUP_LOGS_AGG_WINDOW_S recent log patterns.
+        # This buffer is cleared if the pattern isn't seen within the window.
+        self.recent: Dict[str, DedupState] = {}
+        self.timesource = _timesource or (lambda: time.time())
+
+        run_callback_on_events_in_ipython("post_execute", self.flush)
+
+    def deduplicate(self, batch: LogBatch) -> List[LogBatch]:
+        """Rewrite a batch of lines to reduce duplicate log messages.
+
+        Args:
+            batch: The batch of lines from a single source.
+
+        Returns:
+            List of batches from this and possibly other previous sources to print.
+        """
+        if not RAY_DEDUP_LOGS:
+            return [batch]
+
+        now = self.timesource()
+        metadata = batch.copy()
+        del metadata["lines"]
+        source = (metadata.get("ip"), metadata.get("pid"))
+        output: List[LogBatch] = [dict(**metadata, lines=[])]
+
+        # Decide which lines to emit from the input batch. Put the outputs in the
+        # first output log batch (output[0]).
+        for line in batch["lines"]:
+            if RAY_TQDM_MAGIC in line or (self.allow_re and self.allow_re.search(line)):
+                output[0]["lines"].append(line)
+                continue
+            elif self.skip_re and self.skip_re.search(line):
+                continue
+            dedup_key = _canonicalise_log_line(line)
+            if dedup_key in self.recent:
+                sources = self.recent[dedup_key].sources
+                sources.add(source)
+                if len(sources) > 1:
+                    state = self.recent[dedup_key]
+                    self.recent[dedup_key] = DedupState(
+                        state.timestamp,
+                        state.count + 1,
+                        line,
+                        metadata,
+                        sources,
+                    )
+                else:
+                    # Don't dedup messages from the same source, just print.
+                    output[0]["lines"].append(line)
+            else:
+                self.recent[dedup_key] = DedupState(now, 0, line, metadata, {source})
+                output[0]["lines"].append(line)
+
+        # Flush patterns from the buffer that are older than the aggregation window.
+        while self.recent:
+            if now - next(iter(self.recent.values())).timestamp < self.agg_window_s:
+                break
+            dedup_key = next(iter(self.recent))
+            state = self.recent.pop(dedup_key)
+            # we already logged an instance of this line immediately when received,
+            # so don't log for count == 0
+            if state.count > 1:
+                # (Actor pid=xxxx) [repeated 2x across cluster] ...
+                output.append(dict(**state.metadata, lines=[state.formatted()]))
+                # Continue aggregating for this key but reset timestamp and count.
+                state.timestamp = now
+                state.count = 0
+                self.recent[dedup_key] = state
+            elif state.count > 0:
+                # Aggregation wasn't fruitful, print the line and stop aggregating.
+                output.append(dict(state.metadata, lines=[state.line]))
+
+        return output
+
+    def flush(self) -> List[dict]:
+        """Return all buffered log messages and clear the buffer.
+
+        Returns:
+            List of log batches to print.
+        """
+        output = []
+        for state in self.recent.values():
+            if state.count > 1:
+                output.append(
+                    dict(
+                        state.metadata,
+                        lines=[state.formatted()],
+                    )
+                )
+            elif state.count > 0:
+                output.append(dict(state.metadata, **{"lines": [state.line]}))
+        self.recent.clear()
+        return output
+
+
+def _warn_once() -> str:
+    if log_once("log_dedup_warning"):
+        return (
+            " (Ray deduplicates logs by default. Set RAY_DEDUP_LOGS=0 to "
+            "disable log deduplication, or see https://docs.ray.io/en/master/"
+            "ray-observability/ray-logging.html#log-deduplication for more options.)"
+        )
+    else:
+        return ""
+
+
+def _color(msg: str) -> str:
+    return "{}{}{}".format(colorama.Fore.GREEN, msg, colorama.Style.RESET_ALL)
+
+
+stdout_deduplicator = LogDeduplicator(
+    RAY_DEDUP_LOGS_AGG_WINDOW_S, RAY_DEDUP_LOGS_ALLOW_REGEX, RAY_DEDUP_LOGS_SKIP_REGEX
+)
+stderr_deduplicator = LogDeduplicator(
+    RAY_DEDUP_LOGS_AGG_WINDOW_S, RAY_DEDUP_LOGS_ALLOW_REGEX, RAY_DEDUP_LOGS_SKIP_REGEX
+)

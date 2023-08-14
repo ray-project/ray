@@ -70,6 +70,7 @@ class AgentCollector:
         intial_states: Optional[List[TensorType]] = None,
         is_policy_recurrent: bool = False,
         is_training: bool = True,
+        _enable_rl_module_api: bool = False,
     ):
         """Initialize an AgentCollector.
 
@@ -88,9 +89,11 @@ class AgentCollector:
         self.max_seq_len = max_seq_len
         self.disable_action_flattening = disable_action_flattening
         self.view_requirements = view_reqs
-        self.intial_states = intial_states or []
+        # The initial_states can be an np array
+        self.initial_states = intial_states if intial_states is not None else []
         self.is_policy_recurrent = is_policy_recurrent
         self._is_training = is_training
+        self._enable_rl_module_api = _enable_rl_module_api
 
         # Determine the size of the buffer we need for data before the actual
         # episode starts. This is used for 0-buffering of e.g. prev-actions,
@@ -110,7 +113,7 @@ class AgentCollector:
         #    [0, 1],  # <- 1st sub-component of observation
         #    [np.array([.2, .3]), np.array([.0, -.2])]  # <- 2nd sub-component
         # ]
-        # NOTE: infos and state_out_... are not flattened due to them often
+        # NOTE: infos and state_out... are not flattened due to them often
         # using custom dict values whose structure may vary from timestep to
         # timestep.
         self.buffers: Dict[str, List[List[TensorType]]] = {}
@@ -265,7 +268,7 @@ class AgentCollector:
 
         for k, v in values.items():
             if k not in self.buffers:
-                if self.training and k.startswith("state_out_"):
+                if self.training and k.startswith("state_out"):
                     vr = self.view_requirements[k]
                     data_col = vr.data_col or k
                     self._fill_buffer_with_initial_values(
@@ -273,15 +276,19 @@ class AgentCollector:
                     )
                 else:
                     self._build_buffers({k: v})
-            # Do not flatten infos, state_out_ and (if configured) actions.
+            # Do not flatten infos, state_out and (if configured) actions.
             # Infos/state-outs may be structs that change from timestep to
             # timestep.
             should_flatten_action_key = (
                 k == SampleBatch.ACTIONS and not self.disable_action_flattening
             )
+            # Note (Artur) RL Modules's states need no flattening
+            should_flatten_state_key = (
+                k.startswith("state_out") and not self._enable_rl_module_api
+            )
             if (
                 k == SampleBatch.INFOS
-                or k.startswith("state_out_")
+                or should_flatten_state_key
                 or should_flatten_action_key
             ):
                 if should_flatten_action_key:
@@ -372,8 +379,11 @@ class AgentCollector:
                 # add the batch dimension with [None]
                 data.append(element_at_t[None])
 
-            if data:
-                batch_data[view_col] = self._unflatten_as_buffer_struct(data, data_col)
+            # We unflatten even if data is empty here, because the structure might be
+            # nested with empty leafs and so we still need to reconstruct it.
+            # This is useful because we spec-check states in RLModules and these
+            # states can sometimes be nested dicts with empty leafs.
+            batch_data[view_col] = self._unflatten_as_buffer_struct(data, data_col)
 
         batch = self._get_sample_batch(batch_data)
         return batch
@@ -493,8 +503,11 @@ class AgentCollector:
                     shifted_data_np = np.array(shifted_data)
                 data.append(shifted_data_np)
 
-            if data:
-                batch_data[view_col] = self._unflatten_as_buffer_struct(data, data_col)
+            # We unflatten even if data is empty here, because the structure might be
+            # nested with empty leafs and so we still need to reconstruct it.
+            # This is useful because we spec-check states in RLModules and these
+            # states can sometimes be nested dicts with empty leafs.
+            batch_data[view_col] = self._unflatten_as_buffer_struct(data, data_col)
 
         batch = self._get_sample_batch(batch_data)
 
@@ -553,9 +566,13 @@ class AgentCollector:
             should_flatten_action_key = (
                 col == SampleBatch.ACTIONS and not self.disable_action_flattening
             )
+            # Note (Artur) RL Modules's states need no flattening
+            should_flatten_state_key = (
+                col.startswith("state_out") and not self._enable_rl_module_api
+            )
             if (
                 col == SampleBatch.INFOS
-                or col.startswith("state_out_")
+                or should_flatten_state_key
                 or should_flatten_action_key
             ):
                 if should_flatten_action_key:
@@ -630,25 +647,28 @@ class AgentCollector:
         except KeyError:
             space = view_requirement.space
 
-        # special treatment for state_out_<i>
+        # special treatment for state_out
         # add them to the buffer in case they don't exist yet
         is_state = True
-        if data_col.startswith("state_out_"):
-            if not self.is_policy_recurrent:
-                raise ValueError(
-                    f"{data_col} is not available, because the given policy is"
-                    f"not recurrent according to the input model_inital_states."
-                    f"Have you forgotten to return non-empty lists in"
-                    f"policy.get_initial_states()?"
-                )
-            state_ind = int(data_col.split("_")[-1])
-            self._build_buffers({data_col: self.intial_states[state_ind]})
+        if data_col.startswith("state_out"):
+            if self._enable_rl_module_api:
+                self._build_buffers({data_col: self.initial_states})
+            else:
+                if not self.is_policy_recurrent:
+                    raise ValueError(
+                        f"{data_col} is not available, because the given policy is"
+                        f"not recurrent according to the input model_inital_states."
+                        f"Have you forgotten to return non-empty lists in"
+                        f"policy.get_initial_states()?"
+                    )
+                state_ind = int(data_col.split("_")[-1])
+                self._build_buffers({data_col: self.initial_states[state_ind]})
         else:
             is_state = False
             # only create dummy data during inference
             if build_for_inference:
                 if isinstance(space, Space):
-                    #  state_out_x assumes the values do not have a batch dimension
+                    #  state_out assumes the values do not have a batch dimension
                     #  (i.e. instead of being (1, d) it is of shape (d,).
                     fill_value = get_dummy_batch_for_space(
                         space,

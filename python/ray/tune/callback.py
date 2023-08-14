@@ -81,9 +81,9 @@ class Callback(metaclass=_CallbackMeta):
 
     This example will print a metric each time a result is received:
 
-    .. code-block:: python
+    .. testcode::
 
-        from ray import air, tune
+        from ray import train, tune
         from ray.tune import Callback
 
 
@@ -93,22 +93,26 @@ class Callback(metaclass=_CallbackMeta):
                 print(f"Got result: {result['metric']}")
 
 
-        def train(config):
+        def train_func(config):
             for i in range(10):
                 tune.report(metric=i)
 
         tuner = tune.Tuner(
-            train,
-            run_config=air.RunConfig(
+            train_func,
+            run_config=train.RunConfig(
                 callbacks=[MyCallback()]
             )
         )
         tuner.fit()
 
+    .. testoutput::
+        :hide:
+
+        ...
     """
 
     # File templates for any artifacts written by this callback
-    # These files should live in the `trial.logdir` for each trial.
+    # These files should live in the `trial.local_path` for each trial.
     # TODO(ml-team): Make this more visible to users to override. Internal use for now.
     _SAVED_FILE_TEMPLATES = []
 
@@ -127,7 +131,7 @@ class Callback(metaclass=_CallbackMeta):
 
         Arguments:
             stop: Stopping criteria.
-                If ``time_budget_s`` was passed to ``air.RunConfig``, a
+                If ``time_budget_s`` was passed to ``train.RunConfig``, a
                 ``TimeoutStopper`` will be passed here, either by itself
                 or as a part of a ``CombinedStopper``.
             num_samples: Number of times to sample from the
@@ -241,6 +245,22 @@ class Callback(metaclass=_CallbackMeta):
         """
         pass
 
+    def on_trial_recover(
+        self, iteration: int, trials: List["Trial"], trial: "Trial", **info
+    ):
+        """Called after a trial instance failed (errored) but the trial is scheduled
+        for retry.
+
+        The search algorithm and scheduler are not notified.
+
+        Arguments:
+            iteration: Number of iterations of the tuning loop.
+            trials: List of trials.
+            trial: Trial that just has errored.
+            **info: Kwargs dict for forward compatibility.
+        """
+        pass
+
     def on_trial_error(
         self, iteration: int, trials: List["Trial"], trial: "Trial", **info
     ):
@@ -292,17 +312,48 @@ class Callback(metaclass=_CallbackMeta):
         This method should be implemented by subclasses to return a dictionary
         representation of the object's current state.
 
+        This is called automatically by Tune to periodically checkpoint callback state.
+        Upon :ref:`Tune experiment restoration <tune-experiment-level-fault-tolerance>`,
+        callback state will be restored via :meth:`~ray.tune.Callback.set_state`.
+
+        .. testcode::
+
+            from typing import Dict, List, Optional
+
+            from ray.tune import Callback
+            from ray.tune.experiment import Trial
+
+            class MyCallback(Callback):
+                def __init__(self):
+                    self._trial_ids = set()
+
+                def on_trial_start(
+                    self, iteration: int, trials: List["Trial"], trial: "Trial", **info
+                ):
+                    self._trial_ids.add(trial.trial_id)
+
+                def get_state(self) -> Optional[Dict]:
+                    return {"trial_ids": self._trial_ids.copy()}
+
+                def set_state(self, state: Dict) -> Optional[Dict]:
+                    self._trial_ids = state["trial_ids"]
+
         Returns:
-            state: State of the callback. Should be `None` if the callback does not
-                have any state to save (this is the default).
+            dict: State of the callback. Should be `None` if the callback does not
+            have any state to save (this is the default).
         """
         return None
 
     def set_state(self, state: Dict):
-        """Get the state of the callback.
+        """Set the state of the callback.
 
         This method should be implemented by subclasses to restore the callback's
         state based on the given dict state.
+
+        This is used automatically by Tune to restore checkpoint callback state
+        on :ref:`Tune experiment restoration <tune-experiment-level-fault-tolerance>`.
+
+        See :meth:`~ray.tune.Callback.get_state` for an example implementation.
 
         Args:
             state: State of the callback.
@@ -364,6 +415,10 @@ class CallbackList(Callback):
         for callback in self._callbacks:
             callback.on_trial_complete(**info)
 
+    def on_trial_recover(self, **info):
+        for callback in self._callbacks:
+            callback.on_trial_recover(**info)
+
     def on_trial_error(self, **info):
         for callback in self._callbacks:
             callback.on_trial_error(**info)
@@ -393,7 +448,7 @@ class CallbackList(Callback):
 
     def set_state(self, state: Dict):
         """Sets the state for all callbacks contained within this list.
-        Skipps setting state for all stateless callbacks where `get_state`
+        Skips setting state for all stateless callbacks where `get_state`
         returned None."""
         for i, callback in enumerate(self._callbacks):
             callback_state = state.get(i, None)

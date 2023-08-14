@@ -115,29 +115,35 @@ METRICS_GAUGES = {
     "node_mem_total": Gauge(
         "node_mem_total", "Total memory on a ray node", "bytes", ["ip", "SessionName"]
     ),
+    "node_mem_shared_bytes": Gauge(
+        "node_mem_shared_bytes",
+        "Total shared memory usage on a ray node",
+        "bytes",
+        ["ip", "SessionName"],
+    ),
     "node_gpus_available": Gauge(
         "node_gpus_available",
         "Total GPUs available on a ray node",
         "percentage",
-        ["ip", "SessionName"],
+        ["ip", "SessionName", "GpuDeviceName", "GpuIndex"],
     ),
     "node_gpus_utilization": Gauge(
         "node_gpus_utilization",
         "Total GPUs usage on a ray node",
         "percentage",
-        ["ip", "SessionName"],
+        ["ip", "SessionName", "GpuDeviceName", "GpuIndex"],
     ),
     "node_gram_used": Gauge(
         "node_gram_used",
         "Total GPU RAM usage on a ray node",
         "bytes",
-        ["ip", "SessionName"],
+        ["ip", "SessionName", "GpuDeviceName", "GpuIndex"],
     ),
     "node_gram_available": Gauge(
         "node_gram_available",
         "Total GPU RAM available on a ray node",
         "bytes",
-        ["ip", "SessionName"],
+        ["ip", "SessionName", "GpuDeviceName", "GpuIndex"],
     ),
     "node_disk_io_read": Gauge(
         "node_disk_io_read", "Total read from disk", "bytes", ["ip", "SessionName"]
@@ -215,6 +221,13 @@ METRICS_GAUGES = {
         "component_cpu_percentage",
         "Total CPU usage of the components on a node.",
         "percentage",
+        COMPONENT_METRICS_TAG_KEYS,
+    ),
+    "component_mem_shared_bytes": Gauge(
+        "component_mem_shared_bytes",
+        "SHM usage of all components of the node. "
+        "It is equivalent to the top command's SHR column.",
+        "bytes",
         COMPONENT_METRICS_TAG_KEYS,
     ),
     "component_rss_mb": Gauge(
@@ -496,21 +509,30 @@ class ReporterAgent(
             # Remove the current process (reporter agent), which is also a child of
             # the Raylet.
             self._workers.pop(self._generate_worker_key(self._get_agent_proc()))
-            return [
-                w.as_dict(
-                    attrs=[
-                        "pid",
-                        "create_time",
-                        "cpu_percent",
-                        "cpu_times",
-                        "cmdline",
-                        "memory_info",
-                        "memory_full_info",
-                    ]
+
+            result = []
+            for w in self._workers.values():
+                try:
+                    if w.status() == psutil.STATUS_ZOMBIE:
+                        continue
+                except psutil.NoSuchProcess:
+                    # the process may have terminated due to race condition.
+                    continue
+
+                result.append(
+                    w.as_dict(
+                        attrs=[
+                            "pid",
+                            "create_time",
+                            "cpu_percent",
+                            "cpu_times",
+                            "cmdline",
+                            "memory_info",
+                            "memory_full_info",
+                        ]
+                    )
                 )
-                for w in self._workers.values()
-                if w.status() != psutil.STATUS_ZOMBIE
-            ]
+            return result
 
     def _get_raylet_proc(self):
         try:
@@ -581,6 +603,16 @@ class ReporterAgent(
         time_delta = now - then
         return tuple((y - x) / time_delta for x, y in zip(prev_stats, now_stats))
 
+    def _get_shm_usage(self):
+        """Return the shm usage.
+
+        If shm doesn't exist (e.g., MacOS), it returns None.
+        """
+        mem = psutil.virtual_memory()
+        if not hasattr(mem, "shared"):
+            return None
+        return mem.shared
+
     def _get_all_stats(self):
         now = dashboard_utils.to_posix_time(datetime.datetime.utcnow())
         network_stats = self._get_network_stats()
@@ -598,6 +630,8 @@ class ReporterAgent(
             "cpu": self._get_cpu_percent(IN_KUBERNETES_POD),
             "cpus": self._cpu_counts,
             "mem": self._get_mem_usage(),
+            # Unit is in bytes. None if
+            "shm": self._get_shm_usage(),
             "workers": self._get_workers(),
             "raylet": self._get_raylet(),
             "agent": self._get_agent(),
@@ -629,6 +663,13 @@ class ReporterAgent(
         records.append(
             Record(
                 gauge=METRICS_GAUGES["component_cpu_percentage"],
+                value=0.0,
+                tags=tags,
+            )
+        )
+        records.append(
+            Record(
+                gauge=METRICS_GAUGES["component_mem_shared_bytes"],
                 value=0.0,
                 tags=tags,
             )
@@ -667,12 +708,16 @@ class ReporterAgent(
         total_cpu_percentage = 0.0
         total_rss = 0.0
         total_uss = 0.0
+        total_shm = 0.0
 
         for stat in stats:
             total_cpu_percentage += float(stat.get("cpu_percent", 0.0))  # noqa
             memory_info = stat.get("memory_info")
             if memory_info:
-                total_rss += float(stat["memory_info"].rss) / 1.0e6  # noqa
+                mem = stat["memory_info"]
+                total_rss += float(mem.rss) / 1.0e6
+                if hasattr(mem, "shared"):
+                    total_shm += float(mem.shared)
             mem_full_info = stat.get("memory_full_info")
             if mem_full_info is not None:
                 total_uss += float(mem_full_info.uss) / 1.0e6
@@ -686,6 +731,13 @@ class ReporterAgent(
             Record(
                 gauge=METRICS_GAUGES["component_cpu_percentage"],
                 value=total_cpu_percentage,
+                tags=tags,
+            )
+        )
+        records.append(
+            Record(
+                gauge=METRICS_GAUGES["component_mem_shared_bytes"],
+                value=total_shm,
                 tags=tags,
             )
         )
@@ -822,47 +874,83 @@ class ReporterAgent(
             gauge=METRICS_GAUGES["node_mem_total"], value=mem_total, tags={"ip": ip}
         )
 
+        shm_used = stats["shm"]
+        if shm_used:
+            node_mem_shared = Record(
+                gauge=METRICS_GAUGES["node_mem_shared_bytes"],
+                value=shm_used,
+                tags={"ip": ip},
+            )
+            records_reported.append(node_mem_shared)
+
+        # The output example of gpustats.
+        """
+        {'index': 0,
+        'uuid': 'GPU-36e1567d-37ed-051e-f8ff-df807517b396',
+        'name': 'NVIDIA A10G',
+        'temperature_gpu': 20,
+        'fan_speed': 0,
+        'utilization_gpu': 1,
+        'utilization_enc': 0,
+        'utilization_dec': 0,
+        'power_draw': 51,
+        'enforced_power_limit': 300,
+        'memory_used': 0,
+        'memory_total': 22731,
+        'processes': []}
+        """
         # -- GPU per node --
         gpus = stats["gpus"]
         gpus_available = len(gpus)
 
         if gpus_available:
-            gpus_utilization, gram_used, gram_total = 0, 0, 0
+            gpu_tags = {"ip": ip}
             for gpu in gpus:
+                gpus_utilization, gram_used, gram_total = 0, 0, 0
                 # Consume GPU may not report its utilization.
                 if gpu["utilization_gpu"] is not None:
                     gpus_utilization += gpu["utilization_gpu"]
                 gram_used += gpu["memory_used"]
                 gram_total += gpu["memory_total"]
+                gpu_index = gpu.get("index")
+                gpu_name = gpu.get("name")
 
-            gram_available = gram_total - gram_used
+                gram_available = gram_total - gram_used
 
-            gpus_available_record = Record(
-                gauge=METRICS_GAUGES["node_gpus_available"],
-                value=gpus_available,
-                tags={"ip": ip},
-            )
-            gpus_utilization_record = Record(
-                gauge=METRICS_GAUGES["node_gpus_utilization"],
-                value=gpus_utilization,
-                tags={"ip": ip},
-            )
-            gram_used_record = Record(
-                gauge=METRICS_GAUGES["node_gram_used"], value=gram_used, tags={"ip": ip}
-            )
-            gram_available_record = Record(
-                gauge=METRICS_GAUGES["node_gram_available"],
-                value=gram_available,
-                tags={"ip": ip},
-            )
-            records_reported.extend(
-                [
-                    gpus_available_record,
-                    gpus_utilization_record,
-                    gram_used_record,
-                    gram_available_record,
-                ]
-            )
+                if gpu_index is not None:
+                    gpu_tags = {"ip": ip, "GpuIndex": str(gpu_index)}
+                    if gpu_name:
+                        gpu_tags["GpuDeviceName"] = gpu_name
+
+                    # There's only 1 GPU per each index, so we record 1 here.
+                    gpus_available_record = Record(
+                        gauge=METRICS_GAUGES["node_gpus_available"],
+                        value=1,
+                        tags=gpu_tags,
+                    )
+                    gpus_utilization_record = Record(
+                        gauge=METRICS_GAUGES["node_gpus_utilization"],
+                        value=gpus_utilization,
+                        tags=gpu_tags,
+                    )
+                    gram_used_record = Record(
+                        gauge=METRICS_GAUGES["node_gram_used"],
+                        value=gram_used,
+                        tags=gpu_tags,
+                    )
+                    gram_available_record = Record(
+                        gauge=METRICS_GAUGES["node_gram_available"],
+                        value=gram_available,
+                        tags=gpu_tags,
+                    )
+                    records_reported.extend(
+                        [
+                            gpus_available_record,
+                            gpus_utilization_record,
+                            gram_used_record,
+                            gram_available_record,
+                        ]
+                    )
 
         # -- Disk per node --
         disk_io_stats = stats["disk_io"]
@@ -962,8 +1050,7 @@ class ReporterAgent(
                 )
             )
         workers_stats = stats["workers"]
-        if workers_stats:
-            records_reported.extend(self.generate_worker_stats_record(workers_stats))
+        records_reported.extend(self.generate_worker_stats_record(workers_stats))
         agent_stats = stats["agent"]
         if agent_stats:
             agent_pid = str(agent_stats["pid"])

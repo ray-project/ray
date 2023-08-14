@@ -1,19 +1,19 @@
-import os
 import sys
+import yaml
 import pytest
 
+from ray_release.bazel import bazel_runfile
+from ray_release.test import Test
 from ray_release.config import (
     read_and_validate_release_test_collection,
-    Test,
     validate_cluster_compute,
     load_schema_file,
+    parse_test_definition,
     validate_test,
 )
+from ray_release.exception import ReleaseTestConfigError
 
-TEST_COLLECTION_FILE = os.path.join(
-    os.path.dirname(__file__), "..", "..", "release_tests.yaml"
-)
-
+_TEST_COLLECTION_FILE = bazel_runfile("release/release_tests.yaml")
 
 VALID_TEST = Test(
     **{
@@ -24,7 +24,7 @@ VALID_TEST = Test(
         "frequency": "nightly",
         "team": "release",
         "cluster": {
-            "cluster_env": "app_config.yaml",
+            "byod": {"type": "gpu"},
             "cluster_compute": "tpl_cpu_small.yaml",
             "autosuspend_mins": 10,
         },
@@ -38,6 +38,56 @@ VALID_TEST = Test(
         "alert": "default",
     }
 )
+
+
+def test_parse_test_definition():
+    """
+    Unit test for the ray_release.config.parse_test_definition function. In particular,
+    we check that the code correctly parse a test definition that have the 'variations'
+    field.
+    """
+    test_definitions = yaml.safe_load(
+        """
+        - name: sample_test
+          working_dir: sample_dir
+          frequency: nightly
+          team: sample
+          cluster:
+            byod:
+              type: gpu
+            cluster_compute: compute.yaml
+          run:
+            timeout: 100
+            script: python script.py
+          variations:
+            - __suffix__: aws
+            - __suffix__: gce
+              cluster:
+                cluster_compute: compute_gce.yaml
+    """
+    )
+    # Check that parsing returns two tests, one for each variation (aws and gce). Check
+    # that both tests are valid, and their fields are populated correctly
+    tests = parse_test_definition(test_definitions)
+    aws_test = tests[0]
+    gce_test = tests[1]
+    schema = load_schema_file()
+    assert not validate_test(aws_test, schema)
+    assert not validate_test(gce_test, schema)
+    assert aws_test["name"] == "sample_test.aws"
+    assert gce_test["cluster"]["cluster_compute"] == "compute_gce.yaml"
+    assert gce_test["cluster"]["byod"]["type"] == "gpu"
+    invalid_test_definition = test_definitions[0]
+    # Intentionally make the test definition invalid by create an empty 'variations'
+    # field. Check that the parser throws exception at runtime
+    invalid_test_definition["variations"] = []
+    with pytest.raises(ReleaseTestConfigError):
+        parse_test_definition([invalid_test_definition])
+    # Intentionally make the test definition invalid by making one 'variation' entry
+    # missing the __suffix__ entry. Check that the parser throws exception at runtime
+    invalid_test_definition["variations"] = [{"__suffix__": "aws"}, {}]
+    with pytest.raises(ReleaseTestConfigError):
+        parse_test_definition([invalid_test_definition])
 
 
 def test_schema_validation():
@@ -167,7 +217,7 @@ def test_compute_config_invalid_ebs():
 
 
 def test_load_and_validate_test_collection_file():
-    read_and_validate_release_test_collection(TEST_COLLECTION_FILE)
+    read_and_validate_release_test_collection(_TEST_COLLECTION_FILE)
 
 
 if __name__ == "__main__":

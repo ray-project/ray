@@ -6,8 +6,11 @@ TD3 paper.
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.ddpg.ddpg import DDPG, DDPGConfig
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.deprecation import Deprecated
-from ray.rllib.utils.deprecation import DEPRECATED_VALUE
+from ray.rllib.utils.deprecation import (
+    DEPRECATED_VALUE,
+    Deprecated,
+    ALGO_DEPRECATION_WARNING,
+)
 
 
 class TD3Config(DDPGConfig):
@@ -76,7 +79,7 @@ class TD3Config(DDPGConfig):
         }
         # Number of timesteps to collect from rollout workers before we start
         # sampling from replay buffers for learning. Whether we count this in agent
-        # steps  or environment steps depends on config["multiagent"]["count_steps_by"].
+        # steps  or environment steps depends on config.multi_agent(count_steps_by=..).
         self.num_steps_sampled_before_learning_starts = 10000
 
         # .exploration()
@@ -102,25 +105,14 @@ class TD3Config(DDPGConfig):
         # fmt: on
 
 
+@Deprecated(
+    old="rllib/algorithms/td3/",
+    new="rllib_contrib/td3/",
+    help=ALGO_DEPRECATION_WARNING,
+    error=False,
+)
 class TD3(DDPG):
     @classmethod
     @override(DDPG)
     def get_default_config(cls) -> AlgorithmConfig:
         return TD3Config()
-
-
-# Deprecated: Use ray.rllib.algorithms.ddpg..td3.TD3Config instead!
-class _deprecated_default_config(dict):
-    def __init__(self):
-        super().__init__(TD3Config().to_dict())
-
-    @Deprecated(
-        old="ray.rllib.algorithms.ddpg.td3::TD3_DEFAULT_CONFIG",
-        new="ray.rllib.algorithms.td3.td3::TD3Config(...)",
-        error=True,
-    )
-    def __getitem__(self, item):
-        return super().__getitem__(item)
-
-
-TD3_DEFAULT_CONFIG = _deprecated_default_config()

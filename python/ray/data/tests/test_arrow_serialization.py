@@ -3,29 +3,29 @@ import os
 import sys
 from unittest import mock
 
-from pkg_resources._vendor.packaging.version import parse as parse_version
-import pytest
-from pytest_lazyfixture import lazy_fixture
+import numpy as np
 import pyarrow as pa
 import pyarrow.parquet as pq
-import numpy as np
+import pytest
+from pkg_resources._vendor.packaging.version import parse as parse_version
+from pytest_lazyfixture import lazy_fixture
 
 import ray
 import ray.cloudpickle as pickle
-from ray._private.utils import _get_pyarrow_version
-from ray.tests.conftest import *  # noqa
 from ray._private.arrow_serialization import (
-    _bytes_for_bits,
     _align_bit_offset,
+    _bytes_for_bits,
+    _copy_bitpacked_buffer_if_needed,
     _copy_buffer_if_needed,
     _copy_normal_buffer_if_needed,
-    _copy_bitpacked_buffer_if_needed,
     _copy_offsets_buffer_if_needed,
 )
+from ray._private.utils import _get_pyarrow_version
 from ray.data.extensions.tensor_extension import (
     ArrowTensorArray,
     ArrowVariableShapedTensorArray,
 )
+from ray.tests.conftest import *  # noqa
 
 
 @pytest.mark.parametrize(
@@ -61,8 +61,8 @@ def test_align_bit_offset_auto():
             )
 
 
-@mock.patch("ray.data._internal.arrow_serialization._copy_normal_buffer_if_needed")
-@mock.patch("ray.data._internal.arrow_serialization._copy_bitpacked_buffer_if_needed")
+@mock.patch("ray._private.arrow_serialization._copy_normal_buffer_if_needed")
+@mock.patch("ray._private.arrow_serialization._copy_bitpacked_buffer_if_needed")
 def test_copy_buffer_if_needed(mock_bitpacked, mock_normal):
     # Test that type-based buffer copy dispatch works as expected.
     bytes_ = b"abcd"
@@ -513,6 +513,17 @@ def test_custom_arrow_data_serializer_fallback(
         slice_buf_size = post_slice.get_total_buffer_size()
         if buf_size > 0:
             assert buf_size / slice_buf_size - len(data) / len(post_slice) < 100
+
+
+def test_arrow_scalar_conversion(ray_start_regular_shared):
+    ds = ray.data.from_items([1])
+
+    def fn(batch: list):
+        return {"id": np.array([1])}
+
+    ds = ds.map_batches(fn)
+    res = ds.take()
+    assert res == [{"id": 1}], res
 
 
 def test_custom_arrow_data_serializer_parquet_roundtrip(

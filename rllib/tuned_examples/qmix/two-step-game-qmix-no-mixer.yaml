@@ -2,7 +2,7 @@ two-step-game-qmix-without-mixer:
     env: ray.rllib.examples.env.two_step_game.TwoStepGameWithGroupedAgents
     run: QMIX
     stop:
-        episode_reward_mean: 6.5
+        sampler_results/episode_reward_mean: 6.5
         timesteps_total: 70000
     config:
         # QMIX only supports torch for now.

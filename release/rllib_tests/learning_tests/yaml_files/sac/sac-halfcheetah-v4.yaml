@@ -3,7 +3,7 @@ sac-halfcheetah-v4:
     run: SAC
     # Minimum reward and total ts (in given time_total_s) to pass this test.
     pass_criteria:
-        episode_reward_mean: 500.0
+        sampler_results/episode_reward_mean: 500.0
         timesteps_total: 400000
     stop:
         time_total_s: 3600

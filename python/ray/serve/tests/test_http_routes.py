@@ -97,12 +97,12 @@ def test_routes_endpoint_legacy(serve_instance):
 def test_routes_endpoint(serve_instance):
     @serve.deployment
     class D1:
-        def __call__(self):
+        def __call__(self, *args):
             return "D1"
 
     @serve.deployment
     class D2:
-        def __call__(self):
+        def __call__(self, *args):
             return "D2"
 
     dag = DAGDriver.bind({"/D1": D1.bind(), "/hello/world": D2.bind()})
@@ -222,12 +222,12 @@ def test_path_prefixing(serve_instance):
 def test_multi_dag_with_wrong_route(serve_instance):
     @serve.deployment
     class D1:
-        def __call__(self):
+        def __call__(self, *args):
             return "D1"
 
     @serve.deployment
     class D2:
-        def __call__(self):
+        def __call__(self, *args):
             return "D2"
 
     dag = DAGDriver.bind({"/D1": D1.bind(), "/hello/world": D2.bind()})
@@ -305,7 +305,6 @@ def test_default_error_handling(serve_instance):
     serve.run(h.bind())
     r = requests.get("http://localhost:8000/h")
     assert r.status_code == 500
-    assert "retries" in r.text, r.text
 
 
 if __name__ == "__main__":

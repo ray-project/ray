@@ -1,14 +1,18 @@
 import math
-from typing import List
+from collections import deque
+from typing import Dict, List, Optional
 
-from ray.data.block import Block, BlockMetadata, BlockAccessor
+from ray.data._internal.execution.interfaces import (
+    ExecutionOptions,
+    ExecutionResources,
+    NodeIdStr,
+    PhysicalOperator,
+    RefBundle,
+)
+from ray.data._internal.execution.util import locality_string
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.stats import StatsDict
-from ray.data._internal.execution.interfaces import (
-    RefBundle,
-    PhysicalOperator,
-    ExecutionResources,
-)
+from ray.data.block import Block, BlockAccessor, BlockMetadata
 from ray.types import ObjectRef
 
 
@@ -17,10 +21,12 @@ class OutputSplitter(PhysicalOperator):
 
     The output bundles of this operator will have a `bundle.output_split_idx` attr
     set to an integer from [0..n-1]. This operator tries to divide the rows evenly
-    across output splits.
+    across output splits. If the `equal` option is set, the operator will furthermore
+    guarantee an exact split of rows across outputs, truncating the Dataset.
 
-    If the `equal` option is set, the operator will furthermore guarantee an exact
-    split of rows across outputs, truncating the Dataset as needed.
+    Implementation wise, this operator keeps an internal buffer of bundles. The buffer
+    has a minimum size calculated to enable a good locality hit rate, as well as ensure
+    we can satisfy the `equal` requirement.
 
     OutputSplitter does not provide any ordering guarantees.
     """
@@ -30,23 +36,61 @@ class OutputSplitter(PhysicalOperator):
         input_op: PhysicalOperator,
         n: int,
         equal: bool,
+        locality_hints: Optional[List[NodeIdStr]] = None,
     ):
         super().__init__(f"split({n}, equal={equal})", [input_op])
         self._equal = equal
         # Buffer of bundles not yet assigned to output splits.
         self._buffer: List[RefBundle] = []
         # The outputted bundles with output_split attribute set.
-        self._output_queue: List[RefBundle] = []
+        self._output_queue: deque[RefBundle] = deque()
         # The number of rows output to each output split so far.
         self._num_output: List[int] = [0 for _ in range(n)]
+
+        if locality_hints is not None:
+            if n != len(locality_hints):
+                raise ValueError(
+                    "Locality hints list must have length `n`: "
+                    f"len({locality_hints}) != {n}"
+                )
+        self._locality_hints = locality_hints
+        if locality_hints:
+            # To optimize locality, we should buffer a certain number of elements
+            # internally before dispatch to allow the locality algorithm a good chance
+            # of selecting a preferred location. We use a small multiple of `n` since
+            # it's reasonable to buffer a couple blocks per consumer.
+            self._min_buffer_size = 2 * n
+        else:
+            self._min_buffer_size = 0
+        self._locality_hits = 0
+        self._locality_misses = 0
+
+    def start(self, options: ExecutionOptions) -> None:
+        super().start(options)
+        # Force disable locality optimization.
+        if not options.actor_locality_enabled:
+            self._locality_hints = None
+            self._min_buffer_size = 0
+
+    def throttling_disabled(self) -> bool:
+        """Disables resource-based throttling.
+
+        It doesn't make sense to throttle the inputs to this operator, since all that
+        would do is lower the buffer size and prevent us from emitting outputs /
+        reduce the locality hit rate.
+        """
+        return True
 
     def has_next(self) -> bool:
         return len(self._output_queue) > 0
 
     def get_next(self) -> RefBundle:
-        return self._output_queue.pop()
+        return self._output_queue.popleft()
 
     def get_stats(self) -> StatsDict:
+        return {"split": []}  # TODO(ekl) add split metrics?
+
+    def get_metrics(self) -> Dict[str, int]:
         stats = {}
         for i, num in enumerate(self._num_output):
             stats[f"num_output_{i}"] = num
@@ -58,10 +102,11 @@ class OutputSplitter(PhysicalOperator):
         self._buffer.append(bundle)
         self._dispatch_bundles()
 
-    def inputs_done(self) -> None:
+    def all_inputs_done(self) -> None:
+        super().all_inputs_done()
         if not self._equal:
-            # There shouldn't be any buffered data if we're not in equal split mode.
-            assert not self._buffer
+            self._dispatch_bundles(dispatch_all=True)
+            assert not self._buffer, "Should have dispatched all bundles."
             return
 
         # Otherwise:
@@ -97,21 +142,29 @@ class OutputSplitter(PhysicalOperator):
         )
 
     def progress_str(self) -> str:
-        if self._equal:
-            return f"{len(self._buffer)} buffered"
-        assert not self._buffer
-        return ""
+        if self._locality_hints:
+            return locality_string(self._locality_hits, self._locality_misses)
+        else:
+            return "[locality disabled]"
 
-    def _dispatch_bundles(self) -> None:
+    def _dispatch_bundles(self, dispatch_all: bool = False) -> None:
         # Dispatch all dispatchable bundles from the internal buffer.
         # This may not dispatch all bundles when equal=True.
-        while self._buffer:
+        while self._buffer and (
+            dispatch_all or len(self._buffer) >= self._min_buffer_size
+        ):
             target_index = self._select_output_index()
             target_bundle = self._pop_bundle_to_dispatch(target_index)
             if self._can_safely_dispatch(target_index, target_bundle.num_rows()):
                 target_bundle.output_split_idx = target_index
                 self._num_output[target_index] += target_bundle.num_rows()
                 self._output_queue.append(target_bundle)
+                if self._locality_hints:
+                    preferred_loc = self._locality_hints[target_index]
+                    if self._get_location(target_bundle) == preferred_loc:
+                        self._locality_hits += 1
+                    else:
+                        self._locality_misses += 1
             else:
                 # Put it back and abort.
                 self._buffer.insert(0, target_bundle)
@@ -123,7 +176,12 @@ class OutputSplitter(PhysicalOperator):
         return i
 
     def _pop_bundle_to_dispatch(self, target_index: int) -> RefBundle:
-        # TODO implement locality aware bundle selection.
+        if self._locality_hints:
+            preferred_loc = self._locality_hints[target_index]
+            for bundle in self._buffer:
+                if self._get_location(bundle) == preferred_loc:
+                    self._buffer.remove(bundle)
+                    return bundle
         return self._buffer.pop(0)
 
     def _can_safely_dispatch(self, target_index: int, nrow: int) -> bool:
@@ -159,6 +217,16 @@ class OutputSplitter(PhysicalOperator):
 
         assert sum(b.num_rows() for b in output) == nrow, (acc, nrow)
         return output
+
+    def _get_location(self, bundle: RefBundle) -> Optional[NodeIdStr]:
+        """Ask Ray for the node id of the given bundle.
+
+        This method may be overriden for testing.
+
+        Returns:
+            A node id associated with the bundle, or None if unknown.
+        """
+        return bundle.get_cached_location()
 
 
 def _split(bundle: RefBundle, left_size: int) -> (RefBundle, RefBundle):

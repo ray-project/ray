@@ -1,0 +1,21 @@
+base_image: {{ env["RAY_IMAGE_ML_NIGHTLY_GPU"] | default("anyscale/ray:nightly-py38-cu118") }}
+env_vars: {}
+debian_packages:
+  - curl
+
+python:
+  pip_packages:
+    - "datasets"
+    - "evaluate"
+    - "scikit-learn"
+    - "boto3"
+    - myst-parser==0.15.2
+    - myst-nb==0.13.1
+    - jupytext==1.13.6
+  conda_packages: []
+
+post_build_cmds:
+  - pip uninstall -y ray || true && pip3 install -U {{ env["RAY_WHEELS"] | default("ray") }}
+  - {{ env["RAY_WHEELS_SANITY_CHECK"] | default("echo No Ray wheels sanity check") }}
+  - pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
+  - pip3 install "pytorch_lightning==2.0.2" "transformers==4.29.2" "accelerate==0.19.0"

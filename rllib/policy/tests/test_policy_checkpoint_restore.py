@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 import os
-from pathlib import Path
+import tempfile
 import unittest
 import gymnasium as gym
 
@@ -58,43 +58,41 @@ class TestPolicyFromCheckpoint(unittest.TestCase):
         return _do_checkpoint_twice_test("torch")
 
     def test_add_policy_connector_enabled(self):
-        rllib_dir = Path(__file__).parent.parent.parent
-        path_to_checkpoint = os.path.join(
-            rllib_dir,
-            "tests",
-            "data",
-            "checkpoints",
-            "APPO_CartPole-v1-connector-enabled",
-            "policies",
-            "default_policy",
-        )
-
-        policy = Policy.from_checkpoint(path_to_checkpoint)
-
-        self.assertIsNotNone(policy)
-
-        # Add this policy to a trainer.
-        trainer = APPOConfig().framework(framework="torch").build("CartPole-v0")
-
-        # Add the entire policy.
-        self.assertIsNotNone(trainer.add_policy("test_policy", policy=policy))
-
-        # Add the same policy, but using individual parameter API.
-        self.assertIsNotNone(
-            trainer.add_policy(
-                "test_policy_2",
-                policy_cls=type(policy),
-                observation_space=policy.observation_space,
-                action_space=policy.action_space,
-                config=policy.config,
-                policy_state=policy.get_state(),
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config = (
+                APPOConfig().environment("CartPole-v1").rollouts(enable_connectors=True)
             )
-        )
+            algo = config.build()
+            algo.save(checkpoint_dir=tmpdir)
+
+            path_to_checkpoint = os.path.join(
+                tmpdir, "checkpoint_000000", "policies", "default_policy"
+            )
+
+            policy = Policy.from_checkpoint(path_to_checkpoint)
+
+            self.assertIsNotNone(policy)
+
+            # Add this policy to an Algorithm.
+            algo = APPOConfig().framework(framework="torch").build("CartPole-v0")
+
+            # Add the entire policy.
+            self.assertIsNotNone(algo.add_policy("test_policy", policy=policy))
+
+            # Add the same policy, but using individual parameter API.
+            self.assertIsNotNone(
+                algo.add_policy(
+                    "test_policy_2",
+                    policy_cls=type(policy),
+                    observation_space=policy.observation_space,
+                    action_space=policy.action_space,
+                    config=policy.config,
+                    policy_state=policy.get_state(),
+                )
+            )
 
     def test_restore_checkpoint_with_nested_obs_space(self):
-
-        from ray.rllib.algorithms.ppo.ppo_torch_policy import PPOTorchPolicy
-        from ray.rllib.models.catalog import MODEL_DEFAULTS
+        from ray.rllib.algorithms.ppo.ppo import PPOConfig
 
         obs_space = gym.spaces.Box(low=0, high=1, shape=(4,))
         # create 10 levels of nested observation space
@@ -103,7 +101,20 @@ class TestPolicyFromCheckpoint(unittest.TestCase):
             space.original_space = gym.spaces.Discrete(2)
             space = space.original_space
 
-        policy = PPOTorchPolicy(obs_space, gym.spaces.Discrete(2), MODEL_DEFAULTS)
+        # TODO(Artur): Construct a PPO policy here without the algorithm once we are
+        #  able to do that with RLModules.
+        policy = (
+            PPOConfig()
+            .environment(
+                observation_space=obs_space, action_space=gym.spaces.Discrete(2)
+            )
+            # Note (Artur): We have to choose num_rollout_workers=0 here, because
+            # otherwise RolloutWorker will be health-checked without an env which
+            # raises an error. You could also disable the health-check here.
+            .rollouts(num_rollout_workers=0)
+            .build()
+            .get_policy()
+        )
 
         ckpt_dir = "/tmp/test_ckpt"
         policy.export_checkpoint(ckpt_dir)

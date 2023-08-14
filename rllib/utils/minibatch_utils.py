@@ -2,6 +2,7 @@ import math
 
 from ray.rllib.policy.sample_batch import MultiAgentBatch, concat_samples
 from ray.rllib.utils.annotations import DeveloperAPI
+from ray.rllib.policy.sample_batch import SampleBatch
 
 
 @DeveloperAPI
@@ -35,9 +36,9 @@ class MiniBatchCyclicIterator(MiniBatchIteratorBase):
     Args:
         batch: The input multi-agent batch.
         minibatch_size: The size of the minibatch for each module_id.
-        num_iters: The number of epochs to cover. If the input batch is smaller than
-            minibatch_size, then the iterator will cycle through the batch until it
-            has covered num_iters epochs.
+        num_iters: The minimum number of epochs to cover. If the input batch is smaller
+            than minibatch_size, then the iterator will cycle through the batch until
+            it has covered at least num_iters epochs.
     """
 
     def __init__(
@@ -54,32 +55,64 @@ class MiniBatchCyclicIterator(MiniBatchIteratorBase):
         self._num_covered_epochs = {mid: 0 for mid in batch.policy_batches.keys()}
 
     def __iter__(self):
-
         while min(self._num_covered_epochs.values()) < self._num_iters:
+
             minibatch = {}
             for module_id, module_batch in self._batch.policy_batches.items():
+
+                if len(module_batch) == 0:
+                    raise ValueError(
+                        f"The batch for module_id {module_id} is empty! "
+                        "This will create an infinite loop because we need to cover "
+                        "the same number of samples for each module_id."
+                    )
                 s = self._start[module_id]  # start
-                e = s + self._minibatch_size  # end
+                n_steps = self._minibatch_size
 
                 samples_to_concat = []
-                # cycle through the batch until we have enough samples
-                while e >= len(module_batch):
-                    samples_to_concat.append(module_batch[s:])
-                    e = self._minibatch_size - len(module_batch[s:])
+
+                # get_len is a function that returns the length of a batch
+                # if we are not slicing the batch in the batch dimension B, then
+                # the length of the batch is simply the length of the batch
+                # o.w the length of the batch is the length list of seq_lens.
+                if module_batch._slice_seq_lens_in_B:
+                    assert module_batch.get(SampleBatch.SEQ_LENS) is not None, (
+                        "MiniBatchCyclicIterator requires SampleBatch.SEQ_LENS"
+                        "to be present in the batch for slicing a batch in the batch "
+                        "dimension B."
+                    )
+
+                    def get_len(b):
+                        return len(b[SampleBatch.SEQ_LENS])
+
+                else:
+
+                    def get_len(b):
+                        return len(b)
+
+                # Cycle through the batch until we have enough samples
+                while n_steps >= get_len(module_batch) - s:
+                    sample = module_batch[s:]
+                    samples_to_concat.append(sample)
+                    len_sample = get_len(sample)
+                    assert len_sample > 0, "Length of a sample must be > 0!"
+                    n_steps -= len_sample
                     s = 0
                     self._num_covered_epochs[module_id] += 1
 
-                samples_to_concat.append(module_batch[s:e])
+                e = s + n_steps  # end
+                if e > s:
+                    samples_to_concat.append(module_batch[s:e])
 
                 # concatenate all the samples, we should have minibatch_size of sample
                 # after this step
                 minibatch[module_id] = concat_samples(samples_to_concat)
-                # roll miniback to zero when we reach the end of the batch
+                # roll minibatch to zero when we reach the end of the batch
                 self._start[module_id] = e
 
-            # TODO (Kourosh): len(batch) is not correct here. However it's also not
-            # clear what the correct value should be. Since training does not depend on
-            # this it will be fine for now.
+            # Note (Kourosh): env_steps is the total number of env_steps that this
+            # multi-agent batch is covering. It should be simply inherited from the
+            # original multi-agent batch.
             minibatch = MultiAgentBatch(minibatch, len(self._batch))
             yield minibatch
 

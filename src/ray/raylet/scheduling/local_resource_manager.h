@@ -24,11 +24,11 @@
 #include "absl/container/flat_hash_set.h"
 #include "ray/common/bundle_spec.h"
 #include "ray/common/ray_syncer/ray_syncer.h"
-#include "ray/common/task/scheduling_resources.h"
+#include "ray/common/scheduling/cluster_resource_data.h"
+#include "ray/common/scheduling/fixed_point.h"
+#include "ray/common/scheduling/scheduling_resources.h"
 #include "ray/gcs/gcs_client/accessor.h"
 #include "ray/gcs/gcs_client/gcs_client.h"
-#include "ray/raylet/scheduling/cluster_resource_data.h"
-#include "ray/raylet/scheduling/fixed_point.h"
 #include "ray/util/logging.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
@@ -153,6 +153,14 @@ class LocalResourceManager : public syncer::ReporterInterface {
   /// Record the metrics.
   void RecordMetrics() const;
 
+  bool IsLocalNodeIdle() const { return GetResourceIdleTime() != absl::nullopt; }
+
+  /// Change the local node to the draining state.
+  /// After that, no new tasks can be scheduled onto the local node.
+  void SetLocalNodeDraining();
+
+  bool IsLocalNodeDraining() const { return is_local_node_draining_; }
+
  private:
   struct ResourceUsage {
     double avail;
@@ -164,14 +172,19 @@ class LocalResourceManager : public syncer::ReporterInterface {
   absl::flat_hash_map<std::string, LocalResourceManager::ResourceUsage>
   GetResourceUsageMap() const;
 
-  /// Notify the subscriber that the local resouces has changed.
-  void OnResourceChanged();
+  /// Notify the subscriber that the local resouces or state has changed.
+  void OnResourceOrStateChanged();
+
+  /// Convert local resources to NodeResources.
+  NodeResources ToNodeResources() const;
 
   /// Increase the available capacities of the instances of a given resource.
   ///
   /// \param available A list of available capacities for resource's instances.
   /// \param local_total Local total resource instances.
   /// \param local_available Local available resource instances being updated.
+  /// \param[out] is_idle Pointer to record if the resource are idle after the
+  ///       addition. This is nullptr if not recording idle resources.
   ///
   /// \return Overflow capacities of "local_available" after adding instance
   /// capacities in "available", i.e.,
@@ -179,7 +192,8 @@ class LocalResourceManager : public syncer::ReporterInterface {
   std::vector<FixedPoint> AddAvailableResourceInstances(
       const std::vector<FixedPoint> &available,
       const std::vector<FixedPoint> &local_total,
-      std::vector<FixedPoint> &local_available) const;
+      std::vector<FixedPoint> &local_available,
+      bool *is_idle = nullptr) const;
 
   /// Decrease the available capacities of the instances of a given resource.
   ///
@@ -246,14 +260,27 @@ class LocalResourceManager : public syncer::ReporterInterface {
   /// added back to the node's local available resources.
   ///
   /// \param task_allocation: Task's resources to be freed.
-  void FreeTaskResourceInstances(std::shared_ptr<TaskResourceInstances> task_allocation);
+  /// \param record_idle_resource: Whether to record the idle resource. This is false
+  ///   when the resource was allocated partially so its idle state is actually not
+  ///   affected.
+  void FreeTaskResourceInstances(std::shared_ptr<TaskResourceInstances> task_allocation,
+                                 bool record_idle_resource = true);
 
   void UpdateAvailableObjectStoreMemResource();
+
+  void SetResourceIdle(const scheduling::ResourceID &resource_id);
+
+  void SetResourceNonIdle(const scheduling::ResourceID &resource_id);
+
+  absl::optional<absl::Time> GetResourceIdleTime() const;
 
   /// Identifier of local node.
   scheduling::NodeID local_node_id_;
   /// Resources of local node.
   NodeResourceInstances local_resources_;
+  /// A map storing when the resource was last idle.
+  absl::flat_hash_map<scheduling::ResourceID, absl::optional<absl::Time>>
+      resources_last_idle_time_;
   /// Cached resources, used to compare with newest one in light heartbeat mode.
   std::unique_ptr<NodeResources> last_report_resources_;
   /// Function to get used object store memory.
@@ -263,14 +290,11 @@ class LocalResourceManager : public syncer::ReporterInterface {
   /// Subscribes to resource changes.
   std::function<void(const NodeResources &)> resource_change_subscriber_;
 
-  // Specify predefine resources that consists of unit-size instances.
-  std::unordered_set<int64_t> predefined_unit_instance_resources_{};
-
-  // Specify custom resources that consists of unit-size instances.
-  std::unordered_set<int64_t> custom_unit_instance_resources_{};
-
   // Version of this resource. It will incr by one whenever the state changed.
   int64_t version_ = 0;
+
+  // Whether the local node is being drained or not.
+  bool is_local_node_draining_ = false;
 
   FRIEND_TEST(ClusterResourceSchedulerTest, SchedulingUpdateTotalResourcesTest);
   FRIEND_TEST(ClusterResourceSchedulerTest, AvailableResourceInstancesOpsTest);
@@ -280,9 +304,12 @@ class LocalResourceManager : public syncer::ReporterInterface {
   FRIEND_TEST(ClusterResourceSchedulerTest, TaskResourceInstanceWithHardRequestTest);
   FRIEND_TEST(ClusterResourceSchedulerTest, TaskResourceInstanceWithoutCpuUnitTest);
   FRIEND_TEST(ClusterResourceSchedulerTest, CustomResourceInstanceTest);
+  FRIEND_TEST(ClusterResourceSchedulerTest, TaskGPUResourceInstancesTest);
 
   friend class LocalResourceManagerTest;
   FRIEND_TEST(LocalResourceManagerTest, BasicGetResourceUsageMapTest);
+  FRIEND_TEST(LocalResourceManagerTest, IdleResourceTimeTest);
+  FRIEND_TEST(LocalResourceManagerTest, ObjectStoreMemoryDrainingTest);
 };
 
 }  // end namespace ray

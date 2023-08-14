@@ -11,9 +11,12 @@ from ray._private.test_utils import (
     run_string_as_driver,
     wait_for_condition,
     get_gcs_memory_used,
+    run_string_as_driver_nonblocking,
 )
 from ray.experimental.internal_kv import _internal_kv_list
 from ray.tests.conftest import call_ray_start
+import subprocess
+import psutil
 
 
 @pytest.fixture
@@ -254,6 +257,222 @@ assert ray.get_runtime_context().get_job_id() == '02000000'
 """
     run_string_as_driver(script.format(address=call_ray_start, val=1))
     run_string_as_driver(script.format(address=call_ray_start_2, val=2))
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="Only works on linux.")
+def test_gcs_connection_no_leak(ray_start_cluster):
+    cluster = ray_start_cluster
+    head_node = cluster.add_node()
+
+    gcs_server_process = head_node.all_processes["gcs_server"][0].process
+    gcs_server_pid = gcs_server_process.pid
+
+    ray.init(cluster.address)
+
+    def get_gcs_num_of_connections():
+        p = psutil.Process(gcs_server_pid)
+        print(">>", len(p.connections()))
+        return len(p.connections())
+
+    # Wait for everything to be ready.
+    import time
+
+    time.sleep(10)
+
+    fds_without_workers = get_gcs_num_of_connections()
+
+    @ray.remote
+    class A:
+        def ready(self):
+            print("HELLO")
+            return "WORLD"
+
+    num_of_actors = 10
+    actors = [A.remote() for _ in range(num_of_actors)]
+    print(ray.get([t.ready.remote() for t in actors]))
+
+    # Kill the actors
+    del actors
+
+    # Make sure the # of fds opened by the GCS dropped.
+    # This assumes worker processes are not created after the actor worker
+    # processes die.
+    wait_for_condition(lambda: get_gcs_num_of_connections() <= fds_without_workers)
+    num_fds_after_workers_die = get_gcs_num_of_connections()
+
+    n = cluster.add_node(wait=True)
+
+    # Make sure the # of fds opened by the GCS increased.
+    wait_for_condition(lambda: get_gcs_num_of_connections() > num_fds_after_workers_die)
+
+    cluster.remove_node(n)
+
+    # Make sure the # of fds opened by the GCS dropped.
+    wait_for_condition(lambda: get_gcs_num_of_connections() <= fds_without_workers)
+
+
+@pytest.mark.parametrize(
+    "call_ray_start",
+    ["ray start --head --num-cpus=2"],
+    indirect=True,
+)
+def test_demands_when_driver_exits(call_ray_start):
+    script = f"""
+import ray
+ray.init(address='{call_ray_start}')
+
+import os
+import time
+@ray.remote(num_cpus=3)
+def use_gpu():
+    time.sleep(1)
+
+@ray.remote(num_gpus=10)
+class A:
+    pass
+
+A.options(name="a", lifetime="detached").remote()
+
+print(ray.get([use_gpu.remote(), use_gpu.remote()]))
+"""
+
+    proc = run_string_as_driver_nonblocking(script)
+    gcs_cli = ray._raylet.GcsClient(address=f"{call_ray_start}")
+
+    def check_demands(n):
+        status = gcs_cli.internal_kv_get(
+            ray._private.ray_constants.DEBUG_AUTOSCALING_STATUS.encode(), namespace=None
+        )
+        import json
+
+        status = json.loads(status.decode())
+        return len(status["load_metrics_report"]["resource_demand"]) == n
+
+    wait_for_condition(lambda: check_demands(2))
+    proc.terminate()
+    wait_for_condition(lambda: check_demands(1))
+
+
+@pytest.mark.skipif(enable_external_redis(), reason="Only valid in non redis env")
+def test_redis_not_available(monkeypatch, call_ray_stop_only):
+    monkeypatch.setenv("RAY_NUM_REDIS_GET_RETRIES", "2")
+    monkeypatch.setenv("RAY_REDIS_ADDRESS", "localhost:12345")
+    p = subprocess.run(
+        "ray start --head",
+        shell=True,
+        capture_output=True,
+    )
+    assert "Could not establish connection to Redis" in p.stderr.decode()
+    assert "Please check" in p.stderr.decode()
+    assert "gcs_server.out for details" in p.stderr.decode()
+    assert "RuntimeError: Failed to start GCS" in p.stderr.decode()
+
+
+@pytest.mark.skipif(not enable_external_redis(), reason="Only valid in redis env")
+def test_redis_wrong_password(monkeypatch, external_redis, call_ray_stop_only):
+    monkeypatch.setenv("RAY_NUM_REDIS_GET_RETRIES", "2")
+    p = subprocess.run(
+        "ray start --head  --redis-password=1234",
+        shell=True,
+        capture_output=True,
+    )
+
+    assert "RedisError: ERR AUTH <password> called" in p.stderr.decode()
+    assert "Please check /tmp/ray/session" in p.stderr.decode()
+    assert "RuntimeError: Failed to start GCS" in p.stderr.decode()
+
+
+@pytest.mark.skipif(not enable_external_redis(), reason="Only valid in redis env")
+def test_redis_full(ray_start_cluster_head):
+    import os
+    import redis
+
+    gcs_address = ray_start_cluster_head.gcs_address
+    redis_addr = os.environ["RAY_REDIS_ADDRESS"]
+    host, port = redis_addr.split(":")
+    if os.environ.get("TEST_EXTERNAL_REDIS_REPLICAS", "1") != "1":
+        cli = redis.RedisCluster(host, int(port))
+    else:
+        cli = redis.Redis(host, int(port))
+    # Set the max memory to 10MB
+    cli.config_set("maxmemory", 5 * 1024 * 1024)
+
+    gcs_cli = ray._raylet.GcsClient(address=gcs_address)
+    # GCS should fail
+    with pytest.raises(ray.exceptions.RpcError):
+        gcs_cli.internal_kv_put(b"A", b"A" * 6 * 1024 * 1024, True, None)
+    logs_dir = ray_start_cluster_head.head_node._logs_dir
+
+    with open(os.path.join(logs_dir, "gcs_server.err")) as err:
+        assert "OOM command not allowed when used" in err.read()
+
+
+def test_omp_threads_set_third_party(ray_start_cluster, monkeypatch):
+    ###########################
+    # Test the OMP_NUM_THREADS are picked up by 3rd party libraries
+    # when running tasks if no OMP_NUM_THREADS is set by user.
+    # e.g. numpy, numexpr
+    ###########################
+    with monkeypatch.context() as m:
+        m.delenv("OMP_NUM_THREADS", raising=False)
+
+        cluster = ray_start_cluster
+        cluster.add_node(num_cpus=4)
+        ray.init(address=cluster.address)
+
+        @ray.remote(num_cpus=2)
+        def f():
+            # Assert numpy using 2 threads for it's parallelism backend.
+            import numpy  # noqa: F401
+            from threadpoolctl import threadpool_info
+
+            for pool_info in threadpool_info():
+                assert pool_info["num_threads"] == 2
+
+            import numexpr
+
+            assert numexpr.nthreads == 2
+            return True
+
+        assert ray.get(f.remote())
+
+
+def test_gcs_fd_usage(shutdown_only):
+    ray.init(
+        _system_config={
+            "prestart_worker_first_driver": False,
+            "enable_worker_prestart": False,
+        },
+    )
+    gcs_process = ray._private.worker._global_node.all_processes["gcs_server"][0]
+    gcs_process = psutil.Process(gcs_process.process.pid)
+    print("GCS connections", len(gcs_process.connections()))
+
+    @ray.remote(runtime_env={"env_vars": {"Hello": "World"}})
+    class A:
+        def f(self):
+            import os
+
+            return os.environ.get("Hello")
+
+    # In case there are still some pre-start workers, consume all of them
+    aa = [A.remote() for _ in range(32)]
+    for a in aa:
+        assert ray.get(a.f.remote()) == "World"
+    base_fd_num = len(gcs_process.connections())
+    print("GCS connections", base_fd_num)
+
+    bb = [A.remote() for _ in range(16)]
+    for b in bb:
+        assert ray.get(b.f.remote()) == "World"
+    new_fd_num = len(gcs_process.connections())
+    print("GCS connections", new_fd_num)
+    # each worker has two connections:
+    #   GCS -> CoreWorker
+    #   CoreWorker -> GCS
+    # Sometimes, there is one more sockets opened. The reason
+    # is still unknown.
+    assert (new_fd_num - base_fd_num) <= len(bb) * 2 + 1
 
 
 if __name__ == "__main__":

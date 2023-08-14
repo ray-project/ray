@@ -1,8 +1,9 @@
 from typing import Tuple
 
 import ray
-from ray.data.aggregate import _AggregateOnKeyBase, Max, Mean, Min, Sum
-from ray.data.block import Block, KeyFn
+from ray.data.aggregate import Max, Mean, Min, Sum
+from ray.data.aggregate._aggregate import _AggregateOnKeyBase
+from ray.data.block import Block
 from ray.data.dataset import Dataset
 import pyarrow.compute as pac
 
@@ -28,7 +29,7 @@ def run_h2oai(benchmark: Benchmark):
         # Number of blocks (parallelism) should be set as number of available CPUs
         # to get best performance.
         num_blocks = int(ray.cluster_resources().get("CPU", 1))
-        input_ds = input_ds.repartition(num_blocks).fully_executed()
+        input_ds = input_ds.repartition(num_blocks).materialize()
 
         q_list = [
             (h2oai_q1, "q1"),
@@ -73,7 +74,10 @@ def h2oai_q6(ds: Dataset) -> Dataset:
 
 def h2oai_q7(ds: Dataset) -> Dataset:
     ds = ds.groupby("id3").aggregate(Max("v1"), Min("v2"))
-    ds = ds.map_batches(lambda df: df.assign(result=df["max(v1)"] - df["min(v2)"]))
+    ds = ds.map_batches(
+        lambda df: df.assign(result=df["max(v1)"] - df["min(v2)"]),
+        batch_format="pandas",
+    )
     return ds
 
 
@@ -99,7 +103,7 @@ def h2oai_q8(ds: Dataset) -> Dataset:
         return (value1, value2)
 
     class Top2(_AggregateOnKeyBase):
-        def __init__(self, on: KeyFn):
+        def __init__(self, on):
             self._set_key_fn(on)
             super().__init__(
                 init=lambda _: (float("-inf"), float("-inf")),

@@ -4,7 +4,7 @@ import os
 import time
 
 import ray
-from ray.air.config import DatasetConfig, ScalingConfig
+from ray.train import ScalingConfig
 from ray.air.util.check_ingest import DummyTrainer
 from ray.data.preprocessors import BatchMapper
 
@@ -34,8 +34,7 @@ def run_ingest_bulk(dataset, num_workers, num_cpus_per_worker):
         datasets={"train": dataset},
         preprocessor=dummy_prep,
         num_epochs=1,
-        prefetch_blocks=1,
-        dataset_config={"train": DatasetConfig(split=True)},
+        prefetch_batches=1,
     )
     trainer.fit()
 

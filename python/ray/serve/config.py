@@ -12,9 +12,12 @@ from pydantic import (
     NonNegativeInt,
     PositiveInt,
     validator,
+    Field,
 )
 
 from ray import cloudpickle
+from ray.util.placement_group import VALID_PLACEMENT_GROUP_STRATEGIES
+
 from ray.serve._private.constants import (
     DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT_S,
     DEFAULT_GRACEFUL_SHUTDOWN_WAIT_LOOP_S,
@@ -22,8 +25,9 @@ from ray.serve._private.constants import (
     DEFAULT_HEALTH_CHECK_TIMEOUT_S,
     DEFAULT_HTTP_HOST,
     DEFAULT_HTTP_PORT,
+    DEFAULT_MAX_CONCURRENT_QUERIES,
 )
-from ray.serve._private.utils import DEFAULT
+from ray.serve._private.utils import DEFAULT, DeploymentOptionUpdateType
 from ray.serve.generated.serve_pb2 import (
     DeploymentConfig as DeploymentConfigProto,
     DeploymentLanguage,
@@ -32,6 +36,7 @@ from ray.serve.generated.serve_pb2 import (
 )
 from ray._private import ray_option_utils
 from ray._private.utils import resources_from_ray_options
+from ray._private.serialization import pickle_dumps
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
 
@@ -140,23 +145,39 @@ class DeploymentConfig(BaseModel):
             The names of options manually configured by the user.
     """
 
-    num_replicas: NonNegativeInt = 1
-    max_concurrent_queries: Optional[int] = None
-    user_config: Any = None
-
-    graceful_shutdown_timeout_s: NonNegativeFloat = (
-        DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT_S  # noqa: E501
+    num_replicas: NonNegativeInt = Field(
+        default=1, update_type=DeploymentOptionUpdateType.LightWeight
     )
-    graceful_shutdown_wait_loop_s: NonNegativeFloat = (
-        DEFAULT_GRACEFUL_SHUTDOWN_WAIT_LOOP_S  # noqa: E501
+    max_concurrent_queries: Optional[int] = Field(
+        default=None, update_type=DeploymentOptionUpdateType.NeedsReconfigure
+    )
+    user_config: Any = Field(
+        default=None, update_type=DeploymentOptionUpdateType.NeedsActorReconfigure
     )
 
-    health_check_period_s: PositiveFloat = DEFAULT_HEALTH_CHECK_PERIOD_S
-    health_check_timeout_s: PositiveFloat = DEFAULT_HEALTH_CHECK_TIMEOUT_S
+    graceful_shutdown_timeout_s: NonNegativeFloat = Field(
+        default=DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT_S,
+        update_type=DeploymentOptionUpdateType.NeedsReconfigure,
+    )
+    graceful_shutdown_wait_loop_s: NonNegativeFloat = Field(
+        default=DEFAULT_GRACEFUL_SHUTDOWN_WAIT_LOOP_S,
+        update_type=DeploymentOptionUpdateType.NeedsActorReconfigure,
+    )
 
-    autoscaling_config: Optional[AutoscalingConfig] = None
+    health_check_period_s: PositiveFloat = Field(
+        default=DEFAULT_HEALTH_CHECK_PERIOD_S,
+        update_type=DeploymentOptionUpdateType.NeedsReconfigure,
+    )
+    health_check_timeout_s: PositiveFloat = Field(
+        default=DEFAULT_HEALTH_CHECK_TIMEOUT_S,
+        update_type=DeploymentOptionUpdateType.NeedsReconfigure,
+    )
 
-    # This flag is used to let replica know they are deplyed from
+    autoscaling_config: Optional[AutoscalingConfig] = Field(
+        default=None, update_type=DeploymentOptionUpdateType.LightWeight
+    )
+
+    # This flag is used to let replica know they are deployed from
     # a different language.
     is_cross_language: bool = False
 
@@ -164,7 +185,10 @@ class DeploymentConfig(BaseModel):
     # the deploymnent use.
     deployment_language: Any = DeploymentLanguage.PYTHON
 
-    version: Optional[str] = None
+    version: Optional[str] = Field(
+        default=None,
+        update_type=DeploymentOptionUpdateType.HeavyWeight,
+    )
 
     # Contains the names of deployment options manually set by the user
     user_configured_option_names: Set[str] = set()
@@ -178,7 +202,7 @@ class DeploymentConfig(BaseModel):
     @validator("max_concurrent_queries", always=True)
     def set_max_queries_by_mode(cls, v, values):  # noqa 805
         if v is None:
-            v = 100
+            v = DEFAULT_MAX_CONCURRENT_QUERIES
         else:
             if v <= 0:
                 raise ValueError("max_concurrent_queries must be >= 0")
@@ -323,6 +347,8 @@ class ReplicaConfig:
         serialized_init_args: bytes,
         serialized_init_kwargs: bytes,
         ray_actor_options: Dict,
+        placement_group_bundles: Optional[List[Dict[str, float]]] = None,
+        placement_group_strategy: Optional[str] = None,
         needs_pickle: bool = True,
     ):
         """Construct a ReplicaConfig with serialized properties.
@@ -346,11 +372,29 @@ class ReplicaConfig:
         self.ray_actor_options = ray_actor_options
         self._validate_ray_actor_options()
 
+        self.placement_group_bundles = placement_group_bundles
+        self.placement_group_strategy = placement_group_strategy
+        self._validate_placement_group_options()
+
         # Create resource_dict. This contains info about the replica's resource
         # needs. It does NOT set the replica's resource usage. That's done by
         # the ray_actor_options.
         self.resource_dict = resources_from_ray_options(self.ray_actor_options)
         self.needs_pickle = needs_pickle
+
+    def update_ray_actor_options(self, ray_actor_options):
+        self.ray_actor_options = ray_actor_options
+        self._validate_ray_actor_options()
+        self.resource_dict = resources_from_ray_options(self.ray_actor_options)
+
+    def update_placement_group_options(
+        self,
+        placement_group_bundles: Optional[List[Dict[str, float]]],
+        placement_group_strategy: Optional[str],
+    ):
+        self.placement_group_bundles = placement_group_bundles
+        self.placement_group_strategy = placement_group_strategy
+        self._validate_placement_group_options()
 
     @classmethod
     def create(
@@ -359,6 +403,8 @@ class ReplicaConfig:
         init_args: Optional[Union[Tuple[Any], bytes]] = None,
         init_kwargs: Optional[Dict[Any, Any]] = None,
         ray_actor_options: Optional[Dict] = None,
+        placement_group_bundles: Optional[List[Dict[str, float]]] = None,
+        placement_group_strategy: Optional[str] = None,
         deployment_def_name: Optional[str] = None,
     ):
         """Create a ReplicaConfig from deserialized parameters."""
@@ -390,10 +436,15 @@ class ReplicaConfig:
 
         config = cls(
             deployment_def_name,
-            cloudpickle.dumps(deployment_def),
-            cloudpickle.dumps(init_args),
-            cloudpickle.dumps(init_kwargs),
+            pickle_dumps(
+                deployment_def,
+                f"Could not serialize the deployment {repr(deployment_def)}",
+            ),
+            pickle_dumps(init_args, "Could not serialize the deployment init args"),
+            pickle_dumps(init_kwargs, "Could not serialize the deployment init kwargs"),
             ray_actor_options,
+            placement_group_bundles,
+            placement_group_strategy,
         )
 
         config._deployment_def = deployment_def
@@ -402,8 +453,7 @@ class ReplicaConfig:
 
         return config
 
-    def _validate_ray_actor_options(self) -> None:
-
+    def _validate_ray_actor_options(self):
         if not isinstance(self.ray_actor_options, dict):
             raise TypeError(
                 f'Got invalid type "{type(self.ray_actor_options)}" for '
@@ -434,6 +484,88 @@ class ReplicaConfig:
         # Set Serve replica defaults
         if self.ray_actor_options.get("num_cpus") is None:
             self.ray_actor_options["num_cpus"] = 1
+
+    def _validate_placement_group_options(self) -> None:
+        if (
+            self.placement_group_strategy is not None
+            and self.placement_group_strategy not in VALID_PLACEMENT_GROUP_STRATEGIES
+        ):
+            raise ValueError(
+                f"Invalid placement group strategy '{self.placement_group_strategy}'. "
+                f"Supported strategies are: {VALID_PLACEMENT_GROUP_STRATEGIES}."
+            )
+
+        if (
+            self.placement_group_strategy is not None
+            and self.placement_group_bundles is None
+        ):
+            raise ValueError(
+                "If `placement_group_strategy` is provided, `placement_group_bundles` "
+                "must also be provided."
+            )
+
+        if self.placement_group_bundles is not None:
+            if (
+                not isinstance(self.placement_group_bundles, list)
+                or len(self.placement_group_bundles) == 0
+            ):
+                raise ValueError(
+                    "`placement_group_bundles` must be a non-empty list of resource "
+                    'dictionaries. For example: `[{"CPU": 1.0}, {"GPU": 1.0}]`.'
+                )
+
+            for i, bundle in enumerate(self.placement_group_bundles):
+                if (
+                    not isinstance(bundle, dict)
+                    or not all(isinstance(k, str) for k in bundle.keys())
+                    or not all(isinstance(v, (int, float)) for v in bundle.values())
+                ):
+                    raise ValueError(
+                        "`placement_group_bundles` must be a non-empty list of "
+                        "resource dictionaries. For example: "
+                        '`[{"CPU": 1.0}, {"GPU": 1.0}]`.'
+                    )
+
+                # Validate that the replica actor fits in the first bundle.
+                if i == 0:
+                    bundle_cpu = bundle.get("CPU", 0)
+                    replica_actor_num_cpus = self.ray_actor_options.get("num_cpus", 0)
+                    if bundle_cpu < replica_actor_num_cpus:
+                        raise ValueError(
+                            "When using `placement_group_bundles`, the replica actor "
+                            "will be placed in the first bundle, so the resource "
+                            "requirements for the actor must be a subset of the first "
+                            "bundle. `num_cpus` for the actor is "
+                            f"{replica_actor_num_cpus} but the bundle only has "
+                            f"{bundle_cpu} `CPU` specified."
+                        )
+
+                    bundle_gpu = bundle.get("GPU", 0)
+                    replica_actor_num_gpus = self.ray_actor_options.get("num_gpus", 0)
+                    if bundle_gpu < replica_actor_num_gpus:
+                        raise ValueError(
+                            "When using `placement_group_bundles`, the replica actor "
+                            "will be placed in the first bundle, so the resource "
+                            "requirements for the actor must be a subset of the first "
+                            "bundle. `num_gpus` for the actor is "
+                            f"{replica_actor_num_gpus} but the bundle only has "
+                            f"{bundle_gpu} `GPU` specified."
+                        )
+
+                    replica_actor_resources = self.ray_actor_options.get(
+                        "resources", {}
+                    )
+                    for actor_resource, actor_value in replica_actor_resources.items():
+                        bundle_value = bundle.get(actor_resource, 0)
+                        if bundle_value < actor_value:
+                            raise ValueError(
+                                "When using `placement_group_bundles`, the replica "
+                                "actor will be placed in the first bundle, so the "
+                                "resource requirements for the actor must be a subset "
+                                f"of the first bundle. `{actor_resource}` requirement "
+                                f"for the actor is {actor_value} but the bundle only "
+                                f"has {bundle_value} `{actor_resource}` specified."
+                            )
 
     @property
     def deployment_def(self) -> Union[Callable, str]:
@@ -493,6 +625,12 @@ class ReplicaConfig:
             proto.init_args if proto.init_args != b"" else None,
             proto.init_kwargs if proto.init_kwargs != b"" else None,
             json.loads(proto.ray_actor_options),
+            json.loads(proto.placement_group_bundles)
+            if proto.placement_group_bundles
+            else None,
+            proto.placement_group_strategy
+            if proto.placement_group_strategy != ""
+            else None,
             needs_pickle,
         )
 
@@ -508,12 +646,17 @@ class ReplicaConfig:
             init_args=self.serialized_init_args,
             init_kwargs=self.serialized_init_kwargs,
             ray_actor_options=json.dumps(self.ray_actor_options),
+            placement_group_bundles=json.dumps(self.placement_group_bundles)
+            if self.placement_group_bundles is not None
+            else "",
+            placement_group_strategy=self.placement_group_strategy,
         )
 
     def to_proto_bytes(self):
         return self.to_proto().SerializeToString()
 
 
+# Keep in sync with ServeDeploymentMode in dashboard/client/src/type/serve.ts
 @DeveloperAPI
 class DeploymentMode(str, Enum):
     NoServer = "NoServer"
@@ -534,6 +677,7 @@ class HTTPOptions(pydantic.BaseModel):
     root_path: str = ""
     fixed_number_replicas: Optional[int] = None
     fixed_number_selection_seed: int = 0
+    request_timeout_s: Optional[float] = None
 
     @validator("location", always=True)
     def location_backfill_no_server(cls, v, values):

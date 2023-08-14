@@ -20,7 +20,7 @@ parser.add_argument("--num-cpus", type=int, default=4)
 parser.add_argument(
     "--framework",
     choices=["tf", "tf2", "torch"],
-    default="tf",
+    default="torch",
     help="The DL framework specifier.",
 )
 parser.add_argument("--stop-iters", type=int, default=200)

@@ -15,6 +15,9 @@
 - [ ] I've signed off every commit(by using the -s flag, i.e., `git commit -s`) in this PR.
 - [ ] I've run `scripts/format.sh` to lint the changes in this PR.
 - [ ] I've included any doc changes needed for https://docs.ray.io/en/master/.
+    - [ ] I've added any new APIs to the API Reference. For example, if I added a 
+           method in Tune, I've added it in `doc/source/tune/api/` under the 
+           corresponding `.rst` file.
 - [ ] I've made sure the tests are passing. Note that there might be a few flaky tests, see the recent failures at https://flakey-tests.ray.io/
 - Testing Strategy
    - [ ] Unit tests

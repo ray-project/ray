@@ -28,6 +28,7 @@ $ python unity3d_client.py --inference-mode=local --game [path to game binary]
 """
 
 import argparse
+import gymnasium as gym
 import os
 
 import ray
@@ -49,7 +50,7 @@ parser.add_argument(
 parser.add_argument(
     "--framework",
     choices=["tf", "tf2", "torch"],
-    default="tf",
+    default="torch",
     help="The DL framework specifier.",
 )
 parser.add_argument(
@@ -132,6 +133,14 @@ if __name__ == "__main__":
         .rollouts(
             num_rollout_workers=args.num_workers,
             rollout_fragment_length=20,
+            enable_connectors=False,
+        )
+        .environment(
+            env=None,
+            # TODO: (sven) make these settings unnecessary and get the information
+            #  about the env spaces from the client.
+            observation_space=gym.spaces.Box(float("-inf"), float("inf"), (8,)),
+            action_space=gym.spaces.Box(-1.0, 1.0, (2,)),
         )
         .training(train_batch_size=256)
         # Multi-agent setup for the given env.
@@ -142,7 +151,12 @@ if __name__ == "__main__":
         .evaluation(off_policy_estimation_methods={})
     )
 
-    # Create the Trainer used for Policy serving.
+    # Disable RLModules because they need connectors
+    # TODO(Artur): Deprecate ExternalEnv and reenable connectors and RL Modules here
+    config.rl_module(_enable_rl_module_api=False)
+    config._enable_learner_api = False
+
+    # Create the Algorithm used for Policy serving.
     algo = config.build()
 
     # Attempt to restore from checkpoint if possible.
@@ -155,7 +169,7 @@ if __name__ == "__main__":
     # Serving and training loop.
     count = 0
     while True:
-        # Calls to train() will block on the configured `input` in the Trainer
+        # Calls to train() will block on the configured `input` in the Algorithm
         # config above (PolicyServerInput).
         print(algo.train())
         if count % args.checkpoint_freq == 0:

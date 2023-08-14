@@ -2,18 +2,19 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from ray.data._internal.execution.interfaces import (
     AllToAllTransformFn,
+    MapTransformFn,
     RefBundle,
     TaskContext,
+)
+from ray.data._internal.planner.exchange.pull_based_shuffle_task_scheduler import (
+    PullBasedShuffleTaskScheduler,
 )
 from ray.data._internal.planner.exchange.push_based_shuffle_task_scheduler import (
     PushBasedShuffleTaskScheduler,
 )
 from ray.data._internal.planner.exchange.shuffle_task_spec import ShuffleTaskSpec
-from ray.data._internal.planner.exchange.pull_based_shuffle_task_scheduler import (
-    PullBasedShuffleTaskScheduler,
-)
 from ray.data._internal.stats import StatsDict
-from ray.data.context import DatasetContext
+from ray.data.context import DataContext
 
 
 def generate_random_shuffle_fn(
@@ -28,9 +29,26 @@ def generate_random_shuffle_fn(
         ctx: TaskContext,
     ) -> Tuple[List[RefBundle], StatsDict]:
         num_input_blocks = sum(len(r.blocks) for r in refs)
-        shuffle_spec = ShuffleTaskSpec(random_shuffle=True, random_seed=seed)
 
-        if DatasetContext.get_current().use_push_based_shuffle:
+        # If map_transform_fn is specified (e.g. from fusing
+        # MapOperator->AllToAllOperator), we pass a map function which
+        # is applied to each block before shuffling.
+        map_transform_fn: Optional[MapTransformFn] = ctx.upstream_map_transform_fn
+        upstream_map_fn = None
+        nonlocal ray_remote_args
+        if map_transform_fn:
+            upstream_map_fn = lambda block: map_transform_fn(block, ctx)  # noqa: E731
+            # If there is a fused upstream operator,
+            # also use the ray_remote_args from the fused upstream operator.
+            ray_remote_args = ctx.upstream_map_ray_remote_args
+
+        shuffle_spec = ShuffleTaskSpec(
+            random_shuffle=True,
+            random_seed=seed,
+            upstream_map_fn=upstream_map_fn,
+        )
+
+        if DataContext.get_current().use_push_based_shuffle:
             if num_outputs is not None:
                 raise NotImplementedError(
                     "Push-based shuffle doesn't support setting num_blocks yet."
@@ -42,6 +60,7 @@ def generate_random_shuffle_fn(
         return scheduler.execute(
             refs,
             num_outputs or num_input_blocks,
+            ctx=ctx,
             map_ray_remote_args=ray_remote_args,
             reduce_ray_remote_args=ray_remote_args,
         )

@@ -1,4 +1,5 @@
-"""Example of using custom_loss() with an imitation learning loss.
+"""Example of using custom_loss() with an imitation learning loss under the Policy
+and ModelV2 API.
 
 The default input file is too small to learn a good policy, but you can
 generate new experiences for IL training as follows:
@@ -35,7 +36,7 @@ parser.add_argument(
 parser.add_argument(
     "--framework",
     choices=["tf", "tf2", "torch"],
-    default="tf",
+    default="torch",
     help="The DL framework specifier.",
 )
 parser.add_argument("--stop-iters", type=int, default=200)
@@ -64,6 +65,8 @@ if __name__ == "__main__":
         TorchCustomLossModel if args.framework == "torch" else CustomLossModel,
     )
 
+    # TODO (Kourosh): This example needs to be migrated to the new RLModule / Learner
+    # API. Users should just inherit the Learner and extend the loss_fn.
     config = (
         get_trainable_cls(args.run)
         .get_default_config()
@@ -76,10 +79,12 @@ if __name__ == "__main__":
                 "custom_model_config": {
                     "input_files": args.input_files,
                 },
-            }
+            },
+            _enable_learner_api=False,
         )
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
         .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
+        .rl_module(_enable_rl_module_api=False)
     )
 
     stop = {

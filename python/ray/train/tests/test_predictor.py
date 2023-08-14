@@ -6,8 +6,9 @@ import pandas as pd
 import numpy as np
 
 import ray
-from ray.air.checkpoint import Checkpoint
+from ray.train import Checkpoint
 from ray.air.constants import PREPROCESSOR_KEY, TENSOR_COLUMN_NAME
+from ray.air.util.data_batch_conversion import BatchFormat
 from ray.data import Preprocessor
 from ray.train.predictor import Predictor, PredictorNotSerializableException
 
@@ -34,9 +35,14 @@ class DummyWithNumpyPreprocessor(DummyPreprocessor):
         self, np_data: Union[np.ndarray, Dict[str, np.ndarray]]
     ) -> Union[np.ndarray, Dict[str, np.ndarray]]:
         self.inputs.append(np_data)
+        assert isinstance(np_data, np.ndarray)
         rst = np_data * self.multiplier
         self.outputs.append(rst)
         return rst
+
+    @classmethod
+    def preferred_batch_format(cls) -> BatchFormat:
+        return BatchFormat.NUMPY
 
 
 class DummyPredictor(Predictor):
@@ -53,7 +59,7 @@ class DummyPredictor(Predictor):
         return cls(checkpoint_data["factor"], preprocessor)
 
     def _predict_pandas(self, data: pd.DataFrame, **kwargs) -> pd.DataFrame:
-        return data * self.factor
+        return pd.DataFrame({"predictions": data.iloc[:, 0] * self.factor})
 
 
 class DummyWithNumpyPredictor(DummyPredictor):
@@ -61,6 +67,10 @@ class DummyWithNumpyPredictor(DummyPredictor):
         self, data: Union[np.ndarray, Dict[str, np.ndarray]], **kwargs
     ) -> Union[np.ndarray, Dict[str, np.ndarray]]:
         return data * self.factor
+
+    @classmethod
+    def preferred_batch_format(cls):
+        return BatchFormat.NUMPY
 
 
 def test_serialization():
@@ -91,7 +101,9 @@ def test_predict_pandas_with_pandas_data():
     predictor = DummyPredictor.from_checkpoint(checkpoint)
 
     actual_output = predictor.predict(input)
-    pd.testing.assert_frame_equal(actual_output, pd.DataFrame({"x": [4.0, 8.0, 12.0]}))
+    pd.testing.assert_frame_equal(
+        actual_output, pd.DataFrame({"predictions": [4.0, 8.0, 12.0]})
+    )
     pd.testing.assert_frame_equal(
         predictor.get_preprocessor().inputs[0],
         pd.DataFrame({"x": [1, 2, 3]}),
@@ -107,16 +119,16 @@ def test_predict_pandas_with_pandas_data():
     )
     predictor = DummyPredictor.from_checkpoint(checkpoint)
     actual_output = predictor.predict(input)
-    pd.testing.assert_frame_equal(actual_output, pd.DataFrame({"x": [4.0, 8.0, 12.0]}))
-    # Nothing should change compare to previous path since preprocessor will
-    # go through Pandas path
     pd.testing.assert_frame_equal(
-        predictor.get_preprocessor().inputs[0],
-        pd.DataFrame({"x": [1, 2, 3]}),
+        actual_output, pd.DataFrame({"predictions": [4.0, 8.0, 12.0]})
     )
-    pd.testing.assert_frame_equal(
-        predictor.get_preprocessor().outputs[0],
-        pd.DataFrame({"x": [2, 4, 6]}),
+    # This Preprocessor has Numpy as the batch format preference.
+    np.testing.assert_array_equal(
+        predictor.get_preprocessor().inputs[0], np.array([1, 2, 3])
+    )
+
+    np.testing.assert_array_equal(
+        predictor.get_preprocessor().outputs[0], np.array([2, 4, 6])
     )
 
 
@@ -131,10 +143,11 @@ def test_predict_numpy_with_numpy_data():
     )
     predictor = DummyWithNumpyPredictor.from_checkpoint(checkpoint)
     actual_output = predictor.predict(input)
+    # Numpy is the preferred batch format for prediction.
     # Multiply by 2 from preprocessor, another multiply by 2.0 from predictor
-    pd.testing.assert_frame_equal(
-        actual_output, pd.DataFrame({TENSOR_COLUMN_NAME: [4.0, 8.0, 12.0]})
-    )
+    np.testing.assert_array_equal(actual_output, np.array([4.0, 8.0, 12.0]))
+
+    # Preprocessing is still done via Pandas path.
     pd.testing.assert_frame_equal(
         predictor.get_preprocessor().inputs[0],
         pd.DataFrame({TENSOR_COLUMN_NAME: [1, 2, 3]}),
@@ -144,7 +157,8 @@ def test_predict_numpy_with_numpy_data():
         pd.DataFrame({TENSOR_COLUMN_NAME: [2, 4, 6]}),
     )
 
-    # Test predict with both Numpy and Pandas preprocessor available
+    # Test predict with Numpy as preferred batch format for both Predictor and
+    # Preprocessor.
     checkpoint = Checkpoint.from_dict(
         {"factor": 2.0, PREPROCESSOR_KEY: DummyWithNumpyPreprocessor()}
     )
@@ -170,10 +184,11 @@ def test_predict_pandas_with_numpy_data():
     predictor = DummyPredictor.from_checkpoint(checkpoint)
     actual_output = predictor.predict(input)
 
+    # Predictor should return in the same format as the input.
     # Multiply by 2 from preprocessor, another multiply by 2.0 from predictor
-    pd.testing.assert_frame_equal(
-        actual_output, pd.DataFrame({TENSOR_COLUMN_NAME: [4.0, 8.0, 12.0]})
-    )
+    np.testing.assert_array_equal(actual_output, np.array([4.0, 8.0, 12.0]))
+
+    # Preprocessing should go through Pandas path.
     pd.testing.assert_frame_equal(
         predictor.get_preprocessor().inputs[0],
         pd.DataFrame({TENSOR_COLUMN_NAME: [1, 2, 3]}),
@@ -191,7 +206,7 @@ def test_predict_pandas_with_numpy_data():
 
     actual_output = predictor.predict(input)
     np.testing.assert_equal(actual_output, np.array([4.0, 8.0, 12.0]))
-    # Preprocessor should still go through the Numpy path
+    # Preprocessor should go through Numpy path since it is the preferred batch type.
     np.testing.assert_equal(predictor.get_preprocessor().inputs[0], np.array([1, 2, 3]))
     np.testing.assert_equal(
         predictor.get_preprocessor().outputs[0], np.array([2, 4, 6])

@@ -22,7 +22,7 @@ import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
 from ray import cloudpickle
 from ray._private import ray_constants
 from ray._private.client_mode_hook import disable_client_hook
-from ray._private.gcs_utils import GcsClient
+from ray._raylet import GcsClient
 from ray._private.ray_constants import env_integer
 from ray._private.ray_logging import setup_logger
 from ray._private.services import canonicalize_bootstrap_address_or_die
@@ -118,7 +118,7 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
     ) -> ray_client_pb2.InitResponse:
         if request.job_config:
             job_config = pickle.loads(request.job_config)
-            job_config.client_job = True
+            job_config._client_job = True
         else:
             job_config = None
         current_job_config = None
@@ -144,7 +144,7 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         # that tests the behavior of multiple clients with the same job config
         # connecting to one server (test_client_init.py::test_num_clients),
         # so I'm leaving it here for now.
-        job_config = job_config.get_proto_job_config()
+        job_config = job_config._get_proto_job_config()
         # If the server has been initialized, we need to compare whether the
         # runtime env is compatible.
         if current_job_config:
@@ -262,12 +262,13 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
             ctx = ray_client_pb2.ClusterInfoResponse.RuntimeContext()
             with disable_client_hook():
                 rtc = ray.get_runtime_context()
-                ctx.job_id = rtc.job_id.binary()
-                ctx.node_id = rtc.node_id.binary()
+                ctx.job_id = ray._private.utils.hex_to_binary(rtc.get_job_id())
+                ctx.node_id = ray._private.utils.hex_to_binary(rtc.get_node_id())
                 ctx.namespace = rtc.namespace
                 ctx.capture_client_tasks = (
                     rtc.should_capture_child_tasks_in_placement_group
                 )
+                ctx.gcs_address = rtc.gcs_address
                 ctx.runtime_env = rtc.get_runtime_env_string()
             resp.runtime_context.CopyFrom(ctx)
         else:
@@ -869,11 +870,11 @@ def main():
         help="Password for connecting to Redis",
     )
     parser.add_argument(
-        "--metrics-agent-port",
+        "--runtime-env-agent-address",
         required=False,
-        type=int,
-        default=0,
-        help="The port to use for connecting to the runtime_env agent.",
+        type=str,
+        default=None,
+        help="The port to use for connecting to the runtime_env_agent.",
     )
     args, _ = parser.parse_known_args()
     setup_logger(ray_constants.LOGGER_LEVEL, ray_constants.LOGGER_FORMAT)
@@ -881,13 +882,13 @@ def main():
     ray_connect_handler = create_ray_handler(args.address, args.redis_password)
 
     hostport = "%s:%d" % (args.host, args.port)
-    logger.info(f"Starting Ray Client server on {hostport}")
+    logger.info(f"Starting Ray Client server on {hostport}, args {args}")
     if args.mode == "proxy":
         server = serve_proxier(
             hostport,
             args.address,
             redis_password=args.redis_password,
-            runtime_env_agent_port=args.metrics_agent_port,
+            runtime_env_agent_address=args.runtime_env_agent_address,
         )
     else:
         server = serve(hostport, ray_connect_handler)

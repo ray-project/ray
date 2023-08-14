@@ -38,20 +38,34 @@ def main(old_dir_name, new_dir_name):
     for path in missing_in_old:
         print(old_dir_name, "does not have", path)
 
+    throughput_regressions = []
+    latency_regressions = []
+    missing_in_new = []
+    missing_in_old = []
     for path in to_compare:
         old = pathlib.Path(old_dir_name, *path.parts)
         new = pathlib.Path(new_dir_name, *path.parts)
 
-        regressions, missing_in_new, missing_in_old = get_regressions(old, new)
+        throughput, latency, new, old = get_regressions(old, new)
 
-        for perf_metric in missing_in_new:
-            print(f"{new} does not have {perf_metric}")
+        throughput_regressions.extend(throughput)
+        latency_regressions.extend(latency)
+        missing_in_new.extend(new)
+        missing_in_old.extend(old)
 
-        for perf_metric in missing_in_old:
-            print(f"{old} does not have {perf_metric}")
+    for perf_metric in missing_in_new:
+        print(f"{new} does not have {perf_metric}")
 
-        for regression in regressions:
-            print(regression)
+    for perf_metric in missing_in_old:
+        print(f"{old} does not have {perf_metric}")
+
+    throughput_regressions.sort()
+    for _, regression in throughput_regressions:
+        print(regression)
+
+    latency_regressions.sort(reverse=True)
+    for _, regression in latency_regressions:
+        print(regression)
 
 
 def walk(dir_name):
@@ -118,29 +132,27 @@ def get_regressions(old_path, new_path):
     )
 
     regressions = []
+    throughput_regressions = []
+    latency_regression = []
     for perf_metric_name in to_compare:
         perf_type = perf_metric_types[perf_metric_name]
         old_value = old_values[perf_metric_name]
         new_value = new_values[perf_metric_name]
 
         ratio = new_value / old_value
+        ratio_str = f"{100 * abs(ratio - 1):.02f}%"
+        regression_message = f"""REGRESSION {ratio_str}: {perf_metric_name} ({perf_type}) regresses from {old_value} to {new_value} ({ratio_str}) in {new_path}"""
 
         if perf_type == "THROUGHPUT":
-            is_regression = ratio < 1.0
+            if ratio < 1.0:
+                throughput_regressions.append((ratio, regression_message))
         elif perf_type == "LATENCY":
-            is_regression = ratio > 1.0
+            if ratio > 1.0:
+                latency_regression.append((ratio, regression_message))
         else:
             raise ValueError(f"perf_metric_name not of expected type {perf_type}")
 
-        if is_regression:
-            ratio_str = f"{100 * abs(ratio - 1):.02f}%"
-            regressions.append(
-                f"REGRESSION {ratio_str}: {perf_metric_name} ({perf_type}) "
-                f"regresses from {old_value} to {new_value} ({ratio_str}) "
-                f"in {new_path}"
-            )
-
-    return regressions, missing_in_new, missing_in_old
+    return throughput_regressions, latency_regression, missing_in_new, missing_in_old
 
 
 if __name__ == "__main__":

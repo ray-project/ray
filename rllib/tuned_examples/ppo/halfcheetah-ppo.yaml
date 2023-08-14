@@ -2,11 +2,11 @@ halfcheetah-ppo:
     env: HalfCheetah-v2
     run: PPO
     stop:
-        episode_reward_mean: 9800
+        sampler_results/episode_reward_mean: 9800
         time_total_s: 10800
     config:
         # Works for both torch and tf.
-        framework: tf
+        framework: torch
         gamma: 0.99
         lambda: 0.95
         kl_coeff: 1.0

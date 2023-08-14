@@ -2,7 +2,7 @@
 Decentralized Distributed PPO (DD-PPO)
 ======================================
 
-Unlike APPO or PPO, learning is no longer done centralized in the trainer
+Unlike APPO or PPO, learning is no longer done centralized in the Algorithm
 process. Instead, gradients are computed remotely on each rollout worker and
 all-reduced to sync them at each mini-batch. This allows each worker's GPU
 to be used both for sampling and for training.
@@ -25,7 +25,7 @@ from ray.rllib.algorithms.ppo import PPOConfig, PPO
 from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.deprecation import Deprecated
+from ray.rllib.utils.deprecation import Deprecated, ALGO_DEPRECATION_WARNING
 from ray.rllib.utils.metrics import (
     LEARN_ON_BATCH_TIMER,
     NUM_AGENT_STEPS_SAMPLED,
@@ -120,6 +120,18 @@ class DDPPOConfig(PPOConfig):
         # DDPPO
         self.kl_coeff = 0.0
         self.kl_target = 0.0
+        # TODO (Kourosh) RLModule and Learner API is not supported yet
+        self._enable_learner_api = False
+        self._enable_rl_module_api = False
+        self.exploration_config = {
+            # The Exploration class to use. In the simplest case, this is the name
+            # (str) of any class present in the `rllib.utils.exploration` package.
+            # You can also provide the python class directly or the full location
+            # of your class (e.g. "ray.rllib.utils.exploration.epsilon_greedy.
+            # EpsilonGreedy").
+            "type": "StochasticSampling",
+            # Add constructor kwargs here (if any).
+        }
         # __sphinx_doc_end__
         # fmt: on
 
@@ -136,7 +148,7 @@ class DDPPOConfig(PPOConfig):
         Args:
             keep_local_weights_in_sync: Download weights between each training step.
                 This adds a bit of overhead but allows the user to access the weights
-                from the trainer.
+                from the Algorithm.
             torch_distributed_backend: The communication backend for PyTorch
                 distributed.
 
@@ -215,6 +227,12 @@ class DDPPOConfig(PPOConfig):
             return self.rollout_fragment_length
 
 
+@Deprecated(
+    old="rllib/algorithms/ddppo/",
+    new="rllib_contrib/ddppo/",
+    help=ALGO_DEPRECATION_WARNING,
+    error=False,
+)
 class DDPPO(PPO):
     @classmethod
     @override(PPO)
@@ -358,20 +376,3 @@ class DDPPO(PPO):
             "sample_time": sample_time,
             "learn_on_batch_time": learn_on_batch_time,
         }
-
-
-# Deprecated: Use ray.rllib.algorithms.ddppo.DDPPOConfig instead!
-class _deprecated_default_config(dict):
-    def __init__(self):
-        super().__init__(DDPPOConfig().to_dict())
-
-    @Deprecated(
-        old="ray.rllib.agents.ppo.ddppo::DEFAULT_CONFIG",
-        new="ray.rllib.algorithms.ddppo.ddppo::DDPPOConfig(...)",
-        error=True,
-    )
-    def __getitem__(self, item):
-        return super().__getitem__(item)
-
-
-DEFAULT_CONFIG = _deprecated_default_config()

@@ -24,7 +24,6 @@ from ray._private import ray_constants
 from ray.experimental.internal_kv import _internal_kv_del, _internal_kv_put
 from ray.util.annotations import DeveloperAPI
 
-PY3 = sys.version_info[0] == 3
 log = logging.getLogger(__name__)
 
 

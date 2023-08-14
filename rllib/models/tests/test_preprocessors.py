@@ -1,5 +1,5 @@
 import gymnasium as gym
-from gymnasium.spaces import Box, Dict, Discrete, MultiDiscrete, Tuple
+from gymnasium.spaces import Box, Dict, Discrete, MultiDiscrete, Tuple, MultiBinary
 import numpy as np
 import unittest
 
@@ -14,6 +14,7 @@ from ray.rllib.models.preprocessors import (
     OneHotPreprocessor,
     AtariRamPreprocessor,
     GenericPixelPreprocessor,
+    MultiBinaryPreprocessor,
 )
 from ray.rllib.utils.test_utils import (
     check,
@@ -21,6 +22,9 @@ from ray.rllib.utils.test_utils import (
     check_train_results,
     framework_iterator,
 )
+from ray.rllib.utils.framework import try_import_tf
+
+tf1, tf, tfv = try_import_tf()
 
 
 class TestPreprocessors(unittest.TestCase):
@@ -32,7 +36,39 @@ class TestPreprocessors(unittest.TestCase):
     def tearDownClass(cls) -> None:
         ray.shutdown()
 
-    def test_preprocessing_disabled(self):
+    def test_rlms_and_preprocessing(self):
+        config = (
+            ppo.PPOConfig()
+            .framework("tf2")
+            .environment(
+                env="ray.rllib.examples.env.random_env.RandomEnv",
+                env_config={
+                    "config": {
+                        "observation_space": Box(-1.0, 1.0, (1,), dtype=np.int32),
+                    },
+                },
+            )
+            # Run this very quickly locally.
+            .rollouts(num_rollout_workers=0, rollout_fragment_length=10)
+            .training(
+                train_batch_size=10,
+                sgd_minibatch_size=1,
+                num_sgd_iter=1,
+                _enable_learner_api=True,
+            )
+            .rl_module(_enable_rl_module_api=True)
+            # Set this to True to enforce no preprocessors being used.
+            .experimental(_disable_preprocessor_api=True)
+        )
+
+        for _ in framework_iterator(config, frameworks=("torch", "tf2")):
+            algo = config.build()
+            results = algo.train()
+            check_train_results(results)
+            check_compute_single_action(algo)
+            algo.stop()
+
+    def test_preprocessing_disabled_modelv2(self):
         config = (
             ppo.PPOConfig()
             .environment(
@@ -66,6 +102,15 @@ class TestPreprocessors(unittest.TestCase):
             .experimental(_disable_preprocessor_api=True)
         )
 
+        # (Artur): This test only works under the old ModelV2 API because we
+        # don't offer arbitrarily complex Models under the RLModules API without
+        # preprocessors. Such input spaces require custom implementations of the
+        # input space.
+        # TODO (Artur): Delete this test once we remove ModelV2 API.
+        config.rl_module(_enable_rl_module_api=False).training(
+            _enable_learner_api=False
+        )
+
         num_iterations = 1
         # Only supported for tf so far.
         for _ in framework_iterator(config):
@@ -84,16 +129,13 @@ class TestPreprocessors(unittest.TestCase):
         p2 = ModelCatalog.get_preprocessor(gym.make("FrozenLake-v1"))
         self.assertEqual(type(p2), OneHotPreprocessor)
 
-        p3 = ModelCatalog.get_preprocessor(
-            gym.make("GymV26Environment-v0", env_id="ALE/MsPacman-ram-v5")
-        )
+        p3 = ModelCatalog.get_preprocessor(gym.make("ALE/MsPacman-ram-v5"))
         self.assertEqual(type(p3), AtariRamPreprocessor)
 
         p4 = ModelCatalog.get_preprocessor(
             gym.make(
-                "GymV26Environment-v0",
-                env_id="ALE/MsPacman-v5",
-                make_kwargs={"frameskip": 1},
+                "ALE/MsPacman-v5",
+                frameskip=1,
             )
         )
         self.assertEqual(type(p4), GenericPixelPreprocessor)
@@ -112,6 +154,21 @@ class TestPreprocessors(unittest.TestCase):
             list(pp.transform((0, np.array([1, 2, 3], np.float32)))),
             [float(x) for x in [1, 0, 0, 0, 0, 1, 2, 3]],
         )
+
+    def test_multi_binary_preprocessor(self):
+        observation_space = MultiBinary(5)
+        # Firstly, exclude MultiBinary from the list of preprocessors.
+        pp = ModelCatalog.get_preprocessor_for_space(
+            observation_space, include_multi_binary=False
+        )
+        # Scondly, include MultiBinary with the list of preprocessors.
+        self.assertTrue(isinstance(pp, NoPreprocessor))
+        pp = ModelCatalog.get_preprocessor_for_space(
+            observation_space, include_multi_binary=True
+        )
+        self.assertTrue(isinstance(pp, MultiBinaryPreprocessor))
+        self.assertEqual(pp.observation_space.shape, (5,))
+        check(pp.transform(np.array([0, 1, 0, 1, 1])), [0, 1, 0, 1, 1])
 
     def test_dict_flattening_preprocessor(self):
         space = Dict(

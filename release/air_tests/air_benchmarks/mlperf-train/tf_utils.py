@@ -29,7 +29,6 @@ def process_record_dataset(
     is_training,
     batch_size,
     num_epochs,
-    online_processing,
     shuffle_buffer=None,
     dtype=tf.float32,
     datasets_num_private_threads=None,
@@ -82,17 +81,16 @@ def process_record_dataset(
 
     num_classes = NUM_CLASSES
 
-    if online_processing:
-        map_fn = functools.partial(
-            preprocess_parsed_example,
-            is_training=is_training,
-            dtype=dtype,
-            num_classes=num_classes,
-            one_hot=one_hot,
-        )
+    map_fn = functools.partial(
+        preprocess_parsed_example,
+        is_training=is_training,
+        dtype=dtype,
+        num_classes=num_classes,
+        one_hot=one_hot,
+    )
 
-        # Parses the raw records into images and labels.
-        dataset = dataset.map(map_fn, num_parallel_calls=tf.data.experimental.AUTOTUNE)
+    # Parses the raw records into images and labels.
+    dataset = dataset.map(map_fn, num_parallel_calls=tf.data.experimental.AUTOTUNE)
     dataset = dataset.batch(batch_size, drop_remainder=drop_remainder)
 
     # Operations between the final prefetch and the get_next call to the iterator
@@ -207,41 +205,11 @@ def preprocess_parsed_example(
     return image, label
 
 
-def preprocess_example(
-    example_serialized, is_training, dtype, num_classes, one_hot=False
-):
-    """Applies preprocessing steps to the input parsed example."""
-    image, label = parse_example_proto_and_decode(example_serialized)
-    image = preprocess_image(
-        image_buffer=image,
-        output_height=DEFAULT_IMAGE_SIZE,
-        output_width=DEFAULT_IMAGE_SIZE,
-        num_channels=NUM_CHANNELS,
-        is_training=is_training,
-    )
-    image = tf.cast(image, dtype)
-
-    # Subtract one so that labels are in [0, 1000), and cast to float32 for
-    # Keras model.
-    label = tf.reshape(label, shape=[1])
-    label = tf.cast(label, tf.int32)
-    label -= 1
-
-    if one_hot:
-        label = tf.one_hot(label, num_classes)
-        label = tf.reshape(label, [num_classes])
-    else:
-        label = tf.cast(label, tf.float32)
-
-    return image, label
-
-
 def build_tf_dataset(
     filenames,
     batch_size,
     num_images_per_epoch,
     num_epochs,
-    online_processing,
     shuffle_buffer=None,
     is_training=True,
     dtype=tf.float32,
@@ -249,9 +217,7 @@ def build_tf_dataset(
     input_context=None,
     drop_remainder=False,
     tf_data_experimental_slack=False,
-    # NOTE(swang): MLPerf sets this to False by default, but we should
-    # cache decoded images for parity with AIR bulk ingest.
-    dataset_cache=True,
+    dataset_cache=False,
     prefetch_batchs=tf.data.experimental.AUTOTUNE,
 ):
     """Input function which provides batches for train or eval.
@@ -305,37 +271,21 @@ def build_tf_dataset(
     )
 
     if is_training:
-        if online_processing:
-            dataset = dataset.map(
-                parse_example_proto_and_decode,
-                num_parallel_calls=tf.data.experimental.AUTOTUNE,
-            )
-        else:
-            # We're just applying random transforms a single time and loading these
-            # all into memory. NOTE(swang): this doesn't follow the reference
-            # implementation and should only be used for debugging purposes.
-            map_fn = functools.partial(
-                preprocess_example,
-                is_training=is_training,
-                dtype=dtype,
-                num_classes=NUM_CLASSES,
-            )
-
-            dataset = dataset.map(
-                map_fn, num_parallel_calls=tf.data.experimental.AUTOTUNE
-            )
+        dataset = dataset.map(
+            parse_example_proto_and_decode,
+            num_parallel_calls=tf.data.experimental.AUTOTUNE,
+        )
     dataset = dataset.take(num_images_per_epoch)
     if dataset_cache:
         # Improve training / eval performance when data is in remote storage and
         # can fit into worker memory.
-        dataset = dataset.cache()
+        dataset = dataset.materialize()
 
     return process_record_dataset(
         dataset=dataset,
         is_training=is_training,
         batch_size=batch_size,
         num_epochs=num_epochs,
-        online_processing=online_processing,
         shuffle_buffer=shuffle_buffer,
         dtype=dtype,
         datasets_num_private_threads=datasets_num_private_threads,

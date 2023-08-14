@@ -1,0 +1,18 @@
+base_image: {{ env["RAY_IMAGE_ML_NIGHTLY_GPU"] }}
+env_vars: {}
+debian_packages:
+  - curl
+
+python:
+  pip_packages:
+    # Install boto3 to workaround a temporary issue with python and urllib3.
+    # TODO(jungong) : remove this.
+    - boto3
+    - myst-parser==0.15.2
+    - myst-nb==0.13.1
+    - jupytext==1.13.6
+  conda_packages: []
+
+post_build_cmds:
+  - pip uninstall -y ray || true && pip3 install -U {{ env["RAY_WHEELS"] | default("ray") }}
+  - {{ env["RAY_WHEELS_SANITY_CHECK"] | default("echo No Ray wheels sanity check") }}

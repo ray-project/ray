@@ -1,27 +1,51 @@
 .. _model-reference-docs:
 
+.. include:: /_includes/rllib/rlm_learner_migration_banner.rst
+
 Model APIs
 ==========
 
-ModelV2 API (rllib.env.models.modelv2.ModelV2)
-++++++++++++++++++++++++++++++++++++++++++++++
+.. currentmodule:: ray.rllib.models
 
-All RLlib neural network models have to be provided as ModelV2 sub-classes.
+Base Model classes
+-------------------
 
-.. autoclass:: ray.rllib.models.modelv2.ModelV2
-    :members:
+.. autosummary::
+   :toctree: doc/
 
+    ~modelv2.ModelV2
+    ~torch.torch_modelv2.TorchModelV2
+    ~tf.tf_modelv2.TFModelV2
 
-RLlib comes with two sub-classes for TF (keras) models and PyTorch models:
+Feed Forward methods
+---------------------
+.. autosummary::
+   :toctree: doc/
 
-TFModelV2 (rllib.env.models.tf.tf_modelv2.TFModelV2)
-++++++++++++++++++++++++++++++++++++++++++++++++++++
+    ~modelv2.ModelV2.forward
+    ~modelv2.ModelV2.value_function
+    ~modelv2.ModelV2.last_output
 
-.. autoclass:: ray.rllib.models.tf.tf_modelv2.TFModelV2
-    :members:
+Recurrent Models API
+---------------------
+.. autosummary::
+   :toctree: doc/
 
-TorchModelV2 (rllib.env.models.torch.torch_modelv2.TorchModelV2)
-++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    ~modelv2.ModelV2.get_initial_state
+    ~modelv2.ModelV2.is_time_major
 
-.. autoclass:: ray.rllib.models.torch.torch_modelv2.TorchModelV2
-    :members:
+Acessing variables
+---------------------
+.. autosummary::
+   :toctree: doc/
+
+    ~modelv2.ModelV2.variables
+    ~modelv2.ModelV2.trainable_variables
+
+Customization
+--------------
+.. autosummary::
+   :toctree: doc/
+
+    ~modelv2.ModelV2.custom_loss
+    ~modelv2.ModelV2.metrics

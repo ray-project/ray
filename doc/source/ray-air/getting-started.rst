@@ -1,208 +1,69 @@
-.. _air:
+.. _ray-for-ml-infra:
 
-Ray AI Runtime (AIR)
-====================
+Ray for ML Infrastructure
+=========================
 
 .. tip::
 
-    AIR is currently in **beta**. Fill out `this short form <https://forms.gle/wCCdbaQDtgErYycT6>`__ to get involved. We'll be holding office hours, development sprints, and other activities as we get closer to the GA release. Join us!
+    We'd love to hear from you if you are using Ray to build a ML platform! Fill out `this short form <https://forms.gle/wCCdbaQDtgErYycT6>`__ to get involved.
 
-Ray AI Runtime (AIR) is a scalable and unified toolkit for ML applications. AIR enables simple scaling of individual workloads, end-to-end workflows, and popular ecosystem frameworks, all in just Python.
+Ray and its AI Runtime libraries provide unified compute runtime for teams looking to simplify their ML platform.
+Ray's libraries such as Ray Train, Ray Data, and Ray Serve can be used to compose end-to-end ML workflows, providing features and APIs for
+data preprocessing as part of training, and transitioning from training to serving.
 
 ..
   https://docs.google.com/drawings/d/1atB1dLjZIi8ibJ2-CoHdd3Zzyl_hDRWyK2CJAVBBLdU/edit
 
-.. image:: images/ray-air.svg
+.. image:: /images/ray-air.svg
 
-AIR builds on Ray's best-in-class libraries for :ref:`Preprocessing <air-preprocessors>`, :ref:`Training <train-docs>`, :ref:`Tuning <tune-main>`, :ref:`Scoring <air-predictors>`, :ref:`Serving <rayserve>`, and :ref:`Reinforcement Learning <rllib-index>` to bring together an ecosystem of integrations.
+Why Ray for ML Infrastructure?
+------------------------------
 
-ML Compute, Simplified
-----------------------
+Ray's AI Runtime libraries simplify the ecosystem of machine learning frameworks, platforms, and tools, by providing a seamless, unified, and open experience for scalable ML:
 
-Ray AIR aims to simplify the ecosystem of machine learning frameworks, platforms, and tools. It does this by leveraging Ray to provide a seamless, unified, and open experience for scalable ML:
 
 .. image:: images/why-air-2.svg
 
 ..
   https://docs.google.com/drawings/d/1oi_JwNHXVgtR_9iTdbecquesUd4hOk0dWgHaTaFj6gk/edit
 
-**1. Seamless Dev to Prod**: AIR reduces friction going from development to production. With Ray and AIR, the same Python code scales seamlessly from a laptop to a large cluster.
+**1. Seamless Dev to Prod**: Ray's AI Runtime libraries reduces friction going from development to production. With Ray and its libraries, the same Python code scales seamlessly from a laptop to a large cluster.
 
-**2. Unified ML API**: AIR's unified ML API enables swapping between popular frameworks, such as XGBoost, PyTorch, and HuggingFace, with just a single class change in your code.
+**2. Unified ML API and Runtime**: Ray's APIs enables swapping between popular frameworks, such as XGBoost, PyTorch, and Hugging Face, with minimal code changes. Everything from training to serving runs on a single runtime (Ray + KubeRay).
 
-**3. Open and Extensible**: AIR and Ray are fully open-source and can run on any cluster, cloud, or Kubernetes. Build custom components and integrations on top of scalable developer APIs.
+**3. Open and Extensible**: Ray is fully open-source and can run on any cluster, cloud, or Kubernetes. Build custom components and integrations on top of scalable developer APIs.
 
-When to use AIR?
-----------------
+Example ML Platforms built on Ray
+---------------------------------
 
-AIR is for both data scientists and ML engineers alike.
+`Merlin <https://shopify.engineering/merlin-shopify-machine-learning-platform>`_ is Shopify's ML platform built on Ray. It enables fast-iteration and `scaling of distributed applications <https://www.youtube.com/watch?v=kbvzvdKH7bc>`_ such as product categorization and recommendations.
 
-.. image:: images/when-air.svg
+.. figure:: /images/shopify-workload.png
 
-..
-  https://docs.google.com/drawings/d/1Qw_h457v921jWQkx63tmKAsOsJ-qemhwhCZvhkxWrWo/edit
+  Shopify's Merlin architecture built on Ray.
 
-For data scientists, AIR can be used to scale individual workloads, and also end-to-end ML applications. For ML Engineers, AIR provides scalable platform abstractions that can be used to easily onboard and integrate tooling from the broader ML ecosystem.
+Spotify `uses Ray for advanced applications <https://www.anyscale.com/ray-summit-2022/agenda/sessions/180>`_ that include personalizing content recommendations for home podcasts, and personalizing Spotify Radio track sequencing.
 
-Quick Start
+.. figure:: /images/spotify.png
+
+  How Ray ecosystem empowers ML scientists and engineers at Spotify..
+
+
+The following highlights feature companies leveraging Ray's unified API to build simpler, more flexible ML platforms.
+
+- `[Blog] The Magic of Merlin - Shopify's New ML Platform <https://shopify.engineering/merlin-shopify-machine-learning-platform>`_
+- `[Slides] Large Scale Deep Learning Training and Tuning with Ray <https://drive.google.com/file/d/1BS5lfXfuG5bnI8UM6FdUrR7CiSuWqdLn/view>`_
+- `[Blog] Griffin: How Instacart’s ML Platform Tripled in a year <https://www.instacart.com/company/how-its-made/griffin-how-instacarts-ml-platform-tripled-ml-applications-in-a-year/>`_
+- `[Talk] Predibase - A low-code deep learning platform built for scale <https://www.youtube.com/watch?v=B5v9B5VSI7Q>`_
+- `[Blog] Building a ML Platform with Kubeflow and Ray on GKE <https://cloud.google.com/blog/products/ai-machine-learning/build-a-ml-platform-with-kubeflow-and-ray-on-gke>`_
+- `[Talk] Ray Summit Panel - ML Platform on Ray <https://www.youtube.com/watch?v=_L0lsShbKaY>`_
+
+
+.. Deployments on Ray.
+.. include:: /ray-air/deployment.rst
+
+
+What's Next
 -----------
 
-Below, we walk through how AIR's unified ML API enables scaling of end-to-end ML workflows, focusing on
-a few of the popular frameworks AIR integrates with (XGBoost, Pytorch, and Tensorflow). The ML workflow we're going to build is summarized by the following diagram:
-
-..
-  https://docs.google.com/drawings/d/1z0r_Yc7-0NAPVsP2jWUkLV2jHVHdcJHdt9uN1GDANSY/edit
-
-.. figure:: images/why-air.svg
-
-  AIR provides a unified API for the ML ecosystem.
-  This diagram shows how AIR enables an ecosystem of libraries to be run at scale in just a few lines of code.
-
-Get started by installing Ray AIR:
-
-.. code:: bash
-
-    pip install -U "ray[air]"
-
-    # The below Ray AIR tutorial was written with the following libraries.
-    # Consider running the following to ensure that the code below runs properly:
-    pip install -U pandas>=1.3.5
-    pip install -U torch>=1.12
-    pip install -U numpy>=1.19.5
-    pip install -U tensorflow>=2.6.2
-    pip install -U pyarrow>=6.0.1
-
-Preprocessing
-~~~~~~~~~~~~~
-
-First, let's start by loading a dataset from storage:
-
-.. literalinclude:: examples/xgboost_starter.py
-    :language: python
-    :start-after: __air_generic_preprocess_start__
-    :end-before: __air_generic_preprocess_end__
-
-Then, we define a ``Preprocessor`` pipeline for our task:
-
-.. tabbed:: XGBoost
-
-    .. literalinclude:: examples/xgboost_starter.py
-        :language: python
-        :start-after: __air_xgb_preprocess_start__
-        :end-before: __air_xgb_preprocess_end__
-
-.. tabbed:: Pytorch
-
-    .. literalinclude:: examples/pytorch_tabular_starter.py
-        :language: python
-        :start-after: __air_pytorch_preprocess_start__
-        :end-before: __air_pytorch_preprocess_end__
-
-.. tabbed:: Tensorflow
-
-    .. literalinclude:: examples/tf_tabular_starter.py
-        :language: python
-        :start-after: __air_tf_preprocess_start__
-        :end-before: __air_tf_preprocess_end__
-
-Training
-~~~~~~~~
-
-Train a model with a ``Trainer`` with common ML frameworks:
-
-.. tabbed:: XGBoost
-
-    .. literalinclude:: examples/xgboost_starter.py
-        :language: python
-        :start-after: __air_xgb_train_start__
-        :end-before: __air_xgb_train_end__
-
-.. tabbed:: Pytorch
-
-    .. literalinclude:: examples/pytorch_tabular_starter.py
-        :language: python
-        :start-after: __air_pytorch_train_start__
-        :end-before: __air_pytorch_train_end__
-
-.. tabbed:: Tensorflow
-
-    .. literalinclude:: examples/tf_tabular_starter.py
-        :language: python
-        :start-after: __air_tf_train_start__
-        :end-before: __air_tf_train_end__
-
-Hyperparameter Tuning
-~~~~~~~~~~~~~~~~~~~~~
-
-You can specify a hyperparameter space to search over for each trainer:
-
-.. tabbed:: XGBoost
-
-    .. literalinclude:: examples/xgboost_starter.py
-        :language: python
-        :start-after: __air_xgb_tuner_start__
-        :end-before: __air_xgb_tuner_end__
-
-.. tabbed:: Pytorch
-
-    .. literalinclude:: examples/pytorch_tabular_starter.py
-        :language: python
-        :start-after: __air_pytorch_tuner_start__
-        :end-before: __air_pytorch_tuner_end__
-
-.. tabbed:: Tensorflow
-
-    .. literalinclude:: examples/tf_tabular_starter.py
-        :language: python
-        :start-after: __air_tf_tuner_start__
-        :end-before: __air_tf_tuner_end__
-
-Then use the ``Tuner`` to run the search:
-
-.. literalinclude:: examples/pytorch_tabular_starter.py
-    :language: python
-    :start-after: __air_tune_generic_start__
-    :end-before: __air_tune_generic_end__
-
-Batch Inference
-~~~~~~~~~~~~~~~
-
-Use the trained model for scalable batch prediction with a ``BatchPredictor``.
-
-.. tabbed:: XGBoost
-
-    .. literalinclude:: examples/xgboost_starter.py
-        :language: python
-        :start-after: __air_xgb_batchpred_start__
-        :end-before: __air_xgb_batchpred_end__
-
-.. tabbed:: Pytorch
-
-    .. literalinclude:: examples/pytorch_tabular_starter.py
-        :language: python
-        :start-after: __air_pytorch_batchpred_start__
-        :end-before: __air_pytorch_batchpred_end__
-
-.. tabbed:: Tensorflow
-
-    .. literalinclude:: examples/tf_tabular_starter.py
-        :language: python
-        :start-after: __air_tf_batchpred_start__
-        :end-before: __air_tf_batchpred_end__
-
-
-Project Status
---------------
-
-AIR is currently in **beta**. If you have questions for the team or are interested in getting involved in the development process, fill out `this short form <https://forms.gle/wCCdbaQDtgErYycT6>`__.
-
-For an overview of the AIR libraries, ecosystem integrations, and their readiness, check out the latest :ref:`AIR ecosystem map <air-ecosystem-map>`.
-
-Next Steps
-----------
-
-- :ref:`air-key-concepts`
-- :ref:`air-examples-ref`
-- :ref:`API reference <air-api-ref>`
-- :ref:`Technical whitepaper <whitepaper>`
-- To check how your application is doing, you can use the :ref:`Ray dashboard<ray-dashboard>`. 
+* Take a look at how to use Ray for end-to-end :ref:`computer vision workloads <computer-vision>`.

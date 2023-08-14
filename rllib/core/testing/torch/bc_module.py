@@ -1,10 +1,14 @@
-import gymnasium as gym
-from typing import Any, Mapping, Optional
+from typing import Any, Mapping
 
-from ray.rllib.core.rl_module import RLModule
-from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec, ModuleID
+from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.core.rl_module.rl_module import RLModule, RLModuleConfig
+from ray.rllib.models.torch.torch_distributions import TorchCategorical
+from ray.rllib.core.rl_module.marl_module import (
+    MultiAgentRLModuleConfig,
+    MultiAgentRLModule,
+)
 from ray.rllib.core.rl_module.torch.torch_rl_module import TorchRLModule
-from ray.rllib.models.specs.typing import SpecType
+from ray.rllib.core.models.specs.typing import SpecType
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.nested_dict import NestedDict
@@ -13,15 +17,14 @@ torch, nn = try_import_torch()
 
 
 class DiscreteBCTorchModule(TorchRLModule):
-    def __init__(
-        self,
-        input_dim: int,
-        hidden_dim: int,
-        output_dim: int,
-    ) -> None:
-        super().__init__(
-            input_dim=input_dim, hidden_dim=hidden_dim, output_dim=output_dim
-        )
+    def __init__(self, config: RLModuleConfig) -> None:
+        super().__init__(config)
+
+    def setup(self):
+        input_dim = self.config.observation_space.shape[0]
+        hidden_dim = self.config.model_config_dict["fcnet_hiddens"][0]
+        output_dim = self.config.action_space.n
+
         self.policy = nn.Sequential(
             nn.Linear(input_dim, hidden_dim),
             nn.ReLU(),
@@ -30,17 +33,26 @@ class DiscreteBCTorchModule(TorchRLModule):
 
         self.input_dim = input_dim
 
+    def get_train_action_dist_cls(self):
+        return TorchCategorical
+
+    def get_exploration_action_dist_cls(self):
+        return TorchCategorical
+
+    def get_inference_action_dist_cls(self):
+        return TorchCategorical
+
     @override(RLModule)
     def output_specs_exploration(self) -> SpecType:
-        return ["action_dist"]
+        return [SampleBatch.ACTION_DIST_INPUTS]
 
     @override(RLModule)
     def output_specs_inference(self) -> SpecType:
-        return ["action_dist"]
+        return [SampleBatch.ACTION_DIST_INPUTS]
 
     @override(RLModule)
     def output_specs_train(self) -> SpecType:
-        return ["action_dist"]
+        return [SampleBatch.ACTION_DIST_INPUTS]
 
     @override(RLModule)
     def _forward_inference(self, batch: NestedDict) -> Mapping[str, Any]:
@@ -55,25 +67,7 @@ class DiscreteBCTorchModule(TorchRLModule):
     @override(RLModule)
     def _forward_train(self, batch: NestedDict) -> Mapping[str, Any]:
         action_logits = self.policy(batch["obs"])
-        return {"action_dist": torch.distributions.Categorical(logits=action_logits)}
-
-    @classmethod
-    @override(RLModule)
-    def from_model_config(
-        cls,
-        observation_space: "gym.Space",
-        action_space: "gym.Space",
-        *,
-        model_config_dict: Mapping[str, Any],
-    ) -> "DiscreteBCTorchModule":
-
-        config = {
-            "input_dim": observation_space.shape[0],
-            "hidden_dim": model_config_dict["fcnet_hiddens"][0],
-            "output_dim": action_space.n,
-        }
-
-        return cls(**config)
+        return {SampleBatch.ACTION_DIST_INPUTS: action_logits}
 
 
 class BCTorchRLModuleWithSharedGlobalEncoder(TorchRLModule):
@@ -92,7 +86,7 @@ class BCTorchRLModuleWithSharedGlobalEncoder(TorchRLModule):
     def __init__(
         self, encoder: nn.Module, local_dim: int, hidden_dim: int, action_dim: int
     ) -> None:
-        super().__init__()
+        super().__init__(config=None)
 
         self.encoder = encoder
         self.policy_head = nn.Sequential(
@@ -100,6 +94,15 @@ class BCTorchRLModuleWithSharedGlobalEncoder(TorchRLModule):
             nn.ReLU(),
             nn.Linear(hidden_dim, action_dim),
         )
+
+    def get_train_action_dist_cls(self):
+        return TorchCategorical
+
+    def get_exploration_action_dist_cls(self):
+        return TorchCategorical
+
+    def get_inference_action_dist_cls(self):
+        return TorchCategorical
 
     @override(RLModule)
     def _default_input_specs(self):
@@ -125,37 +128,26 @@ class BCTorchRLModuleWithSharedGlobalEncoder(TorchRLModule):
         policy_in = torch.cat([global_enc, obs["local"]], dim=-1)
         action_logits = self.policy_head(policy_in)
 
-        return {"action_dist": torch.distributions.Categorical(logits=action_logits)}
+        return {SampleBatch.ACTION_DIST_INPUTS: action_logits}
 
 
-class BCTorchMultiAgentSpec(MultiAgentRLModuleSpec):
+class BCTorchMultiAgentModuleWithSharedEncoder(MultiAgentRLModule):
+    def __init__(self, config: MultiAgentRLModuleConfig) -> None:
+        super().__init__(config)
 
-    # TODO: make sure the default class is MultiAgentRLModule
-
-    def build(self, module_id: Optional[ModuleID] = None):
-
-        self._check_before_build()
-        # constructing the global encoder based on the observation_space of the first
-        # module
-        module_spec = next(iter(self.module_specs.values()))
+    def setup(self):
+        module_specs = self.config.modules
+        module_spec = next(iter(module_specs.values()))
         global_dim = module_spec.observation_space["global"].shape[0]
-        hidden_dim = module_spec.model_config["fcnet_hiddens"][0]
+        hidden_dim = module_spec.model_config_dict["fcnet_hiddens"][0]
         shared_encoder = nn.Sequential(
             nn.Linear(global_dim, hidden_dim),
             nn.ReLU(),
             nn.Linear(hidden_dim, hidden_dim),
         )
 
-        if module_id:
-            return module_spec.module_class(
-                encoder=shared_encoder,
-                local_dim=module_spec.observation_space["local"].shape[0],
-                hidden_dim=hidden_dim,
-                action_dim=module_spec.action_space.n,
-            )
-
         rl_modules = {}
-        for module_id, module_spec in self.module_specs.items():
+        for module_id, module_spec in module_specs.items():
             rl_modules[module_id] = module_spec.module_class(
                 encoder=shared_encoder,
                 local_dim=module_spec.observation_space["local"].shape[0],
@@ -163,4 +155,12 @@ class BCTorchMultiAgentSpec(MultiAgentRLModuleSpec):
                 action_dim=module_spec.action_space.n,
             )
 
-        return self.marl_module_class(rl_modules)
+        self._rl_modules = rl_modules
+
+    def serialize(self):
+        # TODO (Kourosh): Implement when needed.
+        raise NotImplementedError
+
+    def deserialize(self, data):
+        # TODO (Kourosh): Implement when needed.
+        raise NotImplementedError

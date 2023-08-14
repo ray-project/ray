@@ -4,7 +4,6 @@ back to the ray clientserver.
 import math
 import logging
 import queue
-import sys
 import threading
 import warnings
 import grpc
@@ -40,7 +39,11 @@ def chunk_put(req: ray_client_pb2.DataRequest):
     into the result_queue, we would effectively double the memory needed
     on the client to handle the put.
     """
-    total_size = len(req.put.data)
+    # When accessing a protobuf field, deserialization is performed, which will
+    # generate a copy. So we need to avoid accessing the `data` field multiple
+    # times in the loop
+    request_data = req.put.data
+    total_size = len(request_data)
     assert total_size > 0, "Cannot chunk object with missing data"
     if total_size >= OBJECT_TRANSFER_WARNING_SIZE and log_once(
         "client_object_put_size_warning"
@@ -61,7 +64,7 @@ def chunk_put(req: ray_client_pb2.DataRequest):
         end = min(total_size, (chunk_id + 1) * OBJECT_TRANSFER_CHUNK_SIZE)
         chunk = ray_client_pb2.PutRequest(
             client_ref_id=req.put.client_ref_id,
-            data=req.put.data[start:end],
+            data=request_data[start:end],
             chunk_id=chunk_id,
             total_chunks=total_chunks,
             total_size=total_size,
@@ -78,7 +81,11 @@ def chunk_task(req: ray_client_pb2.DataRequest):
     into the result_queue, we would effectively double the memory needed
     on the client to handle the task.
     """
-    total_size = len(req.task.data)
+    # When accessing a protobuf field, deserialization is performed, which will
+    # generate a copy. So we need to avoid accessing the `data` field multiple
+    # times in the loop
+    request_data = req.task.data
+    total_size = len(request_data)
     assert total_size > 0, "Cannot chunk object with missing data"
     total_chunks = math.ceil(total_size / OBJECT_TRANSFER_CHUNK_SIZE)
     for chunk_id in range(0, total_chunks):
@@ -92,7 +99,7 @@ def chunk_task(req: ray_client_pb2.DataRequest):
             options=req.task.options,
             baseline_options=req.task.baseline_options,
             namespace=req.task.namespace,
-            data=req.task.data[start:end],
+            data=request_data[start:end],
             chunk_id=chunk_id,
             total_chunks=total_chunks,
         )
@@ -414,7 +421,7 @@ class DataClient:
     # Use SimpleQueue to avoid deadlocks when appending to queue from __del__()
     @staticmethod
     def _create_queue():
-        return queue.Queue() if sys.version_info < (3, 7) else queue.SimpleQueue()
+        return queue.SimpleQueue()
 
     def close(self) -> None:
         thread = None

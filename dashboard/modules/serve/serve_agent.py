@@ -12,6 +12,7 @@ from ray.dashboard.modules.version import (
     CURRENT_VERSION,
     VersionResponse,
 )
+from ray.exceptions import RayTaskError
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -27,6 +28,12 @@ class ServeAgent(dashboard_utils.DashboardAgentModule):
         super().__init__(dashboard_agent)
         self._controller = None
         self._controller_lock = asyncio.Lock()
+
+        # serve_start_async is not thread-safe call. This lock
+        # will make sure there is only one call that starts the serve instance.
+        # If the lock is already acquired by another async task, the async task
+        # will asynchronously wait for the lock.
+        self._controller_start_lock = asyncio.Lock()
 
     # TODO: It's better to use `/api/version`.
     # It requires a refactor of ClassMethodRouteTable to differentiate the server.
@@ -57,6 +64,8 @@ class ServeAgent(dashboard_utils.DashboardAgentModule):
         else:
             try:
                 config = await controller.get_app_config.remote()
+                if config is None:
+                    config = ServeApplicationSchema.get_empty_schema_dict()
             except ray.exceptions.RayTaskError as e:
                 # Task failure sometimes are due to GCS
                 # failure. When GCS failed, we expect a longer time
@@ -64,13 +73,43 @@ class ServeAgent(dashboard_utils.DashboardAgentModule):
                 return Response(
                     status=503,
                     text=(
-                        "Fail to get the response from the controller. "
-                        f"Potentially the GCS is down: {e}"
+                        "Failed to get a response from the controller.  "
+                        f"The GCS may be down, please retry later: {e}"
                     ),
                 )
 
         return Response(
             text=json.dumps(config),
+            content_type="application/json",
+        )
+
+    @routes.get("/api/serve/applications/")
+    @optional_utils.init_ray_and_catch_exceptions()
+    async def get_serve_instance_details(self, req: Request) -> Response:
+        from ray.serve.schema import ServeInstanceDetails
+
+        controller = await self.get_serve_controller()
+
+        if controller is None:
+            # If no serve instance is running, return a dict that represents that.
+            details = ServeInstanceDetails.get_empty_schema_dict()
+        else:
+            try:
+                details = await controller.get_serve_instance_details.remote()
+            except ray.exceptions.RayTaskError as e:
+                # Task failure sometimes are due to GCS
+                # failure. When GCS failed, we expect a longer time
+                # to recover.
+                return Response(
+                    status=503,
+                    text=(
+                        "Failed to get a response from the controller. "
+                        f"The GCS may be down, please retry later: {e}"
+                    ),
+                )
+
+        return Response(
+            text=json.dumps(details),
             content_type="application/json",
         )
 
@@ -123,8 +162,11 @@ class ServeAgent(dashboard_utils.DashboardAgentModule):
     @routes.put("/api/serve/deployments/")
     @optional_utils.init_ray_and_catch_exceptions()
     async def put_all_deployments(self, req: Request) -> Response:
+        from ray.serve._private.api import serve_start_async
         from ray.serve.schema import ServeApplicationSchema
         from pydantic import ValidationError
+        from ray.serve._private.constants import MULTI_APP_MIGRATION_MESSAGE
+        from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
 
         try:
             config = ServeApplicationSchema.parse_obj(await req.json())
@@ -134,35 +176,26 @@ class ServeAgent(dashboard_utils.DashboardAgentModule):
                 text=repr(e),
             )
 
-        return self.submit_config(config)
-
-    @routes.put("/api/serve/applications/")
-    @optional_utils.init_ray_and_catch_exceptions()
-    async def put_all_applications(self, req: Request) -> Response:
-        from ray.serve.schema import ServeDeploySchema
-        from pydantic import ValidationError
-
-        try:
-            config = ServeDeploySchema.parse_obj(await req.json())
-        except ValidationError as e:
+        if "name" in config.dict(exclude_unset=True):
+            error_msg = (
+                "Specifying the name of an application is only allowed for apps that "
+                "are listed as part of a multi-app config file. "
+            ) + MULTI_APP_MIGRATION_MESSAGE
+            logger.warning(error_msg)
             return Response(
                 status=400,
-                text=repr(e),
+                text=error_msg,
             )
 
-        return self.submit_config(config)
-
-    def submit_config(self, config):
-        from ray.serve._private.api import serve_start
-
-        client = serve_start(
-            detached=True,
-            http_options={
-                "host": config.host,
-                "port": config.port,
-                "location": "EveryNode",
-            },
-        )
+        async with self._controller_start_lock:
+            client = await serve_start_async(
+                detached=True,
+                http_options={
+                    "host": config.host,
+                    "port": config.port,
+                    "location": "EveryNode",
+                },
+            )
 
         if client.http_config.host != config.host:
             return Response(
@@ -198,9 +231,83 @@ class ServeAgent(dashboard_utils.DashboardAgentModule):
                 ),
             )
 
-        client.deploy_apps(config)
+        try:
+            client.deploy_apps(config)
+            record_extra_usage_tag(TagKey.SERVE_REST_API_VERSION, "v1")
+        except RayTaskError as e:
+            return Response(
+                status=400,
+                text=str(e),
+            )
+        else:
+            return Response()
 
-        return Response()
+    @routes.put("/api/serve/applications/")
+    @optional_utils.init_ray_and_catch_exceptions()
+    async def put_all_applications(self, req: Request) -> Response:
+        from ray.serve._private.api import serve_start_async
+        from ray.serve.schema import ServeDeploySchema
+        from pydantic import ValidationError
+        from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
+
+        try:
+            config: ServeDeploySchema = ServeDeploySchema.parse_obj(await req.json())
+        except ValidationError as e:
+            return Response(
+                status=400,
+                text=repr(e),
+            )
+
+        config_http_options = config.http_options.dict()
+        full_http_options = dict(
+            {"location": config.proxy_location}, **config_http_options
+        )
+
+        async with self._controller_start_lock:
+            client = await serve_start_async(
+                detached=True,
+                http_options=full_http_options,
+            )
+
+        # Serve ignores HTTP options if it was already running when
+        # serve_start_async() is called. We explicitly return an error response
+        # here if Serve's HTTP options don't match the config's options.
+        for option, requested_value in full_http_options.items():
+            conflict_response = self.check_http_options(
+                option,
+                getattr(client.http_config, option),
+                requested_value,
+            )
+            if conflict_response is not None:
+                return conflict_response
+
+        try:
+            client.deploy_apps(config)
+            record_extra_usage_tag(TagKey.SERVE_REST_API_VERSION, "v2")
+        except RayTaskError as e:
+            return Response(
+                status=400,
+                text=str(e),
+            )
+        else:
+            return Response()
+
+    def check_http_options(self, option: str, old: str, new: str):
+        http_mismatch_message = (
+            "Serve is already running on this Ray cluster. Its HTTP {option} is set to "
+            '"{old}". However, the requested {option} is "{new}". The requested '
+            "{option} must match the running Serve instance's HTTP {option}. To change "
+            "the Serve HTTP {option}, shut down Serve on this Ray cluster using "
+            "the `serve shutdown` CLI command or by sending a DELETE request to the "
+            '"/api/serve/applications/" endpoint. CAUTION: shutting down Serve will '
+            "also shut down all Serve applications."
+        )
+
+        if not old == new:
+            return Response(
+                status=400,
+                text=http_mismatch_message.format(option=option, old=old, new=new),
+            )
 
     async def get_serve_controller(self):
         """Gets the ServeController to the this cluster's Serve app.

@@ -3,7 +3,7 @@ ddpg-halfcheetahbulletenv-v0:
     env: HalfCheetahBulletEnv-v0
     run: DDPG
     stop:
-        episode_reward_mean: -300.0
+        sampler_results/episode_reward_mean: -300.0
         timesteps_total: 200000
     config:
         actor_hiddens: [256, 256]

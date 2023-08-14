@@ -17,32 +17,28 @@ from ray.rllib.connectors.agent.mean_std_filter import (
     MeanStdObservationFilterAgentConnector,
     ConcurrentMeanStdObservationFilterAgentConnector,
 )
-from ray.rllib.utils.typing import TrainerConfigDict
 from ray.util.annotations import PublicAPI, DeveloperAPI
 from ray.rllib.connectors.agent.synced_filter import SyncedFilterAgentConnector
 
 if TYPE_CHECKING:
+    from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
     from ray.rllib.policy.policy import Policy
 
 logger = logging.getLogger(__name__)
 
 
-def __preprocessing_enabled(config: TrainerConfigDict):
+def __preprocessing_enabled(config: "AlgorithmConfig"):
     if config._disable_preprocessor_api:
         return False
     # Same conditions as in RolloutWorker.__init__.
-    if (
-        config.is_atari
-        and not config.model.get("custom_preprocessor")
-        and config.preprocessor_pref == "deepmind"
-    ):
+    if config.is_atari and config.preprocessor_pref == "deepmind":
         return False
-    if not config.model.get("custom_preprocessor") and config.preprocessor_pref is None:
+    if config.preprocessor_pref is None:
         return False
     return True
 
 
-def __clip_rewards(config: TrainerConfigDict):
+def __clip_rewards(config: "AlgorithmConfig"):
     # Same logic as in RolloutWorker.__init__.
     # We always clip rewards for Atari games.
     return config.clip_rewards or config.is_atari
@@ -51,7 +47,7 @@ def __clip_rewards(config: TrainerConfigDict):
 @PublicAPI(stability="alpha")
 def get_agent_connectors_from_config(
     ctx: ConnectorContext,
-    config: TrainerConfigDict,
+    config: "AlgorithmConfig",
 ) -> AgentConnectorPipeline:
     connectors = []
 
@@ -85,13 +81,13 @@ def get_agent_connectors_from_config(
 @PublicAPI(stability="alpha")
 def get_action_connectors_from_config(
     ctx: ConnectorContext,
-    config: TrainerConfigDict,
+    config: "AlgorithmConfig",
 ) -> ActionConnectorPipeline:
     """Default list of action connectors to use for a new policy.
 
     Args:
         ctx: context used to create connectors.
-        config: trainer config.
+        config: The AlgorithmConfig object.
     """
     connectors = [ConvertToNumpyConnector(ctx)]
     if config.get("normalize_actions", False):
@@ -103,12 +99,12 @@ def get_action_connectors_from_config(
 
 
 @PublicAPI(stability="alpha")
-def create_connectors_for_policy(policy: "Policy", config: TrainerConfigDict):
+def create_connectors_for_policy(policy: "Policy", config: "AlgorithmConfig"):
     """Util to create agent and action connectors for a Policy.
 
     Args:
         policy: Policy instance.
-        config: Trainer config dict.
+        config: Algorithm config dict.
     """
     ctx: ConnectorContext = ConnectorContext.from_policy(policy)
 

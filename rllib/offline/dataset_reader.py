@@ -69,7 +69,7 @@ def _unzip_if_needed(paths: List[str], format: str):
 @PublicAPI
 def get_dataset_and_shards(
     config: "AlgorithmConfig", num_workers: int = 0
-) -> Tuple[ray.data.dataset.Dataset, List[ray.data.dataset.Dataset]]:
+) -> Tuple[ray.data.Dataset, List[ray.data.Dataset]]:
     """Returns a dataset and a list of shards.
 
     This function uses algorithm configs to create a dataset and a list of shards.
@@ -77,12 +77,12 @@ def get_dataset_and_shards(
         input: The input type should be "dataset".
         input_config: A dict containing the following key and values:
             `format`: str, speciifies the format of the input data. This will be the
-            format that ray dataset supports. See ray.data.dataset.Dataset for
+            format that ray dataset supports. See ray.data.Dataset for
             supported formats. Only "parquet" or "json" are supported for now.
             `paths`: str, a single string or a list of strings. Each string is a path
             to a file or a directory holding the dataset. It can be either a local path
             or a remote path (e.g. to an s3 bucket).
-            `loader_fn`: Callable[None, ray.data.dataset.Dataset], Instead of
+            `loader_fn`: Callable[None, ray.data.Dataset], Instead of
             specifying paths and format, you can specify a function to load the dataset.
             `parallelism`: int, The number of tasks to use for loading the dataset.
             If not specified, it will be set to the number of workers.
@@ -246,7 +246,7 @@ class DatasetReader(InputReader):
         ret = []
         count = 0
         while count < self.batch_size:
-            d = next(self._iter).as_pydict()
+            d = next(self._iter)
             # Columns like obs are compressed when written by DatasetWriter.
             d = from_json_data(d, self._ioctx.worker)
             count += d.count

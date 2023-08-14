@@ -67,7 +67,7 @@ def test_ssh_command_runner():
     )
     args = {
         "log_prefix": "prefix",
-        "node_id": 0,
+        "node_id": "0",
         "provider": provider,
         "auth_config": auth_config,
         "cluster_name": cluster_name,
@@ -135,7 +135,7 @@ def test_docker_command_runner():
     docker_config = {"container_name": "container"}
     args = {
         "log_prefix": "prefix",
-        "node_id": 0,
+        "node_id": "0",
         "provider": provider,
         "auth_config": auth_config,
         "cluster_name": cluster_name,
@@ -202,7 +202,7 @@ def test_docker_rsync():
     docker_config = {"container_name": "container"}
     args = {
         "log_prefix": "prefix",
-        "node_id": 0,
+        "node_id": "0",
         "provider": provider,
         "auth_config": auth_config,
         "cluster_name": cluster_name,
@@ -292,7 +292,7 @@ def test_rsync_exclude_and_filter():
     cluster_name = "cluster"
     args = {
         "log_prefix": "prefix",
-        "node_id": 0,
+        "node_id": "0",
         "provider": provider,
         "auth_config": auth_config,
         "cluster_name": cluster_name,
@@ -327,7 +327,7 @@ def test_rsync_without_exclude_and_filter():
     cluster_name = "cluster"
     args = {
         "log_prefix": "prefix",
-        "node_id": 0,
+        "node_id": "0",
         "provider": provider,
         "auth_config": auth_config,
         "cluster_name": cluster_name,
@@ -368,7 +368,7 @@ def test_docker_shm_override(run_option_type):
     }
     args = {
         "log_prefix": "prefix",
-        "node_id": 0,
+        "node_id": "0",
         "provider": provider,
         "auth_config": auth_config,
         "cluster_name": cluster_name,

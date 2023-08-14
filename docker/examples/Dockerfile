@@ -29,7 +29,6 @@ RUN pip install --no-cache-dir -U pip \
     tensorboardX \
     dragonfly-opt \
     zoopt \
-    tabulate \ 
     mlflow \
     pytest-remotedata>=0.3.1 \
     matplotlib \

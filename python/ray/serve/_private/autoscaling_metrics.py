@@ -1,86 +1,12 @@
 import bisect
 import logging
-import threading
-import time
 from collections import defaultdict
 from dataclasses import dataclass, field
-from threading import Event
-from typing import Callable, DefaultDict, Dict, List, Optional, Type
+from typing import DefaultDict, Dict, List, Optional
 
-import ray
 from ray.serve._private.constants import SERVE_LOGGER_NAME
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
-
-
-def start_metrics_pusher(
-    interval_s: float,
-    collection_callback: Callable[[], Dict[str, float]],
-    metrics_process_func: Callable[[Dict[str, float], float], ray.ObjectRef],
-    stop_event: Type[Event] = None,
-):
-    """Start a background thread to push metrics to controller.
-
-    We use this background so it will be not blocked by user's code and ensure
-    consistently metrics delivery. Python GIL will ensure that this thread gets
-    fair timeshare to execute and run.
-
-    Stop_event is passed in only when a RayServeHandle calls this function to
-    push metrics for scale-to-zero. stop_event is set either when the handle
-    is garbage collected or when the Serve application shuts down.
-
-    Args:
-        interval_s: the push interval.
-        collection_callback: a callable that returns the metric data points to
-          be sent to the the controller. The collection callback should take
-          no argument and returns a dictionary of str_key -> float_value.
-        metrics_process_func: actor handle function.
-        stop_event: the backgroupd thread will be closed when this event is set
-    Returns:
-        timer: The background thread created by this function to push
-               metrics to the controller
-    """
-
-    def send_once():
-        data = collection_callback()
-
-        # TODO(simon): maybe wait for ack or handle controller failure?
-        return metrics_process_func(data=data, send_timestamp=time.time())
-
-    def send_forever(stop_event):
-        last_ref: Optional[ray.ObjectRef] = None
-        last_send_succeeded: bool = True
-
-        while True:
-            start = time.time()
-            if stop_event and stop_event.is_set():
-                return
-
-            if ray.is_initialized():
-                try:
-                    if last_ref:
-                        ready_refs, _ = ray.wait([last_ref], timeout=0)
-                        last_send_succeeded = len(ready_refs) == 1
-                    if last_send_succeeded:
-                        last_ref = send_once()
-                except Exception as e:
-                    logger.warning(
-                        "Autoscaling metrics pusher thread "
-                        "is failing to send metrics to the controller "
-                        f": {e}"
-                    )
-
-            duration_s = time.time() - start
-            remaining_time = interval_s - duration_s
-            if remaining_time > 0:
-                time.sleep(remaining_time)
-
-    timer = threading.Thread(target=send_forever, args=[stop_event])
-    # Making this a daemon thread so it doesn't leak upon shutdown, and it
-    # doesn't need to block the replica's shutdown.
-    timer.setDaemon(True)
-    timer.start()
-    return timer
 
 
 @dataclass(order=True)

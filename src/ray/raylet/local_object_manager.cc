@@ -593,7 +593,7 @@ void LocalObjectManager::DeleteSpilledObjects(std::vector<std::string> urls_to_d
       });
 }
 
-void LocalObjectManager::FillObjectSpillingStats(rpc::GetNodeStatsReply *reply) const {
+void LocalObjectManager::FillObjectStoreStats(rpc::GetNodeStatsReply *reply) const {
   auto stats = reply->mutable_store_stats();
   stats->set_spill_time_total_s(spill_time_total_s_);
   stats->set_spilled_bytes_total(spilled_bytes_total_);
@@ -602,6 +602,7 @@ void LocalObjectManager::FillObjectSpillingStats(rpc::GetNodeStatsReply *reply) 
   stats->set_restored_bytes_total(restored_bytes_total_);
   stats->set_restored_objects_total(restored_objects_total_);
   stats->set_object_store_bytes_primary_copy(pinned_objects_size_);
+  stats->set_num_object_store_primary_copies(local_objects_.size());
 }
 
 void LocalObjectManager::RecordMetrics() const {

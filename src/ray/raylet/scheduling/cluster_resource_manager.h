@@ -23,8 +23,8 @@
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "ray/common/bundle_location_index.h"
-#include "ray/raylet/scheduling/cluster_resource_data.h"
-#include "ray/raylet/scheduling/fixed_point.h"
+#include "ray/common/scheduling/cluster_resource_data.h"
+#include "ray/common/scheduling/fixed_point.h"
 #include "ray/raylet/scheduling/local_resource_manager.h"
 #include "ray/util/logging.h"
 #include "src/ray/protobuf/gcs.pb.h"
@@ -46,26 +46,16 @@ class GcsActorSchedulerTest;
 /// This class is not thread safe.
 class ClusterResourceManager {
  public:
-  explicit ClusterResourceManager();
+  explicit ClusterResourceManager(instrumented_io_context &io_service);
 
   /// Get the resource view of the cluster.
   const absl::flat_hash_map<scheduling::NodeID, Node> &GetResourceView() const;
-
-  // Mapping from predefined resource indexes to resource strings
-  std::string GetResourceNameFromIndex(int64_t res_idx);
 
   /// Update node resources. This hanppens when a node resource usage udpated.
   ///
   /// \param node_id ID of the node which resoruces need to be udpated.
   /// \param resource_data The node resource data.
   bool UpdateNode(scheduling::NodeID node_id, const rpc::ResourcesData &resource_data);
-
-  /// Return the timestamp when the resource of the node got updated by scheduler.
-  ///
-  /// \param node_id ID of the node to query
-  /// \return The timestamp when the node resource got updated. If it's null, it means
-  ///    there is no such node or the resource of the node never got updated.
-  std::optional<absl::Time> GetNodeResourceModifiedTs(scheduling::NodeID node_id) const;
 
   /// Remove node from the cluster data structure. This happens
   /// when a node fails or it is removed from the cluster.
@@ -134,13 +124,33 @@ class ClusterResourceManager {
   bool UpdateNodeNormalTaskResources(scheduling::NodeID node_id,
                                      const rpc::ResourcesData &resource_data);
 
-  void DebugString(std::stringstream &buffer) const;
+  /// Return if the node is tracked.
+  bool HasNode(const scheduling::NodeID &node_id) const {
+    return nodes_.count(node_id) > 0;
+  }
+
+  bool IsNodeDraining(const scheduling::NodeID &node_id) const {
+    const auto &node = map_find_or_die(nodes_, node_id);
+    return node.GetLocalView().is_draining;
+  }
+
+  std::string DebugString() const;
 
   BundleLocationIndex &GetBundleLocationIndex();
+
+  void SetNodeLabels(const scheduling::NodeID &node_id,
+                     const absl::flat_hash_map<std::string, std::string> &labels);
 
  private:
   friend class ClusterResourceScheduler;
   friend class gcs::GcsActorSchedulerTest;
+
+  /// Return the timestamp when the resource of the node got updated by scheduler.
+  ///
+  /// \param node_id ID of the node to query
+  /// \return The timestamp when the node resource got updated. If it's null, it means
+  ///    there is no such node or the resource of the node never got updated.
+  std::optional<absl::Time> GetNodeResourceModifiedTs(scheduling::NodeID node_id) const;
 
   /// Add a new node or overwrite the resources of an existing node.
   ///
@@ -161,7 +171,13 @@ class ClusterResourceManager {
   /// The key of the map is the node ID.
   absl::flat_hash_map<scheduling::NodeID, Node> nodes_;
 
+  /// Resource message updated
+  absl::flat_hash_map<scheduling::NodeID, NodeResources> received_node_resources_;
+
   BundleLocationIndex bundle_location_index_;
+
+  /// Timer to revert local changes to the resources periodically.
+  ray::PeriodicalRunner timer_;
 
   friend class ClusterResourceSchedulerTest;
   friend struct ClusterResourceManagerTest;

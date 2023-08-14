@@ -2,7 +2,7 @@
 #
 
 # You can set these variables from the command line.
-SPHINXOPTS    =
+SPHINXOPTS    = -a -E
 SPHINXBUILD   = sphinx-build
 PAPER         =
 BUILDDIR      = _build
@@ -50,6 +50,12 @@ help:
 
 clean:
 	rm -rf $(BUILDDIR)/*
+	rm -rf ./source/*/api/doc/*
+	rm -rf ./source/ray-references/api/*/doc/*
+	rm -rf ./source/cluster/running_applications/doc/*
+	rm -rf ./source/cluster/running_applications/job-submission/doc/*
+	rm -rf ./source/ray-observability/api/state/doc*
+	rm -rf ./source/rllib/package_ref/doc*
 
 html:
 	$(SPHINXBUILD) -W --keep-going -b html $(ALLSPHINXOPTS) $(BUILDDIR)/html
@@ -57,7 +63,7 @@ html:
 	@echo "Build finished. The HTML pages are in $(BUILDDIR)/html."
 
 develop:
-	$(SPHINXBUILD) -b html $(ALLSPHINXOPTS) $(BUILDDIR)/html
+	FAST=True $(SPHINXBUILD) -b html $(ALLSPHINXOPTS) $(BUILDDIR)/html
 	@echo
 	@echo "Build finished. The HTML pages are in $(BUILDDIR)/html."
 	@echo "View the documentation by opening a browser and going to $(BUILDDIR)/html/index.html."

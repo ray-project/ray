@@ -1,5 +1,5 @@
-base_image: {{ env["RAY_IMAGE_ML_NIGHTLY_GPU"] | default("anyscale/ray-ml:nightly-py37-gpu") }}
-env_vars: {"LD_LIBRARY_PATH": "$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin"}
+base_image: {{ env["RAY_IMAGE_ML_NIGHTLY_GPU"] }}
+env_vars: {"LD_LIBRARY_PATH": "$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin", "RLLIB_TEST_NO_JAX_IMPORT": "1"}
 debian_packages:
   - unzip
   - zip
@@ -13,16 +13,11 @@ debian_packages:
 
 python:
   pip_packages:
-  ## These dependencies should be handled by requirements_rllib.txt and
-  ## requirements_ml_docker.txt and removed here
-  - gymnasium[atari,mujoco]==0.26.3
-  - ale-py==0.8.0
-  - gym==0.26.2
-  - mujoco-py<2.2,>=2.1
   # AutoROM downloads ROMs via torrent when they are built. The torrent is unreliable,
   # so we built it for py3 and use that instead. This wheel was tested for python 3.7, 3.8,
   # and 3.9.
   - https://ray-ci-deps-wheels.s3.us-west-2.amazonaws.com/AutoROM.accept_rom_license-0.5.4-py3-none-any.whl
+  - pytest
   conda_packages: []
 
 post_build_cmds:
@@ -31,9 +26,8 @@ post_build_cmds:
   # Clone the rl-experiments repo for offline-RL files.
   - git clone https://github.com/ray-project/rl-experiments.git
   - unzip rl-experiments/halfcheetah-sac/2022-12-17/halfcheetah_1500_mean_reward_sac.zip -d ~/.
-  # Use torch+CUDA10.2 for our release tests. CUDA11.x has known performance issues in combination with torch+GPU+CNNs
-  # TODO(sven): remove once nightly image gets upgraded.
-  - pip3 install torch==1.12.1+cu102 torchvision==0.13.1+cu102 --extra-index-url https://download.pytorch.org/whl/cu102
+
+  - pip3 install torch==2.0.0+cu118 torchvision==0.15.1+cu118 --index-url https://download.pytorch.org/whl/cu118
 
   # TODO(sven): remove once nightly image gets gymnasium and the other new dependencies.
   - wget https://mujoco.org/download/mujoco210-linux-x86_64.tar.gz
@@ -41,3 +35,6 @@ post_build_cmds:
   - mv mujoco210-linux-x86_64.tar.gz ~/.mujoco/.
   - cd ~/.mujoco
   - tar -xf ~/.mujoco/mujoco210-linux-x86_64.tar.gz
+
+  # not strictly necessary, but makes debugging easier
+  - git clone https://github.com/ray-project/ray.git
