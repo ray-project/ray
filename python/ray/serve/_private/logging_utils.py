@@ -300,7 +300,7 @@ def configure_component_cpu_profiler(
                 component_name=component_name,
                 component_id=component_id,
                 component_type=component_type,
-                suffix="_memray.bin",
+                suffix="_cprofile.prof",
             )
             cpu_profiler_file_path = os.path.join(logs_dir, cpu_profiler_file_name)
 
