@@ -446,7 +446,7 @@ class TuneController:
         # Get state from trial executor and runner
         runner_state = {
             # Trials
-            "checkpoints": list(self._get_trial_checkpoints().values()),
+            "trial_data": list(self._get_trial_checkpoints().values()),
             # Experiment data
             "runner_data": self.__getstate__(),
             # Metadata
@@ -526,8 +526,9 @@ class TuneController:
 
         # 3. Load trials
         trials = []
-        for trial_json_state in runner_state["checkpoints"]:
+        for trial_json_state, trial_runtime_metadata in runner_state["trial_data"]:
             trial = Trial.from_json_state(trial_json_state)
+            trial.restore_run_metadata(trial_runtime_metadata)
 
             # The following properties may be updated on restoration
             # Ex: moved local/cloud experiment directory
@@ -598,13 +599,15 @@ class TuneController:
         trials = self.restore_from_dir()
 
         # Set trial statuses according to the resume configuration
-        for trial in sorted(trials, key=lambda t: t.last_update_time, reverse=True):
+        for trial in sorted(
+            trials, key=lambda t: t.run_metadata.last_result_time, reverse=True
+        ):
             trial_to_add = trial
             if trial.status == Trial.ERROR:
                 if resume_errored:
                     # Keep trial ID on resume
-                    trial_to_add.error_filename = None
-                    trial_to_add.pickled_error_filename = None
+                    trial_to_add.run_metadata.error_filename = None
+                    trial_to_add.run_metadata.pickled_error_filename = None
                     trial_to_add.set_status(Trial.PENDING)
                     if not _use_storage_context():
                         # TODO(justinvyu): Remove this.
@@ -1112,7 +1115,7 @@ class TuneController:
         ray_actor = self._actor_manager._live_actors_to_ray_actors_resources[
             cached_actor
         ][0]
-        trial.set_runner(ray_actor)
+        trial.set_ray_actor(ray_actor)
 
         self._schedule_trial_reset(trial, trial.config, trial.experiment_tag)
 
@@ -1268,7 +1271,7 @@ class TuneController:
         tracked_actor = self._trial_to_actor.pop(trial)
         self._actor_to_trial.pop(tracked_actor)
 
-        trial.set_runner(None)
+        trial.set_ray_actor(None)
 
         return True
 
@@ -1284,7 +1287,7 @@ class TuneController:
         ray_actor = self._actor_manager._live_actors_to_ray_actors_resources[
             tracked_actor
         ][0]
-        trial.set_runner(ray_actor)
+        trial.set_ray_actor(ray_actor)
 
         self._callbacks.on_trial_start(
             iteration=self._iteration, trials=self._trials, trial=trial
@@ -1302,7 +1305,7 @@ class TuneController:
             trial = self._actor_to_trial.pop(tracked_actor)
             logger.debug(f"Actor STOPPED for trial {trial}: {tracked_actor}")
             self._trial_to_actor.pop(trial)
-            trial.set_runner(None)
+            trial.set_ray_actor(None)
 
         logger.debug(f"Actor STOPPED: {tracked_actor}")
 
@@ -1522,8 +1525,8 @@ class TuneController:
 
         logger.debug(f"Requesting to STOP actor for trial {trial}")
 
-        trial.saving_to = None
-        trial.restoring_from = None
+        trial.temporary_state.saving_to = None
+        trial.temporary_state.restoring_from = None
 
         self._set_trial_status(trial, Trial.ERROR if exception else Trial.TERMINATED)
         trial.set_location(_Location())
@@ -1550,7 +1553,7 @@ class TuneController:
         tracked_actor = self._trial_to_actor.pop(trial)
         self._actor_to_trial.pop(tracked_actor)
 
-        trial.set_runner(None)
+        trial.set_ray_actor(None)
 
         self._remove_actor(tracked_actor=tracked_actor)
 
@@ -1849,7 +1852,7 @@ class TuneController:
             # a done=True result from executing a STOP decision
             # (which clears all futures) before the save gets processed.
             # Keep this in for now while `train` and `save` are 2 separate steps.
-            trial.saving_to = True
+            trial.temporary_state.saving_to = True
             # TODO(justinvyu): Remove the return value?
             return
 
@@ -1878,7 +1881,7 @@ class TuneController:
                 storage_mode=storage,
                 metrics=result,
             )
-            trial.saving_to = checkpoint
+            trial.temporary_state.saving_to = checkpoint
 
         return checkpoint
 
@@ -1901,8 +1904,8 @@ class TuneController:
                 "is being synced from the worker to the head node."
             )
 
-            if trial.location.hostname and (
-                trial.location.hostname != get_node_ip_address()
+            if trial.temporary_state.location.hostname and (
+                trial.temporary_state.location.hostname != get_node_ip_address()
             ):
                 if log_once("tune_head_worker_checkpoint"):
                     logger.warning(msg)
@@ -1931,14 +1934,14 @@ class TuneController:
                 self._checkpoint_manager.on_trial_checkpoint(trial)
                 self._mark_trial_to_checkpoint(trial)
             else:
-                trial.saving_to.dir_or_data = checkpoint_value
+                trial.temporary_state.saving_to.dir_or_data = checkpoint_value
                 self._callbacks.on_checkpoint(
                     iteration=self._iteration,
                     trials=self._trials,
                     trial=trial,
-                    checkpoint=trial.saving_to,
+                    checkpoint=trial.temporary_state.saving_to,
                 )
-                trial.on_checkpoint(trial.saving_to)
+                trial.on_checkpoint(trial.temporary_state.saving_to)
                 self._checkpoint_manager.on_trial_checkpoint(trial)
                 if trial.checkpoint.storage_mode != CheckpointStorage.MEMORY:
                     self._mark_trial_to_checkpoint(trial)
@@ -1952,7 +1955,7 @@ class TuneController:
                 "Trial %s: Error handling checkpoint %s", trial, checkpoint_value
             )
 
-        trial.saving_to = None
+        trial.temporary_state.saving_to = None
         decision = self._cached_trial_decisions.pop(trial.trial_id, None)
         if decision and checkpoint_value:
             self._queue_decision(trial, decision)
@@ -1961,21 +1964,22 @@ class TuneController:
         """Checkpoints trial based off trial.last_result."""
         if trial.should_checkpoint() or force:
             # Save trial runtime if possible.
-            if trial.runner:
+            if trial.temporary_state.ray_actor:
                 self._schedule_trial_save(trial, storage=CheckpointStorage.PERSISTENT)
 
     ###
     # RESTORE
     def _schedule_trial_restore(self, trial: Trial) -> bool:
         if _use_storage_context():
-            checkpoint_result = trial.checkpoint_manager.latest_checkpoint_result
+            cpm = trial.run_metadata.checkpoint_manager
+            checkpoint_result = cpm.latest_checkpoint_result
 
             if not checkpoint_result:
                 logger.debug(f"Not restoring trial {trial}: No checkpoint found.")
                 return False
 
             # TODO(justinvyu): Is this really needed?
-            trial.restoring_from = checkpoint_result
+            trial.temporary_state.restoring_from = checkpoint_result
 
             method_name = "restore"
             args = (checkpoint_result,)
@@ -2028,7 +2032,7 @@ class TuneController:
                 "storage-based restoration"
             )
 
-        trial.restoring_from = checkpoint
+        trial.temporary_state.restoring_from = checkpoint
         self._schedule_trial_task(
             trial=trial,
             method_name=method_name,
@@ -2067,7 +2071,7 @@ class TuneController:
         self._cached_trial_decisions.pop(trial.trial_id, None)
         # Resetting this, in case that the trial is in saving status when it crashes.
         if trial.is_saving:
-            trial.saving_to = None
+            trial.temporary_state.saving_to = None
         if trial.is_restoring and exc:
             exc = _TuneRestoreError(exc)
         self._schedule_trial_stop(trial, exception=exc)

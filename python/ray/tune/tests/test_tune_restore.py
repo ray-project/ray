@@ -665,9 +665,9 @@ def test_trial_last_result_restore(trial_config):
         metrics=metrics,
     )
 
-    trial.restoring_from = checkpoint
+    trial.temporary_state.restoring_from = checkpoint
     trial.on_restore()
-    assert trial.last_result == metrics
+    assert trial.run_metadata.last_result == metrics
 
 
 def test_stacktrace():
