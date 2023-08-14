@@ -34,9 +34,7 @@ class DeploymentFunctionExecutorNode(DAGNode):
             {},
             other_args_to_resolve=other_args_to_resolve,
         )
-        self._deployment_function_handle = deployment_function_handle.options(
-            use_new_handle_api=True,
-        )
+        self._deployment_function_handle = deployment_function_handle
 
     def _copy_impl(
         self,
@@ -61,7 +59,7 @@ class DeploymentFunctionExecutorNode(DAGNode):
         """
         return self._deployment_function_handle.remote(
             *self._bound_args, **self._bound_kwargs
-        ).to_obj_ref_sync()
+        )
 
     def __str__(self) -> str:
         return get_dag_node_str(self, str(self._deployment_function_handle))

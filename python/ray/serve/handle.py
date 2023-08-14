@@ -392,6 +392,7 @@ class DeploymentHandleResultBase:
         loop: asyncio.AbstractEventLoop,
     ):
         self._assign_request_task = loop.create_task(assign_request_coro)
+        self._loop = loop
 
     def cancel(self):
         # TODO(edoakes): when actor task cancellation is supported, we should cancel
@@ -511,6 +512,7 @@ class DeploymentHandle(DeploymentHandleBase):
         multiplexed_model_id: Union[str, DEFAULT] = DEFAULT.VALUE,
         stream: Union[bool, DEFAULT] = DEFAULT.VALUE,
         use_new_handle_api: Union[bool, DEFAULT] = DEFAULT.VALUE,
+        _router_cls: Union[str, DEFAULT] = DEFAULT.VALUE,
     ) -> "DeploymentHandle":
         """Set options for this handle and return an updated copy of it.
 
@@ -529,6 +531,7 @@ class DeploymentHandle(DeploymentHandleBase):
             multiplexed_model_id=multiplexed_model_id,
             stream=stream,
             use_new_handle_api=use_new_handle_api,
+            _router_cls=_router_cls,
         )
 
     def remote(
