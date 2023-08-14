@@ -281,7 +281,7 @@ class FileBasedDatasource(Datasource):
             path = paths[0]
 
             if filesystem.get_file_info(path).type is FileType.NotFound:
-                # Arrow's S3FileSystem doesn't allow creating buckets by default, so we 
+                # Arrow's S3FileSystem doesn't allow creating buckets by default, so we
                 # add a query arg enabling bucket creation if an S3 URI is provided.
                 tmp = _add_creatable_buckets_param_if_s3_uri(path)
                 filesystem.create_dir(tmp, recursive=True)
