@@ -195,9 +195,7 @@ machines have 16 CPUs in addition to the 4 GPUs, each actor should have
 How to preprocess data for training?
 ------------------------------------
 
-The recommended way to preprocess data for training is to use Ray Data operations such as `map_batches`. 
-
-However, particularly for tabular data, Ray Data comes with out-of-the-box :ref:`preprocessors <air-preprocessors>` that implement common feature preprocessing operations.
+Particularly for tabular data, Ray Data comes with out-of-the-box :ref:`preprocessors <air-preprocessors>` that implement common feature preprocessing operations.
 You can use this with Ray Train Trainers by applying them on the dataset before passing the dataset into a Trainer. For example:
 
 .. testcode::
