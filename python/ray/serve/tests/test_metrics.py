@@ -902,20 +902,17 @@ def test_queued_queries_disconnected(serve_start_shutdown):
     wait_for_condition(
         check_metric,
         timeout=15,
-        metric="ray_serve_num_power_of_two_choices_scheduling_tasks",
+        metric="ray_serve_num_scheduling_tasks",
         expected=0,
     )
-    print("ray_serve_num_power_of_two_choices_scheduling_tasks updated successfully.")
+    print("ray_serve_num_scheduling_tasks updated successfully.")
     wait_for_condition(
         check_metric,
         timeout=15,
-        metric="serve_num_power_of_two_choices_scheduling_tasks_in_backoff",
+        metric="serve_num_scheduling_tasks_in_backoff",
         expected=0,
     )
-    print(
-        "serve_num_power_of_two_choices_scheduling_tasks_in_backoff "
-        "updated successfully."
-    )
+    print("serve_num_scheduling_tasks_in_backoff updated successfully.")
 
     def first_request_executing(request_future) -> bool:
         try:
@@ -927,20 +924,17 @@ def test_queued_queries_disconnected(serve_start_shutdown):
     wait_for_condition(
         check_metric,
         timeout=15,
-        metric="ray_serve_num_power_of_two_choices_scheduling_tasks",
+        metric="ray_serve_num_scheduling_tasks",
         expected=0,
     )
-    print("ray_serve_num_power_of_two_choices_scheduling_tasks updated successfully.")
+    print("ray_serve_num_scheduling_tasks updated successfully.")
     wait_for_condition(
         check_metric,
         timeout=15,
-        metric="serve_num_power_of_two_choices_scheduling_tasks_in_backoff",
+        metric="serve_num_scheduling_tasks_in_backoff",
         expected=0,
     )
-    print(
-        "serve_num_power_of_two_choices_scheduling_tasks_in_backoff "
-        "updated successfully."
-    )
+    print("serve_num_scheduling_tasks_in_backoff updated successfully.")
 
     url = "http://localhost:8000/"
 
@@ -984,20 +978,17 @@ def test_queued_queries_disconnected(serve_start_shutdown):
     wait_for_condition(
         check_metric,
         timeout=15,
-        metric="ray_serve_num_power_of_two_choices_scheduling_tasks",
+        metric="ray_serve_num_scheduling_tasks",
         expected=2,
     )
-    print("ray_serve_num_power_of_two_choices_scheduling_tasks updated successfully.")
+    print("ray_serve_num_scheduling_tasks updated successfully.")
     wait_for_condition(
         check_metric,
         timeout=15,
-        metric="serve_num_power_of_two_choices_scheduling_tasks_in_backoff",
+        metric="serve_num_scheduling_tasks_in_backoff",
         expected=2,
     )
-    print(
-        "serve_num_power_of_two_choices_scheduling_tasks_in_backoff "
-        "updated successfully."
-    )
+    print("serve_num_scheduling_tasks_in_backoff updated successfully.")
 
     # Disconnect all requests by terminating the process pool.
     pool.terminate()
@@ -1026,20 +1017,17 @@ def test_queued_queries_disconnected(serve_start_shutdown):
     wait_for_condition(
         check_metric,
         timeout=15,
-        metric="ray_serve_num_power_of_two_choices_scheduling_tasks",
+        metric="ray_serve_num_scheduling_tasks",
         expected=2,
     )
-    print("ray_serve_num_power_of_two_choices_scheduling_tasks updated successfully.")
+    print("ray_serve_num_scheduling_tasks updated successfully.")
     wait_for_condition(
         check_metric,
         timeout=15,
-        metric="serve_num_power_of_two_choices_scheduling_tasks_in_backoff",
+        metric="serve_num_scheduling_tasks_in_backoff",
         expected=2,
     )
-    print(
-        "serve_num_power_of_two_choices_scheduling_tasks_in_backoff "
-        "updated successfully."
-    )
+    print("serve_num_scheduling_tasks_in_backoff updated successfully.")
 
 
 def test_actor_summary(serve_instance):

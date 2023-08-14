@@ -336,11 +336,8 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         self._actor_name: str = self._get_actor_name()
 
         self.num_scheduling_tasks_gauge = metrics.Gauge(
-            "serve_num_power_of_two_choices_scheduling_tasks",
-            description=(
-                "The number of power-of-two-choices scheduling tasks "
-                "run by the router."
-            ),
+            "serve_num_scheduling_tasks",
+            description="The number of request scheduling tasks in the router.",
             tag_keys=("deployment", "actor_name"),
         ).set_default_tags(
             {"deployment": self._deployment_name, "actor_name": self._actor_name}
@@ -349,10 +346,10 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
 
         self.num_scheduling_tasks_in_backoff = 0
         self.num_scheduling_tasks_in_backoff_gauge = metrics.Gauge(
-            "serve_num_power_of_two_choices_scheduling_tasks_in_backoff",
+            "serve_num_scheduling_tasks_in_backoff",
             description=(
-                "The number of power-of-two-choices scheduling tasks "
-                "run by the router that are undergoing backoff."
+                "The number of request scheduling tasks in the router "
+                "that are undergoing backoff."
             ),
             tag_keys=("deployment", "actor_name"),
         ).set_default_tags(
