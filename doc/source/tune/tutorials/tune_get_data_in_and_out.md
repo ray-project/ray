@@ -193,7 +193,7 @@ The [`ray.air.session`](air-session-ref) API is used to get data out of the Trai
 
 ### Reporting metrics with Tune
 
-*Metrics* are values passed through the `metrics` argument in a `session.report` call. Metrics can be used by Tune [Search Algorithms](search-alg-ref) and [Schedulers](schedulers-ref) to direct the search. After the tuning run is complete, you can [analyze the results](/tune/examples/tune_analyze_results), which include the reported metrics.
+*Metrics* are values passed through the `metrics` argument in a `session.report` call. Metrics can be used by Tune [Search Algorithms](search-alg-ref) and [Schedulers](schedulers-ref) to direct the search. After the tuning run is complete, you can [analyze the results](tune-analysis-guide), which include the reported metrics.
 
 ```{note}
 Similarly to search space values, each value reported as a metric will be saved directly in the Trial metadata. This means that every value reported as a metric **must** be serializable and take up a small amount of memory.

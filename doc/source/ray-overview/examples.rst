@@ -101,13 +101,6 @@ Ray Examples
 
         Distributed training with XGBoost
 
-    .. grid-item-card:: :bdg-success:`Tutorial`
-        :class-item: gallery-item
-        :link: /ray-air/examples/analyze_tuning_results
-        :link-type: doc
-
-        Distributed tuning with XGBoost
-
     .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item
         :link: /ray-air/examples/sklearn_example
