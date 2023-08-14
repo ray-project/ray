@@ -197,6 +197,7 @@ class ServeController:
         self._shutdown_start_time = None
 
         self._create_control_loop_metrics()
+        self._create_control_loop_metrics2()
         run_background_task(self.run_control_loop())
 
         self._recover_config_from_checkpoint()
@@ -349,9 +350,8 @@ class ServeController:
             try:
                 dsm_update_start_time = time.time()
                 any_recovering = self.deployment_state_manager.update()
-                self.dsm_update_duration_gauge_s.set(
-                    time.time() - dsm_update_start_time
-                )
+                dsm_update_time = time.time() - dsm_update_start_time
+                self.dsm_update_duration_gauge_s.set(dsm_update_time)
                 if not self.done_recovering_event.is_set() and not any_recovering:
                     self.done_recovering_event.set()
                     logger.info(
@@ -364,9 +364,8 @@ class ServeController:
             try:
                 asm_update_start_time = time.time()
                 self.application_state_manager.update()
-                self.asm_update_duration_gauge_s.set(
-                    time.time() - asm_update_start_time
-                )
+                asm_update_time = time.time() - asm_update_start_time
+                self.asm_update_duration_gauge_s.set(asm_update_time)
             except Exception:
                 logger.exception("Exception updating application state.")
 
@@ -374,7 +373,8 @@ class ServeController:
             # so they are more consistent.
             node_update_start_time = time.time()
             self._update_http_proxy_nodes()
-            self.node_update_duration_gauge_s.set(time.time() - node_update_start_time)
+            node_update_time = time.time() - node_update_start_time
+            self.node_update_duration_gauge_s.set(node_update_time)
 
             # Don't update http_state until after the done recovering event is set,
             # otherwise we may start a new HTTP proxy but not broadcast it any
@@ -385,16 +385,16 @@ class ServeController:
                     self.http_proxy_state_manager.update(
                         http_proxy_nodes=self._http_proxy_nodes
                     )
-                    self.proxy_update_duration_gauge_s.set(
-                        time.time() - proxy_update_start_time
-                    )
+                    proxy_update_time = time.time() - proxy_update_start_time
+                    self.proxy_update_duration_gauge_s.set(proxy_update_time)
                 except Exception:
                     logger.exception("Exception updating HTTP state.")
 
             try:
                 snapshot_start_time = time.time()
                 self._put_serve_snapshot()
-                self.snapshot_duration_gauge_s.set(time.time() - snapshot_start_time)
+                snapshot_update_time = time.time() - snapshot_start_time
+                self.snapshot_duration_gauge_s.set(snapshot_update_time)
             except Exception:
                 logger.exception("Exception putting serve snapshot.")
             loop_duration = time.time() - loop_start_time
@@ -405,6 +405,12 @@ class ServeController:
                     "replicas in a single Ray cluster. Consider using "
                     "multiple Ray clusters."
                 )
+                self.dsm_update_duration_gauge_s2.set(dsm_update_time)
+                self.asm_update_duration_gauge_s2.set(asm_update_time)
+                self.control_loop_duration_gauge_s2.set(loop_duration)
+                self.node_update_duration_gauge_s2.set(node_update_time)
+                self.proxy_update_duration_gauge_s2.set(proxy_update_time)
+                self.snapshot_duration_gauge_s2.set(snapshot_update_time)
             self.control_loop_duration_gauge_s.set(loop_duration)
 
             num_loops += 1
@@ -413,6 +419,8 @@ class ServeController:
             sleep_start_time = time.time()
             await asyncio.sleep(CONTROL_LOOP_PERIOD_S)
             self.sleep_duration_gauge_s.set(time.time() - sleep_start_time)
+            if loop_duration > 10:
+                self.sleep_duration_gauge_s2.set(time.time() - sleep_start_time)
 
     def _create_control_loop_metrics(self):
         self.node_update_duration_gauge_s = metrics.Gauge(
@@ -452,6 +460,47 @@ class ServeController:
             tag_keys=("actor_id",),
         )
         self.num_control_loops_gauge.set_default_tags(
+            {"actor_id": ray.get_runtime_context().get_actor_id()}
+        )
+
+    def _create_control_loop_metrics2(self):
+        self.node_update_duration_gauge_s2 = metrics.Gauge(
+            "serve_controller_node_update_duration_s2",
+            description="The control loop time spent on collecting proxy node info.",
+        )
+        self.proxy_update_duration_gauge_s2 = metrics.Gauge(
+            "serve_controller_proxy_state_update_duration_s2",
+            description="The control loop time spent on updating proxy state.",
+        )
+        self.dsm_update_duration_gauge_s2 = metrics.Gauge(
+            "serve_controller_deployment_state_update_duration_s2",
+            description="The control loop time spent on updating deployment state.",
+        )
+        self.asm_update_duration_gauge_s2 = metrics.Gauge(
+            "serve_controller_application_state_update_duration_s2",
+            description="The control loop time spent on updating application state.",
+        )
+        self.snapshot_duration_gauge_s2 = metrics.Gauge(
+            "serve_controller_application_state_update_duration_s2",
+            description="The control loop time spent on putting the Serve snapshot.",
+        )
+        self.sleep_duration_gauge_s2 = metrics.Gauge(
+            "serve_controller_sleep_duration_s2",
+            description="The duration of the last control loop's sleep.",
+        )
+        self.control_loop_duration_gauge_s2 = metrics.Gauge(
+            "serve_controller_control_loop_duration_s2",
+            description="The duration of the last control loop.",
+        )
+        self.num_control_loops_gauge2 = metrics.Gauge(
+            "serve_controller_num_control_loops2",
+            description=(
+                "The number of control loops performed by the controller. "
+                "Increases monotonically over the controller's lifetime."
+            ),
+            tag_keys=("actor_id",),
+        )
+        self.num_control_loops_gauge2.set_default_tags(
             {"actor_id": ray.get_runtime_context().get_actor_id()}
         )
 
