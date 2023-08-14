@@ -501,7 +501,7 @@ class ArrowBlockAccessor(TableBlockAccessor):
         if key is not None and not isinstance(key, (str, list)):
             raise ValueError(
                 "key must be a string, list of strings or None when aggregating "
-                "on Pandas blocks, but "
+                "on Arrow blocks, but "
                 f"got: {type(key)}."
             )
 

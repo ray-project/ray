@@ -327,7 +327,7 @@ def test_groupby_tabular_count(
 
 
 @pytest.mark.parametrize("num_parts", [1, 30])
-@pytest.mark.parametrize("ds_format", ["arrow", "pandas"])
+@pytest.mark.parametrize("ds_format", ["pyarrow", "pandas"])
 def test_groupby_multiple_keys_tabular_count(
     ray_start_regular_shared, ds_format, num_parts, use_push_based_shuffle
 ):
@@ -338,14 +338,10 @@ def test_groupby_multiple_keys_tabular_count(
     xs = list(range(100))
     random.shuffle(xs)
 
-    def _to_pandas(ds):
-        return ds.map_batches(lambda x: x, batch_size=None, batch_format="pandas")
-
     ds = ray.data.from_items([{"A": (x % 2), "B": (x % 3)} for x in xs]).repartition(
         num_parts
     )
-    if ds_format == "pandas":
-        ds = _to_pandas(ds)
+    ds = ds.map_batches(lambda x: x, batch_size=None, batch_format=ds_format)
 
     agg_ds = ds.groupby(["A", "B"]).count()
     assert agg_ds.count() == 6
