@@ -5,6 +5,7 @@ import logging
 import os
 from pathlib import Path
 import tempfile
+from urllib.parse import urlparse, urlunparse
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Type, Union
 import warnings
 
@@ -483,7 +484,14 @@ class BaseTrainer(abc.ABC):
 
         tempdir = tempfile.mkdtemp("tmp_experiment_dir")
         local_path = os.path.join(tempdir, _TRAINER_PKL)
-        
+
+        parsed_url = urlparse(restore_path)
+        parsed_url = parsed_url._replace(
+            path=os.path.join(parsed_url.path, _TRAINER_PKL)
+        )
+        restore_path = urlunparse(parsed_url)
+        print(restore_path)
+
         download_from_uri(restore_path, local_path)
         return Path(local_path)
 
