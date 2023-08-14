@@ -741,7 +741,7 @@ def get_all_live_placement_group_names() -> List[str]:
     return live_pg_names
 
 
-def in_ray_driver_process_GCS_UNSAFE() -> bool:
+def in_ray_driver_process() -> bool:
     """Returns True if called in the Ray driver, False otherwise.
 
     This function hangs when GCS is down due to the `ray.get_runtime_context()`

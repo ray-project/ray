@@ -43,7 +43,7 @@ from ray.serve._private.utils import (
     compute_iterable_delta,
     JavaActorHandleProxy,
     MetricsPusher,
-    in_ray_driver_process_GCS_UNSAFE,
+    in_ray_driver_process,
 )
 from ray.serve.generated.serve_pb2 import (
     DeploymentRoute,
@@ -333,7 +333,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         self._pending_requests_to_schedule: Deque[PendingRequest] = deque()
 
         # Prepare scheduler metrics.
-        self._actor_name: str = self._get_actor_name_GCS_UNSAFE()
+        self._actor_name: str = self._get_actor_name()
 
         self.num_scheduling_tasks_gauge = metrics.Gauge(
             "serve_num_power_of_two_choices_scheduling_tasks",
@@ -388,7 +388,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
     def curr_replicas(self) -> Dict[str, ReplicaWrapper]:
         return self._replicas
 
-    def _get_actor_name_GCS_UNSAFE(self) -> str:
+    def _get_actor_name(self) -> str:
         """Gets the name of the actor where this scheduler runs.
 
         NOTE: this call hangs when the GCS is down. As long as this method is
@@ -402,7 +402,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
             runs outside an actor or the call fails, returns an empty string.
         """
 
-        if in_ray_driver_process_GCS_UNSAFE():
+        if in_ray_driver_process():
             return ""
         else:
             try:
