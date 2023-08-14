@@ -72,7 +72,7 @@ class HandleOptions:
         )
 
 
-class DeploymentHandleBase:
+class _DeploymentHandleBase:
     def __init__(
         self,
         deployment_name: EndpointTag,
@@ -210,7 +210,7 @@ class DeploymentHandleBase:
 
 
 @PublicAPI(stability="beta")
-class RayServeHandle(DeploymentHandleBase):
+class RayServeHandle(_DeploymentHandleBase):
     """A handle used to make requests from one deployment to another.
 
     This is used to compose multiple deployments into a single application. After
@@ -303,7 +303,7 @@ class RayServeHandle(DeploymentHandleBase):
 
 
 @PublicAPI(stability="beta")
-class RayServeSyncHandle(DeploymentHandleBase):
+class RayServeSyncHandle(_DeploymentHandleBase):
     """A handle used to make requests to the ingress deployment of an application.
 
     This is returned by `serve.run` and can be used to invoke the application from
@@ -385,7 +385,7 @@ class RayServeDeploymentHandle(RayServeHandle):
     pass
 
 
-class DeploymentHandleResultBase:
+class _DeploymentHandleResultBase:
     def __init__(
         self,
         assign_request_coro: Coroutine,
@@ -413,7 +413,7 @@ class DeploymentHandleResultBase:
         return future.result()
 
 
-class DeploymentHandleRef(DeploymentHandleResultBase):
+class DeploymentHandleRef(_DeploymentHandleResultBase):
     def __await__(self):
         obj_ref = yield from self._assign_request_task.__await__()
         result = yield from obj_ref.__await__()
@@ -429,7 +429,7 @@ class DeploymentHandleRef(DeploymentHandleResultBase):
         return self._to_obj_ref_or_gen_sync()
 
 
-class DeploymentHandleGenerator(DeploymentHandleResultBase):
+class DeploymentHandleGenerator(_DeploymentHandleResultBase):
     def __init__(
         self,
         assign_request_coro: Coroutine,
@@ -466,7 +466,7 @@ class DeploymentHandleGenerator(DeploymentHandleResultBase):
 
 
 @PublicAPI(stability="beta")
-class DeploymentHandle(DeploymentHandleBase):
+class DeploymentHandle(_DeploymentHandleBase):
     """A handle used to make requests to a deployment at runtime.
 
     This is used to compose multiple deployments into a single application. After

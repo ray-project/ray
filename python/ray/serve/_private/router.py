@@ -108,11 +108,11 @@ class Query:
         DeploymentHandleGenerators are rejected (not currently supported).
         """
         from ray.serve.handle import (
-            DeploymentHandleResultBase,
+            _DeploymentHandleResultBase,
             DeploymentHandleGenerator,
         )
 
-        scanner = _PyObjScanner(source_type=DeploymentHandleResultBase)
+        scanner = _PyObjScanner(source_type=_DeploymentHandleResultBase)
 
         try:
             result_to_obj_ref_coros = []
