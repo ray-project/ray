@@ -1852,7 +1852,7 @@ class TuneController:
             # a done=True result from executing a STOP decision
             # (which clears all futures) before the save gets processed.
             # Keep this in for now while `train` and `save` are 2 separate steps.
-            trial.saving_to = True
+            trial.temporary_state.saving_to = True
             # TODO(justinvyu): Remove the return value?
             return
 
@@ -1971,14 +1971,15 @@ class TuneController:
     # RESTORE
     def _schedule_trial_restore(self, trial: Trial) -> bool:
         if _use_storage_context():
-            checkpoint_result = trial.checkpoint_manager.latest_checkpoint_result
+            cpm = trial.run_metadata.checkpoint_manager
+            checkpoint_result = cpm.latest_checkpoint_result
 
             if not checkpoint_result:
                 logger.debug(f"Not restoring trial {trial}: No checkpoint found.")
                 return False
 
             # TODO(justinvyu): Is this really needed?
-            trial.restoring_from = checkpoint_result
+            trial.temporary_state.restoring_from = checkpoint_result
 
             method_name = "restore"
             args = (checkpoint_result,)
