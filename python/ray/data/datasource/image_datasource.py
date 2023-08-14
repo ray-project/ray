@@ -1,14 +1,13 @@
 import io
 import logging
 import time
-from typing import TYPE_CHECKING, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.util import _check_import
 from ray.data.block import BlockMetadata
-from ray.data.datasource.binary_datasource import BinaryDatasource
 from ray.data.datasource.datasource import Reader
 from ray.data.datasource.file_based_datasource import (
     FileBasedDatasource,
@@ -39,10 +38,11 @@ IMAGE_ENCODING_RATIO_ESTIMATE_LOWER_BOUND = 0.5
 
 
 @DeveloperAPI
-class ImageDatasource(BinaryDatasource):
+class ImageDatasource(FileBasedDatasource):
     """A datasource that lets you read images."""
 
-    _FILE_EXTENSION = ["png", "jpg", "jpeg", "tiff", "bmp", "gif"]
+    _WRITE_FILE_PER_ROW = True
+    _FILE_EXTENSION = ["png", "jpg", "jpeg", "tif", "tiff", "bmp", "gif"]
 
     def create_reader(
         self,
@@ -76,13 +76,15 @@ class ImageDatasource(BinaryDatasource):
         include_paths: bool,
         **reader_args,
     ) -> "pyarrow.Table":
-        from PIL import Image
+        from PIL import Image, UnidentifiedImageError
 
-        records = super()._read_file(f, path, include_paths=True, **reader_args)
-        assert len(records) == 1
-        path, data = records[0]
+        data = f.readall()
 
-        image = Image.open(io.BytesIO(data))
+        try:
+            image = Image.open(io.BytesIO(data))
+        except UnidentifiedImageError as e:
+            raise ValueError(f"PIL couldn't load image file at path '{path}'.") from e
+
         if size is not None:
             height, width = size
             image = image.resize((width, height))
@@ -99,6 +101,27 @@ class ImageDatasource(BinaryDatasource):
         block = builder.build()
 
         return block
+
+    def _rows_per_file(self):
+        return 1
+
+    def _write_row(
+        self,
+        f: "pyarrow.NativeFile",
+        row,
+        writer_args_fn: Callable[[], Dict[str, Any]] = lambda: {},
+        column: str = None,
+        file_format: str = None,
+        **writer_args,
+    ):
+        import io
+
+        from PIL import Image
+
+        image = Image.fromarray(row[column])
+        buffer = io.BytesIO()
+        image.save(buffer, format=file_format)
+        f.write(buffer.getvalue())
 
 
 class _ImageFileMetadataProvider(DefaultFileMetadataProvider):

@@ -27,6 +27,10 @@ from ray.air.constants import (
 
 import ray.cloudpickle as cloudpickle
 from ray.exceptions import RayActorError, RayTaskError
+from ray.train._internal.checkpoint_manager import (
+    _TrainingResult,
+    _CheckpointManager as _NewCheckpointManager,
+)
 from ray.train._internal.storage import _use_storage_context, StorageContext
 from ray.tune import TuneError
 from ray.tune.error import _TuneRestoreError
@@ -65,6 +69,9 @@ from ray._private.utils import binary_to_hex, hex_to_binary
 
 DEBUG_PRINT_INTERVAL = 5
 _DEFAULT_WIN_MAX_PATH_LENGTH = 260
+TRIAL_STATE_FILENAME = "trial_metadata.json"
+
+
 logger = logging.getLogger(__name__)
 
 
@@ -258,7 +265,7 @@ def _get_trainable_kwargs(
         # We keep these kwargs separate for backwards compatibility
         # with trainables that don't provide these keyword arguments
         kwargs["remote_checkpoint_dir"] = trial.remote_path
-        kwargs["sync_config"] = trial.sync_config
+        kwargs["sync_config"] = trial.legacy_sync_config
 
     return kwargs
 
@@ -376,72 +383,81 @@ class Trial:
         self.trainable_name = trainable_name
         self.trial_id = Trial.generate_id() if trial_id is None else trial_id
 
-        # Set to pass through on `Trial.reset()`
-        self._orig_experiment_path = experiment_path
-        self._orig_experiment_dir_name = experiment_dir_name
-
         # Create a copy, since `init_local_path` updates the context with the
         # generated trial dirname.
         self.storage = copy.copy(storage)
 
-        # TODO(justinvyu): For now, explicitly avoid using the storage context
-        # to replace the Trial path handling. This should be re-worked
-        # when adding new persistence mode support for Tune Trainables.
+        if _use_storage_context():
+            self._legacy_orig_experiment_path = None
+            self._legacy_orig_experiment_dir_name = None
+            self._legacy_local_experiment_path = None
+            self._legacy_remote_experiment_path = None
+            self._legacy_experiment_dir_name = None
+            self.legacy_sync_config = None
+        else:
+            # Set to pass through on `Trial.reset()`
+            self._legacy_orig_experiment_path = experiment_path
+            self._legacy_orig_experiment_dir_name = experiment_dir_name
 
-        # Sync config
-        self.sync_config = sync_config or SyncConfig()
+            self._legacy_experiment_dir_name = experiment_dir_name
 
-        local_experiment_path, remote_experiment_path = _split_remote_local_path(
-            experiment_path, None
-        )
+            # Sync config
+            self.legacy_sync_config = sync_config or SyncConfig()
 
-        # Backwards compatibility for `local_dir`
-        if local_dir:
-            if local_experiment_path:
-                raise ValueError(
-                    "Only one of `local_dir` or `experiment_path` "
-                    "can be passed to `Trial()`."
-                )
-            local_experiment_path = local_dir
-
-        # Derive experiment dir name from local path
-        if not experiment_dir_name and local_experiment_path:
-            # Maybe derive experiment dir name from local storage dir
-            experiment_dir_name = Path(local_experiment_path).name
-        elif not experiment_dir_name:
-            experiment_dir_name = DEFAULT_EXPERIMENT_NAME
-
-        # Set default experiment dir name
-        if not local_experiment_path:
-            local_experiment_path = str(
-                Path(_get_defaults_results_dir()) / experiment_dir_name
+            local_experiment_path, remote_experiment_path = _split_remote_local_path(
+                experiment_path, None
             )
-            os.makedirs(local_experiment_path, exist_ok=True)
 
-        # Set remote experiment path if upload_dir is set
-        if self.sync_config.upload_dir:
-            if remote_experiment_path:
-                if not remote_experiment_path.startswith(self.sync_config.upload_dir):
+            # Backwards compatibility for `local_dir`
+            if local_dir:
+                if local_experiment_path:
                     raise ValueError(
-                        f"Both a `SyncConfig.upload_dir` and an `experiment_path` "
-                        f"pointing to remote storage were passed, but they do not "
-                        f"point to the same location. Got: "
-                        f"`experiment_path={experiment_path}` and "
-                        f"`SyncConfig.upload_dir={self.sync_config.upload_dir}`. "
+                        "Only one of `local_dir` or `experiment_path` "
+                        "can be passed to `Trial()`."
                     )
-                warnings.warn(
-                    "If `experiment_path` points to a remote storage location, "
-                    "do not set `SyncConfig.upload_dir`. ",
-                    DeprecationWarning,
-                )
-            else:
-                remote_experiment_path = str(
-                    URI(self.sync_config.upload_dir) / experiment_dir_name
-                )
+                local_experiment_path = local_dir
 
-        # Finally, set properties
-        self._local_experiment_path = local_experiment_path
-        self._remote_experiment_path = remote_experiment_path
+            # Derive experiment dir name from local path
+            if not experiment_dir_name and local_experiment_path:
+                # Maybe derive experiment dir name from local storage dir
+                experiment_dir_name = Path(local_experiment_path).name
+            elif not experiment_dir_name:
+                experiment_dir_name = DEFAULT_EXPERIMENT_NAME
+
+            # Set default experiment dir name
+            if not local_experiment_path:
+                local_experiment_path = str(
+                    Path(_get_defaults_results_dir()) / experiment_dir_name
+                )
+                os.makedirs(local_experiment_path, exist_ok=True)
+
+            # Set remote experiment path if upload_dir is set
+            if self.legacy_sync_config.upload_dir:
+                if remote_experiment_path:
+                    if not remote_experiment_path.startswith(
+                        self.legacy_sync_config.upload_dir
+                    ):
+                        raise ValueError(
+                            f"Both a `SyncConfig.upload_dir` and an `experiment_path` "
+                            f"pointing to remote storage were passed, but they do not "
+                            f"point to the same location. Got: "
+                            f"`experiment_path={experiment_path}` and "
+                            "`SyncConfig.upload_dir="
+                            f"{self.legacy_sync_config.upload_dir}`. "
+                        )
+                    warnings.warn(
+                        "If `experiment_path` points to a remote storage location, "
+                        "do not set `SyncConfig.upload_dir`. ",
+                        DeprecationWarning,
+                    )
+                else:
+                    remote_experiment_path = str(
+                        URI(self.legacy_sync_config.upload_dir) / experiment_dir_name
+                    )
+
+            # Finally, set properties
+            self._legacy_local_experiment_path = local_experiment_path
+            self._legacy_remote_experiment_path = remote_experiment_path
 
         self.config = config or {}
         # Save a copy of the original unresolved config so that we can swap
@@ -505,26 +521,28 @@ class Trial:
         self.custom_trial_name = None
         self.custom_dirname = None
 
-        self.experiment_dir_name = experiment_dir_name
-
         # Checkpointing fields
         self.saving_to = None
 
-        # Checkpoint syncing
-        self.sync_config = sync_config or SyncConfig()
-
         # Checkpoint config
         checkpoint_config = checkpoint_config or CheckpointConfig()
-        checkpoint_config.checkpoint_score_attribute = (
-            checkpoint_config.checkpoint_score_attribute or TRAINING_ITERATION
-        )
+        if not _use_storage_context():
+            # TODO(justinvyu): Why is this needed?
+            checkpoint_config.checkpoint_score_attribute = (
+                checkpoint_config.checkpoint_score_attribute or TRAINING_ITERATION
+            )
 
         self.checkpoint_config = checkpoint_config
 
-        self.checkpoint_manager = _CheckpointManager(
-            checkpoint_config=self.checkpoint_config,
-            delete_fn=_CheckpointDeleter(self._trainable_name(), self.runner),
-        )
+        if _use_storage_context():
+            self.checkpoint_manager = _NewCheckpointManager(
+                checkpoint_config=self.checkpoint_config
+            )
+        else:
+            self.checkpoint_manager = _CheckpointManager(
+                checkpoint_config=self.checkpoint_config,
+                delete_fn=_CheckpointDeleter(self._trainable_name(), self.runner),
+            )
 
         # Restoration fields
         self.restore_path = restore_path
@@ -662,19 +680,45 @@ class Trial:
         return self.local_experiment_path
 
     @property
+    def experiment_dir_name(self):
+        if _use_storage_context():
+            return self.storage.experiment_dir_name
+
+        return self._legacy_experiment_dir_name
+
+    @experiment_dir_name.setter
+    def experiment_dir_name(self, name: str):
+        if _use_storage_context():
+            raise RuntimeError("Set storage.experiment_dir_name instead.")
+
+        self._legacy_experiment_dir_name = name
+
+    @property
     def remote_experiment_path(self) -> str:
-        return str(self._remote_experiment_path)
+        if _use_storage_context():
+            return str(self.storage.storage_prefix / self.storage.experiment_fs_path)
+
+        return str(self._legacy_remote_experiment_path)
 
     @remote_experiment_path.setter
     def remote_experiment_path(self, remote_path: str):
-        self._remote_experiment_path = remote_path
+        if _use_storage_context():
+            raise RuntimeError("Set storage.experiment_dir_name instead.")
+
+        self._legacy_remote_experiment_path = remote_path
 
     @property
     def local_experiment_path(self) -> str:
-        return str(self._local_experiment_path)
+        if _use_storage_context():
+            return self.storage.experiment_local_path
+
+        return str(self._legacy_local_experiment_path)
 
     @local_experiment_path.setter
     def local_experiment_path(self, local_path: str):
+        if _use_storage_context():
+            raise RuntimeError("Set storage.experiment_dir_name instead.")
+
         relative_checkpoint_dirs = []
         if self.local_path:
             # Save the relative paths of persistent trial checkpoints, which are saved
@@ -693,9 +737,9 @@ class Trial:
                     os.path.relpath(checkpoint_dir, self.local_path)
                 )
 
-        # Update the underlying `_local_experiment_path`,
+        # Update the underlying `_legacy_local_experiment_path`,
         # which also updates the trial `local_path`
-        self._local_experiment_path = local_path
+        self._legacy_local_experiment_path = local_path
 
         if self.local_path:
             for checkpoint, relative_checkpoint_dir in zip(
@@ -715,12 +759,18 @@ class Trial:
 
     @property
     def local_path(self) -> Optional[str]:
+        if _use_storage_context():
+            return self.storage.trial_local_path
+
         if not self.local_experiment_path or not self.relative_logdir:
             return None
         return str(Path(self.local_experiment_path).joinpath(self.relative_logdir))
 
     @local_path.setter
     def local_path(self, logdir):
+        if _use_storage_context():
+            raise RuntimeError("Set storage.trial_dir_name instead.")
+
         relative_logdir = Path(logdir).relative_to(self.local_experiment_path)
         if ".." in str(relative_logdir):
             raise ValueError(
@@ -744,13 +794,20 @@ class Trial:
 
     @property
     def remote_path(self) -> Optional[str]:
-        if not self._remote_experiment_path or not self.relative_logdir:
+        # TODO(justinvyu): Remove remote_path. It's just path vs local_path now.
+        if _use_storage_context():
+            return self.path
+
+        if not self._legacy_remote_experiment_path or not self.relative_logdir:
             return None
-        uri = URI(self._remote_experiment_path)
+        uri = URI(self._legacy_remote_experiment_path)
         return str(uri / self.relative_logdir)
 
     @property
     def path(self) -> Optional[str]:
+        if _use_storage_context():
+            return str(self.storage.storage_prefix / self.storage.trial_fs_path)
+
         return self.remote_path or self.local_path
 
     @property
@@ -763,7 +820,10 @@ class Trial:
 
     @property
     def sync_on_checkpoint(self):
-        return self.sync_config.sync_on_checkpoint
+        if _use_storage_context():
+            return self.storage.sync_config.sync_on_checkpoint
+
+        return self.legacy_sync_config.sync_on_checkpoint
 
     @property
     def checkpoint_at_end(self):
@@ -780,6 +840,9 @@ class Trial:
         If the trial is in ERROR state, the most recent PERSISTENT checkpoint
         is returned.
         """
+        if _use_storage_context():
+            return self.checkpoint_manager.latest_checkpoint_result
+
         if self.status == Trial.ERROR:
             checkpoint = self.checkpoint_manager.newest_persistent_checkpoint
         else:
@@ -797,6 +860,11 @@ class Trial:
 
     @property
     def uses_cloud_checkpointing(self):
+        # TODO(justinvyu): This is entangled in the old restore codepaths.
+        # Remove this once those are gone.
+        if _use_storage_context():
+            return False
+
         return bool(self.remote_path)
 
     def reset(self):
@@ -817,13 +885,13 @@ class Trial:
             self.trainable_name,
             config=self.config,
             trial_id=None,
-            experiment_path=self._orig_experiment_path,
-            experiment_dir_name=self._orig_experiment_dir_name,
+            experiment_path=self._legacy_orig_experiment_path,
+            experiment_dir_name=self._legacy_orig_experiment_dir_name,
             evaluated_params=self.evaluated_params,
             experiment_tag=self.experiment_tag,
             placement_group_factory=placement_group_factory,
             stopping_criterion=self.stopping_criterion,
-            sync_config=self.sync_config,
+            sync_config=self.legacy_sync_config,
             checkpoint_config=self.checkpoint_config,
             export_formats=self.export_formats,
             restore_path=self.restore_path,
@@ -831,6 +899,7 @@ class Trial:
             trial_dirname_creator=self.trial_dirname_creator,
             log_to_file=self.log_to_file,
             max_failures=self.max_failures,
+            storage=self.storage,
         )
 
     @Deprecated("Replaced by `init_local_path()`")
@@ -844,6 +913,12 @@ class Trial:
             self.relative_logdir = _create_unique_logdir_name(
                 str(self.local_experiment_path), self._generate_dirname()
             )
+
+        if _use_storage_context():
+            # Populate the storage context with the trial dir name we just generated.
+            assert self.storage
+            self.storage.trial_dir_name = self.relative_logdir
+
         assert self.local_path
         logdir_path = Path(self.local_path)
         max_path_length = _get_max_path_length()
@@ -855,11 +930,6 @@ class Trial:
                 f"Path: {logdir_path}"
             )
         logdir_path.mkdir(parents=True, exist_ok=True)
-
-        if _use_storage_context():
-            # Populate the storage context with the trial dir name we just generated.
-            assert self.storage
-            self.storage.trial_dir_name = self.relative_logdir
 
         self.invalidate_json_state()
 
@@ -890,9 +960,10 @@ class Trial:
             self._default_result_or_future = runner.get_auto_filled_metrics.remote(
                 debug_metrics_only=True
             )
-        self.checkpoint_manager.set_delete_fn(
-            _CheckpointDeleter(self._trainable_name(), runner)
-        )
+        if not _use_storage_context():
+            self.checkpoint_manager.set_delete_fn(
+                _CheckpointDeleter(self._trainable_name(), runner)
+            )
         # No need to invalidate state cache: runner is not stored in json
         # self.invalidate_json_state()
 
@@ -1004,12 +1075,25 @@ class Trial:
         Args:
             checkpoint: Checkpoint taken.
         """
-        self.checkpoint_manager.on_checkpoint(checkpoint)
+        if _use_storage_context():
+            checkpoint_result = checkpoint
+            assert isinstance(checkpoint_result, _TrainingResult)
+            self.checkpoint_manager.register_checkpoint(checkpoint_result)
+            # Increment the checkpoint index to keep the checkpoint index in sync.
+            # This index will get restored when the trial is restored and will
+            # be passed to the Trainable as the starting checkpoint index.
+            self.storage.current_checkpoint_index += 1
+        else:
+            self.checkpoint_manager.on_checkpoint(checkpoint)
         self.invalidate_json_state()
 
     def on_restore(self):
         """Handles restoration completion."""
         assert self.is_restoring
+
+        if _use_storage_context():
+            assert isinstance(self.restoring_from, _TrainingResult)
+
         self.last_result = self.restoring_from.metrics
         self.last_result.setdefault("config", self.config)
         self.restoring_from = None
@@ -1165,6 +1249,19 @@ class Trial:
         new_trial.__setstate__(trial_state)
 
         return new_trial
+
+    @classmethod
+    def from_directory(
+        cls, path: Union[str, os.PathLike], stub: bool = False
+    ) -> "Trial":
+        metadata_path = os.path.join(path, TRIAL_STATE_FILENAME)
+        if not os.path.exists(metadata_path):
+            raise FileNotFoundError(
+                f"Can't restore trial from path: File `{metadata_path}` not found."
+            )
+
+        json_state = Path(metadata_path).read_text()
+        return cls.from_json_state(json_state, stub=stub)
 
     def __getstate__(self):
         """Memento generator for Trial.

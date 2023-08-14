@@ -3,6 +3,10 @@
 Ray Use Cases
 =============
 
+.. raw:: html
+
+    <link rel="stylesheet" type="text/css" href="../_static/css/use_cases.css">
+
 This page indexes common Ray use cases for scaling ML.
 It contains highlighted references to blogs, examples, and tutorials also located
 elsewhere in the Ray documentation.
@@ -16,18 +20,12 @@ Large language models (LLMs) and generative AI are rapidly changing industries, 
 
 .. figure:: /images/llm-stack.png
 
-Learn more about how Ray scales LLMs and generative AI with the following resources.
+.. query-param-ref:: ray-overview/examples
+    :parameters: ?tags=llm
+    :ref-type: doc
+    :classes: example-gallery-link
 
-- `[Blog] How Ray solves common production challenges for generative AI infrastructure <https://www.anyscale.com/blog/ray-common-production-challenges-for-generative-ai-infrastructure>`_
-- `[Blog] Training 175B Parameter Language Models at 1000 GPU scale with Alpa and Ray <https://www.anyscale.com/blog/training-175b-parameter-language-models-at-1000-gpu-scale-with-alpa-and-ray>`_
-- `[Blog] Faster stable diffusion fine-tuning with Ray AIR <https://www.anyscale.com/blog/faster-stable-diffusion-fine-tuning-with-ray-air>`_
-- `[Blog] How to fine tune and serve LLMs simply, quickly and cost effectively using Ray + DeepSpeed + HuggingFace <https://www.anyscale.com/blog/how-to-fine-tune-and-serve-llms>`_
-- `[Article] How OpenAI Uses Ray to Train Tools like ChatGPT <https://archive.is/2022.12.16-171259/https://www.businessinsider.com/openai-chatgpt-trained-on-anyscale-ray-generative-lifelike-ai-models-2022-12>`_
-- `[Example] GPT-J-6B Fine-Tuning with Ray AIR and DeepSpeed </ray-air/examples/gptj_deepspeed_fine_tuning>`_
-- `[Example] Fine-tuning DreamBooth with Ray AIR </ray-air/examples/dreambooth_finetuning>`_
-- `[Example] Stable Diffusion Batch Prediction with Ray AIR </ray-air/examples/stablediffusion_batch_prediction>`_
-- `[Example] GPT-J-6B Serving with Ray AIR </ray-air/examples/gptj_serving>`_
-- `[Intermediate Example] Aviary toolkit serving live traffic for LLMs <https://github.com/ray-project/aviary/>`_
+    Explore LLMs and Gen AI examples
 
 .. _ref-use-cases-batch-infer:
 
@@ -43,11 +41,12 @@ To learn more about running batch inference with Ray, see the :ref:`batch infere
 
 .. figure:: ../data/images/batch_inference.png
 
-- `[Guide] Batch Prediction using Ray Data </data/batch_inference>`_
-- `[Example] Batch Inference Examples <batch_inference_examples>`_
-- `[Blog] Offline Batch Inference: Comparing Ray, Apache Spark, and SageMaker <https://www.anyscale.com/blog/offline-batch-inference-comparing-ray-apache-spark-and-sagemaker>`_
-- `[Blog] Streaming distributed execution across CPUs and GPUs <https://www.anyscale.com/blog/streaming-distributed-execution-across-cpus-and-gpus>`_
-- `[Blog] Using Ray Data to parallelize LangChain inference <https://www.anyscale.com/blog/turbocharge-langchain-now-guide-to-20x-faster-embedding>`_
+.. query-param-ref:: ray-overview/examples
+    :parameters: ?tags=inference
+    :ref-type: doc
+    :classes: example-gallery-link
+
+    Explore batch inference examples
 
 .. _ref-use-cases-mmt:
 
@@ -77,15 +76,12 @@ Alternative solutions exist for less common cases:
 #. If your data is not in a supported format, use Ray Core (:ref:`Tutorial <mmt-core>`) for custom applications. This is an advanced option and requires and understanding of :ref:`design patterns and anti-patterns <core-patterns>`.
 #. If you have a large preprocessing pipeline, you can use the Ray Data library to train multiple models (:ref:`Tutorial <mmt-datasets>`).
 
-Learn more about many model training with the following resources.
+.. query-param-ref:: ray-overview/examples
+    :parameters: ?tags=training
+    :ref-type: doc
+    :classes: example-gallery-link
 
-- `[Blog] Training One Million ML Models in Record Time with Ray <https://www.anyscale.com/blog/training-one-million-machine-learning-models-in-record-time-with-ray>`_
-- `[Blog] Many Models Batch Training at Scale with Ray Core <https://www.anyscale.com/blog/many-models-batch-training-at-scale-with-ray-core>`_
-- `[Example] Batch Training with Ray Core </ray-core/examples/batch_training>`_
-- `[Example] Batch Training with Ray Data </data/examples/batch_training>`_
-- `[Guide] Tune Basic Parallel Experiments </tune/tutorials/tune-run>`_
-- `[Example] Batch Training and Tuning using Ray Tune </ray-air/examples/batch_tuning>`_
-- `[Talk] Scaling Instacart fulfillment ML on Ray <https://www.youtube.com/watch?v=3t26ucTy0Rs>`_
+    Explore model training examples
 
 Model Serving
 -------------
@@ -130,7 +126,7 @@ Learn more about the Tune library with the following talks and user guides.
 Distributed Training
 --------------------
 
-The :ref:`Ray Train <train-userguides>` library integrates many distributed training frameworks under a simple Trainer API,
+The :ref:`Ray Train <train-docs>` library integrates many distributed training frameworks under a simple Trainer API,
 providing distributed orchestration and management capabilities out of the box.
 
 In contrast to training many models, model parallelism partitions a large model across many machines for training. Ray Train has built-in abstractions for distributing shards of models and running training in parallel.
@@ -183,7 +179,7 @@ Read more about building ML platforms with Ray in :ref:`this section <ray-for-ml
 End-to-End ML Workflows
 -----------------------
 
-The following highlights examples utilizing Ray AIR to implement end-to-end ML workflows.
+The following highlights examples utilizing Ray AI libraries to implement end-to-end ML workflows.
 
 - `[Example] Text classification with Ray </ray-air/examples/huggingface_text_classification>`_
 - `[Example] Image classification with Ray </ray-air/examples/torch_image_example>`_

@@ -126,7 +126,7 @@ class LogsManager:
             yield streamed_log.data
 
     def _verify_node_registered(self, node_id: str):
-        if node_id not in self.client.get_all_registered_agent_ids():
+        if node_id not in self.client.get_all_registered_log_agent_ids():
             raise DataSourceUnavailable(
                 f"Given node id {node_id} is not available. "
                 "It's either the node is dead, or it is not registered. "

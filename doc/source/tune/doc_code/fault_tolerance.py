@@ -1,20 +1,20 @@
 # flake8: noqa
 
 # __ft_initial_run_start__
-from ray import air, tune
-from ray.air import Checkpoint, session
+from ray import train, tune
+from ray.train import Checkpoint
 
 
 def trainable(config):
     # Checkpoint loading
-    checkpoint = session.get_checkpoint()
+    checkpoint = train.get_checkpoint()
     start = 1 if not checkpoint else checkpoint.to_dict()["epoch"] + 1
 
     for epoch in range(start, config["num_epochs"]):
         # Do some training...
 
         # Checkpoint saving
-        session.report(
+        train.report(
             {"epoch": epoch}, checkpoint=Checkpoint.from_dict({"epoch": epoch})
         )
 
@@ -22,7 +22,7 @@ def trainable(config):
 tuner = tune.Tuner(
     trainable,
     param_space={"num_epochs": 10},
-    run_config=air.RunConfig(
+    run_config=train.RunConfig(
         storage_path="~/ray_results", name="tune_fault_tolerance_guide"
     ),
 )
@@ -50,7 +50,7 @@ tuner = tune.Tuner.restore(
 
 # __ft_restore_multiplexing_start__
 import os
-from ray import air, tune
+from ray import train, tune
 
 storage_path = "~/ray_results"
 exp_name = "tune_fault_tolerance_guide"
@@ -62,7 +62,7 @@ else:
     tuner = tune.Tuner(
         trainable,
         param_space={"num_epochs": 10},
-        run_config=air.RunConfig(storage_path=storage_path, name=exp_name),
+        run_config=train.RunConfig(storage_path=storage_path, name=exp_name),
     )
 tuner.fit()
 # __ft_restore_multiplexing_end__
@@ -75,14 +75,14 @@ else:
     tuner = tune.Tuner(
         trainable,
         param_space={"num_epochs": 10},
-        run_config=air.RunConfig(storage_path=storage_path, name=exp_name),
+        run_config=train.RunConfig(storage_path=storage_path, name=exp_name),
     )
 assert tuner.get_results()
 
 
 # __ft_restore_objrefs_initial_start__
 import ray
-from ray import air, tune
+from ray import train, tune
 
 
 class LargeModel:
@@ -105,7 +105,9 @@ tuner = tune.Tuner(
     train_fn,
     # Tune over the object references!
     param_space={"model_ref": tune.grid_search(model_refs)},
-    run_config=air.RunConfig(storage_path="~/ray_results", name="restore_object_refs"),
+    run_config=train.RunConfig(
+        storage_path="~/ray_results", name="restore_object_refs"
+    ),
 )
 tuner.fit()
 # __ft_restore_objrefs_initial_end__
@@ -130,15 +132,15 @@ tuner.fit()
 # __ft_restore_objrefs_restored_end__
 
 # __ft_trial_failure_start__
-from ray import air, tune
+from ray import train, tune
 
 tuner = tune.Tuner(
     trainable,
     param_space={"num_epochs": 10},
-    run_config=air.RunConfig(
+    run_config=train.RunConfig(
         storage_path="~/ray_results",
         name="trial_fault_tolerance",
-        failure_config=air.FailureConfig(max_failures=3),
+        failure_config=train.FailureConfig(max_failures=3),
     ),
 )
 tuner.fit()

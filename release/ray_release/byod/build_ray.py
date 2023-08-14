@@ -61,13 +61,12 @@ def _get_build(py_version: str) -> Dict[str, Any]:
         "pip install -q docker aws_requests_auth boto3",
         "./ci/env/env_info.sh",
         "python .buildkite/copy_files.py --destination docker_login",
-        "python ./ci/build/build-docker-images.py "
-        f"--py-versions {py_version} -T cpu -T cu118 "
-        "--build-type BUILDKITE --build-base --push-pr-build",
+        f"python ./ci/build/build-docker-images.py --py-versions {py_version} "
+        "-T cpu -T cu118 --build-type BUILDKITE --build-base",
     ]
     return {
         "label": py_version,
-        "agents": {"queue": "release_queue_small"},
+        "agents": {"queue": "runner_queue_medium_branch"},
         "commands": cmd,
         "plugins": [
             {
@@ -99,6 +98,7 @@ def _get_build(py_version: str) -> Dict[str, Any]:
                         "BUILDKITE_BUILD_ID",
                         "BUILDKITE_MESSAGE",
                         "BUILDKITE_BUILD_NUMBER",
+                        "BUILDKITE_PIPELINE_ID",
                     ],
                     "mount-checkout": "false",
                 },

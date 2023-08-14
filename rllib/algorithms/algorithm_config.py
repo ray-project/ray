@@ -339,7 +339,23 @@ class AlgorithmConfig(_Config):
         self.grad_clip = None
         self.grad_clip_by = "global_norm"
         self.train_batch_size = 32
-        self.model = copy.deepcopy(MODEL_DEFAULTS)
+        # TODO (sven): Unsolved problem with RLModules sometimes requiring settings from
+        #  the main AlgorithmConfig. We should not require the user to provide those
+        #  settings in both, the AlgorithmConfig (as property) AND the model config
+        #  dict. We should generally move to a world, in which there exists an
+        #  AlgorithmConfig that a) has-a user provided model config object and b)
+        #  is given a chance to compile a final model config (dict or object) that is
+        #  then passed into the RLModule/Catalog. This design would then match our
+        #  "compilation" pattern, where we compile automatically those settings that
+        #  should NOT be touched by the user.
+        #  In case, an Algorithm already uses the above described pattern (and has
+        #  `self.model` as a @property, ignore AttributeError (for trying to set this
+        #  property).
+        try:
+            self.model = copy.deepcopy(MODEL_DEFAULTS)
+        except AttributeError:
+            pass
+
         self.optimizer = {}
         self.max_requests_in_flight_per_sampler_worker = 2
         self._learner_class = None

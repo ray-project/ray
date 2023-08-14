@@ -67,15 +67,12 @@ def download_model(
     path = os.path.join(TRANSFORMERS_CACHE, f"models--{model_id.replace('/', '--')}")
 
     cmd = (
-        [
-            "awsv2",
-            "s3",
-            "sync",
-        ]
+        ["awsv2", "s3", "sync"]
         + s3_sync_args
         + (["--exclude", "*", "--include", "*token*"] if tokenizer_only else [])
         + [bucket_uri, path]
     )
+    print(f"RUN({cmd})")
     subprocess.run(cmd)
     print("done")
 

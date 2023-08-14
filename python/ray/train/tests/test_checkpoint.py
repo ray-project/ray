@@ -6,7 +6,7 @@ import pytest
 
 import ray
 from ray.train._internal.storage import _exists_at_fs_path, _upload_to_fs_path
-from ray.train.checkpoint import (
+from ray.train._checkpoint import (
     _CHECKPOINT_TEMP_DIR_PREFIX,
     _METADATA_FILE_NAME,
     _get_del_lock_path,
@@ -154,6 +154,21 @@ def test_multiprocess_as_directory(checkpoint: Checkpoint, monkeypatch):
 
         # Check that the temp checkpoint directory was deleted.
         assert not Path(checkpoint_dir_1).exists()
+
+
+def test_as_directory_lock_cleanup(checkpoint: Checkpoint):
+    """Errors when accessing a checkpoint with `as_directory`
+    shouldn't leave behind lock files.
+    """
+    with pytest.raises(RuntimeError):
+        with checkpoint.as_directory() as checkpoint_dir:
+            raise RuntimeError
+
+    assert not _list_existing_del_locks(checkpoint_dir)
+
+    is_local_checkpoint = isinstance(checkpoint.filesystem, pyarrow.fs.LocalFileSystem)
+    if not is_local_checkpoint:
+        assert not Path(checkpoint_dir).exists()
 
 
 def test_metadata(checkpoint: Checkpoint):

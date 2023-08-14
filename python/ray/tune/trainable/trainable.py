@@ -24,11 +24,8 @@ from ray.air.constants import (
     TIME_THIS_ITER_S,
     TRAINING_ITERATION,
 )
-from ray.train._internal.storage import (
-    _use_storage_context,
-    StorageContext,
-    init_shared_storage_context,
-)
+from ray.train._internal.checkpoint_manager import _TrainingResult
+from ray.train._internal.storage import _use_storage_context, StorageContext
 from ray.tune.result import (
     DEBUG_METRICS,
     DEFAULT_RESULTS_DIR,
@@ -172,6 +169,15 @@ class Trainable:
 
         self._start_time = time.time()
         self._local_ip = ray.util.get_node_ip_address()
+
+        self._storage = storage
+
+        if _use_storage_context():
+            assert storage
+            assert storage.trial_fs_path
+            logger.debug(f"StorageContext on the TRAINABLE:\n{storage}")
+            storage._check_validation_file()
+
         self.setup(copy.deepcopy(self.config))
         setup_time = time.time() - self._start_time
         if setup_time > SETUP_TIME_THRESHOLD:
@@ -183,18 +189,6 @@ class Trainable:
             )
         log_sys_usage = self.config.get("log_sys_usage", False)
         self._monitor = UtilMonitor(start=log_sys_usage)
-
-        self._storage = storage
-
-        if _use_storage_context():
-            assert storage
-            assert storage.trial_fs_path
-            logger.debug(f"StorageContext on the TRAINABLE:\n{storage}")
-            storage._check_validation_file()
-
-            # Set a globally accessible storage context on the remote Trainable process
-            # This is accessible from the training loop thread for FunctionTrainable's
-            init_shared_storage_context(storage)
 
         self.remote_checkpoint_dir = remote_checkpoint_dir
         # If no sync_config is provided, but we save to a remote_checkpoint_dir,
@@ -501,6 +495,15 @@ class Trainable:
         # User saves checkpoint
         checkpoint_dict_or_path = self.save_checkpoint(checkpoint_dir)
 
+        if _use_storage_context() and isinstance(
+            checkpoint_dict_or_path, _TrainingResult
+        ):
+            checkpoint_result = checkpoint_dict_or_path
+            assert self._last_result
+            # Update the checkpoint result to include auto-filled metrics.
+            checkpoint_result.metrics.update(self._last_result)
+            return checkpoint_result
+
         if checkpoint_dict_or_path is None:
             # checkpoint_dict_or_path can only be None in class trainables.
             # In that case the default is to use the root checkpoint directory.
@@ -510,7 +513,7 @@ class Trainable:
             # checkpoint_dir is only None in function trainables. In that case,
             # checkpoint_dict_or_path points to the already saved checkpoint dir.
             # This will be considered the root dir.
-            assert isinstance(checkpoint_dict_or_path, str)
+            assert isinstance(checkpoint_dict_or_path, str), checkpoint_dict_or_path
             checkpoint_dir = checkpoint_dict_or_path
 
         # Get trainable metadata
@@ -857,6 +860,33 @@ class Trainable:
                 could not be found.
 
         """
+        if _use_storage_context():
+            checkpoint_result = checkpoint_path
+            assert isinstance(checkpoint_result, _TrainingResult)
+
+            checkpoint_metrics = checkpoint_result.metrics
+            self._iteration = checkpoint_metrics[TRAINING_ITERATION]
+            self._time_total = checkpoint_metrics[TIME_TOTAL_S]
+            self._time_since_restore = 0.0
+            self._iterations_since_restore = 0
+
+            # TODO(justinvyu): This stuff should be moved to rllib.
+            self._timesteps_total = checkpoint_metrics.get(TIMESTEPS_TOTAL)
+            self._timesteps_since_restore = 0
+            self._episodes_total = checkpoint_metrics.get(EPISODES_TOTAL)
+
+            # TODO(justinvyu): The Trainable `load_checkpoint` interface
+            # should be updated to take in a `_TrainingResult` / Checkpoint
+            self.load_checkpoint(checkpoint_result)
+
+            self._restored = True
+
+            logger.info(
+                f"Restored on {self._local_ip} from checkpoint: "
+                f"{checkpoint_result.checkpoint}"
+            )
+            return True
+
         # Ensure Checkpoints are converted
         if isinstance(checkpoint_path, Checkpoint):
             return self._restore_from_checkpoint_obj(checkpoint_path)
@@ -1020,17 +1050,23 @@ class Trainable:
         export_dir = export_dir or self.logdir
         return self._export_model(export_formats, export_dir)
 
-    def reset(self, new_config, logger_creator=None, remote_checkpoint_dir=None):
+    def reset(
+        self, new_config, logger_creator=None, remote_checkpoint_dir=None, storage=None
+    ):
         """Resets trial for use with new config.
 
         Subclasses should override reset_config() to actually
         reset actor behavior for the new config."""
+
+        # TODO(justinvyu): remote_checkpoint_dir can be removed.
         # Save artifacts one last time, if this actor has been swapped to a
         # different trial.
         if remote_checkpoint_dir != self.remote_checkpoint_dir:
             self._maybe_save_artifacts_to_cloud()
 
         self.config = new_config
+
+        self._storage = storage
 
         trial_info = new_config.pop(TRIAL_INFO, None)
         if trial_info:
