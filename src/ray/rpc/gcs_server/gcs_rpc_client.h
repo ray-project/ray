@@ -42,12 +42,16 @@ class Executor {
   ///
   /// \param operation The operation to be executed.
   void Execute(std::function<void(GcsRpcClient *gcs_rpc_client)> operation) {
+    RAY_LOG(INFO) << "Executor::Execute running";
     operation_ = std::move(operation);
     operation_(gcs_rpc_client_);
   }
 
   /// This function is used to retry the given operation.
-  void Retry() { operation_(gcs_rpc_client_); }
+  void Retry() {
+    RAY_LOG(INFO) << "Executor::Retry running";
+    operation_(gcs_rpc_client_);
+  }
 
   void Abort(const ray::Status &status) { abort_callback_(status); }
 
@@ -101,6 +105,9 @@ class Executor {
     auto operation_callback = [this, request, callback, executor, timeout_ms](           \
                                   const ray::Status &status,                             \
                                   const METHOD##Reply &reply) {                          \
+      RAY_LOG(INFO) << "operation_callback "                                             \
+                    << " status " << status << "pending bytes "                          \
+                    << pending_requests_bytes_ << ", req " << request.ByteSizeLong();    \
       if (status.IsTimedOut()) {                                                         \
         callback(status, reply);                                                         \
         delete executor;                                                                 \
