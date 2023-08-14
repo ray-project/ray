@@ -374,7 +374,6 @@ cdef extern from "ray/gcs/gcs_client/gcs_client.h" nogil:
             const CClusterID &cluster_id,
             int64_t timeout_ms,
             size_t num_retries)
-        CRayStatus ConnectChannel()
         CRayStatus CheckAlive(
             const c_vector[c_string] &raylet_addresses,
             int64_t timeout_ms,

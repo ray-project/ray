@@ -193,8 +193,6 @@ class RAY_EXPORT PythonGcsClient {
  public:
   explicit PythonGcsClient(const GcsClientOptions &options);
 
-  Status ConnectChannel();
-
   Status Connect(const ClusterID &cluster_id, int64_t timeout_ms, size_t num_retries);
 
   Status CheckAlive(const std::vector<std::string> &raylet_addresses,
