@@ -419,8 +419,9 @@ Preprocessing Data
 ------------------
 
 The recommended way to preprocess data for training is to use Ray Data operations such as `map_batches`. 
+See the :ref:`Ray Data Working with Pytorch guide <working_with_pytorch>` for more details.
 
-However, particularly for tabular data, Ray Data comes with out-of-the-box :ref:`preprocessors <air-preprocessors>` that implement common data preprocessing operations.
+However, particularly for tabular data, you can also use Ray Data :ref:`preprocessors <air-preprocessors>`, which implement common data preprocessing operations.
 You can use this with Ray Train Trainers by applying them on the dataset before passing the dataset into a Trainer. For example:
 
 .. testcode::
