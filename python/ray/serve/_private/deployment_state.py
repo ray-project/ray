@@ -23,6 +23,7 @@ from ray._private.usage.usage_lib import (
 
 from ray.serve._private.autoscaling_metrics import InMemoryMetricsStore
 from ray.serve._private.common import (
+    DeploymentID,
     DeploymentInfo,
     DeploymentStatus,
     DeploymentStatusInfo,
@@ -1310,8 +1311,10 @@ class DeploymentState:
         ):
             return
 
+        prefix = self.app_name + "_" if self.app_name else ""
+        deployment_id = DeploymentID(self._name[len(prefix) :], self.app_name)
         self._long_poll_host.notify_changed(
-            (LongPollNamespace.RUNNING_REPLICAS, self._name),
+            (LongPollNamespace.RUNNING_REPLICAS, deployment_id),
             running_replica_infos,
         )
         self._last_notified_running_replica_infos = running_replica_infos

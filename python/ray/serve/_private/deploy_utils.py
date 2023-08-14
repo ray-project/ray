@@ -6,7 +6,10 @@ import time
 
 from ray.serve.config import ReplicaConfig, DeploymentConfig
 from ray.serve.schema import ServeApplicationSchema
-from ray.serve._private.constants import SERVE_LOGGER_NAME
+from ray.serve._private.constants import (
+    SERVE_LOGGER_NAME,
+    DEPLOYMENT_NAME_PREFIX_SEPARATOR,
+)
 from ray.serve._private.common import DeploymentInfo
 
 import ray
@@ -111,7 +114,7 @@ def deploy_args_to_deployment_info(
         ).hex()
 
     return DeploymentInfo(
-        actor_name=deployment_name,
+        actor_name=f"{app_name}{DEPLOYMENT_NAME_PREFIX_SEPARATOR}{deployment_name}",
         version=version,
         deployment_config=deployment_config,
         replica_config=replica_config,

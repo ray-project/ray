@@ -8,6 +8,7 @@ from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple, Type, U
 import ray
 from ray.actor import ActorHandle
 from ray.serve._private.common import (
+    DeploymentID,
     DeploymentInfo,
     DeploymentStatus,
     StatusOverview,
@@ -190,7 +191,9 @@ class ServeControllerClient:
         else:
             raise TimeoutError(f"Deployment {name} wasn't deleted after {timeout_s}s.")
 
-    def _wait_for_deployment_created(self, name: str, timeout_s: int = -1):
+    def _wait_for_deployment_created(
+        self, deployment_name: str, app_name: str, timeout_s: int = -1
+    ):
         """Waits for the named deployment to be created.
 
         A deployment being created simply means that its been registered
@@ -203,15 +206,19 @@ class ServeControllerClient:
 
         start = time.time()
         while time.time() - start < timeout_s or timeout_s < 0:
-            status_bytes = ray.get(self._controller.get_deployment_status.remote(name))
+            deployment_id = DeploymentID(deployment_name, app_name)
+            status_bytes = ray.get(
+                self._controller.get_deployment_status.remote(str(deployment_id))
+            )
 
             if status_bytes is not None:
                 break
 
+            logger.debug(f"Waiting for deployment {deployment_id} to be created.")
             time.sleep(CLIENT_CHECK_CREATION_POLLING_INTERVAL_S)
         else:
             raise TimeoutError(
-                f"Deployment {name} did not become HEALTHY after {timeout_s}s."
+                f"Deployment {deployment_id} did not become HEALTHY after {timeout_s}s."
             )
 
     def _wait_for_application_running(self, name: str, timeout_s: int = -1):
@@ -410,9 +417,11 @@ class ServeControllerClient:
                 self._wait_for_deployment_deleted(name)
 
     @_ensure_connected
-    def get_deployment_info(self, name: str) -> Tuple[DeploymentInfo, str]:
+    def get_deployment_info(
+        self, name: str, app_name: str
+    ) -> Tuple[DeploymentInfo, str]:
         deployment_route = DeploymentRoute.FromString(
-            ray.get(self._controller.get_deployment_info.remote(name))
+            ray.get(self._controller.get_deployment_info.remote(name, app_name))
         )
         return (
             DeploymentInfo.from_proto(deployment_route.deployment_info),
@@ -462,6 +471,7 @@ class ServeControllerClient:
     def get_handle(
         self,
         deployment_name: str,
+        app_name: Optional[str] = "default",
         missing_ok: Optional[bool] = False,
         sync: bool = True,
         _is_for_http_requests: bool = False,
@@ -481,24 +491,29 @@ class ServeControllerClient:
         Returns:
             RayServeHandle
         """
-        cache_key = (deployment_name, missing_ok, sync)
+        cache_key = (deployment_name, app_name, missing_ok, sync)
         if cache_key in self.handle_cache:
             cached_handle = self.handle_cache[cache_key]
             if cached_handle._is_same_loop:
                 return cached_handle
 
         all_deployments = ray.get(self._controller.list_deployment_names.remote())
-        if not missing_ok and deployment_name not in all_deployments:
-            raise KeyError(f"Deployment '{deployment_name}' does not exist.")
+        if not missing_ok and f"{app_name}_{deployment_name}" not in all_deployments:
+            raise KeyError(
+                f"Deployment '{deployment_name}' in application '{app_name}' does not "
+                "exist."
+            )
 
         if sync:
             handle = RayServeSyncHandle(
                 deployment_name,
+                app_name,
                 _is_for_http_requests=_is_for_http_requests,
             )
         else:
             handle = RayServeHandle(
                 deployment_name,
+                app_name,
                 _is_for_http_requests=_is_for_http_requests,
             )
 
