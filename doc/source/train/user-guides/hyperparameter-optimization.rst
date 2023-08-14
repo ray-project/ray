@@ -28,7 +28,7 @@ There are a number of key concepts that dictate proper use of a Tuner:
 * The `Tuner` returns its results in a `ResultGrid`.
 
 .. note::
-   Tuners can also be used to launch hyperparameter tuning without using Ray AIR Trainers. See
+   Tuners can also be used to launch hyperparameter tuning without using Ray Train. See
    :ref:`the Ray Tune documentation <tune-main>` for more guides and examples.
 
 Basic usage
@@ -47,7 +47,7 @@ pass it into a :py:class:`~ray.tune.tuner.Tuner`.
 How to configure a Tuner?
 -------------------------
 
-There are two main configuration objects that can be passed into a Tuner: the :class:`TuneConfig <ray.tune.tune_config.TuneConfig>` and the :class:`RunConfig <ray.air.config.RunConfig>`.
+There are two main configuration objects that can be passed into a Tuner: the :class:`TuneConfig <ray.tune.tune_config.TuneConfig>` and the :class:`RunConfig <ray.train.RunConfig>`.
 
 The :class:`TuneConfig <ray.tune.tune_config.TuneConfig>` contains tuning specific settings, including:
 
@@ -64,7 +64,7 @@ Here are some common configurations for `TuneConfig`:
 
 See the :class:`TuneConfig API reference <ray.tune.tune_config.TuneConfig>` for more details.
 
-The :class:`RunConfig <ray.air.config.RunConfig>` contains configurations that are more generic than tuning specific settings.
+The :class:`RunConfig <ray.train.RunConfig>` contains configurations that are more generic than tuning specific settings.
 This may include:
 
 - failure/retry configurations
@@ -75,14 +75,14 @@ This may include:
 - custom callbacks
 - integration with cloud storage
 
-Below we showcase some common configurations of :class:`RunConfig <ray.air.config.RunConfig>`.
+Below we showcase some common configurations of :class:`RunConfig <ray.train.RunConfig>`.
 
 .. literalinclude:: ../doc_code/tuner.py
     :language: python
     :start-after: __run_config_start__
     :end-before: __run_config_end__
 
-See the :class:`RunConfig API reference <ray.air.config.RunConfig>` for more details.
+See the :class:`RunConfig API reference <ray.train.RunConfig>` for more details.
 
 
 Search Space configuration
@@ -115,7 +115,7 @@ There are a couple gotchas about parameter specification when using Tuners with 
 
 - By default, configuration dictionaries and config objects will be deep-merged.
 - Parameters that are duplicated in the Trainer and Tuner will be overwritten by the Tuner ``param_space``.
-- **Exception:** all arguments of the :class:`RunConfig <ray.air.config.RunConfig>` and :class:`TuneConfig <ray.tune.tune_config.TuneConfig>` are inherently un-tunable.
+- **Exception:** all arguments of the :class:`RunConfig <ray.train.RunConfig>` and :class:`TuneConfig <ray.tune.tune_config.TuneConfig>` are inherently un-tunable.
 
 See :doc:`/tune/tutorials/tune_get_data_in_and_out` for an example.
 

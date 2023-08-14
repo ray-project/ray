@@ -5,7 +5,7 @@ import tempfile
 
 from typing import List
 
-from ci.ray_ci.utils import chunk_into_n
+import ci.ray_ci.bazel_sharding as bazel_sharding
 
 DOCKER_ECR = "029272617770.dkr.ecr.us-west-2.amazonaws.com"
 DOCKER_REPO = "ci_base_images"
@@ -21,7 +21,7 @@ def run_tests(
     """
     Run tests parallelly in docker.  Return whether all tests pass.
     """
-    chunks = chunk_into_n(test_targets, parallelism)
+    chunks = [shard_tests(test_targets, parallelism, i) for i in range(parallelism)]
     _setup_test_environment(team)
     runs = [_run_tests_in_docker(chunk) for chunk in chunks]
     exits = [run.wait() for run in runs]
@@ -52,8 +52,19 @@ def _setup_test_environment(team: str) -> None:
 
 
 def _run_tests_in_docker(test_targets: List[str]) -> subprocess.Popen:
-    command = f"bazel test --config=ci {' '.join(test_targets)}"
-    return subprocess.Popen(_docker_run_bash_script(command))
+    commands = (
+        [
+            "cleanup() { ./ci/build/upload_build_info.sh; }",
+            "trap cleanup EXIT",
+        ]
+        if os.environ.get("BUILDKITE_BRANCH") == "master"
+        else []
+    )
+    commands.append(
+        "bazel test --config=ci $(./ci/run/bazel_export_options) "
+        f"{' '.join(test_targets)}",
+    )
+    return subprocess.Popen(_docker_run_bash_script("\n".join(commands)))
 
 
 def run_script_in_docker(script: str) -> bytes:
@@ -65,6 +76,13 @@ def run_script_in_docker(script: str) -> bytes:
 
 def _docker_run_bash_script(script: str) -> str:
     return _get_docker_run_command() + ["/bin/bash", "-ice", script]
+
+
+def shard_tests(test_targets: List[str], shard_count: int, shard_id: int) -> List[str]:
+    """
+    Shard tests into N shards and return the shard corresponding to shard_id
+    """
+    return bazel_sharding.main(test_targets, index=shard_id, count=shard_count)
 
 
 def docker_login() -> None:
@@ -102,6 +120,18 @@ def _get_docker_run_command() -> List[str]:
         "run",
         "-i",
         "--rm",
+        "--volume",
+        "/tmp/artifacts:/artifact-mount",
+        "--env",
+        "BUILDKITE_BUILD_URL",
+        "--env",
+        "BUILDKITE_BRANCH",
+        "--env",
+        "BUILDKITE_COMMIT",
+        "--env",
+        "BUILDKITE_JOB_ID",
+        "--env",
+        "BUILDKITE_LABEL",
         "--workdir",
         "/ray",
         "--shm-size=2.5gb",

@@ -309,6 +309,7 @@ class LocalResourceManager : public syncer::ReporterInterface {
   friend class LocalResourceManagerTest;
   FRIEND_TEST(LocalResourceManagerTest, BasicGetResourceUsageMapTest);
   FRIEND_TEST(LocalResourceManagerTest, IdleResourceTimeTest);
+  FRIEND_TEST(LocalResourceManagerTest, ObjectStoreMemoryDrainingTest);
 };
 
 }  // end namespace ray

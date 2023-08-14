@@ -327,6 +327,14 @@ py_test(
 )
 
 py_test(
+    name = "test_gpu_2",
+    size = "medium",
+    srcs = ["tests/test_gpu_2.py"],
+    tags = ["team:ml", "exclusive", "gpu_only"],
+    deps = [":train_lib", ":conftest"]
+)
+
+py_test(
     name = "test_gpu_auto_transfer",
     size = "medium",
     srcs = ["tests/test_gpu_auto_transfer.py"],
@@ -443,6 +451,14 @@ py_test(
     size = "large",
     srcs = ["tests/test_torch_lightning_train.py"],
     tags = ["team:ml", "exclusive", "ray_air", "gpu", "ptl_v2"],
+    deps = [":train_lib"]
+)
+
+py_test(
+    name = "test_torch_transformers_train",
+    size = "large",
+    srcs = ["tests/test_torch_transformers_train.py"],
+    tags = ["team:ml", "exclusive", "ray_air", "gpu"],
     deps = [":train_lib"]
 )
 
