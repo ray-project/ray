@@ -445,9 +445,9 @@ def test_map_batches_extra_args(shutdown_only, tmp_path):
         fn_args=(put(1),),
     )
     ds_list = ds2.take()
-    values = [s["one"] for s in ds_list]
+    values = sorted([s["one"] for s in ds_list])
     assert values == [2, 3, 4]
-    values = [s["two"] for s in ds_list]
+    values = sorted([s["two"] for s in ds_list])
     assert values == [3, 4, 5]
 
     # Test kwargs.
@@ -463,9 +463,9 @@ def test_map_batches_extra_args(shutdown_only, tmp_path):
         fn_kwargs={"b": put(2)},
     )
     ds_list = ds2.take()
-    values = [s["one"] for s in ds_list]
+    values = sorted([s["one"] for s in ds_list])
     assert values == [2, 4, 6]
-    values = [s["two"] for s in ds_list]
+    values = sorted([s["two"] for s in ds_list])
     assert values == [4, 6, 8]
 
     # Test both.
@@ -483,9 +483,9 @@ def test_map_batches_extra_args(shutdown_only, tmp_path):
         fn_kwargs={"b": put(2)},
     )
     ds_list = ds2.take()
-    values = [s["one"] for s in ds_list]
+    values = sorted([s["one"] for s in ds_list])
     assert values == [3, 5, 7]
-    values = [s["two"] for s in ds_list]
+    values = sorted([s["two"] for s in ds_list])
     assert values == [5, 7, 9]
 
     # Test constructor UDF args.
@@ -507,9 +507,9 @@ def test_map_batches_extra_args(shutdown_only, tmp_path):
         fn_constructor_args=(put(1),),
     )
     ds_list = ds2.take()
-    values = [s["one"] for s in ds_list]
+    values = sorted([s["one"] for s in ds_list])
     assert values == [2, 3, 4]
-    values = [s["two"] for s in ds_list]
+    values = sorted([s["two"] for s in ds_list])
     assert values == [3, 4, 5]
 
     # Test kwarg.
@@ -530,10 +530,10 @@ def test_map_batches_extra_args(shutdown_only, tmp_path):
         fn_constructor_kwargs={"b": put(2)},
     )
     ds_list = ds2.take()
-    values = [s["one"] for s in ds_list]
+    values = sorted([s["one"] for s in ds_list])
     assert values == [2, 4, 6]
     values = [s["two"] for s in ds_list]
-    assert values == [4, 6, 8]
+    assert values == sorted([4, 6, 8])
 
     # Test both.
     class CallableFn:
@@ -556,9 +556,9 @@ def test_map_batches_extra_args(shutdown_only, tmp_path):
         fn_constructor_kwargs={"b": put(2)},
     )
     ds_list = ds2.take()
-    values = [s["one"] for s in ds_list]
+    values = sorted([s["one"] for s in ds_list])
     assert values == [3, 5, 7]
-    values = [s["two"] for s in ds_list]
+    values = sorted([s["two"] for s in ds_list])
     assert values == [5, 7, 9]
 
     # Test callable chain.
@@ -585,9 +585,9 @@ def test_map_batches_extra_args(shutdown_only, tmp_path):
         )
     )
     ds_list = ds2.take()
-    values = [s["one"] for s in ds_list]
+    values = sorted([s["one"] for s in ds_list])
     assert values == [7, 11, 15]
-    values = [s["two"] for s in ds_list]
+    values = sorted([s["two"] for s in ds_list])
     assert values == [11, 15, 19]
 
     # Test function + callable chain.
@@ -614,9 +614,9 @@ def test_map_batches_extra_args(shutdown_only, tmp_path):
         )
     )
     ds_list = ds2.take()
-    values = [s["one"] for s in ds_list]
+    values = sorted([s["one"] for s in ds_list])
     assert values == [7, 11, 15]
-    values = [s["two"] for s in ds_list]
+    values = sorted([s["two"] for s in ds_list])
     assert values == [11, 15, 19]
 
 

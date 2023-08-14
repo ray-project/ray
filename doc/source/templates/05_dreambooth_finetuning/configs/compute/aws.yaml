@@ -2,4 +2,6 @@ head_node_type:
   name: head_node_type
   instance_type: g5.12xlarge
 
+worker_node_types: []
+
 max_workers: 0
