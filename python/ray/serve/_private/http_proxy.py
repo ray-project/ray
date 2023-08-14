@@ -328,8 +328,8 @@ class GenericProxy(ABC):
         # The node is not draining if it's None.
         self._draining_start_time: Optional[float] = None
 
-    @abstractmethod
     @property
+    @abstractmethod
     def proxy_name(self) -> str:
         """Proxy name used for metrics.
 
@@ -421,7 +421,7 @@ class GenericProxy(ABC):
         """Wrapper for proxy request.
 
         This method is served as common entry point by the proxy. It handles the
-        routing, including `/-/routes` and `/-/healthz`, ongoing request counter,
+        routing, including routes and health checks, ongoing request counter,
         and metrics.
         """
         assert scope["type"] in {"http", "websocket"}
