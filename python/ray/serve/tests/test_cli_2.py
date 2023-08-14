@@ -835,7 +835,7 @@ def test_run_reload_basic(ray_start_stop, reload_working_dir):
     """Test `serve run` with reload."""
 
     python_module_file = "reload_serve.py"
-    with open(python_module_file, "w") as pmf:
+    with open(python_module_file, "w+") as pmf:
         pmf.write(
             """\
 @serve.deployment
@@ -851,23 +851,22 @@ msg_app = MessageDeployment.bind("Hello World!")
 """
         )
 
-    p = subprocess.Popen(["serve", "run", "--reload", "reload_serve:msg_app"])
+    p = subprocess.Popen(
+        [
+            "serve",
+            "run",
+            "--reload",
+            f"--working-dir={reload_working_dir}",
+            "reload_serve:msg_app",
+        ]
+    )
     wait_for_condition(lambda: ping_endpoint("Message") == "Hello World!", timeout=10)
-    with open(python_module_file, "w") as pmf:
-        pmf.write(
-            """\
-@serve.deployment
-class Message:
-    def __init__(self, msg):
-        self.msg = msg
-
-    def __call__(self):
-        return self.msg
-
-
-msg_app = MessageDeployment.bind("Hello Me!")
-"""
-        )
+    fin = open(python_module_file, "rt")
+    code = fin.read()
+    code = code.replace("World", "Me")
+    fin.close()
+    with open(python_module_file, "wt") as pmf:
+        pmf.write(code)
     wait_for_condition(lambda: ping_endpoint("Message") == "Hello Me!", timeout=10)
     p.send_signal(signal.SIGINT)
     p.wait()
