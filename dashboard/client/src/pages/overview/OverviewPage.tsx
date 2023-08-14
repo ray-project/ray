@@ -101,7 +101,13 @@ export const OverviewPage = () => {
         startExpanded
       >
         <EventTable />
-        <NewEventTable />
+      </CollapsibleSection>
+      <CollapsibleSection
+        className={classes.section}
+        title="Events"
+        startExpanded
+      >
+        <NewEventTable defaultSeverityLevels={["WARNING", "ERROR"]} />
       </CollapsibleSection>
     </div>
   );

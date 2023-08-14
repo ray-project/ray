@@ -3,6 +3,8 @@ import {
   Button,
   ButtonGroup,
   Grid,
+  InputAdornment,
+  LinearProgress,
   makeStyles,
   Paper,
   Switch,
@@ -12,6 +14,8 @@ import {
   TableContainer,
   TableHead,
   TableRow,
+  TextField,
+  TextFieldProps,
   Typography,
 } from "@material-ui/core";
 import { SearchOutlined } from "@material-ui/icons";
@@ -21,14 +25,17 @@ import dayjs from "dayjs";
 import React, { useContext, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { GlobalContext } from "../App";
+import { CodeDialogButtonWithPreview } from "../common/CodeDialogButton";
+import { StyledTableCell } from "../common/TableCell";
 import { getEvents, getGlobalEvents } from "../service/event";
 import { Event } from "../type/event";
 import { useFilter } from "../util/hook";
+import { MOCK_DATA } from "./EventTableMockData";
 import LogVirtualView from "./LogView/LogVirtualView";
 import { StatusChip } from "./StatusChip";
 
 type EventTableProps = {
-  job_id?: string;
+  defaultSeverityLevels?: string[];
 };
 
 const useStyles = makeStyles((theme) => ({
@@ -65,39 +72,206 @@ const useStyles = makeStyles((theme) => ({
     fontSize: 14,
     color: theme.palette.text.primary,
   },
+
+  tableContainer: {
+    overflowX: "scroll",
+  },
+  expandCollapseIcon: {
+    color: theme.palette.text.secondary,
+    fontSize: "1.5em",
+    verticalAlign: "middle",
+  },
+  idCol: {
+    display: "block",
+    width: "50px",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+  },
+  OverflowCol: {
+    display: "block",
+    width: "100px",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+  },
+  helpInfo: {
+    marginLeft: theme.spacing(1),
+  },
+  message: {
+    maxWidth: "200",
+  },
 }));
 
 const columns = [
-  { label: "Level" },
-  { label: "Event type" },
+  { label: "Severity" },
   { label: "Timestamp" },
+  { label: "Source" },
+  { label: "Hostname" },
   {
-    label: "Description",
+    label: "PID",
   },
+  { label: "Message" },
 ];
+
+type Filters = {
+  sourceType: string[]; // TODO: Chao, multi-select severity level in filters button is a P1
+  severityLevel: string[]; // TODO: Chao, multi-select severity level in filters button is a P1
+  entityName: string | undefined;
+  entityId: string | undefined;
+};
+const useEventTable = (props: EventTableProps) => {
+  const { defaultSeverityLevels } = props;
+  const { nodeMap } = useContext(GlobalContext);
+  const [loading, setLoading] = useState(true);
+  const { changeFilter: _changeFilter, filterFunc } = useFilter();
+  const [filters, setFilters] = useState<Filters>({
+    sourceType: [],
+    severityLevel: defaultSeverityLevels || [],
+    entityName: undefined,
+    entityId: undefined,
+  });
+
+  const [events, setEvents] = useState<Event[]>([]);
+  const [pagination, setPagination] = useState({
+    pageNo: 1,
+    pageSize: 10,
+    total: 0,
+  });
+
+  const changePage = (key: string, value: number) => {
+    setPagination({ ...pagination, [key]: value });
+  };
+  const realLen = events.filter(filterFunc).length;
+  const { pageSize } = pagination;
+  const changeFilter: typeof _changeFilter = (...params) => {
+    _changeFilter(...params);
+    setPagination({
+      ...pagination,
+      pageNo: 1,
+    });
+  };
+
+  useEffect(() => {
+    // const getEvent = async () => {
+    //   try {
+    //     if (job_id) {
+    //       const rsp = await getEvents(job_id);
+    //       if (rsp?.data?.data?.events) {
+    //         setEvents(
+    //           rsp.data.data.events.sort(
+    //             (a, b) => Number(b.timestamp) - Number(a.timestamp),
+    //           ),
+    //         );
+    //       }
+    //     } else {
+    //       const rsp = await getGlobalEvents();
+    //       if (rsp?.data?.data?.events) {
+    //         setEvents(
+    //           Object.values(rsp.data.data.events)
+    //             .reduce((a, b) => a.concat(b))
+    //             .sort((a, b) => Number(b.timestamp) - Number(a.timestamp)),
+    //         );
+    //       }
+    //     }
+    //   } catch (e) {
+    //   } finally {
+    //     setLoading(false);
+    //   }
+    setEvents(MOCK_DATA.data.events["64000000"] as any);
+    setLoading(false);
+
+    // getEvent();
+  }, []);
+
+  useEffect(() => {
+    setPagination((p) => ({
+      ...p,
+      total: Math.ceil(realLen / p.pageSize),
+      pageNo: 1,
+    }));
+  }, [realLen, pageSize]);
+
+  const range = [
+    (pagination.pageNo - 1) * pagination.pageSize,
+    pagination.pageNo * pagination.pageSize,
+  ];
+
+  return {
+    events: events.filter(filterFunc).slice(range[0], range[1]),
+    filters,
+    setFilters,
+    changeFilter,
+    pagination,
+    changePage,
+    sourceOptions: Array.from(new Set(events.map((e) => e.sourceType))),
+    severityOptions: Array.from(new Set(events.map((e) => e.severity))),
+    loading,
+    nodeMap,
+  };
+};
+
 const NewEventTable = (props: EventTableProps) => {
   const classes = useStyles();
+  const {
+    events,
+    filters,
+    setFilters,
+    changeFilter,
+    pagination,
+    changePage,
+    sourceOptions,
+    severityOptions,
+    loading,
+    nodeMap,
+  } = useEventTable(props);
 
+  if (loading) {
+    return <LinearProgress />;
+  }
   return (
-    <div style={{ position: "relative" }}>
-      <header>
-        <TableToolbarContainer>
-          <Searchbar
-            onFilterChange={setNameFilter}
-            placeholder="Search names"
-            filter={nameFilter}
-          />
-          <FiltersToolbarContainer flexGrow={4}>
-            <CreatedByFilterPillV2
-              defaultFilteredByMe
-              context="WorkspaceTable"
-            />
-          </FiltersToolbarContainer>
-        </TableToolbarContainer>
+    <div>
+      <header className={classes.filterContainer}>
+        <Autocomplete
+          className={classes.search}
+          style={{ width: 100 }}
+          options={sourceOptions}
+          onInputChange={(_: any, value: string) => {
+            setFilters({ ...filters, sourceType: [value.trim()] });
+          }}
+          renderInput={(params: TextFieldProps) => (
+            <TextField {...params} label="Source" />
+          )}
+        />
+        <Autocomplete
+          className={classes.search}
+          style={{ width: 140 }}
+          options={severityOptions}
+          onInputChange={(_: any, value: string) => {
+            setFilters({ ...filters, severityLevel: [value.trim()] });
+          }}
+          renderInput={(params: TextFieldProps) => (
+            <TextField {...params} label="Severity" />
+          )}
+        />
+        <TextField
+          className={classes.search}
+          label="Msg"
+          InputProps={{
+            onChange: ({ target: { value } }) => {
+              changeFilter("message", value.trim());
+            },
+            endAdornment: (
+              <InputAdornment position="end">
+                <SearchOutlined />
+              </InputAdornment>
+            ),
+          }}
+        />
       </header>
       <body>
-        <TableContainer>
-          <Table>
+        <TableContainer component={Paper}>
+          <Table className={classes.tableContainer}>
             <TableHead>
               <TableRow>
                 {columns.map(({ label }) => (
@@ -113,12 +287,74 @@ const NewEventTable = (props: EventTableProps) => {
                 ))}
               </TableRow>
             </TableHead>
-            <TableBody></TableBody>
+            <TableBody>
+              {events.map(
+                ({
+                  severity,
+                  timestamp,
+                  timeStamp,
+                  sourceType,
+                  hostName,
+                  message,
+                  sourceHostname,
+                  pid,
+                  sourcePid,
+                }) => {
+                  const realTimestamp =
+                    timeStamp ||
+                    dayjs(Math.floor(timestamp * 1000)).format(
+                      "YYYY-MM-DD HH:mm:ss",
+                    );
+                  const hostname = sourceHostname || hostName;
+                  const realPid = pid || sourcePid;
+                  return (
+                    <React.Fragment>
+                      <TableRow>
+                        <StyledTableCell>
+                          <StatusChip status={severity} type={severity} />
+                        </StyledTableCell>
+                        <StyledTableCell>{realTimestamp}</StyledTableCell>
+                        <StyledTableCell>{sourceType}</StyledTableCell>
+                        <StyledTableCell>
+                          {" "}
+                          {nodeMap[hostname] ? (
+                            <Link to={`/node/${nodeMap[hostname]}`}>
+                              {hostname}
+                            </Link>
+                          ) : (
+                            hostname
+                          )}
+                        </StyledTableCell>
+                        <StyledTableCell>{realPid}</StyledTableCell>
+                        <StyledTableCell>
+                          {message ? (
+                            <CodeDialogButtonWithPreview
+                              className={classes.message}
+                              buttonText={"Expand"}
+                              title="Event Message Detail"
+                              code={message}
+                            />
+                          ) : (
+                            "-"
+                          )}
+                        </StyledTableCell>
+                      </TableRow>
+                    </React.Fragment>
+                  );
+                },
+              )}
+            </TableBody>
           </Table>
         </TableContainer>
       </body>
       <footer>
-        <TablePagination setPage={setPage} />
+        <Pagination
+          count={pagination.total}
+          page={pagination.pageNo}
+          onChange={(event: React.ChangeEvent<unknown>, value: number) => {
+            changePage("pageNo", value);
+          }}
+        />
       </footer>
     </div>
   );
