@@ -47,7 +47,7 @@ Finally, call ``transform_batch`` on a single batch of data.
     :start-after: __preprocessor_transform_batch_start__
     :end-before: __preprocessor_transform_batch_end__
 
-The most common way of using a preprocessor is by using it in conjunction with a Ray Train :ref:`Trainer <train-docs>` and a :ref:`Ray Data dataset <data>`.
+The most common way of using a preprocessor is by using it on a :ref:`Ray Data dataset <data>`, which is then passed to a Ray Train :ref:`Trainer <train-docs>`.
 For example, the following code trains a model with a preprocessor that normalizes the data.
 
 .. literalinclude:: doc_code/preprocessors.py
@@ -55,8 +55,11 @@ For example, the following code trains a model with a preprocessor that normaliz
     :start-after: __trainer_start__
     :end-before: __trainer_end__
 
-See Ray Train's data preprocessing and ingest section
-(:ref:`torch <data-ingest-torch>`, :ref:`lightgbm/xgboost <data-ingest-gbdt>`) for more details.
+See also:
+
+* :ref:`Working with Pytorch user guide <working_with_pytorch>`
+* Ray Train's data preprocessing and ingest section for :ref:`PyTorch <data-ingest-torch>`
+* Ray Train's data preprocessing and ingest section for :ref:`LightGBM/XGBoost <data-ingest-gbdt>`
 
 Types of preprocessors
 ----------------------
