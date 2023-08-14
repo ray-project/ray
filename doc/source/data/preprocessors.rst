@@ -22,7 +22,7 @@ of preprocessors. However, if you are working with tabular data, you should cons
 Overview
 --------
 
-The  ``Preprocessor`` class has four public methods:
+The :class:`Preprocessor <ray.data.preprocessor.Preprocessor>` class has four public methods:
 
 #. ``fit()``: Compute state information about a :class:`Dataset <ray.data.Dataset>` (e.g., the mean or standard deviation of a column)
    and save it to the ``Preprocessor``. This information is used to perform ``transform()``, and the method is typically called on a
@@ -56,7 +56,6 @@ Finally, call ``transform_batch`` on a single batch of data.
 
 The most common way of using a preprocessor is by using it on a :ref:`Ray Data dataset <data>`, which is then passed to a Ray Train :ref:`Trainer <train-docs>`. See also:
 
-* :ref:`Working with Pytorch user guide <working_with_pytorch>`
 * Ray Train's data preprocessing and ingest section for :ref:`PyTorch <data-ingest-torch>`
 * Ray Train's data preprocessing and ingest section for :ref:`LightGBM/XGBoost <data-ingest-gbdt>`
 
