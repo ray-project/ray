@@ -679,6 +679,7 @@ def run(
 
     if _use_storage_context():
         local_path, remote_path = None, None
+        sync_config = sync_config or SyncConfig()
         # TODO(justinvyu): Fix telemetry for the new persistence.
     else:
         (
@@ -1008,7 +1009,7 @@ def run(
         placeholder_resolvers=placeholder_resolvers,
         scheduler=scheduler,
         experiment_path=experiments[0].path,
-        experiment_dir_name=experiments[0].dir_name,
+        experiment_dir_name=experiments[0].legacy_dir_name,
         sync_config=sync_config,
         stopper=experiments[0].stopper,
         resume=resume,

@@ -23,7 +23,6 @@ from ray.train.torch import TorchTrainer, TorchCheckpoint
 from ray.train.xgboost import XGBoostTrainer
 from ray.train.lightgbm import LightGBMTrainer
 from ray.train.huggingface import TransformersTrainer
-from ray.train.rl import RLTrainer
 from ray.tune import Callback
 from ray.data.preprocessors.batch_mapper import BatchMapper
 from ray.data.preprocessor import Preprocessor
@@ -230,31 +229,24 @@ def test_trainer_with_init_fn_restore(ray_start_4_cpus, tmpdir, trainer_cls):
     assert tmpdir / exp_name in result.log_dir.parents
 
 
-def test_rl_trainer_restore(ray_start_4_cpus, tmpdir):
-    """Tests restore for RL trainer. Same success criteria as above."""
-
-    trainer = RLTrainer(
-        algorithm="__fake",
-        config={
-            "rollout_fragment_length": 1,
-        },
-        run_config=RunConfig(
-            local_dir=str(tmpdir),
-            name="rl_trainer_restore",
-            checkpoint_config=CheckpointConfig(num_to_keep=1, checkpoint_frequency=1),
-            callbacks=[FailureInjectionCallback(num_iters=2)],
-            stop={"training_iteration": 5},
-        ),
+def test_restore_from_uri_s3(ray_start_4_cpus, tmpdir, mock_s3_bucket_uri):
+    """Restoration from S3 should work."""
+    trainer = DataParallelTrainer(
+        train_loop_per_worker=lambda config: train.report({"score": 1}),
+        scaling_config=ScalingConfig(num_workers=2),
+        run_config=RunConfig(name="restore_from_uri", local_dir=tmpdir),
     )
-    with pytest.raises(TrainingFailedError):
-        result = trainer.fit()
+    trainer._save(tmpdir)
 
-    trainer = RLTrainer.restore(str(tmpdir / "rl_trainer_restore"))
-    result = trainer.fit()
-    assert not result.error
-    assert result.metrics["training_iteration"] == 5
-    assert result.metrics["iterations_since_restore"] == 3
-    assert tmpdir / "rl_trainer_restore" in result.log_dir.parents
+    # Restore from local dir
+    DataParallelTrainer.restore(str(tmpdir))
+
+    # Upload to S3
+    uri = mock_s3_bucket_uri
+    upload_to_uri(tmpdir, uri)
+
+    # Restore from S3
+    DataParallelTrainer.restore(uri)
 
 
 def test_restore_with_datasets(ray_start_4_cpus, tmpdir):

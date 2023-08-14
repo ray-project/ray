@@ -18,10 +18,10 @@ from ray.serve._private.common import (
     ReplicaConfig,
     DeploymentInfo,
 )
+from ray.serve.tests.utils import MockKVStore
 from ray.serve._private.utils import get_random_letters
 from ray.serve.exceptions import RayServeException
 from ray.serve.schema import ServeApplicationSchema, DeploymentSchema
-from ray.serve.tests.test_deployment_state import MockKVStore
 
 
 class MockEndpointState:
@@ -165,6 +165,7 @@ def deployment_params(name: str, route_prefix: str = None, docs_path: str = None
         "deployer_job_id": "random",
         "route_prefix": route_prefix,
         "docs_path": docs_path,
+        "ingress": False,
         "is_driver_deployment": False,
     }
 

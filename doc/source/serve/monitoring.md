@@ -317,6 +317,10 @@ The following metrics are exposed by Ray Serve:
        * error_code
        * method
      - The number of non-200 HTTP responses.
+   * - ``serve_num_ongoing_http_requests`` [*]
+     - * node_id
+       * node_ip_address
+     - The number of ongoing requests in the HTTP Proxy.
    * - ``serve_num_router_requests`` [*]
      - * deployment
        * route
@@ -343,12 +347,12 @@ The following metrics are exposed by Ray Serve:
      - * route
        * application
      - The end-to-end latency of HTTP requests (measured from the Serve HTTP proxy).
-   * - ``serve_multiplexed_model_load_latency_s``
+   * - ``serve_multiplexed_model_load_latency_ms``
      - * deployment
        * replica
        * application
      - The time it takes to load a model.
-   * - ``serve_multiplexed_model_unload_latency_s``
+   * - ``serve_multiplexed_model_unload_latency_ms``
      - * deployment
        * replica
        * application
@@ -368,6 +372,17 @@ The following metrics are exposed by Ray Serve:
        * replica
        * application
      - The number of times models loaded on the current replica.
+   * - ``serve_registered_multiplexed_model_id``
+     - * deployment
+       * replica
+       * application
+       * model_id
+     - The mutlplexed model ID registered on the current replica.
+   * - ``serve_multiplexed_get_model_requests_counter``
+     - * deployment
+       * replica
+       * application
+     - The number of calls to get a multiplexed model.
 ```
 [*] - only available when using HTTP calls
 [**] - only available when using Python `ServeHandle` calls
@@ -418,6 +433,12 @@ ray_my_counter{..., deployment="MyDeployment",model="123",replica="MyDeployment#
 ```
 
 See the [Ray Metrics documentation](collect-metrics) for more details, including instructions for scraping these metrics using Prometheus.
+
+## Profiling memory
+
+Ray provides two useful metrics to track memory usage: `ray_component_rss_mb` (resident set size) and `ray_component_mem_shared_bytes` (shared memory). Approximate a Serve actor's memory usage by subtracting its shared memory from its resident set size (i.e. `ray_component_rss_mb` - `ray_component_mem_shared_bytes`).
+
+If you notice a memory leak on a Serve actor, use `memray` to debug (`pip install memray`). Set the env var `RAY_SERVE_ENABLE_MEMORY_PROFILING=1`, and run your Serve application. All the Serve actors will run a `memray` tracker that logs their memory usage to `bin` files in the `/tmp/ray/session_latest/logs/serve/` directory. Run the `memray flamegraph [bin file]` command to generate a flamegraph of the memory usage. See the [memray docs](https://bloomberg.github.io/memray/overview.html) for more info.
 
 ## Exporting metrics into Arize
 Besides using Prometheus to check out Ray metrics, Ray Serve also has the flexibility to export the metrics into other observability platforms.

@@ -49,6 +49,7 @@ PY_MATRIX = {
 ML_IMAGES_PY_VERSIONS = {"py38", "py39", "py310"}
 
 BASE_IMAGES = {
+    "cu121": "nvidia/cuda:12.1.1-cudnn8-devel-ubuntu20.04",
     "cu118": "nvidia/cuda:11.8.0-cudnn8-devel-ubuntu20.04",
     "cu117": "nvidia/cuda:11.7.1-cudnn8-devel-ubuntu20.04",
     "cu116": "nvidia/cuda:11.6.2-cudnn8-devel-ubuntu20.04",
@@ -57,6 +58,7 @@ BASE_IMAGES = {
 }
 
 CUDA_FULL = {
+    "cu121": "CUDA 12.1",
     "cu118": "CUDA 11.8",
     "cu117": "CUDA 11.7",
     "cu116": "CUDA 11.6",
@@ -76,7 +78,7 @@ IMAGE_NAMES = list(DOCKER_HUB_DESCRIPTION.keys())
 RELEASE_PR_PIPELINE_ID = "d912884a-5198-497d-9ac3-178420500b6e"
 
 
-def _with_suffix(tag: str, suffix: Optional[str] = None):
+def _with_suffix(tag: str, suffix: Optional[str] = None) -> str:
     if suffix:
         return tag + "-" + suffix
     return tag
@@ -95,25 +97,27 @@ def _get_branch() -> str:
 _BRANCH = _get_branch()
 
 
-def _release_build() -> bool:
-    branch = _BRANCH
+def _release_build(branch: Optional[str] = None) -> bool:
+    if not branch:
+        branch = _BRANCH
     return branch and branch.startswith("releases/")
 
 
-def _valid_branch() -> bool:
-    branch = _BRANCH
-    return branch == "master" or _release_build()
+def _valid_branch(branch: Optional[str] = None) -> bool:
+    if not branch:
+        branch = _BRANCH
+    return branch == "master" or _release_build(branch)
 
 
-def _get_curr_dir():
+def _get_curr_dir() -> str:
     return os.path.dirname(os.path.realpath(__file__))
 
 
-def _get_root_dir():
+def _get_root_dir() -> str:
     return os.path.join(_get_curr_dir(), "../../")
 
 
-def _get_commit_sha():
+def _get_commit_sha() -> str:
     sha = os.environ.get("TRAVIS_COMMIT") or os.environ.get("BUILDKITE_COMMIT") or ""
     if len(sha) < 6:
         print("INVALID SHA FOUND")
@@ -121,18 +125,19 @@ def _get_commit_sha():
     return sha[:6]
 
 
+_COMMIT_SHA = _get_commit_sha()
+
+
 def _configure_human_version():
-    global _get_branch
-    global _get_commit_sha
-    fake_branch_name = input(
+    global _BRANCH
+    global _COMMIT_SHA
+    _BRANCH = input(
         "Provide a 'branch name'. For releases, it " "should be `releases/x.x.x`"
     )
-    _get_branch = lambda: fake_branch_name  # noqa: E731
-    fake_sha = input("Provide a SHA (used for tag value)")
-    _get_commit_sha = lambda: fake_sha  # noqa: E731
+    _COMMIT_SHA = input("Provide a SHA (used for tag value)")
 
 
-def _get_wheel_name(minor_version_number):
+def _get_wheel_name(minor_version_number) -> str:
     if minor_version_number:
         matches = [
             file
@@ -215,6 +220,13 @@ def _build_docker_image(
     assert py_version[:3] == "py3"
     python_minor_version = py_version[3:]
 
+    if py_version == "py37":
+        constraints_file = "requirements_compiled_py37.txt"
+    else:
+        constraints_file = "requirements_compiled.txt"
+
+    build_args["CONSTRAINTS_FILE"] = constraints_file
+
     if platform.processor() in ADDITIONAL_PLATFORMS:
         build_args["HOSTTYPE"] = platform.processor()
 
@@ -247,7 +259,7 @@ def _build_docker_image(
         labels = {
             "image-name": image_name,
             "python-version": PY_MATRIX[py_version],
-            "ray-commit": _get_commit_sha(),
+            "ray-commit": _COMMIT_SHA,
         }
         if image_type in CUDA_FULL:
             labels["cuda-version"] = CUDA_FULL[image_type]
@@ -423,6 +435,19 @@ def build_or_pull_base_images(
     else:
         print("Just pulling images!")
         return False
+
+
+def prep_ray_base():
+    root_dir = _get_root_dir()
+    requirements_files = [
+        "python/requirements_compiled.txt",
+        "python/requirements_compiled_py37.txt",
+    ]
+    for requirement_file in requirements_files:
+        shutil.copy(
+            os.path.join(root_dir, requirement_file),
+            os.path.join(root_dir, "docker/ray/"),
+        )
 
 
 def prep_ray_ml():
@@ -619,7 +644,7 @@ def push_and_tag_images(
     suffix: Optional[str] = None,
 ):
     date_tag = datetime.datetime.now().strftime("%Y-%m-%d")
-    sha_tag = _get_commit_sha()
+    sha_tag = _COMMIT_SHA
     if _release_build():
         release_name = _BRANCH[len("releases/") :]
         date_tag = release_name + "." + date_tag
@@ -912,6 +937,8 @@ def main(
         return
 
     # Build Ray Docker images.
+    prep_ray_base()
+
     all_tagged_images = []
 
     all_tagged_images += build_for_all_versions(

@@ -297,6 +297,15 @@ struct GcsServerMocker {
         bool graceful,
         const rpc::ClientCallback<rpc::ShutdownRayletReply> &callback) override{};
 
+    void DrainRaylet(
+        const rpc::autoscaler::DrainNodeReason &reason,
+        const std::string &reason_message,
+        const rpc::ClientCallback<rpc::DrainRayletReply> &callback) override {
+      rpc::DrainRayletReply reply;
+      reply.set_is_accepted(true);
+      callback(Status::OK(), reply);
+    };
+
     void NotifyGCSRestart(
         const rpc::ClientCallback<rpc::NotifyGCSRestartReply> &callback) override{};
 

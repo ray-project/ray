@@ -8,6 +8,8 @@ import tempfile
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Type, Union
 import warnings
 
+import pyarrow.fs
+
 import ray
 import ray.cloudpickle as pickle
 from ray.air._internal.config import ensure_only_allowed_dataclass_keys_updated
@@ -17,11 +19,18 @@ from ray.air._internal.remote_storage import (
     list_at_uri,
 )
 from ray.air._internal import usage as air_usage
+from ray.air._internal.uri_utils import URI
 from ray.air._internal.usage import AirEntrypoint
 from ray.air.checkpoint import Checkpoint
 from ray.air.config import RunConfig, ScalingConfig
 from ray.air.result import Result
+from ray.train._checkpoint import Checkpoint as NewCheckpoint
 from ray.train._internal import session
+from ray.train._internal.storage import (
+    _exists_at_fs_path,
+    _use_storage_context,
+    get_fs_and_path,
+)
 from ray.train.constants import TRAIN_DATASET_KEY
 from ray.util import PublicAPI
 from ray.util.annotations import DeveloperAPI
@@ -191,10 +200,11 @@ class BaseTrainer(abc.ABC):
         self.run_config = run_config if run_config is not None else RunConfig()
         self.datasets = datasets if datasets is not None else {}
         self.preprocessor = preprocessor
-        self.resume_from_checkpoint = resume_from_checkpoint
+        self.starting_checkpoint = resume_from_checkpoint
 
-        # This path should only be set through restore
+        # These attributes should only be set through `BaseTrainer.restore`
         self._restore_path = None
+        self._restore_storage_filesystem = None
 
         self._validate_attributes()
 
@@ -212,7 +222,8 @@ class BaseTrainer(abc.ABC):
     @classmethod
     def restore(
         cls: Type["BaseTrainer"],
-        path: str,
+        path: Union[str, os.PathLike],
+        storage_filesystem: Optional[pyarrow.fs.FileSystem] = None,
         datasets: Optional[Dict[str, GenDataset]] = None,
         preprocessor: Optional["Preprocessor"] = None,
         scaling_config: Optional[ScalingConfig] = None,
@@ -296,17 +307,23 @@ class BaseTrainer(abc.ABC):
         Returns:
             BaseTrainer: A restored instance of the class that is calling this method.
         """
-        if not cls.can_restore(path):
+        if not cls.can_restore(path, storage_filesystem):
             raise ValueError(
                 f"Invalid restore path: {path}. Make sure that this path exists and "
                 "is the experiment directory that results from a call to "
                 "`trainer.fit()`."
             )
-        trainer_state_path = cls._maybe_sync_down_trainer_state(path)
-        assert trainer_state_path.exists()
+        if _use_storage_context():
+            fs, fs_path = get_fs_and_path(path, storage_filesystem)
+            with fs.open_input_file(os.path.join(fs_path, _TRAINER_PKL)) as f:
+                trainer_cls, param_dict = pickle.loads(f.readall())
+        else:
+            trainer_state_path = cls._maybe_sync_down_trainer_state(path)
+            assert trainer_state_path.exists()
 
-        with open(trainer_state_path, "rb") as fp:
-            trainer_cls, param_dict = pickle.load(fp)
+            with open(trainer_state_path, "rb") as fp:
+                trainer_cls, param_dict = pickle.load(fp)
+
         if trainer_cls is not cls:
             warnings.warn(
                 f"Invalid trainer type. You are attempting to restore a trainer of type"
@@ -353,11 +370,16 @@ class BaseTrainer(abc.ABC):
                 f"`{cls.__name__}.restore`\n"
             ) from e
         trainer._restore_path = path
+        trainer._restore_storage_filesystem = storage_filesystem
         return trainer
 
     @PublicAPI(stability="alpha")
     @classmethod
-    def can_restore(cls: Type["BaseTrainer"], path: Union[str, Path]) -> bool:
+    def can_restore(
+        cls: Type["BaseTrainer"],
+        path: Union[str, os.PathLike],
+        storage_filesystem: Optional[pyarrow.fs.FileSystem] = None,
+    ) -> bool:
         """Checks whether a given directory contains a restorable Train experiment.
 
         Args:
@@ -368,6 +390,10 @@ class BaseTrainer(abc.ABC):
         Returns:
             bool: Whether this path exists and contains the trainer state to resume from
         """
+        if _use_storage_context():
+            fs, fs_path = get_fs_and_path(path, storage_filesystem)
+            return _exists_at_fs_path(fs, os.path.join(fs_path, _TRAINER_PKL))
+
         return _TRAINER_PKL in list_at_uri(str(path))
 
     def __repr__(self):
@@ -377,7 +403,7 @@ class BaseTrainer(abc.ABC):
             "run_config": RunConfig(),
             "datasets": {},
             "preprocessor": None,
-            "resume_from_checkpoint": None,
+            "starting_checkpoint": None,
         }
 
         non_default_arguments = []
@@ -452,13 +478,16 @@ class BaseTrainer(abc.ABC):
                 f"found {type(self.preprocessor)} with value `{self.preprocessor}`."
             )
 
-        if self.resume_from_checkpoint is not None and not isinstance(
-            self.resume_from_checkpoint, ray.air.Checkpoint
+        expected_checkpoint_type = (
+            NewCheckpoint if _use_storage_context() else ray.air.Checkpoint
+        )
+        if self.starting_checkpoint is not None and not isinstance(
+            self.starting_checkpoint, expected_checkpoint_type
         ):
             raise ValueError(
                 f"`resume_from_checkpoint` should be an instance of "
-                f"`ray.train.Checkpoint`, found {type(self.resume_from_checkpoint)} "
-                f"with value `{self.resume_from_checkpoint}`."
+                f"`ray.train.Checkpoint`, found {type(self.starting_checkpoint)} "
+                f"with value `{self.starting_checkpoint}`."
             )
 
     @classmethod
@@ -482,8 +511,8 @@ class BaseTrainer(abc.ABC):
 
         tempdir = Path(tempfile.mkdtemp("tmp_experiment_dir"))
 
-        path = Path(restore_path)
-        download_from_uri(str(path / _TRAINER_PKL), str(tempdir / _TRAINER_PKL))
+        uri = URI(restore_path)
+        download_from_uri(str(uri / _TRAINER_PKL), str(tempdir / _TRAINER_PKL))
         return tempdir / _TRAINER_PKL
 
     def setup(self) -> None:
@@ -584,11 +613,12 @@ class BaseTrainer(abc.ABC):
 
         if self._restore_path:
             tuner = Tuner.restore(
-                self._restore_path,
+                path=self._restore_path,
                 trainable=trainable,
                 param_space=param_space,
                 resume_unfinished=True,
                 resume_errored=True,
+                storage_filesystem=self._restore_storage_filesystem,
             )
         else:
             tuner = Tuner(
@@ -598,16 +628,16 @@ class BaseTrainer(abc.ABC):
                 _entrypoint=AirEntrypoint.TRAINER,
             )
 
-        experiment_path = Path(
-            TunerInternal.setup_create_experiment_checkpoint_dir(
-                trainable, self.run_config
-            )
+        experiment_local_path, _ = TunerInternal.setup_create_experiment_checkpoint_dir(
+            trainable, self.run_config
         )
-        self._save(experiment_path)
+
+        experiment_local_path = Path(experiment_local_path)
+        self._save(experiment_local_path)
 
         restore_msg = TrainingFailedError._RESTORE_MSG.format(
             trainer_cls_name=self.__class__.__name__,
-            path=str(experiment_path),
+            path=str(experiment_local_path),
         )
 
         try:
@@ -700,18 +730,22 @@ class BaseTrainer(abc.ABC):
             # Instantiate new Trainer in Trainable.
             trainer = trainer_cls(**config)
 
-            # Get the checkpoint from the train context, and use it to initialize
-            # the restored trainer.
-            # This handles both worker-level and cluster-level restoration
-            # of the Train experiment.
+            # Get the checkpoint from Tune and pass it to workers later on.
             checkpoint = session.get_checkpoint()
             if checkpoint:
-                trainer.resume_from_checkpoint = checkpoint
-                # Always load the preprocessor from an available checkpoint
-                # Unless we are restoring the experiment and have explicitly
-                # passed in a new preprocessor
-                if not (restored and trainer.preprocessor):
-                    trainer.preprocessor = checkpoint.get_preprocessor()
+                # Set `starting_checkpoint` for auto-recovery fault-tolerance
+                # as well as manual restoration.
+                trainer.starting_checkpoint = checkpoint
+
+                # TODO(justinvyu): Remove this when Preprocessor is removed from Trainer
+                if not _use_storage_context():
+                    # Always load the preprocessor from an available checkpoint
+                    # Unless we are restoring the experiment and have explicitly
+                    # passed in a new preprocessor
+                    if not (restored and trainer.preprocessor):
+                        trainer.preprocessor = checkpoint.get_preprocessor()
+            # Else: Train will restore from the user-provided
+            # `resume_from_checkpoint` == `starting_checkpoint`.
 
             trainer.setup()
             trainer.preprocess_datasets()
