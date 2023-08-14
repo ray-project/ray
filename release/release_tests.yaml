@@ -5712,7 +5712,7 @@
   group: data-tests
   working_dir: nightly_tests/dataset
 
-  frequency: nightly
+  frequency: manual
   team: data
 
   cluster:
@@ -5738,7 +5738,7 @@
   group: data-tests
   working_dir: nightly_tests/dataset
 
-  frequency: nightly
+  frequency: manual
   team: data
 
   cluster:
@@ -5792,7 +5792,7 @@
   working_dir: nightly_tests/dataset
   stable: false
 
-  frequency: nightly
+  frequency: manual
   team: data
 
   cluster:
@@ -5820,7 +5820,7 @@
   group: data-tests
   working_dir: nightly_tests/dataset
 
-  frequency: nightly
+  frequency: manual
   team: data
 
   cluster:
@@ -6295,7 +6295,7 @@
   group: data-tests
   working_dir: nightly_tests/dataset
 
-  frequency: nightly
+  frequency: manual
   team: data
 
   cluster:
@@ -6322,7 +6322,7 @@
   group: data-tests
   working_dir: nightly_tests/dataset
 
-  frequency: nightly
+  frequency: manual
   team: data
 
   cluster:
