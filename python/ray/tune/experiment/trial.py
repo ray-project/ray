@@ -1097,7 +1097,7 @@ class Trial:
         assert self.is_restoring
 
         if _use_storage_context():
-            assert isinstance(self.restoring_from, _TrainingResult)
+            assert isinstance(self.temporary_state.restoring_from, _TrainingResult)
 
         self.run_metadata.last_result = self.temporary_state.restoring_from.metrics
         self.run_metadata.last_result.setdefault("config", self.config)
