@@ -399,16 +399,16 @@ class _DeploymentHandleResultBase:
         # the scheduled actor task here if the assign request task is done.
         self._assign_request_task.cancel()
 
-    async def _to_obj_ref_or_gen(
+    async def _to_object_ref_or_gen(
         self,
     ) -> Union[ray.ObjectRef, StreamingObjectRefGenerator]:
         return await self._assign_request_task
 
-    def _to_obj_ref_or_gen_sync(
+    def _to_object_ref_or_gen_sync(
         self,
     ) -> Union[ray.ObjectRef, StreamingObjectRefGenerator]:
         future: concurrent.futures.Future = asyncio.run_coroutine_threadsafe(
-            self._to_obj_ref_or_gen(), self._loop
+            self._to_object_ref_or_gen(), self._loop
         )
         return future.result()
 
@@ -420,13 +420,13 @@ class DeploymentHandleRef(_DeploymentHandleResultBase):
         return result
 
     def result(self, timeout_s: Optional[float] = None) -> Any:
-        return ray.get(self._to_obj_ref_sync(), timeout=timeout_s)
+        return ray.get(self._to_object_ref_sync(), timeout=timeout_s)
 
-    async def _to_obj_ref(self) -> ray.ObjectRef:
-        return await self._to_obj_ref_or_gen()
+    async def _to_object_ref(self) -> ray.ObjectRef:
+        return await self._to_object_ref_or_gen()
 
-    def _to_obj_ref_sync(self) -> ray.ObjectRef:
-        return self._to_obj_ref_or_gen_sync()
+    def _to_object_ref_sync(self) -> ray.ObjectRef:
+        return self._to_object_ref_or_gen_sync()
 
 
 class DeploymentHandleGenerator(_DeploymentHandleResultBase):
@@ -443,7 +443,7 @@ class DeploymentHandleGenerator(_DeploymentHandleResultBase):
 
     async def __anext__(self) -> Any:
         if self._obj_ref_gen is None:
-            self._obj_ref_gen = await self._to_obj_ref_gen()
+            self._obj_ref_gen = await self._to_object_ref_gen()
 
         next_obj_ref = await self._obj_ref_gen.__anext__()
         return await next_obj_ref
@@ -453,16 +453,16 @@ class DeploymentHandleGenerator(_DeploymentHandleResultBase):
 
     def __next__(self) -> Any:
         if self._obj_ref_gen is None:
-            self._obj_ref_gen = self._to_obj_ref_gen_sync()
+            self._obj_ref_gen = self._to_object_ref_gen_sync()
 
         next_obj_ref = self._obj_ref_gen.__next__()
         return ray.get(next_obj_ref)
 
-    async def _to_obj_ref_gen(self) -> StreamingObjectRefGenerator:
-        return await self._to_obj_ref_or_gen()
+    async def _to_object_ref_gen(self) -> StreamingObjectRefGenerator:
+        return await self._to_object_ref_or_gen()
 
-    def _to_obj_ref_gen_sync(self) -> StreamingObjectRefGenerator:
-        return self._to_obj_ref_or_gen_sync()
+    def _to_object_ref_gen_sync(self) -> StreamingObjectRefGenerator:
+        return self._to_object_ref_or_gen_sync()
 
 
 @PublicAPI(stability="beta")

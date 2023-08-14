@@ -197,7 +197,7 @@ def test_compose_apps(serve_instance):
     assert handle1.remote(handle2.remote("hi")).result() == "app1|app2|hi"
 
 
-def test_convert_to_obj_ref(serve_instance):
+def test_convert_to_object_ref(serve_instance):
     """Test converting deployment handle refs to Ray object refs."""
 
     @ray.remote
@@ -215,14 +215,14 @@ def test_convert_to_obj_ref(serve_instance):
 
         async def __call__(self):
             ref = self._handle.remote()
-            return await identity_task.remote(await ref._to_obj_ref())
+            return await identity_task.remote(await ref._to_object_ref())
 
     handle = serve.run(Deployment.bind(downstream.bind())).options(
         use_new_handle_api=True
     )
 
     ref = handle.remote()
-    assert ray.get(identity_task.remote(ref._to_obj_ref_sync())) == "hello"
+    assert ray.get(identity_task.remote(ref._to_object_ref_sync())) == "hello"
 
 
 def test_generators(serve_instance):
@@ -253,7 +253,7 @@ def test_generators(serve_instance):
     assert list(gen) == list(range(10))
 
 
-def test_convert_to_obj_ref_gen(serve_instance):
+def test_convert_to_object_ref_gen(serve_instance):
     """Test converting generators to obj ref gens inside and outside a deployment."""
 
     @serve.deployment
@@ -270,7 +270,7 @@ def test_convert_to_obj_ref_gen(serve_instance):
             gen = self._handle.remote()
             assert isinstance(gen, DeploymentHandleGenerator)
 
-            obj_ref_gen = await gen._to_obj_ref_gen()
+            obj_ref_gen = await gen._to_object_ref_gen()
             async for obj_ref in obj_ref_gen:
                 yield await obj_ref
 
@@ -280,7 +280,7 @@ def test_convert_to_obj_ref_gen(serve_instance):
 
     gen = handle.options(stream=True).remote()
     assert isinstance(gen, DeploymentHandleGenerator)
-    obj_ref_gen = gen._to_obj_ref_gen_sync()
+    obj_ref_gen = gen._to_object_ref_gen_sync()
     assert ray.get(list(obj_ref for obj_ref in obj_ref_gen)) == list(range(10))
 
 

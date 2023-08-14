@@ -102,7 +102,7 @@ class Query:
             # Make the scanner GC-able to avoid memory leaks.
             scanner.clear()
 
-    async def resolve_deployment_handle_results_to_obj_refs(self):
+    async def resolve_deployment_handle_results_to_object_refs(self):
         """Replace DeploymentHandleResults with their resolved ObjectRefs.
 
         DeploymentHandleGenerators are rejected (not currently supported).
@@ -115,10 +115,10 @@ class Query:
         scanner = _PyObjScanner(source_type=_DeploymentHandleResultBase)
 
         try:
-            result_to_obj_ref_coros = []
+            result_to_object_ref_coros = []
             results = scanner.find_nodes((self.args, self.kwargs))
             for result in results:
-                result_to_obj_ref_coros.append(result._to_obj_ref())
+                result_to_object_ref_coros.append(result._to_object_ref())
                 if isinstance(result, DeploymentHandleGenerator):
                     raise RuntimeError(
                         "Streaming deployment handle results cannot be passed to "
@@ -127,7 +127,7 @@ class Query:
                     )
 
             if len(results) > 0:
-                obj_refs = await asyncio.gather(*result_to_obj_ref_coros)
+                obj_refs = await asyncio.gather(*result_to_object_ref_coros)
                 replacement_table = dict(zip(results, obj_refs))
                 self.args, self.kwargs = scanner.replace_nodes(replacement_table)
         finally:
@@ -1100,7 +1100,7 @@ class Router:
                 metadata=request_meta,
             )
             await query.resolve_async_tasks()
-            await query.resolve_deployment_handle_results_to_obj_refs()
+            await query.resolve_deployment_handle_results_to_object_refs()
             await query.buffer_starlette_requests_and_warn()
 
             return await self._replica_scheduler.assign_replica(query)
