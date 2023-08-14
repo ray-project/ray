@@ -13,9 +13,8 @@ This simple callback just prints a metric each time a result is received:
 
 .. code-block:: python
 
-    from ray import tune
+    from ray import train, tune
     from ray.tune import Callback
-    from ray.air import session
 
 
     class MyCallback(Callback):
@@ -25,7 +24,7 @@ This simple callback just prints a metric each time a result is received:
 
     def train(config):
         for i in range(10):
-            session.report({"metric": i})
+            train.report({"metric": i})
 
 
     tuner = tune.Tuner(
@@ -48,7 +47,7 @@ You can log arbitrary values and metrics in both Function and Class training API
     def trainable(config):
         for i in range(num_epochs):
             ...
-            session.report({"acc": accuracy, "metric_foo": random_metric_1, "bar": metric_2})
+            train.report({"acc": accuracy, "metric_foo": random_metric_1, "bar": metric_2})
 
     class Trainable(tune.Trainable):
         def step(self):
@@ -58,7 +57,7 @@ You can log arbitrary values and metrics in both Function and Class training API
 
 
 .. tip::
-    Note that ``session.report()`` is not meant to transfer large amounts of data, like models or datasets.
+    Note that ``train.report()`` is not meant to transfer large amounts of data, like models or datasets.
     Doing so can incur large overheads and slow down your Tune run significantly.
 
 Which Tune metrics get automatically filled in?
@@ -75,7 +74,7 @@ All of these can be used as stopping conditions or passed as a parameter to Tria
 * ``experiment_id``: Unique experiment ID
 * ``experiment_tag``: Unique experiment tag (includes parameter values)
 * ``hostname``: Hostname of the worker
-* ``iterations_since_restore``: The number of times ``session.report`` has been
+* ``iterations_since_restore``: The number of times ``train.report`` has been
   called after restoring the worker from a checkpoint
 * ``node_ip``: Host IP of the worker
 * ``pid``: Process ID (PID) of the worker process
@@ -86,7 +85,7 @@ All of these can be used as stopping conditions or passed as a parameter to Tria
 * ``timestamp``: Timestamp when the result was processed
 * ``timesteps_since_restore``: Number of timesteps since restoring from a checkpoint
 * ``timesteps_total``: Total number of timesteps
-* ``training_iteration``: The number of times ``session.report()`` has been
+* ``training_iteration``: The number of times ``train.report()`` has been
   called
 * ``trial_id``: Unique trial ID
 

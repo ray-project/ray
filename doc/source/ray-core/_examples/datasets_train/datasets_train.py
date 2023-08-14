@@ -18,8 +18,7 @@ from typing import Tuple
 import boto3
 import mlflow
 import pandas as pd
-from ray.air.config import ScalingConfig
-from ray.train import DataConfig
+from ray.train import DataConfig, ScalingConfig
 from ray.train.torch.torch_trainer import TorchTrainer
 import torch
 import torch.nn as nn

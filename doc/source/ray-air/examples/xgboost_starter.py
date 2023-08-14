@@ -22,7 +22,7 @@ preprocessor = StandardScaler(columns=["mean radius", "mean texture"])
 # __air_xgb_preprocess_end__
 
 # __air_xgb_train_start__
-from ray.air.config import ScalingConfig
+from ray.train import ScalingConfig
 from ray.train.xgboost import XGBoostTrainer
 
 trainer = XGBoostTrainer(
