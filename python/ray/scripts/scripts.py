@@ -22,6 +22,7 @@ import ray
 import ray._private.ray_constants as ray_constants
 import ray._private.services as services
 from ray._private.utils import (
+    check_ray_client_dependencies_installed,
     parse_resources_json,
     parse_node_labels_json,
 )
@@ -624,6 +625,15 @@ def start(
         temp_dir = None
 
     redirect_output = None if not no_redirect_output else True
+
+    # no  client, no  port -> ok
+    # no  port, has client -> default to 10001
+    # has port, no  client -> value error
+    # has port, has client -> ok, check port validity
+    has_ray_client = check_ray_client_dependencies_installed()
+    if has_ray_client and ray_client_server_port is None:
+        ray_client_server_port = 10001
+
     ray_params = ray._private.parameter.RayParams(
         node_ip_address=node_ip_address,
         node_name=node_name if node_name else node_ip_address,

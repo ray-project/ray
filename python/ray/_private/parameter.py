@@ -399,17 +399,8 @@ class RayParams:
                     raise ValueError(
                         "max_worker_port must be higher than min_worker_port."
                     )
-
-        # no  client, no  port -> ok
-        # no  port, has client -> default to 10001
-        # has port, no  client -> value error
-        # has port, has client -> ok, check port validity
-        has_ray_client = check_ray_client_dependencies_installed()
-        if self.ray_client_server_port is None:
-            if has_ray_client:
-                self.ray_client_server_port = 10001
-        else:
-            if not has_ray_client:
+        if self.ray_client_server_port is not None:
+            if not check_ray_client_dependencies_installed():
                 raise ValueError(
                     "Ray Client requires pip package `ray[client]`. "
                     "If you installed the minimal Ray (e.g. `pip install ray`), "
