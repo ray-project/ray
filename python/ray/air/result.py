@@ -226,7 +226,7 @@ class Result:
             mode: One of ["min", "max"].
 
         Returns:
-            :class:`Checkpoint <ray.air.Checkpoint>` object, or None if there is
+            :class:`Checkpoint <ray.train.Checkpoint>` object, or None if there is
             no valid checkpoint associated with the metric.
         """
         if not self.best_checkpoints:

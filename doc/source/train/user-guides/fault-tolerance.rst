@@ -24,7 +24,7 @@ be resumed through checkpointing.
 
 Each instance of recovery from a worker failure is considered a retry. The
 number of retries is configurable through the ``max_failures`` attribute of the
-:class:`~ray.air.FailureConfig` argument set in the :class:`~ray.air.RunConfig`
+:class:`~ray.train.FailureConfig` argument set in the :class:`~ray.train.RunConfig`
 passed to the ``Trainer``:
 
 .. literalinclude:: ../doc_code/key_concepts.py
@@ -61,7 +61,7 @@ has been implemented.
     :start-after: __ft_initial_run_start__
     :end-before: __ft_initial_run_end__
 
-The results and checkpoints of the experiment are saved to the path configured by :class:`~ray.air.config.RunConfig`.
+The results and checkpoints of the experiment are saved to the path configured by :class:`~ray.train.RunConfig`.
 If the experiment has been interrupted due to one of the reasons listed above, use this path to resume:
 
 .. literalinclude:: ../doc_code/dl_guide.py

@@ -36,7 +36,7 @@ that you can setup like this:
 
 .. code-block:: python
 
-    from ray.air import ScalingConfig
+    from ray.train import ScalingConfig
     from ray.train.horovod import HorovodTrainer
     # For GPU Training, set `use_gpu` to True.
     use_gpu = False
@@ -53,7 +53,7 @@ To customize the backend setup, you can pass a
 
 .. code-block:: python
 
-    from ray.air import ScalingConfig
+    from ray.train import ScalingConfig
     from ray.train.horovod import HorovodTrainer, HorovodConfig
 
     trainer = HorovodTrainer(
