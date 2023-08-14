@@ -354,8 +354,8 @@ class ApplicationState:
                 self._update_status(
                     BuildAppStatus.FAILED,
                     (
-                        f"Unexpected error occured while applying config for application "
-                        f"'{self._name}': \n{traceback.format_exc()}"
+                        f"Unexpected error occured while applying config for "
+                        f"application '{self._name}': \n{traceback.format_exc()}"
                     ),
                 )
         else:
