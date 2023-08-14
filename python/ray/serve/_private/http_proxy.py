@@ -244,11 +244,20 @@ class LongestPrefixRouter:
 
 
 class GenericProxy:
-    """This class is  served as the base class for different types of proxies.
-
+    """This class is served as the base class for different types of proxies.
     It contains all the common setup and methods required for running a proxy.
-    At minimum, the particular proxy class need to implement
-    `setup_request_context_and_handle()` and `send_request_to_replica_streaming()`.
+
+    The proxy subclass need to implement the following methods:
+      - `proxy_name()`
+      - `success_status_code()`
+      - `_not_found()`
+      - `_draining_response()`
+      - `_timeout_response()`
+      - `_routes_response()`
+      - `_health_response()`
+      - `send_request_to_replica_unary()`
+      - `setup_request_context_and_handle()`
+      - `send_request_to_replica_streaming()`
     """
 
     def __init__(
@@ -304,7 +313,7 @@ class GenericProxy:
 
         self.request_error_counter = metrics.Counter(
             f"serve_num_{self.proxy_name.lower()}_error_requests",
-            description=f"The number of non-200 {self.proxy_name} responses.",
+            description=f"The number of non-{self.success_status_code} {self.proxy_name} responses.",
             tag_keys=(
                 "route",
                 "error_code",
@@ -315,7 +324,7 @@ class GenericProxy:
         self.deployment_request_error_counter = metrics.Counter(
             f"serve_num_deployment_{self.proxy_name.lower()}_error_requests",
             description=(
-                f"The number of non-200 {self.proxy_name} responses returned by "
+                f"The number of non-{self.success_status_code} {self.proxy_name} responses returned by "
                 "each deployment."
             ),
             tag_keys=(
@@ -349,10 +358,18 @@ class GenericProxy:
         self._draining_start_time: Optional[float] = None
 
     @property
-    def proxy_name(self) -> str:
+    def proxy_name(self) -> RequestProtocol:
         """Proxy name used for metrics.
 
         Each proxy needs to implement its own logic for setting up the proxy name.
+        """
+        raise NotImplementedError
+
+    @property
+    def success_status_code(self) -> str:
+        """Success status code for the proxy.
+
+        Each proxy needs to define its success code.
         """
         raise NotImplementedError
 
@@ -396,7 +413,7 @@ class GenericProxy:
             logger.info(f"Stop draining the proxy actor on node {self._node_id}.")
             self._draining_start_time = None
 
-    async def _not_found(self, serve_request: ServeRequest):
+    async def _not_found(self, serve_request: ServeRequest) -> ServeResponse:
         raise NotImplementedError
 
     async def _draining_response(self, serve_request: ServeRequest) -> ServeResponse:
@@ -405,10 +422,10 @@ class GenericProxy:
     async def _timeout_response(self, serve_request: ServeRequest, request_id: str):
         raise NotImplementedError
 
-    async def _routes_response(self, serve_request: ServeRequest):
+    async def _routes_response(self, serve_request: ServeRequest) -> ServeResponse:
         raise NotImplementedError
 
-    async def _health_response(self, serve_request: ServeRequest):
+    async def _health_response(self, serve_request: ServeRequest) -> ServeResponse:
         raise NotImplementedError
 
     def _ongoing_requests_start(self):
@@ -454,7 +471,7 @@ class GenericProxy:
                     "route": route_path,
                     "method": method,
                     "application": "",
-                    "status_code": "200",
+                    "status_code": self.success_status_code,
                 }
             )
             return await self._routes_response(serve_request=serve_request)
@@ -468,7 +485,7 @@ class GenericProxy:
                     "route": route_path,
                     "method": method,
                     "application": "",
-                    "status_code": "200",
+                    "status_code": self.success_status_code,
                 }
             )
             return await self._health_response(serve_request=serve_request)
@@ -478,10 +495,11 @@ class GenericProxy:
 
             matched_route = self.prefix_router.match_route(route_path)
             if matched_route is None and isinstance(serve_request, ASGIServeRequest):
+                serve_response = await self._not_found(serve_request=serve_request)
                 self.request_error_counter.inc(
                     tags={
                         "route": route_path,
-                        "error_code": "404",
+                        "error_code": serve_response.status_code,
                         "method": method,
                     }
                 )
@@ -490,10 +508,10 @@ class GenericProxy:
                         "route": route_path,
                         "method": method,
                         "application": "",
-                        "status_code": "404",
+                        "status_code": serve_response.status_code,
                     }
                 )
-                return await self._not_found(serve_request=serve_request)
+                return serve_response
 
             route_prefix, handle, app_name, app_is_cross_language = matched_route
 
@@ -552,7 +570,7 @@ class GenericProxy:
                 ),
                 extra={"log_to_stderr": False},
             )
-            if serve_response.status_code != "200":
+            if serve_response.status_code != self.success_status_code:
                 self.request_error_counter.inc(
                     tags={
                         "route": route_path,
@@ -678,16 +696,22 @@ class gRPCProxy(GenericProxy):
     def proxy_name(self) -> RequestProtocol:
         return RequestProtocol.GRPC
 
-    async def _not_found(self, serve_request: ServeRequest):
-        # TODO (genesu): fix it
-        current_path = serve_request.path
-        response = Response(
-            f"Path '{current_path}' not found. "
-            "Please ping http://.../-/routes for route table.",
-            status_code=404,
+    @property
+    def success_status_code(self) -> str:
+        return str(grpc.StatusCode.OK)
+
+    async def _not_found(self, serve_request: ServeRequest) -> ServeResponse:
+        not_found_message = (
+            f"Path '{serve_request.service_method}' not found. Please ping"
+            "/ray.serve.ServeAPIService/ServeRoutes for available applications."
         )
-        await response.send(
-            serve_request.scope, serve_request.receive, serve_request.send
+        status_code = grpc.StatusCode.NOT_FOUND
+        serve_request.send_status_code(status_code=status_code)
+        serve_request.send_details(message=not_found_message)
+        response_proto = RoutesResponse(application_names=self.route_info.values())
+        return ServeResponse(
+            status_code=str(status_code),
+            response=response_proto.SerializeToString(),
         )
 
     async def _draining_response(self, serve_request: ServeRequest) -> ServeResponse:
@@ -713,7 +737,7 @@ class gRPCProxy(GenericProxy):
             serve_request.scope, serve_request.receive, serve_request.send
         )
 
-    async def _routes_response(self, serve_request: ServeRequest):
+    async def _routes_response(self, serve_request: ServeRequest) -> ServeResponse:
         status_code = grpc.StatusCode.OK
         serve_request.send_status_code(status_code=status_code)
         serve_request.send_details(message=success_message)
@@ -723,7 +747,7 @@ class gRPCProxy(GenericProxy):
             response=response_proto.SerializeToString(),
         )
 
-    async def _health_response(self, serve_request: ServeRequest):
+    async def _health_response(self, serve_request: ServeRequest) -> ServeResponse:
         status_code = grpc.StatusCode.OK
         serve_request.send_status_code(status_code=status_code)
         serve_request.send_details(message=success_message)
@@ -832,14 +856,14 @@ class gRPCProxy(GenericProxy):
         obj_ref: StreamingObjectRefGenerator,
     ) -> ServeResponse:
         streaming_response = self._streaming_generator_helper(obj_ref)
-        return ServeResponse(status_code="200", streaming_response=streaming_response)
+        return ServeResponse(status_code=self.success_status_code, streaming_response=streaming_response)
 
     async def _consume_generator_unary(
         self,
         obj_ref: ray.ObjectRef,
     ) -> ServeResponse:
         user_response_bytes = await obj_ref
-        return ServeResponse(status_code="200", response=user_response_bytes)
+        return ServeResponse(status_code=self.success_status_code, response=user_response_bytes)
 
     async def send_request_to_replica_streaming(
         self,
@@ -890,22 +914,30 @@ class HTTPProxy(GenericProxy):
     def proxy_name(self) -> RequestProtocol:
         return RequestProtocol.HTTP
 
-    async def _not_found(self, serve_request: ServeRequest):
+    @property
+    def success_status_code(self) -> str:
+        return "200"
+
+    async def _not_found(self, serve_request: ServeRequest) -> ServeResponse:
+        status_code = 404
         current_path = serve_request.path
         response = Response(
             f"Path '{current_path}' not found. "
             "Please ping http://.../-/routes for route table.",
-            status_code=404,
+            status_code=status_code,
         )
         await response.send(
             serve_request.scope, serve_request.receive, serve_request.send
         )
+        return ServeResponse(status_code=str(status_code))
 
-    async def _draining_response(self, serve_request: ServeRequest):
-        response = Response(drained_message, status_code=503)
+    async def _draining_response(self, serve_request: ServeRequest) -> ServeResponse:
+        status_code = 404
+        response = Response(drained_message, status_code=status_code)
         await response.send(
             serve_request.scope, serve_request.receive, serve_request.send
         )
+        return ServeResponse(status_code=str(status_code))
 
     async def _timeout_response(self, serve_request: ServeRequest, request_id: str):
         response = Response(
@@ -916,15 +948,17 @@ class HTTPProxy(GenericProxy):
             serve_request.scope, serve_request.receive, serve_request.send
         )
 
-    async def _routes_response(self, serve_request: ServeRequest):
-        return await starlette.responses.JSONResponse(self.route_info)(
+    async def _routes_response(self, serve_request: ServeRequest) -> ServeResponse:
+        await starlette.responses.JSONResponse(self.route_info)(
             serve_request.scope, serve_request.receive, serve_request.send
         )
+        return ServeResponse(status_code=self.success_status_code)
 
-    async def _health_response(self, serve_request: ServeRequest):
-        return await starlette.responses.PlainTextResponse(success_message)(
+    async def _health_response(self, serve_request: ServeRequest) -> ServeResponse:
+        await starlette.responses.PlainTextResponse(success_message)(
             serve_request.scope, serve_request.receive, serve_request.send
         )
+        return ServeResponse(status_code=self.success_status_code)
 
     async def receive_asgi_messages(self, request_id: str) -> List[Message]:
         queue = self.asgi_receive_queues.get(request_id, None)
@@ -1051,7 +1085,7 @@ class HTTPProxy(GenericProxy):
             await Response(result).send(
                 serve_request.scope, serve_request.receive, serve_request.send
             )
-            return ServeResponse(status_code="200")
+            return ServeResponse(status_code=self.success_status_code)
 
     async def proxy_asgi_receive(
         self, receive: Receive, queue: ASGIMessageQueue
