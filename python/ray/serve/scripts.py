@@ -467,6 +467,10 @@ def run(
             visualizer = GraphVisualizer()
             visualizer.visualize_with_gradio(handle)
         else:
+            if reload and not blocking:
+                raise click.ClickException(
+                    "The --non-blocking option conflicts with the --reload option."
+                )
             if reload:
                 for changes in watchfiles.watch(
                     working_dir,
