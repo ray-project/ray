@@ -2,6 +2,12 @@
 
 set -euo pipefail
 
+TMP_DIR="$(mktemp -d)"
+
+curl -sL 'https://github.com/ray-project/rayci/releases/download/0.1/wanda-linux-amd64' -o "$TMP_DIR/wanda"
+chmod +x "$TMP_DIR/wanda"
+WANDA=("$TMP_DIR/wanda")
+
 export DOCKER_BUILDKIT=1
 
 # On runtime, we always build as if it is not a PR.
@@ -10,13 +16,8 @@ export REMOTE_CACHE_URL="${BAZEL_REMOTE_CACHE_URL}"
 
 echo "--- Build CI test base"
 
+"${WANDA[@]}" ci/docker/base.test.wanda.yaml
+
 IMAGE_CI_TEST_BASE="${CI_TMP_REPO}:${IMAGE_PREFIX}-ci-test-base"
-
-docker build --progress=plain \
-  --build-arg REMOTE_CACHE_URL \
-  --build-arg BUILDKITE_PULL_REQUEST \
-  --build-arg BUILDKITE_COMMIT \
-  -t "$IMAGE_CI_TEST_BASE" \
-  -f ci/docker/base.test.Dockerfile .
-
+docker tag cr.ray.io/rayproject/oss-ci-base_test "${IMAGE_CI_TEST_BASE}"
 docker push "${IMAGE_CI_TEST_BASE}"
