@@ -34,7 +34,7 @@ from ray.serve._private.deployment_graph_build import (
     get_and_validate_ingress_deployment,
 )
 from ray.serve.exceptions import RayServeException
-from ray.serve.handle import RayServeHandle, RayServeSyncHandle
+from ray.serve.handle import DeploymentHandle, RayServeSyncHandle
 from ray.serve._private.http_util import (
     ASGIAppReplicaWrapper,
     make_fastapi_class_based_view,
@@ -781,12 +781,9 @@ def status() -> ServeStatus:
 
 @PublicAPI(stability="alpha")
 def get_app_handle(
-    name: str, sync: Optional[bool] = None
-) -> Optional[Union[RayServeHandle, RayServeSyncHandle]]:
+    name: str,
+) -> DeploymentHandle:
     """Get a handle to the application's ingress deployment by name.
-
-    When called from within a deployment `sync` will default to `False`.
-    When called from outside a deployment `sync` will default to `True`.
 
     Args:
         name: Name of application to get a handle to.
@@ -817,23 +814,19 @@ def get_app_handle(
     if ingress is None:
         raise RayServeException(f"Application '{name}' does not exist.")
 
-    internal_replica_context = get_internal_replica_context()
-    if sync is None:
-        # If sync is unspecified, default to async within a deployment
-        # and default to sync outside a deployment
-        sync = internal_replica_context is None
-
-    return client.get_handle(ingress, sync=sync)
+    # Default to async within a deployment and sync outside a deployment.
+    sync = get_internal_replica_context() is None
+    return client.get_handle(ingress, sync=sync).options(
+        use_new_handle_api=True,
+    )
 
 
 @DeveloperAPI
 def get_deployment_handle(
-    deployment_name: str, app_name: Optional[str] = None, sync: Optional[bool] = None
-) -> Union[RayServeHandle, RayServeSyncHandle]:
+    deployment_name: str,
+    app_name: Optional[str] = None,
+) -> DeploymentHandle:
     """Get a handle to the named deployment.
-
-    When called from within a deployment `sync` will default to `False`.
-    When called from outside a deployment `sync` will default to `True`.
 
     Args:
         deployment_name: Name of deployment to get a handle to.
@@ -863,9 +856,8 @@ def get_deployment_handle(
         else:
             app_name = internal_replica_context.app_name
 
-    if sync is None:
-        # If sync is unspecified, default to async within a deployment
-        # and default to sync outside a deployment
-        sync = internal_replica_context is None
-
-    return client.get_handle(f"{app_name}_{deployment_name}", sync=sync)
+    # Default to async within a deployment and sync outside a deployment.
+    sync = internal_replica_context is None
+    return client.get_handle(f"{app_name}_{deployment_name}", sync=sync).options(
+        use_new_handle_api=True
+    )

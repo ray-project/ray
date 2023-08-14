@@ -13,7 +13,6 @@ from ray.serve.handle import (
     RayServeHandle,
     RayServeSyncHandle,
 )
-from ray.serve._private.constants import RAY_SERVE_ENABLE_NEW_HANDLE_API
 
 """Test cases:
 - Test setting the flag via `.options`.
@@ -26,7 +25,7 @@ from ray.serve._private.constants import RAY_SERVE_ENABLE_NEW_HANDLE_API
 """
 
 
-def test_set_flag_via_handle_options(ray_instance):
+def test_basic(serve_instance):
     @serve.deployment
     def downstream():
         return "hello"
@@ -48,8 +47,31 @@ def test_set_flag_via_handle_options(ray_instance):
     assert isinstance(handle, RayServeSyncHandle)
     new_handle = handle.options(use_new_handle_api=True)
     assert isinstance(new_handle, DeploymentHandle)
-
     assert new_handle.remote().result() == "hello"
+
+
+def test_get_app_and_deployment_handle(serve_instance):
+    @serve.deployment
+    def downstream():
+        return "hello"
+
+    @serve.deployment
+    class Deployment:
+        def __init__(self, handle: RayServeHandle):
+            pass
+
+        async def check_get_deployment_handle(self):
+            handle = serve.get_deployment_handle(deployment_name="downstream")
+            assert isinstance(handle, DeploymentHandle)
+
+            ref = handle.remote()
+            assert isinstance(ref, DeploymentHandleRef)
+            return await ref
+
+    serve.run(Deployment.bind(downstream.bind()))
+    handle = serve.get_app_handle("default")
+    assert isinstance(handle, DeploymentHandle)
+    assert handle.check_get_deployment_handle.remote().result() == "hello"
 
 
 if __name__ == "__main__":
