@@ -68,9 +68,7 @@ logger = logging.getLogger(__name__)
 SETUP_TIME_THRESHOLD = 10
 
 # File containing dict data returned by user from `Trainable.save_checkpoint`
-_DICT_CHECKPOINT_FILE_NAME = "dict_checkpoint.pkl"
-# Marker file indicating that a checkpoint is a dict checkpoint.
-_DICT_CHECKPOINT_MARKER = ".is_dict_checkpoint"
+_DICT_CHECKPOINT_FILE_NAME = "_dict_checkpoint.pkl"
 
 
 @PublicAPI
@@ -513,8 +511,6 @@ class Trainable:
                         os.path.join(checkpoint_dir, _DICT_CHECKPOINT_FILE_NAME), "wb"
                     ) as f:
                         ray_pickle.dump(checkpoint_dict_or_path, f)
-                    # Mark this directory as a dict checkpoint to check when loading.
-                    Path(checkpoint_dir).joinpath(_DICT_CHECKPOINT_MARKER).touch()
 
                 # TODO(justinvyu): Ignoring relpaths returned by save_checkpoint for now
                 local_checkpoint = NewCheckpoint.from_directory(checkpoint_dir)
@@ -917,7 +913,7 @@ class Trainable:
                 # (depending on what the output of save_checkpoint was)
                 with checkpoint_result.checkpoint.as_directory() as checkpoint_dir:
                     checkpoint_path = Path(checkpoint_dir)
-                    if checkpoint_path.joinpath(_DICT_CHECKPOINT_MARKER).exists():
+                    if checkpoint_path.joinpath(_DICT_CHECKPOINT_FILE_NAME).exists():
                         # If this was a dict checkpoint, load it as a dict
                         with open(
                             checkpoint_path / _DICT_CHECKPOINT_FILE_NAME, "rb"
