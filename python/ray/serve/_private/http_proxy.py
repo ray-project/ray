@@ -419,7 +419,7 @@ class GenericProxy:
     async def _draining_response(self, serve_request: ServeRequest) -> ServeResponse:
         raise NotImplementedError
 
-    async def _timeout_response(self, serve_request: ServeRequest, request_id: str):
+    async def _timeout_response(self, serve_request: ServeRequest, request_id: str) -> ServeResponse:
         raise NotImplementedError
 
     async def _routes_response(self, serve_request: ServeRequest) -> ServeResponse:
@@ -494,23 +494,24 @@ class GenericProxy:
             self._ongoing_requests_start()
 
             matched_route = self.prefix_router.match_route(route_path)
-            if matched_route is None and isinstance(serve_request, ASGIServeRequest):
+            if matched_route is None:
                 serve_response = await self._not_found(serve_request=serve_request)
-                self.request_error_counter.inc(
-                    tags={
-                        "route": route_path,
-                        "error_code": serve_response.status_code,
-                        "method": method,
-                    }
-                )
-                self.request_counter.inc(
-                    tags={
-                        "route": route_path,
-                        "method": method,
-                        "application": "",
-                        "status_code": serve_response.status_code,
-                    }
-                )
+                print("in not found", route_path, serve_response.status_code, method)
+                # self.request_error_counter.inc(
+                #     tags={
+                #         "route": route_path,
+                #         "error_code": serve_response.status_code,
+                #         "method": method,
+                #     }
+                # )
+                # self.request_counter.inc(
+                #     tags={
+                #         "route": route_path,
+                #         "method": method,
+                #         "application": "",
+                #         "status_code": serve_response.status_code,
+                #     }
+                # )
                 return serve_response
 
             route_prefix, handle, app_name, app_is_cross_language = matched_route
@@ -610,6 +611,8 @@ class GenericProxy:
         case, we will abort assigning a replica and return `None`.
         """
         assignment_task = None
+
+        # TODO (genesu): move this into serve request
         if isinstance(serve_request, ASGIServeRequest):
             assignment_task = handle.remote(
                 StreamingHTTPRequest(
@@ -727,15 +730,14 @@ class gRPCProxy(GenericProxy):
             response=response_proto.SerializeToString(),
         )
 
-    async def _timeout_response(self, serve_request: ServeRequest, request_id: str):
-        # TODO (genesu): fix it
-        response = Response(
-            f"Request {request_id} timed out after {self.request_timeout_s}s.",
-            status_code=408,
+    async def _timeout_response(self, serve_request: ServeRequest, request_id: str) -> ServeResponse:
+        timeout_message = (
+            f"Request {request_id} timed out after {self.request_timeout_s}s."
         )
-        await response.send(
-            serve_request.scope, serve_request.receive, serve_request.send
-        )
+        status_code = grpc.StatusCode.ABORTED
+        serve_request.send_status_code(status_code=status_code)
+        serve_request.send_details(message=timeout_message)
+        return ServeResponse(status_code=str(status_code))
 
     async def _routes_response(self, serve_request: ServeRequest) -> ServeResponse:
         status_code = grpc.StatusCode.OK
@@ -884,22 +886,23 @@ class gRPCProxy(GenericProxy):
                         "cancelling the request.",
                         extra={"log_to_stderr": False},
                     )
-                    return DISCONNECT_ERROR_CODE, None
+                    return ServeResponse(status_code=DISCONNECT_ERROR_CODE)
+
+                if serve_request.stream:
+                    return await self._consume_generator_stream(obj_ref=obj_ref)
+                else:
+                    return await self._consume_generator_unary(obj_ref=obj_ref)
             except TimeoutError:
                 logger.warning(
                     f"Request {request_id} timed out after "
                     f"{self.request_timeout_s}s while waiting for assignment."
                 )
-                return TIMEOUT_ERROR_CODE, None
-
-            if serve_request.stream:
-                return await self._consume_generator_stream(obj_ref=obj_ref)
-            else:
-                return await self._consume_generator_unary(obj_ref=obj_ref)
+                self._timeout_response(serve_request=serve_request, request_id=request_id)
+                return ServeResponse(status_code=TIMEOUT_ERROR_CODE)
 
         except Exception as e:
             logger.exception(e)
-            return ServeResponse(status_code="500")
+            return ServeResponse(status_code=str(grpc.StatusCode.INTERNAL))
 
 
 class HTTPProxy(GenericProxy):
@@ -939,7 +942,7 @@ class HTTPProxy(GenericProxy):
         )
         return ServeResponse(status_code=str(status_code))
 
-    async def _timeout_response(self, serve_request: ServeRequest, request_id: str):
+    async def _timeout_response(self, serve_request: ServeRequest, request_id: str) -> ServeResponse:
         response = Response(
             f"Request {request_id} timed out after {self.request_timeout_s}s.",
             status_code=408,
