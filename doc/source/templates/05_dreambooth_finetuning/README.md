@@ -4,10 +4,10 @@
 | ---------------------- | ----------- |
 | Summary | This example shows how to do [DreamBooth fine-tuning](https://dreambooth.github.io/) of a Stable Diffusion model using Ray Train for data-parallel training with many workers and Ray Data for data ingestion. Use one of the provided datasets, or supply your own photos. By the end of this example, you'll be able to generate images of your subject in a variety of situations, just by feeding in a text prompt! |
 | Time to Run | ~10-15 minutes to generate a regularization dataset and fine-tune the model on photos of your subject. |
-| Minimum Compute Requirements | At least 1 GPUs, where each GPU has >= 24GB GRAM. The default is 1 node with an A10G GPU (AWS) or a A100G GPU 40GB (GCE). |
+| Minimum Compute Requirements | At least 1 GPUs, where each GPU has >= 24GB GRAM. The default is 1 node with 4 GPUS: A10G GPU (AWS) or L4 GPU (GCE). |
 | Cluster Environment | This template uses a docker image built on top of the latest Anyscale-provided Ray image using Python 3.9: [`anyscale/ray:latest-py39-cu118`](https://docs.anyscale.com/reference/base-images/overview). See the appendix below for more details. |
 
-![Dreambooth fine-tuning sample results](dreambooth/images/dreambooth_example.png)
+![Dreambooth fine-tuning sample results](https://raw.githubusercontent.com/ray-project/ray/workspace_templates_2.6.1/doc/source/templates/05_dreambooth_finetuning/dreambooth/images/dreambooth_example.png)
 
 ## Run the example
 
@@ -83,7 +83,7 @@ python generate.py \
 ### Generate images interactively in a notebook
 
 See the `playground.ipynb` notebook for a more interactive way to generate images with the fine-tuned model.
-Click on the Jupyter or VSCode icon on the workspace page and open the notebook.
+Click on the Jupyter icon on the workspace page and open the notebook. *Note: The widgets in this notebook don't work in VSCode, so please use Jupyter!*
 
 ## Appendix
 

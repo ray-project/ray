@@ -67,7 +67,7 @@ We can configure cloud storage by telling Ray Tune to **upload to a remote** ``s
     )
     tuner.fit()
 
-Ray AIR defaults to use pyarrow to perform syncing with the specified cloud ``storage_path``.
+Ray Tune defaults to use pyarrow to perform syncing with the specified cloud ``storage_path``.
 You can also pass a custom :class:`Syncer <ray.tune.syncer.Syncer>` object
 to a :class:`tune.SyncConfig <ray.tune.SyncConfig>` within the :class:`air.RunConfig <ray.air.RunConfig>`
 if you want to implement custom logic for uploading/downloading from the cloud.
