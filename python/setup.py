@@ -283,7 +283,7 @@ if setup_spec.type == SetupType.RAY:
         set(setup_spec.extras["serve"] + setup_spec.extras["default"])
     )
 
-    # Ensure gRPC library exist for Ray Serve related features
+    # Ensure gRPC library exists for Ray Serve gRPC support.
     setup_spec.extras["serve-grpc"] = list(
         set(
             setup_spec.extras["serve"]
