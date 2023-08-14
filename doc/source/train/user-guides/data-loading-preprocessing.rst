@@ -415,13 +415,14 @@ If your model is sensitive to shuffle quality, call :meth:`Dataset.random_shuffl
 
 For more information on how to optimize shuffling, and which approach to choose, see the :ref:`Optimize shuffling guide <optimizing_shuffles>`.
 
-Preprocessing Data
-------------------
+Preprocessing Structured Data
+-----------------------------
 
-The recommended way to preprocess data for training is to use Ray Data operations such as `map_batches`. 
-See the :ref:`Ray Data Working with Pytorch guide <working_with_pytorch>` for more details.
+.. note::
+    This section is for tabular/structured data. The recommended way for preprocessing unstructured data is to use
+    Ray Data operations such as `map_batches`. See the :ref:`Ray Data Working with Pytorch guide <working_with_pytorch>` for more details.
 
-However, particularly for tabular data, you can also use Ray Data :ref:`preprocessors <air-preprocessors>`, which implement common data preprocessing operations.
+For tabular data, we recommend using Ray Data :ref:`preprocessors <air-preprocessors>`, which implement common data preprocessing operations.
 You can use this with Ray Train Trainers by applying them on the dataset before passing the dataset into a Trainer. For example:
 
 .. testcode::
