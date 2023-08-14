@@ -490,7 +490,6 @@ class BaseTrainer(abc.ABC):
             path=os.path.join(parsed_url.path, _TRAINER_PKL)
         )
         restore_path = urlunparse(parsed_url)
-        print(restore_path)
 
         download_from_uri(restore_path, local_path)
         return Path(local_path)
