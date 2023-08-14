@@ -51,6 +51,17 @@ class Datasource:
         """Deprecated: Please implement create_reader() instead."""
         raise NotImplementedError
 
+    def on_write_start(self, **write_args) -> None:
+        """Callback for when a write job starts.
+
+        Use this method to perform setup for write tasks. For example, creating a
+        staging bucket in S3.
+
+        Args:
+            write_args: Additional kwargs to pass to the datasource impl.
+        """
+        pass
+
     def write(
         self,
         blocks: Iterable[Block],

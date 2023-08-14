@@ -3317,6 +3317,7 @@ class Dataset:
             try:
                 import pandas as pd
 
+                datasource.on_write_start(**write_args)
                 self._write_ds = Dataset(
                     plan, self._epoch, self._lazy, logical_plan
                 ).materialize()
@@ -3326,7 +3327,7 @@ class Dataset:
                     for block in blocks
                 )
                 write_results = [block["write_result"][0] for block in blocks]
-                datasource.on_write_complete(write_results)
+                datasource.on_write_complete(write_results, **write_args)
             except Exception as e:
                 datasource.on_write_failed([], e)
                 raise
