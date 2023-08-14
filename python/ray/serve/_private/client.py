@@ -278,6 +278,7 @@ class ServeControllerClient:
             route_prefix=route_prefix,
         )
         controller_deploy_args.pop("ingress")
+        controller_deploy_args["name"] = controller_deploy_args.pop("deployment_name")
 
         updating = ray.get(
             self._controller.deploy.remote(
@@ -318,7 +319,6 @@ class ServeControllerClient:
                     route_prefix=deployment["route_prefix"],
                     is_driver_deployment=deployment["is_driver_deployment"],
                     docs_path=deployment["docs_path"],
-                    app_name=name,
                 )
             )
 
