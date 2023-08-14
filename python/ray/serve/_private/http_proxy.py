@@ -159,13 +159,13 @@ class LongestPrefixRouter:
         self.route_info = route_info
         self.app_to_is_cross_language = app_to_is_cross_language
 
-    def match_target(self, target: str) -> Optional[str]:
-        """Return the route from the target.
+    def match_target_endpoint(self, target_endpoint: str) -> Optional[str]:
+        """Return the route from the target_endpoint.
 
         Returns:
             route if found, else return first route. Or None if no routes.
         """
-        if target is None:
+        if target_endpoint is None:
             return None
 
         first_route = None
@@ -173,7 +173,7 @@ class LongestPrefixRouter:
             if first_route is None:
                 first_route = route
             endpoint, app_name = endpoint_and_app_name
-            if target.endswith(endpoint):
+            if target_endpoint.endswith(endpoint):
                 return route
 
         return first_route
