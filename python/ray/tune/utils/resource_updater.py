@@ -247,10 +247,13 @@ class _ResourceUpdater:
         self._last_resource_refresh = float("-inf")
         self.update_avail_resources()
 
-    def update_avail_resources(self, num_retries=5):
+    def update_avail_resources(self, num_retries: int = 5, force: bool = False):
         if not ray.is_initialized():
             return
-        if time.time() - self._last_resource_refresh < self._refresh_period:
+        if (
+            time.time() - self._last_resource_refresh < self._refresh_period
+            and not force
+        ):
             return
         logger.debug("Checking Ray cluster resources.")
         resources = None
@@ -290,39 +293,66 @@ class _ResourceUpdater:
         )
         self._last_resource_refresh = time.time()
 
-    def debug_string(self, total_resources: Dict[str, Any]) -> str:
+    def _get_used_avail_resources(self, total_allocated_resources: Dict[str, Any]):
+        total_allocated_resources = total_allocated_resources.copy()
+
+        used_cpu = total_allocated_resources.pop("CPU", 0)
+        total_cpu = self._avail_resources.cpu
+        used_gpu = total_allocated_resources.pop("GPU", 0)
+        total_gpu = self._avail_resources.gpu
+
+        custom_used_total = {
+            name: (
+                total_allocated_resources.get(name, 0.0),
+                self._avail_resources.get_res_total(name),
+            )
+            for name in self._avail_resources.custom_resources
+            if not name.startswith(NODE_ID_PREFIX)
+            and (total_allocated_resources.get(name, 0.0) > 0 or "_group_" not in name)
+        }
+        return used_cpu, total_cpu, used_gpu, total_gpu, custom_used_total
+
+    def debug_string(self, total_allocated_resources: Dict[str, Any]) -> str:
         """Returns a human readable message for printing to the console."""
         if self._last_resource_refresh > 0:
+            (
+                used_cpu,
+                total_cpu,
+                used_gpu,
+                total_gpu,
+                custom_used_total,
+            ) = self._get_used_avail_resources(total_allocated_resources)
+
+            if (
+                used_cpu > total_cpu
+                or used_gpu > total_gpu
+                or any(used > total for (used, total) in custom_used_total.values())
+            ):
+                # If any of the used resources are higher than what we currently think
+                # is available, update our state and re-fetch
+                self.update_avail_resources(force=True)
+                (
+                    used_cpu,
+                    total_cpu,
+                    used_gpu,
+                    total_gpu,
+                    custom_used_total,
+                ) = self._get_used_avail_resources(total_allocated_resources)
+
             status = (
-                "Resources requested: {}/{} CPUs, {}/{} GPUs, "
-                "{}/{} GiB heap, {}/{} GiB objects".format(
-                    total_resources.pop("CPU", 0),
-                    self._avail_resources.cpu,
-                    total_resources.pop("GPU", 0),
-                    self._avail_resources.gpu,
-                    _to_gb(total_resources.pop("memory", 0.0)),
-                    _to_gb(self._avail_resources.memory),
-                    _to_gb(total_resources.pop("object_store_memory", 0.0)),
-                    _to_gb(self._avail_resources.object_store_memory),
-                )
+                f"Logical resource usage: {used_cpu}/{total_cpu} CPUs, "
+                f"{used_gpu}/{total_gpu} GPUs"
             )
             customs = ", ".join(
-                [
-                    "{}/{} {}".format(
-                        total_resources.get(name, 0.0),
-                        self._avail_resources.get_res_total(name),
-                        name,
-                    )
-                    for name in self._avail_resources.custom_resources
-                    if not name.startswith(NODE_ID_PREFIX)
-                    and (total_resources.get(name, 0.0) > 0 or "_group_" not in name)
-                ]
+                f"{used}/{total} {name}"
+                for name, (used, total) in custom_used_total.items()
             )
+
             if customs:
                 status += f" ({customs})"
             return status
         else:
-            return "Resources requested: ?"
+            return "Logical resource usage: ?"
 
     def get_num_cpus(self) -> int:
         self.update_avail_resources()

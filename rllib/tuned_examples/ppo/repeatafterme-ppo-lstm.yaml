@@ -3,11 +3,11 @@ repeat-after-me-ppo-w-lstm:
     env: ray.rllib.examples.env.repeat_after_me_env.RepeatAfterMeEnv
     run: PPO
     stop:
-        episode_reward_mean: 50
+        sampler_results/episode_reward_mean: 50
         timesteps_total: 100000
     config:
         # Works for both torch and tf.
-        framework: tf
+        framework: torch
         # Make env partially observable.
         env_config:
           config:
@@ -24,3 +24,5 @@ repeat-after-me-ppo-w-lstm:
             max_seq_len: 20
             fcnet_hiddens: [64]
             vf_share_layers: true
+        _enable_learner_api: false
+        _enable_rl_module_api: false

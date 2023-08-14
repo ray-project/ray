@@ -31,32 +31,32 @@ class TestDQN(unittest.TestCase):
             .training(num_steps_sampled_before_learning_starts=0)
         )
 
-        for _ in framework_iterator(config, with_eager_tracing=True):
+        for _ in framework_iterator(config):
             # Double-dueling DQN.
             print("Double-dueling")
-            trainer = config.build()
+            algo = config.build()
             for i in range(num_iterations):
-                results = trainer.train()
+                results = algo.train()
                 check_train_results(results)
                 print(results)
 
-            check_compute_single_action(trainer)
-            trainer.stop()
+            check_compute_single_action(algo)
+            algo.stop()
 
             # Rainbow.
             print("Rainbow")
             rainbow_config = deepcopy(config).training(
                 num_atoms=10, noisy=True, double_q=True, dueling=True, n_step=5
             )
-            trainer = rainbow_config.build()
+            algo = rainbow_config.build()
             for i in range(num_iterations):
-                results = trainer.train()
+                results = algo.train()
                 check_train_results(results)
                 print(results)
 
-            check_compute_single_action(trainer)
+            check_compute_single_action(algo)
 
-            trainer.stop()
+            algo.stop()
 
     def test_dqn_compilation_integer_rewards(self):
         """Test whether DQN can be built on all frameworks.
@@ -70,32 +70,32 @@ class TestDQN(unittest.TestCase):
             .training(num_steps_sampled_before_learning_starts=0)
         )
 
-        for _ in framework_iterator(config, with_eager_tracing=True):
+        for _ in framework_iterator(config):
             # Double-dueling DQN.
             print("Double-dueling")
-            trainer = config.build()
+            algo = config.build()
             for i in range(num_iterations):
-                results = trainer.train()
+                results = algo.train()
                 check_train_results(results)
                 print(results)
 
-            check_compute_single_action(trainer)
-            trainer.stop()
+            check_compute_single_action(algo)
+            algo.stop()
 
             # Rainbow.
             print("Rainbow")
             rainbow_config = deepcopy(config).training(
                 num_atoms=10, noisy=True, double_q=True, dueling=True, n_step=5
             )
-            trainer = rainbow_config.build()
+            algo = rainbow_config.build()
             for i in range(num_iterations):
-                results = trainer.train()
+                results = algo.train()
                 check_train_results(results)
                 print(results)
 
-            check_compute_single_action(trainer)
+            check_compute_single_action(algo)
 
-            trainer.stop()
+            algo.stop()
 
     def test_dqn_exploration_and_soft_q_config(self):
         """Tests, whether a DQN Agent outputs exploration/softmaxed actions."""
@@ -111,59 +111,59 @@ class TestDQN(unittest.TestCase):
         # Test against all frameworks.
         for _ in framework_iterator(config):
             # Default EpsilonGreedy setup.
-            trainer = config.build()
+            algo = config.build()
             # Setting explore=False should always return the same action.
-            a_ = trainer.compute_single_action(obs, explore=False)
+            a_ = algo.compute_single_action(obs, explore=False)
             for _ in range(50):
-                a = trainer.compute_single_action(obs, explore=False)
+                a = algo.compute_single_action(obs, explore=False)
                 check(a, a_)
             # explore=None (default: explore) should return different actions.
             actions = []
             for _ in range(50):
-                actions.append(trainer.compute_single_action(obs))
+                actions.append(algo.compute_single_action(obs))
             check(np.std(actions), 0.0, false=True)
-            trainer.stop()
+            algo.stop()
 
             # Low softmax temperature. Behaves like argmax
             # (but no epsilon exploration).
             config.exploration(
                 exploration_config={"type": "SoftQ", "temperature": 0.000001}
             )
-            trainer = config.build()
+            algo = config.build()
             # Due to the low temp, always expect the same action.
-            actions = [trainer.compute_single_action(obs)]
+            actions = [algo.compute_single_action(obs)]
             for _ in range(50):
-                actions.append(trainer.compute_single_action(obs))
+                actions.append(algo.compute_single_action(obs))
             check(np.std(actions), 0.0, decimals=3)
-            trainer.stop()
+            algo.stop()
 
             # Higher softmax temperature.
             config.exploration_config["temperature"] = 1.0
-            trainer = config.build()
+            algo = config.build()
 
             # Even with the higher temperature, if we set explore=False, we
             # should expect the same actions always.
-            a_ = trainer.compute_single_action(obs, explore=False)
+            a_ = algo.compute_single_action(obs, explore=False)
             for _ in range(50):
-                a = trainer.compute_single_action(obs, explore=False)
+                a = algo.compute_single_action(obs, explore=False)
                 check(a, a_)
 
             # Due to the higher temp, expect different actions avg'ing
             # around 1.5.
             actions = []
             for _ in range(300):
-                actions.append(trainer.compute_single_action(obs))
+                actions.append(algo.compute_single_action(obs))
             check(np.std(actions), 0.0, false=True)
-            trainer.stop()
+            algo.stop()
 
             # With Random exploration.
             config.exploration(exploration_config={"type": "Random"}, explore=True)
-            trainer = config.build()
+            algo = config.build()
             actions = []
             for _ in range(300):
-                actions.append(trainer.compute_single_action(obs))
+                actions.append(algo.compute_single_action(obs))
             check(np.std(actions), 0.0, false=True)
-            trainer.stop()
+            algo.stop()
 
 
 if __name__ == "__main__":

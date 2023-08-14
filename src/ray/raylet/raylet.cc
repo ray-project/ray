@@ -56,18 +56,17 @@ namespace ray {
 namespace raylet {
 
 Raylet::Raylet(instrumented_io_context &main_service,
+               const NodeID &self_node_id,
                const std::string &socket_name,
                const std::string &node_ip_address,
                const std::string &node_name,
                const NodeManagerConfig &node_manager_config,
                const ObjectManagerConfig &object_manager_config,
                std::shared_ptr<gcs::GcsClient> gcs_client,
-               int metrics_export_port)
+               int metrics_export_port,
+               bool is_head_node)
     : main_service_(main_service),
-      self_node_id_(
-          !RayConfig::instance().OVERRIDE_NODE_ID_FOR_TESTING().empty()
-              ? NodeID::FromHex(RayConfig::instance().OVERRIDE_NODE_ID_FOR_TESTING())
-              : NodeID::FromRandom()),
+      self_node_id_(self_node_id),
       gcs_client_(gcs_client),
       node_manager_(main_service,
                     self_node_id_,
@@ -88,10 +87,22 @@ Raylet::Raylet(instrumented_io_context &main_service,
   self_node_info_.set_node_manager_port(node_manager_.GetServerPort());
   self_node_info_.set_node_manager_hostname(boost::asio::ip::host_name());
   self_node_info_.set_metrics_export_port(metrics_export_port);
+  self_node_info_.set_runtime_env_agent_port(node_manager_config.runtime_env_agent_port);
   auto resource_map = node_manager_config.resource_config.ToResourceMap();
   self_node_info_.mutable_resources_total()->insert(resource_map.begin(),
                                                     resource_map.end());
   self_node_info_.set_start_time_ms(current_sys_time_ms());
+  self_node_info_.set_is_head_node(is_head_node);
+  self_node_info_.mutable_labels()->insert(node_manager_config.labels.begin(),
+                                           node_manager_config.labels.end());
+
+  // Setting up autoscaler related fields from ENV
+  auto instance_id = std::getenv(kNodeCloudInstanceIdEnv);
+  self_node_info_.set_instance_id(instance_id ? instance_id : "");
+  auto cloud_node_type_name = std::getenv(kNodeTypeNameEnv);
+  self_node_info_.set_node_type_name(cloud_node_type_name ? cloud_node_type_name : "");
+  auto instance_type_name = std::getenv(kNodeCloudInstanceTypeNameEnv);
+  self_node_info_.set_instance_type_name(instance_type_name ? instance_type_name : "");
 }
 
 Raylet::~Raylet() {}

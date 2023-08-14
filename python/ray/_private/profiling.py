@@ -88,11 +88,12 @@ def profile(event_type, extra_data=None):
 
     This function can be used as follows (both on the driver or within a task).
 
-    .. code-block:: python
+    .. testcode::
         import ray._private.profiling as profiling
 
         with profiling.profile("custom event", extra_data={'key': 'val'}):
             # Do some computation here.
+            x = 1 * 2
 
     Optionally, a dictionary can be passed as the "extra_data" argument, and
     it can have keys "name" and "cname" if you want to override the default
@@ -155,13 +156,6 @@ def chrome_tracing_dump(
     worker_idx = 0
 
     for task in tasks:
-        if task.get("task_id") is None:
-            # If we have a missing data due to data report issue
-            # we just skip this entry.
-            # This shouldn't happen after merging
-            # https://github.com/ray-project/ray/pull/31837
-            continue
-
         profiling_data = task.get("profiling_data", [])
         if profiling_data:
             node_ip_address = profiling_data["node_ip_address"]

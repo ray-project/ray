@@ -2,7 +2,7 @@ pendulum-ddppo:
     env: Pendulum-v1
     run: DDPPO
     stop:
-        episode_reward_mean: -300
+        sampler_results/episode_reward_mean: -300
         timesteps_total: 1500000
     config:
         framework: torch

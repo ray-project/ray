@@ -70,11 +70,11 @@ def get_cli_args():
     parser.add_argument(
         "--run", default="PPO", help="The RLlib-registered algorithm to use."
     )
-    parser.add_argument("--num-cpus", type=int, default=3)
+    parser.add_argument("--num-cpus", type=int)
     parser.add_argument(
         "--framework",
         choices=["tf", "tf2", "torch"],
-        default="tf",
+        default="torch",
         help="The DL framework specifier.",
     )
     parser.add_argument(
@@ -150,6 +150,8 @@ if __name__ == "__main__":
                 "attention_head_dim": 32,
                 "attention_position_wise_mlp_dim": 32,
             },
+            # TODO (Kourosh): Enable when LSTMs are supported.
+            _enable_learner_api=False,
         )
         .framework(args.framework)
         .rollouts(num_envs_per_worker=20)
@@ -157,6 +159,7 @@ if __name__ == "__main__":
             # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
             num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", 0))
         )
+        .rl_module(_enable_rl_module_api=False)
     )
 
     stop = {

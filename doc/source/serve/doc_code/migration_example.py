@@ -2,7 +2,7 @@ import ray
 from ray import serve
 from ray.serve.drivers import DAGDriver
 from ray.dag.input_node import InputNode
-from ray.serve.handle import RayServeDeploymentHandle
+from ray.serve.handle import RayServeHandle
 from ray.serve.handle import RayServeSyncHandle
 
 import requests
@@ -204,7 +204,7 @@ class Model:
 
 @serve.deployment
 class Preprocess:
-    def __init__(self, model_handle: RayServeDeploymentHandle):
+    def __init__(self, model_handle: RayServeHandle):
         self.model_handle = model_handle
 
     async def __call__(self, input):

@@ -2,28 +2,24 @@ import threading
 import unittest
 
 import ray
-from ray.air import CheckpointConfig
-from ray.tune import register_trainable, SyncConfig
+from ray.train import CheckpointConfig
+from ray.tune import register_trainable
 from ray.tune.experiment import Experiment, Trial, _convert_to_experiment_list
 from ray.tune.error import TuneError
 from ray.tune.utils import diagnose_serialization
 
 
 def test_remote_checkpoint_dir_with_query_string(tmp_path):
-    sync_config = SyncConfig(syncer="auto", upload_dir="s3://bucket?scheme=http")
     experiment = Experiment(
-        name="spam",
-        run=lambda config: config,
-        sync_config=sync_config,
+        name="spam", run=lambda config: config, storage_path="s3://bucket?scheme=http"
     )
     assert experiment.remote_checkpoint_dir == "s3://bucket/spam?scheme=http"
 
     trial = Trial(
         "mock",
         stub=True,
-        sync_config=sync_config,
+        experiment_path="s3://bucket/spam?scheme=http",
         experiment_dir_name="spam",
-        local_dir=str(tmp_path),
     )
     trial.relative_logdir = "trial_dirname"
     assert trial.remote_checkpoint_dir == "s3://bucket/spam/trial_dirname?scheme=http"

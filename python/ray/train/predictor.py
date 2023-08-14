@@ -8,7 +8,7 @@ from ray.air.checkpoint import Checkpoint
 from ray.air.data_batch_type import DataBatchType
 from ray.air.util.data_batch_conversion import (
     BatchFormat,
-    convert_batch_type_to_pandas,
+    _convert_batch_type_to_pandas,
     _convert_batch_type_to_numpy,
 )
 from ray.data import Preprocessor
@@ -54,7 +54,7 @@ class Predictor(abc.ABC):
     - The input batch is converted into a pandas DataFrame. Tensor input (like a
       ``np.ndarray``) will be converted into a single column Pandas Dataframe.
     - If there is a :ref:`Preprocessor <air-preprocessor-ref>` saved in the provided
-      :ref:`Checkpoint <air-checkpoint-ref>`, the preprocessor will be used to
+      :ref:`Checkpoint <checkpoint-api-ref>`, the preprocessor will be used to
       transform the DataFrame.
     - The transformed DataFrame will be passed to the model for inference (via the
       ``predictor._predict_pandas`` method).
@@ -68,8 +68,8 @@ class Predictor(abc.ABC):
 
     1. ``_predict_pandas``: Given a pandas.DataFrame input, return a
        pandas.DataFrame containing predictions.
-    2. ``from_checkpoint``: Logic for creating a Predictor from an
-       :ref:`AIR Checkpoint <air-checkpoint-ref>`.
+    2. ``from_checkpoint``: Logic for creating a Predictor from a
+       :ref:`Checkpoint <checkpoint-api-ref>`.
     3. Optionally ``_predict_numpy`` for better performance when working with
        tensor data to avoid extra copies from Pandas conversions.
     """
@@ -181,8 +181,6 @@ class Predictor(abc.ABC):
             raise NotImplementedError(
                 "Subclasses of Predictor must call Predictor.__init__(preprocessor)."
             )
-        if self._preprocessor:
-            data = self._preprocessor.transform_batch(data)
         try:
             batch_format = TYPE_TO_ENUM[type(data)]
         except KeyError:
@@ -191,33 +189,29 @@ class Predictor(abc.ABC):
                 f"types: {list(TYPE_TO_ENUM.keys())}"
             )
 
-        has_predict_numpy = self.__class__._predict_numpy != Predictor._predict_numpy
-        has_predict_pandas = self.__class__._predict_pandas != Predictor._predict_pandas
-        if not has_predict_numpy and not has_predict_pandas:
-            raise NotImplementedError(
-                "None of `_predict_pandas` or `_predict_numpy` are "
-                f"implemented for input data batch format `{batch_format}`."
-            )
+        if self._preprocessor:
+            data = self._preprocessor.transform_batch(data)
+
+        batch_format_to_use = self._batch_format_to_use()
+
         # We can finish prediction as long as one predict method is implemented.
+        # For prediction, we have to return back in the same format as the input.
         if batch_format == BatchFormat.PANDAS:
-            if has_predict_pandas:
-                return self._predict_pandas(data, **kwargs)
-            elif has_predict_numpy:
-                predict_data = _convert_batch_type_to_numpy(data)
-                predictions = self._predict_numpy(predict_data, **kwargs)
-                return convert_batch_type_to_pandas(predictions)
+            if batch_format_to_use == BatchFormat.PANDAS:
+                return self._predict_pandas(
+                    _convert_batch_type_to_pandas(data), **kwargs
+                )
+            elif batch_format_to_use == BatchFormat.NUMPY:
+                return _convert_batch_type_to_pandas(
+                    self._predict_numpy(_convert_batch_type_to_numpy(data), **kwargs)
+                )
         elif batch_format == BatchFormat.NUMPY:
-            if has_predict_numpy:
-                return self._predict_numpy(data, **kwargs)
-            elif has_predict_pandas:
-                # Fallback to convert to pandas batch and call _predict_pandas
-                # ex: xgboost predict with np.ndarray batch data
-                predict_data = convert_batch_type_to_pandas(data)
-                predictions = self._predict_pandas(predict_data, **kwargs)
-                # Base predictor's return value are used by both BatchPredictor
-                # and Ray Serve, thus keep return value as raw DataFrame or Numpy
-                # without any TensorArray casting and leave it to caller to decide.
-                return _convert_batch_type_to_numpy(predictions)
+            if batch_format_to_use == BatchFormat.PANDAS:
+                return _convert_batch_type_to_numpy(
+                    self._predict_pandas(_convert_batch_type_to_pandas(data), **kwargs)
+                )
+            elif batch_format_to_use == BatchFormat.NUMPY:
+                return self._predict_numpy(_convert_batch_type_to_numpy(data), **kwargs)
 
     @DeveloperAPI
     def _predict_pandas(self, data: "pd.DataFrame", **kwargs) -> "pd.DataFrame":

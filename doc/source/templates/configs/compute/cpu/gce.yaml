@@ -1,0 +1,11 @@
+# 8 n2-standard-8 nodes --> 64 CPUs
+head_node_type:
+  name: head_node_type
+  instance_type: n2-standard-8
+
+worker_node_types:
+- name: cpu_worker
+  instance_type: n2-standard-8
+  min_workers: 7
+  max_workers: 7
+  use_spot: false

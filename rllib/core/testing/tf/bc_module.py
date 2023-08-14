@@ -1,27 +1,27 @@
-import gymnasium as gym
 import tensorflow as tf
-import tensorflow_probability as tfp
-from typing import Any, Mapping, Optional
+from typing import Any, Mapping
 
-from ray.rllib.core.rl_module.rl_module import RLModule
-from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec, ModuleID
+from ray.rllib.core.rl_module.rl_module import RLModule, RLModuleConfig
+from ray.rllib.models.tf.tf_distributions import TfCategorical
+from ray.rllib.core.rl_module.marl_module import (
+    MultiAgentRLModule,
+    MultiAgentRLModuleConfig,
+)
 from ray.rllib.core.rl_module.tf.tf_rl_module import TfRLModule
-from ray.rllib.models.specs.typing import SpecType
+from ray.rllib.core.models.specs.typing import SpecType
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.nested_dict import NestedDict
 
 
 class DiscreteBCTFModule(TfRLModule):
-    def __init__(
-        self,
-        input_dim: int,
-        hidden_dim: int,
-        output_dim: int,
-    ) -> None:
-        super().__init__(
-            input_dim=input_dim, output_dim=output_dim, hidden_dim=hidden_dim
-        )
+    def __init__(self, config: RLModuleConfig) -> None:
+        super().__init__(config)
+
+    def setup(self):
+        input_dim = self.config.observation_space.shape[0]
+        hidden_dim = self.config.model_config_dict["fcnet_hiddens"][0]
+        output_dim = self.config.action_space.n
         layers = []
 
         layers.append(tf.keras.Input(shape=(input_dim,)))
@@ -33,36 +33,44 @@ class DiscreteBCTFModule(TfRLModule):
         self.policy = tf.keras.Sequential(layers)
         self._input_dim = input_dim
 
+    def get_train_action_dist_cls(self):
+        return TfCategorical
+
+    def get_exploration_action_dist_cls(self):
+        return TfCategorical
+
+    def get_inference_action_dist_cls(self):
+        return TfCategorical
+
     @override(RLModule)
     def output_specs_exploration(self) -> SpecType:
-        return ["action_dist"]
+        return [SampleBatch.ACTION_DIST_INPUTS]
 
     @override(RLModule)
     def output_specs_inference(self) -> SpecType:
-        return ["action_dist"]
+        return [SampleBatch.ACTION_DIST_INPUTS]
 
     @override(RLModule)
     def output_specs_train(self) -> SpecType:
-        return ["action_dist"]
+        return [SampleBatch.ACTION_DIST_INPUTS]
+
+    def _forward_shared(self, batch: NestedDict) -> Mapping[str, Any]:
+        # We can use a shared forward method because BC does not need to distinguish
+        # between train, inference, and exploration.
+        action_logits = self.policy(batch["obs"])
+        return {SampleBatch.ACTION_DIST_INPUTS: action_logits}
 
     @override(RLModule)
     def _forward_inference(self, batch: NestedDict) -> Mapping[str, Any]:
-        obs = batch[SampleBatch.OBS]
-        action_logits = self.policy(obs)
-        action_logits_inference = tf.argmax(action_logits, axis=-1)
-        action_dist = tfp.distributions.Deterministic(action_logits_inference)
-        return {"action_dist": action_dist}
+        return self._forward_shared(batch)
 
     @override(RLModule)
     def _forward_exploration(self, batch: NestedDict) -> Mapping[str, Any]:
-        return self._forward_inference(batch)
+        return self._forward_shared(batch)
 
     @override(RLModule)
     def _forward_train(self, batch: NestedDict) -> Mapping[str, Any]:
-        obs = batch[SampleBatch.OBS]
-        action_logits = self.policy(obs)
-        action_dist = tfp.distributions.Categorical(logits=action_logits)
-        return {"action_dist": action_dist}
+        return self._forward_shared(batch)
 
     @override(RLModule)
     def get_state(self) -> Mapping[str, Any]:
@@ -71,24 +79,6 @@ class DiscreteBCTFModule(TfRLModule):
     @override(RLModule)
     def set_state(self, state: Mapping[str, Any]) -> None:
         self.policy.set_weights(state["policy"])
-
-    @classmethod
-    @override(RLModule)
-    def from_model_config(
-        cls,
-        observation_space: "gym.Space",
-        action_space: "gym.Space",
-        *,
-        model_config_dict: Mapping[str, Any],
-    ) -> "DiscreteBCTFModule":
-
-        config = {
-            "input_dim": observation_space.shape[0],
-            "hidden_dim": model_config_dict["fcnet_hiddens"][0],
-            "output_dim": action_space.n,
-        }
-
-        return cls(**config)
 
 
 class BCTfRLModuleWithSharedGlobalEncoder(TfRLModule):
@@ -130,18 +120,20 @@ class BCTfRLModuleWithSharedGlobalEncoder(TfRLModule):
         policy_in = tf.concat([global_enc, obs["local"]], axis=-1)
         action_logits = self.policy_head(policy_in)
 
-        return {"action_dist": tf.distributions.Categorical(logits=action_logits)}
+        return {SampleBatch.ACTION_DIST_INPUTS: action_logits}
 
 
-class BCTfMultiAgentSpec(MultiAgentRLModuleSpec):
-    def build(self, module_id: Optional[ModuleID] = None):
+class BCTfMultiAgentModuleWithSharedEncoder(MultiAgentRLModule):
+    def __init__(self, config: MultiAgentRLModuleConfig) -> None:
+        super().__init__(config)
 
-        self._check_before_build()
+    def setup(self):
         # constructing the global encoder based on the observation_space of the first
         # module
-        module_spec = next(iter(self.module_specs.values()))
+        module_specs = self.config.modules
+        module_spec = next(iter(module_specs.values()))
         global_dim = module_spec.observation_space["global"].shape[0]
-        hidden_dim = module_spec.model_config["fcnet_hiddens"][0]
+        hidden_dim = module_spec.model_config_dict["fcnet_hiddens"][0]
         shared_encoder = tf.keras.Sequential(
             [
                 tf.keras.Input(shape=(global_dim,)),
@@ -150,21 +142,18 @@ class BCTfMultiAgentSpec(MultiAgentRLModuleSpec):
             ]
         )
 
-        if module_id:
-            return module_spec.module_class(
+        for module_id, module_spec in module_specs.items():
+            self._rl_modules[module_id] = module_spec.module_class(
                 encoder=shared_encoder,
                 local_dim=module_spec.observation_space["local"].shape[0],
                 hidden_dim=hidden_dim,
                 action_dim=module_spec.action_space.n,
             )
 
-        rl_modules = {}
-        for module_id, module_spec in self.module_specs.items():
-            rl_modules[module_id] = module_spec.module_class(
-                encoder=shared_encoder,
-                local_dim=module_spec.observation_space["local"].shape[0],
-                hidden_dim=hidden_dim,
-                action_dim=module_spec.action_space.n,
-            )
+    def serialize(self):
+        # TODO (Kourosh): Implement when needed.
+        raise NotImplementedError
 
-        return self.marl_module_class(rl_modules)
+    def deserialize(self, data):
+        # TODO (Kourosh): Implement when needed.
+        raise NotImplementedError

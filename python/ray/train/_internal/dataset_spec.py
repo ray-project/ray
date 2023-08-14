@@ -10,21 +10,21 @@ from ray.data.preprocessors import Chain
 from ray.air._internal.util import _estimate_avail_object_store_memory
 
 if TYPE_CHECKING:
-    from ray.data import DatasetIterator
+    from ray.data import DataIterator
 
 RayDataset = Union["Dataset", "DatasetPipeline"]
 
 
 @dataclass
 class RayDatasetSpec:
-    """Configuration for Ray Datasets to pass to the training workers.
+    """Configuration for Datasets to pass to the training workers.
 
-    dataset_or_dict: An optional Ray Dataset (or DatasetPipeline) or a dictionary of
+    dataset_or_dict: An optional Dataset (or DatasetPipeline) or a dictionary of
         datasets to be sharded across all the training workers, which can be accessed
-        from the training function via ``session.get_dataset_shard()``. Multiple
+        from the training function via ``ray.train.get_dataset_shard()``. Multiple
         Datasets can be passed in as a dictionary that maps each name key to a
         Dataset value, and each Dataset can be accessed from the training function
-        by passing in a `dataset_name` argument to ``session.get_dataset_shard()``.
+        by passing in a `dataset_name` argument to ``ray.train.get_dataset_shard()``.
     dataset_split_fn: An optional callable to specify how the provided ``dataset``
         should be split across the training workers. It is expected to take in two
         arguments. The first one is the ``dataset``, just as is passed in to the
@@ -32,7 +32,7 @@ class RayDatasetSpec:
         training workers (to use as locality hints). The Callable is expected to
         return a list of RayDatasets or a list of dictionaries of RayDatasets,
         with the length of the list equal to the length of the list of actor handles.
-        If None is provided, the provided Ray Dataset(s) will be equally split.
+        If None is provided, the provided Dataset(s) will be equally split.
 
     """
 
@@ -170,7 +170,7 @@ class DataParallelIngestSpec:
 
     def get_dataset_shards(
         self, training_worker_handles: List[ActorHandle]
-    ) -> List[Dict[str, "DatasetIterator"]]:
+    ) -> List[Dict[str, "DataIterator"]]:
         """Get the shards to pass to training workers.
 
         Note: this has to match the signature of DatasetSpec in legacy train.

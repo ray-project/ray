@@ -165,7 +165,7 @@ def test_disable_auto_lineage_reconstruction(ray_start_cluster, tmp_path):
 
     @ray.remote
     def get_node_id():
-        return ray.get_runtime_context().node_id
+        return ray.get_runtime_context().get_node_id()
 
     lock_path = str(tmp_path / "lock")
 

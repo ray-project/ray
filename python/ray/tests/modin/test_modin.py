@@ -24,18 +24,20 @@ from numpy.testing import assert_array_equal
 import ray
 from ray.tests.conftest import start_cluster  # noqa F401
 
-modin_compatible_version = sys.version_info >= (3, 7, 0)
 modin_installed = True
 
-if modin_compatible_version:
-    try:
-        import modin  # noqa: F401
-    except ModuleNotFoundError:
-        modin_installed = False
+try:
+    import modin  # noqa: F401
+except ModuleNotFoundError:
+    modin_installed = False
 
-skip = not modin_compatible_version or not modin_installed
+skip = not modin_installed
 
-# These tests are written for versions of Modin that require python 3.7+
+if sys.version_info < (3, 8):
+    # Modin requires python 3.8+
+    skip = True
+
+# These tests are written for versions of Modin that require python 3.8+
 pytestmark = pytest.mark.skipif(skip, reason="Outdated or missing Modin dependency")
 
 if not skip:

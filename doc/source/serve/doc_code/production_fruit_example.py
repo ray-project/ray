@@ -5,21 +5,20 @@ import ray
 from ray import serve
 from ray.serve.drivers import DAGDriver
 from ray.serve.deployment_graph import InputNode
-from ray.serve.handle import RayServeDeploymentHandle
+from ray.serve.handle import RayServeHandle
 from ray.serve.http_adapters import json_request
 
 # These imports are used only for type hints:
-from typing import Dict, List
-from starlette.requests import Request
+from typing import Dict
 
 
 @serve.deployment(num_replicas=2)
 class FruitMarket:
     def __init__(
         self,
-        mango_stand: RayServeDeploymentHandle,
-        orange_stand: RayServeDeploymentHandle,
-        pear_stand: RayServeDeploymentHandle,
+        mango_stand: RayServeHandle,
+        orange_stand: RayServeHandle,
+        pear_stand: RayServeHandle,
     ):
         self.directory = {
             "MANGO": mango_stand,
@@ -88,10 +87,6 @@ class PearStand:
         return self.price * amount
 
 
-async def json_resolver(request: Request) -> List:
-    return await request.json()
-
-
 with InputNode() as query:
     fruit, amount = query[0], query[1]
 
@@ -138,10 +133,6 @@ for deployment in app.deployments.values():
     deployment.set_options(ray_actor_options={"num_cpus": 0.1})
 serve.run(app)
 check_fruit_deployment_graph()
-MangoStand.options(name="MangoStand", user_config={"price": 0}).deploy()
-OrangeStand.options(user_config={"price": 0}).deploy()
-PearStand.options(user_config={"price": 0}).deploy()
-check_fruit_deployment_graph_updates()
 print("Example ran successfully from the file.")
 serve.shutdown()
 

@@ -23,6 +23,8 @@ from ray.rllib.utils.annotations import (
     override,
     ExperimentalAPI,
 )
+from ray.rllib.utils.deprecation import deprecation_warning, Deprecated
+from ray.util import log_once
 
 
 ForwardOutputType = TensorDict
@@ -38,7 +40,7 @@ class RecurrentModel(abc.ABC):
     together with other models.
 
     The models input and output TensorDicts. Which keys the models read/write to
-    and the desired tensor shapes must be defined in input_spec, output_spec,
+    and the desired tensor shapes must be defined in `input_specs`, `output_specs`,
     prev_state_spec, and next_state_spec.
 
     The `unroll` function gets the model inputs and previous recurrent state, and
@@ -56,6 +58,10 @@ class RecurrentModel(abc.ABC):
     """
 
     def __init__(self, name: Optional[str] = None):
+        if log_once("recurrent_model_deprecation"):
+            deprecation_warning(
+                old="ray.rllib.models.base_model.RecurrentModel",
+            )
         self._name = name or self.__class__.__name__
 
     @property
@@ -65,7 +71,7 @@ class RecurrentModel(abc.ABC):
 
     @property
     @abc.abstractmethod
-    def input_spec(self) -> SpecDict:
+    def input_specs(self) -> SpecDict:
         """Returns the spec of the input of this module."""
 
     @property
@@ -75,7 +81,7 @@ class RecurrentModel(abc.ABC):
 
     @property
     @abc.abstractmethod
-    def output_spec(self) -> SpecDict:
+    def output_specs(self) -> SpecDict:
         """Returns the spec of the output of this module."""
 
     @property
@@ -155,14 +161,14 @@ class RecurrentModel(abc.ABC):
             >>> state # TensorDict(...)
 
         """
-        self.input_spec.validate(inputs)
+        self.input_specs.validate(inputs)
         self.prev_state_spec.validate(prev_state)
-        # We hide inputs not specified in input_spec to prevent accidental use.
-        inputs = inputs.filter(self.input_spec)
+        # We hide inputs not specified in input_specs to prevent accidental use.
+        inputs = inputs.filter(self.input_specs)
         prev_state = prev_state.filter(self.prev_state_spec)
         inputs, prev_state = self._update_inputs_and_prev_state(inputs, prev_state)
         outputs, next_state = self._unroll(inputs, prev_state, **kwargs)
-        self.output_spec.validate(outputs)
+        self.output_specs.validate(outputs)
         self.next_state_spec.validate(next_state)
         outputs, next_state = self._update_outputs_and_next_state(outputs, next_state)
         return outputs, next_state
@@ -201,6 +207,7 @@ class RecurrentModel(abc.ABC):
         return outputs, next_state
 
 
+@Deprecated(error=False)
 class Model(RecurrentModel):
     """A RecurrentModel made non-recurrent by ignoring
     the input/output states.
@@ -299,6 +306,8 @@ class ModelIO(abc.ABC):
     """
 
     def __init__(self, config: ModelConfig) -> None:
+        if log_once("rllib_base_model_io_deprecation"):
+            deprecation_warning(old="ray.rllib.models.base_model.ModelIO")
         self._config = config
 
     @DeveloperAPI

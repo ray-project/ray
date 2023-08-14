@@ -1,10 +1,7 @@
-from typing import List, Union, TYPE_CHECKING
+from typing import List, Union
 from ray.rllib.utils.framework import try_import_tf
 
 _, tf, _ = try_import_tf()
-
-if TYPE_CHECKING:
-    _, tf, _ = try_import_tf()
 
 
 def make_time_major(
@@ -12,7 +9,6 @@ def make_time_major(
     *,
     trajectory_len: int = None,
     recurrent_seq_len: int = None,
-    drop_last: bool = False,
 ):
     """Swaps batch and trajectory axis.
 
@@ -24,8 +20,6 @@ def make_time_major(
             If None then `recurrent_seq_len` must be set.
         recurrent_seq_len: Sequence lengths if recurrent.
             If None then `trajectory_len` must be set.
-        drop_last: A bool indicating whether to drop the last
-            trajectory item.
 
     Note: Either `trajectory_len` or `recurrent_seq_len` must be set. `trajectory_len`
         should be used in cases where tensor is not produced from a
@@ -36,7 +30,7 @@ def make_time_major(
     """
     if isinstance(tensor, list):
         return [
-            make_time_major(_tensor, trajectory_len, recurrent_seq_len, drop_last)
+            make_time_major(_tensor, trajectory_len, recurrent_seq_len)
             for _tensor in tensor
         ]
 
@@ -55,8 +49,6 @@ def make_time_major(
     # swap B and T axes
     res = tf.transpose(rs, [1, 0] + list(range(2, 1 + int(tf.shape(tensor).shape[0]))))
 
-    if drop_last:
-        return res[:-1]
     return res
 
 
@@ -71,22 +63,27 @@ def vtrace_tf2(
     clip_rho_threshold: Union[float, "tf.Tensor"] = 1.0,
     clip_pg_rho_threshold: Union[float, "tf.Tensor"] = 1.0,
 ):
-    r"""V-trace for softmax policies.
+    r"""V-trace for softmax policies implemented with tensorflow.
 
     Calculates V-trace actor critic targets for softmax polices as described in
+    "IMPALA: Scalable Distributed Deep-RL with Importance Weighted Actor-Learner
+    Architectures" by Espeholt, Soyer, Munos et al. (https://arxiv.org/abs/1802.01561)
 
-    "IMPALA: Scalable Distributed Deep-RL with
-    Importance Weighted Actor-Learner Architectures"
-    by Espeholt, Soyer, Munos et al.
+    The V-trace implementation used here closely resembles the one found in the
+    scalable-agent repository by Google DeepMind, available at
+    https://github.com/deepmind/scalable_agent. This version has been optimized to
+    minimize the number of floating-point operations required per V-Trace
+    calculation, achieved through the use of dynamic programming techniques. It's
+    important to note that the mathematical expressions used in this implementation
+    may appear quite different from those presented in the IMPALA paper.
 
-    Target policy refers to the policy we are interested in improving and
-    behaviour policy refers to the policy that generated the given
-    rewards and actions.
-
-    In the notation used throughout documentation and comments, T refers to the
-    time dimension ranging from 0 to T-1. B refers to the batch size and
-    ACTION_SPACE refers to the list of numbers each representing a number of
-    actions.
+    The following terminology applies:
+        - `target policy` refers to the policy we are interested in improving.
+        - `behaviour policy` refers to the policy that generated the given
+            rewards and actions.
+        - `T` refers to the time dimension. This is usually either the length of the
+            trajectory or the length of the sequence if recurrent.
+        - `B` refers to the batch size.
 
     Args:
         target_action_log_probs: Action log probs from the target policy. A float32
@@ -109,28 +106,6 @@ def vtrace_tf2(
             on rho_s in \rho_s \delta log \pi(a|x) (r + \gamma v_{s+1} - V(x_s)).
     """
     log_rhos = target_action_log_probs - behaviour_action_log_probs
-
-    discounts = tf.convert_to_tensor(discounts, dtype=tf.float32)
-    rewards = tf.convert_to_tensor(rewards, dtype=tf.float32)
-    values = tf.convert_to_tensor(values, dtype=tf.float32)
-    bootstrap_value = tf.convert_to_tensor(bootstrap_value, dtype=tf.float32)
-    if clip_rho_threshold is not None:
-        clip_rho_threshold = tf.convert_to_tensor(clip_rho_threshold, dtype=tf.float32)
-    if clip_pg_rho_threshold is not None:
-        clip_pg_rho_threshold = tf.convert_to_tensor(
-            clip_pg_rho_threshold, dtype=tf.float32
-        )
-
-    # Make sure tensor ranks are consistent.
-    rho_rank = log_rhos.shape.ndims  # Usually 2.
-    values.shape.assert_has_rank(rho_rank)
-    bootstrap_value.shape.assert_has_rank(rho_rank - 1)
-    discounts.shape.assert_has_rank(rho_rank)
-    rewards.shape.assert_has_rank(rho_rank)
-    if clip_rho_threshold is not None:
-        clip_rho_threshold.shape.assert_has_rank(0)
-    if clip_pg_rho_threshold is not None:
-        clip_pg_rho_threshold.shape.assert_has_rank(0)
 
     rhos = tf.math.exp(log_rhos)
     if clip_rho_threshold is not None:
@@ -159,17 +134,18 @@ def vtrace_tf2(
         discount_t, c_t, delta_t = sequence_item
         return delta_t + discount_t * c_t * acc
 
-    initial_values = tf.zeros_like(bootstrap_value)
-    vs_minus_v_xs = tf.nest.map_structure(
-        tf.stop_gradient,
-        tf.scan(
-            fn=scanfunc,
-            elems=sequences,
-            initializer=initial_values,
-            parallel_iterations=1,
-            name="scan",
-        ),
-    )
+    with tf.device("/cpu:0"):
+        initial_values = tf.zeros_like(bootstrap_value)
+        vs_minus_v_xs = tf.nest.map_structure(
+            tf.stop_gradient,
+            tf.scan(
+                fn=scanfunc,
+                elems=sequences,
+                initializer=initial_values,
+                parallel_iterations=1,
+                name="scan",
+            ),
+        )
     # Reverse the results back to original order.
     vs_minus_v_xs = tf.reverse(vs_minus_v_xs, [0])
 

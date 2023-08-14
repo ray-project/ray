@@ -2,8 +2,7 @@ from pathlib import Path
 import os
 import time
 
-from ray import air, tune
-from ray.air import session
+from ray import train, tune
 from ray.train.data_parallel_trainer import DataParallelTrainer
 
 from ray.tune.search import BasicVariantGenerator
@@ -33,9 +32,6 @@ FIXED_VAL = int(os.environ["FIXED_VAL"])
 # are tracked by the driver, not the trainable.
 VALS = [int(os.environ["VAL_1"]), int(os.environ["VAL_2"])]
 
-# If 1, use workaround, if 0, just run (and fail in job 1).
-USE_WORKAROUND = bool(int(os.environ["WORKAROUND"]))
-
 # Wait for HANG_RUN_MARKER
 while HANG_RUN_MARKER and Path(HANG_RUN_MARKER).exists():
     time.sleep(0.1)
@@ -53,14 +49,7 @@ def train_func(config):
         time.sleep(0.1)
 
     # Finish trial
-    session.report({"param": config["param"], "fixed": config["fixed"]})
-
-
-# Workaround: Just use a unique name per trainer/trainable
-if USE_WORKAROUND:
-    import uuid
-
-    DataParallelTrainer.__name__ = "DataParallelTrainer_" + uuid.uuid4().hex[:8]
+    train.report({"param": config["param"], "fixed": config["fixed"]})
 
 
 trainer = DataParallelTrainer(
@@ -68,7 +57,7 @@ trainer = DataParallelTrainer(
     train_loop_config={
         "fixed": FIXED_VAL,
     },
-    scaling_config=air.ScalingConfig(
+    scaling_config=train.ScalingConfig(
         num_workers=1, trainer_resources={"CPU": 0}, resources_per_worker={"CPU": 2}
     ),
 )
@@ -97,9 +86,3 @@ while HANG_END_MARKER and Path(HANG_END_MARKER).exists():
 # Put assertions last, so we don't finish early because of failures
 assert sorted([result.metrics["param"] for result in results]) == VALS
 assert [result.metrics["fixed"] for result in results] == [FIXED_VAL, FIXED_VAL]
-
-if USE_WORKAROUND:
-    from ray.experimental.internal_kv import _internal_kv_del
-    from ray.tune.registry import _make_key, TRAINABLE_CLASS
-
-    _internal_kv_del(_make_key("global", TRAINABLE_CLASS, DataParallelTrainer.__name__))

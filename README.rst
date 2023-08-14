@@ -14,16 +14,16 @@
 
 |
 
-Ray is a unified framework for scaling AI and Python applications. Ray consists of a core distributed runtime and a toolkit of libraries (Ray AIR) for simplifying ML compute:
+Ray is a unified framework for scaling AI and Python applications. Ray consists of a core distributed runtime and a set of AI libraries for simplifying ML compute:
 
 .. image:: https://github.com/ray-project/ray/raw/master/doc/source/images/what-is-ray-padded.svg
 
 ..
   https://docs.google.com/drawings/d/1Pl8aCYOsZCo61cmp57c7Sja6HhIygGCvSZLi_AuBuqo/edit
 
-Learn more about `Ray AIR`_ and its libraries:
+Learn more about `Ray AI Libraries`_:
 
-- `Datasets`_: Distributed Data Preprocessing
+- `Data`_: Scalable Datasets for ML
 - `Train`_: Distributed Training
 - `Tune`_: Scalable Hyperparameter Tuning
 - `RLlib`_: Scalable Reinforcement Learning
@@ -44,7 +44,7 @@ Install Ray with: ``pip install ray``. For nightly wheels, see the
 `Installation page <https://docs.ray.io/en/latest/installation.html>`__.
 
 .. _`Serve`: https://docs.ray.io/en/latest/serve/index.html
-.. _`Datasets`: https://docs.ray.io/en/latest/data/dataset.html
+.. _`Data`: https://docs.ray.io/en/latest/data/dataset.html
 .. _`Workflow`: https://docs.ray.io/en/latest/workflows/concepts.html
 .. _`Train`: https://docs.ray.io/en/latest/train/train.html
 .. _`Tune`: https://docs.ray.io/en/latest/tune/index.html
@@ -66,7 +66,6 @@ More Information
 
 - `Documentation`_
 - `Ray Architecture whitepaper`_
-- `Ray AIR Technical whitepaper`_
 - `Exoshuffle: large-scale data shuffle in Ray`_
 - `Ownership: a distributed futures system for fine-grained tasks`_
 - `RLlib paper`_
@@ -78,7 +77,7 @@ More Information
 - `Ray HotOS paper`_
 - `Ray Architecture v1 whitepaper`_
 
-.. _`Ray AIR`: https://docs.ray.io/en/latest/ray-air/getting-started.html
+.. _`Ray AI Libraries`: https://docs.ray.io/en/latest/ray-air/getting-started.html
 .. _`Ray Core`: https://docs.ray.io/en/latest/ray-core/walkthrough.html
 .. _`Tasks`: https://docs.ray.io/en/latest/ray-core/tasks.html
 .. _`Actors`: https://docs.ray.io/en/latest/ray-core/actors.html
@@ -86,7 +85,6 @@ More Information
 .. _`Documentation`: http://docs.ray.io/en/latest/index.html
 .. _`Ray Architecture v1 whitepaper`: https://docs.google.com/document/d/1lAy0Owi-vPz2jEqBSaHNQcy2IBSDEHyXNOQZlGuj93c/preview
 .. _`Ray Architecture whitepaper`: https://docs.google.com/document/d/1tBw9A4j62ruI5omIJbMxly-la5w4q_TjyJgJL_jN2fI/preview
-.. _`Ray AIR Technical whitepaper`: https://docs.google.com/document/d/1bYL-638GN6EeJ45dPuLiPImA8msojEDDKiBx3YzB4_s/preview
 .. _`Exoshuffle: large-scale data shuffle in Ray`: https://arxiv.org/abs/2203.05072
 .. _`Ownership: a distributed futures system for fine-grained tasks`: https://www.usenix.org/system/files/nsdi21-wang.pdf
 .. _`Ray paper`: https://arxiv.org/abs/1712.05889

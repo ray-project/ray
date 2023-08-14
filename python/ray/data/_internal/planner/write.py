@@ -13,6 +13,12 @@ def generate_write_fn(
     # be raised. The Datasource can handle execution outcomes with the
     # on_write_complete() and on_write_failed().
     def fn(blocks: Iterator[Block], ctx) -> Iterator[Block]:
-        return [[datasource.write(blocks, ctx, **write_args)]]
+        # NOTE: `WriteResult` isn't a valid block type, so we need to wrap it up.
+        import pandas as pd
+
+        block = pd.DataFrame(
+            {"write_result": [datasource.write(blocks, ctx, **write_args)]}
+        )
+        return [block]
 
     return fn

@@ -1,7 +1,7 @@
-.. _air-checkpoint-ref:
+.. _checkpoint-api-ref:
 
-Ray AIR Checkpoint
-==================
+Checkpoints
+===========
 
 .. seealso::
 
@@ -15,7 +15,6 @@ Constructor Options
 
 .. autosummary::
     :toctree: doc/
-    :template: autosummary/class_with_autosummary.rst
 
     Checkpoint
 

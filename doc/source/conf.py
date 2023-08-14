@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-import json
+from datetime import datetime
 from pathlib import Path
 from importlib import import_module
 import os
@@ -7,8 +7,13 @@ import sys
 from jinja2.filters import FILTERS
 
 sys.path.insert(0, os.path.abspath("."))
-from custom_directives import *
-from datetime import datetime
+from custom_directives import (
+    DownloadAndPreprocessEcosystemDocs,
+    mock_modules,
+    update_context,
+    LinkcheckSummarizer,
+    build_gallery,
+)
 
 
 # Mocking modules allows Sphinx to work without installing Ray.
@@ -34,8 +39,11 @@ import ray
 
 default_role = "py:obj"
 
+sys.path.append(os.path.abspath("./_ext"))
+
 extensions = [
-    "sphinx_panels",
+    "callouts",  # custom extension from _ext folder
+    "queryparamrefs",
     "sphinx.ext.autodoc",
     "sphinx.ext.viewcode",
     "sphinx.ext.napoleon",
@@ -43,7 +51,6 @@ extensions = [
     "sphinx-jsonschema",
     "sphinxemoji.sphinxemoji",
     "sphinx_copybutton",
-    "sphinxcontrib.yt",
     "versionwarning.extension",
     "sphinx_sitemap",
     "myst_nb",
@@ -51,11 +58,45 @@ extensions = [
     "sphinx.ext.coverage",
     "sphinx.ext.autosummary",
     "sphinx_external_toc",
-    "sphinx_thebe",
     "sphinxcontrib.autodoc_pydantic",
     "sphinxcontrib.redoc",
     "sphinx_tabs.tabs",
+    "sphinx_remove_toctrees",
+    "sphinx_design",
+    "sphinx.ext.intersphinx",
 ]
+
+# Prune deep toc-trees on demand for smaller html and faster builds.
+# This only effects the navigation bar, not the content.
+if os.getenv("FAST", False):
+    remove_from_toctrees = [
+        "data/api/doc/*",
+        "ray-air/api/doc/*",
+        "ray-core/api/doc/*",
+        "ray-observability/api/state/doc/*",
+        "serve/api/doc/*",
+        "train/api/doc/*",
+        "tune/api/doc/*",
+        "workflows/api/doc/*",
+        "cluster/running-applications/job-submission/doc/*",
+        "serve/production-guide/*",
+        "serve/tutorials/deployment-graph-patterns/*",
+        "rllib/package_ref/env/*",
+        "rllib/package_ref/policy/*",
+        "rllib/package_ref/evaluation/*",
+        "rllib/package_ref/utils/*",
+        "workflows/api/*",
+        "cluster/kubernetes/user-guides/*",
+        "cluster/kubernetes/examples/*",
+        "cluster/vms/user-guides/*",
+        "cluster/running-applications/job-submission/*",
+        "ray-core/actors/*",
+        "ray-core/objects/*",
+        "ray-core/scheduling/*",
+        "ray-core/tasks/*",
+        "ray-core/patterns/*",
+        "tune/examples/*",
+    ]
 
 myst_enable_extensions = [
     "dollarmath",
@@ -68,11 +109,8 @@ myst_enable_extensions = [
     "replacements",
 ]
 
-# Thebe configuration for launching notebook cells within the docs.
-thebe_config = {
-    "selector": "div.highlight",
-    "repository_url": "https://github.com/ray-project/ray",
-    "repository_branch": "master",
+intersphinx_mapping = {
+    "sklearn": ("https://scikit-learn.org/stable/", None),
 }
 
 # Cache notebook outputs in _build/.jupyter_cache
@@ -154,9 +192,8 @@ language = None
 # directories to ignore when looking for source files.
 # Also helps resolve warnings about documents not included in any toctree.
 exclude_patterns = [
-    "_build",
-    "source/workflows/api/doc/ray.workflow.*",
-    "source/serve/api/doc/ray.serve.*",
+    "templates/*",
+    "cluster/running-applications/doc/ray.*",
 ]
 
 # If "DOC_LIB" is found, only build that top-level navigation item.
@@ -209,9 +246,15 @@ linkcheck_ignore = [
     "https://www.datanami.com/2018/02/01/rays-new-library-targets-high-speed-reinforcement-learning/",
     # 403 Client Error: Forbidden for url.
     # They ratelimit bots.
+    "https://www.researchgate.net/publication/222573328_Stochastic_Gradient_Boosting",
     "https://www.datanami.com/2019/11/05/why-every-python-developer-will-love-ray/",
+    "https://dev.mysql.com/doc/connector-python/en/",
     # Returning 522s intermittently.
     "https://lczero.org/",
+    # Returns 429 errors in Linkcheck due to too many requests
+    "https://archive.is/2022.12.16-171259/https://www.businessinsider.com/openai-chatgpt-trained-on-anyscale-ray-generative-lifelike-ai-models-2022-12",
+    # Returns 406 but remains accessible
+    "https://www.uber.com/blog/elastic-xgboost-ray/",
 ]
 
 # -- Options for HTML output ----------------------------------------------
@@ -229,13 +272,8 @@ html_theme_options = {
     "use_issues_button": True,
     "use_edit_page_button": True,
     "path_to_docs": "doc/source",
-    "home_page_in_toc": False,
+    "home_page_in_toc": True,
     "show_navbar_depth": 1,
-    "launch_buttons": {
-        "notebook_interface": "jupyterlab",
-        "binderhub_url": "https://mybinder.org",
-        "colab_url": "https://colab.research.google.com",
-    },
     "announcement": "<div class='topnav'></div>",
 }
 
@@ -331,76 +369,15 @@ nb_render_priority = {
     ),
 }
 
-tag_mapping = {
-    # Tags for use-cases gallery
-    "scalableBatchInference": "PyTorch,Image Segmentation,Prediction",
-    "batchActorPool": "Prediction",
-    "batchCore": "Prediction",
-    "nycTaxiData": "Prediction",
-    "batchOcr": "Preprocessing",
-    "millionModels": "Regression,Training,Sklearn",
-    "batchTrainingCore": "Regression,Training,Sklearn",
-    "batchTrainingDatasets": "Regression,Training,Sklearn",
-    "tuneBasicParallel": "Regression,Training,Sklearn",
-    "tuneBatch": "Regression,Training,Tuning,Sklearn",
-    "instacartFulfillment": "Training,Prediction",
-    "productionizingMLServe": "Serving",
-    "simplifyMLOpsServe": "Serving",
-    "gettingStartedServe": "Serving",
-    "compositionServe": "Serving",
-    "examplesServe": "Serving",
-    "useCasesServe": "Serving",
-    "gettingStartedTune": "Tuning",
-    "distributeHPOTune": "Tuning",
-    "simpleDistributedHPO": "Tuning",
-    "HPOTransformers": "Tuning,PyTorch,Classification",
-    "examplesTune": "Tuning",
-    "useCasesTune": "Tuning",
-    "pyTorchTrain": "Training,PyTorch",
-    "xgboostTrain": "Training,XGBoost",
-    "gettingStartedTrain": "Training",
-    "trainingTransformers": "Training,PyTorch,Classification,Prediction",
-    "examplesTrain": "Training",
-    "useCasesTrain": "Training",
-    "appliedRLCourse": "Reinforcement Learning",
-    "introRLlib": "Reinforcement Learning",
-    "gettingStartedRLlib": "Reinforcement Learning",
-    "riotRL": "Reinforcement Learning",
-    "examplesRL": "Reinforcement Learning",
-    "useCasesRL": "Reinforcement Learning",
-    "merlin": "Preprocessing,Training,Prediction",
-    "uberScaleDL": "Preprocessing,Training,Prediction,Tuning,XGBoost,"
-    "TensorFlow,PyTorch",
-    "instacartMLPlatformTripled": "Preprocessing,Prediction,Training,Tuning",
-    "predibase": "Preprocessing,Training,Prediction,Tuning,PyTorch",
-    "GKEMLPlatform": "Preprocessing,Training,Prediction,Tuning,TensorFlow,Serving",
-    "summitMLPlatform": "Preprocessing,Prediction,Training,Tuning,Serving",
-    "torchImageExample": "Preprocessing,Prediction,Training,PyTorch,Classification",
-    "feastExample": "Classification,XGBoost,Training,Preprocessing,Prediction",
-    "xgboostExample": "Classification,XGBoost,Training,Preprocessing,Prediction",
-    "timeSeriesAutoML": "Regression,Sklearn,Tuning",
-    "AIRExamples": "Regression,Classification,Training,Tuning,Prediction,"
-    "Preprocessing,Serving,PyTorch,TensorFlow,XGBoost,LightGBM,Sklearn",
-    # Tags for Ray Train examples gallery
-    "trainTorchFashionMnist": "PyTorch,Training",
-    "trainTransformers": "PyTorch,Training,HuggingFace",
-    "trainTensorflowMnist": "TensorFlow,Training",
-    "trainHorovod": "Horovod, PyTorch,Training",
-    "trainMlflow": "MLflow,Training",
-    "trainTuneTensorflow": "TensorFlow,Training,Tuning",
-    "trainTunePyTorch": "PyTorch,Training,Tuning",
-    "trainBenchmark": "PyTorch,Training"
-    # TODO add and integrate tags for other libraries.
-    # Tune has a proper example library
-    # Serve, RLlib and AIR could use one.
-}
-
-# Create file with tag mappings for tags.js to use.
-with open("./_static/tag-mapping.json", "w") as f:
-    json.dump(tag_mapping, f)
-
 
 def setup(app):
+    # NOTE: 'MOCK' is a custom option we introduced to illustrate mock outputs. Since
+    # `doctest` doesn't support this flag by default, `sphinx.ext.doctest` raises
+    # warnings when we build the documentation.
+    import doctest
+
+    doctest.register_optionflag("MOCK")
+
     app.connect("html-page-context", update_context)
 
     # Custom CSS
@@ -417,10 +394,7 @@ def setup(app):
         defer="defer",
     )
     app.add_js_file("js/docsearch.js", defer="defer")
-
-    # https://github.com/medmunds/rate-the-docs for allowing users
-    # to give thumbs up / down and feedback on existing docs pages.
-    app.add_js_file("js/rate-the-docs.es.min.js")
+    app.add_js_file("js/csat.js", defer="defer")
 
     # https://github.com/ines/termynal
     app.add_js_file("js/termynal.js", defer="defer")
@@ -457,3 +431,8 @@ redoc = [
 ]
 
 redoc_uri = "https://cdn.redoc.ly/redoc/latest/bundles/redoc.standalone.js"
+
+autosummary_filename_map = {
+    "ray.serve.deployment": "ray.serve.deployment_decorator",
+    "ray.serve.Deployment": "ray.serve.Deployment",
+}

@@ -7,8 +7,7 @@ import sys
 import time
 
 import numpy as np
-from ray import air, tune
-from ray.air import session
+from ray import train, tune
 from ray.tune.search.sigopt import SigOptSearch
 
 np.random.seed(0)
@@ -27,7 +26,7 @@ def easy_objective(config):
     w2 = config["total_weight"] - w1
 
     average, std = evaluate(w1, w2)
-    session.report({"average": average, "std": std, "sharpe": average / std})
+    train.report({"average": average, "std": std, "sharpe": average / std})
     time.sleep(0.1)
 
 
@@ -69,7 +68,7 @@ if __name__ == "__main__":
 
     tuner = tune.Tuner(
         easy_objective,
-        run_config=air.RunConfig(
+        run_config=train.RunConfig(
             name="my_exp",
         ),
         tune_config=tune.TuneConfig(

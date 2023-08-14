@@ -4,18 +4,15 @@ import tempfile
 
 import numpy as np
 import pandas as pd
-import pyarrow as pa
 import pytest
-from ray.air.util.data_batch_conversion import convert_pandas_to_batch_type
+from ray.air.util.data_batch_conversion import _convert_pandas_to_batch_type
 from ray.train.predictor import TYPE_TO_ENUM
 from sklearn.ensemble import RandomForestClassifier
 
-import ray
 import ray.cloudpickle as cpickle
-from ray.air.checkpoint import Checkpoint
+from ray.train import Checkpoint
 from ray.air.constants import MAX_REPR_LENGTH, MODEL_KEY
 from ray.data.preprocessor import Preprocessor
-from ray.train.batch_predictor import BatchPredictor
 from ray.train.sklearn import SklearnCheckpoint, SklearnPredictor
 from typing import Tuple
 
@@ -71,33 +68,11 @@ def test_predict(batch_type):
     predictor = SklearnPredictor(estimator=model, preprocessor=preprocessor)
 
     raw_batch = pd.DataFrame([[1, 2], [3, 4], [5, 6]])
-    data_batch = convert_pandas_to_batch_type(raw_batch, type=TYPE_TO_ENUM[batch_type])
+    data_batch = _convert_pandas_to_batch_type(raw_batch, type=TYPE_TO_ENUM[batch_type])
     predictions = predictor.predict(data_batch)
 
     assert len(predictions) == 3
     assert predictor.get_preprocessor().has_preprocessed
-
-
-@pytest.mark.parametrize("batch_type", [np.ndarray, pd.DataFrame])
-def test_predict_batch(ray_start_4_cpus, batch_type):
-    checkpoint, _ = create_checkpoint_preprocessor()
-    predictor = BatchPredictor.from_checkpoint(checkpoint, SklearnPredictor)
-
-    raw_batch = pd.DataFrame(dummy_data, columns=["A", "B"])
-    data_batch = convert_pandas_to_batch_type(raw_batch, type=TYPE_TO_ENUM[batch_type])
-
-    if batch_type == np.ndarray:
-        dataset = ray.data.from_numpy(dummy_data)
-    elif batch_type == pd.DataFrame:
-        dataset = ray.data.from_pandas(data_batch)
-    elif batch_type == pa.Table:
-        dataset = ray.data.from_arrow(data_batch)
-    else:
-        raise RuntimeError("Invalid batch_type")
-
-    predictions = predictor.predict(dataset)
-
-    assert predictions.count() == 3
 
 
 def test_predict_set_cpus(ray_start_4_cpus):
@@ -152,34 +127,6 @@ def test_predict_no_preprocessor():
     predictions = predictor.predict(data_batch)
 
     assert len(predictions) == 3
-
-
-def test_batch_prediction_with_set_cpus(ray_start_4_cpus):
-    with tempfile.TemporaryDirectory() as tmpdir:
-        with open(os.path.join(tmpdir, MODEL_KEY), "wb") as f:
-            cpickle.dump(model, f)
-
-        checkpoint = Checkpoint.from_directory(tmpdir)
-
-        batch_predictor = BatchPredictor.from_checkpoint(checkpoint, SklearnPredictor)
-
-        test_dataset = ray.data.from_pandas(
-            pd.DataFrame(dummy_data, columns=["A", "B"])
-        )
-        batch_predictor.predict(
-            test_dataset, num_cpus_per_worker=2, num_estimator_cpus=2
-        )
-
-
-def test_sklearn_predictor_no_training():
-    with tempfile.TemporaryDirectory() as tmpdir:
-        checkpoint = SklearnCheckpoint.from_estimator(estimator=model, path=tmpdir)
-        batch_predictor = BatchPredictor.from_checkpoint(checkpoint, SklearnPredictor)
-        test_dataset = ray.data.from_pandas(
-            pd.DataFrame(dummy_data, columns=["A", "B"])
-        )
-        predictions = batch_predictor.predict(test_dataset)
-        assert len(predictions.to_pandas()) == 3
 
 
 if __name__ == "__main__":

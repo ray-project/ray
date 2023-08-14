@@ -11,7 +11,8 @@ from ray import serve
 from ray._private.test_utils import SignalActor, wait_for_condition
 from ray.cluster_utils import Cluster
 from ray.serve._private.constants import SERVE_NAMESPACE
-from ray.serve._private.deployment_state import ReplicaStartupStatus, ReplicaState
+from ray.serve._private.deployment_state import ReplicaStartupStatus
+from ray.serve._private.common import ReplicaState
 
 
 @pytest.fixture
@@ -151,7 +152,7 @@ def test_replica_startup_status_transitions(ray_cluster):
     replica = get_replicas(ReplicaState.STARTING)[0]
 
     # currently there are no resources to allocate the replica
-    assert replica.check_started() == ReplicaStartupStatus.PENDING_ALLOCATION
+    assert replica.check_started()[0] == ReplicaStartupStatus.PENDING_ALLOCATION
 
     # add the necessary resources to allocate the replica
     cluster.add_node(num_cpus=4)
@@ -159,7 +160,7 @@ def test_replica_startup_status_transitions(ray_cluster):
     wait_for_condition(lambda: (ray.available_resources().get("CPU", 0) >= 2))
 
     def is_replica_pending_initialization():
-        status = replica.check_started()
+        status, _ = replica.check_started()
         print(status)
         return status == ReplicaStartupStatus.PENDING_INITIALIZATION
 
@@ -168,15 +169,17 @@ def test_replica_startup_status_transitions(ray_cluster):
     # send signal to complete replica intialization
     signal.send.remote()
     wait_for_condition(
-        lambda: replica.check_started() == ReplicaStartupStatus.SUCCEEDED
+        lambda: replica.check_started()[0] == ReplicaStartupStatus.SUCCEEDED
     )
 
 
 def test_intelligent_scale_down(ray_cluster):
     cluster = ray_cluster
-    cluster.add_node(num_cpus=2)
-    cluster.add_node(num_cpus=2)
+    # Head node
+    cluster.add_node(num_cpus=0)
     cluster.connect(namespace=SERVE_NAMESPACE)
+    cluster.add_node(num_cpus=2)
+    cluster.add_node(num_cpus=2)
     serve.start()
 
     @serve.deployment(version="1")

@@ -4,7 +4,7 @@ import requests
 
 # __doc_code_begin__
 generator1 = pipeline("text-generation", model="gpt2")
-generator2 = pipeline("text-generation", model="EleutherAI/gpt-neo-125M")
+generator2 = pipeline("text-generation", model="distilgpt2")
 
 
 def model1(text):

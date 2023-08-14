@@ -25,14 +25,10 @@ Since Python 3.5, it is possible to write concurrent code using the
 Ray natively integrates with asyncio. You can use ray alongside with popular
 async frameworks like aiohttp, aioredis, etc.
 
-You can try it about by running the following snippet in ``ipython`` or a shell
-that supports top level ``await``:
-
-.. code-block:: python
+.. testcode::
 
     import ray
     import asyncio
-    ray.init()
 
     @ray.remote
     class AsyncActor:
@@ -49,8 +45,34 @@ that supports top level ``await``:
     ray.get([actor.run_concurrent.remote() for _ in range(4)])
 
     # async ray.get
-    await actor.run_concurrent.remote()
+    async def async_get():
+        await actor.run_concurrent.remote()
+    asyncio.run(async_get())
 
+.. testoutput::
+    :options: +MOCK
+
+    (AsyncActor pid=40293) started
+    (AsyncActor pid=40293) started
+    (AsyncActor pid=40293) started
+    (AsyncActor pid=40293) started
+    (AsyncActor pid=40293) finished
+    (AsyncActor pid=40293) finished
+    (AsyncActor pid=40293) finished
+    (AsyncActor pid=40293) finished
+
+.. testcode::
+    :hide:
+
+    # NOTE: The outputs from the previous code block can show up in subsequent tests.
+    # To prevent flakiness, we wait for the async calls finish.
+    import time
+    print("Sleeping...")
+    time.sleep(3)
+
+.. testoutput::
+
+    ...
 
 ObjectRefs as asyncio.Futures
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -60,7 +82,9 @@ applications.
 
 Instead of:
 
-.. code-block:: python
+.. testcode::
+
+    import ray
 
     @ray.remote
     def some_task():
@@ -71,44 +95,70 @@ Instead of:
 
 you can do:
 
-.. code-block:: python
+.. testcode::
+
+    import ray
+    import asyncio
 
     @ray.remote
     def some_task():
         return 1
 
-    await some_task.remote()
-    await asyncio.wait([some_task.remote()])
+    async def await_obj_ref():
+        await some_task.remote()
+        await asyncio.wait([some_task.remote()])
+
+    asyncio.run(await_obj_ref())
 
 Please refer to `asyncio doc <https://docs.python.org/3/library/asyncio-task.html>`__
 for more `asyncio` patterns including timeouts and ``asyncio.gather``.
 
 If you need to directly access the future object, you can call:
 
-.. code-block:: python
+.. testcode::
 
-    fut: asyncio.Future = asyncio.wrap_future(ref.future())
+    import asyncio
+
+    async def convert_to_asyncio_future():
+        ref = some_task.remote()
+        fut: asyncio.Future = asyncio.wrap_future(ref.future())
+        print(await fut)
+    asyncio.run(convert_to_asyncio_future())
+
+.. testoutput::
+
+    1
+
+.. _async-ref-to-futures:
 
 ObjectRefs as concurrent.futures.Futures
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 ObjectRefs can also be wrapped into ``concurrent.futures.Future`` objects. This
 is useful for interfacing with existing ``concurrent.futures`` APIs:
 
-.. code-block:: python
+.. testcode::
 
-    refs = [fun.remote() for _ in range(4)]
+    import concurrent
+
+    refs = [some_task.remote() for _ in range(4)]
     futs = [ref.future() for ref in refs]
     for fut in concurrent.futures.as_completed(futs):
         assert fut.done()
         print(fut.result())
 
+.. testoutput::
+
+    1
+    1
+    1
+    1
 
 Defining an Async Actor
 ~~~~~~~~~~~~~~~~~~~~~~~
 
 By using `async` method definitions, Ray will automatically detect whether an actor support `async` calls or not.
 
-.. code-block:: python
+.. testcode::
 
     import asyncio
 
@@ -116,13 +166,27 @@ By using `async` method definitions, Ray will automatically detect whether an ac
     class AsyncActor:
         async def run_task(self):
             print("started")
-            await asyncio.sleep(1) # Network, I/O task here
+            await asyncio.sleep(2) # Network, I/O task here
             print("ended")
 
     actor = AsyncActor.remote()
-    # All 50 tasks should start at once. After 1 second they should all finish.
+    # All 5 tasks should start at once. After 2 second they should all finish.
     # they should finish at the same time
-    ray.get([actor.run_task.remote() for _ in range(50)])
+    ray.get([actor.run_task.remote() for _ in range(5)])
+
+.. testoutput::
+    :options: +MOCK
+
+    (AsyncActor pid=3456) started
+    (AsyncActor pid=3456) started
+    (AsyncActor pid=3456) started
+    (AsyncActor pid=3456) started
+    (AsyncActor pid=3456) started
+    (AsyncActor pid=3456) ended
+    (AsyncActor pid=3456) ended
+    (AsyncActor pid=3456) ended
+    (AsyncActor pid=3456) ended
+    (AsyncActor pid=3456) ended
 
 Under the hood, Ray runs all of the methods inside a single python event loop.
 Please note that running blocking ``ray.get`` or ``ray.wait`` inside async
@@ -137,7 +201,7 @@ Setting concurrency in Async Actors
 You can set the number of "concurrent" task running at once using the
 ``max_concurrency`` flag. By default, 1000 tasks can be running concurrently.
 
-.. code-block:: python
+.. testcode::
 
     import asyncio
 
@@ -148,10 +212,30 @@ You can set the number of "concurrent" task running at once using the
             await asyncio.sleep(1) # Network, I/O task here
             print("ended")
 
-    actor = AsyncActor.options(max_concurrency=10).remote()
+    actor = AsyncActor.options(max_concurrency=2).remote()
 
-    # Only 10 tasks will be running concurrently. Once 10 finish, the next 10 should run.
-    ray.get([actor.run_task.remote() for _ in range(50)])
+    # Only 2 tasks will be running concurrently. Once 2 finish, the next 2 should run.
+    ray.get([actor.run_task.remote() for _ in range(8)])
+
+.. testoutput::
+    :options: +MOCK
+
+    (AsyncActor pid=5859) started
+    (AsyncActor pid=5859) started
+    (AsyncActor pid=5859) ended
+    (AsyncActor pid=5859) ended
+    (AsyncActor pid=5859) started
+    (AsyncActor pid=5859) started
+    (AsyncActor pid=5859) ended
+    (AsyncActor pid=5859) ended
+    (AsyncActor pid=5859) started
+    (AsyncActor pid=5859) started
+    (AsyncActor pid=5859) ended
+    (AsyncActor pid=5859) ended
+    (AsyncActor pid=5859) started
+    (AsyncActor pid=5859) started
+    (AsyncActor pid=5859) ended
+    (AsyncActor pid=5859) ended
 
 .. _threaded-actors:
 
@@ -170,7 +254,7 @@ Instead, you can use the ``max_concurrency`` Actor options without any async met
     will recognize the actor as AsyncActor instead of ThreadedActor.
 
 
-.. code-block:: python
+.. testcode::
 
     @ray.remote
     class ThreadedActor:
@@ -180,6 +264,11 @@ Instead, you can use the ``max_concurrency`` Actor options without any async met
     a = ThreadedActor.options(max_concurrency=2).remote()
     ray.get([a.task_1.remote(), a.task_2.remote()])
 
+.. testoutput::
+    :options: +MOCK
+
+    (ThreadedActor pid=4822) I'm running in a thread!
+    (ThreadedActor pid=4822) I'm running in another thread!
 
 Each invocation of the threaded actor will be running in a thread pool. The size of the threadpool is limited by the ``max_concurrency`` value.
 
@@ -188,7 +277,8 @@ AsyncIO for Remote Tasks
 
 We don't support asyncio for remote tasks. The following snippet will fail:
 
-.. code-block:: python
+.. testcode::
+    :skipif: True
 
     @ray.remote
     async def f():
@@ -196,7 +286,7 @@ We don't support asyncio for remote tasks. The following snippet will fail:
 
 Instead, you can wrap the ``async`` function with a wrapper to run the task synchronously:
 
-.. code-block:: python
+.. testcode::
 
     async def f():
         pass
@@ -205,7 +295,3 @@ Instead, you can wrap the ``async`` function with a wrapper to run the task sync
     def wrapper():
         import asyncio
         asyncio.run(f())
-        # For python < 3.7: 
-        # asyncio.get_event_loop().run_until_complete(f())
-    
-    

@@ -1,4 +1,4 @@
-import gym
+import gymnasium as gym
 import unittest
 
 import ray
@@ -27,7 +27,7 @@ class TestAlgorithmConfig(unittest.TestCase):
 
         config = (
             LearnerGroupConfig()
-            .module(get_module_spec("tf", env))
+            .module(get_module_spec("tf2", env))
             .learner(
                 learner_class=BCTfLearner,
             )
@@ -46,7 +46,7 @@ class TestAlgorithmConfig(unittest.TestCase):
                 module_class=DiscreteBCTFModule,
                 observation_space=env.observation_space,
                 action_space=env.action_space,
-                model_config={"fcnet_hiddens": [32]},
+                model_config_dict={"fcnet_hiddens": [32]},
             )
         )
         learner_group_config.build()

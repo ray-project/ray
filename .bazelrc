@@ -44,8 +44,8 @@ build:clang-cl --per_file_copt="-\\.(asm|S)$@-Werror"
 build:msvc-cl     --per_file_copt="-\\.(asm|S)$@-WX"
 # Ignore warnings for protobuf generated files and external projects.
 build --per_file_copt="\\.pb\\.cc$@-w"
-build --per_file_copt="-\\.(asm|S)$,external/.*@-w"
-#build --per_file_copt="external/.*@-Wno-unused-result"
+build:linux --per_file_copt="-\\.(asm|S)$,external/.*@-w,-Wno-error=implicit-function-declaration"
+build:macos --per_file_copt="-\\.(asm|S)$,external/.*@-w,-Wno-error=implicit-function-declaration"
 # Ignore minor warnings for host tools, which we generally can't control
 build:clang-cl --host_copt="-Wno-inconsistent-missing-override"
 build:clang-cl --host_copt="-Wno-microsoft-unqualified-friend"
@@ -200,5 +200,5 @@ try-import %workspace%/.llvm-local.bazelrc
 # It picks up the system headers when someone has protobuf installed via Homebrew.
 # Work around for https://github.com/bazelbuild/bazel/issues/8053
 build:macos --sandbox_block_path=/usr/local/
-#This option controls whether javac checks for missing direct dependencies.
-build --strict_java_deps=off
+# This option controls whether javac checks for missing direct dependencies.
+build --experimental_strict_java_deps=off

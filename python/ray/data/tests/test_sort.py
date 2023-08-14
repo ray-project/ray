@@ -7,9 +7,14 @@ import pyarrow as pa
 import pytest
 
 import ray
+from ray.data._internal.planner.exchange.push_based_shuffle_task_scheduler import (
+    PushBasedShuffleTaskScheduler,
+)
 from ray.data._internal.push_based_shuffle import PushBasedShufflePlan
+from ray.data._internal.sort import SortKey
 from ray.data.block import BlockAccessor
 from ray.data.tests.conftest import *  # noqa
+from ray.data.tests.util import extract_values
 from ray.tests.conftest import *  # noqa
 
 
@@ -19,18 +24,21 @@ def test_sort_simple(ray_start_regular, use_push_based_shuffle):
     xs = list(range(num_items))
     random.shuffle(xs)
     ds = ray.data.from_items(xs, parallelism=parallelism)
-    assert ds.sort().take(num_items) == list(range(num_items))
+    assert extract_values("item", ds.sort("item").take(num_items)) == list(
+        range(num_items)
+    )
     # Make sure we have rows in each block.
-    assert len([n for n in ds.sort()._block_num_rows() if n > 0]) == parallelism
-    assert ds.sort(descending=True).take(num_items) == list(reversed(range(num_items)))
-    assert ds.sort(key=lambda x: -x).take(num_items) == list(reversed(range(num_items)))
+    assert len([n for n in ds.sort("item")._block_num_rows() if n > 0]) == parallelism
+    assert extract_values(
+        "item", ds.sort("item", descending=True).take(num_items)
+    ) == list(reversed(range(num_items)))
 
     # Test empty dataset.
     ds = ray.data.from_items([])
-    s1 = ds.sort()
+    s1 = ds.sort("item")
     assert s1.count() == 0
     assert s1.take() == ds.take()
-    ds = ray.data.range(10).filter(lambda r: r > 10).sort()
+    ds = ray.data.range(10).filter(lambda r: r["id"] > 10).sort("id")
     assert ds.count() == 0
 
 
@@ -40,7 +48,7 @@ def test_sort_partition_same_key_to_same_block(
     num_items = 100
     xs = [1] * num_items
     ds = ray.data.from_items(xs)
-    sorted_ds = ds.repartition(num_items).sort()
+    sorted_ds = ds.repartition(num_items).sort("item")
 
     # We still have 100 blocks
     assert len(sorted_ds._block_num_rows()) == num_items
@@ -57,7 +65,7 @@ def test_sort_partition_same_key_to_same_block(
 def test_sort_arrow(
     ray_start_regular, num_items, parallelism, use_push_based_shuffle, use_polars
 ):
-    ctx = ray.data.context.DatasetContext.get_current()
+    ctx = ray.data.context.DataContext.get_current()
 
     try:
         original_use_polars = ctx.use_polars
@@ -101,27 +109,29 @@ def test_sort_arrow(
 def test_sort_arrow_with_empty_blocks(
     ray_start_regular, use_push_based_shuffle, use_polars
 ):
-    ctx = ray.data.context.DatasetContext.get_current()
+    ctx = ray.data.context.DataContext.get_current()
 
     try:
         original_use_polars = ctx.use_polars
         ctx.use_polars = use_polars
 
         assert (
-            BlockAccessor.for_block(pa.Table.from_pydict({})).sample(10, "A").num_rows
+            BlockAccessor.for_block(pa.Table.from_pydict({}))
+            .sample(10, SortKey("A"))
+            .num_rows
             == 0
         )
 
         partitions = BlockAccessor.for_block(
             pa.Table.from_pydict({})
-        ).sort_and_partition([1, 5, 10], "A", descending=False)
+        ).sort_and_partition([1, 5, 10], SortKey("A"))
         assert len(partitions) == 4
         for partition in partitions:
             assert partition.num_rows == 0
 
         assert (
             BlockAccessor.for_block(pa.Table.from_pydict({}))
-            .merge_sorted_blocks([pa.Table.from_pydict({})], "A", False)[0]
+            .merge_sorted_blocks([pa.Table.from_pydict({})], SortKey("A"))[0]
             .num_rows
             == 0
         )
@@ -130,23 +140,49 @@ def test_sort_arrow_with_empty_blocks(
             [{"A": (x % 3), "B": x} for x in range(3)], parallelism=3
         )
         ds = ds.filter(lambda r: r["A"] == 0)
-        assert [row.as_pydict() for row in ds.sort("A").iter_rows()] == [
-            {"A": 0, "B": 0}
-        ]
+        assert list(ds.sort("A").iter_rows()) == [{"A": 0, "B": 0}]
 
         # Test empty dataset.
-        ds = ray.data.range_table(10).filter(lambda r: r["value"] > 10)
+        ds = ray.data.range(10).filter(lambda r: r["id"] > 10)
         assert (
             len(
                 ray.data._internal.sort.sample_boundaries(
-                    ds._plan.execute().get_blocks(), "value", 3
+                    ds._plan.execute().get_blocks(), SortKey("id"), 3
                 )
             )
             == 2
         )
-        assert ds.sort("value").count() == 0
+        assert ds.sort("id").count() == 0
     finally:
         ctx.use_polars = original_use_polars
+
+
+@pytest.mark.parametrize("descending", [False, True])
+@pytest.mark.parametrize("batch_format", ["pyarrow", "pandas"])
+def test_sort_with_multiple_keys(ray_start_regular, descending, batch_format):
+    num_items = 1000
+    num_blocks = 100
+    df = pd.DataFrame(
+        {
+            "a": [random.choice("ABCD") for _ in range(num_items)],
+            "b": [x % 3 for x in range(num_items)],
+            "c": [bool(random.getrandbits(1)) for _ in range(num_items)],
+        }
+    )
+    ds = ray.data.from_pandas(df).map_batches(
+        lambda t: t,
+        batch_format=batch_format,
+        batch_size=None,
+    )
+    df.sort_values(["a", "b", "c"], inplace=True, ascending=not descending)
+    sorted_ds = ds.repartition(num_blocks).sort(["a", "b", "c"], descending=descending)
+
+    # Number of blocks is preserved
+    assert len(sorted_ds._block_num_rows()) == num_blocks
+    # Rows are sorted over the dimensions
+    assert [tuple(row.values()) for row in sorted_ds.iter_rows()] == list(
+        zip(df["a"], df["b"], df["c"])
+    )
 
 
 @pytest.mark.parametrize("num_items,parallelism", [(100, 1), (1000, 4)])
@@ -181,11 +217,14 @@ def test_sort_pandas(ray_start_regular, num_items, parallelism, use_push_based_s
 
 def test_sort_pandas_with_empty_blocks(ray_start_regular, use_push_based_shuffle):
     assert (
-        BlockAccessor.for_block(pa.Table.from_pydict({})).sample(10, "A").num_rows == 0
+        BlockAccessor.for_block(pa.Table.from_pydict({}))
+        .sample(10, SortKey("A"))
+        .num_rows
+        == 0
     )
 
     partitions = BlockAccessor.for_block(pa.Table.from_pydict({})).sort_and_partition(
-        [1, 5, 10], "A", descending=False
+        [1, 5, 10], SortKey("A")
     )
     assert len(partitions) == 4
     for partition in partitions:
@@ -193,32 +232,49 @@ def test_sort_pandas_with_empty_blocks(ray_start_regular, use_push_based_shuffle
 
     assert (
         BlockAccessor.for_block(pa.Table.from_pydict({}))
-        .merge_sorted_blocks([pa.Table.from_pydict({})], "A", False)[0]
+        .merge_sorted_blocks([pa.Table.from_pydict({})], SortKey("A"))[0]
         .num_rows
         == 0
     )
 
     ds = ray.data.from_items([{"A": (x % 3), "B": x} for x in range(3)], parallelism=3)
     ds = ds.filter(lambda r: r["A"] == 0)
-    assert [row.as_pydict() for row in ds.sort("A").iter_rows()] == [{"A": 0, "B": 0}]
+    assert list(ds.sort("A").iter_rows()) == [{"A": 0, "B": 0}]
 
     # Test empty dataset.
-    ds = ray.data.range_table(10).filter(lambda r: r["value"] > 10)
+    ds = ray.data.range(10).filter(lambda r: r["id"] > 10)
     assert (
         len(
             ray.data._internal.sort.sample_boundaries(
-                ds._plan.execute().get_blocks(), "value", 3
+                ds._plan.execute().get_blocks(), SortKey("id"), 3
             )
         )
         == 2
     )
-    assert ds.sort("value").count() == 0
+    assert ds.sort("id").count() == 0
 
 
-def test_push_based_shuffle_schedule():
+def test_sort_with_one_block(shutdown_only, use_push_based_shuffle):
+    ray.init(num_cpus=8)
+    ctx = ray.data.DataContext.get_current()
+    ctx.execution_options.verbose_progress = True
+    ctx.use_push_based_shuffle = True
+
+    # Use a dataset that will produce only one block to sort.
+    ray.data.range(1024).map_batches(
+        lambda _: pa.table([pa.array([1])], ["token_counts"])
+    ).sum("token_counts")
+
+
+@pytest.mark.parametrize("streaming", [False, True])
+def test_push_based_shuffle_schedule(streaming):
     def _test(num_input_blocks, merge_factor, num_cpus_per_node_map):
         num_cpus = sum(v for v in num_cpus_per_node_map.values())
-        schedule = PushBasedShufflePlan._compute_shuffle_schedule(
+        if streaming:
+            op_cls = PushBasedShuffleTaskScheduler
+        else:
+            op_cls = PushBasedShufflePlan
+        schedule = op_cls._compute_shuffle_schedule(
             num_cpus_per_node_map, num_input_blocks, merge_factor, num_input_blocks
         )
         # All input blocks will be processed.
@@ -227,16 +283,18 @@ def test_push_based_shuffle_schedule():
         )
         # Each round of tasks does not over-subscribe CPUs.
         assert (
-            schedule.num_map_tasks_per_round + schedule.num_merge_tasks_per_round
+            schedule.num_map_tasks_per_round
+            + schedule.merge_schedule.num_merge_tasks_per_round
             <= max(num_cpus, 2)
         )
         # Merge factor between map : merge tasks is approximately correct.
         if schedule.num_map_tasks_per_round > merge_factor:
             actual_merge_factor = (
-                schedule.num_map_tasks_per_round // schedule.num_merge_tasks_per_round
+                schedule.num_map_tasks_per_round
+                // schedule.merge_schedule.num_merge_tasks_per_round
             )
             next_highest_merge_factor = schedule.num_map_tasks_per_round // (
-                schedule.num_merge_tasks_per_round + 1
+                schedule.merge_schedule.num_merge_tasks_per_round + 1
             )
             assert next_highest_merge_factor <= merge_factor <= actual_merge_factor, (
                 next_highest_merge_factor,
@@ -244,14 +302,14 @@ def test_push_based_shuffle_schedule():
                 actual_merge_factor,
             )
         else:
-            assert schedule.num_merge_tasks_per_round == 1, (
+            assert schedule.merge_schedule.num_merge_tasks_per_round == 1, (
                 schedule.num_map_tasks_per_round,
                 merge_factor,
             )
 
         # Tasks are evenly distributed.
         tasks_per_node = defaultdict(int)
-        for i in range(schedule.num_merge_tasks_per_round):
+        for i in range(schedule.merge_schedule.num_merge_tasks_per_round):
             task_options = schedule.get_merge_task_options(i)
             node_id = task_options["scheduling_strategy"].node_id
             tasks_per_node[node_id] += 1
@@ -262,22 +320,36 @@ def test_push_based_shuffle_schedule():
         # Reducers are evenly distributed across mergers.
         num_reducers_per_merge_idx = [
             schedule.merge_schedule.get_num_reducers_per_merge_idx(i)
-            for i in range(schedule.num_merge_tasks_per_round)
+            for i in range(schedule.merge_schedule.num_merge_tasks_per_round)
         ]
         high = max(num_reducers_per_merge_idx)
         for num_reducers in num_reducers_per_merge_idx:
             assert num_reducers == high or num_reducers == high - 1
 
-        for merge_idx in range(schedule.num_merge_tasks_per_round):
+        for merge_idx in range(schedule.merge_schedule.num_merge_tasks_per_round):
             assert isinstance(
                 schedule.merge_schedule.get_num_reducers_per_merge_idx(merge_idx), int
             )
             assert schedule.merge_schedule.get_num_reducers_per_merge_idx(merge_idx) > 0
 
         reduce_idxs = list(range(schedule.merge_schedule.output_num_blocks))
+        actual_num_reducers_per_merge_idx = [
+            0 for _ in range(schedule.merge_schedule.num_merge_tasks_per_round)
+        ]
         for reduce_idx in schedule.merge_schedule.round_robin_reduce_idx_iterator():
             reduce_idxs.pop(reduce_idxs.index(reduce_idx))
+            actual_num_reducers_per_merge_idx[
+                schedule.merge_schedule.get_merge_idx_for_reducer_idx(reduce_idx)
+            ] += 1
+        # Check that each reduce task is submitted exactly once.
         assert len(reduce_idxs) == 0
+        # Check that each merge and reduce task are correctly paired.
+        for i, num_reducers in enumerate(actual_num_reducers_per_merge_idx):
+            assert (
+                num_reducers == num_reducers_per_merge_idx[i]
+            ), f"""Merge task [{i}] has {num_reducers} downstream reduce tasks,
+            expected {num_reducers_per_merge_idx[i]}."""
+            assert num_reducers > 0
 
     for num_cpus in range(1, 20):
         _test(20, 3, {"node1": num_cpus})
@@ -286,10 +358,13 @@ def test_push_based_shuffle_schedule():
     _test(100, 10, {"node1": 10, "node2": 10, "node3": 10})
     # Regression test for https://github.com/ray-project/ray/issues/25863.
     _test(1000, 2, {f"node{i}": 16 for i in range(20)})
+    # Regression test for https://github.com/ray-project/ray/issues/37754.
+    _test(260, 2, {"node1": 128})
+    _test(1, 2, {"node1": 128})
 
 
 def test_push_based_shuffle_stats(ray_start_cluster):
-    ctx = ray.data.context.DatasetContext.get_current()
+    ctx = ray.data.context.DataContext.get_current()
     try:
         original = ctx.use_push_based_shuffle
         ctx.use_push_based_shuffle = True
@@ -307,15 +382,15 @@ def test_push_based_shuffle_stats(ray_start_cluster):
 
         parallelism = 100
         ds = ray.data.range(1000, parallelism=parallelism).random_shuffle()
-        ds = ds.fully_executed()
-        assert "random_shuffle_merge" in ds.stats()
+        ds = ds.materialize()
+        assert "RandomShuffleMerge" in ds.stats()
         # Check all nodes used.
         assert "2 nodes used" in ds.stats()
         assert "1 nodes used" not in ds.stats()
 
         # Check all merge tasks are included in stats.
         internal_stats = ds._plan.stats()
-        num_merge_tasks = len(internal_stats.stages["random_shuffle_merge"])
+        num_merge_tasks = len(internal_stats.stages["RandomShuffleMerge"])
         # Merge factor is 2 for random_shuffle ops.
         merge_factor = 2
         assert (
@@ -341,9 +416,9 @@ def test_sort_multinode(ray_start_cluster, use_push_based_shuffle):
     ray.init(cluster.address)
 
     parallelism = 100
-    ds = ray.data.range(1000, parallelism=parallelism).random_shuffle().sort()
+    ds = ray.data.range(1000, parallelism=parallelism).random_shuffle().sort("id")
     for i, row in enumerate(ds.iter_rows()):
-        assert row == i
+        assert row["id"] == i
 
 
 def patch_ray_remote(condition, callback):
@@ -382,7 +457,7 @@ def patch_ray_get(callback):
 
 @pytest.mark.parametrize("pipeline", [False, True])
 def test_push_based_shuffle_reduce_stage_scheduling(ray_start_cluster, pipeline):
-    ctx = ray.data.context.DatasetContext.get_current()
+    ctx = ray.data.context.DataContext.get_current()
     try:
         original = ctx.use_push_based_shuffle
         ctx.use_push_based_shuffle = True
@@ -452,12 +527,12 @@ def test_push_based_shuffle_reduce_stage_scheduling(ray_start_cluster, pipeline)
         assert task_context["num_instances_below_parallelism"] <= 1
         task_context["num_instances_below_parallelism"] = 0
 
-        ds = ds.sort()
+        ds = ds.sort("id")
         # Only the last round should have fewer tasks in flight.
         assert task_context["num_instances_below_parallelism"] <= 1
         task_context["num_instances_below_parallelism"] = 0
         for i, row in enumerate(ds.iter_rows()):
-            assert row == i
+            assert row["id"] == i
 
     finally:
         ctx.use_push_based_shuffle = original

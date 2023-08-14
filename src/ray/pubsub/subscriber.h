@@ -391,6 +391,7 @@ class Subscriber : public SubscriberInterface {
   ///
 
   FRIEND_TEST(IntegrationTest, SubscribersToOneIDAndAllIDs);
+  FRIEND_TEST(IntegrationTest, GcsFailsOver);
   FRIEND_TEST(SubscriberTest, TestBasicSubscription);
   FRIEND_TEST(SubscriberTest, TestSingleLongPollingWithMultipleSubscriptions);
   FRIEND_TEST(SubscriberTest, TestMultiLongPollingWithTheSameSubscription);
@@ -490,6 +491,11 @@ class Subscriber : public SubscriberInterface {
 
   /// Mapping of channel type to channels.
   absl::flat_hash_map<rpc::ChannelType, std::unique_ptr<SubscriberChannel>> channels_
+      GUARDED_BY(mutex_);
+
+  /// Keeps track of last processed <publisher_id, sequence_id> by publisher.
+  /// Note the publisher_id only change if gcs failover.
+  absl::flat_hash_map<PublisherID, std::pair<PublisherID, int64_t>> processed_sequences_
       GUARDED_BY(mutex_);
 };
 

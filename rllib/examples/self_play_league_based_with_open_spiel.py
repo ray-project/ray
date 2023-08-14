@@ -60,7 +60,7 @@ def get_cli_args():
     parser.add_argument(
         "--framework",
         choices=["tf", "tf2", "torch"],
-        default="tf",
+        default="torch",
         help="The DL framework specifier.",
     )
     parser.add_argument("--num-cpus", type=int, default=0)
@@ -69,7 +69,7 @@ def get_cli_args():
         type=str,
         default=None,
         help="Full path to a checkpoint file for restoring a previously saved "
-        "Trainer state.",
+        "Algorithm state.",
     )
     parser.add_argument(
         "--env",
@@ -357,7 +357,7 @@ if __name__ == "__main__":
             ),
         ).fit()
 
-    # Restore trained trainer (set to non-explore behavior) and play against
+    # Restore trained Algorithm (set to non-explore behavior) and play against
     # human on command line.
     if args.num_episodes_human_play > 0:
         num_episodes = 0

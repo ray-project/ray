@@ -29,8 +29,12 @@ from ray.rllib.policy.sample_batch import (
     concat_samples,
     convert_ma_batch_to_sample_batch,
 )
-from ray.rllib.utils.annotations import Deprecated, override
-from ray.rllib.utils.deprecation import DEPRECATED_VALUE
+from ray.rllib.utils.annotations import override
+from ray.rllib.utils.deprecation import (
+    DEPRECATED_VALUE,
+    Deprecated,
+    ALGO_DEPRECATION_WARNING,
+)
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
 from ray.rllib.utils.sgd import standardized
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
@@ -478,6 +482,12 @@ def post_process_samples(samples, config: AlgorithmConfig):
     return samples, split_lst
 
 
+@Deprecated(
+    old="rllib/algorithms/mbmpo/",
+    new="rllib_contrib/mbmpo/",
+    help=ALGO_DEPRECATION_WARNING,
+    error=False,
+)
 class MBMPO(Algorithm):
     """Model-Based Meta Policy Optimization (MB-MPO) Algorithm.
 
@@ -598,20 +608,3 @@ class MBMPO(Algorithm):
                 f"Env {env} doest not have a `reward()` method, needed for "
                 "MB-MPO! This `reward()` method should return "
             )
-
-
-# Deprecated: Use ray.rllib.algorithms.mbmpo.MBMPOConfig instead!
-class _deprecated_default_config(dict):
-    def __init__(self):
-        super().__init__(MBMPOConfig().to_dict())
-
-    @Deprecated(
-        old="ray.rllib.algorithms.mbmpo.mbmpo.DEFAULT_CONFIG",
-        new="ray.rllib.algorithms.mbmpo.mbmpo.MBMPOConfig(...)",
-        error=True,
-    )
-    def __getitem__(self, item):
-        return super().__getitem__(item)
-
-
-DEFAULT_CONFIG = _deprecated_default_config()

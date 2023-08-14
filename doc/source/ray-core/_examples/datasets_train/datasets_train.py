@@ -18,7 +18,8 @@ from typing import Tuple
 import boto3
 import mlflow
 import pandas as pd
-from ray.air.config import DatasetConfig, ScalingConfig
+from ray.air.config import ScalingConfig
+from ray.train import DataConfig
 from ray.train.torch.torch_trainer import TorchTrainer
 import torch
 import torch.nn as nn
@@ -26,7 +27,7 @@ import torch.optim as optim
 
 import ray
 from ray import train
-from ray.air import session, Checkpoint, RunConfig
+from ray.train import Checkpoint, RunConfig
 from ray.data.aggregate import Mean, Std
 from ray.air.integrations.mlflow import MLflowLoggerCallback
 
@@ -268,7 +269,7 @@ def inference(
     num_gpus = 1 if use_gpu else 0
     dataset.map_batches(
         model_cls,
-        compute="actors",
+        compute=ray.data.ActorPoolStrategy(),
         batch_size=batch_size,
         batch_format="pandas",
         num_gpus=num_gpus,
@@ -406,8 +407,8 @@ def train_func(config):
     print(f"Device: {device}")
 
     # Setup data.
-    train_dataset_iterator = session.get_dataset_shard("train")
-    test_dataset_iterator = session.get_dataset_shard("test")
+    train_dataset_iterator = train.get_dataset_shard("train")
+    test_dataset_iterator = train.get_dataset_shard("test")
 
     def to_torch_dataset(torch_batch_iterator):
         for batch in torch_batch_iterator:
@@ -467,8 +468,8 @@ def train_func(config):
         checkpoint = Checkpoint.from_dict(dict(model=net.state_dict()))
 
         # Record and log stats.
-        print(f"session report on {session.get_world_rank()}")
-        session.report(
+        print(f"train report on {train.get_context().get_world_rank()}")
+        train.report(
             dict(
                 train_acc=train_acc,
                 train_loss=train_running_loss,
@@ -601,6 +602,10 @@ if __name__ == "__main__":
     DROPOUT_EVERY = 5
     DROPOUT_PROB = 0.2
 
+    # The following random_shuffle operations are lazy.
+    # They will be re-run every epoch.
+    train_dataset = train_dataset.random_shuffle()
+    test_dataset = test_dataset.random_shuffle()
     datasets = {"train": train_dataset, "test": test_dataset}
 
     config = {
@@ -633,7 +638,7 @@ if __name__ == "__main__":
             resources_per_worker=resources_per_worker,
         ),
         run_config=RunConfig(callbacks=callbacks),
-        dataset_config={"train": DatasetConfig(global_shuffle=True)},
+        dataset_config=DataConfig(datasets_to_split=["train", "test"]),
     )
     results = trainer.fit()
     state_dict = results.checkpoint.to_dict()["model"]

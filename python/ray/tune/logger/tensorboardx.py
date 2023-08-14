@@ -3,15 +3,15 @@ import numpy as np
 
 from typing import TYPE_CHECKING, Dict
 
-from ray.tune.logger.logger import Logger, LoggerCallback
+from ray.air.constants import TRAINING_ITERATION
+from ray.tune.logger.logger import _LOGGER_DEPRECATION_WARNING, Logger, LoggerCallback
 from ray.util.debug import log_once
 from ray.tune.result import (
-    TRAINING_ITERATION,
     TIME_TOTAL_S,
     TIMESTEPS_TOTAL,
 )
 from ray.tune.utils import flatten_dict
-from ray.util.annotations import PublicAPI
+from ray.util.annotations import Deprecated, PublicAPI
 
 if TYPE_CHECKING:
     from ray.tune.experiment.trial import Trial  # noqa: F401
@@ -21,6 +21,12 @@ logger = logging.getLogger(__name__)
 VALID_SUMMARY_TYPES = [int, float, np.float32, np.float64, np.int32, np.int64]
 
 
+@Deprecated(
+    message=_LOGGER_DEPRECATION_WARNING.format(
+        old="TBXLogger", new="ray.tune.tensorboardx.TBXLoggerCallback"
+    ),
+    warning=True,
+)
 @PublicAPI
 class TBXLogger(Logger):
     """TensorBoardX Logger.
@@ -177,9 +183,9 @@ class TBXLoggerCallback(LoggerCallback):
     def log_trial_start(self, trial: "Trial"):
         if trial in self._trial_writer:
             self._trial_writer[trial].close()
-        trial.init_logdir()
+        trial.init_local_path()
         self._trial_writer[trial] = self._summary_writer_cls(
-            trial.logdir, flush_secs=30
+            trial.local_path, flush_secs=30
         )
         self._trial_result[trial] = {}
 

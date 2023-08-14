@@ -5,7 +5,7 @@ can use this state to access metadata or the Serve controller.
 
 import logging
 from dataclasses import dataclass
-from typing import Callable
+from typing import Callable, Optional
 
 import ray
 from ray.exceptions import RayActorError
@@ -13,7 +13,8 @@ from ray.serve._private.client import ServeControllerClient
 from ray.serve._private.common import ReplicaTag
 from ray.serve._private.constants import SERVE_CONTROLLER_NAME, SERVE_NAMESPACE
 from ray.serve.exceptions import RayServeException
-from ray.util.annotations import PublicAPI
+from ray.util.annotations import PublicAPI, DeveloperAPI
+import contextvars
 
 logger = logging.getLogger(__file__)
 
@@ -30,19 +31,30 @@ class ReplicaContext:
     replica_tag: ReplicaTag
     _internal_controller_name: str
     servable_object: Callable
+    app_name: str
 
 
 @PublicAPI(stability="alpha")
-def get_global_client(_health_check_controller: bool = False) -> ServeControllerClient:
+def get_global_client(
+    _health_check_controller: bool = False, raise_if_no_controller_running: bool = True
+) -> Optional[ServeControllerClient]:
     """Gets the global client, which stores the controller's handle.
 
     Args:
         _health_check_controller: If True, run a health check on the
             cached controller if it exists. If the check fails, try reconnecting
             to the controller.
+        raise_if_no_controller_running: Whether to raise an exception if
+            there is no currently running Serve controller.
+
+    Returns:
+        ServeControllerClient to the running Serve controller. If there
+        is no running controller and raise_if_no_controller_running is
+        set to False, returns None.
 
     Raises:
-        RayServeException: if there is no running Serve controller actor.
+        RayServeException: if there is no running Serve controller actor
+        and raise_if_no_controller_running is set to True.
     """
 
     try:
@@ -54,7 +66,7 @@ def get_global_client(_health_check_controller: bool = False) -> ServeController
         logger.info("The cached controller has died. Reconnecting.")
         _set_global_client(None)
 
-    return _connect()
+    return _connect(raise_if_no_controller_running)
 
 
 def _set_global_client(client):
@@ -72,14 +84,15 @@ def _set_internal_replica_context(
     replica_tag: ReplicaTag,
     controller_name: str,
     servable_object: Callable,
+    app_name: str,
 ):
     global _INTERNAL_REPLICA_CONTEXT
     _INTERNAL_REPLICA_CONTEXT = ReplicaContext(
-        deployment, replica_tag, controller_name, servable_object
+        deployment, replica_tag, controller_name, servable_object, app_name
     )
 
 
-def _connect() -> ServeControllerClient:
+def _connect(raise_if_no_controller_running: bool = True) -> ServeControllerClient:
     """Connect to an existing Serve application on this Ray cluster.
 
     If calling from the driver program, the Serve app on this Ray cluster
@@ -90,14 +103,16 @@ def _connect() -> ServeControllerClient:
 
     Returns:
         ServeControllerClient that encapsulates a Ray actor handle to the
-        existing Serve application's Serve Controller.
-
+        existing Serve application's Serve Controller. None if there is
+        no running Serve controller actor and raise_if_no_controller_running
+        is set to False.
     Raises:
-        RayServeException: if there is no running Serve controller actor.
+        RayServeException: if there is no running Serve controller actor
+        and raise_if_no_controller_running is set to True.
     """
 
     # Initialize ray if needed.
-    ray._private.worker.global_worker.filter_logs_by_job = False
+    ray._private.worker.global_worker._filter_logs_by_job = False
     if not ray.is_initialized():
         ray.init(namespace=SERVE_NAMESPACE)
 
@@ -112,12 +127,14 @@ def _connect() -> ServeControllerClient:
     try:
         controller = ray.get_actor(controller_name, namespace=SERVE_NAMESPACE)
     except ValueError:
-        raise RayServeException(
-            "There is no "
-            "instance running on this Ray cluster. Please "
-            "call `serve.start(detached=True) to start "
-            "one."
-        )
+        if raise_if_no_controller_running:
+            raise RayServeException(
+                "There is no Serve "
+                "instance running on this Ray cluster. Please "
+                "call `serve.start(detached=True) to start "
+                "one."
+            )
+        return
 
     client = ServeControllerClient(
         controller,
@@ -126,3 +143,50 @@ def _connect() -> ServeControllerClient:
     )
     _set_global_client(client)
     return client
+
+
+# Serve request context var which is used for storing the internal
+# request context information.
+# route_prefix: http url route path, e.g. http://127.0.0.1:/app
+#     the route is "/app". When you send requests by handle,
+#     the route is empty.
+# request_id: the request id is generated from http proxy, the value
+#     shouldn't be changed when the variable is set.
+# note:
+#   The request context is readonly to avoid potential
+#       async task conflicts when using it concurrently.
+
+
+@DeveloperAPI
+@dataclass(frozen=True)
+class RequestContext:
+    route: str = ""
+    request_id: str = ""
+    app_name: str = ""
+    multiplexed_model_id: str = ""
+
+
+_serve_request_context = contextvars.ContextVar(
+    "Serve internal request context variable", default=RequestContext()
+)
+
+
+def _set_request_context(
+    route: str = "",
+    request_id: str = "",
+    app_name: str = "",
+    multiplexed_model_id: str = "",
+):
+    """Set the request context. If the value is not set,
+    the current context value will be used."""
+
+    current_request_context = _serve_request_context.get()
+    _serve_request_context.set(
+        RequestContext(
+            route=route or current_request_context.route,
+            request_id=request_id or current_request_context.request_id,
+            app_name=app_name or current_request_context.app_name,
+            multiplexed_model_id=multiplexed_model_id
+            or current_request_context.multiplexed_model_id,
+        )
+    )

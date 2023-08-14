@@ -39,11 +39,12 @@ class GcsActorSchedulerTest : public ::testing::Test {
     store_client_ = std::make_shared<gcs::InMemoryStoreClient>(io_service_);
     gcs_table_storage_ = std::make_shared<gcs::InMemoryGcsTableStorage>(io_service_);
     gcs_node_manager_ = std::make_shared<gcs::GcsNodeManager>(
-        gcs_publisher_, gcs_table_storage_, raylet_client_pool_);
+        gcs_publisher_, gcs_table_storage_, raylet_client_pool_, ClusterID::Nil());
     gcs_actor_table_ =
         std::make_shared<GcsServerMocker::MockedGcsActorTable>(store_client_);
     local_node_id_ = NodeID::FromRandom();
     auto cluster_resource_scheduler = std::make_shared<ClusterResourceScheduler>(
+        io_service_,
         scheduling::NodeID(local_node_id_.Binary()),
         NodeResources(),
         /*is_node_available_fn=*/

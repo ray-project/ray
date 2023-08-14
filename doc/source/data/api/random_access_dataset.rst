@@ -1,7 +1,7 @@
 .. _random-access-dataset-api:
 
-(Experimental) RandomAccessDataset API
-======================================
+RandomAccessDataset (experimental)
+==================================
 
 .. currentmodule:: ray.data
 
@@ -12,7 +12,6 @@ Constructor
 
 .. autosummary::
    :toctree: doc/
-   :template: autosummary/class_with_autosummary.rst
 
    random_access_dataset.RandomAccessDataset
 

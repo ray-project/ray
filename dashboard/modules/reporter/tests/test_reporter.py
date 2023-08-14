@@ -40,6 +40,7 @@ STATS_TEMPLATE = {
     "cpu": 57.4,
     "cpus": (8, 4),
     "mem": (17179869184, 5723353088, 66.7, 9234341888),
+    "shm": 456,
     "workers": [
         {
             "memory_info": Bunch(
@@ -160,33 +161,34 @@ def test_prometheus_physical_stats_record(enable_test_module, shutdown_only):
 
     def test_case_stats_exist():
         components_dict, metric_names, metric_samples = fetch_prometheus(prom_addresses)
-        return all(
-            [
-                "ray_node_cpu_utilization" in metric_names,
-                "ray_node_cpu_count" in metric_names,
-                "ray_node_mem_used" in metric_names,
-                "ray_node_mem_available" in metric_names,
-                "ray_node_mem_total" in metric_names,
-                "ray_component_cpu_percentage" in metric_names,
-                "ray_component_rss_mb" in metric_names,
-                "ray_component_uss_mb" in metric_names,
-                "ray_node_disk_io_read" in metric_names,
-                "ray_node_disk_io_write" in metric_names,
-                "ray_node_disk_io_read_count" in metric_names,
-                "ray_node_disk_io_write_count" in metric_names,
-                "ray_node_disk_io_read_speed" in metric_names,
-                "ray_node_disk_io_write_speed" in metric_names,
-                "ray_node_disk_read_iops" in metric_names,
-                "ray_node_disk_write_iops" in metric_names,
-                "ray_node_disk_usage" in metric_names,
-                "ray_node_disk_free" in metric_names,
-                "ray_node_disk_utilization_percentage" in metric_names,
-                "ray_node_network_sent" in metric_names,
-                "ray_node_network_received" in metric_names,
-                "ray_node_network_send_speed" in metric_names,
-                "ray_node_network_receive_speed" in metric_names,
-            ]
-        )
+        predicates = [
+            "ray_node_cpu_utilization" in metric_names,
+            "ray_node_cpu_count" in metric_names,
+            "ray_node_mem_used" in metric_names,
+            "ray_node_mem_available" in metric_names,
+            "ray_node_mem_total" in metric_names,
+            "ray_node_mem_total" in metric_names,
+            "ray_component_rss_mb" in metric_names,
+            "ray_component_uss_mb" in metric_names,
+            "ray_node_disk_io_read" in metric_names,
+            "ray_node_disk_io_write" in metric_names,
+            "ray_node_disk_io_read_count" in metric_names,
+            "ray_node_disk_io_write_count" in metric_names,
+            "ray_node_disk_io_read_speed" in metric_names,
+            "ray_node_disk_io_write_speed" in metric_names,
+            "ray_node_disk_read_iops" in metric_names,
+            "ray_node_disk_write_iops" in metric_names,
+            "ray_node_disk_usage" in metric_names,
+            "ray_node_disk_free" in metric_names,
+            "ray_node_disk_utilization_percentage" in metric_names,
+            "ray_node_network_sent" in metric_names,
+            "ray_node_network_received" in metric_names,
+            "ray_node_network_send_speed" in metric_names,
+            "ray_node_network_receive_speed" in metric_names,
+        ]
+        if sys.platform == "linux" or sys.platform == "linux2":
+            predicates.append("ray_node_mem_shared_bytes" in metric_names)
+        return all(predicates)
 
     def test_case_ip_correct():
         components_dict, metric_names, metric_samples = fetch_prometheus(prom_addresses)
@@ -258,21 +260,177 @@ def test_report_stats():
     }
 
     records = agent._record_stats(STATS_TEMPLATE, cluster_stats)
-    assert len(records) == 29
+    for record in records:
+        name = record.gauge.name
+        val = record.value
+        if name == "node_mem_shared_bytes":
+            assert val == STATS_TEMPLATE["shm"]
+        print(record.gauge.name)
+        print(record)
+    assert len(records) == 33
     # Test stats without raylets
     STATS_TEMPLATE["raylet"] = {}
     records = agent._record_stats(STATS_TEMPLATE, cluster_stats)
-    assert len(records) == 27
+    assert len(records) == 30
     # Test stats with gpus
     STATS_TEMPLATE["gpus"] = [
-        {"utilization_gpu": 1, "memory_used": 100, "memory_total": 1000}
+        {"utilization_gpu": 1, "memory_used": 100, "memory_total": 1000, "index": 0}
     ]
     records = agent._record_stats(STATS_TEMPLATE, cluster_stats)
-    assert len(records) == 31
+    assert len(records) == 34
     # Test stats without autoscaler report
     cluster_stats = {}
     records = agent._record_stats(STATS_TEMPLATE, cluster_stats)
-    assert len(records) == 29
+    assert len(records) == 32
+
+
+def test_report_stats_gpu():
+    dashboard_agent = MagicMock()
+    agent = ReporterAgent(dashboard_agent)
+    # Assume it is a head node.
+    agent._is_head_node = True
+    # GPUstats query output example.
+    """
+    {'index': 0,
+    'uuid': 'GPU-36e1567d-37ed-051e-f8ff-df807517b396',
+    'name': 'NVIDIA A10G',
+    'temperature_gpu': 20,
+    'fan_speed': 0,
+    'utilization_gpu': 1,
+    'utilization_enc': 0,
+    'utilization_dec': 0,
+    'power_draw': 51,
+    'enforced_power_limit': 300,
+    'memory_used': 0,
+    'memory_total': 22731,
+    'processes': []}
+    """
+    GPU_MEMORY = 22731
+    STATS_TEMPLATE["gpus"] = [
+        {
+            "index": 0,
+            "uuid": "GPU-36e1567d-37ed-051e-f8ff-df807517b396",
+            "name": "NVIDIA A10G",
+            "temperature_gpu": 20,
+            "fan_speed": 0,
+            "utilization_gpu": 0,
+            "utilization_enc": 0,
+            "utilization_dec": 0,
+            "power_draw": 51,
+            "enforced_power_limit": 300,
+            "memory_used": 0,
+            "memory_total": GPU_MEMORY,
+            "processes": [],
+        },
+        {
+            "index": 1,
+            "uuid": "GPU-36e1567d-37ed-051e-f8ff-df807517b397",
+            "name": "NVIDIA A10G",
+            "temperature_gpu": 20,
+            "fan_speed": 0,
+            "utilization_gpu": 1,
+            "utilization_enc": 0,
+            "utilization_dec": 0,
+            "power_draw": 51,
+            "enforced_power_limit": 300,
+            "memory_used": 1,
+            "memory_total": GPU_MEMORY,
+            "processes": [],
+        },
+        {
+            "index": 2,
+            "uuid": "GPU-36e1567d-37ed-051e-f8ff-df807517b398",
+            "name": "NVIDIA A10G",
+            "temperature_gpu": 20,
+            "fan_speed": 0,
+            "utilization_gpu": 2,
+            "utilization_enc": 0,
+            "utilization_dec": 0,
+            "power_draw": 51,
+            "enforced_power_limit": 300,
+            "memory_used": 2,
+            "memory_total": GPU_MEMORY,
+            "processes": [],
+        },
+        # No name.
+        {
+            "index": 3,
+            "uuid": "GPU-36e1567d-37ed-051e-f8ff-df807517b398",
+            "temperature_gpu": 20,
+            "fan_speed": 0,
+            "utilization_gpu": 3,
+            "utilization_enc": 0,
+            "utilization_dec": 0,
+            "power_draw": 51,
+            "enforced_power_limit": 300,
+            "memory_used": 3,
+            "memory_total": GPU_MEMORY,
+            "processes": [],
+        },
+        # No index
+        {
+            "uuid": "GPU-36e1567d-37ed-051e-f8ff-df807517b398",
+            "name": "NVIDIA A10G",
+            "temperature_gpu": 20,
+            "fan_speed": 0,
+            "utilization_gpu": 3,
+            "utilization_enc": 0,
+            "utilization_dec": 0,
+            "power_draw": 51,
+            "enforced_power_limit": 300,
+            "memory_used": 3,
+            "memory_total": 22731,
+            "processes": [],
+        },
+    ]
+    gpu_metrics_aggregatd = {
+        "node_gpus_available": 0,
+        "node_gpus_utilization": 0,
+        "node_gram_used": 0,
+        "node_gram_available": 0,
+    }
+    records = agent._record_stats(STATS_TEMPLATE, {})
+    # If index is not available, we don't emit metrics.
+    num_gpu_records = 0
+    for record in records:
+        if record.gauge.name in gpu_metrics_aggregatd:
+            num_gpu_records += 1
+    assert num_gpu_records == 16
+
+    ip = STATS_TEMPLATE["ip"]
+    gpu_records = defaultdict(list)
+    for record in records:
+        if record.gauge.name in gpu_metrics_aggregatd:
+            gpu_records[record.gauge.name].append(record)
+
+    for name, records in gpu_records.items():
+        records.sort(key=lambda e: e.tags["GpuIndex"])
+        index = 0
+        for record in records:
+            if record.tags["GpuIndex"] == "3":
+                assert record.tags == {"ip": ip, "GpuIndex": "3"}
+            else:
+                assert record.tags == {
+                    "ip": ip,
+                    # The tag value must be string for prometheus.
+                    "GpuIndex": str(index),
+                    "GpuDeviceName": "NVIDIA A10G",
+                }
+
+            if name == "node_gram_available":
+                assert record.value == GPU_MEMORY - index
+            elif name == "node_gpus_available":
+                assert record.value == 1
+            else:
+                assert record.value == index
+
+            gpu_metrics_aggregatd[name] += record.value
+            index += 1
+
+    assert gpu_metrics_aggregatd["node_gpus_available"] == 4
+    assert gpu_metrics_aggregatd["node_gpus_utilization"] == 6
+    assert gpu_metrics_aggregatd["node_gram_used"] == 6
+    assert gpu_metrics_aggregatd["node_gram_available"] == GPU_MEMORY * 4 - 6
 
 
 def test_report_per_component_stats():

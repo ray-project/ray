@@ -1,10 +1,8 @@
-from collections import Counter
 from typing import Dict, List, Optional, Union
-import warnings
 
 from tensorflow.keras.callbacks import Callback as KerasCallback
 
-from ray.air import session
+import ray
 from ray.train.tensorflow import TensorflowCheckpoint
 from ray.util.annotations import PublicAPI, Deprecated
 
@@ -164,7 +162,7 @@ class ReportCheckpointCallback(_Callback):
         else:
             checkpoint = None
 
-        session.report(metrics, checkpoint=checkpoint)
+        ray.train.report(metrics, checkpoint=checkpoint)
 
     def _get_reported_metrics(self, logs: Dict) -> Dict:
         assert isinstance(self._metrics, (type(None), str, list, dict))
@@ -225,46 +223,8 @@ class Callback(_Callback):
         on: Union[str, List[str]] = "epoch_end",
         frequency: Union[int, List[int]] = 1,
     ):
-        warnings.warn(
+        # TODO: Remove this class in 2.6.
+        raise DeprecationWarning(
             "`ray.air.integrations.keras.Callback` is deprecated. Use "
             "`ray.air.integrations.keras.ReportCheckpointCallback` instead.",
-            DeprecationWarning,
         )
-
-        if isinstance(frequency, list):
-            if not isinstance(on, list) or len(frequency) != len(on):
-                raise ValueError(
-                    "If you pass a list for checkpoint frequencies, the `on` "
-                    "parameter has to be a list with the same length."
-                )
-
-        self._frequency = frequency
-        super(Callback, self).__init__(on)
-        self._metrics = metrics
-        self._counter = Counter()
-
-    def _handle(self, logs: Dict, when: str = None):
-        self._counter[when] += 1
-
-        if isinstance(self._frequency, list):
-            index = self._on.index(when)
-            freq = self._frequency[index]
-        else:
-            freq = self._frequency
-
-        checkpoint = None
-        if freq > 0 and self._counter[when] % freq == 0:
-            checkpoint = TensorflowCheckpoint.from_model(self.model)
-
-        if not self._metrics:
-            report_dict = logs
-        else:
-            report_dict = {}
-            for key in self._metrics:
-                if isinstance(self._metrics, dict):
-                    metric = self._metrics[key]
-                else:
-                    metric = key
-                report_dict[key] = logs[metric]
-
-        session.report(report_dict, checkpoint=checkpoint)

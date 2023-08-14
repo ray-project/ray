@@ -10,6 +10,7 @@ import pytest
 
 import ray
 from ray.air.constants import MAX_REPR_LENGTH
+from ray.air.util.data_batch_conversion import BatchFormat
 from ray.data.preprocessor import Preprocessor
 from ray.data.preprocessors import (
     BatchMapper,
@@ -60,11 +61,24 @@ def create_dummy_preprocessors():
         ) -> Union[np.ndarray, Dict[str, np.ndarray]]:
             return np_data
 
+    class DummyPreprocessorWithPandasAndNumpyPreferred(DummyPreprocessorWithNothing):
+        def _transform_pandas(self, df: "pd.DataFrame") -> "pd.DataFrame":
+            return df
+
+        def _transform_numpy(
+            self, np_data: Union[np.ndarray, Dict[str, np.ndarray]]
+        ) -> Union[np.ndarray, Dict[str, np.ndarray]]:
+            return np_data
+
+        def preferred_batch_format(cls) -> BatchFormat:
+            return BatchFormat.NUMPY
+
     yield (
         DummyPreprocessorWithNothing(),
         DummyPreprocessorWithPandas(),
         DummyPreprocessorWithNumpy(),
         DummyPreprocessorWithPandasAndNumpy(),
+        DummyPreprocessorWithPandasAndNumpyPreferred(),
     )
 
 
@@ -100,6 +114,19 @@ def test_repr(preprocessor):
     assert pattern.match(representation)
 
 
+def test_fitted_preprocessor_without_stats():
+    """Tests that Preprocessors can be fitted without needing to set self.stats_."""
+
+    class FittablePreprocessor(Preprocessor):
+        def _fit(self, ds):
+            return ds
+
+    preprocessor = FittablePreprocessor()
+    ds = ray.data.from_items([1])
+    _ = preprocessor.fit(ds)
+    assert preprocessor.fit_status() == Preprocessor.FitStatus.FITTED
+
+
 @patch.object(warnings, "warn")
 def test_fit_twice(mocked_warn):
     """Tests that a warning msg should be printed."""
@@ -115,7 +142,7 @@ def test_fit_twice(mocked_warn):
     scaler.fit(ds)
     assert scaler.stats_ == {"min(B)": 1, "max(B)": 5, "min(C)": 1, "max(C)": 1}
 
-    ds = ds.map_batches(lambda x: x * 2)
+    ds = ds.map_batches(lambda x: {k: v * 2 for k, v in x.items()})
     # Fit again
     scaler.fit(ds)
     # Assert that the fitted state is corresponding to the second ds.
@@ -157,7 +184,7 @@ def test_transform_config(pipeline):
         def _get_transform_config(self):
             return {"batch_size": 2}
 
-        def _determine_transform_to_use(self, data_format):
+        def _determine_transform_to_use(self):
             return "numpy"
 
     prep = DummyPreprocessor()
@@ -168,7 +195,7 @@ def test_transform_config(pipeline):
 
 
 def test_pipeline_fail():
-    ds = ray.data.range_table(5).window(blocks_per_window=1).repeat(1)
+    ds = ray.data.range(5).window(blocks_per_window=1).repeat(1)
 
     class FittablePreprocessor(Preprocessor):
         _is_fittable = True
@@ -190,79 +217,62 @@ def test_pipeline_fail():
 
 
 @pytest.mark.parametrize("pipeline", [True, False])
-def test_numpy_pandas_support_simple_dataset(create_dummy_preprocessors, pipeline):
-    # Case 1: simple dataset. No support
+@pytest.mark.parametrize("dataset_format", ["simple", "pandas", "arrow"])
+def test_transform_all_formats(create_dummy_preprocessors, pipeline, dataset_format):
     (
         with_nothing,
         with_pandas,
         with_numpy,
         with_pandas_and_numpy,
+        with_pandas_and_numpy_preferred,
     ) = create_dummy_preprocessors
 
-    ds = ray.data.range(10)
+    if dataset_format == "simple":
+        ds = ray.data.range(10)
+    elif dataset_format == "pandas":
+        df = pd.DataFrame([[1, 2, 3], [4, 5, 6]], columns=["A", "B", "C"])
+        ds = ray.data.from_pandas(df)
+    elif dataset_format == "arrow":
+        df = pd.DataFrame([[1, 2, 3], [4, 5, 6]], columns=["A", "B", "C"])
+        ds = ray.data.from_arrow(pyarrow.Table.from_pandas(df))
+    else:
+        raise ValueError(f"Untested dataset_format configuration: {dataset_format}.")
+
     if pipeline:
         ds = ds.window(blocks_per_window=1).repeat(1)
 
-    with pytest.raises(ValueError):
+    with pytest.raises(NotImplementedError):
         _apply_transform(with_nothing, ds)
 
-    with pytest.raises(ValueError):
+    if pipeline:
+        patcher = patch.object(ray.data.dataset_pipeline.DatasetPipeline, "map_batches")
+    else:
+        patcher = patch.object(ray.data.dataset.Dataset, "map_batches")
+
+    with patcher as mock_map_batches:
         _apply_transform(with_pandas, ds)
+        mock_map_batches.assert_called_once_with(
+            with_pandas._transform_pandas, batch_format=BatchFormat.PANDAS
+        )
 
-    with pytest.raises(ValueError):
+    with patcher as mock_map_batches:
         _apply_transform(with_numpy, ds)
+        mock_map_batches.assert_called_once_with(
+            with_numpy._transform_numpy, batch_format=BatchFormat.NUMPY
+        )
 
-    with pytest.raises(ValueError):
+    # Pandas preferred by default.
+    with patcher as mock_map_batches:
         _apply_transform(with_pandas_and_numpy, ds)
+    mock_map_batches.assert_called_once_with(
+        with_pandas_and_numpy._transform_pandas, batch_format=BatchFormat.PANDAS
+    )
 
-
-@pytest.mark.parametrize("pipeline", [True, False])
-def test_numpy_pandas_support_pandas_dataset(create_dummy_preprocessors, pipeline):
-    # Case 2: pandas dataset
-    (
-        with_nothing,
-        with_pandas,
-        _,
-        with_pandas_and_numpy,
-    ) = create_dummy_preprocessors
-    df = pd.DataFrame([[1, 2, 3], [4, 5, 6]], columns=["A", "B", "C"])
-
-    ds = ray.data.from_pandas(df)
-    if pipeline:
-        ds = ds.window(blocks_per_window=1).repeat(1)
-
-    with pytest.raises(NotImplementedError):
-        _apply_transform(with_nothing, ds)
-
-    assert _apply_transform(with_pandas, ds).dataset_format() == "pandas"
-
-    assert _apply_transform(with_pandas_and_numpy, ds).dataset_format() == "pandas"
-
-
-@pytest.mark.parametrize("pipeline", [True, False])
-def test_numpy_pandas_support_arrow_dataset(create_dummy_preprocessors, pipeline):
-    # Case 3: arrow dataset
-    (
-        with_nothing,
-        with_pandas,
-        with_numpy,
-        with_pandas_and_numpy,
-    ) = create_dummy_preprocessors
-    df = pd.DataFrame([[1, 2, 3], [4, 5, 6]], columns=["A", "B", "C"])
-
-    ds = ray.data.from_arrow(pyarrow.Table.from_pandas(df))
-    if pipeline:
-        ds = ds.window(blocks_per_window=1).repeat(1)
-
-    with pytest.raises(NotImplementedError):
-        _apply_transform(with_nothing, ds)
-
-    assert _apply_transform(with_pandas, ds).dataset_format() == "pandas"
-
-    assert _apply_transform(with_numpy, ds).dataset_format() == "arrow"
-
-    # Auto select data_format = "arrow" -> batch_format = "numpy" for performance
-    assert _apply_transform(with_pandas_and_numpy, ds).dataset_format() == "arrow"
+    with patcher as mock_map_batches:
+        _apply_transform(with_pandas_and_numpy_preferred, ds)
+    mock_map_batches.assert_called_once_with(
+        with_pandas_and_numpy_preferred._transform_numpy, batch_format=BatchFormat.NUMPY
+    )
 
 
 def test_numpy_pandas_support_transform_batch_wrong_format(create_dummy_preprocessors):
@@ -272,20 +282,24 @@ def test_numpy_pandas_support_transform_batch_wrong_format(create_dummy_preproce
         with_pandas,
         with_numpy,
         with_pandas_and_numpy,
+        with_pandas_and_numpy_preferred,
     ) = create_dummy_preprocessors
 
     batch = [1, 2, 3]
-    with pytest.raises(NotImplementedError):
+    with pytest.raises(ValueError):
         with_nothing.transform_batch(batch)
 
-    with pytest.raises(NotImplementedError):
+    with pytest.raises(ValueError):
         with_pandas.transform_batch(batch)
 
-    with pytest.raises(NotImplementedError):
+    with pytest.raises(ValueError):
         with_numpy.transform_batch(batch)
 
-    with pytest.raises(NotImplementedError):
+    with pytest.raises(ValueError):
         with_pandas_and_numpy.transform_batch(batch)
+
+    with pytest.raises(ValueError):
+        with_pandas_and_numpy_preferred.transform_batch(batch)
 
 
 def test_numpy_pandas_support_transform_batch_pandas(create_dummy_preprocessors):
@@ -295,6 +309,7 @@ def test_numpy_pandas_support_transform_batch_pandas(create_dummy_preprocessors)
         with_pandas,
         with_numpy,
         with_pandas_and_numpy,
+        with_pandas_and_numpy_preferred,
     ) = create_dummy_preprocessors
 
     df = pd.DataFrame([[1, 2, 3], [4, 5, 6]], columns=["A", "B", "C"])
@@ -316,6 +331,14 @@ def test_numpy_pandas_support_transform_batch_pandas(create_dummy_preprocessors)
         with_pandas_and_numpy.transform_batch(df_single_column), pd.DataFrame
     )
 
+    assert isinstance(
+        with_pandas_and_numpy_preferred.transform_batch(df), (np.ndarray, dict)
+    )
+    assert isinstance(
+        with_pandas_and_numpy_preferred.transform_batch(df_single_column),
+        (np.ndarray, dict),
+    )
+
 
 def test_numpy_pandas_support_transform_batch_arrow(create_dummy_preprocessors):
     # Case 3: arrow dataset
@@ -324,6 +347,7 @@ def test_numpy_pandas_support_transform_batch_arrow(create_dummy_preprocessors):
         with_pandas,
         with_numpy,
         with_pandas_and_numpy,
+        with_pandas_and_numpy_preferred,
     ) = create_dummy_preprocessors
 
     df = pd.DataFrame([[1, 2, 3], [4, 5, 6]], columns=["A", "B", "C"])
@@ -344,11 +368,18 @@ def test_numpy_pandas_support_transform_batch_arrow(create_dummy_preprocessors):
     assert isinstance(
         with_numpy.transform_batch(table_single_column), (np.ndarray, dict)
     )
-    # Auto select data_format = "arrow" -> batch_format = "numpy" for performance
-    assert isinstance(with_pandas_and_numpy.transform_batch(table), (np.ndarray, dict))
-    # We can get pyarrow.Table after returning numpy data from UDF
+
+    assert isinstance(with_pandas_and_numpy.transform_batch(table), pd.DataFrame)
     assert isinstance(
-        with_pandas_and_numpy.transform_batch(table_single_column), (np.ndarray, dict)
+        with_pandas_and_numpy.transform_batch(table_single_column), pd.DataFrame
+    )
+
+    assert isinstance(
+        with_pandas_and_numpy_preferred.transform_batch(table), (np.ndarray, dict)
+    )
+    assert isinstance(
+        with_pandas_and_numpy_preferred.transform_batch(table_single_column),
+        (np.ndarray, dict),
     )
 
 
@@ -356,9 +387,10 @@ def test_numpy_pandas_support_transform_batch_tensor(create_dummy_preprocessors)
     # Case 4: tensor dataset created by from numpy data directly
     (
         with_nothing,
-        _,
+        with_pandas,
         with_numpy,
         with_pandas_and_numpy,
+        with_pandas_and_numpy_preferred,
     ) = create_dummy_preprocessors
     np_data = np.arange(12).reshape(3, 2, 2)
     np_single_column = {"A": np.arange(12).reshape(3, 2, 2)}
@@ -374,17 +406,35 @@ def test_numpy_pandas_support_transform_batch_tensor(create_dummy_preprocessors)
     with pytest.raises(NotImplementedError):
         with_nothing.transform_batch(np_multi_column)
 
+    assert isinstance(with_pandas.transform_batch(np_data), pd.DataFrame)
+    assert isinstance(with_pandas.transform_batch(np_single_column), pd.DataFrame)
+    assert isinstance(with_pandas.transform_batch(np_multi_column), pd.DataFrame)
+
     assert isinstance(with_numpy.transform_batch(np_data), np.ndarray)
     assert isinstance(with_numpy.transform_batch(np_single_column), dict)
     assert isinstance(with_numpy.transform_batch(np_multi_column), dict)
 
-    assert isinstance(with_pandas_and_numpy.transform_batch(np_data), np.ndarray)
-    assert isinstance(with_pandas_and_numpy.transform_batch(np_single_column), dict)
-    assert isinstance(with_pandas_and_numpy.transform_batch(np_multi_column), dict)
+    assert isinstance(with_pandas_and_numpy.transform_batch(np_data), pd.DataFrame)
+    assert isinstance(
+        with_pandas_and_numpy.transform_batch(np_single_column), pd.DataFrame
+    )
+    assert isinstance(
+        with_pandas_and_numpy.transform_batch(np_multi_column), pd.DataFrame
+    )
+
+    assert isinstance(
+        with_pandas_and_numpy_preferred.transform_batch(np_data), np.ndarray
+    )
+    assert isinstance(
+        with_pandas_and_numpy_preferred.transform_batch(np_single_column), dict
+    )
+    assert isinstance(
+        with_pandas_and_numpy_preferred.transform_batch(np_multi_column), dict
+    )
 
 
 def test_transform_stats_raises_deprecation_warning(create_dummy_preprocessors):
-    with_nothing, _, _, _ = create_dummy_preprocessors
+    with_nothing, _, _, _, _ = create_dummy_preprocessors
 
     with pytest.raises(DeprecationWarning):
         with_nothing.transform_stats()

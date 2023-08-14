@@ -59,7 +59,7 @@ class MockPublisherInterface : public PublisherInterface {
                const SubscriberID &subscriber_id,
                const std::optional<std::string> &key_id),
               (override));
-  MOCK_METHOD(void, Publish, (const rpc::PubMessage &pub_message), (override));
+  MOCK_METHOD(void, Publish, (rpc::PubMessage pub_message), (override));
   MOCK_METHOD(void,
               PublishFailure,
               (const rpc::ChannelType channel_type, const std::string &key_id),
@@ -86,7 +86,7 @@ class MockPublisher : public Publisher {
                const SubscriberID &subscriber_id,
                const std::optional<std::string> &key_id),
               (override));
-  MOCK_METHOD(void, Publish, (const rpc::PubMessage &pub_message), (override));
+  MOCK_METHOD(void, Publish, (rpc::PubMessage pub_message), (override));
   MOCK_METHOD(void,
               PublishFailure,
               (const rpc::ChannelType channel_type, const std::string &key_id),

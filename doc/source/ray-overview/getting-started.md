@@ -3,203 +3,97 @@
 
 (gentle-intro)=
 
-# Getting Started Guide
-This guide gives a quick tour of Ray's features.
-
-## Starting a local Ray cluster
-To get started, install, import, and initialize Ray. Most of the examples in this guide are based on Python, and some examples use Ray Core in Java.
-
-````{panels}
-:container: text-center
-:column: col-lg-6 px-2 py-2
-:card:
-
-Python
-^^^
-To use Ray in Python, install it with
-```
-pip install ray
-```
-
----
-
-Java
-^^^
-
-To use Ray in Java, first add the [ray-api](https://mvnrepository.com/artifact/io.ray/ray-api) and
-[ray-runtime](https://mvnrepository.com/artifact/io.ray/ray-runtime) dependencies in your project.
-
-````
+# Getting Started
+Use Ray to scale applications on your laptop or the cloud. Choose the right guide for your task.
+* Scale ML workloads: [Ray Libraries Quickstart](#ray-libraries-quickstart)
+* Scale general Python applications: [Ray Core Quickstart](#ray-core-quickstart)
+* Deploy to the cloud: [Ray Clusters Quickstart](#ray-cluster-quickstart)
+* Debug and monitor applications: [Debugging and Monitoring Quickstart](#debugging-and-monitoring-quickstart)
 
 
+(libraries-quickstart)=
+## Ray AI Runtime Libraries Quickstart
 
-```{raw} html
+Use individual libraries for ML workloads. Click on the dropdowns for your workload below.
 
-<div class="termynal" data-termynal>
-    <span data-ty="input">pip install ray</span>
-    <span data-ty="progress"></span>
-    <span data-ty>Successfully installed ray</span>
-    <span data-ty="input">python</span>
-    <span data-ty="input" data-ty-prompt=">>>">import ray; ray.init()</span>
-    <span data-ty>
-        ... INFO worker.py:1509 -- Started a local Ray instance.
-        View the dashboard at 127.0.0.1:8265
-        ...
-    </span>
-</div>
-
-```
-
-
-To build Ray from source or with Docker, see the detailed [installation instructions](installation.rst).
-
-## Ray AI Runtime Quick Start
-
-To use Ray's AI Runtime install Ray with the optional extra `air` packages:
-
-```
-pip install "ray[air]"
-```
-
-`````{dropdown} Efficiently process your data into features.
-
-Load data into a ``Dataset``.
-
-```{literalinclude} ../ray-air/examples/xgboost_starter.py
-    :language: python
-    :start-after: __air_generic_preprocess_start__
-    :end-before: __air_generic_preprocess_end__
-```
-
-Preprocess your data with a ``Preprocessor``.
-
-```{literalinclude} ../ray-air/examples/xgboost_starter.py
-    :language: python
-    :start-after: __air_xgb_preprocess_start__
-    :end-before: __air_xgb_preprocess_end__
-```
-`````
-
-`````{dropdown} Scale out model training.
-
-This example will use XGBoost to train a Machine Learning model, so, install Ray's wrapper library `xgboost_ray`:
-
-```
-pip install xgboost_ray
-```
-
-Train a model with an ``XGBoostTrainer``.
-
-```{literalinclude} ../ray-air/examples/xgboost_starter.py
-    :language: python
-    :start-after: __air_xgb_train_start__
-    :end-before: __air_xgb_train_end__
-```
-`````
-
-`````{dropdown} Tune the hyperparameters to find the best model with Ray Tune.
-
-Configure the parameters for tuning:
-
-```{literalinclude} ../ray-air/examples/xgboost_starter.py
-    :language: python
-    :start-after: __air_xgb_tuner_start__
-    :end-before: __air_xgb_tuner_end__
-```
-
-Run hyperparameter tuning with Ray Tune to find the best model:
-
-```{literalinclude} ../ray-air/examples/xgboost_starter.py
-    :language: python
-    :start-after: __air_tune_generic_end__
-    :end-before: __air_tune_generic_end__
-```
-`````
-
-`````{dropdown} Use the trained model for Batch prediction
-
-Use the trained model for batch prediction with a ``BatchPredictor``.
-
-```{literalinclude} ../ray-air/examples/xgboost_starter.py
-    :language: python
-    :start-after: __air_xgb_batchpred_start__
-    :end-before: __air_xgb_batchpred_end__
-```
-`````
-
-
-```{link-button} air
-:type: ref
-:text: Learn more about Ray AIR
-:classes: btn-outline-primary btn-block
-```
-
-## Ray Libraries Quick Start
-
-Ray has a rich ecosystem of libraries and frameworks built on top of it. 
-Simply click on the dropdowns below to see examples of our most popular libraries.
-
-`````{dropdown} <img src="images/ray_svg_logo.svg" alt="ray" width="50px"> Data: Creating and Transforming Datasets
+`````{dropdown} <img src="images/ray_svg_logo.svg" alt="ray" width="50px"> Data: Scalable Datasets for ML
 :animate: fade-in-slide-down
 
-Ray Datasets are the standard way to load and exchange data in Ray libraries and applications.
-Datasets provide basic distributed data transformations such as `map`, `filter`, and `repartition`.
-They are compatible with a variety of file formats, datasources, and distributed frameworks.
+Scale offline inference and training ingest with [Ray Data](data_key_concepts) --
+a data processing library designed for ML.
+
+To learn more, see [Offline batch inference](batch_inference_overview) and
+[Data preprocessing and ingest for ML training](ml_ingest_overview).
 
 ````{note}
-To get started with this example install Ray Data as follows.
+To run this example, install Ray Data:
 
 ```bash
-pip install "ray[data]" dask
+pip install -U "ray[data]"
 ```
 ````
 
-Get started by creating Datasets from synthetic data using ``ray.data.range()`` and ``ray.data.from_items()``.
-Datasets can hold either plain Python objects (schema is a Python type), or Arrow records (schema is Arrow).
+```{testcode}
+from typing import Dict
+import numpy as np
+import ray
 
-```{literalinclude} ../data/doc_code/quick_start.py
-:language: python
-:start-after: __create_from_python_begin__
-:end-before: __create_from_python_end__
+# Create datasets from on-disk files, Python objects, and cloud storage like S3.
+ds = ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv")
+
+# Apply functions to transform data. Ray Data executes transformations in parallel.
+def compute_area(batch: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
+    length = batch["petal length (cm)"]
+    width = batch["petal width (cm)"]
+    batch["petal area (cm^2)"] = length * width
+    return batch
+
+transformed_ds = ds.map_batches(compute_area)
+
+# Iterate over batches of data.
+for batch in transformed_ds.iter_batches(batch_size=4):
+    print(batch)
+
+# Save dataset contents to on-disk files or cloud storage.
+transformed_ds.write_parquet("local:///tmp/iris/")
 ```
 
-Datasets can be created from files on local disk or remote datasources such as S3. Any filesystem 
-[supported by pyarrow](http://arrow.apache.org/docs/python/generated/pyarrow.fs.FileSystem.html) can be used to specify file locations.
-You can also create a ``Dataset`` from existing data in the Ray object store or Ray-compatible distributed DataFrames:
+```{testoutput}
+:hide:
 
-```{literalinclude} ../data/doc_code/quick_start.py
-:language: python
-:start-after: __create_from_files_begin__
-:end-before: __create_from_files_end__
-```
-Datasets can be transformed in parallel using ``.map()``. 
-Transformations are executed *eagerly* and block until the operation is finished.
-Datasets also supports ``.filter()`` and ``.flat_map()``.
-
-```{literalinclude} ../data/doc_code/quick_start.py
-:language: python
-:start-after: __data_transform_begin__
-:end-before: __data_transform_end__
+...
 ```
 
-```{link-button} ../data/dataset
-:type: ref
-:text: Learn more about Ray Data
-:classes: btn-outline-primary btn-block
+```{button-ref}  ../data/data
+:color: primary
+:outline:
+:expand:
+
+Learn more about Ray Data
 ```
 `````
 
-`````{dropdown} <img src="images/ray_svg_logo.svg" alt="ray" width="50px"> Train: Distributed Model Training
+``````{dropdown} <img src="images/ray_svg_logo.svg" alt="ray" width="50px"> Train: Distributed Model Training
 :animate: fade-in-slide-down
 
 Ray Train abstracts away the complexity of setting up a distributed training
-system. Let's take following simple examples:
+system.
 
-````{tabbed} PyTorch
+`````{tab-set}
+
+````{tab-item} PyTorch
 
 This example shows how you can use Ray Train with PyTorch.
 
-First, set up your dataset and model.
+To run this example install Ray Train and PyTorch packages:
+
+:::{note}
+```bash
+pip install -U "ray[train]" torch torchvision
+```
+:::
+
+Set up your dataset and model.
 
 ```{literalinclude} /../../python/ray/train/examples/pytorch/torch_quick_start.py
 :language: python
@@ -221,15 +115,16 @@ This training function can be executed with:
 :language: python
 :start-after: __torch_single_run_begin__
 :end-before: __torch_single_run_end__
+:dedent: 0
 ```
 
-Now let's convert this to a distributed multi-worker training function!
+Convert this to a distributed multi-worker training function.
 
-All you have to do is use the ``ray.train.torch.prepare_model`` and
+Use the ``ray.train.torch.prepare_model`` and
 ``ray.train.torch.prepare_data_loader`` utility functions to
-easily setup your model & data for distributed training.
-This will automatically wrap your model with ``DistributedDataParallel``
-and place it on the right device, and add ``DistributedSampler`` to your DataLoaders.
+set up your model and data for distributed training.
+This automatically wraps the model with ``DistributedDataParallel``
+and places it on the right device, and adds ``DistributedSampler`` to the DataLoaders.
 
 ```{literalinclude} /../../python/ray/train/examples/pytorch/torch_quick_start.py
 :language: python
@@ -237,22 +132,31 @@ and place it on the right device, and add ``DistributedSampler`` to your DataLoa
 :end-before: __torch_distributed_end__
 ```
 
-Then, instantiate a ``Trainer`` that uses a ``"torch"`` backend
-with 4 workers, and use it to run the new training function!
+Instantiate a ``TorchTrainer``
+with 4 workers, and use it to run the new training function.
 
 ```{literalinclude} /../../python/ray/train/examples/pytorch/torch_quick_start.py
 :language: python
 :start-after: __torch_trainer_begin__
 :end-before: __torch_trainer_end__
+:dedent: 0
 ```
 ````
 
-````{tabbed} TensorFlow
+````{tab-item} TensorFlow
 
-This example shows how you can use Ray Train to set up `Multi-worker training
-with Keras <https://www.tensorflow.org/tutorials/distribute/multi_worker_with_keras>`_.
+This example shows how you can use Ray Train to set up [Multi-worker training
+with Keras](https://www.tensorflow.org/tutorials/distribute/multi_worker_with_keras).
 
-First, set up your dataset and model.
+To run this example install Ray Train and Tensorflow packages:
+
+:::{note}
+```bash
+pip install -U "ray[train]" tensorflow
+```
+:::
+
+Set up your dataset and model.
 
 ```{literalinclude} /../../python/ray/train/examples/tf/tensorflow_quick_start.py
 :language: python
@@ -274,15 +178,15 @@ This training function can be executed with:
 :language: python
 :start-after: __tf_single_run_begin__
 :end-before: __tf_single_run_end__
+:dedent: 0
 ```
 
-Now let's convert this to a distributed multi-worker training function!
-All you need to do is:
+Now convert this to a distributed multi-worker training function.
 
-1. Set the *global* batch size - each worker will process the same size
+1. Set the *global* batch size - each worker processes the same size
    batch as in the single-worker code.
-2. Choose your TensorFlow distributed training strategy. In this example
-   we use the ``MultiWorkerMirroredStrategy``.
+2. Choose your TensorFlow distributed training strategy. This examples
+   uses the ``MultiWorkerMirroredStrategy``.
 
 ```{literalinclude} /../../python/ray/train/examples/tf/tensorflow_quick_start.py
 :language: python
@@ -290,35 +194,42 @@ All you need to do is:
 :end-before: __tf_distributed_end__
 ```
 
-Then, instantiate a ``Trainer`` that uses a ``"tensorflow"`` backend
-with 4 workers, and use it to run the new training function!
+Instantiate a ``TensorflowTrainer``
+with 4 workers, and use it to run the new training function.
 
 ```{literalinclude} /../../python/ray/train/examples/tf/tensorflow_quick_start.py
 :language: python
 :start-after: __tf_trainer_begin__
 :end-before: __tf_trainer_end__
+:dedent: 0
 ```
+
+```{button-ref}  ../train/train
+:color: primary
+:outline:
+:expand:
+
+Learn more about Ray Train
+```
+
 ````
 
-```{link-button} ../train/train
-:type: ref
-:text: Learn more about Ray Train
-:classes: btn-outline-primary btn-block
-```
 `````
+
+``````
 
 `````{dropdown} <img src="images/ray_svg_logo.svg" alt="ray" width="50px"> Tune: Hyperparameter Tuning at Scale
 :animate: fade-in-slide-down
 
-[Tune](../tune/index.rst) is a library for hyperparameter tuning at any scale. 
-With Tune, you can launch a multi-node distributed hyperparameter sweep in less than 10 lines of code. 
+[Tune](../tune/index.rst) is a library for hyperparameter tuning at any scale.
+With Tune, you can launch a multi-node distributed hyperparameter sweep in less than 10 lines of code.
 Tune supports any deep learning framework, including PyTorch, TensorFlow, and Keras.
 
 ````{note}
-To run this example, you will need to install the following:
+To run this example, install Ray Tune:
 
 ```bash
-pip install "ray[tune]"
+pip install -U "ray[tune]"
 ```
 ````
 
@@ -336,10 +247,12 @@ If TensorBoard is installed, automatically visualize all trial results:
 tensorboard --logdir ~/ray_results
 ```
 
-```{link-button} ../tune/index
-:type: ref
-:text: Learn more about Ray Tune
-:classes: btn-outline-primary btn-block
+```{button-ref}  ../tune/index
+:color: primary
+:outline:
+:expand:
+
+Learn more about Ray Tune
 ```
 
 `````
@@ -348,15 +261,16 @@ tensorboard --logdir ~/ray_results
 `````{dropdown} <img src="images/ray_svg_logo.svg" alt="ray" width="50px"> Serve: Scalable Model Serving
 :animate: fade-in-slide-down
 
-[Ray Serve](../serve/index) is a scalable model-serving library built on Ray. 
+[Ray Serve](../serve/index) is a scalable model-serving library built on Ray.
 
 ````{note}
-To run this example, you will need to install the following libraries.
+To run this example, install Ray Serve and scikit-learn:
 
 ```{code-block} bash
-pip install "ray[serve]" scikit-learn
+pip install -U "ray[serve]" scikit-learn
 ```
 ````
+
 This example runs serves a scikit-learn gradient boosting classifier.
 
 ```{literalinclude} ../serve/doc_code/sklearn_quickstart.py
@@ -367,11 +281,14 @@ This example runs serves a scikit-learn gradient boosting classifier.
 
 As a result you will see `{"result": "versicolor"}`.
 
-```{link-button} ../serve/index
-:type: ref
-:text: Learn more about Ray Serve
-:classes: btn-outline-primary btn-block
+```{button-ref}  ../serve/index
+:color: primary
+:outline:
+:expand:
+
+Learn more about Ray Serve
 ```
+
 `````
 
 
@@ -382,9 +299,10 @@ As a result you will see `{"result": "versicolor"}`.
 RLlib offers high scalability and unified APIs for a variety of industry- and research applications.
 
 ````{note}
-To run this example, you will need to install `rllib` and either `tensorflow` or `pytorch`.
+To run this example, install `rllib` and either `tensorflow` or `pytorch`:
+
 ```bash
-pip install "ray[rllib]" tensorflow  # or torch
+pip install -U "ray[rllib]" tensorflow  # or torch
 ```
 ````
 
@@ -394,29 +312,41 @@ pip install "ray[rllib]" tensorflow  # or torch
 :start-after: __quick_start_begin__
 ```
 
-```{link-button} ../rllib/index
-:type: ref
-:text: Learn more about Ray RLlib
-:classes: btn-outline-primary btn-block
+```{button-ref}  ../rllib/index
+:color: primary
+:outline:
+:expand:
+
+Learn more about Ray RLlib
 ```
 
 `````
 
-## Ray Core Quick Start
+## Ray Core Quickstart
 
-Ray Core provides simple primitives for building and running distributed applications.
-Below you find examples that show you how to turn your functions and classes easily into Ray tasks and actors,
-for both Python and Java.
+Turn functions and classes easily into Ray tasks and actors,
+for Python and Java, with simple primitives for building and running distributed applications.
 
-`````{dropdown} <img src="images/ray_svg_logo.svg" alt="ray" width="50px"> Core: Parallelizing Functions with Ray Tasks
+
+``````{dropdown} <img src="images/ray_svg_logo.svg" alt="ray" width="50px"> Core: Parallelizing Functions with Ray Tasks
 :animate: fade-in-slide-down
 
-````{tabbed} Python
+`````{tab-set}
 
-First, you import Ray and and initialize it with `ray.init()`.
-Then you decorate your function with ``@ray.remote`` to declare that you want to run this function remotely.
-Lastly, you call that function with ``.remote()`` instead of calling it normally.
-This remote call yields a future, a so-called Ray _object reference_, that you can then fetch with ``ray.get``.
+````{tab-item} Python
+
+:::{note}
+To run this example install Ray Core:
+
+```bash
+pip install -U "ray"
+```
+:::
+
+Import Ray and and initialize it with `ray.init()`.
+Then decorate the function with ``@ray.remote`` to declare that you want to run this function remotely.
+Lastly, call the function with ``.remote()`` instead of calling it normally.
+This remote call yields a future, a Ray _object reference_, that you can then fetch with ``ray.get``.
 
 ```{code-block} python
 
@@ -429,16 +359,20 @@ def f(x):
 
 futures = [f.remote(i) for i in range(4)]
 print(ray.get(futures)) # [0, 1, 4, 9]
-
 ```
+
 ````
 
-````{tabbed} Java
+````{tab-item} Java
 
-First, use `Ray.init` to initialize Ray runtime.
-Then you can use `Ray.task(...).remote()` to convert any Java static method into a Ray task. 
-The task will run asynchronously in a remote worker process. The `remote` method will return an ``ObjectRef``,
-and you can then fetch the actual result with ``get``.
+```{note}
+To run this example, add the [ray-api](https://mvnrepository.com/artifact/io.ray/ray-api) and [ray-runtime](https://mvnrepository.com/artifact/io.ray/ray-runtime) dependencies in your project.
+```
+
+Use `Ray.init` to initialize Ray runtime.
+Then use `Ray.task(...).remote()` to convert any Java static method into a Ray task.
+The task runs asynchronously in a remote worker process. The `remote` method returns an ``ObjectRef``,
+and you can fetch the actual result with ``get``.
 
 ```{code-block} java
 
@@ -452,7 +386,7 @@ public class RayDemo {
     public static int square(int x) {
         return x * x;
     }
-    
+
     public static void main(String[] args) {
         // Intialize Ray runtime.
         Ray.init();
@@ -466,20 +400,26 @@ public class RayDemo {
         System.out.println(Ray.get(objectRefList));  // [0, 1, 4, 9]
     }
 }
-````
+```
 
 In the above code block we defined some Ray Tasks. While these are great for stateless operations, sometimes you
 must maintain the state of your application. You can do that with Ray Actors.
 
-```{link-button} ../ray-core/walkthrough
-:type: ref
-:text: Learn more about Ray Core
-:classes: btn-outline-primary btn-block
+```{button-ref}  ../ray-core/walkthrough
+:color: primary
+:outline:
+:expand:
+
+Learn more about Ray Core
 ```
+
+````
 
 `````
 
-`````{dropdown} <img src="images/ray_svg_logo.svg" alt="ray" width="50px"> Core: Parallelizing Classes with Ray Actors
+``````
+
+``````{dropdown} <img src="images/ray_svg_logo.svg" alt="ray" width="50px"> Core: Parallelizing Classes with Ray Actors
 :animate: fade-in-slide-down
 
 Ray provides actors to allow you to parallelize an instance of a class in Python or Java.
@@ -487,7 +427,17 @@ When you instantiate a class that is a Ray actor, Ray will start a remote instan
 of that class in the cluster. This actor can then execute remote method calls and
 maintain its own internal state.
 
-````{tabbed} Python
+`````{tab-set}
+
+````{tab-item} Python
+
+:::{note}
+To run this example install Ray Core:
+
+```bash
+pip install -U "ray"
+```
+:::
 
 ```{code-block} python
 
@@ -512,7 +462,13 @@ print(ray.get(futures)) # [1, 1, 1, 1]
 ```
 ````
 
-````{tabbed} Java
+````{tab-item} Java
+
+
+```{note}
+To run this example, add the [ray-api](https://mvnrepository.com/artifact/io.ray/ray-api) and [ray-runtime](https://mvnrepository.com/artifact/io.ray/ray-runtime) dependencies in your project.
+```
+
 ```{code-block} java
 
 import io.ray.api.ActorHandle;
@@ -525,18 +481,18 @@ import java.util.stream.Collectors;
 public class RayDemo {
 
     public static class Counter {
-    
+
         private int value = 0;
-        
+
         public void increment() {
             this.value += 1;
         }
-        
+
         public int read() {
             return this.value;
         }
     }
-        
+
     public static void main(String[] args) {
         // Intialize Ray runtime.
         Ray.init();
@@ -546,7 +502,7 @@ public class RayDemo {
         for (int i = 0; i < 4; i++) {
             counters.add(Ray.actor(Counter::new).remote());
         }
-        
+
         // Invoke the `increment` method on each actor.
         // This will send an actor task to each remote actor.
         for (ActorHandle<Counter> counter : counters) {
@@ -559,20 +515,25 @@ public class RayDemo {
         System.out.println(Ray.get(objectRefList));  // [1, 1, 1, 1]
     }
 }
+```
+
+```{button-ref}  ../ray-core/walkthrough
+:color: primary
+:outline:
+:expand:
+
+Learn more about Ray Core
+```
 
 ````
-```{link-button} ../ray-core/walkthrough
-:type: ref
-:text: Learn more about Ray Core
-:classes: btn-outline-primary btn-block
-```
 
 `````
 
-## Ray Cluster Quick Start
+``````
 
-You can deploy your applications on Ray clusters, often with minimal code changes to your existing code.
-See an example of this below.
+## Ray Cluster Quickstart
+
+Deploy your applications on Ray clusters, often with minimal code changes to your existing code.
 
 `````{dropdown} <img src="images/ray_svg_logo.svg" alt="ray" width="50px"> Clusters: Launching a Ray Cluster on AWS
 :animate: fade-in-slide-down
@@ -607,17 +568,20 @@ Assuming you have stored this configuration in a file called `cluster.yaml`, you
 ray submit cluster.yaml example.py --start
 ```
 
-```{link-button} cluster-index
-:type: ref
-:text: Learn more about launching Ray Clusters
-:classes: btn-outline-primary btn-block
+```{button-ref}  cluster-index
+:color: primary
+:outline:
+:expand:
+
+Learn more about launching Ray Clusters
 ```
 
 `````
 
-## Debugging and Monitoring Quick Start
+## Debugging and Monitoring Quickstart
 
-You can use built-in observability tools to monitor and debug Ray applications and clusters.
+Use built-in observability tools to monitor and debug Ray applications and clusters.
+
 
 `````{dropdown} <img src="images/ray_svg_logo.svg" alt="ray" width="50px"> Ray Dashboard: Web GUI to monitor and debug Ray
 :animate: fade-in-slide-down
@@ -629,17 +593,20 @@ Ray dashboard provides a visual interface that displays real-time system metrics
 ```
 
 ````{note}
-To get started with ray dashboard install the Ray default installation as follows.
+To get started with the dashboard, install the default installation as follows:
 
 ```bash
-pip install "ray[default]"
+pip install -U "ray[default]"
 ```
 ````
+Access the dashboard through the default URL, http://localhost:8265.
 
-```{link-button} ../ray-core/ray-dashboard
-:type: ref
-:text: Learn more about Ray Dashboard.
-:classes: btn-outline-primary btn-block
+```{button-ref}  observability-getting-started
+:color: primary
+:outline:
+:expand:
+
+Learn more about Ray Dashboard
 ```
 
 `````
@@ -650,10 +617,10 @@ pip install "ray[default]"
 Ray state APIs allow users to conveniently access the current state (snapshot) of Ray through CLI or Python SDK.
 
 ````{note}
-To get started with ray state API install the Ray default installation as follows.
+To get started with the state API, install the default installation as follows:
 
 ```bash
-pip install "ray[default]"
+pip install -U "ray[default]"
 ```
 ````
 
@@ -670,12 +637,12 @@ Run the following code.
     def task_running_300_seconds():
         print("Start!")
         time.sleep(300)
-    
+
     @ray.remote
     class Actor:
         def __init__(self):
             print("Actor created")
-    
+
     # Create 2 tasks
     tasks = [task_running_300_seconds.remote() for _ in range(2)]
 
@@ -712,10 +679,12 @@ See the summarized statistics of Ray tasks using ``ray summary tasks``.
 
 ```
 
-```{link-button} ../ray-observability/state/state-api
-:type: ref
-:text: Learn more about Ray State APIs
-:classes: btn-outline-primary btn-block
+```{button-ref}  observability-programmatic
+:color: primary
+:outline:
+:expand:
+
+Learn more about Ray State APIs
 ```
 
 `````

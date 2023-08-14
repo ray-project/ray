@@ -33,13 +33,25 @@ from ray._private.test_utils import (
     teardown_tls,
     enable_external_redis,
     redis_replicas,
+    get_redis_cli,
     start_redis_instance,
+    find_available_port,
+    wait_for_condition,
+    find_free_port,
 )
 from ray.cluster_utils import AutoscalingCluster, Cluster, cluster_not_supported
 
 logger = logging.getLogger(__name__)
 
 START_REDIS_WAIT_RETRIES = int(os.environ.get("RAY_START_REDIS_WAIT_RETRIES", "60"))
+
+
+@pytest.fixture(autouse=True)
+def pre_envs(monkeypatch):
+    # To make test run faster
+    monkeypatch.setenv("RAY_NUM_REDIS_GET_RETRIES", "2")
+    ray_constants.NUM_REDIS_GET_RETRIES = 2
+    yield
 
 
 def wait_for_redis_to_start(redis_ip_address: str, redis_port: bool, password=None):
@@ -138,49 +150,142 @@ def get_default_fixture_ray_kwargs():
     return ray_kwargs
 
 
-@contextmanager
-def _setup_redis(request):
-    # Setup external Redis and env var for initialization.
-    redis_ports = []
-    for _ in range(redis_replicas()):
-        # max port for redis cluster
-        port = 55536
-        while port >= 55535:
-            with socket.socket() as s:
-                s.bind(("", 0))
-                port = s.getsockname()[1]
-        print("Picking port", port)
-        redis_ports.append(port)
+def is_process_listen_to_port(pid, port):
+    retry_num = 10
+    interval_time = 0.5
+    for _ in range(retry_num):
+        try:
+            proc = psutil.Process(pid)
+            for conn in proc.connections():
+                if conn.status == "LISTEN" and conn.laddr.port == port:
+                    return True
+        except Exception:
+            pass
+        finally:
+            time.sleep(interval_time)
+    print(
+        f"Process({pid}) has not listened to port {port} "
+        + f"for more than {retry_num * interval_time}s."
+    )
+    return False
 
-    with tempfile.TemporaryDirectory() as tmpdirname:
+
+def redis_alive(port, enable_tls):
+    try:
+        # If there is no redis libs installed, skip the check.
+        # This could happen In minimal test, where we don't have
+        # redis.
+        import redis
+    except Exception:
+        return True
+
+    params = {}
+    if enable_tls:
+        from ray._raylet import Config
+
+        params = {"ssl": True, "ssl_cert_reqs": "required"}
+        if Config.REDIS_CA_CERT():
+            params["ssl_ca_certs"] = Config.REDIS_CA_CERT()
+        if Config.REDIS_CLIENT_CERT():
+            params["ssl_certfile"] = Config.REDIS_CLIENT_CERT()
+        if Config.REDIS_CLIENT_KEY():
+            params["ssl_keyfile"] = Config.REDIS_CLIENT_KEY()
+
+    cli = redis.Redis("localhost", port, **params)
+
+    try:
+        return cli.ping()
+    except Exception:
+        pass
+    return False
+
+
+def start_redis(db_dir):
+    retry_num = 0
+    while True:
+        is_need_restart = False
+        # Setup external Redis and env var for initialization.
+        redis_ports = find_available_port(49159, 55535, redis_replicas() * 2)
+        redis_ports = list(
+            zip(redis_ports[0 : redis_replicas()], redis_ports[redis_replicas() :])
+        )
         processes = []
         enable_tls = "RAY_REDIS_CA_CERT" in os.environ
         leader_port = None
         leader_id = None
-        for port in redis_ports:
-            print("Start Redis with port: ", port)
+        redis_ports = []
+        while len(redis_ports) != redis_replicas():
             temp_dir = ray._private.utils.get_ray_temp_dir()
+            port, free_port = find_available_port(49159, 55535, 2)
             node_id, proc = start_redis_instance(
                 temp_dir,
                 port,
                 enable_tls=enable_tls,
                 replica_of=leader_port,
                 leader_id=leader_id,
-                db_dir=tmpdirname,
+                db_dir=db_dir,
+                free_port=free_port,
             )
+            try:
+                wait_for_condition(
+                    redis_alive, 3, 100, port=port, enable_tls=enable_tls
+                )
+            except Exception as e:
+                print(e)
+                continue
+            redis_ports.append(port)
             if leader_port is None:
                 leader_port = port
                 leader_id = node_id
             processes.append(proc)
-        if redis_replicas() > 1:
-            import redis
+            # Check if th redis has started successfully and is listening on the port.
+            if not is_process_listen_to_port(proc.process.pid, port):
+                is_need_restart = True
+                break
 
-            redis_cli = redis.Redis("localhost", str(leader_port))
+        if is_need_restart:
+            retry_num += 1
+            for proc in processes:
+                proc.process.kill()
+
+            if retry_num > 5:
+                raise RuntimeError("Failed to start redis after {retry_num} attempts.")
+            print(
+                "Retry to start redis because the process failed to "
+                + f"listen to the port({port}), retry num:{retry_num}."
+            )
+            continue
+
+        if redis_replicas() > 1:
+
+            redis_cli = get_redis_cli(str(leader_port), enable_tls)
             while redis_cli.cluster("info")["cluster_state"] != "ok":
                 pass
 
         scheme = "rediss://" if enable_tls else ""
         address_str = f"{scheme}127.0.0.1:{redis_ports[-1]}"
+        return address_str, processes
+
+
+def kill_all_redis_server():
+    import psutil
+
+    # Find Redis server processes
+    redis_procs = []
+    for proc in psutil.process_iter(["name", "cmdline"]):
+        if proc.name() == "redis-server":
+            redis_procs.append(proc)
+
+    # Kill Redis server processes
+    for proc in redis_procs:
+        proc.kill()
+
+
+@contextmanager
+def _setup_redis(request):
+    with tempfile.TemporaryDirectory() as tmpdirname:
+        kill_all_redis_server()
+        address_str, processes = start_redis(tmpdirname)
         old_addr = os.environ.get("RAY_REDIS_ADDRESS")
         os.environ["RAY_REDIS_ADDRESS"] = address_str
         import uuid
@@ -202,6 +307,7 @@ def _setup_redis(request):
 
         for proc in processes:
             proc.process.kill()
+        kill_all_redis_server()
 
 
 @pytest.fixture
@@ -544,7 +650,7 @@ def start_cluster(ray_start_cluster_enabled, request):
     assert request.param in {"ray_client", "no_ray_client"}
     use_ray_client: bool = request.param == "ray_client"
     cluster = ray_start_cluster_enabled
-    cluster.add_node(num_cpus=4)
+    cluster.add_node(num_cpus=4, dashboard_agent_listen_port=find_free_port())
     if use_ray_client:
         cluster.head_node._ray_params.ray_client_server_port = "10004"
         cluster.head_node.start_ray_client_server()
@@ -1135,3 +1241,23 @@ def enable_syncer_test(request, monkeypatch):
     yield
     monkeypatch.delenv("RAY_use_ray_syncer")
     ray._raylet.Config.initialize("")
+
+
+@pytest.fixture(scope="function")
+def temp_file(request):
+    with tempfile.NamedTemporaryFile("r+b") as fp:
+        yield fp
+
+
+@pytest.fixture(scope="module")
+def random_ascii_file(request):
+    import random
+    import string
+
+    file_size = getattr(request, "param", 1 << 10)
+
+    with tempfile.NamedTemporaryFile(mode="r+b") as fp:
+        fp.write("".join(random.choices(string.ascii_letters, k=file_size)).encode())
+        fp.flush()
+
+        yield fp

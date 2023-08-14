@@ -4,15 +4,16 @@ import gymnasium as gym
 import ray
 from ray.rllib.core.testing.torch.bc_module import (
     DiscreteBCTorchModule,
-    BCTorchMultiAgentSpec,
     BCTorchRLModuleWithSharedGlobalEncoder,
+    BCTorchMultiAgentModuleWithSharedEncoder,
 )
 from ray.rllib.core.testing.tf.bc_module import (
     DiscreteBCTFModule,
-    BCTfMultiAgentSpec,
     BCTfRLModuleWithSharedGlobalEncoder,
+    BCTfMultiAgentModuleWithSharedEncoder,
 )
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
+from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
 from ray.rllib.core.testing.bc_algorithm import BCConfigTest
 from ray.rllib.utils.test_utils import framework_iterator
 from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
@@ -44,7 +45,7 @@ class TestLearner(unittest.TestCase):
 
             if fw == "torch":
                 assert isinstance(rl_module, DiscreteBCTorchModule)
-            elif fw == "tf":
+            elif fw == "tf2":
                 assert isinstance(rl_module, DiscreteBCTFModule)
 
     def test_bc_algorithm_marl(self):
@@ -71,27 +72,30 @@ class TestLearner(unittest.TestCase):
 
                 if fw == "torch":
                     assert isinstance(rl_module, DiscreteBCTorchModule)
-                elif fw == "tf":
+                elif fw == "tf2":
                     assert isinstance(rl_module, DiscreteBCTFModule)
 
     def test_bc_algorithm_w_custom_marl_module(self):
         """Tests the independent multi-agent case with shared encoders."""
 
+        policies = {"policy_1", "policy_2"}
+
         for fw in ["torch"]:
             if fw == "torch":
-                spec = BCTorchMultiAgentSpec(
+                spec = MultiAgentRLModuleSpec(
+                    marl_module_class=BCTorchMultiAgentModuleWithSharedEncoder,
                     module_specs=SingleAgentRLModuleSpec(
                         module_class=BCTorchRLModuleWithSharedGlobalEncoder
-                    )
+                    ),
                 )
             else:
-                spec = BCTfMultiAgentSpec(
+                spec = MultiAgentRLModuleSpec(
+                    marl_module_class=BCTfMultiAgentModuleWithSharedEncoder,
                     module_specs=SingleAgentRLModuleSpec(
                         module_class=BCTfRLModuleWithSharedGlobalEncoder
-                    )
+                    ),
                 )
 
-            policies = {"policy_1", "policy_2"}
             config = (
                 BCConfigTest()
                 .framework(fw)
@@ -126,7 +130,7 @@ class TestLearner(unittest.TestCase):
 
                 if fw == "torch":
                     assert isinstance(rl_module, BCTorchRLModuleWithSharedGlobalEncoder)
-                elif fw == "tf":
+                elif fw == "tf2":
                     assert isinstance(rl_module, BCTfRLModuleWithSharedGlobalEncoder)
 
 

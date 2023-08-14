@@ -54,7 +54,10 @@ class _TensorflowBackend(Backend):
         for i in range(len(worker_group)):
             setup_futures.append(
                 worker_group.execute_single_async(
-                    i, _setup_tensorflow_environment, worker_addresses=urls, index=i
+                    i,
+                    _setup_tensorflow_environment,
+                    worker_addresses=urls,
+                    index=i,
                 )
             )
         ray.get(setup_futures)

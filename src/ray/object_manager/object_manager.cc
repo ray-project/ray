@@ -102,7 +102,8 @@ ObjectManager::ObjectManager(
                              config_.object_manager_address == "127.0.0.1",
                              config_.rpc_service_threads_number),
       object_manager_service_(rpc_service_, *this),
-      client_call_manager_(main_service, config_.rpc_service_threads_number),
+      client_call_manager_(
+          main_service, ClusterID::Nil(), config_.rpc_service_threads_number),
       restore_spilled_object_(restore_spilled_object),
       get_spilled_object_url_(get_spilled_object_url),
       pull_retry_timer_(*main_service_,
@@ -173,7 +174,7 @@ void ObjectManager::StartRpcService() {
   for (int i = 0; i < config_.rpc_service_threads_number; i++) {
     rpc_threads_[i] = std::thread(&ObjectManager::RunRpcService, this, i);
   }
-  object_manager_server_.RegisterService(object_manager_service_);
+  object_manager_server_.RegisterService(object_manager_service_, false /* token_auth */);
   object_manager_server_.Run();
 }
 

@@ -9,6 +9,7 @@ import classNames from "classnames";
 import React, { useContext } from "react";
 import { RiBookMarkLine, RiFeedbackLine } from "react-icons/ri/";
 import { Link, Outlet } from "react-router-dom";
+import { GlobalContext } from "../../App";
 import Logo from "../../logo.svg";
 import { MainNavContext, useMainNavState } from "./mainNavContext";
 
@@ -21,7 +22,7 @@ const useStyles = makeStyles((theme) =>
       position: "fixed",
       width: "100%",
       backgroundColor: "white",
-      zIndex: 10000,
+      zIndex: 1000,
     },
   }),
 );
@@ -133,32 +134,37 @@ const useMainNavBarStyles = makeStyles((theme) =>
 const NAV_ITEMS = [
   {
     title: "Overview",
-    path: "/new/overview",
+    path: "/overview",
     id: "overview",
   },
   {
     title: "Jobs",
-    path: "/new/jobs",
+    path: "/jobs",
     id: "jobs",
   },
   {
+    title: "Serve",
+    path: "/serve",
+    id: "serve",
+  },
+  {
     title: "Cluster",
-    path: "/new/cluster",
+    path: "/cluster",
     id: "cluster",
   },
   {
     title: "Actors",
-    path: "/new/actors",
+    path: "/actors",
     id: "actors",
   },
   {
     title: "Metrics",
-    path: "/new/metrics",
+    path: "/metrics",
     id: "metrics",
   },
   {
     title: "Logs",
-    path: "/new/logs",
+    path: "/logs",
     id: "logs",
   },
 ];
@@ -167,14 +173,19 @@ const MainNavBar = () => {
   const classes = useMainNavBarStyles();
   const { mainNavPageHierarchy } = useContext(MainNavContext);
   const rootRouteId = mainNavPageHierarchy[0]?.id;
+  const { metricsContextLoaded, grafanaHost } = useContext(GlobalContext);
+
+  let navItems = NAV_ITEMS;
+  if (!metricsContextLoaded || grafanaHost === "DISABLED") {
+    navItems = navItems.filter(({ id }) => id !== "metrics");
+  }
 
   return (
     <div className={classes.root}>
-      <Link className={classes.logo} to="/new">
+      <Link className={classes.logo} to="/">
         <img width={28} src={Logo} alt="Ray" />
       </Link>
-      {/* TODO (aguo): Get rid of /new prefix */}
-      {NAV_ITEMS.map(({ title, path, id }) => (
+      {navItems.map(({ title, path, id }) => (
         <Typography key={id}>
           <Link
             className={classNames(classes.navItem, {
@@ -188,18 +199,6 @@ const MainNavBar = () => {
       ))}
       <div className={classes.flexSpacer}></div>
       <div className={classes.actionItemsContainer}>
-        <Link
-          className={classNames(classes.actionItem, classes.backToOld)}
-          to="/node"
-        >
-          <Typography
-            variant="body2"
-            component="span"
-            className={classes.backToOldText}
-          >
-            Back to old UI
-          </Typography>
-        </Link>
         <Tooltip title="Docs">
           <IconButton
             className={classes.actionItem}
@@ -241,6 +240,7 @@ const useMainNavBreadcrumbsStyles = makeStyles((theme) =>
     },
     breadcrumbItem: {
       fontWeight: 500,
+      color: "#8C9196",
       "&:not(:first-child)": {
         marginLeft: theme.spacing(1),
       },
@@ -264,15 +264,24 @@ const MainNavBreadcrumbs = () => {
     return null;
   }
 
+  let currentPath = "";
+
   return (
     <div className={classes.root}>
       {mainNavPageHierarchy.map(({ title, id, path }, index) => {
+        if (path) {
+          if (path.startsWith("/")) {
+            currentPath = path;
+          } else {
+            currentPath = `${currentPath}/${path}`;
+          }
+        }
         const linkOrText = path ? (
           <Link
             className={classNames(classes.link, {
               [classes.currentItem]: index === mainNavPageHierarchy.length - 1,
             })}
-            to={path}
+            to={currentPath}
           >
             {title}
           </Link>

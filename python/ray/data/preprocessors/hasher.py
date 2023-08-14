@@ -4,7 +4,6 @@ from typing import List
 import pandas as pd
 
 from ray.data.preprocessor import Preprocessor
-
 from ray.data.preprocessors.utils import simple_hash
 from ray.util.annotations import PublicAPI
 

@@ -7,6 +7,8 @@ import numpy as np
 import psutil
 import pytest
 from grpc._channel import _InactiveRpcError
+from ray.util.state import list_tasks
+from ray._private.state_api_test_utils import verify_failed_task
 
 import ray
 import ray._private.ray_constants as ray_constants
@@ -371,7 +373,7 @@ def test_raylet_graceful_shutdown_through_rpc(ray_start_cluster_head, error_pubs
     p = error_pubsub
     errors = get_error_message(p, 1, ray_constants.REMOVED_NODE_ERROR, timeout=10)
     # Should print the heartbeat messages.
-    assert "has missed too many heartbeats from it" in errors[0].error_message
+    assert "has missed too many heartbeats from it" in errors[0]["error_message"]
     # NOTE the killed raylet is a zombie since the
     # parent process (the pytest script) hasn't called wait syscall.
     # For normal scenarios where raylet is created by
@@ -512,6 +514,7 @@ def test_worker_start_timeout(monkeypatch, ray_start_cluster):
             "InternalKVGcsService.grpc_server.InternalKVGet=2000000:2000000",
         )
         m.setenv("RAY_worker_register_timeout_seconds", "1")
+        m.setenv("RAY_prestart_worker_first_driver", "false")
         cluster = ray_start_cluster
         cluster.add_node(num_cpus=4, object_store_memory=1e9)
         script = """
@@ -555,12 +558,28 @@ def test_task_failure_when_driver_local_raylet_dies(ray_start_cluster):
 
     # The lease request should wait inside raylet
     # since there is no available resources.
-    ret = func.remote()
+    ret = func.options(name="task-local-raylet-dead").remote()
+
     # Waiting for the lease request to reach raylet.
-    time.sleep(1)
+    def task_running():
+        tasks = list_tasks(filters=[("name", "=", "task-local-raylet-dead")])
+        assert len(tasks) == 1
+        assert tasks[0]["state"] == "PENDING_NODE_ASSIGNMENT"
+        return True
+
+    wait_for_condition(task_running)
+
     head.kill_raylet()
     with pytest.raises(LocalRayletDiedError):
         ray.get(ret)
+
+    # Check the task failure states for observability.
+    wait_for_condition(
+        verify_failed_task,
+        name="task-local-raylet-dead",
+        error_type="LOCAL_RAYLET_DIED",
+        error_message="The worker failed to receive a response from the local raylet",
+    )
 
 
 def test_locality_aware_scheduling_for_dead_nodes(shutdown_only):
@@ -679,6 +698,25 @@ def test_task_crash_after_raylet_dead_throws_node_died_error():
             ray.get(ref)
         message = str(error)
         assert raylet["NodeManagerAddress"] in message
+
+
+def test_accessing_actor_after_cluster_crashed(shutdown_only):
+    ray.init()
+
+    @ray.remote
+    class A:
+        def f(self):
+            return
+
+    a = A.remote()
+
+    ray.get(a.f.remote())
+
+    ray.shutdown()
+    ray.init()
+    with pytest.raises(Exception) as exc_info:
+        ray.get(a.f.remote())
+    assert "It might be dead or it's from a different cluster" in exc_info.value.args[0]
 
 
 if __name__ == "__main__":

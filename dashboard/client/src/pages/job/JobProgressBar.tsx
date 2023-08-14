@@ -1,4 +1,9 @@
-import { makeStyles } from "@material-ui/core";
+import {
+  Checkbox,
+  FormControlLabel,
+  LinearProgress,
+  makeStyles,
+} from "@material-ui/core";
 import React, { useEffect, useState } from "react";
 import { UnifiedJob } from "../../type/job";
 import {
@@ -12,10 +17,13 @@ const useStyles = makeStyles((theme) => ({
   advancedProgressBar: {
     marginTop: theme.spacing(0.5),
   },
+  hideFinishedCheckbox: {
+    marginRight: 0,
+  },
 }));
 
 type JobProgressBarProps = {
-  jobId: string;
+  jobId: string | undefined;
   job: Pick<UnifiedJob, "status">;
 } & Pick<AdvancedProgressBarProps, "onClickLink">;
 
@@ -33,6 +41,8 @@ export const JobProgressBar = ({
   const [advancedProgressBarExpanded, setAdvancedProgressBarExpanded] =
     useState(false);
 
+  const [showFinishedTasks, setShowFinishedTasks] = useState(true);
+
   useEffect(() => {
     if (advancedProgressBarExpanded) {
       setAdvancedProgressBarRendered(true);
@@ -41,27 +51,40 @@ export const JobProgressBar = ({
 
   const {
     progress,
+    isLoading: progressLoading,
     driverExists,
     totalTasks,
     latestFetchTimestamp: progressTimestamp,
   } = useJobProgress(jobId, advancedProgressBarExpanded);
   const {
     progressGroups,
+    isLoading: progressGroupsLoading,
     total,
     totalTasks: advancedTotalTasks,
     latestFetchTimestamp: totalTimestamp,
   } = useJobProgressByLineage(
     advancedProgressBarRendered ? jobId : undefined,
     !advancedProgressBarExpanded,
+    showFinishedTasks,
   );
 
   if (!driverExists) {
     return <TaskProgressBar />;
   }
+
+  if (
+    progressLoading &&
+    (progressGroupsLoading || !advancedProgressBarRendered)
+  ) {
+    return <LinearProgress />;
+  }
+
   const { status } = job;
   // Use whichever data was received the most recently
   // Note these values may disagree in some way. It might better to consistently use one endpoint.
   const [totalProgress, finalTotalTasks] =
+    total === undefined ||
+    advancedTotalTasks === undefined ||
     progressTimestamp > totalTimestamp
       ? [progress, totalTasks]
       : [total, advancedTotalTasks];
@@ -76,6 +99,21 @@ export const JobProgressBar = ({
         expanded={advancedProgressBarExpanded}
         onClick={() =>
           setAdvancedProgressBarExpanded(!advancedProgressBarExpanded)
+        }
+        controls={
+          <FormControlLabel
+            control={
+              <Checkbox
+                color="primary"
+                value={!showFinishedTasks}
+                onChange={({ target: { checked } }) => {
+                  setShowFinishedTasks(!checked);
+                }}
+              />
+            }
+            label="Hide finished"
+            className={classes.hideFinishedCheckbox}
+          />
         }
       />
       {advancedProgressBarExpanded && (

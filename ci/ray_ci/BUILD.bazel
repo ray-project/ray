@@ -1,0 +1,93 @@
+load("@rules_python//python:defs.bzl", "py_binary", "py_library", "py_test")
+load("@rules_python//python:pip.bzl", "compile_pip_requirements")
+load("@py_deps_ray_ci//:requirements.bzl", ci_require = "requirement")
+
+compile_pip_requirements(
+    name = "requirements",
+    requirements_in = "requirements.in",
+    requirements_txt = "requirements.txt",
+    tags = [
+        "team:ci",
+    ],
+    visibility = ["//visibility:private"],
+)
+
+py_library(
+    name = "ray_ci_lib",
+    srcs = glob(
+        ["*.py"],
+        exclude = [
+            "test_*.py",
+            "ray_ci.py",
+        ],
+    ),
+    visibility = ["//visibility:private"],
+    deps = [
+        ci_require("pyyaml"),
+        ci_require("click"),
+    ],
+)
+
+py_binary(
+    name = "ray_ci",
+    srcs = ["ray_ci.py"],
+    deps = [":ray_ci_lib"],
+)
+
+py_test(
+    name = "test_runner",
+    size = "small",
+    srcs = ["test_runner.py"],
+    tags = [
+        "ci_unit",
+        "team:ci",
+    ],
+    deps = [
+        ":ray_ci_lib",
+        ci_require("pytest"),
+    ],
+)
+
+
+py_test(
+    name = "test_utils",
+    size = "small",
+    srcs = ["test_utils.py"],
+    tags = [
+        "ci_unit",
+        "team:ci",
+    ],
+    deps = [
+        ":ray_ci_lib",
+        ci_require("pytest"),
+    ],
+)
+
+py_test(
+    name = "test_container",
+    size = "small",
+    srcs = ["test_container.py"],
+    tags = [
+        "ci_unit",
+        "team:ci",
+    ],
+    deps = [
+        ":ray_ci_lib",
+        ci_require("pytest"),
+    ],
+)
+
+py_test(
+    name = "test_bazel_sharding",
+    size = "small",
+    srcs = ["test_bazel_sharding.py"],
+    data = ["mock_BUILD"],
+    tags = [
+        "ci_unit",
+        "team:ci",
+    ],
+    deps = [
+        ":ray_ci_lib",
+        ci_require("pytest"),
+    ],
+)

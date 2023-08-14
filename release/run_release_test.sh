@@ -1,4 +1,5 @@
 #!/bin/bash
+# shellcheck disable=SC2317
 
 set -e
 
@@ -27,49 +28,30 @@ reason() {
 }
 
 RAY_TEST_SCRIPT=${RAY_TEST_SCRIPT-ray_release/scripts/run_release_test.py}
-RAY_TEST_REPO=${RAY_TEST_REPO-https://github.com/ray-project/ray.git}
-RAY_TEST_BRANCH=${RAY_TEST_BRANCH-master}
 RELEASE_RESULTS_DIR=${RELEASE_RESULTS_DIR-/tmp/artifacts}
+BUILDKITE_MAX_RETRIES=1
+BUILDKITE_RETRY_CODE=79
+BUILDKITE_TIME_LIMIT_FOR_RETRY=10800 # 3 hours
 
-# This is not a great idea if your OS is different to the one
-# used in the product clusters. However, we need this in CI as reloading
-# Ray within the python process does not work for protobuf changes.
-INSTALL_MATCHING_RAY=${BUILDKITE-false}
+export RAY_TEST_REPO RAY_TEST_BRANCH RELEASE_RESULTS_DIR BUILDKITE_MAX_RETRIES BUILDKITE_RETRY_CODE BUILDKITE_TIME_LIMIT_FOR_RETRY
 
-export RAY_TEST_REPO RAY_TEST_BRANCH RELEASE_RESULTS_DIR
-
-if [ -z "${NO_INSTALL}" ]; then
-  pip install --use-deprecated=legacy-resolver -q -r requirements.txt
-  pip install -q -U boto3 botocore
-
-  if [ "${INSTALL_MATCHING_RAY-false}" == "true" ]; then
-    # Find ray-wheels parameter and install locally
-    i=1
-    for arg in "$@"; do
-      j=$((i+1))
-      if [ "$arg" == "--ray-wheels" ]; then
-        PARSED_RAY_WHEELS="${!j}"
-      fi
-      i=$j
-    done
-
-    if [ -n "${PARSED_RAY_WHEELS}" ]; then
-      echo "Installing Ray wheels locally: ${PARSED_RAY_WHEELS}"
-      pip install -U --force-reinstall "${PARSED_RAY_WHEELS}"
-    else
-      echo "Warning: No Ray wheels found to install locally"
-    fi
+if [ -n "${RAY_COMMIT_OF_WHEEL-}" ]; then 
+  git config --global --add safe.directory /workdir
+  HEAD_COMMIT=$(git rev-parse HEAD)
+  HEAD_BRANCH=$(git rev-parse --abbrev-ref HEAD)
+  echo "The test repo has head commit of ${HEAD_COMMIT}"
+  if [[ "${HEAD_COMMIT}" != "${RAY_COMMIT_OF_WHEEL}" && ("${HEAD_BRANCH}" == "master" || "${HEAD_BRANCH}" = releases/*) ]]; then
+    echo "The checked out test code doesn't match with the installed wheel. \
+          This is likely due to a racing condition when a PR is landed between \
+          a wheel is installed and test code is checked out."
+    echo "Hard resetting from ${HEAD_COMMIT} to ${RAY_COMMIT_OF_WHEEL}."
+    git reset --hard "${RAY_COMMIT_OF_WHEEL}"
   fi
 fi
 
-if [ -z "${NO_CLONE}" ]; then
-  TMPDIR=$(mktemp -d -t release-XXXXXXXXXX)
-  echo "Cloning test repo ${RAY_TEST_REPO} branch ${RAY_TEST_BRANCH}"
-  git clone --depth 1 -b "${RAY_TEST_BRANCH}" "${RAY_TEST_REPO}" "${TMPDIR}"
-  pushd "${TMPDIR}/release" || true
-fi
-
 if [ -z "${NO_INSTALL}" ]; then
+  pip install --use-deprecated=legacy-resolver -q -r requirements.txt
+  pip install -q -U boto3 botocore bazel-runfiles
   pip install --use-deprecated=legacy-resolver -c requirements.txt -e .
 fi
 
@@ -100,7 +82,7 @@ while [ "$RETRY_NUM" -lt "$MAX_RETRIES" ]; do
   fi
 
   if [ -z "${NO_ARTIFACTS}" ]; then
-    sudo rm -rf "${RELEASE_RESULTS_DIR}"/* || true
+    rm -rf "${RELEASE_RESULTS_DIR:?}"/* || true
   fi
 
   _term() {
@@ -109,6 +91,7 @@ while [ "$RETRY_NUM" -lt "$MAX_RETRIES" ]; do
     wait "$proc"
   }
 
+  START=$(date +%s)
   set +e
 
   trap _term SIGINT SIGTERM
@@ -119,8 +102,10 @@ while [ "$RETRY_NUM" -lt "$MAX_RETRIES" ]; do
   EXIT_CODE=$?
 
   set -e
+  END=$(date +%s)
 
   REASON=$(reason "${EXIT_CODE}")
+  RUNTIME=$((END-START))
   ALL_EXIT_CODES[${#ALL_EXIT_CODES[@]}]=$EXIT_CODE
 
   case ${EXIT_CODE} in
@@ -140,8 +125,8 @@ while [ "$RETRY_NUM" -lt "$MAX_RETRIES" ]; do
 done
 
 if [ -z "${NO_ARTIFACTS}" ]; then
-  sudo rm -rf /tmp/ray_release_test_artifacts/* || true
-  sudo cp -rf "${RELEASE_RESULTS_DIR}"/* /tmp/ray_release_test_artifacts/ || true
+  rm -rf /tmp/ray_release_test_artifacts/* || true
+  cp -rf "${RELEASE_RESULTS_DIR}"/* /tmp/ray_release_test_artifacts/ || true
 fi
 
 echo "----------------------------------------"
@@ -158,7 +143,7 @@ done
 echo "----------------------------------------"
 
 REASON=$(reason "${EXIT_CODE}")
-echo "Final release test exit code is ${EXIT_CODE} (${REASON})"
+echo "Final release test exit code is ${EXIT_CODE} (${REASON}). Took ${RUNTIME}s"
 
 if [ "$EXIT_CODE" -eq 0 ]; then
   echo "RELEASE MANAGER: This test seems to have passed."
@@ -168,9 +153,8 @@ else
   echo "RELEASE MANAGER: This could be an error in the test. Please REVIEW THE LOGS and ping the test owner."
 fi
 
-if [ -z "${NO_CLONE}" ]; then
-  popd || true
-  rm -rf "${TMPDIR}" || true
+if [[ "$EXIT_CODE" -ne 0 && "$RUNTIME" -le "$BUILDKITE_TIME_LIMIT_FOR_RETRY" ]]; then
+  exit "$BUILDKITE_RETRY_CODE"
+else
+  exit "$EXIT_CODE"
 fi
-
-exit $EXIT_CODE

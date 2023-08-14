@@ -1,14 +1,16 @@
 import logging
-from typing import Dict, Optional, Union
+from typing import Dict, Optional, Union, TYPE_CHECKING
 
 import numpy as np
 import pickle
 
-from ray.tune.execution import trial_runner
 from ray.tune.result import DEFAULT_METRIC
 from ray.tune.schedulers.trial_scheduler import FIFOScheduler, TrialScheduler
 from ray.tune.experiment import Trial
 from ray.util import PublicAPI
+
+if TYPE_CHECKING:
+    from ray.tune.execution.tune_controller import TuneController
 
 logger = logging.getLogger(__name__)
 
@@ -65,7 +67,7 @@ class AsyncHyperBandScheduler(FIFOScheduler):
         if mode:
             assert mode in ["min", "max"], "`mode` must be 'min' or 'max'!"
 
-        FIFOScheduler.__init__(self)
+        super().__init__()
         self._reduction_factor = reduction_factor
         self._max_t = max_t
 
@@ -118,7 +120,7 @@ class AsyncHyperBandScheduler(FIFOScheduler):
 
         return True
 
-    def on_trial_add(self, trial_runner: "trial_runner.TrialRunner", trial: Trial):
+    def on_trial_add(self, tune_controller: "TuneController", trial: Trial):
         if not self._metric or not self._metric_op:
             raise ValueError(
                 "{} has been instantiated without a valid `metric` ({}) or "
@@ -136,7 +138,7 @@ class AsyncHyperBandScheduler(FIFOScheduler):
         self._trial_info[trial.trial_id] = self._brackets[idx]
 
     def on_trial_result(
-        self, trial_runner: "trial_runner.TrialRunner", trial: Trial, result: Dict
+        self, tune_controller: "TuneController", trial: Trial, result: Dict
     ) -> str:
         action = TrialScheduler.CONTINUE
         if self._time_attr not in result or self._metric not in result:
@@ -153,7 +155,7 @@ class AsyncHyperBandScheduler(FIFOScheduler):
         return action
 
     def on_trial_complete(
-        self, trial_runner: "trial_runner.TrialRunner", trial: Trial, result: Dict
+        self, tune_controller: "TuneController", trial: Trial, result: Dict
     ):
         if self._time_attr not in result or self._metric not in result:
             return
@@ -163,7 +165,7 @@ class AsyncHyperBandScheduler(FIFOScheduler):
         )
         del self._trial_info[trial.trial_id]
 
-    def on_trial_remove(self, trial_runner: "trial_runner.TrialRunner", trial: Trial):
+    def on_trial_remove(self, tune_controller: "TuneController", trial: Trial):
         del self._trial_info[trial.trial_id]
 
     def debug_string(self) -> str:

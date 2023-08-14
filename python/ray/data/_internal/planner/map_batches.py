@@ -1,46 +1,49 @@
-import sys
+import collections
+import itertools
 from types import GeneratorType
-from typing import Callable, Iterator, Optional
+from typing import Callable, Iterable, Iterator, Optional
 
 from ray.data._internal.block_batching import batch_blocks
 from ray.data._internal.execution.interfaces import TaskContext
+from ray.data._internal.numpy_support import is_valid_udf_return
 from ray.data._internal.output_buffer import BlockOutputBuffer
-from ray.data.block import BatchUDF, Block, DataBatch
-from ray.data.context import DEFAULT_BATCH_SIZE, DatasetContext
-
-
-if sys.version_info >= (3, 8):
-    from typing import Literal
-else:
-    from typing_extensions import Literal
+from ray.data._internal.util import _truncated_repr
+from ray.data.block import Block, BlockAccessor, DataBatch, UserDefinedFunction
+from ray.data.context import DEFAULT_BATCH_SIZE, DataContext
 
 
 def generate_map_batches_fn(
     batch_size: Optional[int] = DEFAULT_BATCH_SIZE,
-    batch_format: Literal["default", "pandas", "pyarrow", "numpy"] = "default",
-    prefetch_batches: int = 0,
+    batch_format: Optional[str] = "default",
     zero_copy_batch: bool = False,
-) -> Callable[[Iterator[Block], TaskContext, BatchUDF], Iterator[Block]]:
+) -> Callable[[Iterator[Block], TaskContext, UserDefinedFunction], Iterator[Block]]:
     """Generate function to apply the batch UDF to blocks."""
     import numpy as np
     import pandas as pd
     import pyarrow as pa
 
-    context = DatasetContext.get_current()
+    context = DataContext.get_current()
 
     def fn(
-        blocks: Iterator[Block],
-        ctx: TaskContext,
-        batch_fn: BatchUDF,
+        blocks: Iterable[Block],
+        task_context: TaskContext,
+        batch_fn: UserDefinedFunction,
         *fn_args,
         **fn_kwargs,
     ) -> Iterator[Block]:
-        DatasetContext._set_current(context)
+        DataContext._set_current(context)
         output_buffer = BlockOutputBuffer(None, context.target_max_block_size)
 
         def validate_batch(batch: Block) -> None:
             if not isinstance(
-                batch, (list, pa.Table, np.ndarray, dict, pd.core.frame.DataFrame)
+                batch,
+                (
+                    list,
+                    pa.Table,
+                    np.ndarray,
+                    collections.abc.Mapping,
+                    pd.core.frame.DataFrame,
+                ),
             ):
                 raise ValueError(
                     "The `fn` you passed to `map_batches` returned a value of type "
@@ -49,16 +52,26 @@ def generate_map_batches_fn(
                     "`numpy.ndarray`, `list`, or `dict[str, numpy.ndarray]`."
                 )
 
-            if isinstance(batch, dict):
-                for key, value in batch.items():
-                    if not isinstance(value, np.ndarray):
+            if isinstance(batch, list):
+                raise ValueError(
+                    f"Error validating {_truncated_repr(batch)}: "
+                    "Returning a list of objects from `map_batches` is not "
+                    "allowed in Ray 2.5. To return Python objects, "
+                    "wrap them in a named dict field, e.g., "
+                    "return `{'results': objects}` instead of just `objects`."
+                )
+
+            if isinstance(batch, collections.abc.Mapping):
+                for key, value in list(batch.items()):
+                    if not is_valid_udf_return(value):
                         raise ValueError(
+                            f"Error validating {_truncated_repr(batch)}: "
                             "The `fn` you passed to `map_batches` returned a "
                             f"`dict`. `map_batches` expects all `dict` values "
-                            f"to be of type `numpy.ndarray`, but the value "
+                            f"to be `list` or `np.ndarray` type, but the value "
                             f"corresponding to key {key!r} is of type "
                             f"{type(value)}. To fix this issue, convert "
-                            f"the {type(value)} to a `numpy.ndarray`."
+                            f"the {type(value)} to a `np.ndarray`."
                         )
 
         def process_next_batch(batch: DataBatch) -> Iterator[Block]:
@@ -93,6 +106,16 @@ def generate_map_batches_fn(
                 else:
                     raise e from None
 
+        try:
+            block_iter = iter(blocks)
+            first_block = next(block_iter)
+            blocks = itertools.chain([first_block], block_iter)
+            empty_block = BlockAccessor.for_block(first_block).builder().build()
+            # Don't hold the first block in memory, so we reset the reference.
+            first_block = None
+        except StopIteration:
+            first_block = None
+
         # Ensure that zero-copy batch views are copied so mutating UDFs don't error.
         formatted_batch_iter = batch_blocks(
             blocks=blocks,
@@ -100,15 +123,21 @@ def generate_map_batches_fn(
             batch_size=batch_size,
             batch_format=batch_format,
             ensure_copy=not zero_copy_batch and batch_size is not None,
-            prefetch_batches=prefetch_batches,
         )
 
+        has_batches = False
         for batch in formatted_batch_iter:
+            has_batches = True
             yield from process_next_batch(batch)
 
-        # Yield remainder block from output buffer.
-        output_buffer.finalize()
-        if output_buffer.has_next():
-            yield output_buffer.next()
+        if not has_batches:
+            # If the input blocks are all empty, then yield an empty block with same
+            # format as the input blocks.
+            yield empty_block
+        else:
+            # Yield remainder block from output buffer.
+            output_buffer.finalize()
+            if output_buffer.has_next():
+                yield output_buffer.next()
 
     return fn

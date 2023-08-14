@@ -1,7 +1,8 @@
 import inspect
-import json
 from typing import List
 from collections import OrderedDict
+
+from ray import cloudpickle
 
 from ray.serve.deployment import Deployment, schema_to_deployment
 from ray.serve.deployment_graph import RayServeDAGHandle
@@ -16,8 +17,7 @@ from ray.serve._private.deployment_method_executor_node import (
 from ray.serve._private.deployment_function_executor_node import (
     DeploymentFunctionExecutorNode,
 )
-from ray.serve._private.json_serde import DAGNodeEncoder
-from ray.serve.handle import RayServeDeploymentHandle
+from ray.serve.handle import RayServeHandle
 from ray.serve.schema import DeploymentSchema
 
 
@@ -66,32 +66,47 @@ def build(ray_dag_root_node: DAGNode, name: str = None) -> List[Deployment]:
             should be executable via `ray_dag_root_node.execute(user_input)`
             and should have `InputNode` in it.
         name: Application name,. If provided, formatting all the deployment name to
-            {name}_{deployment_name}
+            {name}_{deployment_name}, if not provided, the deployment name won't be
+            updated.
 
     Returns:
         deployments: All deployments needed for an e2e runnable serve pipeline,
             accessible via python .remote() call.
 
     Examples:
-        >>> with InputNode() as dag_input:
-        ...    m1 = Model.bind(1)
-        ...    m2 = Model.bind(2)
-        ...    m1_output = m1.forward.bind(dag_input[0])
-        ...    m2_output = m2.forward.bind(dag_input[1])
-        ...    ray_dag = ensemble.bind(m1_output, m2_output)
+
+        .. code-block:: python
+
+            with InputNode() as dag_input:
+                m1 = Model.bind(1)
+                m2 = Model.bind(2)
+                m1_output = m1.forward.bind(dag_input[0])
+                m2_output = m2.forward.bind(dag_input[1])
+                ray_dag = ensemble.bind(m1_output, m2_output)
 
         Assuming we have non-JSON serializable or inline defined class or
         function in local pipeline development.
 
-        >>> from ray.serve.api import build as build_app
-        >>> deployments = build_app(ray_dag) # it can be method node
-        >>> deployments = build_app(m1) # or just a regular node.
+        .. code-block:: python
+
+            from ray.serve.api import build as build_app
+            deployments = build_app(ray_dag) # it can be method node
+            deployments = build_app(m1) # or just a regular node.
     """
     with _DAGNodeNameGenerator() as node_name_generator:
         serve_root_dag = ray_dag_root_node.apply_recursive(
             lambda node: transform_ray_dag_to_serve_dag(node, node_name_generator, name)
         )
     deployments = extract_deployments_from_serve_dag(serve_root_dag)
+
+    # If the ingress deployment is a function and it is bound to other deployments,
+    # reject.
+    if isinstance(serve_root_dag, DeploymentFunctionNode) and len(deployments) != 1:
+        raise ValueError(
+            "The ingress deployment to your application cannot be a function if there "
+            "are multiple deployments. If you want to compose them, use a class. If "
+            "you're using the DAG API, the function should be bound to a DAGDriver."
+        )
 
     # After Ray DAG is transformed to Serve DAG with deployments and their init
     # args filled, generate a minimal weight executor serve dag for perf
@@ -157,8 +172,10 @@ def transform_ray_dag_to_serve_dag(
         # deployment handles (executable and picklable) in ray serve DAG to make
         # serve DAG end to end executable.
         def replace_with_handle(node):
-            if isinstance(node, DeploymentNode):
-                return RayServeDeploymentHandle(node._deployment.name)
+            if isinstance(node, DeploymentNode) or isinstance(
+                node, DeploymentFunctionNode
+            ):
+                return RayServeHandle(node._deployment.name)
             elif isinstance(node, DeploymentExecutorNode):
                 return node._deployment_handle
 
@@ -264,6 +281,16 @@ def transform_ray_dag_to_serve_dag(
                 dag_node._body.__annotations__["return"]
             )
 
+        # Set the deployment name if the user provides.
+        if "deployment_schema" in dag_node._bound_other_args_to_resolve:
+            schema = dag_node._bound_other_args_to_resolve["deployment_schema"]
+            if (
+                inspect.isfunction(dag_node._body)
+                and schema.name != dag_node._body.__name__
+            ):
+                deployment_name = schema.name
+
+        # Update the deployment name if the application name provided.
         if name:
             deployment_name = name + DEPLOYMENT_NAME_PREFIX_SEPARATOR + deployment_name
 
@@ -357,15 +384,13 @@ def generate_executor_dag_driver_deployment(
     def replace_with_handle(node):
         if isinstance(node, DeploymentExecutorNode):
             return node._deployment_handle
-        elif isinstance(
-            node,
-            (
-                DeploymentMethodExecutorNode,
-                DeploymentFunctionExecutorNode,
-            ),
-        ):
-            serve_dag_root_json = json.dumps(node, cls=DAGNodeEncoder)
-            return RayServeDAGHandle(serve_dag_root_json)
+        elif isinstance(node, DeploymentFunctionExecutorNode):
+            if len(node.get_args()) == 0 and len(node.get_kwargs()) == 0:
+                return node._deployment_function_handle
+            else:
+                return RayServeDAGHandle(cloudpickle.dumps(node))
+        elif isinstance(node, DeploymentMethodExecutorNode):
+            return RayServeDAGHandle(cloudpickle.dumps(node))
 
     (
         replaced_deployment_init_args,

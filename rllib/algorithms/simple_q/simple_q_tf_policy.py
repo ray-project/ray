@@ -3,7 +3,6 @@
 import logging
 from typing import Dict, List, Tuple, Type, Union
 
-import ray
 from ray.rllib.algorithms.simple_q.utils import make_q_models
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.tf.tf_action_dist import Categorical, TFActionDistribution
@@ -40,7 +39,7 @@ def get_simple_q_tf_policy(
         base: Base class for this policy. DynamicTFPolicyV2 or EagerTFPolicyV2.
 
     Returns:
-        A TF Policy to be used with MAMLTrainer.
+        A TF Policy to be used with MAML.
     """
 
     class SimpleQTFPolicy(LearningRateSchedule, TargetNetworkMixin, base):
@@ -54,12 +53,6 @@ def get_simple_q_tf_policy(
         ):
             # First thing first, enable eager execution if necessary.
             base.enable_eager_execution_if_necessary()
-
-            config = dict(
-                ray.rllib.algorithms.simple_q.simple_q.SimpleQConfig().to_dict(),
-                **config,
-            )
-
             # Initialize base class.
             base.__init__(
                 self,

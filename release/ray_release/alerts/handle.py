@@ -1,4 +1,4 @@
-from ray_release.config import Test
+from ray_release.test import Test
 from ray_release.exception import ReleaseTestConfigError, ResultsAlert
 from ray_release.logger import logger
 from ray_release.result import Result

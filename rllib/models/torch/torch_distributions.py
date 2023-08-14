@@ -5,14 +5,15 @@ already be familiar with.
 """
 import gymnasium as gym
 import numpy as np
-from typing import Optional
+from typing import Optional, List, Mapping, Iterable, Dict
+import tree
 import abc
 
 
 from ray.rllib.models.distributions import Distribution
 from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.typing import TensorType, Union, Tuple, ModelConfigDict
+from ray.rllib.utils.typing import TensorType, Union, Tuple
 
 torch, nn = try_import_torch()
 
@@ -28,7 +29,7 @@ class TorchDistribution(Distribution, abc.ABC):
     @abc.abstractmethod
     def _get_torch_distribution(
         self, *args, **kwargs
-    ) -> torch.distributions.Distribution:
+    ) -> "torch.distributions.Distribution":
         """Returns the torch.distributions.Distribution object to use."""
 
     @override(Distribution)
@@ -45,20 +46,20 @@ class TorchDistribution(Distribution, abc.ABC):
 
     @override(Distribution)
     def sample(
-        self, *, sample_shape=torch.Size(), return_logp: bool = False
+        self,
+        *,
+        sample_shape=torch.Size(),
     ) -> Union[TensorType, Tuple[TensorType, TensorType]]:
         sample = self._dist.sample(sample_shape)
-        if return_logp:
-            return sample, self.logp(sample)
         return sample
 
     @override(Distribution)
     def rsample(
-        self, *, sample_shape=torch.Size(), return_logp: bool = False
+        self,
+        *,
+        sample_shape=torch.Size(),
     ) -> Union[TensorType, Tuple[TensorType, TensorType]]:
         rsample = self._dist.rsample(sample_shape)
-        if return_logp:
-            return rsample, self.logp(rsample)
         return rsample
 
 
@@ -84,8 +85,8 @@ class TorchCategorical(TorchDistribution):
         tensor([3, 4])
 
     Args:
-        probs: The probablities of each event.
         logits: Event log probabilities (unnormalized)
+        probs: The probablities of each event.
         temperature: In case of using logits, this parameter can be used to determine
             the sharpness of the distribution. i.e.
             ``probs = softmax(logits / temperature)``. The temperature must be strictly
@@ -96,30 +97,52 @@ class TorchCategorical(TorchDistribution):
     @override(TorchDistribution)
     def __init__(
         self,
-        probs: torch.Tensor = None,
         logits: torch.Tensor = None,
-        temperature: float = 1.0,
+        probs: torch.Tensor = None,
     ) -> None:
-        super().__init__(probs=probs, logits=logits, temperature=temperature)
+        # We assert this here because to_deterministic makes this assumption.
+        assert (probs is None) != (
+            logits is None
+        ), "Exactly one out of `probs` and `logits` must be set!"
+
+        self.probs = probs
+        self.logits = logits
+        self.one_hot = torch.distributions.one_hot_categorical.OneHotCategorical(
+            logits=logits, probs=probs
+        )
+        super().__init__(logits=logits, probs=probs)
 
     @override(TorchDistribution)
     def _get_torch_distribution(
         self,
-        probs: torch.Tensor = None,
         logits: torch.Tensor = None,
-        temperature: float = 1.0,
-    ) -> torch.distributions.Distribution:
-        if logits is not None:
-            assert temperature > 0.0, "Categorical `temperature` must be > 0.0!"
-            logits /= temperature
-        return torch.distributions.categorical.Categorical(probs, logits)
+        probs: torch.Tensor = None,
+    ) -> "torch.distributions.Distribution":
+        return torch.distributions.categorical.Categorical(logits=logits, probs=probs)
 
     @staticmethod
     @override(Distribution)
-    def required_model_output_shape(
-        space: gym.Space, model_config: ModelConfigDict
-    ) -> Tuple[int, ...]:
-        return (space.n,)
+    def required_input_dim(space: gym.Space, **kwargs) -> int:
+        assert isinstance(space, gym.spaces.Discrete)
+        return int(space.n)
+
+    @override(Distribution)
+    def rsample(self, sample_shape=()):
+        one_hot_sample = self.one_hot.sample(sample_shape)
+        return (one_hot_sample - self.probs).detach() + self.probs
+
+    @classmethod
+    @override(Distribution)
+    def from_logits(cls, logits: TensorType, **kwargs) -> "TorchCategorical":
+        return TorchCategorical(logits=logits, **kwargs)
+
+    def to_deterministic(self) -> "TorchDeterministic":
+        if self.probs is not None:
+            probs_or_logits = self.probs
+        else:
+            probs_or_logits = self.logits
+
+        return TorchDeterministic(loc=torch.argmax(probs_or_logits, dim=-1))
 
 
 @DeveloperAPI
@@ -152,16 +175,12 @@ class TorchDiagGaussian(TorchDistribution):
     def __init__(
         self,
         loc: Union[float, torch.Tensor],
-        scale: Optional[Union[float, torch.Tensor]] = None,
+        scale: Optional[Union[float, torch.Tensor]],
     ):
+        self.loc = loc
         super().__init__(loc=loc, scale=scale)
 
-    def _get_torch_distribution(
-        self, loc, scale=None
-    ) -> torch.distributions.Distribution:
-        if scale is None:
-            loc, log_std = torch.chunk(self.inputs, 2, dim=1)
-            scale = torch.exp(log_std)
+    def _get_torch_distribution(self, loc, scale) -> "torch.distributions.Distribution":
         return torch.distributions.normal.Normal(loc, scale)
 
     @override(TorchDistribution)
@@ -178,10 +197,19 @@ class TorchDiagGaussian(TorchDistribution):
 
     @staticmethod
     @override(Distribution)
-    def required_model_output_shape(
-        space: gym.Space, model_config: ModelConfigDict
-    ) -> Tuple[int, ...]:
-        return tuple(np.prod(space.shape, dtype=np.int32) * 2)
+    def required_input_dim(space: gym.Space, **kwargs) -> int:
+        assert isinstance(space, gym.spaces.Box)
+        return int(np.prod(space.shape, dtype=np.int32) * 2)
+
+    @classmethod
+    @override(Distribution)
+    def from_logits(cls, logits: TensorType, **kwargs) -> "TorchDiagGaussian":
+        loc, log_std = logits.chunk(2, dim=-1)
+        scale = log_std.exp()
+        return TorchDiagGaussian(loc=loc, scale=scale)
+
+    def to_deterministic(self) -> "TorchDeterministic":
+        return TorchDeterministic(loc=self.loc)
 
 
 @DeveloperAPI
@@ -212,16 +240,9 @@ class TorchDeterministic(Distribution):
     def sample(
         self,
         *,
-        sample_shape: Tuple[int, ...] = None,
-        return_logp: bool = False,
+        sample_shape: Tuple[int, ...] = torch.Size(),
         **kwargs,
     ) -> Union[TensorType, Tuple[TensorType, TensorType]]:
-        if return_logp:
-            raise ValueError(f"Cannot return logp for {self.__class__.__name__}.")
-
-        if sample_shape is None:
-            sample_shape = torch.Size()
-
         device = self.loc.device
         dtype = self.loc.dtype
         shape = sample_shape + self.loc.shape
@@ -231,7 +252,6 @@ class TorchDeterministic(Distribution):
         self,
         *,
         sample_shape: Tuple[int, ...] = None,
-        return_logp: bool = False,
         **kwargs,
     ) -> Union[TensorType, Tuple[TensorType, TensorType]]:
         raise NotImplementedError
@@ -250,8 +270,276 @@ class TorchDeterministic(Distribution):
 
     @staticmethod
     @override(Distribution)
-    def required_model_output_shape(
-        space: gym.Space, model_config: ModelConfigDict
-    ) -> Tuple[int, ...]:
-        # TODO: This was copied from previous code. Is this correct? add unit test.
-        return tuple(np.prod(space.shape, dtype=np.int32))
+    def required_input_dim(space: gym.Space, **kwargs) -> int:
+        assert isinstance(space, gym.spaces.Box)
+        return int(np.prod(space.shape, dtype=np.int32))
+
+    @classmethod
+    @override(Distribution)
+    def from_logits(cls, logits: TensorType, **kwargs) -> "TorchDeterministic":
+        return TorchDeterministic(loc=logits)
+
+    def to_deterministic(self) -> "TorchDeterministic":
+        return self
+
+
+@DeveloperAPI
+class TorchMultiCategorical(Distribution):
+    """MultiCategorical distribution for MultiDiscrete action spaces."""
+
+    @override(Distribution)
+    def __init__(
+        self,
+        categoricals: List[TorchCategorical],
+    ):
+        super().__init__()
+        self._cats = categoricals
+
+    @override(Distribution)
+    def sample(self) -> TensorType:
+        arr = [cat.sample() for cat in self._cats]
+        sample_ = torch.stack(arr, dim=1)
+        return sample_
+
+    @override(Distribution)
+    def rsample(self, sample_shape=()):
+        arr = [cat.rsample() for cat in self._cats]
+        sample_ = torch.stack(arr, dim=1)
+        return sample_
+
+    @override(Distribution)
+    def logp(self, value: torch.Tensor) -> TensorType:
+        value = torch.unbind(value, dim=1)
+        logps = torch.stack([cat.logp(act) for cat, act in zip(self._cats, value)])
+        return torch.sum(logps, dim=0)
+
+    @override(Distribution)
+    def entropy(self) -> TensorType:
+        return torch.sum(
+            torch.stack([cat.entropy() for cat in self._cats], dim=1), dim=1
+        )
+
+    @override(Distribution)
+    def kl(self, other: Distribution) -> TensorType:
+        kls = torch.stack(
+            [
+                torch.distributions.kl.kl_divergence(cat, oth_cat)
+                for cat, oth_cat in zip(self._cats, other.cats)
+            ],
+            dim=1,
+        )
+        return torch.sum(kls, dim=1)
+
+    @staticmethod
+    @override(Distribution)
+    def required_input_dim(space: gym.Space, **kwargs) -> int:
+        assert isinstance(space, gym.spaces.MultiDiscrete)
+        return int(np.sum(space.nvec))
+
+    @classmethod
+    @override(Distribution)
+    def from_logits(
+        cls,
+        logits: torch.Tensor,
+        input_lens: List[int],
+        temperatures: List[float] = None,
+        **kwargs,
+    ) -> "TorchMultiCategorical":
+        """Creates this Distribution from logits (and additional arguments).
+
+        If you wish to create this distribution from logits only, please refer to
+        `Distribution.get_partial_dist_cls()`.
+
+        Args:
+            logits: The tensor containing logits to be separated by logit_lens.
+                child_distribution_cls_struct: A struct of Distribution classes that can
+                be instantiated from the given logits.
+            input_lens: A list of integers that indicate the length of the logits
+                vectors to be passed into each child distribution.
+            temperatures: A list of floats representing the temperature to use for
+                each Categorical distribution. If not provided, 1.0 is used for all.
+            **kwargs: Forward compatibility kwargs.
+        """
+        if not temperatures:
+            # If temperatures are not provided, use 1.0 for all actions.
+            temperatures = [1.0] * len(input_lens)
+
+        assert (
+            sum(input_lens) == logits.shape[1]
+        ), "input_lens must sum to logits.shape[1]"
+        assert len(input_lens) == len(
+            temperatures
+        ), "input_lens and temperatures must be same length"
+
+        categoricals = [
+            TorchCategorical(logits=logits)
+            for logits in torch.split(logits, input_lens, dim=1)
+        ]
+
+        return TorchMultiCategorical(categoricals=categoricals)
+
+    def to_deterministic(self) -> "TorchMultiDistribution":
+        return TorchMultiDistribution([cat.to_deterministic() for cat in self._cats])
+
+
+@DeveloperAPI
+class TorchMultiDistribution(Distribution):
+    """Action distribution that operates on multiple, possibly nested actions."""
+
+    def __init__(
+        self,
+        child_distribution_struct: Union[Tuple, List, Dict],
+    ):
+        """Initializes a TorchMultiActionDistribution object.
+
+        Args:
+            child_distribution_struct: Any struct
+                that contains the child distribution classes to use to
+                instantiate the child distributions from `logits`.
+        """
+        super().__init__()
+        self._original_struct = child_distribution_struct
+        self._flat_child_distributions = tree.flatten(child_distribution_struct)
+
+    @override(Distribution)
+    def rsample(
+        self,
+        *,
+        sample_shape: Tuple[int, ...] = None,
+        **kwargs,
+    ) -> Union[TensorType, Tuple[TensorType, TensorType]]:
+        rsamples = []
+        for dist in self._flat_child_distributions:
+            rsample = dist.rsample(sample_shape=sample_shape, **kwargs)
+            rsamples.append(rsample)
+
+        rsamples = tree.unflatten_as(self._original_struct, rsamples)
+
+        return rsamples
+
+    @override(Distribution)
+    def logp(self, value: TensorType) -> TensorType:
+        # Different places in RLlib use this method with different inputs.
+        # We therefore need to handle a flattened and concatenated input, as well as
+        # a nested one.
+        # TODO(Artur): Deprecate tensor inputs, only allow nested structures.
+        if isinstance(value, torch.Tensor):
+            split_indices = []
+            for dist in self._flat_child_distributions:
+                if isinstance(dist, TorchCategorical):
+                    split_indices.append(1)
+                elif (
+                    isinstance(dist, TorchMultiCategorical)
+                    and dist.action_space is not None
+                ):
+                    split_indices.append(int(np.prod(dist.action_space.shape)))
+                else:
+                    sample = dist.sample()
+                    # Cover Box(shape=()) case.
+                    if len(sample.shape) == 1:
+                        split_indices.append(1)
+                    else:
+                        split_indices.append(sample.size()[1])
+            split_value = list(torch.split(value, split_indices, dim=1))
+        else:
+            split_value = tree.flatten(value)
+
+        def map_(val, dist):
+            # Remove extra dimension if present.
+            if (
+                isinstance(dist, TorchCategorical)
+                and val.shape[-1] == 1
+                and len(val.shape) > 1
+            ):
+                val = torch.squeeze(val, dim=-1)
+            return dist.logp(val)
+
+        flat_logps = tree.map_structure(
+            map_, split_value, self._flat_child_distributions
+        )
+
+        return sum(flat_logps)
+
+    @override(Distribution)
+    def kl(self, other: Distribution) -> TensorType:
+        kl_list = [
+            d.kl(o)
+            for d, o in zip(
+                self._flat_child_distributions, other._flat_child_distributions
+            )
+        ]
+        return sum(kl_list)
+
+    @override(Distribution)
+    def entropy(self):
+        entropy_list = [d.entropy() for d in self._flat_child_distributions]
+        return sum(entropy_list)
+
+    @override(Distribution)
+    def sample(self):
+        child_distributions_struct = tree.unflatten_as(
+            self._original_struct, self._flat_child_distributions
+        )
+        return tree.map_structure(lambda s: s.sample(), child_distributions_struct)
+
+    @staticmethod
+    @override(Distribution)
+    def required_input_dim(space: gym.Space, input_lens: List[int], **kwargs) -> int:
+        return sum(input_lens)
+
+    @classmethod
+    @override(Distribution)
+    def from_logits(
+        cls,
+        logits: torch.Tensor,
+        child_distribution_cls_struct: Union[Mapping, Iterable],
+        input_lens: Union[Dict, List[int]],
+        space: gym.Space,
+        **kwargs,
+    ) -> "TorchMultiDistribution":
+        """Creates this Distribution from logits (and additional arguments).
+
+        If you wish to create this distribution from logits only, please refer to
+        `Distribution.get_partial_dist_cls()`.
+
+        Args:
+            logits: The tensor containing logits to be separated by `input_lens`.
+                child_distribution_cls_struct: A struct of Distribution classes that can
+                be instantiated from the given logits.
+            child_distribution_cls_struct: A struct of Distribution classes that can
+                be instantiated from the given logits.
+            input_lens: A list or dict of integers that indicate the length of each
+                logit. If this is given as a dict, the structure should match the
+                structure of child_distribution_cls_struct.
+            space: The possibly nested output space.
+            **kwargs: Forward compatibility kwargs.
+
+        Returns:
+            A TorchMultiActionDistribution object.
+        """
+        logit_lens = tree.flatten(input_lens)
+        child_distribution_cls_list = tree.flatten(child_distribution_cls_struct)
+        split_logits = torch.split(logits, logit_lens, dim=1)
+
+        child_distribution_list = tree.map_structure(
+            lambda dist, input_: dist.from_logits(input_),
+            child_distribution_cls_list,
+            list(split_logits),
+        )
+
+        child_distribution_struct = tree.unflatten_as(
+            child_distribution_cls_struct, child_distribution_list
+        )
+
+        return TorchMultiDistribution(
+            child_distribution_struct=child_distribution_struct,
+        )
+
+    def to_deterministic(self) -> "TorchMultiDistribution":
+        flat_deterministic_dists = [
+            dist.to_deterministic for dist in self._flat_child_distributions
+        ]
+        deterministic_dists = tree.unflatten_as(
+            self._original_struct, flat_deterministic_dists
+        )
+        return TorchMultiDistribution(deterministic_dists)

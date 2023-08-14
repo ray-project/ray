@@ -2,7 +2,7 @@
 
 .. include:: /_includes/rllib/we_are_hiring.rst
 
-Connectors (Alpha)
+Connectors (Beta)
 ==================
 
 Connector are components that handle transformations on inputs and outputs of a given RL policy, with the goal of improving
@@ -152,62 +152,66 @@ Lambda Connector helps turn simple transformation functions into agent or action
 connectors without having users worry about the high-level list or non-list APIs.
 Lambda Connector has separate agent and action versions, for example:
 
-.. tabbed:: Lambda Agent Connector
+.. tab-set::
 
-    .. code-block:: python
+    .. tab-item:: Lambda Agent Connector
 
-        # An example agent connector that filters INFOS column out of
-        # observation data.
-        def filter(d: ActionConnectorDataType):
-            del d.data[SampleBatch.INFOS]
-            return d
+        .. code-block:: python
 
-        FilterInfosColumnAgentConnector = register_lambda_agent_connector(
-            "FilterInfosColumnAgentConnector", filter
-        )
+            # An example agent connector that filters INFOS column out of
+            # observation data.
+            def filter(d: ActionConnectorDataType):
+                del d.data[SampleBatch.INFOS]
+                return d
 
-.. tabbed:: Lambda Action Connector
+            FilterInfosColumnAgentConnector = register_lambda_agent_connector(
+                "FilterInfosColumnAgentConnector", filter
+            )
 
-    .. code-block:: python
+    .. tab-item:: Lambda Action Connector
 
-        # An example action connector that scales actions output by the
-        # policy by a factor of 2.
-        ScaleActionConnector = register_lambda_action_connector(
-            "ScaleActionConnector",
-            lambda actions, states, fetches: 2 * actions, states, fetches
-        )
+        .. code-block:: python
+
+            # An example action connector that scales actions output by the
+            # policy by a factor of 2.
+            ScaleActionConnector = register_lambda_action_connector(
+                "ScaleActionConnector",
+                lambda actions, states, fetches: 2 * actions, states, fetches
+            )
 
 Multiple connectors can be composed into a ``ConnectorPipeline``, which handles
 proper running of all children connectors in sequence and provides basic operations to modify and update the composition of connectors.
 
 ``ConnectorPipeline`` also has agent and action versions:
 
-.. tabbed:: AgentConnectorPipeline
+.. tab-set::
 
-    .. code-block:: python
+    .. tab-item:: AgentConnectorPipeline
 
-        # Example construction of an AgentConnectorPipeline.
-        pipeline = ActionConnectorPipeline(
-            ctx,
-            [ClipRewardAgentConnector(), ViewRequirementAgentConnector()]
-        )
+        .. code-block:: python
 
-        # For demonstration purpose, we will add an ObsPreprocessorConnector
-        # in front of the ViewRequirementAgentConnector.
-        pipeline.insert_before("ViewRequirementAgentConnector", ObsPreprocessorConnector())
+            # Example construction of an AgentConnectorPipeline.
+            pipeline = ActionConnectorPipeline(
+                ctx,
+                [ClipRewardAgentConnector(), ViewRequirementAgentConnector()]
+            )
 
-.. tabbed:: Action Lambda Connector
+            # For demonstration purpose, we will add an ObsPreprocessorConnector
+            # in front of the ViewRequirementAgentConnector.
+            pipeline.insert_before("ViewRequirementAgentConnector", ObsPreprocessorConnector())
 
-    .. code-block:: python
+    .. tab-item:: Action Lambda Connector
 
-        # Example construction of an ActionConnectorPipeline.
-        pipeline = ActionConnectorPipeline(
-            ctx,
-            [ConvertToNumpyConnector(), ClipActionsConnector(), ImmutableActionsConnector()]
-        )
+        .. code-block:: python
 
-        # For demonstration purpose, we will drop the last ImmutableActionsConnector here.
-        pipeline.remove("ImmutableActionsConnector")
+            # Example construction of an ActionConnectorPipeline.
+            pipeline = ActionConnectorPipeline(
+                ctx,
+                [ConvertToNumpyConnector(), ClipActionsConnector(), ImmutableActionsConnector()]
+            )
+
+            # For demonstration purpose, we will drop the last ImmutableActionsConnector here.
+            pipeline.remove("ImmutableActionsConnector")
 
 
 
@@ -255,14 +259,6 @@ for a new mock Cartpole environment that returns additional features and require
    :language: python
    :start-after: __sphinx_doc_begin__
    :end-before: __sphinx_doc_end__
-
-
-End-to-end Example
-------------------
-
-TODO: End-to-end case study: adapting an old policy to bootstrap the training of new LSTM policies,
-then serve the newly trained policy in a server/client setup.
-
 
 Notable TODOs
 -------------

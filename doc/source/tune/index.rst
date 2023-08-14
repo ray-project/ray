@@ -11,52 +11,82 @@ Ray Tune: Hyperparameter Tuning
 
 Tune is a Python library for experiment execution and hyperparameter tuning at any scale.
 You can tune your favorite machine learning framework (:ref:`PyTorch <tune-pytorch-cifar-ref>`, :ref:`XGBoost <tune-xgboost-ref>`, :doc:`Scikit-Learn <examples/tune-sklearn>`, :doc:`TensorFlow and Keras <examples/tune_mnist_keras>`, and :doc:`more <examples/index>`) by running state of the art algorithms such as :ref:`Population Based Training (PBT) <tune-scheduler-pbt>` and :ref:`HyperBand/ASHA <tune-scheduler-hyperband>`.
-Tune further integrates with a wide range of additional hyperparameter optimization tools, including :doc:`Ax <examples/ax_example>`, :doc:`BayesOpt <examples/bayesopt_example>`, :doc:`BOHB <examples/bohb_example>`, :doc:`Dragonfly <examples/dragonfly_example>`, :doc:`FLAML <examples/flaml_example>`, :doc:`HEBO <examples/hebo_example>`, :doc:`Hyperopt <examples/hyperopt_example>`, :doc:`Nevergrad <examples/nevergrad_example>`, :doc:`Optuna <examples/optuna_example>`, :doc:`SigOpt <examples/sigopt_example>`, :doc:`skopt <examples/skopt_example>`, and :doc:`ZOOpt <examples/zoopt_example>`.
+Tune further integrates with a wide range of additional hyperparameter optimization tools, including :doc:`Ax <examples/ax_example>`, :doc:`BayesOpt <examples/bayesopt_example>`, :doc:`BOHB <examples/bohb_example>`, :doc:`Dragonfly <examples/dragonfly_example>`, :doc:`FLAML <examples/flaml_example>`, :doc:`Hyperopt <examples/hyperopt_example>`, :doc:`Nevergrad <examples/nevergrad_example>`, :doc:`Optuna <examples/optuna_example>` and :doc:`SigOpt <examples/sigopt_example>`.
 
 **Click on the following tabs to see code examples for various machine learning frameworks**:
 
-.. tabbed:: Quickstart
+.. tab-set::
 
-    To run this example, install the following: ``pip install "ray[tune]"``.
+    .. tab-item:: Quickstart
 
-    In this quick-start example you `minimize` a simple function of the form ``f(x) = a**2 + b``, our `objective` function.
-    The closer ``a`` is to zero and the smaller ``b`` is, the smaller the total value of ``f(x)``.
-    We will define a so-called `search space` for  ``a`` and ``b`` and let Ray Tune explore the space for good values.
+        To run this example, install the following: ``pip install "ray[tune]"``.
 
-    .. literalinclude:: ../../../python/ray/tune/tests/example.py
-       :language: python
-       :start-after: __quick_start_begin__
-       :end-before: __quick_start_end__
+        In this quick-start example you `minimize` a simple function of the form ``f(x) = a**2 + b``, our `objective` function.
+        The closer ``a`` is to zero and the smaller ``b`` is, the smaller the total value of ``f(x)``.
+        We will define a so-called `search space` for  ``a`` and ``b`` and let Ray Tune explore the space for good values.
 
-.. tabbed:: Keras+Hyperopt
+        .. callout::
 
-    To tune your Keras models with Hyperopt, you wrap your model in an objective function whose ``config`` you
-    can access for selecting hyperparameters.
-    In the example below we only tune the ``activation`` parameter of the first layer of the model, but you can
-    tune any parameter of the model you want.
-    After defining the search space, you can simply initialize the ``HyperOptSearch`` object and pass it to ``run``.
-    It's important to tell Ray Tune which metric you want to optimize and whether you want to maximize or minimize it.
+            .. literalinclude:: ../../../python/ray/tune/tests/example.py
+               :language: python
+               :start-after: __quick_start_begin__
+               :end-before: __quick_start_end__
 
-    .. literalinclude:: doc_code/keras_hyperopt.py
-        :language: python
-        :start-after: __keras_hyperopt_start__
-        :end-before: __keras_hyperopt_end__
+            .. annotations::
+                <1> Define an objective function.
 
-.. tabbed:: PyTorch+Optuna
+                <2> Define a search space.
 
-    To tune your PyTorch models with Optuna, you wrap your model in an objective function whose ``config`` you
-    can access for selecting hyperparameters.
-    In the example below we only tune the ``momentum`` and learning rate (``lr``) parameters of the model's optimizer,
-    but you can tune any other model parameter you want.
-    After defining the search space, you can simply initialize the ``OptunaSearch`` object and pass it to ``run``.
-    It's important to tell Ray Tune which metric you want to optimize and whether you want to maximize or minimize it.
-    We stop tuning this training run after ``5`` iterations, but you can easily define other stopping rules as well.
+                <3> Start a Tune run and print the best result.
 
-    .. literalinclude:: doc_code/pytorch_optuna.py
-        :language: python
-        :start-after: __pytorch_optuna_start__
-        :end-before: __pytorch_optuna_end__
 
+    .. tab-item:: Keras+Hyperopt
+
+        To tune your Keras models with Hyperopt, you wrap your model in an objective function whose ``config`` you
+        can access for selecting hyperparameters.
+        In the example below we only tune the ``activation`` parameter of the first layer of the model, but you can
+        tune any parameter of the model you want.
+        After defining the search space, you can simply initialize the ``HyperOptSearch`` object and pass it to ``run``.
+        It's important to tell Ray Tune which metric you want to optimize and whether you want to maximize or minimize it.
+
+        .. callout::
+
+            .. literalinclude:: doc_code/keras_hyperopt.py
+                :language: python
+                :start-after: __keras_hyperopt_start__
+                :end-before: __keras_hyperopt_end__
+
+            .. annotations::
+                <1> Wrap a Keras model in an objective function.
+
+                <2> Define a search space and initialize the search algorithm.
+
+                <3> Start a Tune run that maximizes accuracy.
+
+    .. tab-item:: PyTorch+Optuna
+
+        To tune your PyTorch models with Optuna, you wrap your model in an objective function whose ``config`` you
+        can access for selecting hyperparameters.
+        In the example below we only tune the ``momentum`` and learning rate (``lr``) parameters of the model's optimizer,
+        but you can tune any other model parameter you want.
+        After defining the search space, you can simply initialize the ``OptunaSearch`` object and pass it to ``run``.
+        It's important to tell Ray Tune which metric you want to optimize and whether you want to maximize or minimize it.
+        We stop tuning this training run after ``5`` iterations, but you can easily define other stopping rules as well.
+
+
+        .. callout::
+
+            .. literalinclude:: doc_code/pytorch_optuna.py
+                :language: python
+                :start-after: __pytorch_optuna_start__
+                :end-before: __pytorch_optuna_end__
+
+            .. annotations::
+                <1> Wrap a PyTorch model in an objective function.
+
+                <2> Define a search space and initialize the search algorithm.
+
+                <3> Start a Tune run that maximizes mean accuracy and stops after 5 iterations.
 
 With Tune you can also launch a multi-node :ref:`distributed hyperparameter sweep <tune-distributed-ref>`
 in less than 10 lines of code.
@@ -65,87 +95,105 @@ And you can move your models from training to serving on the same infrastructure
 .. _`Ray Serve`: ../serve/index.html
 
 
-.. panels::
-    :container: text-center
-    :column: col-md-4 px-2 py-2
-    :card:
+.. grid:: 1 2 3 4
+    :gutter: 1
+    :class-container: container pb-3
 
-    **Getting Started**
-    ^^^
+    .. grid-item-card::
 
-    In our getting started tutorial you will learn how to tune a PyTorch model
-    effectively with Tune.
+        **Getting Started**
+        ^^^
 
-    +++
-    .. link-button:: tune-tutorial
-        :type: ref
-        :text: Get Started with Tune
-        :classes: btn-outline-info btn-block
-    ---
+        In our getting started tutorial you will learn how to tune a PyTorch model
+        effectively with Tune.
 
-    **Key Concepts**
-    ^^^
+        +++
+        .. button-ref:: tune-tutorial
+            :color: primary
+            :outline:
+            :expand:
 
-    Understand the key concepts behind Ray Tune.
-    Learn about tune runs, search algorithms, schedulers and other features.
+            Get Started with Tune
 
-    +++
-    .. link-button:: tune-60-seconds
-        :type: ref
-        :text: Tune's Key Concepts
-        :classes: btn-outline-info btn-block
-    ---
+    .. grid-item-card::
 
-    **User Guides**
-    ^^^
+        **Key Concepts**
+        ^^^
 
-    Our guides teach you about key features of Tune,
-    such as distributed training or early stopping.
+        Understand the key concepts behind Ray Tune.
+        Learn about tune runs, search algorithms, schedulers and other features.
+
+        +++
+        .. button-ref:: tune-60-seconds
+            :color: primary
+            :outline:
+            :expand:
+
+            Tune's Key Concepts
+
+    .. grid-item-card::
+
+        **User Guides**
+        ^^^
+
+        Our guides teach you about key features of Tune,
+        such as distributed training or early stopping.
 
 
-    +++
-    .. link-button:: tune-guides
-        :type: ref
-        :text: Learn How To Use Tune
-        :classes: btn-outline-info btn-block
-    ---
+        +++
+        .. button-ref:: tune-guides
+            :color: primary
+            :outline:
+            :expand:
 
-    **Examples**
-    ^^^
+            Learn How To Use Tune
 
-    In our examples you can find practical tutorials for using frameworks such as
-    scikit-learn, Keras, TensorFlow, PyTorch, and mlflow, and state of the art search algorithm integrations.
+    .. grid-item-card::
 
-    +++
-    .. link-button:: tune-examples-ref
-        :type: ref
-        :text: Ray Tune Examples
-        :classes: btn-outline-info btn-block
-    ---
+        **Examples**
+        ^^^
 
-    **Ray Tune FAQ**
-    ^^^
+        In our examples you can find practical tutorials for using frameworks such as
+        scikit-learn, Keras, TensorFlow, PyTorch, and mlflow, and state of the art search algorithm integrations.
 
-    Find answers to commonly asked questions in our detailed FAQ.
+        +++
+        .. button-ref::  tune-examples-ref
+            :color: primary
+            :outline:
+            :expand:
 
-    +++
-    .. link-button:: tune-faq
-        :type: ref
-        :text: Ray Tune FAQ
-        :classes: btn-outline-info btn-block
-    ---
+            Ray Tune Examples
 
-    **Ray Tune API**
-    ^^^
+    .. grid-item-card::
 
-    Get more in-depth information about the Ray Tune API, including all about search spaces,
-    algorithms and training configurations.
+        **Ray Tune FAQ**
+        ^^^
 
-    +++
-    .. link-button:: tune-api-ref
-        :type: ref
-        :text: Read the API Reference
-        :classes: btn-outline-info btn-block
+        Find answers to commonly asked questions in our detailed FAQ.
+
+        +++
+        .. button-ref:: tune-faq
+            :color: primary
+            :outline:
+            :expand:
+
+            Ray Tune FAQ
+
+    .. grid-item-card::
+
+        **Ray Tune API**
+        ^^^
+
+        Get more in-depth information about the Ray Tune API, including all about search spaces,
+        algorithms and training configurations.
+
+        +++
+        .. button-ref:: tune-api-ref
+            :color: primary
+            :outline:
+            :expand:
+
+            Read the API Reference
 
 
 Why choose Tune?

@@ -66,14 +66,14 @@ def train_func(use_ray: bool, config: dict):
         )
 
     if use_ray:
-        from ray.air.integrations.keras import Callback as TrainCheckpointReportCallback
+        from ray.air.integrations.keras import ReportCheckpointCallback
 
-        class CustomReportCallback(TrainCheckpointReportCallback):
+        class CustomReportCallback(ReportCheckpointCallback):
             def _handle(self, logs: dict, when: str = None):
                 logs["local_time_taken"] = time.monotonic() - local_start_time
                 super()._handle(logs, when)
 
-        callbacks = [CustomReportCallback(frequency=0)]
+        callbacks = [CustomReportCallback(checkpoint_on="test_end")]
     else:
         callbacks = []
 
@@ -107,7 +107,7 @@ def train_tf_ray_air(
     # This function is kicked off by the main() function and runs a full training
     # run using Ray AIR.
     from ray.train.tensorflow import TensorflowTrainer
-    from ray.air.config import ScalingConfig
+    from ray.train import ScalingConfig
 
     def train_loop(config):
         train_func(use_ray=True, config=config)

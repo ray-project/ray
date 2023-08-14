@@ -1,4 +1,5 @@
 import {
+  Box,
   Button,
   ButtonGroup,
   Grid,
@@ -10,6 +11,7 @@ import {
   TableContainer,
   TableHead,
   TableRow,
+  Typography,
 } from "@material-ui/core";
 import { makeStyles } from "@material-ui/core/styles";
 import Pagination from "@material-ui/lab/Pagination";
@@ -21,6 +23,7 @@ import { SearchInput, SearchSelect } from "../../components/SearchComponent";
 import StateCounter from "../../components/StatesCounter";
 import { StatusChip } from "../../components/StatusChip";
 import TitleCard from "../../components/TitleCard";
+import { HelpInfo } from "../../components/Tooltip";
 import { NodeDetail } from "../../type/node";
 import { memoryConverter } from "../../util/converter";
 import { MainNavPageInfo } from "../layout/mainNavContext";
@@ -33,23 +36,87 @@ const useStyles = makeStyles((theme) => ({
     width: "100%",
     position: "relative",
   },
+  helpInfo: {
+    marginLeft: theme.spacing(1),
+  },
 }));
 
+const codeTextStyle = {
+  fontFamily: "Roboto Mono, monospace",
+};
 const columns = [
-  "", // Expand button
-  "Host / Cmd Line",
-  "State",
-  "ID",
-  "IP / PID",
-  "Actions",
-  "CPU Usage",
-  "Memory",
-  "GPU",
-  "GRAM",
-  "Object Store Memory",
-  "Disk(root)",
-  "Sent",
-  "Received",
+  { label: "" }, // Expand button
+  { label: "Host / Worker Process name" },
+  { label: "State" },
+  { label: "ID" },
+  { label: "IP / PID" },
+  { label: "Actions" },
+  {
+    label: "CPU",
+    helpInfo: (
+      <Typography>
+        Hardware CPU usage of a Node or a Worker Process.
+        <br />
+        <br />
+        Node’s CPU usage is calculated against all CPU cores. Worker Process’s
+        CPU usage is calculated against 1 CPU core. As a result, the sum of CPU
+        usage from all Worker Processes is not equal to the Node’s CPU usage.
+      </Typography>
+    ),
+  },
+  {
+    label: "Memory",
+    helpInfo: (
+      <Typography>
+        A Node or a Worker Process's RAM usage. <br />
+        <br />
+        For a Node, Object Store holds up to 30% of RAM by default or a custom
+        value configured by users.
+        <br />
+        <br />
+        RAM is not pre-allocated for Object Store. Once memory is used by and
+        allocated to Object Store, it will hold and not release it until the Ray
+        Cluster is terminated.
+      </Typography>
+    ),
+  },
+  {
+    label: "GPU",
+    helpInfo: (
+      <Typography>
+        Usage of each GPU device. If no GPU usage is detected, here are the
+        potential root causes: <br />
+        1. library gpustsat is not installed. Install gpustat and try again.
+        <br /> 2. non-GPU Ray image is used on this node. Switch to a GPU Ray
+        image and try again. <br />
+        3. AMD GPUs are being used. AMD GPUs are not currently supported by
+        gpustat module. <br />
+        4. gpustat module raises an exception.
+      </Typography>
+    ),
+  },
+  { label: "GRAM" },
+  { label: "Object Store Memory" },
+  {
+    label: "Disk(root)",
+    helpInfo:
+      "For Ray Clusters on Kubernetes, multiple Ray Nodes/Pods may share the same Kubernetes Node's disk, resulting in multiple nodes having the same disk usage.",
+  },
+  { label: "Sent" },
+  { label: "Received" },
+  {
+    label: "Logical Resources",
+    helpInfo: (
+      <Typography>
+        <a href="https://docs.ray.io/en/latest/ray-core/scheduling/resources.html#physical-resources-and-logical-resources">
+          Logical resources usage
+        </a>{" "}
+        (e.g., CPU, memory) for a node. Alternatively, you can run the CLI
+        command <p style={codeTextStyle}>ray status -v </p>
+        to obtain a similar result.
+      </Typography>
+    ),
+  },
 ];
 
 export const brpcLinkChanger = (href: string) => {
@@ -66,7 +133,7 @@ export const brpcLinkChanger = (href: string) => {
   return `http://${href}`;
 };
 
-export const NodeCard = (props: { node: NodeDetail; newIA?: boolean }) => {
+export const NodeCard = (props: { node: NodeDetail }) => {
   const { node } = props;
 
   if (!node) {
@@ -83,9 +150,7 @@ export const NodeCard = (props: { node: NodeDetail; newIA?: boolean }) => {
   return (
     <Paper variant="outlined" style={{ padding: "12px 12px", margin: 12 }}>
       <p style={{ fontWeight: "bold", fontSize: 12, textDecoration: "none" }}>
-        <Link to={props.newIA ? `nodes/${nodeId}` : `/node/${nodeId}`}>
-          {nodeId}
-        </Link>{" "}
+        <Link to={`nodes/${nodeId}`}>{nodeId}</Link>{" "}
       </p>
       <p>
         <Grid container spacing={1}>
@@ -148,15 +213,7 @@ export const NodeCard = (props: { node: NodeDetail; newIA?: boolean }) => {
       <Grid container justify="flex-end" spacing={1} style={{ margin: 8 }}>
         <Grid>
           <Button>
-            <Link
-              to={
-                props.newIA
-                  ? `/new/logs/${encodeURIComponent(logUrl)}`
-                  : `/log/${encodeURIComponent(logUrl)}`
-              }
-            >
-              log
-            </Link>
+            <Link to={`/logs/${encodeURIComponent(logUrl)}`}>log</Link>
           </Button>
         </Grid>
       </Grid>
@@ -164,10 +221,11 @@ export const NodeCard = (props: { node: NodeDetail; newIA?: boolean }) => {
   );
 };
 
-const Nodes = ({ newIA = false }: { newIA?: boolean }) => {
+const Nodes = () => {
   const classes = useStyles();
   const {
     msg,
+    isLoading,
     isRefreshing,
     onSwitchChange,
     nodeList,
@@ -182,7 +240,7 @@ const Nodes = ({ newIA = false }: { newIA?: boolean }) => {
 
   return (
     <div className={classes.root}>
-      <Loading loading={msg.startsWith("Loading")} />
+      <Loading loading={isLoading} />
       <TitleCard title="NODES">
         Auto Refresh:
         <Switch
@@ -276,9 +334,20 @@ const Nodes = ({ newIA = false }: { newIA?: boolean }) => {
             <Table>
               <TableHead>
                 <TableRow>
-                  {columns.map((col) => (
-                    <TableCell align="center" key={col}>
-                      {col}
+                  {columns.map(({ label, helpInfo }) => (
+                    <TableCell align="center" key={label}>
+                      <Box
+                        display="flex"
+                        justifyContent="center"
+                        alignItems="center"
+                      >
+                        {label}
+                        {helpInfo && (
+                          <HelpInfo className={classes.helpInfo}>
+                            {helpInfo}
+                          </HelpInfo>
+                        )}
+                      </Box>
                     </TableCell>
                   ))}
                 </TableRow>
@@ -295,7 +364,6 @@ const Nodes = ({ newIA = false }: { newIA?: boolean }) => {
                       node={node}
                       isRefreshing={isRefreshing}
                       startExpanded={nodeList.length === 1}
-                      newIA={newIA}
                     />
                   ))}
               </TableBody>
@@ -311,7 +379,7 @@ const Nodes = ({ newIA = false }: { newIA?: boolean }) => {
               )
               .map((e) => (
                 <Grid item xs={6}>
-                  <NodeCard node={e} newIA={newIA} />
+                  <NodeCard node={e} />
                 </Grid>
               ))}
           </Grid>
@@ -324,14 +392,14 @@ const Nodes = ({ newIA = false }: { newIA?: boolean }) => {
 /**
  * Cluster page for the new IA
  */
-export const NewIAClusterPage = () => {
+export const ClusterMainPageLayout = () => {
   return (
     <React.Fragment>
       <MainNavPageInfo
         pageInfo={{
           title: "Cluster",
           id: "cluster",
-          path: "/new/cluster",
+          path: "/cluster",
         }}
       />
       <Outlet />

@@ -96,7 +96,9 @@ class ActorGroup:
         init_args: Optional[Tuple] = None,
         init_kwargs: Optional[Dict] = None,
     ):
-        ray._private.usage.usage_lib.record_library_usage("util.ActorGroup")
+        from ray._private.usage.usage_lib import record_library_usage
+
+        record_library_usage("util.ActorGroup")
 
         if num_actors <= 0:
             raise ValueError(

@@ -94,7 +94,7 @@ def test_repeat(setup):
             ExitCode.CLUSTER_WAIT_TIMEOUT,
             ExitCode.RAY_WHEELS_TIMEOUT,
         )
-        == ExitCode.RAY_WHEELS_TIMEOUT.value
+        == 79  # BUILDKITE_RETRY_CODE
     )
     assert _read_state(state_file) == 3
 
@@ -106,7 +106,7 @@ def test_repeat(setup):
             ExitCode.COMMAND_ALERT,
             ExitCode.SUCCESS,
         )
-        == ExitCode.COMMAND_ALERT.value
+        == 79  # BUILDKITE_RETRY_CODE
     )
     assert _read_state(state_file) == 2
 

@@ -84,6 +84,8 @@ class GcsPlacementGroup {
     placement_group_table_data_.set_max_cpu_fraction_per_node(
         placement_group_spec.max_cpu_fraction_per_node());
     placement_group_table_data_.set_ray_namespace(ray_namespace);
+    placement_group_table_data_.set_placement_group_creation_timestamp_ms(
+        current_sys_time_ms());
     SetupStates();
   }
 
@@ -324,6 +326,13 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
   /// \param node_id The specified node id.
   void OnNodeAdd(const NodeID &node_id);
 
+  /// Get bundles on a node.
+  ///
+  /// \param node_id The specified node id.
+  /// \return A map from placement group id to bundles indices on the node.
+  virtual absl::flat_hash_map<PlacementGroupID, std::vector<int64_t>> GetBundlesOnNode(
+      const NodeID &node_id) const;
+
   /// Clean placement group that belongs to the job id if necessary.
   ///
   /// This interface is a part of automatic lifecycle management for placement groups.
@@ -383,6 +392,12 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
   /// \return Infeasible placement groups.
   const std::deque<std::shared_ptr<GcsPlacementGroup>> &GetInfeasiblePlacementGroups()
       const;
+
+  /// Get the placement group load information.
+  ///
+  /// \return Placement group load information. Users should check if
+  /// the returned rpc has any placement_group_data.
+  virtual std::shared_ptr<rpc::PlacementGroupLoad> GetPlacementGroupLoad() const;
 
  protected:
   /// For testing/mocking only.
