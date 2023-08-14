@@ -5,7 +5,9 @@ Using Preprocessors
 
 Data preprocessing is a common technique for transforming raw data into features for a machine learning model.
 In general, you may want to apply the same preprocessing logic to your offline training data and online inference data.
-Ray AIR provides several common preprocessors out of the box and interfaces to define your own custom logic.
+
+Though the recommended way to perform preprocessing is to :ref:`use existing Ray Data operations <transforming_data>`,
+Ray Data provides several common preprocessors out of the box, particularly for tabular data.
 
 .. https://docs.google.com/drawings/d/1ZIbsXv5vvwTVIEr2aooKxuYJ_VL7-8VMNlRinAiPaTI/edit
 
@@ -67,7 +69,7 @@ Types of preprocessors
 Built-in preprocessors
 ~~~~~~~~~~~~~~~~~~~~~~
 
-Ray AIR provides a handful of preprocessors out of the box.
+Ray Data provides a handful of preprocessors out of the box.
 
 **Generic preprocessors**
 
