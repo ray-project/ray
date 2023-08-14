@@ -212,11 +212,11 @@ class ExperimentAnalysis:
                 experiment_state = json.load(f, cls=TuneFunctionDecoder)
                 self._experiment_states.append(experiment_state)
 
-            if "checkpoints" not in experiment_state:
+            if "trial_data" not in experiment_state:
                 raise TuneError("Experiment state invalid; no checkpoints found.")
 
             self._checkpoints_and_paths += [
-                (cp, Path(path).parent) for cp in experiment_state["checkpoints"]
+                (cp, Path(path).parent) for cp in experiment_state["trial_data"]
             ]
 
     def _maybe_download_experiment_checkpoint(
@@ -978,9 +978,13 @@ class ExperimentAnalysis:
                 "since checkpointing is periodic."
             )
             self.trials = []
-            for trial_json_state, path in self._checkpoints_and_paths:
+            for (
+                trial_json_state,
+                trial_run_metadata,
+            ), path in self._checkpoints_and_paths:
                 try:
                     trial = Trial.from_json_state(trial_json_state, stub=True)
+                    trial.restore_run_metadata(trial_run_metadata)
                     # TODO(justinvyu): [handle_moved_storage_path]
                     if not _use_storage_context():
                         trial.local_experiment_path = str(path)
