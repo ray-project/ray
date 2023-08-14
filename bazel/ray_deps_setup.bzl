@@ -212,8 +212,8 @@ def ray_deps_setup():
     # This is how diamond dependencies are prevented.
     auto_http_archive(
         name = "com_google_absl",
-        url = "https://github.com/abseil/abseil-cpp/archive/refs/tags/20220623.1.tar.gz",
-        sha256 = "91ac87d30cc6d79f9ab974c51874a704de9c2647c40f6932597329a282217ba8",
+        url = "https://github.com/abseil/abseil-cpp/archive/refs/tags/20230802.0.tar.gz",
+        sha256 = "59d2976af9d6ecf001a81a35749a6e551a335b949d34918cfade07737b9d93c5",
     )
 
     # OpenCensus depends on jupp0r/prometheus-cpp
@@ -355,4 +355,24 @@ def ray_deps_setup():
         commit = "254c4847e8ac263d24720aa93c2c7d410f55a239",
         build_file = "@com_github_ray_project_ray//bazel:BUILD.jemalloc",
         shallow_since = "1691532067 -0700",
+    )
+
+    git_repository(
+        name = "tcmalloc",
+        remote = "https://github.com/google/tcmalloc.git",
+        commit = "c1e48584fb0c73c26b1d7f8824fc93cb2d6e6946",
+    )
+    # Fuzzing
+    http_archive(
+        name = "rules_fuzzing",
+        sha256 = "a5734cb42b1b69395c57e0bbd32ade394d5c3d6afbfe782b24816a96da24660d",
+        strip_prefix = "rules_fuzzing-0.1.1",
+        urls = ["https://github.com/bazelbuild/rules_fuzzing/archive/v0.1.1.zip"],
+    )
+
+    http_archive(
+        name = "rules_python",
+        urls = ["https://github.com/bazelbuild/rules_python/archive/refs/tags/0.11.0.tar.gz"],
+        sha256 = "c03246c11efd49266e8e41e12931090b613e12a59e6f55ba2efd29a7cb8b4258",
+        strip_prefix = "rules_python-0.11.0",
     )

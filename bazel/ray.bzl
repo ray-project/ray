@@ -189,7 +189,7 @@ def ray_cc_test(name, copts = [], **kwargs):
 
 def ray_cc_binary(name, copts = [], deps = [], linkopts = [], **kwargs):
     extra_deps = select({
-        "@platforms//os:linux": ["@jemalloc//:libjemalloc"],
+        "@platforms//os:linux": ["@tcmalloc//tcmalloc"],
         "//conditions:default": []
     })
     extra_linkopts = select({

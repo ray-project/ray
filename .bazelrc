@@ -8,6 +8,7 @@ build:windows --action_env=PATH
 # For --compilation_mode=dbg, consider enabling checks in the standard library as well (below).
 build --compilation_mode=opt
 # Using C++ 17 on all platforms.
+build --host_cxxopt=-std=c++17
 build:linux --cxxopt="-std=c++17"
 build:linux --cxxopt="-g3"
 build:linux --cxxopt="-ggdb"
@@ -59,6 +60,7 @@ build:linux --per_file_copt="-\\.(asm|S)$,external/com_github_grpc_grpc/.*@-DGPR
 build:msvc-cl --per_file_copt="external/boost/libs/regex/src/wc_regex_traits\\.cpp@-wd4244"
 build --http_timeout_scaling=5.0
 build --verbose_failures
+build --cxxopt="-DABSL_LEGACY_THREAD_ANNOTATIONS"
 build:iwyu --experimental_action_listener=//:iwyu_cpp
 
 # Print relative paths when possible

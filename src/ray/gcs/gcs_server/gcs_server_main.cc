@@ -23,9 +23,9 @@
 #include "ray/util/util.h"
 #include "src/ray/protobuf/gcs_service.pb.h"
 
-#ifdef __linux__
-#include "jemalloc/jemalloc.h"
-#endif
+// #ifdef __linux__
+// #include "jemalloc/jemalloc.h"
+// #endif
 
 
 DEFINE_string(redis_address, "", "The ip address of redis.");
