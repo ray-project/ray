@@ -31,13 +31,22 @@ def _get_source_files(event_dir, source_types=None, event_file_filter=None):
             if fnmatch.fnmatch(n, f"*{source_type}*"):
                 logger.info("here")
                 f = os.path.join(event_dir, n)
+                logger.info(f"f {type(f)}: {f}")
+                logger.info(
+                    f"event_file_filter {type(event_file_filter)}: {event_file_filter}"
+                )
                 if event_file_filter is not None and not event_file_filter(f):
                     logger.info("filtering", source_type)
-
                     continue
                 files.append(f)
+        logger.info(f"files {type(files)}: {files}")
         if files:
+            logger.info(f"source_files {type(source_files)}: {source_files}")
             source_files[source_type] = files
+
+    logger.info(
+        f"source_files in _get_source_files {type(source_files)}: {source_files}"
+    )
     return source_files
 
 
@@ -188,14 +197,17 @@ def monitor_events(
     async def _scan_event_log_files():
         # Scan event files.
         logger.info("Scan event log files in %s", event_dir)
-        # source_files = await loop.run_in_executor(
-        #     monitor_thread_pool_executor,
-        #     _get_source_files,
-        #     event_dir,
-        #     source_types,
-        #     _source_file_filter,
-        # )
-        source_files = _get_source_files(event_dir, source_types, _source_file_filter)
+        source_files = await loop.run_in_executor(
+            monitor_thread_pool_executor,
+            _get_source_files,
+            event_dir,
+            source_types,
+            _source_file_filter,
+        )
+        # source_files = _get_source_files(event_dir, source_types, _source_file_filter)
+        logger.info(
+            f"source_files in _scan_event_log_files {type(source_files)}: {source_files}"
+        )
 
         # Limit concurrent read to avoid fd exhaustion.
         semaphore = asyncio.Semaphore(event_consts.CONCURRENT_READ_LIMIT)
@@ -206,7 +218,6 @@ def monitor_events(
                     monitor_thread_pool_executor, _read_monitor_file, filename, 0
                 )
 
-        logger.info("source_files", source_files)
         # Read files.
         await asyncio.gather(
             *[

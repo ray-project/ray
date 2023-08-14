@@ -29,6 +29,7 @@ message Event {
     CLUSTER_LIFECYCLE = 4;
     AUTOSCALER = 5;
     JOBS = 6;
+    SERVE = 7;
   }
 
   enum Severity {

@@ -11,7 +11,7 @@ import asyncio
 import random
 import tempfile
 import socket
-from ray._private.event.event_logger import get_event_logger
+from ray._private.event.event_logger import EventSource, get_event_logger
 from ray import serve
 from pprint import pprint
 from datetime import datetime
@@ -78,13 +78,14 @@ def _test_logger(name, log_file, max_bytes, backup_count):
 
 
 def test_python_global_event_logger(tmp_path):
-    logger = get_event_logger(event_pb2.Event.SourceType.GCS, str(tmp_path))
+    logger = get_event_logger("GCS", str(tmp_path))
     logger.set_global_context({"test_meta": "1"})
     logger.info("message", a="a", b="b")
     logger.error("message", a="a", b="b")
     logger.warning("message", a="a", b="b")
     logger.fatal("message", a="a", b="b")
     event_dir = tmp_path / "events"
+    print(event_dir)
     assert event_dir.exists()
     event_file = event_dir / "event_GCS.log"
     assert event_file.exists()
@@ -134,6 +135,7 @@ def test_event_basic(disable_aiohttp_cache, ray_start_with_dashboard):
             resp = requests.get(f"{webui_url}/events")
             resp.raise_for_status()
             result = resp.json()
+            print(result)
             all_events = result["data"]["events"]
             job_events = all_events[job_id]
             assert len(job_events) >= test_count * 2
@@ -490,7 +492,9 @@ def test_core_events(shutdown_only):
     pprint(list_cluster_events())
 
 
-def test_actors_events(shutdown_only):  ## for each test case, shutdown finally
+def test_actors_events(
+    shutdown_only, tmp_path
+):  ## for each test case, shutdown finally
     context = ray.init()
     print("context: ", context)
     # ray._private.worker.global_worker.node.session_name
@@ -503,7 +507,7 @@ def test_actors_events(shutdown_only):  ## for each test case, shutdown finally
     class Counter:
         def __init__(self):
             self.value = 0
-            self.event_logger = get_event_logger("CORE_WORKER", "")
+            self.event_logger = get_event_logger(EventSource.CORE_WORKER, tmp_path)
 
         def increment(self):
             self.value += 1
@@ -528,10 +532,8 @@ def test_actors_events(shutdown_only):  ## for each test case, shutdown finally
         print(f"Actor {i}: {count}")
 
     def verify():
-        # resp = requests.get(f"{dashboard_url}/events")
-        # pprint(resp.text)
-        events = list_cluster_events()
-        print("events", events)
+        resp = requests.get(f"{dashboard_url}/events")
+        pprint(resp.text)
         # assert len(list_cluster_events()) == 10
 
         # messages = [event["message"] for event in events]
@@ -545,13 +547,17 @@ def test_actors_events(shutdown_only):  ## for each test case, shutdown finally
     wait_for_condition(verify)
 
 
-def test_tasks_events(shutdown_only):
+def test_tasks_events(shutdown_only, tmp_path):
     # Initialize Ray
     ray.init()
+    print(
+        f"ray._private.worker.global_worker.node.session_name {type(ray._private.worker.global_worker.node.session_name)}: {ray._private.worker.global_worker.node.session_name}"
+    )
+    dashboard_url = f"http://{context['webui_url']}"
 
     @ray.remote
     def my_task(task_id):
-        logger = get_event_logger("CORE_WORKER", "")
+        logger = get_event_logger(EventSource.CORE_WORKER, tmp_path)
         logger.info(f"task start id ={task_id}")
         print(f"Running task {task_id}")
         return f"Task {task_id} completed successfully"
@@ -567,20 +573,27 @@ def test_tasks_events(shutdown_only):
         print(result)
 
     def verify():
-        ipdb.set_trace()
-        events = list_cluster_events()
-        pprint(events)
-        return True
+        resp = requests.get(f"{dashboard_url}/events")
+        pprint(resp.text)
+        return False
 
     wait_for_condition(verify)
 
 
 def test_serve_events(shutdown_only):
+    ray.init()
+    print(
+        f"ray._private.worker.global_worker.node.session_name {type(ray._private.worker.global_worker.node.session_name)}: {ray._private.worker.global_worker.node.session_name}"
+    )
+    dashboard_url = f"http://{context['webui_url']}"
+
     @serve.deployment(num_replicas=5)
     class MyFirstDeployment:
         # Take the message to return as an argument to the constructor.
         def __init__(self, msg):
-            self.event_logger = get_event_logger("CORE_WORKER", "")
+            # self.event_logger = get_event_logger(EventSource.SERVE, "")
+            self.event_logger = get_event_logger(EventSource.CORE_WORKER, "")
+
             self.msg = msg
 
         def __call__(self):
@@ -593,6 +606,13 @@ def test_serve_events(shutdown_only):
     handle = serve.run(my_first_deployment)
     print(ray.get(handle.remote()))  # "Hello world!"
     print(ray.get(handle.remote()))  # "Hello world!"
+
+    def verify():
+        resp = requests.get(f"{dashboard_url}/events")
+        pprint(resp.text)
+        return False
+
+    wait_for_condition(verify)
 
 
 def test_cluster_events_retention(monkeypatch, shutdown_only):

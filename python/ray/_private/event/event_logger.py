@@ -1,3 +1,4 @@
+from enum import Enum
 import logging
 import pathlib
 import json
@@ -14,6 +15,7 @@ from google.protobuf.json_format import MessageToDict
 
 from ray.core.generated.event_pb2 import Event
 
+
 eventNameToProtoMap = {
     "COMMON": Event.SourceType.COMMON,
     "CORE_WORKER": Event.SourceType.CORE_WORKER,
@@ -22,7 +24,19 @@ eventNameToProtoMap = {
     "CLUSTER_LIFECYCLE": Event.SourceType.CLUSTER_LIFECYCLE,
     "AUTOSCALER": Event.SourceType.AUTOSCALER,
     "JOBS": Event.SourceType.JOBS,
+    # "SERVE": Event.SourceType.SERVE,
 }
+
+
+## Should be sync with eventNameToProtoMap
+class EventSource(Enum):
+    COMMON = "COMMON"
+    CORE_WORKER = "CORE_WORKER"
+    GCS = "GCS"
+    RAYLET = "RAYLET"
+    CLUSTER_LIFECYCLE = "CLUSTER_LIFECYCLE"
+    AUTOSCALER = "AUTOSCALER"
+    JOBS = "JOBS"
 
 
 def get_event_id():
@@ -127,7 +141,7 @@ _event_logger_lock = threading.Lock()
 _event_logger = {}
 
 
-def get_event_logger(source: string, sink_dir: str):
+def get_event_logger(source: EventSource, sink_dir: str):
     """Get the event logger of the current process.
 
     There's only 1 event logger per (process, source).
