@@ -3,10 +3,12 @@ import logging
 
 import ray
 import requests
-from ray import serve
 from ray._private.test_utils import monitor_memory_usage
 from ray.cluster_utils import Cluster
+
+from ray import serve
 from ray.serve.config import DeploymentMode
+from ray.serve.context import get_global_client
 
 logger = logging.getLogger(__file__)
 
@@ -34,11 +36,11 @@ def setup_local_single_node_cluster(
             resources={str(i): 2, "proxy": 1},
         )
     ray.init(address=cluster.address, dashboard_host="0.0.0.0", namespace=namespace)
-    serve_client = serve.start(
-        detached=True, http_options={"location": DeploymentMode.EveryNode}
+    serve.start(
+        detached=True, proxy_location=DeploymentMode.EveryNode
     )
 
-    return serve_client, cluster
+    return get_global_client(), cluster
 
 
 def setup_anyscale_cluster():
