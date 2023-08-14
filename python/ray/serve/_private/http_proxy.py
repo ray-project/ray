@@ -370,10 +370,10 @@ class GenericProxy:
     async def _timeout_response(self, scope, receive, send, request_id):
         raise NotImplementedError
 
-    async def _routes_response(self, scope, receive, send, request_id):
+    async def _routes_response(self, scope, receive, send):
         raise NotImplementedError
 
-    async def _health_response(self, scope, receive, send, request_id):
+    async def _health_response(self, scope, receive, send):
         raise NotImplementedError
 
     def _ongoing_requests_start(self):
@@ -653,12 +653,12 @@ class HTTPProxy(GenericProxy):
         )
         await response.send(scope, receive, send)
 
-    async def _routes_response(self, scope, receive, send, request_id):
+    async def _routes_response(self, scope, receive, send):
         return await starlette.responses.JSONResponse(self.route_info)(
             scope, receive, send
         )
 
-    async def _health_response(self, scope, receive, send, request_id):
+    async def _health_response(self, scope, receive, send):
         return await starlette.responses.PlainTextResponse("success")(
             scope, receive, send
         )
