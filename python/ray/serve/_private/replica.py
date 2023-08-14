@@ -441,6 +441,22 @@ def create_replica_wrapper(name: str):
         ) -> Tuple[DeploymentConfig, DeploymentVersion]:
             return self.replica.version.deployment_config, self.replica.version
 
+        async def _save_cpu_profile_data(self):
+            """Saves CPU profiling data, if CPU profiling is enabled.
+
+            Logs a warning if CPU profiling is disabled.
+            """
+
+            if self.cpu_profiler is not None:
+                self.cpu_profiler.dump_stats(self.cpu_profiler_log)
+                logger.info(f'Saved CPU profile data to file "{self.cpu_profiler_log}"')
+            else:
+                logger.warning(
+                    "Attempted to save CPU profile data, but failed because no "
+                    "CPU profiler was running! Enabled CPU profiling by enabling "
+                    "the RAY_SERVE_ENABLE_CPU_PROFILING env var."
+                )
+
         async def prepare_for_shutdown(self):
             if self.replica is not None:
                 return await self.replica.prepare_for_shutdown()

@@ -1030,6 +1030,22 @@ class ServeController:
 
         await self._shutdown.wait()
 
+    def _save_cpu_profile_data(self):
+        """Saves CPU profiling data, if CPU profiling is enabled.
+
+        Logs a warning if CPU profiling is disabled.
+        """
+
+        if self.cpu_profiler is not None:
+            self.cpu_profiler.dump_stats(self.cpu_profiler_log)
+            logger.info(f'Saved CPU profile data to file "{self.cpu_profiler_log}"')
+        else:
+            logger.warning(
+                "Attempted to save CPU profile data, but failed because no "
+                "CPU profiler was running! Enabled CPU profiling by enabling "
+                "the RAY_SERVE_ENABLE_CPU_PROFILING env var."
+            )
+
 
 @ray.remote(num_cpus=0)
 class ServeControllerAvatar:

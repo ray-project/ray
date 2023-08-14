@@ -1071,3 +1071,19 @@ Please make sure your http-host and http-port are specified correctly."""
         this will always return immediately.
         """
         return pickle.dumps(await self.app.receive_asgi_messages(request_id))
+
+    async def _save_cpu_profile_data(self):
+        """Saves CPU profiling data, if CPU profiling is enabled.
+
+        Logs a warning if CPU profiling is disabled.
+        """
+
+        if self.cpu_profiler is not None:
+            self.cpu_profiler.dump_stats(self.cpu_profiler_log)
+            logger.info(f'Saved CPU profile data to file "{self.cpu_profiler_log}"')
+        else:
+            logger.warning(
+                "Attempted to save CPU profile data, but failed because no "
+                "CPU profiler was running! Enabled CPU profiling by enabling "
+                "the RAY_SERVE_ENABLE_CPU_PROFILING env var."
+            )
