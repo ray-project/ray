@@ -152,25 +152,25 @@ Setup:
 * Data from this example
 * 200 regularization images
 * Training for 4 epochs (800 steps)
+* 3 runs per configuration
 
 We expect that the training time should benefit from scale and decreases when running with
 more workers and GPUs.
 
-
-
-
-.. .. image:: /templates/05_dreambooth_finetuning/dreambooth/images/dreambooth_training.png
-..    :alt: DreamBooth training times
+.. image:: /templates/05_dreambooth_finetuning/dreambooth/images/dreambooth_training.png
+   :alt: DreamBooth training times
 
 .. list-table::
    :header-rows: 1
 
    * - Number of workers/GPUs
-     - Training time
+     - Training time (seconds)
+   * - 1
+     - 802.14
    * - 2
-     - 5min 4s
+     - 487.82
    * - 4
-     - 3min 25s
+     - 313.25
 
 
 While the training time decreases linearly with the amount of workers/GPUs, we observe some penalty.
