@@ -533,7 +533,7 @@ torchdata==0.6.1
 torchmetrics==0.10.3 ; python_version > "3.7"
 torchtext==0.15.2 ; python_version > "3.7"
 torchvision==0.15.2 ; python_version > "3.7"
-tornado==6.1
+tornado==6.3.3
 tqdm==4.64.1
 traitlets==5.9.0
 transformers==4.19.1

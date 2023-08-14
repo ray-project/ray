@@ -514,7 +514,7 @@ torch-spline-conv==1.2.2
 torchmetrics==0.9.3 ; python_version <= "3.7"
 torchtext==0.14.0 ; python_version <= "3.7"
 torchvision==0.14.0 ; python_version <= "3.7"
-tornado==6.2
+tornado==6.3.3
 tqdm==4.64.1
 traitlets==5.9.0
 transformers==4.19.1
