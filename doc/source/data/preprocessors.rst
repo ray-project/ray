@@ -6,8 +6,13 @@ Using Preprocessors
 Data preprocessing is a common technique for transforming raw data into features for a machine learning model.
 In general, you may want to apply the same preprocessing logic to your offline training data and online inference data.
 
-Though the recommended way to perform preprocessing is to :ref:`use existing Ray Data operations <transforming_data>`,
-Ray Data provides several common preprocessors out of the box, particularly for tabular data.
+This page covers *preprocessors*, which are a higher level API on top of existing Ray Data operations like `map_batches`,
+targeted towards tabular and structured data use cases.
+
+The recommended way to perform preprocessing is to :ref:`use existing Ray Data operations <transforming_data>` instead
+of preprocessors. However, if you are working with tabular data, you should consider using Ray Data preprocessors.
+
+
 
 .. https://docs.google.com/drawings/d/1ZIbsXv5vvwTVIEr2aooKxuYJ_VL7-8VMNlRinAiPaTI/edit
 
@@ -49,15 +54,7 @@ Finally, call ``transform_batch`` on a single batch of data.
     :start-after: __preprocessor_transform_batch_start__
     :end-before: __preprocessor_transform_batch_end__
 
-The most common way of using a preprocessor is by using it on a :ref:`Ray Data dataset <data>`, which is then passed to a Ray Train :ref:`Trainer <train-docs>`.
-For example, the following code trains a model with a preprocessor that normalizes the data.
-
-.. literalinclude:: doc_code/preprocessors.py
-    :language: python
-    :start-after: __trainer_start__
-    :end-before: __trainer_end__
-
-See also:
+The most common way of using a preprocessor is by using it on a :ref:`Ray Data dataset <data>`, which is then passed to a Ray Train :ref:`Trainer <train-docs>`. See also:
 
 * :ref:`Working with Pytorch user guide <working_with_pytorch>`
 * Ray Train's data preprocessing and ingest section for :ref:`PyTorch <data-ingest-torch>`
