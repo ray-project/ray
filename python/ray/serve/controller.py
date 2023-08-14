@@ -42,6 +42,7 @@ from ray.serve._private.http_state import HTTPProxyStateManager
 from ray.serve._private.logging_utils import (
     configure_component_logger,
     configure_component_memory_profiler,
+    configure_component_cpu_profiler,
     get_component_logger_file_path,
 )
 from ray.serve._private.long_poll import LongPollHost
@@ -119,6 +120,9 @@ class ServeController:
             component_name="controller", component_id=str(os.getpid())
         )
         configure_component_memory_profiler(
+            component_name="controller", component_id=str(os.getpid())
+        )
+        self.cpu_profiler, self.cpu_profiler_log = configure_component_cpu_profiler(
             component_name="controller", component_id=str(os.getpid())
         )
         if RAY_SERVE_CONTROLLER_CALLBACK_IMPORT_PATH:

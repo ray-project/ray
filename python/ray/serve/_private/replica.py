@@ -53,6 +53,7 @@ from ray.serve._private.http_util import (
 from ray.serve._private.logging_utils import (
     access_log_msg,
     configure_component_logger,
+    configure_component_cpu_profiler,
     configure_component_memory_profiler,
     get_component_logger_file_path,
 )
@@ -103,6 +104,11 @@ def create_replica_wrapper(name: str):
                 component_id=replica_tag,
             )
             configure_component_memory_profiler(
+                component_type=ServeComponentType.DEPLOYMENT,
+                component_name=deployment_name,
+                component_id=replica_tag,
+            )
+            self.cpu_profiler, self.cpu_profiler_log = configure_component_cpu_profiler(
                 component_type=ServeComponentType.DEPLOYMENT,
                 component_name=deployment_name,
                 component_id=replica_tag,
