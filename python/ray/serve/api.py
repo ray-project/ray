@@ -64,7 +64,7 @@ logger = logging.getLogger(__file__)
 
 @PublicAPI(stability="beta")
 def start(
-    detached: bool = False,
+    detached: bool = True,
     proxy_location: Optional[Union[str, DeploymentMode]] = DeploymentMode.EveryNode,
     http_options: Optional[Union[dict, HTTPOptions]] = None,
     dedicated_cpu: bool = False,
