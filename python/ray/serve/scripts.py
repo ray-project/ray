@@ -326,6 +326,7 @@ def deploy(config_file_name: str, address: str):
 )
 @click.option(
     "--reload",
+    "-r",
     is_flag=True,
     help=(
         "Listens for changes to files in the working directory, --working-dir "
@@ -473,7 +474,9 @@ def run(
                     yield_on_timeout=True,
                 ):
                     if changes:
-                        cli_logger.info(f"Detected file change in path {working_dir}. Redeploying Serve app.")
+                        cli_logger.info(
+                            f"Detected file change in path {working_dir}. Redeploying Serve app."
+                        )
                         serve.run(app, host=host, port=port)
 
             if blocking:
