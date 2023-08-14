@@ -21,7 +21,10 @@ Physical resources are resources that a machine physically has such as physical 
 and logical resources are virtual resources defined by a system.
 
 Ray resources are **logical** and don’t need to have 1-to-1 mapping with physical resources.
-For example, you can start a Ray head node with 0 logical CPUs via ``ray start --head --num-cpus=0`` even if it physically has eight.
+For example, you can start a Ray head node with 0 logical CPUs via ``ray start --head --num-cpus=0``
+even if it physically has eight
+(This signals the Ray scheduler to not schedule any tasks or actors that require logical CPU resources
+on the head node, mainly to reserve the head node for running Ray system processes.).
 They are mainly used for admission control during scheduling.
 
 The fact that resources are logical has several implications:
@@ -132,7 +135,7 @@ Ray allows specifying a task or actor's logical resource requirements (e.g., CPU
 The task or actor will only run on a node if there are enough required logical resources
 available to execute the task or actor.
 
-By default, Ray tasks use 1 logical CPU resource and Ray actors use 1 logical CPU for scheduling and 0 logical CPU for running
+By default, Ray tasks use 1 logical CPU resource and Ray actors use 1 logical CPU for scheduling, and 0 logical CPU for running.
 (This means, by default, actors cannot get scheduled on a zero-cpu node, but an infinite number of them can run on any non-zero cpu node.
 The default resource requirements for actors was chosen for historical reasons.
 It's recommended to always explicitly set ``num_cpus`` for actors to avoid any surprises.
