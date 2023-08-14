@@ -72,6 +72,7 @@ class RayClusterOnSpark:
 
     def __init__(
         self,
+        autoscale,
         address,
         head_proc,
         spark_job_group_id,
@@ -80,7 +81,9 @@ class RayClusterOnSpark:
         cluster_unique_id,
         start_hook,
         ray_dashboard_port,
+        spark_job_server,
     ):
+        self.autoscale = autoscale
         self.address = address
         self.head_proc = head_proc
         self.spark_job_group_id = spark_job_group_id
@@ -89,6 +92,7 @@ class RayClusterOnSpark:
         self.cluster_unique_id = cluster_unique_id
         self.start_hook = start_hook
         self.ray_dashboard_port = ray_dashboard_port
+        self.spark_job_server = spark_job_server
 
         self.is_shutdown = False
         self.spark_job_is_canceled = False
@@ -466,6 +470,10 @@ def _setup_ray_cluster(
     os.makedirs(ray_temp_dir, exist_ok=True)
 
     if autoscale:
+        from ray.autoscaler._private.spark.spark_job_server import _start_spark_job_server
+
+        # TODO: use random port.
+        spark_job_server = _start_spark_job_server("127.0.0.1", 8899, spark)
         autoscaler_cluster = AutoscalingCluster(
             head_resources={
                 "CPU": 0,
@@ -523,6 +531,7 @@ def _setup_ray_cluster(
             preexec_fn=setup_sigterm_on_parent_death,
             extra_env={RAY_ON_SPARK_COLLECT_LOG_TO_PATH: collect_log_to_path or ""},
         )
+        spark_job_server = None
 
     # wait ray head node spin up.
     time.sleep(_RAY_HEAD_STARTUP_TIMEOUT)
@@ -540,24 +549,26 @@ def _setup_ray_cluster(
         raise RuntimeError("Start Ray head node failed!\n" + cmd_exec_failure_msg)
 
     _logger.info("Ray head node started.")
+    cluster_address = f"{ray_head_ip}:{ray_head_port}"
+    # Set RAY_ADDRESS environment variable to the cluster address.
+    os.environ["RAY_ADDRESS"] = cluster_address
+
+    ray_cluster_handler = RayClusterOnSpark(
+        autoscale=autoscale,
+        address=cluster_address,
+        head_proc=ray_head_proc,
+        spark_job_group_id=None,
+        num_workers_node=num_worker_nodes,
+        temp_dir=ray_temp_dir,
+        cluster_unique_id=cluster_unique_id,
+        start_hook=start_hook,
+        ray_dashboard_port=ray_dashboard_port,
+        spark_job_server=spark_job_server,
+    )
 
     if not autoscale:
         spark_job_group_id = f"ray-cluster-{ray_head_port}-{cluster_unique_id}"
-
-        cluster_address = f"{ray_head_ip}:{ray_head_port}"
-        # Set RAY_ADDRESS environment variable to the cluster address.
-        os.environ["RAY_ADDRESS"] = cluster_address
-
-        ray_cluster_handler = RayClusterOnSpark(
-            address=cluster_address,
-            head_proc=ray_head_proc,
-            spark_job_group_id=spark_job_group_id,
-            num_workers_node=num_worker_nodes,
-            temp_dir=ray_temp_dir,
-            cluster_unique_id=cluster_unique_id,
-            start_hook=start_hook,
-            ray_dashboard_port=ray_dashboard_port,
-        )
+        ray_cluster_handler.spark_job_group_id = spark_job_group_id
 
         def background_job_thread_fn():
             try:

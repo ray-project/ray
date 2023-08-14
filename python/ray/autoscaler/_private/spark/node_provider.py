@@ -5,6 +5,7 @@ import os
 import subprocess
 import sys
 import time
+import requests
 from threading import RLock
 from types import ModuleType
 from typing import Any, Dict, Optional
@@ -23,6 +24,8 @@ from ray.autoscaler.tags import (
     TAG_RAY_NODE_STATUS,
     TAG_RAY_USER_NODE_TYPE,
 )
+from ray.util.spark.cluster_init import _start_ray_worker_nodes
+
 
 logger = logging.getLogger(__name__)
 
@@ -110,35 +113,6 @@ class RayOnSparkNodeProvider(NodeProvider):
                 resources["NODE_ID_AS_RESOURCE"] = next_id
 
                 """
-                ray_params = ray._private.parameter.RayParams(
-                    min_worker_port=0,
-                    max_worker_port=0,
-                    dashboard_port=None,
-                    num_cpus=resources.pop("CPU", 0),
-                    num_gpus=resources.pop("GPU", 0),
-                    object_store_memory=resources.pop("object_store_memory", None),
-                    resources=resources,
-                    labels=labels,
-                    redis_address="127.0.0.1:3344",
-                    gcs_address="127.0.0.1:3344",
-                    env_vars={
-                        ray_constants.RESOURCES_ENVIRONMENT_VARIABLE: json.dumps(resources),
-                        ray_constants.LABELS_ENVIRONMENT_VARIABLE: json.dumps(labels),
-                    },
-                )
-                node = ray._private.node.Node(
-                    ray_params, head=False, shutdown_at_exit=False, spawn_reaper=False
-                )
-                self._nodes[next_id] = {
-                    "tags": {
-                        TAG_RAY_NODE_KIND: NODE_KIND_WORKER,
-                        TAG_RAY_USER_NODE_TYPE: node_type,
-                        TAG_RAY_NODE_NAME: next_id,
-                        TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE,
-                    },
-                    "node": node,
-                }
-                """
                 ray_worker_node_cmd = [
                     sys.executable,
                     "-m",
@@ -167,6 +141,27 @@ class RayOnSparkNodeProvider(NodeProvider):
                         "RAY_ENABLE_WINDOWS_OR_OSX_CLUSTER": "1",
                     },
                 )
+                """
+
+                """
+                node_params = {
+                    "spark_job_group_desc": None,
+                    "num_worker_nodes": 1,
+                    using_stage_scheduling = data["using_stage_scheduling"]
+                    ray_head_ip = data["ray_head_ip"]
+                    ray_head_port = data["ray_head_port"]
+                    ray_temp_dir = data["ray_temp_dir"]
+                    num_cpus_per_node = data["num_cpus_per_node"]
+                    num_gpus_per_node = data["num_gpus_per_node"]
+                    heap_memory_per_node = data["heap_memory_per_node"]
+                    object_store_memory_per_node = data["object_store_memory_per_node"]
+                    worker_node_options = data["worker_node_options"]
+                    collect_log_to_path = data["collect_log_to_path"]
+
+                }
+                """
+
+                _start_ray_worker_nodes()
 
                 self._nodes[next_id] = {
                     "tags": {

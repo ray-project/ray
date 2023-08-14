@@ -98,6 +98,13 @@ class SparkJobServer(ThreadingHTTPServer):
         self.spark = spark
 
 
-host = ''
-port = 80
-SparkJobServer((host, port), None).serve_forever()
+def _start_spark_job_server(host, port, spark):
+    server = SparkJobServer((host, port), spark)\
+
+
+    def run_server():
+        server.serve_forever()
+
+    threading.Thread(target=run_server).start()
+
+    return server
