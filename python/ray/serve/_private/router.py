@@ -341,7 +341,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
                 "The number of power-of-two-choices scheduling tasks "
                 "run by the router."
             ),
-            tags=("deployment",),
+            tag_keys=("deployment",),
         ).set_default_tags(
             {"deployment": self._deployment_name, "actor": self._actor_name}
         )
@@ -353,7 +353,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
                 "The number of power-of-two-choices scheduling tasks "
                 "run by the router that are undergoing backoff."
             ),
-            tags=("deployment",),
+            tag_keys=("deployment",),
         ).set_default_tags(
             {"deployment": self._deployment_name, "actor": self._actor_name}
         )
