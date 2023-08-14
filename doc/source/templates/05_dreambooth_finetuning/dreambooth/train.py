@@ -285,7 +285,7 @@ def train_fn(config):
     # END: Training loop
 
     # Create pipeline using the trained modules and save it.
-    if train.get_world_rank() == 0:
+    if train.get_context().get_world_rank() == 0:
         if not config["use_lora"]:
             pipeline = DiffusionPipeline.from_pretrained(
                 config["model_dir"],
