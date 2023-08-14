@@ -25,7 +25,7 @@ as an argument :ref:`in your training function <train-monitoring-and-logging>`.
 Last reported metrics
 ~~~~~~~~~~~~~~~~~~~~~
 
-Use :obj:`Result.metrics <ray.air.result.Result.metrics>` to retrieve the
+Use :attr:`Result.metrics <ray.air.Result.metrics>` to retrieve the
 latest reported metrics.
 
 .. literalinclude:: ../doc_code/key_concepts.py
@@ -35,7 +35,8 @@ latest reported metrics.
 
 Dataframe of all reported metrics
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-Use :obj:`Result.metrics_dataframe <ray.air.result.Result.metrics_dataframe>` to retrieve
+
+Use :attr:`Result.metrics_dataframe <ray.air.Result.metrics_dataframe>` to retrieve
 a pandas DataFrame of all reported metrics.
 
 .. literalinclude:: ../doc_code/key_concepts.py
@@ -62,7 +63,7 @@ as an argument :ref:`in your training function <train-monitoring-and-logging>`.
 
 Last saved checkpoint
 ~~~~~~~~~~~~~~~~~~~~~
-Use :obj:`Result.checkpoint <ray.air.result.Result.checkpoint>` to retrieve the
+Use :attr:`Result.checkpoint <ray.air.Result.checkpoint>` to retrieve the
 last checkpoint.
 
 .. literalinclude:: ../doc_code/key_concepts.py
@@ -78,7 +79,7 @@ after more training due to overfitting, you may want to retrieve the checkpoint 
 the lowest loss.
 
 You can retrieve a list of all available checkpoints and their metrics with
-:obj:`Result.best_checkpoints <ray.air.result.Result.best_checkpoints>`
+:attr:`Result.best_checkpoints <ray.air.Result.best_checkpoints>`
 
 .. literalinclude:: ../doc_code/key_concepts.py
     :language: python
@@ -88,7 +89,7 @@ You can retrieve a list of all available checkpoints and their metrics with
 Storage location
 ----------------
 If you need to retrieve the results later, you can get the storage location
-with :meth:`Result.path <ray.air.result.Result.path>`.
+with :attr:`Result.path <ray.air.Result.path>`.
 
 This path will correspond to the :ref:`storage_path <train-log-dir>` you configured
 in the :class:`~ray.air.RunConfig`.
@@ -103,7 +104,7 @@ in the :class:`~ray.air.RunConfig`.
 Errors
 ------
 If an error occurred during training,
-:meth:`Result.error <ray.air.result.Result.error>` will be set and contain the exception
+:attr:`Result.error <ray.air.Result.error>` will be set and contain the exception
 that was raised.
 
 .. literalinclude:: ../doc_code/key_concepts.py
