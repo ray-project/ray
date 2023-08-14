@@ -83,6 +83,25 @@ class Query:
     kwargs: Dict[Any, Any]
     metadata: RequestMetadata
 
+    async def resolve_async_tasks(self):
+        """Find all unresolved asyncio.Task and gather them all at once.
+
+        This is used for the old serve handle API and should be removed once that API
+        is fully deprecated & removed.
+        """
+        scanner = _PyObjScanner(source_type=asyncio.Task)
+
+        try:
+            tasks = scanner.find_nodes((self.args, self.kwargs))
+
+            if len(tasks) > 0:
+                resolved = await asyncio.gather(*tasks)
+                replacement_table = dict(zip(tasks, resolved))
+                self.args, self.kwargs = scanner.replace_nodes(replacement_table)
+        finally:
+            # Make the scanner GC-able to avoid memory leaks.
+            scanner.clear()
+
     async def resolve_deployment_handle_results_to_obj_refs(self):
         """Replace DeploymentHandleResults with their resolved ObjectRefs.
 
@@ -1080,6 +1099,7 @@ class Router:
                 kwargs=request_kwargs,
                 metadata=request_meta,
             )
+            await query.resolve_async_tasks()
             await query.resolve_deployment_handle_results_to_obj_refs()
             await query.buffer_starlette_requests_and_warn()
 

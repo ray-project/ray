@@ -1,19 +1,19 @@
-import asyncio
-import concurrent.futures
 import sys
-import threading
 
 import pytest
-import requests
 
 import ray
 
 from ray import serve
-from ray.serve.context import get_global_client
 from ray.serve.exceptions import RayServeException
 from ray.serve.handle import (
-    DeploymentHandle, DeploymentHandleRef, DeploymentHandleGenerator, RayServeHandle, RayServeSyncHandle
+    DeploymentHandle,
+    DeploymentHandleRef,
+    DeploymentHandleGenerator,
+    RayServeHandle,
+    RayServeSyncHandle,
 )
+from ray.serve._private.constants import RAY_SERVE_ENABLE_NEW_HANDLE_API
 
 """Test cases:
 - Test setting the flag via `.options`.
@@ -25,7 +25,8 @@ from ray.serve.handle import (
 - Test composition.
 """
 
-def test_set_flag_via_handle_options(serve_instance):
+
+def test_set_flag_via_handle_options(ray_instance):
     @serve.deployment
     def downstream():
         return "hello"

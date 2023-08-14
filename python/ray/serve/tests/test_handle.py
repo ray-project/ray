@@ -371,18 +371,28 @@ class MyRouter(PowerOfTwoChoicesReplicaScheduler):
     pass
 
 
-def test_handle_options_custom_router(serve_instance):
+@pytest.mark.parametrize("use_new_handle_api", [False, True])
+def test_handle_options_custom_router(serve_instance, use_new_handle_api: bool):
     @serve.deployment
     def echo(name: str):
         return f"Hi {name}"
 
-    handle = serve.run(echo.bind())
-    handle2 = handle.options(_router_cls="ray.serve.tests.test_handle.MyRouter")
-    ray.get(handle2.remote("HI"))
-    print("Router class used", handle2._router._replica_scheduler)
+    handle = serve.run(echo.bind()).options(
+        _router_cls="ray.serve.tests.test_handle.MyRouter",
+        use_new_handle_api=use_new_handle_api,
+    )
+
+    if use_new_handle_api:
+        result = handle.remote("HI").result()
+    else:
+        result = ray.get(handle.remote("HI"))
+
+    assert result == "Hi HI"
+
+    print("Router class used", handle._router._replica_scheduler)
     assert (
-        "MyRouter" in handle2._router._replica_scheduler.__class__.__name__
-    ), handle2._router._replica_scheduler
+        "MyRouter" in handle._router._replica_scheduler.__class__.__name__
+    ), handle._router._replica_scheduler
 
 
 if __name__ == "__main__":
