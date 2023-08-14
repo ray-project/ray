@@ -5,6 +5,7 @@ from unittest.mock import patch, PropertyMock, Mock
 
 from ray.exceptions import RayTaskError
 
+from ray.serve.exceptions import RayServeException
 from ray.serve._private.application_state import (
     ApplicationState,
     ApplicationStateManager,
@@ -20,9 +21,8 @@ from ray.serve._private.common import (
 )
 from ray.serve._private.deploy_utils import deploy_args_to_deployment_info
 from ray.serve._private.utils import get_random_letters
-from ray.serve.exceptions import RayServeException
 from ray.serve.schema import ServeApplicationSchema, DeploymentSchema
-from ray.serve.tests.test_deployment_state import MockKVStore
+from ray.serve.tests.utils import MockKVStore
 
 
 class MockEndpointState:

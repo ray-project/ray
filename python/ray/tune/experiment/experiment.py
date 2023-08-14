@@ -193,7 +193,8 @@ class Experiment:
 
         self.storage = None
         if _use_storage_context():
-            assert name is not None
+            if not name:
+                name = StorageContext.get_experiment_dir_name(run)
 
             self.storage = StorageContext(
                 storage_path=storage_path,
