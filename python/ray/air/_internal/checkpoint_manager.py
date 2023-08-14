@@ -301,6 +301,10 @@ class _CheckpointManager:
 
         self.set_delete_fn(delete_fn)
 
+    @property
+    def checkpoint_config(self):
+        return self._checkpoint_strategy
+
     def set_delete_fn(
         self, delete_fn: Optional[Callable[["_TrackedCheckpoint"], None]]
     ):

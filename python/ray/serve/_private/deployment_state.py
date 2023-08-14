@@ -14,7 +14,7 @@ from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 import ray
 from ray import ObjectRef, cloudpickle
 from ray.actor import ActorHandle
-from ray.exceptions import RayActorError, RayError, RayTaskError
+from ray.exceptions import RayActorError, RayError, RayTaskError, RuntimeEnvSetupError
 from ray.util.placement_group import PlacementGroup
 from ray._private.usage.usage_lib import (
     TagKey,
@@ -571,6 +571,19 @@ class ActorReplicaWrapper:
                     "the replica will be stopped."
                 )
                 return ReplicaStartupStatus.FAILED, str(e.as_instanceof_cause())
+            except RuntimeEnvSetupError as e:
+                msg = (
+                    f"Exception when allocating replica '{self._replica_tag}': {str(e)}"
+                )
+                logger.exception(msg)
+                return ReplicaStartupStatus.FAILED, msg
+            except Exception:
+                msg = (
+                    f"Exception when allocating replica '{self._replica_tag}':\n"
+                    + traceback.format_exc()
+                )
+                logger.exception(msg)
+                return ReplicaStartupStatus.FAILED, msg
 
         # Check whether relica initialization has completed.
         replica_ready = check_obj_ref_ready_nowait(self._ready_obj_ref)

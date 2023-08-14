@@ -614,7 +614,7 @@ You can customize synchronization behavior by implementing your own Syncer:
 
 By default, syncing occurs whenever one of the following conditions are met:
 
-* if you have used a :py:class:`~ray.air.config.CheckpointConfig` with ``num_to_keep`` and a trial has checkpointed more than ``num_to_keep`` times since last sync,
+* if you have used a :py:class:`~ray.train.CheckpointConfig` with ``num_to_keep`` and a trial has checkpointed more than ``num_to_keep`` times since last sync,
 * a ``sync_period`` of seconds (default 300) has passed since last sync.
 
 To change the frequency of syncing, set the ``sync_period`` attribute of the sync config to the desired syncing period.
@@ -758,7 +758,7 @@ You can configure this by setting `chdir_to_trial_dir=False` in `tune.TuneConfig
 This explicitly tells Tune to not change the working directory
 to the trial directory, giving access to paths relative to the original working directory.
 One caveat is that the working directory is now shared between workers, so the
-:meth:`session.get_trial_dir() <ray.air.session.get_trial_dir>`
+:meth:`train.get_context().get_trial_dir() <ray.train.context.TrainContext.get_.get_trial_dir>`
 API should be used to get the path for saving trial-specific outputs.
 
 .. literalinclude:: doc_code/faq.py
