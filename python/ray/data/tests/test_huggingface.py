@@ -41,6 +41,13 @@ def test_huggingface(ray_start_regular_shared):
     assert ray_dataset_split_test.count() == hf_dataset_split["test"].num_rows
 
 
+def test_from_huggingface_streaming(ray_start_regular_shared):
+    hfds = datasets.load_dataset("tweet_eval", "stance_climate", streaming=True, split="train")
+    assert isinstance(hfds, datasets.IterableDataset)
+    ds = ray.data.from_huggingface(hfds)
+    row = ds.limit(1).take(1)
+    assert isinstance(row, list)
+
 if __name__ == "__main__":
     import sys
 

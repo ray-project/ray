@@ -49,6 +49,7 @@ from ray.data.datasource import (
     Connection,
     CSVDatasource,
     Datasource,
+    HuggingFaceDatasource,
     ImageDatasource,
     JSONDatasource,
     MongoDatasource,
@@ -2116,13 +2117,13 @@ def from_spark(
 
 
 @PublicAPI
-def from_huggingface(dataset: "datasets.Dataset") -> MaterializedDataset:
+def from_huggingface(
+    dataset: Union["datasets.Dataset", "datasets.IterableDataset"],
+    parallelism: Optional[int] = -1,
+) -> Union[MaterializedDataset, Dataset]:
     """Create a :class:`~ray.data.Dataset` from a
-    `Hugging Face Datasets Dataset <https://huggingface.co/docs/datasets/package_reference/main_classes#datasets.Dataset/>`_.
-
-    This function isn't parallelized, and is intended to be used
-    with Hugging Face Datasets that are loaded into memory (as opposed
-    to memory-mapped).
+    `Hugging Face Datasets Dataset <https://huggingface.co/docs/datasets/package_reference/main_classes#datasets.Dataset/>`_
+    or `Hugging Face Datasets IterableDataset <https://huggingface.co/docs/datasets/package_reference/main_classes#datasets.IterableDataset/>`_Z.
 
     Example:
 
@@ -2149,9 +2150,9 @@ def from_huggingface(dataset: "datasets.Dataset") -> MaterializedDataset:
             )
 
     Args:
-        dataset: A `Hugging Face Datasets Dataset`_.
-            ``IterableDataset`` and
+        dataset: A `Hugging Face Datasets Dataset`_ or `Hugging Face Datasets IterableDataset`_.
             `DatasetDict <https://huggingface.co/docs/datasets/package_reference/main_classes#datasets.DatasetDict/>`_
+            and `IterableDatasetDict <https://huggingface.co/docs/datasets/package_reference/main_classes#datasets.IterableDatasetDict/>`_
             are not supported.
 
     Returns:
@@ -2159,6 +2160,12 @@ def from_huggingface(dataset: "datasets.Dataset") -> MaterializedDataset:
     """  # noqa: E501
     import datasets
 
+    if isinstance(dataset, datasets.IterableDataset):
+        return read_datasource(
+            HuggingFaceDatasource(),
+            parallelism=parallelism,
+            dataset=dataset,
+        )
     if isinstance(dataset, datasets.Dataset):
         # To get the resulting Arrow table from a Hugging Face Dataset after
         # applying transformations (e.g. train_test_split(), shard(), select()),
