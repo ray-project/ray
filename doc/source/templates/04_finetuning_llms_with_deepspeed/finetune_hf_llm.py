@@ -14,6 +14,7 @@ import torch.nn as nn
 from ray import tune  # noqa: F401
 import tqdm
 import tempfile
+from filelock import FileLock
 
 from accelerate import Accelerator, DeepSpeedPlugin
 from accelerate.utils import DummyOptim, DummyScheduler, set_seed
@@ -29,7 +30,9 @@ from ray import train
 from ray.train.torch import TorchTrainer
 import ray.util.scheduling_strategies
 
-from utils import get_checkpoint_and_refs_dir, get_mirror_link
+from utils import (
+    get_checkpoint_and_refs_dir, get_mirror_link, download_model, get_download_path
+)
 
 OPTIM_BETAS = (0.9, 0.999)
 OPTIM_EPS = 1e-8
@@ -171,6 +174,21 @@ def training_function(kwargs: dict):
     args = argparse.Namespace(**kwargs["args"])
     special_tokens = kwargs.get("special_tokens", [])
     model_id = config["model_name"]
+    
+    # We need to download the model weights on this machine if they don't exit.
+    # We need to acquire a lock to ensure that only one process downloads the model
+    bucket_uri = get_mirror_link(model_id)
+    download_path = get_download_path(model_id)
+    base_path = Path(download_path).parent
+    base_path.mkdir(parents=True, exist_ok=True)
+    lock_file = str(base_path / f'{model_id.replace("/",  "--")}.lock')
+    with FileLock(lock_file):
+        download_model(
+            model_id=model_id, 
+            bucket_uri=bucket_uri, 
+            s3_sync_args=["--no-sign-request"]
+        )
+    
 
     # Sample hyper-parameters for learning rate, batch size, seed and a few other HPs
     lr = config["lr"]
