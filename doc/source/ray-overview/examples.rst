@@ -95,13 +95,6 @@ Ray Examples
         Distributed training with XGBoost
 
     .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item
-        :link: /ray-air/examples/sklearn_example
-        :link-type: doc
-
-        Integrating with Scikit-Learn (non-distributed)
-
-    .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item data-processing
         :link: /ray-air/examples/batch_tuning
         :link-type: doc
@@ -184,27 +177,6 @@ Ray Examples
         :link-type: doc
 
         Image Classification Batch Inference with Huggingface Vision Transformer
-
-    .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item
-        :link: /ray-air/examples/upload_to_comet_ml
-        :link-type: doc
-
-        How to log results and upload models to Comet ML
-
-    .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item
-        :link: /ray-air/examples/upload_to_wandb
-        :link-type: doc
-
-        How to log results and upload models to Weights and Biases
-
-    .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item pytorch
-        :link: /ray-air/examples/torch_incremental_learning
-        :link-type: doc
-
-        Incrementally train and deploy a PyTorch CV model
 
     .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item pytorch tensorflow serving
