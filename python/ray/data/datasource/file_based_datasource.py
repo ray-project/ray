@@ -274,7 +274,7 @@ class FileBasedDatasource(Datasource):
         """
         from pyarrow.fs import FileType
 
-        self.created_dir = False
+        self.has_created_dir = False
         if try_create_dir:
             paths, filesystem = _resolve_paths_and_filesystem(path, filesystem)
             assert len(paths) == 1, len(paths)
@@ -285,7 +285,7 @@ class FileBasedDatasource(Datasource):
                 # add a query arg enabling bucket creation if an S3 URI is provided.
                 tmp = _add_creatable_buckets_param_if_s3_uri(path)
                 filesystem.create_dir(tmp, recursive=True)
-                self.created_dir = True
+                self.has_created_dir = True
 
     def write(
         self,
@@ -391,7 +391,7 @@ class FileBasedDatasource(Datasource):
         filesystem: Optional["pyarrow.fs.FileSystem"] = None,
         **kwargs,
     ) -> None:
-        if not self.created_dir:
+        if not self.has_created_dir:
             return
 
         paths, filesystem = _resolve_paths_and_filesystem(path, filesystem)
