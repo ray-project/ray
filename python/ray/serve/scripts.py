@@ -473,7 +473,7 @@ def run(
                     yield_on_timeout=True,
                 ):
                     if changes:
-                        cli_logger.info("Files changed. Redeploying Serve app.")
+                        cli_logger.info(f"Detected file change in path {working_dir}. Redeploying Serve app.")
                         serve.run(app, host=host, port=port)
 
             if blocking:
