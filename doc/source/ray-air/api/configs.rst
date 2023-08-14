@@ -2,20 +2,20 @@
 Ray AIR Configurations
 ======================
 
-.. TODO(ml-team): Add a general AIR configuration guide that covers all of these configs.
-
-.. seealso::
-
-    See :ref:`this Ray Train configuration user guide <train-config>` for more details.
+.. TODO(ml-team): Add a general configuration guide that covers all of these configs.
 
 .. currentmodule:: ray
 
+
+.. note::
+
+    We are changing the import path of the configurations classes from `ray.air` to `ray.train` starting from Ray 2.7, 
+    please see the :ref:`Ray Train API reference <ray-train-configs-api>` for the latest APIs.
+
 .. autosummary::
-    :toctree: doc/
 
     air.RunConfig
     air.ScalingConfig
-    air.DatasetConfig
     air.CheckpointConfig
     air.FailureConfig
 

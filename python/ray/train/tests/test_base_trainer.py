@@ -10,18 +10,16 @@ import numpy as np
 import pytest
 
 import ray
-from ray import tune
-from ray.air import session
-from ray.air.checkpoint import Checkpoint
+from ray import train, tune
+from ray.train import Checkpoint, ScalingConfig
 from ray.air.constants import MAX_REPR_LENGTH
-from ray.data.context import DatasetContext
+from ray.data.context import DataContext
 from ray.data.preprocessor import Preprocessor
 from ray.data.preprocessors import BatchMapper
 from ray.tune.impl import tuner_internal
 from ray.train.data_parallel_trainer import DataParallelTrainer
 from ray.train.gbdt_trainer import GBDTTrainer
 from ray.train.trainer import BaseTrainer
-from ray.air.config import ScalingConfig
 from ray.util.placement_group import get_current_placement_group
 
 logger = logging.getLogger(__name__)
@@ -60,7 +58,7 @@ class DummyPreprocessor(Preprocessor):
         self.fit_counter += 1
 
     def transform(self, ds):
-        return ds.map(lambda x: x + 1)
+        return ds.map(lambda x: {"item": x["item"] + 1})
 
 
 class DummyTrainer(BaseTrainer):
@@ -90,7 +88,7 @@ class DummyGBDTTrainer(GBDTTrainer):
 
 def test_trainer_fit(ray_start_4_cpus):
     def training_loop(self):
-        session.report(dict(my_metric=1))
+        train.report(dict(my_metric=1))
 
     trainer = DummyTrainer(train_loop=training_loop)
     result = trainer.fit()
@@ -98,11 +96,11 @@ def test_trainer_fit(ray_start_4_cpus):
 
 
 def test_preprocess_datasets(ray_start_4_cpus):
-    ctx = DatasetContext.get_current()
+    ctx = DataContext.get_current()
     ctx.execution_options.preserve_order = True
 
     def training_loop(self):
-        assert self.datasets["my_dataset"].take() == [2, 3, 4]
+        assert self.datasets["my_dataset"].take_batch()["item"].tolist() == [2, 3, 4]
 
     datasets = {"my_dataset": ray.data.from_items([1, 2, 3])}
     trainer = DummyTrainer(
@@ -144,8 +142,8 @@ def test_preprocess_fit_on_train(ray_start_4_cpus, gen_dataset):
         # Fit was only called once.
         assert self.preprocessor.fit_counter == 1
         # Datasets should all be transformed.
-        assert self.datasets["train"].take() == [2, 3, 4]
-        assert self.datasets["my_dataset"].take() == [2, 3, 4]
+        assert self.datasets["train"].take_batch()["item"].tolist() == [2, 3, 4]
+        assert self.datasets["my_dataset"].take_batch()["item"].tolist() == [2, 3, 4]
 
     if gen_dataset:
         datasets = {
@@ -168,8 +166,8 @@ def test_preprocessor_already_fitted(ray_start_4_cpus):
         # Make sure fit is not called if preprocessor is already fit.
         assert self.preprocessor.fit_counter == 1
         # Datasets should all be transformed.
-        assert self.datasets["train"].take() == [2, 3, 4]
-        assert self.datasets["my_dataset"].take() == [2, 3, 4]
+        assert self.datasets["train"].take_batch()["item"].tolist() == [2, 3, 4]
+        assert self.datasets["my_dataset"].take_batch()["item"].tolist() == [2, 3, 4]
 
     datasets = {
         "train": ray.data.from_items([1, 2, 3]),
@@ -340,15 +338,6 @@ def test_setup(ray_start_4_cpus):
     trainer.fit()
 
 
-def test_fail(ray_start_4_cpus):
-    def fail(self):
-        raise ValueError
-
-    trainer = DummyTrainer(fail)
-    with pytest.raises(ValueError):
-        trainer.fit()
-
-
 @patch.dict(os.environ, {"RAY_LOG_TO_STDERR": "1"})
 def _is_trainable_name_overriden(trainer: BaseTrainer):
     trainable = trainer.as_trainable()
@@ -409,7 +398,7 @@ def test_large_params(ray_start_4_cpus):
     array_size = int(1e8)
 
     def training_loop(self):
-        checkpoint = self.resume_from_checkpoint.to_dict()["ckpt"]
+        checkpoint = self.starting_checkpoint.to_dict()["ckpt"]
         assert len(checkpoint) == array_size
 
     checkpoint = Checkpoint.from_dict({"ckpt": np.zeros(shape=array_size)})
@@ -418,22 +407,22 @@ def test_large_params(ray_start_4_cpus):
 
 
 def test_preprocess_datasets_context(ray_start_4_cpus):
-    """Tests if DatasetContext is propagated to preprocessors."""
+    """Tests if DataContext is propagated to preprocessors."""
 
     def training_loop(self):
         assert self.datasets["my_dataset"].take() == [{"a": i} for i in range(2, 5)]
-        session.report(dict(my_metric=1))
+        train.report(dict(my_metric=1))
 
     target_max_block_size = 100
 
     def map_fn(batch):
-        ctx = ray.data.context.DatasetContext.get_current()
+        ctx = ray.data.context.DataContext.get_current()
         assert ctx.target_max_block_size == target_max_block_size
         return batch + 1
 
     preprocessor = BatchMapper(map_fn, batch_format="pandas")
 
-    ctx = ray.data.context.DatasetContext.get_current()
+    ctx = ray.data.context.DataContext.get_current()
     ctx.target_max_block_size = target_max_block_size
 
     datasets = {"my_dataset": ray.data.from_pandas(pd.DataFrame({"a": [1, 2, 3]}))}

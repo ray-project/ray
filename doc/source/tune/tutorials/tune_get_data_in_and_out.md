@@ -9,7 +9,6 @@ Often, you will find yourself needing to pass data into Tune [Trainables](tune_6
 
 Let's start by defining a simple Trainable function. We'll be expanding this function with different functionality as we go.
 
-
 ```python
 import random
 import time
@@ -35,7 +34,6 @@ def training_function(config):
 Our `training_function` function requires a pandas DataFrame, a model with some hyperparameters and the number of epochs to train the model for as inputs. The hyperparameters of the model impact the metric returned, and in each epoch (iteration of training), the `trained_model` state is changed.
 
 We will run hyperparameter optimization using the [Tuner API](tune-run-ref).
-
 
 ```python
 from ray.tune import Tuner
@@ -73,11 +71,10 @@ For example, passing in a large pandas DataFrame or an unserializable model obje
 Instead, use strings or other identifiers as your values, and initialize/load the objects inside your Trainable directly depending on those.
 
 ```{note}
-[Ray Datasets](datasets_getting_started) can be used as values in the search space directly.
+[Datasets](data_key_concepts) can be used as values in the search space directly.
 ```
 
 In our example, we want to tune the two model hyperparameters. We also want to set the number of epochs, so that we can easily tweak it later. For the hyperparameters, we will use the `tune.uniform` distribution. We will also modify the `training_function` to obtain those values from the `config` dictionary.
-
 
 ```python
 def training_function(config):
@@ -126,7 +123,6 @@ Note that the serialization (once) and deserialization (for each Trial) of large
 
 In our example, we will pass the `data` DataFrame using `tune.with_parameters`. In order to do that, we need to modify our function signature to include `data` as an argument.
 
-
 ```python
 def training_function(config, data):
     model = {
@@ -157,7 +153,6 @@ tuner = Tuner(
 
 Next step is to wrap the `training_function` using `tune.with_parameters` before passing it into the `Tuner`. Every keyword argument of the `tune.with_parameters` call will be mapped to the keyword arguments in the Trainable signature.
 
-
 ```python
 data = pd.DataFrame({"A": [1, 2, 3], "B": [4, 5, 6]})
 
@@ -184,14 +179,11 @@ A common use-case is to load the dataset from S3 or any other cloud storage with
 
 The working directory of the Trainable worker will be automatically changed to the corresponding Trial directory. For more details, see {ref}`tune-working-dir`.
 
-
 Our tuning run can now be run, though we will not yet obtain any meaningful outputs back.
-
 
 ```python
 results = tuner.fit()
 ```
-
 
 ## Getting data out of Ray Tune
 
@@ -212,7 +204,6 @@ Tune will automatically include some metrics, such as the training iteration, ti
 ```
 
 In our example, we want to maximize the `metric`. We will report it each epoch to Tune, and set the `metric` and `mode` arguments in `tune.TuneConfig` to let Tune know that it should use it as the optimization objective.
-
 
 ```python
 from ray.air import session
@@ -255,7 +246,6 @@ Callbacks are passed in the `callback` argument of the `Tuner`'s `RunConfig`.
 
 In our example, we'll use the MLFlow callback to track the progress of our tuning run and the changing value of the `metric` (requires `mlflow` to be installed).
 
-
 ```python
 from ray.air import RunConfig
 from ray.air.integrations.mlflow import MLflowLoggerCallback
@@ -297,9 +287,9 @@ tuner = Tuner(
 
 Aside from metrics, you may want to save the state of your trained model and any other artifacts to allow resumption from training failure and further inspection and usage. Those cannot be saved as metrics, as they are often far too large and may not be easily serializable. Finally, they should be persisted on disk or cloud storage to allow access after the Tune run is interrupted or terminated.
 
-Ray AIR (which contains Ray Tune) provides a [`Checkpoint`](air-checkpoints-doc) API for that purpose. `Checkpoint` objects can be created from various sources (dictionaries, directories, cloud storage) and used between different AIR components.
+Ray Train provides a [`Checkpoint`](checkpoint-api-ref) API for that purpose. `Checkpoint` objects can be created from various sources (dictionaries, directories, cloud storage).
 
-In Tune, `Checkpoints` are created by the user in their Trainable functions and reported using the optional `checkpoint` argument of `session.report`. `Checkpoints` can contain arbitrary data and can be freely passed around the Ray cluster. After a tuning run is over, `Checkpoints` can be [obtained from the results](/tune/examples/tune_analyze_results).
+In Ray Tune, `Checkpoints` are created by the user in their Trainable functions and reported using the optional `checkpoint` argument of `session.report`. `Checkpoints` can contain arbitrary data and can be freely passed around the Ray cluster. After a tuning run is over, `Checkpoints` can be [obtained from the results](/tune/examples/tune_analyze_results).
 
 Ray Tune can be configured to [automatically sync checkpoints to cloud storage](tune-storage-options), keep only a certain number of checkpoints to save space (with {class}`ray.air.config.CheckpointConfig`) and more.
 
@@ -308,7 +298,6 @@ The experiment state itself is checkpointed separately. See {ref}`tune-persisted
 ```
 
 In our example, we want to be able to resume the training from the latest checkpoint, and to save the `trained_model` in a checkpoint every iteration. To accomplish this, we will use the `session` and `Checkpoint` APIs.
-
 
 ```python
 from ray.air import Checkpoint
@@ -358,19 +347,12 @@ tuner = Tuner(
 
 With all of those changes implemented, we can now run our tuning and obtain meaningful metrics and artifacts.
 
-
 ```python
 results = tuner.fit()
 results.get_dataframe()
 ```
 
-
-
-    2022-11-30 17:40:28,839	INFO tune.py:762 -- Total run time: 15.79 seconds (15.65 seconds for the tuning loop).
-
-
-
-
+    2022-11-30 17:40:28,839 INFO tune.py:762 -- Total run time: 15.79 seconds (15.65 seconds for the tuning loop).
 
 <div>
 <style scoped>
@@ -515,13 +497,10 @@ results.get_dataframe()
 <p>4 rows × 23 columns</p>
 </div>
 
-
-
 Checkpoints, metrics, and the log directory for each trial can be accessed through the `ResultGrid` output of a Tune experiment. For more information on how to interact with the returned `ResultGrid`, see {doc}`/tune/examples/tune_analyze_results`.
-
 
 ### How do I access Tune results after I am finished?
 
 After you have finished running the Python session, you can still access the results and checkpoints. By default, Tune will save the experiment results to the `~/ray_results` local directory. You can configure Tune to persist results in the cloud as well. See {ref}`tune-storage-options` for more information on how to configure storage options for persisting experiment results.
 
-You can restore the Tune experiment by calling `Tuner.restore(path_or_cloud_uri)`, where `path_or_cloud_uri` points to a location either on the filesystem or cloud where the experiment was saved to. After the `Tuner` has been restored, you can access the results and checkpoints by calling `Tuner.get_results()` to receive the `ResultGrid` object, and then proceeding as outlined in the previous section.
+You can restore the Tune experiment by calling {meth}`Tuner.restore(path_or_cloud_uri, trainable) <ray.tune.Tuner.restore>`, where `path_or_cloud_uri` points to a location either on the filesystem or cloud where the experiment was saved to. After the `Tuner` has been restored, you can access the results and checkpoints by calling `Tuner.get_results()` to receive the `ResultGrid` object, and then proceeding as outlined in the previous section.

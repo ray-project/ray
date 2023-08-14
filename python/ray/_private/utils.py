@@ -1,9 +1,9 @@
 import asyncio
 import binascii
+from collections import defaultdict
 import contextlib
 import errno
 import functools
-import hashlib
 import importlib
 import inspect
 import json
@@ -19,15 +19,21 @@ import tempfile
 import threading
 import time
 from urllib.parse import urlencode, unquote, urlparse, parse_qsl, urlunparse
-import uuid
 import warnings
 from inspect import signature
 from pathlib import Path
 from subprocess import list2cmdline
-from typing import TYPE_CHECKING, Any, Dict, Optional, Sequence, Tuple, Union, Coroutine
-
-import grpc
-import numpy as np
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Dict,
+    Optional,
+    Sequence,
+    Tuple,
+    Union,
+    Coroutine,
+    List,
+)
 
 # Import psutil after ray so the packaged version is used.
 import psutil
@@ -35,19 +41,12 @@ from google.protobuf import json_format
 
 import ray
 import ray._private.ray_constants as ray_constants
-from ray._private.tls_utils import load_certs_from_env
-from ray.core.generated.gcs_pb2 import ErrorTableData
 from ray.core.generated.runtime_env_common_pb2 import (
     RuntimeEnvInfo as ProtoRuntimeEnvInfo,
 )
 
 if TYPE_CHECKING:
     from ray.runtime_env import RuntimeEnv
-
-try:
-    from grpc import aio as aiogrpc
-except ImportError:
-    from grpc.experimental import aio as aiogrpc
 
 
 pwd = None
@@ -68,6 +67,16 @@ win32_AssignProcessToJobObject = None
 
 ENV_DISABLE_DOCKER_CPU_WARNING = "RAY_DISABLE_DOCKER_CPU_WARNING" in os.environ
 _PYARROW_VERSION = None
+
+# This global variable is used for testing only
+_CALLED_FREQ = defaultdict(lambda: 0)
+_CALLED_FREQ_LOCK = threading.Lock()
+
+
+PLACEMENT_GROUP_INDEXED_BUNDLED_RESOURCE_PATTERN = re.compile(
+    r"(.+)_group_(\d+)_([0-9a-zA-Z]+)"
+)
+PLACEMENT_GROUP_WILDCARD_RESOURCE_PATTERN = re.compile(r"(.+)_group_([0-9a-zA-Z]+)")
 
 
 def get_user_temp_dir():
@@ -130,14 +139,6 @@ def read_ray_address(temp_dir: Optional[str] = None) -> str:
         return f.read().strip()
 
 
-def _random_string():
-    id_hash = hashlib.shake_128()
-    id_hash.update(uuid.uuid4().bytes)
-    id_bytes = id_hash.digest(ray_constants.ID_SIZE)
-    assert len(id_bytes) == ray_constants.ID_SIZE
-    return id_bytes
-
-
 def format_error_message(exception_message: str, task_exception: bool = False):
     """Improve the formatting of an exception thrown by a remote function.
 
@@ -179,27 +180,6 @@ def push_error_to_driver(
     worker.core_worker.push_error(job_id, error_type, message, time.time())
 
 
-def construct_error_message(job_id, error_type, message, timestamp):
-    """Construct an ErrorTableData object.
-
-    Args:
-        job_id: The ID of the job that the error should go to. If this is
-            nil, then the error will go to all drivers.
-        error_type: The type of the error.
-        message: The error message.
-        timestamp: The time of the error.
-
-    Returns:
-        The ErrorTableData object.
-    """
-    data = ErrorTableData()
-    data.job_id = job_id.binary()
-    data.type = error_type
-    data.error_message = message
-    data.timestamp = timestamp
-    return data
-
-
 def publish_error_to_driver(
     error_type: str,
     message: str,
@@ -225,37 +205,12 @@ def publish_error_to_driver(
     if job_id is None:
         job_id = ray.JobID.nil()
     assert isinstance(job_id, ray.JobID)
-    error_data = construct_error_message(job_id, error_type, message, time.time())
     try:
-        gcs_publisher.publish_error(job_id.hex().encode(), error_data, num_retries)
+        gcs_publisher.publish_error(
+            job_id.hex().encode(), error_type, message, job_id, num_retries
+        )
     except Exception:
-        logger.exception(f"Failed to publish error {error_data}")
-
-
-def random_string():
-    """Generate a random string to use as an ID.
-
-    Note that users may seed numpy, which could cause this function to generate
-    duplicate IDs. Therefore, we need to seed numpy ourselves, but we can't
-    interfere with the state of the user's random number generator, so we
-    extract the state of the random number generator and reset it after we are
-    done.
-
-    TODO(rkn): If we want to later guarantee that these are generated in a
-    deterministic manner, then we will need to make some changes here.
-
-    Returns:
-        A random byte string of length ray_constants.ID_SIZE.
-    """
-    # Get the state of the numpy random number generator.
-    numpy_state = np.random.get_state()
-    # Try to use true randomness.
-    np.random.seed(None)
-    # Generate the random ID.
-    random_id = np.random.bytes(ray_constants.ID_SIZE)
-    # Reset the state of the numpy random number generator.
-    np.random.set_state(numpy_state)
-    return random_id
+        logger.exception(f"Failed to publish error: {message} [type {error_type}]")
 
 
 def decode(byte_str: str, allow_none: bool = False, encode_type: str = "utf-8"):
@@ -275,10 +230,7 @@ def decode(byte_str: str, allow_none: bool = False, encode_type: str = "utf-8"):
 
     if not isinstance(byte_str, bytes):
         raise ValueError(f"The argument {byte_str} must be a bytes object.")
-    if sys.version_info >= (3, 0):
-        return byte_str.decode(encode_type)
-    else:
-        return byte_str
+    return byte_str.decode(encode_type)
 
 
 def ensure_str(s, encoding="utf-8", errors="strict"):
@@ -304,8 +256,7 @@ def binary_to_task_id(binary_task_id):
 
 def binary_to_hex(identifier):
     hex_identifier = binascii.hexlify(identifier)
-    if sys.version_info >= (3, 0):
-        hex_identifier = hex_identifier.decode()
+    hex_identifier = hex_identifier.decode()
     return hex_identifier
 
 
@@ -650,7 +601,7 @@ def get_num_cpus(
             # TODO (Alex): We should probably add support for fractional cpus.
             if int(docker_count) != float(docker_count):
                 logger.warning(
-                    f"Ray currently does not support initializing Ray"
+                    f"Ray currently does not support initializing Ray "
                     f"with fractional cpus. Your num_cpus will be "
                     f"truncated from {docker_count} to "
                     f"{int(docker_count)}."
@@ -1271,9 +1222,7 @@ def get_wheel_filename(
     assert py_version in ray_constants.RUNTIME_ENV_CONDA_PY_VERSIONS, py_version
 
     py_version_str = "".join(map(str, py_version))
-    if py_version_str in ["36", "37"]:
-        darwin_os_string = "macosx_10_15_intel"
-    elif py_version_str in ["38", "39"]:
+    if py_version_str in ["37", "38", "39"]:
         darwin_os_string = "macosx_10_15_x86_64"
     else:
         darwin_os_string = "macosx_10_15_universal2"
@@ -1295,7 +1244,7 @@ def get_wheel_filename(
 
     wheel_filename = (
         f"ray-{ray_version}-cp{py_version_str}-"
-        f"cp{py_version_str}{'m' if py_version_str in ['36', '37'] else ''}"
+        f"cp{py_version_str}{'m' if py_version_str in ['37'] else ''}"
         f"-{os_strings[sys_platform]}.whl"
     )
 
@@ -1351,6 +1300,15 @@ def init_grpc_channel(
     options: Optional[Sequence[Tuple[str, Any]]] = None,
     asynchronous: bool = False,
 ):
+    import grpc
+
+    try:
+        from grpc import aio as aiogrpc
+    except ImportError:
+        from grpc.experimental import aio as aiogrpc
+
+    from ray._private.tls_utils import load_certs_from_env
+
     grpc_module = aiogrpc if asynchronous else grpc
 
     options = options or []
@@ -1394,6 +1352,15 @@ def check_dashboard_dependencies_installed() -> bool:
         return False
 
 
+connect_error = (
+    "Unable to connect to GCS (ray head) at {}. "
+    "Check that (1) Ray with matching version started "
+    "successfully at the specified address, (2) this "
+    "node can reach the specified address, and (3) there is "
+    "no firewall setting preventing access."
+)
+
+
 def internal_kv_list_with_retry(gcs_client, prefix, namespace, num_retries=20):
     result = None
     if isinstance(prefix, str):
@@ -1404,16 +1371,11 @@ def internal_kv_list_with_retry(gcs_client, prefix, namespace, num_retries=20):
         try:
             result = gcs_client.internal_kv_keys(prefix, namespace)
         except Exception as e:
-            if isinstance(e, grpc.RpcError) and e.code() in (
-                grpc.StatusCode.UNAVAILABLE,
-                grpc.StatusCode.UNKNOWN,
+            if isinstance(e, ray.exceptions.RpcError) and e.rpc_code in (
+                ray._raylet.GRPC_STATUS_CODE_UNAVAILABLE,
+                ray._raylet.GRPC_STATUS_CODE_UNKNOWN,
             ):
-                logger.warning(
-                    f"Unable to connect to GCS at {gcs_client.address}. "
-                    "Check that (1) Ray GCS with matching version started "
-                    "successfully at the specified address, and (2) there is "
-                    "no firewall setting preventing access."
-                )
+                logger.warning(connect_error.format(gcs_client.address))
             else:
                 logger.exception("Internal KV List failed")
             result = None
@@ -1438,16 +1400,11 @@ def internal_kv_get_with_retry(gcs_client, key, namespace, num_retries=20):
         try:
             result = gcs_client.internal_kv_get(key, namespace)
         except Exception as e:
-            if isinstance(e, grpc.RpcError) and e.code() in (
-                grpc.StatusCode.UNAVAILABLE,
-                grpc.StatusCode.UNKNOWN,
+            if isinstance(e, ray.exceptions.RpcError) and e.rpc_code in (
+                ray._raylet.GRPC_STATUS_CODE_UNAVAILABLE,
+                ray._raylet.GRPC_STATUS_CODE_UNKNOWN,
             ):
-                logger.warning(
-                    f"Unable to connect to GCS at {gcs_client.address}. "
-                    "Check that (1) Ray GCS with matching version started "
-                    "successfully at the specified address, and (2) there is "
-                    "no firewall setting preventing access."
-                )
+                logger.warning(connect_error.format(gcs_client.address))
             else:
                 logger.exception("Internal KV Get failed")
             result = None
@@ -1470,16 +1427,40 @@ def parse_resources_json(
     try:
         resources = json.loads(resources)
         if not isinstance(resources, dict):
-            raise ValueError
-    except Exception:
-        cli_logger.error("`{}` is not a valid JSON string.", cf.bold(command_arg))
+            raise ValueError("The format after deserialization is not a dict")
+    except Exception as e:
+        cli_logger.error(
+            "`{}` is not a valid JSON string, detail error:{}",
+            cf.bold(f"{command_arg}={resources}"),
+            str(e),
+        )
         cli_logger.abort(
             "Valid values look like this: `{}`",
             cf.bold(
-                f'{command_arg}=\'{{"CustomResource3": 1, ' '"CustomResource2": 2}}\''
+                f'{command_arg}=\'{{"CustomResource3": 1, "CustomResource2": 2}}\''
             ),
         )
     return resources
+
+
+def parse_metadata_json(
+    metadata: str, cli_logger, cf, command_arg="--metadata-json"
+) -> Dict[str, str]:
+    try:
+        metadata = json.loads(metadata)
+        if not isinstance(metadata, dict):
+            raise ValueError("The format after deserialization is not a dict")
+    except Exception as e:
+        cli_logger.error(
+            "`{}` is not a valid JSON string, detail error:{}",
+            cf.bold(f"{command_arg}={metadata}"),
+            str(e),
+        )
+        cli_logger.abort(
+            "Valid values look like this: `{}`",
+            cf.bold(f'{command_arg}=\'{{"key1": "value1", "key2": "value2"}}\''),
+        )
+    return metadata
 
 
 def internal_kv_put_with_retry(gcs_client, key, value, namespace, num_retries=20):
@@ -1495,22 +1476,17 @@ def internal_kv_put_with_retry(gcs_client, key, value, namespace, num_retries=20
             return gcs_client.internal_kv_put(
                 key, value, overwrite=True, namespace=namespace
             )
-        except grpc.RpcError as e:
-            if e.code() in (
-                grpc.StatusCode.UNAVAILABLE,
-                grpc.StatusCode.UNKNOWN,
+        except ray.exceptions.RpcError as e:
+            if e.rpc_code in (
+                ray._raylet.GRPC_STATUS_CODE_UNAVAILABLE,
+                ray._raylet.GRPC_STATUS_CODE_UNKNOWN,
             ):
-                logger.warning(
-                    f"Unable to connect to GCS at {gcs_client.address}. "
-                    "Check that (1) Ray GCS with matching version started "
-                    "successfully at the specified address, and (2) there is "
-                    "no firewall setting preventing access."
-                )
+                logger.warning(connect_error.format(gcs_client.address))
             else:
                 logger.exception("Internal KV Put failed")
             time.sleep(2)
             error = e
-    # Reraise the last grpc.RpcError.
+    # Reraise the last error.
     raise error
 
 
@@ -1664,7 +1640,7 @@ def split_address(address: str) -> Tuple[str, str]:
 
     Examples:
         >>> split_address("ray://my_cluster")
-        ("ray", "my_cluster")
+        ('ray', 'my_cluster')
     """
     if "://" not in address:
         raise ValueError("Address must contain '://'")
@@ -1688,8 +1664,6 @@ def get_or_create_event_loop() -> asyncio.BaseEventLoop:
     version >= 3.7, if not possible, one should create and manage the event
     loops explicitly.
     """
-    import sys
-
     vers_info = sys.version_info
     if vers_info.major >= 3 and vers_info.minor >= 10:
         # This follows the implementation of the deprecating `get_event_loop`
@@ -1707,6 +1681,19 @@ def get_or_create_event_loop() -> asyncio.BaseEventLoop:
             return asyncio.get_event_loop_policy().get_event_loop()
 
     return asyncio.get_event_loop()
+
+
+def make_asyncio_event_version_compat(
+    event_loop: asyncio.AbstractEventLoop,
+) -> asyncio.Event:
+    # Python 3.8 has deprecated the 'loop' parameter, and Python 3.10 has
+    # removed it altogether. Construct an `asyncio.Event` accordingly.
+    if sys.version_info.major >= 3 and sys.version_info.minor >= 10:
+        event = asyncio.Event()
+    else:
+        event = asyncio.Event(loop=event_loop)
+
+    return event
 
 
 def get_entrypoint_name():
@@ -1829,9 +1816,7 @@ class DeferSigint(contextlib.AbstractContextManager):
         if threading.current_thread() == threading.main_thread():
             return cls()
         else:
-            # TODO(Clark): Use contextlib.nullcontext() once Python 3.6 support is
-            # dropped.
-            return contextlib.suppress()
+            return contextlib.nullcontext()
 
     def _set_task_cancelled(self, signum, frame):
         """SIGINT handler that defers the signal."""
@@ -1912,3 +1897,107 @@ def run_background_task(coroutine: Coroutine) -> asyncio.Task:
     # completion:
     task.add_done_callback(background_tasks.discard)
     return task
+
+
+def try_import_each_module(module_names_to_import: List[str]) -> None:
+    """
+    Make a best-effort attempt to import each named Python module.
+    This is used by the Python default_worker.py to preload modules.
+    """
+    for module_to_preload in module_names_to_import:
+        try:
+            importlib.import_module(module_to_preload)
+        except ImportError:
+            logger.exception(f'Failed to preload the module "{module_to_preload}"')
+
+
+def update_envs(env_vars: Dict[str, str]):
+    """
+    When updating the environment variable, if there is ${X},
+    it will be replaced with the current environment variable.
+    """
+    if not env_vars:
+        return
+
+    replaceable_keys = [
+        "PATH",
+        "LD_LIBRARY_PATH",
+        "DYLD_LIBRARY_PATH",
+        "LD_PRELOAD",
+    ]
+
+    for key, value in env_vars.items():
+        if key in replaceable_keys:
+            os.environ[key] = value.replace("${" + key + "}", os.environ.get(key, ""))
+        else:
+            os.environ[key] = value
+
+
+def parse_node_labels_json(
+    labels_json: str, cli_logger, cf, command_arg="--labels"
+) -> Dict[str, str]:
+    try:
+        labels = json.loads(labels_json)
+        if not isinstance(labels, dict):
+            raise ValueError(
+                "The format after deserialization is not a key-value pair map"
+            )
+        for key, value in labels.items():
+            if not isinstance(key, str):
+                raise ValueError("The key is not string type.")
+            if not isinstance(value, str):
+                raise ValueError(f'The value of the "{key}" is not string type')
+    except Exception as e:
+        cli_logger.abort(
+            "`{}` is not a valid JSON string, detail error:{}"
+            "Valid values look like this: `{}`",
+            cf.bold(f"{command_arg}={labels_json}"),
+            str(e),
+            cf.bold(f'{command_arg}=\'{{"gpu_type": "A100", "region": "us"}}\''),
+        )
+    return labels
+
+
+def validate_node_labels(labels: Dict[str, str]):
+    if labels is None:
+        return
+    for key in labels.keys():
+        if key.startswith(ray_constants.RAY_DEFAULT_LABEL_KEYS_PREFIX):
+            raise ValueError(
+                f"Custom label keys `{key}` cannot start with the prefix "
+                f"`{ray_constants.RAY_DEFAULT_LABEL_KEYS_PREFIX}`. "
+                f"This is reserved for Ray defined labels."
+            )
+
+
+def pasre_pg_formatted_resources_to_original(
+    pg_formatted_resources: Dict[str, float]
+) -> Dict[str, float]:
+    original_resources = {}
+
+    for key, value in pg_formatted_resources.items():
+        result = PLACEMENT_GROUP_WILDCARD_RESOURCE_PATTERN.match(key)
+        if result and len(result.groups()) == 2:
+            original_resources[result.group(1)] = value
+            continue
+        result = PLACEMENT_GROUP_INDEXED_BUNDLED_RESOURCE_PATTERN.match(key)
+        if result and len(result.groups()) == 3:
+            original_resources[result.group(1)] = value
+            continue
+        original_resources[key] = value
+
+    return original_resources
+
+
+def load_class(path):
+    """Load a class at runtime given a full path.
+
+    Example of the path: mypkg.mysubpkg.myclass
+    """
+    class_data = path.split(".")
+    if len(class_data) < 2:
+        raise ValueError("You need to pass a valid path like mymodule.provider_class")
+    module_path = ".".join(class_data[:-1])
+    class_str = class_data[-1]
+    module = importlib.import_module(module_path)
+    return getattr(module, class_str)

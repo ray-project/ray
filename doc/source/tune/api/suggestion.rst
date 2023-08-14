@@ -11,13 +11,12 @@ You can utilize these search algorithms as follows:
 
 .. code-block:: python
 
-    from ray import tune
-    from ray.air import session
+    from ray import train, tune
     from ray.tune.search.optuna import OptunaSearch
 
     def train_fn(config):
         # This objective function is just for demonstration purposes
-        session.report({"loss": config["param"]})
+        train.report({"loss": config["param"]})
 
     tuner = tune.Tuner(
         train_fn,
@@ -84,7 +83,7 @@ identifier:
         ),
         run_config=air.RunConfig(
             name="my-experiment-1",
-            local_dir="~/my_results",
+            storage_path="~/my_results",
         )
     )
     results = tuner_1.fit()
@@ -331,7 +330,6 @@ If you are interested in implementing or contributing a new Search Algorithm, pr
 
 .. autosummary::
     :toctree: doc/
-    :template: autosummary/class_with_autosummary.rst
 
     Searcher
 

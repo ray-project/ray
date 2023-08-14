@@ -81,7 +81,8 @@ int main(int argc, char *argv[]) {
     ray::RayEventInit(ray::rpc::Event_SourceType::Event_SourceType_GCS,
                       absl::flat_hash_map<std::string, std::string>(),
                       log_dir,
-                      RayConfig::instance().event_level());
+                      RayConfig::instance().event_level(),
+                      RayConfig::instance().emit_event_to_log_file());
   }
 
   ray::gcs::GcsServerConfig gcs_server_config;
@@ -97,6 +98,7 @@ int main(int argc, char *argv[]) {
   gcs_server_config.node_ip_address = node_ip_address;
   gcs_server_config.log_dir = log_dir;
   gcs_server_config.raylet_config_list = config_list;
+  gcs_server_config.session_name = session_name;
   ray::gcs::GcsServer gcs_server(gcs_server_config, main_service);
 
   // Destroy the GCS server on a SIGTERM. The pointer to main_service is
@@ -106,7 +108,7 @@ int main(int argc, char *argv[]) {
                                               int signal_number) {
     RAY_LOG(INFO) << "GCS server received SIGTERM, shutting down...";
     main_service.stop();
-    ray::rpc::DrainAndResetServerCallExecutor();
+    ray::rpc::DrainServerCallExecutor();
     gcs_server.Stop();
     ray::stats::Shutdown();
   };

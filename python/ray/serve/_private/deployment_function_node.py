@@ -1,11 +1,10 @@
-import inspect
 from typing import Any, Callable, Dict, List, Union
 
 from ray.dag.dag_node import DAGNode
 from ray.dag.format_utils import get_dag_node_str
 from ray.serve.deployment import Deployment, schema_to_deployment
 from ray.serve.config import DeploymentConfig
-from ray.serve.handle import RayServeDeploymentHandle
+from ray.serve.handle import RayServeHandle
 from ray.serve.schema import DeploymentSchema
 
 
@@ -35,13 +34,6 @@ class DeploymentFunctionNode(DAGNode):
             ]
             deployment_shell = schema_to_deployment(deployment_schema)
 
-            # Prefer user specified name to override the generated one.
-            if (
-                inspect.isfunction(func_body)
-                and deployment_shell.name != func_body.__name__
-            ):
-                self._deployment_name = deployment_shell.name
-
             # Set the route prefix, prefer the one user supplied,
             # otherwise set it to /deployment_name
             if (
@@ -70,8 +62,8 @@ class DeploymentFunctionNode(DAGNode):
                 ray_actor_options=func_options,
                 _internal=True,
             )
-        # TODO (jiaodong): Polish with async handle support later
-        self._deployment_handle = RayServeDeploymentHandle(self._deployment.name)
+
+        self._deployment_handle = RayServeHandle(self._deployment.name)
 
     def _copy_impl(
         self,

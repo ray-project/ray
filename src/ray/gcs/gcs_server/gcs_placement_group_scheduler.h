@@ -18,12 +18,12 @@
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/bundle_location_index.h"
 #include "ray/common/id.h"
+#include "ray/common/scheduling/scheduling_ids.h"
 #include "ray/gcs/gcs_server/gcs_node_manager.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
 #include "ray/gcs/gcs_server/ray_syncer.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
 #include "ray/raylet/scheduling/policy/scheduling_context.h"
-#include "ray/raylet/scheduling/scheduling_ids.h"
 #include "ray/raylet_client/raylet_client.h"
 #include "ray/rpc/node_manager/node_manager_client.h"
 #include "ray/rpc/node_manager/node_manager_client_pool.h"
@@ -62,12 +62,22 @@ class GcsPlacementGroupSchedulerInterface {
       PGSchedulingFailureCallback failure_callback,
       PGSchedulingSuccessfulCallback success_callback) = 0;
 
-  /// Get bundles belong to the specified node.
+  /// Get and remove bundles belong to the specified node.
+  ///
+  /// This is expected to be called on dead node only since it will remove
+  /// the bundles from the node.
   ///
   /// \param node_id ID of the dead node.
   /// \return The bundles belong to the dead node.
+  virtual absl::flat_hash_map<PlacementGroupID, std::vector<int64_t>>
+  GetAndRemoveBundlesOnNode(const NodeID &node_id) = 0;
+
+  /// Get bundles belong to the specified node.
+  ///
+  /// \param node_id ID of a node.
+  /// \return The bundles belong to the node.
   virtual absl::flat_hash_map<PlacementGroupID, std::vector<int64_t>> GetBundlesOnNode(
-      const NodeID &node_id) = 0;
+      const NodeID &node_id) const = 0;
 
   /// Destroy bundle resources from all nodes in the placement group.
   ///
@@ -311,12 +321,22 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   /// \param placement_group_id The placement group id scheduling is in progress.
   void MarkScheduleCancelled(const PlacementGroupID &placement_group_id) override;
 
-  /// Get bundles belong to the specified node.
+  /// Get and remove bundles belong to the specified node.
+  ///
+  /// This is expected to be called on dead node only since it will remove
+  /// the bundles from the node.
   ///
   /// \param node_id ID of the dead node.
   /// \return The bundles belong to the dead node.
-  absl::flat_hash_map<PlacementGroupID, std::vector<int64_t>> GetBundlesOnNode(
+  absl::flat_hash_map<PlacementGroupID, std::vector<int64_t>> GetAndRemoveBundlesOnNode(
       const NodeID &node_id) override;
+
+  /// Get bundles belong to the specified node.
+  ///
+  /// \param node_id ID of a node.
+  /// \return The bundles belong to the node.
+  absl::flat_hash_map<PlacementGroupID, std::vector<int64_t>> GetBundlesOnNode(
+      const NodeID &node_id) const override;
 
   /// Notify raylets to release unused bundles.
   ///

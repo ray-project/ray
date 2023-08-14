@@ -27,8 +27,14 @@ or a single :py:class:`~ray.rllib.policy.policy.Policy` instance.
 The Algorithm- or Policy instances that were used to create the checkpoint in the first place
 may or may not have been trained prior to this.
 
-RLlib uses the new Ray AIR :py:class:`~ray.air.checkpoint.Checkpoint` class to create checkpoints and
+RLlib uses the :py:class:`~ray.air.checkpoint.Checkpoint` class to create checkpoints and
 restore objects from them.
+
+The main file in a checkpoint directory, containing the state information, is currently
+generated using Ray's `cloudpickle` package. Since `cloudpickle` is volatile with respect to
+the python version used, we are currently experimenting with `msgpack` (and `msgpack_numpy`)
+as an alternative checkpoint format. In case you are interested in generating
+python-verion independent checkpoints, see below for further details.
 
 
 Algorithm checkpoints
@@ -130,6 +136,33 @@ details on the contents of this file when talking about :py:class:`~ray.rllib.po
 Note that :py:class:`~ray.rllib.policy.policy.Policy` checkpoint also have a
 info file (``rllib_checkpoint.json``), which is always identical to the enclosing
 algorithm checkpoint version.
+
+
+Checkpoints are py-version specific, but can be converted to be version independent
+-----------------------------------------------------------------------------------
+
+Algorithm checkpoints created via the ``save()`` method are always cloudpickle-based and
+thus dependent on the python version used. This means there is no guarantee that you
+will to be able to use a checkpoint created with python 3.8 to restore an Algorithm
+in a new environment that runs python 3.9.
+
+However, we now provide a utility for converting a checkpoint (generated with
+`Algorithm.save()`) into a python version independent checkpoint (based on msgpack).
+You can then use the newly converted msgpack checkpoint to restore another
+Algorithm instance from it. Look at this this short example here on how to do this:
+
+.. literalinclude:: doc_code/checkpoints.py
+    :language: python
+    :start-after: __rllib-convert-pickle-to-msgpack-checkpoint-begin__
+    :end-before: __rllib-convert-pickle-to-msgpack-checkpoint-end__
+
+This way, you can continue to run your algorithms and `save()` them occasionally or
+- if you are running trials with Ray Tune - use Tune's integrated checkpointing settings.
+As has been, this will produce cloudpickle based checkpoints. Once you need to migrate to
+a higher (or lower) python version, use the ``convert_to_msgpack_checkpoint()`` utility,
+create a msgpack-based checkpoint and hand that to either ``Algorithm.from_checkpoint()``
+or provide this to your Tune config. RLlib is able to recreate Algorithms from both these
+formats now.
 
 
 How do I restore an Algorithm from a checkpoint?

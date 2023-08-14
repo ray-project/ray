@@ -2,6 +2,7 @@ import warnings
 from typing import Dict, List, Optional, Union
 
 import ray
+from ray._private.auto_init_hook import auto_init_ray
 from ray._private.client_mode_hook import client_mode_should_convert, client_mode_wrap
 from ray._private.utils import hex_to_binary, get_ray_doc_version
 from ray._raylet import PlacementGroupID
@@ -10,6 +11,13 @@ from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 bundle_reservation_check = None
 BUNDLE_RESOURCE_LABEL = "bundle"
+
+VALID_PLACEMENT_GROUP_STRATEGIES = {
+    "PACK",
+    "SPREAD",
+    "STRICT_PACK",
+    "STRICT_SPREAD",
+}
 
 
 # We need to import this method to use for ready API.
@@ -56,13 +64,15 @@ class PlacementGroup:
         It is compatible to ray.get and ray.wait.
 
         Example:
+            .. testcode::
 
-            >>> import ray
-            >>> from ray.util.placement_group import PlacementGroup
-            >>> pg = PlacementGroup([{"CPU": 1}]) # doctest: +SKIP
-            >>> ray.get(pg.ready()) # doctest: +SKIP
-            >>> pg = PlacementGroup([{"CPU": 1}]) # doctest: +SKIP
-            >>> ray.wait([pg.ready()], timeout=0) # doctest: +SKIP
+                import ray
+
+                pg = ray.util.placement_group([{"CPU": 1}])
+                ray.get(pg.ready())
+
+                pg = ray.util.placement_group([{"CPU": 1}])
+                ray.wait([pg.ready()])
 
         """
         self._fill_bundle_cache_if_needed()
@@ -103,6 +113,14 @@ class PlacementGroup:
     def _fill_bundle_cache_if_needed(self) -> None:
         if not self.bundle_cache:
             self.bundle_cache = _get_bundle_cache(self.id)
+
+    def __eq__(self, other):
+        if not isinstance(other, PlacementGroup):
+            return False
+        return self.id == other.id
+
+    def __hash__(self):
+        return hash(self.id)
 
 
 @client_mode_wrap
@@ -208,6 +226,12 @@ def placement_group(
                 stacklevel=1,
             )
 
+    if strategy not in VALID_PLACEMENT_GROUP_STRATEGIES:
+        raise ValueError(
+            f"Invalid placement group strategy {strategy}. "
+            f"Supported strategies are: {VALID_PLACEMENT_GROUP_STRATEGIES}."
+        )
+
     if lifetime is None:
         detached = False
     elif lifetime == "detached":
@@ -260,7 +284,9 @@ def get_placement_group(placement_group_name: str) -> PlacementGroup:
         placement_group_name, worker.namespace
     )
     if placement_group_info is None:
-        raise ValueError(f"Failed to look up actor with name: {placement_group_name}")
+        raise ValueError(
+            f"Failed to look up placement group with name: {placement_group_name}"
+        )
     else:
         return PlacementGroup(
             PlacementGroupID(hex_to_binary(placement_group_info["placement_group_id"]))
@@ -291,29 +317,34 @@ def get_current_placement_group() -> Optional[PlacementGroup]:
     (because drivers never belong to any placement group).
 
     Examples:
-        >>> import ray
-        >>> from ray.util.placement_group import PlacementGroup
-        >>> from ray.util.placement_group import get_current_placement_group
-        >>> @ray.remote # doctest: +SKIP
-        ... def f(): # doctest: +SKIP
-        ...     # This will return the placement group the task f belongs to.
-        ...     # It means this pg will be identical to the pg created below.
-        ...     pg = get_current_placement_group() # doctest: +SKIP
-        >>> pg = PlacementGroup([{"CPU": 2}]) # doctest: +SKIP
-        >>> f.options(placement_group=pg).remote() # doctest: +SKIP
+        .. testcode::
 
-        >>> # New script.
-        >>> ray.init() # doctest: +SKIP
-        >>> # New script doesn't belong to any placement group,
-        >>> # so it returns None.
-        >>> assert get_current_placement_group() is None # doctest: +SKIP
+            import ray
+            from ray.util.placement_group import get_current_placement_group
+            from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
+
+            @ray.remote
+            def f():
+                # This returns the placement group the task f belongs to.
+                # It means this pg is identical to the pg created below.
+                return get_current_placement_group()
+
+            pg = ray.util.placement_group([{"CPU": 2}])
+            assert ray.get(f.options(
+                    scheduling_strategy=PlacementGroupSchedulingStrategy(
+                        placement_group=pg)).remote()) == pg
+
+            # Driver doesn't belong to any placement group,
+            # so it returns None.
+            assert get_current_placement_group() is None
 
     Return:
         PlacementGroup: Placement group object.
             None if the current task or actor wasn't
             created with any placement group.
     """
-    if client_mode_should_convert(auto_init=True):
+    auto_init_ray()
+    if client_mode_should_convert():
         # Client mode is only a driver.
         return None
     worker = ray._private.worker.global_worker
@@ -366,7 +397,6 @@ def _valid_resource_shape(resources, bundle_specs):
 def _validate_resource_shape(
     placement_group, resources, placement_resources, task_or_actor_repr
 ):
-
     bundles = placement_group.bundle_specs
     resources_valid = _valid_resource_shape(resources, bundles)
     placement_resources_valid = _valid_resource_shape(placement_resources, bundles)

@@ -21,7 +21,7 @@ from ray.rllib.policy.policy import Policy, PolicySpec
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils import deep_update
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.deprecation import Deprecated
+from ray.rllib.utils.deprecation import Deprecated, ALGO_DEPRECATION_WARNING
 from ray.rllib.utils.from_config import from_config
 from ray.rllib.utils.metrics import (
     LAST_TARGET_UPDATE_TS,
@@ -139,7 +139,6 @@ class AlphaStarConfig(appo.APPOConfig):
 
         # Override some of APPOConfig's default values with AlphaStar-specific
         # values.
-        self.vtrace_drop_last_ts = False
         self.min_time_s_per_iteration = 2
         self.policies = None
         self.simple_optimizer = True
@@ -244,6 +243,12 @@ class AlphaStarConfig(appo.APPOConfig):
         return self
 
 
+@Deprecated(
+    old="rllib/algorithms/alpha_star/",
+    new="rllib_contrib/alpha_star/",
+    help=ALGO_DEPRECATION_WARNING,
+    error=False,
+)
 class AlphaStar(appo.APPO):
     _allow_unknown_subkeys = appo.APPO._allow_unknown_subkeys + [
         "league_builder_config",
@@ -635,20 +640,3 @@ class AlphaStar(appo.APPO):
         state_copy = state.copy()
         self.league_builder.__setstate__(state.pop("league_builder", {}))
         super().__setstate__(state_copy)
-
-
-# Deprecated: Use ray.rllib.algorithms.alpha_star.AlphaStarConfig instead!
-class _deprecated_default_config(dict):
-    def __init__(self):
-        super().__init__(AlphaStarConfig().to_dict())
-
-    @Deprecated(
-        old="ray.rllib.algorithms.alpha_star.alpha_star.DEFAULT_CONFIG",
-        new="ray.rllib.algorithms.alpha_star.alpha_star.AlphaStarConfig(...)",
-        error=True,
-    )
-    def __getitem__(self, item):
-        return super().__getitem__(item)
-
-
-DEFAULT_CONFIG = _deprecated_default_config()

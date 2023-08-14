@@ -9,14 +9,17 @@ import sys
 import textwrap
 import time
 import warnings
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, Collection, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import pandas as pd
 
 import ray
 from ray._private.dict import flatten_dict
+from ray._private.thirdparty.tabulate.tabulate import tabulate
+from ray.experimental.tqdm_ray import safe_print
 from ray.air.util.node import _force_on_current_node
+from ray.air.constants import EXPR_ERROR_FILE, TRAINING_ITERATION
 from ray.tune.callback import Callback
 from ray.tune.logger import pretty_print
 from ray.tune.result import (
@@ -31,7 +34,6 @@ from ray.tune.result import (
     PID,
     TIME_TOTAL_S,
     TIMESTEPS_TOTAL,
-    TRAINING_ITERATION,
     TRIAL_ID,
 )
 from ray.tune.experiment.trial import DEBUG_PRINT_INTERVAL, Trial, _Location
@@ -48,21 +50,8 @@ try:
 except ImportError:
     from collections import Mapping, MutableMapping
 
-try:
-    from tabulate import tabulate
-except ImportError:
-    raise ImportError(
-        "ray.tune in ray > 0.7.5 requires 'tabulate'. "
-        "Please re-run 'pip install ray[tune]' or "
-        "'pip install ray[rllib]'."
-    )
 
-try:
-    class_name = get_ipython().__class__.__name__
-    IS_NOTEBOOK = True if "Terminal" not in class_name else False
-except NameError:
-    IS_NOTEBOOK = False
-
+IS_NOTEBOOK = ray.widgets.util.in_notebook()
 
 SKIP_RESULTS_IN_REPORT = {"config", TRIAL_ID, EXPERIMENT_TAG, DONE}
 
@@ -356,7 +345,6 @@ class TuneReporterBase(ProgressReporter):
         messages = [
             "== Status ==",
             _time_passed_str(self._start_time, time.time()),
-            _memory_debug_str(),
             *sys_info,
         ]
         if done:
@@ -544,7 +532,7 @@ class JupyterNotebookReporter(TuneReporterBase, RemoteReporterMixin):
                 "If this leads to unformatted output (e.g. like "
                 "<IPython.core.display.HTML object>), consider passing "
                 "a `CLIReporter` as the `progress_reporter` argument "
-                "to `air.RunConfig()` instead."
+                "to `train.RunConfig()` instead."
             )
 
         self._overwrite = overwrite
@@ -692,7 +680,6 @@ class CLIReporter(TuneReporterBase):
         mode: Optional[str] = None,
         sort_by_metric: bool = False,
     ):
-
         super(CLIReporter, self).__init__(
             metric_columns=metric_columns,
             parameter_columns=parameter_columns,
@@ -709,7 +696,7 @@ class CLIReporter(TuneReporterBase):
         )
 
     def _print(self, msg: str):
-        print(msg)
+        safe_print(msg)
 
     def report(self, trials: List[Trial], done: bool, *sys_info: Dict):
         self._print(self._progress_str(trials, done, *sys_info))
@@ -749,20 +736,6 @@ def _get_memory_usage() -> Tuple[float, float, Optional[str]]:
             np.nan,
             "Unknown memory usage. Please run `pip install psutil` to resolve",
         )
-
-
-def _memory_debug_str() -> str:
-    """Generate a message to be shown to the user showing memory consumption.
-
-    Returns:
-        String to be shown to the user with formatted memory consumption
-            stats.
-    """
-    used_gb, total_gb, message = _get_memory_usage()
-    if np.isnan(used_gb):
-        return message
-    else:
-        return f"Memory usage on this node: {used_gb}/{total_gb} GiB {message or ''}"
 
 
 def _get_time_str(start_time: float, current_time: float) -> Tuple[str, str]:
@@ -875,7 +848,7 @@ def _trial_progress_str(
     num_trials = len(trials)
     trials_by_state = _get_trials_by_state(trials)
 
-    for local_dir in sorted({t.local_dir for t in trials}):
+    for local_dir in sorted({t.local_experiment_path for t in trials}):
         messages.append("Result logdir: {}".format(local_dir))
 
     num_trials_strs = [
@@ -1172,14 +1145,28 @@ def _trial_errors_str(
                     max_rows, num_failed - max_rows
                 )
             )
-        error_table = []
-        for trial in failed[:max_rows]:
-            row = [str(trial), trial.num_failures, trial.error_file]
-            error_table.append(row)
-        columns = ["Trial name", "# failures", "error file"]
+
+        fail_header = ["Trial name", "# failures", "error file"]
+        fail_table_data = [
+            [
+                str(trial),
+                str(trial.num_failures) + ("" if trial.status == Trial.ERROR else "*"),
+                trial.error_file,
+            ]
+            for trial in failed[:max_rows]
+        ]
         messages.append(
-            tabulate(error_table, headers=columns, tablefmt=fmt, showindex=False)
+            tabulate(
+                fail_table_data,
+                headers=fail_header,
+                tablefmt=fmt,
+                showindex=False,
+                colalign=("left", "right", "left"),
+            )
         )
+        if any(trial.status == Trial.TERMINATED for trial in failed[:max_rows]):
+            messages.append("* The trial terminated successfully after retrying.")
+
     delim = "<br>" if fmt == "html" else "\n"
     return delim.join(messages)
 
@@ -1329,7 +1316,7 @@ class TrialProgressCallback(Callback):
         self._display_handle = None
 
     def _print(self, msg: str):
-        print(msg)
+        safe_print(msg)
 
     def on_trial_result(
         self,
@@ -1400,7 +1387,7 @@ class TrialProgressCallback(Callback):
         elif has_verbosity(Verbosity.V2_TRIAL_NORM):
             metric_name = self._metric or "_metric"
             metric_value = result.get(metric_name, -99.0)
-            error_file = os.path.join(trial.logdir, "error.txt")
+            error_file = os.path.join(trial.local_path, EXPR_ERROR_FILE)
 
             info = ""
             if done:
@@ -1544,7 +1531,7 @@ def _detect_reporter(**kwargs) -> TuneReporterBase:
 
 def _detect_progress_metrics(
     trainable: Optional[Union["Trainable", Callable]]
-) -> Optional[List[str]]:
+) -> Optional[Collection[str]]:
     """Detect progress metrics to report."""
     if not trainable:
         return None

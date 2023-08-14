@@ -2,7 +2,7 @@ from collections import Counter
 import unittest
 
 import ray
-from ray.rllib.algorithms.callbacks import DefaultCallbacks, MultiCallbacks
+from ray.rllib.algorithms.callbacks import DefaultCallbacks, make_multi_callbacks
 import ray.rllib.algorithms.dqn as dqn
 from ray.rllib.algorithms.pg import PGConfig
 from ray.rllib.evaluation.episode import Episode
@@ -104,7 +104,7 @@ class TestCallbacks(unittest.TestCase):
 
         for callbacks in (
             OnSubEnvironmentCreatedCallback,
-            MultiCallbacks([OnSubEnvironmentCreatedCallback]),
+            make_multi_callbacks([OnSubEnvironmentCreatedCallback]),
         ):
             config.callbacks(callbacks)
 
@@ -144,7 +144,7 @@ class TestCallbacks(unittest.TestCase):
 
         for callbacks in (
             OnSubEnvironmentCreatedCallback,
-            MultiCallbacks([OnSubEnvironmentCreatedCallback]),
+            make_multi_callbacks([OnSubEnvironmentCreatedCallback]),
         ):
             config.callbacks(callbacks)
 

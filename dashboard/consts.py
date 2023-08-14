@@ -25,6 +25,7 @@ CONNECT_REDIS_INTERNAL_SECONDS = 2
 PURGE_DATA_INTERVAL_SECONDS = 60 * 10
 ORGANIZE_DATA_INTERVAL_SECONDS = 2
 DASHBOARD_RPC_ADDRESS = "dashboard_rpc"
+DASHBOARD_RPC_PORT = env_integer("RAY_DASHBOARD_RPC_PORT", 0)
 GCS_SERVER_ADDRESS = "GcsServerAddress"
 # GCS check alive
 GCS_CHECK_ALIVE_MAX_COUNT_OF_RPC_ERROR = env_integer(
@@ -48,11 +49,6 @@ SIGNAL_WORKER_INFO_FETCHED = "worker_info_fetched"
 # Default value for datacenter (the default value in protobuf)
 DEFAULT_LANGUAGE = "PYTHON"
 DEFAULT_JOB_ID = "ffff"
-# Cache TTL for bad runtime env. After this time, delete the cache and retry to create
-# runtime env if needed.
-BAD_RUNTIME_ENV_CACHE_TTL_SECONDS = env_integer(
-    "BAD_RUNTIME_ENV_CACHE_TTL_SECONDS", 60 * 10
-)
 # Hook that is invoked on the dashboard `/api/component_activities` endpoint.
 # Environment variable stored here should be a callable that does not
 # take any arguments and should return a dictionary mapping
@@ -68,6 +64,10 @@ CANDIDATE_AGENT_NUMBER = max(env_integer("CANDIDATE_AGENT_NUMBER", 1), 1)
 WAIT_AVAILABLE_AGENT_TIMEOUT = 10
 TRY_TO_GET_AGENT_INFO_INTERVAL_SECONDS = 0.1
 RAY_JOB_ALLOW_DRIVER_ON_WORKER_NODES_ENV_VAR = "RAY_JOB_ALLOW_DRIVER_ON_WORKER_NODES"
+
+# The max time to wait for the JobSupervisor to start before failing the job.
+DEFAULT_JOB_START_TIMEOUT_SECONDS = 60 * 15
+RAY_JOB_START_TIMEOUT_SECONDS_ENV_VAR = "RAY_JOB_START_TIMEOUT_SECONDS"
 # Port that dashboard prometheus metrics will be exported to
 DASHBOARD_METRIC_PORT = env_integer("DASHBOARD_METRIC_PORT", 44227)
 COMPONENT_METRICS_TAG_KEYS = ["ip", "pid", "Component", "SessionName"]

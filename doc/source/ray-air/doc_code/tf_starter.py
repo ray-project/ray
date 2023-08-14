@@ -5,10 +5,10 @@
 import ray
 import tensorflow as tf
 
-from ray.air import session
-from ray.air.integrations.keras import Callback
+from ray import train
+from ray.train import ScalingConfig
+from ray.air.integrations.keras import ReportCheckpointCallback
 from ray.train.tensorflow import TensorflowTrainer
-from ray.air.config import ScalingConfig
 
 
 # If using GPUs, set this to True.
@@ -46,14 +46,16 @@ def train_func(config: dict):
             metrics=[tf.keras.metrics.mean_squared_error],
         )
 
-    dataset = session.get_dataset_shard("train")
+    dataset = train.get_dataset_shard("train")
 
     results = []
     for _ in range(epochs):
         tf_dataset = dataset.to_tf(
             feature_columns="x", label_columns="y", batch_size=batch_size
         )
-        history = multi_worker_model.fit(tf_dataset, callbacks=[Callback()])
+        history = multi_worker_model.fit(
+            tf_dataset, callbacks=[ReportCheckpointCallback()]
+        )
         results.append(history.history)
     return results
 
@@ -73,24 +75,3 @@ trainer = TensorflowTrainer(
 result = trainer.fit()
 print(result.metrics)
 # __air_tf_train_end__
-
-# __air_tf_batchpred_start__
-import numpy as np
-
-from ray.train.batch_predictor import BatchPredictor
-from ray.train.tensorflow import TensorflowPredictor
-
-
-batch_predictor = BatchPredictor.from_checkpoint(
-    result.checkpoint, TensorflowPredictor, model_definition=build_model
-)
-
-items = [{"x": np.random.uniform(0, 1)} for _ in range(10)]
-prediction_dataset = ray.data.from_items(items)
-
-predictions = batch_predictor.predict(prediction_dataset, dtype=tf.float32)
-
-print("PREDICTIONS")
-predictions.show()
-
-# __air_tf_batchpred_end__

@@ -70,8 +70,7 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
           // Keep io_service_ alive.
           boost::asio::io_service::work io_service_work_(io_service_);
           io_service_.run();
-        })),
-        timer_(io_service_) {}
+        })) {}
 
   /// Handles a AddTaskEventData request.
   ///
@@ -103,6 +102,14 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
   /// \param job_id Job Id
   /// \param job_finish_time_ms Job finish time in ms.
   void OnJobFinished(const JobID &job_id, int64_t job_finish_time_ms);
+
+  /// Handler to be called when a worker is dead. This marks all non-terminated tasks
+  /// of the worker as failed.
+  ///
+  /// \param worker_id Worker Id
+  /// \param worker_failure_data Worker failure data.
+  void OnWorkerDead(const WorkerID &worker_id,
+                    const std::shared_ptr<rpc::WorkerTableData> &worker_failure_data);
 
   /// Returns the io_service.
   ///
@@ -181,37 +188,21 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
     std::vector<rpc::TaskEvents> GetTaskEvents(
         const absl::flat_hash_set<TaskAttempt> &task_attempts) const;
 
-    ///  Mark tasks from a job as failed.
+    ///  Mark tasks from a job as failed as job ends with a delay.
     ///
     /// \param job_id Job ID
     /// \param job_finish_time_ns job finished time in nanoseconds, which will be the task
     /// failed time.
-    void MarkTasksFailed(const JobID &job_id, int64_t job_finish_time_ns);
+    void MarkTasksFailedOnJobEnds(const JobID &job_id, int64_t job_finish_time_ns);
+
+    /// Mark tasks from a worker as failed as worker dies.
+    ///
+    /// \param worker_id Worker ID
+    /// \param worker_failure_data Worker failure data.
+    void MarkTasksFailedOnWorkerDead(const WorkerID &worker_id,
+                                     const rpc::WorkerTableData &worker_failure_data);
 
    private:
-    /// Mark the task tree containing this task attempt as failure if necessary.
-    ///
-    /// A task tree is represented by the `parent_task_id` field for each task.
-    ///
-    /// All non-terminated (not finished nor failed) tasks in the task tree with the task
-    /// event as the root should be marked as failed with the root's failed timestamp if
-    /// any of:
-    ///     1. The task itself fails.
-    ///     2. Its parent failed, and neither itself nor its parent is detached actor
-    ///     task.
-    ///     3. Its parent failed, and both itself and its parent are detached actor task.
-    /// TODO(rickyx): Detached actors tasks are now currently marked as failed if parent
-    /// dies.
-    ///
-    /// NOTE: Since there is delay in task events reporting, a task's state might not be
-    /// reported before a worker is killed, therefore, some tasks might have actually
-    /// run/been submitted but it's states not being reported to GCS. This is hard to
-    /// resolve unless we add synchronized reporting before submitting a task.
-    ///
-    /// \param task_id ID of the task event that's the root of the task tree.
-    /// \param parent_task_id ID of the task's parent.
-    void MarkTaskTreeFailedIfNeeded(const TaskID &task_id, const TaskID &parent_task_id);
-
     /// Get a reference to the TaskEvent stored in the buffer.
     ///
     /// \param task_attempt The task attempt.
@@ -224,37 +215,17 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
     /// \return Reference to the task events stored in the buffer.
     const rpc::TaskEvents &GetTaskEvent(const TaskAttempt &task_attempt) const;
 
-    /// Get the timestamp of a task status update.
+    ///  Mark a task attempt as failed if needed.
     ///
-    /// \param task_id The task id of the task.
-    /// \param task_status The status update.
-    /// \return The failed timestamp of the task attempt if it fails. absl::nullopt if the
-    /// latest task attempt could not be found due to data loss or the task attempt
-    /// doesn't fail.
-    absl::optional<int64_t> GetTaskStatusUpdateTime(
-        const TaskID &task_id, const rpc::TaskStatus &task_status) const;
-
-    ///  Return if task has terminated.
-    ///
-    /// \param task_id Task id
-    /// \return True if the task has finished or failed timestamp sets, false otherwise.
-    bool IsTaskTerminated(const TaskID &task_id) const;
-
-    /// Mark the task as failure with the failed timestamp.
-    ///
-    /// This also overwrites the finished state of the task if the task has finished by
-    /// clearing the finished timestamp.
-    ///
-    /// \param task_id The task to mark as failed.
-    /// \param failed_ts The failure timestamp that's the same from parent's failure
-    /// timestamp.
-    void MarkTaskFailed(const TaskID &task_id, int64_t failed_ts);
-
-    ///  Mark a task attempt as failed.
+    ///  We only mark a task attempt as failed if it's not already terminated(finished or
+    ///  failed).
     ///
     /// \param task_attempt Task attempt.
     /// \param failed_ts The failure timestamp.
-    void MarkTaskAttemptFailed(const TaskAttempt &task_attempt, int64_t failed_ts);
+    /// \param error_info The error info.
+    void MarkTaskAttemptFailedIfNeeded(const TaskAttempt &task_attempt,
+                                       int64_t failed_ts,
+                                       const rpc::RayErrorInfo &error_info);
 
     /// Get the latest task attempt for the task.
     ///
@@ -290,9 +261,9 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
     absl::flat_hash_map<JobID, absl::flat_hash_set<TaskAttempt>>
         job_to_task_attempt_index_;
 
-    /// Secondary index from parent task id to a set of children task ids.
-    absl::flat_hash_map<TaskID, absl::flat_hash_set<TaskID>>
-        parent_to_children_task_index_;
+    /// Secondary index from worker id to task attempts of the worker.
+    absl::flat_hash_map<WorkerID, absl::flat_hash_set<TaskAttempt>>
+        worker_to_task_attempt_index_;
 
     /// Reference to the counter map owned by the GcsTaskManager.
     CounterMapThreadSafe<GcsTaskManagerCounter> &stats_counter_;
@@ -302,6 +273,7 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
     FRIEND_TEST(GcsTaskManagerTest, TestMergeTaskEventsSameTaskAttempt);
     FRIEND_TEST(GcsTaskManagerMemoryLimitedTest, TestLimitTaskEvents);
     FRIEND_TEST(GcsTaskManagerMemoryLimitedTest, TestIndexNoLeak);
+    FRIEND_TEST(GcsTaskManagerTest, TestMarkTaskAttemptFailedIfNeeded);
   };
 
  private:
@@ -341,14 +313,12 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
   /// Its own IO thread from the main thread.
   std::unique_ptr<std::thread> io_service_thread_;
 
-  /// Timer for delay functions.
-  boost::asio::deadline_timer timer_;
-
   FRIEND_TEST(GcsTaskManagerTest, TestHandleAddTaskEventBasic);
   FRIEND_TEST(GcsTaskManagerTest, TestMergeTaskEventsSameTaskAttempt);
   FRIEND_TEST(GcsTaskManagerMemoryLimitedTest, TestLimitTaskEvents);
   FRIEND_TEST(GcsTaskManagerMemoryLimitedTest, TestIndexNoLeak);
   FRIEND_TEST(GcsTaskManagerTest, TestJobFinishesFailAllRunningTasks);
+  FRIEND_TEST(GcsTaskManagerTest, TestMarkTaskAttemptFailedIfNeeded);
 };
 
 }  // namespace gcs

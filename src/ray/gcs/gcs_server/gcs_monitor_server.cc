@@ -54,7 +54,7 @@ void GcsPlacementGroupToResourceRequest(const GcsPlacementGroup &gcs_placement_g
 }
 
 GcsMonitorServer::GcsMonitorServer(
-    std::shared_ptr<GcsNodeManager> gcs_node_manager,
+    GcsNodeManager &gcs_node_manager,
     ClusterResourceManager &cluster_resource_manager,
     std::shared_ptr<GcsResourceManager> gcs_resource_manager,
     std::shared_ptr<GcsPlacementGroupManager> gcs_placement_group_manager)
@@ -76,7 +76,7 @@ void GcsMonitorServer::HandleDrainAndKillNode(
     rpc::SendReplyCallback send_reply_callback) {
   for (const auto &node_id_bytes : request.node_ids()) {
     const auto node_id = NodeID::FromBinary(node_id_bytes);
-    gcs_node_manager_->DrainNode(node_id);
+    gcs_node_manager_.DrainNode(node_id);
     *reply->add_drained_nodes() = node_id_bytes;
   }
   send_reply_callback(Status::OK(), nullptr, nullptr);
@@ -84,7 +84,7 @@ void GcsMonitorServer::HandleDrainAndKillNode(
 
 void GcsMonitorServer::PopulateNodeStatuses(rpc::GetSchedulingStatusReply *reply) const {
   const auto &scheduling_nodes = cluster_resource_manager_.GetResourceView();
-  const auto &gcs_node_manager_nodes = gcs_node_manager_->GetAllAliveNodes();
+  const auto &gcs_node_manager_nodes = gcs_node_manager_.GetAllAliveNodes();
 
   for (const auto &pair : gcs_node_manager_nodes) {
     const auto &node_id = pair.first;

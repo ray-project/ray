@@ -5,11 +5,18 @@ import json
 import os
 import unittest
 import tempfile
+from pathlib import Path
 from typing import Optional
 import shutil
 import numpy as np
 
 import ray
+from ray.air.constants import (
+    EXPR_PARAM_FILE,
+    EXPR_PARAM_PICKLE_FILE,
+    EXPR_PROGRESS_FILE,
+    EXPR_RESULT_FILE,
+)
 from ray.cloudpickle import cloudpickle
 from ray.tune.logger import (
     CSVLoggerCallback,
@@ -20,12 +27,6 @@ from ray.tune.logger import (
     TBXLogger,
 )
 from ray.tune.logger.aim import AimLoggerCallback
-from ray.tune.result import (
-    EXPR_PARAM_FILE,
-    EXPR_PARAM_PICKLE_FILE,
-    EXPR_PROGRESS_FILE,
-    EXPR_RESULT_FILE,
-)
 from ray.tune.utils import flatten_dict
 
 
@@ -34,7 +35,7 @@ class Trial:
     evaluated_params: dict
     trial_id: str
     logdir: str
-    local_dir: Optional[str] = None
+    experiment_path: Optional[str] = None
     experiment_dir_name: Optional[str] = None
     remote_checkpoint_dir: Optional[str] = None
 
@@ -42,8 +43,24 @@ class Trial:
     def config(self):
         return self.evaluated_params
 
-    def init_logdir(self):
+    def init_local_path(self):
         return
+
+    @property
+    def local_path(self):
+        if self.logdir:
+            return self.logdir
+        if not self.experiment_dir_name:
+            return None
+        return str(Path(self.experiment_path) / self.experiment_dir_name)
+
+    @property
+    def local_experiment_path(self):
+        return self.experiment_path
+
+    @property
+    def remote_path(self):
+        return self.remote_checkpoint_dir
 
     def __hash__(self):
         return hash(self.trial_id)
@@ -314,7 +331,7 @@ class AimLoggerSuite(unittest.TestCase):
             Trial(
                 evaluated_params=self.config,
                 trial_id="aim_1",
-                local_dir=self.test_dir,
+                experiment_path=self.test_dir,
                 logdir=trial_logdir,
                 experiment_dir_name="aim_test",
                 remote_checkpoint_dir="s3://bucket/aim_test/trial_0_logdir",
@@ -322,7 +339,7 @@ class AimLoggerSuite(unittest.TestCase):
             Trial(
                 evaluated_params=self.config,
                 trial_id="aim_2",
-                local_dir=self.test_dir,
+                experiment_path=self.test_dir,
                 logdir=trial_logdir,
                 experiment_dir_name="aim_test",
                 remote_checkpoint_dir="s3://bucket/aim_test/trial_1_logdir",

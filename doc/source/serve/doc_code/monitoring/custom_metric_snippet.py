@@ -1,6 +1,6 @@
 # __start__
 from ray import serve
-from ray.util import metrics
+from ray.serve import metrics
 
 import time
 import requests
@@ -13,9 +13,9 @@ class MyDeployment:
         self.my_counter = metrics.Counter(
             "my_counter",
             description=("The number of odd-numbered requests to this deployment."),
-            tag_keys=("deployment",),
+            tag_keys=("model",),
         )
-        self.my_counter.set_default_tags({"deployment": "MyDeployment"})
+        self.my_counter.set_default_tags({"model": "123"})
 
     def __call__(self):
         self.num_requests += 1
@@ -32,6 +32,5 @@ while True:
 
     # __end__
     break
-
 response = requests.get("http://localhost:8000/")
 assert response.status_code == 200

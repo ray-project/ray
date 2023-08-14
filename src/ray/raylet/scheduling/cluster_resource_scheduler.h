@@ -22,14 +22,14 @@
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
-#include "ray/common/task/scheduling_resources.h"
-#include "ray/raylet/scheduling/cluster_resource_data.h"
+#include "ray/common/scheduling/cluster_resource_data.h"
+#include "ray/common/scheduling/fixed_point.h"
+#include "ray/common/scheduling/scheduling_ids.h"
+#include "ray/common/scheduling/scheduling_resources.h"
 #include "ray/raylet/scheduling/cluster_resource_manager.h"
-#include "ray/raylet/scheduling/fixed_point.h"
 #include "ray/raylet/scheduling/internal.h"
 #include "ray/raylet/scheduling/local_resource_manager.h"
 #include "ray/raylet/scheduling/policy/composite_scheduling_policy.h"
-#include "ray/raylet/scheduling/scheduling_ids.h"
 #include "ray/util/logging.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
@@ -50,17 +50,20 @@ class ClusterResourceScheduler {
   /// with the local node.
   /// \param is_node_available_fn: Function to determine whether a node is available.
   /// \param is_local_node_with_raylet: Whether there is a raylet on the local node.
-  ClusterResourceScheduler(scheduling::NodeID local_node_id,
+  ClusterResourceScheduler(instrumented_io_context &io_service,
+                           scheduling::NodeID local_node_id,
                            const NodeResources &local_node_resources,
                            std::function<bool(scheduling::NodeID)> is_node_available_fn,
                            bool is_local_node_with_raylet = true);
 
   ClusterResourceScheduler(
+      instrumented_io_context &io_service,
       scheduling::NodeID local_node_id,
       const absl::flat_hash_map<std::string, double> &local_node_resources,
       std::function<bool(scheduling::NodeID)> is_node_available_fn,
       std::function<int64_t(void)> get_used_object_store_memory = nullptr,
-      std::function<bool(void)> get_pull_manager_at_capacity = nullptr);
+      std::function<bool(void)> get_pull_manager_at_capacity = nullptr,
+      const absl::flat_hash_map<std::string, std::string> &local_node_labels = {});
 
   /// Schedule the specified resources to the cluster nodes.
   ///
@@ -127,11 +130,12 @@ class ClusterResourceScheduler {
   bool IsLocalNodeWithRaylet() { return is_local_node_with_raylet_; }
 
  private:
-  void Init(const NodeResources &local_node_resources,
+  void Init(instrumented_io_context &io_service,
+            const NodeResources &local_node_resources,
             std::function<int64_t(void)> get_used_object_store_memory,
             std::function<bool(void)> get_pull_manager_at_capacity);
 
-  bool NodeAlive(scheduling::NodeID node_id) const;
+  bool NodeAvailable(scheduling::NodeID node_id) const;
 
   /// Decrease the available resources of a node when a resource request is
   /// scheduled on the given node.

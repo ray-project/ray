@@ -7,7 +7,7 @@ import random
 import sys
 from dataclasses import asdict
 
-from ray.experimental.state.api import (
+from ray.util.state import (
     summarize_tasks,
     summarize_actors,
     summarize_objects,
@@ -28,7 +28,7 @@ from ray.tests.test_state_api import (
     generate_actor_data,
     generate_object_info,
 )
-from ray.experimental.state.common import (
+from ray.util.state.common import (
     DEFAULT_RPC_TIMEOUT,
     SummaryApiOptions,
     Link,
@@ -39,9 +39,9 @@ from ray.experimental.state.common import (
 from ray.core.generated.gcs_service_pb2 import GetAllActorInfoReply
 from ray.core.generated.gcs_pb2 import ActorTableData
 from click.testing import CliRunner
-from ray.experimental.state.state_cli import summary_state_cli_group
+from ray.util.state.state_cli import summary_state_cli_group
 from ray.dashboard.state_aggregator import StateAPIManager
-from ray.experimental.state.state_manager import StateDataSourceClient
+from ray.util.state.state_manager import StateDataSourceClient
 
 
 @pytest.fixture
@@ -441,7 +441,7 @@ def test_object_summary(monkeypatch, ray_start_cluster):
             assert deserialized_task_arg_summary["total_objects"] == 2
             assert deserialized_task_arg_summary["total_num_workers"] == 2
             assert deserialized_task_arg_summary["total_num_nodes"] == 1
-            assert deserialized_task_arg_summary["task_state_counts"]["-"] == 2
+            assert deserialized_task_arg_summary["task_state_counts"]["NIL"] == 2
             assert (
                 deserialized_task_arg_summary["ref_type_counts"]["PINNED_IN_MEMORY"]
                 == 2
@@ -483,40 +483,6 @@ def test_summarize_by_lineage():
     Then asserts the final result should be the same.
     """
     expected_summary = [
-        NestedTaskSummary(
-            name="preprocess",
-            key="preprocess",
-            type="GROUP",
-            timestamp=100,
-            state_counts={
-                "FINISHED": 20,
-            },
-            children=[
-                NestedTaskSummary(
-                    name="preprocess",
-                    key=f"preprocess-{i}",
-                    type="NORMAL_TASK",
-                    timestamp=100 + i,
-                    state_counts={
-                        "FINISHED": 2,
-                    },
-                    link=Link("task", f"preprocess-{i}"),
-                    children=[
-                        NestedTaskSummary(
-                            name="preprocess_sub_task",
-                            key=f"preprocess-{i}-0",
-                            type="NORMAL_TASK",
-                            timestamp=200,
-                            state_counts={
-                                "FINISHED": 1,
-                            },
-                            link=Link("task", f"preprocess-{i}-0"),
-                        )
-                    ],
-                )
-                for i in range(10)
-            ],
-        ),
         NestedTaskSummary(
             name="TuneActor",
             key="actor:tune-actor-0",
@@ -561,6 +527,19 @@ def test_summarize_by_lineage():
                                     link=Link("actor", f"train-actor-{i}"),
                                     children=[
                                         NestedTaskSummary(
+                                            name="TrainActor.train_step_reduce",
+                                            key=f"train-actor-train-step-reduce-{i}",
+                                            type="ACTOR_TASK",
+                                            timestamp=2200,
+                                            state_counts={
+                                                "RUNNING": 1,
+                                            },
+                                            link=Link(
+                                                "task",
+                                                f"train-actor-train-step-reduce-{i}",
+                                            ),
+                                        ),
+                                        NestedTaskSummary(
                                             name="TrainActor.__init__",
                                             key=f"train-actor-init-{i}",
                                             type="ACTOR_CREATION_TASK",
@@ -599,19 +578,6 @@ def test_summarize_by_lineage():
                                                 for j in range(10)
                                             ],
                                         ),
-                                        NestedTaskSummary(
-                                            name="TrainActor.train_step_reduce",
-                                            key=f"train-actor-train-step-reduce-{i}",
-                                            type="ACTOR_TASK",
-                                            timestamp=2200,
-                                            state_counts={
-                                                "RUNNING": 1,
-                                            },
-                                            link=Link(
-                                                "task",
-                                                f"train-actor-train-step-reduce-{i}",
-                                            ),
-                                        ),
                                     ],
                                 )
                                 for i in range(10)
@@ -619,6 +585,40 @@ def test_summarize_by_lineage():
                         )
                     ],
                 )
+            ],
+        ),
+        NestedTaskSummary(
+            name="preprocess",
+            key="preprocess",
+            type="GROUP",
+            timestamp=100,
+            state_counts={
+                "FINISHED": 20,
+            },
+            children=[
+                NestedTaskSummary(
+                    name="preprocess",
+                    key=f"preprocess-{i}",
+                    type="NORMAL_TASK",
+                    timestamp=100 + i,
+                    state_counts={
+                        "FINISHED": 2,
+                    },
+                    link=Link("task", f"preprocess-{i}"),
+                    children=[
+                        NestedTaskSummary(
+                            name="preprocess_sub_task",
+                            key=f"preprocess-{i}-0",
+                            type="NORMAL_TASK",
+                            timestamp=200,
+                            state_counts={
+                                "FINISHED": 1,
+                            },
+                            link=Link("task", f"preprocess-{i}-0"),
+                        )
+                    ],
+                )
+                for i in range(10)
             ],
         ),
     ]
@@ -668,7 +668,7 @@ def test_summarize_by_lineage():
 
     random.shuffle(tasks)
 
-    summary = TaskSummaries.to_summary_by_lineage(tasks=tasks)
+    summary = TaskSummaries.to_summary_by_lineage(tasks=tasks, actors=[])
 
     assert summary.total_tasks == 20
     assert summary.total_actor_tasks == 110

@@ -23,9 +23,11 @@ py_test_run_all_subdirectory(
         "client/node_modules/**",
         "modules/test/**", 
         "modules/job/tests/test_cli_integration.py",
+        "modules/job/tests/test_http_job_server.py",
         "modules/node/tests/test_node.py", 
         "tests/test_dashboard.py", 
         "tests/test_state_head.py",
+        "modules/serve/tests/test_serve_agent.py",
     ],
     extra_srcs = [],
     data = [
@@ -44,6 +46,22 @@ py_test(
     name="test_cli_integration",
     size="large",
     srcs = ["modules/job/tests/test_cli_integration.py"],
+    deps = [":conftest"],
+    tags = ["exclusive", "team:serve"],
+)
+
+py_test(
+    name = "test_http_job_server",
+    size = "large",
+    srcs = ["modules/job/tests/test_http_job_server.py"],
+    data = [
+        "modules/job/tests/backwards_compatibility_scripts/test_backwards_compatibility.sh",
+        "modules/job/tests/pip_install_test-0.5-py3-none-any.whl",
+        "modules/snapshot/snapshot_schema.json",
+        "modules/tests/test_config_files/basic_runtime_env.yaml",
+    ] + glob([
+        "modules/job/tests/subprocess_driver_scripts/*.py",
+    ]),
     deps = [":conftest"],
     tags = ["exclusive", "team:serve"],
 )
@@ -69,4 +87,11 @@ py_test(
     size = "small",
     srcs = ["tests/test_state_head.py"],
     tags = ["team:core"],
+)
+
+py_test(
+    name = "test_serve_agent",
+    size = "large",
+    srcs = ["modules/serve/tests/test_serve_agent.py"],
+    tags = ["team:serve"],
 )

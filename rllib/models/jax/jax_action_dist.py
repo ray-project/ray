@@ -3,8 +3,10 @@ import time
 from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.utils.annotations import override
+from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.framework import try_import_jax, try_import_tfp
 from ray.rllib.utils.typing import TensorType, List
+from ray.util import log_once
 
 jax, flax = try_import_jax()
 tfp = try_import_tfp()
@@ -16,6 +18,10 @@ class JAXDistribution(ActionDistribution):
     @override(ActionDistribution)
     def __init__(self, inputs: List[TensorType], model: ModelV2):
         super().__init__(inputs, model)
+        if log_once("jax_distribution_deprecation_warning"):
+            deprecation_warning(
+                old=("ray.rllib.models.jax.jax_action_dist." "JAXDistribution")
+            )
         # Store the last sample here.
         self.last_sample = None
         # Use current time as pseudo-random number generator's seed.

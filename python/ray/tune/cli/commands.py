@@ -10,6 +10,7 @@ from datetime import datetime
 
 import pandas as pd
 from pandas.api.types import is_string_dtype, is_numeric_dtype
+from ray.air.constants import EXPR_RESULT_FILE
 from ray.tune.result import (
     DEFAULT_EXPERIMENT_INFO_KEYS,
     DEFAULT_RESULT_KEYS,
@@ -17,11 +18,7 @@ from ray.tune.result import (
 )
 from ray.tune.analysis import ExperimentAnalysis
 from ray.tune import TuneError
-
-try:
-    from tabulate import tabulate
-except ImportError:
-    tabulate = None
+from ray._private.thirdparty.tabulate.tabulate import tabulate
 
 logger = logging.getLogger(__name__)
 
@@ -227,7 +224,7 @@ def list_experiments(
 
     for experiment_dir in experiment_folders:
         num_trials = sum(
-            "result.json" in files
+            EXPR_RESULT_FILE in files
             for _, _, files in os.walk(os.path.join(base, experiment_dir))
         )
 

@@ -1,11 +1,10 @@
 meta:
-  section-titles: false
-  container: container pb-4
-  column: col-md-4 px-1 py-1
-  img-top-cls: p-2 w-75 d-block mx-auto fixed-height-img
+  grid: 1 2 2 3
+  gutter: 1
+  class-container: container pb-3
 
-buttons:
-  classes: btn-outline-info btn-block
+classes:
+  class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
 
 projects:
   - name: Classy Vision Integration
@@ -52,7 +51,7 @@ projects:
     website: https://horovod.readthedocs.io/en/stable/ray_include.html
     repo: https://github.com/horovod/horovod
     image: ../images/horovod.png
-  - name: Hugging Face Integration
+  - name: Hugging Face Transformers Integration
     section_title: Hugging Face Transformers
     description: State-of-the-art Natural Language Processing for
       Pytorch and TensorFlow 2.0. It integrates with Ray for distributed
@@ -119,15 +118,6 @@ projects:
     website: https://github.com/pycaret/pycaret
     repo: https://github.com/pycaret/pycaret
     image: ../images/pycaret.png
-  - name: PyTorch Lightning Integration
-    section_title: PyTorch Lightning
-    description: PyTorch Lightning is a popular open-source library that provides a
-      high level interface for PyTorch. The goal of PyTorch Lightning is to structure
-      your PyTorch code to abstract the details of training, making AI research
-      scalable and fast to iterate on.
-    website: https://github.com/ray-project/ray_lightning_accelerators
-    repo: https://github.com/ray-project/ray_lightning_accelerators
-    image: ../images/pytorch_lightning_small.png
   - name: RayDP Integration
     section_title: Spark on Ray (RayDP)
     description: RayDP ("Spark on Ray") enables you to easily use Spark inside a
@@ -157,6 +147,16 @@ projects:
     website: https://github.com/SeldonIO/alibi
     repo: https://github.com/SeldonIO/alibi
     image: ../images/seldon.png
+  - name: Sematic Integration
+    section_title: Sematic
+    description: Sematic is an open-source ML pipelining tool written in Python.
+      It enables users to write end-to-end pipelines that can seamlessly transition between
+      your laptop and the cloud, with rich visualizations, traceability,
+      reproducibility, and usability as first-class citizens. This integration
+      enables dynamic allocation of Ray clusters within Sematic pipelines.
+    website: https://docs.sematic.dev/integrations/ray
+    repo: https://github.com/sematic-ai/sematic
+    image: ../images/sematic.png
   - name: spaCy Integration
     section_title: spaCy
     description: spaCy is a library for advanced Natural Language Processing in Python

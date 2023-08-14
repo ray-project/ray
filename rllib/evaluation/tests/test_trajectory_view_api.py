@@ -12,7 +12,7 @@ from ray.rllib.examples.env.multi_agent import MultiAgentPendulum
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.examples.policy.episode_env_aware_policy import (
     EpisodeEnvAwareAttentionPolicy,
-    EpisodeEnvAwareLSTMPolicy,
+    StatefulRandomPolicy,
 )
 from ray.rllib.models.tf.attention_net import GTrXLNet
 from ray.rllib.policy.rnn_sequencing import pad_batch_to_sequences_of_same_size
@@ -99,6 +99,9 @@ class TestTrajectoryViewAPI(unittest.TestCase):
 
     def test_traj_view_lstm_prev_actions_and_rewards(self):
         """Tests, whether Policy/Model return correct LSTM ViewRequirements."""
+
+        # This test only works on ModelV2 stack. So, we need to disable the RLModule
+        # and Learner API.
         config = (
             ppo.PPOConfig()
             .environment("CartPole-v1")
@@ -108,9 +111,11 @@ class TestTrajectoryViewAPI(unittest.TestCase):
                     "use_lstm": True,
                     "lstm_use_prev_action": True,
                     "lstm_use_prev_reward": True,
-                }
+                },
+                _enable_learner_api=False,
             )
             .rollouts(create_env_on_local_worker=True)
+            .rl_module(_enable_rl_module_api=False)
         )
 
         for _ in framework_iterator(config):
@@ -120,7 +125,7 @@ class TestTrajectoryViewAPI(unittest.TestCase):
             view_req_policy = policy.view_requirements
             # 7=obs, prev-a + r, 2x state-in, 2x state-out.
             assert len(view_req_model) == 7, view_req_model
-            assert len(view_req_policy) == 22, (len(view_req_policy), view_req_policy)
+            assert len(view_req_policy) == 23, (len(view_req_policy), view_req_policy)
             for key in [
                 SampleBatch.OBS,
                 SampleBatch.ACTIONS,
@@ -205,6 +210,9 @@ class TestTrajectoryViewAPI(unittest.TestCase):
                 sgd_minibatch_size=201,
                 num_sgd_iter=5,
             )
+            # Batch-norm models have not been migrated to the RL Module API yet.
+            .training(_enable_learner_api=False)
+            .rl_module(_enable_rl_module_api=False)
         )
 
         for _ in framework_iterator(config, frameworks="tf2"):
@@ -218,12 +226,16 @@ class TestTrajectoryViewAPI(unittest.TestCase):
 
     def test_traj_view_next_action(self):
         action_space = Discrete(2)
+        config = (
+            ppo.PPOConfig()
+            .framework("torch")
+            .rollouts(rollout_fragment_length=200, num_rollout_workers=0)
+        )
+        config.validate()
         rollout_worker_w_api = RolloutWorker(
             env_creator=lambda _: gym.make("CartPole-v1"),
             default_policy_class=ppo.PPOTorchPolicy,
-            config=ppo.PPOConfig().rollouts(
-                rollout_fragment_length=200, num_rollout_workers=0
-            ),
+            config=config,
         )
         # Add the next action (a') and 2nd next action (a'') to the view
         # requirements of the policy.
@@ -285,7 +297,7 @@ class TestTrajectoryViewAPI(unittest.TestCase):
         rollout_fragment_length = 200
         assert rollout_fragment_length % max_seq_len == 0
         policies = {
-            "pol0": (EpisodeEnvAwareLSTMPolicy, obs_space, action_space, None),
+            "pol0": (StatefulRandomPolicy, obs_space, action_space, None),
         }
 
         def policy_fn(agent_id, episode, worker, **kwargs):
@@ -294,6 +306,7 @@ class TestTrajectoryViewAPI(unittest.TestCase):
         rw = RolloutWorker(
             env_creator=lambda _: MultiAgentDebugCounterEnv({"num_agents": 4}),
             config=ppo.PPOConfig()
+            .framework("torch")
             .rollouts(
                 rollout_fragment_length=rollout_fragment_length,
                 num_rollout_workers=0,
@@ -316,7 +329,7 @@ class TestTrajectoryViewAPI(unittest.TestCase):
             check(result.count, rollout_fragment_length)
             pol_batch_w = result.policy_batches["pol0"]
             assert pol_batch_w.count >= rollout_fragment_length
-            analyze_rnn_batch(
+            analyze_rnn_batch_rlm(
                 pol_batch_w,
                 max_seq_len,
                 view_requirements=rw.policy_map["pol0"].view_requirements,
@@ -336,13 +349,20 @@ class TestTrajectoryViewAPI(unittest.TestCase):
 
         config = (
             ppo.PPOConfig()
+            .framework("torch")
             .multi_agent(policies=policies, policy_mapping_fn=policy_fn)
-            .training(model={"max_seq_len": max_seq_len}, train_batch_size=2010)
+            .training(
+                model={"max_seq_len": max_seq_len},
+                train_batch_size=2010,
+                _enable_learner_api=False,
+            )
             .rollouts(
                 num_rollout_workers=0,
                 rollout_fragment_length=rollout_fragment_length,
             )
             .environment(normalize_actions=False)
+            # The Policy used to be passed in, now we have to pass in the RLModuleSpecs
+            .rl_module(_enable_rl_module_api=False)
         )
 
         rollout_worker_w_api = RolloutWorker(
@@ -692,6 +712,78 @@ def analyze_rnn_batch(batch, max_seq_len, view_requirements):
             assert (r_t == 0.0).all()
 
         cursor += max_seq_len
+
+
+def analyze_rnn_batch_rlm(batch, max_seq_len, view_requirements):
+    # Note that this method assumes a batch with a time dimension
+    count = batch.count
+
+    for seq_idx in range(len(batch[SampleBatch.SEQ_LENS]) - 1):
+        # Check prev_reward/action, next_obs consistency.
+        for idx in range(batch[SampleBatch.SEQ_LENS][seq_idx] - 1):
+            # If timestep tracked by batch, good.
+            if "t" in batch:
+                ts = batch["t"][seq_idx][idx]
+            # Else, ts
+            else:
+                ts = batch[SampleBatch.OBS][seq_idx][idx][3]
+            obs_t = batch[SampleBatch.OBS][seq_idx][idx]
+            a_t = batch[SampleBatch.ACTIONS][seq_idx][idx]
+            r_t = batch[SampleBatch.REWARDS][seq_idx][idx]
+            state_in = batch["state_in"][seq_idx]
+
+            # Check postprocessing outputs.
+            if "2xobs" in batch:
+                postprocessed_col_t = batch["2xobs"][seq_idx][idx]
+                assert (obs_t == postprocessed_col_t / 2.0).all()
+
+            # Check state-in/out and next-obs values.
+            if idx > 0:
+                next_obs_t_m_1 = batch[SampleBatch.NEXT_OBS][seq_idx][idx - 1]
+                state_out_t_m_1 = batch["state_out"][seq_idx][idx - 1]
+                # Same trajectory as for t-1 -> Should be able to match.
+                if (
+                    batch[SampleBatch.AGENT_INDEX][seq_idx][idx]
+                    == batch[SampleBatch.AGENT_INDEX][seq_idx][idx - 1]
+                    and batch[SampleBatch.EPS_ID][seq_idx][idx]
+                    == batch[SampleBatch.EPS_ID][seq_idx][idx - 1]
+                ):
+                    assert (
+                        batch["unroll_id"][seq_idx][idx - 1]
+                        == batch["unroll_id"][seq_idx][idx]
+                    )
+                    assert (obs_t == next_obs_t_m_1).all()
+                # Different trajectory.
+                else:
+                    assert (
+                        batch["unroll_id"][seq_idx][idx - 1]
+                        != batch["unroll_id"][seq_idx][idx]
+                    )
+                    assert not (obs_t == next_obs_t_m_1).all()
+                    assert not (state_in == state_out_t_m_1).all()
+
+            # Check initial 0-internal states (at ts=0).
+            if ts == 0:
+                assert (state_in == 0.0).all()
+
+            # Check prev. a/r values.
+            if idx < count - 1:
+                prev_actions_t_p_1 = batch[SampleBatch.PREV_ACTIONS][seq_idx][idx + 1]
+                prev_rewards_t_p_1 = batch[SampleBatch.PREV_REWARDS][seq_idx][idx + 1]
+                # Same trajectory as for t+1 -> Should be able to match.
+                if (
+                    batch[SampleBatch.AGENT_INDEX][seq_idx][idx]
+                    == batch[SampleBatch.AGENT_INDEX][seq_idx][idx + 1]
+                    and batch[SampleBatch.EPS_ID][seq_idx][idx]
+                    == batch[SampleBatch.EPS_ID][seq_idx][idx + 1]
+                ):
+                    assert (a_t == prev_actions_t_p_1).all()
+                    assert r_t == prev_rewards_t_p_1
+                # Different (new) trajectory. Assume t-1 (prev-a/r) to be
+                # always 0.0s. [3]=ts
+                elif ts == 0:
+                    assert (prev_actions_t_p_1 == 0).all()
+                    assert prev_rewards_t_p_1 == 0.0
 
 
 if __name__ == "__main__":

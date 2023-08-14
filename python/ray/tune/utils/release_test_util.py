@@ -1,10 +1,9 @@
 from collections import Counter
 import json
-import os
-import time
-
 import numpy as np
+import os
 import pickle
+import time
 
 from ray import tune
 from ray.tune.callback import Callback
@@ -80,6 +79,7 @@ def function_trainable(config):
     checkpoint_iters = config["checkpoint_iters"]
     checkpoint_size_b = config["checkpoint_size_b"]
     checkpoint_num_items = checkpoint_size_b // 8  # np.float64
+    checkpoint_num_files = config["checkpoint_num_files"]
 
     for i in range(num_iters):
         if (
@@ -88,10 +88,11 @@ def function_trainable(config):
             and i % checkpoint_iters == 0
         ):
             with tune.checkpoint_dir(step=i) as dir:
-                checkpoint_file = os.path.join(dir, "bogus.ckpt")
-                checkpoint_data = np.random.uniform(0, 1, size=checkpoint_num_items)
-                with open(checkpoint_file, "wb") as fp:
-                    pickle.dump(checkpoint_data, fp)
+                for i in range(checkpoint_num_files):
+                    checkpoint_file = os.path.join(dir, f"bogus_{i}.ckpt")
+                    checkpoint_data = np.random.uniform(0, 1, size=checkpoint_num_items)
+                    with open(checkpoint_file, "wb") as fp:
+                        pickle.dump(checkpoint_data, fp)
 
         tune.report(score=i + score)
         time.sleep(sleep_time)
@@ -105,12 +106,16 @@ def timed_tune_run(
     max_runtime: int = 300,
     checkpoint_freq_s: int = -1,
     checkpoint_size_b: int = 0,
+    checkpoint_num_files: int = 1,
     **tune_kwargs,
-):
+) -> bool:
     durable = (
-        "sync_config" in tune_kwargs
-        and tune_kwargs["sync_config"].upload_dir
-        and tune_kwargs["sync_config"].upload_dir.startswith("s3://")
+        "storage_path" in tune_kwargs
+        and tune_kwargs["storage_path"]
+        and (
+            tune_kwargs["storage_path"].startswith("s3://")
+            or tune_kwargs["storage_path"].startswith("gs://")
+        )
     )
 
     sleep_time = 1.0 / results_per_second
@@ -125,6 +130,7 @@ def timed_tune_run(
         "sleep_time": sleep_time,
         "checkpoint_iters": checkpoint_iters,
         "checkpoint_size_b": checkpoint_size_b,
+        "checkpoint_num_files": checkpoint_num_files,
     }
 
     print(f"Starting benchmark with config: {config}")
@@ -134,38 +140,8 @@ def timed_tune_run(
 
     _train = function_trainable
 
-    aws_key_id = os.getenv("AWS_ACCESS_KEY_ID", "")
-    aws_secret = os.getenv("AWS_SECRET_ACCESS_KEY", "")
-    aws_session = os.getenv("AWS_SESSION_TOKEN", "")
-
     if durable:
-
-        class AwsDurableTrainable(TestDurableTrainable):
-            AWS_ACCESS_KEY_ID = aws_key_id
-            AWS_SECRET_ACCESS_KEY = aws_secret
-            AWS_SESSION_TOKEN = aws_session
-
-            def setup_env(self):
-                if self.AWS_ACCESS_KEY_ID:
-                    os.environ["AWS_ACCESS_KEY_ID"] = self.AWS_ACCESS_KEY_ID
-                if self.AWS_SECRET_ACCESS_KEY:
-                    os.environ["AWS_SECRET_ACCESS_KEY"] = self.AWS_SECRET_ACCESS_KEY
-                if self.AWS_SESSION_TOKEN:
-                    os.environ["AWS_SESSION_TOKEN"] = self.AWS_SESSION_TOKEN
-
-                if all(
-                    os.getenv(k, "")
-                    for k in [
-                        "AWS_ACCESS_KEY_ID",
-                        "AWS_SECRET_ACCESS_KEY",
-                        "AWS_SESSION_TOKEN",
-                    ]
-                ):
-                    print("Worker: AWS secrets found in env.")
-                else:
-                    print("Worker: No AWS secrets found in env!")
-
-        _train = AwsDurableTrainable
+        _train = TestDurableTrainable
         run_kwargs["checkpoint_freq"] = checkpoint_iters
 
     start_time = time.monotonic()
@@ -188,7 +164,9 @@ def timed_tune_run(
     with open(test_output_json, "wt") as f:
         json.dump(result, f)
 
-    if time_taken > max_runtime:
+    success = time_taken <= max_runtime
+
+    if not success:
         print(
             f"The {name} test took {time_taken:.2f} seconds, but should not "
             f"have exceeded {max_runtime:.2f} seconds. Test failed. \n\n"
@@ -203,3 +181,5 @@ def timed_tune_run(
             f"--- PASSED: {name.upper()} ::: "
             f"{time_taken:.2f} <= {max_runtime:.2f} ---"
         )
+
+    return success

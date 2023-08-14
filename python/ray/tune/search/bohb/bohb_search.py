@@ -272,10 +272,10 @@ class TuneBOHB(Searcher):
     # TODO(team-ml): Refactor alongside HyperBandForBOHB
     def on_pause(self, trial_id: str):
         self.paused.add(trial_id)
-        self.running.remove(trial_id)
+        self.running.discard(trial_id)
 
     def on_unpause(self, trial_id: str):
-        self.paused.remove(trial_id)
+        self.paused.discard(trial_id)
         self.running.add(trial_id)
 
     @staticmethod

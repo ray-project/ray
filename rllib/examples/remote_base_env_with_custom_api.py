@@ -24,7 +24,7 @@ parser.add_argument(
 parser.add_argument(
     "--framework",
     choices=["tf", "tf2", "torch"],
-    default="tf",
+    default="torch",
     help="The DL framework specifier.",
 )
 parser.add_argument("--num-workers", type=int, default=1)

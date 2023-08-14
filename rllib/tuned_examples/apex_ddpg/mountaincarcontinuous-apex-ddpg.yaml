@@ -3,10 +3,10 @@ mountaincarcontinuous-apex-ddpg:
     env: MountainCarContinuous-v0
     run: APEX_DDPG
     stop:
-        episode_reward_mean: 90
+        sampler_results/episode_reward_mean: 90
     config:
         # Works for both torch and tf.
-        framework: tf
+        framework: torch
         clip_rewards: False
         num_workers: 16
         exploration_config:

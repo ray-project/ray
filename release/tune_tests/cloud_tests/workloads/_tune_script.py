@@ -5,8 +5,9 @@ import os
 import time
 
 import ray
-from ray import tune
-from ray.air import Checkpoint, session
+from ray import train, tune
+from ray.train import Checkpoint
+from ray.air.constants import REENABLE_DEPRECATED_SYNC_TO_HEAD_NODE
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.algorithms.ppo import PPO
 
@@ -14,11 +15,11 @@ from run_cloud_test import ARTIFACT_FILENAME
 
 
 def fn_trainable(config):
-    checkpoint = session.get_checkpoint()
+    checkpoint = train.get_checkpoint()
     if checkpoint:
         state = {"internal_iter": checkpoint.to_dict()["internal_iter"] + 1}
     else:
-        # NOTE: Need to 1 index because `session.report`
+        # NOTE: Need to 1 index because `train.report`
         # will save checkpoints w/ 1-indexing.
         state = {"internal_iter": 1}
 
@@ -31,7 +32,7 @@ def fn_trainable(config):
             checkpoint = Checkpoint.from_dict({"internal_iter": i})
 
         # Log artifacts to the trial dir.
-        trial_dir = session.get_trial_dir()
+        trial_dir = train.get_context().get_trial_dir()
         with open(os.path.join(trial_dir, ARTIFACT_FILENAME), "a") as f:
             f.write(f"{config['id']},")
 
@@ -40,7 +41,7 @@ def fn_trainable(config):
             internal_iter=state["internal_iter"],
         )
 
-        session.report(metrics, checkpoint=checkpoint)
+        train.report(metrics, checkpoint=checkpoint)
 
 
 class RLlibCallback(DefaultCallbacks):
@@ -63,7 +64,7 @@ class IndicatorCallback(tune.Callback):
 
 def run_tune(
     no_syncer: bool,
-    upload_dir: Optional[str] = None,
+    storage_path: Optional[str] = None,
     experiment_name: str = "cloud_test",
     indicator_file: str = "/tmp/tune_cloud_indicator",
     trainable: str = "function",
@@ -100,15 +101,19 @@ def run_tune(
     else:
         raise RuntimeError(f"Unknown trainable: {trainable}")
 
+    if not no_syncer and storage_path is None:
+        # syncer="auto" + storage_path=None -> legacy head node syncing path
+        os.environ[REENABLE_DEPRECATED_SYNC_TO_HEAD_NODE] = "1"
+
     tune.run(
         train,
         name=experiment_name,
         resume="AUTO",
         num_samples=1,  # 4 trials from the grid search
         config=config,
+        storage_path=storage_path,
         sync_config=tune.SyncConfig(
             syncer="auto" if not no_syncer else None,
-            upload_dir=upload_dir,
             sync_on_checkpoint=True,
             sync_period=0.5,
             sync_artifacts=True,
@@ -125,7 +130,7 @@ if __name__ == "__main__":
 
     parser.add_argument("--no-syncer", action="store_true", default=False)
 
-    parser.add_argument("--upload-dir", required=False, default=None, type=str)
+    parser.add_argument("--storage-path", required=False, default=None, type=str)
 
     parser.add_argument("--experiment-name", required=False, default=None, type=str)
 
@@ -143,7 +148,7 @@ if __name__ == "__main__":
 
     run_kwargs = dict(
         no_syncer=args.no_syncer or False,
-        upload_dir=args.upload_dir or None,
+        storage_path=args.storage_path or None,
         experiment_name=args.experiment_name or "cloud_test",
         indicator_file=args.indicator_file,
         trainable=trainable,

@@ -13,14 +13,25 @@ from ray.tune.registry import get_trainable_cls
 tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
 
+# Keep a set of all RLlib algos that support the RLModule API.
+# For these algos we need to disable the RLModule API in the config for the purpose of
+# this test. This test is made for the ModelV2 API which is not the same as RLModule.
+RLMODULE_SUPPORTED_ALGOS = {"PPO"}
+
 
 def save_test(alg_name, framework="tf", multi_agent=False):
-    cls = get_trainable_cls(alg_name)
     config = (
-        cls.get_default_config().framework(framework)
+        get_trainable_cls(alg_name)
+        .get_default_config()
+        .framework(framework)
         # Switch on saving native DL-framework (tf, torch) model files.
         .checkpointing(export_native_model_files=True)
     )
+
+    if alg_name in RLMODULE_SUPPORTED_ALGOS:
+        config = config.rl_module(_enable_rl_module_api=False).training(
+            _enable_learner_api=False
+        )
 
     if "DDPG" in alg_name or "SAC" in alg_name:
         config.environment("Pendulum-v1")

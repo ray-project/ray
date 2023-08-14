@@ -1,3 +1,4 @@
+import os
 import argparse
 import base64
 import json
@@ -10,9 +11,17 @@ import ray._private.utils
 import ray.actor
 from ray._private.parameter import RayParams
 from ray._private.ray_logging import configure_log_file, get_worker_log_file_name
+from ray._private.runtime_env.setup_hook import load_and_execute_setup_hook
+
 
 parser = argparse.ArgumentParser(
     description=("Parse addresses for the worker to connect to.")
+)
+parser.add_argument(
+    "--cluster-id",
+    required=True,
+    type=str,
+    help="the auto-generated ID of the cluster",
 )
 parser.add_argument(
     "--node-ip-address",
@@ -96,6 +105,13 @@ parser.add_argument(
     help="the port of the node's metric agent.",
 )
 parser.add_argument(
+    "--runtime-env-agent-port",
+    required=True,
+    type=int,
+    default=None,
+    help="The port on which the runtime env agent receives HTTP requests.",
+)
+parser.add_argument(
     "--object-spilling-config",
     required=False,
     type=str,
@@ -144,7 +160,22 @@ parser.add_argument(
     required=False,
     help="The address of web ui",
 )
+parser.add_argument(
+    "--worker-launch-time-ms",
+    required=True,
+    type=int,
+    help="The time when raylet starts to launch the worker process.",
+)
 
+parser.add_argument(
+    "--worker-preload-modules",
+    type=str,
+    required=False,
+    help=(
+        "A comma-separated list of Python module names "
+        "to import before accepting work."
+    ),
+)
 
 if __name__ == "__main__":
     # NOTE(sang): For some reason, if we move the code below
@@ -153,6 +184,7 @@ if __name__ == "__main__":
     # https://github.com/ray-project/ray/pull/12225#issue-525059663.
     args = parser.parse_args()
     ray._private.ray_logging.setup_logger(args.logging_level, args.logging_format)
+    worker_launched_time_ms = time.time_ns() // 1e6
 
     if args.worker_type == "WORKER":
         mode = ray.WORKER_MODE
@@ -177,9 +209,11 @@ if __name__ == "__main__":
         temp_dir=args.temp_dir,
         storage=args.storage,
         metrics_agent_port=args.metrics_agent_port,
+        runtime_env_agent_port=args.runtime_env_agent_port,
         gcs_address=args.gcs_address,
         session_name=args.session_name,
         webui=args.webui,
+        cluster_id=args.cluster_id,
     )
     node = ray._private.node.Node(
         ray_params,
@@ -214,16 +248,35 @@ if __name__ == "__main__":
         runtime_env_hash=args.runtime_env_hash,
         startup_token=args.startup_token,
         ray_debugger_external=args.ray_debugger_external,
+        worker_launch_time_ms=args.worker_launch_time_ms,
+        worker_launched_time_ms=worker_launched_time_ms,
     )
+
+    worker = ray._private.worker.global_worker
 
     # Setup log file.
     out_file, err_file = node.get_log_file_handles(
         get_worker_log_file_name(args.worker_type)
     )
     configure_log_file(out_file, err_file)
+    worker.set_out_file(out_file)
+    worker.set_err_file(err_file)
+
+    if mode == ray.WORKER_MODE and args.worker_preload_modules:
+        module_names_to_import = args.worker_preload_modules.split(",")
+        ray._private.utils.try_import_each_module(module_names_to_import)
+
+    # If the worker setup function is configured, run it.
+    worker_process_setup_hook_key = os.getenv(
+        ray_constants.WORKER_PROCESS_SETUP_HOOK_ENV_VAR
+    )
+    if worker_process_setup_hook_key:
+        error = load_and_execute_setup_hook(worker_process_setup_hook_key)
+        if error is not None:
+            worker.core_worker.exit_worker("system", error)
 
     if mode == ray.WORKER_MODE:
-        ray._private.worker.global_worker.main_loop()
+        worker.main_loop()
     elif mode in [ray.RESTORE_WORKER_MODE, ray.SPILL_WORKER_MODE]:
         # It is handled by another thread in the C++ core worker.
         # We just need to keep the worker alive.

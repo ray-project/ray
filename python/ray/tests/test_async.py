@@ -8,6 +8,7 @@ import numpy as np
 import pytest
 
 import ray
+from ray._private.async_compat import is_async_func
 from ray._private.test_utils import wait_for_condition
 from ray._private.utils import (
     get_or_create_event_loop,
@@ -31,6 +32,25 @@ def gen_tasks(time_scale=0.1):
         return n, np.zeros(1024 * 1024, dtype=np.uint8)
 
     return [f.remote(i) for i in range(5)]
+
+
+def test_is_async_func():
+    def f():
+        return 1
+
+    def f_gen():
+        yield 1
+
+    async def g():
+        return 1
+
+    async def g_gen():
+        yield 1
+
+    assert is_async_func(f) is False
+    assert is_async_func(f_gen) is False
+    assert is_async_func(g) is True
+    assert is_async_func(g_gen) is True
 
 
 def test_simple(init):

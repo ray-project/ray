@@ -11,15 +11,16 @@ import tempfile
 import socket
 
 from pprint import pprint
+from datetime import datetime
 
 import pytest
 import numpy as np
 
 import ray
-from ray.experimental.state.api import list_cluster_events
+from ray.util.state import list_cluster_events
 from ray._private.utils import binary_to_hex
 from ray.cluster_utils import AutoscalingCluster
-from ray._private.event.event_logger import get_event_logger
+from ray._private.event.event_logger import filter_event_by_level, get_event_logger
 from ray.dashboard.tests.conftest import *  # noqa
 from ray.dashboard.modules.event import event_consts
 from ray.core.generated import event_pb2
@@ -46,7 +47,7 @@ def _get_event(msg="empty message", job_id=None, source_type=None):
         "pid": random.randint(1, 65536),
         "label": "",
         "message": msg,
-        "time_stamp": time.time(),
+        "timestamp": time.time(),
         "severity": "INFO",
         "custom_fields": {
             "job_id": ray.JobID.from_int(random.randint(1, 100)).hex()
@@ -382,6 +383,36 @@ def test_autoscaler_cluster_events(shutdown_only):
         cluster.shutdown()
 
 
+def test_filter_event_by_level(monkeypatch):
+    def gen_event(level: str):
+        return event_pb2.Event(
+            source_type=event_pb2.Event.AUTOSCALER,
+            severity=event_pb2.Event.Severity.Value(level),
+            message=level,
+        )
+
+    trace = gen_event("TRACE")
+    debug = gen_event("DEBUG")
+    info = gen_event("INFO")
+    warning = gen_event("WARNING")
+    error = gen_event("ERROR")
+    fatal = gen_event("FATAL")
+
+    def assert_events_filtered(events, expected, filter_level):
+        filtered = [e for e in events if filter_event_by_level(e, filter_level)]
+        print(filtered)
+        assert len(filtered) == len(expected)
+        assert {e.message for e in filtered} == {e.message for e in expected}
+
+    events = [trace, debug, info, warning, error, fatal]
+    assert_events_filtered(events, [], "TRACE")
+    assert_events_filtered(events, [trace], "DEBUG")
+    assert_events_filtered(events, [trace, debug], "INFO")
+    assert_events_filtered(events, [trace, debug, info], "WARNING")
+    assert_events_filtered(events, [trace, debug, info, warning], "ERROR")
+    assert_events_filtered(events, [trace, debug, info, warning, error], "FATAL")
+
+
 def test_jobs_cluster_events(shutdown_only):
     ray.init()
     address = ray._private.worker._global_node.webui_url
@@ -447,6 +478,42 @@ def test_jobs_cluster_events(shutdown_only):
 
     print("Test failed (runtime_env failure) job run.")
     wait_for_condition(verify, timeout=30)
+    pprint(list_cluster_events())
+
+
+def test_core_events(shutdown_only):
+    # Test events recorded from core RAY_EVENT APIs.
+    ray.init()
+
+    @ray.remote
+    class Actor:
+        def getpid(self):
+            return os.getpid()
+
+    a = Actor.remote()
+    pid = ray.get(a.getpid.remote())
+    os.kill(pid, 9)
+    s = time.time()
+
+    def verify():
+        events = list_cluster_events(filters=[("source_type", "=", "RAYLET")])
+        print(events)
+        assert len(list_cluster_events()) == 1
+        event = events[0]
+        assert event["severity"] == "ERROR"
+        datetime_str = event["time"]
+        datetime_obj = datetime.strptime(datetime_str, "%Y-%m-%d %H:%M:%S")
+        timestamp = time.mktime(datetime_obj.timetuple())
+
+        # Make sure timestamp is not incorrect. Add sufficient buffer (60 seconds)
+        assert abs(timestamp - s) < 60
+        assert (
+            "A worker died or was killed while executing "
+            "a task by an unexpected system error" in event["message"]
+        )
+        return True
+
+    wait_for_condition(verify)
     pprint(list_cluster_events())
 
 

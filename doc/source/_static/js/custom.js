@@ -29,6 +29,63 @@ createTermynals();
 loadVisibleTermynals();
 
 
+// Reintroduce dropdown icons on the sidebar. This is a hack, as we can't
+// programmatically figure out which nav items have children anymore.
+document.addEventListener("DOMContentLoaded", function() {
+    let navItems = document.querySelectorAll(".bd-sidenav li");
+    for (let i = 0; i < navItems.length; i++) {
+        let navItem = navItems[i];
+        const stringList = [
+            "User Guides", "Examples",
+            // Ray Core
+            "Ray Core", "Ray Core API",
+            "Ray Clusters", "Deploying on Kubernetes", "Deploying on VMs",
+            "Applications Guide", "Ray Cluster Management API",
+            // Ray AIR
+            "Ray AIR API",
+            // Ray Data
+            "Ray Data", "Ray Data API", "Integrations",
+            // Ray Train
+            "Ray Train", "Ray Train API",
+            "Distributed PyTorch", "Advanced Topics", "More Frameworks",
+            "Ray Train Internals",
+            // Ray Tune
+            "Ray Tune", "Ray Tune Examples", "Ray Tune API",
+            // Ray Serve
+            "Ray Serve", "Ray Serve API",
+            "Production Guide", "Advanced Guides",
+            "Deploy Many Models",
+            // Ray RLlib
+            "Ray RLlib", "Ray RLlib API",
+            // More libraries
+            "More Libraries", "Ray Workflows (Alpha)",
+            // Monitoring/debugging
+            "Monitoring and Debugging",
+            // References
+            "References", "Use Cases",
+            // Developer guides
+            "Developer Guides", "Getting Involved / Contributing",
+        ];
+
+        const containsString = stringList.some(str => navItem.innerText ===str);
+
+        if (containsString && ! navItem.classList.contains('current')) {
+            if (navItem.classList.contains('toctree-l1')) {
+                navItem.style.fontWeight = "bold";
+            }
+            const href = navItem.querySelector("a").getAttribute("href");
+            navItem.innerHTML +=
+                '<a href="'+ href +'" style="display: none">'
+                + '<input checked="" class="toctree-checkbox" id="toctree-checkbox-'
+                + i + '" name="toctree-checkbox-' + i + '" type="button"></a>'
+                + '<label for="toctree-checkbox-' + i + '">' +
+                '<i class="fas fa-chevron-down"></i></label>'
+        }
+    }
+});
+
+// Dynamically adjust the height of all panel elements in a gallery to be the same as
+// that of the max-height element.
 document.addEventListener("DOMContentLoaded", function() {
   let images = document.getElementsByClassName("fixed-height-img");
   let maxHeight = 0;
@@ -62,22 +119,60 @@ window.onload = function() {
     }
 };
 
+// When the document is fully loaded
+document.addEventListener("DOMContentLoaded", function() {
+    // find all the code blocks' copy buttons
+    let codeButtons = document.querySelectorAll(".copybtn");
+        for (let i = 0; i < codeButtons.length; i++) {
+            const button = codeButtons[i];
+            // and add a click event listener to each one for Google Analytics.
+            button.addEventListener("click", function() {
+                gtag("event", "code_copy_click", {
+                     "send_to": "UA-110413294-1",
+                     "event_category": "ray_docs_copy_code",
+                     "event_label": "URL: " + document.URL
+                         + " Button: " + button.getAttribute("data-clipboard-target"),
+                     "value": 1,
+                });
+            });
+        }
+});
 
-let firstLink = document.getElementsByClassName("caption")[0];
-firstLink.classList.add("toctree-l1", "current");
-firstLink.style.textTransform = "none";
-firstLink.style.fontWeight = "normal";
-firstLink.innerText = "";
 
-let home = document.createElement("a");
-home.classList.add("reference", "internal");
+function checkForElement() {
+    let element = document.getElementsByClassName('mantine-Modal-root')[0];
+    if (element) {
+        return element
+    } else {
+        setTimeout(checkForElement, 100);
+        return null
+    }
+}
 
-const version = window.location.href.split("/")[4];
-const res = (version === "latest" || version === "master") ? version : "latest";
+window.addEventListener("load", function(){
 
-home.href = "https://docs.ray.io/en/" + res + "/index.html";
-home.textContent = "Ray Docs Home";
+    let targetElement = checkForElement();
 
-home.style = firstLink.style;
-home.style.color = "#5a5a5a";
-firstLink.appendChild(home);
+    try {
+        let observer = new MutationObserver(
+            function (mutationsList, observer) {
+                // Handle the changes in the element
+                mutationsList.forEach(function (mutation) {
+                    // Code to handle the specific type of mutation, like "childList" additions
+                    console.log('Element changed:', mutation);
+                    let inputElement = document.getElementsByClassName("mantine-TextInput-input")[0];
+                    inputElement.placeholder = "Do not include any personal data or confidential information";
+                    let main = document.getElementsByClassName("mantine-Text-root")[1];
+                    main.textContent = "Ray Docs AI - Ask a question"
+                    let left = document.getElementsByClassName("mantine-Text-root")[2];
+                    left.textContent = "results are automated & may be incorrect or contain inappropriate information"
+                });
+            });
+
+        let observerConfig = {childList: true};
+        observer.observe(targetElement, observerConfig);
+    } catch (e) {
+        console.log("could not load kapa widget.");
+        console.log(e);
+    }
+});

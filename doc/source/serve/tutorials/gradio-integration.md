@@ -6,7 +6,7 @@ In this guide, we will show you how to scale up your [Gradio](https://gradio.app
 To follow this tutorial, you will need Ray Serve and Gradio. If you haven't already, install them by running:
 ```console
 $ pip install "ray[serve]"
-$ pip install gradio==3.11
+$ pip install gradio==3.19
 ```
 For this tutorial, we will use Gradio apps that run text summarization and generation models and use [HuggingFace's Pipelines](https://huggingface.co/docs/transformers/main_classes/pipelines) to access these models. **Note that you can substitute this Gradio app for any Gradio app of your own!**
 
@@ -35,10 +35,17 @@ Remember you can substitute this with your own Gradio app if you want to try sca
 ### Deploying Gradio Server
 In order to deploy your Gradio app onto Ray Serve, you need to wrap your Gradio app in a Serve [deployment](serve-key-concepts-deployment). `GradioServer` acts as that wrapper. It serves your Gradio app remotely on Ray Serve so that it can process and respond to HTTP requests. 
 
-Replicas in a deployment are copies of your program running on Ray Serve, where each replica runs on a separate Ray cluster node's worker process. More replicas scales your deployment by serving more client requests. By wrapping your application in `GradioServer`, you can increase the number of replicas of your application or increase the number of CPUs and/or GPUs available to each replica.
+By wrapping your application in `GradioServer`, you can increase the number of CPUs and/or GPUs available to the application.
+:::{note}
+Currently, there is no support for routing requests properly to multiple replicas of `GradioServer`, so we recommend only having a single replica.
+:::
 
 :::{note} 
 `GradioServer` is simply `GradioIngress` but wrapped in a Serve deployment. You can use `GradioServer` for the simple wrap-and-deploy use case, but as you will see in the next section, you can use `GradioIngress` to define your own Gradio Server for more customized use cases.
+:::
+
+:::{note} 
+Ray can’t pickle Gradio. Instead, pass a builder function that constructs the Gradio interface.
 :::
 
 Using either Gradio app `io` constructed by the builder function above or providing your own application (of type `Interface`, `Block`, `Parallel`, etc.), wrap it in your Gradio Server. Pass the builder function as input to your Gradio Server. It will be used to construct your Gradio app on the Ray cluster.
@@ -60,12 +67,12 @@ See the [Production Guide](serve-in-production) for more information on how to d
 
 
 ## Parallelizing models with Ray Serve
-You can run multiple models in parallel with Ray Serve by utilizing the [deployment graph](serve-model-composition-deployment-graph) in Ray Serve.
+You can run multiple models in parallel with Ray Serve by utilizing the [deployment graph](serve-deployment-graphs) in Ray Serve.
 
 ### Original Approach
 Suppose you want to run the following program.
 
-1. Take two text generation models, [`gpt2`](https://huggingface.co/gpt2) and [`EleutherAI/gpt-neo-125M`](https://huggingface.co/EleutherAI/gpt-neo-125M).
+1. Take two text generation models, [`gpt2`](https://huggingface.co/gpt2) and [`distilgpt2`](https://huggingface.co/distilgpt2).
 2. Run the two models on the same input text, such that the generated text has a minimum length of 20 and maximum length of 100.
 3. Display the outputs of both models using Gradio.
 
@@ -91,7 +98,7 @@ Let's walk through a few steps to achieve parallelism. First, let's import our d
 :end-before: __doc_import_end__
 ```
 
-Then, let's wrap our `gpt2` and `EleutherAI/gpt-neo-125M` models in Serve deployments, named `TextGenerationModel`.
+Then, let's wrap our `gpt2` and `distilgpt2` models in Serve deployments, named `TextGenerationModel`.
 ```{literalinclude} ../doc_code/gradio-integration-parallel.py
 :start-after: __doc_models_begin__
 :end-before: __doc_models_end__
@@ -111,7 +118,7 @@ Lastly, we link everything together:
 ```
 
 :::{note} 
-This will bind your two text generation models (wrapped in Serve deployments) to `MyGradioServer._d1` and `MyGradioServer._d2`, forming a [deployment graph](serve-model-composition-deployment-graph). Thus, we have built our Gradio Interface `io` such that it calls `MyGradioServer.fanout()`, which simply sends requests to your two text generation models that are deployed on Ray Serve.
+This will bind your two text generation models (wrapped in Serve deployments) to `MyGradioServer._d1` and `MyGradioServer._d2`, forming a [deployment graph](serve-deployment-graphs). Thus, we have built our Gradio Interface `io` such that it calls `MyGradioServer.fanout()`, which simply sends requests to your two text generation models that are deployed on Ray Serve.
 :::
 
 Now, you can run your scalable app, and the two text generation models will run in parallel on Ray Serve.

@@ -2,19 +2,17 @@ import functools
 import time
 from unittest.mock import patch
 import pytest
-from ray.air.checkpoint import Checkpoint
-from ray.air.config import CheckpointConfig
-from ray.train._internal.dataset_spec import RayDatasetSpec
 from ray.train._internal.worker_group import WorkerGroup
 from ray.train.trainer import TrainingIterator
 
 import ray
-from ray.air import session
+from ray import train
+from ray.train import Checkpoint, CheckpointConfig, DataConfig
 from ray.air._internal.util import StartTraceback
 from ray.train.backend import BackendConfig
 
 from ray.train._internal.backend_executor import BackendExecutor
-from ray.train._internal.utils import ActorWrapper, construct_train_func
+from ray.train._internal.utils import construct_train_func
 from ray.train._internal.checkpoint import CheckpointManager
 from ray.train.examples.tf.tensorflow_mnist_example import (
     train_func as tensorflow_mnist_train_func,
@@ -37,7 +35,11 @@ def gen_execute_single_async_special(special_f):
         assert len(self.workers) == 2
         if i == 0 and hasattr(self, "should_fail") and self.should_fail:
             kwargs["train_func"] = special_f
-        return self.workers[i].actor._RayTrainWorker__execute.remote(f, *args, **kwargs)
+        return (
+            self.workers[i]
+            .actor._RayTrainWorker__execute.options(name=f.__name__)
+            .remote(f, *args, **kwargs)
+        )
 
     return execute_single_async_special
 
@@ -66,23 +68,16 @@ def create_iterator(
     backend_config,
     *,
     num_workers=2,
-    backend_executor=BackendExecutor,
+    backend_executor_cls=BackendExecutor,
     init_hook=None,
 ):
     # Similar logic to the old Trainer.run_iterator().
 
     train_func = construct_train_func(train_func, None)
 
-    dataset_spec = RayDatasetSpec(dataset_or_dict=None)
-
-    remote_executor = ray.remote(num_cpus=0)(backend_executor)
-
-    backend_executor_actor = remote_executor.remote(
-        backend_config=backend_config,
-        num_workers=num_workers,
+    backend_executor = backend_executor_cls(
+        backend_config=backend_config, num_workers=num_workers
     )
-
-    backend_executor = ActorWrapper(backend_executor_actor)
     backend_executor.start(init_hook)
 
     class _CheckpointConfig(CheckpointConfig):
@@ -96,7 +91,8 @@ def create_iterator(
         backend_config=backend_config,
         train_func=train_func,
         run_dir=None,
-        dataset_spec=dataset_spec,
+        datasets={},
+        data_config=DataConfig(),
         checkpoint_manager=CheckpointManager(checkpoint_strategy=checkpoint_strategy),
         checkpoint=None,
         checkpoint_strategy=checkpoint_strategy,
@@ -108,7 +104,7 @@ def test_run_iterator(ray_start_4_cpus):
 
     def train_func():
         for i in range(3):
-            session.report(dict(index=i))
+            train.report(dict(index=i))
         return 1
 
     iterator = create_iterator(train_func, config)
@@ -131,7 +127,7 @@ def test_run_iterator_returns(ray_start_4_cpus):
 
     def train_func():
         for i in range(3):
-            session.report(dict(index=i))
+            train.report(dict(index=i))
         return 1
 
     iterator = create_iterator(train_func, config)
@@ -153,7 +149,11 @@ def test_run_iterator_error(ray_start_4_cpus):
 
     with pytest.raises(StartTraceback) as exc:
         next(iterator)
-    assert "NotImplementedError" in str(exc.value)
+
+    assert isinstance(exc.value.__cause__, NotImplementedError), (
+        exc.value,
+        exc.value.__cause__,
+    )
 
     assert iterator.get_final_results() is None
     assert iterator.is_finished()
@@ -164,7 +164,7 @@ def test_no_exhaust(ray_start_4_cpus, tmp_path):
 
     def train_func():
         for _ in range(2):
-            session.report(dict(loss=1))
+            train.report(dict(loss=1))
         return 2
 
     config = BackendConfig()
@@ -189,7 +189,7 @@ def test_worker_failure_1(ray_start_4_cpus):
     config = BackendConfig()
 
     iterator = create_iterator(
-        train_func, config, backend_executor=new_backend_executor_cls
+        train_func, config, backend_executor_cls=new_backend_executor_cls
     )
     output = iterator.get_final_results(force=True)
 
@@ -199,12 +199,12 @@ def test_worker_failure_1(ray_start_4_cpus):
 def test_worker_failure_2(ray_start_4_cpus):
     def train_func():
         for _ in range(2):
-            session.report(dict(loss=1))
+            train.report(dict(loss=1))
         return 1
 
     def train_actor_failure():
         for _ in range(2):
-            session.report(dict(loss=1))
+            train.report(dict(loss=1))
         import sys
 
         sys.exit(1)
@@ -214,7 +214,7 @@ def test_worker_failure_2(ray_start_4_cpus):
     config = BackendConfig()
 
     iterator = create_iterator(
-        train_func, config, backend_executor=new_backend_executor_cls
+        train_func, config, backend_executor_cls=new_backend_executor_cls
     )
     output = iterator.get_final_results(force=True)
 
@@ -223,20 +223,20 @@ def test_worker_failure_2(ray_start_4_cpus):
 
 def test_worker_failure_local_rank(ray_start_4_cpus):
     def train_func():
-        return session.get_local_rank()
+        return train.get_context().get_local_rank()
 
     def train_actor_failure():
         import sys
 
         sys.exit(1)
-        return session.get_local_rank()
+        return train.get_context().get_local_rank()
 
     new_backend_executor_cls = gen_new_backend_executor(train_actor_failure)
 
     config = BackendConfig()
 
     iterator = create_iterator(
-        train_func, config, backend_executor=new_backend_executor_cls
+        train_func, config, backend_executor_cls=new_backend_executor_cls
     )
     output = iterator.get_final_results(force=True)
 
@@ -263,7 +263,7 @@ def test_worker_start_failure(ray_start_4_cpus):
     iterator = create_iterator(
         lambda x: 1,
         config,
-        backend_executor=TestBackendExecutor,
+        backend_executor_cls=TestBackendExecutor,
         init_hook=init_hook_fail,
     )
     iterator.get_final_results(force=True)
@@ -334,7 +334,7 @@ def test_worker_kill(ray_start_4_cpus, backend):
 
     def train_func():
         for i in range(2):
-            session.report(dict(loss=1, iter=i))
+            train.report(dict(loss=1, iter=i))
 
     iterator = create_iterator(train_func, test_config)
     kill_callback = KillCallback(fail_on=0, backend_executor=iterator._backend_executor)
@@ -363,14 +363,14 @@ def test_worker_kill(ray_start_4_cpus, backend):
 
 def test_worker_kill_checkpoint(ray_start_4_cpus):
     def train_func():
-        checkpoint = session.get_checkpoint()
+        checkpoint = train.get_checkpoint()
         if checkpoint:
             epoch = checkpoint.to_dict()["epoch"]
         else:
             epoch = 0
         print("Epoch: ", epoch)
         for i in range(epoch, 2):
-            session.report(
+            train.report(
                 dict(loss=1, iter=i), checkpoint=Checkpoint.from_dict(dict(epoch=i + 1))
             )
 

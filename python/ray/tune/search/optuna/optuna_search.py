@@ -6,7 +6,8 @@ import warnings
 from packaging import version
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
-from ray.tune.result import DEFAULT_METRIC, TRAINING_ITERATION
+from ray.air.constants import TRAINING_ITERATION
+from ray.tune.result import DEFAULT_METRIC
 from ray.tune.search.sample import (
     Categorical,
     Domain,
@@ -182,8 +183,8 @@ class OptunaSearch(Searcher):
         import optuna
 
         space = {
-            "a": optuna.distributions.UniformDistribution(6, 8),
-            "b": optuna.distributions.LogUniformDistribution(1e-4, 1e-2),
+            "a": optuna.distributions.FloatDistribution(6, 8),
+            "b": optuna.distributions.FloatDistribution(1e-4, 1e-2, log=True),
         }
 
         optuna_search = OptunaSearch(
@@ -228,8 +229,8 @@ class OptunaSearch(Searcher):
         import optuna
 
         space = {
-            "a": optuna.distributions.UniformDistribution(6, 8),
-            "b": optuna.distributions.LogUniformDistribution(1e-4, 1e-2),
+            "a": optuna.distributions.FloatDistribution(6, 8),
+            "b": optuna.distributions.FloatDistribution(1e-4, 1e-2, log=True),
         }
 
         # Note you have to specify metric and mode here instead of
@@ -257,8 +258,8 @@ class OptunaSearch(Searcher):
         import optuna
 
         space = {
-            "a": optuna.distributions.UniformDistribution(6, 8),
-            "b": optuna.distributions.LogUniformDistribution(1e-4, 1e-2),
+            "a": optuna.distributions.FloatDistribution(6, 8),
+            "b": optuna.distributions.FloatDistribution(1e-4, 1e-2, log=True),
         }
 
         optuna_search = OptunaSearch(
@@ -284,8 +285,8 @@ class OptunaSearch(Searcher):
         import optuna
 
         space = {
-            "a": optuna.distributions.UniformDistribution(6, 8),
-            "b": optuna.distributions.LogUniformDistribution(1e-4, 1e-2),
+            "a": optuna.distributions.FloatDistribution(6, 8),
+            "b": optuna.distributions.FloatDistribution(1e-4, 1e-2, log=True),
         }
 
         optuna_search = OptunaSearch(
@@ -661,28 +662,28 @@ class OptunaSearch(Searcher):
                             "Optuna does not support both quantization and "
                             "sampling from LogUniform. Dropped quantization."
                         )
-                    return ot.distributions.LogUniformDistribution(
-                        domain.lower, domain.upper
+                    return ot.distributions.FloatDistribution(
+                        domain.lower, domain.upper, log=True
                     )
 
                 elif isinstance(sampler, Uniform):
                     if quantize:
-                        return ot.distributions.DiscreteUniformDistribution(
-                            domain.lower, domain.upper, quantize
+                        return ot.distributions.FloatDistribution(
+                            domain.lower, domain.upper, step=quantize
                         )
-                    return ot.distributions.UniformDistribution(
+                    return ot.distributions.FloatDistribution(
                         domain.lower, domain.upper
                     )
 
             elif isinstance(domain, Integer):
                 if isinstance(sampler, LogUniform):
-                    return ot.distributions.IntLogUniformDistribution(
-                        domain.lower, domain.upper - 1, step=quantize or 1
+                    return ot.distributions.IntDistribution(
+                        domain.lower, domain.upper - 1, step=quantize or 1, log=True
                     )
                 elif isinstance(sampler, Uniform):
                     # Upper bound should be inclusive for quantization and
                     # exclusive otherwise
-                    return ot.distributions.IntUniformDistribution(
+                    return ot.distributions.IntDistribution(
                         domain.lower,
                         domain.upper - int(bool(not quantize)),
                         step=quantize or 1,

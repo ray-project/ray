@@ -1,15 +1,16 @@
 import json
 import logging
 from collections import defaultdict
+from typing import Set
 
 from google.protobuf.json_format import MessageToDict
 
 import ray
-import ray._private.gcs_utils as gcs_utils
 from ray._private.client_mode_hook import client_mode_hook
-from ray._private.resource_spec import NODE_ID_PREFIX
+from ray._private.resource_spec import NODE_ID_PREFIX, HEAD_NODE_RESOURCE_NAME
 from ray._private.utils import binary_to_hex, decode, hex_to_binary
 from ray._raylet import GlobalStateAccessor
+from ray.core.generated import common_pb2
 from ray.core.generated import gcs_pb2
 from ray.util.annotations import DeveloperAPI
 
@@ -92,13 +93,13 @@ class GlobalState:
             if actor_info is None:
                 return {}
             else:
-                actor_table_data = gcs_utils.ActorTableData.FromString(actor_info)
+                actor_table_data = gcs_pb2.ActorTableData.FromString(actor_info)
                 return self._gen_actor_info(actor_table_data)
         else:
             actor_table = self.global_state_accessor.get_actor_table()
             results = {}
             for i in range(len(actor_table)):
-                actor_table_data = gcs_utils.ActorTableData.FromString(actor_table[i])
+                actor_table_data = gcs_pb2.ActorTableData.FromString(actor_table[i])
                 results[
                     binary_to_hex(actor_table_data.actor_id)
                 ] = self._gen_actor_info(actor_table_data)
@@ -147,32 +148,7 @@ class GlobalState:
         """
         self._check_connected()
 
-        node_table = self.global_state_accessor.get_node_table()
-
-        results = []
-        for node_info_item in node_table:
-            item = gcs_utils.GcsNodeInfo.FromString(node_info_item)
-            node_info = {
-                "NodeID": ray._private.utils.binary_to_hex(item.node_id),
-                "Alive": item.state
-                == gcs_utils.GcsNodeInfo.GcsNodeState.Value("ALIVE"),
-                "NodeManagerAddress": item.node_manager_address,
-                "NodeManagerHostname": item.node_manager_hostname,
-                "NodeManagerPort": item.node_manager_port,
-                "ObjectManagerPort": item.object_manager_port,
-                "ObjectStoreSocketName": item.object_store_socket_name,
-                "RayletSocketName": item.raylet_socket_name,
-                "MetricsExportPort": item.metrics_export_port,
-                "NodeName": item.node_name,
-            }
-            node_info["alive"] = node_info["Alive"]
-            node_info["Resources"] = (
-                {key: value for key, value in item.resources_total.items()}
-                if node_info["Alive"]
-                else {}
-            )
-            results.append(node_info)
-        return results
+        return self.global_state_accessor.get_node_table()
 
     def job_table(self):
         """Fetch and parse the gcs job table.
@@ -192,10 +168,10 @@ class GlobalState:
 
         results = []
         for i in range(len(job_table)):
-            entry = gcs_utils.JobTableData.FromString(job_table[i])
+            entry = gcs_pb2.JobTableData.FromString(job_table[i])
             job_info = {}
             job_info["JobID"] = entry.job_id.hex()
-            job_info["DriverIPAddress"] = entry.driver_ip_address
+            job_info["DriverIPAddress"] = entry.driver_address.ip_address
             job_info["DriverPid"] = entry.driver_pid
             job_info["Timestamp"] = entry.timestamp
             job_info["StartTime"] = entry.start_time
@@ -240,7 +216,7 @@ class GlobalState:
         result = defaultdict(list)
         task_events = self.global_state_accessor.get_task_events()
         for i in range(len(task_events)):
-            event = gcs_utils.TaskEvents.FromString(task_events[i])
+            event = gcs_pb2.TaskEvents.FromString(task_events[i])
             profile = event.profile_events
             if not profile:
                 continue
@@ -277,7 +253,7 @@ class GlobalState:
         if placement_group_info is None:
             return None
         else:
-            placement_group_table_data = gcs_utils.PlacementGroupTableData.FromString(
+            placement_group_table_data = gcs_pb2.PlacementGroupTableData.FromString(
                 placement_group_info
             )
             return self._gen_placement_group_info(placement_group_table_data)
@@ -295,7 +271,7 @@ class GlobalState:
             if placement_group_info is None:
                 return {}
             else:
-                placement_group_info = gcs_utils.PlacementGroupTableData.FromString(
+                placement_group_info = gcs_pb2.PlacementGroupTableData.FromString(
                     placement_group_info
                 )
                 return self._gen_placement_group_info(placement_group_info)
@@ -305,8 +281,8 @@ class GlobalState:
             )
             results = {}
             for placement_group_info in placement_group_table:
-                placement_group_table_data = (
-                    gcs_utils.PlacementGroupTableData.FromString(placement_group_info)
+                placement_group_table_data = gcs_pb2.PlacementGroupTableData.FromString(
+                    placement_group_info
                 )
                 placement_group_id = binary_to_hex(
                     placement_group_table_data.placement_group_id
@@ -322,10 +298,12 @@ class GlobalState:
         from ray.core.generated.common_pb2 import PlacementStrategy
 
         def get_state(state):
-            if state == gcs_utils.PlacementGroupTableData.PENDING:
+            if state == gcs_pb2.PlacementGroupTableData.PENDING:
                 return "PENDING"
-            elif state == gcs_utils.PlacementGroupTableData.CREATED:
+            elif state == gcs_pb2.PlacementGroupTableData.CREATED:
                 return "CREATED"
+            elif state == gcs_pb2.PlacementGroupTableData.RESCHEDULING:
+                return "RESCHEDULING"
             else:
                 return "REMOVED"
 
@@ -352,6 +330,10 @@ class GlobalState:
                 # The value here is needs to be dictionarified
                 # otherwise, the payload becomes unserializable.
                 bundle.bundle_id.bundle_index: MessageToDict(bundle)["unitResources"]
+                for bundle in placement_group_info.bundles
+            },
+            "bundles_to_node_id": {
+                bundle.bundle_id.bundle_index: binary_to_hex(bundle.node_id)
                 for bundle in placement_group_info.bundles
             },
             "strategy": get_strategy(placement_group_info.strategy),
@@ -621,10 +603,10 @@ class GlobalState:
         worker_table = self.global_state_accessor.get_worker_table()
         workers_data = {}
         for i in range(len(worker_table)):
-            worker_table_data = gcs_utils.WorkerTableData.FromString(worker_table[i])
+            worker_table_data = gcs_pb2.WorkerTableData.FromString(worker_table[i])
             if (
                 worker_table_data.is_alive
-                and worker_table_data.worker_type == gcs_utils.WORKER
+                and worker_table_data.worker_type == common_pb2.WORKER
             ):
                 worker_id = binary_to_hex(worker_table_data.worker_address.worker_id)
                 worker_info = worker_table_data.worker_info
@@ -648,14 +630,14 @@ class GlobalState:
 
         Args:
             worker_id: ID of this worker. Type is bytes.
-            worker_type: Type of this worker. Value is gcs_utils.DRIVER or
-                gcs_utils.WORKER.
+            worker_type: Type of this worker. Value is common_pb2.DRIVER or
+                common_pb2.WORKER.
             worker_info: Info of this worker. Type is dict{str: str}.
 
         Returns:
              Is operation success
         """
-        worker_data = gcs_utils.WorkerTableData()
+        worker_data = gcs_pb2.WorkerTableData()
         worker_data.is_alive = True
         worker_data.worker_address.worker_id = worker_id
         worker_data.worker_type = worker_type
@@ -699,7 +681,7 @@ class GlobalState:
             self.global_state_accessor.get_all_available_resources()
         )
         for available_resource in all_available_resources:
-            message = gcs_utils.AvailableResources.FromString(available_resource)
+            message = gcs_pb2.AvailableResources.FromString(available_resource)
             # Calculate available resources for this node.
             dynamic_resources = {}
             for resource_id, capacity in message.resources_available.items():
@@ -749,10 +731,14 @@ class GlobalState:
     def get_node_to_connect_for_driver(self, node_ip_address):
         """Get the node to connect for a Ray driver."""
         self._check_connected()
-        node_info_str = self.global_state_accessor.get_node_to_connect_for_driver(
+        return self.global_state_accessor.get_node_to_connect_for_driver(
             node_ip_address
         )
-        return gcs_utils.GcsNodeInfo.FromString(node_info_str)
+
+    def get_draining_nodes(self) -> Set[str]:
+        """Get all the hex ids of nodes that are being drained."""
+        self._check_connected()
+        return self.global_state_accessor.get_draining_nodes()
 
 
 state = GlobalState()
@@ -783,7 +769,7 @@ def next_job_id():
 
 
 @DeveloperAPI
-@client_mode_hook(auto_init=False)
+@client_mode_hook
 def nodes():
     """Get a list of the nodes in the cluster (for debugging only).
 
@@ -828,7 +814,7 @@ def node_ids():
     node_ids = []
     for node in nodes():
         for k, v in node["Resources"].items():
-            if k.startswith(NODE_ID_PREFIX):
+            if k.startswith(NODE_ID_PREFIX) and k != HEAD_NODE_RESOURCE_NAME:
                 node_ids.append(k)
     return node_ids
 
@@ -847,7 +833,7 @@ def actors(actor_id=None):
 
 
 @DeveloperAPI
-@client_mode_hook(auto_init=False)
+@client_mode_hook
 def timeline(filename=None):
     """Return a list of profiling events that can viewed as a timeline.
 
@@ -890,7 +876,7 @@ def object_transfer_timeline(filename=None):
 
 
 @DeveloperAPI
-@client_mode_hook(auto_init=False)
+@client_mode_hook
 def cluster_resources():
     """Get the current total cluster resources.
 
@@ -905,7 +891,7 @@ def cluster_resources():
 
 
 @DeveloperAPI
-@client_mode_hook(auto_init=False)
+@client_mode_hook
 def available_resources():
     """Get the current available cluster resources.
 

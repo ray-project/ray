@@ -1,11 +1,13 @@
 import logging
 import os
+from typing import Callable
 import pytest
 import sys
 import time
 
 import ray
 from ray import tune, logger
+from ray.train import CheckpointConfig
 from ray.tune import Trainable, run_experiments, register_trainable
 from ray.tune.error import TuneError
 from ray.tune.result_grid import ResultGrid
@@ -37,7 +39,7 @@ def ray_start_4_cpus_extra():
 
 
 class FrequentPausesScheduler(FIFOScheduler):
-    def on_trial_result(self, trial_runner, trial, result):
+    def on_trial_result(self, tune_controller, trial, result):
         return TrialScheduler.PAUSE
 
 
@@ -240,15 +242,15 @@ def test_trial_reuse_log_to_file(ray_start_1_cpu):
 
     # Check trial 1
     assert trial1.last_result["num_resets"] == 2
-    assert os.path.exists(os.path.join(trial1.logdir, "stdout"))
-    assert os.path.exists(os.path.join(trial1.logdir, "stderr"))
+    assert os.path.exists(os.path.join(trial1.local_path, "stdout"))
+    assert os.path.exists(os.path.join(trial1.local_path, "stderr"))
 
     # We expect that only "First" output is found in the first trial output
-    with open(os.path.join(trial1.logdir, "stdout"), "rt") as fp:
+    with open(os.path.join(trial1.local_path, "stdout"), "rt") as fp:
         content = fp.read()
         assert "PRINT_STDOUT: First" in content
         assert "PRINT_STDOUT: Second" not in content
-    with open(os.path.join(trial1.logdir, "stderr"), "rt") as fp:
+    with open(os.path.join(trial1.local_path, "stderr"), "rt") as fp:
         content = fp.read()
         assert "PRINT_STDERR: First" in content
         assert "LOG_STDERR: First" in content
@@ -257,15 +259,15 @@ def test_trial_reuse_log_to_file(ray_start_1_cpu):
 
     # Check trial 2
     assert trial2.last_result["num_resets"] == 3
-    assert os.path.exists(os.path.join(trial2.logdir, "stdout"))
-    assert os.path.exists(os.path.join(trial2.logdir, "stderr"))
+    assert os.path.exists(os.path.join(trial2.local_path, "stdout"))
+    assert os.path.exists(os.path.join(trial2.local_path, "stderr"))
 
     # We expect that only "Second" output is found in the first trial output
-    with open(os.path.join(trial2.logdir, "stdout"), "rt") as fp:
+    with open(os.path.join(trial2.local_path, "stdout"), "rt") as fp:
         content = fp.read()
         assert "PRINT_STDOUT: Second" in content
         assert "PRINT_STDOUT: First" not in content
-    with open(os.path.join(trial2.logdir, "stderr"), "rt") as fp:
+    with open(os.path.join(trial2.local_path, "stderr"), "rt") as fp:
         content = fp.read()
         assert "PRINT_STDERR: Second" in content
         assert "LOG_STDERR: Second" in content
@@ -394,7 +396,12 @@ def test_multi_trial_reuse_heterogeneous(ray_start_4_cpus_extra):
 
 
 def test_detect_reuse_mixins():
-    from ray.tune.integration.mlflow import mlflow_mixin
+    class DummyMixin:
+        pass
+
+    def dummy_mixin(func: Callable):
+        func.__mixins__ = (DummyMixin,)
+        return func
 
     assert not _check_mixin("PPO")
 
@@ -402,20 +409,20 @@ def test_detect_reuse_mixins():
         pass
 
     assert not _check_mixin(train)
-    assert _check_mixin(mlflow_mixin(train))
+    assert _check_mixin(dummy_mixin(train))
 
     class MyTrainable(Trainable):
         pass
 
     assert not _check_mixin(MyTrainable)
-    assert _check_mixin(mlflow_mixin(MyTrainable))
+    assert _check_mixin(dummy_mixin(MyTrainable))
 
 
 def test_remote_trial_dir_with_reuse_actors(ray_start_2_cpus, tmp_path):
     """Check that the trainable has its remote directory set to the right
     location, when new trials get swapped in on actor reuse.
-    Each trial runs for 2 iterations, with checkpoint_freq=1, so each remote
-    trial dir should have 2 checkpoints.
+    Each trial runs for 2 iterations, with checkpoint_frequency=1, so each
+    remote trial dir should have 2 checkpoints.
     """
     tmp_target = str(tmp_path / "upload_dir")
     exp_name = "remote_trial_dir_update_on_actor_reuse"
@@ -434,16 +441,22 @@ def test_remote_trial_dir_with_reuse_actors(ray_start_2_cpus, tmp_path):
             # Make sure that `remote_checkpoint_dir` gets updated correctly
             trial_id = self.config.get("id")
             remote_trial_dir = get_remote_trial_dir(trial_id)
+
             if self.remote_checkpoint_dir != "file://" + remote_trial_dir:
                 # Delay raising the exception, since raising here would cause
                 # an unhandled exception that doesn't fail the test.
                 self._should_raise = True
 
         def step(self):
+            trial_id = self.config.get("id")
+            remote_trial_dir = get_remote_trial_dir(trial_id)
+
             if self._should_raise:
                 raise RuntimeError(
-                    f"Failing! {self.remote_checkpoint_dir} not updated properly "
-                    f"for trial {self.config.get('id')}"
+                    f"Failing! Remote path not updated properly "
+                    f"for trial {self.config.get('id')}. "
+                    f"\nExpected: file://{remote_trial_dir}"
+                    f"\nGot: {self.remote_checkpoint_dir}"
                 )
             return super().step()
 
@@ -453,9 +466,9 @@ def test_remote_trial_dir_with_reuse_actors(ray_start_2_cpus, tmp_path):
         max_concurrent_trials=2,
         local_dir=str(tmp_path),
         name=exp_name,
-        sync_config=tune.SyncConfig(upload_dir=f"file://{tmp_target}"),
+        storage_path=f"file://{tmp_target}",
         trial_dirname_creator=lambda t: str(t.config.get("id")),
-        checkpoint_freq=1,
+        checkpoint_config=CheckpointConfig(checkpoint_frequency=1),
     )
     result_grid = ResultGrid(analysis)
     assert not result_grid.errors
@@ -534,11 +547,10 @@ def test_artifact_syncing_with_actor_reuse(
             max_concurrent_trials=2,
             local_dir=str(local_dir),
             name=exp_name,
-            sync_config=tune.SyncConfig(
-                upload_dir=f"file://{tmp_target}", sync_artifacts=True
-            ),
+            storage_path=f"file://{tmp_target}",
+            sync_config=tune.SyncConfig(sync_artifacts=True),
             trial_dirname_creator=lambda t: str(t.config.get("id")),
-            checkpoint_freq=1,
+            checkpoint_config=CheckpointConfig(checkpoint_frequency=1),
         )
     result_grid = ResultGrid(analysis)
     assert not result_grid.errors

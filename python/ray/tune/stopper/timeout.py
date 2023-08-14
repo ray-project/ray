@@ -12,7 +12,7 @@ class TimeoutStopper(Stopper):
     """Stops all trials after a certain timeout.
 
     This stopper is automatically created when the `time_budget_s`
-    argument is passed to `air.RunConfig()`.
+    argument is passed to `train.RunConfig()`.
 
     Args:
         timeout: Either a number specifying the timeout in seconds, or

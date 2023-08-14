@@ -76,6 +76,10 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
         These fields are both read from the GCS, it's expected that the
         autoscaler writes them there.
         """
+        # TODO(rickyx): We should be able to get the cluster status from the
+        # autoscaler directly with V2. And we should be able to return structured data
+        # rather than a string.
+
         return_formatted_output = req.query.get("format", "0") == "1"
 
         (legacy_status, formatted_status_string, error) = await asyncio.gather(
@@ -179,7 +183,7 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
         self.service_discovery.daemon = True
         self.service_discovery.start()
         gcs_addr = self._dashboard_head.gcs_address
-        subscriber = GcsAioResourceUsageSubscriber(gcs_addr)
+        subscriber = GcsAioResourceUsageSubscriber(address=gcs_addr)
         await subscriber.subscribe()
         cluster_metadata = await self._dashboard_head.gcs_aio_client.internal_kv_get(
             CLUSTER_METADATA_KEY,

@@ -99,7 +99,7 @@ def build_sac_model_and_action_dist(
         policy: The TFPolicy that will use the models.
         obs_space (gym.spaces.Space): The observation space.
         action_space (gym.spaces.Space): The action space.
-        config: The SAC trainer's config dict.
+        config: The SACConfig object.
 
     Returns:
         ModelV2: The ModelV2 to be used by the Policy. Note: An additional
@@ -503,7 +503,7 @@ SACTorchPolicy = build_policy_class(
     name="SACTorchPolicy",
     framework="torch",
     loss_fn=actor_critic_loss,
-    get_default_config=lambda: ray.rllib.algorithms.sac.sac.DEFAULT_CONFIG,
+    get_default_config=lambda: ray.rllib.algorithms.sac.sac.SACConfig(),
     stats_fn=stats,
     postprocess_fn=postprocess_trajectory,
     extra_grad_process_fn=apply_grad_clipping,

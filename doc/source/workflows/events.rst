@@ -14,24 +14,34 @@ Using events
 
 Workflow events are a special type of workflow task. They "finish" when the event occurs. `workflow.wait_for_event(EventListenerType)` can be used to create an event task.
 
+.. testcode::
+    :hide:
 
-.. code-block:: python
+    import tempfile
+    import ray
+
+    temp_dir = tempfile.TemporaryDirectory()
+
+    ray.init(storage=f"file://{temp_dir.name}")
+
+
+.. testcode::
 
     import time
     import ray
     from ray import workflow
 
-    # Create an event which finishes after 60 seconds.
-    event1_task = workflow.wait_for_event(workflow.event_listener.TimerListener, time.time() + 60)
+    # Create an event which finishes after 2 seconds.
+    event1_task = workflow.wait_for_event(workflow.event_listener.TimerListener, time.time() + 2)
 
-    # Create another event which finishes after 30 seconds.
-    event2_task = workflow.wait_for_event(workflow.event_listener.TimerListener, time.time() + 30)
+    # Create another event which finishes after 1 seconds.
+    event2_task = workflow.wait_for_event(workflow.event_listener.TimerListener, time.time() + 1)
 
     @ray.remote
     def gather(*args):
         return args
 
-    # Gather will run after 60 seconds when both event1 and event2 are done.
+    # Gather will run after 2 seconds when both event1 and event2 are done.
     workflow.run(gather.bind(event1_task, event2_task))
 
 
@@ -81,7 +91,9 @@ Custom event listeners
 
 Custom event listeners can be written by subclassing the EventListener interface.
 
-.. code-block:: python
+.. testcode::
+
+    from ray.workflow.common import Event
 
     class EventListener:
         def __init__(self):
@@ -100,7 +112,7 @@ Custom event listeners can be written by subclassing the EventListener interface
 
 The `listener.poll_for_events()` coroutine should finish when the event is done. Arguments to `workflow.wait_for_event` are passed to `poll_for_events()`. For example, an event listener which sleeps until a timestamp can be written as:
 
-.. code-block:: python
+.. testcode::
 
     class TimerListener(EventListener):
         async def poll_for_event(self, timestamp):
@@ -116,16 +128,14 @@ The `event_checkpointed` routine can be overridden to support systems with exact
 After the workflow finishes checkpointing the event, the event listener will be invoked and can free the event. For example, to guarantee that events are consumed from a `kafkaesque<https://docs.confluent.io/clients-confluent-kafka-python/current/overview.html#synchronous-commits>`  queue:
 
 
-.. code-block:: python
+.. testcode::
 
     KafkaEventType = ...
 
     class QueueEventListener:
-
         def __init__(self):
             # Initialize the poll consumer.
             self.consumer = Consumer({'enable.auto.commit': False})
-
 
         async def poll_for_event(self, topic) -> KafkaEventType:
             self.consumer.subscribe(topic)
@@ -134,7 +144,7 @@ After the workflow finishes checkpointing the event, the event listener will be 
             return message
 
         async def event_checkpointed(self, event: KafkaEventType) -> None:
-             self.consuemr.commit(event, asynchronous=False)
+             self.consumer.commit(event, asynchronous=False)
 
 
 (Advanced) Event listener semantics

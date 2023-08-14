@@ -6,8 +6,11 @@ atari-impala:
     config:
         # Works for both torch and tf.
         framework: torch
+        # Make analogous to old v4 + NoFrameskip.
         env_config:
-            frameskip: 1  # no frameskip
+            frameskip: 1
+            full_action_space: false
+            repeat_action_probability: 0.0
         rollout_fragment_length: 50
         train_batch_size: 4000
         num_gpus: 4

@@ -12,7 +12,7 @@ except ImportError:
     smart_open = None
 
 from ray.air._internal.json import SafeFallbackEncoder
-from ray.rllib.policy.sample_batch import MultiAgentBatch
+from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
 from ray.rllib.offline.io_context import IOContext
 from ray.rllib.offline.output_writer import OutputWriter
 from ray.rllib.utils.annotations import override, PublicAPI
@@ -113,6 +113,7 @@ def _to_jsonable(v, compress: bool) -> Any:
         return str(pack(v))
     elif isinstance(v, np.ndarray):
         return v.tolist()
+
     return v
 
 
@@ -128,6 +129,10 @@ def _to_json_dict(batch: SampleBatchType, compress_columns: List[str]) -> Dict:
                 policy_batches[policy_id][k] = _to_jsonable(
                     v, compress=k in compress_columns
                 )
+            # INFOS aren't compatible with Arrow since they are dicts with non-string
+            # keys.
+            if SampleBatch.INFOS in policy_batches[policy_id]:
+                del policy_batches[policy_id][SampleBatch.INFOS]
         out["policy_batches"] = policy_batches
     else:
         out["type"] = "SampleBatch"

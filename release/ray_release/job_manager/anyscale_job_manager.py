@@ -1,16 +1,16 @@
-import io
 import os
 import time
-from contextlib import redirect_stdout, redirect_stderr, contextmanager
-from typing import Any, Dict, Optional, Tuple
+import subprocess
+import tempfile
+from collections import deque
+from contextlib import contextmanager
+from typing import Any, Dict, Optional, Tuple, List
 
 
 from anyscale.sdk.anyscale_client.models import (
     CreateProductionJob,
     HaJobStates,
 )
-from anyscale.controllers.job_controller import JobController, terminal_state
-
 from ray_release.anyscale_util import LAST_LOGS_LENGTH, get_cluster_name
 from ray_release.cluster_manager.cluster_manager import ClusterManager
 from ray_release.exception import (
@@ -22,6 +22,7 @@ from ray_release.logger import logger
 from ray_release.signal_handling import register_handler, unregister_handler
 from ray_release.util import (
     ANYSCALE_HOST,
+    ERROR_LOG_PATTERNS,
     exponential_backoff_retry,
     anyscale_job_url,
     format_link,
@@ -33,6 +34,7 @@ job_status_to_return_code = {
     HaJobStates.BROKEN: -2,
     HaJobStates.TERMINATED: -3,
 }
+terminal_state = set(job_status_to_return_code.keys())
 
 
 class AnyscaleJobManager:
@@ -50,18 +52,21 @@ class AnyscaleJobManager:
         env_vars: Dict[str, Any],
         working_dir: Optional[str] = None,
         upload_path: Optional[str] = None,
+        pip: Optional[List[str]] = None,
     ) -> None:
         env = os.environ.copy()
         env.setdefault("ANYSCALE_HOST", str(ANYSCALE_HOST))
 
-        full_cmd = " ".join(f"{k}={v}" for k, v in env_vars.items()) + " " + cmd_to_run
         logger.info(f"Executing {cmd_to_run} with {env_vars} via Anyscale job submit")
 
         anyscale_client = self.sdk
 
-        runtime_env = None
+        runtime_env = {
+            "env_vars": env_vars,
+            "pip": pip or [],
+        }
         if working_dir:
-            runtime_env = {"working_dir": working_dir}
+            runtime_env["working_dir"] = working_dir
             if upload_path:
                 runtime_env["upload_path"] = upload_path
 
@@ -72,7 +77,7 @@ class AnyscaleJobManager:
                     description=f"Smoke test: {self.cluster_manager.smoke_test}",
                     project_id=self.cluster_manager.project_id,
                     config=dict(
-                        entrypoint=full_cmd,
+                        entrypoint=cmd_to_run,
                         runtime_env=runtime_env,
                         build_id=self.cluster_manager.cluster_env_build_id,
                         compute_config_id=self.cluster_manager.cluster_compute_id,
@@ -105,7 +110,7 @@ class AnyscaleJobManager:
     def last_job_result(self, value):
         cluster_id = value.state.cluster_id
         # Set this only once.
-        if self._last_job_result is None and cluster_id:
+        if self.cluster_manager.cluster_id is None and cluster_id:
             self.cluster_manager.cluster_id = value.state.cluster_id
             self.cluster_manager.cluster_name = get_cluster_name(
                 value.state.cluster_id, self.sdk
@@ -253,11 +258,75 @@ class AnyscaleJobManager:
         working_dir: Optional[str] = None,
         timeout: int = 120,
         upload_path: Optional[str] = None,
+        pip: Optional[List[str]] = None,
     ) -> Tuple[int, float]:
         self._run_job(
-            cmd_to_run, env_vars, working_dir=working_dir, upload_path=upload_path
+            cmd_to_run,
+            env_vars,
+            working_dir=working_dir,
+            upload_path=upload_path,
+            pip=pip,
         )
         return self._wait_job(timeout)
+
+    def _get_ray_logs(self) -> Tuple[Optional[str], Optional[str]]:
+        """
+        Obtain any ray logs that contain keywords that indicate a crash, such as
+        ERROR or Traceback
+        """
+        tmpdir = tempfile.mktemp()
+        try:
+            subprocess.check_output(
+                [
+                    "anyscale",
+                    "logs",
+                    "cluster",
+                    "--id",
+                    self.cluster_manager.cluster_id,
+                    "--head-only",
+                    "--download",
+                    "--download-dir",
+                    tmpdir,
+                ]
+            )
+        except Exception as e:
+            logger.log(f"Failed to download logs from anyscale {e}")
+            return None
+        return AnyscaleJobManager._find_job_driver_and_ray_error_logs(tmpdir)
+
+    @staticmethod
+    def _find_job_driver_and_ray_error_logs(
+        tmpdir: str,
+    ) -> Tuple[Optional[str], Optional[str]]:
+        # Ignored some ray files that do not crash ray despite having exceptions
+        ignored_ray_files = [
+            "monitor.log",
+            "event_AUTOSCALER.log",
+            "event_JOBS.log",
+        ]
+        error_output = None
+        job_driver_output = None
+        matched_pattern_count = 0
+        for root, _, files in os.walk(tmpdir):
+            files.sort()  # Make the iteration order deterministic.
+            for file in files:
+                if file in ignored_ray_files:
+                    continue
+                with open(os.path.join(root, file)) as lines:
+                    output = "".join(deque(lines, maxlen=3 * LAST_LOGS_LENGTH))
+                    # job-driver logs
+                    if file.startswith("job-driver-"):
+                        job_driver_output = output
+                        continue
+                    # ray error logs, favor those that match with the most number of
+                    # error patterns
+                    this_match = len(
+                        [error for error in ERROR_LOG_PATTERNS if error in output]
+                    )
+                    if this_match > matched_pattern_count:
+                        error_output = output
+                        matched_pattern_count = this_match
+        return job_driver_output, error_output
 
     def get_last_logs(self):
         if not self.job_id:
@@ -268,26 +337,19 @@ class AnyscaleJobManager:
         if self._last_logs:
             return self._last_logs
 
-        # TODO: replace with an actual API call.
         def _get_logs():
-            buf = io.StringIO()
-            with open(os.devnull, "w") as devnull:
-                with redirect_stdout(buf), redirect_stderr(devnull):
-                    job_controller = JobController()
-                    job_controller.logs(
-                        job_id=self.job_id,
-                        should_follow=False,
-                    )
-                    print("", flush=True)
-            output = buf.getvalue().strip()
-            assert "### Starting ###" in output, "No logs fetched"
-            return "\n".join(output.splitlines()[-LAST_LOGS_LENGTH * 3 :])
+            job_driver_log, ray_error_log = self._get_ray_logs()
+            assert job_driver_log or ray_error_log, "No logs fetched"
+            if job_driver_log:
+                return job_driver_log
+            else:
+                return ray_error_log
 
         ret = exponential_backoff_retry(
             _get_logs,
             retry_exceptions=Exception,
             initial_retry_delay_s=30,
-            max_retries=5,
+            max_retries=3,
         )
         if ret and not self.in_progress:
             self._last_logs = ret

@@ -1,12 +1,8 @@
-$Env:BAZEL_URL="https://github.com/bazelbuild/bazel/releases/download/5.4.0/bazel-5.4.0-windows-x86_64.zip"
-Write-Host ('Downloading {0} ...' -f $env:BAZEL_URL);
+$Env:BAZELISK_URL="https://github.com/bazelbuild/bazelisk/releases/download/v1.16.0/bazelisk-windows-amd64.exe"
+Write-Host ('Downloading {0} ...' -f $env:BAZELISK_URL);
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12;
-Invoke-WebRequest -Uri $env:BAZEL_URL -OutFile 'bazel.zip';
-Write-Host 'Expanding ...';
 New-Item -ItemType Directory -Path C:\bazel -Force | Out-Null;
-Expand-Archive bazel.zip -DestinationPath C:\bazel -Force;
-Write-Host 'Removing ...';
-Remove-Item bazel.zip -Force;
+Invoke-WebRequest -Uri $env:BAZELISK_URL -OutFile 'C:\bazel\bazel.exe';
 [Environment]::SetEnvironmentVariable("BAZEL_PATH", "C:\bazel\bazel.exe", [System.EnvironmentVariableTarget]::Machine)
 $systemPath = [Environment]::GetEnvironmentVariable('Path', [System.EnvironmentVariableTarget]::Machine)
 $systemPath += ';C:\bazel'

@@ -1,7 +1,7 @@
-from functools import partial
-from typing import List, Dict, Optional
-
 from collections import Counter, OrderedDict
+from functools import partial
+from typing import Dict, List, Optional
+
 import numpy as np
 import pandas as pd
 import pandas.api.types
@@ -317,7 +317,10 @@ class MultiHotEncoder(Preprocessor):
 
     def _fit(self, dataset: Dataset) -> Preprocessor:
         self.stats_ = _get_unique_value_indices(
-            dataset, self.columns, max_categories=self.max_categories, encode_lists=True
+            dataset,
+            self.columns,
+            max_categories=self.max_categories,
+            encode_lists=True,
         )
         return self
 
@@ -544,19 +547,19 @@ def _get_unique_value_indices(
         result = {}
         for col in columns:
             if col in df_columns:
-                result[col] = get_pd_value_counts_per_column(df[col])
+                result[col] = [get_pd_value_counts_per_column(df[col])]
             else:
                 raise ValueError(
                     f"Column '{col}' does not exist in DataFrame, which has columns: {df_columns}"  # noqa: E501
                 )
-        return [result]
+        return result
 
     value_counts = dataset.map_batches(get_pd_value_counts, batch_format="pandas")
     final_counters = {col: Counter() for col in columns}
     for batch in value_counts.iter_batches(batch_size=None):
-        for col_value_counts in batch:
-            for col, value_counts in col_value_counts.items():
-                final_counters[col] += value_counts
+        for col, counters in batch.items():
+            for counter in counters:
+                final_counters[col] += counter
 
     # Inspect if there is any NA values.
     for col in columns:

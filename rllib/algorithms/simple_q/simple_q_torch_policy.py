@@ -3,7 +3,6 @@
 import logging
 from typing import Any, Dict, List, Tuple, Type, Union
 
-import ray
 from ray.rllib.algorithms.simple_q.utils import make_q_models
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.torch.torch_action_dist import (
@@ -32,12 +31,9 @@ class SimpleQTorchPolicy(
     TargetNetworkMixin,
     TorchPolicyV2,
 ):
-    """PyTorch policy class used with SimpleQTrainer."""
+    """PyTorch policy class used with SimpleQ."""
 
     def __init__(self, observation_space, action_space, config):
-        config = dict(
-            ray.rllib.algorithms.simple_q.simple_q.SimpleQConfig().to_dict(), **config
-        )
         TorchPolicyV2.__init__(
             self,
             observation_space,

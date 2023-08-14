@@ -155,6 +155,11 @@ message ActorTableData {
   optional bytes node_id = 29;
   // Placement group ID if the actor requires a placement group.
   optional bytes placement_group_id = 30;
+  // The repr name of the actor if specified with a customized repr method, e.g. __repr__
+  // This field is only available after the actor creation task has been run since it
+  // might depend on actor fields to be initialized in __init__.
+  // Default to empty string if no customized repr is defined.
+  string repr_name = 31;
 }
 
 message ErrorTableData {
@@ -197,6 +202,22 @@ message ProfileEvents {
   repeated ProfileEventEntry events = 4;
 }
 
+// Represents the info of a worker's log file for which executes the task.
+message TaskLogInfo {
+  // stdout log file absolute path.
+  optional string stdout_file = 1;
+  // stderr log file absolute path.
+  optional string stderr_file = 2;
+  // Start offset of stdout when task starts.
+  optional int32 stdout_start = 3;
+  // End offset of stdout when task finishes.
+  optional int32 stdout_end = 4;
+  // Start offset of stderr when task starts.
+  optional int32 stderr_start = 5;
+  // End offset of stderr when task finishes.
+  optional int32 stderr_end = 6;
+}
+
 // Represents task states which could be changed during task execution.
 message TaskStateUpdate {
   // Node that runs the task.
@@ -215,6 +236,14 @@ message TaskStateUpdate {
   optional int64 failed_ts = 7;
   // Worker that runs the task.
   optional bytes worker_id = 8;
+  // Task faulure info.
+  optional RayErrorInfo error_info = 9;
+  // Task logs info.
+  optional TaskLogInfo task_log_info = 10;
+  // Actor task repr name.
+  optional string actor_repr_name = 11;
+  // Worker Pid.
+  optional int32 worker_pid = 12;
 }
 
 // Represents events and state changes from a single task run.
@@ -289,15 +318,35 @@ message GcsNodeInfo {
   // The port at which the node will expose metrics to.
   int32 metrics_export_port = 9;
 
+  // The port at which the runtime env agent listens as HTTP.
+  int32 runtime_env_agent_port = 27;
+
   // The total resources of this node.
   map<string, double> resources_total = 11;
 
   // The user-provided identifier or name for this node.
   string node_name = 12;
+
+  // The instance id of the node if it's running on a cloud provider.
+  string instance_id = 13;
+
+  // The instance node type of the node if it's running on a cloud provider.
+  // Set through ENV of src/ray/common/constants.h::kNodeTypeNameEnv
+  string node_type_name = 14;
+
+  // The instance type name of the node if running on a cloud provider and
+  // set through ENV of src/ray/common/constants.h::kNodeCloudInstanceTypeNameEnv
+  // e.g. m4.16xlarge
+  string instance_type_name = 15;
+
   // The unix ms timestamp the node was started at.
   uint64 start_time_ms = 23;
   // The unix ms timestamp the node was ended at.
   uint64 end_time_ms = 24;
+  // If this is a head node.
+  bool is_head_node = 25;
+  // The key-value labels of this node.
+  map<string, string> labels = 26;
 }
 
 // Please keep this in sync with the definition of JobInfo in
@@ -333,29 +382,6 @@ message JobsAPIInfo {
   optional string driver_node_id = 13;
 }
 
-message JobTableData {
-  // The job ID.
-  bytes job_id = 1;
-  // Whether it's dead.
-  bool is_dead = 2;
-  // The UNIX timestamp corresponding to this event (job added or removed).
-  int64 timestamp = 3;
-  // IP address of the driver that started this job.
-  string driver_ip_address = 4;
-  // Process ID of the driver running this job.
-  int64 driver_pid = 5;
-  // The config of this job.
-  JobConfig config = 6;
-  // The timestamp the job was started at.
-  uint64 start_time = 7;
-  // The timestamp the job was ended at.
-  uint64 end_time = 8;
-  // The entrypoint of the job.
-  string entrypoint = 9;
-  // The optional JobInfo from the Ray Job API.
-  optional JobsAPIInfo job_info = 10;
-}
-
 message WorkerTableData {
   // Is this worker alive.
   bool is_alive = 1;
@@ -376,10 +402,28 @@ message WorkerTableData {
   optional string exit_detail = 20;
   // pid of the worker process.
   uint32 pid = 21;
-  // The unix ms timestamp the worker was started at.
+
+  /* The below fields are worker lifecycle events
+     worker_launch_time_ms (process startup requested).
+     -> worker_launched_time_ms (process started).
+     -> start_time_ms (worker is ready to be used).
+     -> end_time_ms (worker is destroyed).
+  */
+
+  // The unix ms timestamp the worker was started and finished initialization.
   uint64 start_time_ms = 23;
   // The unix ms timestamp the worker was ended at.
   uint64 end_time_ms = 24;
+  // The time when this worker process is requested from raylet.
+  // The field exists only when the worker is launched
+  // by a raylet. (I.e., driver worker won't have this value).
+  // If the value doesn't present, it is -1.
+  uint64 worker_launch_time_ms = 25;
+  // The time when this worker process is successfully started.
+  // The field exists only when the worker is launched
+  // by a raylet. (I.e., driver worker won't have this value).
+  // If the value doesn't present, it is -1.
+  uint64 worker_launched_time_ms = 26;
 }
 
 // Fields to publish when worker fails.
@@ -493,6 +537,12 @@ message ResourcesData {
   int64 resources_normal_task_timestamp = 13;
   // Whether this node has detected a resource deadlock (full of actors).
   bool cluster_full_of_actors_detected = 14;
+  // The duration in ms during which all the node's resources are idle. If the
+  // node currently has any resource being used, this will be 0.
+  int64 idle_duration_ms = 15;
+  // Whether the node is being drained.
+  bool is_draining = 16;
+  // Last unused = 17
 }
 
 message ResourceUsageBatchData {
@@ -614,5 +664,38 @@ message PlacementGroupTableData {
   PlacementGroupStats stats = 12;
   // The maximum fraction of CPU cores that this placement group can use on each node.
   double max_cpu_fraction_per_node = 13;
+  // The time that the placement group was created at.
+  int64 placement_group_creation_timestamp_ms = 14;
+  // The time that the last bundle of a placement group is committed at,
+  // effectively when the placement group has been "scheduled".
+  int64 placement_group_final_bundle_placement_timestamp_ms = 15;
+}
+
+message JobTableData {
+  // The job ID.
+  bytes job_id = 1;
+  // Whether it's dead.
+  bool is_dead = 2;
+  // The UNIX timestamp corresponding to this event (job added or removed).
+  int64 timestamp = 3;
+  // IP address of the driver that started this job.
+  // Deprecated
+  string driver_ip_address = 4;
+  // Process ID of the driver running this job.
+  int64 driver_pid = 5;
+  // The config of this job.
+  JobConfig config = 6;
+  // The timestamp the job was started at.
+  uint64 start_time = 7;
+  // The timestamp the job was ended at.
+  uint64 end_time = 8;
+  // The entrypoint of the job.
+  string entrypoint = 9;
+  // The optional JobInfo from the Ray Job API.
+  optional JobsAPIInfo job_info = 10;
+  // Whether this job has running tasks.
+  bool is_running_tasks = 11;
+  // Address of the driver that started this job.
+  Address driver_address = 12;
 }
 ///////////////////////////////////////////////////////////////////////////////

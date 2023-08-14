@@ -37,7 +37,7 @@ def get_pg_tf_policy(name: str, base: TFPolicyV2Type) -> TFPolicyV2Type:
         base: Base class for this policy. DynamicTFPolicyV2 or EagerTFPolicyV2.
 
     Returns:
-        A TF Policy to be used with PGTrainer.
+        A TF Policy to be used with PG.
     """
 
     class PGTFPolicy(

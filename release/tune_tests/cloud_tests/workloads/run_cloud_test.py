@@ -6,7 +6,7 @@ We are considering several scenarios depending on the combination of the
 following Tune properties:
 
 syncer ("auto" or None)
-upload_dir
+storage_path
 
 Generally the flow is as follows:
 
@@ -35,6 +35,7 @@ from dataclasses import dataclass
 import json
 import os
 import platform
+import pytest
 import re
 import shutil
 import signal
@@ -45,7 +46,10 @@ from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
 
 import ray
 import ray.cloudpickle as pickle
-from ray.tune.execution.trial_runner import _find_newest_experiment_checkpoint
+from ray import train, tune
+from ray.train import Checkpoint
+from ray.tune import TuneError
+from ray.tune.execution.experiment_state import _find_newest_experiment_checkpoint
 from ray.tune.utils.serialization import TuneFunctionDecoder
 
 TUNE_SCRIPT = os.path.join(os.path.dirname(__file__), "_tune_script.py")
@@ -78,7 +82,7 @@ class TrialStub:
         trial_id: str,
         status: str,
         config: Dict[str, Any],
-        _local_dir: str,
+        _legacy_local_experiment_path: str,
         experiment_tag: str,
         _last_result: Dict[str, Any],
         relative_logdir: str,
@@ -89,12 +93,10 @@ class TrialStub:
         self.trial_id = trial_id
         self.status = status
         self.config = config
-        self.local_dir = _local_dir
+        self.local_experiment_path = _legacy_local_experiment_path
         self.experiment_tag = experiment_tag
         self.last_result = _last_result
         self.relative_logdir = relative_logdir
-
-        self.local_experiment_dir = None
 
         # Ignore remaining arguments
 
@@ -207,7 +209,7 @@ def wait_for_nodes(
 
 def start_run(
     no_syncer: bool,
-    upload_dir: Optional[str] = None,
+    storage_path: Optional[str] = None,
     experiment_name: str = "cloud_test",
     indicator_file: str = "/tmp/tune_cloud_indicator",
 ) -> subprocess.Popen:
@@ -215,8 +217,8 @@ def start_run(
     if no_syncer:
         args.append("--no-syncer")
 
-    if upload_dir:
-        args.extend(["--upload-dir", upload_dir])
+    if storage_path:
+        args.extend(["--storage-path", storage_path])
 
     if experiment_name:
         args.extend(["--experiment-name", experiment_name])
@@ -309,13 +311,13 @@ def run_tune_script_for_time(
     experiment_name: str,
     indicator_file: str,
     no_syncer: bool,
-    upload_dir: Optional[str],
+    storage_path: Optional[str],
     run_start_timeout: int = 30,
 ):
     # Start run
     process = start_run(
         no_syncer=no_syncer,
-        upload_dir=upload_dir,
+        storage_path=storage_path,
         experiment_name=experiment_name,
         indicator_file=indicator_file,
     )
@@ -339,7 +341,7 @@ def run_resume_flow(
     experiment_name: str,
     indicator_file: str,
     no_syncer: bool,
-    upload_dir: Optional[str],
+    storage_path: Optional[str],
     first_run_time: int = 33,
     second_run_time: int = 33,
     run_start_timeout: int = 30,
@@ -377,7 +379,7 @@ def run_resume_flow(
         experiment_name=experiment_name,
         indicator_file=indicator_file,
         no_syncer=no_syncer,
-        upload_dir=upload_dir,
+        storage_path=storage_path,
         run_start_timeout=run_start_timeout,
     )
 
@@ -397,7 +399,7 @@ def run_resume_flow(
         experiment_name=experiment_name,
         indicator_file=indicator_file,
         no_syncer=no_syncer,
-        upload_dir=upload_dir,
+        storage_path=storage_path,
     )
 
     if after_experiments_callback:
@@ -471,10 +473,10 @@ def fetch_trial_node_dirs_to_tmp_dir(trials: List[TrialStub]) -> Dict[TrialStub,
         if trial.was_on_driver_node:
             # Trial was run on driver
             shutil.rmtree(tmpdir)
-            shutil.copytree(trial.local_dir, tmpdir)
+            shutil.copytree(trial.local_experiment_path, tmpdir)
             print(
                 "Copied local node experiment dir",
-                trial.local_dir,
+                trial.local_experiment_path,
                 "to",
                 tmpdir,
                 "for trial",
@@ -484,7 +486,7 @@ def fetch_trial_node_dirs_to_tmp_dir(trials: List[TrialStub]) -> Dict[TrialStub,
         else:
             # Trial was run on remote node
             fetch_remote_directory_content(
-                trial.node_ip, remote_dir=trial.local_dir, local_dir=tmpdir
+                trial.node_ip, remote_dir=trial.local_experiment_path, local_dir=tmpdir
             )
 
         dirmap[trial] = tmpdir
@@ -883,7 +885,7 @@ def test_no_sync_down():
     No down syncing, so:
 
         syncer=None
-        upload_dir=None
+        storage_path=None
 
     Expected results after first checkpoint:
 
@@ -1014,7 +1016,7 @@ def test_no_sync_down():
         experiment_name=experiment_name,
         indicator_file=indicator_file,
         no_syncer=True,
-        upload_dir=None,
+        storage_path=None,
         first_run_time=run_time,
         second_run_time=run_time,
         between_experiments_callback=between_experiments,
@@ -1022,12 +1024,62 @@ def test_no_sync_down():
     )
 
 
+# TODO(ml-team): [Deprecation - head node syncing]
+def test_head_node_syncing_disabled_error():
+    """Tests that head node syncing is disabled properly in a multi-node setting.
+    Runs a 4 trial Tune run, where each trial uses 2 CPUs.
+    The cluster config = 4 nodes, each with 2 CPUs, so head node syncing
+    would have been required to synchronize checkpoints.
+    """
+
+    # Raise an error for checkpointing + no storage path
+    def train_fn(config):
+        time.sleep(1)
+        train.report({"score": 1}, checkpoint=Checkpoint.from_dict({"dummy": 1}))
+
+    tuner = tune.Tuner(
+        tune.with_resources(train_fn, {"CPU": 2.0}),
+        run_config=train.RunConfig(storage_path=None),
+        tune_config=tune.TuneConfig(num_samples=6),
+    )
+    with pytest.raises(TuneError) as error_context:
+        tuner.fit()
+    # The original `_HeadNodeSyncDeprecationWarning` gets wrapped in 2 TuneError's
+    assert "_HeadNodeSyncDeprecationWarning" in str(error_context.value.__cause__)
+    print("Success: checkpointing without a storage path raises an error")
+
+    # Workaround: continue running, with syncing explicitly disabled
+    tuner = tune.Tuner(
+        tune.with_resources(train_fn, {"CPU": 2.0}),
+        run_config=train.RunConfig(
+            storage_path=None,
+            sync_config=tune.SyncConfig(syncer=None),
+        ),
+        tune_config=tune.TuneConfig(num_samples=4),
+    )
+    tuner.fit()
+    print("Success: explicitly disabling syncing is a sufficient workaround")
+
+    # Not hard failing for multi-node with no checkpointing
+    def train_fn_no_checkpoint(config):
+        train.report({"score": 1})
+
+    tuner = tune.Tuner(
+        tune.with_resources(train_fn_no_checkpoint, {"CPU": 2.0}),
+        run_config=train.RunConfig(storage_path=None),
+        tune_config=tune.TuneConfig(num_samples=4),
+    )
+    tuner.fit()
+    print("Success: a multi-node experiment without checkpointing still runs")
+
+
+# TODO(ml-team): [Deprecation - head node syncing]
 def test_ssh_sync():
     """
     SSH syncing, so:
 
         syncer="auto"
-        upload_dir=None
+        storage_path=None
 
     Expected results after first checkpoint:
 
@@ -1049,6 +1101,9 @@ def test_ssh_sync():
         - All trials progressed with training
 
     """
+    # Some preliminary checks that head node syncing is deprecated correctly.
+    test_head_node_syncing_disabled_error()
+
     experiment_name = "cloud_ssh_sync"
     indicator_file = f"/tmp/{experiment_name}_indicator"
 
@@ -1145,7 +1200,7 @@ def test_ssh_sync():
         experiment_name=experiment_name,
         indicator_file=indicator_file,
         no_syncer=False,
-        upload_dir=None,
+        storage_path=None,
         first_run_time=run_time + 10,  # More time because of SSH syncing
         second_run_time=run_time + 10,
         between_experiments_callback=between_experiments,
@@ -1158,7 +1213,7 @@ def test_durable_upload(bucket: str):
     Sync trial and experiment checkpoints to cloud, so:
 
         syncer="auto"
-        upload_dir="s3://"
+        storage_path="s3://"
 
     Expected results after first checkpoint:
 
@@ -1320,7 +1375,7 @@ def test_durable_upload(bucket: str):
         experiment_name=experiment_name,
         indicator_file=indicator_file,
         no_syncer=False,
-        upload_dir=bucket,
+        storage_path=bucket,
         first_run_time=run_time,
         second_run_time=run_time,
         run_start_timeout=run_start_timeout,

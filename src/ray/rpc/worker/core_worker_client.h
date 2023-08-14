@@ -118,6 +118,14 @@ class CoreWorkerClientInterface : public pubsub::SubscriberClientInterface {
   virtual void PushNormalTask(std::unique_ptr<PushTaskRequest> request,
                               const ClientCallback<PushTaskReply> &callback) {}
 
+  /// Get the number of pending tasks for this worker.
+  ///
+  /// \param[in] request The request message.
+  /// \param[in] callback The callback function that handles reply.
+  /// \return if the rpc call succeeds
+  virtual void NumPendingTasks(std::unique_ptr<NumPendingTasksRequest> request,
+                               const ClientCallback<NumPendingTasksReply> &callback) {}
+
   /// Notify a wait has completed for direct actor call arguments.
   ///
   /// \param[in] request The request message.
@@ -153,6 +161,10 @@ class CoreWorkerClientInterface : public pubsub::SubscriberClientInterface {
   virtual void GetObjectLocationsOwner(
       const GetObjectLocationsOwnerRequest &request,
       const ClientCallback<GetObjectLocationsOwnerReply> &callback) {}
+
+  virtual void ReportGeneratorItemReturns(
+      const ReportGeneratorItemReturnsRequest &request,
+      const ClientCallback<ReportGeneratorItemReturnsReply> &callback) {}
 
   /// Tell this actor to exit immediately.
   virtual void KillActor(const KillActorRequest &request,
@@ -213,7 +225,6 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
   /// Constructor.
   ///
   /// \param[in] address Address of the worker server.
-  /// \param[in] port Port of the worker server.
   /// \param[in] client_call_manager The `ClientCallManager` used for managing requests.
   CoreWorkerClient(const rpc::Address &address, ClientCallManager &client_call_manager)
       : addr_(address) {
@@ -279,6 +290,12 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
 
   VOID_RPC_CLIENT_METHOD(CoreWorkerService,
                          GetObjectLocationsOwner,
+                         grpc_client_,
+                         /*method_timeout_ms*/ -1,
+                         override)
+
+  VOID_RPC_CLIENT_METHOD(CoreWorkerService,
+                         ReportGeneratorItemReturns,
                          grpc_client_,
                          /*method_timeout_ms*/ -1,
                          override)
@@ -372,6 +389,16 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
     request->set_client_processed_up_to(-1);
     INVOKE_RPC_CALL(CoreWorkerService,
                     PushTask,
+                    *request,
+                    callback,
+                    grpc_client_,
+                    /*method_timeout_ms*/ -1);
+  }
+
+  void NumPendingTasks(std::unique_ptr<NumPendingTasksRequest> request,
+                       const ClientCallback<NumPendingTasksReply> &callback) override {
+    INVOKE_RPC_CALL(CoreWorkerService,
+                    NumPendingTasks,
                     *request,
                     callback,
                     grpc_client_,

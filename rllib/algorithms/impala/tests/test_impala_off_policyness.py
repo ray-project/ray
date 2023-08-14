@@ -1,4 +1,3 @@
-import itertools
 import unittest
 
 import ray
@@ -6,7 +5,6 @@ import ray.rllib.algorithms.impala as impala
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.test_utils import (
     check_compute_single_action,
-    check_off_policyness,
     framework_iterator,
 )
 
@@ -28,35 +26,27 @@ class TestIMPALAOffPolicyNess(unittest.TestCase):
             .environment("CartPole-v1")
             .resources(num_gpus=0)
             .rollouts(num_rollout_workers=4)
+            .training(_enable_learner_api=True)
+            .rl_module(_enable_rl_module_api=True)
         )
         num_iterations = 3
         num_aggregation_workers_options = [0, 1]
 
-        enable_rlm_learner_group_options = [True, False]
+        for num_aggregation_workers in num_aggregation_workers_options:
+            for _ in framework_iterator(config, frameworks=("tf2", "torch")):
 
-        for permutation in itertools.product(
-            num_aggregation_workers_options, enable_rlm_learner_group_options
-        ):
-            num_aggregation_workers, enable_learner_api = permutation
-            for fw in framework_iterator(
-                config, with_eager_tracing=True, frameworks=["tf2"]
-            ):
-
-                # TODO(avnishn): Enable this for torch when we merge the torch learner.
-                if enable_learner_api and fw != "tf2":
-                    continue
-                config.training(_enable_learner_api=enable_learner_api)
-                config.rl_module(_enable_rl_module_api=enable_learner_api)
+                # We have to set exploration_config here manually because setting
+                # it through config.exploration() only deepupdates it
+                config.exploration_config = {}
                 config.num_aggregation_workers = num_aggregation_workers
                 print("aggregation-workers={}".format(config.num_aggregation_workers))
                 algo = config.build()
                 for i in range(num_iterations):
-                    results = algo.train()
+                    algo.train()
                     # TODO (Avnish): Add off-policiness check when the metrics are
-                    # added back to the IMPALA Learner
-                    if not enable_learner_api:
-                        off_policy_ness = check_off_policyness(results, upper_limit=2.0)
-                        print(f"off-policy'ness={off_policy_ness}")
+                    #  added back to the IMPALA Learner.
+                    # off_policy_ness = check_off_policyness(results, upper_limit=2.0)
+                    # print(f"off-policy'ness={off_policy_ness}")
 
                 check_compute_single_action(
                     algo,

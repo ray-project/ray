@@ -8,7 +8,7 @@ This test uses mocked call into wandb API.
 import pytest
 
 import ray
-from ray.air import RunConfig, ScalingConfig
+from ray.train import RunConfig, ScalingConfig
 from ray.air.integrations.wandb import WANDB_ENV_VAR
 from ray.air.tests.mocked_wandb_integration import WandbTestExperimentLogger
 from ray.train.examples.pytorch.torch_linear_example import (
@@ -57,14 +57,7 @@ def test_trainer_wandb_integration(
             run_config=RunConfig(callbacks=[logger]),
         )
     trainer.fit()
-    # We use local actor for mocked logger.
-    # As a result, `._wandb`, `.config` and `.queue` are
-    # guaranteed to be available by the time `trainer.fit()` returns.
-    # This is so because they are generated in corresponding initializer
-    # in a sync fashion.
-    config = list(logger.trial_processes.values())[0]._wandb.config.queue.get(
-        timeout=10
-    )
+    config = list(logger.trial_logging_actor_states.values())[0].config
 
     if with_train_loop_config:
         assert "train_loop_config" in config

@@ -6,12 +6,11 @@ import lightgbm as lgbm
 
 import ray
 from ray import tune
-from ray.air.checkpoint import Checkpoint
 from ray.train.constants import TRAIN_DATASET_KEY
 
 from ray.data.preprocessor import Preprocessor
 from ray.train.lightgbm import LightGBMCheckpoint, LightGBMTrainer
-from ray.air.config import ScalingConfig
+from ray.train import Checkpoint, ScalingConfig
 
 from sklearn.datasets import load_breast_cancer
 from sklearn.model_selection import train_test_split
@@ -100,7 +99,7 @@ def test_resume_from_checkpoint(ray_start_6_cpus, tmpdir):
         scaling_config=scale_config,
         label_column="target",
         params=params,
-        num_boost_round=5,
+        num_boost_round=10,
         datasets={TRAIN_DATASET_KEY: train_dataset, "valid": valid_dataset},
         resume_from_checkpoint=resume_from,
     )
@@ -126,8 +125,8 @@ def test_checkpoint_freq(ray_start_6_cpus, freq_end_expected):
     train_dataset = ray.data.from_pandas(train_df)
     valid_dataset = ray.data.from_pandas(test_df)
     trainer = LightGBMTrainer(
-        run_config=ray.air.RunConfig(
-            checkpoint_config=ray.air.CheckpointConfig(
+        run_config=ray.train.RunConfig(
+            checkpoint_config=ray.train.CheckpointConfig(
                 checkpoint_frequency=freq, checkpoint_at_end=end
             )
         ),
@@ -161,7 +160,7 @@ def test_preprocessor_in_checkpoint(ray_start_6_cpus, tmpdir):
             super().__init__()
             self.is_same = True
 
-        def fit(self, dataset):
+        def _fit(self, dataset):
             self.fitted_ = True
 
         def _transform_pandas(self, df: "pd.DataFrame") -> "pd.DataFrame":

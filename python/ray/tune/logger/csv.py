@@ -4,10 +4,10 @@ import os
 
 from typing import TYPE_CHECKING, Dict, TextIO
 
-from ray.tune.logger.logger import Logger, LoggerCallback
-from ray.tune.result import EXPR_PROGRESS_FILE
+from ray.air.constants import EXPR_PROGRESS_FILE
+from ray.tune.logger.logger import _LOGGER_DEPRECATION_WARNING, Logger, LoggerCallback
 from ray.tune.utils import flatten_dict
-from ray.util.annotations import PublicAPI
+from ray.util.annotations import Deprecated, PublicAPI
 
 if TYPE_CHECKING:
     from ray.tune.experiment.trial import Trial  # noqa: F401
@@ -15,6 +15,12 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+@Deprecated(
+    message=_LOGGER_DEPRECATION_WARNING.format(
+        old="CSVLogger", new="ray.tune.csv.CSVLoggerCallback"
+    ),
+    warning=True,
+)
 @PublicAPI
 class CSVLogger(Logger):
     """Logs results to progress.csv under the trial directory.
@@ -88,8 +94,8 @@ class CSVLoggerCallback(LoggerCallback):
             self._trial_files[trial].close()
 
         # Make sure logdir exists
-        trial.init_logdir()
-        local_file = os.path.join(trial.logdir, EXPR_PROGRESS_FILE)
+        trial.init_local_path()
+        local_file = os.path.join(trial.local_path, EXPR_PROGRESS_FILE)
         self._trial_continue[trial] = (
             os.path.exists(local_file) and os.path.getsize(local_file) > 0
         )

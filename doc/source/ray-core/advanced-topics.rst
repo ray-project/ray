@@ -13,3 +13,4 @@ This section covers extended topics on how to use Ray.
     using-ray-with-jupyter
     ray-dag
     miscellaneous
+    runtime_env_auth

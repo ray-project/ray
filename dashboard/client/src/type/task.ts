@@ -27,7 +27,7 @@ export type Task = {
   state: TypeTaskStatus;
   job_id: string;
   node_id: string;
-  actor_id: string;
+  actor_id: string | null;
   placement_group_id: string | null;
   type: TypeTaskType;
   func_or_class_name: string;
@@ -39,6 +39,9 @@ export type Task = {
   end_time_ms: number | null;
   worker_id: string | null;
   profiling_data: ProfilingData;
+  error_type: string | null;
+  error_message: string | null;
+  task_log_info: { [key: string]: string | null | number };
 };
 
 export type ProfilingData = {

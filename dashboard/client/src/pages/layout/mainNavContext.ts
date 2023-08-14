@@ -2,18 +2,25 @@ import React, { useCallback, useContext, useEffect, useState } from "react";
 
 export type MainNavPage = {
   /**
-   * This gets shown in the breadcrumbs
+   * This gets shown in the breadcrumbs.
    */
   title: string;
   /**
+   * This gets shown as the HTML document page title. If this is not set, the title field will be used automatically.
+   */
+  pageTitle?: string;
+  /**
    * This helps identifies the current page a user is on and highlights the nav bar correctly.
-   * This should be unique per page.
+   * This should be unique per page within an hiearchy. i.e. you should NOT put two pages with the same ID
+   * as parents or children of each other.
    * DO NOT change the pageId of a page. The behavior of the main nav and
    * breadcrumbs is undefined in that case.
    */
   id: string;
   /**
    * URL to link to access this route.
+   * If this begins with a `/`, it is treated as an absolute path.
+   * If not, this is treated as a relative path and the path is appended to the parent breadcrumb's path.
    */
   path?: string;
 };
@@ -21,7 +28,12 @@ export type MainNavPage = {
 export type MainNavContextType = {
   mainNavPageHierarchy: MainNavPage[];
   addPage: (pageId: string) => void;
-  updatePage: (title: string, id: string, path?: string) => void;
+  updatePage: (
+    title: string,
+    id: string,
+    path?: string,
+    pageTitle?: string,
+  ) => void;
   removePage: (pageId: string) => void;
 };
 
@@ -47,16 +59,17 @@ export const useMainNavState = (): MainNavContextType => {
   const addPage = useCallback((pageId) => {
     setPageHierarchy((hierarchy) => [
       ...hierarchy,
-      { title: pageId, id: pageId },
+      // Use dummy values for title and pageTitle to start. This gets filled by the next callback.
+      { title: pageId, pageTitle: pageId, id: pageId },
     ]);
   }, []);
 
-  const updatePage = useCallback((title, id, path) => {
+  const updatePage = useCallback((title, id, path, pageTitle) => {
     setPageHierarchy((hierarchy) => {
       const pageIndex = hierarchy.findIndex((page) => page.id === id);
       return [
         ...hierarchy.slice(0, pageIndex),
-        { title, id, path },
+        { title, pageTitle, id, path },
         ...hierarchy.slice(pageIndex + 1),
       ];
     });
@@ -103,14 +116,20 @@ const useMainNavPage = (pageInfo: MainNavPage) => {
     };
   }, [pageInfo.id, addPage, removePage]);
 
-  // Second effect to allow for the title of a page to change over.
+  // Second effect to allow for the title of a page to change.
   useEffect(() => {
-    updatePage(pageInfo.title, pageInfo.id, pageInfo.path);
-    document.title = pageInfo.title;
+    updatePage(pageInfo.title, pageInfo.id, pageInfo.path, pageInfo.pageTitle);
+    document.title = `${pageInfo.pageTitle ?? pageInfo.title} | Ray Dashboard`;
     return () => {
       document.title = "Ray Dashboard";
     };
-  }, [pageInfo.title, pageInfo.id, pageInfo.path, updatePage]);
+  }, [
+    pageInfo.title,
+    pageInfo.id,
+    pageInfo.path,
+    pageInfo.pageTitle,
+    updatePage,
+  ]);
 };
 
 type MainNavPageProps = {

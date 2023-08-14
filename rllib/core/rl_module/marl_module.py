@@ -1,36 +1,27 @@
-import copy
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+import pathlib
 import pprint
-from typing import Iterator, Mapping, Any, Union, Dict, Optional, Type
+from typing import Any, Dict, KeysView, Mapping, Optional, Set, Type, Union
 
 from ray.util.annotations import PublicAPI
 from ray.rllib.utils.annotations import override, ExperimentalAPI
 from ray.rllib.utils.nested_dict import NestedDict
 
-from ray.rllib.models.specs.typing import SpecType
+from ray.rllib.core.models.specs.typing import SpecType
 from ray.rllib.policy.sample_batch import MultiAgentBatch
-from ray.rllib.core.rl_module.rl_module import RLModule, SingleAgentRLModuleSpec
+from ray.rllib.core.rl_module.rl_module import (
+    RLModule,
+    RLMODULE_METADATA_FILE_NAME,
+    RLMODULE_STATE_DIR_NAME,
+    SingleAgentRLModuleSpec,
+)
 
 # TODO (Kourosh): change this to module_id later to enforce consistency
+from ray.rllib.utils.annotations import OverrideToImplementCustomLogic
 from ray.rllib.utils.policy import validate_policy_id
+from ray.rllib.utils.serialization import serialize_type, deserialize_type
 
 ModuleID = str
-
-
-def _get_module_configs(config: Dict[str, Any]):
-    """Constructs a mapping from module_id to module config.
-
-    It takes care of the inheritance of common configs to individual module configs.
-    See `from_multi_agent_config` for more details.
-    """
-    config = copy.deepcopy(config)
-    module_specs = config.pop("modules", {})
-    for common_spec in config:
-        for module_spec in module_specs.values():
-            if getattr(module_spec, common_spec) is None:
-                setattr(module_spec, common_spec, config[common_spec])
-
-    return module_specs
 
 
 @PublicAPI(stability="alpha")
@@ -39,7 +30,7 @@ class MultiAgentRLModule(RLModule):
 
     This class holds a mapping from module_ids to the underlying RLModules. It provides
     a convenient way of accessing each individual module, as well as accessing all of
-    them with only one api call. Whether or not a given module is trainable is
+    them with only one API call. Whether or not a given module is trainable is
     determined by the caller of this class (not the instance of this class itself).
 
     The extension of this class can include any arbitrary neural networks as part of
@@ -55,82 +46,23 @@ class MultiAgentRLModule(RLModule):
     communication with one another. The behavior of modules with such advanced
     communication would be undefined by default. To share parameters or communication
     between the underlying RLModules, you should implement your own
-    `MultiAgentRLModule`.
+    `MultiAgentRLModule` subclass.
     """
 
-    def __init__(self, rl_modules: Mapping[ModuleID, RLModule] = None) -> None:
-        super().__init__()
-        self._rl_modules: Mapping[ModuleID, RLModule] = rl_modules or {}
-
-    @classmethod
-    def from_multi_agent_config(cls, config: Mapping[str, Any]) -> "MultiAgentRLModule":
-        """Creates a MultiAgentRLModule from a multi-agent config.
-
-        The input config should contain "modules" key that is a mapping from module_id
-        to the module spec for each RLModule which is a SingleAgentRLModuleSpec object.
-        If there are multiple modules that do share the same
-        `observation_space`, `action_space`, or `model_config`, you can specify these
-        keys at the top level of the config, and the module spec will inherit the
-        values from the top level config.
-
-        Examples:
-
-        .. code-block:: python
-
-            config = {
-                "modules": {
-                    "module_1": SingleAgentRLModuleSpec(
-                        module_class="RLModule1",
-                        observation_space=gym.spaces.Box(...),
-                        action_space=gym.spaces.Discrete(...),
-                        model_config={hidden_dim: 256}
-                    )
-                    "module_2": SingleAgentRLModuleSpec(
-                        module_class="RLModule2",
-                        observation_space=gym.spaces.Box(...),
-                    )
-                },
-                "action_space": gym.spaces.Box(...),
-                "model_config": {hidden_dim: 32}
-            }
-
-            # This is equivalent to the following config:
-
-            config = {
-                "modules": {
-                    "module_1": SingleAgentRLModuleSpec(
-                        module_class="RLModule1",
-                        observation_space=gym.spaces.Box(...),
-                        action_space=gym.spaces.Discrete(...),
-                        model_config={hidden_dim: 256}
-                    )
-                    "module_2": SingleAgentRLModuleSpec(
-                        module_class="RLModule2",
-                        observation_space=gym.spaces.Box(...),
-                        action_space=gym.spaces.Box(...), # Inherited
-                        model_config={hidden_dim: 32} # Inherited
-                    }
-                },
-            }
+    def __init__(self, config: Optional["MultiAgentRLModuleConfig"] = None) -> None:
+        """Initializes a MultiagentRLModule instance.
 
         Args:
-            config: A config dict that contains the module configs. See above for the
-                format required.
-
-            Returns:
-                The MultiAgentRLModule.
+            config: The MultiAgentRLModuleConfig to use.
         """
+        super().__init__(config or MultiAgentRLModuleConfig())
 
-        module_configs: Dict[ModuleID, Any] = _get_module_configs(config)
-        cls.__check_module_configs(module_configs)
-
-        multiagent_module = cls()
-
-        for module_id, module_spec in module_configs.items():
-            module = module_spec.build()
-            multiagent_module.add_module(module_id, module)
-
-        return multiagent_module
+    def setup(self):
+        """Sets up the underlying RLModules."""
+        self._rl_modules = {}
+        self.__check_module_configs(self.config.modules)
+        for module_id, module_spec in self.config.modules.items():
+            self._rl_modules[module_id] = module_spec.build()
 
     @classmethod
     def __check_module_configs(cls, module_configs: Dict[ModuleID, Any]):
@@ -151,8 +83,8 @@ class MultiAgentRLModule(RLModule):
                     f"Module {module_id} is not a SingleAgentRLModuleSpec object."
                 )
 
-    def keys(self) -> Iterator[ModuleID]:
-        """Returns an iteratable of module ids."""
+    def keys(self) -> KeysView[ModuleID]:
+        """Returns a keys view over the module IDs in this MultiAgentRLModule."""
         return self._rl_modules.keys()
 
     @override(RLModule)
@@ -211,16 +143,6 @@ class MultiAgentRLModule(RLModule):
         if raise_err_if_not_found:
             self._check_module_exists(module_id)
         del self._rl_modules[module_id]
-
-    @override(RLModule)
-    def make_distributed(self, dist_config: Mapping[str, Any] = None) -> None:
-        # TODO (Avnish) Implement this.
-        pass
-
-    @override(RLModule)
-    def is_distributed(self) -> bool:
-        # TODO (Avnish) Implement this.
-        return False
 
     def __getitem__(self, module_id: ModuleID) -> RLModule:
         """Returns the module with the given module ID.
@@ -306,75 +228,116 @@ class MultiAgentRLModule(RLModule):
         return self._run_forward_pass("forward_exploration", batch, **kwargs)
 
     @override(RLModule)
-    def get_state(self) -> Mapping[str, Any]:
+    def get_state(
+        self, module_ids: Optional[Set[ModuleID]] = None
+    ) -> Mapping[ModuleID, Any]:
         """Returns the state of the multi-agent module.
 
-        The default implementation loops all modules and calls their get_state method.
-        Override this method if you want to change the get_state behavior.
+        This method returns the state of each module specified by module_ids. If
+        module_ids is None, the state of all modules is returned.
 
+        Args:
+            module_ids: The module IDs to get the state of. If None, the state of all
+                modules is returned.
         Returns:
             A nested state dict with the first layer being the module ID and the second
-            is the state of the module.
+            is the state of the module. The returned dict values are framework-specific
+            tensors.
         """
+
+        if module_ids is None:
+            module_ids = self._rl_modules.keys()
+
         return {
-            module_id: module.get_state()
-            for module_id, module in self._rl_modules.items()
+            module_id: self._rl_modules[module_id].get_state()
+            for module_id in module_ids
         }
 
     @override(RLModule)
-    def set_state(self, state_dict: Mapping[str, Any]) -> None:
-        """Sets the state dict of the multi-agent module.
+    def set_state(self, state_dict: Mapping[ModuleID, Any]) -> None:
+        """Sets the state of the multi-agent module.
 
-        The default implementation is a mapping from independent module IDs to their
-        corresponding RLModule state_dicts. Override this method to customize the
-        state_dict for custom more advanced multi-agent use cases.
+        It is assumed that the state_dict is a mapping from module IDs to their
+        corressponding state. This method sets the state of each module by calling
+        their set_state method. If you want to set the state of some of the RLModules
+        within this MultiAgentRLModule your state_dict can only include the state of
+        those RLModules. Override this method to customize the state_dict for custom
+        more advanced multi-agent use cases.
 
         Args:
             state_dict: The state dict to set.
         """
-        for module_id, module in self._rl_modules.items():
-            module.set_state(state_dict[module_id])
+        for module_id, state in state_dict.items():
+            self._rl_modules[module_id].set_state(state)
 
-    def serialize(self) -> Mapping[str, Any]:
-        """Return the serialized state of the module.
-
-        NOTE: This method needs to be implemented in order to support
-        checkpointing and fault tolerance.
-
-        """
-        return {
-            "class": self.__class__,
-            "rl_modules": {
-                module_id: module.serialize()
-                for module_id, module in self._rl_modules.items()
-            },
-        }
-
-    @classmethod
-    def deserialize(cls, state: Mapping[str, Any]) -> "MultiAgentRLModule":
-        """Construct a module from a serialized state.
+    @override(RLModule)
+    def save_state(self, path: Union[str, pathlib.Path]) -> None:
+        """Saves the weights of this MultiAgentRLModule to dir.
 
         Args:
-            state: The serialized state of the module.
-            The state should contain the keys "class", "kwargs", and "state".
+            path: The path to the directory to save the checkpoint to.
 
-            - "class" is the class of the RLModule to be constructed.
-            - "rl_modules" is a dict mapping module ids of the RLModules to
-                their serialized states. The serialized states can be obtained
-                from `RLModule.serialize()`.
-
-        NOTE: this state is typically obtained from `serialize()`.
-
-        NOTE: This method needs to be implemented in order to support
-            checkpointing and fault tolerance.
-
-        Returns:
-            A deserialized MultiAgentRLModule.
         """
-        rl_modules = {}
-        for module_id, module_state in state["rl_modules"].items():
-            rl_modules[module_id] = RLModule.deserialize(module_state)
-        return cls(rl_modules)
+        path = pathlib.Path(path)
+        path.mkdir(parents=True, exist_ok=True)
+        for module_id, module in self._rl_modules.items():
+            module.save_to_checkpoint(str(path / module_id))
+
+    @override(RLModule)
+    def load_state(
+        self,
+        path: Union[str, pathlib.Path],
+        modules_to_load: Optional[Set[ModuleID]] = None,
+    ) -> None:
+        """Loads the weights of an MultiAgentRLModule from dir.
+
+        NOTE:
+            If you want to load a module that is not already
+            in this MultiAgentRLModule, you should add it to this MultiAgentRLModule
+            before loading the checkpoint.
+
+        Args:
+            path: The path to the directory to load the state from.
+            modules_to_load: The modules whose state is to be loaded from the path. If
+                this is None, all modules that are checkpointed will be loaded into this
+                marl module.
+
+
+        """
+        path = pathlib.Path(path)
+        if not modules_to_load:
+            modules_to_load = set(self._rl_modules.keys())
+        path.mkdir(parents=True, exist_ok=True)
+        for submodule_id in modules_to_load:
+            if submodule_id not in self._rl_modules:
+                raise ValueError(
+                    f"Module {submodule_id} from `modules_to_load`: "
+                    f"{modules_to_load} not found in this MultiAgentRLModule."
+                )
+            submodule = self._rl_modules[submodule_id]
+            submodule_weights_dir = path / submodule_id / RLMODULE_STATE_DIR_NAME
+            if not submodule_weights_dir.exists():
+                raise ValueError(
+                    f"Submodule {submodule_id}'s module state directory: "
+                    f"{submodule_weights_dir} not found in checkpoint dir {path}."
+                )
+            submodule.load_state(submodule_weights_dir)
+
+    @override(RLModule)
+    def save_to_checkpoint(self, checkpoint_dir_path: Union[str, pathlib.Path]) -> None:
+        path = pathlib.Path(checkpoint_dir_path)
+        path.mkdir(parents=True, exist_ok=True)
+        self.save_state(path)
+        self._save_module_metadata(path, MultiAgentRLModuleSpec)
+
+    @classmethod
+    @override(RLModule)
+    def from_checkpoint(cls, checkpoint_dir_path: Union[str, pathlib.Path]) -> None:
+        path = pathlib.Path(checkpoint_dir_path)
+        metadata_path = path / RLMODULE_METADATA_FILE_NAME
+        marl_module = cls._from_metadata_file(metadata_path)
+        marl_module.load_state(path)
+        return marl_module
 
     def __repr__(self) -> str:
         return f"MARL({pprint.pformat(self._rl_modules)})"
@@ -384,7 +347,7 @@ class MultiAgentRLModule(RLModule):
         forward_fn_name: str,
         batch: NestedDict[Any],
         **kwargs,
-    ) -> Dict[ModuleID, Mapping[str, Any]]:
+    ) -> Dict[ModuleID, Mapping[ModuleID, Any]]:
         """This is a helper method that runs the forward pass for the given module.
 
         It uses forward_fn_name to get the forward pass method from the RLModule
@@ -421,7 +384,7 @@ class MultiAgentRLModule(RLModule):
             )
 
 
-@ExperimentalAPI
+@PublicAPI(stability="alpha")
 @dataclass
 class MultiAgentRLModuleSpec:
     """A utility spec class to make it constructing MARL modules easier.
@@ -439,21 +402,38 @@ class MultiAgentRLModuleSpec:
         module_specs: The module specs for each individual module. It can be either a
             SingleAgentRLModuleSpec used for all module_ids or a dictionary mapping
             from module IDs to SingleAgentRLModuleSpecs for each individual module.
+        load_state_path: The path to the module state to load from. NOTE: This must be
+            an absolute path. NOTE: If the load_state_path of this spec is set, and
+            the load_state_path of one of the SingleAgentRLModuleSpecs' is also set,
+            the weights of that RL Module will be loaded from the path specified in
+            the SingleAgentRLModuleSpec. This is useful if you want to load the weights
+            of a MARL module and also manually load the weights of some of the RL
+            modules within that MARL module from other checkpoints.
+        modules_to_load: A set of module ids to load from the checkpoint. This is
+            only used if load_state_path is set. If this is None, all modules are
+            loaded.
     """
 
     marl_module_class: Type[MultiAgentRLModule] = MultiAgentRLModule
     module_specs: Union[
         SingleAgentRLModuleSpec, Dict[ModuleID, SingleAgentRLModuleSpec]
     ] = None
+    load_state_path: Optional[str] = None
+    modules_to_load: Optional[Set[ModuleID]] = None
 
     def __post_init__(self):
         if self.module_specs is None:
             raise ValueError(
-                "module_specs cannot be None. It should be either a "
+                "Module_specs cannot be None. It should be either a "
                 "SingleAgentRLModuleSpec or a dictionary mapping from module IDs to "
                 "SingleAgentRLModuleSpecs for each individual module."
             )
 
+    def get_marl_config(self) -> "MultiAgentRLModuleConfig":
+        """Returns the MultiAgentRLModuleConfig for this spec."""
+        return MultiAgentRLModuleConfig(modules=self.module_specs)
+
+    @OverrideToImplementCustomLogic
     def build(
         self, module_id: Optional[ModuleID] = None
     ) -> Union[SingleAgentRLModuleSpec, "MultiAgentRLModule"]:
@@ -473,32 +453,130 @@ class MultiAgentRLModuleSpec:
         Returns:
             The built module. If module_id is None, it returns the multi-agent module.
         """
-
         self._check_before_build()
 
         if module_id:
             return self.module_specs[module_id].build()
-        return self.marl_module_class.from_multi_agent_config(
-            {"modules": self.module_specs}
-        )
+
+        module_config = self.get_marl_config()
+        module = self.marl_module_class(module_config)
+        return module
 
     def add_modules(
-        self, module_specs: Dict[ModuleID, SingleAgentRLModuleSpec]
+        self,
+        module_specs: Dict[ModuleID, SingleAgentRLModuleSpec],
+        overwrite: bool = True,
     ) -> None:
-        """Add new module specs to the spec.
+        """Add new module specs to the spec or updates existing ones.
 
         Args:
             module_specs: The mapping for the module_id to the single-agent module
                 specs to be added to this multi-agent module spec.
+            overwrite: Whether to overwrite the existing module specs if they already
+                exist. If False, they will be updated only.
         """
         if self.module_specs is None:
             self.module_specs = {}
-        self.module_specs.update(module_specs)
+        for module_id, module_spec in module_specs.items():
+            if overwrite or module_id not in self.module_specs:
+                self.module_specs[module_id] = module_spec
+            else:
+                self.module_specs[module_id].update(module_spec)
+
+    @classmethod
+    def from_module(self, module: MultiAgentRLModule) -> "MultiAgentRLModuleSpec":
+        """Creates a MultiAgentRLModuleSpec from a MultiAgentRLModule.
+
+        Args:
+            module: The MultiAgentRLModule to create the spec from.
+
+        Returns:
+            The MultiAgentRLModuleSpec.
+        """
+        # we want to get the spec of the underlying unwrapped module that way we can
+        # easily reconstruct it. The only wrappers that we expect to support today are
+        # wrappers that allow us to do distributed training. Those will be added back
+        # by the learner if necessary.
+        module_specs = {
+            module_id: SingleAgentRLModuleSpec.from_module(rl_module.unwrapped())
+            for module_id, rl_module in module._rl_modules.items()
+        }
+        marl_module_class = module.__class__
+        return MultiAgentRLModuleSpec(
+            marl_module_class=marl_module_class, module_specs=module_specs
+        )
 
     def _check_before_build(self):
         if not isinstance(self.module_specs, dict):
             raise ValueError(
-                f"When build() is called on {self.__class__} the module_specs "
+                f"When build() is called on {self.__class__}, the module_specs "
                 "should be a dictionary mapping from module IDs to "
                 "SingleAgentRLModuleSpecs for each individual module."
             )
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Converts the MultiAgentRLModuleSpec to a dictionary."""
+        return {
+            "marl_module_class": serialize_type(self.marl_module_class),
+            "module_specs": {
+                module_id: module_spec.to_dict()
+                for module_id, module_spec in self.module_specs.items()
+            },
+        }
+
+    @classmethod
+    def from_dict(cls, d) -> "MultiAgentRLModuleSpec":
+        """Creates a MultiAgentRLModuleSpec from a dictionary."""
+        return MultiAgentRLModuleSpec(
+            marl_module_class=deserialize_type(d["marl_module_class"]),
+            module_specs={
+                module_id: SingleAgentRLModuleSpec.from_dict(module_spec)
+                for module_id, module_spec in d["module_specs"].items()
+            },
+        )
+
+    def update(self, other: "MultiAgentRLModuleSpec", overwrite=False) -> None:
+        """Updates this spec with the other spec.
+
+        Traverses this MultiAgentRLModuleSpec's module_specs and updates them with
+        the module specs from the other MultiAgentRLModuleSpec.
+
+        Args:
+            other: The other spec to update this spec with.
+            overwrite: Whether to overwrite the existing module specs if they already
+                exist. If False, they will be updated only.
+        """
+        assert type(other) is MultiAgentRLModuleSpec
+
+        if isinstance(other.module_specs, dict):
+            self.add_modules(other.module_specs, overwrite=overwrite)
+        else:
+            if not self.module_specs:
+                self.module_specs = other.module_specs
+            else:
+                self.module_specs.update(other.module_specs)
+
+
+@ExperimentalAPI
+@dataclass
+class MultiAgentRLModuleConfig:
+
+    modules: Mapping[ModuleID, SingleAgentRLModuleSpec] = field(default_factory=dict)
+
+    def to_dict(self):
+
+        return {
+            "modules": {
+                module_id: module_spec.to_dict()
+                for module_id, module_spec in self.modules.items()
+            }
+        }
+
+    @classmethod
+    def from_dict(cls, d) -> "MultiAgentRLModuleConfig":
+        return cls(
+            modules={
+                module_id: SingleAgentRLModuleSpec.from_dict(module_spec)
+                for module_id, module_spec in d["modules"].items()
+            }
+        )

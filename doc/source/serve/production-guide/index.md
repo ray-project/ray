@@ -9,9 +9,10 @@ If you're not running on Kubernetes, you can also run Ray Serve on a Ray cluster
 This section will walk you through a quickstart of how to generate a Serve config file and deploy it using the Serve CLI.
 For more details, you can check out the other pages in the production guide:
 - Understand the [Serve config file format](serve-in-production-config-file).
-- Understand how to [deploy on VMs using the Serve CLI](serve-in-production-deploying).
 - Understand how to [deploy on Kubernetes using KubeRay](serve-in-production-kubernetes).
 - Understand how to [monitor running Serve applications](serve-monitoring).
+
+For deploying on VMs instead of Kubernetes, see [Deploy on VM](serve-in-production-deploying).
 
 (serve-in-production-example)=
 
@@ -112,11 +113,10 @@ To update the application, modify the config file and use `serve deploy` again.
 
 ## Next Steps
 
-This section provided a quickstart on how to generate and use a Serve config file.
 For a deeper dive into how to deploy, update, and monitor Serve applications, see the following pages:
 - Learn the details of the [Serve config file format](serve-in-production-config-file).
-- Learn how to [deploy on VMs using the Serve CLI](serve-in-production-deploying).
 - Learn how to [deploy on Kubernetes using KubeRay](serve-in-production-kubernetes).
+- Learn how to [build custom Docker images](serve-custom-docker-images) to use with KubeRay.
 - Learn how to [monitor running Serve applications](serve-monitoring).
 
 [KubeRay]: https://ray-project.github.io/kuberay/

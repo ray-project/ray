@@ -4,7 +4,6 @@ import numpy as np
 import tree  # pip install dm_tree
 from typing import Dict, List, Optional, Tuple
 
-import ray
 from ray.rllib.algorithms.qmix.mixers import VDNMixer, QMixer
 from ray.rllib.algorithms.qmix.model import RNNModel, _get_size
 from ray.rllib.env.multi_agent_env import ENV_STATE
@@ -174,7 +173,6 @@ class QMixTorchPolicy(TorchPolicy):
             raise ImportError("Could not import PyTorch, which QMix requires.")
 
         _validate(obs_space, action_space)
-        config = dict(ray.rllib.algorithms.qmix.qmix.DEFAULT_CONFIG, **config)
         self.framework = "torch"
 
         self.n_agents = len(obs_space.original_space.spaces)
@@ -341,6 +339,7 @@ class QMixTorchPolicy(TorchPolicy):
         state_batches=None,
         prev_action_batch=None,
         prev_reward_batch=None,
+        **kwargs,
     ):
         obs_batch, action_mask, _ = self._unpack_observation(obs_batch)
         return np.zeros(obs_batch.size()[0])

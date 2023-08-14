@@ -588,7 +588,7 @@ def test_pull_bundle_deadlock(ray_start_cluster):
 
     @ray.remote(num_cpus=0)
     def get_node_id():
-        return ray.get_runtime_context().node_id
+        return ray.get_runtime_context().get_node_id()
 
     worker_node_1_id = ray.get(
         get_node_id.options(resources={"worker_node_1": 0.1}).remote()

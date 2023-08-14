@@ -51,7 +51,7 @@ setup_commands:
     - pip install ray[tune]
     - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp37-cp37m-manylinux2014_x86_64.whl
 
-    # Install HuggingFace
+    # Install Transformers
     - git clone https://github.com/huggingface/transformers || true
     - cd transformers &&
       pip install -U . &&

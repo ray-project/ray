@@ -8,8 +8,10 @@ from ray.rllib.utils.annotations import (
 )
 from ray.rllib.models.temp_spec_classes import TensorDict, ModelConfig
 from ray.rllib.models.base_model import RecurrentModel, Model, ModelIO
+from ray.rllib.utils.deprecation import Deprecated
 
 
+@Deprecated(error=False)
 class TorchModelIO(ModelIO):
     """Save/Load mixin for torch models
 
@@ -40,6 +42,7 @@ class TorchModelIO(ModelIO):
         self.load_state_dict(torch.load(path))
 
 
+@Deprecated(error=False)
 class TorchRecurrentModel(RecurrentModel, nn.Module, TorchModelIO):
     """The base class for recurrent pytorch models.
 
@@ -51,8 +54,8 @@ class TorchRecurrentModel(RecurrentModel, nn.Module, TorchModelIO):
         config: The config used to construct the model
 
     Required Attributes:
-        input_spec: SpecDict: Denotes the input keys and shapes passed to `unroll`
-        output_spec: SpecDict: Denotes the output keys and shapes returned from
+        input_specs: SpecDict: Denotes the input keys and shapes passed to `unroll`
+        output_specs: SpecDict: Denotes the output keys and shapes returned from
             `unroll`
         prev_state_spec: SpecDict: Denotes the keys and shapes for the input
             recurrent states to the model
@@ -95,13 +98,13 @@ class TorchRecurrentModel(RecurrentModel, nn.Module, TorchModelIO):
         ...         self.project = nn.Linear(recurrent_size, output_size)
         ...
         ...     @property
-        ...     def input_spec(self):
+        ...     def input_specs(self):
         ...         return SpecDict(
         ...             {"obs": "batch time hidden"}, hidden=self.config.input_size
         ...         )
         ...
         ...     @property
-        ...     def output_spec(self):
+        ...     def output_specs(self):
         ...         return SpecDict(
         ...             {"logits": "batch time logits"}, logits=self.config.output_size
         ...         )
@@ -151,6 +154,7 @@ class TorchRecurrentModel(RecurrentModel, nn.Module, TorchModelIO):
         )
 
 
+@Deprecated(error=False)
 class TorchModel(Model, nn.Module, TorchModelIO):
     """The base class for non-recurrent pytorch models.
 
@@ -162,8 +166,8 @@ class TorchModel(Model, nn.Module, TorchModelIO):
         config: The config used to construct the model
 
     Required Attributes:
-        input_spec: SpecDict: Denotes the input keys and shapes passed to `_forward`
-        output_spec: SpecDict: Denotes the output keys and shapes returned from
+        input_specs: SpecDict: Denotes the input keys and shapes passed to `_forward`
+        output_specs: SpecDict: Denotes the output keys and shapes returned from
             `_forward`
 
     Required Overrides:
@@ -197,13 +201,13 @@ class TorchModel(Model, nn.Module, TorchModelIO):
         ...         )
         ...
         ...     @property
-        ...     def input_spec(self):
+        ...     def input_specs(self):
         ...         return SpecDict(
         ...             {"obs": "batch time hidden"}, hidden=self.config.input_size
         ...         )
         ...
         ...     @property
-        ...     def output_spec(self):
+        ...     def output_specs(self):
         ...         return SpecDict(
         ...             {"logits": "batch time logits"}, logits=self.config.output_size
         ...         )

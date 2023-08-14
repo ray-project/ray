@@ -22,7 +22,7 @@ Given that, a node can be in one of the following states:
 - Infeasible: the node doesn't have the required resources. For example a CPU-only node is infeasible for a GPU task.
 
 Resource requirements are **hard** requirements meaning that only feasible nodes are eligible to run the task or actor.
-If there are feasible nodes, Ray will either choose an avaialbe node or wait until a unavailable node to become available
+If there are feasible nodes, Ray will either choose an available node or wait until a unavailable node to become available
 depending on other factors discussed below.
 If all nodes are infeasible, the task or actor cannot be scheduled until feasible nodes are added to the cluster.
 

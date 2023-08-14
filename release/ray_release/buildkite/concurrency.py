@@ -1,9 +1,9 @@
 import csv
-import os
 from collections import namedtuple
 from typing import Tuple, Optional, Dict
 
-from ray_release.config import Test, RELEASE_PACKAGE_DIR
+from ray_release.bazel import bazel_runfile
+from ray_release.test import Test
 from ray_release.template import load_test_cluster_compute
 from ray_release.logger import logger
 
@@ -11,30 +11,47 @@ from ray_release.logger import logger
 limit = int(15784 * 0.9)
 
 
-CONCURRENY_GROUPS = {
-    "tiny": 32,  # <= 1k vCPU
-    "small": 16,  # <= 2k vCPU
-    "medium": 6,  # <= 3k vCPU
-    "large": 8,  # <= 8k vCPU
-    "enormous": 1,  # <= 4k vCPU (?)
-    "small-gpu": 8,
-    "large-gpu": 4,
-}
-
-
 Condition = namedtuple(
-    "Condition", ["min_gpu", "max_gpu", "min_cpu", "max_cpu", "group"]
+    "Condition", ["min_gpu", "max_gpu", "min_cpu", "max_cpu", "group", "limit"]
 )
 
-gpu_cpu_to_concurrency_groups = [
-    Condition(min_gpu=9, max_gpu=-1, min_cpu=0, max_cpu=-1, group="large-gpu"),
-    Condition(min_gpu=1, max_gpu=9, min_cpu=0, max_cpu=-128, group="small-gpu"),
-    Condition(min_gpu=0, max_gpu=0, min_cpu=1025, max_cpu=-1, group="enormous"),
-    Condition(min_gpu=0, max_gpu=0, min_cpu=513, max_cpu=1024, group="large"),
-    Condition(min_gpu=0, max_gpu=0, min_cpu=129, max_cpu=512, group="medium"),
-    Condition(min_gpu=0, max_gpu=0, min_cpu=0, max_cpu=32, group="tiny"),
+aws_gpu_cpu_to_concurrency_groups = [
+    Condition(min_gpu=9, max_gpu=-1, min_cpu=0, max_cpu=-1, group="large-gpu", limit=4),
+    Condition(
+        min_gpu=1, max_gpu=9, min_cpu=0, max_cpu=-128, group="small-gpu", limit=8
+    ),
+    Condition(
+        min_gpu=0, max_gpu=0, min_cpu=1025, max_cpu=-1, group="enormous", limit=1
+    ),
+    Condition(min_gpu=0, max_gpu=0, min_cpu=513, max_cpu=1024, group="large", limit=8),
+    Condition(min_gpu=0, max_gpu=0, min_cpu=129, max_cpu=512, group="medium", limit=6),
+    Condition(min_gpu=0, max_gpu=0, min_cpu=9, max_cpu=32, group="tiny", limit=32),
+    Condition(min_gpu=0, max_gpu=0, min_cpu=0, max_cpu=8, group="minuscule", limit=128),
     # Make sure "small" is the last in the list, because it is the fallback.
-    Condition(min_gpu=0, max_gpu=0, min_cpu=0, max_cpu=128, group="small"),
+    Condition(min_gpu=0, max_gpu=0, min_cpu=0, max_cpu=128, group="small", limit=16),
+]
+
+gce_gpu_cpu_to_concurrent_groups = [
+    Condition(min_gpu=8, max_gpu=-1, min_cpu=0, max_cpu=-1, group="gpu-gce", limit=4),
+    Condition(min_gpu=4, max_gpu=-1, min_cpu=0, max_cpu=-1, group="gpu-gce", limit=8),
+    Condition(min_gpu=2, max_gpu=-1, min_cpu=0, max_cpu=-1, group="gpu-gce", limit=16),
+    Condition(min_gpu=1, max_gpu=-1, min_cpu=0, max_cpu=-1, group="gpu-gce", limit=32),
+    Condition(
+        min_gpu=0, max_gpu=0, min_cpu=1025, max_cpu=-1, group="enormous-gce", limit=1
+    ),
+    Condition(
+        min_gpu=0, max_gpu=0, min_cpu=513, max_cpu=1024, group="large-gce", limit=8
+    ),
+    Condition(
+        min_gpu=0, max_gpu=0, min_cpu=129, max_cpu=512, group="medium-gce", limit=6
+    ),
+    Condition(min_gpu=0, max_gpu=0, min_cpu=9, max_cpu=32, group="tiny-gce", limit=32),
+    Condition(
+        min_gpu=0, max_gpu=0, min_cpu=0, max_cpu=8, group="minuscule-gce", limit=128
+    ),
+    Condition(
+        min_gpu=0, max_gpu=0, min_cpu=0, max_cpu=128, group="small-gce", limit=16
+    ),
 ]
 
 
@@ -45,13 +62,19 @@ gcp_gpu_instances = {
     "a2-highgpu-4g": (48, 4),
     "a2-highgpu-8g": (96, 8),
     "a2-megagpu-16g": (96, 16),
+    "n1-standard-16-nvidia-tesla-t4-1": (16, 1),
+    "n1-standard-64-nvidia-tesla-t4-4": (64, 4),
+    "n1-standard-32-nvidia-tesla-t4-2": (32, 2),
+    "n1-highmem-64-nvidia-tesla-v100-8": {64, 8},
+    "n1-highmem-96-nvidia-tesla-v100-8": {96, 8},
 }
 
 
 def load_instance_types(path: Optional[str] = None) -> Dict[str, Tuple[int, int]]:
-    path = path or os.path.join(
-        RELEASE_PACKAGE_DIR, "ray_release", "buildkite", "aws_instance_types.csv"
-    )
+    if not path:
+        path = bazel_runfile(
+            "release/ray_release/buildkite/aws_instance_types.csv",
+        )
 
     instance_to_resources = {}
     with open(path, "rt") as fp:
@@ -78,28 +101,32 @@ def parse_condition(cond: int, limit: float = float("inf")) -> float:
 
 
 def get_concurrency_group(test: Test) -> Tuple[str, int]:
+    if test.get("env", None) == "gce":
+        concurrent_group = gce_gpu_cpu_to_concurrent_groups
+    else:
+        concurrent_group = aws_gpu_cpu_to_concurrency_groups
+    default_concurrent = concurrent_group[-1]
     try:
         test_cpus, test_gpus = get_test_resources(test)
     except Exception as e:
         logger.warning(f"Couldn't get test resources for test {test['name']}: {e}")
-        return "small", CONCURRENY_GROUPS["small"]
+        return default_concurrent.group, default_concurrent.limit
 
-    for condition in gpu_cpu_to_concurrency_groups:
+    for condition in concurrent_group:
         min_gpu = parse_condition(condition.min_gpu, float("-inf"))
         max_gpu = parse_condition(condition.max_gpu, float("inf"))
         min_cpu = parse_condition(condition.min_cpu, float("-inf"))
         max_cpu = parse_condition(condition.max_cpu, float("inf"))
 
         if min_cpu <= test_cpus <= max_cpu and min_gpu <= test_gpus <= max_gpu:
-            group = condition.group
-            return group, CONCURRENY_GROUPS[group]
+            return condition.group, condition.limit
 
     # Return default
     logger.warning(
         f"Could not find concurrency group for test {test['name']} "
         f"based on used resources."
     )
-    return "small", CONCURRENY_GROUPS["small"]
+    return default_concurrent.group, default_concurrent.limit
 
 
 def get_test_resources(test: Test) -> Tuple[int, int]:

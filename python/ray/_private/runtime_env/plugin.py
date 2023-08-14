@@ -31,6 +31,8 @@ class RuntimeEnvPlugin(ABC):
     def validate(runtime_env_dict: dict) -> None:
         """Validate user entry for this plugin.
 
+        The method is invoked upon installation of runtime env.
+
         Args:
             runtime_env_dict: the user-supplied runtime environment dict.
 
@@ -252,7 +254,11 @@ async def create_for_plugin_if_needed(
             size_bytes = await plugin.create(uri, runtime_env, context, logger=logger)
             uri_cache.add(uri, size_bytes, logger=logger)
         else:
-            logger.debug(f"Cache hit for URI {uri}.")
+            logger.info(
+                f"Runtime env {plugin.name} {uri} is already installed "
+                "and will be reused. Search "
+                "all runtime_env_setup-*.log to find the corresponding setup log."
+            )
             uri_cache.mark_used(uri, logger=logger)
 
     plugin.modify_context(uris, runtime_env, context, logger)

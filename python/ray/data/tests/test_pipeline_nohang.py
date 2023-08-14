@@ -1,6 +1,7 @@
 import pytest
 
 import ray
+from ray.data.tests.util import column_udf, extract_values
 from ray.tests.conftest import *  # noqa
 
 NUM_REPEATS = 10
@@ -14,9 +15,15 @@ def test_basic_actors(shutdown_only):
     for _ in range(NUM_REPEATS):
         ds = ray.data.range(NUM_TASKS)
         ds = ds.window(blocks_per_window=1)
-        assert sorted(ds.map(lambda x: x + 1, compute="actors").take()) == list(
-            range(1, NUM_TASKS + 1)
-        )
+        assert sorted(
+            extract_values(
+                "id",
+                ds.map(
+                    column_udf("id", lambda x: x + 1),
+                    compute=ray.data.ActorPoolStrategy(),
+                ).take(),
+            )
+        ) == list(range(1, NUM_TASKS + 1))
 
 
 if __name__ == "__main__":

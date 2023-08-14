@@ -1,4 +1,3 @@
-import numpy as np
 import time
 
 
@@ -48,15 +47,15 @@ class _Timer:
 
     @property
     def mean(self):
-        if not self._samples:
+        if len(self._samples) == 0:
             return 0.0
-        return float(np.mean(self._samples))
+        return float(sum(self._samples)) / len(self._samples)
 
     @property
     def mean_units_processed(self):
-        if not self._units_processed:
+        if len(self._units_processed) == 0:
             return 0.0
-        return float(np.mean(self._units_processed))
+        return float(sum(self._units_processed)) / len(self._units_processed)
 
     @property
     def mean_throughput(self):

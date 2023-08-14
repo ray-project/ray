@@ -1,6 +1,6 @@
 (kuberay-ml-example)=
 
-# Ray AIR XGBoostTrainer on Kubernetes
+# Ray Train XGBoostTrainer on Kubernetes
 
 :::{note}
 To learn the basics of Ray on Kubernetes, we recommend taking a look
@@ -14,11 +14,31 @@ workload on Kubernetes infrastructure.
 We will run Ray's {ref}`XGBoost training benchmark <xgboost-benchmark>` with a 100 gigabyte training set.
 To learn more about using Ray's XGBoostTrainer, check out {ref}`the XGBoostTrainer documentation <train-gbdt-guide>`.
 
-## Kubernetes infrastructure setup
+## Kubernetes infrastructure setup on GCP
 
-If you are new to Kubernetes and you are planning to deploy Ray workloads on a managed
-Kubernetes service, we recommend taking a look at this {ref}`introductory guide <kuberay-k8s-setup>`
-first.
+This document provides instructions for GCP to create a Kubernetes cluster, but a similar setup would work for any major cloud provider.
+Check out the {ref}`introductory guide <kuberay-k8s-setup>` if you want to set up a Kubernetes cluster on other cloud providers.
+If you have an existing Kubernetes cluster, you can ignore this step.
+
+```shell
+# Set up a cluster on Google Kubernetes Engine (GKE)
+gcloud container clusters create autoscaler-ray-cluster \
+    --num-nodes=10 --zone=us-central1-c --machine-type e2-standard-16 --disk-size 1000GB
+
+# (Optional) Set up a cluster with autopilot on Google Kubernetes Engine (GKE).
+# The following command creates an autoscaling node pool with a 1 node minimum and a 10 node maximum.
+# The 1 static node will be used to run the Ray head pod. This node may also host the KubeRay
+# operator and Kubernetes system components. After the workload is submitted, 9 additional nodes will
+# scale up to accommodate Ray worker pods. These nodes will scale back down after the workload is complete.
+gcloud container clusters create autoscaler-ray-cluster \
+    --num-nodes=1 --min-nodes 1 --max-nodes 10 --enable-autoscaling \
+    --zone=us-central1-c --machine-type e2-standard-16 --disk-size 1000GB
+```
+
+Make sure you are connected to your Kubernetes cluster. For GCP, you can do so by:
+* Navigate to your GKE cluster page, and click "CONNECT" button. Then, copy "Command-line access".
+* `gcloud container clusters get-credentials <your-cluster-name> --region <your-region> --project <your-project>` ([Link](https://cloud.google.com/sdk/gcloud/reference/container/clusters/get-credentials))
+* `kubectl config use-context` ([Link](https://kubernetes.io/docs/tasks/access-application-cluster/configure-access-multiple-clusters/))
 
 For the workload in this guide, it is recommended to use a pool or group of Kubernetes nodes
 with the following properties:
@@ -28,14 +48,6 @@ with the following properties:
     * Standard_D5_v2 (Azure)
     * e2-standard-16 (Google Cloud)
 - Each node should be configured with 1000 gigabytes of disk space (to store the training set).
-
-```{admonition} Optional: Set up an autoscaling node pool
-**If you would like to try running the workload with autoscaling enabled**, use an autoscaling
-node group or pool with a 1 node minimum and a 10 node maximum.
-The 1 static node will be used to run the Ray head pod. This node may also host the KubeRay
-operator and Kubernetes system components. After the workload is submitted, 9 additional nodes will
-scale up to accommodate Ray worker pods. These nodes will scale back down after the workload is complete.
-```
 
 ## Deploy the KubeRay operator
 
@@ -82,10 +94,12 @@ We will use {ref}`Ray Job Submission <jobs-overview>` to kick off the workload.
 
 ### Connect to the cluster.
 
-First, we connect to the Job server. Run the following blocking command
-in a separate shell.
+We use port-forwarding in this guide as a simple way to experiment with a Ray cluster's services.
+See the {ref}`networking notes <kuberay-networking>` for production use-cases.
+
 ```shell
-kubectl port-forward service/raycluster-xgboost-benchmark-head-svc 8265:8265
+# Run the following blocking command in a separate shell.
+kubectl port-forward --address 0.0.0.0 service/raycluster-xgboost-benchmark-head-svc 8265:8265
 ```
 
 ### Submit the workload.
@@ -108,7 +122,7 @@ python xgboost_submit.py
 
 ### Observe progress.
 
-The benchmark may take up to 30 minutes to run.
+The benchmark may take up to 60 minutes to run.
 Use the following tools to observe its progress.
 
 #### Job logs
@@ -116,7 +130,7 @@ Use the following tools to observe its progress.
 To follow the job's logs, use the command printed by the above submission script.
 ```shell
 # Substitute the Ray Job's submission id.
-ray job logs 'raysubmit_xxxxxxxxxxxxxxxx' --follow
+ray job logs 'raysubmit_xxxxxxxxxxxxxxxx' --follow --address http://127.0.0.1:8265
 ```
 
 #### Kubectl

@@ -84,11 +84,22 @@ class _OpenTelemetryProxy:
                 )
 
 
-_opentelemetry = _OpenTelemetryProxy()
-_opentelemetry.try_all()
-
 _nameable = Union[str, Callable[..., Any]]
 _global_is_tracing_enabled = False
+_opentelemetry = None
+
+
+def _is_tracing_enabled() -> bool:
+    """Checks environment variable feature flag to see if tracing is turned on.
+    Tracing is off by default."""
+    return _global_is_tracing_enabled
+
+
+def _enbale_tracing():
+    global _global_is_tracing_enabled, _opentelemetry
+    _global_is_tracing_enabled = True
+    _opentelemetry = _OpenTelemetryProxy()
+    _opentelemetry.try_all()
 
 
 def _sort_params_list(params_list: List[Parameter]):
@@ -111,12 +122,6 @@ def _add_param_to_signature(function: Callable, new_param: Parameter):
     new_params = _sort_params_list(old_sig_list_repr + [new_param])
     new_sig = old_sig.replace(parameters=new_params)
     return new_sig
-
-
-def _is_tracing_enabled() -> bool:
-    """Checks environment variable feature flag to see if tracing is turned on.
-    Tracing is off by default."""
-    return _global_is_tracing_enabled
 
 
 class _ImportFromStringError(Exception):
@@ -190,21 +195,19 @@ def _use_context(
 def _function_hydrate_span_args(func: Callable[..., Any]):
     """Get the Attributes of the function that will be reported as attributes
     in the trace."""
-    runtime_context = get_runtime_context().get()
+    runtime_context = get_runtime_context()
 
     span_args = {
         "ray.remote": "function",
         "ray.function": func,
         "ray.pid": str(os.getpid()),
-        "ray.job_id": runtime_context["job_id"].hex(),
-        "ray.node_id": runtime_context["node_id"].hex(),
+        "ray.job_id": runtime_context.get_job_id(),
+        "ray.node_id": runtime_context.get_node_id(),
     }
 
     # We only get task ID for workers
     if ray._private.worker.global_worker.mode == ray._private.worker.WORKER_MODE:
-        task_id = (
-            runtime_context["task_id"].hex() if runtime_context.get("task_id") else None
-        )
+        task_id = runtime_context.get_task_id()
         if task_id:
             span_args["ray.task_id"] = task_id
 
@@ -239,7 +242,7 @@ def _actor_hydrate_span_args(class_: _nameable, method: _nameable):
     if callable(method):
         method = method.__name__
 
-    runtime_context = get_runtime_context().get()
+    runtime_context = get_runtime_context()
 
     span_args = {
         "ray.remote": "actor",
@@ -247,17 +250,13 @@ def _actor_hydrate_span_args(class_: _nameable, method: _nameable):
         "ray.actor_method": method,
         "ray.function": f"{class_}.{method}",
         "ray.pid": str(os.getpid()),
-        "ray.job_id": runtime_context["job_id"].hex(),
-        "ray.node_id": runtime_context["node_id"].hex(),
+        "ray.job_id": runtime_context.get_job_id(),
+        "ray.node_id": runtime_context.get_node_id(),
     }
 
     # We only get actor ID for workers
     if ray._private.worker.global_worker.mode == ray._private.worker.WORKER_MODE:
-        actor_id = (
-            runtime_context["actor_id"].hex()
-            if runtime_context.get("actor_id")
-            else None
-        )
+        actor_id = runtime_context.get_actor_id()
 
         if actor_id:
             span_args["ray.actor_id"] = actor_id
@@ -307,7 +306,6 @@ def _tracing_task_invocation(method):
             return method(self, args, kwargs, *_args, **_kwargs)
 
         assert "_ray_trace_ctx" not in kwargs
-
         tracer = _opentelemetry.trace.get_tracer(__name__)
         with tracer.start_as_current_span(
             _function_span_producer_name(self._function_name),
@@ -520,6 +518,12 @@ def _inject_tracing_into_class(_cls):
         # might not be called directly by remote calls. Additionally, they are
         # tricky to get wrapped and unwrapped.
         if is_static_method(_cls, name) or is_class_method(method):
+            continue
+
+        if inspect.isgeneratorfunction(method) or inspect.isasyncgenfunction(method):
+            # Right now, this method somehow changes the signature of the method
+            # when they are generator.
+            # TODO(sang): Fix it.
             continue
 
         # Don't decorate the __del__ magic method.

@@ -60,6 +60,8 @@ class JobSubmissionClient(SubmissionClient):
             via a simple dict update.
         headers: Headers to use when sending requests to the HTTP job server, used
             for cases like authentication to a remote cluster.
+        verify: Boolean indication to verify the server's TLS certificate or a path to
+            a file or directory of trusted certificates. Default: True.
     """
 
     def __init__(
@@ -69,6 +71,7 @@ class JobSubmissionClient(SubmissionClient):
         cookies: Optional[Dict[str, Any]] = None,
         metadata: Optional[Dict[str, Any]] = None,
         headers: Optional[Dict[str, Any]] = None,
+        verify: Optional[Union[str, bool]] = True,
     ):
         self._client_ray_version = ray.__version__
         """Initialize a JobSubmissionClient and check the connection to the cluster."""
@@ -77,7 +80,6 @@ class JobSubmissionClient(SubmissionClient):
                 "The Ray jobs CLI & SDK require the ray[default] "
                 "installation: `pip install 'ray[default]'`"
             )
-
         # Check types of arguments
         if address is not None and not isinstance(address, str):
             raise TypeError(f"address must be a string, got {type(address)}")
@@ -92,6 +94,8 @@ class JobSubmissionClient(SubmissionClient):
             raise TypeError(f"metadata must be a dict, got {type(metadata)}")
         if headers is not None and not isinstance(headers, dict):
             raise TypeError(f"headers must be a dict, got {type(headers)}")
+        if not (isinstance(verify, str) or isinstance(verify, bool)):
+            raise TypeError(f"verify must be a str or bool, got {type(verify)}")
 
         api_server_url = get_address_for_submission_client(address)
 
@@ -101,6 +105,7 @@ class JobSubmissionClient(SubmissionClient):
             cookies=cookies,
             metadata=metadata,
             headers=headers,
+            verify=verify,
         )
         self._check_connection_and_version(
             min_version="1.9",
@@ -454,7 +459,7 @@ class JobSubmissionClient(SubmissionClient):
             cookies=self._cookies, headers=self._headers
         ) as session:
             ws = await session.ws_connect(
-                f"{self._address}/api/jobs/{job_id}/logs/tail"
+                f"{self._address}/api/jobs/{job_id}/logs/tail", ssl=self._ssl_context
             )
 
             while True:

@@ -470,6 +470,27 @@ Status NodeInfoAccessor::AsyncRegister(const rpc::GcsNodeInfo &node_info,
   return Status::OK();
 }
 
+Status NodeInfoAccessor::AsyncCheckSelfAlive(
+    const std::function<void(Status, bool)> &callback, int64_t timeout_ms = -1) {
+  rpc::CheckAliveRequest request;
+  auto node_addr = local_node_info_.node_manager_address() + ":" +
+                   std::to_string(local_node_info_.node_manager_port());
+  RAY_CHECK(callback != nullptr);
+  request.add_raylet_address(node_addr);
+  client_impl_->GetGcsRpcClient().CheckAlive(
+      request,
+      [callback](auto status, const auto &reply) {
+        if (status.ok()) {
+          RAY_CHECK(reply.raylet_alive().size() == 1);
+          callback(status, reply.raylet_alive()[0]);
+        } else {
+          callback(status, true);
+        }
+      },
+      timeout_ms);
+  return Status::OK();
+}
+
 Status NodeInfoAccessor::AsyncDrainNode(const NodeID &node_id,
                                         const StatusCallback &callback) {
   RAY_LOG(DEBUG) << "Draining node, node id = " << node_id;
@@ -675,6 +696,21 @@ Status NodeResourceInfoAccessor::AsyncGetAllAvailableResources(
         callback(status, VectorFromProtobuf(reply.resources_list()));
         RAY_LOG(DEBUG) << "Finished getting available resources of all nodes, status = "
                        << status;
+      });
+  return Status::OK();
+}
+
+Status NodeResourceInfoAccessor::AsyncGetDrainingNodes(
+    const ItemCallback<std::vector<NodeID>> &callback) {
+  rpc::GetDrainingNodesRequest request;
+  client_impl_->GetGcsRpcClient().GetDrainingNodes(
+      request, [callback](const Status &status, const rpc::GetDrainingNodesReply &reply) {
+        RAY_CHECK_OK(status);
+        std::vector<NodeID> draining_nodes;
+        for (const auto &node_id : VectorFromProtobuf(reply.node_ids())) {
+          draining_nodes.emplace_back(NodeID::FromBinary(node_id));
+        }
+        callback(draining_nodes);
       });
   return Status::OK();
 }

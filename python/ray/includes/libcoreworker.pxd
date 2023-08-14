@@ -13,12 +13,14 @@ from libcpp.vector cimport vector as c_vector
 
 from ray.includes.unique_ids cimport (
     CActorID,
+    CClusterID,
     CNodeID,
     CJobID,
     CTaskID,
     CObjectID,
     CPlacementGroupID,
     CWorkerID,
+    ObjectIDIndexType,
 )
 
 from ray.includes.common cimport (
@@ -42,13 +44,14 @@ from ray.includes.common cimport (
     CJobConfig,
     CConcurrencyGroup,
     CSchedulingStrategy,
+    CWorkerExitType,
 )
 from ray.includes.function_descriptor cimport (
     CFunctionDescriptor,
 )
 
 from ray.includes.optional cimport (
-    optional
+    optional,
 )
 
 ctypedef unordered_map[c_string, c_vector[pair[int64_t, double]]] \
@@ -81,6 +84,7 @@ cdef extern from "ray/core_worker/context.h" nogil:
     cdef cppclass CWorkerContext "ray::core::WorkerContext":
         c_bool CurrentActorIsAsync()
         const c_string &GetCurrentSerializedRuntimeEnv()
+        int CurrentActorMaxConcurrency()
 
 cdef extern from "ray/core_worker/core_worker.h" nogil:
     cdef cppclass CActorHandle "ray::core::ActorHandle":
@@ -117,10 +121,11 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             const CPlacementGroupID &placement_group_id)
         CRayStatus WaitPlacementGroupReady(
             const CPlacementGroupID &placement_group_id, int64_t timeout_seconds)
-        optional[c_vector[CObjectReference]] SubmitActorTask(
+        CRayStatus SubmitActorTask(
             const CActorID &actor_id, const CRayFunction &function,
             const c_vector[unique_ptr[CTaskArg]] &args,
-            const CTaskOptions &options)
+            const CTaskOptions &options,
+            c_vector[CObjectReference]&)
         CRayStatus KillActor(
             const CActorID &actor_id, c_bool force_kill,
             c_bool no_restart)
@@ -134,22 +139,33 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             const size_t &data_size,
             const shared_ptr[CBuffer] &metadata,
             const c_vector[CObjectID] &contained_object_id,
+            const CAddress &caller_address,
             int64_t *task_output_inlined_bytes,
             shared_ptr[CRayObject] *return_object)
         CRayStatus SealReturnObject(
             const CObjectID& return_id,
             shared_ptr[CRayObject] return_object,
-            const CObjectID& generator_id
+            const CObjectID& generator_id,
+            const CAddress &caller_address
         )
         c_bool PinExistingReturnObject(
             const CObjectID& return_id,
             shared_ptr[CRayObject] *return_object,
-            const CObjectID& generator_id
-        )
-        CObjectID AllocateDynamicReturnId()
+            const CObjectID& generator_id)
+        void DelObjectRefStream(const CObjectID &generator_id)
+        CRayStatus TryReadObjectRefStream(
+            const CObjectID &generator_id,
+            CObjectReference *object_ref_out)
+        CObjectReference PeekObjectRefStream(
+            const CObjectID &generator_id)
+        CObjectID AllocateDynamicReturnId(
+            const CAddress &owner_address,
+            const CTaskID &task_id,
+            optional[ObjectIDIndexType] put_index)
 
         CJobID GetCurrentJobId()
         CTaskID GetCurrentTaskId()
+        int64_t GetCurrentTaskAttemptNumber()
         CNodeID GetCurrentNodeId()
         int64_t GetTaskDepth()
         c_bool GetCurrentTaskRetryExceptions()
@@ -158,6 +174,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         c_bool ShouldCaptureChildTasksInPlacementGroup()
         const CActorID &GetActorId()
         void SetActorTitle(const c_string &title)
+        void SetActorReprName(const c_string &repr_name)
         void SetWebuiDisplay(const c_string &key, const c_string &message)
         CTaskID GetCallerId()
         const ResourceMappingType &GetResourceIDs() const
@@ -233,7 +250,14 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
                 int64_t timeout_ms,
                 c_vector[shared_ptr[CObjectLocation]] *results)
         CRayStatus TriggerGlobalGC()
+        CRayStatus ReportGeneratorItemReturns(
+            const pair[CObjectID, shared_ptr[CRayObject]] &dynamic_return_object,
+            const CObjectID &generator_id,
+            const CAddress &caller_address,
+            int64_t item_index,
+            uint64_t attempt_number)
         c_string MemoryUsageString()
+        int GetMemoryStoreSize()
 
         CWorkerContext &GetWorkerContext()
         void YieldCurrentFiber(CFiberEvent &coroutine_done)
@@ -252,13 +276,24 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
 
         CJobConfig GetJobConfig()
 
-        c_bool IsExiting() const
-
         int64_t GetNumTasksSubmitted() const
 
         int64_t GetNumLeasesRequested() const
 
         unordered_map[c_string, c_vector[int64_t]] GetActorCallStats() const
+
+        void RecordTaskLogStart(
+            const c_string& stdout_path,
+            const c_string& stderr_path,
+            int64_t stdout_start_offset,
+            int64_t stderr_start_offset) const
+
+        void RecordTaskLogEnd(int64_t stdout_end_offset,
+                              int64_t stderr_end_offset) const
+
+        void Exit(const CWorkerExitType exit_type,
+                  const c_string &detail,
+                  const shared_ptr[LocalMemoryBuffer] &creation_task_exception_pb_bytes)
 
     cdef cppclass CCoreWorkerOptions "ray::core::CoreWorkerOptions":
         CWorkerType worker_type
@@ -289,14 +324,16 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             const c_string serialized_retry_exception_allowlist,
             c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] *returns,
             c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] *dynamic_returns,
+            c_vector[c_pair[CObjectID, c_bool]] *streaming_generator_returns,
             shared_ptr[LocalMemoryBuffer]
             &creation_task_exception_pb_bytes,
             c_bool *is_retryable_error,
-            c_bool *is_application_error,
+            c_string *application_error,
             const c_vector[CConcurrencyGroup] &defined_concurrency_groups,
             const c_string name_of_concurrency_group_to_execute,
-            c_bool is_reattempt) nogil
-         ) task_execution_callback
+            c_bool is_reattempt,
+            c_bool is_streaming_generator,
+            c_bool should_retry_exceptions) nogil) task_execution_callback
         (void(const CWorkerID &) nogil) on_worker_shutdown
         (CRayStatus() nogil) check_signals
         (void(c_bool) nogil) gc_collect
@@ -323,8 +360,11 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         c_bool connect_on_start
         int runtime_env_hash
         int startup_token
+        CClusterID cluster_id
         c_string session_name
         c_string entrypoint
+        int64_t worker_launch_time_ms
+        int64_t worker_launched_time_ms
 
     cdef cppclass CCoreWorkerProcess "ray::core::CoreWorkerProcess":
         @staticmethod

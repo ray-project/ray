@@ -98,7 +98,6 @@ ray.shutdown()
     indirect=True,
 )
 def test_port_conflict(listen_port, call_ray_stop_only, shutdown_only):
-
     try:
         subprocess.check_output(
             [
@@ -151,6 +150,7 @@ def test_dashboard(shutdown_only):
 
 
 conflict_port = 34567
+configured_test_port = 34568
 
 
 def run_tasks_without_runtime_env():
@@ -195,14 +195,48 @@ def run_tasks_with_runtime_env():
 def test_dashboard_agent_grpc_port_conflict(listen_port, call_ray_start):
     address = call_ray_start
     ray.init(address=address)
+
     # Tasks without runtime env still work when dashboard agent grpc port conflicts.
     run_tasks_without_runtime_env()
     # Tasks with runtime env couldn't work.
     with pytest.raises(
         ray.exceptions.RuntimeEnvSetupError,
-        match="the grpc service of agent is invalid",
+        match="Ray agent couldn't be started due to the port conflict",
     ):
         run_tasks_with_runtime_env()
+
+
+@pytest.mark.parametrize(
+    "call_ray_start",
+    [f"ray start --head --num-cpus=1 --dashboard-grpc-port={configured_test_port}"],
+    indirect=True,
+)
+def test_configured_dashboard_grpc_port(call_ray_start):
+    address = call_ray_start
+    addresses = ray.init(address=address)
+    assert addresses.dashboard_url == "127.0.0.1:8265"
+
+
+@pytest.mark.parametrize(
+    "listen_port",
+    [conflict_port],
+    indirect=True,
+)
+def test_dashboard_grpc_port_conflict(listen_port, call_ray_stop_only, shutdown_only):
+    try:
+        subprocess.check_output(
+            [
+                "ray",
+                "start",
+                "--head",
+                "--dashboard-grpc-port",
+                f"{conflict_port}",
+                "--include-dashboard=True",
+            ],
+            stderr=subprocess.PIPE,
+        )
+    except subprocess.CalledProcessError as e:
+        assert f"Failed to bind to address 0.0.0.0:{conflict_port}".encode() in e.stderr
 
 
 @pytest.mark.skipif(

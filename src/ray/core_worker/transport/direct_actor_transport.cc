@@ -25,36 +25,6 @@ using namespace ray::gcs;
 namespace ray {
 namespace core {
 
-void SerializeReturnObject(const ObjectID &object_id,
-                           const std::shared_ptr<RayObject> &return_object,
-                           rpc::ReturnObject *return_object_proto) {
-  return_object_proto->set_object_id(object_id.Binary());
-
-  if (!return_object) {
-    // This should only happen if the local raylet died. Caller should
-    // retry the task.
-    RAY_LOG(WARNING) << "Failed to create task return object " << object_id
-                     << " in the object store, exiting.";
-    QuickExit();
-  }
-  return_object_proto->set_size(return_object->GetSize());
-  if (return_object->GetData() != nullptr && return_object->GetData()->IsPlasmaBuffer()) {
-    return_object_proto->set_in_plasma(true);
-  } else {
-    if (return_object->GetData() != nullptr) {
-      return_object_proto->set_data(return_object->GetData()->Data(),
-                                    return_object->GetData()->Size());
-    }
-    if (return_object->GetMetadata() != nullptr) {
-      return_object_proto->set_metadata(return_object->GetMetadata()->Data(),
-                                        return_object->GetMetadata()->Size());
-    }
-  }
-  for (const auto &nested_ref : return_object->GetNestedRefs()) {
-    return_object_proto->add_nested_inlined_refs()->CopyFrom(nested_ref);
-  }
-}
-
 void CoreWorkerDirectTaskReceiver::Init(
     std::shared_ptr<rpc::CoreWorkerClientPool> client_pool,
     rpc::Address rpc_address,
@@ -65,7 +35,7 @@ void CoreWorkerDirectTaskReceiver::Init(
 }
 
 void CoreWorkerDirectTaskReceiver::HandleTask(
-    rpc::PushTaskRequest request,
+    const rpc::PushTaskRequest &request,
     rpc::PushTaskReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   RAY_CHECK(waiter_ != nullptr) << "Must call init() prior to use";
@@ -124,17 +94,37 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
 
     std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> return_objects;
     std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> dynamic_return_objects;
+    std::vector<std::pair<ObjectID, bool>> streaming_generator_returns;
     bool is_retryable_error = false;
-    bool is_application_error = false;
+    std::string application_error = "";
     auto status = task_handler_(task_spec,
                                 resource_ids,
                                 &return_objects,
                                 &dynamic_return_objects,
+                                &streaming_generator_returns,
                                 reply->mutable_borrowed_refs(),
                                 &is_retryable_error,
-                                &is_application_error);
+                                &application_error);
     reply->set_is_retryable_error(is_retryable_error);
-    reply->set_is_application_error(is_application_error);
+    reply->set_is_application_error(!application_error.empty());
+    if (!status.ok()) {
+      // System errors occurred while executing the task.
+      reply->set_task_execution_error(status.ToString());
+    } else if (!application_error.empty()) {
+      // Application errors occurred while executing the task.
+      // We could get the errors from return_objects, but it would require deserializing
+      // the serialized error message. So we just record the error message directly while
+      // executing the task.
+      reply->set_task_execution_error(application_error);
+    }
+
+    for (const auto &it : streaming_generator_returns) {
+      const auto &object_id = it.first;
+      bool is_plasma_object = it.second;
+      auto return_id_proto = reply->add_streaming_generator_return_ids();
+      return_id_proto->set_object_id(object_id.Binary());
+      return_id_proto->set_is_plasma_object(is_plasma_object);
+    }
 
     bool objects_valid = return_objects.size() == num_returns;
     for (const auto &return_object : return_objects) {
@@ -175,14 +165,30 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
             task_spec.IsAsyncioActor() ? 0 : task_spec.MaxActorConcurrency();
         pool_manager_ = std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>(
             task_spec.ConcurrencyGroups(), default_max_concurrency);
+        if (task_spec.IsAsyncioActor()) {
+          fiber_state_manager_ = std::make_shared<ConcurrencyGroupManager<FiberState>>(
+              task_spec.ConcurrencyGroups(), fiber_max_concurrency_);
+        }
         concurrency_groups_cache_[task_spec.TaskId().ActorId()] =
             task_spec.ConcurrencyGroups();
-        RAY_LOG(INFO) << "Actor creation task finished, task_id: " << task_spec.TaskId()
-                      << ", actor_id: " << task_spec.ActorCreationId();
         // Tell raylet that an actor creation task has finished execution, so that
         // raylet can publish actor creation event to GCS, and mark this worker as
         // actor, thus if this worker dies later raylet will restart the actor.
         RAY_CHECK_OK(task_done_());
+        if (status.IsCreationTaskError()) {
+          RAY_LOG(WARNING) << "Actor creation task finished with errors, task_id: "
+                           << task_spec.TaskId()
+                           << ", actor_id: " << task_spec.ActorCreationId()
+                           << ", status: " << status;
+        } else {
+          // Set the actor repr name if it's customized by the actor.
+          if (!actor_repr_name_.empty()) {
+            reply->set_actor_repr_name(actor_repr_name_);
+          }
+          RAY_LOG(INFO) << "Actor creation task finished, task_id: " << task_spec.TaskId()
+                        << ", actor_id: " << task_spec.ActorCreationId()
+                        << ", actor_repr_name: " << actor_repr_name_;
+        }
       }
     }
     if (status.ShouldExitWorker()) {
@@ -228,6 +234,7 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
                               new OutOfOrderActorSchedulingQueue(task_main_io_service_,
                                                                  *waiter_,
                                                                  pool_manager_,
+                                                                 fiber_state_manager_,
                                                                  is_asyncio_,
                                                                  fiber_max_concurrency_,
                                                                  cg_it->second)))
@@ -239,6 +246,7 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
                               new ActorSchedulingQueue(task_main_io_service_,
                                                        *waiter_,
                                                        pool_manager_,
+                                                       fiber_state_manager_,
                                                        is_asyncio_,
                                                        fiber_max_concurrency_,
                                                        cg_it->second)))
@@ -302,6 +310,10 @@ void CoreWorkerDirectTaskReceiver::Stop() {
   for (const auto &[_, scheduling_queue] : actor_scheduling_queues_) {
     scheduling_queue->Stop();
   }
+}
+
+void CoreWorkerDirectTaskReceiver::SetActorReprName(const std::string &repr_name) {
+  actor_repr_name_ = repr_name;
 }
 
 }  // namespace core

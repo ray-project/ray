@@ -2,6 +2,7 @@ from typing import List
 
 import ray
 from ray._private.client_mode_hook import client_mode_hook
+from ray._private.auto_init_hook import wrap_auto_init
 from ray._private.services import get_node_ip_address
 from ray.util import iter
 from ray.util import rpdb as pdb
@@ -21,7 +22,8 @@ from ray.util.serialization import deregister_serializer, register_serializer
 
 
 @PublicAPI(stability="beta")
-@client_mode_hook(auto_init=True)
+@wrap_auto_init
+@client_mode_hook
 def list_named_actors(all_namespaces: bool = False) -> List[str]:
     """List all named actors in the system.
 
