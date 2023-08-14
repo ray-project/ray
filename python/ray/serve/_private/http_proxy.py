@@ -1,3 +1,4 @@
+from abc import ABC, abstractmethod
 import asyncio
 from asyncio.tasks import FIRST_COMPLETED
 import json
@@ -199,17 +200,17 @@ class LongestPrefixRouter:
         return None
 
 
-class GenericProxy:
+class GenericProxy(ABC):
     """This class is served as the base class for different types of proxies.
     It contains all the common setup and methods required for running a proxy.
 
     The proxy subclass need to implement the following methods:
       - `proxy_name()`
-      - `_not_found()`
-      - `_draining_response()`
-      - `_timeout_response()`
-      - `_routes_response()`
-      - `_health_response()`
+      - `not_found()`
+      - `draining_response()`
+      - `timeout_response()`
+      - `routes_response()`
+      - `health_response()`
       - `send_request_to_replica_unary()`
       - `setup_request_context_and_handle()`
       - `send_request_to_replica_streaming()`
@@ -327,6 +328,7 @@ class GenericProxy:
         # The node is not draining if it's None.
         self._draining_start_time: Optional[float] = None
 
+    @abstractmethod
     @property
     def proxy_name(self) -> str:
         """Proxy name used for metrics.
@@ -375,19 +377,24 @@ class GenericProxy:
             logger.info(f"Stop draining the proxy actor on node {self._node_id}.")
             self._draining_start_time = None
 
-    async def _not_found(self, scope, receive, send):
+    @abstractmethod
+    async def not_found(self, scope, receive, send):
         raise NotImplementedError
 
-    async def _draining_response(self, scope, receive, send):
+    @abstractmethod
+    async def draining_response(self, scope, receive, send):
         raise NotImplementedError
 
-    async def _timeout_response(self, scope, receive, send, request_id):
+    @abstractmethod
+    async def timeout_response(self, scope, receive, send, request_id):
         raise NotImplementedError
 
-    async def _routes_response(self, scope, receive, send):
+    @abstractmethod
+    async def routes_response(self, scope, receive, send):
         raise NotImplementedError
 
-    async def _health_response(self, scope, receive, send):
+    @abstractmethod
+    async def health_response(self, scope, receive, send):
         raise NotImplementedError
 
     def _ongoing_requests_start(self):
@@ -427,7 +434,7 @@ class GenericProxy:
 
         if route_path == "/-/routes":
             if self._is_draining():
-                return await self._draining_response(scope, receive, send)
+                return await self.draining_response(scope, receive, send)
 
             self.request_counter.inc(
                 tags={
@@ -437,11 +444,11 @@ class GenericProxy:
                     "status_code": "200",
                 }
             )
-            return await self._routes_response(scope, receive, send)
+            return await self.routes_response(scope, receive, send)
 
         if route_path == "/-/healthz":
             if self._is_draining():
-                return await self._draining_response(scope, receive, send)
+                return await self.draining_response(scope, receive, send)
 
             self.request_counter.inc(
                 tags={
@@ -451,7 +458,7 @@ class GenericProxy:
                     "status_code": "200",
                 }
             )
-            return await self._health_response(scope, receive, send)
+            return await self.health_response(scope, receive, send)
 
         try:
             self._ongoing_requests_start()
@@ -473,7 +480,7 @@ class GenericProxy:
                         "status_code": "404",
                     }
                 )
-                return await self._not_found(scope, receive, send)
+                return await self.not_found(scope, receive, send)
 
             route_prefix, handle, app_name, app_is_cross_language = matched_route
 
@@ -590,6 +597,7 @@ class GenericProxy:
             assignment_task.cancel()
             raise TimeoutError()
 
+    @abstractmethod
     async def send_request_to_replica_unary(
         self,
         handle: RayServeHandle,
@@ -604,6 +612,7 @@ class GenericProxy:
         """
         raise NotImplementedError
 
+    @abstractmethod
     def setup_request_context_and_handle(
         self,
         app_name: str,
@@ -618,6 +627,7 @@ class GenericProxy:
         """
         raise NotImplementedError
 
+    @abstractmethod
     async def send_request_to_replica_streaming(
         self,
         request_id: str,
@@ -646,7 +656,7 @@ class HTTPProxy(GenericProxy):
     def proxy_name(self) -> str:
         return "HTTP"
 
-    async def _not_found(self, scope, receive, send):
+    async def not_found(self, scope, receive, send):
         current_path = scope["path"]
         response = Response(
             f"Path '{current_path}' not found. "
@@ -655,26 +665,26 @@ class HTTPProxy(GenericProxy):
         )
         await response.send(scope, receive, send)
 
-    async def _draining_response(self, scope, receive, send):
+    async def draining_response(self, scope, receive, send):
         response = Response(
             "This node is being drained.",
             status_code=503,
         )
         await response.send(scope, receive, send)
 
-    async def _timeout_response(self, scope, receive, send, request_id):
+    async def timeout_response(self, scope, receive, send, request_id):
         response = Response(
             f"Request {request_id} timed out after {self.request_timeout_s}s.",
             status_code=408,
         )
         await response.send(scope, receive, send)
 
-    async def _routes_response(self, scope, receive, send):
+    async def routes_response(self, scope, receive, send):
         return await starlette.responses.JSONResponse(self.route_info)(
             scope, receive, send
         )
 
-    async def _health_response(self, scope, receive, send):
+    async def health_response(self, scope, receive, send):
         return await starlette.responses.PlainTextResponse("success")(
             scope, receive, send
         )
@@ -948,7 +958,7 @@ class HTTPProxy(GenericProxy):
                     f"Request {request_id} timed out after "
                     f"{self.request_timeout_s}s while waiting for assignment."
                 )
-                await self._timeout_response(scope, receive, send, request_id)
+                await self.timeout_response(scope, receive, send, request_id)
                 return TIMEOUT_ERROR_CODE
 
             try:
@@ -970,7 +980,7 @@ class HTTPProxy(GenericProxy):
                 # any messages to the client yet. Header (including status code)
                 # messages can only be sent once.
                 if serve_timeout_error.is_first_message:
-                    await self._timeout_response(scope, receive, send, request_id)
+                    await self.timeout_response(scope, receive, send, request_id)
                 return TIMEOUT_ERROR_CODE
 
         except Exception as e:
