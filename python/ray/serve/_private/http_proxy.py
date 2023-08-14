@@ -586,7 +586,7 @@ class HTTPProxy:
             result_ref = handle.remote(request)
             client_disconnection_task = loop.create_task(receive())
             done, _ = await asyncio.wait(
-                [result_ref.to_obj_ref(), client_disconnection_task],
+                [result_ref._to_obj_ref(), client_disconnection_task],
                 return_when=FIRST_COMPLETED,
             )
             if client_disconnection_task in done:
@@ -699,22 +699,22 @@ class HTTPProxy:
         `disconnected_task` is expected to be done if the client disconnects; in this
         case, we will abort assigning a replica and return `None`.
         """
-        assignment_task = handle.remote(
+        result_gen = handle.remote(
             StreamingHTTPRequest(pickle.dumps(scope), self.self_actor_handle)
         )
-        to_gen = asyncio.ensure_future(assignment_task.to_obj_ref_gen())
+        to_obj_ref_gen = asyncio.ensure_future(result_gen._to_obj_ref_gen())
         done, _ = await asyncio.wait(
-            [to_gen, disconnected_task],
+            [to_obj_ref_gen, disconnected_task],
             return_when=FIRST_COMPLETED,
             timeout=timeout_s,
         )
-        if to_gen in done:
-            return to_gen.result()
+        if to_obj_ref_gen in done:
+            return to_obj_ref_gen.result()
         elif disconnected_task in done:
-            assignment_task.cancel()
+            result_gen.cancel()
             return None
         else:
-            assignment_task.cancel()
+            result_gen.cancel()
             raise TimeoutError()
 
     async def _consume_and_send_asgi_message_generator(

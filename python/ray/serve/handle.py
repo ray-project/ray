@@ -393,6 +393,11 @@ class DeploymentHandleResultBase:
     ):
         self._assign_request_task = loop.create_task(assign_request_coro)
 
+    def cancel(self):
+        # TODO(edoakes): when actor task cancellation is supported, we should cancel
+        # the scheduled actor task here if the assign request task is done.
+        self._assign_request_task.cancel()
+
     async def _to_obj_ref_or_gen(
         self,
     ) -> Union[ray.ObjectRef, StreamingObjectRefGenerator]:
@@ -413,14 +418,14 @@ class DeploymentHandleRef(DeploymentHandleResultBase):
         result = yield from obj_ref.__await__()
         return result
 
-    async def to_obj_ref(self) -> ray.ObjectRef:
+    def result(self, timeout_s: Optional[float] = None) -> Any:
+        return ray.get(self._to_obj_ref_sync(), timeout=timeout_s)
+
+    async def _to_obj_ref(self) -> ray.ObjectRef:
         return await self._to_obj_ref_or_gen()
 
-    def to_obj_ref_sync(self) -> ray.ObjectRef:
+    def _to_obj_ref_sync(self) -> ray.ObjectRef:
         return self._to_obj_ref_or_gen_sync()
-
-    def result(self, timeout_s: Optional[float] = None) -> Any:
-        return ray.get(self.to_obj_ref_sync(), timeout=timeout_s)
 
 
 class DeploymentHandleGenerator(DeploymentHandleResultBase):
@@ -432,9 +437,6 @@ class DeploymentHandleGenerator(DeploymentHandleResultBase):
         super().__init__(assign_request_coro, loop=loop)
         self._obj_ref_gen: Optional[StreamingObjectRefGenerator] = None
 
-    async def to_obj_ref_gen(self) -> StreamingObjectRefGenerator:
-        return await self._to_obj_ref_or_gen()
-
     def __aiter__(self) -> AsyncIterator[Any]:
         return self
 
@@ -445,9 +447,6 @@ class DeploymentHandleGenerator(DeploymentHandleResultBase):
         next_obj_ref = await self._obj_ref_gen.__anext__()
         return await next_obj_ref
 
-    def to_obj_ref_gen_sync(self) -> StreamingObjectRefGenerator:
-        return self._to_obj_ref_or_gen_sync()
-
     def __iter__(self) -> Iterator[Any]:
         return self
 
@@ -457,6 +456,12 @@ class DeploymentHandleGenerator(DeploymentHandleResultBase):
 
         next_obj_ref = self._obj_ref_gen.__next__()
         return ray.get(next_obj_ref)
+
+    async def _to_obj_ref_gen(self) -> StreamingObjectRefGenerator:
+        return await self._to_obj_ref_or_gen()
+
+    def _to_obj_ref_gen_sync(self) -> StreamingObjectRefGenerator:
+        return self._to_obj_ref_or_gen_sync()
 
 
 @PublicAPI(stability="beta")
