@@ -5,6 +5,7 @@ import os
 import subprocess
 import tempfile
 import time
+import sys
 
 import yaml
 
@@ -13,6 +14,9 @@ import ray._private.services
 from ray.util.annotations import DeveloperAPI
 from ray.autoscaler._private.spark.node_provider import RAY_ON_SPARK_HEAD_NODE_ID
 import ray._private.ray_constants as ray_constants
+from ray.util.spark.cluster_init import _convert_ray_node_options, exec_cmd, RAY_ON_SPARK_COLLECT_LOG_TO_PATH
+from ray.util.spark.utils import setup_sigterm_on_parent_death
+
 
 logger = logging.getLogger(__name__)
 
@@ -54,41 +58,61 @@ class AutoscalingCluster:
         custom_config.update(config_kwargs)
         return custom_config
 
-    def start(self, _system_config=None):
+    def start(
+        self,
+        ray_head_ip,
+        ray_head_port,
+        temp_dir,
+        dashboard_options,
+        head_node_options,
+        collect_log_to_path,
+        _system_config=None,
+    ):
         """Start the cluster.
 
         After this call returns, you can connect to the cluster with
         ray.init("auto").
         """
-        _, fake_config = tempfile.mkstemp()
-        with open(fake_config, "w") as f:
+        _, autoscale_config = tempfile.mkstemp()
+        with open(autoscale_config, "w") as f:
             f.write(json.dumps(self._config))
-        cmd = [
-            "ray",
-            "start",
-            "--autoscaling-config={}".format(fake_config),
+
+        ray_head_node_cmd = [
+            sys.executable,
+            "-m",
+            "ray.util.spark.start_ray_node",
+            f"--temp-dir={temp_dir}",
+            "--block",
             "--head",
-            "--node-ip-address=192.168.10.116",
-            "--port=3344",
+            f"--node-ip-address={ray_head_ip}",
+            f"--port={ray_head_port}",
+            f"--autoscaling-config={autoscale_config}",
+            *dashboard_options,
+            *_convert_ray_node_options(head_node_options),
         ]
+
         if "CPU" in self._head_resources:
-            cmd.append("--num-cpus={}".format(self._head_resources.pop("CPU")))
+            ray_head_node_cmd.append("--num-cpus={}".format(self._head_resources.pop("CPU")))
         if "GPU" in self._head_resources:
-            cmd.append("--num-gpus={}".format(self._head_resources.pop("GPU")))
-        cmd.append(f"--resources={json.dumps(self._head_resources)}")
+            ray_head_node_cmd.append("--num-gpus={}".format(self._head_resources.pop("GPU")))
+        if "memory" in self._head_resources:
+            ray_head_node_cmd.append("--memory={}".format(self._head_resources.pop("memory")))
+        if "object_store_memory" in self._head_resources:
+            ray_head_node_cmd.append("--object-store-memory={}".format(self._head_resources.pop("object_store_memory")))
+        ray_head_node_cmd.append(f"--resources={json.dumps(self._head_resources)}")
         if _system_config is not None:
-            cmd.append(
+            ray_head_node_cmd.append(
                 "--system-config={}".format(
                     json.dumps(_system_config, separators=(",", ":"))
                 )
             )
-        env = os.environ.copy()
-        env.update({
+        extra_env = {
             "AUTOSCALER_UPDATE_INTERVAL_S": "1",
-            # ray_constants.RESOURCES_ENVIRONMENT_VARIABLE: json.dumps(self._head_resources),
-        })
-        subprocess.check_call(cmd, env=env)
-
-    def shutdown(self):
-        """Terminate the cluster."""
-        subprocess.check_call(["ray", "stop", "--force"])
+            RAY_ON_SPARK_COLLECT_LOG_TO_PATH: collect_log_to_path or "",
+        }
+        return exec_cmd(
+            ray_head_node_cmd,
+            synchronous=False,
+            preexec_fn=setup_sigterm_on_parent_death,
+            extra_env=extra_env,
+        )

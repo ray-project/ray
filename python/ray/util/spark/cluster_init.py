@@ -11,6 +11,7 @@ from typing import Optional, Dict, Type
 import ray
 from ray.util.annotations import PublicAPI
 from ray._private.storage import _load_class
+from ray.autoscaler.spark.cluster_init import AutoscalingCluster
 
 from .utils import (
     exec_cmd,
@@ -391,6 +392,7 @@ def _setup_ray_cluster(
     worker_node_options: Dict,
     ray_temp_root_dir: str,
     collect_log_to_path: str,
+    autoscale: bool,
 ) -> Type[RayClusterOnSpark]:
     """
     The public API `ray.util.spark.setup_ray_cluster` does some argument
@@ -463,39 +465,64 @@ def _setup_ray_cluster(
     )
     os.makedirs(ray_temp_dir, exist_ok=True)
 
-    ray_head_node_cmd = [
-        sys.executable,
-        "-m",
-        "ray.util.spark.start_ray_node",
-        f"--temp-dir={ray_temp_dir}",
-        "--block",
-        "--head",
-        f"--node-ip-address={ray_head_ip}",
-        f"--port={ray_head_port}",
-        # disallow ray tasks with cpu/gpu requirements from being scheduled on the head
-        # node.
-        "--num-cpus=0",
-        "--num-gpus=0",
-        # limit the memory allocation to the head node (actual usage may increase
-        # beyond this for processing of tasks and actors).
-        f"--memory={128 * 1024 * 1024}",
-        # limit the object store memory allocation to the head node (actual usage
-        # may increase beyond this for processing of tasks and actors).
-        f"--object-store-memory={128 * 1024 * 1024}",
-        *dashboard_options,
-        *_convert_ray_node_options(head_node_options),
-    ]
+    if autoscale:
+        autoscaler_cluster = AutoscalingCluster(
+            head_resources={
+                "CPU": 0,
+                "GPU": 0,
+                "memory": 128 * 1024 * 1024,
+                "object_store_memory": 128 * 1024 * 1024,
+            },
+            worker_node_types={
+                "ray.worker": {
+                    "resources": {
+                        "CPU": num_cpus_per_node,
+                        "GPU": num_gpus_per_node,
+                        "memory": heap_memory_per_node,
+                        "object_store_memory": object_store_memory_per_node,
+                    },
+                    "node_config": {},
+                    "min_workers": 0,
+                    "max_workers": num_worker_nodes,
+                },
+            },
+        )
+        ray_head_proc, tail_output_deque = autoscaler_cluster.start()
 
-    _logger.info(f"Starting Ray head, command: {' '.join(ray_head_node_cmd)}")
+    else:
+        ray_head_node_cmd = [
+            sys.executable,
+            "-m",
+            "ray.util.spark.start_ray_node",
+            f"--temp-dir={ray_temp_dir}",
+            "--block",
+            "--head",
+            f"--node-ip-address={ray_head_ip}",
+            f"--port={ray_head_port}",
+            # disallow ray tasks with cpu/gpu requirements from being scheduled on the head
+            # node.
+            "--num-cpus=0",
+            "--num-gpus=0",
+            # limit the memory allocation to the head node (actual usage may increase
+            # beyond this for processing of tasks and actors).
+            f"--memory={128 * 1024 * 1024}",
+            # limit the object store memory allocation to the head node (actual usage
+            # may increase beyond this for processing of tasks and actors).
+            f"--object-store-memory={128 * 1024 * 1024}",
+            *dashboard_options,
+            *_convert_ray_node_options(head_node_options),
+        ]
 
-    # `preexec_fn=setup_sigterm_on_parent_death` ensures the ray head node being
-    # killed if parent process died unexpectedly.
-    ray_head_proc, tail_output_deque = exec_cmd(
-        ray_head_node_cmd,
-        synchronous=False,
-        preexec_fn=setup_sigterm_on_parent_death,
-        extra_env={RAY_ON_SPARK_COLLECT_LOG_TO_PATH: collect_log_to_path or ""},
-    )
+        _logger.info(f"Starting Ray head, command: {' '.join(ray_head_node_cmd)}")
+
+        # `preexec_fn=setup_sigterm_on_parent_death` ensures the ray head node being
+        # killed if parent process died unexpectedly.
+        ray_head_proc, tail_output_deque = exec_cmd(
+            ray_head_node_cmd,
+            synchronous=False,
+            preexec_fn=setup_sigterm_on_parent_death,
+            extra_env={RAY_ON_SPARK_COLLECT_LOG_TO_PATH: collect_log_to_path or ""},
+        )
 
     # wait ray head node spin up.
     time.sleep(_RAY_HEAD_STARTUP_TIMEOUT)
@@ -514,86 +541,87 @@ def _setup_ray_cluster(
 
     _logger.info("Ray head node started.")
 
-    spark_job_group_id = f"ray-cluster-{ray_head_port}-{cluster_unique_id}"
+    if not autoscale:
+        spark_job_group_id = f"ray-cluster-{ray_head_port}-{cluster_unique_id}"
 
-    cluster_address = f"{ray_head_ip}:{ray_head_port}"
-    # Set RAY_ADDRESS environment variable to the cluster address.
-    os.environ["RAY_ADDRESS"] = cluster_address
+        cluster_address = f"{ray_head_ip}:{ray_head_port}"
+        # Set RAY_ADDRESS environment variable to the cluster address.
+        os.environ["RAY_ADDRESS"] = cluster_address
 
-    ray_cluster_handler = RayClusterOnSpark(
-        address=cluster_address,
-        head_proc=ray_head_proc,
-        spark_job_group_id=spark_job_group_id,
-        num_workers_node=num_worker_nodes,
-        temp_dir=ray_temp_dir,
-        cluster_unique_id=cluster_unique_id,
-        start_hook=start_hook,
-        ray_dashboard_port=ray_dashboard_port,
-    )
+        ray_cluster_handler = RayClusterOnSpark(
+            address=cluster_address,
+            head_proc=ray_head_proc,
+            spark_job_group_id=spark_job_group_id,
+            num_workers_node=num_worker_nodes,
+            temp_dir=ray_temp_dir,
+            cluster_unique_id=cluster_unique_id,
+            start_hook=start_hook,
+            ray_dashboard_port=ray_dashboard_port,
+        )
 
-    def background_job_thread_fn():
+        def background_job_thread_fn():
+            try:
+                _start_ray_worker_nodes(
+                    spark,
+                    spark_job_group_id,
+                    "This job group is for spark job which runs the Ray cluster with ray "
+                    f"head node {ray_head_ip}:{ray_head_port}",
+                    num_worker_nodes,
+                    using_stage_scheduling,
+                    ray_head_ip,
+                    ray_head_port,
+                    ray_temp_dir,
+                    num_cpus_per_node,
+                    num_gpus_per_node,
+                    heap_memory_per_node,
+                    object_store_memory_per_node,
+                    worker_node_options,
+                    collect_log_to_path,
+                )
+            except Exception as e:
+                # NB:
+                # The background spark job is designed to running forever until it is
+                # killed, The exception might be raised in following cases:
+                #  1. The background job raises unexpected exception (i.e. ray cluster dies
+                #    unexpectedly)
+                #  2. User explicitly orders shutting down the ray cluster.
+                #  3. On Databricks runtime, when a notebook is detached, it triggers
+                #     python REPL `onCancel` event, cancelling the background running spark
+                #     job.
+                #  For case 1 and 3, only ray workers are killed, but driver side ray head
+                #  might still be running and the ray context might be in connected status.
+                #  In order to disconnect and kill the ray head node, a call to
+                #  `ray_cluster_handler.shutdown()` is performed.
+                if not ray_cluster_handler.spark_job_is_canceled:
+                    # Set `background_job_exception` attribute before calling `shutdown`
+                    # so inside `shutdown` we can get exception information easily.
+                    ray_cluster_handler.background_job_exception = e
+                    ray_cluster_handler.shutdown(cancel_background_job=False)
+
         try:
-            _start_ray_worker_nodes(
-                spark,
-                spark_job_group_id,
-                "This job group is for spark job which runs the Ray cluster with ray "
-                f"head node {ray_head_ip}:{ray_head_port}",
-                num_worker_nodes,
-                using_stage_scheduling,
-                ray_head_ip,
-                ray_head_port,
-                ray_temp_dir,
-                num_cpus_per_node,
-                num_gpus_per_node,
-                heap_memory_per_node,
-                object_store_memory_per_node,
-                worker_node_options,
-                collect_log_to_path,
-            )
-        except Exception as e:
-            # NB:
-            # The background spark job is designed to running forever until it is
-            # killed, The exception might be raised in following cases:
-            #  1. The background job raises unexpected exception (i.e. ray cluster dies
-            #    unexpectedly)
-            #  2. User explicitly orders shutting down the ray cluster.
-            #  3. On Databricks runtime, when a notebook is detached, it triggers
-            #     python REPL `onCancel` event, cancelling the background running spark
-            #     job.
-            #  For case 1 and 3, only ray workers are killed, but driver side ray head
-            #  might still be running and the ray context might be in connected status.
-            #  In order to disconnect and kill the ray head node, a call to
-            #  `ray_cluster_handler.shutdown()` is performed.
-            if not ray_cluster_handler.spark_job_is_canceled:
-                # Set `background_job_exception` attribute before calling `shutdown`
-                # so inside `shutdown` we can get exception information easily.
-                ray_cluster_handler.background_job_exception = e
-                ray_cluster_handler.shutdown(cancel_background_job=False)
+            threading.Thread(
+                target=inheritable_thread_target(background_job_thread_fn), args=()
+            ).start()
 
-    try:
-        threading.Thread(
-            target=inheritable_thread_target(background_job_thread_fn), args=()
-        ).start()
+            # Call hook immediately after spark job started.
+            start_hook.on_cluster_created(ray_cluster_handler)
 
-        # Call hook immediately after spark job started.
-        start_hook.on_cluster_created(ray_cluster_handler)
+            # wait background spark task starting.
+            for _ in range(_BACKGROUND_JOB_STARTUP_WAIT):
+                time.sleep(1)
+                if ray_cluster_handler.background_job_exception is not None:
+                    raise RuntimeError(
+                        "Ray workers failed to start."
+                    ) from ray_cluster_handler.background_job_exception
 
-        # wait background spark task starting.
-        for _ in range(_BACKGROUND_JOB_STARTUP_WAIT):
-            time.sleep(1)
-            if ray_cluster_handler.background_job_exception is not None:
-                raise RuntimeError(
-                    "Ray workers failed to start."
-                ) from ray_cluster_handler.background_job_exception
-
-        return ray_cluster_handler
-    except Exception:
-        # If driver side setup ray-cluster routine raises exception, it might result
-        # in part of ray processes has been launched (e.g. ray head or some ray workers
-        # have been launched), calling `ray_cluster_handler.shutdown()` to kill them
-        # and clean status.
-        ray_cluster_handler.shutdown()
-        raise
+            return ray_cluster_handler
+        except Exception:
+            # If driver side setup ray-cluster routine raises exception, it might result
+            # in part of ray processes has been launched (e.g. ray head or some ray workers
+            # have been launched), calling `ray_cluster_handler.shutdown()` to kill them
+            # and clean status.
+            ray_cluster_handler.shutdown()
+            raise
 
 
 _active_ray_cluster = None
@@ -674,6 +702,7 @@ def setup_ray_cluster(
     ray_temp_root_dir: Optional[str] = None,
     strict_mode: bool = False,
     collect_log_to_path: Optional[str] = None,
+    autoscale: bool = False,
 ) -> str:
     """
     Set up a ray cluster on the spark cluster by starting a ray head node in the
@@ -742,6 +771,9 @@ def setup_ray_cluster(
             recommend you to specify a local path starts with '/dbfs/', because the
             path mounts with a centralized storage device and stored data is persisted
             after Databricks spark cluster terminated.
+        autoscale: If True, enable autoscaling, the number of initial Ray worker nodes
+            is zero, and the maximum number of Ray worker nodes is set to
+            `num_worker_nodes`. Default value is False.
 
     Returns:
         The address of the initiated Ray cluster on spark.
@@ -927,6 +959,7 @@ def setup_ray_cluster(
             worker_node_options=worker_node_options,
             ray_temp_root_dir=ray_temp_root_dir,
             collect_log_to_path=collect_log_to_path,
+            autoscale=autoscale,
         )
         cluster.wait_until_ready()  # NB: this line might raise error.
 
@@ -976,6 +1009,8 @@ def _start_ray_worker_nodes(
     #     triggers the sending of a SIGTERM to the child processes spawned by the
     #     `ray_start ...` process.
 
+    # TODO: for autoscaler mode, wrap this mapper function to swallow exception,
+    #  to prevent spark task retries on failure.
     def ray_cluster_job_mapper(_):
         from pyspark.taskcontext import TaskContext
 
