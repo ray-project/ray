@@ -472,8 +472,12 @@ def run(
                     "The --non-blocking option conflicts with the --reload option."
                 )
             if reload:
+                if working_dir:
+                    watch_dir = working_dir
+                else:
+                    watch_dir = "./"
                 for changes in watchfiles.watch(
-                    working_dir,
+                    watch_dir,
                     rust_timeout=10000,
                     yield_on_timeout=True,
                 ):
