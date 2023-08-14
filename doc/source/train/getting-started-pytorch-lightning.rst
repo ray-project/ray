@@ -272,28 +272,32 @@ GPUs by setting ``devices="auto"`` and ``acelerator="auto"``.
 
 
 
-Reporting metrics and checkpoints
+Reporting checkpoints and metrics
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-To monitor progress, you can report intermediate metrics and checkpoints
-using the :class:`ray.train.lightning.RayTrainReportCallback` utility callback.
+To persist your checkpoints and monitor training progress, simply add a 
+:class:`ray.train.lightning.RayTrainReportCallback` utility callback to your Trainer. 
 
                     
 .. code-block:: diff
 
      import pytorch_lightning as pl
+     from ray.train.lightning import RayTrainReportCallback
 
      def train_func(config):
          ...
          trainer = pl.Trainer(
              ...
-    +        callbacks=[ray.train.lightning.RayTrainReportCallback()],
+    -        callbacks=[...]
+    +        callbacks=[..., RayTrainReportCallback()],
              ...
          )
          ...
 
-Reporting metrics and checkpoints to Ray Train ensures that you can use Ray Tune and fault-tolerant training. For more details, see :ref:`train-checkpointing` and :ref:`train-fault-tolerance`.
 
+Reporting metrics and checkpoints to Ray Train ensures that you can use Ray Tune and :ref:`fault-tolerant training <train-fault-tolerance>`. 
+Note that :class:`ray.train.lightning.RayTrainReportCallback` only provides a simple implementation. 
+To customize, see :ref:`train-checkpointing`.
 
 Preparing your Lightning Trainer
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

@@ -29,8 +29,8 @@ Before we begin, you can expect that the final code will look something like thi
     result = trainer.fit()
 
 1. Your `train_func` will be the Python code that is executed on each distributed training worker.
-2. Your `ScalingConfig` will define the number of distributed training workers and whether to use GPUs.
-3. Your `TorchTrainer` will launch the distributed training job.
+2. Your :class:`ScalingConfig <ray.train.ScalingConfig>` will define the number of distributed training workers and computing resources.
+3. Your :class:`TorchTrainer <ray.train.torch.TorchTrainer>` will launch the distributed training job.
 
 Let's compare a Hugging Face Transformers training script with and without Ray Train.
 
@@ -197,13 +197,13 @@ model initialization, transformers trainer definition and more.
     function, because it might cause serialization errors while transferring the objects to the workers.
 
 
-Reporting metrics and checkpoints
+Reporting checkpoints and metrics
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-To monitor progress, you can report intermediate metrics and checkpoints
-using the :class:`ray.train.huggingface.transformers.RayTrainReportCallback` utility callback.
+To persist your checkpoints and monitor training progress, simply add a 
+:class:`ray.train.huggingface.transformers.RayTrainReportCallback` utility callback to your Trainer. 
 
-                    
+
 .. code-block:: diff
 
      import transformers
@@ -215,9 +215,10 @@ using the :class:`ray.train.huggingface.transformers.RayTrainReportCallback` uti
     +    trainer.add_callback(RayTrainReportCallback())
          ...
 
-Reporting metrics and checkpoints to Ray Train ensures that you can use Ray Tune and :ref:`fault-tolerant training <train-fault-tolerance>`.
 
-Note that `RayTrainReportCallback` only provides a simple implementation. To customize, see :ref:`train-checkpointing`.
+Reporting metrics and checkpoints to Ray Train ensures that you can use Ray Tune and fault-tolerant training. 
+Note that :class:`ray.train.huggingface.transformers.RayTrainReportCallback` only provides a simple implementation. 
+To customize, see :ref:`train-checkpointing`.
 
 
 Preparing your Transformers Trainer
