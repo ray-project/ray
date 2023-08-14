@@ -956,8 +956,8 @@ def setup_ray_cluster(
     if "num_cpus_per_node" in kwargs:
         if num_cpus_worker_node is not None:
             raise ValueError(
-                "'num_cpus_per_node' and 'num_cpus_worker_node' arguments are equivalent. "
-                "Only set 'num_cpus_worker_node'."
+                "'num_cpus_per_node' and 'num_cpus_worker_node' arguments are "
+                "equivalent. Only set 'num_cpus_worker_node'."
             )
         num_cpus_worker_node = kwargs["num_cpus_per_node"]
         warnings.warn(
@@ -969,8 +969,8 @@ def setup_ray_cluster(
     if "num_gpus_per_node" in kwargs:
         if num_gpus_worker_node is not None:
             raise ValueError(
-                "'num_gpus_per_node' and 'num_gpus_worker_node' arguments are equivalent. "
-                "Only set 'num_gpus_worker_node'."
+                "'num_gpus_per_node' and 'num_gpus_worker_node' arguments are "
+                "equivalent. Only set 'num_gpus_worker_node'."
             )
         num_gpus_worker_node = kwargs["num_gpus_per_node"]
         warnings.warn(
