@@ -204,9 +204,14 @@ Ray Train Output
 ----------------
 
 .. autosummary::
+    :template: autosummary/class_without_autosummary.rst
     :toctree: doc/
 
     ~train.Result
+
+.. autosummary::
+    :toctree: doc/
+
     ~train.Checkpoint
 
 
