@@ -115,8 +115,8 @@ parts:
               - file: train/internals/architecture
               - file: train/internals/benchmarks
               - file: train/internals/environment-variables
-          - file: train/faq
           - file: train/api/api
+          - file: train/faq
 
       - file: tune/index
         title: Ray Tune

@@ -48,6 +48,7 @@ document.addEventListener("DOMContentLoaded", function() {
             // Ray Train
             "Ray Train", "More Frameworks",
             "Advanced Topics", "Internals",
+            "Ray Train API",
             // Ray Tune
             "Ray Tune", "Ray Tune Examples", "Ray Tune API",
             // Ray Serve
