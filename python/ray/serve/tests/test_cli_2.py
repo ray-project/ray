@@ -822,5 +822,57 @@ def test_deployment_contains_utils(ray_start_stop):
     )
 
 
+@pytest.fixture
+def reload_working_dir(tmp_path):
+    old = os.getcwd()
+    os.chdir(tmp_path)
+    yield tmp_path
+    os.chdir(old)
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
+def test_run_reload_basic(ray_start_stop, reload_working_dir):
+    """Test `serve run` with reload."""
+
+    python_module_file = "reload_serve.py"
+    with open(python_module_file, "w") as pmf:
+        pmf.write(
+            """\
+@serve.deployment
+class Message:
+    def __init__(self, msg):
+        self.msg = msg
+
+    def __call__(self):
+        return self.msg
+
+
+msg_app = MessageDeployment.bind("Hello World!")
+"""
+        )
+
+    p = subprocess.Popen(["serve", "run", "--reload", "reload_serve:msg_app"])
+    wait_for_condition(lambda: ping_endpoint("Message") == "Hello World!", timeout=10)
+    with open(python_module_file, "w") as pmf:
+        pmf.write(
+            """\
+@serve.deployment
+class Message:
+    def __init__(self, msg):
+        self.msg = msg
+
+    def __call__(self):
+        return self.msg
+
+
+msg_app = MessageDeployment.bind("Hello Me!")
+"""
+        )
+    wait_for_condition(lambda: ping_endpoint("Message") == "Hello Me!", timeout=10)
+    p.send_signal(signal.SIGINT)
+    p.wait()
+    assert ping_endpoint("Message") == CONNECTION_ERROR_MSG
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))
