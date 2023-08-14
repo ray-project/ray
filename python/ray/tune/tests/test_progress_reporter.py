@@ -445,7 +445,7 @@ class ProgressReporterTest(unittest.TestCase):
             t.temporary_state.location = "here"
             t.config = {"a": i, "b": i * 2, "n": {"k": [i, 2 * i]}}
             t.evaluated_params = {"a": i, "b": i * 2, "n/k/0": i, "n/k/1": 2 * i}
-            t.run_metadata.last_result = {
+            t.last_result = {
                 "config": {"a": i, "b": i * 2, "n": {"k": [i, 2 * i]}},
                 "metric_1": i / 2,
                 "metric_2": i / 4,
@@ -508,13 +508,13 @@ class ProgressReporterTest(unittest.TestCase):
 
     def testBestTrialZero(self):
         trial1 = Trial("", config={}, stub=True)
-        trial1.last_result = {"metric": 7, "config": {}}
+        trial1.run_metadata.last_result = {"metric": 7, "config": {}}
 
         trial2 = Trial("", config={}, stub=True)
-        trial2.last_result = {"metric": 0, "config": {}}
+        trial2.run_metadata.last_result = {"metric": 0, "config": {}}
 
         trial3 = Trial("", config={}, stub=True)
-        trial3.last_result = {"metric": 2, "config": {}}
+        trial3.run_metadata.last_result = {"metric": 2, "config": {}}
 
         reporter = TuneReporterBase(metric="metric", mode="min")
         best_trial, metric = reporter._current_best_trial([trial1, trial2, trial3])
@@ -522,26 +522,26 @@ class ProgressReporterTest(unittest.TestCase):
 
     def testBestTrialNan(self):
         trial1 = Trial("", config={}, stub=True)
-        trial1.last_result = {"metric": np.nan, "config": {}}
+        trial1.run_metadata.last_result = {"metric": np.nan, "config": {}}
 
         trial2 = Trial("", config={}, stub=True)
-        trial2.last_result = {"metric": 0, "config": {}}
+        trial2.run_metadata.last_result = {"metric": 0, "config": {}}
 
         trial3 = Trial("", config={}, stub=True)
-        trial3.last_result = {"metric": 2, "config": {}}
+        trial3.run_metadata.last_result = {"metric": 2, "config": {}}
 
         reporter = TuneReporterBase(metric="metric", mode="min")
         best_trial, metric = reporter._current_best_trial([trial1, trial2, trial3])
         assert best_trial == trial2
 
         trial1 = Trial("", config={}, stub=True)
-        trial1.last_result = {"metric": np.nan, "config": {}}
+        trial1.run_metadata.last_result = {"metric": np.nan, "config": {}}
 
         trial2 = Trial("", config={}, stub=True)
-        trial2.last_result = {"metric": 0, "config": {}}
+        trial2.run_metadata.last_result = {"metric": 0, "config": {}}
 
         trial3 = Trial("", config={}, stub=True)
-        trial3.last_result = {"metric": 2, "config": {}}
+        trial3.run_metadata.last_result = {"metric": 2, "config": {}}
 
         reporter = TuneReporterBase(metric="metric", mode="max")
         best_trial, metric = reporter._current_best_trial([trial1, trial2, trial3])
@@ -580,7 +580,7 @@ class ProgressReporterTest(unittest.TestCase):
             t.temporary_state.location = "here"
             t.config = {"a": i, "b": i * 2, "n": {"k": [i, 2 * i]}}
             t.evaluated_params = {"a": i}
-            t.run_metadata.last_result = {"config": {"a": i}, "metric_1": i / 2}
+            t.last_result = {"config": {"a": i}, "metric_1": i / 2}
             t.__str__ = lambda self: self.trial_id
             trials.append(t)
 
@@ -613,9 +613,10 @@ class ProgressReporterTest(unittest.TestCase):
             t.local_experiment_path = "/foo"
             t.temporary_state = Mock()
             t.temporary_state.location = "here"
+            t.run_metadata = Mock()
             t.config = {"a": i}
             t.evaluated_params = {"a": i}
-            t.run_metadata.last_result = {"config": {"a": i}}
+            t.last_result = {"config": {"a": i}}
             t.__str__ = lambda self: self.trial_id
             trials.append(t)
         # Set `metric_1` for terminated trails
@@ -824,7 +825,7 @@ class ProgressReporterTest(unittest.TestCase):
             t.temporary_state.location = "here"
             t.config = {"verylong" * 20: i}
             t.evaluated_params = {"verylong" * 20: i}
-            t.run_metadata.last_result = {"some_metric": "evenlonger" * 100}
+            t.last_result = {"some_metric": "evenlonger" * 100}
             t.__str__ = lambda self: self.trial_id
             trials.append(t)
 
