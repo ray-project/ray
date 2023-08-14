@@ -10,14 +10,23 @@ The :class:`~ray.air.result.Result` object contains, among others:
 - The last reported checkpoint (to load the model)
 - Error messages, if any errors occurred
 
-Last reported metrics
----------------------
+Viewing metrics
+---------------
+You can retrieve metrics reported to Ray Train from the :class:`~ray.air.result.Result`
+object.
 
-Use :py:attr:`Result.metrics <ray.air.result.Result.metrics>` to retrieve the
-latest reported metrics.
+Common metrics include the training or validation loss, or prediction accuracies.
 
-This corresponds to the metrics you passed to :func:`train.report <ray.train.report>`
+The metrics retrieved from the :class:`~ray.air.result.Result` object
+correspond to those you passed to :func:`train.report <ray.train.report>`
 as an argument :ref:`in your training function <train-monitoring-and-logging>`.
+
+
+Last reported metrics
+~~~~~~~~~~~~~~~~~~~~~
+
+Use :obj:`Result.metrics <ray.air.result.Result.metrics>` to retrieve the
+latest reported metrics.
 
 .. literalinclude:: ../doc_code/key_concepts.py
     :language: python
@@ -25,8 +34,8 @@ as an argument :ref:`in your training function <train-monitoring-and-logging>`.
     :end-before: __result_metrics_end__
 
 Dataframe of all reported metrics
----------------------------------
-Use :py:attr:`Result.metrics_dataframe <ray.air.result.Result.metrics_dataframe>` to retrieve
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Use :obj:`Result.metrics_dataframe <ray.air.result.Result.metrics_dataframe>` to retrieve
 a pandas DataFrame of all reported metrics.
 
 .. literalinclude:: ../doc_code/key_concepts.py
@@ -35,13 +44,26 @@ a pandas DataFrame of all reported metrics.
     :end-before: __result_dataframe_end__
 
 
-Last saved checkpoint
----------------------
-Use :py:attr:`Result.checkpoint <ray.air.result.Result.checkpoint>` to retrieve the
-last checkpoint.
+Retrieving checkpoints
+----------------------
+You can retrieve checkpoints reported to Ray Train from the :class:`~ray.air.result.Result`
+object.
 
-This corresponds to the checkpoint you passed to :func:`train.report <ray.train.report>`
+:ref:`Checkpoints <train-checkpointing>` contain all the information that is needed
+to restore the training state. This usually includes the trained model.
+
+You can use checkpoints for common downstream tasks such as
+:ref:`offline batch inference with Ray Data <batch_inference_ray_train>`,
+or :doc:`online model serving with Ray Serve </serve/index>`.
+
+The checkpoints retrieved from the :class:`~ray.air.result.Result` object
+correspond to those you passed to :func:`train.report <ray.train.report>`
 as an argument :ref:`in your training function <train-monitoring-and-logging>`.
+
+Last saved checkpoint
+~~~~~~~~~~~~~~~~~~~~~
+Use :obj:`Result.checkpoint <ray.air.result.Result.checkpoint>` to retrieve the
+last checkpoint.
 
 .. literalinclude:: ../doc_code/key_concepts.py
     :language: python
@@ -50,13 +72,13 @@ as an argument :ref:`in your training function <train-monitoring-and-logging>`.
 
 
 Other checkpoints
------------------
+~~~~~~~~~~~~~~~~~
 Sometimes you want to access an earlier checkpoint. For instance, if your loss increased
 after more training due to overfitting, you may want to retrieve the checkpoint with
 the lowest loss.
 
 You can retrieve a list of all available checkpoints and their metrics with
-:py:attr:`Result.best_checkpoints <ray.air.result.Result.best_checkpoints>`
+:obj:`Result.best_checkpoints <ray.air.result.Result.best_checkpoints>`
 
 .. literalinclude:: ../doc_code/key_concepts.py
     :language: python
@@ -65,7 +87,7 @@ You can retrieve a list of all available checkpoints and their metrics with
 
 Storage location
 ----------------
-If you need to retrieve the results later, you can inspect where they are stored
+If you need to retrieve the results later, you can get the storage location
 with :meth:`Result.path <ray.air.result.Result.path>`.
 
 This path will correspond to the :ref:`storage_path <train-log-dir>` you configured
