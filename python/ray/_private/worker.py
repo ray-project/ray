@@ -899,9 +899,7 @@ def get_neuron_core_ids() -> List[str]:
         neuron_core_actor = NeuronCoreActor.remote()
         ray.get(neuron_core_actor.g.remote())
     """
-    neuron_regex = (
-        f"^{ray._private.utils.get_neuron_core_constraint_name()}_group_[0-9A-Za-z]+$"
-    )
+    neuron_regex = f"^{ray_constants.NUM_NEURON_CORES}_group_[0-9A-Za-z]+$"
     assigned_ids = _get_all_resource_ids(ray_constants.NUM_NEURON_CORES, neuron_regex)
     # If the user had already set , then respect that
     # (in the sense that only neuron-core IDs that appear in

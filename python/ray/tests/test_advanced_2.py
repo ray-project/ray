@@ -10,7 +10,9 @@ import pytest
 import ray
 import ray.cluster_utils
 from ray._private.test_utils import RayTestTimeoutException, wait_for_condition
+from ray.util.placement_group import placement_group
 from ray.util.accelerators import AWS_NEURON_CORE
+from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 logger = logging.getLogger(__name__)
 
@@ -589,6 +591,37 @@ def test_neuron_core_ids(shutdown_only):
 
     a2 = Actor2.remote()
     assert ray.get(a2.test.remote()) == 2
+
+
+def test_neuron_core_with_placement_group():
+    num_neuron_cores = 2
+    ray.init(num_cpus=1, resources={"num_neuron_cores": num_neuron_cores})
+
+    @ray.remote(resources={"num_neuron_cores": num_neuron_cores})
+    class NeuronCoreActor:
+        def __init__(self):
+            pass
+
+        def ready(self):
+            neuron_core_ids = ray.get_neuron_core_ids()
+            assert len(neuron_core_ids) == num_neuron_cores
+            assert os.environ["NEURON_RT_VISIBLE_CORES"] == ",".join(
+                [str(i) for i in neuron_core_ids]  # noqa
+            )
+
+    # Reserve a placement group of 1 bundle that reserves 1 CPU and 2 NeuronCore.
+    pg = placement_group([{"CPU": 1, "num_neuron_cores": num_neuron_cores}])
+
+    # Wait until placement group is created.
+    ray.get(pg.ready(), timeout=10)
+
+    actor = NeuronCoreActor.options(
+        scheduling_strategy=PlacementGroupSchedulingStrategy(
+            placement_group=pg,
+        )
+    ).remote()
+
+    ray.get(actor.ready.remote(), timeout=10)
 
 
 def test_gpu_and_neuron_cores(shutdown_only):
