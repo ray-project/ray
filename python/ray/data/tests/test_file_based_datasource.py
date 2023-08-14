@@ -1,14 +1,17 @@
-import pytest
 import os
-import ray
-from typing import Any, Callable, Dict
+
 import pyarrow
+import pytest
+
+import ray
 from ray.data.block import BlockAccessor
 from ray.data.datasource import FileBasedDatasource
 
-class MockFileBasedDatasource(FileBasedDatasource):
 
-    def _write_block(self, f: "pyarrow.NativeFile", block: BlockAccessor, **writer_args):
+class MockFileBasedDatasource(FileBasedDatasource):
+    def _write_block(
+        self, f: "pyarrow.NativeFile", block: BlockAccessor, **writer_args
+    ):
         f.write(b"")
 
 
@@ -27,7 +30,9 @@ def test_write_creates_dir(tmp_path, ray_start_regular_shared):
     ds = ray.data.range(1)
     path = os.path.join(tmp_path, "test")
 
-    ds.write_datasource(MockFileBasedDatasource(), dataset_uuid=ds._uuid, path=path, try_create_dir=True)
+    ds.write_datasource(
+        MockFileBasedDatasource(), dataset_uuid=ds._uuid, path=path, try_create_dir=True
+    )
 
     assert os.path.isdir(path)
 
