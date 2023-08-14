@@ -19,7 +19,7 @@ Ray Train Integrations
 PyTorch Ecosystem
 ~~~~~~~~~~~~~~~~~
 
-Scale out your PyTorch, Lightning, HuggingFace code with Ray TorchTrainer.
+Scale out your PyTorch, Lightning, Hugging Face code with Ray TorchTrainer.
 
 .. autosummary::
     :toctree: doc/
@@ -72,8 +72,19 @@ PyTorch Lightning
     ~train.lightning.LightningCheckpoint
     ~train.lightning.LightningPredictor
 
-HuggingFace Transformers
-************************
+Hugging Face Transformers
+*************************
+
+.. autosummary::
+    :toctree: doc/
+
+    ~train.huggingface.transformers.prepare_trainer
+    ~train.huggingface.transformers.RayTrainReportCallback
+
+.. note::
+
+    We will deprecate `TransformersTrainer`, `TransformersCheckpoint` in Ray 2.8. Please 
+    refer to the :ref:`migration guide <transformers-trainer-migration-guide>` for more info.
 
 .. autosummary::
     :toctree: doc/
@@ -81,8 +92,8 @@ HuggingFace Transformers
     ~train.huggingface.TransformersTrainer
     ~train.huggingface.TransformersCheckpoint
 
-HuggingFace Accelerate
-**********************
+Hugging Face Accelerate
+***********************
 
 .. autosummary::
     :toctree: doc/
@@ -213,7 +224,7 @@ Ray Train Experiment Restoration
     pointing to the directory of the experiment to be restored.
     `restore` also exposes a subset of construtor arguments that can be re-specified.
     See :ref:`train-framework-specific-restore`
-    below for details on `restore` arguments for different AIR trainer integrations.
+    below for details on `restore` arguments for different trainer integrations.
 
 .. _train-framework-specific-restore:
 
