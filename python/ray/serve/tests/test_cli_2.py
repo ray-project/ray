@@ -856,7 +856,6 @@ msg_app = MessageDeployment.bind("Hello World!")
             "serve",
             "run",
             "--reload",
-            f"--working-dir={reload_working_dir}",
             "reload_serve:msg_app",
         ]
     )
