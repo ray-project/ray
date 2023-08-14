@@ -532,8 +532,8 @@ def test_map_batches_extra_args(shutdown_only, tmp_path):
     ds_list = ds2.take()
     values = sorted([s["one"] for s in ds_list])
     assert values == [2, 4, 6]
-    values = [s["two"] for s in ds_list]
-    assert values == sorted([4, 6, 8])
+    values = sorted([s["two"] for s in ds_list])
+    assert values == [4, 6, 8]
 
     # Test both.
     class CallableFn:
