@@ -116,7 +116,6 @@ parts:
               - file: train/internals/benchmarks
               - file: train/internals/environment-variables
           - file: train/faq
-            title: "FAQ"
           - file: train/api/api
 
       - file: tune/index
