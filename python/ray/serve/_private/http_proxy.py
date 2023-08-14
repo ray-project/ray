@@ -313,7 +313,8 @@ class GenericProxy:
 
         self.request_error_counter = metrics.Counter(
             f"serve_num_{self.proxy_name.lower()}_error_requests",
-            description=f"The number of non-{self.success_status_code} {self.proxy_name} responses.",
+            description=f"The number of non-{self.success_status_code} "
+            "{self.proxy_name} responses.",
             tag_keys=(
                 "route",
                 "error_code",
@@ -324,8 +325,8 @@ class GenericProxy:
         self.deployment_request_error_counter = metrics.Counter(
             f"serve_num_deployment_{self.proxy_name.lower()}_error_requests",
             description=(
-                f"The number of non-{self.success_status_code} {self.proxy_name} responses returned by "
-                "each deployment."
+                f"The number of non-{self.success_status_code} {self.proxy_name} "
+                "responses returned by each deployment."
             ),
             tag_keys=(
                 "deployment",
@@ -419,7 +420,9 @@ class GenericProxy:
     async def _draining_response(self, serve_request: ServeRequest) -> ServeResponse:
         raise NotImplementedError
 
-    async def _timeout_response(self, serve_request: ServeRequest, request_id: str) -> ServeResponse:
+    async def _timeout_response(
+        self, serve_request: ServeRequest, request_id: str
+    ) -> ServeResponse:
         raise NotImplementedError
 
     async def _routes_response(self, serve_request: ServeRequest) -> ServeResponse:
@@ -730,7 +733,9 @@ class gRPCProxy(GenericProxy):
             response=response_proto.SerializeToString(),
         )
 
-    async def _timeout_response(self, serve_request: ServeRequest, request_id: str) -> ServeResponse:
+    async def _timeout_response(
+        self, serve_request: ServeRequest, request_id: str
+    ) -> ServeResponse:
         timeout_message = (
             f"Request {request_id} timed out after {self.request_timeout_s}s."
         )
@@ -858,14 +863,18 @@ class gRPCProxy(GenericProxy):
         obj_ref: StreamingObjectRefGenerator,
     ) -> ServeResponse:
         streaming_response = self._streaming_generator_helper(obj_ref)
-        return ServeResponse(status_code=self.success_status_code, streaming_response=streaming_response)
+        return ServeResponse(
+            status_code=self.success_status_code, streaming_response=streaming_response
+        )
 
     async def _consume_generator_unary(
         self,
         obj_ref: ray.ObjectRef,
     ) -> ServeResponse:
         user_response_bytes = await obj_ref
-        return ServeResponse(status_code=self.success_status_code, response=user_response_bytes)
+        return ServeResponse(
+            status_code=self.success_status_code, response=user_response_bytes
+        )
 
     async def send_request_to_replica_streaming(
         self,
@@ -897,7 +906,9 @@ class gRPCProxy(GenericProxy):
                     f"Request {request_id} timed out after "
                     f"{self.request_timeout_s}s while waiting for assignment."
                 )
-                self._timeout_response(serve_request=serve_request, request_id=request_id)
+                self._timeout_response(
+                    serve_request=serve_request, request_id=request_id
+                )
                 return ServeResponse(status_code=TIMEOUT_ERROR_CODE)
 
         except Exception as e:
@@ -942,7 +953,9 @@ class HTTPProxy(GenericProxy):
         )
         return ServeResponse(status_code=str(status_code))
 
-    async def _timeout_response(self, serve_request: ServeRequest, request_id: str) -> ServeResponse:
+    async def _timeout_response(
+        self, serve_request: ServeRequest, request_id: str
+    ) -> ServeResponse:
         response = Response(
             f"Request {request_id} timed out after {self.request_timeout_s}s.",
             status_code=408,
