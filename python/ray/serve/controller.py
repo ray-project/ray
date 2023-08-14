@@ -325,7 +325,10 @@ class ServeController:
         while True:
             loop_start_time = time.time()
 
-            self.cluster_node_info_cache.update()
+            try:
+                self.cluster_node_info_cache.update()
+            except Exception:
+                logger.exception("Exception updating cluster node info cache.")
 
             if self._shutting_down:
                 try:
