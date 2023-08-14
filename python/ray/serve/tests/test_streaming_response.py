@@ -299,13 +299,16 @@ def test_proxy_from_streaming_handle(
             def __init__(self, handle: RayServeHandle):
                 self._h = handle.options(stream=True)
 
-            async def __call__(self, request: Request) -> StreamingResponse:
-                if use_async:
-                    result_gen = self._h.hi_gen_async.remote()
-                else:
-                    result_gen = self._h.hi_gen_sync.remote()
+            def __call__(self, request: Request) -> StreamingResponse:
+                async def consume_obj_ref_gen():
+                    if use_async:
+                        obj_ref_gen = await self._h.hi_gen_async.remote()
+                    else:
+                        obj_ref_gen = await self._h.hi_gen_sync.remote()
+                    async for obj_ref in obj_ref_gen:
+                        yield await obj_ref
 
-                return StreamingResponse(result_gen, media_type="text/plain")
+                return StreamingResponse(consume_obj_ref_gen(), media_type="text/plain")
 
     serve.run(SimpleGenerator.bind(Streamer.bind()))
 
