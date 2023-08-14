@@ -272,15 +272,20 @@ class FileBasedDatasource(Datasource):
 
         If ``try_create_dir`` is ``False``, this method is a no-op.
         """
+        from pyarrow.fs import FileType
+
+        self.created_dir = False
         if try_create_dir:
             paths, filesystem = _resolve_paths_and_filesystem(path, filesystem)
             assert len(paths) == 1, len(paths)
             path = paths[0]
 
-            # Arrow's S3FileSystem doesn't allow creating buckets by default, so we add
-            # a query arg enabling bucket creation if an S3 URI is provided.
-            tmp = _add_creatable_buckets_param_if_s3_uri(path)
-            filesystem.create_dir(tmp, recursive=True)
+            if filesystem.get_file_info(path).type is FileType.NotFound:
+                # Arrow's S3FileSystem doesn't allow creating buckets by default, so we 
+                # add a query arg enabling bucket creation if an S3 URI is provided.
+                tmp = _add_creatable_buckets_param_if_s3_uri(path)
+                filesystem.create_dir(tmp, recursive=True)
+                self.created_dir = True
 
     def write(
         self,
@@ -386,6 +391,9 @@ class FileBasedDatasource(Datasource):
         filesystem: Optional["pyarrow.fs.FileSystem"] = None,
         **kwargs,
     ) -> None:
+        if not self.created_dir:
+            return
+
         paths, filesystem = _resolve_paths_and_filesystem(path, filesystem)
         assert len(paths) == 1, len(paths)
         path = paths[0]
