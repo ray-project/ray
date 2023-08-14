@@ -37,7 +37,7 @@ passed to the ``Trainer``:
 Restore a Ray Train Experiment
 ------------------------------
 
-At the experiment level, :ref:`Trainer restoration <trainer-restore>`
+At the experiment level, Trainer restoration 
 allows you to resume a previously interrupted experiment from where it left off.
 
 A Train experiment may be interrupted due to one of the following reasons:

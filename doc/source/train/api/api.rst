@@ -35,13 +35,13 @@ PyTorch
 .. autosummary::
     :toctree: doc/
 
-    ~train.torch.prepare_model
-    ~train.torch.prepare_optimizer
-    ~train.torch.prepare_data_loader
     ~train.torch.get_device
-    ~train.torch.accelerate
-    ~train.torch.backward
+    ~train.torch.prepare_model
+    ~train.torch.prepare_data_loader
     ~train.torch.enable_reproducibility
+    ~train.torch.accelerate
+    ~train.torch.prepare_optimizer
+    ~train.torch.backward
 
 .. _train-lightning-integration:
 
@@ -183,6 +183,7 @@ Ray Train Config
     ~train.ScalingConfig
     ~train.RunConfig
     ~train.CheckpointConfig
+    ~train.FailureConfig
     ~train.DataConfig
 
 .. _train-loop-api:
@@ -199,60 +200,15 @@ Ray Train Loop
     ~train.report
 
 
-Ray Train Checkpoints
----------------------
+Ray Train Output
+----------------
 
 .. autosummary::
     :toctree: doc/
 
+    ~train.Result
     ~train.Checkpoint
 
-
-.. _trainer-restore:
-
-Ray Train Experiment Restoration
---------------------------------
-
-.. autosummary::
-    :toctree: doc/
-
-    train.trainer.BaseTrainer.restore
-
-.. note::
-
-    All trainer classes have a `restore` method that takes in a path
-    pointing to the directory of the experiment to be restored.
-    `restore` also exposes a subset of construtor arguments that can be re-specified.
-    See :ref:`train-framework-specific-restore`
-    below for details on `restore` arguments for different trainer integrations.
-
-.. _train-framework-specific-restore:
-
-Restoration API for Built-in Trainers
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. autosummary::
-    :toctree: doc/
-
-    train.data_parallel_trainer.DataParallelTrainer.restore
-
-.. autosummary::
-
-    train.torch.TorchTrainer.restore
-    train.huggingface.TransformersTrainer.restore
-
-.. note::
-
-    `TorchTrainer.restore`, `TensorflowTrainer.restore`, and `HorovodTrainer.restore`
-    can take in the same parameters as their parent class's
-    :meth:`DataParallelTrainer.restore <ray.train.data_parallel_trainer.DataParallelTrainer.restore>`.
-
-    Unless otherwise specified, other trainers will accept the same parameters as
-    :meth:`BaseTrainer.restore <ray.train.trainer.BaseTrainer.restore>`.
-
-.. seealso::
-
-    See :ref:`train-restore-guide` for more details on when and how trainer restore should be used.
 
 Ray Train Base Classes (Developer APIs)
 ---------------------------------------
@@ -268,18 +224,6 @@ Trainer Base Classes
     ~train.trainer.BaseTrainer
     ~train.data_parallel_trainer.DataParallelTrainer
     ~train.gbdt_trainer.GBDTTrainer
-
-``BaseTrainer`` API
-*******************
-
-.. autosummary::
-    :toctree: doc/
-
-    ~train.trainer.BaseTrainer.fit
-    ~train.trainer.BaseTrainer.setup
-    ~train.trainer.BaseTrainer.preprocess_datasets
-    ~train.trainer.BaseTrainer.training_loop
-    ~train.trainer.BaseTrainer.as_trainable
 
 
 Train Backend Base Classes
