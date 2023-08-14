@@ -129,6 +129,11 @@ def _convert_path_to_fs_path(
     return path
 
 
+def _get_checkpoint_index(checkpoint_dir_name: str) -> int:
+    """Gets the checkpoint index from the checkpoint directory name."""
+    return int(checkpoint_dir_name.split("_")[-1])
+
+
 def train_fn(config):
     in_trainer = config.get("in_trainer", False)
     if in_trainer:
@@ -382,6 +387,18 @@ def test_tuner(
         expected_num_checkpoints = checkpoint_config.num_to_keep or NUM_ITERATIONS
 
         assert len(list(trial_dir.glob("checkpoint_*"))) == expected_num_checkpoints
+        checkpoint_idxs = sorted(
+            [
+                _get_checkpoint_index(checkpoint_dir.name)
+                for checkpoint_dir in trial_dir.glob("checkpoint_*")
+            ]
+        )
+        # Ex: If num_to_keep=2 out of 6 total checkpoints,
+        # expect checkpoint_004 and checkpoint_005.
+        assert checkpoint_idxs == list(
+            range(NUM_ITERATIONS - expected_num_checkpoints, NUM_ITERATIONS)
+        )
+
         for checkpoint_dir in trial_dir.glob("checkpoint_*"):
             assert (
                 len(list(checkpoint_dir.glob("checkpoint.pkl"))) == 1
@@ -519,6 +536,18 @@ def test_trainer(
         expected_num_checkpoints = checkpoint_config.num_to_keep or NUM_ITERATIONS
 
         assert len(list(trial_dir.glob("checkpoint_*"))) == expected_num_checkpoints
+        checkpoint_idxs = sorted(
+            [
+                _get_checkpoint_index(checkpoint_dir.name)
+                for checkpoint_dir in trial_dir.glob("checkpoint_*")
+            ]
+        )
+        # Ex: If num_to_keep=2 out of 6 total checkpoints,
+        # expect checkpoint_004 and checkpoint_005.
+        assert checkpoint_idxs == list(
+            range(NUM_ITERATIONS - expected_num_checkpoints, NUM_ITERATIONS)
+        )
+
         for checkpoint_dir in trial_dir.glob("checkpoint_*"):
             # 1 shared checkpoint.pkl file, written by all workers.
             assert len(list(checkpoint_dir.glob("checkpoint.pkl"))) == 1
