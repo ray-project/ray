@@ -437,7 +437,7 @@ class TunerInternal:
                 )
                 new_exp_path = Path(new_exp_path)
                 for file_dir in experiment_checkpoint_path.glob("*"):
-                    file_dir.replace(new_exp_path / file_dir.name)
+                    shutil.move(str(file_dir), str(new_exp_path / file_dir.name))
                 shutil.rmtree(experiment_checkpoint_path)
                 self._legacy_experiment_checkpoint_dir = str(new_exp_path)
                 self._experiment_dir_name = str(new_exp_name)
