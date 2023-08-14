@@ -46,9 +46,8 @@ document.addEventListener("DOMContentLoaded", function() {
             // Ray Data
             "Ray Data", "Ray Data API", "Integrations",
             // Ray Train
-            "Ray Train", "Ray Train API",
-            "Distributed PyTorch", "Advanced Topics", "More Frameworks",
-            "Ray Train Internals",
+            "Ray Train", "More Frameworks",
+            "Advanced Topics", "Internals",
             // Ray Tune
             "Ray Tune", "Ray Tune Examples", "Ray Tune API",
             // Ray Serve

@@ -78,11 +78,6 @@ parts:
               - file: train/horovod
           - file: train/user-guides
             title: User Guides
-          - file: train/internals/index
-            sections:
-              - file: train/internals/architecture
-              - file: train/internals/benchmarks
-              - file: train/internals/environment-variables
           - file: train/examples
             title: "Examples"
             sections:
@@ -114,7 +109,14 @@ parts:
                 title: "PyTorch Finetuning ResNet Example"
               - file: train/examples/lightning/vicuna_13b_lightning_deepspeed_finetune
                 title: "Fine-tune Vicuna-13B with DeepSpeed and PyTorch Lightning"
+          - file: train/internals/index
+            title: "Internals"
+            sections:
+              - file: train/internals/architecture
+              - file: train/internals/benchmarks
+              - file: train/internals/environment-variables
           - file: train/faq
+            title: "FAQ"
           - file: train/api/api
 
       - file: tune/index
