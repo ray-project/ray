@@ -159,6 +159,25 @@ class LongestPrefixRouter:
         self.route_info = route_info
         self.app_to_is_cross_language = app_to_is_cross_language
 
+    def match_target(self, target: str) -> Optional[str]:
+        """Return the route from the target.
+
+        Returns:
+            route if found, else return first route. Or None if no routes.
+        """
+        if target is None:
+            return None
+
+        first_route = None
+        for route, endpoint_and_app_name in self.route_info.items():
+            if first_route is None:
+                first_route = route
+            endpoint, app_name = endpoint_and_app_name
+            if target.endswith(endpoint):
+                return route
+
+        return first_route
+
     def match_route(
         self, target_route: str
     ) -> Optional[Tuple[str, RayServeHandle, str, bool]]:
