@@ -889,20 +889,58 @@ def test_queued_queries_disconnected(serve_start_shutdown):
 
     print("Deployed hang_on_first_request deployment.")
 
-    def get_metric(metric: str) -> float:
+    def check_metric(metric: str, expected: float) -> bool:
         metrics = requests.get("http://127.0.0.1:9999").text
         metric_value = -1
         for line in metrics.split("\n"):
             if metric in line:
                 metric_value = line.split(" ")[-1]
 
-        return float(metric_value)
+        assert float(metric_value) == expected
+        return True
+
+    wait_for_condition(
+        check_metric,
+        timeout=15,
+        metric="ray_serve_num_power_of_two_choices_scheduling_tasks",
+        expected=0,
+    )
+    print("ray_serve_num_power_of_two_choices_scheduling_tasks updated successfully.")
+    wait_for_condition(
+        check_metric,
+        timeout=15,
+        metric="serve_num_power_of_two_choices_scheduling_tasks_in_backoff",
+        expected=0,
+    )
+    print(
+        "serve_num_power_of_two_choices_scheduling_tasks_in_backoff "
+        "updated successfully."
+    )
 
     def first_request_executing(request_future) -> bool:
         try:
             request_future.get(timeout=0.1)
         except Exception:
             return ray.get(signal.cur_num_waiters.remote()) == 1
+
+    # No scheduling tasks should be running once the first request is assigned.
+    wait_for_condition(
+        check_metric,
+        timeout=15,
+        metric="ray_serve_num_power_of_two_choices_scheduling_tasks",
+        expected=0,
+    )
+    print("ray_serve_num_power_of_two_choices_scheduling_tasks updated successfully.")
+    wait_for_condition(
+        check_metric,
+        timeout=15,
+        metric="serve_num_power_of_two_choices_scheduling_tasks_in_backoff",
+        expected=0,
+    )
+    print(
+        "serve_num_power_of_two_choices_scheduling_tasks_in_backoff "
+        "updated successfully."
+    )
 
     url = "http://localhost:8000/"
 
@@ -913,7 +951,10 @@ def test_queued_queries_disconnected(serve_start_shutdown):
     wait_for_condition(lambda: first_request_executing(fut), timeout=5)
     print("Executed first request.")
     wait_for_condition(
-        lambda: get_metric("ray_serve_num_ongoing_http_requests") == 1, timeout=15
+        check_metric,
+        timeout=15,
+        metric="ray_serve_num_ongoing_http_requests",
+        expected=1,
     )
     print("ray_serve_num_ongoing_http_requests updated successfully.")
 
@@ -924,31 +965,80 @@ def test_queued_queries_disconnected(serve_start_shutdown):
 
     # First request should be processing. All others should be queued.
     wait_for_condition(
-        lambda: get_metric("ray_serve_deployment_queued_queries") == num_requests,
+        check_metric,
         timeout=15,
+        metric="ray_serve_deployment_queued_queries",
+        expected=num_requests,
     )
     print("ray_serve_deployment_queued_queries updated successfully.")
     wait_for_condition(
-        lambda: get_metric("ray_serve_num_ongoing_http_requests") == num_requests + 1,
+        check_metric,
         timeout=15,
+        metric="ray_serve_num_ongoing_http_requests",
+        expected=num_requests + 1,
     )
     print("ray_serve_num_ongoing_http_requests updated successfully.")
+
+    # There should be 2 scheduling tasks (which is the max, since
+    # 2 = 2 * 1 replica) that are attempting to schedule the hanging requests.
+    wait_for_condition(
+        check_metric,
+        timeout=15,
+        metric="ray_serve_num_power_of_two_choices_scheduling_tasks",
+        expected=2,
+    )
+    print("ray_serve_num_power_of_two_choices_scheduling_tasks updated successfully.")
+    wait_for_condition(
+        check_metric,
+        timeout=15,
+        metric="serve_num_power_of_two_choices_scheduling_tasks_in_backoff",
+        expected=2,
+    )
+    print(
+        "serve_num_power_of_two_choices_scheduling_tasks_in_backoff "
+        "updated successfully."
+    )
 
     # Disconnect all requests by terminating the process pool.
     pool.terminate()
     print("Terminated all requests.")
 
     wait_for_condition(
-        lambda: get_metric("ray_serve_deployment_queued_queries") == 0, timeout=15
+        check_metric,
+        timeout=15,
+        metric="ray_serve_deployment_queued_queries",
+        expected=0,
     )
     print("ray_serve_deployment_queued_queries updated successfully.")
 
     # TODO (shrekris-anyscale): This should be 0 once async task cancellation
     # is implemented.
     wait_for_condition(
-        lambda: get_metric("ray_serve_num_ongoing_http_requests") == 1, timeout=15
+        check_metric,
+        timeout=15,
+        metric="ray_serve_num_ongoing_http_requests",
+        expected=1,
     )
     print("ray_serve_num_ongoing_http_requests updated successfully.")
+
+    # No requests to scheduled anymore. There should be no scheduling tasks.
+    wait_for_condition(
+        check_metric,
+        timeout=15,
+        metric="ray_serve_num_power_of_two_choices_scheduling_tasks",
+        expected=0,
+    )
+    print("ray_serve_num_power_of_two_choices_scheduling_tasks updated successfully.")
+    wait_for_condition(
+        check_metric,
+        timeout=15,
+        metric="serve_num_power_of_two_choices_scheduling_tasks_in_backoff",
+        expected=0,
+    )
+    print(
+        "serve_num_power_of_two_choices_scheduling_tasks_in_backoff "
+        "updated successfully."
+    )
 
 
 def test_actor_summary(serve_instance):

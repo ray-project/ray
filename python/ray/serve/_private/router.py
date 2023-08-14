@@ -28,7 +28,7 @@ import ray
 from ray.actor import ActorHandle
 from ray.dag.py_obj_scanner import _PyObjScanner
 from ray.exceptions import RayActorError, RayTaskError
-from ray.util import metrics
+from ray.util import metrics, state
 from ray._private.utils import make_asyncio_event_version_compat, load_class
 
 from ray.serve._private.common import RunningReplicaInfo, DeploymentInfo
@@ -341,10 +341,11 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
                 "The number of power-of-two-choices scheduling tasks "
                 "run by the router."
             ),
-            tag_keys=("deployment",),
+            tag_keys=("deployment", "actor_name"),
         ).set_default_tags(
-            {"deployment": self._deployment_name, "actor": self._actor_name}
+            {"deployment": self._deployment_name, "actor_name": self._actor_name}
         )
+        self.num_scheduling_tasks_gauge.set(0)
 
         self.num_scheduling_tasks_in_backoff = 0
         self.num_scheduling_tasks_in_backoff_gauge = metrics.Gauge(
@@ -353,9 +354,9 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
                 "The number of power-of-two-choices scheduling tasks "
                 "run by the router that are undergoing backoff."
             ),
-            tag_keys=("deployment",),
+            tag_keys=("deployment", "actor_name"),
         ).set_default_tags(
-            {"deployment": self._deployment_name, "actor": self._actor_name}
+            {"deployment": self._deployment_name, "actor_name": self._actor_name}
         )
         self.num_scheduling_tasks_in_backoff_gauge.set(
             self.num_scheduling_tasks_in_backoff
@@ -411,7 +412,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
                 if actor_id is None:
                     return ""
                 else:
-                    return ray.util.state.get_actor(actor_id, timeout=5).name
+                    return state.get_actor(actor_id, timeout=5).name
             except Exception:
                 logger.exception("Got exception while attempting to get actor name.")
                 return ""
@@ -761,7 +762,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
             self._scheduling_tasks.add(
                 self._loop.create_task(self.fulfill_pending_requests())
             )
-        if len(tasks_to_start) > 0:
+        if tasks_to_start > 0:
             self.num_scheduling_tasks_gauge.set(len(self._scheduling_tasks))
 
     async def choose_replica_for_query(self, query: Query) -> ReplicaWrapper:
