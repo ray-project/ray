@@ -14,7 +14,7 @@ from ray import serve
 from ray.dag.input_node import InputNode
 from ray.serve.drivers import DefaultgRPCDriver, DAGDriver
 from ray.serve.http_adapters import json_request
-from ray.serve._private.constants import SERVE_NAMESPACE
+from ray.serve._private.constants import SERVE_NAMESPACE, SERVE_DEFAULT_APP_NAME
 from ray.serve.context import get_global_client
 from ray.serve._private.common import ApplicationStatus
 from ray._private.usage.usage_lib import get_extra_usage_tags_to_report
@@ -316,7 +316,7 @@ def test_rest_api(manage_ray, tmp_dir, version):
         )
     else:
         wait_for_condition(
-            lambda: serve.status().applications["default"].status
+            lambda: serve.status().applications[SERVE_DEFAULT_APP_NAME].status
             == ApplicationStatus.RUNNING,
             timeout=15,
         )

@@ -83,7 +83,10 @@ def client(start_and_shutdown_ray_cli_module, shutdown_ray_and_serve):
 
 
 def check_running(_client: ServeControllerClient):
-    assert serve.status().applications["default"].status == ApplicationStatus.RUNNING
+    assert (
+        serve.status().applications[SERVE_DEFAULT_APP_NAME].status
+        == ApplicationStatus.RUNNING
+    )
     return True
 
 
@@ -314,7 +317,7 @@ def test_deploy_app_update_num_replicas(client: ServeControllerClient):
     )
 
     wait_for_condition(
-        lambda: serve.status().applications["default"].status
+        lambda: serve.status().applications[SERVE_DEFAULT_APP_NAME].status
         == ApplicationStatus.RUNNING,
         timeout=15,
     )
@@ -394,12 +397,14 @@ def test_deploy_multi_app_update_num_replicas(client: ServeControllerClient):
 
 
 def test_deploy_app_update_timestamp(client: ServeControllerClient):
-    assert "default" not in serve.status().applications
+    assert SERVE_DEFAULT_APP_NAME not in serve.status().applications
 
     config = ServeApplicationSchema.parse_obj(get_test_config())
     client.deploy_apps(config)
 
-    first_deploy_time = serve.status().applications["default"].last_deployed_time_s
+    first_deploy_time = (
+        serve.status().applications[SERVE_DEFAULT_APP_NAME].last_deployed_time_s
+    )
     assert first_deploy_time > 0
 
     time.sleep(0.1)
@@ -414,9 +419,10 @@ def test_deploy_app_update_timestamp(client: ServeControllerClient):
     client.deploy_apps(ServeApplicationSchema.parse_obj(config))
 
     assert (
-        serve.status().applications["default"].last_deployed_time_s > first_deploy_time
+        serve.status().applications[SERVE_DEFAULT_APP_NAME].last_deployed_time_s
+        > first_deploy_time
     )
-    assert serve.status().applications["default"].status in {
+    assert serve.status().applications[SERVE_DEFAULT_APP_NAME].status in {
         ApplicationStatus.DEPLOYING,
         ApplicationStatus.RUNNING,
     }
@@ -753,7 +759,7 @@ def test_controller_recover_and_deploy(client: ServeControllerClient):
     config_json = {
         "applications": [
             {
-                "name": "default",
+                "name": SERVE_DEFAULT_APP_NAME,
                 "import_path": "ray.serve.tests.test_config_files.hangs.app",
             }
         ]
@@ -783,7 +789,7 @@ def test_controller_recover_and_deploy(client: ServeControllerClient):
     client = serve.start(detached=True)
 
     # Ensure config checkpoint has been deleted
-    assert "default" not in serve.status().applications
+    assert SERVE_DEFAULT_APP_NAME not in serve.status().applications
 
 
 @pytest.mark.parametrize(
@@ -1006,7 +1012,10 @@ def test_update_config_health_check_timeout(client: ServeControllerClient):
     # Block in health check
     ray.get(handle.send.remote(clear=True, health_check=True))
     wait_for_condition(
-        lambda: serve.status().applications["default"].deployments[name].status
+        lambda: serve.status()
+        .applications[SERVE_DEFAULT_APP_NAME]
+        .deployments[name]
+        .status
         == DeploymentStatus.UNHEALTHY
     )
 

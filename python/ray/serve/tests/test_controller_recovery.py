@@ -14,6 +14,7 @@ from ray.util.state import list_actors
 from ray import serve
 from ray.serve._private.common import ReplicaState
 from ray.serve._private.constants import (
+    SERVE_DEFAULT_APP_NAME,
     SERVE_CONTROLLER_NAME,
     SERVE_PROXY_NAME,
     SERVE_NAMESPACE,
@@ -315,7 +316,7 @@ def test_recover_deleting_application(serve_instance):
 
     @ray.remote
     def delete_task():
-        serve.delete("default")
+        serve.delete(SERVE_DEFAULT_APP_NAME)
 
     # Delete application and make sure it is stuck on deleting
     delete_ref = delete_task.remote()
@@ -323,7 +324,7 @@ def test_recover_deleting_application(serve_instance):
 
     def application_deleting():
         # Confirm application is in deleting state
-        if serve.status().applications["default"].status != "DELETING":
+        if serve.status().applications[SERVE_DEFAULT_APP_NAME].status != "DELETING":
             return False
 
         # Confirm deployment is in updating state

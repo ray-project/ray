@@ -24,6 +24,7 @@ from ray._private.test_utils import (
 from ray.cluster_utils import Cluster, cluster_not_supported
 from ray.serve.config import HTTPOptions
 from ray.serve._private.constants import (
+    SERVE_DEFAULT_APP_NAME,
     SERVE_NAMESPACE,
     SERVE_PROXY_NAME,
     SERVE_ROOT_URL_ENV_KEY,
@@ -843,7 +844,7 @@ def test_updating_status_message(lower_slow_startup_threshold_and_reset):
 
     def updating_message():
         deployment_status = (
-            serve.status().applications["default"].deployments["default_f"]
+            serve.status().applications[SERVE_DEFAULT_APP_NAME].deployments["default_f"]
         )
         message_substring = "more than 1s to be scheduled."
         return (deployment_status.status == "UPDATING") and (
@@ -871,7 +872,10 @@ def test_unhealthy_override_updating_status(lower_slow_startup_threshold_and_res
     serve.run(f.bind(), _blocking=False)
 
     wait_for_condition(
-        lambda: serve.status().applications["default"].deployments["default_f"].status
+        lambda: serve.status()
+        .applications[SERVE_DEFAULT_APP_NAME]
+        .deployments["default_f"]
+        .status
         == "UNHEALTHY",
         timeout=20,
     )
@@ -879,7 +883,7 @@ def test_unhealthy_override_updating_status(lower_slow_startup_threshold_and_res
     with pytest.raises(RuntimeError):
         wait_for_condition(
             lambda: serve.status()
-            .applications["default"]
+            .applications[SERVE_DEFAULT_APP_NAME]
             .deployments["default_f"]
             .status
             == "UPDATING",
