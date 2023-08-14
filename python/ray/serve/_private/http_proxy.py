@@ -211,6 +211,7 @@ class HTTPProxy:
         self,
         controller_name: str,
         node_id: NodeId,
+        node_ip_address: str,
         request_timeout_s: Optional[float] = None,
     ):
         self.request_timeout_s = request_timeout_s
@@ -282,6 +283,7 @@ class HTTPProxy:
                 "application",
             ),
         )
+
         self.processing_latency_tracker = metrics.Histogram(
             "serve_http_request_latency_ms",
             description=(
@@ -295,6 +297,18 @@ class HTTPProxy:
                 "status_code",
             ),
         )
+
+        self.num_ongoing_requests_gauge = metrics.Gauge(
+            name="serve_num_ongoing_http_requests",
+            description="The number of ongoing requests in this HTTP Proxy.",
+            tag_keys=("node_id", "node_ip_address"),
+        ).set_default_tags(
+            {
+                "node_id": node_id,
+                "node_ip_address": node_ip_address,
+            }
+        )
+
         # `self._prevent_node_downscale_ref` is used to prevent the node from being
         # downscaled when there are ongoing requests
         self._prevent_node_downscale_ref = ray.put("prevent_node_downscale_object")
@@ -384,6 +398,7 @@ class HTTPProxy:
         alive while draining requests, so they are not dropped unintentionally.
         """
         self._ongoing_requests += 1
+        self.num_ongoing_requests_gauge.set(self._ongoing_requests)
 
     def _ongoing_requests_end(self):
         """Ongoing requests end.
@@ -392,6 +407,7 @@ class HTTPProxy:
         signaling that the node can be downscaled safely.
         """
         self._ongoing_requests -= 1
+        self.num_ongoing_requests_gauge.set(self._ongoing_requests)
 
     async def __call__(self, scope, receive, send):
         """Implements the ASGI protocol.
@@ -942,6 +958,7 @@ class HTTPProxyActor:
         self.app = HTTPProxy(
             controller_name=controller_name,
             node_id=node_id,
+            node_ip_address=node_ip_address,
             request_timeout_s=(
                 request_timeout_s or RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S
             ),
