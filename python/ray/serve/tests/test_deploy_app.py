@@ -1307,8 +1307,8 @@ def test_get_app_handle(client: ServeControllerClient):
 
     handle_1 = serve.get_app_handle("app1")
     handle_2 = serve.get_app_handle("app2")
-    assert ray.get(handle_1.predict.remote("ADD", 2)) == "4 pizzas please!"
-    assert ray.get(handle_2.predict.remote("ADD", 2)) == "5 pizzas please!"
+    assert handle_1.predict.remote("ADD", 2).result() == "4 pizzas please!"
+    assert handle_2.predict.remote("ADD", 2).result() == "5 pizzas please!"
 
 
 if __name__ == "__main__":
