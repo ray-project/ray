@@ -41,7 +41,7 @@ class DreamerV3RLModule(RLModule, abc.ABC):
         )
         model_size = self.config.model_config_dict["model_size"]
 
-        if self.config.model_config_dict["np_dtype"] == np.float16:
+        if self.config.model_config_dict["use_float16"]:
             tf.compat.v1.keras.layers.enable_v2_dtype_behavior()
             tf.keras.mixed_precision.set_global_policy("mixed_float16")
 

@@ -46,8 +46,7 @@ class DreamerV3LearnerHyperparameters(LearnerHyperparameters):
     world_model_grad_clip_by_global_norm: float = None
     actor_grad_clip_by_global_norm: float = None
     critic_grad_clip_by_global_norm: float = None
-    np_dtype: type = None
-    dl_dtype: type = None
+    use_float16: bool = None
     # Reporting settings.
     report_individual_batch_item_stats: bool = None
     report_dream_data: bool = None

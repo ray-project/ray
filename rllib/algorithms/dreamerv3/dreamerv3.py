@@ -170,22 +170,10 @@ class DreamerV3Config(AlgorithmConfig):
                 "horizon_H": self.horizon_H,
                 "model_size": self.model_size,
                 "symlog_obs": self.symlog_obs,
-                "np_dtype": self.np_dtype,
-                "dl_dtype": self.dl_dtype,
+                "use_float16": self.use_float16,
             }
         )
         return model
-
-    @property
-    def np_dtype(self):
-        return np.float16 if self.use_float16 else np.float32
-
-    @property
-    def dl_dtype(self):
-        if self.framework_str == "tf2":
-            return tf.float16 if self.use_float16 else tf.float32
-        else:
-            raise NotImplementedError
 
     @override(AlgorithmConfig)
     def training(
@@ -272,8 +260,10 @@ class DreamerV3Config(AlgorithmConfig):
             symlog_obs: Whether to symlog observations or not. If set to "auto"
                 (default), will check for the environment's observation space and then
                 only symlog if not an image space.
-            use_float16: Whether to train with float16 precision (on model parameters
-                and computations).
+            use_float16: Whether to train with mixed float16 precision. In this mode,
+                model parameters are stored as float32, but all computations are
+                performed in float16 space (except for losses and distribution params
+                and outputs).
             replay_buffer_config: Replay buffer config.
                 Only serves in DreamerV3 to set the capacity of the replay buffer.
                 Note though that in the paper ([1]) a size of 1M is used for all
@@ -460,8 +450,7 @@ class DreamerV3Config(AlgorithmConfig):
             ),
             actor_grad_clip_by_global_norm=self.actor_grad_clip_by_global_norm,
             critic_grad_clip_by_global_norm=self.critic_grad_clip_by_global_norm,
-            np_dtype=self.np_dtype,
-            dl_dtype=self.dl_dtype,
+            use_float16=self.use_float16,
             report_individual_batch_item_stats=(
                 self.report_individual_batch_item_stats
             ),
