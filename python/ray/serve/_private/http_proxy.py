@@ -75,8 +75,8 @@ from ray.serve._private.utils import (
 )
 from ray.serve.config import gRPCOptions
 from ray.serve.exceptions import RayServeTimeout
-from ray.serve.generated.serve_pb2 import HealthzResponse, RoutesResponse
-from ray.serve.generated.serve_pb2_grpc import add_ServeAPIServiceServicer_to_server
+from ray.serve.generated.serve_pb2 import HealthzResponse, ListApplicationsResponse
+from ray.serve.generated.serve_pb2_grpc import add_RayServeAPIServiceServicer_to_server
 
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
@@ -720,7 +720,7 @@ class gRPCProxy(GenericProxy):
         status_code = grpc.StatusCode.NOT_FOUND
         serve_request.send_status_code(status_code=status_code)
         serve_request.send_details(message=not_found_message)
-        response_proto = RoutesResponse(application_names=self.route_info.values())
+        response_proto = ListApplicationsResponse(application_names=self.route_info.values())
         return ServeResponse(
             status_code=str(status_code),
             response=response_proto.SerializeToString(),
@@ -731,9 +731,9 @@ class gRPCProxy(GenericProxy):
         serve_request.send_status_code(status_code=status_code)
         serve_request.send_details(message=drained_message)
         if serve_request.route_path == "/-/routes":
-            response_proto = RoutesResponse(application_names=self.route_info.values())
+            response_proto = ListApplicationsResponse(application_names=self.route_info.values())
         else:
-            response_proto = HealthzResponse(response=drained_message)
+            response_proto = HealthzResponse(message=drained_message)
         return ServeResponse(
             status_code=str(status_code),
             response=response_proto.SerializeToString(),
@@ -754,7 +754,7 @@ class gRPCProxy(GenericProxy):
         status_code = grpc.StatusCode.OK
         serve_request.send_status_code(status_code=status_code)
         serve_request.send_details(message=success_message)
-        response_proto = RoutesResponse(application_names=self.route_info.values())
+        response_proto = ListApplicationsResponse(application_names=self.route_info.values())
         return ServeResponse(
             status_code=str(status_code),
             response=response_proto.SerializeToString(),
@@ -764,7 +764,7 @@ class gRPCProxy(GenericProxy):
         status_code = grpc.StatusCode.OK
         serve_request.send_status_code(status_code=status_code)
         serve_request.send_details(message=success_message)
-        response_proto = HealthzResponse(response=success_message)
+        response_proto = HealthzResponse(message=success_message)
         return ServeResponse(
             status_code=str(status_code),
             response=response_proto.SerializeToString(),
@@ -1549,7 +1549,7 @@ class HTTPProxyActor:
         )
         grpc_server.add_insecure_port(f"[::]:{self.grpc_port}")
         dummy_servicer = DummyServicer()
-        add_ServeAPIServiceServicer_to_server(dummy_servicer, grpc_server)
+        add_RayServeAPIServiceServicer_to_server(dummy_servicer, grpc_server)
         for grpc_servicer_function in self.grpc_options.grpc_servicer_func_callable:
             grpc_servicer_function(dummy_servicer, grpc_server)
         await grpc_server.start()

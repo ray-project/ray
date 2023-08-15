@@ -243,24 +243,25 @@ service PredictAPIsService {
   rpc Predict(PredictRequest) returns (PredictResponse);
 }
 
-message RoutesRequest {}
+// Used for gRPC proxy health check
+message ListApplicationsRequest {}
 
-message RoutesResponse {
+message ListApplicationsResponse {
   repeated string application_names = 1;
 }
 
 message HealthzRequest {}
 
 message HealthzResponse {
-  string response = 1;
+  string message = 1;
 }
 
-service ServeAPIService {
-  rpc ServeRoutes(RoutesRequest) returns (RoutesResponse);
-  rpc ServeHealthz(HealthzRequest) returns (HealthzResponse);
+service RayServeAPIService {
+  rpc ListApplications(ListApplicationsRequest) returns (ListApplicationsResponse);
+  rpc Healthz(HealthzRequest) returns (HealthzResponse);
 }
 
-// Those are used in gRPC related tests
+// Used for gRPC related tests
 message UserDefinedMessage {
   string name = 1;
   string foo = 2;
