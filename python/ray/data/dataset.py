@@ -4144,8 +4144,8 @@ class Dataset:
             number of rows.
 
         Raises:
-            ValueError: if the number of rows in the :class:`~ray.data.Dataset`
-            exceeds ``limit``.
+            ValueError: if the number of rows in the :class:`~ray.data.Dataset` exceeds
+                ``limit``.
         """
         count = self.count()
         if limit is not None and count > limit:
