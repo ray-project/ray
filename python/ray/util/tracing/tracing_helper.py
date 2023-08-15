@@ -85,7 +85,6 @@ class _OpenTelemetryProxy:
                 )
 
 
-_nameable = Union[str, Callable[..., Any]]
 _global_is_tracing_enabled = False
 _opentelemetry = None
 
@@ -229,7 +228,10 @@ def _function_span_consumer_name(func: Callable[..., Any]) -> str:
     return f"{func} ray.remote_worker"
 
 
-def _actor_hydrate_span_args(class_: _nameable, method: _nameable):
+def _actor_hydrate_span_args(
+    class_: Union[str, Callable[..., Any]],
+    method: Union[str, Callable[..., Any]],
+):
     """Get the Attributes of the actor that will be reported as attributes
     in the trace."""
     if callable(class_):
@@ -262,7 +264,10 @@ def _actor_hydrate_span_args(class_: _nameable, method: _nameable):
     return span_args
 
 
-def _actor_span_producer_name(class_: _nameable, method: _nameable) -> str:
+def _actor_span_producer_name(
+    class_: Union[str, Callable[..., Any]],
+    method: Union[str, Callable[..., Any]],
+) -> str:
     """Returns the actor span name that has span kind of producer."""
     if not isinstance(class_, str):
         class_ = class_.__name__
@@ -272,7 +277,10 @@ def _actor_span_producer_name(class_: _nameable, method: _nameable) -> str:
     return f"{class_}.{method} ray.remote"
 
 
-def _actor_span_consumer_name(class_: _nameable, method: _nameable) -> str:
+def _actor_span_consumer_name(
+    class_: Union[str, Callable[..., Any]],
+    method: Union[str, Callable[..., Any]],
+) -> str:
     """Returns the actor span name that has span kind of consumer."""
     if not isinstance(class_, str):
         class_ = class_.__name__
