@@ -25,6 +25,7 @@ def test_handle_options():
     assert default_options.method_name == "__call__"
     assert default_options.multiplexed_model_id == ""
     assert default_options.stream is False
+    assert default_options._request_protocol == RequestProtocol.UNDEFINED
 
     # Test setting method name.
     only_set_method = default_options.copy_and_update(method_name="hi")
@@ -36,6 +37,7 @@ def test_handle_options():
     assert default_options.method_name == "__call__"
     assert default_options.multiplexed_model_id == ""
     assert default_options.stream is False
+    assert default_options._request_protocol == RequestProtocol.UNDEFINED
 
     # Test setting model ID.
     only_set_model_id = default_options.copy_and_update(multiplexed_model_id="hi")
@@ -47,6 +49,7 @@ def test_handle_options():
     assert default_options.method_name == "__call__"
     assert default_options.multiplexed_model_id == ""
     assert default_options.stream is False
+    assert default_options._request_protocol == RequestProtocol.UNDEFINED
 
     # Test setting stream.
     only_set_stream = default_options.copy_and_update(stream=True)
@@ -58,12 +61,14 @@ def test_handle_options():
     assert default_options.method_name == "__call__"
     assert default_options.multiplexed_model_id == ""
     assert default_options.stream is False
+    assert default_options._request_protocol == RequestProtocol.UNDEFINED
 
     # Test setting multiple.
     set_multiple = default_options.copy_and_update(method_name="hi", stream=True)
     assert set_multiple.method_name == "hi"
     assert set_multiple.multiplexed_model_id == ""
     assert set_multiple.stream is True
+    assert default_options._request_protocol == RequestProtocol.UNDEFINED
 
 
 @pytest.mark.asyncio
@@ -405,19 +410,19 @@ def test_set_request_protocol(serve_instance):
         return f"Hi {name}"
 
     handle = serve.run(echo.bind())
-    assert handle._request_protocol == RequestProtocol.UNDEFINED
+    assert handle.handle_options._request_protocol == RequestProtocol.UNDEFINED
 
     handle._set_request_protocol(RequestProtocol.HTTP)
-    assert handle._request_protocol == RequestProtocol.HTTP
+    assert handle.handle_options._request_protocol == RequestProtocol.HTTP
 
     multiplexed_model_id = "fake-multiplexed_model_id"
     new_handle = handle.options(multiplexed_model_id=multiplexed_model_id)
     assert new_handle.handle_options.multiplexed_model_id == multiplexed_model_id
-    assert new_handle._request_protocol == RequestProtocol.HTTP
+    assert new_handle.handle_options._request_protocol == RequestProtocol.HTTP
 
     new_handle._set_request_protocol(RequestProtocol.GRPC)
-    assert new_handle._request_protocol == RequestProtocol.GRPC
-    assert handle._request_protocol == RequestProtocol.HTTP
+    assert new_handle.handle_options._request_protocol == RequestProtocol.GRPC
+    assert handle.handle_options._request_protocol == RequestProtocol.HTTP
 
 
 if __name__ == "__main__":

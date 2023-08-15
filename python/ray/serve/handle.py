@@ -1,6 +1,6 @@
 import asyncio
 import concurrent.futures
-from dataclasses import dataclass
+from dataclasses import dataclass, asdict
 from functools import wraps
 import inspect
 import threading
@@ -63,6 +63,7 @@ class HandleOptions:
     multiplexed_model_id: str = ""
     stream: bool = False
     _router_cls: str = ""
+    _request_protocol: str = RequestProtocol.UNDEFINED
 
     def copy_and_update(
         self,
@@ -84,6 +85,7 @@ class HandleOptions:
             _router_cls=self._router_cls
             if _router_cls == DEFAULT.VALUE
             else _router_cls,
+            _request_protocol=self._request_protocol,
         )
 
 
@@ -153,10 +155,11 @@ class RayServeHandle:
         )
 
         self._router: Optional[Router] = _router
-        self._request_protocol = RequestProtocol.UNDEFINED
 
     def _set_request_protocol(self, request_protocol: RequestProtocol):
-        self._request_protocol = request_protocol
+        self.handle_options = HandleOptions(
+            **{**asdict(self.handle_options), **{"_request_protocol": request_protocol}}
+        )
 
     def _get_or_create_router(self) -> Router:
         if self._router is None:
@@ -202,7 +205,6 @@ class RayServeHandle:
             _router=None if _router_cls != DEFAULT.VALUE else self._router,
             _request_counter=self.request_counter,
         )
-        new_handle._set_request_protocol(self._request_protocol)
         return new_handle
 
     def options(
@@ -242,7 +244,7 @@ class RayServeHandle:
             app_name=_request_context.app_name,
             multiplexed_model_id=handle_options.multiplexed_model_id,
             is_streaming=handle_options.stream,
-            _request_protocol=self._request_protocol,
+            _request_protocol=handle_options._request_protocol,
         )
         self.request_counter.inc(
             tags={
