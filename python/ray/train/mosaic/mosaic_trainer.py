@@ -156,6 +156,12 @@ class MosaicTrainer(TorchTrainer):
         resume_from_checkpoint: Optional[Checkpoint] = None,
     ):
 
+        warnings.warn(
+            "This MosaicTrainer will be deprecated in Ray 2.8. "
+            "It is recommended to use the TorchTrainer instead.",
+            DeprecationWarning,
+        )
+
         self._validate_trainer_init_per_worker(
             trainer_init_per_worker, "trainer_init_per_worker"
         )
