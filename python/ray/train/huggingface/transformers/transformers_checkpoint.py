@@ -42,8 +42,7 @@ class TransformersCheckpoint(FrameworkCheckpoint):
         path: Union[str, os.PathLike] = None,
         preprocessor: Optional["Preprocessor"] = None,
     ) -> "TransformersCheckpoint":
-        """Create a :py:class:`~ray.air.checkpoint.Checkpoint` that stores a
-        HuggingFace model.
+        """Create a :py:class:`~ray.train.Checkpoint` that stores a HuggingFace model.
 
         Args:
             model: The pretrained transformer or Torch model to store in the

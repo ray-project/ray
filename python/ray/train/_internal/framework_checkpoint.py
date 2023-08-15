@@ -5,7 +5,7 @@ from ray._private.utils import binary_to_hex, hex_to_binary
 from ray.data.preprocessor import Preprocessor
 from ray.train._checkpoint import Checkpoint
 
-PREPROCESSOR_KEY = "preprocessor"
+PREPROCESSOR_KEY = "preprocessor_pkl"
 
 
 class FrameworkCheckpoint(Checkpoint):
