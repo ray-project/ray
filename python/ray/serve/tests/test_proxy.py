@@ -5,7 +5,7 @@ from unittest.mock import patch, Mock
 from ray.serve._private.http_proxy import GenericProxy, HTTPProxy
 
 
-@skip("WIP")
+@pytest.mark.skip("WIP")
 @patch("ray.get_runtime_context", Mock())
 class TestHTTPProxy:
     def create_http_proxy(self):
