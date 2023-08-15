@@ -193,17 +193,14 @@ def _use_context(
         _opentelemetry.context.detach(token)
 
 
-def _function_hydrate_span_args(func: Callable[..., Any]):
+def _function_hydrate_span_args(function_name: str):
     """Get the Attributes of the function that will be reported as attributes
     in the trace."""
-    if not ray.is_initialized():
-        ray.init()
-
     runtime_context = get_runtime_context()
 
     span_args = {
         "ray.remote": "function",
-        "ray.function": func,
+        "ray.function": function_name,
         "ray.pid": str(os.getpid()),
         "ray.job_id": runtime_context.get_job_id(),
         "ray.node_id": runtime_context.get_node_id(),
@@ -224,18 +221,12 @@ def _function_hydrate_span_args(func: Callable[..., Any]):
 
 def _function_span_producer_name(func: Callable[..., Any]) -> str:
     """Returns the function span name that has span kind of producer."""
-    args = _function_hydrate_span_args(func)
-    name = args["ray.function"]
-
-    return f"{name} ray.remote"
+    return f"{func} ray.remote"
 
 
 def _function_span_consumer_name(func: Callable[..., Any]) -> str:
     """Returns the function span name that has span kind of consumer."""
-    args = _function_hydrate_span_args(func)
-    name = args["ray.function"]
-
-    return f"{name} ray.remote_worker"
+    return f"{func} ray.remote_worker"
 
 
 def _actor_hydrate_span_args(class_: _nameable, method: _nameable):
@@ -246,11 +237,7 @@ def _actor_hydrate_span_args(class_: _nameable, method: _nameable):
     if callable(method):
         method = method.__name__
 
-    if not ray.is_initialized():
-        ray.init()
-
     runtime_context = get_runtime_context()
-
     span_args = {
         "ray.remote": "actor",
         "ray.actor_class": class_,
@@ -277,20 +264,12 @@ def _actor_hydrate_span_args(class_: _nameable, method: _nameable):
 
 def _actor_span_producer_name(class_: _nameable, method: _nameable) -> str:
     """Returns the actor span name that has span kind of producer."""
-    args = _actor_hydrate_span_args(class_, method)
-    assert args is not None
-    name = args["ray.function"]
-
-    return f"{name} ray.remote"
+    return f"{class_}.{method} ray.remote"
 
 
 def _actor_span_consumer_name(class_: _nameable, method: _nameable) -> str:
     """Returns the actor span name that has span kind of consumer."""
-    args = _actor_hydrate_span_args(class_, method)
-    assert args is not None
-    name = args["ray.function"]
-
-    return f"{name} ray.remote_worker"
+    return f"{class_}.{method} ray.remote_worker"
 
 
 def _tracing_task_invocation(method):

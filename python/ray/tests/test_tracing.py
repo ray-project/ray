@@ -100,7 +100,7 @@ def task_helper():
     ray.get(obj_ref)
 
     span_list = get_span_list()
-    assert len(span_list) == 2
+    assert len(span_list) == 2, span_list
 
     # The spans could show up in a different order, so just check that
     # all spans are as expected
