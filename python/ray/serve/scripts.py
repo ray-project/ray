@@ -483,7 +483,7 @@ def run(
                 ):
                     if changes:
                         cli_logger.info(
-                            f"Detected file change in path {working_dir}. Redeploying Serve app."
+                            f"Detected file change in path {watch_dir}. Redeploying Serve app."
                         )
                         serve.run(app, host=host, port=port)
 
