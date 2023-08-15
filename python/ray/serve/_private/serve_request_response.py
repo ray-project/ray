@@ -74,7 +74,7 @@ class gRPCServeRequest(ServeRequest):
     def __init__(
         self,
         request_proto: Any,
-        context: "grpc._cython.cygrpc._ServicerContext",
+        context: grpc._cython.cygrpc._ServicerContext,
         match_target: Callable[[str], Optional[str]],
         service_method: str,
         stream: bool,

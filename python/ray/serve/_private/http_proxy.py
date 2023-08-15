@@ -778,7 +778,7 @@ class gRPCProxy(GenericProxy):
 
     def service_handler_factory(self, service_method: str, stream: bool) -> Callable:
         async def unary_unary(
-            request_proto: Any, context: "grpc._cython.cygrpc._ServicerContext"
+            request_proto: Any, context: grpc._cython.cygrpc._ServicerContext
         ) -> bytes:
             """Entry point of the gRPC proxy unary request.
 
@@ -797,7 +797,7 @@ class gRPCProxy(GenericProxy):
             return serve_response.response
 
         async def unary_stream(
-            request_proto: Any, context: "grpc._cython.cygrpc._ServicerContext"
+            request_proto: Any, context: grpc._cython.cygrpc._ServicerContext
         ) -> Generator[bytes, None, None]:
             """Entry point of the gRPC proxy streaming request.
 
