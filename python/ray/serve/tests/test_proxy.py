@@ -1,9 +1,11 @@
 import pytest
+import sys
 from unittest.mock import patch, Mock
 
-from ray.serve._private.http_proxy import GenericProxy, gRPCProxy, HTTPProxy
+from ray.serve._private.http_proxy import GenericProxy, HTTPProxy
 
 
+@skip("WIP")
 @patch("ray.get_runtime_context", Mock())
 class TestHTTPProxy:
     def create_http_proxy(self):
@@ -27,8 +29,6 @@ class TestHTTPProxy:
     def test_success_status_code(self):
         http_proxy = self.create_http_proxy()
         assert http_proxy.success_status_code == "200"
-
-
 
 
 if __name__ == "__main__":

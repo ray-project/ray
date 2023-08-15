@@ -720,7 +720,9 @@ class gRPCProxy(GenericProxy):
         status_code = grpc.StatusCode.NOT_FOUND
         serve_request.send_status_code(status_code=status_code)
         serve_request.send_details(message=not_found_message)
-        response_proto = ListApplicationsResponse(application_names=self.route_info.values())
+        response_proto = ListApplicationsResponse(
+            application_names=self.route_info.values()
+        )
         return ServeResponse(
             status_code=str(status_code),
             response=response_proto.SerializeToString(),
@@ -731,7 +733,9 @@ class gRPCProxy(GenericProxy):
         serve_request.send_status_code(status_code=status_code)
         serve_request.send_details(message=drained_message)
         if serve_request.route_path == "/-/routes":
-            response_proto = ListApplicationsResponse(application_names=self.route_info.values())
+            response_proto = ListApplicationsResponse(
+                application_names=self.route_info.values()
+            )
         else:
             response_proto = HealthzResponse(message=drained_message)
         return ServeResponse(
@@ -754,7 +758,9 @@ class gRPCProxy(GenericProxy):
         status_code = grpc.StatusCode.OK
         serve_request.send_status_code(status_code=status_code)
         serve_request.send_details(message=success_message)
-        response_proto = ListApplicationsResponse(application_names=self.route_info.values())
+        response_proto = ListApplicationsResponse(
+            application_names=self.route_info.values()
+        )
         return ServeResponse(
             status_code=str(status_code),
             response=response_proto.SerializeToString(),
