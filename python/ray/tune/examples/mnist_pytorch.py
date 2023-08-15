@@ -94,8 +94,7 @@ def get_data_loaders(batch_size=64):
 def train_mnist(config):
     should_checkpoint = config.get("should_checkpoint", False)
     use_cuda = torch.cuda.is_available()
-    use_mps = hasattr(torch.backends, "mps") and torch.backends.mps.is_available()
-    device = torch.device("cuda" if use_cuda else "mps" if use_mps else "cpu")
+    device = torch.device("cuda" if use_cuda else "cpu")
     train_loader, test_loader = get_data_loaders()
     model = ConvNet().to(device)
 

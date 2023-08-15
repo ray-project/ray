@@ -67,9 +67,9 @@ def main(pargs):
 
     use_cpu = pargs.cpu or pargs.smoke_test
 
-    if not torch.cuda.is_available() and not (hasattr(torch.backends, 'mps') and torch.backends.mps.is_available()) and not use_cpu:
+    if not torch.cuda.is_available() and not use_cpu:
         raise RuntimeError(
-            "GPU is required for this benchmark. Please run with --cpu flag."
+            "CUDA is required for this benchmark. Please run with --cpu flag."
         )
 
     # create the output directory and save the config

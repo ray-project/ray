@@ -60,7 +60,7 @@ class DreamerTorchPolicy(TorchPolicyV2):
             encoder_weights + decoder_weights + reward_weights + dynamics_weights
         )
         device = (
-            torch.device("cuda") if torch.cuda.is_available() else torch.device("mps") if (hasattr(torch.backends, 'mps') and torch.backends.mps.is_available())else torch.device("cpu")
+            torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
         )
 
         # PlaNET Model Loss

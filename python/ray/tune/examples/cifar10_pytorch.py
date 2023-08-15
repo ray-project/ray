@@ -74,8 +74,6 @@ def train_cifar(config):
         device = "cuda:0"
         if torch.cuda.device_count() > 1:
             net = nn.DataParallel(net)
-    elif hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
-        device = torch.device('mps')
     net.to(device)
 
     criterion = nn.CrossEntropyLoss()
@@ -169,7 +167,7 @@ def train_cifar(config):
 # __test_acc_begin__
 def test_best_model(config: Dict, checkpoint: "ray.air.Checkpoint"):
     best_trained_model = Net(config["l1"], config["l2"])
-    device = "cuda:0" if torch.cuda.is_available() else "mps" if (hasattr(torch.backends, 'mps') and torch.backends.mps.is_available()) else "cpu"
+    device = "cuda:0" if torch.cuda.is_available() else "cpu"
     best_trained_model.to(device)
 
     with checkpoint.as_directory() as checkpoint_dir:

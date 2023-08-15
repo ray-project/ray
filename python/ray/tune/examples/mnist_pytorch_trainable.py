@@ -33,8 +33,7 @@ parser.add_argument(
 class TrainMNIST(tune.Trainable):
     def setup(self, config):
         use_cuda = config.get("use_gpu") and torch.cuda.is_available()
-        use_mps = (hasattr(torch.backends, 'mps') and torch.backends.mps.is_available()) and config.get("use_gpu")
-        self.device = torch.device("cuda" if use_cuda else "mps" if use_mps else "cpu")
+        self.device = torch.device("cuda" if use_cuda else "cpu")
         self.train_loader, self.test_loader = get_data_loaders()
         self.model = ConvNet().to(self.device)
         self.optimizer = optim.SGD(

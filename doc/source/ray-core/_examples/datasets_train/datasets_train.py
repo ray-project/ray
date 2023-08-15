@@ -682,7 +682,7 @@ if __name__ == "__main__":
 
     class BatchInferModel:
         def __init__(self, load_model_func):
-            self.device = torch.device("cuda:0" if torch.cuda.is_available() else "mps" if (hasattr(torch.backends, 'mps') and torch.backends.mps.is_available()) else "cpu")
+            self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
             self.model = load_model_func().to(self.device)
 
         def __call__(self, batch) -> "pd.DataFrame":

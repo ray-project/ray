@@ -44,7 +44,7 @@ EPOCH_SIZE = 512
 TEST_SIZE = 256
 
 def train(model, optimizer, train_loader):
-    device = torch.device("cuda" if torch.cuda.is_available() else "mps" if (hasattr(torch.backends, 'mps') and torch.backends.mps.is_available()) else "cpu")
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model.train()
     for batch_idx, (data, target) in enumerate(train_loader):
         # We set this just for the example to run quickly.
@@ -59,7 +59,7 @@ def train(model, optimizer, train_loader):
 
 
 def test(model, data_loader):
-    device = torch.device("cuda" if torch.cuda.is_available() else "mps" if (hasattr(torch.backends, 'mps') and torch.backends.mps.is_available()) else "cpu")
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model.eval()
     correct = 0
     total = 0
@@ -94,7 +94,7 @@ def train_mnist(config):
         batch_size=64,
         shuffle=True)
 
-    device = torch.device("cuda" if torch.cuda.is_available() else "mps" if (hasattr(torch.backends, 'mps') and torch.backends.mps.is_available()) else "cpu")
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     model = ConvNet()
     model.to(device)

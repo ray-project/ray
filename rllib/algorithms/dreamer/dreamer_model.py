@@ -306,7 +306,7 @@ class RSSM(nn.Module):
         self.softplus = nn.Softplus
 
         self.device = (
-            torch.device("cuda") if torch.cuda.is_available() else torch.device("mps") if (hasattr(torch.backends, 'mps') and torch.backends.mps.is_available())else torch.device("cpu")
+            torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
         )
 
     def get_initial_state(self, batch_size: int) -> List[TensorType]:
@@ -492,7 +492,7 @@ class DreamerModel(TorchModelV2, nn.Module):
         self.state = None
 
         self.device = (
-            torch.device("cuda") if torch.cuda.is_available() else torch.device("mps") if (hasattr(torch.backends, 'mps') and torch.backends.mps.is_available())else torch.device("cpu")
+            torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
         )
 
     def policy(
