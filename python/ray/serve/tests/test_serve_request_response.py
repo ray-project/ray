@@ -169,8 +169,7 @@ class TestgRPCServeRequest:
         all attributes should be setup accordingly. `send_request_id()` should
         also work accordingly to be able to send the into back to the client.
         """
-        # request_proto = serve_pb2.UserDefinedMessage(name="foo", num=30, foo="bar")
-        request_proto = serve_pb2.PredictResponse(prediction=b"1")
+        request_proto = serve_pb2.UserDefinedMessage(name="foo", num=30, foo="bar")
         application = "fake-application"
         request_id = "fake-request_id"
         multiplexed_model_id = "fake-multiplexed_model_id"
