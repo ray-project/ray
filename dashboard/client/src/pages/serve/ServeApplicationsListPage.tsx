@@ -22,6 +22,7 @@ import {
 } from "../../common/MultiTabLogViewer";
 import { Section } from "../../common/Section";
 import Loading from "../../components/Loading";
+import NewEventTable from "../../components/NewEventTable";
 import { HelpInfo } from "../../components/Tooltip";
 import { ServeSystemActor } from "../../type/serve";
 import { useFetchActor } from "../actor/hook/useActorDetail";
@@ -207,6 +208,13 @@ export const ServeApplicationsListPage = () => {
             <Section noTopPadding>
               <ServeControllerLogs controller={serveDetails.controller_info} />
             </Section>
+          </CollapsibleSection>
+          <CollapsibleSection
+            title="Event Table"
+            startExpanded
+            className={classes.section}
+          >
+            <NewEventTable />
           </CollapsibleSection>
         </React.Fragment>
       )}

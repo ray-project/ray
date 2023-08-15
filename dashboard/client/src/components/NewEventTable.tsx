@@ -16,6 +16,7 @@ import {
   TableRow,
   TextField,
   TextFieldProps,
+  Tooltip,
   Typography,
 } from "@material-ui/core";
 import { SearchOutlined } from "@material-ui/icons";
@@ -38,6 +39,44 @@ type EventTableProps = {
   defaultSeverityLevels?: string[];
 };
 
+type FiltersParams = {
+  [key: string]: string | string[] | number | undefined;
+};
+
+// const transformFiltersToParams = (filters: FiltersParams) => {
+//   const params = new URLSearchParams();
+//   if (!filters) {
+//     return;
+//   }
+
+//   for (const key in filters) {
+//     if (key === "entityId" && filters.entityName && filters.entityId) {
+//       params.append(
+//         `${encodeURIComponent(filters.entityName)}_id`,
+//         encodeURIComponent(filters.entityId),
+//       );
+//     } else if (Array.isArray(filters[key])) {
+//       //Process sourceType and severityLevel
+//       filters[key].forEach((value) => {
+//         params.append(encodeURIComponent(key), encodeURIComponent(value));
+//       });
+//     }
+//   }
+
+//   return params.toString();
+// };
+
+// Example filters
+// const filters = {
+//   sourceType: ["GCS", "CORE_WORKER"],
+//   severityLevel: ["WARNING", "ERROR"],
+//   entityName: "serve_replica",
+//   entityId: 123,
+// };
+
+// const queryParams = transformFiltersToParams(filters);
+// console.log(queryParams);
+
 const useStyles = makeStyles((theme) => ({
   table: {
     marginTop: theme.spacing(4),
@@ -46,6 +85,14 @@ const useStyles = makeStyles((theme) => ({
   pageMeta: {
     padding: theme.spacing(2),
     marginTop: theme.spacing(2),
+  },
+  overflowCell: {
+    display: "block",
+    margin: "auto",
+    maxWidth: 360,
+    textOverflow: "ellipsis",
+    overflow: "hidden",
+    whiteSpace: "nowrap",
   },
   filterContainer: {
     display: "flex",
@@ -107,10 +154,7 @@ const columns = [
   { label: "Severity" },
   { label: "Timestamp" },
   { label: "Source" },
-  { label: "Hostname" },
-  {
-    label: "PID",
-  },
+  { label: "Custom Fields" },
   { label: "Message" },
 ];
 
@@ -128,8 +172,8 @@ const useEventTable = (props: EventTableProps) => {
   const [filters, setFilters] = useState<Filters>({
     sourceType: [],
     severityLevel: defaultSeverityLevels || [],
-    entityName: undefined,
-    entityId: undefined,
+    entityName: undefined, // We used two fields because we will support select entityName by dropdown and input entityId by TextField in the future.
+    entityId: undefined, // id or *
   });
 
   const [events, setEvents] = useState<Event[]>([]);
@@ -152,32 +196,51 @@ const useEventTable = (props: EventTableProps) => {
     });
   };
 
+  // useEffect(() => {
+  //   const getEvent = async () => {
+  //     try {
+  //       const params = transformFiltersToParams(filters);
+  //       const rsp = await getNewEvents(params);
+  //       console.info("rsp: ", rsp);
+  //       const events = rsp?.data?.data?.result?.result;
+  //       if (events) {
+  //         setEvents(
+  //           events.sort((a, b) => Number(b.timestamp) - Number(a.timestamp)),
+  //         );
+  //       }
+  //     } catch (e) {
+  //     } finally {
+  //       setLoading(false);
+  //     }
+  //   };
+  //   getEvent();
+  // });
   useEffect(() => {
     // const getEvent = async () => {
-    //   try {
-    //     if (job_id) {
-    //       const rsp = await getEvents(job_id);
-    //       if (rsp?.data?.data?.events) {
-    //         setEvents(
-    //           rsp.data.data.events.sort(
-    //             (a, b) => Number(b.timestamp) - Number(a.timestamp),
-    //           ),
-    //         );
-    //       }
-    //     } else {
-    //       const rsp = await getGlobalEvents();
-    //       if (rsp?.data?.data?.events) {
-    //         setEvents(
-    //           Object.values(rsp.data.data.events)
-    //             .reduce((a, b) => a.concat(b))
-    //             .sort((a, b) => Number(b.timestamp) - Number(a.timestamp)),
-    //         );
-    //       }
+    // try {
+    //   if (job_id) {
+    //     const rsp = await getEvents(job_id);
+    //     if (rsp?.data?.data?.events) {
+    //       setEvents(
+    //         rsp.data.data.events.sort(
+    //           (a, b) => Number(b.timestamp) - Number(a.timestamp),
+    //         ),
+    //       );
     //     }
-    //   } catch (e) {
-    //   } finally {
-    //     setLoading(false);
+    //   } else {
+    //     const rsp = await getGlobalEvents();
+    //     if (rsp?.data?.data?.events) {
+    //       setEvents(
+    //         Object.values(rsp.data.data.events)
+    //           .reduce((a, b) => a.concat(b))
+    //           .sort((a, b) => Number(b.timestamp) - Number(a.timestamp)),
+    //       );
+    //     }
     //   }
+    // } catch (e) {
+    // } finally {
+    //   setLoading(false);
+    // }
     setEvents(MOCK_DATA.data.events["64000000"] as any);
     setLoading(false);
 
@@ -223,7 +286,6 @@ const NewEventTable = (props: EventTableProps) => {
     sourceOptions,
     severityOptions,
     loading,
-    nodeMap,
   } = useEventTable(props);
 
   if (loading) {
@@ -237,7 +299,7 @@ const NewEventTable = (props: EventTableProps) => {
           style={{ width: 100 }}
           options={sourceOptions}
           onInputChange={(_: any, value: string) => {
-            setFilters({ ...filters, sourceType: [value.trim()] });
+            changeFilter("sourceType", value.trim());
           }}
           renderInput={(params: TextFieldProps) => (
             <TextField {...params} label="Source" />
@@ -248,7 +310,7 @@ const NewEventTable = (props: EventTableProps) => {
           style={{ width: 140 }}
           options={severityOptions}
           onInputChange={(_: any, value: string) => {
-            setFilters({ ...filters, severityLevel: [value.trim()] });
+            changeFilter("severity", value.trim());
           }}
           renderInput={(params: TextFieldProps) => (
             <TextField {...params} label="Severity" />
@@ -299,14 +361,13 @@ const NewEventTable = (props: EventTableProps) => {
                   sourceHostname,
                   pid,
                   sourcePid,
+                  customFields,
                 }) => {
                   const realTimestamp =
                     timeStamp ||
                     dayjs(Math.floor(timestamp * 1000)).format(
                       "YYYY-MM-DD HH:mm:ss",
                     );
-                  const hostname = sourceHostname || hostName;
-                  const realPid = pid || sourcePid;
                   return (
                     <React.Fragment>
                       <TableRow>
@@ -315,28 +376,26 @@ const NewEventTable = (props: EventTableProps) => {
                         </StyledTableCell>
                         <StyledTableCell>{realTimestamp}</StyledTableCell>
                         <StyledTableCell>{sourceType}</StyledTableCell>
+
                         <StyledTableCell>
-                          {" "}
-                          {nodeMap[hostname] ? (
-                            <Link to={`/node/${nodeMap[hostname]}`}>
-                              {hostname}
-                            </Link>
-                          ) : (
-                            hostname
-                          )}
+                          <Tooltip
+                            className={classes.overflowCell}
+                            title={JSON.stringify(customFields)}
+                            arrow
+                            interactive
+                          >
+                            <div>{JSON.stringify(customFields)}</div>
+                          </Tooltip>
                         </StyledTableCell>
-                        <StyledTableCell>{realPid}</StyledTableCell>
                         <StyledTableCell>
-                          {message ? (
-                            <CodeDialogButtonWithPreview
-                              className={classes.message}
-                              buttonText={"Expand"}
-                              title="Event Message Detail"
-                              code={message}
-                            />
-                          ) : (
-                            "-"
-                          )}
+                          <Tooltip
+                            className={classes.overflowCell}
+                            title={message}
+                            arrow
+                            interactive
+                          >
+                            <div>{message}</div>
+                          </Tooltip>
                         </StyledTableCell>
                       </TableRow>
                     </React.Fragment>
