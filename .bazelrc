@@ -10,8 +10,6 @@ build --compilation_mode=opt
 # Using C++ 17 on all platforms.
 build --host_cxxopt=-std=c++17
 build:linux --cxxopt="-std=c++17"
-build:linux --cxxopt="-g3"
-build:linux --cxxopt="-ggdb"
 build:macos --cxxopt="-std=c++17"
 build:clang-cl --cxxopt="-std=c++17"
 build:msvc-cl --cxxopt="/std:c++17"

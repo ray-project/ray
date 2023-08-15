@@ -380,13 +380,6 @@ def ray_deps_setup():
     )
 
     http_archive(
-        name = "rules_python",
-        urls = ["https://github.com/bazelbuild/rules_python/archive/refs/tags/0.11.0.tar.gz"],
-        sha256 = "c03246c11efd49266e8e41e12931090b613e12a59e6f55ba2efd29a7cb8b4258",
-        strip_prefix = "rules_python-0.11.0",
-    )
-
-    http_archive(
         name = "libunwind",
         build_file = "@com_github_ray_project_ray//bazel:BUILD.libunwind",
         sha256 = "a18a6a24307443a8ace7a8acc2ce79fbbe6826cd0edf98d6326d0225d6a5d6e6",
