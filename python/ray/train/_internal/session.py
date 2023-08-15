@@ -488,17 +488,7 @@ class _TrainSession:
             checkpoint = str(checkpoint._local_path)
 
         # Save the rank of the worker that created this checkpoint.
-        train_metadata = self._auto_fill_checkpoint_metrics({})
-        train_metadata.update({CHECKPOINT_RANK_KEY: self.world_rank})
-
-        # Set additional user metadata from the Trainer.
-        user_metadata = persisted_checkpoint.get_metadata()
-        for k, v in self.metadata.items():
-            # Update keys not already set by the user. This gives user-set keys
-            # precedence over keys set at the Trainer level.
-            if k not in user_metadata:
-                user_metadata[k] = v
-        persisted_checkpoint.set_metadata(user_metadata)
+        metadata.update({CHECKPOINT_RANK_KEY: self.world_rank})
 
         result = TrainingResult(
             type=TrainingResultType.CHECKPOINT,
@@ -568,6 +558,15 @@ class _TrainSession:
             persisted_checkpoint = self.storage.persist_current_checkpoint(checkpoint)
 
         metrics = self._auto_fill_metrics(metrics)
+
+        # Set additional user metadata from the Trainer.
+        user_metadata = persisted_checkpoint.get_metadata()
+        for k, v in self.metadata.items():
+            # Update keys not already set by the user. This gives user-set keys
+            # precedence over keys set at the Trainer level.
+            if k not in user_metadata:
+                user_metadata[k] = v
+        persisted_checkpoint.set_metadata(user_metadata)
 
         result = _TrainingResult(
             checkpoint=persisted_checkpoint,
