@@ -212,6 +212,9 @@ def submit(
 ):
     """Submits a job to be run on the cluster.
 
+    By default (if --no-wait is not set), streams logs to stdout until the job finishes.
+    If the job succeeded, exits with 0. If it failed, exits with 1.
+
     Example:
         `ray job submit -- python my_script.py --arg=val`
     """
