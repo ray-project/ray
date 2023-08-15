@@ -448,9 +448,7 @@ class StorageContext:
         # If `storage_path=None`, then set it to the local path.
         # Invariant: (`storage_filesystem`, `storage_path`) is the location where
         # *all* results can be accessed.
-        self.storage_path = (
-            Path(storage_path or self.storage_local_path).resolve().as_posix()
-        )
+        self.storage_path = storage_path or self.storage_local_path
 
         self.experiment_dir_name = experiment_dir_name
         self.trial_dir_name = trial_dir_name
