@@ -39,6 +39,7 @@ from ray.serve._private.common import (
     EndpointInfo,
     EndpointTag,
     NodeId,
+    RequestProtocol,
     StreamingHTTPRequest,
 )
 from ray.serve._private.constants import (
@@ -205,7 +206,7 @@ class GenericProxy(ABC):
     It contains all the common setup and methods required for running a proxy.
 
     The proxy subclass need to implement the following methods:
-      - `proxy_name()`
+      - `protocol()`
       - `not_found()`
       - `draining_response()`
       - `timeout_response()`
@@ -252,7 +253,6 @@ class GenericProxy(ABC):
                 name,
                 sync=False,
                 missing_ok=True,
-                _is_for_http_requests=True,
             )
 
         self.prefix_router = LongestPrefixRouter(get_handle)
@@ -264,14 +264,14 @@ class GenericProxy(ABC):
             call_in_event_loop=get_or_create_event_loop(),
         )
         self.request_counter = metrics.Counter(
-            f"serve_num_{self.proxy_name.lower()}_requests",
-            description=f"The number of {self.proxy_name} requests processed.",
+            f"serve_num_{self.protocol.lower()}_requests",
+            description=f"The number of {self.protocol} requests processed.",
             tag_keys=("route", "method", "application", "status_code"),
         )
 
         self.request_error_counter = metrics.Counter(
-            f"serve_num_{self.proxy_name.lower()}_error_requests",
-            description=f"The number of non-200 {self.proxy_name} responses.",
+            f"serve_num_{self.protocol.lower()}_error_requests",
+            description=f"The number of non-200 {self.protocol} responses.",
             tag_keys=(
                 "route",
                 "error_code",
@@ -280,9 +280,9 @@ class GenericProxy(ABC):
         )
 
         self.deployment_request_error_counter = metrics.Counter(
-            f"serve_num_deployment_{self.proxy_name.lower()}_error_requests",
+            f"serve_num_deployment_{self.protocol.lower()}_error_requests",
             description=(
-                f"The number of non-200 {self.proxy_name} responses returned by "
+                f"The number of non-200 {self.protocol} responses returned by "
                 "each deployment."
             ),
             tag_keys=(
@@ -295,10 +295,10 @@ class GenericProxy(ABC):
         )
 
         self.processing_latency_tracker = metrics.Histogram(
-            f"serve_{self.proxy_name.lower()}_request_latency_ms",
+            f"serve_{self.protocol.lower()}_request_latency_ms",
             description=(
-                f"The end-to-end latency of {self.proxy_name} requests "
-                f"(measured from the Serve {self.proxy_name} proxy)."
+                f"The end-to-end latency of {self.protocol} requests "
+                f"(measured from the Serve {self.protocol} proxy)."
             ),
             boundaries=DEFAULT_LATENCY_BUCKET_MS,
             tag_keys=(
@@ -330,8 +330,8 @@ class GenericProxy(ABC):
 
     @property
     @abstractmethod
-    def proxy_name(self) -> str:
-        """Proxy name used for metrics.
+    def protocol(self) -> RequestProtocol:
+        """Protocol used for metrics.
 
         Each proxy needs to implement its own logic for setting up the proxy name.
         """
@@ -659,8 +659,8 @@ class HTTPProxy(GenericProxy):
     """
 
     @property
-    def proxy_name(self) -> str:
-        return "HTTP"
+    def protocol(self) -> RequestProtocol:
+        return RequestProtocol.HTTP
 
     async def not_found(self, scope, receive, send):
         current_path = scope["path"]
@@ -903,6 +903,7 @@ class HTTPProxy(GenericProxy):
         Unpack HTTP request headers and extract info to set up request context and
         handle.
         """
+        handle = handle.options(request_protocol=RequestProtocol.HTTP)
         request_context_info = {
             "route": route_path,
             "app_name": app_name,

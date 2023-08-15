@@ -17,6 +17,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING,
     SERVE_DEFAULT_APP_NAME,
 )
+from ray.serve._private.common import RequestProtocol
 
 
 def test_handle_options():
@@ -24,45 +25,69 @@ def test_handle_options():
     assert default_options.method_name == "__call__"
     assert default_options.multiplexed_model_id == ""
     assert default_options.stream is False
+    assert default_options.request_protocol == RequestProtocol.UNDEFINED
 
     # Test setting method name.
     only_set_method = default_options.copy_and_update(method_name="hi")
     assert only_set_method.method_name == "hi"
     assert only_set_method.multiplexed_model_id == ""
     assert only_set_method.stream is False
+    assert default_options.request_protocol == RequestProtocol.UNDEFINED
 
     # Existing options should be unmodified.
     assert default_options.method_name == "__call__"
     assert default_options.multiplexed_model_id == ""
     assert default_options.stream is False
+    assert default_options.request_protocol == RequestProtocol.UNDEFINED
 
     # Test setting model ID.
     only_set_model_id = default_options.copy_and_update(multiplexed_model_id="hi")
     assert only_set_model_id.method_name == "__call__"
     assert only_set_model_id.multiplexed_model_id == "hi"
     assert only_set_model_id.stream is False
+    assert default_options.request_protocol == RequestProtocol.UNDEFINED
 
     # Existing options should be unmodified.
     assert default_options.method_name == "__call__"
     assert default_options.multiplexed_model_id == ""
     assert default_options.stream is False
+    assert default_options.request_protocol == RequestProtocol.UNDEFINED
 
     # Test setting stream.
     only_set_stream = default_options.copy_and_update(stream=True)
     assert only_set_stream.method_name == "__call__"
     assert only_set_stream.multiplexed_model_id == ""
     assert only_set_stream.stream is True
+    assert default_options.request_protocol == RequestProtocol.UNDEFINED
 
     # Existing options should be unmodified.
     assert default_options.method_name == "__call__"
     assert default_options.multiplexed_model_id == ""
     assert default_options.stream is False
+    assert default_options.request_protocol == RequestProtocol.UNDEFINED
+
+    # Test setting request_protocol.
+    request_protocol = RequestProtocol.HTTP
+    only_set_request_protocol = default_options.copy_and_update(
+        request_protocol=request_protocol
+    )
+    assert only_set_request_protocol.method_name == "__call__"
+    assert only_set_request_protocol.multiplexed_model_id == ""
+    assert only_set_model_id.stream is False
+    assert only_set_request_protocol.request_protocol == request_protocol
+
+    # Existing options should be unmodified.
+    assert default_options.method_name == "__call__"
+    assert default_options.multiplexed_model_id == ""
+    assert only_set_model_id.stream is False
+    assert default_options.request_protocol == RequestProtocol.UNDEFINED
 
     # Test setting multiple.
     set_multiple = default_options.copy_and_update(method_name="hi", stream=True)
     assert set_multiple.method_name == "hi"
     assert set_multiple.multiplexed_model_id == ""
     assert set_multiple.stream is True
+    assert default_options.request_protocol == RequestProtocol.UNDEFINED
 
 
 @pytest.mark.asyncio
@@ -208,13 +233,16 @@ def test_handle_option_chaining(serve_instance):
             return "__call__"
 
     handle1 = serve.run(MultiMethod.bind())
+    metrics = handle1.request_counter
     assert ray.get(handle1.remote()) == "__call__"
 
     handle2 = handle1.options(method_name="method_a")
     assert ray.get(handle2.remote()) == "method_a"
+    assert handle2.request_counter == metrics
 
     handle3 = handle1.options(method_name="method_b")
     assert ray.get(handle3.remote()) == "method_b"
+    assert handle3.request_counter == metrics
 
 
 def test_repeated_get_handle_cached(serve_instance):

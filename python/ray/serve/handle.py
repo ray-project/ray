@@ -10,7 +10,7 @@ import ray
 from ray._private.utils import get_or_create_event_loop
 
 from ray import serve
-from ray.serve._private.common import EndpointTag
+from ray.serve._private.common import EndpointTag, RequestProtocol
 from ray.serve._private.constants import (
     RAY_SERVE_ENABLE_NEW_ROUTING,
 )
@@ -63,6 +63,7 @@ class HandleOptions:
     multiplexed_model_id: str = ""
     stream: bool = False
     _router_cls: str = ""
+    request_protocol: RequestProtocol = RequestProtocol.UNDEFINED
 
     def copy_and_update(
         self,
@@ -70,6 +71,7 @@ class HandleOptions:
         multiplexed_model_id: Union[str, DEFAULT] = DEFAULT.VALUE,
         stream: Union[bool, DEFAULT] = DEFAULT.VALUE,
         _router_cls: Union[str, DEFAULT] = DEFAULT.VALUE,
+        request_protocol: Union[RequestProtocol, DEFAULT] = DEFAULT.VALUE,
     ) -> "HandleOptions":
         return HandleOptions(
             method_name=(
@@ -84,6 +86,9 @@ class HandleOptions:
             _router_cls=self._router_cls
             if _router_cls == DEFAULT.VALUE
             else _router_cls,
+            request_protocol=self.request_protocol
+            if request_protocol == DEFAULT.VALUE
+            else request_protocol,
         )
 
 
@@ -134,13 +139,12 @@ class RayServeHandle:
         *,
         handle_options: Optional[HandleOptions] = None,
         _router: Optional[Router] = None,
-        _is_for_http_requests: bool = False,
+        _request_counter: Optional[metrics.Counter] = None,
     ):
         self.deployment_name = deployment_name
         self.handle_options = handle_options or HandleOptions()
-        self._is_for_http_requests = _is_for_http_requests
 
-        self.request_counter = metrics.Counter(
+        self.request_counter = _request_counter or metrics.Counter(
             "serve_handle_request_counter",
             description=(
                 "The number of handle.remote() calls that have been "
@@ -182,12 +186,14 @@ class RayServeHandle:
         multiplexed_model_id: Union[str, DEFAULT] = DEFAULT.VALUE,
         stream: Union[bool, DEFAULT] = DEFAULT.VALUE,
         _router_cls: Union[str, DEFAULT] = DEFAULT.VALUE,
+        request_protocol: Union[RequestProtocol, DEFAULT] = DEFAULT.VALUE,
     ):
         new_handle_options = self.handle_options.copy_and_update(
             method_name=method_name,
             multiplexed_model_id=multiplexed_model_id,
             stream=stream,
             _router_cls=_router_cls,
+            request_protocol=request_protocol,
         )
 
         if self._router is None and _router_cls == DEFAULT.VALUE:
@@ -197,7 +203,7 @@ class RayServeHandle:
             self.deployment_name,
             handle_options=new_handle_options,
             _router=None if _router_cls != DEFAULT.VALUE else self._router,
-            _is_for_http_requests=self._is_for_http_requests,
+            _request_counter=self.request_counter,
         )
 
     def options(
@@ -207,6 +213,7 @@ class RayServeHandle:
         multiplexed_model_id: Union[str, DEFAULT] = DEFAULT.VALUE,
         stream: Union[bool, DEFAULT] = DEFAULT.VALUE,
         _router_cls: Union[str, DEFAULT] = DEFAULT.VALUE,
+        request_protocol: Union[RequestProtocol, DEFAULT] = DEFAULT.VALUE,
     ) -> "RayServeHandle":
         """Set options for this handle and return an updated copy of it.
 
@@ -225,6 +232,7 @@ class RayServeHandle:
             multiplexed_model_id=multiplexed_model_id,
             stream=stream,
             _router_cls=_router_cls,
+            request_protocol=request_protocol,
         )
 
     def _remote(self, deployment_name, handle_options, args, kwargs) -> Coroutine:
@@ -233,11 +241,11 @@ class RayServeHandle:
             _request_context.request_id,
             deployment_name,
             call_method=handle_options.method_name,
-            is_http_request=self._is_for_http_requests,
             route=_request_context.route,
             app_name=_request_context.app_name,
             multiplexed_model_id=handle_options.multiplexed_model_id,
             is_streaming=handle_options.stream,
+            request_protocol=handle_options.request_protocol,
         )
         self.request_counter.inc(
             tags={
@@ -282,7 +290,6 @@ class RayServeHandle:
         serialized_data = {
             "deployment_name": self.deployment_name,
             "handle_options": self.handle_options,
-            "_is_for_http_requests": self._is_for_http_requests,
         }
         return RayServeHandle._deserialize, (serialized_data,)
 
@@ -345,6 +352,7 @@ class RayServeSyncHandle(RayServeHandle):
         multiplexed_model_id: Union[str, DEFAULT] = DEFAULT.VALUE,
         stream: Union[bool, DEFAULT] = DEFAULT.VALUE,
         _router_cls: Union[str, DEFAULT] = DEFAULT.VALUE,
+        request_protocol: Union[RequestProtocol, DEFAULT] = DEFAULT.VALUE,
     ) -> "RayServeSyncHandle":
         """Set options for this handle and return an updated copy of it.
 
@@ -363,6 +371,7 @@ class RayServeSyncHandle(RayServeHandle):
             multiplexed_model_id=multiplexed_model_id,
             stream=stream,
             _router_cls=_router_cls,
+            request_protocol=request_protocol,
         )
 
     def remote(self, *args, **kwargs) -> ray.ObjectRef:
@@ -387,7 +396,6 @@ class RayServeSyncHandle(RayServeHandle):
         serialized_data = {
             "deployment_name": self.deployment_name,
             "handle_options": self.handle_options,
-            "_is_for_http_requests": self._is_for_http_requests,
         }
         return RayServeSyncHandle._deserialize, (serialized_data,)
 
