@@ -7,6 +7,7 @@ import {
   ResourceStatusCard,
 } from "../../components/AutoscalerStatusCards";
 import EventTable from "../../components/EventTable";
+import NewEventTable from "../../components/NewEventTable";
 import { useRayStatus } from "../job/hook/useClusterStatus";
 import { MainNavPageInfo } from "../layout/mainNavContext";
 import { ClusterUtilizationCard } from "./cards/ClusterUtilizationCard";
@@ -99,7 +100,7 @@ export const OverviewPage = () => {
         title="Events"
         startExpanded
       >
-        <EventTable />
+        <NewEventTable />
       </CollapsibleSection>
     </div>
   );
