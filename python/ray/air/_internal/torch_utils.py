@@ -56,8 +56,8 @@ def get_device() -> Union[torch.device, List[torch.device]]:
 
         devices = [torch.device(f"cuda:{device_id}") for device_id in device_ids]
         device = devices[0] if len(devices) == 1 else devices
-    elif hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
-        device = torch.device('mps')
+    elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+        device = torch.device("mps")
     else:
         device = torch.device("cpu")
 
