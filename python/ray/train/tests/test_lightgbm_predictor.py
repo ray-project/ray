@@ -5,13 +5,10 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from ray.train import Checkpoint
 from ray.air.constants import MAX_REPR_LENGTH
 from ray.air.util.data_batch_conversion import _convert_pandas_to_batch_type
-from ray.data.preprocessor import Preprocessor
 from ray.train.lightgbm import LightGBMCheckpoint, LightGBMPredictor
 from ray.train.predictor import TYPE_TO_ENUM
-from typing import Tuple
 
 from ray.train.tests.dummy_preprocessor import DummyPreprocessor
 
@@ -35,23 +32,11 @@ def test_repr():
     assert pattern.match(representation)
 
 
-def create_checkpoint_preprocessor() -> Tuple[Checkpoint, Preprocessor]:
-    preprocessor = DummyPreprocessor()
-
-    checkpoint = LightGBMCheckpoint.from_model(booster=model, preprocessor=preprocessor)
-
-    return checkpoint, preprocessor
-
-
 def test_lightgbm_checkpoint():
-    checkpoint, preprocessor = create_checkpoint_preprocessor()
-
-    predictor = LightGBMPredictor(model=model, preprocessor=preprocessor)
-
-    checkpoint_predictor = LightGBMPredictor.from_checkpoint(checkpoint)
-
-    assert get_num_trees(checkpoint_predictor.model) == get_num_trees(predictor.model)
-    assert checkpoint_predictor.get_preprocessor() == predictor.get_preprocessor()
+    preprocessor = DummyPreprocessor()
+    checkpoint = LightGBMCheckpoint.from_model(booster=model, preprocessor=preprocessor)
+    assert get_num_trees(checkpoint.get_model()) == get_num_trees(model)
+    assert checkpoint.get_preprocessor() == preprocessor
 
 
 @pytest.mark.parametrize("batch_type", [np.ndarray, pd.DataFrame, dict])
