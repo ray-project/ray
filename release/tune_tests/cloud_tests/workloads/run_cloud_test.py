@@ -35,7 +35,6 @@ from dataclasses import dataclass
 import json
 import os
 import platform
-import pytest
 import re
 import shutil
 import signal
@@ -46,9 +45,6 @@ from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
 
 import ray
 import ray.cloudpickle as pickle
-from ray import train, tune
-from ray.train import Checkpoint
-from ray.tune import TuneError
 from ray.tune.execution.experiment_state import _find_newest_experiment_checkpoint
 from ray.tune.utils.serialization import TuneFunctionDecoder
 
@@ -954,7 +950,9 @@ def test_durable_upload(bucket: str):
         # Req: Driver has trial artifacts from head node trial
         # Req: Driver has no trial artifacts from remote node trials
         # assert_artifact_existence_and_validity(
-        #     driver_dir_cp, exists_for_driver_trials=True, exists_for_worker_trials=False
+        #     driver_dir_cp,
+        #     exists_for_driver_trials=True,
+        #     exists_for_worker_trials=False,
         # )
 
         for trial, exp_dir_cp in trial_exp_checkpoint_data.items():
@@ -998,7 +996,9 @@ def test_durable_upload(bucket: str):
 
         # Req: Cloud checkpoint has artifacts from all trials
         # assert_artifact_existence_and_validity(
-        #     bucket_dir_cp, exists_for_driver_trials=True, exists_for_worker_trials=True
+        #     bucket_dir_cp,
+        #     exists_for_driver_trials=True,
+        #     exists_for_worker_trials=True,
         # )
 
         # Delete remote checkpoints before resume
@@ -1114,12 +1114,10 @@ if __name__ == "__main__":
                 f"The test script has been overwritten with " f"{overwrite_tune_script}"
             )
 
-        if variant == "no_sync_down":
-            test_no_sync_down()
-        elif variant == "ssh_sync":
-            test_ssh_sync()
-        elif variant == "durable_upload":
+        if variant == "durable_upload":
             test_durable_upload(bucket)
+        else:
+            raise NotImplementedError(f"Unknown variant: {variant}")
 
         time_taken = time.monotonic() - start_time
 
