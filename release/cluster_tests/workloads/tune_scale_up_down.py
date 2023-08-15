@@ -27,7 +27,7 @@ import time
 
 import ray
 
-from ray import tune
+from ray import train, tune
 
 
 def train(config):
@@ -35,12 +35,12 @@ def train(config):
     if config["head_node_ip"] == this_node_ip:
         # On the head node, run for 30 minutes
         for i in range(30):
-            tune.report(metric=i)
+            train.report({"metric": i})
             time.sleep(60)
     else:
         # On worker nodes, run for 3 minutes
         for i in range(3):
-            tune.report(metric=i)
+            train.report({"metric": i})
             time.sleep(60)
 
 
