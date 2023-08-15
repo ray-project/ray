@@ -264,11 +264,21 @@ def _actor_hydrate_span_args(class_: _nameable, method: _nameable):
 
 def _actor_span_producer_name(class_: _nameable, method: _nameable) -> str:
     """Returns the actor span name that has span kind of producer."""
+    if not isinstance(class_, str):
+        class_ = class_.__name__
+    if not isinstance(method, str):
+        method = method.__name__
+
     return f"{class_}.{method} ray.remote"
 
 
 def _actor_span_consumer_name(class_: _nameable, method: _nameable) -> str:
     """Returns the actor span name that has span kind of consumer."""
+    if not isinstance(class_, str):
+        class_ = class_.__name__
+    if not isinstance(method, str):
+        method = method.__name__
+
     return f"{class_}.{method} ray.remote_worker"
 
 
