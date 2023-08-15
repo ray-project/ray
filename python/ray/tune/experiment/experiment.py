@@ -2,6 +2,7 @@ import copy
 import datetime
 import warnings
 from functools import partial
+import grpc
 import logging
 import os
 from pathlib import Path
@@ -21,7 +22,6 @@ from typing import (
     TYPE_CHECKING,
 )
 
-import ray
 from ray.air import CheckpointConfig
 from ray.air._internal.uri_utils import URI
 from ray.exceptions import RpcError
@@ -76,7 +76,12 @@ def _validate_log_to_file(log_to_file):
 
 
 def _get_local_dir_with_expand_user(local_dir: Optional[str]) -> str:
-    return os.path.abspath(os.path.expanduser(local_dir or _get_defaults_results_dir()))
+    return (
+        Path(local_dir or _get_defaults_results_dir())
+        .expanduser()
+        .absolute()
+        .as_posix()
+    )
 
 
 def _get_dir_name(run, explicit_name: Optional[str], combined_name: str) -> str:
@@ -179,7 +184,7 @@ class Experiment:
         try:
             self._run_identifier = Experiment.register_if_needed(run)
         except RpcError as e:
-            if e.rpc_code == ray._raylet.GRPC_STATUS_CODE_RESOURCE_EXHAUSTED:
+            if e.rpc_code == grpc.StatusCode.RESOURCE_EXHAUSTED.value[0]:
                 raise TuneError(
                     f"The Trainable/training function is too large for grpc resource "
                     f"limit. Check that its definition is not implicitly capturing a "
@@ -325,7 +330,7 @@ class Experiment:
             "log_to_file": (stdout_file, stderr_file),
             "export_formats": export_formats or [],
             "max_failures": max_failures,
-            "restore": os.path.abspath(os.path.expanduser(restore))
+            "restore": Path(restore).expanduser().absolute().as_posix()
             if restore
             else None,
             "storage": self.storage,
