@@ -321,6 +321,7 @@ def configure_component_cpu_profiler(
         cpu_profiler_file_path = os.path.join(logs_dir, cpu_profiler_file_name)
 
         profile = cProfile.Profile()
+        profile.enable()
         logger.info(
             "RAY_SERVE_ENABLE_CPU_PROFILING is enabled. Started cProfile "
             "on this actor."

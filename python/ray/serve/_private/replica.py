@@ -441,7 +441,7 @@ def create_replica_wrapper(name: str):
         ) -> Tuple[DeploymentConfig, DeploymentVersion]:
             return self.replica.version.deployment_config, self.replica.version
 
-        def _save_cpu_profile_data(self):
+        def _save_cpu_profile_data(self) -> str:
             """Saves CPU profiling data, if CPU profiling is enabled.
 
             Logs a warning if CPU profiling is disabled.
@@ -452,8 +452,9 @@ def create_replica_wrapper(name: str):
 
                 self.cpu_profiler.snapshot_stats()
                 with open(self.cpu_profiler_log, "wb") as f:
-                    marshal.dump(self.cpu_profiler_log, f)
+                    marshal.dump(self.cpu_profiler.stats, f)
                 logger.info(f'Saved CPU profile data to file "{self.cpu_profiler_log}"')
+                return self.cpu_profiler_log
             else:
                 logger.warning(
                     "Attempted to save CPU profile data, but failed because no "

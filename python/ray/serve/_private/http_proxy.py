@@ -1072,15 +1072,20 @@ Please make sure your http-host and http-port are specified correctly."""
         """
         return pickle.dumps(await self.app.receive_asgi_messages(request_id))
 
-    async def _save_cpu_profile_data(self):
+    def _save_cpu_profile_data(self) -> str:
         """Saves CPU profiling data, if CPU profiling is enabled.
 
         Logs a warning if CPU profiling is disabled.
         """
 
         if self.cpu_profiler is not None:
-            self.cpu_profiler.dump_stats(self.cpu_profiler_log)
+            import marshal
+
+            self.cpu_profiler.snapshot_stats()
+            with open(self.cpu_profiler_log, "wb") as f:
+                marshal.dump(self.cpu_profiler.stats, f)
             logger.info(f'Saved CPU profile data to file "{self.cpu_profiler_log}"')
+            return self.cpu_profiler_log
         else:
             logger.warning(
                 "Attempted to save CPU profile data, but failed because no "

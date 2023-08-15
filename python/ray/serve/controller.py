@@ -1030,7 +1030,7 @@ class ServeController:
 
         await self._shutdown.wait()
 
-    def _save_cpu_profile_data(self):
+    def _save_cpu_profile_data(self) -> str:
         """Saves CPU profiling data, if CPU profiling is enabled.
 
         Logs a warning if CPU profiling is disabled.
@@ -1041,8 +1041,9 @@ class ServeController:
 
             self.cpu_profiler.snapshot_stats()
             with open(self.cpu_profiler_log, "wb") as f:
-                marshal.dump(self.cpu_profiler_log, f)
+                marshal.dump(self.cpu_profiler.stats, f)
             logger.info(f'Saved CPU profile data to file "{self.cpu_profiler_log}"')
+            return self.cpu_profiler_log
         else:
             logger.warning(
                 "Attempted to save CPU profile data, but failed because no "
