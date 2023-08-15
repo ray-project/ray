@@ -2,22 +2,10 @@
 
 This script provides utilities and end to end tests for cloud checkpointing.
 
-We are considering several scenarios depending on the combination of the
-following Tune properties:
-
-syncer ("auto" or None)
-storage_path
-
 Generally the flow is as follows:
 
 A Tune run is started in a separate process. It is terminated after some
 time. It is then restarted for another period of time.
-
-Depending on the combination of the run properties above, we expect different
-results between the two runs and after the second run.
-
-For instance, we sometimes expect all checkpoints to be synced to the driver
-(syncer="auto" and no upload dir), and sometimes not (syncer=None).
 
 We also ensure that checkpoints are properly deleted.
 
@@ -44,8 +32,9 @@ import time
 from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
 
 import ray
-import ray.cloudpickle as pickle
+from ray.train._internal.storage import StorageContext
 from ray.tune.execution.experiment_state import _find_newest_experiment_checkpoint
+from ray.tune.result import _get_defaults_results_dir
 from ray.tune.utils.serialization import TuneFunctionDecoder
 
 TUNE_SCRIPT = os.path.join(os.path.dirname(__file__), "_tune_script.py")
@@ -78,10 +67,10 @@ class TrialStub:
         trial_id: str,
         status: str,
         config: Dict[str, Any],
-        _legacy_local_experiment_path: str,
         experiment_tag: str,
         last_result: Dict[str, Any],
         relative_logdir: str,
+        storage: StorageContext,
         *args,
         **kwargs,
     ):
@@ -89,7 +78,7 @@ class TrialStub:
         self.trial_id = trial_id
         self.status = status
         self.config = config
-        self.local_experiment_path = _legacy_local_experiment_path
+        self.storage = storage
         self.experiment_tag = experiment_tag
         self.last_result = last_result
         self.relative_logdir = relative_logdir
@@ -469,10 +458,10 @@ def fetch_trial_node_dirs_to_tmp_dir(trials: List[TrialStub]) -> Dict[TrialStub,
         if trial.was_on_driver_node:
             # Trial was run on driver
             shutil.rmtree(tmpdir)
-            shutil.copytree(trial.local_experiment_path, tmpdir)
+            shutil.copytree(trial.storage.experiment_local_path, tmpdir)
             print(
                 "Copied local node experiment dir",
-                trial.local_experiment_path,
+                trial.storage.experiment_local_path,
                 "to",
                 tmpdir,
                 "for trial",
@@ -482,7 +471,9 @@ def fetch_trial_node_dirs_to_tmp_dir(trials: List[TrialStub]) -> Dict[TrialStub,
         else:
             # Trial was run on remote node
             fetch_remote_directory_content(
-                trial.node_ip, remote_dir=trial.local_experiment_path, local_dir=tmpdir
+                trial.node_ip,
+                remote_dir=trial.storage.experiment_local_path,
+                local_dir=tmpdir,
             )
 
         dirmap[trial] = tmpdir
@@ -549,11 +540,9 @@ def load_experiment_checkpoint_from_state_file(
         runner_state = json.load(f, cls=TuneFunctionDecoder)
 
     trials = []
-    for trial_cp_str, trial_runtime_str in runner_state["trial_data"]:
-        parsed = json.loads(trial_cp_str, cls=TuneFunctionDecoder)
-        runtime = json.loads(trial_cp_str, cls=TuneFunctionDecoder)
-        parsed.update(runtime)
-        trial = TrialStub(**parsed)
+    for _, trial_state_str in runner_state["trial_data"]:
+        trial_state = json.loads(trial_state_str, cls=TuneFunctionDecoder)
+        trial = TrialStub(**trial_state)
         trials.append(trial)
 
     runner_data = runner_state["runner_data"]
@@ -578,18 +567,14 @@ def load_experiment_checkpoint_from_dir(
             if not trial_stub:
                 raise RuntimeError(f"Trial with dirname {f} not found.")
 
-            trial_checkpoint_data = load_trial_checkpoint_data(
-                full_path, node_trial=trial_stub
-            )
+            trial_checkpoint_data = load_trial_checkpoint_data(full_path)
 
             trial_to_cps[trial_stub] = trial_checkpoint_data
 
     return ExperimentDirCheckpoint(experiment_dir, trial_to_cps)
 
 
-def load_trial_checkpoint_data(
-    trial_dir: str, node_trial: TrialStub
-) -> TrialCheckpointData:
+def load_trial_checkpoint_data(trial_dir: str) -> TrialCheckpointData:
     params_file = os.path.join(trial_dir, "params.json")
     if os.path.exists(params_file):
         with open(params_file, "rt") as f:
@@ -621,36 +606,11 @@ def load_trial_checkpoint_data(
             continue
 
         cp_full_dir = os.path.join(trial_dir, cp_dir)
-
-        try:
-            checkpoint_num = int(cp_dir.lstrip("checkpoint_"))
-            if checkpoint_num > node_trial.last_result["internal_iter"]:
-                # Checkpoint has not been observed by tune, yet, so we can't
-                # account for it. This is a race condition where training
-                # already created a checkpoint, but the result was not yet
-                # processed by Ray Tune. So, we just pretend it isn't there
-                # for the sake of the test.
-                print(
-                    f"Skipping unobserved checkpoint: {cp_full_dir} as "
-                    f"{checkpoint_num} > "
-                    f"{node_trial.last_result['internal_iter']}"
-                )
-                num_skipped += 1
-                continue
-        except ValueError:
-            # temporary checkpoint
-            continue
-
         json_path = os.path.join(cp_full_dir, "checkpoint.json")
-        meta_path = os.path.join(cp_full_dir, ".tune_metadata")
 
         if os.path.exists(json_path):
             with open(json_path, "rt") as f:
                 checkpoint_data = json.load(f)
-        elif os.path.exists(meta_path):
-            with open(meta_path, "rb") as f:
-                checkpoint_meta = pickle.load(f)
-                checkpoint_data = {"internal_iter": checkpoint_meta["iteration"]}
         else:
             # If neither file exists, this means the checkpoint got only synced half,
             # so we should skip it
@@ -737,7 +697,7 @@ def get_bucket_data(
 
 
 def assert_experiment_dir_exists(experiment_name: str) -> str:
-    experiment_dir = os.path.join(os.path.expanduser("~/ray_results"), experiment_name)
+    experiment_dir = os.path.join(_get_defaults_results_dir(), experiment_name)
 
     if not os.path.exists(experiment_dir):
         raise RuntimeError(
@@ -882,7 +842,6 @@ def test_durable_upload(bucket: str):
     """
     Sync trial and experiment checkpoints to cloud, so:
 
-        syncer="auto"
         storage_path="s3://"
 
     Expected results after first checkpoint:
@@ -890,16 +849,18 @@ def test_durable_upload(bucket: str):
         - 4 trials are running
         - At least one trial ran on the head node
         - At least one trial ran remotely
-        - Driver has trial checkpoints from head node trial
-        - Driver has trial artifacts from head node trial (NOT IMPLEMENTED)
-        - Driver has no trial checkpoints from remote node trials
-        - Driver has no trial artifacts from remote node trials (NOT IMPLEMENTED)
+        - Driver has NO trial checkpoints from head node trial
+          (since they're uploaded directly to storage instead)
+        - Driver has trial artifacts from head node trial
+        - Driver has NO trial checkpoints from remote node trials
+        - Driver has NO trial artifacts from remote node trials
         - Remote trial dirs only have data for one trial
-        - Remote trial dirs have checkpoints for node-local trials
-        - Remote trial dirs have trial artifacts for node-local trials (NOT IMPLEMENTED)
+        - Remote trial dirs have NO checkpoints for node-local trials
+          (since they're uploaded directly to storage instead)
+        - Remote trial dirs have trial artifacts for node-local trials
         - Cloud checkpoint is valid
-        - Cloud checkpoint has checkpoints from all trials
-        - Cloud checkpoint has artifacts from all trials (NOT IMPLEMENTED)
+        - Cloud checkpoint has checkpoints from ALL trials
+        - Cloud checkpoint has artifacts from ALL trials (NOT IMPLEMENTED)
 
     Then, remote checkpoint directories are cleaned up.
 
@@ -909,7 +870,7 @@ def test_durable_upload(bucket: str):
         - All trials progressed with training
         - Cloud checkpoint is valid
         - Cloud checkpoint has checkpoints from all trials
-        - Cloud checkpoint has newly appended synced artifacts from all trials
+        - Cloud checkpoint has updated synced artifacts for all trials (NOT IMPLEMENTED)
 
     """
     if not bucket:
@@ -941,19 +902,19 @@ def test_durable_upload(bucket: str):
             driver_dir_cp.trial_to_cps.keys(), on_driver=1, on_worker=1
         )
 
-        # Req: Driver has trial checkpoints from head node trial
-        # Req: Driver has no trial checkpoints from remote node trials
+        # Req: Driver has NO trial checkpoints from head node trial
+        # Req: Driver has NO trial checkpoints from remote node trials
         assert_checkpoint_count(
-            driver_dir_cp, for_driver_trial=2, for_worker_trial=0, max_additional=1
+            driver_dir_cp, for_driver_trial=0, for_worker_trial=0, max_additional=0
         )
 
         # Req: Driver has trial artifacts from head node trial
         # Req: Driver has no trial artifacts from remote node trials
-        # assert_artifact_existence_and_validity(
-        #     driver_dir_cp,
-        #     exists_for_driver_trials=True,
-        #     exists_for_worker_trials=False,
-        # )
+        assert_artifact_existence_and_validity(
+            driver_dir_cp,
+            exists_for_driver_trials=True,
+            exists_for_worker_trials=False,
+        )
 
         for trial, exp_dir_cp in trial_exp_checkpoint_data.items():
             # Req: Remote trial dirs only have data for one trial
@@ -974,15 +935,15 @@ def test_durable_upload(bucket: str):
                 )
 
                 assert_checkpoint_count(
-                    exp_dir_cp, for_driver_trial=0, for_worker_trial=2, max_additional=1
+                    exp_dir_cp, for_driver_trial=0, for_worker_trial=0, max_additional=0
                 )
 
                 # Req: Remote trial dirs have artifacts for node-local trials
-                # assert_artifact_existence_and_validity(
-                #     exp_dir_cp,
-                #     exists_for_driver_trials=False,
-                #     exists_for_worker_trials=True,
-                # )
+                assert_artifact_existence_and_validity(
+                    exp_dir_cp,
+                    exists_for_driver_trials=False,
+                    exists_for_worker_trials=True,
+                )
 
         bucket_state_cp, bucket_dir_cp = get_bucket_data(bucket, experiment_name)
 
@@ -1006,11 +967,9 @@ def test_durable_upload(bucket: str):
         cleanup_remote_node_experiment_dir(experiment_name)
 
     def after_experiments():
-        (
-            experiment_state,
-            driver_dir_cp,
-            trial_exp_checkpoint_data,
-        ) = get_experiment_and_trial_data(experiment_name=experiment_name)
+        (experiment_state, _, _) = get_experiment_and_trial_data(
+            experiment_name=experiment_name
+        )
 
         # Req: 4 trials are running
         assert all(

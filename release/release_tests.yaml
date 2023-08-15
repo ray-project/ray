@@ -1813,7 +1813,7 @@
 
   run:
     timeout: 600
-    script: python workloads/run_cloud_test.py durable_upload --bucket s3://tune-cloud-tests/durable_upload
+    script: RAY_AIR_NEW_PERSISTENCE_MODE=1 python workloads/run_cloud_test.py durable_upload --bucket s3://tune-cloud-tests/durable_upload
 
     wait_for_nodes:
       num_nodes: 4
@@ -1827,7 +1827,7 @@
         cluster_compute: tpl_gce_4x8.yaml
       run:
         timeout: 600
-        script: python workloads/run_cloud_test.py durable_upload --bucket gs://tune-cloud-tests/durable_upload
+        script: RAY_AIR_NEW_PERSISTENCE_MODE=1 python workloads/run_cloud_test.py durable_upload --bucket gs://tune-cloud-tests/durable_upload
         wait_for_nodes:
           num_nodes: 4
 
