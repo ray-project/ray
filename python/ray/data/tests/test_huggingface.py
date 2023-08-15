@@ -42,11 +42,12 @@ def test_huggingface(ray_start_regular_shared):
 
 
 def test_from_huggingface_streaming(ray_start_regular_shared):
-    hfds = datasets.load_dataset("tweet_eval", "stance_climate", streaming=True, split="train")
+    hfds = datasets.load_dataset("tweet_eval", "emotion", streaming=True, split="train")
+
     assert isinstance(hfds, datasets.IterableDataset)
     ds = ray.data.from_huggingface(hfds)
-    row = ds.limit(1).take(1)
-    assert isinstance(row, list)
+    assert ds.count() == 3257
+
 
 if __name__ == "__main__":
     import sys
