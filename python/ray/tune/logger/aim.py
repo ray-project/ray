@@ -101,7 +101,7 @@ class AimLoggerCallback(LoggerCallback):
         run["trial_log_dir"] = trial.local_path
         if trial.remote_path:
             run["trial_remote_log_dir"] = trial.remote_path
-        trial_ip = trial.get_runner_ip()
+        trial_ip = trial.get_ray_actor_ip()
         if trial_ip:
             run["trial_ip"] = trial_ip
         return run

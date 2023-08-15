@@ -427,5 +427,28 @@ def test_deploy_application_unhealthy(serve_instance):
         time.sleep(0.1)
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="Runtime env support experimental on windows"
+)
+def test_deploy_bad_pip_package_deployment(serve_instance):
+    """Test deploying with a bad runtime env at deployment level."""
+
+    @serve.deployment(ray_actor_options={"runtime_env": {"pip": ["does_not_exist"]}})
+    class Model:
+        def __call__(self):
+            return "hello world"
+
+    serve.run(Model.bind(), _blocking=False)
+
+    def check_fail():
+        app_status = serve.status().applications["default"]
+        assert app_status.status == ApplicationStatus.DEPLOY_FAILED
+        deployment_message = app_status.deployments["default_Model"].message
+        assert "No matching distribution found for does_not_exist" in deployment_message
+        return True
+
+    wait_for_condition(check_fail, timeout=15)
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))

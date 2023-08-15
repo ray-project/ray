@@ -21,7 +21,7 @@ Using Ray Data and Ray Train for distributed training on large datasets involves
 
 - **Step 1:** Load your data into a Ray Dataset. Ray Data supports many different data sources and formats. For more details, see :ref:`Loading Data <loading_data>`.
 - **Step 2:** If required, create a function that defines your training logic and periodically checkpoints your model. For more information, see :ref:`Ray Train user guides <train-user-guides>`.
-- **Step 3:** Inside your training function, access the dataset shard for the training worker via :meth:`session.get_dataset_shard() <ray.air.session.get_dataset_shard>`. Iterate over the dataset shard to train your model. For more details on how to iterate over your data, see :ref:`Iterating over data <iterating-over-data>`.
+- **Step 3:** Inside your training function, access the dataset shard for the training worker via :meth:`train.get_dataset_shard() <ray.train.get_dataset_shard>`. Iterate over the dataset shard to train your model. For more details on how to iterate over your data, see :ref:`Iterating over data <iterating-over-data>`.
 - **Step 4:** Create your :class:`TorchTrainer <ray.train.torch.TorchTrainer>` and pass in your Ray Dataset. This automatically shards the datasets and passes them to each training worker. For more information on configuring training, see the :ref:`Ray Train user guides <train-user-guides>`.
 
 .. tabs::
@@ -33,7 +33,8 @@ Using Ray Data and Ray Train for distributed training on large datasets involves
             import torch
             from torch import nn
             import ray
-            from ray.air import session, Checkpoint, ScalingConfig
+            from ray import train
+            from ray.train import Checkpoint, ScalingConfig
             from ray.train.torch import TorchTrainer
 
             # Set this to True to use GPU.
@@ -56,7 +57,7 @@ Using Ray Data and Ray Train for distributed training on large datasets involves
 
                 # Step 3: Access the dataset shard for the training worker via
                 # ``get_dataset_shard``.
-                train_data_shard = session.get_dataset_shard("train")
+                train_data_shard = train.get_dataset_shard("train")
 
                 for epoch_idx in range(2):
                     # In each epoch, iterate over batches of the dataset shard in torch
@@ -69,7 +70,7 @@ Using Ray Data and Ray Train for distributed training on large datasets involves
                         optimizer.step()
 
                     # Checkpoint the model on each epoch.
-                    session.report(
+                    train.report(
                         {},
                         checkpoint=Checkpoint.from_dict({"model": model.state_dict()})
                     )
@@ -131,6 +132,50 @@ Using Ray Data and Ray Train for distributed training on large datasets involves
                 scaling_config=ScalingConfig(num_workers=4),
             )
             trainer.fit()
+    
+    .. group-tab:: HuggingFace Transformers
+
+        .. code-block:: python
+            :emphasize-lines: 12,13,16,17,24,25
+
+            import ray
+            import ray.train
+         
+            ...
+
+            train_data = ray.data.from_huggingface(hf_train_ds)
+            eval_data = ray.data.from_huggingface(hf_eval_ds)
+
+            def train_func(config):
+                # Access Ray datsets in your train_func via ``get_dataset_shard``.
+                # The "train" dataset gets sharded across workers by default
+                train_ds = ray.train.get_dataset_shard("train")
+                eval_ds = ray.train.get_dataset_shard("evaluation")
+
+                # Create Ray dataset iterables via ``iter_torch_batches``.
+                train_iterable_ds = train_ds.iter_torch_batches(batch_size=16)
+                eval_iterable_ds = eval_ds.iter_torch_batches(batch_size=16)
+
+                ...
+
+                trainer = transformers.Trainer(
+                    ...,
+                    model=model,
+                    train_dataset=train_iterable_ds,
+                    eval_dataset=eval_iterable_ds,
+                )
+
+                # Prepare your Transformers Trainer
+                trainer = ray.train.huggingface.transformers.prepare_trainer(trainer)
+                trainer.train()
+
+            trainer = TorchTrainer(
+                train_func,
+                datasets={"train": train_data, "evaluation": val_data},
+                scaling_config=ScalingConfig(num_workers=4, use_gpu=True),
+            )
+            trainer.fit()
+
 
 Migrating from PyTorch DataLoader
 ---------------------------------
@@ -160,7 +205,8 @@ To customize this, pass in a :class:`DataConfig <ray.train.DataConfig>` to the T
 .. testcode::
 
     import ray
-    from ray.air import ScalingConfig, session
+    from ray import train
+    from ray.train import ScalingConfig
     from ray.train.torch import TorchTrainer
 
     ds = ray.data.read_text(
@@ -170,7 +216,7 @@ To customize this, pass in a :class:`DataConfig <ray.train.DataConfig>` to the T
 
     def train_loop_per_worker():
         # Get an iterator to the dataset we passed in below.
-        it = session.get_dataset_shard("train")
+        it = train.get_dataset_shard("train")
         for _ in range(2):
             for batch in it.iter_batches(batch_size=128):
                 print("Do some training on batch", batch)
@@ -201,9 +247,9 @@ For use cases not covered by the default config class, you can also fully custom
     from typing import Optional, Dict, List
 
     import ray
-    from ray.air import ScalingConfig, session
+    from ray import train
     from ray.train.torch import TorchTrainer
-    from ray.train import DataConfig
+    from ray.train import DataConfig, ScalingConfig
     from ray.data import Dataset, DataIterator, NodeIdStr
     from ray.actor import ActorHandle
 
@@ -213,7 +259,7 @@ For use cases not covered by the default config class, you can also fully custom
 
     def train_loop_per_worker():
         # Get an iterator to the dataset we passed in below.
-        it = session.get_dataset_shard("train")
+        it = train.get_dataset_shard("train")
         for _ in range(2):
             for batch in it.iter_batches(batch_size=128):
                 print("Do some training on batch", batch)
@@ -326,7 +372,8 @@ For example, the following code prefetches 10 batches at a time for each trainin
 .. testcode::
 
     import ray
-    from ray.air import ScalingConfig, session
+    from ray import train
+    from ray.train import ScalingConfig
     from ray.train.torch import TorchTrainer
 
     ds = ray.data.read_text(
@@ -335,7 +382,7 @@ For example, the following code prefetches 10 batches at a time for each trainin
 
     def train_loop_per_worker():
         # Get an iterator to the dataset we passed in below.
-        it = session.get_dataset_shard("train")
+        it = train.get_dataset_shard("train")
         for _ in range(2):
             # Prefetch 10 batches at a time.
             for batch in it.iter_batches(batch_size=128, prefetch_batches=10):
@@ -368,6 +415,9 @@ First, randomize each :ref:`block <dataset_concept>` of your dataset via :meth:`
 
 .. testcode::
     import ray
+    from ray import train
+    from ray.train import ScalingConfig
+    from ray.train.torch import TorchTrainer
 
     ds = ray.data.read_text(
         "s3://anonymous@ray-example-data/sms_spam_collection_subset.txt"
@@ -378,7 +428,7 @@ First, randomize each :ref:`block <dataset_concept>` of your dataset via :meth:`
 
     def train_loop_per_worker():
         # Get an iterator to the dataset we passed in below.
-        it = session.get_dataset_shard("train")
+        it = train.get_dataset_shard("train")
         for _ in range(2):
             # Use a shuffle buffer size of 10k rows.
             for batch in it.iter_batches(
@@ -475,8 +525,6 @@ When developing or hyperparameter tuning models, reproducibility is important du
 .. testcode::
 
     import ray
-    from ray.air import ScalingConfig, session
-    from ray.train.torch import TorchTrainer
 
     # Preserve ordering in Ray Datasets for reproducibility.
     ctx = ray.data.DataContext.get_current()

@@ -643,7 +643,7 @@ def test_status_invalid_runtime_env(ray_start_stop):
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
 def test_status_syntax_error(ray_start_stop):
-    """Deploys Serve app with syntax error, checks the error message is descriptive."""
+    """Deploys Serve app with syntax error, checks error message has traceback."""
 
     config_file_name = os.path.join(
         os.path.dirname(__file__), "test_config_files", "syntax_error.yaml"
@@ -657,6 +657,7 @@ def test_status_syntax_error(ray_start_stop):
         )
         status = yaml.safe_load(cli_output)["applications"]["default"]
         assert status["status"] == "DEPLOY_FAILED"
+        assert "Traceback (most recent call last)" in status["message"]
         assert "x = (1 + 2" in status["message"]
         return True
 
@@ -729,15 +730,12 @@ def test_replica_placement_group_options(ray_start_stop):
             ["serve", "status", "-a", "http://localhost:52365/"]
         )
         status = yaml.safe_load(cli_output)["applications"]
-        # TODO(zcin): fix error handling in the application state manager for
-        # invalid override options and check for `DEPLOY_FAILED` here.
-        return (
+        assert (
             status["valid"]["status"] == "RUNNING"
-            # and status["invalid_bundles"] == "DEPLOY_FAILED"
-            and status["invalid_bundles"]["status"] == "DEPLOYING"
-            # and status["invalid_strategy"] == "DEPLOY_FAILED"
-            and status["invalid_strategy"]["status"] == "DEPLOYING"
+            and status["invalid_bundles"]["status"] == "DEPLOY_FAILED"
+            and status["invalid_strategy"]["status"] == "DEPLOY_FAILED"
         )
+        return True
 
     wait_for_condition(check_application_status, timeout=15)
 

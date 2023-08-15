@@ -14,7 +14,7 @@ from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 import ray
 from ray import ObjectRef, cloudpickle
 from ray.actor import ActorHandle
-from ray.exceptions import RayActorError, RayError, RayTaskError
+from ray.exceptions import RayActorError, RayError, RayTaskError, RuntimeEnvSetupError
 from ray.util.placement_group import PlacementGroup
 from ray._private.usage.usage_lib import (
     TagKey,
@@ -571,6 +571,19 @@ class ActorReplicaWrapper:
                     "the replica will be stopped."
                 )
                 return ReplicaStartupStatus.FAILED, str(e.as_instanceof_cause())
+            except RuntimeEnvSetupError as e:
+                msg = (
+                    f"Exception when allocating replica '{self._replica_tag}': {str(e)}"
+                )
+                logger.exception(msg)
+                return ReplicaStartupStatus.FAILED, msg
+            except Exception:
+                msg = (
+                    f"Exception when allocating replica '{self._replica_tag}':\n"
+                    + traceback.format_exc()
+                )
+                logger.exception(msg)
+                return ReplicaStartupStatus.FAILED, msg
 
         # Check whether relica initialization has completed.
         replica_ready = check_obj_ref_ready_nowait(self._ready_obj_ref)
@@ -1032,9 +1045,6 @@ class ReplicaStateContainer:
         exclude_version: Optional[DeploymentVersion] = None,
         states: Optional[List[ReplicaState]] = None,
         max_replicas: Optional[int] = math.inf,
-        ranking_function: Optional[
-            Callable[[List["DeploymentReplica"]], List["DeploymentReplica"]]
-        ] = None,
     ) -> List[VersionedReplica]:
         """Get and remove all replicas of the given states.
 
@@ -1048,9 +1058,6 @@ class ReplicaStateContainer:
                 are considered.
             max_replicas: max number of replicas to return. If not
                 specified, will pop all replicas matching the criteria.
-            ranking_function: optional function to sort the replicas
-                within each state before they are truncated to max_replicas and
-                returned.
         """
         if states is None:
             states = ALL_REPLICA_STATES
@@ -1063,17 +1070,14 @@ class ReplicaStateContainer:
             popped = []
             remaining = []
 
-            replicas_to_process = self._replicas[state]
-            if ranking_function:
-                replicas_to_process = ranking_function(replicas_to_process)
-
-            for replica in replicas_to_process:
+            for replica in self._replicas[state]:
                 if len(replicas) + len(popped) == max_replicas:
                     remaining.append(replica)
                 elif exclude_version is not None and replica.version == exclude_version:
                     remaining.append(replica)
                 else:
                     popped.append(replica)
+
             self._replicas[state] = remaining
             replicas.extend(popped)
 

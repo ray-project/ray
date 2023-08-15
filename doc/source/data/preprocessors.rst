@@ -9,9 +9,8 @@ In general, you may want to apply the same preprocessing logic to your offline t
 This page covers *preprocessors*, which are a higher level API on top of existing Ray Data operations like `map_batches`,
 targeted towards tabular and structured data use cases.
 
-The recommended way to perform preprocessing is to :ref:`use existing Ray Data operations <transforming_data>` instead
-of preprocessors. However, if you are working with tabular data, you should consider using Ray Data preprocessors.
-
+If you are working with tabular data, you should use Ray Data preprocessors. However, the recommended way to perform preprocessing 
+for unstructured data is to :ref:`use existing Ray Data operations <transforming_data>` instead of preprocessors. 
 
 
 .. https://docs.google.com/drawings/d/1ZIbsXv5vvwTVIEr2aooKxuYJ_VL7-8VMNlRinAiPaTI/edit
