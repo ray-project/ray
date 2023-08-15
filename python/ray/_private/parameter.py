@@ -404,7 +404,8 @@ class RayParams:
                 raise ValueError(
                     "Ray Client requires pip package `ray[client]`. "
                     "If you installed the minimal Ray (e.g. `pip install ray`), "
-                    "please reinstall by executing `pip install ray[client]`.")
+                    "please reinstall by executing `pip install ray[client]`."
+                )
             if (
                 self.ray_client_server_port < 1024
                 or self.ray_client_server_port > 65535

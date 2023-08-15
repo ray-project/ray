@@ -680,8 +680,9 @@ class StandardAutoscaler:
             # the nodes without the GCS printing an error.
             # Check if we succeeded in draining all of the intended nodes by
             # looking at the RPC response.
-            drained_raylet_ids = set(self.gcs_client.drain_nodes(
-                raylet_ids_to_drain, timeout=5))
+            drained_raylet_ids = set(
+                self.gcs_client.drain_nodes(raylet_ids_to_drain, timeout=5)
+            )
             failed_to_drain = raylet_ids_to_drain - drained_raylet_ids
             if failed_to_drain:
                 self.prom_metrics.drain_node_exceptions.inc()
