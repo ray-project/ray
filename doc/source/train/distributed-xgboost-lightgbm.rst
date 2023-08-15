@@ -79,8 +79,6 @@ save a checkpoint on every boosting round and will only keep the latest checkpoi
     Once checkpointing is enabled, you can follow :ref:`this guide <train-fault-tolerance>`
     to enable fault tolerance.
 
-    See the :ref:`Trainer restore API reference <trainer-restore>` for more details.
-
 
 How to scale out training?
 --------------------------
