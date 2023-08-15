@@ -61,9 +61,9 @@ Saving and Loading XGBoost and LightGBM Checkpoints
 When a new tree is trained on every boosting round,
 it's possible to save a checkpoint to snapshot the training progress so far.
 :class:`~ray.train.xgboost.XGBoostTrainer` and :class:`~ray.train.lightgbm.LightGBMTrainer`
-both implement checkpointing out of the box and will create 
-:class:`~ray.train.xgboost.XGBoostCheckpoint`\s and :class:`~ray.train.lightgbm.LightGBMCheckpoint`\s
-respectively.
+both implement checkpointing out of the box. These checkpoints can be loaded into memory
+using static methods :meth:`XGBoostTrainer.get_model <ray.train.xgboost.XGBoostTrainer.get_model>` and
+:meth:`LightGBMTrainer.get_model <ray.train.lightgbm.LightGBMTrainer.get_model>`.
 
 The only required change is to configure :class:`~ray.train.CheckpointConfig` to set
 the checkpointing frequency. For example, the following configuration will
@@ -78,8 +78,6 @@ save a checkpoint on every boosting round and will only keep the latest checkpoi
 
     Once checkpointing is enabled, you can follow :ref:`this guide <train-fault-tolerance>`
     to enable fault tolerance.
-
-    See the :ref:`Trainer restore API reference <trainer-restore>` for more details.
 
 
 How to scale out training?
