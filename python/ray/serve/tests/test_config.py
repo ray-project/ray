@@ -397,7 +397,8 @@ def test_grpc_options():
     port = 9000
     grpc_servicer_functions = [
         "ray.serve.generated.serve_pb2_grpc.add_UserDefinedServiceServicer_to_server",
-        "fake.service.that.does.not.exist",  # Should be ignored.
+        "fake.service.that.does.not.exist",  # Import not found, ignore.
+        "ray.serve._private.constants.DEFAULT_HTTP_PORT",  # Not callable, ignore.
     ]
     grpc_options = gRPCOptions(
         port=port,
