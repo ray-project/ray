@@ -2276,7 +2276,7 @@
 
   run:
     timeout: 5400
-    script: python workloads/test_tune_worker_fault_tolerance.py --bucket s3://tune-cloud-tests/worker_fault_tolerance
+    script: RAY_AIR_NEW_PERSISTENCE_MODE=1 python workloads/test_tune_worker_fault_tolerance.py --bucket s3://tune-cloud-tests/worker_fault_tolerance
 
     wait_for_nodes:
       num_nodes: 16

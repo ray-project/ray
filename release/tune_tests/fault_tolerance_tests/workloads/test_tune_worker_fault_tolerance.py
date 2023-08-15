@@ -27,10 +27,11 @@ import gc
 
 import ray
 from ray import train
-from ray.train import Checkpoint, RunConfig, FailureConfig, CheckpointConfig
+from ray.train import RunConfig, FailureConfig, CheckpointConfig
 from ray.tune.tune_config import TuneConfig
 from ray.tune.tuner import Tuner
 
+from ray.train.tests.util import create_dict_checkpoint, load_dict_checkpoint
 from terminate_node_aws import create_instance_killer
 
 
@@ -47,12 +48,13 @@ def objective(config):
     if (time.monotonic() - config["start_time"]) >= config["warmup_time_s"]:
         assert checkpoint
     if checkpoint:
-        start_iteration = checkpoint.to_dict()["iteration"] + 1
+        start_iteration = load_dict_checkpoint(checkpoint)["iteration"] + 1
 
     for iteration in range(start_iteration, MAX_ITERS + 1):
         time.sleep(random.uniform(*ITER_TIME_BOUNDS))
         dct = {"iteration": iteration}
-        train.report(dct, checkpoint=Checkpoint.from_dict(dct))
+        with create_dict_checkpoint(dct) as checkpoint:
+            train.report(dct, checkpoint=checkpoint)
 
 
 def main(bucket_uri: str):
