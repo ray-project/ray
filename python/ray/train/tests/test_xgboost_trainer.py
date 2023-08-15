@@ -100,8 +100,8 @@ def test_resume_from_checkpoint(ray_start_4_cpus, tmpdir):
         datasets={TRAIN_DATASET_KEY: train_dataset, "valid": valid_dataset},
     )
     result = trainer.fit()
-    checkpoint = LegacyXGBoostCheckpoint.from_checkpoint(result.checkpoint)
-    xgb_model = checkpoint.get_model()
+    checkpoint = result.checkpoint
+    xgb_model = XGBoostTrainer.get_model(checkpoint)
     assert get_num_trees(xgb_model) == 5
 
     # Move checkpoint to a different directory.

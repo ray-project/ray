@@ -1,3 +1,4 @@
+import os
 from typing import Dict, Any, Optional, Tuple, Union, TYPE_CHECKING
 
 try:
@@ -6,6 +7,7 @@ except ImportError:
     from distutils.version import LooseVersion as Version
 
 from ray.air.checkpoint import Checkpoint
+from ray.air.constants import MODEL_KEY
 from ray.train.gbdt_trainer import GBDTTrainer
 from ray.util.annotations import PublicAPI
 from ray.train.lightgbm.lightgbm_checkpoint import LegacyLightGBMCheckpoint
@@ -104,12 +106,19 @@ class LightGBMTrainer(GBDTTrainer):
     }
     _init_model_arg_name: str = "init_model"
 
+    @staticmethod
+    def get_model(checkpoint: Checkpoint) -> lightgbm.Booster:
+        """Retrieve the LightGBM model stored in this checkpoint."""
+        with checkpoint.as_directory() as checkpoint_path:
+            return lightgbm.Booster(model_file=os.path.join(checkpoint_path, MODEL_KEY))
+
     def _train(self, **kwargs):
         return lightgbm_ray.train(**kwargs)
 
     def _load_checkpoint(
         self, checkpoint: Checkpoint
     ) -> Tuple[lightgbm.Booster, Optional["Preprocessor"]]:
+        # TODO(matt): Replace this when preprocessor arg is removed.
         checkpoint = LegacyLightGBMCheckpoint.from_checkpoint(checkpoint)
         return checkpoint.get_model(), checkpoint.get_preprocessor()
 
