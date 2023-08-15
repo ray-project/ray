@@ -119,14 +119,19 @@ class ConvTransposeAtari(tf.keras.Model):
 
         # Trace self.call.
         dl_type = tf.keras.mixed_precision.global_policy().compute_dtype
-        self.call = tf.function(input_signature=[
-            tf.TensorSpec(shape=[None, get_gru_units(model_size)], dtype=dl_type),
-            tf.TensorSpec(shape=[
-                None,
-                get_num_z_categoricals(model_size),
-                get_num_z_classes(model_size),
-            ], dtype=dl_type),
-        ])(self.call)
+        self.call = tf.function(
+            input_signature=[
+                tf.TensorSpec(shape=[None, get_gru_units(model_size)], dtype=dl_type),
+                tf.TensorSpec(
+                    shape=[
+                        None,
+                        get_num_z_categoricals(model_size),
+                        get_num_z_classes(model_size),
+                    ],
+                    dtype=dl_type,
+                ),
+            ]
+        )(self.call)
 
     def call(self, h, z):
         """Performs a forward pass through the Conv2D transpose decoder.
@@ -143,14 +148,16 @@ class ConvTransposeAtari(tf.keras.Model):
         z = tf.reshape(z, shape=(z_shape[0], -1))
         assert len(z.shape) == 2
         input_ = tf.concat([h, z], axis=-1)
-        input_.set_shape([
-            None,
-            (
-                get_num_z_categoricals(self.model_size)
-                * get_num_z_classes(self.model_size)
-                + get_gru_units(self.model_size)
-            ),
-        ])
+        input_.set_shape(
+            [
+                None,
+                (
+                    get_num_z_categoricals(self.model_size)
+                    * get_num_z_classes(self.model_size)
+                    + get_gru_units(self.model_size)
+                ),
+            ]
+        )
 
         # Feed through initial dense layer to get the right number of input nodes
         # for the first conv2dtranspose layer.

@@ -161,11 +161,13 @@ class WorldModel(tf.keras.Model):
         self.decoder = decoder
 
         # Trace self.call.
-        self.forward_train = tf.function(input_signature=[
-            tf.TensorSpec(shape=[None, None] + list(self.observation_space.shape)),
-            tf.TensorSpec(shape=[None, None, self.action_space.n]),
-            tf.TensorSpec(shape=[None, None], dtype=tf.bool),
-        ])(self.forward_train)
+        self.forward_train = tf.function(
+            input_signature=[
+                tf.TensorSpec(shape=[None, None] + list(self.observation_space.shape)),
+                tf.TensorSpec(shape=[None, None, self.action_space.n]),
+                tf.TensorSpec(shape=[None, None], dtype=tf.bool),
+            ]
+        )(self.forward_train)
 
     @tf.function
     def get_initial_state(self):

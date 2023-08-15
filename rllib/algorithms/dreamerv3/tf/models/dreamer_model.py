@@ -71,9 +71,7 @@ class DreamerModel(tf.keras.Model):
 
         self.horizon = horizon
         self.gamma = gamma
-        self._comp_dtype = (
-            tf.keras.mixed_precision.global_policy().compute_dtype
-        )
+        self._comp_dtype = tf.keras.mixed_precision.global_policy().compute_dtype
 
         self.disagree_nets = None
         if self.use_curiosity:
@@ -83,20 +81,28 @@ class DreamerModel(tf.keras.Model):
                 intrinsic_rewards_scale=intrinsic_rewards_scale,
             )
 
-        self.dream_trajectory = tf.function(input_signature=[
-            {
-                "h": tf.TensorSpec(shape=[
-                    None,
-                    get_gru_units(self.model_size),
-                ], dtype=self._comp_dtype),
-                "z": tf.TensorSpec(shape=[
-                    None,
-                    get_num_z_categoricals(self.model_size),
-                    get_num_z_classes(self.model_size),
-                ], dtype=self._comp_dtype),
-            },
-            tf.TensorSpec(shape=[None], dtype=tf.bool),
-        ])(self.dream_trajectory)
+        self.dream_trajectory = tf.function(
+            input_signature=[
+                {
+                    "h": tf.TensorSpec(
+                        shape=[
+                            None,
+                            get_gru_units(self.model_size),
+                        ],
+                        dtype=self._comp_dtype,
+                    ),
+                    "z": tf.TensorSpec(
+                        shape=[
+                            None,
+                            get_num_z_categoricals(self.model_size),
+                            get_num_z_classes(self.model_size),
+                        ],
+                        dtype=self._comp_dtype,
+                    ),
+                },
+                tf.TensorSpec(shape=[None], dtype=tf.bool),
+            ]
+        )(self.dream_trajectory)
 
     def call(
         self,
@@ -264,9 +270,7 @@ class DreamerModel(tf.keras.Model):
         )
         return states
 
-    def dream_trajectory(
-        self, start_states, start_is_terminated
-    ):
+    def dream_trajectory(self, start_states, start_is_terminated):
         """Dreams trajectories of length H from batch of h- and z-states.
 
         Note that incoming data will have the shapes (BxT, ...), where the original
@@ -339,8 +343,12 @@ class DreamerModel(tf.keras.Model):
         a_dreamed_dist_params_H_B = tf.stack(a_dreamed_dist_params_t0_to_H, axis=0)
 
         # Compute r using reward predictor.
-        r_dreamed_HxB, _ = self.world_model.reward_predictor(h=h_states_HxB, z=z_states_prior_HxB)
-        r_dreamed_H_B = tf.reshape(inverse_symlog(r_dreamed_HxB), shape=[self.horizon + 1, -1])
+        r_dreamed_HxB, _ = self.world_model.reward_predictor(
+            h=h_states_HxB, z=z_states_prior_HxB
+        )
+        r_dreamed_H_B = tf.reshape(
+            inverse_symlog(r_dreamed_HxB), shape=[self.horizon + 1, -1]
+        )
 
         # Compute intrinsic rewards.
         if self.use_curiosity:
@@ -386,7 +394,9 @@ class DreamerModel(tf.keras.Model):
         # that lie past continue=False flags. B/c our world model does NOT learn how
         # to skip terminal/reset episode boundaries, dreamed data crossing such a
         # boundary should not be used for critic/actor learning either.
-        dream_loss_weights_H_B = tf.math.cumprod(self.gamma * c_dreamed_H_B, axis=0) / self.gamma
+        dream_loss_weights_H_B = (
+            tf.math.cumprod(self.gamma * c_dreamed_H_B, axis=0) / self.gamma
+        )
 
         # Compute the value estimates.
         v, v_symlog_dreamed_logits_HxB = self.critic(

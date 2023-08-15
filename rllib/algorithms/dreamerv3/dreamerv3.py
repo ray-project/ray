@@ -573,7 +573,8 @@ class DreamerV3(Algorithm):
                     d_, o_ = env_runner.sample(
                         num_timesteps=(
                             self.config.batch_size_B * self.config.batch_length_T
-                        ) - env_steps_last_regular_sample,
+                        )
+                        - env_steps_last_regular_sample,
                         random_actions=True,
                     )
                     self.replay_buffer.add(episodes=d_ + o_)

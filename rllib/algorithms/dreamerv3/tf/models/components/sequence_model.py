@@ -85,15 +85,20 @@ class SequenceModel(tf.keras.Model):
 
         # Trace self.call.
         dl_type = tf.keras.mixed_precision.global_policy().compute_dtype
-        self.call = tf.function(input_signature=[
-            tf.TensorSpec(shape=[None, action_space.n], dtype=dl_type),
-            tf.TensorSpec(shape=[None, num_gru_units], dtype=dl_type),
-            tf.TensorSpec(shape=[
-                None,
-                get_num_z_categoricals(self.model_size),
-                get_num_z_classes(self.model_size),
-            ], dtype=dl_type),
-        ])(self.call)
+        self.call = tf.function(
+            input_signature=[
+                tf.TensorSpec(shape=[None, action_space.n], dtype=dl_type),
+                tf.TensorSpec(shape=[None, num_gru_units], dtype=dl_type),
+                tf.TensorSpec(
+                    shape=[
+                        None,
+                        get_num_z_categoricals(self.model_size),
+                        get_num_z_classes(self.model_size),
+                    ],
+                    dtype=dl_type,
+                ),
+            ]
+        )(self.call)
 
     def call(self, a, h, z):
         """
@@ -109,14 +114,16 @@ class SequenceModel(tf.keras.Model):
         z_shape = tf.shape(z)
         z = tf.reshape(z, shape=(z_shape[0], -1))
         out = tf.concat([z, a], axis=-1)
-        out.set_shape([
-            None,
-            (
-                get_num_z_categoricals(self.model_size)
-                * get_num_z_classes(self.model_size)
-                + self.action_space.n
-            ),
-        ])
+        out.set_shape(
+            [
+                None,
+                (
+                    get_num_z_categoricals(self.model_size)
+                    * get_num_z_classes(self.model_size)
+                    + self.action_space.n
+                ),
+            ]
+        )
         # Pass through pre-GRU layer.
         out = self.pre_gru_layer(out)
         # Pass through (time-major) GRU.

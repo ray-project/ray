@@ -61,9 +61,11 @@ class DynamicsPredictor(tf.keras.Model):
 
         # Trace self.call.
         dl_type = tf.keras.mixed_precision.global_policy().compute_dtype
-        self.call = tf.function(input_signature=[
-            tf.TensorSpec(shape=[None, get_gru_units(model_size)], dtype=dl_type),
-        ])(self.call)
+        self.call = tf.function(
+            input_signature=[
+                tf.TensorSpec(shape=[None, get_gru_units(model_size)], dtype=dl_type),
+            ]
+        )(self.call)
 
     def call(self, h):
         """Performs a forward pass through the dynamics (or "prior") network.

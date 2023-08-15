@@ -42,14 +42,19 @@ class ContinuePredictor(tf.keras.Model):
 
         # Trace self.call.
         dl_type = tf.keras.mixed_precision.global_policy().compute_dtype
-        self.call = tf.function(input_signature=[
-            tf.TensorSpec(shape=[None, get_gru_units(model_size)], dtype=dl_type),
-            tf.TensorSpec(shape=[
-                None,
-                get_num_z_categoricals(model_size),
-                get_num_z_classes(model_size),
-            ], dtype=dl_type),
-        ])(self.call)
+        self.call = tf.function(
+            input_signature=[
+                tf.TensorSpec(shape=[None, get_gru_units(model_size)], dtype=dl_type),
+                tf.TensorSpec(
+                    shape=[
+                        None,
+                        get_num_z_categoricals(model_size),
+                        get_num_z_classes(model_size),
+                    ],
+                    dtype=dl_type,
+                ),
+            ]
+        )(self.call)
 
     def call(self, h, z):
         """Performs a forward pass through the continue predictor.
@@ -65,14 +70,16 @@ class ContinuePredictor(tf.keras.Model):
         z = tf.reshape(z, shape=(z_shape[0], -1))
         assert len(z.shape) == 2
         out = tf.concat([h, z], axis=-1)
-        out.set_shape([
-            None,
-            (
-                get_num_z_categoricals(self.model_size)
-                * get_num_z_classes(self.model_size)
-                + get_gru_units(self.model_size)
-            ),
-        ])
+        out.set_shape(
+            [
+                None,
+                (
+                    get_num_z_categoricals(self.model_size)
+                    * get_num_z_classes(self.model_size)
+                    + get_gru_units(self.model_size)
+                ),
+            ]
+        )
         # Send h-cat-z through MLP.
         out = self.mlp(out)
         # Remove the extra [B, 1] dimension at the end to get a proper Bernoulli
