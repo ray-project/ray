@@ -11,7 +11,7 @@ from torch.nn import Module
 import ray.cloudpickle as ray_pickle
 from ray.air.checkpoint import Checkpoint, _BYTES_DATA_KEY, _FS_CHECKPOINT_KEY
 from ray.air.constants import MODEL_KEY, PREPROCESSOR_KEY
-from ray.train._internal.legacy_checkpoint import LegacyFrameworkCheckpoint
+from ray.train._internal.legacy_checkpoint import FrameworkCheckpoint
 from ray.train.data_parallel_trainer import _load_checkpoint_dict
 from ray.air._internal.torch_utils import (
     load_torch_model,
@@ -26,7 +26,7 @@ ENCODED_DATA_KEY = "torch_encoded_data"
 
 
 @PublicAPI(stability="beta")
-class TorchCheckpoint(LegacyFrameworkCheckpoint):
+class TorchCheckpoint(FrameworkCheckpoint):
     """A :class:`~ray.train.Checkpoint` with Torch-specific functionality."""
 
     MODEL_FILENAME = "model.pt"

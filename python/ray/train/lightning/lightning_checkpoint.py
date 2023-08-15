@@ -10,7 +10,7 @@ from typing import Optional, Type, Dict, Any
 from ray.air.constants import MODEL_KEY
 from ray.air._internal.checkpointing import save_preprocessor_to_dir
 from ray.data import Preprocessor
-from ray.train._internal.legacy_checkpoint import LegacyFrameworkCheckpoint
+from ray.train._internal.legacy_checkpoint import FrameworkCheckpoint
 from ray.train.torch import LegacyTorchCheckpoint
 from ray.util.annotations import PublicAPI
 
@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 
 @PublicAPI(stability="alpha")
-class LightningCheckpoint(LegacyFrameworkCheckpoint):
+class LightningCheckpoint(FrameworkCheckpoint):
     """A :class:`~ray.train.Checkpoint` with Lightning-specific functionality."""
 
     @classmethod

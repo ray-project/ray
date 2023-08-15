@@ -8,14 +8,14 @@ from ray.train._checkpoint import Checkpoint
 PREPROCESSOR_KEY = "preprocessor"
 
 
-class LegacyFrameworkCheckpoint(Checkpoint):
+class FrameworkCheckpoint(Checkpoint):
     """A checkpoint to preserve the functionality of legacy
     framework-specific checkpoints.
 
     Example:
 
         >>> import tempfile
-        >>> checkpoint = LegacyFrameworkCheckpoint(tempfile.mkdtemp())
+        >>> checkpoint = FrameworkCheckpoint(tempfile.mkdtemp())
         >>> checkpoint.get_preprocessor() is None
         True
         >>> preprocessor = Preprocessor()

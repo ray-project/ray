@@ -7,7 +7,7 @@ import xgboost
 from ray.air._internal.checkpointing import save_preprocessor_to_dir
 from ray.air.checkpoint import Checkpoint
 from ray.air.constants import MODEL_KEY
-from ray.train._internal.legacy_checkpoint import LegacyFrameworkCheckpoint
+from ray.train._internal.legacy_checkpoint import FrameworkCheckpoint
 from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
@@ -15,7 +15,7 @@ if TYPE_CHECKING:
 
 
 @PublicAPI(stability="beta")
-class XGBoostCheckpoint(LegacyFrameworkCheckpoint):
+class XGBoostCheckpoint(FrameworkCheckpoint):
     """A :py:class:`~ray.train.Checkpoint` with XGBoost-specific functionality."""
 
     MODEL_FILENAME = "model.pkl"

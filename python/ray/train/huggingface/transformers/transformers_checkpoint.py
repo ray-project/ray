@@ -8,7 +8,7 @@ from ray.air._internal.checkpointing import save_preprocessor_to_dir
 
 from ray.air._internal.torch_utils import load_torch_model
 from ray.air.checkpoint import Checkpoint
-from ray.train._internal.legacy_checkpoint import LegacyFrameworkCheckpoint
+from ray.train._internal.legacy_checkpoint import FrameworkCheckpoint
 from ray.util.annotations import PublicAPI
 
 TRANSFORMERS_IMPORT_ERROR: Optional[ImportError] = None
@@ -27,7 +27,7 @@ if TYPE_CHECKING:
 
 
 @PublicAPI(stability="alpha")
-class TransformersCheckpoint(LegacyFrameworkCheckpoint):
+class TransformersCheckpoint(FrameworkCheckpoint):
     """A :py:class:`~ray.train.Checkpoint` with HuggingFace-specific functionality.
 
     Use ``TransformersCheckpoint.from_model`` to create this type of checkpoint.
