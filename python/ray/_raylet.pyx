@@ -2550,7 +2550,7 @@ cdef class GcsClient:
         with nogil:
             check_status(self.inner.get().GetAllResourceUsage(
                 timeout_ms, serialized_reply))
-        
+
         reply = GetAllResourceUsageReply()
         reply.ParseFromString(serialized_reply)
         return reply
