@@ -294,9 +294,8 @@ To persist your checkpoints and monitor training progress, simply add a
          ...
 
 
-Reporting metrics and checkpoints to Ray Train ensures that you can use Ray Tune and :ref:`fault-tolerant training <train-fault-tolerance>`. 
-Note that :class:`ray.train.lightning.RayTrainReportCallback` only provides a simple implementation. 
-To customize, see :ref:`train-checkpointing`.
+Reporting metrics and checkpoints to Ray Train enables you to support :ref:`fault-tolerant training <train-fault-tolerance>` and :ref:`hyperparameter optimization <train-tune>`. 
+Note that the :class:`ray.train.lightning.RayTrainReportCallback` only provides a simple implementation, and can be :ref:`further customized <train-dl-saving-checkpoints>`.
 
 Preparing your Lightning Trainer
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
