@@ -269,112 +269,116 @@ The following metrics are exposed by Ray Serve:
    * - Name
      - Fields
      - Description
-   * - ``serve_deployment_request_counter`` [**]
+   * - ``ray_serve_deployment_request_counter`` [**]
      - * deployment
        * replica
        * route
        * application
      - The number of queries that have been processed in this replica.
-   * - ``serve_deployment_error_counter`` [**]
+   * - ``ray_serve_deployment_error_counter`` [**]
      - * deployment
        * replica
        * route
        * application
      - The number of exceptions that have occurred in the deployment.
-   * - ``serve_deployment_replica_starts`` [**]
+   * - ``ray_serve_deployment_replica_starts`` [**]
      - * deployment
        * replica
        * application
      - The number of times this replica has been restarted due to failure.
-   * - ``serve_deployment_replica_healthy``
+   * - ``ray_serve_deployment_replica_healthy``
      - * deployment
        * replica
        * application
      - Whether this deployment replica is healthy. 1 means healthy, 0 unhealthy.
-   * - ``serve_deployment_processing_latency_ms`` [**]
+   * - ``ray_serve_deployment_processing_latency_ms`` [**]
      - * deployment
        * replica
        * route
        * application
      - The latency for queries to be processed.
-   * - ``serve_replica_processing_queries`` [**]
+   * - ``ray_serve_replica_processing_queries`` [**]
      - * deployment
        * replica
        * application
      - The current number of queries being processed.
-   * - ``serve_replica_pending_queries`` [**]
+   * - ``ray_serve_replica_pending_queries`` [**]
      - * deployment
        * replica
        * application
      - The current number of pending queries.
-   * - ``serve_num_http_requests`` [*]
+   * - ``ray_serve_num_http_requests`` [*]
      - * route
        * method
        * application
      - The number of HTTP requests processed.
-   * - ``serve_num_http_error_requests`` [*]
+   * - ``ray_serve_num_http_error_requests`` [*]
      - * route
        * error_code
        * method
      - The number of non-200 HTTP responses.
-   * - ``serve_num_router_requests`` [*]
+   * - ``ray_serve_num_ongoing_http_requests`` [*]
+     - * node_id
+       * node_ip_address
+     - The number of ongoing requests in the HTTP Proxy.
+   * - ``ray_serve_num_router_requests`` [*]
      - * deployment
        * route
        * application
      - The number of requests processed by the router.
-   * - ``serve_handle_request_counter`` [**]
+   * - ``ray_serve_handle_request_counter`` [**]
      - * handle
        * deployment
        * route
        * application
      - The number of requests processed by this ServeHandle.
-   * - ``serve_deployment_queued_queries`` [*]
+   * - ``ray_serve_deployment_queued_queries`` [*]
      - * deployment
        * route
      - The number of queries for this deployment waiting to be assigned to a replica.
-   * - ``serve_num_deployment_http_error_requests`` [*]
+   * - ``ray_serve_num_deployment_http_error_requests`` [*]
      - * deployment
        * error_code
        * method
        * route
        * application
      - The number of non-200 HTTP responses returned by each deployment.
-   * - ``serve_http_request_latency_ms`` [*]
+   * - ``ray_serve_http_request_latency_ms`` [*]
      - * route
        * application
      - The end-to-end latency of HTTP requests (measured from the Serve HTTP proxy).
-   * - ``serve_multiplexed_model_load_latency_ms``
+   * - ``ray_serve_multiplexed_model_load_latency_ms``
      - * deployment
        * replica
        * application
      - The time it takes to load a model.
-   * - ``serve_multiplexed_model_unload_latency_ms``
+   * - ``ray_serve_multiplexed_model_unload_latency_ms``
      - * deployment
        * replica
        * application
      - The time it takes to unload a model.
-   * - ``serve_num_multiplexed_models``
+   * - ``ray_serve_num_multiplexed_models``
      - * deployment
        * replica
        * application
      - The number of models loaded on the current replica.
-   * - ``serve_multiplexed_models_unload_counter``
+   * - ``ray_serve_multiplexed_models_unload_counter``
      - * deployment
        * replica
        * application
      - The number of times models unloaded on the current replica.
-   * - ``serve_multiplexed_models_load_counter``
+   * - ``ray_serve_multiplexed_models_load_counter``
      - * deployment
        * replica
        * application
      - The number of times models loaded on the current replica.
-   * - ``serve_registered_multiplexed_model_id``
+   * - ``ray_serve_registered_multiplexed_model_id``
      - * deployment
        * replica
        * application
        * model_id
      - The mutlplexed model ID registered on the current replica.
-   * - ``serve_multiplexed_get_model_requests_counter``
+   * - ``ray_serve_multiplexed_get_model_requests_counter``
      - * deployment
        * replica
        * application
