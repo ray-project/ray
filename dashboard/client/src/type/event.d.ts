@@ -36,3 +36,14 @@ export type EventGlobalRsp = {
     };
   };
 };
+
+export type NewEventRsp = {
+  result: boolean;
+  msg: string;
+  data: {
+    result: {
+      total: number;
+      result: Event[];
+    };
+  };
+};

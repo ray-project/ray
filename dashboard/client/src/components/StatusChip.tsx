@@ -20,7 +20,7 @@ const grey = "#5F6469";
 const colorMap = {
   node: {
     ALIVE: green,
-    DEAD: red,
+    DEAD: grey,
   },
   worker: {
     ALIVE: green,

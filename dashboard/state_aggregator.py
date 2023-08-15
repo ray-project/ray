@@ -12,6 +12,126 @@ from ray._private.profiling import chrome_tracing_dump
 
 import ray.dashboard.memory_utils as memory_utils
 
+# {job id hex(str): {event id(str): event dict}}
+MOCK_DATA = {
+    "64000000": {
+        "event1": {
+            "eventId": "event1",
+            "sourceType": "GCS",
+            "hostName": "host1",
+            "pid": 12345,
+            "label": "",
+            "message": "Message 1",
+            "timestamp": 1691979376.490715,
+            "severity": "INFO",
+            "customFields": {"jobId": "64000000", "nodeId": "node1", "taskId": "task1"},
+        },
+        "event2": {
+            "eventId": "event2",
+            "sourceType": "RAYLET",
+            "hostName": "host2",
+            "pid": 67890,
+            "label": "",
+            "message": "Message 2",
+            "timestamp": 1691979376.4938798,
+            "severity": "ERROR",
+            "customFields": {"jobId": "64000000", "nodeId": "node2", "taskId": "task2"},
+        },
+        "event3": {
+            "eventId": "event3",
+            "sourceType": "GCS",
+            "hostName": "host3",
+            "pid": 54321,
+            "label": "",
+            "message": "Message 3",
+            "timestamp": 1691979376.4941854,
+            "severity": "DEBUG",
+            "customFields": {"jobId": "64000000", "nodeId": "node3", "taskId": "task3"},
+        },
+        "event4": {
+            "eventId": "event4",
+            "sourceType": "RAYLET",
+            "hostName": "host4",
+            "pid": 23456,
+            "label": "",
+            "message": "Message 4",
+            "timestamp": 1691979376.490715,
+            "severity": "INFO",
+            "customFields": {"jobId": "64000000", "nodeId": "node4", "taskId": "task4"},
+        },
+        "event5": {
+            "eventId": "event5",
+            "sourceType": "GCS",
+            "hostName": "host5",
+            "pid": 78901,
+            "label": "",
+            "message": "Message 5",
+            "timestamp": 1691979376.4938798,
+            "severity": "ERROR",
+            "customFields": {"jobId": "64000000", "nodeId": "node5", "taskId": "task5"},
+        },
+        "event6": {
+            "eventId": "event6",
+            "sourceType": "RAYLET",
+            "hostName": "host6",
+            "pid": 43210,
+            "label": "",
+            "message": "Message 6",
+            "timestamp": 1691979376.4941854,
+            "severity": "DEBUG",
+            "customFields": {"jobId": "64000000", "nodeId": "node6", "taskId": "task6"},
+        },
+        "event7": {
+            "eventId": "event7",
+            "sourceType": "GCS",
+            "hostName": "host7",
+            "pid": 98765,
+            "label": "",
+            "message": "Message 7",
+            "timestamp": 1691979376.490715,
+            "severity": "INFO",
+            "customFields": {"jobId": "64000000", "nodeId": "node7", "taskId": "task7"},
+        },
+        "event8": {
+            "eventId": "event8",
+            "sourceType": "RAYLET",
+            "hostName": "host8",
+            "pid": 56789,
+            "label": "",
+            "message": "Message 8",
+            "timestamp": 1691979376.4938798,
+            "severity": "ERROR",
+            "customFields": {"jobId": "64000000", "nodeId": "node8", "taskId": "task8"},
+        },
+        "event9": {
+            "eventId": "event9",
+            "sourceType": "GCS",
+            "hostName": "host9",
+            "pid": 10987,
+            "label": "",
+            "message": "Message 9",
+            "timestamp": 1691979376.4941854,
+            "severity": "DEBUG",
+            "customFields": {"jobId": "64000000", "nodeId": "node9", "taskId": "task9"},
+        },
+        "event10": {
+            "eventId": "event10",
+            "sourceType": "RAYLET",
+            "hostName": "host10",
+            "pid": 54321,
+            "label": "",
+            "message": "Message 10",
+            "timestamp": 1691979376.490715,
+            "severity": "INFO",
+            "customFields": {
+                "jobId": "64000000",
+                "nodeId": "node10",
+                "taskId": "task10",
+            },
+        },
+    }
+}
+
 from ray.util.state.common import (
     protobuf_message_to_dict,
     ActorState,
@@ -596,7 +716,8 @@ class StateAPIManager:
             `ClusterEventState` protobuf message.
         """
         result = []
-        all_events = await self._client.get_all_cluster_events()
+        # all_events = await self._client.get_all_cluster_events() ##TODO, pass job_id and return events related to a job_id
+        all_events = MOCK_DATA
         for _, events in all_events.items():
             for _, event in events.items():
                 event["time"] = str(datetime.fromtimestamp(int(event["timestamp"])))
@@ -609,6 +730,7 @@ class StateAPIManager:
         num_filtered = len(result)
         # Sort to make the output deterministic.
         result = list(islice(result, option.limit))
+
         return ListApiResponse(
             result=result,
             total=total,

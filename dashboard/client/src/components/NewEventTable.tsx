@@ -27,7 +27,7 @@ import { Link } from "react-router-dom";
 import { GlobalContext } from "../App";
 import { CodeDialogButtonWithPreview } from "../common/CodeDialogButton";
 import { StyledTableCell } from "../common/TableCell";
-import { getEvents, getGlobalEvents } from "../service/event";
+import { getEvents, getGlobalEvents, getNewEvents } from "../service/event";
 import { Event } from "../type/event";
 import { useFilter } from "../util/hook";
 import { MOCK_DATA } from "./EventTableMockData";
@@ -37,6 +37,44 @@ import { StatusChip } from "./StatusChip";
 type EventTableProps = {
   defaultSeverityLevels?: string[];
 };
+
+type FiltersParams = {
+  [key: string]: string | string[] | number | undefined;
+};
+
+const transformFiltersToParams = (filters: FiltersParams) => {
+  const params = new URLSearchParams();
+  if (!filters) {
+    return;
+  }
+
+  for (const key in filters) {
+    if (key === "entityId" && filters.entityName && filters.entityId) {
+      params.append(
+        `${encodeURIComponent(filters.entityName)}_id`,
+        encodeURIComponent(filters.entityId),
+      );
+    } else if (Array.isArray(filters[key])) {
+      //Process sourceType and severityLevel
+      filters[key].forEach((value) => {
+        params.append(encodeURIComponent(key), encodeURIComponent(value));
+      });
+    }
+  }
+
+  return params.toString();
+};
+
+// Example filters
+const filters = {
+  sourceType: ["GCS", "CORE_WORKER"],
+  severityLevel: ["WARNING", "ERROR"],
+  entityName: "serve_replica",
+  entityId: 123,
+};
+
+const queryParams = transformFiltersToParams(filters);
+console.log(queryParams);
 
 const useStyles = makeStyles((theme) => ({
   table: {
@@ -128,8 +166,8 @@ const useEventTable = (props: EventTableProps) => {
   const [filters, setFilters] = useState<Filters>({
     sourceType: [],
     severityLevel: defaultSeverityLevels || [],
-    entityName: undefined,
-    entityId: undefined,
+    entityName: undefined, // We used two fields because we will support select entityName by dropdown and input entityId by TextField in the future.
+    entityId: undefined, // id or *
   });
 
   const [events, setEvents] = useState<Event[]>([]);
@@ -153,36 +191,55 @@ const useEventTable = (props: EventTableProps) => {
   };
 
   useEffect(() => {
-    // const getEvent = async () => {
-    //   try {
-    //     if (job_id) {
-    //       const rsp = await getEvents(job_id);
-    //       if (rsp?.data?.data?.events) {
-    //         setEvents(
-    //           rsp.data.data.events.sort(
-    //             (a, b) => Number(b.timestamp) - Number(a.timestamp),
-    //           ),
-    //         );
-    //       }
-    //     } else {
-    //       const rsp = await getGlobalEvents();
-    //       if (rsp?.data?.data?.events) {
-    //         setEvents(
-    //           Object.values(rsp.data.data.events)
-    //             .reduce((a, b) => a.concat(b))
-    //             .sort((a, b) => Number(b.timestamp) - Number(a.timestamp)),
-    //         );
-    //       }
-    //     }
-    //   } catch (e) {
-    //   } finally {
-    //     setLoading(false);
-    //   }
-    setEvents(MOCK_DATA.data.events["64000000"] as any);
-    setLoading(false);
+    const getEvent = async () => {
+      try {
+        const params = transformFiltersToParams(filters);
+        const rsp = await getNewEvents(params);
+        console.info("rsp: ", rsp);
+        const events = rsp?.data?.data?.result?.result;
+        if (events) {
+          setEvents(
+            events.sort((a, b) => Number(b.timestamp) - Number(a.timestamp)),
+          );
+        }
+      } catch (e) {
+      } finally {
+        setLoading(false);
+      }
+    };
+    getEvent();
+  });
+  // useEffect(() => {
+  //   const getEvent = async () => {
+  //     try {
+  //       if (job_id) {
+  //         const rsp = await getEvents(job_id);
+  //         if (rsp?.data?.data?.events) {
+  //           setEvents(
+  //             rsp.data.data.events.sort(
+  //               (a, b) => Number(b.timestamp) - Number(a.timestamp),
+  //             ),
+  //           );
+  //         }
+  //       } else {
+  //         const rsp = await getGlobalEvents();
+  //         if (rsp?.data?.data?.events) {
+  //           setEvents(
+  //             Object.values(rsp.data.data.events)
+  //               .reduce((a, b) => a.concat(b))
+  //               .sort((a, b) => Number(b.timestamp) - Number(a.timestamp)),
+  //           );
+  //         }
+  //       }
+  //     } catch (e) {
+  //     } finally {
+  //       setLoading(false);
+  //     }
+  //   setEvents(MOCK_DATA.data.events["64000000"] as any);
+  //   setLoading(false);
 
-    // getEvent();
-  }, []);
+  //   // getEvent();
+  // }, []);
 
   useEffect(() => {
     setPagination((p) => ({
@@ -291,41 +348,29 @@ const NewEventTable = (props: EventTableProps) => {
               {events.map(
                 ({
                   severity,
-                  timestamp,
-                  timeStamp,
+                  // time,
                   sourceType,
                   hostName,
                   message,
                   sourceHostname,
                   pid,
                   sourcePid,
+                  // custom_fields,
                 }) => {
-                  const realTimestamp =
-                    timeStamp ||
-                    dayjs(Math.floor(timestamp * 1000)).format(
-                      "YYYY-MM-DD HH:mm:ss",
-                    );
-                  const hostname = sourceHostname || hostName;
-                  const realPid = pid || sourcePid;
+                  // const realTimestamp =
+                  //   time ||
+                  //   dayjs(Math.floor(timestamp * 1000)).format(
+                  //     "YYYY-MM-DD HH:mm:ss",
+                  //   );
                   return (
                     <React.Fragment>
                       <TableRow>
                         <StyledTableCell>
                           <StatusChip status={severity} type={severity} />
                         </StyledTableCell>
-                        <StyledTableCell>{realTimestamp}</StyledTableCell>
+                        {/* <StyledTableCell>{time}</StyledTableCell> */}
                         <StyledTableCell>{sourceType}</StyledTableCell>
-                        <StyledTableCell>
-                          {" "}
-                          {nodeMap[hostname] ? (
-                            <Link to={`/node/${nodeMap[hostname]}`}>
-                              {hostname}
-                            </Link>
-                          ) : (
-                            hostname
-                          )}
-                        </StyledTableCell>
-                        <StyledTableCell>{realPid}</StyledTableCell>
+                        {/* <StyledTableCell>{custom_fields}</StyledTableCell> */}
                         <StyledTableCell>
                           {message ? (
                             <CodeDialogButtonWithPreview
