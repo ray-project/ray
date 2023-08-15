@@ -262,7 +262,8 @@ def test_health_check_failure_makes_deployment_unhealthy_transition(serve_instan
         app_status = serve.status().applications[SERVE_DEFAULT_APP_NAME]
         assert (
             app_status.deployments[
-                f"{SERVE_DEFAULT_APP_NAME}{DEPLOYMENT_NAME_PREFIX_SEPARATOR}WillBeUnhealthy"
+                f"{SERVE_DEFAULT_APP_NAME}{DEPLOYMENT_NAME_PREFIX_SEPARATOR}"
+                "WillBeUnhealthy"
             ].status
             == expected_status
         )
