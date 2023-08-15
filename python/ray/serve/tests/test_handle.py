@@ -8,7 +8,6 @@ import requests
 import ray
 
 from ray import serve
-from ray.serve.context import get_global_client
 from ray.serve.exceptions import RayServeException
 from ray.serve.handle import HandleOptions, RayServeHandle, RayServeSyncHandle
 from ray.serve._private.router import PowerOfTwoChoicesReplicaScheduler
@@ -135,7 +134,7 @@ def test_sync_handle_in_thread(serve_instance):
     handle = serve.run(f.bind())
 
     def thread_get_handle(deploy):
-        handle = get_global_client().get_handle(
+        handle = serve.get_deployment_handle(
             deploy._name, SERVE_DEFAULT_APP_NAME, sync=True
         )
         return handle

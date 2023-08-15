@@ -210,7 +210,7 @@ def test_redeploy_single_replica(serve_instance, use_handle):
     @ray.remote
     def call(block=False):
         if use_handle:
-            handle = serve.get_app_handle("app")
+            handle = serve.get_deployment_handle(name, "app")
             ret = ray.get(handle.handler.remote(block))
         else:
             ret = requests.get(
@@ -302,7 +302,7 @@ def test_redeploy_multiple_replicas(serve_instance, use_handle):
     @ray.remote(num_cpus=0)
     def call(block=False):
         if use_handle:
-            handle = serve.get_app_handle("app")
+            handle = serve.get_deployment_handle(name, "app")
             ret = ray.get(handle.handler.remote(block))
         else:
             ret = requests.get(

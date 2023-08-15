@@ -47,7 +47,6 @@ def test_redeploy_start_time(serve_instance):
 def test_deploy_app_custom_exception(serve_instance):
     """Check that controller doesn't deserialize an exception from deploy_app."""
 
-    client = serve_instance
     controller = serve.context.get_global_client()._controller
 
     config = {
@@ -63,9 +62,9 @@ def test_deploy_app_custom_exception(serve_instance):
     ray.get(controller.deploy_apps.remote(config=ServeDeploySchema.parse_obj(config)))
 
     def check_custom_exception() -> bool:
-        status = client.get_serve_status(name="broken_app")
-        assert status.app_status.status == ApplicationStatus.DEPLOY_FAILED
-        assert "custom exception info" in status.app_status.message
+        status = serve.status().applications["broken_app"]
+        assert status.status == ApplicationStatus.DEPLOY_FAILED
+        assert "custom exception info" in status.message
         return True
 
     wait_for_condition(check_custom_exception, timeout=10)
