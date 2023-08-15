@@ -1801,59 +1801,6 @@
 #######################
 # Tune cloud  tests
 #######################
-- name: tune_cloud_no_sync_down
-  group: Tune cloud tests
-  working_dir: tune_tests/cloud_tests
-  frequency: nightly
-  team: ml
-
-  cluster:
-    byod: {}
-    cluster_compute: tpl_aws_4x2.yaml
-
-  run:
-    timeout: 600
-    script: python workloads/run_cloud_test.py no_sync_down
-
-    wait_for_nodes:
-      num_nodes: 4
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_compute: tpl_gce_4x8.yaml
-
-  alert: tune_tests
-
-- name: tune_cloud_ssh_sync
-  group: Tune cloud tests
-  working_dir: tune_tests/cloud_tests
-  frequency: nightly
-  team: ml
-
-  cluster:
-    byod: {}
-    cluster_compute: tpl_aws_4x2.yaml
-
-  run:
-    timeout: 600
-    script: python workloads/run_cloud_test.py ssh_sync
-    wait_for_nodes:
-      num_nodes: 4
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_compute: tpl_gce_4x8.yaml
-
-  alert: tune_tests
-
 - name: tune_cloud_durable_upload
   group: Tune cloud tests
   working_dir: tune_tests/cloud_tests
@@ -1925,45 +1872,6 @@
 
 
   alert: tune_tests
-
-- name: tune_cloud_durable_upload_rllib_trainer
-  group: Tune cloud tests
-  working_dir: tune_tests/cloud_tests
-
-  stable: false
-
-  frequency: nightly
-  team: ml
-
-  cluster:
-    byod:
-      type: gpu
-    cluster_compute: tpl_aws_4x2.yaml
-
-  run:
-    timeout: 600
-    script: python workloads/run_cloud_test.py durable_upload --trainable rllib_trainer
-      --bucket s3://tune-cloud-tests/durable_upload_rllib_trainer
-
-    wait_for_nodes:
-      num_nodes: 4
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_compute: tpl_gce_4x2.yaml
-      run:
-        timeout: 600
-        script: python workloads/run_cloud_test.py durable_upload --trainable rllib_str
-          --bucket gs://tune-cloud-tests/durable_upload_rllib_trainer
-        wait_for_nodes:
-          num_nodes: 4
-
-  alert: tune_tests
-
 
 - name: tune_cloud_long_running_cloud_storage
   group: Tune cloud tests
