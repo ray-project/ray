@@ -37,7 +37,7 @@ passed to the ``Trainer``:
 Restore a Ray Train Experiment
 ------------------------------
 
-At the experiment level, :ref:`Trainer restoration <trainer-restore>`
+At the experiment level, Trainer restoration 
 allows you to resume a previously interrupted experiment from where it left off.
 
 A Train experiment may be interrupted due to one of the following reasons:
@@ -90,7 +90,12 @@ If the experiment has been interrupted due to one of the reasons listed above, u
     Different trainers may allow more parameters to be optionally re-specified on restore.
     Only **datasets** are required to be re-specified on restore, if they were supplied originally.
 
-    See :ref:`train-framework-specific-restore` for more details.
+    `TorchTrainer.restore`, `TensorflowTrainer.restore`, and `HorovodTrainer.restore`
+    can take in the same parameters as their parent class's
+    :meth:`DataParallelTrainer.restore <ray.train.data_parallel_trainer.DataParallelTrainer.restore>`.
+
+    Unless otherwise specified, other trainers will accept the same parameters as
+    :meth:`BaseTrainer.restore <ray.train.trainer.BaseTrainer.restore>`.
 
 
 Auto-resume

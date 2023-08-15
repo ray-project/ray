@@ -1,35 +1,9 @@
-.. _train-hf-transformers-accelerate:
+.. _train-hf-accelerate:
 
-Training with HuggingFace Transformers and Accelerate
-=====================================================
+Training with HuggingFace Accelerate
+====================================
 
 .. TODO: Remove this guide later when the other guides are ready.
-
-TransformersTrainer
--------------------
-
-.. TODO: Move this into its own guide when the TorchTrainer API is ready.
-
-:class:`TransformersTrainer <ray.train.huggingface.TransformersTrainer>` further extends :class:`TorchTrainer <ray.train.torch.TorchTrainer>`, built
-for interoperability with the HuggingFace Transformers library.
-
-Users are required to provide a ``trainer_init_per_worker`` function which returns a
-``transformers.Trainer`` object. The ``trainer_init_per_worker`` function
-will have access to preprocessed train and evaluation datasets.
-
-Upon calling `TransformersTrainer.fit()`, multiple workers (ray actors) will be spawned,
-and each worker will create its own copy of a ``transformers.Trainer``.
-
-Each worker will then invoke ``transformers.Trainer.train()``, which will perform distributed
-training via Pytorch DDP.
-
-
-.. dropdown:: Code example
-
-    .. literalinclude:: ./doc_code/hf_trainer.py
-        :language: python
-        :start-after: __hf_trainer_start__
-        :end-before: __hf_trainer_end__
 
 AccelerateTrainer
 -----------------
