@@ -46,6 +46,13 @@ def get_checkpoint_and_refs_dir(
     return checkpoint_dir, refs_dir
 
 
+def get_download_path(model_id: str):
+    from transformers.utils.hub import TRANSFORMERS_CACHE
+
+    path = os.path.join(TRANSFORMERS_CACHE, f"models--{model_id.replace('/', '--')}")
+    return path
+
+
 def download_model(
     model_id: str,
     bucket_uri: str,
@@ -59,12 +66,8 @@ def download_model(
     The downloaded model may have a 'hash' file containing the commit hash corresponding
     to the commit on Hugging Face Hub.
     """
-
-    from transformers.utils.hub import TRANSFORMERS_CACHE
-
     s3_sync_args = s3_sync_args or []
-
-    path = os.path.join(TRANSFORMERS_CACHE, f"models--{model_id.replace('/', '--')}")
+    path = get_download_path(model_id)
 
     cmd = (
         ["awsv2", "s3", "sync"]
