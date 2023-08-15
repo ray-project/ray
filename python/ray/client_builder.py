@@ -14,7 +14,10 @@ from ray._private.ray_constants import (
     RAY_NAMESPACE_ENVIRONMENT_VARIABLE,
     RAY_RUNTIME_ENV_ENVIRONMENT_VARIABLE,
 )
-from ray._private.utils import split_address
+from ray._private.utils import (
+    split_address,
+    check_ray_client_dependencies_installed,
+)
 from ray._private.worker import BaseContext
 from ray._private.worker import init as ray_driver_init
 from ray.job_config import JobConfig
@@ -95,6 +98,12 @@ class ClientBuilder:
     """
 
     def __init__(self, address: Optional[str]) -> None:
+        if not check_ray_client_dependencies_installed():
+            raise ValueError(
+                "Ray Client requires pip package `ray[client]`. "
+                "If you installed the minimal Ray (e.g. `pip install ray`), "
+                "please reinstall by executing `pip install ray[client]`.")
+
         self.address = address
         self._job_config = JobConfig()
         self._remote_init_kwargs = {}
