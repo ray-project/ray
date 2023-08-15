@@ -502,13 +502,14 @@ def get_resource_ids_for_resource(resource_name: str, resource_regex: str) -> Li
         assigned_ids = [runtime_ids[id] for id in assigned_ids]
         # Give all accelerator ids local_mode.
         if worker.mode == ray._private.worker.LOCAL_MODE:
-            max_accelerator_resource_ids = (
-                worker.node.get_resource_spec().resources.get(resource_name, None)
-            )
-            if max_accelerator_resource_ids:
-                assigned_ids = worker.original_gpu_and_accelerator_runtime_ids[
-                    :max_accelerator_resource_ids
-                ]
+            if resource_name == ray_constants.GPU:
+                max_runtime_ids = worker.node.get_resource_spec().num_gpus
+            else:
+                max_runtime_ids = worker.node.get_resource_spec().resources.get(
+                    resource_name, None
+                )
+            if max_runtime_ids:
+                assigned_ids = runtime_ids[:max_runtime_ids]
     return list(assigned_ids)
 
 

@@ -135,4 +135,4 @@ AWS Neuron Core Accelerator
 .. literalinclude:: ../doc_core/neuron_core_accelerator.py
     :language: python
     :start-after: __neuron_core_accelerator_start__
-    :end-after: __neuron_core_accelerator_end__
+    :end-before: __neuron_core_accelerator_end__
