@@ -16,18 +16,19 @@
 
 #include <string>
 #include <unordered_map>
-#include <unordered_set>
-#include <vector>
 
-#include "ray/common/id.h"
+#include "absl/container/flat_hash_map.h"
+#include "ray/common/scheduling/fixed_point.h"
+#include "ray/common/scheduling/scheduling_ids.h"
 #include "ray/common/scheduling/cluster_resource_data.h"
-#include "ray/raylet/format/node_manager_generated.h"
 
 namespace ray {
 
-/// \class ResourceSet
-/// \brief Encapsulates and operates on a set of resources, including CPUs,
-/// GPUs, and custom labels.
+using scheduling::ResourceID;
+
+/// Represents a set of resources and their values.
+/// NOTE: negative values are valid in this set, while 0 is not. This means if any
+/// resource value is changed to 0, the resource will be removed.
 class ResourceSet {
  public:
   static std::shared_ptr<ResourceSet> Nil() {
@@ -35,7 +36,7 @@ class ResourceSet {
     return nil;
   }
 
-  /// \brief empty ResourceSet constructor.
+  /// \brief Empty ResourceSet constructor.
   ResourceSet();
 
   /// \brief Constructs ResourceSet from the specified resource map.
@@ -46,37 +47,23 @@ class ResourceSet {
 
   /// \brief Test equality with the other specified ResourceSet object.
   ///
-  /// \param rhs: Right-hand side object for equality comparison.
+  /// \param other: Right-hand side object for equality comparison.
   /// \return True if objects are equal, False otherwise.
-  bool operator==(const ResourceSet &rhs) const;
+  bool operator==(const ResourceSet &other) const;
 
-  /// \brief Test whether this ResourceSet is a subset of the other ResourceSet.
+  /// Return the quantity value associated with the specified resource.
+  /// If the resource doesn't exist, return 0.
   ///
-  /// \param other: The resource set we check being a subset of.
-  /// \return True if the current resource set is the subset of other. False
-  /// otherwise.
-  bool IsSubset(const ResourceSet &other) const;
-
-  /// Return the capacity value associated with the specified resource.
-  ///
-  /// \param resource_name: Resource name for which capacity is requested.
-  /// \return The capacity value associated with the specified resource, zero if resource
+  /// \param resource_id: Resource id for which quantity value is requested.
+  /// \return The quantity value associated with the specified resource, zero if resource
   /// does not exist.
-  FixedPoint GetResource(const std::string &resource_name) const;
+  FixedPoint Get(ResourceID resource_id) const;
 
-  /// Return the number of CPUs.
-  ///
-  /// \return Number of CPUs.
-  const ResourceSet GetNumCpus() const;
-
-  /// Return the number of CPUs.
-  ///
-  /// \return Number of CPUs.
-  double GetNumCpusAsDouble() const;
+  /// Set a resource to the given value.
+  /// NOTE: if the new value is 0, the resource will be removed.
+  void Set(ResourceID resource_id, FixedPoint value);
 
   /// Return true if the resource set is empty. False otherwise.
-  ///
-  /// \return True if the resource capacity is zero. False otherwise.
   bool IsEmpty() const;
 
   // TODO(atumanov): implement const_iterator class for the ResourceSet container.
@@ -92,14 +79,12 @@ class ResourceSet {
   /// requires unordered map instead of flat hash map.
   std::unordered_map<std::string, double> GetResourceUnorderedMap() const;
 
-  const std::string ToString() const;
+  const std::string DebugString() const;
 
  private:
-  /// Resource capacity map.
-  absl::flat_hash_map<std::string, FixedPoint> resource_capacity_;
+  /// Map from the resource IDs to the resource values.
+  absl::flat_hash_map<ResourceID, FixedPoint> resources_;
 };
-
-std::string format_resource(std::string resource_name, double quantity);
 
 }  // namespace ray
 
