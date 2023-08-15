@@ -57,6 +57,7 @@ from ray.serve.schema import (
 from ray.serve._private.storage.kv_store import RayInternalKVStore
 from ray.serve._private.utils import (
     call_function_from_import_path,
+    get_all_live_placement_group_names,
     get_head_node_id,
     record_serve_tag,
 )
@@ -171,6 +172,7 @@ class ServeController:
             self.kv_store,
             self.long_poll_host,
             all_serve_actor_names,
+            get_all_live_placement_group_names(),
             self.cluster_node_info_cache,
         )
 
@@ -323,7 +325,10 @@ class ServeController:
         while True:
             loop_start_time = time.time()
 
-            self.cluster_node_info_cache.update()
+            try:
+                self.cluster_node_info_cache.update()
+            except Exception:
+                logger.exception("Exception updating cluster node info cache.")
 
             if self._shutting_down:
                 try:
@@ -351,7 +356,8 @@ class ServeController:
                     self.done_recovering_event.set()
                     logger.info(
                         "Finished recovering deployments after "
-                        f"{time.time() - start_time}s."
+                        f"{(time.time() - start_time):.2f}s.",
+                        extra={"log_to_stderr": False},
                     )
             except Exception:
                 logger.exception("Exception updating deployment state.")
@@ -398,7 +404,8 @@ class ServeController:
                     f"The last control loop was slow (took {loop_duration}s). "
                     "This is likely caused by running a large number of "
                     "replicas in a single Ray cluster. Consider using "
-                    "multiple Ray clusters."
+                    "multiple Ray clusters.",
+                    extra={"log_to_stderr": False},
                 )
             self.control_loop_duration_gauge_s.set(loop_duration)
 
@@ -496,7 +503,9 @@ class ServeController:
     def _recover_config_from_checkpoint(self):
         checkpoint = self.kv_store.get(CONFIG_CHECKPOINT_KEY)
         if checkpoint is not None:
-            logger.info("Recovering config from checkpoint.")
+            logger.info(
+                "Recovering config from checkpoint.", extra={"log_to_stderr": False}
+            )
             deployment_time, deploy_mode, config_checkpoints_dict = pickle.loads(
                 checkpoint
             )

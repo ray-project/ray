@@ -261,6 +261,32 @@ class FileBasedDatasource(Datasource):
             "Subclasses of FileBasedDatasource must implement _read_file()."
         )
 
+    def on_write_start(
+        self,
+        path: str,
+        try_create_dir: bool = True,
+        filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+        **write_args,
+    ) -> None:
+        """Create a directory to write files to.
+
+        If ``try_create_dir`` is ``False``, this method is a no-op.
+        """
+        from pyarrow.fs import FileType
+
+        self.has_created_dir = False
+        if try_create_dir:
+            paths, filesystem = _resolve_paths_and_filesystem(path, filesystem)
+            assert len(paths) == 1, len(paths)
+            path = paths[0]
+
+            if filesystem.get_file_info(path).type is FileType.NotFound:
+                # Arrow's S3FileSystem doesn't allow creating buckets by default, so we
+                # add a query arg enabling bucket creation if an S3 URI is provided.
+                tmp = _add_creatable_buckets_param_if_s3_uri(path)
+                filesystem.create_dir(tmp, recursive=True)
+                self.has_created_dir = True
+
     def write(
         self,
         blocks: Iterable[Block],
@@ -305,16 +331,6 @@ class FileBasedDatasource(Datasource):
             block = BlockAccessor.for_block(block)
             if block.num_rows() == 0:
                 continue
-
-            if block_idx == 0:
-                # On the first non-empty block, try to create the directory.
-                if try_create_dir:
-                    # Arrow's S3FileSystem doesn't allow creating buckets by
-                    # default, so we add a query arg enabling bucket creation
-                    # if an S3 URI is provided.
-                    tmp = _add_creatable_buckets_param_if_s3_uri(path)
-                    filesystem.create_dir(tmp, recursive=True)
-                filesystem = _wrap_s3_serialization_workaround(filesystem)
 
             fs = _unwrap_s3_serialization_workaround(filesystem)
 
@@ -367,6 +383,23 @@ class FileBasedDatasource(Datasource):
         # TODO: decide if we want to return richer object when the task
         # succeeds.
         return "ok"
+
+    def on_write_complete(
+        self,
+        write_results: List[WriteResult],
+        path: Optional[str] = None,
+        filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+        **kwargs,
+    ) -> None:
+        if not self.has_created_dir:
+            return
+
+        paths, filesystem = _resolve_paths_and_filesystem(path, filesystem)
+        assert len(paths) == 1, len(paths)
+        path = paths[0]
+
+        if all(write_results == "skip" for write_results in write_results):
+            filesystem.delete_dir(path)
 
     def _write_block(
         self,
@@ -664,7 +697,10 @@ def _resolve_paths_and_filesystem(
     if isinstance(paths, pathlib.Path):
         paths = [str(paths)]
     elif not isinstance(paths, list) or any(not isinstance(p, str) for p in paths):
-        raise ValueError("paths must be a path string or a list of path strings.")
+        raise ValueError(
+            "Expected `paths` to be a `str`, `pathlib.Path`, or `list[str]`, but got "
+            f"`{paths}`."
+        )
     elif len(paths) == 0:
         raise ValueError("Must provide at least one path.")
 
