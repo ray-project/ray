@@ -859,7 +859,7 @@ msg_app = MessageDeployment.bind("Hello World!")
             "reload_serve:msg_app",
         ]
     )
-    wait_for_condition(lambda: ping_endpoint("Message") == "Hello World!", timeout=10)
+    wait_for_condition(lambda: ping_endpoint("") == "Hello World!", timeout=10)
     fin = open(python_module_file, "rt")
     code = fin.read()
     code = code.replace("World", "Me")

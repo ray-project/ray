@@ -466,16 +466,16 @@ def run(
 
             visualizer = GraphVisualizer()
             visualizer.visualize_with_gradio(handle)
-        else:
-            if reload and not blocking:
+        elif reload:
+            if blocking:
                 raise click.ClickException(
                     "The --non-blocking option conflicts with the --reload option."
                 )
-            if reload:
+            # unindent the reload codepath
                 if working_dir:
                     watch_dir = working_dir
                 else:
-                    watch_dir = "./"
+                    watch_dir = app_dir
                 for changes in watchfiles.watch(
                     watch_dir,
                     rust_timeout=10000,
