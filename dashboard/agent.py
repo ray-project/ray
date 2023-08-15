@@ -178,14 +178,16 @@ class DashboardAgent:
 
     @property
     def http_session(self):
-        assert self.http_server, \
-            "Accessing unsupported API (HttpServerAgent) in a minimal ray."
+        assert (
+            self.http_server
+        ), "Accessing unsupported API (HttpServerAgent) in a minimal ray."
         return self.http_server.http_session
 
     @property
     def publisher(self):
-        assert self.aio_publisher, \
-            "Accessing unsupported API (GcsAioPublisher) in a minimal ray."
+        assert (
+            self.aio_publisher
+        ), "Accessing unsupported API (GcsAioPublisher) in a minimal ray."
         return self.aio_publisher
 
     async def run(self):

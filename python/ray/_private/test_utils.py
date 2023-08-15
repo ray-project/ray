@@ -1473,6 +1473,7 @@ def get_and_run_node_killer(
             import grpc
             from grpc._channel import _InactiveRpcError
             from ray.core.generated import node_manager_pb2_grpc
+
             raylet_address = f"{ip}:{port}"
             channel = grpc.insecure_channel(raylet_address)
             stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
@@ -1695,6 +1696,7 @@ def wandb_setup_api_key_hook():
 def get_node_stats(raylet, num_retry=5, timeout=2):
     import grpc
     from ray.core.generated import node_manager_pb2_grpc
+
     raylet_address = f'{raylet["NodeManagerAddress"]}:{raylet["NodeManagerPort"]}'
     channel = ray._private.utils.init_grpc_channel(raylet_address)
     stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
@@ -1713,6 +1715,7 @@ def get_node_stats(raylet, num_retry=5, timeout=2):
 # Gets resource usage assuming gcs is local.
 def get_resource_usage(gcs_address, timeout=10):
     from ray.core.generated import gcs_service_pb2_grpc
+
     if not gcs_address:
         gcs_address = ray.worker._global_node.gcs_address
 
@@ -1744,6 +1747,7 @@ def kill_raylet(raylet, graceful=False):
     import grpc
     from grpc._channel import _InactiveRpcError
     from ray.core.generated import node_manager_pb2_grpc
+
     raylet_address = f'{raylet["NodeManagerAddress"]}:{raylet["NodeManagerPort"]}'
     channel = grpc.insecure_channel(raylet_address)
     stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)

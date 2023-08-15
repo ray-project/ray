@@ -14,6 +14,7 @@ from typing import Any, Callable, Dict, FrozenSet, List, Optional, Set, Tuple, U
 
 import yaml
 
+import ray
 from ray.autoscaler._private.constants import (
     AUTOSCALER_HEARTBEAT_TIMEOUT_S,
     AUTOSCALER_MAX_CONCURRENT_LAUNCHES,
@@ -75,7 +76,6 @@ from ray.autoscaler.tags import (
     TAG_RAY_RUNTIME_CONFIG,
     TAG_RAY_USER_NODE_TYPE,
 )
-from ray._raylet import GcsClient
 from ray.exceptions import RpcError
 
 logger = logging.getLogger(__name__)
@@ -184,7 +184,7 @@ class StandardAutoscaler:
         # TODO(ekl): require config reader to be a callable always.
         config_reader: Union[str, Callable[[], dict]],
         load_metrics: LoadMetrics,
-        gcs_client: GcsClient,
+        gcs_client: "ray._raylet.GcsClient",
         session_name: Optional[str] = None,
         max_launch_batch: int = AUTOSCALER_MAX_LAUNCH_BATCH,
         max_concurrent_launches: int = AUTOSCALER_MAX_CONCURRENT_LAUNCHES,
@@ -680,8 +680,9 @@ class StandardAutoscaler:
             # the nodes without the GCS printing an error.
             # Check if we succeeded in draining all of the intended nodes by
             # looking at the RPC response.
-            drained_raylet_ids = set(self.gcs_client.drain_nodes(
-                raylet_ids_to_drain, timeout=5))
+            drained_raylet_ids = set(
+                self.gcs_client.drain_nodes(raylet_ids_to_drain, timeout=5)
+            )
             failed_to_drain = raylet_ids_to_drain - drained_raylet_ids
             if failed_to_drain:
                 self.prom_metrics.drain_node_exceptions.inc()
@@ -1028,6 +1029,7 @@ class StandardAutoscaler:
                         "available until you upgrade ray on your cluster.",
                         exc_info=e,
                     )
+            print("new config", new_config, type(new_config))
             (new_runtime_hash, new_file_mounts_contents_hash) = hash_runtime_conf(
                 new_config["file_mounts"],
                 new_config["cluster_synced_files"],

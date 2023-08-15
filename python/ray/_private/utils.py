@@ -268,7 +268,7 @@ def hex_to_binary(hex_identifier):
 # once we separate `WorkerID` from `UniqueID`.
 def compute_job_id_from_driver(driver_id):
     assert isinstance(driver_id, ray.WorkerID)
-    return ray.JobID(driver_id.binary()[0: ray.JobID.size()])
+    return ray.JobID(driver_id.binary()[0 : ray.JobID.size()])
 
 
 def compute_driver_id_from_job(job_id):
@@ -1191,7 +1191,7 @@ def import_attr(full_path: str):
     else:
         last_period_idx = full_path.rfind(".")
         module_name = full_path[:last_period_idx]
-        attr_name = full_path[last_period_idx + 1:]
+        attr_name = full_path[last_period_idx + 1 :]
 
     module = importlib.import_module(module_name)
     return getattr(module, attr_name)
@@ -1359,6 +1359,7 @@ def check_ray_client_dependencies_installed() -> bool:
     """
     try:
         import grpc  # noqa: F401
+
         return True
     except ImportError:
         return False
