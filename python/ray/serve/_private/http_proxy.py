@@ -43,9 +43,7 @@ from ray.serve._private.common import (
     EndpointInfo,
     EndpointTag,
     NodeId,
-    gRPCRequest,
     RequestProtocol,
-    StreamingHTTPRequest,
 )
 from ray.serve._private.constants import (
     SERVE_LOGGER_NAME,
@@ -521,7 +519,7 @@ class GenericProxy:
             # Modify the path and root path so that reverse lookups and redirection
             # work as expected. We do this here instead of in replicas so it can be
             # changed without restarting the replicas.
-            if route_prefix != "/" and isinstance(serve_request, ASGIServeRequest):
+            if route_prefix != "/" and self.proxy_name == RequestProtocol.HTTP:
                 assert not route_prefix.endswith("/")
                 serve_request.set_path(route_path.replace(route_prefix, "", 1))
                 serve_request.set_root_path(serve_request.root_path + route_prefix)
@@ -612,27 +610,11 @@ class GenericProxy:
         `disconnected_task` is expected to be done if the client disconnects; in this
         case, we will abort assigning a replica and return `None`.
         """
-        assignment_task = None
+        assignment_task = handle.remote(
+            serve_request.request_object(proxy_handle=self.self_actor_handle)
+        )
 
-        # TODO (genesu): move this into serve request
-        if isinstance(serve_request, ASGIServeRequest):
-            assignment_task = handle.remote(
-                StreamingHTTPRequest(
-                    pickled_asgi_scope=pickle.dumps(serve_request.scope),
-                    http_proxy_handle=self.self_actor_handle,
-                )
-            )
-        if isinstance(serve_request, gRPCServeRequest):
-            assignment_task = handle.remote(
-                gRPCRequest(
-                    grpc_user_request=serve_request.user_request,
-                    grpc_proxy_handle=self.self_actor_handle,
-                )
-            )
-
-        tasks = []
-        if assignment_task is not None:
-            tasks.append(assignment_task)
+        tasks = [assignment_task]
         if disconnected_task is not None:
             tasks.append(disconnected_task)
         done, _ = await asyncio.wait(

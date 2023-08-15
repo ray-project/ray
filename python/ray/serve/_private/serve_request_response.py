@@ -5,8 +5,10 @@ import pickle
 from starlette.types import Receive, Scope, Send
 from typing import Any, Callable, List, Generator, Optional, Tuple
 
+from ray.actor import ActorHandle
 from ray.serve._private.constants import SERVE_LOGGER_NAME
 from ray.serve._private.utils import DEFAULT
+from ray.serve._private.common import gRPCRequest, StreamingHTTPRequest
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -58,6 +60,12 @@ class ASGIServeRequest(ServeRequest):
 
     def set_root_path(self, root_path: str):
         self.scope["root_path"] = root_path
+
+    def request_object(self, proxy_handle) -> StreamingHTTPRequest:
+        return StreamingHTTPRequest(
+            pickled_asgi_scope=pickle.dumps(self.scope),
+            http_proxy_handle=proxy_handle,
+        )
 
 
 class gRPCServeRequest(ServeRequest):
@@ -121,6 +129,12 @@ class gRPCServeRequest(ServeRequest):
 
     def send_details(self, message: str):
         self.context.set_details(message)
+
+    def request_object(self, proxy_handle: ActorHandle) -> gRPCRequest:
+        return gRPCRequest(
+            grpc_user_request=self.user_request,
+            grpc_proxy_handle=proxy_handle,
+        )
 
 
 class ServeResponse:
