@@ -21,7 +21,7 @@
 // clang-format off
 #include "ray/raylet/node_manager.h"
 #include "ray/object_manager/object_manager.h"
-#include "ray/common/scheduling/scheduling_resources.h"
+#include "ray/common/scheduling/resource_set.h"
 #include "ray/common/asio/instrumented_io_context.h"
 // clang-format on
 

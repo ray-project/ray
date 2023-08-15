@@ -969,7 +969,7 @@ void NodeManager::WarnResourceDeadlock() {
         << "by actors. To resolve the issue, consider creating fewer actors or "
         << "increasing the resources available to this Ray cluster.\n"
         << "Required resources for this actor or task: "
-        << exemplar.GetTaskSpecification().GetRequiredPlacementResources().ToString()
+        << exemplar.GetTaskSpecification().GetRequiredPlacementResources().DebugString()
         << "\n"
         << "Available resources on this node: "
         << cluster_resource_scheduler_->GetClusterResourceManager()
@@ -2871,7 +2871,7 @@ void NodeManager::PublishInfeasibleTaskError(const RayTask &task) const {
     error_message
         << "The actor or task with ID " << task.GetTaskSpecification().TaskId()
         << " cannot be scheduled right now. It requires "
-        << task.GetTaskSpecification().GetRequiredPlacementResources().ToString()
+        << task.GetTaskSpecification().GetRequiredPlacementResources().DebugString()
         << " for placement, however the cluster currently cannot provide the requested "
            "resources. The required resources may be added as autoscaling takes place "
            "or placement groups are scheduled. Otherwise, consider reducing the "
