@@ -449,7 +449,7 @@ class StorageContext:
         # Invariant: (`storage_filesystem`, `storage_path`) is the location where
         # *all* results can be accessed.
         self.storage_path = (
-            Path(storage_path or self.storage_local_path).absolute().as_posix()
+            Path(storage_path or self.storage_local_path).resolve().as_posix()
         )
 
         self.experiment_dir_name = experiment_dir_name
