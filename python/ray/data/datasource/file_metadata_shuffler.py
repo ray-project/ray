@@ -1,8 +1,8 @@
 from typing import Any, Dict, List, Tuple
 
 
-class FileShuffler:
-    """Abstract class for file shuffler.
+class FileMetadataShuffler:
+    """Abstract class for file metadata shuffler.
 
     Shufflers live on the driver side of the Dataset only.
     """
@@ -27,7 +27,7 @@ class FileShuffler:
         raise NotImplementedError
 
 
-class SequentialFileShuffler(FileShuffler):
+class SequentialFileMetadataShuffler(FileMetadataShuffler):
     def shuffle_files(
         self,
         paths: List[str],

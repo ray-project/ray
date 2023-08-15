@@ -495,8 +495,8 @@ class _FileBasedDatasourceReader(Reader):
                 )
 
         ctx = DataContext.get_current()
-        shuffler_class = get_attribute_from_class_name(ctx.file_shuffler)
-        self._file_shuffler = shuffler_class(self._reader_args)
+        shuffler_class = get_attribute_from_class_name(ctx.file_metadata_shuffler)
+        self._file_metadata_shuffler = shuffler_class(self._reader_args)
 
     def estimate_inmemory_data_size(self) -> Optional[int]:
         total_size = 0
@@ -513,7 +513,7 @@ class _FileBasedDatasourceReader(Reader):
         reader_args = self._reader_args
         partitioning = self._partitioning
 
-        paths, file_sizes = self._file_shuffler.shuffle_files(
+        paths, file_sizes = self._file_metadata_shuffler.shuffle_files(
             self._paths,
             self._file_sizes,
         )

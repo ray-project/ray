@@ -97,7 +97,7 @@ class _MongoDatasourceReader(Reader):
             return {}
         return pipeline[0]["$match"]
 
-    def _create_client(self):
+    def _get_or_create_client(self):
         import pymongo
 
         if self._client is None:
@@ -112,7 +112,7 @@ class _MongoDatasourceReader(Reader):
     def get_read_tasks(self, parallelism: int) -> List[ReadTask]:
         from bson.objectid import ObjectId
 
-        self._create_client()
+        self._get_or_create_client()
         coll = self._client[self._database][self._collection]
         match_query = self._get_match_query(self._pipeline)
         partitions_ids = list(
