@@ -22,6 +22,7 @@ from ray import serve
 from ray.serve.tests.conftest import check_ray_stop
 from ray.serve.deployment_graph import RayServeDAGHandle
 from ray.serve._private.constants import (
+    SERVE_DEFAULT_APP_NAME,
     SERVE_NAMESPACE,
     RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING,
 )
@@ -97,7 +98,9 @@ def test_shutdown(ray_start_stop):
 
     def num_live_deployments():
         status_response = subprocess.check_output(["serve", "status"])
-        serve_status = yaml.safe_load(status_response)["applications"]["default"]
+        serve_status = yaml.safe_load(status_response)["applications"][
+            SERVE_DEFAULT_APP_NAME
+        ]
         return len(serve_status["deployments"])
 
     config_file_name = os.path.join(

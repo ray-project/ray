@@ -717,11 +717,16 @@ def test_serve_namespace(ray_start_stop):
     """
 
     config = {
-        "import_path": "ray.serve.tests.test_config_files.world.DagNode",
+        "applications": [
+            {
+                "name": "my_app",
+                "import_path": "ray.serve.tests.test_config_files.world.DagNode",
+            }
+        ],
     }
 
     print("Deploying config.")
-    deploy_and_check_config(config)
+    deploy_config_multi_app(config)
     wait_for_condition(
         lambda: requests.post("http://localhost:8000/").text == "wonderful world",
         timeout=15,
@@ -729,14 +734,10 @@ def test_serve_namespace(ray_start_stop):
     print("Deployments are live and reachable over HTTP.\n")
 
     ray.init(address="auto", namespace="serve")
-    client = serve.start()
-    print("Connected to Serve with Python API.")
-    serve_status = client.get_serve_status()
+    my_app_status = serve.status().applications["my_app"]
     assert (
-        len(serve_status.deployment_statuses) == 2
-        and serve_status.get_deployment_status(
-            f"{SERVE_DEFAULT_APP_NAME}{DEPLOYMENT_NAME_PREFIX_SEPARATOR}f"
-        )
+        len(my_app_status.deployments) == 2
+        and my_app_status.deployments[f"my_app{DEPLOYMENT_NAME_PREFIX_SEPARATOR}f"]
         is not None
     )
     print("Successfully retrieved deployment statuses with Python API.")
