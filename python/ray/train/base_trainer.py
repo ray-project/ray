@@ -1,6 +1,7 @@
 import abc
 import copy
 import inspect
+import json
 import logging
 import os
 from pathlib import Path
@@ -170,6 +171,9 @@ class BaseTrainer(abc.ABC):
         run_config: Configuration for the execution of the training run.
         datasets: Any Datasets to use for training. Use the key "train"
             to denote which dataset is the training dataset.
+        metadata: Dict that should be made available via `train.session.get_metadata()`
+            and in `checkpoint.get_metadata()` for checkpoints saved from this Trainer.
+            Must be JSON-serializable.
         resume_from_checkpoint: A checkpoint to resume training from.
     """
 
@@ -190,6 +194,7 @@ class BaseTrainer(abc.ABC):
         scaling_config: Optional[ScalingConfig] = None,
         run_config: Optional[RunConfig] = None,
         datasets: Optional[Dict[str, GenDataset]] = None,
+        metadata: Optional[Dict[str, Any]] = None,
         resume_from_checkpoint: Optional[Checkpoint] = None,
         # Deprecated.
         preprocessor: Optional["Preprocessor"] = None,
@@ -198,6 +203,7 @@ class BaseTrainer(abc.ABC):
             scaling_config if scaling_config is not None else ScalingConfig()
         )
         self.run_config = run_config if run_config is not None else RunConfig()
+        self.metadata = metadata
         self.datasets = datasets if datasets is not None else {}
         self.preprocessor = preprocessor
         self.starting_checkpoint = resume_from_checkpoint
@@ -468,6 +474,21 @@ class BaseTrainer(abc.ABC):
                         "`ray.data.Dataset`. "
                         f"Received {dataset} instead."
                     )
+        # Metadata.
+        if not self.metadata:
+            self.metadata = {}
+        elif not isinstance(self.metadata, dict):
+            raise TypeError(
+                f"The provided metadata must be a dict, was {type(self.metadata)}."
+            )
+        else:
+            try:
+                self.metadata = json.loads(json.dumps(self.metadata))
+            except Exception as e:
+                raise ValueError(
+                    "The provided metadata must be JSON-serializable: "
+                    f"{self.metadata}: {e}"
+                )
 
         # Preprocessor
         if self.preprocessor is not None and not isinstance(
