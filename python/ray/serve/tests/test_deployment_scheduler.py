@@ -121,9 +121,83 @@ def test_spread_deployment_scheduling_policy_upscale(
     scheduler.on_deployment_deleted("deployment1")
 
 
-def test_spread_deployment_scheduling_policy_downscale(ray_start_cluster):
+def test_spread_deployment_scheduling_policy_downscale_multiple_deployments(
+    ray_start_cluster,
+):
     """Test to make sure downscale prefers replicas without node id
-    and then replicas with fewest copies on a node.
+    and then replicas on a node with fewest replicas of all deployments.
+    """
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=3)
+    cluster.wait_for_nodes()
+    ray.init(address=cluster.address)
+
+    cluster_node_info_cache = create_cluster_node_info_cache(
+        GcsClient(address=ray.get_runtime_context().gcs_address)
+    )
+    cluster_node_info_cache.update()
+
+    scheduler = DeploymentScheduler(cluster_node_info_cache)
+    scheduler.on_deployment_created("deployment1", SpreadDeploymentSchedulingPolicy())
+    scheduler.on_deployment_created("deployment2", SpreadDeploymentSchedulingPolicy())
+    scheduler.on_replica_running("deployment1", "replica1", "node1")
+    scheduler.on_replica_running("deployment1", "replica2", "node2")
+    scheduler.on_replica_running("deployment1", "replica3", "node2")
+    scheduler.on_replica_running("deployment2", "replica1", "node1")
+    scheduler.on_replica_running("deployment2", "replica2", "node2")
+    scheduler.on_replica_running("deployment2", "replica3", "node1")
+    scheduler.on_replica_running("deployment2", "replica4", "node1")
+    deployment_to_replicas_to_stop = scheduler.schedule(
+        upscales={},
+        downscales={
+            "deployment1": DeploymentDownscaleRequest(
+                deployment_name="deployment1", num_to_stop=1
+            )
+        },
+    )
+    assert len(deployment_to_replicas_to_stop) == 1
+    # Even though node1 has fewest replicas of deployment1
+    # but it has more replicas of all deployments so
+    # we should stop replicas from node2.
+    assert len(deployment_to_replicas_to_stop["deployment1"]) == 1
+    assert deployment_to_replicas_to_stop["deployment1"] < {"replica2", "replica3"}
+
+    scheduler.on_replica_stopping("deployment1", "replica3")
+    scheduler.on_replica_stopping("deployment2", "replica3")
+    scheduler.on_replica_stopping("deployment2", "replica4")
+
+    deployment_to_replicas_to_stop = scheduler.schedule(
+        upscales={},
+        downscales={
+            "deployment1": DeploymentDownscaleRequest(
+                deployment_name="deployment1", num_to_stop=1
+            ),
+            "deployment2": DeploymentDownscaleRequest(
+                deployment_name="deployment2", num_to_stop=1
+            ),
+        },
+    )
+    assert len(deployment_to_replicas_to_stop) == 2
+    # We should stop replicas from the same node.
+    assert len(deployment_to_replicas_to_stop["deployment1"]) == 1
+    assert (
+        deployment_to_replicas_to_stop["deployment1"]
+        == deployment_to_replicas_to_stop["deployment2"]
+    )
+
+    scheduler.on_replica_stopping("deployment1", "replica1")
+    scheduler.on_replica_stopping("deployment1", "replica2")
+    scheduler.on_replica_stopping("deployment2", "replica1")
+    scheduler.on_replica_stopping("deployment2", "replica2")
+    scheduler.on_deployment_deleted("deployment1")
+    scheduler.on_deployment_deleted("deployment2")
+
+
+def test_spread_deployment_scheduling_policy_downscale_single_deployment(
+    ray_start_cluster,
+):
+    """Test to make sure downscale prefers replicas without node id
+    and then replicas on a node with fewest replicas of all deployments.
     """
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=3)
@@ -193,7 +267,7 @@ def test_spread_deployment_scheduling_policy_downscale(ray_start_cluster):
         },
     )
     assert len(deployment_to_replicas_to_stop) == 1
-    # Prefer replica that has fewest copies on a node
+    # Prefer replica on a node with fewest replicas of all deployments.
     assert deployment_to_replicas_to_stop["deployment1"] == {"replica3"}
     scheduler.on_replica_stopping("deployment1", "replica3")
 
@@ -206,7 +280,6 @@ def test_spread_deployment_scheduling_policy_downscale(ray_start_cluster):
         },
     )
     assert len(deployment_to_replicas_to_stop) == 1
-    # Prefer replica that has fewest copies on a node
     assert deployment_to_replicas_to_stop["deployment1"] == {"replica1", "replica2"}
     scheduler.on_replica_stopping("deployment1", "replica1")
     scheduler.on_replica_stopping("deployment1", "replica2")
