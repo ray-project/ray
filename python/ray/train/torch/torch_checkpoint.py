@@ -168,6 +168,7 @@ class TorchCheckpoint(LegacyFrameworkCheckpoint):
         checkpoint = cls.from_directory(tempdir)
         if preprocessor:
             checkpoint.set_preprocessor(checkpoint)
+        return checkpoint
 
     def get_model(self, model: Optional[torch.nn.Module] = None) -> torch.nn.Module:
         """Retrieve the model stored in this checkpoint.
