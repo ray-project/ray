@@ -85,7 +85,7 @@ that you can setup like this:
 
 .. code-block:: python
 
-    from ray.air import ScalingConfig
+    from ray.train import ScalingConfig
     from ray.train.tensorflow import TensorflowTrainer
     # For GPU Training, set `use_gpu` to True.
     use_gpu = False
@@ -99,7 +99,7 @@ To customize the backend setup, you can pass a
 
 .. code-block:: python
 
-    from ray.air import ScalingConfig
+    from ray.train import ScalingConfig
     from ray.train.tensorflow import TensorflowTrainer, TensorflowConfig
 
     trainer = TensorflowTrainer(
@@ -224,7 +224,7 @@ training function. This will cause the checkpoint state from the distributed
 workers to be saved on the ``Trainer`` (where your python script is executed).
 
 The latest saved checkpoint can be accessed through the ``checkpoint`` attribute of
-the :py:class:`~ray.air.result.Result`, and the best saved checkpoints can be accessed by the ``best_checkpoints``
+the :py:class:`~ray.train.Result`, and the best saved checkpoints can be accessed by the ``best_checkpoints``
 attribute.
 
 Concrete examples are provided to demonstrate how checkpoints (model weights but not models) are saved
@@ -235,7 +235,7 @@ appropriately in distributed training.
     :emphasize-lines: 23
 
     from ray import train
-    from ray.air import Checkpoint, ScalingConfig
+    from ray.train import Checkpoint, ScalingConfig
     from ray.train.tensorflow import TensorflowTrainer
 
     import numpy as np
@@ -285,7 +285,7 @@ Loading checkpoints
     :emphasize-lines: 15, 21, 22, 25, 26, 27, 30
 
     from ray import train
-    from ray.air import Checkpoint, ScalingConfig
+    from ray.train import Checkpoint, ScalingConfig
     from ray.train.tensorflow import TensorflowTrainer
 
     import numpy as np

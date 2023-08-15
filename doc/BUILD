@@ -223,9 +223,7 @@ py_test(
 py_test_run_all_subdirectory(
     size = "large",
     include = ["source/train/doc_code/*.py"],
-    exclude = [
-        "source/train/doc_code/hf_trainer.py",  # Too large
-    ],
+    exclude = [],
     extra_srcs = [],
     tags = ["exclusive", "team:ml"],
 )
@@ -305,6 +303,7 @@ doctest(
             "source/data/batch_inference.rst",
             "source/data/transforming-data.rst",
             "source/train/faq.rst",
+	    "source/train/user-guides/data-loading-preprocessing.rst",
             "source/workflows/**/*.rst",
             "source/workflows/**/*.md",
             "source/templates/04_finetuning_llms_with_deepspeed/README.md"
@@ -333,4 +332,12 @@ doctest(
     ],
     tags = ["team:data"],
     gpu = True
+)
+
+doctest(
+    name="quarantine",
+    files = [
+	"source/train/user-guides/data-loading-preprocessing.rst",
+    ],
+    tags = ["team:data"],
 )
