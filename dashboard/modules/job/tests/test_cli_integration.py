@@ -202,6 +202,7 @@ class TestRuntimeEnv:
         stdout, _ = _run_cmd(
             'ray job submit --runtime-env-json=\'{"pip": '
             '["does-not-exist"]}\' -- echo hi',
+            should_fail=True,
         )
         assert "Tailing logs until the job exits" in stdout
         assert "runtime_env setup failed" in stdout
