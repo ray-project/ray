@@ -24,6 +24,7 @@ from ray.train.torch.train_loop_utils import (
 
 __all__ = [
     "TorchTrainer",
+    "TorchCheckpoint",
     "LegacyTorchCheckpoint",
     "TorchConfig",
     "accelerate",

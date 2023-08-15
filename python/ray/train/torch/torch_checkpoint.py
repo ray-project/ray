@@ -12,7 +12,6 @@ import ray.cloudpickle as ray_pickle
 from ray.air.checkpoint import Checkpoint, _BYTES_DATA_KEY, _FS_CHECKPOINT_KEY
 from ray.air.constants import MODEL_KEY, PREPROCESSOR_KEY
 from ray.train._internal.legacy_checkpoint import LegacyFrameworkCheckpoint
-from ray.train._internal.storage import _exists_at_fs_path
 from ray.train.data_parallel_trainer import _load_checkpoint_dict
 from ray.air._internal.torch_utils import (
     load_torch_model,
