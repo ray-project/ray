@@ -462,7 +462,7 @@ class TunerInternal:
             Tuple of (downloaded from remote, local_dir)
         """
         if not is_non_local_path_uri(restore_path):
-            return False, os.path.abspath(os.path.expanduser(restore_path))
+            return False, Path(restore_path).expanduser().absolute().as_posix()
 
         tempdir = Path(tempfile.mkdtemp("tmp_experiment_dir"))
 
@@ -542,7 +542,9 @@ class TunerInternal:
                 run_config.name or StorageContext.get_experiment_dir_name(trainable)
             )
             storage_local_path = _get_defaults_results_dir()
-            experiment_path = os.path.join(storage_local_path, experiment_dir_name)
+            experiment_path = (
+                Path(storage_local_path).joinpath(experiment_dir_name).as_posix()
+            )
         else:
             experiment_path = Experiment.get_experiment_checkpoint_dir(
                 trainable,
