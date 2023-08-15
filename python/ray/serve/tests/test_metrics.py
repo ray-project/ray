@@ -13,7 +13,10 @@ from ray.serve._private.utils import block_until_http_ready
 import ray.util.state as state_api
 from fastapi import FastAPI
 from ray.serve.metrics import Counter, Histogram, Gauge
-from ray.serve._private.constants import DEFAULT_LATENCY_BUCKET_MS
+from ray.serve._private.constants import (
+    DEFAULT_LATENCY_BUCKET_MS,
+    RAY_SERVE_ENABLE_NEW_ROUTING,
+)
 from ray.serve.drivers import DAGDriver
 from ray.serve.http_adapters import json_request
 
@@ -899,20 +902,21 @@ def test_queued_queries_disconnected(serve_start_shutdown):
         assert float(metric_value) == expected
         return True
 
-    wait_for_condition(
-        check_metric,
-        timeout=15,
-        metric="ray_serve_num_scheduling_tasks",
-        expected=0,
-    )
-    print("ray_serve_num_scheduling_tasks updated successfully.")
-    wait_for_condition(
-        check_metric,
-        timeout=15,
-        metric="serve_num_scheduling_tasks_in_backoff",
-        expected=0,
-    )
-    print("serve_num_scheduling_tasks_in_backoff updated successfully.")
+    if RAY_SERVE_ENABLE_NEW_ROUTING:
+        wait_for_condition(
+            check_metric,
+            timeout=15,
+            metric="ray_serve_num_scheduling_tasks",
+            expected=0,
+        )
+        print("ray_serve_num_scheduling_tasks updated successfully.")
+        wait_for_condition(
+            check_metric,
+            timeout=15,
+            metric="serve_num_scheduling_tasks_in_backoff",
+            expected=0,
+        )
+        print("serve_num_scheduling_tasks_in_backoff updated successfully.")
 
     def first_request_executing(request_future) -> bool:
         try:
@@ -920,21 +924,22 @@ def test_queued_queries_disconnected(serve_start_shutdown):
         except Exception:
             return ray.get(signal.cur_num_waiters.remote()) == 1
 
-    # No scheduling tasks should be running once the first request is assigned.
-    wait_for_condition(
-        check_metric,
-        timeout=15,
-        metric="ray_serve_num_scheduling_tasks",
-        expected=0,
-    )
-    print("ray_serve_num_scheduling_tasks updated successfully.")
-    wait_for_condition(
-        check_metric,
-        timeout=15,
-        metric="serve_num_scheduling_tasks_in_backoff",
-        expected=0,
-    )
-    print("serve_num_scheduling_tasks_in_backoff updated successfully.")
+    if RAY_SERVE_ENABLE_NEW_ROUTING:
+        # No scheduling tasks should be running once the first request is assigned.
+        wait_for_condition(
+            check_metric,
+            timeout=15,
+            metric="ray_serve_num_scheduling_tasks",
+            expected=0,
+        )
+        print("ray_serve_num_scheduling_tasks updated successfully.")
+        wait_for_condition(
+            check_metric,
+            timeout=15,
+            metric="serve_num_scheduling_tasks_in_backoff",
+            expected=0,
+        )
+        print("serve_num_scheduling_tasks_in_backoff updated successfully.")
 
     url = "http://localhost:8000/"
 
@@ -973,22 +978,23 @@ def test_queued_queries_disconnected(serve_start_shutdown):
     )
     print("ray_serve_num_ongoing_http_requests updated successfully.")
 
-    # There should be 2 scheduling tasks (which is the max, since
-    # 2 = 2 * 1 replica) that are attempting to schedule the hanging requests.
-    wait_for_condition(
-        check_metric,
-        timeout=15,
-        metric="ray_serve_num_scheduling_tasks",
-        expected=2,
-    )
-    print("ray_serve_num_scheduling_tasks updated successfully.")
-    wait_for_condition(
-        check_metric,
-        timeout=15,
-        metric="serve_num_scheduling_tasks_in_backoff",
-        expected=2,
-    )
-    print("serve_num_scheduling_tasks_in_backoff updated successfully.")
+    if RAY_SERVE_ENABLE_NEW_ROUTING:
+        # There should be 2 scheduling tasks (which is the max, since
+        # 2 = 2 * 1 replica) that are attempting to schedule the hanging requests.
+        wait_for_condition(
+            check_metric,
+            timeout=15,
+            metric="ray_serve_num_scheduling_tasks",
+            expected=2,
+        )
+        print("ray_serve_num_scheduling_tasks updated successfully.")
+        wait_for_condition(
+            check_metric,
+            timeout=15,
+            metric="serve_num_scheduling_tasks_in_backoff",
+            expected=2,
+        )
+        print("serve_num_scheduling_tasks_in_backoff updated successfully.")
 
     # Disconnect all requests by terminating the process pool.
     pool.terminate()
@@ -1012,22 +1018,23 @@ def test_queued_queries_disconnected(serve_start_shutdown):
     )
     print("ray_serve_num_ongoing_http_requests updated successfully.")
 
-    # TODO(shrekris-anyscale): This should be 0 once async task cancellation
-    # is implemented.
-    wait_for_condition(
-        check_metric,
-        timeout=15,
-        metric="ray_serve_num_scheduling_tasks",
-        expected=2,
-    )
-    print("ray_serve_num_scheduling_tasks updated successfully.")
-    wait_for_condition(
-        check_metric,
-        timeout=15,
-        metric="serve_num_scheduling_tasks_in_backoff",
-        expected=2,
-    )
-    print("serve_num_scheduling_tasks_in_backoff updated successfully.")
+    if RAY_SERVE_ENABLE_NEW_ROUTING:
+        # TODO(shrekris-anyscale): This should be 0 once async task cancellation
+        # is implemented.
+        wait_for_condition(
+            check_metric,
+            timeout=15,
+            metric="ray_serve_num_scheduling_tasks",
+            expected=2,
+        )
+        print("ray_serve_num_scheduling_tasks updated successfully.")
+        wait_for_condition(
+            check_metric,
+            timeout=15,
+            metric="serve_num_scheduling_tasks_in_backoff",
+            expected=2,
+        )
+        print("serve_num_scheduling_tasks_in_backoff updated successfully.")
 
 
 def test_actor_summary(serve_instance):
