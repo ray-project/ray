@@ -19,6 +19,7 @@ if TYPE_CHECKING:
     import pyarrow
 
     from ray.data._internal.compute import ComputeStrategy
+    from ray.data._internal.sort import SortKey
     from ray.data.block import Block, BlockMetadata, UserDefinedFunction
     from ray.data.datasource import Reader
     from ray.util.placement_group import PlacementGroup
@@ -516,7 +517,9 @@ def unify_block_metadata_schema(
 
 
 def find_partition_index(
-    table: Union["pyarrow.Table", "pandas.DataFrame"], desired: List[Any], sort_key
+    table: Union["pyarrow.Table", "pandas.DataFrame"],
+    desired: List[Any],
+    sort_key: "SortKey",
 ) -> int:
     columns = sort_key.get_columns()
     descending = sort_key.get_descending()
@@ -530,7 +533,7 @@ def find_partition_index(
         desired_val = desired[i]
 
         prevleft = left
-        if descending[i] is True:
+        if descending is True:
             left = prevleft + (
                 len(col_vals)
                 - np.searchsorted(
