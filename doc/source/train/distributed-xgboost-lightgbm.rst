@@ -65,7 +65,7 @@ both implement checkpointing out of the box and will create
 :class:`~ray.train.xgboost.XGBoostCheckpoint`\s and :class:`~ray.train.lightgbm.LightGBMCheckpoint`\s
 respectively.
 
-The only required change is to configure :class:`~ray.air.CheckpointConfig` to set
+The only required change is to configure :class:`~ray.train.CheckpointConfig` to set
 the checkpointing frequency. For example, the following configuration will
 save a checkpoint on every boosting round and will only keep the latest checkpoint:
 
@@ -79,14 +79,12 @@ save a checkpoint on every boosting round and will only keep the latest checkpoi
     Once checkpointing is enabled, you can follow :ref:`this guide <train-fault-tolerance>`
     to enable fault tolerance.
 
-    See the :ref:`Trainer restore API reference <trainer-restore>` for more details.
-
 
 How to scale out training?
 --------------------------
 
 The benefit of using Ray Train is that you can seamlessly scale up your training by
-adjusting the :class:`ScalingConfig <ray.air.config.ScalingConfig>`.
+adjusting the :class:`ScalingConfig <ray.train.ScalingConfig>`.
 
 .. note::
     Ray Train does not modify or otherwise alter the working
