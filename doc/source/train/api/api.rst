@@ -150,24 +150,6 @@ LightGBM
     ~train.lightgbm.LightGBMTrainer
     ~train.lightgbm.LightGBMCheckpoint
 
-Scikit-Learn
-~~~~~~~~~~~~
-
-.. autosummary::
-    :toctree: doc/
-
-    ~train.sklearn.SklearnTrainer
-    ~train.sklearn.SklearnCheckpoint
-
-
-Mosaic
-~~~~~~
-
-.. autosummary::
-    :toctree: doc/
-
-    ~train.mosaic.MosaicTrainer
-
 
 .. _ray-train-configs-api:
 

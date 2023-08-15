@@ -177,6 +177,13 @@ class SklearnTrainer(BaseTrainer):
         preprocessor: Optional["Preprocessor"] = None,
         **fit_params,
     ):
+
+        warnings.warn(
+            "This SklearnTrainer will be deprecated in Ray 2.8. "
+            "It is recommended to write your own training loop instead.",
+            DeprecationWarning,
+        )
+
         if fit_params.pop("resume_from_checkpoint", None):
             raise AttributeError(
                 "SklearnTrainer does not support resuming from checkpoints. "
