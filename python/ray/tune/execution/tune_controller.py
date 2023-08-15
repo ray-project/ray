@@ -1942,7 +1942,23 @@ class TuneController:
 
         try:
             if _use_storage_context() and isinstance(checkpoint_value, _TrainingResult):
-                # TODO(justinvyu): Update callbacks to take in a _TrainingResult
+                try:
+                    self._callbacks.on_checkpoint(
+                        iteration=self._iteration,
+                        trials=self._trials,
+                        trial=trial,
+                        checkpoint=checkpoint_value.checkpoint,
+                    )
+                except Exception:
+                    logger.warning(
+                        "Error encountered during processing of callbacks. "
+                        "Ray Train/Tune recently changed the checkpoint interface "
+                        "that is passed to callbacks. If you implemented your own "
+                        "callback with an `on_checkpoint` handler, please review "
+                        "the checkpoint interface and adjust your code accordingly."
+                    )
+                    raise
+
                 trial.on_checkpoint(checkpoint_value)
 
                 self._checkpoint_manager.on_trial_checkpoint(trial)

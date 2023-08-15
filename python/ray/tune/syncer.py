@@ -20,6 +20,8 @@ import os
 import time
 from dataclasses import dataclass
 
+from ray.train._checkpoint import Checkpoint
+
 try:
     import fsspec
 except Exception:
@@ -930,9 +932,17 @@ class SyncerCallback(Callback):
         iteration: int,
         trials: List["Trial"],
         trial: "Trial",
-        checkpoint: _TrackedCheckpoint,
+        checkpoint: Union["_TrackedCheckpoint", "Checkpoint"],
         **info,
     ):
+        if isinstance(checkpoint, Checkpoint):
+            # Syncer should be disabled for storage path
+            raise RuntimeError(
+                "Internal error: Got new Train Checkpoint object in Syncer: "
+                f"{checkpoint}. Please raise an error on "
+                f"https://github.com/ray-project/ray/issues"
+            )
+
         if not self._enabled or trial.uses_cloud_checkpointing:
             return
 
