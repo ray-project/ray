@@ -272,7 +272,7 @@
   run:
     timeout: 600  # 10min
     long_running: true
-    script: python frequent_pausing/script.py
+    script: RAY_AIR_NEW_PERSISTENCE_MODE=1 python frequent_pausing/script.py
 
   variations:
     - __suffix__: aws
@@ -308,7 +308,7 @@
 
   run:
     timeout: 36000
-    script: python horovod/workloads/horovod_tune_test.py
+    script: RAY_AIR_NEW_PERSISTENCE_MODE=1 python horovod/workloads/horovod_tune_test.py
     long_running: true
     wait_for_nodes:
       num_nodes: 2
@@ -725,7 +725,7 @@
 
   run:
     timeout: 3600
-    script: python workloads/pytorch_training_e2e.py --data-size-gb 20
+    script: RAY_AIR_NEW_PERSISTENCE_MODE=1 python workloads/pytorch_training_e2e.py --data-size-gb 20
 
   alert: default
 
@@ -754,7 +754,7 @@
 
   run:
     timeout: 10800
-    script: python workloads/pytorch_training_e2e.py --data-size-gb=100 --num-workers=16
+    script: RAY_AIR_NEW_PERSISTENCE_MODE=1 python workloads/pytorch_training_e2e.py --data-size-gb=100 --num-workers=16
 
     wait_for_nodes:
       num_nodes: 4
@@ -2306,7 +2306,7 @@
 
   run:
     timeout: 600
-    script: python workloads/torch_tune_serve_test.py
+    script: RAY_AIR_NEW_PERSISTENCE_MODE=1 python workloads/torch_tune_serve_test.py
     wait_for_nodes:
       num_nodes: 2
 
