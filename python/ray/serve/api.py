@@ -87,9 +87,9 @@ def start(
           Whether or not the instance should be detached from this
           script. If set, the instance will live on the Ray cluster until it is
           explicitly stopped with serve.shutdown().
-
         proxy_location: Where to run proxies that handle ingress traffic to the
           cluster. Supported options are:
+
             - "EveryNode": run one proxy on every node in the cluster.
               This is the default.
             - "HeadOnly": run only one proxy on the head node of the cluster.
@@ -108,6 +108,7 @@ def start(
               with this path.
             - middlewares: [DEPRECATED] A list of Starlette middlewares that will be
               applied to the HTTP servers in the cluster.
+
           - location: [DEPRECATED: use `proxy_location` field instead] The deployment
               location of HTTP servers:
 
@@ -116,6 +117,7 @@ def start(
                   on. This is the default.
                 - "EveryNode": start one HTTP server per node.
                 - "NoServer" or None: disable HTTP server.
+
             - num_cpus: [DEPRECATED] The number of CPU cores to reserve for each
               internal Serve HTTP proxy actor.
         dedicated_cpu: [DEPRECATED] Whether to reserve a CPU core for the
