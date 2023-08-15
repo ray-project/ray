@@ -1407,6 +1407,7 @@ class HTTPProxyActor:
             gRPCProxy(
                 controller_name=controller_name,
                 node_id=node_id,
+                node_ip_address=node_ip_address,
                 request_timeout_s=(
                     request_timeout_s or RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S
                 ),
