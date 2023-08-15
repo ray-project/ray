@@ -8,7 +8,7 @@ except ModuleNotFoundError:
 # isort: on
 
 from ray.train.torch.config import TorchConfig
-from ray.train.torch.torch_checkpoint import LegacyTorchCheckpoint
+from ray.train.torch.torch_checkpoint import TorchCheckpoint, LegacyTorchCheckpoint
 from ray.train.torch.torch_detection_predictor import TorchDetectionPredictor
 from ray.train.torch.torch_predictor import TorchPredictor
 from ray.train.torch.torch_trainer import TorchTrainer
