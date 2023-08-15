@@ -24,25 +24,14 @@ def get_num_trees(booster: xgb.Booster) -> int:
     return len(data)
 
 
-def create_checkpoint_preprocessor() -> Tuple[Checkpoint, Preprocessor]:
+def test_xgboost_checkpoint():
     preprocessor = DummyPreprocessor()
 
     checkpoint = LegacyXGBoostCheckpoint.from_model(
         booster=model, preprocessor=preprocessor
     )
-
-    return checkpoint, preprocessor
-
-
-def test_xgboost_checkpoint():
-    checkpoint, preprocessor = create_checkpoint_preprocessor()
-
-    predictor = XGBoostPredictor(model=model, preprocessor=preprocessor)
-
-    checkpoint_predictor = XGBoostPredictor.from_checkpoint(checkpoint)
-
-    assert get_num_trees(checkpoint_predictor.model) == get_num_trees(predictor.model)
-    assert checkpoint_predictor.get_preprocessor() == predictor.get_preprocessor()
+    assert get_num_trees(checkpoint.get_model()) == get_num_trees(model)
+    assert checkpoint.get_preprocessor() == preprocessor
 
 
 @pytest.mark.parametrize("batch_type", [np.ndarray, pd.DataFrame, dict])
