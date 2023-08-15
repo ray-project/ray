@@ -2153,8 +2153,17 @@ class Dataset:
         ret = self._aggregate_on(Std, on, ignore_nulls, ddof=ddof)
         return self._aggregate_result(ret)
 
-    def sort(self, key: Optional[str] = None, descending: bool = False) -> "Dataset":
-        """Sort the :class:`Dataset` by the specified column.
+    def sort(
+        self,
+        key: Union[str, List[str], None] = None,
+        descending: Union[bool, List[bool]] = False,
+    ) -> "Dataset":
+        """Sort the dataset by the specified key column or key function.
+
+        .. note::
+            The `descending` parameter must be a boolean, or a list of booleans.
+            If it is a list, all items in the list must share the same direction.
+            Multi-directional sort is not supported yet.
 
         Examples:
             >>> import ray
@@ -2165,9 +2174,9 @@ class Dataset:
         Time complexity: O(dataset size * log(dataset size / parallelism))
 
         Args:
-            key: The column to sort by. To sort by multiple columns, call
-                :meth:`Dataset.map` and generate a new column to sort by.
-            descending: Whether to sort in descending order.
+            key: The column or a list of columns to sort by.
+            descending: Whether to sort in descending order. Must be a boolean or a list
+                of booleans matching the number of the columns.
 
         Returns:
             A new, sorted :class:`Dataset`.
@@ -3308,6 +3317,7 @@ class Dataset:
             try:
                 import pandas as pd
 
+                datasource.on_write_start(**write_args)
                 self._write_ds = Dataset(
                     plan, self._epoch, self._lazy, logical_plan
                 ).materialize()
@@ -3317,7 +3327,7 @@ class Dataset:
                     for block in blocks
                 )
                 write_results = [block["write_result"][0] for block in blocks]
-                datasource.on_write_complete(write_results)
+                datasource.on_write_complete(write_results, **write_args)
             except Exception as e:
                 datasource.on_write_failed([], e)
                 raise

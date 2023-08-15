@@ -122,6 +122,7 @@ py_test_module_list(
 
 py_test_module_list(
   files = [
+    "test_actor_bounded_threads.py",
     "test_autoscaler_fake_scaledown.py",
     "test_log_dedup.py",
     "test_logging.py",
@@ -183,7 +184,6 @@ py_test_module_list(
 py_test_module_list(
   files = [
     "test_actor_out_of_order.py",
-    "test_actor_bounded_threads.py",
     "test_autoscaler_fake_multinode.py",  # Temporarily owned by core.
     "test_annotations.py",
     "test_args.py",

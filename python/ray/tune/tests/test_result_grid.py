@@ -128,7 +128,7 @@ def test_result_grid_future_checkpoint(ray_start_2_cpus, to_object):
     trainable_cls = get_trainable_cls("__fake")
     trial = Trial("__fake", stub=True)
     trial.config = {"some_config": 1}
-    trial.last_result = {"some_result": 2, "config": trial.config}
+    trial.run_metadata.last_result = {"some_result": 2, "config": trial.config}
 
     trainable = ray.remote(trainable_cls).remote()
     ray.get(trainable.set_info.remote({"info": 4}))
@@ -141,8 +141,8 @@ def test_result_grid_future_checkpoint(ray_start_2_cpus, to_object):
     trial.on_checkpoint(
         _TrackedCheckpoint(checkpoint_data, storage_mode=CheckpointStorage.MEMORY)
     )
-    trial.pickled_error_filename = None
-    trial.error_filename = None
+    trial.run_metadata.pickled_error_filename = None
+    trial.run_metadata.error_filename = None
 
     class MockExperimentAnalysis:
         trials = []
@@ -348,7 +348,7 @@ def test_num_errors_terminated(tmpdir):
 
     for i in [4, 6, 8]:
         trials[i].status = Trial.ERROR
-        trials[i].error_filename = error_filename
+        trials[i].run_metadata.error_filename = error_filename
 
     for i in [3, 5]:
         trials[i].status = Trial.TERMINATED

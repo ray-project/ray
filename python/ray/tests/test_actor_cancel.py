@@ -166,7 +166,7 @@ def test_async_actor_cancel_after_task_finishes(shutdown_only):
         async def f(self):
             await asyncio.sleep(5)
 
-        async def emtpy(self):
+        async def empty(self):
             pass
 
     # Cancel after task finishes
