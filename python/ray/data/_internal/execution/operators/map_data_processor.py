@@ -1,6 +1,7 @@
 import collections
 import itertools
 from abc import abstractmethod
+from types import GeneratorType
 from typing import Any, Callable, Dict, Iterable, List, Optional
 
 import numpy as np
@@ -11,6 +12,8 @@ from ray.data._internal.block_batching.block_batching import batch_blocks
 from ray.data._internal.output_buffer import BlockOutputBuffer
 from ray.data.block import Block, BlockAccessor, DataBatch
 from ray.data.context import DataContext
+
+from ray.data._internal.numpy_support import is_valid_udf_return
 
 RowType = Dict[str, Any]
 RowBasedMapTransformFn = Callable[[RowType], Iterable[RowType]]
@@ -69,6 +72,19 @@ class RowBasedMapDataProcessor(MapDataProcessor):
                 "wrap them in a dict, e.g., "
                 "return `{'item': item}` instead of just `item`."
             )
+
+
+class ReadOpMapDataProcessor(MapDataProcessor):
+
+    def __init__(
+        self,
+        output_fn,
+    ):
+        self._outpu_fn = output_fn
+
+    def process(self, input_blocks: Iterable[Block]) -> Iterable[Block]:
+        # assert len(input_blocks) == 0
+        yield from self._outpu_fn(input_blocks)
 
 
 class BatchBasedMapDataProcessor(MapDataProcessor):

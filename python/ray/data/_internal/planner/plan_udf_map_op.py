@@ -58,7 +58,7 @@ def _plan_udf_map_op(
     else:
         fn = op._fn
         init_fn = None
-    fn_args = (fn,)
+    fn_args = tuple()
     if op._fn_args:
         fn_args += op._fn_args
     fn_kwargs = op._fn_kwargs or {}

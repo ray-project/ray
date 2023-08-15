@@ -13,6 +13,8 @@ from ray.data._internal.logical.operators.read_operator import Read
 from ray.data.block import Block
 from ray.data.datasource.datasource import ReadTask
 
+from ray.data._internal.execution.operators.map_data_processor import BatchBasedMapDataProcessor, ReadOpMapDataProcessor
+
 TASK_SIZE_WARN_THRESHOLD_BYTES = 100000
 
 
@@ -65,12 +67,14 @@ def _plan_read_op(op: Read) -> PhysicalOperator:
         input_data_factory=get_input_data, num_output_blocks=op._estimated_num_blocks
     )
 
-    def do_read(blocks: Iterator[ReadTask], _: TaskContext) -> Iterator[Block]:
+    def do_read(blocks: Iterator[ReadTask]) -> Iterator[Block]:
         for read_task in blocks:
             yield from read_task()
 
+    map_data_processor = ReadOpMapDataProcessor(do_read)
+
     return MapOperator.create(
-        do_read,
+        map_data_processor,
         inputs,
         name=op.name,
         ray_remote_args=op._ray_remote_args,
