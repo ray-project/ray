@@ -5,6 +5,7 @@ import math
 import os
 import random
 import shutil
+from pathlib import Path
 from typing import Callable, Dict, List, Optional, Tuple, Union, TYPE_CHECKING
 
 from ray.air._internal.checkpoint_manager import CheckpointStorage
@@ -988,11 +989,11 @@ class PopulationBasedTrainingReplay(FIFOScheduler):
     """
 
     def __init__(self, policy_file: str):
-        policy_file = os.path.expanduser(policy_file)
-        if not os.path.exists(policy_file):
-            raise ValueError("Policy file not found: {}".format(policy_file))
+        policy_file = Path(policy_file).expanduser()
+        if not policy_file.exists():
+            raise ValueError("Policy file not found: {}".format(policy_file.as_posix()))
 
-        self.policy_file = policy_file
+        self.policy_file = policy_file.as_posix()
 
         # Find and read pbt policy file, potentially raise error
         initial_config, self._policy = self._load_policy(self.policy_file)

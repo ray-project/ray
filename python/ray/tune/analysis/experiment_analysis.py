@@ -235,7 +235,7 @@ class ExperimentAnalysis:
                 Will return None if the download failed.
         """
         if is_local_path(experiment_checkpoint_path):
-            return os.path.expanduser(experiment_checkpoint_path)
+            return Path(experiment_checkpoint_path).expanduser().as_posix()
 
         assert self._local_path and self._remote_path
 
@@ -565,7 +565,7 @@ class ExperimentAnalysis:
         metric = metric or self.default_metric or TRAINING_ITERATION
 
         if isinstance(trial, str):
-            trial_dir = os.path.expanduser(trial)
+            trial_dir = Path(trial).expanduser().as_posix()
             # Get checkpoints from logdir.
             chkpt_df = TrainableUtil.get_checkpoints_paths(trial_dir)
 

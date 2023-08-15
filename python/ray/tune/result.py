@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 
 # Importing for Backward Compatibility
 from ray.air.constants import (  # noqa: F401
@@ -130,7 +131,7 @@ def _get_defaults_results_dir() -> str:
         # Deprecate: Remove in 2.6
         or os.environ.get("TUNE_RESULT_DIR")
         # Default
-        or os.path.expanduser("~/ray_results")
+        or Path("~/ray_results").expanduser().as_posix()
     )
 
 

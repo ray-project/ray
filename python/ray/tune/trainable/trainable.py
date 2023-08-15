@@ -1152,14 +1152,14 @@ class Trainable:
     def _open_logfiles(self, stdout_file, stderr_file):
         """Create loggers. Open stdout and stderr logfiles."""
         if stdout_file:
-            stdout_path = os.path.expanduser(os.path.join(self._logdir, stdout_file))
+            stdout_path = (Path(self._logdir) / stdout_file).expanduser().as_posix()
             self._stdout_fp = open(stdout_path, "a+")
             self._stdout_stream = Tee(sys.stdout, self._stdout_fp)
             self._stdout_context = redirect_stdout(self._stdout_stream)
             self._stdout_context.__enter__()
 
         if stderr_file:
-            stderr_path = os.path.expanduser(os.path.join(self._logdir, stderr_file))
+            stderr_path = (Path(self._logdir) / stderr_file).expanduser().as_posix()
             self._stderr_fp = open(stderr_path, "a+")
             self._stderr_stream = Tee(sys.stderr, self._stderr_fp)
             self._stderr_context = redirect_stderr(self._stderr_stream)
