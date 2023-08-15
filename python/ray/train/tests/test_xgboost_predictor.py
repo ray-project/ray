@@ -5,12 +5,13 @@ import pandas as pd
 import pytest
 import xgboost as xgb
 
-from ray.train import Checkpoint
 from ray.air.util.data_batch_conversion import _convert_pandas_to_batch_type
-from ray.data.preprocessor import Preprocessor
 from ray.train.predictor import TYPE_TO_ENUM
-from ray.train.xgboost import LegacyXGBoostCheckpoint, XGBoostPredictor
-from typing import Tuple
+from ray.train.xgboost import (
+    XGBoostCheckpoint,
+    LegacyXGBoostCheckpoint,
+    XGBoostPredictor,
+)
 
 from ray.train.tests.dummy_preprocessor import DummyPreprocessor
 
@@ -27,9 +28,7 @@ def get_num_trees(booster: xgb.Booster) -> int:
 def test_xgboost_checkpoint():
     preprocessor = DummyPreprocessor()
 
-    checkpoint = LegacyXGBoostCheckpoint.from_model(
-        booster=model, preprocessor=preprocessor
-    )
+    checkpoint = XGBoostCheckpoint.from_model(booster=model, preprocessor=preprocessor)
     assert get_num_trees(checkpoint.get_model()) == get_num_trees(model)
     assert checkpoint.get_preprocessor() == preprocessor
 
