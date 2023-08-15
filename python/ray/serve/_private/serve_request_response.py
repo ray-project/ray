@@ -1,3 +1,4 @@
+from abc import ABC
 import grpc
 import logging
 import pickle
@@ -13,7 +14,7 @@ from ray.serve._private.common import gRPCRequest, StreamingHTTPRequest
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
-class ServeRequest:
+class ServeRequest(ABC):
     """Base ServeRequest class to use in the common interface among proxies"""
 
     pass
@@ -92,9 +93,9 @@ class gRPCServeRequest(ServeRequest):
         self.setup_variables()
 
     def setup_variables(self):
-        if self.service_method == "/ray.serve.ServeAPIService/ServeRoutes":
+        if self.service_method == "/ray.serve.RayServeAPIService/ListApplications":
             self.route_path = "/-/routes"
-        elif self.service_method == "/ray.serve.ServeAPIService/ServeHealthz":
+        elif self.service_method == "/ray.serve.RayServeAPIService/Healthz":
             self.route_path = "/-/healthz"
         else:
             service_method_split = self.service_method.split("/")

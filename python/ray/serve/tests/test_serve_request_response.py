@@ -11,6 +11,7 @@ from ray.serve._private.serve_request_response import (
     ServeResponse,
 )
 from ray.serve.generated import serve_pb2
+from ray.serve._private.common import gRPCRequest, StreamingHTTPRequest
 
 
 class TestASGIServeRequest:
@@ -21,8 +22,9 @@ class TestASGIServeRequest:
 
     def test_request_type(self):
         """Test calling request_type on an instance of ASGIServeRequest.
+
         When the request_type is not passed into the scope, it returns empty string.
-        When the request_type is passed into the scopt, it returns the correct value.
+        When the request_type is passed into the scope, it returns the correct value.
         """
         serve_request = self.create_asgi_serve_request(scope={})
         assert isinstance(serve_request, ServeRequest)
@@ -35,8 +37,9 @@ class TestASGIServeRequest:
 
     def test_client(self):
         """Test calling client on an instance of ASGIServeRequest.
+
         When the client is not passed into the scope, it returns empty string.
-        When the request_type is passed into the scopt, it returns the correct value.
+        When the request_type is passed into the scope, it returns the correct value.
         """
         serve_request = self.create_asgi_serve_request(scope={})
         assert isinstance(serve_request, ServeRequest)
@@ -48,9 +51,10 @@ class TestASGIServeRequest:
         assert serve_request.client == client
 
     def test_method(self):
-        """Test calling request_type on an instance of ASGIServeRequest.
-        When the request_type is not passed into the scope, it returns empty string.
-        When the request_type is passed into the scopt, it returns the correct value.
+        """Test calling method on an instance of ASGIServeRequest.
+
+        When the method is not passed into the scope, it returns "WEBSOCKET". When
+        the method is passed into the scope, it returns the correct value.
         """
         serve_request = self.create_asgi_serve_request(scope={})
         assert isinstance(serve_request, ServeRequest)
@@ -62,9 +66,11 @@ class TestASGIServeRequest:
         assert serve_request.method == method.upper()
 
     def test_root_path(self):
-        """Test calling request_type on an instance of ASGIServeRequest.
-        When the request_type is not passed into the scope, it returns empty string.
-        When the request_type is passed into the scopt, it returns the correct value.
+        """Test calling root_path on an instance of ASGIServeRequest.
+
+        When the root_path is not passed into the scope, it returns empty string.
+        When calling set_root_path, it correctly sets the root_path. When the
+        root_path is passed into the scope, it returns the correct value.
         """
         serve_request = self.create_asgi_serve_request(scope={})
         assert isinstance(serve_request, ServeRequest)
@@ -79,9 +85,11 @@ class TestASGIServeRequest:
         assert serve_request.root_path == root_path
 
     def test_path(self):
-        """Test calling request_type on an instance of ASGIServeRequest.
-        When the request_type is not passed into the scope, it returns empty string.
-        When the request_type is passed into the scopt, it returns the correct value.
+        """Test calling path on an instance of ASGIServeRequest.
+
+        When the path is not passed into the scope, it returns empty string.
+        When calling set_path, it correctly sets the path. When the
+        path is passed into the scope, it returns the correct value.
         """
         serve_request = self.create_asgi_serve_request(scope={})
         assert isinstance(serve_request, ServeRequest)
@@ -96,9 +104,10 @@ class TestASGIServeRequest:
         assert serve_request.path == path
 
     def test_headers(self):
-        """Test calling request_type on an instance of ASGIServeRequest.
-        When the request_type is not passed into the scope, it returns empty string.
-        When the request_type is passed into the scopt, it returns the correct value.
+        """Test calling headers on an instance of ASGIServeRequest.
+
+        When the headers are not passed into the scope, it returns empty list.
+        When the headers are passed into the scope, it returns the correct value.
         """
         serve_request = self.create_asgi_serve_request(scope={})
         assert isinstance(serve_request, ServeRequest)
@@ -109,16 +118,34 @@ class TestASGIServeRequest:
         assert isinstance(serve_request, ServeRequest)
         assert serve_request.headers == headers
 
+    def test_request_object(self):
+        """Test calling request_object on an instance of ASGIServeRequest.
+
+        When the request_object is called, it returns a StreamingHTTPRequest object
+        with the correct pickled_asgi_scope and http_proxy_handle.
+        """
+        proxy_handle = MagicMock()
+        headers = [(b"fake-header-key", b"fake-header-value")]
+        scope = {"headers": headers}
+        serve_request = self.create_asgi_serve_request(scope=scope)
+        request_object = serve_request.request_object(proxy_handle=proxy_handle)
+
+        assert isinstance(request_object, StreamingHTTPRequest)
+        assert pickle.loads(request_object.pickled_asgi_scope) == scope
+        assert request_object.http_proxy_handle == proxy_handle
+
 
 class TestgRPCServeRequest:
-    def test_calling_routes_method(self):
-        """Test initialize gRPCServeRequest with routes service method.
-        When the gRPCServeRequest is initialized with routes service method, route_path
-        should be set to "/-/routes". `send_status_code()` and `send_details()` should
-        also work accordingly to be able to send the into back to the client.
+    def test_calling_list_applications_method(self):
+        """Test initialize gRPCServeRequest with list applications service method.
+
+        When the gRPCServeRequest is initialized with list application service method,
+        route_path should be set to "/-/routes". `send_status_code()` and
+        `send_details()` should also work accordingly to be able to send the into back
+        to the client.
         """
         context = MagicMock()
-        service_method = "/ray.serve.ServeAPIService/ServeRoutes"
+        service_method = "/ray.serve.RayServeAPIService/ListApplications"
         serve_request = gRPCServeRequest(
             request_proto=MagicMock(),
             context=context,
@@ -139,12 +166,13 @@ class TestgRPCServeRequest:
 
     def test_calling_healthz_method(self):
         """Test initialize gRPCServeRequest with healthz service method.
+
         When the gRPCServeRequest is initialized with healthz service method, route_path
         should be set to "/-/healthz". `send_status_code()` and `send_details()` should
         also work accordingly to be able to send the into back to the client.
         """
         context = MagicMock()
-        service_method = "/ray.serve.ServeAPIService/ServeHealthz"
+        service_method = "/ray.serve.RayServeAPIService/Healthz"
         serve_request = gRPCServeRequest(
             request_proto=MagicMock(),
             context=context,
@@ -165,9 +193,11 @@ class TestgRPCServeRequest:
 
     def test_calling_user_defined_method(self):
         """Test initialize gRPCServeRequest with user defined service method.
+
         When the gRPCServeRequest is initialized with user defined service method,
         all attributes should be setup accordingly. `send_request_id()` should
         also work accordingly to be able to send the into back to the client.
+        `request_object()` generates a gRPCRequest object with the correct attributes.
         """
         request_proto = serve_pb2.UserDefinedMessage(name="foo", num=30, foo="bar")
         application = "fake-application"
@@ -184,7 +214,7 @@ class TestgRPCServeRequest:
         method_name = "Method1"
         service_method = f"/custom.defined.Service/{method_name}"
 
-        def match_target(app_name: str) -> str:
+        def mocked_match_target(app_name: str) -> str:
             if app_name == application:
                 return "matched_path"
             return "unmatched_path"
@@ -192,7 +222,7 @@ class TestgRPCServeRequest:
         serve_request = gRPCServeRequest(
             request_proto=request_proto,
             context=context,
-            match_target=match_target,
+            match_target=mocked_match_target,
             service_method=service_method,
             stream=MagicMock(),
         )
@@ -207,9 +237,16 @@ class TestgRPCServeRequest:
         serve_request.send_request_id(request_id=request_id)
         context.set_trailing_metadata.assert_called_with([("request_id", request_id)])
 
+        proxy_handle = MagicMock()
+        request_object = serve_request.request_object(proxy_handle=proxy_handle)
+        assert isinstance(request_object, gRPCRequest)
+        assert pickle.loads(request_object.grpc_user_request) == request_proto
+        assert request_object.grpc_proxy_handle == proxy_handle
+
 
 def test_serve_response():
     """Test ServeResponse.
+
     When a ServeResponse object is initialized with status_code, response, and
     streaming_response, the object is able to return the correct values.
     """
