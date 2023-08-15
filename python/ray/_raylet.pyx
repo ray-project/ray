@@ -32,6 +32,7 @@ from typing import (
     Generator,
     AsyncGenerator
 )
+from concurrent.futures import ThreadPoolExecutor
 
 from libc.stdint cimport (
     int32_t,
@@ -1013,7 +1014,7 @@ cdef class StreamingGeneratorExecutionContext:
         return self
 
 
-cpdef report_streaming_generator_output(
+cdef report_streaming_generator_output(
         output_or_exception: Union[object, Exception],
         StreamingGeneratorExecutionContext context):
     """Report a given generator output to a caller.
@@ -1036,23 +1037,12 @@ cpdef report_streaming_generator_output(
     worker = ray._private.worker.global_worker
 
     cdef:
-        CoreWorker core_worker = worker.core_worker
         # Ray Object created from an output.
         c_pair[CObjectID, shared_ptr[CRayObject]] return_obj
 
-    try:
-        if isinstance(output_or_exception, Exception):
-            raise output_or_exception
-    except AsyncioActorExit:
-        # Make the task handle this exception.
-        raise
-    except StopAsyncIteration:
-        return True
-    except StopIteration:
-        return True
-    except Exception as e:
+    if isinstance(output_or_exception, Exception):
         create_generator_error_object(
-            e,
+            output_or_exception,
             worker,
             context.task_type,
             context.caller_address,
@@ -1143,8 +1133,11 @@ cdef execute_streaming_generator_sync(StreamingGeneratorExecutionContext context
     while True:
         try:
             output_or_exception = next(gen)
+        except StopIteration:
+            break
         except Exception as e:
             output_or_exception = e
+
         done = report_streaming_generator_output(output_or_exception, context)
         if done:
             break
@@ -1180,12 +1173,24 @@ async def execute_streaming_generator_async(
     while True:
         try:
             output_or_exception = await gen.__anext__()
+        except StopAsyncIteration:
+            break
+        except AsyncioActorExit:
+            # The execute_task will handle this case.
+            raise
         except Exception as e:
             output_or_exception = e
-        # TODO(sang): This method involves in serializing the output.
-        # Ideally, we don't want to run this inside an event loop.
-        done = report_streaming_generator_output(
-            output_or_exception, context)
+
+        loop = asyncio.get_running_loop()
+        worker = ray._private.worker.global_worker
+        # Run it in a separate thread to that we can
+        # avoid blocking the event loop when serializing
+        # the output (which has nogil).
+        done = await loop.run_in_executor(
+            worker.core_worker.get_thread_pool_for_async_event_loop(),
+            report_streaming_generator_output,
+            output_or_exception,
+            context)
         if done:
             break
 
@@ -1760,6 +1765,7 @@ cdef void execute_task(
                     worker, outputs,
                     caller_address,
                     returns)
+
         except Exception as e:
             num_errors_stored = store_task_errors(
                     worker, e, task_exception, actor, actor_id, function_name,
@@ -2926,6 +2932,7 @@ cdef class CoreWorker:
         self.fd_to_cgname_dict = None
         self.eventloop_for_default_cg = None
         self.current_runtime_env = None
+        self.thread_pool_for_async_event_loop = None
 
     def shutdown(self):
         # If it's a worker, the core worker process should have been
@@ -4072,6 +4079,13 @@ cdef class CoreWorker:
             for fd in function_descriptors:
                 self.fd_to_cgname_dict[fd] = cg_name
 
+    def get_thread_pool_for_async_event_loop(self):
+        if self.thread_pool_for_async_event_loop is None:
+            # Theoretically, we can use multiple threads,
+            self.thread_pool_for_async_event_loop = ThreadPoolExecutor(
+                max_workers=1)
+        return self.thread_pool_for_async_event_loop
+
     def get_event_loop(self, function_descriptor, specified_cgname):
         # __init__ will be invoked in default eventloop
         if function_descriptor.function_name == "__init__":
@@ -4143,6 +4157,9 @@ cdef class CoreWorker:
     def stop_and_join_asyncio_threads_if_exist(self):
         event_loops = []
         threads = []
+        if self.thread_pool_for_async_event_loop:
+            self.thread_pool_for_async_event_loop.shutdown(
+                wait=False, cancel_futures=True)
         if self.eventloop_for_default_cg is not None:
             event_loops.append(self.eventloop_for_default_cg)
         if self.thread_for_default_cg is not None:
@@ -4341,16 +4358,19 @@ cdef class CoreWorker:
         cdef:
             CObjectID c_generator_id = generator_id.native()
 
-        CCoreWorkerProcess.GetCoreWorker().DelObjectRefStream(c_generator_id)
+        with nogil:
+            CCoreWorkerProcess.GetCoreWorker().DelObjectRefStream(c_generator_id)
 
     def try_read_next_object_ref_stream(self, ObjectRef generator_id):
         cdef:
             CObjectID c_generator_id = generator_id.native()
             CObjectReference c_object_ref
 
-        check_status(
-            CCoreWorkerProcess.GetCoreWorker().TryReadObjectRefStream(
-                c_generator_id, &c_object_ref))
+        with nogil:
+            check_status(
+                CCoreWorkerProcess.GetCoreWorker().TryReadObjectRefStream(
+                    c_generator_id, &c_object_ref))
+
         return ObjectRef(
             c_object_ref.object_id(),
             c_object_ref.owner_address().SerializeAsString(),
@@ -4361,9 +4381,12 @@ cdef class CoreWorker:
     def peek_object_ref_stream(self, ObjectRef generator_id):
         cdef:
             CObjectID c_generator_id = generator_id.native()
-            CObjectReference c_object_ref = (
-                CCoreWorkerProcess.GetCoreWorker().PeekObjectRefStream(
-                    c_generator_id))
+            CObjectReference c_object_ref
+
+        with nogil:
+            c_object_ref = (
+                    CCoreWorkerProcess.GetCoreWorker().PeekObjectRefStream(
+                        c_generator_id))
 
         return ObjectRef(
             c_object_ref.object_id(),

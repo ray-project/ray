@@ -41,7 +41,7 @@ There are three categories of built-in Trainers:
         For these trainers, you usually define your own training function that loads the model
         and executes single-worker training steps. Refer to the following guides for more details:
 
-        - :doc:`Distributed PyTorch </train/distributed-pytorch>`
+        - :doc:`Distributed PyTorch </train/getting-started-pytorch>`
         - :doc:`Distributed TensorFlow </train/distributed-tensorflow-keras>`
         - :doc:`Horovod </train/horovod>`
 
