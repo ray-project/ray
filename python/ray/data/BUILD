@@ -170,6 +170,14 @@ py_test(
 )
 
 py_test(
+    name = "test_file_based_datasource",
+    size = "small",
+    srcs = ["tests/test_file_based_datasource.py"],
+    tags = ["team:data", "exclusive"],
+    deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test(
     name = "test_image",
     size = "small",
     srcs = ["tests/test_image.py"],

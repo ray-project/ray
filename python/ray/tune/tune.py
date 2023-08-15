@@ -679,6 +679,7 @@ def run(
 
     if _use_storage_context():
         local_path, remote_path = None, None
+        sync_config = sync_config or SyncConfig()
         # TODO(justinvyu): Fix telemetry for the new persistence.
     else:
         (
