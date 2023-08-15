@@ -13,6 +13,7 @@ from ray.serve.config import (
 from ray.serve.config import AutoscalingConfig
 from ray.serve._private.utils import DEFAULT
 from ray.serve.generated.serve_pb2_grpc import add_UserDefinedServiceServicer_to_server
+from ray.serve._private.constants import DEFAULT_GRPC_PORT
 
 
 def test_autoscaling_config_validation():
@@ -382,14 +383,23 @@ def test_zero_default_proto():
 
 
 def test_grpc_options():
+    """Test gRPCOptions.
+
+    When the gRPCOptions object is created, the default values are set correctly. When
+    the gRPCOptions object is created with user-specified values, the values are set
+    correctly. Also if the user provided an invalid grpc_servicer_function, it does not
+    raise an error.
+    """
     default_grpc_options = gRPCOptions()
-    assert default_grpc_options.port == -1
+    assert default_grpc_options.port == DEFAULT_GRPC_PORT
     assert default_grpc_options.grpc_servicer_functions == []
     assert default_grpc_options.grpc_servicer_func_callable == []
 
-    port = 9000
+    port = 9001
     grpc_servicer_functions = [
         "ray.serve.generated.serve_pb2_grpc.add_UserDefinedServiceServicer_to_server",
+        "fake.service.that.does.not.exist",  # Import not found, ignore.
+        "ray.serve._private.constants.DEFAULT_HTTP_PORT",  # Not callable, ignore.
     ]
     grpc_options = gRPCOptions(
         port=port,
