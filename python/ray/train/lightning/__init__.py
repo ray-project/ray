@@ -12,7 +12,10 @@ from ray.train.lightning.lightning_trainer import (
     LightningConfigBuilder,
     LightningTrainer,
 )
-from ray.train.lightning.lightning_checkpoint import LegacyLightningCheckpoint
+from ray.train.lightning.lightning_checkpoint import (
+    LightningCheckpoint,
+    LegacyLightningCheckpoint,
+)
 from ray.train.lightning.lightning_predictor import LightningPredictor
 from ray.train.lightning._lightning_utils import (
     prepare_trainer,
@@ -26,6 +29,7 @@ from ray.train.lightning._lightning_utils import (
 __all__ = [
     "LightningTrainer",
     "LightningConfigBuilder",
+    "LightningCheckpoint",
     "LegacyLightningCheckpoint",
     "LightningPredictor",
     "prepare_trainer",
