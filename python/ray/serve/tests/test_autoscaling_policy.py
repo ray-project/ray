@@ -221,13 +221,6 @@ def test_e2e_basic_scale_up_down(min_replicas, serve_instance):
         graceful_shutdown_timeout_s=1,
         max_concurrent_queries=1000,
         version="v1",
-        ray_actor_options={
-            "runtime_env": {
-                "env_vars": {
-                    "RAY_SERVE_REPLICA_AUTOSCALING_METRIC_RECORD_PERIOD_S": "0.1"
-                }
-            }
-        },
     )
     class A:
         def __call__(self):
@@ -281,13 +274,6 @@ def test_e2e_basic_scale_up_down_with_0_replica(serve_instance, smoothing_factor
         graceful_shutdown_timeout_s=1,
         max_concurrent_queries=1000,
         version="v1",
-        ray_actor_options={
-            "runtime_env": {
-                "env_vars": {
-                    "RAY_SERVE_REPLICA_AUTOSCALING_METRIC_RECORD_PERIOD_S": "0.1"
-                }
-            }
-        },
     )
     class A:
         def __call__(self):
@@ -721,13 +707,6 @@ def test_e2e_bursty(serve_instance):
         graceful_shutdown_timeout_s=1,
         max_concurrent_queries=1000,
         version="v1",
-        ray_actor_options={
-            "runtime_env": {
-                "env_vars": {
-                    "RAY_SERVE_REPLICA_AUTOSCALING_METRIC_RECORD_PERIOD_S": "0.1"
-                }
-            }
-        },
     )
     class A:
         def __init__(self):
@@ -798,13 +777,6 @@ def test_e2e_intermediate_downscaling(serve_instance):
         graceful_shutdown_timeout_s=1,
         max_concurrent_queries=1000,
         version="v1",
-        ray_actor_options={
-            "runtime_env": {
-                "env_vars": {
-                    "RAY_SERVE_REPLICA_AUTOSCALING_METRIC_RECORD_PERIOD_S": "0.1"
-                }
-            }
-        },
     )
     class A:
         def __call__(self):
@@ -874,13 +846,6 @@ def test_e2e_update_autoscaling_deployment(serve_instance):
                 },
                 "graceful_shutdown_timeout_s": 1,
                 "max_concurrent_queries": 1000,
-                "ray_actor_options": {
-                    "runtime_env": {
-                        "env_vars": {
-                            "RAY_SERVE_REPLICA_AUTOSCALING_METRIC_RECORD_PERIOD_S": "0.1"  # noqa: E501
-                        }
-                    }
-                },
             }
         ],
     }
@@ -983,13 +948,6 @@ def test_e2e_raise_min_replicas(serve_instance):
                 },
                 "graceful_shutdown_timeout_s": 1,
                 "max_concurrent_queries": 1000,
-                "ray_actor_options": {
-                    "runtime_env": {
-                        "env_vars": {
-                            "RAY_SERVE_REPLICA_AUTOSCALING_METRIC_RECORD_PERIOD_S": "0.1"  # noqa: E501
-                        }
-                    }
-                },
             }
         ],
     }
