@@ -17,9 +17,9 @@ from horovod.runner.common.util import secret, timeout
 from ray.util import PublicAPI
 
 try:
-    from ray.train.torch.torch_checkpoint import TorchCheckpoint
+    from ray.train.torch.torch_checkpoint import LegacyTorchCheckpoint
 except ImportError:
-    TorchCheckpoint = None
+    LegacyTorchCheckpoint = None
 
 try:
     from ray.train.tensorflow.tensorflow_checkpoint import TensorflowCheckpoint
@@ -161,8 +161,8 @@ class _HorovodBackend(Backend):
                     from ray.air._internal.torch_utils import contains_tensor
 
                     if contains_tensor(checkpoint.to_dict()):
-                        _warn_about_bad_checkpoint_type(TorchCheckpoint)
-                        checkpoint = TorchCheckpoint.from_checkpoint(checkpoint)
+                        _warn_about_bad_checkpoint_type(LegacyTorchCheckpoint)
+                        checkpoint = LegacyTorchCheckpoint.from_checkpoint(checkpoint)
         return checkpoint
 
 

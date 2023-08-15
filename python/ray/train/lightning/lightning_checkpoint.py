@@ -10,14 +10,14 @@ from typing import Optional, Type, Dict, Any
 from ray.air.constants import MODEL_KEY
 from ray.air._internal.checkpointing import save_preprocessor_to_dir
 from ray.data import Preprocessor
-from ray.train.torch import TorchCheckpoint
+from ray.train.torch import LegacyTorchCheckpoint
 from ray.util.annotations import PublicAPI
 
 logger = logging.getLogger(__name__)
 
 
 @PublicAPI(stability="alpha")
-class LightningCheckpoint(TorchCheckpoint):
+class LightningCheckpoint(LegacyTorchCheckpoint):
     """A :class:`~ray.air.checkpoint.Checkpoint` with Lightning-specific functionality.
 
     LightningCheckpoint only support file based checkpoint loading.

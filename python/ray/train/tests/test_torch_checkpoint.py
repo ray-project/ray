@@ -4,7 +4,7 @@ from unittest.mock import patch
 import torch
 import pickle
 
-from ray.train.torch import TorchCheckpoint
+from ray.train.torch import LegacyTorchCheckpoint
 
 
 def assert_equal_torch_models(model1, model2):
@@ -19,11 +19,11 @@ def assert_equal_torch_models(model1, model2):
 
 def test_from_model():
     model = torch.nn.Linear(1, 1)
-    checkpoint = TorchCheckpoint.from_model(model)
+    checkpoint = LegacyTorchCheckpoint.from_model(model)
     assert_equal_torch_models(checkpoint.get_model(), model)
 
     with checkpoint.as_directory() as path:
-        checkpoint = TorchCheckpoint.from_directory(path)
+        checkpoint = LegacyTorchCheckpoint.from_directory(path)
         checkpoint_model = checkpoint.get_model()
 
     assert_equal_torch_models(checkpoint_model, model)
@@ -32,7 +32,7 @@ def test_from_model():
 def test_from_state_dict():
     model = torch.nn.Linear(1, 1)
     expected_state_dict = model.state_dict()
-    checkpoint = TorchCheckpoint.from_state_dict(expected_state_dict)
+    checkpoint = LegacyTorchCheckpoint.from_state_dict(expected_state_dict)
     actual_state_dict = checkpoint.get_model(torch.nn.Linear(1, 1)).state_dict()
     assert actual_state_dict == expected_state_dict
 
@@ -44,7 +44,7 @@ def test_pickle_large_checkpoint():
         assert pickle.HIGHEST_PROTOCOL == 5
 
         data_dict = {"key": "1" * (4 * 1024 * 1024 * 1024 + 100)}
-        checkpoint = TorchCheckpoint(data_dict=data_dict)
+        checkpoint = LegacyTorchCheckpoint(data_dict=data_dict)
         pickle.dumps(checkpoint)
     else:
         assert pickle.HIGHEST_PROTOCOL == 4
@@ -57,7 +57,7 @@ def test_no_encoding_for_dir_checkpoints(tmpdir):
 
     # Make sure we do not double encode.
     with patch("torch.save") as save_mock:
-        checkpoint = TorchCheckpoint.from_directory(tmpdir)
+        checkpoint = LegacyTorchCheckpoint.from_directory(tmpdir)
         checkpoint.__getstate__()
     save_mock.assert_not_called()
 

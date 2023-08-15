@@ -185,7 +185,7 @@ def train_torch_model(dataset, preprocessor, per_epoch_preprocessor):
 
     from ray import train
     from ray.train import ScalingConfig
-    from ray.train.torch import TorchCheckpoint, TorchTrainer
+    from ray.train.torch import LegacyTorchCheckpoint, TorchTrainer
 
     def train_one_epoch(model, *, criterion, optimizer, batch_size, epoch):
         dataset_shard = train.get_dataset_shard("train")
@@ -213,7 +213,7 @@ def train_torch_model(dataset, preprocessor, per_epoch_preprocessor):
                         "batch": i,
                         "running_loss": running_loss / 2000,
                     },
-                    checkpoint=TorchCheckpoint.from_model(model),
+                    checkpoint=LegacyTorchCheckpoint.from_model(model),
                 )
                 running_loss = 0
 
@@ -305,10 +305,10 @@ def create_torch_checkpoint(preprocessor):
     # __torch_checkpoint_start__
     from torchvision import models
 
-    from ray.train.torch import TorchCheckpoint
+    from ray.train.torch import LegacyTorchCheckpoint
 
     model = models.resnet50(pretrained=True)
-    checkpoint = TorchCheckpoint.from_model(model, preprocessor=preprocessor)
+    checkpoint = LegacyTorchCheckpoint.from_model(model, preprocessor=preprocessor)
     # __torch_checkpoint_stop__
     return checkpoint
 

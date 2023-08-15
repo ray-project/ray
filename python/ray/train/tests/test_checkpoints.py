@@ -8,7 +8,7 @@ from ray.train.lightgbm import LightGBMCheckpoint
 from ray.train.sklearn import SklearnCheckpoint
 from ray.train.tensorflow import TensorflowCheckpoint
 from ray.train.xgboost import XGBoostCheckpoint
-from ray.train.torch import TorchCheckpoint
+from ray.train.torch import LegacyTorchCheckpoint
 
 
 @pytest.mark.parametrize(
@@ -19,7 +19,7 @@ from ray.train.torch import TorchCheckpoint
         SklearnCheckpoint(data_dict={"foo": "bar"}),
         TensorflowCheckpoint(data_dict={"foo": "bar"}),
         XGBoostCheckpoint(data_dict={"foo": "bar"}),
-        TorchCheckpoint(data_dict={"foo": "bar"}),
+        LegacyTorchCheckpoint(data_dict={"foo": "bar"}),
     ],
 )
 def test_repr(checkpoint):
