@@ -3,7 +3,7 @@ import re
 import pytest
 
 from ray.air.constants import MAX_REPR_LENGTH
-from ray.train.huggingface import TransformersCheckpoint
+from ray.train.huggingface import LegacyTransformersCheckpoint
 from ray.train.lightgbm import LightGBMCheckpoint
 from ray.train.sklearn import SklearnCheckpoint
 from ray.train.tensorflow import TensorflowCheckpoint
@@ -14,7 +14,7 @@ from ray.train.torch import LegacyTorchCheckpoint
 @pytest.mark.parametrize(
     "checkpoint",
     [
-        TransformersCheckpoint(data_dict={"foo": "bar"}),
+        LegacyTransformersCheckpoint(data_dict={"foo": "bar"}),
         LightGBMCheckpoint(data_dict={"foo": "bar"}),
         SklearnCheckpoint(data_dict={"foo": "bar"}),
         TensorflowCheckpoint(data_dict={"foo": "bar"}),
