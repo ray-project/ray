@@ -148,7 +148,7 @@ def get_max_num_concurrent_tasks(spark_context, resource_profile):
         )
 
 
-def _get_total_physical_memory():
+def _get_spark_worker_total_physical_memory():
     import psutil
 
     if RAY_ON_SPARK_WORKER_PHYSICAL_MEMORY_BYTES in os.environ:
@@ -156,7 +156,7 @@ def _get_total_physical_memory():
     return psutil.virtual_memory().total
 
 
-def _get_total_shared_memory():
+def _get_spark_worker_total_shared_memory():
     import shutil
 
     if RAY_ON_SPARK_WORKER_SHARED_MEMORY_BYTES in os.environ:
@@ -169,11 +169,54 @@ def _get_total_shared_memory():
 _RAY_ON_SPARK_MAX_OBJECT_STORE_MEMORY_PROPORTION = 0.8
 
 # The buffer offset for calculating Ray node memory.
-_RAY_ON_SPARK_WORKER_MEMORY_BUFFER_OFFSET = 0.8
+_RAY_ON_SPARK_NODE_MEMORY_BUFFER_OFFSET = 0.8
+
+
+def calc_mem_ray_head_node(configured_object_store_bytes):
+    import psutil
+
+    if RAY_ON_SPARK_DRIVER_PHYSICAL_MEMORY_BYTES in os.environ:
+        available_physical_mem = int(
+            os.environ[RAY_ON_SPARK_DRIVER_PHYSICAL_MEMORY_BYTES]
+        )
+    else:
+        available_physical_mem = psutil.virtual_memory().total
+
+    if RAY_ON_SPARK_DRIVER_SHARED_MEMORY_BYTES in os.environ:
+        available_shared_mem = int(os.environ[RAY_ON_SPARK_DRIVER_SHARED_MEMORY_BYTES])
+    else:
+        available_shared_mem = psutil.virtual_memory().total
+
+    heap_mem_bytes, object_store_bytes, warning_msg = _calc_mem_per_ray_node(
+        available_physical_mem, available_shared_mem, configured_object_store_bytes
+    )
+
+    if warning_msg is not None:
+        _logger.warning(warning_msg)
+
+    return heap_mem_bytes, object_store_bytes
 
 
 def _calc_mem_per_ray_worker_node(
     num_task_slots, physical_mem_bytes, shared_mem_bytes, configured_object_store_bytes
+):
+    available_physical_mem_per_node = int(
+        physical_mem_bytes / num_task_slots * _RAY_ON_SPARK_NODE_MEMORY_BUFFER_OFFSET
+    )
+    available_shared_mem_per_node = int(
+        shared_mem_bytes / num_task_slots * _RAY_ON_SPARK_NODE_MEMORY_BUFFER_OFFSET
+    )
+    return _calc_mem_per_ray_node(
+        available_physical_mem_per_node,
+        available_shared_mem_per_node,
+        configured_object_store_bytes,
+    )
+
+
+def _calc_mem_per_ray_node(
+    available_physical_mem_per_node,
+    available_shared_mem_per_node,
+    configured_object_store_bytes,
 ):
     from ray._private.ray_constants import (
         DEFAULT_OBJECT_STORE_MEMORY_PROPORTION,
@@ -181,13 +224,6 @@ def _calc_mem_per_ray_worker_node(
     )
 
     warning_msg = None
-
-    available_physical_mem_per_node = int(
-        physical_mem_bytes / num_task_slots * _RAY_ON_SPARK_WORKER_MEMORY_BUFFER_OFFSET
-    )
-    available_shared_mem_per_node = int(
-        shared_mem_bytes / num_task_slots * _RAY_ON_SPARK_WORKER_MEMORY_BUFFER_OFFSET
-    )
 
     object_store_bytes = configured_object_store_bytes or (
         available_physical_mem_per_node * DEFAULT_OBJECT_STORE_MEMORY_PROPORTION
@@ -233,6 +269,11 @@ RAY_ON_SPARK_WORKER_CPU_CORES = "RAY_ON_SPARK_WORKER_CPU_CORES"
 RAY_ON_SPARK_WORKER_GPU_NUM = "RAY_ON_SPARK_WORKER_GPU_NUM"
 RAY_ON_SPARK_WORKER_PHYSICAL_MEMORY_BYTES = "RAY_ON_SPARK_WORKER_PHYSICAL_MEMORY_BYTES"
 RAY_ON_SPARK_WORKER_SHARED_MEMORY_BYTES = "RAY_ON_SPARK_WORKER_SHARED_MEMORY_BYTES"
+
+# User can manually set these environment variables on spark driver node
+# if ray on spark code accessing corresponding information failed.
+RAY_ON_SPARK_DRIVER_PHYSICAL_MEMORY_BYTES = "RAY_ON_SPARK_DRIVER_PHYSICAL_MEMORY_BYTES"
+RAY_ON_SPARK_DRIVER_SHARED_MEMORY_BYTES = "RAY_ON_SPARK_DRIVER_SHARED_MEMORY_BYTES"
 
 
 def _get_cpu_cores():
@@ -286,8 +327,8 @@ def _get_avail_mem_per_ray_worker_node(
         if num_task_slots > num_gpus // num_gpus_per_node:
             num_task_slots = num_gpus // num_gpus_per_node
 
-    physical_mem_bytes = _get_total_physical_memory()
-    shared_mem_bytes = _get_total_shared_memory()
+    physical_mem_bytes = _get_spark_worker_total_physical_memory()
+    shared_mem_bytes = _get_spark_worker_total_shared_memory()
 
     (
         ray_worker_node_heap_mem_bytes,
