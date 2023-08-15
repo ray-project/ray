@@ -707,6 +707,13 @@ def test_e2e_bursty(serve_instance):
         graceful_shutdown_timeout_s=1,
         max_concurrent_queries=1000,
         version="v1",
+        ray_actor_options={
+            "runtime_env": {
+                "env_vars": {
+                    "RAY_SERVE_REPLICA_AUTOSCALING_METRIC_RECORD_PERIOD_S": "0.1"
+                }
+            }
+        },
     )
     class A:
         def __init__(self):
@@ -737,6 +744,7 @@ def test_e2e_bursty(serve_instance):
     # it back to 0. This bursty behavior should be smoothed by the delay
     # parameters.
     for _ in range(5):
+        ray.get(signal.send.remote(clear=True))
         assert check_autoscale_num_replicas(controller, "A") == num_replicas
         refs = [handle.remote() for _ in range(100)]
         signal.send.remote()
