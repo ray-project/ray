@@ -751,7 +751,6 @@ class BaseTrainer(abc.ABC):
             assert metadata, metadata
             # Propagate user metadata from the Trainer constructor.
             session._get_session().metadata = metadata
-            print("SESSION", session, type(session), session.get_metadata())
 
             # config already contains merged values.
             # Instantiate new Trainer in Trainable.
