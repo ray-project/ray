@@ -903,7 +903,7 @@ class HTTPProxy(GenericProxy):
         Unpack HTTP request headers and extract info to set up request context and
         handle.
         """
-        handle = handle.options(request_protocol=RequestProtocol.HTTP)
+        handle._set_request_protocol(RequestProtocol.HTTP)
         request_context_info = {
             "route": route_path,
             "app_name": app_name,

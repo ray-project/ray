@@ -78,15 +78,15 @@ class RequestMetadata:
     is_streaming: bool = False
 
     # The protocol to serve this request
-    request_protocol: RequestProtocol = RequestProtocol.UNDEFINED
+    _request_protocol: RequestProtocol = RequestProtocol.UNDEFINED
 
     @property
     def is_http_request(self) -> bool:
-        return self.request_protocol == RequestProtocol.HTTP
+        return self._request_protocol == RequestProtocol.HTTP
 
     @property
     def is_grpc_request(self) -> bool:
-        return self.request_protocol == RequestProtocol.GRPC
+        return self._request_protocol == RequestProtocol.GRPC
 
 
 @dataclass

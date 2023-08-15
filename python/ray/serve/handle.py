@@ -63,7 +63,6 @@ class HandleOptions:
     multiplexed_model_id: str = ""
     stream: bool = False
     _router_cls: str = ""
-    request_protocol: RequestProtocol = RequestProtocol.UNDEFINED
 
     def copy_and_update(
         self,
@@ -71,7 +70,6 @@ class HandleOptions:
         multiplexed_model_id: Union[str, DEFAULT] = DEFAULT.VALUE,
         stream: Union[bool, DEFAULT] = DEFAULT.VALUE,
         _router_cls: Union[str, DEFAULT] = DEFAULT.VALUE,
-        request_protocol: Union[RequestProtocol, DEFAULT] = DEFAULT.VALUE,
     ) -> "HandleOptions":
         return HandleOptions(
             method_name=(
@@ -86,9 +84,6 @@ class HandleOptions:
             _router_cls=self._router_cls
             if _router_cls == DEFAULT.VALUE
             else _router_cls,
-            request_protocol=self.request_protocol
-            if request_protocol == DEFAULT.VALUE
-            else request_protocol,
         )
 
 
@@ -158,6 +153,10 @@ class RayServeHandle:
         )
 
         self._router: Optional[Router] = _router
+        self._request_protocol = RequestProtocol.UNDEFINED
+
+    def _set_request_protocol(self, request_protocol: RequestProtocol):
+        self._request_protocol = request_protocol
 
     def _get_or_create_router(self) -> Router:
         if self._router is None:
@@ -186,25 +185,25 @@ class RayServeHandle:
         multiplexed_model_id: Union[str, DEFAULT] = DEFAULT.VALUE,
         stream: Union[bool, DEFAULT] = DEFAULT.VALUE,
         _router_cls: Union[str, DEFAULT] = DEFAULT.VALUE,
-        request_protocol: Union[RequestProtocol, DEFAULT] = DEFAULT.VALUE,
     ):
         new_handle_options = self.handle_options.copy_and_update(
             method_name=method_name,
             multiplexed_model_id=multiplexed_model_id,
             stream=stream,
             _router_cls=_router_cls,
-            request_protocol=request_protocol,
         )
 
         if self._router is None and _router_cls == DEFAULT.VALUE:
             self._get_or_create_router()
 
-        return self.__class__(
+        new_handle = self.__class__(
             self.deployment_name,
             handle_options=new_handle_options,
             _router=None if _router_cls != DEFAULT.VALUE else self._router,
             _request_counter=self.request_counter,
         )
+        new_handle._set_request_protocol(self._request_protocol)
+        return new_handle
 
     def options(
         self,
@@ -213,7 +212,6 @@ class RayServeHandle:
         multiplexed_model_id: Union[str, DEFAULT] = DEFAULT.VALUE,
         stream: Union[bool, DEFAULT] = DEFAULT.VALUE,
         _router_cls: Union[str, DEFAULT] = DEFAULT.VALUE,
-        request_protocol: Union[RequestProtocol, DEFAULT] = DEFAULT.VALUE,
     ) -> "RayServeHandle":
         """Set options for this handle and return an updated copy of it.
 
@@ -232,7 +230,6 @@ class RayServeHandle:
             multiplexed_model_id=multiplexed_model_id,
             stream=stream,
             _router_cls=_router_cls,
-            request_protocol=request_protocol,
         )
 
     def _remote(self, deployment_name, handle_options, args, kwargs) -> Coroutine:
@@ -245,7 +242,7 @@ class RayServeHandle:
             app_name=_request_context.app_name,
             multiplexed_model_id=handle_options.multiplexed_model_id,
             is_streaming=handle_options.stream,
-            request_protocol=handle_options.request_protocol,
+            _request_protocol=self._request_protocol,
         )
         self.request_counter.inc(
             tags={
@@ -352,7 +349,6 @@ class RayServeSyncHandle(RayServeHandle):
         multiplexed_model_id: Union[str, DEFAULT] = DEFAULT.VALUE,
         stream: Union[bool, DEFAULT] = DEFAULT.VALUE,
         _router_cls: Union[str, DEFAULT] = DEFAULT.VALUE,
-        request_protocol: Union[RequestProtocol, DEFAULT] = DEFAULT.VALUE,
     ) -> "RayServeSyncHandle":
         """Set options for this handle and return an updated copy of it.
 
@@ -371,7 +367,6 @@ class RayServeSyncHandle(RayServeHandle):
             multiplexed_model_id=multiplexed_model_id,
             stream=stream,
             _router_cls=_router_cls,
-            request_protocol=request_protocol,
         )
 
     def remote(self, *args, **kwargs) -> ray.ObjectRef:
