@@ -511,14 +511,13 @@ class Trainable:
                         os.path.join(checkpoint_dir, _DICT_CHECKPOINT_FILE_NAME), "wb"
                     ) as f:
                         ray_pickle.dump(checkpoint_dict_or_path, f)
-
-                if checkpoint_dict_or_path is not None:
-                    assert isinstance(checkpoint_dict_or_path, str)
+                elif isinstance(checkpoint_dict_or_path, str):
                     if checkpoint_dict_or_path != checkpoint_dir:
                         raise ValueError(
                             "The returned checkpoint path from `save_checkpoint` "
                             "must be None or the same as the provided path argument."
                         )
+
                 local_checkpoint = NewCheckpoint.from_directory(checkpoint_dir)
                 persisted_checkpoint = self._storage.persist_current_checkpoint(
                     local_checkpoint
@@ -919,11 +918,10 @@ class Trainable:
                 # (depending on what the output of save_checkpoint was)
                 with checkpoint_result.checkpoint.as_directory() as checkpoint_dir:
                     checkpoint_path = Path(checkpoint_dir)
-                    if checkpoint_path.joinpath(_DICT_CHECKPOINT_FILE_NAME).exists():
+                    dict_checkpoint_file = checkpoint_path / _DICT_CHECKPOINT_FILE_NAME
+                    if dict_checkpoint_file.exists():
                         # If this was a dict checkpoint, load it as a dict
-                        with open(
-                            checkpoint_path / _DICT_CHECKPOINT_FILE_NAME, "rb"
-                        ) as f:
+                        with open(dict_checkpoint_file, "rb") as f:
                             checkpoint_dict = ray_pickle.load(f)
                         self.load_checkpoint(checkpoint_dict)
                     else:
