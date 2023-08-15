@@ -219,7 +219,7 @@ Note that this step is not necessary if you are passing in Ray Data to your Trai
         global_batch_size = worker_batch_size * ray.train.get_context().get_world_size()
 
 
-Reporting metrics and checkpoints
+Reporting checkpoints and metrics
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 To monitor progress, you can report intermediate metrics and checkpoints using the :func:`ray.train.report` utility function.
