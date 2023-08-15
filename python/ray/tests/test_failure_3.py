@@ -450,6 +450,7 @@ while True:
         timeout=30,
     )
 
+
 @pytest.mark.skipif(sys.platform != "linux", reason="Only works on linux.")
 def test_worker_cleans_up_child_procs_on_raylet_death(ray_start_cluster, tmp_path):
     """
@@ -509,7 +510,9 @@ actor_leaked_pids = ray.get(actor.create_leaked_child_process.remote(
     num_to_leak=num_to_leak_per_type,
 ))
 
-task_leaked_pids = ray.get([leaker_task.remote(index) for index in range(num_to_leak_per_type)])
+task_leaked_pids = ray.get([
+    leaker_task.remote(index) for index in range(num_to_leak_per_type)
+])
 leaked_pids = actor_leaked_pids + task_leaked_pids
 
 final_file = "{output_file_path}"
@@ -522,13 +525,13 @@ while True:
     print(os.getpid())
     time.sleep(1)
     """
-    
-    print('Running string as driver')
+
+    print("Running string as driver")
     driver_proc = run_string_as_driver_nonblocking(driver_script)
 
     # Wait for the json file containing the child PIDS
     # to be present.
-    print('Waiting for child pids json')
+    print("Waiting for child pids json")
     wait_for_condition(
         condition_predictor=lambda: Path(output_file_path).exists(),
         timeout=30,
@@ -551,11 +554,13 @@ while True:
     raylet_proc.kill()
     raylet_proc.wait()
 
-    print('Waiting for child procs to die')
+    print("Waiting for child procs to die")
     wait_for_condition(
         condition_predictor=lambda: all([not proc.is_running() for proc in processes]),
         timeout=30,
     )
+
+    driver_proc.kill()
 
 
 if __name__ == "__main__":

@@ -1,3 +1,0 @@
-#!/usr/bin/env bash
-
-ulimit -n 65536 && ray start --head --port=6379 --dashboard-port=8265 --no-monitor --redis-password='' --object-manager-port=8076 --node-manager-port=8912 --metrics-export-port=8085 --dashboard-agent-listen-port=52365 --dashboard-agent-grpc-port=6823
