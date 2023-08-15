@@ -294,29 +294,40 @@ def configure_component_cpu_profiler(
 
         try:
             import cProfile
-
-            logs_dir = get_serve_logs_dir()
-            cpu_profiler_file_name = get_component_log_file_name(
-                component_name=component_name,
-                component_id=component_id,
-                component_type=component_type,
-                suffix="_cprofile.prof",
-            )
-            cpu_profiler_file_path = os.path.join(logs_dir, cpu_profiler_file_name)
-
-            profile = cProfile.Profile()
-            logger.info(
-                "RAY_SERVE_ENABLE_CPU_PROFILING is enabled. Started cProfile "
-                "on this actor."
-            )
-            return profile, cpu_profiler_file_path
         except ImportError:
             logger.warning(
                 "RAY_SERVE_ENABLE_CPU_PROFILING is enabled, but cProfile "
                 "is not installed. No CPU profiling is happening."
             )
+            return None, None
+        try:
+            # Need marshal to dump data. Check if marshal is installed before
+            # starting the profiler.
+            import marshal  # noqa: F401
+        except ImportError:
+            logger.warning(
+                "RAY_SERVE_ENABLE_CPU_PROFILING is enabled, but marshal "
+                "is not installed. No CPU profiling is happening."
+            )
+            return None, None
 
-    return None, None
+        logs_dir = get_serve_logs_dir()
+        cpu_profiler_file_name = get_component_log_file_name(
+            component_name=component_name,
+            component_id=component_id,
+            component_type=component_type,
+            suffix="_cprofile.prof",
+        )
+        cpu_profiler_file_path = os.path.join(logs_dir, cpu_profiler_file_name)
+
+        profile = cProfile.Profile()
+        logger.info(
+            "RAY_SERVE_ENABLE_CPU_PROFILING is enabled. Started cProfile "
+            "on this actor."
+        )
+        return profile, cpu_profiler_file_path
+    else:
+        return None, None
 
 
 def get_serve_logs_dir() -> str:
