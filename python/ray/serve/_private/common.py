@@ -261,6 +261,8 @@ class DeploymentInfo:
             else self.is_driver_deployment,
             app_name=self.app_name,
             route_prefix=route_prefix or self.route_prefix,
+            docs_path=self.docs_path,
+            ingress=self.ingress,
         )
 
     @property
