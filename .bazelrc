@@ -8,7 +8,6 @@ build:windows --action_env=PATH
 # For --compilation_mode=dbg, consider enabling checks in the standard library as well (below).
 build --compilation_mode=opt
 # Using C++ 17 on all platforms.
-build --host_cxxopt=-std=c++17
 build:linux --cxxopt="-std=c++17"
 build:macos --cxxopt="-std=c++17"
 build:clang-cl --cxxopt="-std=c++17"
