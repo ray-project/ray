@@ -9,7 +9,7 @@ from ray import tune
 from ray.train.constants import TRAIN_DATASET_KEY
 
 from ray.data.preprocessor import Preprocessor
-from ray.train.lightgbm import LightGBMCheckpoint, LightGBMTrainer
+from ray.train.lightgbm import LegacyLightGBMCheckpoint, LightGBMTrainer
 from ray.train import Checkpoint, ScalingConfig
 
 from sklearn.datasets import load_breast_cancer
@@ -68,7 +68,7 @@ def test_fit_with_categoricals(ray_start_6_cpus):
         datasets={TRAIN_DATASET_KEY: train_dataset, "valid": valid_dataset},
     )
     result = trainer.fit()
-    checkpoint = LightGBMCheckpoint.from_checkpoint(result.checkpoint)
+    checkpoint = LegacyLightGBMCheckpoint.from_checkpoint(result.checkpoint)
     model = checkpoint.get_model()
     assert model.pandas_categorical == [["A", "B"]]
 
@@ -85,7 +85,7 @@ def test_resume_from_checkpoint(ray_start_6_cpus, tmpdir):
     )
     result = trainer.fit()
     checkpoint = result.checkpoint
-    checkpoint = LightGBMCheckpoint.from_checkpoint(result.checkpoint)
+    checkpoint = LegacyLightGBMCheckpoint.from_checkpoint(result.checkpoint)
     model = checkpoint.get_model()
     assert get_num_trees(model) == 5
 
@@ -104,7 +104,7 @@ def test_resume_from_checkpoint(ray_start_6_cpus, tmpdir):
         resume_from_checkpoint=resume_from,
     )
     result = trainer.fit()
-    checkpoint = LightGBMCheckpoint.from_checkpoint(result.checkpoint)
+    checkpoint = LegacyLightGBMCheckpoint.from_checkpoint(result.checkpoint)
     xgb_model = checkpoint.get_model()
     assert get_num_trees(xgb_model) == 10
 
@@ -181,7 +181,7 @@ def test_preprocessor_in_checkpoint(ray_start_6_cpus, tmpdir):
     checkpoint_path = checkpoint.to_directory(tmpdir)
     resume_from = Checkpoint.from_directory(checkpoint_path)
 
-    resume_from = LightGBMCheckpoint.from_checkpoint(resume_from)
+    resume_from = LegacyLightGBMCheckpoint.from_checkpoint(resume_from)
 
     model = resume_from.get_model()
     preprocessor = resume_from.get_preprocessor()

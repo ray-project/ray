@@ -65,7 +65,7 @@ class LightGBMCheckpoint(LegacyFrameworkCheckpoint):
 
 
 @PublicAPI(stability="beta")
-class LightGBMCheckpoint(Checkpoint):
+class LegacyLightGBMCheckpoint(Checkpoint):
     """A :py:class:`~ray.air.checkpoint.Checkpoint` with LightGBM-specific
     functionality.
 
