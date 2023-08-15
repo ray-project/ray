@@ -16,6 +16,8 @@ class LegacyFrameworkCheckpoint(Checkpoint):
 
         >>> import tempfile
         >>> checkpoint = LegacyFrameworkCheckpoint(tempfile.mkdtemp())
+        >>> checkpoint.get_preprocessor() is None
+        True
         >>> preprocessor = Preprocessor()
         >>> preprocessor._attr = 1234
         >>> checkpoint.set_preprocessor(preprocessor)
@@ -24,6 +26,12 @@ class LegacyFrameworkCheckpoint(Checkpoint):
     """
 
     def get_preprocessor(self) -> Optional[Preprocessor]:
+        """Return the preprocessor stored in the checkpoint.
+
+        Returns:
+            The preprocessor stored in the checkpoint, or ``None`` if no
+            preprocessor was stored.
+        """
         metadata = self.get_metadata()
         preprocessor_bytes = metadata.get(PREPROCESSOR_KEY)
         if preprocessor_bytes is None:
@@ -31,6 +39,7 @@ class LegacyFrameworkCheckpoint(Checkpoint):
         return ray_pickle.loads(hex_to_binary(preprocessor_bytes))
 
     def set_preprocessor(self, preprocessor: Preprocessor):
+        """Store a preprocessor with the checkpoint."""
         self.update_metadata(
             {PREPROCESSOR_KEY: binary_to_hex(ray_pickle.dumps(preprocessor))}
         )
