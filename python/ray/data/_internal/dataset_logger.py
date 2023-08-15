@@ -21,7 +21,7 @@ class DatasetLogger:
     ```
     """
 
-    DEFAULT_DATASET_LOG_PATH = "logs/ray-data.log"
+    DEFAULT_DATASET_LOG_PATH = "ray-data.log"
 
     def __init__(self, log_name: str):
         """Initialize DatasetLogger for a given `log_name`.
@@ -69,9 +69,9 @@ class DatasetLogger:
             # Add a FileHandler to write to the specific Ray Datasets log file
             # at `DatasetLogger.DEFAULT_DATASET_LOG_PATH`, using the standard
             # default logger format used by the root logger
-            session_dir = global_node.get_session_dir_path()
+            logs_dir = global_node.get_logs_dir_path()
             datasets_log_path = os.path.join(
-                session_dir,
+                logs_dir,
                 DatasetLogger.DEFAULT_DATASET_LOG_PATH,
             )
             file_log_formatter = logging.Formatter(fmt=LOGGER_FORMAT)

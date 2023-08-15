@@ -17,8 +17,8 @@ def test_dataset_logger(shutdown_only):
     logger.get_logger().info(msg)
 
     # Read from log file, and parse each component of emitted log row
-    session_dir = ray._private.worker._global_node.get_session_dir_path()
-    log_file_path = os.path.join(session_dir, DatasetLogger.DEFAULT_DATASET_LOG_PATH)
+    logs_dir = ray._private.worker._global_node.get_logs_dir_path()
+    log_file_path = os.path.join(logs_dir, DatasetLogger.DEFAULT_DATASET_LOG_PATH)
     with open(log_file_path, "r") as f:
         raw_logged_msg = f.read()
     (
