@@ -715,7 +715,7 @@ class gRPCOptions(BaseModel):
         for fun in self.grpc_servicer_functions:
             try:
                 callables.append(import_attr(fun))
-            except AttributeError:
+            except ModuleNotFoundError:
                 logger.warning(
                     f"{fun} can't be imported! Please make sure there are no typo "
                     "in those functions. Or you might want to rebuild service "
