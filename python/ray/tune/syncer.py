@@ -20,7 +20,6 @@ import os
 import time
 from dataclasses import dataclass
 
-from ray.train._checkpoint import Checkpoint
 
 try:
     import fsspec
@@ -57,6 +56,7 @@ from ray.util.annotations import PublicAPI, DeveloperAPI
 from ray.widgets import Template
 
 if TYPE_CHECKING:
+    from ray.train._checkpoint import Checkpoint
     from ray.tune.experiment import Trial
 
 logger = logging.getLogger(__name__)
@@ -935,8 +935,8 @@ class SyncerCallback(Callback):
         checkpoint: Union["_TrackedCheckpoint", "Checkpoint"],
         **info,
     ):
-        if isinstance(checkpoint, Checkpoint):
-            # Syncer should be disabled for storage path
+        if not hasattr(checkpoint, "storage_mode"):
+            # Syncer should be disabled for new storage path
             raise RuntimeError(
                 "Internal error: Got new Train Checkpoint object in Syncer: "
                 f"{checkpoint}. Please raise an error on "
