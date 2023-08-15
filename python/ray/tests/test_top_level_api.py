@@ -23,7 +23,6 @@ def test_api_functions():
         "cancel",
         "get_actor",
         "get_gpu_ids",
-        "get_neuron_core_ids",
         "shutdown",
         "method",
         "nodes",

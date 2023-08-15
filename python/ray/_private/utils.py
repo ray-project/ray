@@ -33,6 +33,7 @@ from typing import (
     Union,
     Coroutine,
     List,
+    Mapping,
 )
 
 # Import psutil after ray so the packaged version is used.
@@ -282,6 +283,17 @@ def get_cuda_visible_devices():
     return _get_visible_ids(env_var=ray_constants.CUDA_VISIBLE_DEVICES_ENV_VAR)
 
 
+def get_gpu_and_accelerator_runtime_ids() -> Mapping[str, List[str]]:
+    """
+    Get the device IDs of GPUs (CUDA), accelerators(NeuronCore) using
+    (CUDA_VISIBLE_DEVICES, NEURON_RT_VISIBLE_CORES) environment variables.
+    """
+    return {
+        ray_constants.GPU: get_cuda_visible_devices(),
+        ray_constants.NUM_NEURON_CORES: get_aws_neuron_core_visible_ids(),
+    }
+
+
 def get_aws_neuron_core_visible_ids():
     """
     Get the device IDs using NEURON_RT_VISIBLE_CORES environment variable.
@@ -374,6 +386,18 @@ def set_cuda_visible_devices(gpu_ids):
     last_set_gpu_ids = gpu_ids
 
 
+def set_gpu_and_accelerator_runtime_ids():
+    """Set (CUDA_VISIBLE_DEVICES, NEURON_RT_VISIBLE_CORES, ..) environment variables
+    based on the accelerator runtime.
+
+    Raises:
+        ValueError: If the environment variable is set to a different
+            environment variable.
+    """
+    set_cuda_visible_devices(ray.get_gpu_ids())
+    set_aws_neuron_core_visible_ids(get_neuron_core_ids())
+
+
 def set_aws_neuron_core_visible_ids(neuron_core_ids: List[str]):
     """Set the NEURON_RT_VISIBLE_CORES environment variable based on
     given neuron_core_ids.
@@ -430,6 +454,62 @@ def get_constraint_name(pretty_name: str):
     """
     constraint_name = f"{ray_constants.RESOURCE_CONSTRAINT_PREFIX}" f"{pretty_name}"
     return constraint_name
+
+
+def get_neuron_core_ids():
+    """Get the NeuronCore IDs that are assigned to the given resource.
+
+    Returns:
+        (List[str]) The NeuronCore IDs that are assigned to the given resource.
+    """
+    neuron_regex = f"^{ray_constants.NUM_NEURON_CORES}_group_[0-9A-Za-z]+$"
+    return get_resource_ids_for_resource(ray_constants.NUM_NEURON_CORES, neuron_regex)
+
+
+def get_resource_ids_for_resource(resource_name: str, resource_regex: str) -> List[str]:
+    """Get the resource IDs that are assigned to the given resource.
+
+    Args:
+        resource_name: The name of the resource.
+        resource_regex: The regex of the resource.
+
+    Returns:
+        (List[str]) The NeuronCore IDs that are assigned to the given resource.
+    """
+    runtime_ctx = ray.get_runtime_context()
+    worker = runtime_ctx.worker
+    resource_ids = runtime_ctx.get_resource_ids()
+    assigned_ids = set()
+    # Handle both normal and placement group GPU resources.
+    # Note: We should only get the GPU ids from the placement
+    # group resource that does not contain the bundle index!
+    import re
+
+    for resource, assignment in resource_ids.items():
+        if resource == resource_name or re.match(resource_regex, resource):
+            for resource_id, _ in assignment:
+                assigned_ids.add(resource_id)
+
+    # If the user had already set the environment variables
+    # (CUDA_VISIBLE_DEVICES, NEURON_RT_VISIBLE_CORES, ..) then respect that in the sense
+    # that only IDs that appear in (CUDA_VISIBLE_DEVICES, NEURON_RT_VISIBLE_CORES, ..)
+    # should be returned.
+    if (
+        worker.original_gpu_and_accelerator_runtime_ids.get(resource_name, None)
+        is not None
+    ):
+        runtime_ids = worker.original_gpu_and_accelerator_runtime_ids[resource_name]
+        assigned_ids = [runtime_ids[id] for id in runtime_ids]
+        # Give all accelerator ids local_mode.
+        if worker.mode == ray._private.worker.LOCAL_MODE:
+            max_accelerator_resource_ids = (
+                worker.node.get_resource_spec().resources.get(resource_name, None)
+            )
+            if max_accelerator_resource_ids:
+                assigned_ids = worker.original_additional_accelerator_runtime_ids[
+                    :max_accelerator_resource_ids
+                ]
+    return list(assigned_ids)
 
 
 def resources_from_ray_options(options_dict: Dict[str, Any]) -> Dict[str, Any]:

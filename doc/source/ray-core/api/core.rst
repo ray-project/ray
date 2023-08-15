@@ -51,7 +51,6 @@ Runtime Context
     ray.runtime_context.get_runtime_context
     ray.runtime_context.RuntimeContext
     ray.get_gpu_ids
-    ray.get_neuron_core_ids
 
 Cross Language
 --------------

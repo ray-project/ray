@@ -1,5 +1,5 @@
 import logging
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import ray._private.worker
 from ray._private.client_mode_hook import client_mode_hook
@@ -380,6 +380,17 @@ class RuntimeContext(object):
         worker = self.worker
         worker.check_connected()
         return worker.core_worker.get_actor_call_stats()
+
+    def get_resource_ids(self) -> Dict[str, List[Tuple[int, float]]]:
+        """Get the current worker's resource ids.
+
+        Returns:
+            A dictionary keyed by the resource name. The values are
+            ids with fractions `{'GPU': [(0, 1.0), (1, 1.0)], 'CPU': [(0, 1.0)]}`.
+        """
+        worker = self.worker
+        worker.check_connected()
+        return worker.core_worker.resource_ids()
 
 
 _runtime_context = None

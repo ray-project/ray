@@ -38,7 +38,6 @@ py_test_module_list(
     "test_advanced_8.py",
     "test_advanced_9.py",
     "test_array.py",
-    "test_accelerator.py",
     "test_autoscaling_policy.py",
     "test_basic.py",
     "test_basic_2.py",
@@ -123,6 +122,7 @@ py_test_module_list(
 py_test_module_list(
   files = [
     "test_autoscaler_fake_scaledown.py",
+    "test_accelerator.py",
     "test_log_dedup.py",
     "test_logging.py",
     "test_memory_scheduling.py",
