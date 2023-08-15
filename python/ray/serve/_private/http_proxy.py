@@ -954,7 +954,7 @@ class HTTPProxy(GenericProxy):
         return ServeResponse(status_code=str(status_code))
 
     async def _draining_response(self, serve_request: ServeRequest) -> ServeResponse:
-        status_code = 404
+        status_code = 503
         response = Response(drained_message, status_code=status_code)
         await response.send(
             serve_request.scope, serve_request.receive, serve_request.send
