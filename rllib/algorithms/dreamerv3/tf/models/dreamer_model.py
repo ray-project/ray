@@ -71,6 +71,9 @@ class DreamerModel(tf.keras.Model):
 
         self.horizon = horizon
         self.gamma = gamma
+        self._comp_dtype = (
+            tf.keras.mixed_precision.global_policy().compute_dtype
+        )
 
         self.disagree_nets = None
         if self.use_curiosity:
@@ -80,25 +83,25 @@ class DreamerModel(tf.keras.Model):
                 intrinsic_rewards_scale=intrinsic_rewards_scale,
             )
 
-        dl_type = tf.keras.mixed_precision.global_policy().compute_dtype
         self.dream_trajectory = tf.function(input_signature=[
             {
                 "h": tf.TensorSpec(shape=[
                     None,
                     get_gru_units(self.model_size),
-                ], dtype=dl_type),
+                ], dtype=self._comp_dtype),
                 "z": tf.TensorSpec(shape=[
                     None,
                     get_num_z_categoricals(self.model_size),
                     get_num_z_classes(self.model_size),
-                ], dtype=dl_type),
+                ], dtype=self._comp_dtype),
             },
-            tf.TensorSpec(shape=[None], dtype=dl_type),
+            tf.TensorSpec(shape=[None], dtype=tf.bool),
         ])(self.dream_trajectory)
 
     def call(
         self,
         inputs,
+        observations,
         actions,
         is_first,
         start_is_terminated_BxT,
@@ -113,9 +116,8 @@ class DreamerModel(tf.keras.Model):
         # non-trainable variables:
 
         # World model.
-        print(f"DreamerModel.call: inputs.dtype={inputs.dtype}")
         results = self.world_model.forward_train(
-            inputs,  # observations
+            observations,
             actions,
             is_first,
         )
@@ -129,12 +131,6 @@ class DreamerModel(tf.keras.Model):
             h=results["h_states_BxT"],
             z=results["z_posterior_states_BxT"],
             use_ema=tf.convert_to_tensor(False),
-        )
-        # Critic (EMA copy).
-        values_ema, _ = self.critic(
-            h=results["h_states_BxT"],
-            z=results["z_posterior_states_BxT"],
-            use_ema=tf.convert_to_tensor(True),
         )
 
         # Dream pipeline.
@@ -151,7 +147,6 @@ class DreamerModel(tf.keras.Model):
             "dream_data": dream_data,
             "actions": actions,
             "values": values,
-            "values_ema": values_ema,
         }
 
     @tf.function

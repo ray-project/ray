@@ -155,8 +155,9 @@ class CriticNetwork(tf.keras.Model):
         """
         vars = self.mlp.trainable_variables + self.return_layer.trainable_variables
         vars_ema = self.mlp_ema.variables + self.return_layer_ema.variables
-        assert len(vars) == len(vars_ema)
+        assert len(vars) == len(vars_ema) and len(vars) > 0
         for var, var_ema in zip(vars, vars_ema):
+            assert var is not var_ema
             var_ema.assign(var)
 
     def update_ema(self) -> None:
@@ -166,6 +167,6 @@ class CriticNetwork(tf.keras.Model):
         """
         vars = self.mlp.trainable_variables + self.return_layer.trainable_variables
         vars_ema = self.mlp_ema.variables + self.return_layer_ema.variables
-        assert len(vars) == len(vars_ema)
+        assert len(vars) == len(vars_ema) and len(vars) > 0
         for var, var_ema in zip(vars, vars_ema):
             var_ema.assign(self.ema_decay * var_ema + (1.0 - self.ema_decay) * var)

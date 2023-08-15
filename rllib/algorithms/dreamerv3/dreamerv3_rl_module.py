@@ -84,7 +84,6 @@ class DreamerV3RLModule(RLModule, abc.ABC):
             np.expand_dims(self.config.observation_space.sample(), (0, 1)),
             reps=(B, T) + (1,) * len(self.config.observation_space.shape),
         )
-        print(f"DreamerV3RLModule.setup: test_obs.dtype={test_obs.dtype}")
         if isinstance(self.config.action_space, gym.spaces.Discrete):
             test_actions = np.tile(
                 np.expand_dims(
@@ -102,12 +101,12 @@ class DreamerV3RLModule(RLModule, abc.ABC):
                 reps=(B, T, 1),
             )
 
-        dl_type = self.config.model_config_dict["dl_dtype"]
         self.dreamer_model(
+            None,
             _convert_to_tf(test_obs, dtype=tf.float32),
             _convert_to_tf(test_actions, dtype=tf.float32),
-            _convert_to_tf(np.ones((B, T)), dtype=tf.float32),
-            _convert_to_tf(np.zeros((B * T,)), dtype=tf.float32),
+            _convert_to_tf(np.ones((B, T)), dtype=tf.bool),
+            _convert_to_tf(np.zeros((B * T,)), dtype=tf.bool),
         )
 
         # Initialize the critic EMA net:

@@ -161,11 +161,10 @@ class WorldModel(tf.keras.Model):
         self.decoder = decoder
 
         # Trace self.call.
-        #dl_type = tf.keras.mixed_precision.global_policy().compute_dtype
         self.forward_train = tf.function(input_signature=[
-            tf.TensorSpec(shape=[None, None] + list(self.observation_space.shape)),#, dtype=dl_type),
-            tf.TensorSpec(shape=[None, None, self.action_space.n]),#, dtype=dl_type),
-            tf.TensorSpec(shape=[None, None]),#, dtype=dl_type),
+            tf.TensorSpec(shape=[None, None] + list(self.observation_space.shape)),
+            tf.TensorSpec(shape=[None, None, self.action_space.n]),
+            tf.TensorSpec(shape=[None, None], dtype=tf.bool),
         ])(self.forward_train)
 
     @tf.function
@@ -254,8 +253,6 @@ class WorldModel(tf.keras.Model):
                 h-states and computed z-states to yield the next h-states.
             is_first: The batch (B, T) of `is_first` flags.
         """
-        observations = tf.cast(observations, self._comp_dtype)
-
         if self.symlog_obs:
             observations = symlog(observations)
 
@@ -267,6 +264,7 @@ class WorldModel(tf.keras.Model):
         observations = tf.reshape(
             observations, shape=tf.concat([[-1], shape[2:]], axis=0)
         )
+
         encoder_out = self.encoder(tf.cast(observations, self._comp_dtype))
         # Unfold time dimension.
         encoder_out = tf.reshape(
