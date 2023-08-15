@@ -53,6 +53,7 @@
     - ./ci/env/env_info.sh
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=tune,-gpu_only,-ray_air,-gpu,-doctest python/ray/train/...
 
+
 - label: ":brain: RLlib: Benchmarks (Torch 2.x)"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_AFFECTED"]
   instance_size: medium
@@ -314,6 +315,7 @@
       --test_env=AIR_VERBOSITY=1
       python/ray/tune/...
 
+
 - label: ":octopus: :brain: Tune tests and examples {using RLlib}"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_TUNE_AFFECTED", "RAY_CI_RLLIB_AFFECTED"]
   instance_size: large
@@ -333,6 +335,71 @@
     - ./ci/env/env_info.sh
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only python/ray/tests/xgboost/...
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only python/ray/tests/horovod/...
+
+
+
+##### STORAGE REFACTOR
+
+- label: ":steam_locomotive: Train tests and examples"
+  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_TRAIN_AFFECTED"]
+  instance_size: large
+  parallelism: 4
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+    # Todo (krfricke): Move mosaicml to train-test-requirements.txt
+    - pip install "mosaicml==0.12.1"
+    - TRAIN_TESTING=1 DATA_PROCESSING_TESTING=1 INSTALL_HOROVOD=1 ./ci/env/install-dependencies.sh
+    - ./ci/env/env_info.sh
+    - ./ci/run/run_bazel_test_with_sharding.sh
+      --config=ci $(./ci/run/bazel_export_options)
+      --test_tag_filters=-gpu_only,-gpu,-minimal,-tune,-needs_credentials,-doctest
+      --test_env=RAY_AIR_NEW_PERSISTENCE_MODE=1
+      python/ray/train/...
+
+- label: ":steam_locomotive: :octopus: Train + Tune tests and examples"
+  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_TRAIN_AFFECTED"]
+  instance_size: medium
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+    - TRAIN_TESTING=1 TUNE_TESTING=1 ./ci/env/install-dependencies.sh
+    - ./ci/env/env_info.sh
+    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only 
+      --test_tag_filters=tune,-gpu_only,-ray_air,-gpu,-doctest
+      --test_env=RAY_AIR_NEW_PERSISTENCE_MODE=1
+      python/ray/train/...
+
+
+- label: ":octopus: :floppy_disk: Storage context refactor: Tune tests and examples (small)"
+  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_TUNE_AFFECTED"]
+  instance_size: small
+  parallelism: 3
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+    - TUNE_TESTING=1 ./ci/env/install-dependencies.sh
+    - ./ci/env/env_info.sh
+    - ./ci/run/run_bazel_test_with_sharding.sh
+      --config=ci $(./ci/run/bazel_export_options) --build_tests_only
+      --test_tag_filters=-medium_instance,-soft_imports,-gpu_only,-rllib,-multinode
+      --test_env=RAY_AIR_NEW_PERSISTENCE_MODE=1
+      python/ray/tune/...
+
+- label: ":octopus: :floppy_disk: Storage context refactor: Tune tests and examples (medium)"
+  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_TUNE_AFFECTED"]
+  instance_size: medium
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+    - TUNE_TESTING=1 DATA_PROCESSING_TESTING=1 ./ci/env/install-dependencies.sh
+    - ./ci/env/env_info.sh
+    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only
+      --test_tag_filters=medium_instance,-soft_imports,-gpu_only,-rllib,-multinode
+      --test_env=RAY_AIR_NEW_PERSISTENCE_MODE=1
+      python/ray/tune/...
+
+
+###### END STORAGE REFACTOR
+
+
+
 
 
 # TODO(amogkam): Re-enable Ludwig tests after Ludwig supports Ray 2.0
