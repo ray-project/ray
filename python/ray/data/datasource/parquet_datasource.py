@@ -10,6 +10,7 @@ from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.util import _check_pyarrow_version
 from ray.data.block import Block
 from ray.data.context import DataContext
+from ray.data.datasource import DefaultFileMetadataProvider
 from ray.data.datasource.datasource import Reader, ReadTask
 from ray.data.datasource.file_based_datasource import _resolve_paths_and_filesystem
 from ray.data.datasource.file_meta_provider import (
@@ -186,10 +187,6 @@ class _ParquetDatasourceReader(Reader):
         import pyarrow as pa
         import pyarrow.parquet as pq
 
-        paths, filesystem = _resolve_paths_and_filesystem(paths, filesystem)
-        if len(paths) == 1:
-            paths = paths[0]
-
         self._local_scheduling = None
         if local_uri:
             import ray
@@ -198,6 +195,22 @@ class _ParquetDatasourceReader(Reader):
             self._local_scheduling = NodeAffinitySchedulingStrategy(
                 ray.get_runtime_context().get_node_id(), soft=False
             )
+
+        paths, filesystem = _resolve_paths_and_filesystem(paths, filesystem)
+
+        # HACK: PyArrow's `ParquetDataset` errors if input paths contain non-parquet
+        # files. To avoid this, we expand the input paths with the default metadata
+        # provider and then apply the partition filter.
+        partition_filter = reader_args.pop("partition_filter", None)
+        if partition_filter is not None:
+            default_meta_provider = DefaultFileMetadataProvider()
+            paths, _ = map(
+                list, zip(*default_meta_provider.expand_paths(paths, filesystem))
+            )
+            paths = partition_filter(paths)
+
+        if len(paths) == 1:
+            paths = paths[0]
 
         dataset_kwargs = reader_args.pop("dataset_kwargs", {})
         try:
