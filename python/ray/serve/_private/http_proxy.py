@@ -444,9 +444,7 @@ class GenericProxy(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    async def timeout_response(
-        self, serve_request: ServeRequest, request_id: str
-    ) -> ServeResponse:
+    async def timeout_response(self, serve_request: ServeRequest, request_id: str):
         raise NotImplementedError
 
     @abstractmethod
@@ -749,16 +747,13 @@ class gRPCProxy(GenericProxy):
             response=response_proto.SerializeToString(),
         )
 
-    async def timeout_response(
-        self, serve_request: ServeRequest, request_id: str
-    ) -> ServeResponse:
+    async def timeout_response(self, serve_request: ServeRequest, request_id: str):
         timeout_message = (
             f"Request {request_id} timed out after {self.request_timeout_s}s."
         )
         status_code = grpc.StatusCode.ABORTED
         serve_request.send_status_code(status_code=status_code)
         serve_request.send_details(message=timeout_message)
-        return ServeResponse(status_code=str(status_code))
 
     async def routes_response(self, serve_request: ServeRequest) -> ServeResponse:
         status_code = grpc.StatusCode.OK
@@ -935,7 +930,7 @@ class gRPCProxy(GenericProxy):
                     f"Request {request_id} timed out after "
                     f"{self.request_timeout_s}s while waiting for assignment."
                 )
-                self.timeout_response(
+                await self.timeout_response(
                     serve_request=serve_request, request_id=request_id
                 )
                 return ServeResponse(status_code=TIMEOUT_ERROR_CODE)
@@ -982,9 +977,7 @@ class HTTPProxy(GenericProxy):
         )
         return ServeResponse(status_code=str(status_code))
 
-    async def timeout_response(
-        self, serve_request: ServeRequest, request_id: str
-    ) -> ServeResponse:
+    async def timeout_response(self, serve_request: ServeRequest, request_id: str):
         response = Response(
             f"Request {request_id} timed out after {self.request_timeout_s}s.",
             status_code=408,
