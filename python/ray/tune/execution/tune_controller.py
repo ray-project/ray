@@ -1634,13 +1634,20 @@ class TuneController:
                     self._schedule_trial_stop(trial)
                     self._set_trial_status(trial, Trial.PAUSED)
 
+                # NOTE: Ensure that the trial is PAUSED while it's saving a checkpoint.
+                self._set_trial_status(trial, Trial.PAUSED)
                 self._schedule_trial_task(
                     trial=trial,
                     method_name="save",
                     on_result=stop_after_save_result,
                     on_error=self._trial_task_failure,
                 )
-                return
+                trial.temporary_state.saving_to = True
+            else:
+                self._schedule_trial_stop(trial)
+                self._set_trial_status(trial, Trial.PAUSED)
+
+            return
 
         if should_checkpoint:
             self._schedule_trial_save(trial, storage=CheckpointStorage.MEMORY)
