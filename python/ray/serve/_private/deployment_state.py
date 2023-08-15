@@ -2462,22 +2462,25 @@ class DeploymentStateManager:
             for name, deployment_state in self._deployment_states.items()
         }
 
-    def get_deployment_configs(
+    def get_deployment_infos(
         self, filter_tag: Optional[str] = None, include_deleted: Optional[bool] = False
-    ) -> Dict[str, DeploymentConfig]:
-        configs: Dict[str, DeploymentConfig] = {}
+    ) -> Dict[DeploymentID, DeploymentInfo]:
+        infos: Dict[str, DeploymentInfo] = {}
         for deployment_name, deployment_state in self._deployment_states.items():
             if filter_tag is None or deployment_name == filter_tag:
-                configs[
-                    deployment_name
-                ] = deployment_state.target_info.deployment_config
+                app_name = deployment_state.target_info.app_name
+                prefix = app_name + "_" if app_name else ""
+                deployment_id = DeploymentID(deployment_name[len(prefix) :], app_name)
+                infos[deployment_id] = deployment_state.target_info
 
         if include_deleted:
             for name, info in self._deleted_deployment_metadata.items():
                 if filter_tag is None or name == filter_tag:
-                    configs[name] = info.deployment_config
+                    prefix = info.app_name + "_" if info.app_name else ""
+                    deployment_id = DeploymentID(name[len(prefix) :], info.app_name)
+                    infos[deployment_id] = info
 
-        return configs
+        return infos
 
     def get_deployment(
         self, deployment_name: str, include_deleted: Optional[bool] = False

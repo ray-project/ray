@@ -643,7 +643,7 @@ class ServeController:
         # to get set properly from Java.
         is_deployed_from_python: bool = False,
     ) -> bool:
-        """Deploys a deployment."""
+        """Deploys a deployment. This should only be used for 1.x deployments."""
         if route_prefix is not None:
             assert route_prefix.startswith("/")
         if docs_path is not None:
@@ -838,15 +838,10 @@ class ServeController:
             KeyError if the deployment doesn't exist.
         """
         return {
-            name: (
-                self.deployment_state_manager.get_deployment(
-                    name, include_deleted=include_deleted
-                ),
-                self.endpoint_state.get_endpoint_route(name),
-            )
-            for name in self.deployment_state_manager.get_deployment_configs(
+            str(id): (info, self.endpoint_state.get_endpoint_route(id))
+            for id, info in self.deployment_state_manager.get_deployment_infos(
                 include_deleted=include_deleted
-            )
+            ).items()
         }
 
     def list_deployments(self, include_deleted: Optional[bool] = False) -> bytes:
