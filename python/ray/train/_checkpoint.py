@@ -128,7 +128,7 @@ class Checkpoint:
                 of the checkpoint directory.
 
         Returns:
-            Checkpoint: checkpoint object.
+            A ray.train.Checkpoint object.
         """
         return cls(path, filesystem=pyarrow.fs.LocalFileSystem())
 
