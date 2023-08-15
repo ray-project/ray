@@ -560,13 +560,14 @@ class _TrainSession:
         metrics = self._auto_fill_metrics(metrics)
 
         # Set additional user metadata from the Trainer.
-        user_metadata = persisted_checkpoint.get_metadata()
-        for k, v in self.metadata.items():
-            # Update keys not already set by the user. This gives user-set keys
-            # precedence over keys set at the Trainer level.
-            if k not in user_metadata:
-                user_metadata[k] = v
-        persisted_checkpoint.set_metadata(user_metadata)
+        if persisted_checkpoint and self.metadata:
+            user_metadata = persisted_checkpoint.get_metadata()
+            for k, v in self.metadata.items():
+                # Update keys not already set by the user. This gives user-set keys
+                # precedence over keys set at the Trainer level.
+                if k not in user_metadata:
+                    user_metadata[k] = v
+            persisted_checkpoint.set_metadata(user_metadata)
 
         result = _TrainingResult(
             checkpoint=persisted_checkpoint,

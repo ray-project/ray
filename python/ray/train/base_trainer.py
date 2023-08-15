@@ -745,8 +745,14 @@ class BaseTrainer(abc.ABC):
         trainer_cls = self.__class__
         scaling_config = self.scaling_config
         restored = bool(self._restore_path)
+        metadata = self.metadata
 
         def train_func(config):
+            assert metadata, metadata
+            # Propagate user metadata from the Trainer constructor.
+            session._get_session().metadata = metadata
+            print("SESSION", session, type(session), session.get_metadata())
+
             # config already contains merged values.
             # Instantiate new Trainer in Trainable.
             trainer = trainer_cls(**config)
