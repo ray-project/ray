@@ -1,3 +1,4 @@
+import json
 import os
 import socket
 import sys
@@ -494,9 +495,17 @@ def _setup_ray_cluster(
                     "max_workers": num_worker_nodes,
                 },
             },
+            extra_provider_config={
+                "ray_head_ip": ray_head_ip,
+                "ray_head_port": ray_head_port,
+                "cluster_unique_id": cluster_unique_id,
+                "using_stage_scheduling": using_stage_scheduling,
+                "ray_temp_dir": ray_temp_dir,
+                "worker_node_options": worker_node_options,
+                "collect_log_to_path": collect_log_to_path,
+            }
         )
         ray_head_proc, tail_output_deque = autoscaler_cluster.start()
-
     else:
         ray_head_node_cmd = [
             sys.executable,
@@ -996,6 +1005,7 @@ def _start_ray_worker_nodes(
     object_store_memory_per_node,
     worker_node_options,
     collect_log_to_path,
+    resources,
 ):
     # NB:
     # In order to start ray worker nodes on spark cluster worker machines,
@@ -1056,6 +1066,11 @@ def _start_ray_worker_nodes(
             f"--dashboard-agent-listen-port={ray_worker_node_dashboard_agent_port}",
             *_convert_ray_node_options(worker_node_options),
         ]
+
+        if resources is not None:
+            ray_worker_node_cmd.append(
+                f"--resources={json.dumps(resources)}"
+            )
 
         ray_worker_node_extra_envs = {
             RAY_ON_SPARK_COLLECT_LOG_TO_PATH: collect_log_to_path or ""

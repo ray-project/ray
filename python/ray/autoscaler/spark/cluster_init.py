@@ -26,7 +26,7 @@ class AutoscalingCluster:
     """Create a ray on spark autoscaling cluster.
     """
 
-    def __init__(self, head_resources: dict, worker_node_types: dict, **config_kwargs):
+    def __init__(self, head_resources: dict, worker_node_types: dict, extra_provider_config: dict):
         """Create the cluster.
 
         Args:
@@ -36,15 +36,15 @@ class AutoscalingCluster:
         self._head_resources = head_resources.copy()
         self._head_resources["NODE_ID_AS_RESOURCE"] = RAY_ON_SPARK_HEAD_NODE_ID
         self._config = self._generate_config(
-            head_resources, worker_node_types, **config_kwargs
+            head_resources, worker_node_types, extra_provider_config
         )
 
-    def _generate_config(self, head_resources, worker_node_types, **config_kwargs):
+    def _generate_config(self, head_resources, worker_node_types, extra_provider_config):
         base_config = yaml.safe_load(
             open(
                 os.path.join(
                     os.path.dirname(ray.__file__),
-                    "autoscaler/spark/example.yaml",
+                    "autoscaler/spark/base_config.yaml",
                 )
             )
         )
@@ -55,7 +55,7 @@ class AutoscalingCluster:
             "node_config": {},
             "max_workers": 0,
         }
-        custom_config.update(config_kwargs)
+        custom_config["provider"].update(extra_provider_config)
         return custom_config
 
     def start(

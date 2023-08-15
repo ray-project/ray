@@ -3,6 +3,7 @@ import json
 import logging
 import os
 import subprocess
+import requests
 import sys
 import time
 import requests
@@ -54,6 +55,11 @@ class RayOnSparkNodeProvider(NodeProvider):
             },
         }
         self._next_node_id = 0
+        self.server_url = "https://127.0.0.1:8899"
+
+        self.ray_head_ip = self.provider_config["ray_head_ip"]
+        self.ray_head_port = self.provider_config["ray_head_port"]
+        self.cluster_unique_id = self.provider_config["cluster_unique_id"]
 
     def get_next_node_id(self):
         with self.lock:
@@ -102,11 +108,14 @@ class RayOnSparkNodeProvider(NodeProvider):
     def create_node(self, node_config: Dict[str, Any], tags: Dict[str, str], count: int) -> Optional[Dict[str, Any]]:
         raise AssertionError("This method should not be called.")
 
+    def _gen_spark_job_group_id(self, node_id):
+        return f"ray-cluster-{self.ray_head_port}-{self.cluster_unique_id}-worker-node-{node_id}"
+
     def create_node_with_resources_and_labels(
         self, node_config, tags, count, resources, labels
     ):
-        with self.lock:
-            for _ in range(count):
+        for _ in range(count):
+            with self.lock:
                 resources = resources.copy()
                 node_type = tags[TAG_RAY_USER_NODE_TYPE]
                 next_id = self.get_next_node_id()
@@ -142,26 +151,36 @@ class RayOnSparkNodeProvider(NodeProvider):
                     },
                 )
                 """
+                conf = self.provider_config
 
-                """
-                node_params = {
-                    "spark_job_group_desc": None,
-                    "num_worker_nodes": 1,
-                    using_stage_scheduling = data["using_stage_scheduling"]
-                    ray_head_ip = data["ray_head_ip"]
-                    ray_head_port = data["ray_head_port"]
-                    ray_temp_dir = data["ray_temp_dir"]
-                    num_cpus_per_node = data["num_cpus_per_node"]
-                    num_gpus_per_node = data["num_gpus_per_node"]
-                    heap_memory_per_node = data["heap_memory_per_node"]
-                    object_store_memory_per_node = data["object_store_memory_per_node"]
-                    worker_node_options = data["worker_node_options"]
-                    collect_log_to_path = data["collect_log_to_path"]
-
-                }
-                """
-
-                _start_ray_worker_nodes()
+                num_cpus_per_node = resources.pop('CPU')
+                num_gpus_per_node = resources.pop('GPU')
+                heap_memory_per_node = resources.pop('memory')
+                object_store_memory_per_node = resources.pop('object_store_memory')
+                response = requests.request(
+                    url=self.server_url + "/create_node",
+                    json={
+                        "num_worker_nodes": 1,
+                        "spark_job_grou_id": self._gen_spark_job_group_id(next_id),
+                        "spark_job_group_desc":
+                            "This job group is for spark job which runs the Ray "
+                            f"cluster worker node {next_id} connecting to ray "
+                            f"head node {self.ray_head_ip}:{self.ray_head_port}",
+                        "using_stage_scheduling": conf["using_stage_scheduling"],
+                        "ray_head_ip": self.ray_head_ip,
+                        "ray_head_port": self.ray_head_port,
+                        "ray_temp_dir": conf["ray_temp_dir"],
+                        "num_cpus_per_node": num_cpus_per_node,
+                        "num_gpus_per_node": num_gpus_per_node,
+                        "heap_memory_per_node": heap_memory_per_node,
+                        "object_store_memory_per_node": object_store_memory_per_node,
+                        "worker_node_options": conf["worker_node_options"],
+                        "collect_log_to_path": conf["collect_log_to_path"],
+                        "resources": resources,
+                    }
+                )
+                if response.status_code != 200:
+                    raise RuntimeError("Starting ray worker node failed.")
 
                 self._nodes[next_id] = {
                     "tags": {
@@ -170,21 +189,19 @@ class RayOnSparkNodeProvider(NodeProvider):
                         TAG_RAY_NODE_NAME: next_id,
                         TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE,
                     },
-                    "node_proc": ray_node_proc,
                 }
 
     def terminate_node(self, node_id):
         with self.lock:
             try:
-                node = self._nodes.pop(node_id)
+                self._nodes.pop(node_id)
             except Exception as e:
                 raise e
 
-            self._terminate_node(node)
-
-    def _terminate_node(self, node):
-        # node["node"].kill_all_processes(check_alive=False, allow_graceful=True)
-        node["node_proc"].terminate()
+            requests.request(
+                url=self.server_url + "/terminate_node",
+                json={"spark_job_grou_id": self._gen_spark_job_group_id(node_id)}
+            )
 
     @staticmethod
     def bootstrap_config(cluster_config):
