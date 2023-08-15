@@ -22,6 +22,7 @@ from ray.util.placement_group import VALID_PLACEMENT_GROUP_STRATEGIES
 from ray.serve._private.constants import (
     DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT_S,
     DEFAULT_GRACEFUL_SHUTDOWN_WAIT_LOOP_S,
+    DEFAULT_GRPC_PORT,
     DEFAULT_HEALTH_CHECK_PERIOD_S,
     DEFAULT_HEALTH_CHECK_TIMEOUT_S,
     DEFAULT_HTTP_HOST,
@@ -710,7 +711,7 @@ class gRPCOptions(BaseModel):
 
     Args:
         port (int):
-            Port for gRPC server. Will only start gRPC server if set. Cannot be
+            Port for gRPC server if started. Default to 9000. Cannot be
             updated once Serve has started running. Serve must be shut down and
             restarted with the new port instead.
         grpc_servicer_functions (List[str]):
@@ -720,7 +721,7 @@ class gRPCOptions(BaseModel):
             importable from the context of where Serve is running.
     """
 
-    port: int = -1
+    port: int = DEFAULT_GRPC_PORT
     grpc_servicer_functions: List[str] = []
 
     @property
