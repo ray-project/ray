@@ -198,15 +198,22 @@ class RayClusterOnSpark:
         if not self.is_shutdown:
             self.disconnect()
             os.environ.pop("RAY_ADDRESS", None)
+            if self.autoscale:
+                self.spark_job_server.shutdown()
             if cancel_background_job:
-                try:
-                    self._cancel_background_spark_job()
-                except Exception as e:
-                    # swallow exception.
-                    _logger.warning(
-                        f"An error occurred while cancelling the ray cluster "
-                        f"background spark job: {repr(e)}"
-                    )
+                if self.autoscale:
+                    # TODO:
+                    #  explicitly kill all active ray worker nodes
+                    pass
+                else:
+                    try:
+                        self._cancel_background_spark_job()
+                    except Exception as e:
+                        # swallow exception.
+                        _logger.warning(
+                            f"An error occurred while cancelling the ray cluster "
+                            f"background spark job: {repr(e)}"
+                        )
             try:
                 self.head_proc.terminate()
             except Exception as e:
@@ -981,7 +988,9 @@ def setup_ray_cluster(
             collect_log_to_path=collect_log_to_path,
             autoscale=autoscale,
         )
-        cluster.wait_until_ready()  # NB: this line might raise error.
+
+        if not autoscale:
+            cluster.wait_until_ready()  # NB: this line might raise error.
 
         # If connect cluster successfully, set global _active_ray_cluster to be the
         # started cluster.
