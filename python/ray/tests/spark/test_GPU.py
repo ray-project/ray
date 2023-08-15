@@ -21,7 +21,7 @@ class RayOnSparkGPUClusterTestBase(RayOnSparkCPUClusterTestBase, ABC):
     num_gpus_per_spark_task = None
 
     def test_gpu_allocation(self):
-        for num_worker_nodes, num_cpus_per_node, num_gpus_per_node in [
+        for num_worker_nodes, num_cpus_worker_node, num_gpus_worker_node in [
             (
                 self.max_spark_tasks // 2,
                 self.num_cpus_per_spark_task,
@@ -45,18 +45,20 @@ class RayOnSparkGPUClusterTestBase(RayOnSparkCPUClusterTestBase, ABC):
         ]:
             with _setup_ray_cluster(
                 num_worker_nodes=num_worker_nodes,
-                num_cpus_per_node=num_cpus_per_node,
-                num_gpus_per_node=num_gpus_per_node,
+                num_cpus_worker_node=num_cpus_worker_node,
+                num_gpus_worker_node=num_gpus_worker_node,
                 head_node_options={"include_dashboard": False},
             ):
                 ray.init()
                 worker_res_list = self.get_ray_worker_resources_list()
                 assert len(worker_res_list) == num_worker_nodes
                 for worker_res in worker_res_list:
-                    assert worker_res["CPU"] == num_cpus_per_node
-                    assert worker_res["GPU"] == num_gpus_per_node
+                    assert worker_res["CPU"] == num_cpus_worker_node
+                    assert worker_res["GPU"] == num_gpus_worker_node
 
-                @ray.remote(num_cpus=num_cpus_per_node, num_gpus=num_gpus_per_node)
+                @ray.remote(
+                    num_cpus=num_cpus_worker_node, num_gpus=num_gpus_worker_node
+                )
                 def f(_):
                     # Add a sleep to avoid the task finishing too fast,
                     # so that it can make all ray tasks concurrently running in all idle
@@ -72,7 +74,7 @@ class RayOnSparkGPUClusterTestBase(RayOnSparkCPUClusterTestBase, ABC):
                 merged_results = functools.reduce(lambda x, y: x + y, results)
                 # Test all ray tasks are assigned with different GPUs.
                 assert sorted(merged_results) == list(
-                    range(num_gpus_per_node * num_worker_nodes)
+                    range(num_gpus_worker_node * num_worker_nodes)
                 )
 
 

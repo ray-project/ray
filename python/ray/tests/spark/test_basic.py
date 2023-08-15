@@ -59,7 +59,7 @@ class RayOnSparkCPUClusterTestBase(ABC):
         return wr_list
 
     def test_cpu_allocation(self):
-        for num_worker_nodes, num_cpus_per_node, num_worker_nodes_arg in [
+        for num_worker_nodes, num_cpus_worker_node, num_worker_nodes_arg in [
             (
                 self.max_spark_tasks // 2,
                 self.num_cpus_per_spark_task,
@@ -79,14 +79,14 @@ class RayOnSparkCPUClusterTestBase(ABC):
         ]:
             with _setup_ray_cluster(
                 num_worker_nodes=num_worker_nodes_arg,
-                num_cpus_per_node=num_cpus_per_node,
+                num_cpus_worker_node=num_cpus_worker_node,
                 head_node_options={"include_dashboard": False},
             ):
                 ray.init()
                 worker_res_list = self.get_ray_worker_resources_list()
                 assert len(worker_res_list) == num_worker_nodes
                 for worker_res in worker_res_list:
-                    assert worker_res["CPU"] == num_cpus_per_node
+                    assert worker_res["CPU"] == num_cpus_worker_node
 
     def test_public_api(self):
         try:
@@ -217,6 +217,27 @@ class TestSparkLocalCluster:
         futures = [f.remote(i) for i in range(32)]
         results = ray.get(futures)
         assert results == [i * i for i in range(32)]
+
+        shutdown_ray_cluster()
+
+    def test_use_driver_resources(self):
+        setup_ray_cluster(
+            num_worker_nodes=1,
+            num_cpus_head_node=3,
+            num_gpus_head_node=2,
+            head_node_options={"include_dashboard": False},
+        )
+
+        ray.init()
+
+        head_resources_list = []
+        for node in ray.nodes():
+            # exclude dead node and head node (with 0 CPU resource)
+            if node["Alive"] and node["Resources"].get("CPU", 0) == 3:
+                head_resources_list.append(node["Resources"])
+        assert len(head_resources_list) == 1
+        head_resources = head_resources_list[0]
+        assert head_resources.get("GPU", 0) == 2
 
         shutdown_ray_cluster()
 
