@@ -1045,9 +1045,6 @@ class ReplicaStateContainer:
         exclude_version: Optional[DeploymentVersion] = None,
         states: Optional[List[ReplicaState]] = None,
         max_replicas: Optional[int] = math.inf,
-        ranking_function: Optional[
-            Callable[[List["DeploymentReplica"]], List["DeploymentReplica"]]
-        ] = None,
     ) -> List[VersionedReplica]:
         """Get and remove all replicas of the given states.
 
@@ -1061,9 +1058,6 @@ class ReplicaStateContainer:
                 are considered.
             max_replicas: max number of replicas to return. If not
                 specified, will pop all replicas matching the criteria.
-            ranking_function: optional function to sort the replicas
-                within each state before they are truncated to max_replicas and
-                returned.
         """
         if states is None:
             states = ALL_REPLICA_STATES
@@ -1076,17 +1070,14 @@ class ReplicaStateContainer:
             popped = []
             remaining = []
 
-            replicas_to_process = self._replicas[state]
-            if ranking_function:
-                replicas_to_process = ranking_function(replicas_to_process)
-
-            for replica in replicas_to_process:
+            for replica in self._replicas[state]:
                 if len(replicas) + len(popped) == max_replicas:
                     remaining.append(replica)
                 elif exclude_version is not None and replica.version == exclude_version:
                     remaining.append(replica)
                 else:
                     popped.append(replica)
+
             self._replicas[state] = remaining
             replicas.extend(popped)
 
