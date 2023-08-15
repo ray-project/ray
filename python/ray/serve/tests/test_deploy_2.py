@@ -427,6 +427,9 @@ def test_deploy_application_unhealthy(serve_instance):
         time.sleep(0.1)
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="Runtime env support experimental on windows"
+)
 def test_deploy_bad_pip_package_deployment(serve_instance):
     """Test deploying with a bad runtime env at deployment level."""
 
