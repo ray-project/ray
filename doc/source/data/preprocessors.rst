@@ -24,14 +24,14 @@ Overview
 
 The :class:`Preprocessor <ray.data.preprocessor.Preprocessor>` class has four public methods:
 
-#. ``fit()``: Compute state information about a :class:`Dataset <ray.data.Dataset>` (e.g., the mean or standard deviation of a column)
-   and save it to the ``Preprocessor``. This information is used to perform ``transform()``, and the method is typically called on a
+#. :meth:`fit() <ray.data.preprocessor.Preprocessor.fit>`: Compute state information about a :class:`Dataset <ray.data.Dataset>` (e.g., the mean or standard deviation of a column)
+   and save it to the :class:`Preprocessor <ray.data.preprocessor.Preprocessor>`. This information is used to perform :meth:`transform() <ray.data.preprocessor.Preprocessor.transform>`, and the method is typically called on a
    training dataset.
-#. ``transform()``: Apply a transformation to a ``Dataset``.
-   If the ``Preprocessor`` is stateful, then ``fit()`` must be called first. This method is typically called on training,
+#. :meth:`transform() <ray.data.preprocessor.Preprocessor.transform>`: Apply a transformation to a :class:`Dataset <ray.data.Dataset>`.
+   If the :class:`Preprocessor <ray.data.preprocessor.Preprocessor>` is stateful, then :meth:`fit() <ray.data.preprocessor.Preprocessor.fit>` must be called first. This method is typically called on training,
    validation, and test datasets.
-#. ``transform_batch()``: Apply a transformation to a single :class:`batch <ray.train.predictor.DataBatchType>` of data. This method is typically called on online or offline inference data.
-#. ``fit_transform()``: Syntactic sugar for calling both ``fit()`` and ``transform()`` on a ``Dataset``.
+#. :meth:`transform_batch() <ray.data.preprocessor.Preprocessor.transform_batch>`: Apply a transformation to a single :class:`batch <ray.train.predictor.DataBatchType>` of data. This method is typically called on online or offline inference data.
+#. :meth:`fit_transform() <ray.data.preprocessor.Preprocessor.fit_tranform>`: Syntactic sugar for calling both :meth:`fit() <ray.data.preprocessor.Preprocessor.fit>` and :meth:`transform() <ray.data.preprocessor.Preprocessor.transform>` on a :class:`Dataset <ray.data.Dataset>`.
 
 To show these methods in action, let's walk through a basic example. First, we'll set up two simple Ray ``Dataset``\s.
 
