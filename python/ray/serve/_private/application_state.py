@@ -933,8 +933,8 @@ def build_serve_application(
         # happens when deploy_apps() is called.
         logger.info("Existing config deployment request terminated.")
         return None, None
-    except Exception as e:
-        return None, repr(e)
+    except Exception:
+        return None, traceback.format_exc()
 
 
 def override_deployment_info(
