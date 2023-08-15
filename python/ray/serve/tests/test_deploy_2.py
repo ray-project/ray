@@ -406,24 +406,17 @@ def test_deploy_application_unhealthy(serve_instance):
 
     handle = serve.run(Model.bind(), name="app")
     assert ray.get(handle.remote()) == "hello world"
-    assert (
-        serve_instance.get_serve_status("app").app_status.status
-        == ApplicationStatus.RUNNING
-    )
+    assert serve.status().applications["app"].status == ApplicationStatus.RUNNING
 
     # When a deployment becomes unhealthy, application should transition -> UNHEALTHY
     event.set.remote()
     wait_for_condition(
-        lambda: serve_instance.get_serve_status("app").app_status.status
-        == ApplicationStatus.UNHEALTHY
+        lambda: serve.status().applications["app"].status == ApplicationStatus.UNHEALTHY
     )
 
     # Check that application stays unhealthy
     for _ in range(10):
-        assert (
-            serve_instance.get_serve_status("app").app_status.status
-            == ApplicationStatus.UNHEALTHY
-        )
+        assert serve.status().applications["app"].status == ApplicationStatus.UNHEALTHY
         time.sleep(0.1)
 
 

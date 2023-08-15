@@ -402,7 +402,7 @@ def test_run_get_ingress_app(serve_instance):
     ingress_handle = serve.run(app)
 
     assert ray.get(ingress_handle.remote()) == "got g"
-    serve_instance.delete_apps(["default"])
+    serve_instance.delete_apps([SERVE_DEFAULT_APP_NAME])
 
 
 def test_run_get_ingress_node(serve_instance):
@@ -937,11 +937,12 @@ def test_status_constructor_error(serve_instance):
     serve.run(A.bind(), _blocking=False)
 
     def check_for_failed_deployment():
-        default_app = serve.status().applications["default"]
+        default_app = serve.status().applications[SERVE_DEFAULT_APP_NAME]
         error_substr = "ZeroDivisionError: division by zero"
         return (
             default_app.status == "DEPLOY_FAILED"
-            and error_substr in default_app.deployments["default_A"].message
+            and error_substr
+            in default_app.deployments[f"{SERVE_DEFAULT_APP_NAME}_A"].message
         )
 
     wait_for_condition(check_for_failed_deployment)
@@ -972,11 +973,11 @@ def test_status_package_unavailable_in_controller(serve_instance):
     )
 
     def check_for_failed_deployment():
-        default_app = serve.status().applications["default"]
+        default_app = serve.status().applications[SERVE_DEFAULT_APP_NAME]
         return (
             default_app.status == "DEPLOY_FAILED"
             and "some_wrong_url"
-            in default_app.deployments["default_MyDeployment"].message
+            in default_app.deployments[f"{SERVE_DEFAULT_APP_NAME}_MyDeployment"].message
         )
 
     wait_for_condition(check_for_failed_deployment, timeout=15)
@@ -1035,7 +1036,7 @@ def test_get_app_handle_within_deployment_async(serve_instance):
 
     @serve.deployment
     async def f(val):
-        handle = serve.get_app_handle("default")
+        handle = serve.get_app_handle(SERVE_DEFAULT_APP_NAME)
         result = await (await handle.remote(val))
         return f"The answer is {result}"
 
@@ -1062,7 +1063,7 @@ def test_get_app_handle_within_deployment_sync(serve_instance):
 
     @serve.deployment
     def f(val):
-        handle = serve.get_app_handle("default", sync=True)
+        handle = serve.get_app_handle(SERVE_DEFAULT_APP_NAME, sync=True)
         result = ray.get(handle.remote(val))
         return f"The answer is {result}"
 
@@ -1088,10 +1089,10 @@ def test_get_deployment_handle_basic(serve_instance):
 
     serve.run(MyDriver.bind(f.bind()))
 
-    handle = serve.get_deployment_handle("f", "default")
+    handle = serve.get_deployment_handle("f", SERVE_DEFAULT_APP_NAME)
     assert ray.get(handle.remote()) == "hello world"
 
-    app_handle = serve.get_app_handle("default")
+    app_handle = serve.get_app_handle(SERVE_DEFAULT_APP_NAME)
     assert ray.get(app_handle.remote()) == "hello world!!"
 
 
