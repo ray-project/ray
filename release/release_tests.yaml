@@ -4931,7 +4931,6 @@
 
   cluster:
     byod: {}
-    cluster_env: app_config.yaml
     cluster_compute: tpl_64.yaml
 
   run:
