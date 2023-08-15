@@ -8,8 +8,6 @@ load("@rules_proto_grpc//:repositories.bzl", "rules_proto_grpc_toolchains")
 load("@com_github_johnynek_bazel_jar_jar//:jar_jar.bzl", "jar_jar_repositories")
 load("@rules_foreign_cc//foreign_cc:repositories.bzl", "rules_foreign_cc_dependencies")
 load("@rules_foreign_cc_thirdparty//openssl:openssl_setup.bzl", "openssl_setup")
-load("@rules_fuzzing//fuzzing:repositories.bzl", "rules_fuzzing_dependencies")
-load("@rules_fuzzing//fuzzing:init.bzl", "rules_fuzzing_init")
 
 
 
@@ -24,5 +22,3 @@ def ray_deps_build_all():
   jar_jar_repositories()
   rules_foreign_cc_dependencies()
   openssl_setup()
-  rules_fuzzing_dependencies()
-  rules_fuzzing_init()
