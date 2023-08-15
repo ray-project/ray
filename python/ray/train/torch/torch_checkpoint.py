@@ -32,20 +32,6 @@ class TorchCheckpoint(LegacyFrameworkCheckpoint):
 
     MODEL_FILENAME = "model.pt"
 
-    def get_preprocessor(self) -> Optional["Preprocessor"]:
-        """Return the preprocessor stored in the checkpoint.
-
-        Returns:
-            The preprocessor stored in the checkpoint, or ``None`` if no
-            preprocessor was stored.
-        """
-        preprocessor_path = os.path.join(self.path, self.PREPROCESSOR_FILENAME)
-        if not _exists_at_fs_path(self.filesystem, preprocessor_path):
-            return None
-
-        with self.filesystem.open_input_file(preprocessor_path) as f:
-            return ray_pickle.loads(f.readall())
-
     @classmethod
     def from_state_dict(
         cls,
@@ -110,12 +96,10 @@ class TorchCheckpoint(LegacyFrameworkCheckpoint):
         )
         torch.save(stripped_state_dict, model_path)
 
+        checkpoint = cls.from_directory(tempdir)
         if preprocessor:
-            preprocessor_path = os.path.join(tempdir, cls.PREPROCESSOR_FILENAME)
-            with open(preprocessor_path, "wb") as f:
-                ray_pickle.dump(preprocessor, f)
-
-        return cls.from_directory(tempdir)
+            checkpoint.set_preprocessor(preprocessor)
+        return checkpoint
 
     @classmethod
     def from_model(
@@ -182,12 +166,9 @@ class TorchCheckpoint(LegacyFrameworkCheckpoint):
         model_path = os.path.join(tempdir, cls.MODEL_FILENAME)
         torch.save(model, model_path)
 
+        checkpoint = cls.from_directory(tempdir)
         if preprocessor:
-            preprocessor_path = os.path.join(tempdir, cls.PREPROCESSOR_FILENAME)
-            with open(preprocessor_path, "wb") as f:
-                ray_pickle.dump(preprocessor, f)
-
-        return cls.from_directory(tempdir)
+            checkpoint.set_preprocessor(checkpoint)
 
     def get_model(self, model: Optional[torch.nn.Module] = None) -> torch.nn.Module:
         """Retrieve the model stored in this checkpoint.
