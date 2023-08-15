@@ -1,3 +1,4 @@
+from abc import ABC, abstractmethod
 import asyncio
 from asyncio.tasks import FIRST_COMPLETED
 import json
@@ -241,18 +242,18 @@ class LongestPrefixRouter:
         return None
 
 
-class GenericProxy:
+class GenericProxy(ABC):
     """This class is served as the base class for different types of proxies.
     It contains all the common setup and methods required for running a proxy.
 
     The proxy subclass need to implement the following methods:
       - `proxy_name()`
       - `success_status_code()`
-      - `_not_found()`
-      - `_draining_response()`
-      - `_timeout_response()`
-      - `_routes_response()`
-      - `_health_response()`
+      - `not_found()`
+      - `draining_response()`
+      - `timeout_response()`
+      - `routes_response()`
+      - `health_response()`
       - `send_request_to_replica_unary()`
       - `setup_request_context_and_handle()`
       - `send_request_to_replica_streaming()`
@@ -371,6 +372,7 @@ class GenericProxy:
         self._draining_start_time: Optional[float] = None
 
     @property
+    @abstractmethod
     def proxy_name(self) -> RequestProtocol:
         """Proxy name used for metrics.
 
@@ -379,6 +381,7 @@ class GenericProxy:
         raise NotImplementedError
 
     @property
+    @abstractmethod
     def success_status_code(self) -> str:
         """Success status code for the proxy.
 
@@ -426,21 +429,26 @@ class GenericProxy:
             logger.info(f"Stop draining the proxy actor on node {self._node_id}.")
             self._draining_start_time = None
 
-    async def _not_found(self, serve_request: ServeRequest) -> ServeResponse:
+    @abstractmethod
+    async def not_found(self, serve_request: ServeRequest) -> ServeResponse:
         raise NotImplementedError
 
-    async def _draining_response(self, serve_request: ServeRequest) -> ServeResponse:
+    @abstractmethod
+    async def draining_response(self, serve_request: ServeRequest) -> ServeResponse:
         raise NotImplementedError
 
-    async def _timeout_response(
+    @abstractmethod
+    async def timeout_response(
         self, serve_request: ServeRequest, request_id: str
     ) -> ServeResponse:
         raise NotImplementedError
 
-    async def _routes_response(self, serve_request: ServeRequest) -> ServeResponse:
+    @abstractmethod
+    async def routes_response(self, serve_request: ServeRequest) -> ServeResponse:
         raise NotImplementedError
 
-    async def _health_response(self, serve_request: ServeRequest) -> ServeResponse:
+    @abstractmethod
+    async def health_response(self, serve_request: ServeRequest) -> ServeResponse:
         raise NotImplementedError
 
     def _ongoing_requests_start(self):
@@ -466,11 +474,9 @@ class GenericProxy:
     async def proxy_request(self, serve_request: ServeRequest) -> ServeResponse:
         """Wrapper for proxy request.
 
-        This method wraps the request input into ServeRequest object and output
-        response into ServeResponse object to be used commonly by both HTTP and
-        gRPC proxies. It also handles the routing, including `/-/routes` and
-        `/-/healthz`, ongoing request counter and keep alive object, and metrics
-        counters.
+        This method is served as common entry point by the proxy. It handles the
+        routing, including routes and health checks, ongoing request counter,
+        and metrics.
         """
         assert serve_request.request_type in {"http", "websocket", "grpc"}
 
@@ -481,7 +487,7 @@ class GenericProxy:
 
         if route_path == "/-/routes":
             if self._is_draining():
-                return await self._draining_response(serve_request=serve_request)
+                return await self.draining_response(serve_request=serve_request)
 
             self.request_counter.inc(
                 tags={
@@ -491,11 +497,11 @@ class GenericProxy:
                     "status_code": self.success_status_code,
                 }
             )
-            return await self._routes_response(serve_request=serve_request)
+            return await self.routes_response(serve_request=serve_request)
 
         if route_path == "/-/healthz":
             if self._is_draining():
-                return await self._draining_response(serve_request=serve_request)
+                return await self.draining_response(serve_request=serve_request)
 
             self.request_counter.inc(
                 tags={
@@ -505,14 +511,14 @@ class GenericProxy:
                     "status_code": self.success_status_code,
                 }
             )
-            return await self._health_response(serve_request=serve_request)
+            return await self.health_response(serve_request=serve_request)
 
         try:
             self._ongoing_requests_start()
 
             matched_route = self.prefix_router.match_route(route_path)
             if matched_route is None:
-                serve_response = await self._not_found(serve_request=serve_request)
+                serve_response = await self.not_found(serve_request=serve_request)
                 self.request_error_counter.inc(
                     tags={
                         "route": route_path,
@@ -544,7 +550,6 @@ class GenericProxy:
             handle, request_id = self.setup_request_context_and_handle(
                 app_name=app_name,
                 handle=handle,
-                route_path=route_path,
                 serve_request=serve_request,
             )
 
@@ -647,6 +652,7 @@ class GenericProxy:
             assignment_task.cancel()
             raise TimeoutError()
 
+    @abstractmethod
     async def send_request_to_replica_unary(
         self,
         handle: RayServeHandle,
@@ -659,11 +665,11 @@ class GenericProxy:
         """
         raise NotImplementedError
 
+    @abstractmethod
     def setup_request_context_and_handle(
         self,
         app_name: str,
         handle: RayServeHandle,
-        route_path: str,
         serve_request: ServeRequest,
     ) -> Tuple[RayServeHandle, str]:
         """Setup the request context and handle for the request.
@@ -673,6 +679,7 @@ class GenericProxy:
         """
         raise NotImplementedError
 
+    @abstractmethod
     async def send_request_to_replica_streaming(
         self,
         request_id: str,
@@ -703,7 +710,7 @@ class gRPCProxy(GenericProxy):
     def success_status_code(self) -> str:
         return str(grpc.StatusCode.OK)
 
-    async def _not_found(self, serve_request: ServeRequest) -> ServeResponse:
+    async def not_found(self, serve_request: ServeRequest) -> ServeResponse:
         not_found_message = (
             f"Path '{serve_request.service_method}' not found. Please ping "
             "/ray.serve.ServeAPIService/ServeRoutes for available applications."
@@ -717,7 +724,7 @@ class gRPCProxy(GenericProxy):
             response=response_proto.SerializeToString(),
         )
 
-    async def _draining_response(self, serve_request: ServeRequest) -> ServeResponse:
+    async def draining_response(self, serve_request: ServeRequest) -> ServeResponse:
         status_code = grpc.StatusCode.ABORTED
         serve_request.send_status_code(status_code=status_code)
         serve_request.send_details(message=drained_message)
@@ -730,7 +737,7 @@ class gRPCProxy(GenericProxy):
             response=response_proto.SerializeToString(),
         )
 
-    async def _timeout_response(
+    async def timeout_response(
         self, serve_request: ServeRequest, request_id: str
     ) -> ServeResponse:
         timeout_message = (
@@ -741,7 +748,7 @@ class gRPCProxy(GenericProxy):
         serve_request.send_details(message=timeout_message)
         return ServeResponse(status_code=str(status_code))
 
-    async def _routes_response(self, serve_request: ServeRequest) -> ServeResponse:
+    async def routes_response(self, serve_request: ServeRequest) -> ServeResponse:
         status_code = grpc.StatusCode.OK
         serve_request.send_status_code(status_code=status_code)
         serve_request.send_details(message=success_message)
@@ -751,7 +758,7 @@ class gRPCProxy(GenericProxy):
             response=response_proto.SerializeToString(),
         )
 
-    async def _health_response(self, serve_request: ServeRequest) -> ServeResponse:
+    async def health_response(self, serve_request: ServeRequest) -> ServeResponse:
         status_code = grpc.StatusCode.OK
         serve_request.send_status_code(status_code=status_code)
         serve_request.send_details(message=success_message)
@@ -821,7 +828,6 @@ class gRPCProxy(GenericProxy):
         self,
         app_name: str,
         handle: RayServeHandle,
-        route_path: str,
         serve_request: ServeRequest,
     ) -> Tuple[RayServeHandle, str]:
         """Setup request context and handle for the request.
@@ -843,7 +849,7 @@ class gRPCProxy(GenericProxy):
         )
 
         request_context_info = {
-            "route": route_path,
+            "route": serve_request.route_path,
             "request_id": request_id,
             "app_name": app_name,
             "multiplexed_model_id": multiplexed_model_id,
@@ -914,7 +920,7 @@ class gRPCProxy(GenericProxy):
                     f"Request {request_id} timed out after "
                     f"{self.request_timeout_s}s while waiting for assignment."
                 )
-                self._timeout_response(
+                self.timeout_response(
                     serve_request=serve_request, request_id=request_id
                 )
                 return ServeResponse(status_code=TIMEOUT_ERROR_CODE)
@@ -940,7 +946,7 @@ class HTTPProxy(GenericProxy):
     def success_status_code(self) -> str:
         return "200"
 
-    async def _not_found(self, serve_request: ServeRequest) -> ServeResponse:
+    async def not_found(self, serve_request: ServeRequest) -> ServeResponse:
         status_code = 404
         current_path = serve_request.path
         response = Response(
@@ -953,7 +959,7 @@ class HTTPProxy(GenericProxy):
         )
         return ServeResponse(status_code=str(status_code))
 
-    async def _draining_response(self, serve_request: ServeRequest) -> ServeResponse:
+    async def draining_response(self, serve_request: ServeRequest) -> ServeResponse:
         status_code = 503
         response = Response(drained_message, status_code=status_code)
         await response.send(
@@ -961,7 +967,7 @@ class HTTPProxy(GenericProxy):
         )
         return ServeResponse(status_code=str(status_code))
 
-    async def _timeout_response(
+    async def timeout_response(
         self, serve_request: ServeRequest, request_id: str
     ) -> ServeResponse:
         response = Response(
@@ -972,13 +978,13 @@ class HTTPProxy(GenericProxy):
             serve_request.scope, serve_request.receive, serve_request.send
         )
 
-    async def _routes_response(self, serve_request: ServeRequest) -> ServeResponse:
+    async def routes_response(self, serve_request: ServeRequest) -> ServeResponse:
         await starlette.responses.JSONResponse(self.route_info)(
             serve_request.scope, serve_request.receive, serve_request.send
         )
         return ServeResponse(status_code=self.success_status_code)
 
-    async def _health_response(self, serve_request: ServeRequest) -> ServeResponse:
+    async def health_response(self, serve_request: ServeRequest) -> ServeResponse:
         await starlette.responses.PlainTextResponse(success_message)(
             serve_request.scope, serve_request.receive, serve_request.send
         )
@@ -1187,10 +1193,9 @@ class HTTPProxy(GenericProxy):
 
     def setup_request_context_and_handle(
         self,
-        serve_request: ServeRequest,
-        route_path: str,
-        handle: RayServeHandle,
         app_name: str,
+        handle: RayServeHandle,
+        serve_request: ServeRequest,
     ) -> Tuple[RayServeHandle, str]:
         """Setup request context and handle for the request.
 
@@ -1199,7 +1204,7 @@ class HTTPProxy(GenericProxy):
         """
         handle = handle.options(request_protocol=RequestProtocol.HTTP)
         request_context_info = {
-            "route": route_path,
+            "route": serve_request.route_path,
             "app_name": app_name,
         }
         for key, value in serve_request.headers:
@@ -1257,7 +1262,7 @@ class HTTPProxy(GenericProxy):
                     f"Request {request_id} timed out after "
                     f"{self.request_timeout_s}s while waiting for assignment."
                 )
-                await self._timeout_response(
+                await self.timeout_response(
                     serve_request=serve_request, request_id=request_id
                 )
                 return ServeResponse(status_code=TIMEOUT_ERROR_CODE)
@@ -1281,7 +1286,7 @@ class HTTPProxy(GenericProxy):
                 # any messages to the client yet. Header (including status code)
                 # messages can only be sent once.
                 if serve_timeout_error.is_first_message:
-                    await self._timeout_response(
+                    await self.timeout_response(
                         serve_request=serve_request, request_id=request_id
                     )
                 return ServeResponse(status_code=TIMEOUT_ERROR_CODE)
