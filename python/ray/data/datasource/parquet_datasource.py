@@ -10,7 +10,9 @@ from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.util import _check_pyarrow_version
 from ray.data.block import Block
 from ray.data.context import DataContext
-from ray.data.datasource import DefaultFileMetadataProvider
+from ray.data.datasource._default_metadata_providers import (
+    get_generic_metadata_provider,
+)
 from ray.data.datasource.datasource import Reader, ReadTask
 from ray.data.datasource.file_based_datasource import _resolve_paths_and_filesystem
 from ray.data.datasource.file_meta_provider import (
@@ -203,11 +205,15 @@ class _ParquetDatasourceReader(Reader):
         # provider and then apply the partition filter.
         partition_filter = reader_args.pop("partition_filter", None)
         if partition_filter is not None:
-            default_meta_provider = DefaultFileMetadataProvider()
-            paths, _ = map(
+            default_meta_provider = get_generic_metadata_provider(file_extensions=None)
+            expanded_paths, _ = map(
                 list, zip(*default_meta_provider.expand_paths(paths, filesystem))
             )
-            paths = partition_filter(paths)
+            paths = partition_filter(expanded_paths)
+
+            filtered_paths = set(expanded_paths) - set(paths)
+            if filtered_paths:
+                logger.info(f"Filtered out the following paths: {filtered_paths}")
 
         if len(paths) == 1:
             paths = paths[0]
