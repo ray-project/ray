@@ -25,11 +25,6 @@
 
 namespace ray {
 
-/// Conversion factor that is the amount in internal units is equivalent to
-/// one actual resource. Multiply to convert from actual to internal and
-/// divide to convert from internal to actual.
-constexpr double kResourceConversionFactor = 10000;
-
 /// \class ResourceSet
 /// \brief Encapsulates and operates on a set of resources, including CPUs,
 /// GPUs, and custom labels.
@@ -49,25 +44,11 @@ class ResourceSet {
   /// \brief Constructs ResourceSet from the specified resource map.
   explicit ResourceSet(const absl::flat_hash_map<std::string, double> &resource_map);
 
-  /// \brief Constructs ResourceSet from two equal-length vectors with label and capacity
-  /// specification.
-  ResourceSet(const std::vector<std::string> &resource_labels,
-              const std::vector<double> resource_capacity);
-
-  /// \brief Empty ResourceSet destructor.
-  ~ResourceSet();
-
   /// \brief Test equality with the other specified ResourceSet object.
   ///
   /// \param rhs: Right-hand side object for equality comparison.
   /// \return True if objects are equal, False otherwise.
   bool operator==(const ResourceSet &rhs) const;
-
-  /// \brief Test equality with the other specified ResourceSet object.
-  ///
-  /// \param other: Right-hand side object for equality comparison.
-  /// \return True if objects are equal, False otherwise.
-  bool IsEqual(const ResourceSet &other) const;
 
   /// \brief Test whether this ResourceSet is a subset of the other ResourceSet.
   ///
@@ -75,59 +56,6 @@ class ResourceSet {
   /// \return True if the current resource set is the subset of other. False
   /// otherwise.
   bool IsSubset(const ResourceSet &other) const;
-
-  /// \brief Test if this ResourceSet is a superset of the other ResourceSet.
-  ///
-  /// \param other: The resource set we check being a superset of.
-  /// \return True if the current resource set is the superset of other.
-  /// False otherwise.
-  bool IsSuperset(const ResourceSet &other) const;
-
-  /// \brief Add or update a new resource to the resource set.
-  ///
-  /// \param resource_name: name/label of the resource to add.
-  /// \param capacity: numeric capacity value for the resource to add.
-  /// \return True, if the resource was successfully added. False otherwise.
-  void AddOrUpdateResource(const std::string &resource_name, const FixedPoint &capacity);
-
-  /// \brief Delete a resource from the resource set.
-  ///
-  /// \param resource_name: name/label of the resource to delete.
-  /// \return True if the resource was found while deleting, false if the resource did not
-  /// exist in the set.
-  bool DeleteResource(const std::string &resource_name);
-
-  /// \brief Add a set of resources to the current set of resources subject to upper
-  /// limits on capacity from the total_resource set.
-  ///
-  /// \param other: The other resource set to add.
-  /// \param total_resources: Total resource set which sets upper limits on capacity for
-  /// each label.
-  void AddResourcesCapacityConstrained(const ResourceSet &other,
-                                       const ResourceSet &total_resources);
-
-  /// \brief Aggregate resources from the other set into this set, adding any missing
-  /// resource labels to this set.
-  ///
-  /// \param other: The other resource set to add.
-  /// \return Void.
-  void AddResources(const ResourceSet &other);
-
-  /// \brief Subtract a set of resources from the current set of resources and
-  /// check that the post-subtraction result nonnegative. Assumes other
-  /// is a subset of the ResourceSet. Deletes any resource if the capacity after
-  /// subtraction is zero.
-  ///
-  /// \param other: The resource set to subtract from the current resource set.
-  /// \return Void.
-  void SubtractResources(const ResourceSet &other);
-
-  /// \brief Same as SubtractResources but throws an error if the resource value
-  /// goes below zero.
-  ///
-  /// \param other: The resource set to subtract from the current resource set.
-  /// \return Void.
-  void SubtractResourcesStrict(const ResourceSet &other);
 
   /// Return the capacity value associated with the specified resource.
   ///
@@ -163,12 +91,6 @@ class ResourceSet {
   /// Return the resources in unordered map. This is used for some languate frontend that
   /// requires unordered map instead of flat hash map.
   std::unordered_map<std::string, double> GetResourceUnorderedMap() const;
-
-  /// \brief Return a map of the resource and size in FixedPoint. Note,
-  /// size is in kResourceConversionFactor of a unit.
-  ///
-  /// \return map of resource in string to size in FixedPoint.
-  const absl::flat_hash_map<std::string, FixedPoint> &GetResourceAmountMap() const;
 
   const std::string ToString() const;
 
