@@ -6,7 +6,7 @@ import lightgbm
 
 from ray.air._internal.checkpointing import save_preprocessor_to_dir
 from ray.air.checkpoint import Checkpoint
-from ray.train._internal.legacy_checkpoint import FrameworkCheckpoint
+from ray.train._internal.framework_checkpoint import FrameworkCheckpoint
 from ray.air.constants import MODEL_KEY
 from ray.util.annotations import PublicAPI
 
