@@ -51,7 +51,6 @@ def _create_or_get_async_loop_in_thread():
     return _global_async_loop
 
 
-@PublicAPI(stability="beta")
 @dataclass(frozen=True)
 class HandleOptions:
     """Options for each ServeHandle instance.
