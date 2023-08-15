@@ -512,7 +512,13 @@ class Trainable:
                     ) as f:
                         ray_pickle.dump(checkpoint_dict_or_path, f)
 
-                # TODO(justinvyu): Ignoring relpaths returned by save_checkpoint for now
+                if checkpoint_dict_or_path is not None:
+                    assert isinstance(checkpoint_dict_or_path, str)
+                    if checkpoint_dict_or_path != checkpoint_dir:
+                        raise ValueError(
+                            "The returned checkpoint path from `save_checkpoint` "
+                            "must be None or the same as the provided path argument."
+                        )
                 local_checkpoint = NewCheckpoint.from_directory(checkpoint_dir)
                 persisted_checkpoint = self._storage.persist_current_checkpoint(
                     local_checkpoint
