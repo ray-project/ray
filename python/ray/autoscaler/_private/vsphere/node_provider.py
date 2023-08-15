@@ -22,6 +22,7 @@ from com.vmware.vcenter.guest_client import (
 from com.vmware.vcenter.vm.hardware_client import Cpu, Ethernet, Memory
 from com.vmware.vcenter.vm_client import Power as HardPower
 from com.vmware.vcenter_client import VM
+from pyVim.task import WaitForTask
 from pyVmomi import vim
 
 from ray.autoscaler._private.cli_logger import cli_logger
@@ -537,9 +538,10 @@ class VsphereNodeProvider(NodeProvider):
 
         parent_vm = self.get_pyvmomi_obj([vim.VirtualMachine], source_vm.name)
 
-        parent_vm.InstantClone_Task(spec=instant_clone_spec)
         tags[Constants.VSPHERE_NODE_STATUS] = Constants.VsphereNodeStatus.CREATING.value
-        self.tag_vm(vm_name_target, tags)
+        threading.Thread(target=self.tag_vm, args=(vm_name_target, tags)).start()
+        # We need to wait the task, to make sure connect nic can succeed
+        WaitForTask(parent_vm.InstantClone_Task(spec=instant_clone_spec))
 
         cloned_vm = self.get_pyvmomi_obj([vim.VirtualMachine], vm_name_target)
 

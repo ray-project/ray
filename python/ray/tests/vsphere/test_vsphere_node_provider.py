@@ -219,7 +219,8 @@ def test_get_vm():
 
 @patch("ray.autoscaler._private.vsphere.node_provider.vim.vm.RelocateSpec")
 @patch("ray.autoscaler._private.vsphere.node_provider.vim.vm.InstantCloneSpec")
-def test_create_instant_clone_node(mock_ic_spec, mock_relo_spec):
+@patch("ray.autoscaler._private.vsphere.node_provider.WaitForTask")
+def test_create_instant_clone_node(mock_wait_task, mock_ic_spec, mock_relo_spec):
     vnp = mock_vsphere_node_provider()
     VM.InstantCloneSpec = MagicMock(return_value="Clone Spec")
     vnp.vsphere_sdk_client.vcenter.VM.instant_clone.return_value = "test_id_1"
