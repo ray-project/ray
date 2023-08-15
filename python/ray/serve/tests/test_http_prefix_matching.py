@@ -133,19 +133,20 @@ def test_update_routes(mock_longest_prefix_router):
     )
 
 
-def test_match_target(mock_longest_prefix_router):
-    """Test match_target method
+def test_match_target_endpoint(mock_longest_prefix_router):
+    """Test match_target_endpoint method.
 
-    When the target is None, `match_target()` returns None. When the target matched
-    with an app, `match_target()` returns the correct route. When the target does
-    not match with any app, `match_target()` returns the first route.
+    When the target_endpoint is None, `match_target_endpoint()` returns None. When the
+    target_endpoint matched with an app, `match_target_endpoint()` returns the correct
+    route. When the target_endpoint does not match with any app,
+    `match_target_endpoint()` returns the first route.
     """
     router = mock_longest_prefix_router
     router.update_routes({"endpoint": EndpointInfo(route="/endpoint", app_name="app1")})
 
-    assert router.match_target(target=None) is None
-    assert router.match_target(target="app1") == "/endpoint"
-    assert router.match_target(target="app2") == "/endpoint"
+    assert router.match_target_endpoint(target_endpoint=None) is None
+    assert router.match_target_endpoint(target_endpoint="app1") == "/endpoint"
+    assert router.match_target_endpoint(target_endpoint="app2") == "/endpoint"
 
 
 if __name__ == "__main__":
