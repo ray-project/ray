@@ -68,8 +68,8 @@ def test_fit_with_categoricals(ray_start_6_cpus):
         datasets={TRAIN_DATASET_KEY: train_dataset, "valid": valid_dataset},
     )
     result = trainer.fit()
-    checkpoint = LightGBMCheckpoint.from_checkpoint(result.checkpoint)
-    model = checkpoint.get_model()
+    checkpoint = result.checkpoint
+    model = LightGBMTrainer.get_model(checkpoint)
     assert model.pandas_categorical == [["A", "B"]]
 
 
@@ -104,9 +104,9 @@ def test_resume_from_checkpoint(ray_start_6_cpus, tmpdir):
         resume_from_checkpoint=resume_from,
     )
     result = trainer.fit()
-    checkpoint = LightGBMCheckpoint.from_checkpoint(result.checkpoint)
-    xgb_model = checkpoint.get_model()
-    assert get_num_trees(xgb_model) == 10
+    checkpoint = result.checkpoint
+    model = LightGBMTrainer.get_model(checkpoint)
+    assert get_num_trees(model) == 10
 
 
 @pytest.mark.parametrize(
