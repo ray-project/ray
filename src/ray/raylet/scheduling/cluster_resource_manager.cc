@@ -183,7 +183,7 @@ bool ClusterResourceManager::SubtractNodeAvailableResources(
 
   NodeResources *resources = it->second.GetMutableLocalView();
 
-  resources->available -= resource_request;
+  resources->available -= resource_request.GetResourceSet();
   resources->available.RemoveNegative();
 
   // TODO(swang): We should also subtract object store memory if the task has
@@ -209,7 +209,7 @@ bool ClusterResourceManager::HasSufficientResource(
     return false;
   }
 
-  return resources.available >= resource_request;
+  return resources.available >= resource_request.GetResourceSet();
 }
 
 bool ClusterResourceManager::AddNodeAvailableResources(
@@ -275,9 +275,8 @@ bool ClusterResourceManager::UpdateNodeNormalTaskResources(
     if (resource_data.resources_normal_task_changed() &&
         resource_data.resources_normal_task_timestamp() >
             node_resources->latest_resources_normal_task_timestamp) {
-      auto normal_task_resources = ResourceMapToResourceRequest(
-          MapFromProtobuf(resource_data.resources_normal_task()),
-          /*requires_object_store_memory=*/false);
+      auto normal_task_resources =
+          ResourceSet(MapFromProtobuf(resource_data.resources_normal_task()));
       auto &local_normal_task_resources = node_resources->normal_task_resources;
       if (normal_task_resources != local_normal_task_resources) {
         local_normal_task_resources = normal_task_resources;

@@ -202,8 +202,8 @@ TEST_F(TaskResourceInstancesTest, TestBasic) {
   ASSERT_EQ(task_resource_instances.Sum(cpu_id), 5);
   ASSERT_EQ(task_resource_instances.Sum(gpu_id), 5);
 
-  // Test ToResourceRequest
-  ASSERT_EQ(task_resource_instances.ToResourceRequest(), resource_request);
+  // Test ToResourceSet
+  ASSERT_EQ(task_resource_instances.ToResourceSet(), resource_request.GetResourceSet());
 }
 
 }  // namespace ray

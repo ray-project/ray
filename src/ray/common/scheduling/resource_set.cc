@@ -31,6 +31,13 @@ ResourceSet::ResourceSet(
   }
 }
 
+ResourceSet::ResourceSet(
+    const absl::flat_hash_map<ResourceID, FixedPoint> &resource_map) {
+  for (auto const &[id, quantity] : resource_map) {
+    Set(id, quantity);
+  }
+}
+
 ResourceSet::ResourceSet(const absl::flat_hash_map<std::string, double> &resource_map) {
   for (auto const &[name, quantity] : resource_map) {
     Set(ResourceID(name), FixedPoint(quantity));
