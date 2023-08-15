@@ -76,7 +76,12 @@ def _validate_log_to_file(log_to_file):
 
 
 def _get_local_dir_with_expand_user(local_dir: Optional[str]) -> str:
-    return os.path.abspath(os.path.expanduser(local_dir or _get_defaults_results_dir()))
+    return (
+        Path(local_dir or _get_defaults_results_dir())
+        .expanduser()
+        .absolute()
+        .as_posix()
+    )
 
 
 def _get_dir_name(run, explicit_name: Optional[str], combined_name: str) -> str:
@@ -193,7 +198,8 @@ class Experiment:
 
         self.storage = None
         if _use_storage_context():
-            assert name is not None
+            if not name:
+                name = StorageContext.get_experiment_dir_name(run)
 
             self.storage = StorageContext(
                 storage_path=storage_path,
@@ -324,7 +330,7 @@ class Experiment:
             "log_to_file": (stdout_file, stderr_file),
             "export_formats": export_formats or [],
             "max_failures": max_failures,
-            "restore": os.path.abspath(os.path.expanduser(restore))
+            "restore": Path(restore).expanduser().absolute().as_posix()
             if restore
             else None,
             "storage": self.storage,
