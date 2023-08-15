@@ -244,7 +244,7 @@ class GenericProxy(ABC):
     It contains all the common setup and methods required for running a proxy.
 
     The proxy subclass need to implement the following methods:
-      - `proxy_name()`
+      - `protocol()`
       - `success_status_code()`
       - `not_found()`
       - `draining_response()`
@@ -303,15 +303,15 @@ class GenericProxy(ABC):
             call_in_event_loop=get_or_create_event_loop(),
         )
         self.request_counter = metrics.Counter(
-            f"serve_num_{self.proxy_name.lower()}_requests",
-            description=f"The number of {self.proxy_name} requests processed.",
+            f"serve_num_{self.protocol.lower()}_requests",
+            description=f"The number of {self.protocol} requests processed.",
             tag_keys=("route", "method", "application", "status_code"),
         )
 
         self.request_error_counter = metrics.Counter(
-            f"serve_num_{self.proxy_name.lower()}_error_requests",
+            f"serve_num_{self.protocol.lower()}_error_requests",
             description=f"The number of non-{self.success_status_code} "
-            "{self.proxy_name} responses.",
+            "{self.protocol} responses.",
             tag_keys=(
                 "route",
                 "error_code",
@@ -320,9 +320,9 @@ class GenericProxy(ABC):
         )
 
         self.deployment_request_error_counter = metrics.Counter(
-            f"serve_num_deployment_{self.proxy_name.lower()}_error_requests",
+            f"serve_num_deployment_{self.protocol.lower()}_error_requests",
             description=(
-                f"The number of non-{self.success_status_code} {self.proxy_name} "
+                f"The number of non-{self.success_status_code} {self.protocol} "
                 "responses returned by each deployment."
             ),
             tag_keys=(
@@ -335,10 +335,10 @@ class GenericProxy(ABC):
         )
 
         self.processing_latency_tracker = metrics.Histogram(
-            f"serve_{self.proxy_name.lower()}_request_latency_ms",
+            f"serve_{self.protocol.lower()}_request_latency_ms",
             description=(
-                f"The end-to-end latency of {self.proxy_name} requests "
-                f"(measured from the Serve {self.proxy_name} proxy)."
+                f"The end-to-end latency of {self.protocol} requests "
+                f"(measured from the Serve {self.protocol} proxy)."
             ),
             boundaries=DEFAULT_LATENCY_BUCKET_MS,
             tag_keys=(
@@ -370,7 +370,7 @@ class GenericProxy(ABC):
 
     @property
     @abstractmethod
-    def proxy_name(self) -> RequestProtocol:
+    def protocol(self) -> RequestProtocol:
         """Proxy name used for metrics.
 
         Each proxy needs to implement its own logic for setting up the proxy name.
@@ -542,7 +542,7 @@ class GenericProxy(ABC):
             # Modify the path and root path so that reverse lookups and redirection
             # work as expected. We do this here instead of in replicas so it can be
             # changed without restarting the replicas.
-            if route_prefix != "/" and self.proxy_name == RequestProtocol.HTTP:
+            if route_prefix != "/" and self.protocol == RequestProtocol.HTTP:
                 assert not route_prefix.endswith("/")
                 serve_request.set_path(route_path.replace(route_prefix, "", 1))
                 serve_request.set_root_path(serve_request.root_path + route_prefix)
@@ -706,7 +706,7 @@ class gRPCProxy(GenericProxy):
     """
 
     @property
-    def proxy_name(self) -> RequestProtocol:
+    def protocol(self) -> RequestProtocol:
         return RequestProtocol.GRPC
 
     @property
@@ -842,6 +842,7 @@ class gRPCProxy(GenericProxy):
         Unpack gRPC request metadata and extract info to set up request context and
         handle.
         """
+        handle._set_request_protocol(RequestProtocol.GRPC)
         multiplexed_model_id = serve_request.multiplexed_model_id
         request_id = serve_request.request_id
         if not request_id:
@@ -852,7 +853,6 @@ class gRPCProxy(GenericProxy):
             stream=serve_request.stream,
             multiplexed_model_id=multiplexed_model_id,
             method_name=serve_request.method_name,
-            request_protocol=RequestProtocol.GRPC,
         )
 
         request_context_info = {
@@ -946,7 +946,7 @@ class HTTPProxy(GenericProxy):
     """
 
     @property
-    def proxy_name(self) -> RequestProtocol:
+    def protocol(self) -> RequestProtocol:
         return RequestProtocol.HTTP
 
     @property
@@ -1208,7 +1208,7 @@ class HTTPProxy(GenericProxy):
         Unpack HTTP request headers and extract info to set up request context and
         handle.
         """
-        handle = handle.options(request_protocol=RequestProtocol.HTTP)
+        handle._set_request_protocol(RequestProtocol.HTTP)
         request_context_info = {
             "route": route_path,
             "app_name": app_name,

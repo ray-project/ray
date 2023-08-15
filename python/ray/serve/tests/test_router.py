@@ -154,12 +154,12 @@ async def test_replica_scheduler(ray_instance):
 
 
 def test_request_metadata():
-    """Test logic on RequestMetadata
+    """Test logic on RequestMetadata.
 
     Ensure the default values are set correctly and both is_http_request and
-    is_grpc_request returns the correct value. When the request_protocol is set to HTTP,
-    is_http_request should return True and is_grpc_request should return False. When the
-    request_protocol is set to gRPC, is_http_request should return False and
+    is_grpc_request returns the correct value. When the _request_protocol is set to
+    HTTP, is_http_request should return True and is_grpc_request should return False.
+    When the _request_protocol is set to gRPC, is_http_request should return False and
     is_grpc_request should return True.
     """
     request_id = "request-id"
@@ -174,19 +174,19 @@ def test_request_metadata():
     assert request_metadata.app_name == ""
     assert request_metadata.multiplexed_model_id == ""
     assert request_metadata.is_streaming is False
-    assert request_metadata.request_protocol == RequestProtocol.UNDEFINED
+    assert request_metadata._request_protocol == RequestProtocol.UNDEFINED
     assert request_metadata.is_http_request is False
     assert request_metadata.is_grpc_request is False
 
     # is_http_request and is_grpc_request returns the correct values when the
-    # request_protocol is set to HTTP.
-    request_metadata.request_protocol = RequestProtocol.HTTP
+    # _request_protocol is set to HTTP.
+    request_metadata._request_protocol = RequestProtocol.HTTP
     assert request_metadata.is_http_request is True
     assert request_metadata.is_grpc_request is False
 
     # is_http_request and is_grpc_request returns the correct values when the
-    # request_protocol is set to gRPC.
-    request_metadata.request_protocol = RequestProtocol.GRPC
+    # _request_protocol is set to gRPC.
+    request_metadata._request_protocol = RequestProtocol.GRPC
     assert request_metadata.is_http_request is False
     assert request_metadata.is_grpc_request is True
 

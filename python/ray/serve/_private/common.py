@@ -425,19 +425,19 @@ class MultiplexedReplicaInfo:
 
 
 @dataclass
-class StreamingHTTPRequest:
-    """Sent from the HTTP proxy to replicas on the streaming codepath."""
-
-    pickled_asgi_scope: bytes
-    http_proxy_handle: ActorHandle
-
-
-@dataclass
 class gRPCRequest:
     """Sent from the GRPC proxy to replicas on both unary and streaming codepaths."""
 
     grpc_user_request: bytes
     grpc_proxy_handle: ActorHandle
+
+
+@dataclass
+class StreamingHTTPRequest:
+    """Sent from the HTTP proxy to replicas on the streaming codepath."""
+
+    pickled_asgi_scope: bytes
+    http_proxy_handle: ActorHandle
 
 
 class RequestProtocol(str, Enum):

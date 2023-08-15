@@ -1,6 +1,6 @@
 import asyncio
 import concurrent.futures
-from dataclasses import dataclass
+from dataclasses import dataclass, asdict
 from functools import wraps
 import inspect
 import threading
@@ -62,15 +62,14 @@ class HandleOptions:
     method_name: str = "__call__"
     multiplexed_model_id: str = ""
     stream: bool = False
-    request_protocol: RequestProtocol = RequestProtocol.UNDEFINED
     _router_cls: str = ""
+    _request_protocol: str = RequestProtocol.UNDEFINED
 
     def copy_and_update(
         self,
         method_name: Union[str, DEFAULT] = DEFAULT.VALUE,
         multiplexed_model_id: Union[str, DEFAULT] = DEFAULT.VALUE,
         stream: Union[bool, DEFAULT] = DEFAULT.VALUE,
-        request_protocol: Union[RequestProtocol, DEFAULT] = DEFAULT.VALUE,
         _router_cls: Union[str, DEFAULT] = DEFAULT.VALUE,
     ) -> "HandleOptions":
         return HandleOptions(
@@ -83,12 +82,10 @@ class HandleOptions:
                 else multiplexed_model_id
             ),
             stream=self.stream if stream == DEFAULT.VALUE else stream,
-            request_protocol=self.request_protocol
-            if request_protocol == DEFAULT.VALUE
-            else request_protocol,
             _router_cls=self._router_cls
             if _router_cls == DEFAULT.VALUE
             else _router_cls,
+            _request_protocol=self._request_protocol,
         )
 
 
@@ -159,6 +156,11 @@ class RayServeHandle:
 
         self._router: Optional[Router] = _router
 
+    def _set_request_protocol(self, request_protocol: RequestProtocol):
+        self.handle_options = HandleOptions(
+            **{**asdict(self.handle_options), **{"_request_protocol": request_protocol}}
+        )
+
     def _get_or_create_router(self) -> Router:
         if self._router is None:
             self._router = Router(
@@ -185,14 +187,12 @@ class RayServeHandle:
         method_name: Union[str, DEFAULT] = DEFAULT.VALUE,
         multiplexed_model_id: Union[str, DEFAULT] = DEFAULT.VALUE,
         stream: Union[bool, DEFAULT] = DEFAULT.VALUE,
-        request_protocol: Union[RequestProtocol, DEFAULT] = DEFAULT.VALUE,
         _router_cls: Union[str, DEFAULT] = DEFAULT.VALUE,
     ):
         new_handle_options = self.handle_options.copy_and_update(
             method_name=method_name,
             multiplexed_model_id=multiplexed_model_id,
             stream=stream,
-            request_protocol=request_protocol,
             _router_cls=_router_cls,
         )
 
@@ -212,7 +212,6 @@ class RayServeHandle:
         method_name: Union[str, DEFAULT] = DEFAULT.VALUE,
         multiplexed_model_id: Union[str, DEFAULT] = DEFAULT.VALUE,
         stream: Union[bool, DEFAULT] = DEFAULT.VALUE,
-        request_protocol: Union[RequestProtocol, DEFAULT] = DEFAULT.VALUE,
         _router_cls: Union[str, DEFAULT] = DEFAULT.VALUE,
     ) -> "RayServeHandle":
         """Set options for this handle and return an updated copy of it.
@@ -231,7 +230,6 @@ class RayServeHandle:
             method_name=method_name,
             multiplexed_model_id=multiplexed_model_id,
             stream=stream,
-            request_protocol=request_protocol,
             _router_cls=_router_cls,
         )
 
@@ -245,7 +243,7 @@ class RayServeHandle:
             app_name=_request_context.app_name,
             multiplexed_model_id=handle_options.multiplexed_model_id,
             is_streaming=handle_options.stream,
-            request_protocol=handle_options.request_protocol,
+            _request_protocol=handle_options._request_protocol,
         )
         self.request_counter.inc(
             tags={
@@ -351,7 +349,6 @@ class RayServeSyncHandle(RayServeHandle):
         method_name: Union[str, DEFAULT] = DEFAULT.VALUE,
         multiplexed_model_id: Union[str, DEFAULT] = DEFAULT.VALUE,
         stream: Union[bool, DEFAULT] = DEFAULT.VALUE,
-        request_protocol: Union[RequestProtocol, DEFAULT] = DEFAULT.VALUE,
         _router_cls: Union[str, DEFAULT] = DEFAULT.VALUE,
     ) -> "RayServeSyncHandle":
         """Set options for this handle and return an updated copy of it.
@@ -370,7 +367,6 @@ class RayServeSyncHandle(RayServeHandle):
             method_name=method_name,
             multiplexed_model_id=multiplexed_model_id,
             stream=stream,
-            request_protocol=request_protocol,
             _router_cls=_router_cls,
         )
 
