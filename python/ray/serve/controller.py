@@ -794,9 +794,7 @@ class ServeController:
         for name in names:
             self.delete_deployment(name)
 
-    def get_deployment_info(
-        self, name: str, app_name: str = SERVE_DEFAULT_APP_NAME
-    ) -> bytes:
+    def get_deployment_info(self, name: str, app_name: str = "") -> bytes:
         """Get the current information about a deployment.
 
         Args:

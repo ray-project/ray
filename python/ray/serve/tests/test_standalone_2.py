@@ -221,7 +221,7 @@ def test_controller_deserialization_deployment_def(
 
         # Import and build the graph
         graph = import_attr("test_config_files.pizza.serve_dag")
-        app = build(graph)
+        app = build(graph, "default")
 
         # Override options for each deployment
         for name in app.deployments:

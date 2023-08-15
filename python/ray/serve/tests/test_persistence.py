@@ -20,7 +20,7 @@ serve.run(driver.bind(), name="app")
     )
     run_string_as_driver(script)
 
-    handle = serve.get_deployment("app_driver").get_handle()
+    handle = serve.get_deployment_handle("driver", "app")
     assert ray.get(handle.remote()) == "OK!"
 
 

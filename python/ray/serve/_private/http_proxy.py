@@ -690,7 +690,7 @@ class HTTPProxy(GenericProxy):
 
     async def routes_response(self, scope, receive, send):
         return await starlette.responses.JSONResponse(
-            {route: endpoint.name for route, endpoint in self.route_info.items()}
+            {route: str(endpoint) for route, endpoint in self.route_info.items()}
         )(scope, receive, send)
 
     async def health_response(self, scope, receive, send):

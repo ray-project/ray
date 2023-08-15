@@ -498,7 +498,8 @@ class ServeControllerClient:
                 return cached_handle
 
         all_deployments = ray.get(self._controller.list_deployment_names.remote())
-        if not missing_ok and f"{app_name}_{deployment_name}" not in all_deployments:
+        deployment_id = DeploymentID(deployment_name, app_name)
+        if not missing_ok and str(deployment_id) not in all_deployments:
             raise KeyError(
                 f"Deployment '{deployment_name}' in application '{app_name}' does not "
                 "exist."

@@ -12,9 +12,7 @@ from ray.serve._private.storage.kv_store import KVStoreError, RayInternalKVStore
 from ray.tests.conftest import external_redis  # noqa: F401
 from ray.serve._private.constants import (
     SERVE_DEFAULT_APP_NAME,
-    DEPLOYMENT_NAME_PREFIX_SEPARATOR,
 )
-from ray.serve.context import get_global_client
 
 
 @pytest.fixture(scope="function")
@@ -63,11 +61,10 @@ def test_controller_gcs_failure(serve_ha, use_handle):  # noqa: F811
 
     def call():
         if use_handle:
-            deployment_name = (
-                f"{SERVE_DEFAULT_APP_NAME}{DEPLOYMENT_NAME_PREFIX_SEPARATOR}d"
-            )
             ret = ray.get(
-                get_global_client().get_handle(deployment_name, sync=True).remote()
+                serve.get_deployment_handle(
+                    "d", SERVE_DEFAULT_APP_NAME, sync=True
+                ).remote()
             )
         else:
             ret = requests.get("http://localhost:8000/d").text
