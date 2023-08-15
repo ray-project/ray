@@ -687,10 +687,17 @@ class StandardAutoscaler:
             if failed_to_drain:
                 self.prom_metrics.drain_node_exceptions.inc()
                 logger.error(f"Failed to drain {len(failed_to_drain)} raylet(s).")
-        except RpcError:
-            # Otherwise, it's a plane old RPC error and we should log it.
-            self.prom_metrics.drain_node_exceptions.inc()
-            logger.exception("Failed to drain Ray nodes. Traceback follows.")
+        # If we get a gRPC error with an UNIMPLEMENTED code, fail silently.
+        # This error indicates that the GCS is using Ray version < 1.8.0,
+        # for which DrainNode is not implemented.
+        except RpcError as e:
+            # If the code is UNIMPLEMENTED, pass.
+            if e.rpc_code == ray._raylet.GRPC_STATUS_CODE_UNIMPLEMENTED:
+                pass
+            # Otherwise, it's a plain old gRPC error and we should log it.
+            else:
+                self.prom_metrics.drain_node_exceptions.inc()
+                logger.exception("Failed to drain Ray nodes. Traceback follows.")
         except Exception:
             # We don't need to interrupt the autoscaler update with an
             # exception, but we should log what went wrong and record the
