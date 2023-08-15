@@ -471,26 +471,25 @@ def run(
                 raise click.ClickException(
                     "The --non-blocking option conflicts with the --reload option."
                 )
-            # unindent the reload codepath
-                if working_dir:
-                    watch_dir = working_dir
-                else:
-                    watch_dir = app_dir
-                for changes in watchfiles.watch(
-                    watch_dir,
-                    rust_timeout=10000,
-                    yield_on_timeout=True,
-                ):
-                    if changes:
-                        cli_logger.info(
-                            f"Detected file change in path {watch_dir}. Redeploying Serve app."
-                        )
-                        serve.run(app, host=host, port=port)
+            if working_dir:
+                watch_dir = working_dir
+            else:
+                watch_dir = app_dir
+            for changes in watchfiles.watch(
+                watch_dir,
+                rust_timeout=10000,
+                yield_on_timeout=True,
+            ):
+                if changes:
+                    cli_logger.info(
+                        f"Detected file change in path {watch_dir}. Redeploying Serve app."
+                    )
+                    serve.run(app, host=host, port=port)
 
-            if blocking:
-                while True:
-                    # Block, letting Ray print logs to the terminal.
-                    time.sleep(10)
+        if blocking:
+            while True:
+                # Block, letting Ray print logs to the terminal.
+                time.sleep(10)
 
     except KeyboardInterrupt:
         cli_logger.info("Got KeyboardInterrupt, shutting down...")
