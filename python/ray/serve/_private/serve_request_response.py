@@ -77,7 +77,7 @@ class gRPCServeRequest(ServeRequest):
         self.service_method = service_method
         self.stream = stream
         self.app_name = ""
-        self.route_path = None
+        self.route_path = ""
         self.request_id = None
         self.method_name = "__call__"
         self.multiplexed_model_id = DEFAULT.VALUE
@@ -99,7 +99,7 @@ class gRPCServeRequest(ServeRequest):
                     self.request_id = value
                 elif key == "multiplexed_model_id":
                     self.multiplexed_model_id = value
-            self.route_path = self.match_target(self.app_name)
+            self.route_path = self.match_target(self.app_name) or ""
 
     @property
     def user_request(self) -> bytes:

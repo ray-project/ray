@@ -499,22 +499,21 @@ class GenericProxy:
             matched_route = self.prefix_router.match_route(route_path)
             if matched_route is None:
                 serve_response = await self._not_found(serve_request=serve_request)
-                print("in not found", route_path, serve_response.status_code, method)
-                # self.request_error_counter.inc(
-                #     tags={
-                #         "route": route_path,
-                #         "error_code": serve_response.status_code,
-                #         "method": method,
-                #     }
-                # )
-                # self.request_counter.inc(
-                #     tags={
-                #         "route": route_path,
-                #         "method": method,
-                #         "application": "",
-                #         "status_code": serve_response.status_code,
-                #     }
-                # )
+                self.request_error_counter.inc(
+                    tags={
+                        "route": route_path,
+                        "error_code": serve_response.status_code,
+                        "method": method,
+                    }
+                )
+                self.request_counter.inc(
+                    tags={
+                        "route": route_path,
+                        "method": method,
+                        "application": "",
+                        "status_code": serve_response.status_code,
+                    }
+                )
                 return serve_response
 
             route_prefix, handle, app_name, app_is_cross_language = matched_route
@@ -708,7 +707,7 @@ class gRPCProxy(GenericProxy):
 
     async def _not_found(self, serve_request: ServeRequest) -> ServeResponse:
         not_found_message = (
-            f"Path '{serve_request.service_method}' not found. Please ping"
+            f"Path '{serve_request.service_method}' not found. Please ping "
             "/ray.serve.ServeAPIService/ServeRoutes for available applications."
         )
         status_code = grpc.StatusCode.NOT_FOUND
