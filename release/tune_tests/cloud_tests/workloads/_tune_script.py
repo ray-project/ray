@@ -6,30 +6,23 @@ import time
 
 import ray
 from ray import train, tune
-from ray.train import Checkpoint
-from ray.air.constants import REENABLE_DEPRECATED_SYNC_TO_HEAD_NODE
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.algorithms.ppo import PPO
 
+from ray.train.tests.util import create_dict_checkpoint, load_dict_checkpoint
 from run_cloud_test import ARTIFACT_FILENAME
 
 
 def fn_trainable(config):
     checkpoint = train.get_checkpoint()
     if checkpoint:
-        state = {"internal_iter": checkpoint.to_dict()["internal_iter"] + 1}
+        state = {"internal_iter": load_dict_checkpoint(checkpoint)["internal_iter"] + 1}
     else:
-        # NOTE: Need to 1 index because `train.report`
-        # will save checkpoints w/ 1-indexing.
         state = {"internal_iter": 1}
 
     for i in range(state["internal_iter"], config["max_iterations"] + 1):
         state["internal_iter"] = i
         time.sleep(config["sleep_time"])
-
-        checkpoint = None
-        if i % config["checkpoint_freq"] == 0:
-            checkpoint = Checkpoint.from_dict({"internal_iter": i})
 
         # Log artifacts to the trial dir.
         trial_dir = train.get_context().get_trial_dir()
@@ -40,8 +33,11 @@ def fn_trainable(config):
             score=i * 10 * config["score_multiplied"],
             internal_iter=state["internal_iter"],
         )
-
-        train.report(metrics, checkpoint=checkpoint)
+        if i % config["checkpoint_freq"] == 0:
+            with create_dict_checkpoint({"internal_iter": i}) as checkpoint:
+                train.report(metrics, checkpoint=checkpoint)
+        else:
+            train.report(metrics)
 
 
 class RLlibCallback(DefaultCallbacks):
@@ -100,10 +96,6 @@ def run_tune(
         }
     else:
         raise RuntimeError(f"Unknown trainable: {trainable}")
-
-    if not no_syncer and storage_path is None:
-        # syncer="auto" + storage_path=None -> legacy head node syncing path
-        os.environ[REENABLE_DEPRECATED_SYNC_TO_HEAD_NODE] = "1"
 
     tune.run(
         train,
