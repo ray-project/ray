@@ -12,6 +12,7 @@ from ray.serve.exceptions import RayServeException
 
 from ray.serve._private.constants import (
     DEPLOYMENT_NAME_PREFIX_SEPARATOR,
+    RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING,
     SERVE_DEFAULT_APP_NAME,
 )
 
@@ -275,10 +276,11 @@ def test_serving_request_through_grpc_proxy(ray_cluster):
     response = stub.Method1(request=request, metadata=metadata)
     assert response.greeting == "Hello foo from method1"
 
-    # Ensure Streaming method is responding correctly.
-    responses = stub.Streaming(request=request, metadata=metadata)
-    for idx, response in enumerate(responses):
-        assert response.greeting == f"{idx}: Hello foo from bar"
+    if RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING:
+        # Ensure Streaming method is responding correctly.
+        responses = stub.Streaming(request=request, metadata=metadata)
+        for idx, response in enumerate(responses):
+            assert response.greeting == f"{idx}: Hello foo from bar"
 
 
 if __name__ == "__main__":
