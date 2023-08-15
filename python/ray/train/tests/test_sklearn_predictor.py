@@ -36,30 +36,18 @@ def test_repr():
     assert pattern.match(representation)
 
 
-def create_checkpoint_preprocessor() -> Tuple[Checkpoint, Preprocessor]:
+def test_sklearn_checkpoint(tmp_path):
     preprocessor = DummyPreprocessor()
 
-    with tempfile.TemporaryDirectory() as tmpdir:
-        checkpoint = SklearnCheckpoint.from_estimator(
-            estimator=model, path=tmpdir, preprocessor=preprocessor
-        )
-        # Serialize to dict so we can remove the temporary directory
-        checkpoint = SklearnCheckpoint.from_dict(checkpoint.to_dict())
-
-    return checkpoint, preprocessor
-
-
-def test_sklearn_checkpoint():
-    checkpoint, preprocessor = create_checkpoint_preprocessor()
-
-    predictor = SklearnPredictor(estimator=model, preprocessor=preprocessor)
-    checkpoint_predictor = SklearnPredictor.from_checkpoint(checkpoint)
+    checkpoint = SklearnCheckpoint.from_estimator(
+        estimator=model, path=str(tmp_path), preprocessor=preprocessor
+    )
 
     assert np.allclose(
-        checkpoint_predictor.estimator.feature_importances_,
-        predictor.estimator.feature_importances_,
+        checkpoint.get_estimator().feature_importances_,
+        model.feature_importances_,
     )
-    assert checkpoint_predictor.get_preprocessor() == predictor.get_preprocessor()
+    assert checkpoint.get_preprocessor() == preprocessor
 
 
 @pytest.mark.parametrize("batch_type", [np.ndarray, pd.DataFrame, dict])
