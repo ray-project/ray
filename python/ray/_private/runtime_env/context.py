@@ -69,7 +69,7 @@ class RuntimeEnvContext:
         elif language == Language.JULIA:
             executable = "julia"
             args = [
-                "-e", "'using ray_core_worker_julia_jll; start_worker()'",
+                "-e", "'using Ray; start_worker()'",
                 "--"
             ]
             # TODO(omus): required to avoid escaping the Julia code. Ideally
