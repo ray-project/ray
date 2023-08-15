@@ -129,11 +129,7 @@ class TorchCheckpoint(LegacyFrameworkCheckpoint):
             .. testcode::
 
                 from ray.train.torch import TorchCheckpoint
-                from ray.train.torch import TorchPredictor
                 import torch
-
-                # Set manual seed
-                torch.manual_seed(42)
 
                 # Create model identity and send a random tensor to it
                 model = torch.nn.Identity()
@@ -142,18 +138,6 @@ class TorchCheckpoint(LegacyFrameworkCheckpoint):
 
                 # Create a checkpoint
                 checkpoint = TorchCheckpoint.from_model(model)
-
-                # You can use a class TorchCheckpoint to create an
-                # a class ray.train.torch.TorchPredictor and perform inference.
-                predictor = TorchPredictor.from_checkpoint(checkpoint)
-                pred = predictor.predict(input.numpy())
-
-                # Convert prediction dictionary value into a tensor
-                pred = torch.tensor(pred['predictions'])
-
-                # Assert the output from the original and checkoint model are the same
-                assert torch.equal(output, pred)
-                print("worked")
 
             .. testoutput::
                 :hide:
@@ -368,7 +352,7 @@ class LegacyTorchCheckpoint(Checkpoint):
 
             .. testcode::
 
-                from ray.train.torch import TorchCheckpoint
+                from ray.train.torch import LegacyTorchCheckpoint
                 from ray.train.torch import TorchPredictor
                 import torch
 
@@ -381,7 +365,7 @@ class LegacyTorchCheckpoint(Checkpoint):
                 output = model(input)
 
                 # Create a checkpoint
-                checkpoint = TorchCheckpoint.from_model(model)
+                checkpoint = LegacyTorchCheckpoint.from_model(model)
 
                 # You can use a class TorchCheckpoint to create an
                 # a class ray.train.torch.TorchPredictor and perform inference.
