@@ -70,6 +70,8 @@ TEST(SerializationTest, TypeHybridTest) {
   EXPECT_EQ(in_arg1, out_arg1);
   EXPECT_EQ(in_arg2, out_arg2);
 
+// TODO(Larry Lian) Adapt on windows
+#ifndef _WIN32
   // Test std::any
   msgpack::sbuffer buffer3 = ray::internal::Serializer::Serialize(std::make_tuple(
       in_arg1, in_arg2, in_arg3, in_arg4, in_arg5, in_arg6, in_arg7, in_arg8));
@@ -100,6 +102,7 @@ TEST(SerializationTest, TypeHybridTest) {
       ray::internal::Serializer::Deserialize<std::vector<std::any>>(buffer4.data(),
                                                                     buffer4.size());
   EXPECT_TRUE(std::equal(result.begin(), result.end(), result_2.begin(), IsAnyEqual));
+#endif
 }
 
 TEST(SerializationTest, BoundaryValueTest) {

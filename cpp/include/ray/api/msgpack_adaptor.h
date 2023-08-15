@@ -17,6 +17,9 @@
 #include <any>
 #include <msgpack.hpp>
 
+// TODO(Larry Lian) Adapt on windows
+#ifndef _WIN32
+
 namespace msgpack {
 namespace adaptor {
 
@@ -82,3 +85,4 @@ struct convert<std::any> {
 
 }  // namespace adaptor
 }  // namespace msgpack
+#endif
