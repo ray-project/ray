@@ -660,7 +660,7 @@ Ray Examples
         :link: lightning_advanced_example
         :link-type: ref
 
-        Use LightningTrainer with Ray Data and Batch Predictor
+        Fine-tune a PyTorch Lightning Text Classifier with Ray Data
 
     .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item tensorflow

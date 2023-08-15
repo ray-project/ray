@@ -63,7 +63,7 @@ Distributed Training Examples using Ray Train
 
         .. button-ref:: lightning_advanced_example
 
-            Use LightningTrainer with Ray Data and Batch Predictor
+            Fine-tune a PyTorch Lightning Text Classifier with Ray Data
 
     .. grid-item-card::
         :img-top: /images/pytorch_lightning_small.png
