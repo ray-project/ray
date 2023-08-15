@@ -25,6 +25,7 @@
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/synchronization/mutex.h"
+#include "ray/common/asio/asio_util.h"
 #include "ray/common/id.h"
 #include "ray/common/ray_object.h"
 #include "ray/core_worker/actor_creator.h"
@@ -176,6 +177,15 @@ class CoreWorkerDirectActorTaskSubmitter
   /// \param[in] actor_id The actor ID.
   /// \return Whether this actor is alive.
   bool IsActorAlive(const ActorID &actor_id) const;
+
+  /// Status ok if the task doesn't need to be canceld (actor is already dead or task is
+  /// already finished).
+  Status CancelTask(TaskSpecification task_spec, bool force_kill, bool recursive);
+
+  void RetryCancelTask(TaskSpecification task_spec,
+                       bool force_kill,
+                       bool recursive,
+                       int64_t milliseconds);
 
  private:
   /// A helper function to get task finisher without holding mu_

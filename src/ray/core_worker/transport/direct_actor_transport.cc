@@ -289,6 +289,12 @@ void CoreWorkerDirectTaskReceiver::RunNormalTasksFromQueue() {
   normal_scheduling_queue_->ScheduleRequests();
 }
 
+bool CoreWorkerDirectTaskReceiver::CancelQueuedActorTask(const WorkerID &caller_worker_id,
+                                                         const TaskID &task_id) {
+  auto it = actor_scheduling_queues_.find(caller_worker_id);
+  return it->second->CancelTaskIfFound(task_id);
+}
+
 bool CoreWorkerDirectTaskReceiver::CancelQueuedNormalTask(TaskID task_id) {
   // Look up the task to be canceled in the queue of normal tasks. If it is found and
   // removed successfully, return true.

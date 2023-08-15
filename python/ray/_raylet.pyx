@@ -32,6 +32,7 @@ from typing import (
     Generator,
     AsyncGenerator
 )
+import concurrent
 
 from libc.stdint cimport (
     int32_t,
@@ -2179,18 +2180,27 @@ cdef void delete_spilled_objects_handler(
                 job_id=None)
 
 
-cdef void cancel_async_task(const CTaskID &task_id, const CRayFunction &ray_function, const c_string c_name_of_concurrency_group_to_execute) nogil:
-    # SANG-TODO
-    # function_descriptor
-    # specified_cgname
-    # task_id
-    # with gil:
-    #     worker = ray._private.worker.global_worker
-    #     eventloop, _ = worker.core_worker.get_event_loop(
-    #         function_descriptor, specified_cgname)
-    #     future = worker.core_worker.task_id_to_future.get(task_id)
-    #     if future is not None:
-    #         eventloop.call_soon_threadsafe(future.cancel)
+cdef void cancel_async_task(
+        const CTaskID &c_task_id,
+        const CRayFunction &ray_function,
+        const c_string c_name_of_concurrency_group_to_execute) nogil:
+    with gil:
+        function_descriptor = CFunctionDescriptorToPython(
+            ray_function.GetFunctionDescriptor())
+        name_of_concurrency_group_to_execute = \
+            c_name_of_concurrency_group_to_execute.decode("ascii")
+        task_id = TaskID(c_task_id.Binary())
+
+        worker = ray._private.worker.global_worker
+        eventloop, _ = worker.core_worker.get_event_loop(
+            function_descriptor, name_of_concurrency_group_to_execute)
+        with current_task_id_lock:
+            future = worker.core_worker.get_task_id_to_future().get(task_id)
+            if future is not None:
+                eventloop.call_soon_threadsafe(future.cancel)
+            # else, the task is already finished. If the task
+            # wasn't finished (task is queued on a client or server side),
+            # this method shouldn't have been called.
 
 
 cdef void unhandled_exception_handler(const CRayObject& error) nogil:
@@ -3698,7 +3708,8 @@ cdef class CoreWorker:
             CObjectID c_object_id = object_ref.native()
             CRayStatus status = CRayStatus.OK()
 
-        status = CCoreWorkerProcess.GetCoreWorker().CancelTask(
+        with nogil:
+            status = CCoreWorkerProcess.GetCoreWorker().CancelTask(
                                             c_object_id, force_kill, recursive)
 
         if not status.ok():
@@ -4155,13 +4166,22 @@ cdef class CoreWorker:
 
         future = asyncio.run_coroutine_threadsafe(coroutine, eventloop)
         if task_id:
-            self.task_id_to_future[task_id] = future
+            with current_task_id_lock:
+                self.task_id_to_future[task_id] = asyncio.wrap_future(
+                    future, loop=eventloop)
+
         future.add_done_callback(lambda _: event.Notify())
         with nogil:
             (CCoreWorkerProcess.GetCoreWorker()
                 .YieldCurrentFiber(event))
-        result = future.result()
-        self.task_id_to_future.pop(task_id)
+        try:
+            result = future.result()
+        except concurrent.futures.CancelledError:
+            raise TaskCancelledError(task_id)
+        finally:
+            if task_id:
+                with current_task_id_lock:
+                    self.task_id_to_future.pop(task_id)
         return result
 
     def stop_and_join_asyncio_threads_if_exist(self):
@@ -4188,6 +4208,9 @@ cdef class CoreWorker:
     def current_actor_max_concurrency(self):
         return (CCoreWorkerProcess.GetCoreWorker().GetWorkerContext()
                 .CurrentActorMaxConcurrency())
+
+    def get_task_id_to_future(self) -> dict:
+        return self.task_id_to_future
 
     def get_current_runtime_env(self) -> str:
         # This should never change, so we can safely cache it to avoid ser/de

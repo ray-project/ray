@@ -66,8 +66,10 @@ class ActorSchedulingQueue : public SchedulingQueue {
            TaskID task_id = TaskID::Nil(),
            const std::vector<rpc::ObjectReference> &dependencies = {}) override;
 
-  // We don't allow the cancellation of actor tasks, so invoking CancelTaskIfFound
-  // results in a fatal error.
+  /// Cancel the actor task in the queue.
+  /// Tasks are in the queue if it is either queued, or executing.
+  /// Return true if a task is in the queue. False otherwise.
+  /// This method has to be THREAD-SAFE.
   bool CancelTaskIfFound(TaskID task_id) override;
 
   /// Schedules as many requests as possible in sequence.
@@ -97,6 +99,12 @@ class ActorSchedulingQueue : public SchedulingQueue {
   /// Whether we should enqueue requests into asyncio pool. Setting this to true
   /// will instantiate all tasks as fibers that can be yielded.
   bool is_asyncio_ = false;
+  /// Mutext to protect attributes used for thread safe APIs.
+  absl::Mutex mu_;
+  /// A map of actor task IDs -> is_canceled
+  /// that are still in the queue (queued or executing).
+  absl::flat_hash_map<TaskID, bool> actor_task_ids_in_queue_ GUARDED_BY(mu_);
+  ;
 
   friend class SchedulingQueueTest;
 };

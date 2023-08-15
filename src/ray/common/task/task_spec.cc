@@ -203,7 +203,10 @@ int TaskSpecification::GetRuntimeEnvHash() const {
 }
 
 const SchedulingClass TaskSpecification::GetSchedulingClass() const {
-  RAY_CHECK(sched_cls_id_ > 0);
+  if (!IsActorTask()) {
+    // Actor task doesn't have scheudling id, so we don't need to check this.
+    RAY_CHECK(sched_cls_id_ > 0);
+  }
   return sched_cls_id_;
 }
 

@@ -743,6 +743,8 @@ Status CoreWorkerDirectTaskSubmitter::CancelTask(TaskSpecification task_spec,
     absl::MutexLock lock(&mu_);
     if (cancelled_tasks_.find(task_spec.TaskId()) != cancelled_tasks_.end() ||
         !task_finisher_->MarkTaskCanceled(task_spec.TaskId())) {
+      RAY_LOG(ERROR) << "SANG-TODO Task is already canceled. Taks ID: "
+                     << task_spec.TaskId();
       return Status::OK();
     }
 
@@ -796,6 +798,7 @@ Status CoreWorkerDirectTaskSubmitter::CancelTask(TaskSpecification task_spec,
   request.set_intended_task_id(task_spec.TaskId().Binary());
   request.set_force_kill(force_kill);
   request.set_recursive(recursive);
+  request.set_caller_worker_id(task_spec.CallerWorkerId().Binary());
   client->CancelTask(
       request,
       [this, task_spec, scheduling_key, force_kill, recursive](

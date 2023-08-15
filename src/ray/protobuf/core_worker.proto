@@ -67,6 +67,9 @@ message ActorHandle {
 
   // The max number of pending actor calls.
   int32 max_pending_calls = 13;
+
+  // Whether or not an actor is an async actor.
+  bool is_asyncio = 14;
 }
 
 message PushTaskRequest {
@@ -250,6 +253,8 @@ message CancelTaskRequest {
   bool force_kill = 2;
   // Whether to recursively cancel tasks.
   bool recursive = 3;
+  // The worker ID of the caller.
+  bytes caller_worker_id = 4;
 }
 
 message CancelTaskReply {
