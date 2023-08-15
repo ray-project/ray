@@ -1,0 +1,20 @@
+load("@rules_foreign_cc//foreign_cc:configure.bzl", "configure_make")
+
+filegroup(
+    name = "all",
+    srcs = glob(["**"]),
+)
+
+configure_make(
+    name = "tcmalloc_and_profiler",
+    configure_in_place = True,
+    lib_source = ":all",
+    args = ["-j"],
+    visibility = ["//visibility:public"],
+    out_static_libs = ["libtcmalloc_and_profiler.a"],
+    deps = ["@libunwind//:libunwind"],
+    configure_options = [
+        "--enable-libunwind",
+        "--disable-shared",
+    ],
+)
