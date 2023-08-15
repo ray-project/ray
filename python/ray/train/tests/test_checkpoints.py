@@ -7,7 +7,7 @@ from ray.train.huggingface import LegacyTransformersCheckpoint
 from ray.train.lightgbm import LightGBMCheckpoint
 from ray.train.sklearn import SklearnCheckpoint
 from ray.train.tensorflow import TensorflowCheckpoint
-from ray.train.xgboost import XGBoostCheckpoint
+from ray.train.xgboost import LegacyXGBoostCheckpoint
 from ray.train.torch import LegacyTorchCheckpoint
 
 
@@ -18,7 +18,7 @@ from ray.train.torch import LegacyTorchCheckpoint
         LightGBMCheckpoint(data_dict={"foo": "bar"}),
         SklearnCheckpoint(data_dict={"foo": "bar"}),
         TensorflowCheckpoint(data_dict={"foo": "bar"}),
-        XGBoostCheckpoint(data_dict={"foo": "bar"}),
+        LegacyXGBoostCheckpoint(data_dict={"foo": "bar"}),
         LegacyTorchCheckpoint(data_dict={"foo": "bar"}),
     ],
 )

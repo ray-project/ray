@@ -7,7 +7,7 @@ except ImportError:
 
 from ray.air.checkpoint import Checkpoint
 from ray.train.gbdt_trainer import GBDTTrainer
-from ray.train.xgboost.xgboost_checkpoint import XGBoostCheckpoint
+from ray.train.xgboost.xgboost_checkpoint import LegacyXGBoostCheckpoint
 from ray.util.annotations import PublicAPI
 
 import xgboost
@@ -101,7 +101,7 @@ class XGBoostTrainer(GBDTTrainer):
     def _load_checkpoint(
         self, checkpoint: Checkpoint
     ) -> Tuple[xgboost.Booster, Optional["Preprocessor"]]:
-        checkpoint = XGBoostCheckpoint.from_checkpoint(checkpoint)
+        checkpoint = LegacyXGBoostCheckpoint.from_checkpoint(checkpoint)
         return checkpoint.get_model(), checkpoint.get_preprocessor()
 
     def _save_model(self, model: xgboost.Booster, path: str):
