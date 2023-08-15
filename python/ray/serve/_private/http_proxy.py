@@ -352,10 +352,16 @@ class HTTPProxy:
         """
 
         if draining and (not self._is_draining()):
-            logger.info(f"Start to drain the proxy actor on node {self._node_id}.")
+            logger.info(
+                f"Start to drain the proxy actor on node {self._node_id}.",
+                extra={"log_to_stderr": False},
+            )
             self._draining_start_time = time.time()
         if (not draining) and self._is_draining():
-            logger.info(f"Stop draining the proxy actor on node {self._node_id}.")
+            logger.info(
+                f"Stop draining the proxy actor on node {self._node_id}.",
+                extra={"log_to_stderr": False},
+            )
             self._draining_start_time = None
 
     async def _not_found(self, scope, receive, send):
