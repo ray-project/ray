@@ -74,6 +74,7 @@ class DummyServicer:
     User defined servicer function will attempt to add the method on this class to the
     gRPC server, but our gRPC server will override the caller to call gRPCProxy.
     """
+
     def __getattr__(self, attr):
         # No-op pass through. Just need this to act as the callable.
         pass
