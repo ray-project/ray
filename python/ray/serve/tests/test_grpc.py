@@ -12,7 +12,6 @@ from ray.serve.exceptions import RayServeException
 
 from ray.serve._private.constants import (
     DEPLOYMENT_NAME_PREFIX_SEPARATOR,
-    RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING,
     SERVE_DEFAULT_APP_NAME,
 )
 
