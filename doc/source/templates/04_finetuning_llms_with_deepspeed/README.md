@@ -191,4 +191,15 @@ scaling_config=air.ScalingConfig(
 ```
 
 
+### Submiting a production job
+You can easily submit a production job using the following command:
 
+```
+python create_job_yaml.py --size=7b --output-path=./job.yaml
+```
+
+This will create a job yaml file that you can use to submit a production job on Anyscale platform. 
+
+```
+anyscale job submit job.yaml
+```
