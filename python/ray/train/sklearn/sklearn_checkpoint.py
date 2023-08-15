@@ -95,11 +95,11 @@ class LegacySklearnCheckpoint(Checkpoint):
             An :py:class:`SklearnCheckpoint` containing the specified ``Estimator``.
 
         Examples:
-            >>> from ray.train.sklearn import SklearnCheckpoint
+            >>> from ray.train.sklearn import LegacySklearnCheckpoint
             >>> from sklearn.ensemble import RandomForestClassifier
             >>>
             >>> estimator = RandomForestClassifier()
-            >>> checkpoint = SklearnCheckpoint.from_estimator(estimator, path=".")
+            >>> checkpoint = LegacySklearnCheckpoint.from_estimator(estimator, path=".")
 
             You can use a :py:class:`SklearnCheckpoint` to create an
             :py:class:`~ray.train.sklearn.SklearnPredictor` and preform inference.
