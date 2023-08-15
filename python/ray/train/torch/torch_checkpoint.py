@@ -138,6 +138,7 @@ class TorchCheckpoint(FrameworkCheckpoint):
 
                 # Create a checkpoint
                 checkpoint = TorchCheckpoint.from_model(model)
+                print(checkpoint)
 
             .. testoutput::
                 :hide:
