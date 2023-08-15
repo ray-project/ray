@@ -19,7 +19,7 @@ from ray.serve._private.common import (
 from ray.serve.config import DeploymentMode
 from ray.serve._private.utils import DEFAULT, dict_keys_snake_to_camel_case
 from ray.util.annotations import DeveloperAPI, PublicAPI
-from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
+from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME, DEFAULT_GRPC_PORT
 
 
 def _route_prefix_format(cls, v):
@@ -517,19 +517,19 @@ class gRPCOptionsSchema(BaseModel, extra=Extra.forbid):
     """Options to start the gRPC Proxy with."""
 
     port: int = Field(
-        default=-1,
+        default=DEFAULT_GRPC_PORT,
         description=(
-            "Port for gRPC server. Will only start gRPC server if set. Cannot be "
-            "updated once Serve has started running. Serve must be shut down and "
-            "restarted with the new port instead."
+            "Port for gRPC server. Defaults to 9000. Cannot be updated once "
+            "Serve has started running. Serve must be shut down and restarted "
+            "with the new port instead."
         ),
     )
     grpc_servicer_functions: List[str] = Field(
         default=[],
         description=(
-            "The servicer functions used to add the method handlers to the gRPC server."
-            "Default to empty list, which means no gRPC methods will be added"
-            "and no gRPC server will be started. The servicer functions need to be"
+            "The servicer functions used to add the method handlers to the gRPC "
+            "server. Default to empty list, which means no gRPC methods will be added "
+            "and no gRPC server will be started. The servicer functions need to be "
             "importable from the context of where Serve is running."
         ),
     )

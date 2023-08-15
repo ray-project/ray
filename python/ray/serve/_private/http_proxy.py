@@ -1446,13 +1446,13 @@ class HTTPProxyActor:
             self.run_grpc_server()
         )
 
-    def should_start_grpc_service(self):
-        """Determine whether gRPC service should be started
+    def should_start_grpc_service(self) -> bool:
+        """Determine whether gRPC service should be started.
 
         gRPC service will only be started if a valid port is provided and if the
         servicer functions are passed.
         """
-        return self.grpc_port > 0 and self.grpc_options.grpc_servicer_functions
+        return self.grpc_port > 0 and len(self.grpc_options.grpc_servicer_functions) > 0
 
     async def ready(self):
         """Returns when both HTTP and gRPC proxies are ready to serve traffic.

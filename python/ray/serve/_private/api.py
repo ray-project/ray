@@ -300,10 +300,9 @@ def serve_start(
           Serve controller actor.  Defaults to False.
         grpc_options (Optional[Union[dict, gRPCOptions]]): Configuration options
             for gRPC proxy. You can pass in a gRPCOptions object with fields:
-                - port(int): Port for gRPC server. Defaults to -1, meaning not to
-                    start a gRPC service.
-                - grpc_servicer_functions(list): The list of functions that will
-                    be used to add custom methods to the gRPC servicer. Defaults to [].
+                - port(int): Port for gRPC server. Defaults to 9000.
+                - grpc_servicer_functions(list): The list of functions that will be used
+                    to add custom service methods to the gRPC server. Defaults to [].
     """
 
     usage_lib.record_library_usage("serve")
