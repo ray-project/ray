@@ -480,6 +480,7 @@ You can use this with Ray Train Trainers by applying them on the dataset before 
     import numpy as np
 
     import ray
+    from ray import train
     from ray.train import ScalingConfig
     from ray.train.torch import TorchTrainer
     from ray.data.preprocessors import Concatenator, Chain, StandardScaler
@@ -495,7 +496,7 @@ You can use this with Ray Train Trainers by applying them on the dataset before 
 
     def train_loop_per_worker():
         # Get an iterator to the dataset we passed in below.
-        it = session.get_dataset_shard("train")
+        it = train.get_dataset_shard("train")
         for _ in range(2):
             # Prefetch 10 batches at a time.
             for batch in it.iter_batches(batch_size=128, prefetch_batches=10):
