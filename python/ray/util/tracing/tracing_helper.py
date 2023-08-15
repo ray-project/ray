@@ -19,6 +19,7 @@ from typing import (
     cast,
 )
 
+import ray
 import ray._private.worker
 from ray._private.inspect_util import (
     is_class_method,
@@ -195,6 +196,9 @@ def _use_context(
 def _function_hydrate_span_args(func: Callable[..., Any]):
     """Get the Attributes of the function that will be reported as attributes
     in the trace."""
+    if not ray.is_initialized():
+        ray.init()
+
     runtime_context = get_runtime_context()
 
     span_args = {
@@ -241,6 +245,9 @@ def _actor_hydrate_span_args(class_: _nameable, method: _nameable):
         class_ = class_.__name__
     if callable(method):
         method = method.__name__
+
+    if not ray.is_initialized():
+        ray.init()
 
     runtime_context = get_runtime_context()
 
