@@ -45,10 +45,13 @@ def get_checkpoint_and_refs_dir(
 
     return checkpoint_dir, refs_dir
 
+
 def get_download_path(model_id: str):
     from transformers.utils.hub import TRANSFORMERS_CACHE
+
     path = os.path.join(TRANSFORMERS_CACHE, f"models--{model_id.replace('/', '--')}")
     return path
+
 
 def download_model(
     model_id: str,

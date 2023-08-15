@@ -8,7 +8,6 @@ import os
 import functools
 import time
 import tree
-import pandas as pd
 from pathlib import Path
 import torch.nn as nn
 from ray import tune  # noqa: F401
@@ -31,7 +30,10 @@ from ray.train.torch import TorchTrainer
 import ray.util.scheduling_strategies
 
 from utils import (
-    get_checkpoint_and_refs_dir, get_mirror_link, download_model, get_download_path
+    get_checkpoint_and_refs_dir,
+    get_mirror_link,
+    download_model,
+    get_download_path,
 )
 
 OPTIM_BETAS = (0.9, 0.999)
@@ -160,7 +162,7 @@ def training_function(kwargs: dict):
     args = argparse.Namespace(**kwargs["args"])
     special_tokens = kwargs.get("special_tokens", [])
     model_id = config["model_name"]
-    
+
     # We need to download the model weights on this machine if they don't exit.
     # We need to acquire a lock to ensure that only one process downloads the model
     bucket_uri = get_mirror_link(model_id)
@@ -170,9 +172,7 @@ def training_function(kwargs: dict):
     lock_file = str(base_path / f'{model_id.replace("/",  "--")}.lock')
     with FileLock(lock_file):
         download_model(
-            model_id=model_id, 
-            bucket_uri=bucket_uri, 
-            s3_sync_args=["--no-sign-request"]
+            model_id=model_id, bucket_uri=bucket_uri, s3_sync_args=["--no-sign-request"]
         )
 
     # Sample hyper-parameters for learning rate, batch size, seed and a few other HPs
@@ -561,12 +561,16 @@ def main():
         }
     )
 
+    # Read data
     train_ds = ray.data.read_json(args.train_path)
     if args.test_path is not None:
         valid_ds = ray.data.read_json(args.test_path)
     else:
         valid_ds = None
-    
+
+    # Process the data and special tokens
+    # data_meta_info = get_data_meta_info(train_ds, valid_ds, special_tokens)
+
     # json file
     with open(args.special_token_path, "r") as json_file:
         special_tokens = json.load(json_file)["tokens"]
@@ -604,10 +608,10 @@ def main():
             # RAM instance, making the checkpointing easier.
             # "large_cpu_mem" is the tag used to identify this machine type in the
             # cluster config.
-            trainer_resources={"large_cpu_mem": 0.01},
+            # trainer_resources={"large_cpu_mem": 0.01},
             num_workers=args.num_devices,
             use_gpu=True,
-            resources_per_worker={"GPU": 1},
+            resources_per_worker={"GPU": 1, "medium_cpu_mem": 0.01},
         ),
         datasets={
             "train": train_ds,
