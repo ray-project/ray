@@ -976,7 +976,7 @@
 
   run:
     timeout: 600
-    script: jupyter nbconvert --to script --output _test start.ipynb && ipython _test.py
+    script: RAY_AIR_NEW_PERSISTENCE_MODE=1 jupyter nbconvert --to script --output _test start.ipynb && ipython _test.py
 
   variations:
       - __suffix__: aws
