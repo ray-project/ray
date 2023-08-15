@@ -29,8 +29,8 @@ Before we begin, you can expect that the final code will look something like thi
     result = trainer.fit()
 
 1. Your `train_func` will be the Python code that is executed on each distributed training worker.
-2. Your `ScalingConfig` will define the number of distributed training workers and whether to use GPUs.
-3. Your `TorchTrainer` will launch the distributed training job.
+2. Your :class:`~ray.train.ScalingConfig` will define the number of distributed training workers and computing resources (e.g. GPUs).
+3. Your :class:`~ray.train.torch.TorchTrainer` will launch the distributed training job.
 
 Let's compare a Hugging Face Transformers training script with and without Ray Train.
 
@@ -42,12 +42,15 @@ Let's compare a Hugging Face Transformers training script with and without Ray T
 
             # Adapted from Hugging Face tutorial: https://huggingface.co/docs/transformers/training
 
-            from datasets import load_dataset
-            from transformers import AutoTokenizer
-            from transformers import AutoModelForSequenceClassification
-            from transformers import TrainingArguments, Trainer
             import numpy as np
             import evaluate
+            from datasets import load_dataset
+            from transformers import (
+                Trainer,
+                TrainingArguments,
+                AutoTokenizer, 
+                AutoModelForSequenceClassification,
+            )
 
             # Datasets
             dataset = load_dataset("yelp_review_full")
@@ -56,10 +59,8 @@ Let's compare a Hugging Face Transformers training script with and without Ray T
             def tokenize_function(examples):
                 return tokenizer(examples["text"], padding="max_length", truncation=True)
 
-            tokenized_datasets = dataset.map(tokenize_function, batched=True)
-
-            small_train_dataset = tokenized_datasets["train"].shuffle(seed=42).select(range(1000))
-            small_eval_dataset = tokenized_datasets["test"].shuffle(seed=42).select(range(1000))
+            small_train_dataset = dataset["train"].select(range(1000)).map(tokenize_function, batched=True)
+            small_eval_dataset = dataset["test"].select(range(1000)).map(tokenize_function, batched=True)
 
             # Model
             model = AutoModelForSequenceClassification.from_pretrained(
@@ -96,12 +97,15 @@ Let's compare a Hugging Face Transformers training script with and without Ray T
 
         .. code-block:: python
 
-            from datasets import load_dataset
-            from transformers import AutoTokenizer
-            from transformers import AutoModelForSequenceClassification
-            from transformers import TrainingArguments, Trainer
             import numpy as np
             import evaluate
+            from datasets import load_dataset
+            from transformers import (
+                Trainer,
+                TrainingArguments,
+                AutoTokenizer, 
+                AutoModelForSequenceClassification,
+            )
 
             import ray.train.huggingface.transformers
             from ray.train import ScalingConfig
@@ -118,10 +122,8 @@ Let's compare a Hugging Face Transformers training script with and without Ray T
                 def tokenize_function(examples):
                     return tokenizer(examples["text"], padding="max_length", truncation=True)
 
-                tokenized_ds = dataset.map(tokenize_function, batched=True)
-
-                small_train_ds = tokenized_ds["train"].shuffle(seed=42).select(range(1000))
-                small_eval_ds = tokenized_ds["test"].shuffle(seed=42).select(range(1000))
+                small_train_dataset = dataset["train"].select(range(1000)).map(tokenize_function, batched=True)
+                small_eval_dataset = dataset["test"].select(range(1000)).map(tokenize_function, batched=True)
 
                 # Model
                 model = AutoModelForSequenceClassification.from_pretrained(
@@ -144,8 +146,8 @@ Let's compare a Hugging Face Transformers training script with and without Ray T
                 trainer = Trainer(
                     model=model,
                     args=training_args,
-                    train_dataset=small_train_ds,
-                    eval_dataset=small_eval_ds,
+                    train_dataset=small_train_dataset,
+                    eval_dataset=small_eval_dataset,
                     compute_metrics=compute_metrics,
                 )
 
@@ -195,13 +197,13 @@ model initialization, transformers trainer definition and more.
     function, because it might cause serialization errors while transferring the objects to the workers.
 
 
-Reporting metrics and checkpoints
+Reporting checkpoints and metrics
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-To monitor progress, you can report intermediate metrics and checkpoints
-using the :class:`ray.train.huggingface.transformers.RayTrainReportCallback` utility callback.
+To persist your checkpoints and monitor training progress, simply add a 
+:class:`ray.train.huggingface.transformers.RayTrainReportCallback` utility callback to your Trainer. 
 
-                    
+
 .. code-block:: diff
 
      import transformers
@@ -213,9 +215,9 @@ using the :class:`ray.train.huggingface.transformers.RayTrainReportCallback` uti
     +    trainer.add_callback(RayTrainReportCallback())
          ...
 
-Reporting metrics and checkpoints to Ray Train ensures that you can use Ray Tune and :ref:`fault-tolerant training <train-fault-tolerance>`.
 
-Note that `RayTrainReportCallback` only provides a simple implementation. To customize, see :ref:`train-checkpointing`.
+Reporting metrics and checkpoints to Ray Train ensures that you can use Ray Tune and :ref:`fault-tolerant training <train-fault-tolerance>`. 
+Note that the :class:`ray.train.huggingface.transformers.RayTrainReportCallback` only provides a simple implementation, and can be :ref:`further customized <train-dl-saving-checkpoints>`.
 
 
 Preparing your Transformers Trainer
