@@ -130,6 +130,14 @@ py_test(
 )
 
 py_test(
+    name = "test_grpc_util",
+    size = "small",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive", "team:serve"],
+    deps = [":serve_lib"],
+)
+
+py_test(
     name = "test_advanced",
     size = "small",
     srcs = serve_tests_srcs,
@@ -708,14 +716,6 @@ py_test(
 py_test(
     name = "test_deploy_app",
     size = "large",
-    srcs = serve_tests_srcs,
-    tags = ["exclusive", "team:serve"],
-    deps = [":serve_lib"],
-)
-
-py_test(
-    name = "test_grpc_util",
-    size = "small",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],
     deps = [":serve_lib"],

@@ -10,10 +10,9 @@ from ray.serve._private.grpc_util import (
 )
 
 
-@pytest.fixture
-def fake_service_handler_factory(*args, **kwargs) -> Callable:
-    def foo(*args, **kwargs) -> bytes:
-        return b"foo"
+def fake_service_handler_factory(service_method: str, stream: bool) -> Callable:
+    def foo() -> bytes:
+        return f"{'stream' if stream else 'unary'} call from {service_method}".encode()
 
     return foo
 
@@ -32,7 +31,7 @@ def test_dummy_servicer_can_take_any_methods():
     dummy_servicer.Predict
 
 
-def test_create_serve_grpc_server(fake_service_handler_factory):
+def test_create_serve_grpc_server():
     """Test `create_serve_grpc_server()` creates the correct server.
 
     The server created by `create_serve_grpc_server()` should be an instance of
@@ -46,7 +45,7 @@ def test_create_serve_grpc_server(fake_service_handler_factory):
     assert grpc_server.service_handler_factory == fake_service_handler_factory
 
 
-def test_grpc_server(fake_service_handler_factory):
+def test_grpc_server():
     """Test `gRPCServer` did the correct overrides.
 
     When a add_servicer_to_server function is called on an instance of `gRPCServer`,
@@ -82,7 +81,7 @@ def test_grpc_server(fake_service_handler_factory):
 
     # Ensure `generic_rpc_handlers` is not populated before calling
     # the add_servicer_to_server function.
-    assert grpc_server.generic_rpc_handlers is None
+    assert grpc_server.generic_rpc_handlers == []
 
     add_test_servicer_to_server(dummy_servicer, grpc_server)
 
@@ -90,15 +89,18 @@ def test_grpc_server(fake_service_handler_factory):
     assert len(grpc_server.generic_rpc_handlers) == 1
 
     # The populated rpc handler should have the correct service name.
-    rpc_handler = grpc_server.generic_rpc_handlers[0]
+    rpc_handler = grpc_server.generic_rpc_handlers[0][0]
     assert rpc_handler.service_name() == service_name
 
     # The populated method handlers should have the correct response_serializer,
     # unary_unary, and unary_stream.
-    method_handlers = rpc_handler._method_handlers.get(f"/{service_name}/{method_name}")
+    service_method = f"/{service_name}/{method_name}"
+    method_handlers = rpc_handler._method_handlers.get(service_method)
     assert method_handlers.response_serializer is None
-    assert method_handlers.unary_unary == b"foo"
-    assert method_handlers.unary_stream == b"foo"
+    assert method_handlers.unary_unary() == f"unary call from {service_method}".encode()
+    assert (
+        method_handlers.unary_stream() == f"stream call from {service_method}".encode()
+    )
 
 
 if __name__ == "__main__":
