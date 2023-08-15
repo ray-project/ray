@@ -758,8 +758,8 @@ def test_parquet_write(ray_start_regular_shared, fs, data_path, endpoint_url):
 
 
 def test_parquet_partition_filter(ray_start_regular_shared, tmp_path):
-    empty_table = pa.table({})
-    pq.write_table(empty_table, tmp_path / "table.parquet")
+    table = pa.table({"food": ["spam", "ham", "eggs"]})
+    pq.write_table(table, tmp_path / "table.parquet")
     # `spam` should be filtered out.
     with open(tmp_path / "spam", "w"):
         pass
@@ -768,7 +768,7 @@ def test_parquet_partition_filter(ray_start_regular_shared, tmp_path):
         tmp_path, partition_filter=FileExtensionFilter("parquet")
     )
 
-    assert ds.count() == 0
+    assert ds.count() == 3
 
 
 @pytest.mark.parametrize(
