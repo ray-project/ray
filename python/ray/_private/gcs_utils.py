@@ -1,5 +1,12 @@
+import enum
 import logging
+import inspect
+import os
+import asyncio
+from functools import wraps
 from typing import Optional
+
+import grpc
 
 from ray._private import ray_constants
 
@@ -91,6 +98,60 @@ def create_gcs_channel(address: str, aio=False):
     return init_grpc_channel(address, options=_GRPC_OPTIONS, asynchronous=aio)
 
 
+# This global variable is used for testing only
+_called_freq = {}
+
+
+def _auto_reconnect(f):
+    # This is for testing to count the frequence
+    # of gcs call
+    if inspect.iscoroutinefunction(f):
+
+        @wraps(f)
+        async def wrapper(self, *args, **kwargs):
+            if "TEST_RAY_COLLECT_KV_FREQUENCY" in os.environ:
+                global _called_freq
+                name = f.__name__
+                if name not in _called_freq:
+                    _called_freq[name] = 0
+                _called_freq[name] += 1
+
+            remaining_retry = self._nums_reconnect_retry
+            while True:
+                try:
+                    return await f(self, *args, **kwargs)
+                except grpc.RpcError as e:
+                    if e.code() in (
+                        grpc.StatusCode.UNAVAILABLE,
+                        grpc.StatusCode.UNKNOWN,
+                    ):
+                        if remaining_retry <= 0:
+                            logger.error(
+                                "Failed to connect to GCS. Please check"
+                                " `gcs_server.out` for more details."
+                            )
+                            raise
+                        logger.debug(
+                            "Failed to send request to gcs, reconnecting. " f"Error {e}"
+                        )
+                        try:
+                            self._connect()
+                        except Exception:
+                            logger.error(f"Connecting to gcs failed. Error {e}")
+                        await asyncio.sleep(1)
+                        remaining_retry -= 1
+                        continue
+                    raise
+
+        return wrapper
+    else:
+
+        raise NotImplementedError(
+            "This code moved to Cython, see "
+            "https://github.com/ray-project/ray/pull/33769"
+        )
+
+
 class GcsChannel:
     def __init__(self, gcs_address: Optional[str] = None, aio: bool = False):
         self._gcs_address = gcs_address
@@ -108,6 +169,13 @@ class GcsChannel:
 
     def channel(self):
         return self._channel
+
+
+class GcsCode(enum.IntEnum):
+    # corresponding to ray/src/ray/common/status.h
+    OK = 0
+    NotFound = 17
+    GrpcUnavailable = 26
 
 
 # re-export
