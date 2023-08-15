@@ -272,11 +272,11 @@ class DeploymentScheduler:
     def _get_replicas_to_stop(
         self, deployment_name: str, max_num_to_stop: int
     ) -> Set[str]:
-        """Prioritize replicas that have fewest copies on a node.
+        """Prioritize replicas running on a node with fewest replicas of all deployments.
 
         This algorithm helps to scale down more intelligently because it can
-        relinquish nodes faster. Note that this algorithm doesn't consider other
-        deployments or other actors on the same node. See more at
+        relinquish nodes faster. Note that this algorithm doesn't consider
+        other non-serve actors on the same node. See more at
         https://github.com/ray-project/ray/issues/20599.
         """
         replicas_to_stop = set()
@@ -296,18 +296,35 @@ class DeploymentScheduler:
             else:
                 replicas_to_stop.add(pending_launching_recovering_replica)
 
-        node_to_running_replicas = defaultdict(set)
+        node_to_running_replicas_of_target_deployment = defaultdict(set)
         for running_replica, node_id in self._running_replicas[deployment_name].items():
-            node_to_running_replicas[node_id].add(running_replica)
+            node_to_running_replicas_of_target_deployment[node_id].add(running_replica)
+
+        node_to_num_running_replicas_of_all_deployments = {}
+        for _, running_replicas in self._running_replicas.items():
+            for running_replica, node_id in running_replicas.items():
+                node_to_num_running_replicas_of_all_deployments[node_id] = (
+                    node_to_num_running_replicas_of_all_deployments.get(node_id, 0) + 1
+                )
+
         # Replicas on the head node has the lowest priority for downscaling
         # since we cannot relinquish the head node.
-        for _, running_replicas in sorted(
-            node_to_running_replicas.items(),
-            key=lambda node_and_running_replicas: len(node_and_running_replicas[1])
-            if node_and_running_replicas[0] != self._head_node_id
-            else sys.maxsize,
+        def key(node_and_num_running_replicas_of_all_deployments):
+            return (
+                node_and_num_running_replicas_of_all_deployments[1]
+                if node_and_num_running_replicas_of_all_deployments[0]
+                != self._head_node_id
+                else sys.maxsize
+            )
+
+        for node_id, _ in sorted(
+            node_to_num_running_replicas_of_all_deployments.items(), key=key
         ):
-            for running_replica in running_replicas:
+            if node_id not in node_to_running_replicas_of_target_deployment:
+                continue
+            for running_replica in node_to_running_replicas_of_target_deployment[
+                node_id
+            ]:
                 if len(replicas_to_stop) == max_num_to_stop:
                     return replicas_to_stop
                 else:
