@@ -475,7 +475,7 @@ def run(
                 if working_dir:
                     watch_dir = working_dir
                 else:
-                    watch_dir = "./"
+                    watch_dir = app_dir
                 for changes in watchfiles.watch(
                     watch_dir,
                     rust_timeout=10000,
