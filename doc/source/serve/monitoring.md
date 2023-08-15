@@ -138,6 +138,24 @@ You can enable JSON-formatted logging in the Serve log file by setting the envir
 {"levelname": "INFO", "asctime": "2023-07-17 10:34:25,441", "deployment": "default_api", "replica": "default_api#bFDOnw", "request_id": "jLTczxOqme", "route": "/app1", "application": "default", "message": "replica.py:691 - __CALL__ OK 0.1ms"}
 ```
 
+### Set Request ID
+You can set a custom request ID for each HTTP request by including `X-Request-ID` in the request header and retrieve request ID from response. For example
+
+```{literalinclude} doc_code/monitoring/request_id.py
+:language: python
+```
+The custom request ID `123-234` can be seen in the access logs that are printed to the HTTP Proxy log files and deployment log files.
+
+HTTP proxy log file:
+```
+INFO 2023-07-20 13:47:54,221 http_proxy 127.0.0.1 123-234 / default http_proxy.py:538 - GET 200 8.9ms
+```
+
+Deployment log file:
+```
+(ServeReplica:default_Model pid=84006) INFO 2023-07-20 13:47:54,218 default_Model default_Model#yptKoo 123-234 / default replica.py:691 - __CALL__ OK 0.2ms
+```
+
 (serve-logging-loki)=
 ### Filtering logs with Loki
 
@@ -251,105 +269,120 @@ The following metrics are exposed by Ray Serve:
    * - Name
      - Fields
      - Description
-   * - ``serve_deployment_request_counter`` [**]
+   * - ``ray_serve_deployment_request_counter`` [**]
      - * deployment
        * replica
        * route
        * application
      - The number of queries that have been processed in this replica.
-   * - ``serve_deployment_error_counter`` [**]
+   * - ``ray_serve_deployment_error_counter`` [**]
      - * deployment
        * replica
        * route
        * application
      - The number of exceptions that have occurred in the deployment.
-   * - ``serve_deployment_replica_starts`` [**]
+   * - ``ray_serve_deployment_replica_starts`` [**]
      - * deployment
        * replica
        * application
      - The number of times this replica has been restarted due to failure.
-   * - ``serve_deployment_replica_healthy``
+   * - ``ray_serve_deployment_replica_healthy``
      - * deployment
        * replica
        * application
      - Whether this deployment replica is healthy. 1 means healthy, 0 unhealthy.
-   * - ``serve_deployment_processing_latency_ms`` [**]
+   * - ``ray_serve_deployment_processing_latency_ms`` [**]
      - * deployment
        * replica
        * route
        * application
      - The latency for queries to be processed.
-   * - ``serve_replica_processing_queries`` [**]
+   * - ``ray_serve_replica_processing_queries`` [**]
      - * deployment
        * replica
        * application
      - The current number of queries being processed.
-   * - ``serve_replica_pending_queries`` [**]
+   * - ``ray_serve_replica_pending_queries`` [**]
      - * deployment
        * replica
        * application
      - The current number of pending queries.
-   * - ``serve_num_http_requests`` [*]
+   * - ``ray_serve_num_http_requests`` [*]
      - * route
        * method
        * application
      - The number of HTTP requests processed.
-   * - ``serve_num_http_error_requests`` [*]
+   * - ``ray_serve_num_http_error_requests`` [*]
      - * route
        * error_code
        * method
      - The number of non-200 HTTP responses.
-   * - ``serve_num_router_requests`` [*]
+   * - ``ray_serve_num_ongoing_http_requests`` [*]
+     - * node_id
+       * node_ip_address
+     - The number of ongoing requests in the HTTP Proxy.
+   * - ``ray_serve_num_router_requests`` [*]
      - * deployment
        * route
        * application
      - The number of requests processed by the router.
-   * - ``serve_handle_request_counter`` [**]
+   * - ``ray_serve_handle_request_counter`` [**]
      - * handle
        * deployment
        * route
        * application
      - The number of requests processed by this ServeHandle.
-   * - ``serve_deployment_queued_queries`` [*]
+   * - ``ray_serve_deployment_queued_queries`` [*]
      - * deployment
        * route
      - The number of queries for this deployment waiting to be assigned to a replica.
-   * - ``serve_num_deployment_http_error_requests`` [*]
+   * - ``ray_serve_num_deployment_http_error_requests`` [*]
      - * deployment
        * error_code
        * method
        * route
        * application
      - The number of non-200 HTTP responses returned by each deployment.
-   * - ``serve_http_request_latency_ms`` [*]
+   * - ``ray_serve_http_request_latency_ms`` [*]
      - * route
        * application
      - The end-to-end latency of HTTP requests (measured from the Serve HTTP proxy).
-   * - ``serve_multiplexed_model_load_latency_s``
+   * - ``ray_serve_multiplexed_model_load_latency_ms``
      - * deployment
        * replica
        * application
      - The time it takes to load a model.
-   * - ``serve_multiplexed_model_unload_latency_s``
+   * - ``ray_serve_multiplexed_model_unload_latency_ms``
      - * deployment
        * replica
        * application
      - The time it takes to unload a model.
-   * - ``serve_num_multiplexed_models``
+   * - ``ray_serve_num_multiplexed_models``
      - * deployment
        * replica
        * application
      - The number of models loaded on the current replica.
-   * - ``serve_multiplexed_models_unload_counter``
+   * - ``ray_serve_multiplexed_models_unload_counter``
      - * deployment
        * replica
        * application
      - The number of times models unloaded on the current replica.
-   * - ``serve_multiplexed_models_load_counter``
+   * - ``ray_serve_multiplexed_models_load_counter``
      - * deployment
        * replica
        * application
      - The number of times models loaded on the current replica.
+   * - ``ray_serve_registered_multiplexed_model_id``
+     - * deployment
+       * replica
+       * application
+       * model_id
+     - The mutlplexed model ID registered on the current replica.
+   * - ``ray_serve_multiplexed_get_model_requests_counter``
+     - * deployment
+       * replica
+       * application
+     - The number of calls to get a multiplexed model.
 ```
 [*] - only available when using HTTP calls
 [**] - only available when using Python `ServeHandle` calls
@@ -400,6 +433,12 @@ ray_my_counter{..., deployment="MyDeployment",model="123",replica="MyDeployment#
 ```
 
 See the [Ray Metrics documentation](collect-metrics) for more details, including instructions for scraping these metrics using Prometheus.
+
+## Profiling memory
+
+Ray provides two useful metrics to track memory usage: `ray_component_rss_mb` (resident set size) and `ray_component_mem_shared_bytes` (shared memory). Approximate a Serve actor's memory usage by subtracting its shared memory from its resident set size (i.e. `ray_component_rss_mb` - `ray_component_mem_shared_bytes`).
+
+If you notice a memory leak on a Serve actor, use `memray` to debug (`pip install memray`). Set the env var `RAY_SERVE_ENABLE_MEMORY_PROFILING=1`, and run your Serve application. All the Serve actors will run a `memray` tracker that logs their memory usage to `bin` files in the `/tmp/ray/session_latest/logs/serve/` directory. Run the `memray flamegraph [bin file]` command to generate a flamegraph of the memory usage. See the [memray docs](https://bloomberg.github.io/memray/overview.html) for more info.
 
 ## Exporting metrics into Arize
 Besides using Prometheus to check out Ray metrics, Ray Serve also has the flexibility to export the metrics into other observability platforms.

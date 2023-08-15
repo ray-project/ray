@@ -43,6 +43,7 @@ sys.path.append(os.path.abspath("./_ext"))
 
 extensions = [
     "callouts",  # custom extension from _ext folder
+    "queryparamrefs",
     "sphinx.ext.autodoc",
     "sphinx.ext.viewcode",
     "sphinx.ext.napoleon",
@@ -62,6 +63,7 @@ extensions = [
     "sphinx_tabs.tabs",
     "sphinx_remove_toctrees",
     "sphinx_design",
+    "sphinx.ext.intersphinx",
 ]
 
 # Prune deep toc-trees on demand for smaller html and faster builds.
@@ -107,6 +109,9 @@ myst_enable_extensions = [
     "replacements",
 ]
 
+intersphinx_mapping = {
+    "sklearn": ("https://scikit-learn.org/stable/", None),
+}
 
 # Cache notebook outputs in _build/.jupyter_cache
 # To prevent notebook execution, set this to "off". To force re-execution, set this to "force".
@@ -248,6 +253,8 @@ linkcheck_ignore = [
     "https://lczero.org/",
     # Returns 429 errors in Linkcheck due to too many requests
     "https://archive.is/2022.12.16-171259/https://www.businessinsider.com/openai-chatgpt-trained-on-anyscale-ray-generative-lifelike-ai-models-2022-12",
+    # Returns 406 but remains accessible
+    "https://www.uber.com/blog/elastic-xgboost-ray/",
 ]
 
 # -- Options for HTML output ----------------------------------------------

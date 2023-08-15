@@ -21,7 +21,10 @@ from ray._private.test_utils import wait_for_condition
 from ray import serve
 from ray.serve.tests.conftest import check_ray_stop
 from ray.serve.deployment_graph import RayServeDAGHandle
-from ray.serve._private.constants import SERVE_NAMESPACE
+from ray.serve._private.constants import (
+    SERVE_NAMESPACE,
+    RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING,
+)
 
 
 CONNECTION_ERROR_MSG = "connection error"
@@ -50,10 +53,8 @@ def test_status_multi_app(ray_start_stop):
 
     def num_live_deployments():
         status_response = subprocess.check_output(["serve", "status"])
-        serve_status = list(yaml.safe_load_all(status_response))
-        return len(serve_status[0]["deployment_statuses"]) and len(
-            serve_status[1]["deployment_statuses"]
-        )
+        status = yaml.safe_load(status_response)["applications"]
+        return len(status["app1"]["deployments"]) and len(status["app2"]["deployments"])
 
     wait_for_condition(lambda: num_live_deployments() == 5, timeout=15)
     print("All deployments are live.")
@@ -61,7 +62,7 @@ def test_status_multi_app(ray_start_stop):
     status_response = subprocess.check_output(
         ["serve", "status", "-a", "http://localhost:52365/"]
     )
-    serve_statuses = yaml.safe_load_all(status_response)
+    statuses = yaml.safe_load(status_response)["applications"]
 
     expected_deployments = {
         "app1_f",
@@ -72,17 +73,17 @@ def test_status_multi_app(ray_start_stop):
         "app2_Router",
         "app2_create_order",
     }
-    for status in serve_statuses:
-        for deployment in status["deployment_statuses"]:
-            expected_deployments.remove(deployment["name"])
+    for status in statuses.values():
+        for deployment_name, deployment in status["deployments"].items():
+            expected_deployments.remove(deployment_name)
             assert deployment["status"] in {"HEALTHY", "UPDATING"}
             assert "message" in deployment
     assert len(expected_deployments) == 0
     print("All expected deployments are present in the status output.")
 
-    for status in serve_statuses:
-        assert status["app_status"]["status"] in {"DEPLOYING", "RUNNING"}
-        assert time.time() > status["app_status"]["deployment_timestamp"]
+    for status in statuses.values():
+        assert status["status"] in {"DEPLOYING", "RUNNING"}
+        assert time.time() > status["last_deployed_time_s"]
     print("Verified status and deployment timestamp of both apps.")
 
 
@@ -95,8 +96,8 @@ def test_shutdown(ray_start_stop):
 
     def num_live_deployments():
         status_response = subprocess.check_output(["serve", "status"])
-        serve_status = yaml.safe_load(status_response)
-        return len(serve_status["deployment_statuses"])
+        serve_status = yaml.safe_load(status_response)["applications"]["default"]
+        return len(serve_status["deployments"])
 
     config_file_name = os.path.join(
         os.path.dirname(__file__), "test_config_files", "basic_graph.yaml"
@@ -118,7 +119,7 @@ def test_shutdown(ray_start_stop):
 
         status_response = subprocess.check_output(["serve", "status"])
         status = yaml.safe_load(status_response)
-        assert "There are no applications running on this cluster." != status
+        assert len(status["applications"])
         print("`serve config` and `serve status` print non-empty responses.\n")
 
         print("Deleting Serve app.")
@@ -132,10 +133,8 @@ def test_shutdown(ray_start_stop):
 
         def serve_status_empty():
             status_response = subprocess.check_output(["serve", "status"])
-            return (
-                "There are no applications running on this cluster"
-                in status_response.decode("utf-8")
-            )
+            status = yaml.safe_load(status_response)
+            return len(status["applications"]) == 0
 
         wait_for_condition(serve_config_empty)
         wait_for_condition(serve_status_empty)
@@ -630,7 +629,7 @@ def test_idempotence_after_controller_death(ray_start_stop, use_command: bool):
     status_response = subprocess.check_output(["serve", "status"])
     status_info = yaml.safe_load(status_response)
 
-    assert status_info == "There are no applications running on this cluster."
+    assert len(status_info["applications"]) == 0
 
     deploy_response = subprocess.check_output(["serve", "deploy", config_file_name])
     assert success_message_fragment in deploy_response
@@ -780,7 +779,9 @@ def test_run_config_request_timeout():
     # the 0.1 request_timeout_s set in in the config yaml
     wait_for_condition(
         lambda: requests.get("http://localhost:8000/app1?sleep_s=0.11").status_code
-        == 500,
+        == 408
+        if RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING
+        else 500,
     )
 
     # Ensure the http request returned the correct response when the deployment runs

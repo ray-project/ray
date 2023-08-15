@@ -79,6 +79,14 @@ _EXCLUDE_FROM_SYNC = [
     f"./{LAZY_CHECKPOINT_MARKER_FILE}",
 ]
 
+
+class _HeadNodeSyncDeprecationWarning(DeprecationWarning):
+    """Error raised when trying to rely on deprecated head node syncing when
+    checkpointing across multiple nodes."""
+
+    pass
+
+
 _SYNC_TO_HEAD_DEPRECATION_MESSAGE = (
     "Ray AIR no longer supports the synchronization of checkpoints and other "
     "artifacts from worker nodes to the head node. This means that the "
@@ -93,7 +101,8 @@ _SYNC_TO_HEAD_DEPRECATION_MESSAGE = (
     "`RunConfig(storage_path='/mnt/path/to/nfs_storage')`\n"
     "See this Github issue for more details on transitioning to cloud storage/NFS "
     "as well as an explanation on why this functionality is "
-    "being removed: https://github.com/ray-project/ray/issues/37177\n\n"
+    "being removed: https://github.com/ray-project/ray/issues/37177\n"
+    "If you are already using NFS, you can ignore this warning message.\n\n"
     "Other temporary workarounds:\n"
     "- If you want to avoid errors/warnings and continue running with "
     "syncing explicitly turned off, set `RunConfig(SyncConfig(syncer=None))`\n"
@@ -668,7 +677,7 @@ class _BackgroundSyncer(Syncer):
 
 
 class _DefaultSyncer(_BackgroundSyncer):
-    """Default syncer between local storage and remote URI."""
+    """Default syncer between local and remote storage, using `pyarrow.fs.copy_files`"""
 
     def _sync_up_command(
         self, local_path: str, uri: str, exclude: Optional[List] = None
@@ -823,7 +832,7 @@ class SyncerCallback(Callback):
 
         if not source_ip:
             try:
-                source_ip = trial.get_runner_ip()
+                source_ip = trial.get_ray_actor_ip()
             except RayActorError as e:
                 logger.error(
                     f"Trial {trial}: An error occurred when trying to get the "
@@ -935,7 +944,7 @@ class SyncerCallback(Callback):
             # that means that it lives on some other node and would be synced to head
             # prior to Ray 2.6.
             if not os.path.exists(checkpoint.dir_or_data):
-                raise DeprecationWarning(_SYNC_TO_HEAD_DEPRECATION_MESSAGE)
+                raise _HeadNodeSyncDeprecationWarning(_SYNC_TO_HEAD_DEPRECATION_MESSAGE)
             # else:
             #   No need to raise an error about syncing, since the driver can find
             #   the checkpoint, because either:

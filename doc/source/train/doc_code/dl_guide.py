@@ -6,8 +6,7 @@ MOCK = True
 from typing import Dict, Optional
 
 import ray
-from ray import air
-from ray.air import session
+from ray import train
 from ray.train.torch import TorchCheckpoint, TorchTrainer
 
 
@@ -19,17 +18,17 @@ def train_loop_per_worker(config: dict):
     from torchvision.models import resnet18
 
     # Checkpoint loading
-    checkpoint: Optional[TorchCheckpoint] = session.get_checkpoint()
+    checkpoint: Optional[TorchCheckpoint] = train.get_checkpoint()
     model = checkpoint.get_model() if checkpoint else resnet18()
     ray.train.torch.prepare_model(model)
 
-    train_ds = session.get_dataset_shard("train")
+    train_ds = train.get_dataset_shard("train")
 
     for epoch in range(5):
         # Do some training...
 
         # Checkpoint saving
-        session.report(
+        train.report(
             {"epoch": epoch},
             checkpoint=TorchCheckpoint.from_model(model),
         )
@@ -38,8 +37,8 @@ def train_loop_per_worker(config: dict):
 trainer = TorchTrainer(
     train_loop_per_worker=train_loop_per_worker,
     datasets=get_datasets(),
-    scaling_config=air.ScalingConfig(num_workers=2),
-    run_config=air.RunConfig(
+    scaling_config=train.ScalingConfig(num_workers=2),
+    run_config=train.RunConfig(
         storage_path="~/ray_results",
         name="dl_trainer_restore",
     ),
@@ -61,7 +60,7 @@ if not MOCK:
     # __ft_restore_from_cloud_initial_start__
     original_trainer = TorchTrainer(
         # ...
-        run_config=air.RunConfig(
+        run_config=train.RunConfig(
             # Configure cloud storage
             storage_path="s3://results-bucket",
             name="dl_trainer_restore",
@@ -89,8 +88,8 @@ else:
     trainer = TorchTrainer(
         train_loop_per_worker=train_loop_per_worker,
         datasets=get_datasets(),
-        scaling_config=air.ScalingConfig(num_workers=2),
-        run_config=air.RunConfig(
+        scaling_config=train.ScalingConfig(num_workers=2),
+        run_config=train.RunConfig(
             storage_path="~/ray_results", name="dl_restore_autoresume"
         ),
     )

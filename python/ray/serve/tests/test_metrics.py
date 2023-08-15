@@ -1,4 +1,6 @@
 import os
+from functools import partial
+from multiprocessing import Pool
 from typing import List, Dict, DefaultDict
 
 import requests
@@ -22,7 +24,7 @@ def serve_start_shutdown():
     ray.init(
         _metrics_export_port=9999,
         _system_config={
-            "metrics_report_interval_ms": 1000,
+            "metrics_report_interval_ms": 100,
             "task_retry_delay_ms": 50,
         },
     )
@@ -308,7 +310,7 @@ def test_http_redirect_metrics(serve_start_shutdown):
 
     wait_for_condition(
         lambda: len(get_metric_dictionaries("serve_num_http_requests")) == 2,
-        timeout=20,
+        timeout=40,
     )
     num_http_requests = get_metric_dictionaries("serve_num_http_requests")
     expected_output = [
@@ -329,7 +331,7 @@ def test_http_redirect_metrics(serve_start_shutdown):
 
     wait_for_condition(
         lambda: len(get_metric_dictionaries("serve_http_request_latency_ms_sum")) == 2,
-        timeout=20,
+        timeout=40,
     )
     http_latency = get_metric_dictionaries("serve_num_http_requests")
     expected_output = [
@@ -364,7 +366,7 @@ def test_replica_metrics_fields(serve_start_shutdown):
 
     wait_for_condition(
         lambda: len(get_metric_dictionaries("serve_deployment_request_counter")) == 2,
-        timeout=20,
+        timeout=40,
     )
 
     num_requests = get_metric_dictionaries("serve_deployment_request_counter")
@@ -385,7 +387,7 @@ def test_replica_metrics_fields(serve_start_shutdown):
             get_metric_dictionaries("serve_deployment_processing_latency_ms_count")
         )
         == 2,
-        timeout=20,
+        timeout=40,
     )
     for metric_name in [
         "serve_deployment_processing_latency_ms_count",
@@ -416,7 +418,7 @@ def test_replica_metrics_fields(serve_start_shutdown):
     assert 500 == requests.get("http://127.0.0.1:8000/h").status_code
     wait_for_condition(
         lambda: len(get_metric_dictionaries("serve_deployment_error_counter")) == 1,
-        timeout=20,
+        timeout=40,
     )
     err_requests = get_metric_dictionaries("serve_deployment_error_counter")
     assert len(err_requests) == 1
@@ -494,7 +496,7 @@ class TestRequestContextMetrics:
                 get_metric_dictionaries("serve_deployment_processing_latency_ms_sum")
             )
             == 3,
-            timeout=20,
+            timeout=40,
         )
 
         def wait_for_route_and_name(
@@ -599,7 +601,7 @@ class TestRequestContextMetrics:
         wait_for_condition(
             lambda: len(get_metric_dictionaries("serve_deployment_request_counter"))
             == 4,
-            timeout=20,
+            timeout=40,
         )
         (
             requests_metrics_route,
@@ -664,7 +666,7 @@ class TestRequestContextMetrics:
         deployment_name, replica_tag = resp.json()
         wait_for_condition(
             lambda: len(get_metric_dictionaries("my_gauge")) == 1,
-            timeout=20,
+            timeout=40,
         )
 
         counter_metrics = get_metric_dictionaries("my_counter")
@@ -800,7 +802,7 @@ class TestRequestContextMetrics:
         assert resp.text == "hello"
         wait_for_condition(
             lambda: len(get_metric_dictionaries("my_gauge")) == 1,
-            timeout=20,
+            timeout=40,
         )
 
         counter_metrics = get_metric_dictionaries("my_counter")
@@ -847,8 +849,8 @@ def test_multiplexed_metrics(serve_start_shutdown):
     # Trigger model eviction.
     handle.remote("model3")
     expected_metrics = [
-        "serve_multiplexed_model_load_latency_s",
-        "serve_multiplexed_model_unload_latency_s",
+        "serve_multiplexed_model_load_latency_ms",
+        "serve_multiplexed_model_unload_latency_ms",
         "serve_num_multiplexed_models",
         "serve_multiplexed_models_load_counter",
         "serve_multiplexed_models_unload_counter",
@@ -866,9 +868,87 @@ def test_multiplexed_metrics(serve_start_shutdown):
 
     wait_for_condition(
         verify_metrics,
-        timeout=20,
+        timeout=40,
         retry_interval_ms=1000,
     )
+
+
+def test_queued_queries_disconnected(serve_start_shutdown):
+    """Check that disconnected queued queries are tracked correctly."""
+
+    signal = SignalActor.remote()
+
+    @serve.deployment(
+        max_concurrent_queries=1,
+        graceful_shutdown_timeout_s=0.0001,
+    )
+    async def hang_on_first_request():
+        await signal.wait.remote()
+
+    serve.run(hang_on_first_request.bind())
+
+    print("Deployed hang_on_first_request deployment.")
+
+    def get_metric(metric: str) -> float:
+        metrics = requests.get("http://127.0.0.1:9999").text
+        metric_value = -1
+        for line in metrics.split("\n"):
+            if metric in line:
+                metric_value = line.split(" ")[-1]
+
+        return float(metric_value)
+
+    def first_request_executing(request_future) -> bool:
+        try:
+            request_future.get(timeout=0.1)
+        except Exception:
+            return ray.get(signal.cur_num_waiters.remote()) == 1
+
+    url = "http://localhost:8000/"
+
+    pool = Pool()
+
+    # Make a request to block the deployment from accepting other requests
+    fut = pool.apply_async(partial(requests.get, url))
+    wait_for_condition(lambda: first_request_executing(fut), timeout=5)
+    print("Executed first request.")
+    wait_for_condition(
+        lambda: get_metric("ray_serve_num_ongoing_http_requests") == 1, timeout=15
+    )
+    print("ray_serve_num_ongoing_http_requests updated successfully.")
+
+    num_requests = 5
+    for _ in range(num_requests):
+        pool.apply_async(partial(requests.get, url))
+    print(f"Executed {num_requests} more requests.")
+
+    # First request should be processing. All others should be queued.
+    wait_for_condition(
+        lambda: get_metric("ray_serve_deployment_queued_queries") == num_requests,
+        timeout=15,
+    )
+    print("ray_serve_deployment_queued_queries updated successfully.")
+    wait_for_condition(
+        lambda: get_metric("ray_serve_num_ongoing_http_requests") == num_requests + 1,
+        timeout=15,
+    )
+    print("ray_serve_num_ongoing_http_requests updated successfully.")
+
+    # Disconnect all requests by terminating the process pool.
+    pool.terminate()
+    print("Terminated all requests.")
+
+    wait_for_condition(
+        lambda: get_metric("ray_serve_deployment_queued_queries") == 0, timeout=15
+    )
+    print("ray_serve_deployment_queued_queries updated successfully.")
+
+    # TODO (shrekris-anyscale): This should be 0 once async task cancellation
+    # is implemented.
+    wait_for_condition(
+        lambda: get_metric("ray_serve_num_ongoing_http_requests") == 1, timeout=15
+    )
+    print("ray_serve_num_ongoing_http_requests updated successfully.")
 
 
 def test_actor_summary(serve_instance):
@@ -885,7 +965,7 @@ def test_actor_summary(serve_instance):
 
 
 def get_metric_dictionaries(name: str, timeout: float = 20) -> List[Dict]:
-    """Gets a list of metric's dictionaries from metrics' text output.
+    """Gets a list of metric's tags from metrics' text output.
 
     Return:
         Example:

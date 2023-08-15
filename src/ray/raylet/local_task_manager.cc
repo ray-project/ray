@@ -55,6 +55,10 @@ LocalTaskManager::LocalTaskManager(
       sched_cls_cap_max_ms_(RayConfig::instance().worker_cap_max_backoff_delay_ms()) {}
 
 void LocalTaskManager::QueueAndScheduleTask(std::shared_ptr<internal::Work> work) {
+  // If the local node is draining, the cluster task manager will
+  // guarantee that the local node is not selected for scheduling.
+  ASSERT_FALSE(
+      cluster_resource_scheduler_->GetLocalResourceManager().IsLocalNodeDraining());
   WaitForTaskArgsRequests(work);
   ScheduleAndDispatchTasks();
 }
@@ -222,6 +226,7 @@ void LocalTaskManager::DispatchScheduledTasksToWorkers() {
       // took a long time.
       auto allocated_instances = std::make_shared<TaskResourceInstances>();
       bool schedulable =
+          !cluster_resource_scheduler_->GetLocalResourceManager().IsLocalNodeDraining() &&
           cluster_resource_scheduler_->GetLocalResourceManager()
               .AllocateLocalTaskResources(spec.GetRequiredResources().GetResourceMap(),
                                           allocated_instances);
@@ -1037,7 +1042,7 @@ ResourceRequest LocalTaskManager::CalcNormalTaskResources() const {
 uint64_t LocalTaskManager::MaxRunningTasksPerSchedulingClass(
     SchedulingClass sched_cls_id) const {
   auto sched_cls = TaskSpecification::GetSchedulingClassDescriptor(sched_cls_id);
-  double cpu_req = sched_cls.resource_set.GetNumCpusAsDouble();
+  double cpu_req = sched_cls.resource_set.Get(ResourceID::CPU()).Double();
   uint64_t total_cpus =
       cluster_resource_scheduler_->GetLocalResourceManager().GetNumCpus();
 
@@ -1092,7 +1097,7 @@ void LocalTaskManager::DebugStr(std::stringstream &buffer) const {
            << worker->GetAssignedTask()
                   .GetTaskSpecification()
                   .GetRequiredResources()
-                  .ToString()
+                  .DebugString()
            << "\n";
   }
   buffer << "}\n";

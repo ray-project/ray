@@ -198,7 +198,7 @@ int TaskSpecification::GetRuntimeEnvHash() const {
   WorkerCacheKey env = {SerializedRuntimeEnv(),
                         GetRequiredResources().GetResourceMap(),
                         IsActorCreationTask(),
-                        GetRequiredResources().GetResource("GPU") > 0};
+                        GetRequiredResources().Get(scheduling::ResourceID::GPU()) > 0};
   return env.IntHash();
 }
 
@@ -395,6 +395,10 @@ TaskID TaskSpecification::CallerId() const {
 
 const rpc::Address &TaskSpecification::CallerAddress() const {
   return message_->caller_address();
+}
+
+bool TaskSpecification::ShouldRetryExceptions() const {
+  return message_->retry_exceptions();
 }
 
 WorkerID TaskSpecification::CallerWorkerId() const {

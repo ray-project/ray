@@ -1,7 +1,5 @@
-#ci:group=:book: lint
+#ci:group=:book: lint (civ2)
 
-- label: "lint"
+- label: "annotations"
   commands:
-    - export LINT=1
-    - ./ci/env/install-dependencies.sh
-    - ./ci/v2/lint.sh
+    - ./ci/ray_ci/lint.sh annotations

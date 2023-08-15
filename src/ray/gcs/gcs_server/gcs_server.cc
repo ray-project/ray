@@ -653,14 +653,43 @@ void GcsServer::InitGcsWorkerManager() {
 }
 
 void GcsServer::InitGcsAutoscalerStateManager() {
+  RAY_CHECK(kv_manager_) << "kv_manager_ is not initialized.";
+  auto v2_enabled = std::to_string(RayConfig::instance().enable_autoscaler_v2());
+  RAY_LOG(INFO) << "Autoscaler V2 enabled: " << v2_enabled;
+
+  kv_manager_->GetInstance().Put(
+      kGcsAutoscalerStateNamespace,
+      kGcsAutoscalerV2EnabledKey,
+      v2_enabled,
+      /*overwrite=*/true,
+      [this, v2_enabled](bool new_value_put) {
+        if (!new_value_put) {
+          // NOTE(rickyx): We cannot know if an overwirte Put succeeds or fails (e.g. when
+          // GCS re-started), so we just try to get the value to check if it's correct.
+          // TODO(rickyx): We could probably load some system configs from internal kv
+          // when we initialize GCS from restart to avoid this.
+          kv_manager_->GetInstance().Get(
+              kGcsAutoscalerStateNamespace,
+              kGcsAutoscalerV2EnabledKey,
+              [v2_enabled](std::optional<std::string> value) {
+                RAY_CHECK(value.has_value()) << "Autoscaler v2 feature flag wasn't found "
+                                                "in GCS, this is unexpected.";
+                RAY_CHECK(*value == v2_enabled) << "Autoscaler v2 feature flag in GCS "
+                                                   "doesn't match the one we put.";
+              });
+        }
+      });
+
   gcs_autoscaler_state_manager_ = std::make_unique<GcsAutoscalerStateManager>(
+      config_.session_name,
       cluster_resource_scheduler_->GetClusterResourceManager(),
       *gcs_resource_manager_,
       *gcs_node_manager_,
-      *gcs_placement_group_manager_);
+      *gcs_placement_group_manager_,
+      raylet_client_pool_);
 
-  autoscaler_state_service_.reset(
-      new rpc::AutoscalerStateGrpcService(main_service_, *gcs_autoscaler_state_manager_));
+  autoscaler_state_service_.reset(new rpc::autoscaler::AutoscalerStateGrpcService(
+      main_service_, *gcs_autoscaler_state_manager_));
 
   rpc_server_.RegisterService(*autoscaler_state_service_);
 }

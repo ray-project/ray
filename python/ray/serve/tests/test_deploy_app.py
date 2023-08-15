@@ -1300,5 +1300,63 @@ def test_deployments_not_listed_in_config(client: ServeControllerClient):
     assert all(pid == pid1 for pid in pids)
 
 
+def test_get_app_handle(client: ServeControllerClient):
+    config = ServeDeploySchema.parse_obj(get_test_deploy_config())
+    client.deploy_apps(config)
+    check_multi_app()
+
+    handle_1 = serve.get_app_handle("app1")
+    handle_2 = serve.get_app_handle("app2")
+    assert ray.get(handle_1.predict.remote("ADD", 2)) == "4 pizzas please!"
+    assert ray.get(handle_2.predict.remote("ADD", 2)) == "5 pizzas please!"
+
+
+@pytest.mark.parametrize("heavyweight", [True, False])
+def test_deploy_lightweight_multiple_route_prefix(
+    client: ServeControllerClient, heavyweight: bool
+):
+    """If user deploys a config that sets route prefix for a non-ingress deployment,
+    the deploy should fail.
+    """
+
+    config = {
+        "applications": [
+            {
+                "name": "default",
+                "import_path": "ray.serve.tests.test_config_files.world.DagNode",
+            }
+        ]
+    }
+    client.deploy_apps(ServeDeploySchema(**config))
+
+    def check():
+        assert requests.post("http://localhost:8000/").text == "wonderful world"
+        return True
+
+    wait_for_condition(check)
+
+    # Add route prefix for non-ingress deployment
+    config["applications"][0]["deployments"] = [{"name": "f", "route_prefix": "/"}]
+    if heavyweight:
+        # Trigger re-build of the application
+        config["applications"][0]["runtime_env"] = {"env_vars": {"test": "3"}}
+    client.deploy_apps(ServeDeploySchema(**config))
+
+    def check_failed():
+        s = serve.status().applications["default"]
+        assert s.status == ApplicationStatus.DEPLOY_FAILED
+        assert "Found multiple route prefixes" in s.message
+        return True
+
+    wait_for_condition(check_failed)
+
+    # Check 10 more times to make sure the status doesn't oscillate
+    for _ in range(10):
+        s = serve.status().applications["default"]
+        assert s.status == ApplicationStatus.DEPLOY_FAILED
+        assert "Found multiple route prefixes" in s.message
+        time.sleep(0.1)
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))

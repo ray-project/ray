@@ -94,16 +94,23 @@ class ServeControllerClient:
     def __reduce__(self):
         raise RayServeException(("Ray Serve client cannot be serialized."))
 
+    def shutdown_cached_handles(self):
+        """Shuts down all cached handles.
+
+        Remove the reference to the cached handles so that they can be
+        garbage collected.
+        """
+        for cache_key in list(self.handle_cache):
+            self.handle_cache[cache_key].shutdown()
+            del self.handle_cache[cache_key]
+
     def shutdown(self, timeout_s: float = 30.0) -> None:
         """Completely shut down the connected Serve instance.
 
         Shuts down all processes and deletes all state associated with the
         instance.
         """
-
-        # Shut down handles
-        for k in list(self.handle_cache):
-            del self.handle_cache[k]
+        self.shutdown_cached_handles()
 
         if ray.is_initialized() and not self._shutdown:
             try:
@@ -270,6 +277,8 @@ class ServeControllerClient:
             version=version,
             route_prefix=route_prefix,
         )
+        controller_deploy_args.pop("ingress")
+        controller_deploy_args["name"] = controller_deploy_args.pop("deployment_name")
 
         updating = ray.get(
             self._controller.deploy.remote(
@@ -301,13 +310,15 @@ class ServeControllerClient:
                     deployment["func_or_class"],
                     deployment["init_args"],
                     deployment["init_kwargs"],
+                    ingress=deployment["ingress"],
                     ray_actor_options=deployment["ray_actor_options"],
+                    placement_group_bundles=deployment["placement_group_bundles"],
+                    placement_group_strategy=deployment["placement_group_strategy"],
                     config=deployment["config"],
                     version=deployment["version"],
                     route_prefix=deployment["route_prefix"],
                     is_driver_deployment=deployment["is_driver_deployment"],
                     docs_path=deployment["docs_path"],
-                    app_name=name,
                 )
             )
 
@@ -444,6 +455,10 @@ class ServeControllerClient:
         ]
 
     @_ensure_connected
+    def get_serve_details(self) -> Dict:
+        return ray.get(self._controller.get_serve_instance_details.remote())
+
+    @_ensure_connected
     def get_handle(
         self,
         deployment_name: str,
@@ -472,8 +487,8 @@ class ServeControllerClient:
             if cached_handle._is_same_loop:
                 return cached_handle
 
-        all_endpoints = ray.get(self._controller.get_all_endpoints.remote())
-        if not missing_ok and deployment_name not in all_endpoints:
+        all_deployments = ray.get(self._controller.list_deployment_names.remote())
+        if not missing_ok and deployment_name not in all_deployments:
             raise KeyError(f"Deployment '{deployment_name}' does not exist.")
 
         if sync:

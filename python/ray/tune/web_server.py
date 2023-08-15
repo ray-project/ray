@@ -13,7 +13,7 @@ from ray._private.utils import binary_to_hex, hex_to_binary
 from ray.util.annotations import DeveloperAPI
 
 if TYPE_CHECKING:
-    from ray.tune.execution.trial_runner import TrialRunner
+    from ray.tune.execution.tune_controller import TuneController
 
 logger = logging.getLogger(__name__)
 
@@ -211,7 +211,7 @@ def RunnerHandler(runner):
                 return runner.get_trial(trial_id)
 
         def _add_trials(self, name, spec):
-            """Add trial by invoking TrialRunner."""
+            """Add trial by invoking TuneController."""
             resource = {}
             resource["trials"] = []
             trial_generator = BasicVariantGenerator()
@@ -240,7 +240,7 @@ class TuneServer(threading.Thread):
 
     DEFAULT_PORT = 4321
 
-    def __init__(self, runner: "TrialRunner", port: int = None):
+    def __init__(self, runner: "TuneController", port: int = None):
         """Initialize HTTPServer and serve forever by invoking self.run()"""
         threading.Thread.__init__(self)
         self._port = port if port else self.DEFAULT_PORT

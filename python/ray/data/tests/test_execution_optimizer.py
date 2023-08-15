@@ -46,6 +46,7 @@ from ray.data._internal.logical.util import (
     _recorded_operators_lock,
 )
 from ray.data._internal.planner.planner import Planner
+from ray.data._internal.sort import SortKey
 from ray.data._internal.stats import DatasetStats
 from ray.data.aggregate import Count
 from ray.data.datasource.datasource import RangeDatasource
@@ -70,6 +71,20 @@ def _check_usage_record(op_names: List[str], clear_after_check: Optional[bool] =
     if clear_after_check:
         with _recorded_operators_lock:
             _recorded_operators.clear()
+
+
+def _check_valid_plan_and_result(
+    ds,
+    expected_plan,
+    expected_result,
+    expected_physical_plan_stages=None,
+):
+    assert ds.take_all() == expected_result
+    assert str(ds._plan._logical_plan.dag) == expected_plan
+
+    expected_physical_plan_stages = expected_physical_plan_stages or []
+    for stage in expected_physical_plan_stages:
+        assert stage in ds.stats(), f"Stage {stage} not found: {ds.stats()}"
 
 
 def test_read_operator(ray_start_regular_shared, enable_optimizer):
@@ -467,7 +482,9 @@ def test_read_map_batches_operator_fusion(ray_start_regular_shared, enable_optim
     assert physical_op.name == "ReadParquet->MapBatches(<lambda>)"
     assert isinstance(physical_op, MapOperator)
     assert len(physical_op.input_dependencies) == 1
-    assert isinstance(physical_op.input_dependencies[0], InputDataBuffer)
+    input = physical_op.input_dependencies[0]
+    assert isinstance(input, InputDataBuffer)
+    assert physical_op in input.output_dependencies, input.output_dependencies
 
 
 def test_read_map_chain_operator_fusion(ray_start_regular_shared, enable_optimizer):
@@ -904,8 +921,7 @@ def test_sort_operator(ray_start_regular_shared, enable_optimizer):
     read_op = Read(ParquetDatasource(), [], 0)
     op = Sort(
         read_op,
-        key="col1",
-        descending=False,
+        sort_key=SortKey("col1"),
     )
     plan = LogicalPlan(op)
     physical_op = planner.plan(plan).dag
@@ -1222,8 +1238,11 @@ def test_from_huggingface_e2e(ray_start_regular_shared, enable_optimizer):
 
     data = datasets.load_dataset("tweet_eval", "emotion")
     assert isinstance(data, datasets.DatasetDict)
-    ray_datasets = ray.data.from_huggingface(data)
-    assert isinstance(ray_datasets, dict)
+    ray_datasets = {
+        "train": ray.data.from_huggingface(data["train"]),
+        "validation": ray.data.from_huggingface(data["validation"]),
+        "test": ray.data.from_huggingface(data["test"]),
+    }
 
     for ds_key, ds in ray_datasets.items():
         assert isinstance(ds, ray.data.Dataset)
@@ -1302,43 +1321,38 @@ def test_limit_pushdown(ray_start_regular_shared, enable_optimizer):
     def f2(x):
         return x
 
-    def check_valid_plan_and_result(ds, expected_plan, expected_result):
-        ds.take_all()
-        assert str(ds._plan._logical_plan.dag) == expected_plan
-        assert ds.take_all() == expected_result
-
     # Test basic limit pushdown past Map.
     ds = ray.data.range(100, parallelism=100).map(f1).limit(1)
-    check_valid_plan_and_result(
+    _check_valid_plan_and_result(
         ds, "Read[ReadRange] -> Limit[limit=1] -> MapRows[Map(f1)]", [{"id": 0}]
     )
 
     # Test basic Limit -> Limit fusion.
     ds2 = ray.data.range(100).limit(5).limit(100)
-    check_valid_plan_and_result(
+    _check_valid_plan_and_result(
         ds2, "Read[ReadRange] -> Limit[limit=5]", [{"id": i} for i in range(5)]
     )
 
     ds2 = ray.data.range(100).limit(100).limit(5)
-    check_valid_plan_and_result(
+    _check_valid_plan_and_result(
         ds2, "Read[ReadRange] -> Limit[limit=5]", [{"id": i} for i in range(5)]
     )
 
     ds2 = ray.data.range(100).limit(50).limit(80).limit(5).limit(20)
-    check_valid_plan_and_result(
+    _check_valid_plan_and_result(
         ds2, "Read[ReadRange] -> Limit[limit=5]", [{"id": i} for i in range(5)]
     )
 
     # Test limit pushdown and Limit -> Limit fusion together.
     ds3 = ray.data.range(100).limit(5).map(f1).limit(100)
-    check_valid_plan_and_result(
+    _check_valid_plan_and_result(
         ds3,
         "Read[ReadRange] -> Limit[limit=5] -> MapRows[Map(f1)]",
         [{"id": i} for i in range(5)],
     )
 
     ds3 = ray.data.range(100).limit(100).map(f1).limit(5)
-    check_valid_plan_and_result(
+    _check_valid_plan_and_result(
         ds3,
         "Read[ReadRange] -> Limit[limit=5] -> MapRows[Map(f1)]",
         [{"id": i} for i in range(5)],
@@ -1346,14 +1360,14 @@ def test_limit_pushdown(ray_start_regular_shared, enable_optimizer):
 
     # Test basic limit pushdown up to Sort.
     ds4 = ray.data.range(100).sort("id").limit(5)
-    check_valid_plan_and_result(
+    _check_valid_plan_and_result(
         ds4,
         "Read[ReadRange] -> Sort[Sort] -> Limit[limit=5]",
         [{"id": i} for i in range(5)],
     )
 
     ds4 = ray.data.range(100).sort("id").map(f1).limit(5)
-    check_valid_plan_and_result(
+    _check_valid_plan_and_result(
         ds4,
         "Read[ReadRange] -> Sort[Sort] -> Limit[limit=5] -> MapRows[Map(f1)]",
         [{"id": i} for i in range(5)],
@@ -1362,7 +1376,7 @@ def test_limit_pushdown(ray_start_regular_shared, enable_optimizer):
     ds5 = ray.data.range(100, parallelism=100).map(f1).limit(1).map(f2)
     # Limit operators get pushed down in the logical plan optimization,
     # then fused together.
-    check_valid_plan_and_result(
+    _check_valid_plan_and_result(
         ds5,
         "Read[ReadRange] -> Limit[limit=1] -> MapRows[Map(f1)] -> MapRows[Map(f2)]",
         [{"id": 0}],
@@ -1372,7 +1386,7 @@ def test_limit_pushdown(ray_start_regular_shared, enable_optimizer):
 
     # More complex interweaved case.
     ds6 = ray.data.range(100).sort("id").map(f1).limit(20).sort("id").map(f2).limit(5)
-    check_valid_plan_and_result(
+    _check_valid_plan_and_result(
         ds6,
         "Read[ReadRange] -> Sort[Sort] -> Limit[limit=20] -> MapRows[Map(f1)] -> "
         "Sort[Sort] -> Limit[limit=5] -> MapRows[Map(f2)]",

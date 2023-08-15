@@ -58,6 +58,7 @@ struct GcsServerConfig {
   std::string log_dir;
   // This includes the config list of raylet.
   std::string raylet_config_list;
+  std::string session_name;
 };
 
 class GcsNodeManager;
@@ -284,7 +285,7 @@ class GcsServer {
   /// Independent task info service from the main grpc service.
   std::unique_ptr<rpc::TaskInfoGrpcService> task_info_service_;
   /// Gcs Autoscaler state manager.
-  std::unique_ptr<rpc::AutoscalerStateGrpcService> autoscaler_state_service_;
+  std::unique_ptr<rpc::autoscaler::AutoscalerStateGrpcService> autoscaler_state_service_;
   /// Backend client.
   std::shared_ptr<RedisClient> redis_client_;
   /// A publisher for publishing gcs messages.

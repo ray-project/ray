@@ -1,3 +1,4 @@
+from collections import defaultdict
 import ray
 import torch
 import torchvision
@@ -14,12 +15,15 @@ DEFAULT_IMAGE_SIZE = 224
 FULL_IMAGE_SIZE = (1213, 1546)
 
 
-def iterate(dataset, label, metrics):
+def iterate(dataset, label, batch_size, metrics):
     start = time.time()
     it = iter(dataset)
     num_rows = 0
     for batch in it:
-        num_rows += len(batch)
+        # NOTE(swang): This will be slightly off if batch_size does not divide
+        # evenly into number of images but should be okay for large enough
+        # datasets.
+        num_rows += batch_size
     end = time.time()
     print(label, end - start, "epoch", i)
 
@@ -97,6 +101,12 @@ def tf_crop_and_flip(image_buffer, num_channels=3):
     )
     # Flip to add a little more random distortion in.
     image_buffer = tf.image.random_flip_left_right(image_buffer)
+    image_buffer = tf.compat.v1.image.resize(
+        image_buffer,
+        [DEFAULT_IMAGE_SIZE, DEFAULT_IMAGE_SIZE],
+        method=tf.image.ResizeMethod.BILINEAR,
+        align_corners=False,
+    )
     return image_buffer
 
 
@@ -113,9 +123,7 @@ def get_transform(to_torch_tensor):
             ),
             torchvision.transforms.RandomHorizontalFlip(),
         ]
-        + [torchvision.transforms.ToTensor()]
-        if to_torch_tensor
-        else []
+        + ([torchvision.transforms.ToTensor()] if to_torch_tensor else [])
     )
     return transform
 
@@ -161,21 +169,21 @@ if __name__ == "__main__":
         args.data_root, batch_size=args.batch_size, image_size=FULL_IMAGE_SIZE
     )
     for i in range(args.num_epochs):
-        iterate(tf_dataset, "tf.data", metrics)
+        iterate(tf_dataset, "tf_data", args.batch_size, metrics)
     tf_dataset = tf_dataset.map(lambda img, label: (tf_crop_and_flip(img), label))
     for i in range(args.num_epochs):
-        iterate(tf_dataset, "tf.data+transform", metrics)
+        iterate(tf_dataset, "tf_data+transform", args.batch_size, metrics)
 
     torch_dataset = build_torch_dataset(
         args.data_root, args.batch_size, transform=torchvision.transforms.ToTensor()
     )
     for i in range(args.num_epochs):
-        iterate(torch_dataset, "torch", metrics)
+        iterate(torch_dataset, "torch", args.batch_size, metrics)
     torch_dataset = build_torch_dataset(
         args.data_root, args.batch_size, transform=get_transform(True)
     )
     for i in range(args.num_epochs):
-        iterate(torch_dataset, "torch+transform", metrics)
+        iterate(torch_dataset, "torch+transform", args.batch_size, metrics)
 
     ray_dataset = ray.data.read_images(args.data_root).map_batches(
         crop_and_flip_image_batch
@@ -183,7 +191,8 @@ if __name__ == "__main__":
     for i in range(args.num_epochs):
         iterate(
             ray_dataset.iter_torch_batches(batch_size=args.batch_size),
-            "ray.data+transform",
+            "ray_data+transform",
+            args.batch_size,
             metrics,
         )
 
@@ -193,7 +202,8 @@ if __name__ == "__main__":
     for i in range(args.num_epochs):
         iterate(
             ray_dataset.iter_torch_batches(batch_size=args.batch_size),
-            "ray.data+transform+zerocopy",
+            "ray_data+transform+zerocopy",
+            args.batch_size,
             metrics,
         )
 
@@ -201,7 +211,8 @@ if __name__ == "__main__":
     for i in range(args.num_epochs):
         iterate(
             ray_dataset.iter_torch_batches(batch_size=args.batch_size),
-            "ray.data",
+            "ray_data",
+            args.batch_size,
             metrics,
         )
 
@@ -211,7 +222,8 @@ if __name__ == "__main__":
     for i in range(args.num_epochs):
         iterate(
             ray_dataset.iter_torch_batches(batch_size=args.batch_size),
-            "ray.data+dummy_pyarrow_transform",
+            "ray_data+dummy_pyarrow_transform",
+            args.batch_size,
             metrics,
         )
 
@@ -221,7 +233,8 @@ if __name__ == "__main__":
     for i in range(args.num_epochs):
         iterate(
             ray_dataset.iter_torch_batches(batch_size=args.batch_size),
-            "ray.data+dummy_np_transform",
+            "ray_data+dummy_np_transform",
+            args.batch_size,
             metrics,
         )
 
@@ -242,21 +255,17 @@ if __name__ == "__main__":
     for i in range(args.num_epochs):
         iterate(
             ray_dataset.iter_torch_batches(batch_size=args.batch_size),
-            "ray.data_manual_load",
+            "ray_data_manual_load",
+            args.batch_size,
             metrics,
         )
 
-    metrics_list = []
+    metrics_dict = defaultdict(dict)
     for label, tput in metrics.items():
-        metrics_list.append(
-            {
-                "perf_metric_name": label,
-                "perf_metric_value": tput,
-                "perf_metric_type": "THROUGHPUT",
-            }
-        )
+        metrics_dict[label].update({"THROUGHPUT": tput})
+
     result_dict = {
-        "perf_metrics": metrics_list,
+        "perf_metrics": metrics_dict,
         "success": 1,
     }
 
@@ -266,3 +275,5 @@ if __name__ == "__main__":
 
     with open(test_output_json, "wt") as f:
         json.dump(result_dict, f)
+
+    print(f"Finished benchmark, metrics exported to {test_output_json}.")

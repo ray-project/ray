@@ -15,7 +15,7 @@
 #include "ray/common/scheduling/cluster_resource_data.h"
 
 #include "ray/common/bundle_spec.h"
-#include "ray/common/scheduling/scheduling_resources.h"
+#include "ray/common/scheduling/resource_set.h"
 
 namespace ray {
 using namespace ::ray::scheduling;
@@ -135,7 +135,7 @@ std::string NodeResources::DebugString() const {
   for (const auto &[key, value] : labels) {
     buffer << "\"" << key << "\":\"" << value << "\",";
   }
-  buffer << "}";
+  buffer << "}, \"is_draining\": " << is_draining << "}";
   return buffer.str();
 }
 
@@ -157,6 +157,10 @@ std::string NodeResourceInstances::DebugString() const {
     buffer << resource_id.Binary() << ": "
            << FixedPointVectorToString(available.Get(resource_id)) << "/"
            << FixedPointVectorToString(total.Get(resource_id));
+  }
+  buffer << "}, \"labels\":{";
+  for (const auto &[key, value] : labels) {
+    buffer << "\"" << key << "\":\"" << value << "\",";
   }
   buffer << "}";
   return buffer.str();
