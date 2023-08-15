@@ -6,7 +6,7 @@ from ray.air.constants import MAX_REPR_LENGTH
 from ray.train.huggingface import LegacyTransformersCheckpoint
 from ray.train.lightgbm import LegacyLightGBMCheckpoint
 from ray.train.sklearn import LegacySklearnCheckpoint
-from ray.train.tensorflow import TensorflowCheckpoint
+from ray.train.tensorflow import LegacyTensorflowCheckpoint
 from ray.train.xgboost import LegacyXGBoostCheckpoint
 from ray.train.torch import LegacyTorchCheckpoint
 
@@ -17,7 +17,7 @@ from ray.train.torch import LegacyTorchCheckpoint
         LegacyTransformersCheckpoint(data_dict={"foo": "bar"}),
         LegacyLightGBMCheckpoint(data_dict={"foo": "bar"}),
         LegacySklearnCheckpoint(data_dict={"foo": "bar"}),
-        TensorflowCheckpoint(data_dict={"foo": "bar"}),
+        LegacyTensorflowCheckpoint(data_dict={"foo": "bar"}),
         LegacyXGBoostCheckpoint(data_dict={"foo": "bar"}),
         LegacyTorchCheckpoint(data_dict={"foo": "bar"}),
     ],

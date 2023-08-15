@@ -317,10 +317,10 @@ def create_tensorflow_checkpoint(preprocessor):
     # __tensorflow_checkpoint_start__
     import tensorflow as tf
 
-    from ray.train.tensorflow import TensorflowCheckpoint
+    from ray.train.tensorflow import LegacyTensorflowCheckpoint
 
     model = tf.keras.applications.resnet50.ResNet50()
-    checkpoint = TensorflowCheckpoint.from_model(model, preprocessor=preprocessor)
+    checkpoint = LegacyTensorflowCheckpoint.from_model(model, preprocessor=preprocessor)
     # __tensorflow_checkpoint_stop__
     return checkpoint
 

@@ -22,9 +22,9 @@ except ImportError:
     LegacyTorchCheckpoint = None
 
 try:
-    from ray.train.tensorflow.tensorflow_checkpoint import TensorflowCheckpoint
+    from ray.train.tensorflow.tensorflow_checkpoint import LegacyTensorflowCheckpoint
 except ImportError:
-    TensorflowCheckpoint = None
+    LegacyTensorflowCheckpoint = None
 
 
 @PublicAPI(stability="beta")
@@ -155,8 +155,10 @@ class _HorovodBackend(Backend):
                     )
 
                     if contains_tensorflow_object(checkpoint.to_dict()):
-                        _warn_about_bad_checkpoint_type(TensorflowCheckpoint)
-                        checkpoint = TensorflowCheckpoint.from_checkpoint(checkpoint)
+                        _warn_about_bad_checkpoint_type(LegacyTensorflowCheckpoint)
+                        checkpoint = LegacyTensorflowCheckpoint.from_checkpoint(
+                            checkpoint
+                        )
                 if "torch" in sys.modules:
                     from ray.air._internal.torch_utils import contains_tensor
 
