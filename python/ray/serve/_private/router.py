@@ -28,7 +28,7 @@ import ray
 from ray.actor import ActorHandle
 from ray.dag.py_obj_scanner import _PyObjScanner
 from ray.exceptions import RayActorError, RayTaskError
-from ray.util import metrics, state
+from ray.util import metrics
 from ray._private.utils import make_asyncio_event_version_compat, load_class
 
 from ray.serve._private.common import RunningReplicaInfo, DeploymentInfo
@@ -409,6 +409,11 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
                 if actor_id is None:
                     return ""
                 else:
+                    # NOTE (shrekris-anyscale): this import is delayed because
+                    # putting at the top of the file causes Ray client tests
+                    # to fail.
+                    from ray.util import state
+
                     return state.get_actor(actor_id, timeout=5).name
             except Exception:
                 logger.exception("Got exception while attempting to get actor name.")
