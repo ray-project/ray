@@ -809,6 +809,17 @@ class gRPCProxy(GenericProxy):
             return unary_unary
         return unary_stream
 
+    async def send_request_to_replica_unary(
+        self,
+        handle: RayServeHandle,
+        serve_request: ServeRequest,
+    ) -> ServeResponse:
+        return await self.send_request_to_replica_streaming(
+            request_id=serve_request.request_id,
+            handle=handle,
+            serve_request=serve_request,
+        )
+
     def setup_request_context_and_handle(
         self,
         app_name: str,
