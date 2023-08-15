@@ -550,6 +550,7 @@ class GenericProxy(ABC):
             handle, request_id = self.setup_request_context_and_handle(
                 app_name=app_name,
                 handle=handle,
+                route_path=route_path,
                 serve_request=serve_request,
             )
 
@@ -670,6 +671,7 @@ class GenericProxy(ABC):
         self,
         app_name: str,
         handle: RayServeHandle,
+        route_path: str,
         serve_request: ServeRequest,
     ) -> Tuple[RayServeHandle, str]:
         """Setup the request context and handle for the request.
@@ -828,6 +830,7 @@ class gRPCProxy(GenericProxy):
         self,
         app_name: str,
         handle: RayServeHandle,
+        route_path: str,
         serve_request: ServeRequest,
     ) -> Tuple[RayServeHandle, str]:
         """Setup request context and handle for the request.
@@ -849,7 +852,7 @@ class gRPCProxy(GenericProxy):
         )
 
         request_context_info = {
-            "route": serve_request.route_path,
+            "route": route_path,
             "request_id": request_id,
             "app_name": app_name,
             "multiplexed_model_id": multiplexed_model_id,
@@ -1195,6 +1198,7 @@ class HTTPProxy(GenericProxy):
         self,
         app_name: str,
         handle: RayServeHandle,
+        route_path: str,
         serve_request: ServeRequest,
     ) -> Tuple[RayServeHandle, str]:
         """Setup request context and handle for the request.
@@ -1204,7 +1208,7 @@ class HTTPProxy(GenericProxy):
         """
         handle = handle.options(request_protocol=RequestProtocol.HTTP)
         request_context_info = {
-            "route": serve_request.route_path,
+            "route": route_path,
             "app_name": app_name,
         }
         for key, value in serve_request.headers:
