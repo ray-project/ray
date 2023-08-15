@@ -199,13 +199,12 @@ class RayServeHandle:
         if self._router is None and _router_cls == DEFAULT.VALUE:
             self._get_or_create_router()
 
-        new_handle = self.__class__(
+        return self.__class__(
             self.deployment_name,
             handle_options=new_handle_options,
             _router=None if _router_cls != DEFAULT.VALUE else self._router,
             _request_counter=self.request_counter,
         )
-        return new_handle
 
     def options(
         self,
