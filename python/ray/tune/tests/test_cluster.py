@@ -21,8 +21,8 @@ from ray.tune.execution.tune_controller import TuneController
 
 
 def _check_trial_running(trial):
-    if trial.runner:
-        ray.get(trial.runner.get_info.remote())
+    if trial.temporary_state.ray_actor:
+        ray.get(trial.temporary_state.ray_actor.get_info.remote())
         return True
     return False
 
