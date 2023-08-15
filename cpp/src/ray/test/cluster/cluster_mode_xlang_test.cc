@@ -79,6 +79,7 @@ TEST(RayClusterModeXLangTest, JavaInvocationTest) {
       child_actor.Task(ray::JavaActorMethod<std::string>{"echo"}).Remote("C++ worker");
   EXPECT_EQ("C++ worker", *ref_3.Get());
 
+  // TODO
   auto ref_4 = child_actor.Task(ray::JavaActorMethod<std::vector<std::byte>>{"echoBytes"})
                    .Remote(bytes);
   EXPECT_EQ(*ref_4.Get(), bytes);
