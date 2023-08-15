@@ -861,17 +861,17 @@ msg_app = MessageDeployment.bind("Hello World!")
             "reload_serve:msg_app",
         ]
     )
-    wait_for_condition(lambda: ping_endpoint("Message") == "Hello World!", timeout=10)
+    wait_for_condition(lambda: ping_endpoint("") == "Hello World!", timeout=10)
     fin = open(python_module_file, "rt")
     code = fin.read()
     code = code.replace("World", "Me")
     fin.close()
     with open(python_module_file, "wt") as pmf:
         pmf.write(code)
-    wait_for_condition(lambda: ping_endpoint("Message") == "Hello Me!", timeout=10)
+    wait_for_condition(lambda: ping_endpoint("") == "Hello Me!", timeout=10)
     p.send_signal(signal.SIGINT)
     p.wait()
-    assert ping_endpoint("Message") == CONNECTION_ERROR_MSG
+    assert ping_endpoint("") == CONNECTION_ERROR_MSG
 
 
 if __name__ == "__main__":
