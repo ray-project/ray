@@ -206,6 +206,29 @@ class EventHead(
             "total_uptime": elapsed,
         }
 
+    def filter_events(
+        events: Dict[str, Dict[str, dict]],
+        severity_levels: list,
+        source_type: str,
+        custom_field: dict,
+        count: int,
+    ) -> Dict[str, dict]:
+        filtered_events = {}
+        for job_id, job_events in events.items():
+            filtered_job_events = []
+            for event_id, event in job_events.items():
+                if (
+                    event["severity"] in severity_levels
+                    and event["source_type"] == source_type
+                    and custom_field.items() <= event["custom_fields"].items()
+                ):
+                    filtered_job_events.append(event)
+
+            filtered_job_events.sort(key=lambda x: x["timestamp"], reverse=True)
+            filtered_events[job_id] = filtered_job_events[:count]
+
+        return filtered_events
+
     @routes.get("/events")
     @dashboard_optional_utils.aiohttp_cache
     async def get_event(self, req) -> aiohttp.web.Response:
@@ -215,6 +238,7 @@ class EventHead(
                 job_id: list(job_events.values())
                 for job_id, job_events in DataSource.events.items()
             }
+            all_events = MOCK_EVENTS
             logger.info(f"all_events {type(all_events)}: {all_events}")
 
             return dashboard_optional_utils.rest_response(

@@ -713,7 +713,7 @@ class JobManager:
                         self.event_logger.error(event_log, submission_id=job_id)
                     else:
                         self.event_logger.info(event_log, submission_id=job_id)
-
+        
         # Kill the actor defensively to avoid leaking actors in unexpected error cases.
         if job_supervisor is not None:
             ray.kill(job_supervisor, no_restart=True)
