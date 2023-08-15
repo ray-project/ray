@@ -261,7 +261,7 @@
 
   frequency: nightly-3x
   team: ml
-
+  new_persistence: "True"
   cluster:
     byod:
       runtime_env:
@@ -291,7 +291,7 @@
 
   frequency: weekly
   team: ml
-
+  new_persistence: "True"
   cluster:
     byod:
       type: gpu
@@ -717,7 +717,7 @@
 
   frequency: nightly
   team: ml
-
+  new_persistence: "True"
   cluster:
     byod:
       type: gpu
@@ -744,7 +744,7 @@
 
   frequency: nightly
   team: ml
-
+  new_persistence: "True"
   stable: false
 
   cluster:
@@ -1806,7 +1806,7 @@
   working_dir: tune_tests/cloud_tests
   frequency: nightly
   team: ml
-
+  new_persistence: "True"
   cluster:
     byod: {}
     cluster_compute: tpl_aws_4x2.yaml
@@ -1841,7 +1841,7 @@
 
   frequency: nightly
   team: ml
-
+  new_persistence: "True"
   cluster:
     byod:
       type: gpu
@@ -1878,7 +1878,7 @@
   working_dir: tune_tests/cloud_tests
   frequency: weekly
   team: ml
-
+  new_persistence: "True"
   cluster:
     byod: {}
     cluster_compute: tpl_aws_1x4.yaml
@@ -1923,7 +1923,7 @@
 
   frequency: nightly
   team: ml
-
+  new_persistence: "True"
   cluster:
     byod: {}
     cluster_compute: tpl_1x16.yaml
@@ -1948,7 +1948,7 @@
 
   frequency: nightly
   team: ml
-
+  new_persistence: "True"
   cluster:
     byod: {}
     cluster_compute: tpl_16x2.yaml
@@ -1981,7 +1981,7 @@
 
   frequency: nightly
   team: ml
-
+  new_persistence: "True"
   cluster:
     byod: {}
     cluster_compute: tpl_16x2.yaml
@@ -2013,7 +2013,7 @@
 
   frequency: weekly
   team: ml
-
+  new_persistence: "True"
   cluster:
     byod: {}
     cluster_compute: tpl_1x32_hd.yaml
@@ -2047,7 +2047,7 @@
 
   frequency: weekly
   team: ml
-
+  new_persistence: "True"
   cluster:
     byod: {}
     cluster_compute: tpl_100x2.yaml
@@ -2085,7 +2085,7 @@
 
   frequency: nightly-3x
   team: ml
-
+  new_persistence: "True"
   cluster:
     byod: {}
     cluster_compute: tpl_16x64.yaml
@@ -2113,7 +2113,7 @@
 
   frequency: nightly
   team: ml
-
+  new_persistence: "True"
   cluster:
     byod: {}
     cluster_compute: tpl_1x96.yaml
@@ -2138,7 +2138,7 @@
 
   frequency: weekly
   team: ml
-
+  new_persistence: "True"
   cluster:
     byod:
       post_build_script: byod_xgboost_tune_test.sh
@@ -2174,7 +2174,7 @@
 
   frequency: nightly-3x
   team: ml
-
+  new_persistence: "True"
   cluster:
     byod: {}
     cluster_compute: tpl_aws_16x1.yaml
@@ -2210,7 +2210,7 @@
 
   frequency: nightly-3x
   team: ml
-
+  new_persistence: "True"
   cluster:
     byod:
       type: gpu
