@@ -1101,10 +1101,8 @@ def test_failed_task(ray_start_shared_local_modes, error_pubsub):
 
 def test_import_ray_does_not_import_grpc():
     # First unload grpc and ray
-    if "grpc" in sys.modules:
-        del sys.modules["grpc"]
-    if "ray" in sys.modules:
-        del sys.modules["ray"]
+    del sys.modules["grpc"]
+    del sys.modules["ray"]
 
     # Then import ray from scratch
     import ray  # noqa: F401
@@ -1113,11 +1111,7 @@ def test_import_ray_does_not_import_grpc():
     assert "grpc" not in sys.modules
 
     # Load grpc back so other tests will not be affected
-    try:
-        import grpc  # noqa: F401
-    except ImportError:
-        # It's ok if we don't have grpc installed.
-        pass
+    import grpc  # noqa: F401
 
 
 if __name__ == "__main__":

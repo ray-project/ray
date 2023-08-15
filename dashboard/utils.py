@@ -50,7 +50,7 @@ class DashboardAgentModule(abc.ABC):
         """
         Run the module in an asyncio loop. An agent module can provide
         servicers to the server.
-        :param server: Asyncio GRPC server, or None if ray is minimal.
+        :param server: Asyncio GRPC server.
         """
 
     @staticmethod
@@ -79,7 +79,7 @@ class DashboardHeadModule(abc.ABC):
         """
         Run the module in an asyncio loop. A head module can provide
         servicers to the server.
-        :param server: Asyncio GRPC server, or None if ray is minimal.
+        :param server: Asyncio GRPC server.
         """
 
     @staticmethod

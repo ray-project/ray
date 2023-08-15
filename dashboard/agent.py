@@ -16,6 +16,7 @@ import ray._private.utils
 import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.utils as dashboard_utils
 from ray.dashboard.consts import _PARENT_DEATH_THREASHOLD
+from ray._private.gcs_pubsub import GcsAioPublisher
 from ray._raylet import GcsClient
 from ray._private.gcs_utils import GcsAioClient
 from ray._private.ray_logging import (
@@ -29,6 +30,12 @@ from ray.experimental.internal_kv import (
 
 # Import psutil after ray so the packaged version is used.
 import psutil
+
+try:
+    from grpc import aio as aiogrpc
+except ImportError:
+    from grpc.experimental import aio as aiogrpc
+
 
 # Publishes at most this number of lines of Raylet logs, when the Raylet dies
 # unexpectedly.
@@ -44,6 +51,19 @@ except AttributeError:
     create_task = asyncio.ensure_future
 
 logger = logging.getLogger(__name__)
+
+# We would want to suppress deprecating warnings from aiogrpc library
+# with the usage of asyncio.get_event_loop() in python version >=3.10
+# This could be removed once https://github.com/grpc/grpc/issues/32526
+# is released, and we used higher versions of grpcio that that.
+if sys.version_info.major >= 3 and sys.version_info.minor >= 10:
+    import warnings
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", category=DeprecationWarning)
+        aiogrpc.init_grpc_aio()
+else:
+    aiogrpc.init_grpc_aio()
 
 
 class DashboardAgent:
@@ -97,44 +117,13 @@ class DashboardAgent:
             assert self.ppid > 0
             logger.info("Parent pid is %s", self.ppid)
 
-        # grpc server is None in mininal.
-        self.server = None
-        # http_server is None in minimal.
-        self.http_server = None
+        # Setup raylet channel
+        options = ray_constants.GLOBAL_GRPC_OPTIONS
+        self.aiogrpc_raylet_channel = ray._private.utils.init_grpc_channel(
+            f"{self.ip}:{self.node_manager_port}", options, asynchronous=True
+        )
 
-        # Used by the agent and sub-modules.
-        # TODO(architkulkarni): Remove gcs_client once the agent exclusively uses
-        # gcs_aio_client and not gcs_client.
-        self.gcs_client = GcsClient(address=self.gcs_address)
-        _initialize_internal_kv(self.gcs_client)
-        assert _internal_kv_initialized()
-        self.gcs_aio_client = GcsAioClient(address=self.gcs_address)
-
-        if not self.minimal:
-            self._init_non_minimal()
-
-    def _init_non_minimal(self):
-        from ray._private.gcs_pubsub import GcsAioPublisher
-        self.aio_publisher = GcsAioPublisher(address=self.gcs_address)
-
-        try:
-            from grpc import aio as aiogrpc
-        except ImportError:
-            from grpc.experimental import aio as aiogrpc
-
-        # We would want to suppress deprecating warnings from aiogrpc library
-        # with the usage of asyncio.get_event_loop() in python version >=3.10
-        # This could be removed once https://github.com/grpc/grpc/issues/32526
-        # is released, and we used higher versions of grpcio that that.
-        if sys.version_info.major >= 3 and sys.version_info.minor >= 10:
-            import warnings
-
-            with warnings.catch_warnings():
-                warnings.simplefilter("ignore", category=DeprecationWarning)
-                aiogrpc.init_grpc_aio()
-        else:
-            aiogrpc.init_grpc_aio()
-
+        # Setup grpc server
         self.server = aiogrpc.server(options=(("grpc.so_reuseport", 0),))
         grpc_ip = "127.0.0.1" if self.ip == "127.0.0.1" else "0.0.0.0"
         try:
@@ -153,6 +142,19 @@ class DashboardAgent:
             self.grpc_port = None
         else:
             logger.info("Dashboard agent grpc address: %s:%s", grpc_ip, self.grpc_port)
+
+        # If the agent is started as non-minimal version, http server should
+        # be configured to communicate with the dashboard in a head node.
+        self.http_server = None
+
+        # Used by the agent and sub-modules.
+        # TODO(architkulkarni): Remove gcs_client once the agent exclusively uses
+        # gcs_aio_client and not gcs_client.
+        self.gcs_client = GcsClient(address=self.gcs_address)
+        _initialize_internal_kv(self.gcs_client)
+        assert _internal_kv_initialized()
+        self.gcs_aio_client = GcsAioClient(address=self.gcs_address)
+        self.publisher = GcsAioPublisher(address=self.gcs_address)
 
     async def _configure_http_server(self, modules):
         from ray.dashboard.http_server_agent import HttpServerAgent
@@ -178,15 +180,8 @@ class DashboardAgent:
 
     @property
     def http_session(self):
-        assert self.http_server, \
-            "Accessing unsupported API (HttpServerAgent) in a minimal ray."
+        assert self.http_server, "Accessing unsupported API in a minimal ray."
         return self.http_server.http_session
-
-    @property
-    def publisher(self):
-        assert self.aio_publisher, \
-            "Accessing unsupported API (GcsAioPublisher) in a minimal ray."
-        return self.aio_publisher
 
     async def run(self):
         async def _check_parent():
@@ -316,10 +311,9 @@ class DashboardAgent:
         # TODO: Use async version if performance is an issue
         # -1 should indicate that http server is not started.
         http_port = -1 if not self.http_server else self.http_server.http_port
-        grpc_port = -1 if not self.server else self.grpc_port
         await self.gcs_aio_client.internal_kv_put(
             f"{dashboard_consts.DASHBOARD_AGENT_PORT_PREFIX}{self.node_id}".encode(),
-            json.dumps([http_port, grpc_port]).encode(),
+            json.dumps([http_port, self.grpc_port]).encode(),
             True,
             namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
         )

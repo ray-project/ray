@@ -29,7 +29,7 @@ from ray.autoscaler._private.event_summarizer import EventSummarizer
 from ray.autoscaler._private.load_metrics import LoadMetrics
 from ray.autoscaler._private.prom_metrics import AutoscalerPrometheusMetrics
 from ray.autoscaler._private.util import format_readonly_node_type
-from ray.core.generated import gcs_pb2
+from ray.core.generated import gcs_pb2, gcs_service_pb2, gcs_service_pb2_grpc
 from ray.core.generated.event_pb2 import Event as RayEvent
 from ray.experimental.internal_kv import (
     _initialize_internal_kv,
@@ -140,22 +140,31 @@ class Monitor:
         retry_on_failure: bool = True,
     ):
         self.gcs_address = address
+        options = ray_constants.GLOBAL_GRPC_OPTIONS
+        gcs_channel = ray._private.utils.init_grpc_channel(self.gcs_address, options)
+        # TODO: Use gcs client for this
+        self.gcs_node_resources_stub = (
+            gcs_service_pb2_grpc.NodeResourceInfoGcsServiceStub(gcs_channel)
+        )
+        self.gcs_node_info_stub = gcs_service_pb2_grpc.NodeInfoGcsServiceStub(
+            gcs_channel
+        )
         worker = ray._private.worker.global_worker
         # TODO: eventually plumb ClusterID through to here
-        self.gcs_client = GcsClient(address=self.gcs_address)
+        gcs_client = GcsClient(address=self.gcs_address)
 
         if monitor_ip:
             monitor_addr = f"{monitor_ip}:{AUTOSCALER_METRIC_PORT}"
-            self.gcs_client.internal_kv_put(
+            gcs_client.internal_kv_put(
                 b"AutoscalerMetricsAddress", monitor_addr.encode(), True, None
             )
-        _initialize_internal_kv(self.gcs_client)
+        _initialize_internal_kv(gcs_client)
         if monitor_ip:
             monitor_addr = f"{monitor_ip}:{AUTOSCALER_METRIC_PORT}"
-            self.gcs_client.internal_kv_put(
+            gcs_client.internal_kv_put(
                 b"AutoscalerMetricsAddress", monitor_addr.encode(), True, None
             )
-        self._session_name = self.get_session_name(self.gcs_client)
+        self._session_name = self.get_session_name(gcs_client)
         logger.info(f"session_name: {self._session_name}")
         worker.mode = 0
         head_node_ip = self.gcs_address.split(":")[0]
@@ -231,7 +240,7 @@ class Monitor:
         self.autoscaler = StandardAutoscaler(
             autoscaling_config,
             self.load_metrics,
-            self.gcs_client,
+            self.gcs_node_info_stub,
             self._session_name,
             prefix_cluster_info=self.prefix_cluster_info,
             event_summarizer=self.event_summarizer,
@@ -241,7 +250,8 @@ class Monitor:
     def update_load_metrics(self):
         """Fetches resource usage data from GCS and updates load metrics."""
 
-        response = self.gcs_client.get_all_resource_usage(timeout=60)
+        request = gcs_service_pb2.GetAllResourceUsageRequest()
+        response = self.gcs_node_resources_stub.GetAllResourceUsage(request, timeout=60)
         resources_batch_data = response.resource_usage_data
         log_resource_batch_data_if_desired(resources_batch_data)
 
