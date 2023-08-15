@@ -14,11 +14,14 @@ if TYPE_CHECKING:
 
 @DeveloperAPI
 class HuggingFaceDatasource(Datasource):
-    """TODO(scott)
-
-    Examples:
-        # >>> import ray
-    """
+    """Hugging Face Dataset datasource, for reading from a
+    `Hugging Face Datasets Dataset <https://huggingface.co/docs/datasets/package_reference/main_classes#datasets.Dataset/>`_.
+    This Datasource implements a streamed read, most beneficial for a
+    `Hugging Face Datasets IterableDataset <https://huggingface.co/docs/datasets/package_reference/main_classes#datasets.IterableDataset/>`_
+    or datasets which are too large to fit in-memory.
+    For an in-memory Hugging Face Dataset (`datasets.Dataset`), use :meth:`~ray.data.from_huggingface`
+    for faster performance.
+    """  # noqa: E501
 
     def create_reader(
         self,
@@ -43,41 +46,31 @@ class _HuggingFaceDatasourceReader(Reader):
         self,
         parallelism: int,
     ) -> List[ReadTask]:
+        # Note that `parallelism` arg is currently not used for HuggingFaceDatasource.
+        # We always generate a single ReadTask.
         _check_pyarrow_version()
         import pyarrow
 
-        # try:
-        #     from datasets.distributed import split_dataset_by_node
-        # except ModuleNotFoundError as e:
-        #     print(e)
-        #     logger.get_logger().warning(
-        #         "To read large Hugging Face Datasets efficiently, please install "
-        #         "HuggingFace datasets>=2.9.0`."
-        #     )
         def _read_shard(dataset: "datasets.IterableDataset") -> Iterable[Block]:
             for batch in dataset.with_format("arrow").iter(batch_size=self._batch_size):
                 block = pyarrow.Table.from_pydict(batch)
                 yield block
 
-        schema = None  # self._dataset.features
-        read_tasks: List[ReadTask] = []
-        # TODO(scott): figure out how to properly shard HF dataset, so we can
+        # TODO(scottjlee): figure out how to properly get metadata estimates,
+        # so progress bars have meaning.
+        meta = BlockMetadata(
+            num_rows=None,
+            size_bytes=None,
+            schema=None,
+            input_files=None,
+            exec_stats=None,
+        )
+        # TODO(scottjlee): figure out how to properly shard HF dataset, so we can
         # use multiple ReadTasks.
-        parallelism = 1
-        for i in range(parallelism):
-            # ds_shard = hf_dataset_shards[i]
-            meta = BlockMetadata(
-                num_rows=None,
-                size_bytes=None,
-                schema=schema,
-                input_files=None,
-                exec_stats=None,
+        read_tasks: List[ReadTask] = [
+            ReadTask(
+                lambda shard=self._dataset: _read_shard(shard),
+                meta,
             )
-            read_tasks.append(
-                ReadTask(
-                    lambda shard=self._dataset: _read_shard(shard),
-                    meta,
-                )
-            )
-
+        ]
         return read_tasks
