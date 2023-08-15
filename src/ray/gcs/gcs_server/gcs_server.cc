@@ -253,7 +253,6 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
   gcs_task_manager_->SetUsageStatsClient(usage_stats_client_.get());
   RecordMetrics();
 
-
   periodical_runner_.RunFnPeriodically(
       [this] {
         RAY_LOG(INFO) << GetDebugState();

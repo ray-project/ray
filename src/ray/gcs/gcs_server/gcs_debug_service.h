@@ -15,9 +15,9 @@
 #pragma once
 
 #include <grpcpp/grpcpp.h>
+
 #include "ray/common/asio/instrumented_io_context.h"
 #include "src/ray/protobuf/gcs_service.grpc.pb.h"
-
 
 namespace ray {
 namespace gcs {
@@ -26,19 +26,20 @@ class GcsDebugService : public ray::rpc::DebugService::CallbackService {
  public:
   GcsDebugService(instrumented_io_context &io_service);
   /// Collect memory stats.
-  grpc::ServerUnaryReactor* CollectMemoryStats(
-      grpc::CallbackServerContext* context,
-      const ray::rpc::CollectMemoryStatsRequest* request,
-      ray::rpc::CollectMemoryStatsReply* reply) override;
+  grpc::ServerUnaryReactor *CollectMemoryStats(
+      grpc::CallbackServerContext *context,
+      const ray::rpc::CollectMemoryStatsRequest *request,
+      ray::rpc::CollectMemoryStatsReply *reply) override;
 
-  grpc::ServerUnaryReactor* StartMemoryProfile(
-      grpc::CallbackServerContext* context,
-      const ray::rpc::StartMemoryProfileRequest* request,
-      ray::rpc::StartMemoryProfileReply* reply) override;
+  grpc::ServerUnaryReactor *StartMemoryProfile(
+      grpc::CallbackServerContext *context,
+      const ray::rpc::StartMemoryProfileRequest *request,
+      ray::rpc::StartMemoryProfileReply *reply) override;
+
  private:
   std::atomic<bool> is_memory_profiling_{false};
   instrumented_io_context &io_service_;
 };
 
-}
-}
+}  // namespace gcs
+}  // namespace ray

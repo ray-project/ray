@@ -547,7 +547,7 @@ cc_library(
         "@com_github_grpc_grpc//src/proto/grpc/health/v1:health_proto",
         "@com_google_absl//absl/container:btree",
     ] + select({
-        "@platforms//os:linux": ["@tcmalloc//tcmalloc"],
+        "@platforms//os:linux": ["@gperftools//:tcmalloc_and_profiler"],
         "//conditions:default": []
     }),
 )

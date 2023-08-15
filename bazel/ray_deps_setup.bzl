@@ -362,6 +362,15 @@ def ray_deps_setup():
         remote = "https://github.com/google/tcmalloc.git",
         commit = "c1e48584fb0c73c26b1d7f8824fc93cb2d6e6946",
     )
+
+    http_archive(
+        name = "gperftools",
+        urls = ["https://github.com/gperftools/gperftools/releases/download/gperftools-2.10/gperftools-2.10.tar.gz"],
+        strip_prefix = "gperftools-2.10",
+        sha256 = "83e3bfdd28b8bcf53222c3798d4d395d52dadbbae59e8730c4a6d31a9c3732d8",
+        build_file = "@com_github_ray_project_ray//bazel:BUILD.gperftools",
+    )
+        
     # Fuzzing
     http_archive(
         name = "rules_fuzzing",
@@ -375,4 +384,12 @@ def ray_deps_setup():
         urls = ["https://github.com/bazelbuild/rules_python/archive/refs/tags/0.11.0.tar.gz"],
         sha256 = "c03246c11efd49266e8e41e12931090b613e12a59e6f55ba2efd29a7cb8b4258",
         strip_prefix = "rules_python-0.11.0",
+    )
+
+    http_archive(
+        name = "libunwind",
+        build_file = "@com_github_ray_project_ray//bazel:BUILD.libunwind",
+        sha256 = "a18a6a24307443a8ace7a8acc2ce79fbbe6826cd0edf98d6326d0225d6a5d6e6",
+        strip_prefix = "libunwind-1.7.2",
+        urls = ["https://github.com/libunwind/libunwind/releases/download/v1.7.2/libunwind-1.7.2.tar.gz"],
     )

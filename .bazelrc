@@ -62,7 +62,6 @@ build --http_timeout_scaling=5.0
 build --verbose_failures
 build --cxxopt="-DABSL_LEGACY_THREAD_ANNOTATIONS"
 build:iwyu --experimental_action_listener=//:iwyu_cpp
-
 # Print relative paths when possible
 build:windows --attempt_to_print_relative_paths
 # Save disk space by hardlinking cache hits instead of copying

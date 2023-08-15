@@ -27,7 +27,6 @@
 // #include "jemalloc/jemalloc.h"
 // #endif
 
-
 DEFINE_string(redis_address, "", "The ip address of redis.");
 DEFINE_bool(redis_enable_ssl, false, "Use tls/ssl in redis connection.");
 DEFINE_int32(redis_port, -1, "The port of redis.");

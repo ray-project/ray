@@ -189,19 +189,14 @@ def ray_cc_test(name, copts = [], **kwargs):
 
 def ray_cc_binary(name, copts = [], deps = [], linkopts = [], **kwargs):
     extra_deps = select({
-        "@platforms//os:linux": ["@tcmalloc//tcmalloc"],
+        "@platforms//os:linux": ["@gperftools//:tcmalloc_and_profiler"],
         "//conditions:default": []
     })
-    extra_linkopts = select({
-        "@platforms//os:linux": ["-ldl"],
-        "//conditions:default": []
-    })
-
         
     cc_binary(
         name = name,
         copts = COPTS + copts,
         deps = deps + extra_deps,
-        linkopts = linkopts + extra_linkopts,
+        linkopts = linkopts,
         **kwargs
     )
