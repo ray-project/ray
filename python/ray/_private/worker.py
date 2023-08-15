@@ -854,44 +854,6 @@ def get_gpu_ids():
     )
 
 
-def _get_all_resource_ids(resource_name: str, resource_regex: str) -> List[str]:
-    """
-    Get the IDs of all resources that are available to the worker.
-
-    Args:
-        resource_name: The name of the resource.
-        resource_regex: A regex string to match the resource name.
-
-    Returns:
-        A list of resource IDs.
-    """
-    worker = global_worker
-    worker.check_connected()
-
-    if worker.mode != WORKER_MODE:
-        if log_once("worker_get_gpu_ids_empty_from_driver"):
-            logger.warning(
-                "`ray.get_gpu_ids()` will always return the empty list when "
-                "called from the driver. This is because Ray does not manage "
-                "GPU allocations to the driver process."
-            )
-
-    # TODO(ilr) Handle inserting resources in local mode
-    all_resource_ids = global_worker.core_worker.resource_ids()
-    assigned_ids = set()
-    for resource, assignment in all_resource_ids.items():
-        # Handle both normal and placement group GPU resources.
-        # Note: We should only get the GPU ids from the placement
-        # group resource that does not contain the bundle index!
-        import re
-
-        if resource == resource_name or re.match(resource_regex, resource):
-            for resource_id, _ in assignment:
-                assigned_ids.add(resource_id)
-
-    return list(assigned_ids)
-
-
 @Deprecated(
     message="Use ray.get_runtime_context().get_assigned_resources() instead.",
     warning=True,

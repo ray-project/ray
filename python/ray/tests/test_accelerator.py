@@ -87,3 +87,13 @@ def test_get_neuron_core_count_failure_with_empty_results(mock_subprocess):
     mock_subprocess.return_value.stdout = b"[{}]"
     assert accelerator._get_neuron_core_count() == 0
     assert mock_subprocess.called
+
+
+if __name__ == "__main__":
+    import sys
+    import os
+
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))

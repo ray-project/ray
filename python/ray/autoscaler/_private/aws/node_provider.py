@@ -650,7 +650,10 @@ class AWSNodeProvider(NodeProvider):
                         {"GPU": gpus[0]["Count"], f"accelerator_type:{gpu_name}": 1}
                     )
                 # TODO: AWS SDK (public API) doesn't yet expose the NeuronCore
-                #  information, work-in-progress.
+                #  information. It will be available (work-in-progress)
+                #  as xxAcceleratorInfo in InstanceTypeInfo.
+                #  https://docs.aws.amazon.com/AWSEC2/latest/APIReference/API_InstanceTypeInfo.html
+                #  See https://github.com/ray-project/ray/issues/38473
                 if (
                     instance_type.lower()
                     in ray_constants.AWS_NEURON_INSTANCE_MAP.keys()
