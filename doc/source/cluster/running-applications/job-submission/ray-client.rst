@@ -3,9 +3,6 @@
 Ray Client
 ==========
 
-.. warning::
-   Ray Client requires pip package `ray[client]`. If you installed the minimal Ray (e.g. `pip install ray`), please reinstall by executing `pip install ray[client]`.
-
 **What is the Ray Client?**
 
 The Ray Client is an API that connects a Python script to a **remote** Ray cluster. Effectively, it allows you to leverage a remote Ray cluster just like you would with Ray running on your local machine.
