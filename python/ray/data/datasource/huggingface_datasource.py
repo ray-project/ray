@@ -31,7 +31,7 @@ class _HuggingFaceDatasourceReader(Reader):
     def __init__(
         self,
         dataset: Union["datasets.Dataset", "datasets.IterableDataset"],
-        batch_size: int = 32,
+        batch_size: int = 4096 * 64,
     ):
         self._dataset = dataset
         self._batch_size = batch_size
