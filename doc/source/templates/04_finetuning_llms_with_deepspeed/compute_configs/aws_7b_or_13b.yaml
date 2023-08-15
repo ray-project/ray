@@ -1,4 +1,6 @@
 # 1 g5.16xlarge + 15 g5.4xlarge --> 16 GPUs, 256G RAM on trainer and 64G RAM on workers
+region: us-west1
+allowed_azs: [any]
 head_node_type:
     name: head_node
     instance_type: g5.16xlarge
