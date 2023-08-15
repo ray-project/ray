@@ -75,7 +75,6 @@ from ray.autoscaler.tags import (
     TAG_RAY_RUNTIME_CONFIG,
     TAG_RAY_USER_NODE_TYPE,
 )
-from ray._raylet import GcsClient
 from ray.exceptions import RpcError
 
 logger = logging.getLogger(__name__)
@@ -184,7 +183,7 @@ class StandardAutoscaler:
         # TODO(ekl): require config reader to be a callable always.
         config_reader: Union[str, Callable[[], dict]],
         load_metrics: LoadMetrics,
-        gcs_client: GcsClient,
+        gcs_client: "ray._raylet.GcsClient",
         session_name: Optional[str] = None,
         max_launch_batch: int = AUTOSCALER_MAX_LAUNCH_BATCH,
         max_concurrent_launches: int = AUTOSCALER_MAX_CONCURRENT_LAUNCHES,
