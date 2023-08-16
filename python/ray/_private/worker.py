@@ -848,10 +848,56 @@ def get_gpu_ids():
     Returns:
         A list of GPU IDs.
     """
-    gpu_regex = f"^{ray_constants.GPU}_group_[0-9A-Za-z]+$"
-    return ray._private.utils.get_resource_ids_for_resource(
-        ray_constants.GPU, gpu_regex
+    return get_resource_ids_for_resource(
+        ray_constants.GPU, f"^{ray_constants.GPU}_group_[0-9A-Za-z]+$"
     )
+
+
+def get_resource_ids_for_resource(resource_name: str, resource_regex: str) -> List[str]:
+    """Get the resource IDs that are assigned to the given resource.
+
+    Args:
+        resource_name: The name of the resource.
+        resource_regex: The regex of the resource.
+
+    Returns:
+        (List[str]) The IDs that are assigned to the given resource.
+    """
+    worker = global_worker
+    worker.check_connected()
+    resource_ids = global_worker.core_worker.resource_ids()
+    assigned_ids = set()
+    # Handle both normal and placement group GPU, accelerator resources.
+    # Note: We should only get the GPU, accelerator ids from the placement
+    # group resource that does not contain the bundle index!
+    import re
+
+    for resource, assignment in resource_ids.items():
+        if resource == resource_name or re.match(resource_regex, resource):
+            for resource_id, _ in assignment:
+                assigned_ids.add(str(resource_id))
+
+    # If the user had already set the environment variables
+    # (CUDA_VISIBLE_DEVICES, NEURON_RT_VISIBLE_CORES, ..) then respect that in the sense
+    # that only IDs that appear in (CUDA_VISIBLE_DEVICES, NEURON_RT_VISIBLE_CORES, ..)
+    # should be returned.
+    if (
+        worker.original_gpu_and_accelerator_runtime_ids.get(resource_name, None)
+        is not None
+    ):
+        runtime_ids = worker.original_gpu_and_accelerator_runtime_ids[resource_name]
+        assigned_ids = [str(runtime_ids[i]) for i in assigned_ids]
+        # Give all accelerator ids local_mode.
+        if worker.mode == LOCAL_MODE:
+            if resource_name == ray_constants.GPU:
+                max_runtime_ids = worker.node.get_resource_spec().num_gpus
+            else:
+                max_runtime_ids = worker.node.get_resource_spec().resources.get(
+                    resource_name, None
+                )
+            if max_runtime_ids:
+                assigned_ids = runtime_ids[:max_runtime_ids]
+    return list(assigned_ids)
 
 
 @Deprecated(

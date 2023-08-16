@@ -132,7 +132,7 @@ AWS Neuron Core Accelerator
   Ray supports a heterogeneous cluster of GPUs and NeuronCores but doesn't allow specifying resources requirements of
   ```num_gpus`` and ``num_neuron_cores`` for task or actor.
 
-.. literalinclude:: ../doc_core/neuron_core_accelerator.py
+.. literalinclude:: ../doc_code/neuron_core_accelerator.py
     :language: python
     :start-after: __neuron_core_accelerator_start__
     :end-before: __neuron_core_accelerator_end__

@@ -2,6 +2,7 @@ import json
 import os
 import subprocess
 import sys
+from typing import Optional
 
 
 def update_resources_with_accelerator_type(resources: dict):
@@ -77,7 +78,7 @@ def _detect_and_configure_aws_neuron_core(resources: dict):
         )
 
 
-def _autodetect_aws_neuron_cores():
+def _autodetect_aws_neuron_cores() -> Optional[int]:
     """
     Attempt to detect the number of Neuron cores on this machine.
 
@@ -90,7 +91,7 @@ def _autodetect_aws_neuron_cores():
     return result
 
 
-def _get_neuron_core_count():
+def _get_neuron_core_count() -> int:
     """Get the number of Neuron cores on a machine based on neuron_path.
 
     Returns:
