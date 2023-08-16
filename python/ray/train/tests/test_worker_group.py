@@ -4,8 +4,6 @@ import pytest
 
 import ray
 from ray.train._internal.worker_group import WorkerGroup, Worker, WorkerMetadata
-from copy import deepcopy
-from random import seed, shuffle
 
 
 @pytest.fixture
@@ -83,31 +81,41 @@ def test_execute_args(ray_start_2_cpus):
     assert all(o == 1 for o in outputs)
 
 
-def test_move_workers_with_ip_to_front(ray_start_2_cpus):
-    wg = WorkerGroup(num_workers=2)
-    wg.workers = [
-        Worker(
-            actor=None,
-            metadata=WorkerMetadata(
-                node_id="dummy",
-                node_ip=f"10.1.10.{i}",
-                hostname="dummy",
-                gpu_ids=None,
-                pid=0,
-            ),
-        )
-        for i in range(1, 17)
-    ]
-    wg.workers += deepcopy(wg.workers)
-    workers_pre_move = deepcopy(wg.workers)
-    seed(1)
-    shuffle(wg.workers)
-    wg._move_workers_with_ip_to_front("10.1.10.1")
-    assert wg.workers[0].metadata.node_ip == "10.1.10.1"
-    assert wg.workers[1].metadata.node_ip == "10.1.10.1"
-    assert sorted([w.metadata.node_ip for w in workers_pre_move]) == sorted(
-        [w.metadata.node_ip for w in wg.workers]
+def test_group_workers_by_ip():
+    
+    def create_worker_group(ips):
+        wg = WorkerGroup(num_workers=2)
+        wg.workers = [
+            Worker(
+                actor=None,
+                metadata=WorkerMetadata(
+                    node_id="dummy",
+                    node_ip=ip,
+                    hostname="dummy",
+                    gpu_ids=None,
+                    pid=0,
+                ),
+            )
+            for ip in ips
+        ]
+        return wg
+
+    wg = create_worker_group(["2", "3", "1", "4", "2", "1", "3", "3", "4", "2"])
+    wg.group_workers_by_ip()
+    expected = ["2", "2", "2", "3", "3", "3", "1", "1", "4", "4"]
+    ips = [w.metadata.node_ip for w in wg.workers]
+    assert ips == expected, (
+        "Workers should be grouped by IP "
+        "and follow the same original order of IPs encountered (2, 3, 1, 4)."
     )
+
+    wg = create_worker_group(["2", "3", "1", "4", "2", "1", "3", "3", "4", "2"])
+    wg.group_workers_by_ip(_first_ip="1")
+    expected = ["1", "1", "2", "2", "2", "3", "3", "3", "4", "4"]
+    ips = [w.metadata.node_ip for w in wg.workers]
+    assert (
+        ips == expected
+    ), "Workers should be grouped by IP, with the first IP being 1."
 
 
 def test_execute_single(ray_start_2_cpus):
