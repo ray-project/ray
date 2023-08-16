@@ -1097,7 +1097,7 @@ class HTTPProxyActor:
         self.port = port
         self.root_path = root_path
         self.keep_alive_timeout_s = (
-            RAY_SERVE_HTTP_KEEPALIVE_TIMEOUT_S or keep_alive_timeout_s
+            RAY_SERVE_HTTP_KEEP_ALIVE_TIMEOUT_S or keep_alive_timeout_s
         )
         self._uvicorn_server = None
 

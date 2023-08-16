@@ -44,7 +44,7 @@ class TestTimeoutKeepAliveConfig:
     @pytest.mark.parametrize(
         "ray_instance",
         [
-            {"RAY_SERVE_HTTP_KEEPALIVE_TIMEOUT_S": "333"},
+            {"RAY_SERVE_HTTP_KEEP_ALIVE_TIMEOUT_S": "333"},
         ],
         indirect=True,
     )
@@ -61,7 +61,7 @@ class TestTimeoutKeepAliveConfig:
     @pytest.mark.parametrize(
         "ray_instance",
         [
-            {"RAY_SERVE_HTTP_KEEPALIVE_TIMEOUT_S": "333"},
+            {"RAY_SERVE_HTTP_KEEP_ALIVE_TIMEOUT_S": "333"},
         ],
         indirect=True,
     )
