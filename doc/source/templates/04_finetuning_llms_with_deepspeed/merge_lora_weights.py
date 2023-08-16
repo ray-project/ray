@@ -98,13 +98,12 @@ def main():
     # Load LoRA weights
     model: peft.PeftModel = peft.PeftModel.from_pretrained(
         model=model, 
-        model_id=args.checkpoint, 
-        torch_dtype=torch.bfloat16,
+        model_id=args.checkpoint,
     )
     
     # Merge weights and save
-    # model = model.merge_and_unload()
-    # model.save_pretrained(Path(args.output_path), safe_serialization=True)
+    model = model.merge_and_unload()
+    model.save_pretrained(Path(args.output_path), safe_serialization=True)
 
     print(f"Saved merged model to {args.output_path}")
 

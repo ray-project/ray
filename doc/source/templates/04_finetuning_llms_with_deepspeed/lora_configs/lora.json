@@ -4,7 +4,7 @@
     "lora_dropout": 0.05,
     "target_modules": ["q_proj", "v_proj"],
     "task_type": "CAUSAL_LM",
-    "modules_to_save": [],
+    "modules_to_save": ["embed_tokens", "lm_head"],
     "bias": "none",
     "fan_in_fan_out": false,
     "init_lora_weights": true

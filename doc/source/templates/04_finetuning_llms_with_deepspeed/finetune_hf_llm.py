@@ -50,9 +50,16 @@ def get_expected_lora_num_parameters(lora_config, model):
     # the sizes of the deecomposed weight matrices according to the paper.
     for full_name, target in modules:
         layer_name = full_name.split(".")[-1]
-        # Detected another attention layer (for example, llama 2 70b should have 80 of these)
+        
         if layer_name == ATTENTION_LAYER_NAME:
+            # Detected another attention layer (for example, llama 2 70b should have 80 of these)
             num_attention_layers += 1
+        elif layer_name in lora_config.modules_to_save:
+            # Detect another non-lora module to save, which will also contribute to the number of checkpointed parameters
+            # This will result in one set of trainable parameters "<layer>.original_module.weight" and another one with "<layer>.modules_to_save.default.weight"
+            # Therefore, each layer contributes 2 x the number of actual elements in that layer.
+            sum_params += 2 * target.weight.numel()
+            print("Found non-lora-layer to checkpoint: ", layer_name, " with num params ", target.weight.numel())
         else:
             for module_name in lora_config.target_modules:
                 if layer_name == module_name:
@@ -65,8 +72,11 @@ def get_expected_lora_num_parameters(lora_config, model):
     
 
 def get_number_of_params(model: nn.Module):
-    state_dict = model.state_dict()
-    return sum(p.numel() for p in state_dict.values())
+    sum = 0
+    for name, param in model.named_parameters():
+        if param.requires_grad:
+            sum += param.numel()
+    return sum
 
 
 def collate_fn(batch, tokenizer, block_size, device):
@@ -247,6 +257,8 @@ def training_function(kwargs: dict):
     )
     print(f"Done loading model in {time.time() - s} seconds.")
 
+    model.resize_token_embeddings(len(tokenizer))
+
     if config["lora"]:
         # Apply LoRA
         s = time.time()
@@ -269,7 +281,6 @@ def training_function(kwargs: dict):
     
     print(f"Number of checkpointed parameters: {get_number_of_params(model)}")
 
-    model.resize_token_embeddings(len(tokenizer))
     print("Model initialized with pretrained weights. Training starting...")
     if not args.no_grad_ckpt:
         model.gradient_checkpointing_enable()
@@ -435,6 +446,7 @@ def training_function(kwargs: dict):
         # )
 
         unwrapped_model = accelerator.unwrap_model(model)
+        
         unwrapped_model.save_pretrained(
             ckpt_path_epoch,
             is_main_process=accelerator.is_main_process,
