@@ -12,6 +12,7 @@ from ray.train.huggingface.accelerate import AccelerateTrainer
 
 from ray.train.huggingface.transformers import (
     TransformersCheckpoint,
+    LegacyTransformersCheckpoint,
     TransformersPredictor,
     TransformersTrainer,
 )
@@ -22,6 +23,7 @@ __all__ = [
     "HuggingFacePredictor",
     "HuggingFaceTrainer",
     "TransformersCheckpoint",
+    "LegacyTransformersCheckpoint",
     "TransformersPredictor",
     "TransformersTrainer",
 ]
