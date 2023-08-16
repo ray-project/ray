@@ -4,7 +4,7 @@ import logging
 import pickle
 
 from starlette.types import Receive, Scope, Send
-from typing import Any, Callable, List, Generator, Optional, Tuple
+from typing import Any, List, Generator, Optional, Tuple
 
 from ray.actor import ActorHandle
 from ray.serve._private.constants import SERVE_LOGGER_NAME
@@ -32,6 +32,16 @@ class ServeRequest(ABC):
     def route_path(self) -> str:
         raise NotImplementedError
 
+    @property
+    @abstractmethod
+    def is_route_request(self) -> bool:
+        raise NotImplementedError
+
+    @property
+    @abstractmethod
+    def is_health_request(self) -> bool:
+        raise NotImplementedError
+
 
 class ASGIServeRequest(ServeRequest):
     """ServeRequest implementation to wrap ASGI scope, receive, and send."""
@@ -52,6 +62,14 @@ class ASGIServeRequest(ServeRequest):
     @property
     def route_path(self) -> str:
         return self.scope.get("path", "")[len(self.root_path) :]
+
+    @property
+    def is_route_request(self) -> bool:
+        return self.route_path == "/-/routes"
+
+    @property
+    def is_health_request(self) -> bool:
+        return self.route_path == "/-/healthz"
 
     @property
     def client(self) -> str:
@@ -89,28 +107,21 @@ class gRPCServeRequest(ServeRequest):
         self,
         request_proto: Any,
         context: grpc._cython.cygrpc._ServicerContext,
-        match_target: Callable[[str], Optional[str]],
         service_method: str,
         stream: bool,
     ):
         self.request = request_proto
         self.context = context
-        self.match_target = match_target
         self.service_method = service_method
         self.stream = stream
         self.app_name = ""
-        self._route_path = ""
         self.request_id = None
         self.method_name = "__call__"
         self.multiplexed_model_id = DEFAULT.VALUE
         self.setup_variables()
 
     def setup_variables(self):
-        if self.service_method == "/ray.serve.RayServeAPIService/ListApplications":
-            self._route_path = "/-/routes"
-        elif self.service_method == "/ray.serve.RayServeAPIService/Healthz":
-            self._route_path = "/-/healthz"
-        else:
+        if not self.is_route_request and not self.is_health_request:
             service_method_split = self.service_method.split("/")
             self.request = pickle.dumps(self.request)
             self.method_name = service_method_split[-1].lower()
@@ -121,7 +132,6 @@ class gRPCServeRequest(ServeRequest):
                     self.request_id = value
                 elif key == "multiplexed_model_id":
                     self.multiplexed_model_id = value
-            self._route_path = self.match_target(self.app_name)
 
     @property
     def request_type(self) -> str:
@@ -133,7 +143,15 @@ class gRPCServeRequest(ServeRequest):
 
     @property
     def route_path(self) -> str:
-        return self._route_path or ""
+        return self.app_name
+
+    @property
+    def is_route_request(self) -> bool:
+        return self.service_method == "/ray.serve.RayServeAPIService/ListApplications"
+
+    @property
+    def is_health_request(self) -> bool:
+        return self.service_method == "/ray.serve.RayServeAPIService/Healthz"
 
     @property
     def user_request(self) -> bytes:

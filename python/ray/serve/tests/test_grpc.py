@@ -253,7 +253,7 @@ def test_serving_request_through_grpc_proxy(ray_cluster):
 
     # Ensures routes path succeeding.
     channel = grpc.insecure_channel("localhost:9000")
-    stub = serve_pb2_grpc.ServeAPIServiceStub(channel)
+    stub = serve_pb2_grpc.RayServeAPIServiceStub(channel)
     request = serve_pb2.RoutesRequest()
     response, call = stub.ServeRoutes.with_call(request=request)
     assert call.code() == grpc.StatusCode.OK

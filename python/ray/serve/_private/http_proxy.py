@@ -8,7 +8,7 @@ import pickle
 import socket
 import time
 import grpc
-from typing import Callable, Dict, List, Generator, Optional, Tuple, Any
+from typing import Callable, Dict, List, Generator, Optional, Tuple, Any, Type
 import uuid
 
 import uvicorn
@@ -40,7 +40,6 @@ from ray.serve._private.http_util import (
     validate_http_proxy_callback_return,
 )
 from ray.serve._private.common import (
-    ApplicationName,
     EndpointInfo,
     EndpointTag,
     NodeId,
@@ -68,6 +67,11 @@ from ray.serve._private.serve_request_response import (
     gRPCServeRequest,
     ServeRequest,
     ServeResponse,
+)
+from ray.serve._private.proxy_router import (
+    EndpointRouter,
+    LongestPrefixRouter,
+    ProxyRouter,
 )
 from ray.serve._private.utils import (
     calculate_remaining_timeout,
@@ -123,122 +127,6 @@ def generate_request_id() -> str:
     return str(uuid.uuid4())
 
 
-class LongestPrefixRouter:
-    """Router that performs longest prefix matches on incoming routes."""
-
-    def __init__(self, get_handle: Callable):
-        # Function to get a handle given a name. Used to mock for testing.
-        self._get_handle = get_handle
-        # Routes sorted in order of decreasing length.
-        self.sorted_routes: List[str] = list()
-        # Endpoints associated with the routes.
-        self.route_info: Dict[str, Tuple[EndpointTag, ApplicationName]] = dict()
-        # Contains a ServeHandle for each endpoint.
-        self.handles: Dict[str, RayServeHandle] = dict()
-        # Map of application name to is_cross_language.
-        self.app_to_is_cross_language: Dict[ApplicationName, bool] = dict()
-
-    def endpoint_exists(self, endpoint: EndpointTag) -> bool:
-        return endpoint in self.handles
-
-    def update_routes(self, endpoints: Dict[EndpointTag, EndpointInfo]) -> None:
-        logger.info(
-            f"Got updated endpoints: {endpoints}.", extra={"log_to_stderr": False}
-        )
-
-        existing_handles = set(self.handles.keys())
-        routes = []
-        route_info = {}
-        app_to_is_cross_language = {}
-        for endpoint, info in endpoints.items():
-            routes.append(info.route)
-            route_info[info.route] = (endpoint, info.app_name)
-            app_to_is_cross_language[info.app_name] = info.app_is_cross_language
-            if endpoint in self.handles:
-                existing_handles.remove(endpoint)
-            else:
-                self.handles[endpoint] = self._get_handle(endpoint).options(
-                    # Streaming codepath isn't supported for Java.
-                    stream=(
-                        RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING
-                        and not info.app_is_cross_language
-                    ),
-                )
-
-        # Clean up any handles that are no longer used.
-        if len(existing_handles) > 0:
-            logger.info(
-                f"Deleting {len(existing_handles)} unused handles.",
-                extra={"log_to_stderr": False},
-            )
-        for endpoint in existing_handles:
-            del self.handles[endpoint]
-
-        # Routes are sorted in order of decreasing length to enable longest
-        # prefix matching.
-        self.sorted_routes = sorted(routes, key=lambda x: len(x), reverse=True)
-        self.route_info = route_info
-        self.app_to_is_cross_language = app_to_is_cross_language
-
-    def match_target_endpoint(self, target_endpoint: str) -> Optional[str]:
-        """Return the route from the target_endpoint.
-
-        Returns:
-            route if found, else return first route. Or None if no routes.
-        """
-        if target_endpoint is None:
-            return None
-
-        first_route = None
-        for route, endpoint_and_app_name in self.route_info.items():
-            if first_route is None:
-                first_route = route
-            endpoint, app_name = endpoint_and_app_name
-            if target_endpoint.endswith(endpoint):
-                return route
-
-        return first_route
-
-    def match_route(
-        self, target_route: str
-    ) -> Optional[Tuple[str, RayServeHandle, str, bool]]:
-        """Return the longest prefix match among existing routes for the route.
-
-        Args:
-            target_route: route to match against.
-
-        Returns:
-            (route, handle, app_name, is_cross_language) if found, else None.
-        """
-
-        for route in self.sorted_routes:
-            if target_route.startswith(route):
-                matched = False
-                # If the route we matched on ends in a '/', then so does the
-                # target route and this must be a match.
-                if route.endswith("/"):
-                    matched = True
-                # If the route we matched on doesn't end in a '/', we need to
-                # do another check to ensure that either this is an exact match
-                # or the next character in the target route is a '/'. This is
-                # to guard against the scenario where we have '/route' as a
-                # prefix and there's a request to '/routesuffix'. In this case,
-                # it should *not* be a match.
-                elif len(target_route) == len(route) or target_route[len(route)] == "/":
-                    matched = True
-
-                if matched:
-                    endpoint, app_name = self.route_info[route]
-                    return (
-                        route,
-                        self.handles[endpoint],
-                        app_name,
-                        self.app_to_is_cross_language[app_name],
-                    )
-
-        return None
-
-
 class GenericProxy(ABC):
     """This class is served as the base class for different types of proxies.
     It contains all the common setup and methods required for running a proxy.
@@ -261,6 +149,7 @@ class GenericProxy(ABC):
         controller_name: str,
         node_id: NodeId,
         node_ip_address: str,
+        proxy_router_class: Type[ProxyRouter],
         request_timeout_s: Optional[float] = None,
     ):
         self.request_timeout_s = request_timeout_s
@@ -294,7 +183,7 @@ class GenericProxy(ABC):
                 missing_ok=True,
             )
 
-        self.prefix_router = LongestPrefixRouter(get_handle)
+        self.proxy_router = proxy_router_class(get_handle)
         self.long_poll_client = LongPollClient(
             ray.get_actor(controller_name, namespace=SERVE_NAMESPACE),
             {
@@ -396,7 +285,7 @@ class GenericProxy(ABC):
             route = info.route
             self.route_info[route] = endpoint
 
-        self.prefix_router.update_routes(endpoints)
+        self.proxy_router.update_routes(endpoints)
 
     def is_drained(self):
         """Check whether the proxy actor is drained or not.
@@ -486,7 +375,7 @@ class GenericProxy(ABC):
         # only use the non-root part of the path for routing
         route_path = serve_request.route_path
 
-        if route_path == "/-/routes":
+        if serve_request.is_route_request:
             if self._is_draining():
                 return await self.draining_response(serve_request=serve_request)
 
@@ -500,7 +389,7 @@ class GenericProxy(ABC):
             )
             return await self.routes_response(serve_request=serve_request)
 
-        if route_path == "/-/healthz":
+        if serve_request.is_health_request:
             if self._is_draining():
                 return await self.draining_response(serve_request=serve_request)
 
@@ -517,7 +406,7 @@ class GenericProxy(ABC):
         try:
             self._ongoing_requests_start()
 
-            matched_route = self.prefix_router.match_route(route_path)
+            matched_route = self.proxy_router.match_route(route_path)
             if matched_route is None:
                 serve_response = await self.not_found(serve_request=serve_request)
                 self.request_error_counter.inc(
@@ -787,7 +676,6 @@ class gRPCProxy(GenericProxy):
             serve_request = gRPCServeRequest(
                 request_proto=request_proto,
                 context=context,
-                match_target=self.prefix_router.match_target_endpoint,
                 service_method=service_method,
                 stream=False,
             )
@@ -807,7 +695,6 @@ class gRPCProxy(GenericProxy):
             serve_request = gRPCServeRequest(
                 request_proto=request_proto,
                 context=context,
-                match_target=self.prefix_router.match_target_endpoint,
                 service_method=service_method,
                 stream=True,
             )
@@ -1410,6 +1297,7 @@ class HTTPProxyActor:
             controller_name=controller_name,
             node_id=node_id,
             node_ip_address=node_ip_address,
+            proxy_router_class=LongestPrefixRouter,
             request_timeout_s=(
                 request_timeout_s or RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S
             ),
@@ -1419,6 +1307,7 @@ class HTTPProxyActor:
                 controller_name=controller_name,
                 node_id=node_id,
                 node_ip_address=node_ip_address,
+                proxy_router_class=EndpointRouter,
                 request_timeout_s=(
                     request_timeout_s or RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S
                 ),

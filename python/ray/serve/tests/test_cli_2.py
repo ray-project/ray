@@ -845,7 +845,7 @@ def test_serving_request_through_grpc_proxy(ray_start_stop):
     app_name = "app1_grpc-deployment"
 
     channel = grpc.insecure_channel("localhost:9000")
-    stub = serve_pb2_grpc.ServeAPIServiceStub(channel)
+    stub = serve_pb2_grpc.RayServeAPIServiceStub(channel)
 
     # Ensures routes path succeeding.
     def check_app_deployed():
