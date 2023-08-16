@@ -79,12 +79,6 @@ class DataIterator(abc.ABC):
         Dataset(num_blocks=..., num_rows=5, schema={id: int64})
         >>> ds.iterator()
         DataIterator(Dataset(num_blocks=..., num_rows=5, schema={id: int64}))
-
-    .. tip::
-        For debugging purposes, use
-        :meth:`~ray.air.util.check_ingest.make_local_dataset_iterator` to create a
-        local `DataIterator` from a :class:`~ray.data.Dataset`, a
-        :class:`~ray.data.Preprocessor`, and a :class:`~ray.air.DatasetConfig`.
     """
 
     @abc.abstractmethod
