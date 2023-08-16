@@ -1,7 +1,7 @@
 import pytest
 
 from ray.serve._private.common import EndpointInfo
-from ray.serve._private.http_proxy import LongestPrefixRouter
+from ray.serve._private.proxy_router import EndpointRouter, LongestPrefixRouter
 
 
 @pytest.fixture
@@ -22,19 +22,44 @@ def mock_longest_prefix_router() -> LongestPrefixRouter:
     yield LongestPrefixRouter(mock_get_handle)
 
 
-def test_no_match(mock_longest_prefix_router):
-    router = mock_longest_prefix_router
+@pytest.fixture
+def mock_endpoint_router() -> EndpointRouter:
+    class MockHandle:
+        def __init__(self, name: str):
+            self._name = name
+
+        def options(self, *args, **kwargs):
+            return self
+
+        def __eq__(self, other_name: str):
+            return self._name == other_name
+
+    def mock_get_handle(name, *args, **kwargs):
+        return MockHandle(name)
+
+    yield EndpointRouter(mock_get_handle)
+
+
+@pytest.mark.parametrize(
+    "mocked_router", ["mock_longest_prefix_router", "mock_endpoint_router"]
+)
+def test_no_match(mocked_router, request):
+    router = request.getfixturevalue(mocked_router)
     router.update_routes({"endpoint": EndpointInfo(route="/hello", app_name="")})
     assert router.match_route("/nonexistent") is None
 
 
-def test_default_route(mock_longest_prefix_router):
-    router = mock_longest_prefix_router
+@pytest.mark.parametrize(
+    "mocked_router, target_route",
+    [("mock_longest_prefix_router", "/endpoint"), ("mock_endpoint_router", "endpoint")],
+)
+def test_default_route(mocked_router, target_route, request):
+    router = request.getfixturevalue(mocked_router)
     router.update_routes({"endpoint": EndpointInfo(route="/endpoint", app_name="")})
 
     assert router.match_route("/nonexistent") is None
 
-    route, handle, app_name, app_is_cross_language = router.match_route("/endpoint")
+    route, handle, app_name, app_is_cross_language = router.match_route(target_route)
     assert all(
         [
             route == "/endpoint",
@@ -95,11 +120,18 @@ def test_prefix_match(mock_longest_prefix_router):
     assert route == "/" and handle == "endpoint3"
 
 
-def test_update_routes(mock_longest_prefix_router):
-    router = mock_longest_prefix_router
+@pytest.mark.parametrize(
+    "mocked_router, target_route1, target_route2",
+    [
+        ("mock_longest_prefix_router", "/endpoint", "/endpoint2"),
+        ("mock_endpoint_router", "endpoint", "endpoint2"),
+    ],
+)
+def test_update_routes(mocked_router, target_route1, target_route2, request):
+    router = request.getfixturevalue(mocked_router)
     router.update_routes({"endpoint": EndpointInfo(route="/endpoint", app_name="app1")})
 
-    route, handle, app_name, app_is_cross_language = router.match_route("/endpoint")
+    route, handle, app_name, app_is_cross_language = router.match_route(target_route1)
     assert all(
         [
             route == "/endpoint",
@@ -119,9 +151,9 @@ def test_update_routes(mock_longest_prefix_router):
         }
     )
 
-    assert router.match_route("/endpoint") is None
+    assert router.match_route(target_route1) is None
 
-    route, handle, app_name, app_is_cross_language = router.match_route("/endpoint2")
+    route, handle, app_name, app_is_cross_language = router.match_route(target_route2)
     assert route == "/endpoint2" and handle == "endpoint2" and app_name == "app2"
     assert all(
         [
@@ -131,22 +163,6 @@ def test_update_routes(mock_longest_prefix_router):
             app_is_cross_language,
         ]
     )
-
-
-def test_match_target_endpoint(mock_longest_prefix_router):
-    """Test match_target_endpoint method.
-
-    When the target_endpoint is None, `match_target_endpoint()` returns None. When the
-    target_endpoint matched with an app, `match_target_endpoint()` returns the correct
-    route. When the target_endpoint does not match with any app,
-    `match_target_endpoint()` returns the first route.
-    """
-    router = mock_longest_prefix_router
-    router.update_routes({"endpoint": EndpointInfo(route="/endpoint", app_name="app1")})
-
-    assert router.match_target_endpoint(target_endpoint=None) is None
-    assert router.match_target_endpoint(target_endpoint="app1") == "/endpoint"
-    assert router.match_target_endpoint(target_endpoint="app2") == "/endpoint"
 
 
 if __name__ == "__main__":
