@@ -14,7 +14,7 @@ from ray.data.preprocessors import BatchMapper, Chain
 from ray.train._internal.dataset_spec import DataParallelIngestSpec
 from ray.train.data_parallel_trainer import DataParallelTrainer
 from ray.train import DataConfig
-from ray.util.annotations import DeveloperAPI
+from ray.util.annotations import Deprecated, DeveloperAPI
 
 
 @DeveloperAPI
@@ -131,7 +131,7 @@ class DummyTrainer(DataParallelTrainer):
         return train_loop_per_worker
 
 
-@DeveloperAPI
+@Deprecated("Both Preprocessor and DatasetConfig are no longer used by Ray Train.")
 def make_local_dataset_iterator(
     dataset: Dataset,
     preprocessor: Preprocessor,
