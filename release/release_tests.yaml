@@ -5639,9 +5639,6 @@
 
   variations:
     - __suffix__: aws
-    - __suffix__: aws.py311
-      python: "3.11"
-      frequency: weekly
     - __suffix__: gce
       env: gce
       frequency: manual
