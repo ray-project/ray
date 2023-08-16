@@ -140,7 +140,7 @@ class TransformersPredictor(Predictor):
                 True, 'device' will be set to 0 by default, unless 'device_map' is
                 passed.
         """
-        from ray.train.huggingface import TransformersCheckpoint
+        from ray.train.huggingface import LegacyTransformersCheckpoint
 
         if TRANSFORMERS_IMPORT_ERROR is not None:
             raise TRANSFORMERS_IMPORT_ERROR
@@ -155,10 +155,10 @@ class TransformersPredictor(Predictor):
 
         model = None
         if model_cls:
-            if not isinstance(checkpoint, TransformersCheckpoint):
+            if not isinstance(checkpoint, LegacyTransformersCheckpoint):
                 raise ValueError(
                     "If `model_cls` is passed, the checkpoint has to be a "
-                    "`TransformersCheckpoint`."
+                    "`LegacyTransformersCheckpoint`."
                 )
             pretrained_model_kwargs = pretrained_model_kwargs or {}
             model = checkpoint.get_model(model_cls, **pretrained_model_kwargs)

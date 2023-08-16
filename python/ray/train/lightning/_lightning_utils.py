@@ -3,7 +3,7 @@ import ray
 from ray.air import session
 from ray.air.constants import MODEL_KEY
 from ray.data.dataset import DataIterator
-from ray.train.lightning.lightning_checkpoint import LightningCheckpoint
+from ray.train.lightning.lightning_checkpoint import LegacyLightningCheckpoint
 from ray.util import PublicAPI
 
 import logging
@@ -283,7 +283,7 @@ class RayModelCheckpoint(ModelCheckpoint):
         """Report latest metrics dict and checkpoint to AIR training session.
 
         This method is called whenever a new checkpoint is created. It creates
-        a `LightningCheckpoint` and reports it to the AIR session along with
+        a `LegacyLightningCheckpoint` and reports it to the AIR session along with
         the latest metrics.
         """
 
@@ -316,7 +316,7 @@ class RayModelCheckpoint(ModelCheckpoint):
 
             # Only the report_rank worker creates the actual checkpoints.
             # Other workers create placeholder checkpoints to prevent blocking.
-            checkpoint = LightningCheckpoint.from_directory(path=tmpdir)
+            checkpoint = LegacyLightningCheckpoint.from_directory(path=tmpdir)
             session.report(metrics=metrics, checkpoint=checkpoint)
 
         self.is_checkpoint_step = False
