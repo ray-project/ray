@@ -198,7 +198,7 @@ int TaskSpecification::GetRuntimeEnvHash() const {
   WorkerCacheKey env = {SerializedRuntimeEnv(),
                         GetRequiredResources().GetResourceMap(),
                         IsActorCreationTask(),
-                        GetRequiredResources().GetResource("GPU") > 0};
+                        GetRequiredResources().Get(scheduling::ResourceID::GPU()) > 0};
   return env.IntHash();
 }
 
