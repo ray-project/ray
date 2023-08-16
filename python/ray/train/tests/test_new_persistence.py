@@ -185,6 +185,9 @@ def train_fn(config):
                 {"iter": i, _SCORE_KEY: i},
                 checkpoint=NewCheckpoint.from_directory(temp_dir),
             )
+            # `train.report` should not have deleted this!
+            assert os.path.exists(temp_dir)
+
         if i in config.get("fail_iters", []):
             raise RuntimeError(f"Failing on iter={i}!!")
 
