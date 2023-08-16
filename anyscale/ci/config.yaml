@@ -2,7 +2,9 @@
 
 artifacts_bucket: bk-premerge-first-jawfish-artifacts
 ci_temp: s3://bk-premerge-first-jawfish-artifacts/tmp/runtime/
-ci_temp_repo: 830883877497.dkr.ecr.us-west-2.amazonaws.com/anyscale/runtime-ci-tmp
+ci_temp_repo: 830883877497.dkr.ecr.us-west-2.amazonaws.com/anyscale/runtime-ci-tmp  # legacy; to be removed.
+ci_work_repo: 830883877497.dkr.ecr.us-west-2.amazonaws.com/anyscale/runtime-ci-tmp
+forge_prefix: cr.ray.io/rayproject/
 builder_queues:
   builder: large
   builder-arm64: largeg
