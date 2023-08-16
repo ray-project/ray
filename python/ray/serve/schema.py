@@ -19,7 +19,11 @@ from ray.serve._private.common import (
 from ray.serve.config import DeploymentMode
 from ray.serve._private.utils import DEFAULT, dict_keys_snake_to_camel_case
 from ray.util.annotations import DeveloperAPI, PublicAPI
-from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME, DEFAULT_GRPC_PORT
+from ray.serve._private.constants import (
+    DEFAULT_GRPC_PORT,
+    DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_S,
+    SERVE_DEFAULT_APP_NAME,
+)
 
 
 def _route_prefix_format(cls, v):
@@ -566,6 +570,12 @@ class HTTPOptionsSchema(BaseModel, extra=Extra.forbid):
     request_timeout_s: float = Field(
         default=None,
         description="The timeout for HTTP requests. Defaults to no timeout.",
+    )
+    keep_alive_timeout_s: int = Field(
+        default=DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_S,
+        description="The HTTP proxy will keep idle connections alive for this duration "
+        "before closing them when no requests are ongoing. Defaults to "
+        f"{DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_S} seconds.",
     )
 
 

@@ -1,7 +1,7 @@
-import pytest
 import sys
 from unittest.mock import patch, MagicMock
 
+import pytest
 from ray.serve._private.http_proxy import GenericProxy, gRPCProxy, HTTPProxy
 from ray.serve._private.proxy_request_response import (
     ASGIProxyRequest,
@@ -12,6 +12,13 @@ if sys.version_info >= (3, 8, 0):
     from unittest.mock import AsyncMock
 else:
     from asyncmock import AsyncMock
+import ray
+from ray import serve
+from ray.actor import ActorHandle
+from ray.serve._private.constants import (
+    DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_S,
+    SERVE_NAMESPACE,
+)
 
 
 @patch("ray.get_runtime_context", MagicMock())
@@ -176,6 +183,77 @@ class TestHTTPProxy:
     #     # with patch.object(http_proxy, 'proxy_request', mocked_proxy_request):
     #     #     pass
     #     # mocked_proxy_request.assert_called_once()
+
+
+class TestTimeoutKeepAliveConfig:
+    """Test setting keep_alive_timeout_s in config and env."""
+
+    def get_proxy_actor(self) -> ActorHandle:
+        proxy_actor_name = None
+        for actor in ray._private.state.actors().values():
+            if actor["ActorClassName"] == "HTTPProxyActor":
+                proxy_actor_name = actor["Name"]
+        return ray.get_actor(proxy_actor_name, namespace=SERVE_NAMESPACE)
+
+    def test_default_keep_alive_timeout_s(self, ray_shutdown):
+        """Test when no keep_alive_timeout_s is set.
+
+        When the keep_alive_timeout_s is not set, the uvicorn keep alive is 5.
+        """
+        serve.start()
+        proxy_actor = self.get_proxy_actor()
+        assert (
+            ray.get(proxy_actor._uvicorn_keep_alive.remote())
+            == DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_S
+        )
+
+    def test_set_keep_alive_timeout_in_http_configs(self, ray_shutdown):
+        """Test when keep_alive_timeout_s is in http configs.
+
+        When the keep_alive_timeout_s is set in http configs, the uvicorn keep alive
+        is set correctly.
+        """
+        keep_alive_timeout_s = 222
+        serve.start(http_options={"keep_alive_timeout_s": keep_alive_timeout_s})
+        proxy_actor = self.get_proxy_actor()
+        assert ray.get(proxy_actor._uvicorn_keep_alive.remote()) == keep_alive_timeout_s
+
+    @pytest.mark.parametrize(
+        "ray_instance",
+        [
+            {"RAY_SERVE_HTTP_KEEP_ALIVE_TIMEOUT_S": "333"},
+        ],
+        indirect=True,
+    )
+    def test_set_keep_alive_timeout_in_env(self, ray_instance, ray_shutdown):
+        """Test when keep_alive_timeout_s is in env.
+
+        When the keep_alive_timeout_s is set in env, the uvicorn keep alive
+        is set correctly.
+        """
+        serve.start()
+        proxy_actor = self.get_proxy_actor()
+        assert ray.get(proxy_actor._uvicorn_keep_alive.remote()) == 333
+
+    @pytest.mark.parametrize(
+        "ray_instance",
+        [
+            {"RAY_SERVE_HTTP_KEEP_ALIVE_TIMEOUT_S": "333"},
+        ],
+        indirect=True,
+    )
+    def test_set_timeout_keep_alive_in_both_config_and_env(
+        self, ray_instance, ray_shutdown
+    ):
+        """Test when keep_alive_timeout_s is in both http configs and env.
+
+        When the keep_alive_timeout_s is set in env, the uvicorn keep alive
+        is set to the one in env.
+        """
+        keep_alive_timeout_s = 222
+        serve.start(http_options={"keep_alive_timeout_s": keep_alive_timeout_s})
+        proxy_actor = self.get_proxy_actor()
+        assert ray.get(proxy_actor._uvicorn_keep_alive.remote()) == 333
 
 
 if __name__ == "__main__":

@@ -50,6 +50,7 @@ from ray.serve._private.constants import (
     SERVE_MULTIPLEXED_MODEL_ID,
     SERVE_NAMESPACE,
     DEFAULT_LATENCY_BUCKET_MS,
+    DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_S,
     PROXY_MIN_DRAINING_PERIOD_S,
     RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING,
     RAY_SERVE_REQUEST_ID_HEADER,
@@ -98,6 +99,9 @@ SOCKET_REUSE_PORT_ENABLED = (
     os.environ.get("SERVE_SOCKET_REUSE_PORT_ENABLED", "1") == "1"
 )
 
+RAY_SERVE_HTTP_KEEP_ALIVE_TIMEOUT_S = int(
+    os.environ.get("RAY_SERVE_HTTP_KEEP_ALIVE_TIMEOUT_S", 0)
+)
 # TODO (shrekris-anyscale): Deprecate SERVE_REQUEST_PROCESSING_TIMEOUT_S env var
 RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S = (
     float(os.environ.get("RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S", 0))
@@ -1261,6 +1265,7 @@ class HTTPProxyActor:
         node_id: NodeId,
         request_timeout_s: Optional[float] = None,
         http_middlewares: Optional[List["starlette.middleware.Middleware"]] = None,
+        keep_alive_timeout_s: int = DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_S,
         grpc_options: Optional[gRPCOptions] = None,
     ):  # noqa: F821
         self.grpc_options = grpc_options or gRPCOptions()
@@ -1298,6 +1303,10 @@ class HTTPProxyActor:
         self.port = port
         self.grpc_port = self.grpc_options.port
         self.root_path = root_path
+        self.keep_alive_timeout_s = (
+            RAY_SERVE_HTTP_KEEP_ALIVE_TIMEOUT_S or keep_alive_timeout_s
+        )
+        self._uvicorn_server = None
 
         self.http_setup_complete = asyncio.Event()
         self.grpc_setup_complete = asyncio.Event()
@@ -1424,12 +1433,13 @@ class HTTPProxyActor:
             root_path=self.root_path,
             lifespan="off",
             access_log=False,
+            timeout_keep_alive=self.keep_alive_timeout_s,
         )
-        server = uvicorn.Server(config=config)
+        self._uvicorn_server = uvicorn.Server(config=config)
         # TODO(edoakes): we need to override install_signal_handlers here
         # because the existing implementation fails if it isn't running in
         # the main thread and uvicorn doesn't expose a way to configure it.
-        server.install_signal_handlers = lambda: None
+        self._uvicorn_server.install_signal_handlers = lambda: None
 
         logger.info(
             "Starting HTTP server with on node: "
@@ -1438,7 +1448,7 @@ class HTTPProxyActor:
         )
 
         self.http_setup_complete.set()
-        await server.serve(sockets=[sock])
+        await self._uvicorn_server.serve(sockets=[sock])
 
     async def run_grpc_server(self):
         if not self.should_start_grpc_service():
@@ -1493,3 +1503,12 @@ class HTTPProxyActor:
         this will always return immediately.
         """
         return pickle.dumps(await self.http_proxy.receive_asgi_messages(request_id))
+
+    async def _uvicorn_keep_alive(self) -> Optional[int]:
+        """Get the keep alive timeout used for the running uvicorn server.
+
+        Return the timeout_keep_alive config used on the uvicorn server if it's running.
+        If the server is not running, return None.
+        """
+        if self._uvicorn_server:
+            return self._uvicorn_server.config.timeout_keep_alive
