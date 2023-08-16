@@ -429,7 +429,7 @@ py_test(
 )
 
 py_test(
-    name = "test_vsphere_node_provider",
+    name = "vsphere/test_vsphere_node_provider",
     size = "small",
     srcs = ["vsphere/test_vsphere_node_provider.py"],
     tags = ["exclusive", "small_size_python_tests", "team:serverless"],
