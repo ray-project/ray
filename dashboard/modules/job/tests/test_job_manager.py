@@ -614,6 +614,28 @@ class TestRuntimeEnv:
         assert token in logs, logs
         assert "JOB_1_VAR" in logs
 
+    async def test_user_provided_job_config_honored_by_worker(self, job_manager):
+        """Ensures that the JobConfig instance injected into ray.init in the driver
+        script is honored even in case when job is submitted via JobManager.submit_job
+        API (involving RAY_JOB_CONFIG_JSON_ENV_VAR being set in child process env)
+        """
+        job_id = await job_manager.submit_job(
+            entrypoint=f"python {_driver_script_path('check_code_search_path_is_propagated.py')}",
+            # NOTE: We inject runtime_env in here, but also specify the JobConfig in the
+            #       driver script: settings to JobConfig (other than the runtime_env) passed in
+            #       via ray.init(...) have to be respected along with the runtime_env passed from
+            #       submit_job API
+            runtime_env={"env_vars": {"TEST_SUBPROCESS_RANDOM_VAR": "0xDEEDDEED"}},
+        )
+
+        await async_wait_for_condition_async_predicate(
+            check_job_succeeded, job_manager=job_manager, job_id=job_id
+        )
+        logs = job_manager.get_job_logs(job_id)
+
+        assert "Code search path is propagated" in logs, logs
+        assert "0xDEEDDEED" in logs, logs
+
     async def test_failed_runtime_env_validation(self, job_manager):
         """Ensure job status is correctly set as failed if job has an invalid
         runtime_env.
