@@ -15,6 +15,8 @@ from ray.data.context import DataContext
 
 from ray.data._internal.numpy_support import is_valid_udf_return
 
+from ray.data.datasource.datasource import ReadTask
+
 RowType = Dict[str, Any]
 RowBasedMapTransformFn = Callable[[RowType], Iterable[RowType]]
 BatchBasedMapTransformFn = Callable[[DataBatch], Iterable[DataBatch]]
@@ -76,15 +78,14 @@ class RowBasedMapDataProcessor(MapDataProcessor):
 
 class ReadOpMapDataProcessor(MapDataProcessor):
 
-    def __init__(
-        self,
-        output_fn,
-    ):
-        self._outpu_fn = output_fn
-
     def process(self, input_blocks: Iterable[Block]) -> Iterable[Block]:
-        # assert len(input_blocks) == 0
-        yield from self._outpu_fn(input_blocks)
+        for read_task in input_blocks:
+            assert isinstance(read_task, ReadTask)
+            for batch in read_task():
+                self._output_buffer.add_block(batch)
+                yield from self._yield_available_blocks()
+        self._output_buffer.finalize()
+        yield from self._yield_available_blocks()
 
 
 class BatchBasedMapDataProcessor(MapDataProcessor):
