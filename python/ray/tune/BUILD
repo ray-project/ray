@@ -48,7 +48,7 @@ py_library(
 # --------------------------------------------------------------------
 py_test(
     name = "test_actor_reuse",
-    size = "medium",
+    size = "large",
     srcs = ["tests/test_actor_reuse.py"],
     tags = ["team:ml", "exclusive", "no_new_storage"],
     deps = [":tune_lib", ":conftest"],

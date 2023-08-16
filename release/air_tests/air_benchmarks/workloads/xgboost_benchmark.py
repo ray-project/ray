@@ -14,7 +14,7 @@ import ray
 from ray import data
 from ray.train.xgboost import (
     XGBoostTrainer,
-    XGBoostCheckpoint,
+    LegacyXGBoostCheckpoint,
 )
 from ray.train import RunConfig, ScalingConfig
 
@@ -103,7 +103,7 @@ def run_xgboost_training(data_path: str, num_workers: int, cpus_per_worker: int)
         ),
     )
     result = trainer.fit()
-    checkpoint = XGBoostCheckpoint.from_checkpoint(result.checkpoint)
+    checkpoint = LegacyXGBoostCheckpoint.from_checkpoint(result.checkpoint)
     xgboost_model = checkpoint.get_model()
     xgboost_model.save_model(_XGB_MODEL_PATH)
     ray.shutdown()
@@ -116,10 +116,10 @@ def run_xgboost_prediction(model_path: str, data_path: str):
     ds = data.read_parquet(data_path)
     ds = ds.drop_columns(["labels"])
 
-    ckpt = XGBoostCheckpoint.from_model(booster=model)
+    ckpt = LegacyXGBoostCheckpoint.from_model(booster=model)
 
     class XGBoostPredictor:
-        def __init__(self, checkpoint: XGBoostCheckpoint):
+        def __init__(self, checkpoint: LegacyXGBoostCheckpoint):
             self.model = checkpoint.get_model()
 
         def __call__(self, data: pd.DataFrame) -> Dict[str, np.ndarray]:

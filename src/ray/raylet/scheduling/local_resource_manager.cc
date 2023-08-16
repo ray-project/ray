@@ -352,8 +352,8 @@ void LocalResourceManager::ReleaseWorkerResources(
 
 NodeResources LocalResourceManager::ToNodeResources() const {
   NodeResources node_resources;
-  node_resources.available = local_resources_.available.ToResourceRequest();
-  node_resources.total = local_resources_.total.ToResourceRequest();
+  node_resources.available = local_resources_.available.ToResourceSet();
+  node_resources.total = local_resources_.total.ToResourceSet();
   node_resources.labels = local_resources_.labels;
   node_resources.is_draining = is_local_node_draining_;
   return node_resources;
@@ -403,10 +403,9 @@ void LocalResourceManager::FillResourceUsage(rpc::ResourcesData &resources_data)
     last_report_resources_.reset(new NodeResources(node_resources));
   }
 
-  for (auto entry : resources.total.ToMap()) {
-    auto resource_id = entry.first;
-    auto label = ResourceID(resource_id).Binary();
-    auto total = entry.second;
+  for (auto resource_id : resources.total.ResourceIds()) {
+    auto label = resource_id.Binary();
+    auto total = resources.total.Get(resource_id);
     auto available = resources.available.Get(resource_id);
     auto last_total = last_report_resources_->total.Get(resource_id);
     auto last_available = last_report_resources_->available.Get(resource_id);
@@ -461,10 +460,9 @@ std::optional<syncer::RaySyncMessage> LocalResourceManager::CreateSyncMessage(
 
   NodeResources resources = ToNodeResources();
 
-  for (auto entry : resources.total.ToMap()) {
-    auto resource_id = entry.first;
-    auto label = ResourceID(resource_id).Binary();
-    auto total = entry.second;
+  for (auto resource_id : resources.total.ResourceIds()) {
+    auto label = resource_id.Binary();
+    auto total = resources.total.Get(resource_id);
     auto available = resources.available.Get(resource_id);
 
     resources_data.set_resources_available_changed(true);
@@ -539,10 +537,10 @@ bool LocalResourceManager::ResourcesExist(scheduling::ResourceID resource_id) co
 absl::flat_hash_map<std::string, LocalResourceManager::ResourceUsage>
 LocalResourceManager::GetResourceUsageMap() const {
   const auto &local_resources = GetLocalResources();
-  const auto &avail_map =
-      local_resources.GetAvailableResourceInstances().ToResourceRequest().ToResourceMap();
-  const auto &total_map =
-      local_resources.GetTotalResourceInstances().ToResourceRequest().ToResourceMap();
+  const auto avail_map =
+      local_resources.GetAvailableResourceInstances().ToResourceSet().GetResourceMap();
+  const auto total_map =
+      local_resources.GetTotalResourceInstances().ToResourceSet().GetResourceMap();
 
   absl::flat_hash_map<std::string, ResourceUsage> resource_usage_map;
   for (const auto &it : total_map) {
