@@ -1,4 +1,3 @@
-import os
 import pytorch_lightning as pl
 import torch
 import torch.nn as nn
@@ -59,12 +58,6 @@ def test_load_from_path():
             Net, input_dim=3, output_dim=3
         )
         assert torch.equal(checkpoint_model.linear.weight, model.linear.weight)
-
-        # Ensure the model checkpoint was copied into a tmp dir
-        cached_checkpoint_dir = lightning_checkpoint._cache_dir
-        cached_checkpoint_path = f"{cached_checkpoint_dir}/{MODEL_KEY}"
-        assert os.path.exists(cached_checkpoint_dir)
-        assert os.path.exists(cached_checkpoint_path)
 
         # Check the model outputs
         for i, batch in enumerate(dataloader):

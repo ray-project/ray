@@ -18,7 +18,7 @@ from transformers.pipelines import pipeline, Pipeline
 
 
 from ray.train.huggingface import (
-    TransformersCheckpoint,
+    LegacyTransformersCheckpoint,
     TransformersPredictor,
 )
 
@@ -95,7 +95,7 @@ def test_predict_no_preprocessor_no_training(tmpdir, ray_start_4_cpus):
     model_config = AutoConfig.from_pretrained(model_checkpoint)
     model = AutoModelForCausalLM.from_config(model_config)
     tokenizer = AutoTokenizer.from_pretrained(tokenizer_checkpoint)
-    checkpoint = TransformersCheckpoint.from_model(model, tokenizer, path=tmpdir)
+    checkpoint = LegacyTransformersCheckpoint.from_model(model, tokenizer, path=tmpdir)
     predictor = TransformersPredictor.from_checkpoint(
         checkpoint,
         task="text-generation",
@@ -112,7 +112,7 @@ def test_custom_pipeline(tmpdir, model_cls):
     model_config = AutoConfig.from_pretrained(model_checkpoint)
     model = AutoModelForCausalLM.from_config(model_config)
     tokenizer = AutoTokenizer.from_pretrained(tokenizer_checkpoint)
-    checkpoint = TransformersCheckpoint.from_model(model, tokenizer, path=tmpdir)
+    checkpoint = LegacyTransformersCheckpoint.from_model(model, tokenizer, path=tmpdir)
 
     if model_cls:
         kwargs = {}
@@ -130,9 +130,11 @@ def create_checkpoint():
         model_config = AutoConfig.from_pretrained(model_checkpoint)
         model = AutoModelForCausalLM.from_config(model_config)
         tokenizer = AutoTokenizer.from_pretrained(tokenizer_checkpoint)
-        checkpoint = TransformersCheckpoint.from_model(model, tokenizer, path=tmpdir)
+        checkpoint = LegacyTransformersCheckpoint.from_model(
+            model, tokenizer, path=tmpdir
+        )
         # Serialize to dict so we can remove the temporary directory
-        return TransformersCheckpoint.from_dict(checkpoint.to_dict())
+        return LegacyTransformersCheckpoint.from_dict(checkpoint.to_dict())
 
 
 if __name__ == "__main__":

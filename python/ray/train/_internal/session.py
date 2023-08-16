@@ -575,7 +575,7 @@ class _TrainSession:
                     "Passing objects containg Torch tensors as metrics "
                     "is not supported as it will throw an exception on "
                     "deserialization. You can either convert the tensors "
-                    "to Python objects or use a `TorchCheckpoint` as the "
+                    "to Python objects or use a `LegacyTorchCheckpoint` as the "
                     "`checkpoint` argument of `ray.train.report` to "
                     "store your Torch objects."
                 )

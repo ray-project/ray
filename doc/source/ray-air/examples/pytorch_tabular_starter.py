@@ -33,7 +33,7 @@ import torch.nn as nn
 
 from ray import train
 from ray.train import ScalingConfig
-from ray.train.torch import TorchCheckpoint, TorchTrainer
+from ray.train.torch import LegacyTorchCheckpoint, TorchTrainer
 
 
 def create_model(input_features):
@@ -75,7 +75,7 @@ def train_loop_per_worker(config):
             train_loss.backward()
             optimizer.step()
         loss = train_loss.item()
-        train.report({"loss": loss}, checkpoint=TorchCheckpoint.from_model(model))
+        train.report({"loss": loss}, checkpoint=LegacyTorchCheckpoint.from_model(model))
 
 
 num_features = len(train_dataset.schema().names) - 1

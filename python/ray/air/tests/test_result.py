@@ -6,7 +6,7 @@ import ray
 from ray.air.constants import EXPR_RESULT_FILE
 from ray import train
 from ray.train import Result, CheckpointConfig, RunConfig, ScalingConfig
-from ray.train.torch import TorchCheckpoint, TorchTrainer
+from ray.train.torch import LegacyTorchCheckpoint, TorchTrainer
 from ray.train.base_trainer import TrainingFailedError
 from ray.tune import TuneConfig, Tuner
 
@@ -24,7 +24,7 @@ def build_dummy_trainer(configs):
         for i in range(configs["NUM_ITERATIONS"]):
             train.report(
                 metrics={"metric_a": i, "metric_b": -i},
-                checkpoint=TorchCheckpoint.from_dict({"iter": i}),
+                checkpoint=LegacyTorchCheckpoint.from_dict({"iter": i}),
             )
         raise RuntimeError()
 

@@ -15,7 +15,7 @@ import torch.nn as nn
 import torchvision.transforms as transforms
 from filelock import FileLock
 from ray import serve, tune, train
-from ray.train.torch import TorchTrainer, TorchCheckpoint
+from ray.train.torch import TorchTrainer, LegacyTorchCheckpoint
 from ray.tune import Tuner
 from torch.utils.data import DataLoader, Subset
 from torchvision.datasets import MNIST
@@ -101,7 +101,7 @@ def training_loop(config):
 
         train.report(
             validation_loss,
-            checkpoint=TorchCheckpoint.from_state_dict(model.module.state_dict()),
+            checkpoint=LegacyTorchCheckpoint.from_state_dict(model.module.state_dict()),
         )
 
 
@@ -144,7 +144,7 @@ def get_remote_model(remote_model_checkpoint_path):
 
 
 def get_model(model_checkpoint_path):
-    checkpoint_dict = TorchCheckpoint.from_directory(model_checkpoint_path)
+    checkpoint_dict = LegacyTorchCheckpoint.from_directory(model_checkpoint_path)
     model_state = checkpoint_dict.to_dict()["model"]
 
     model = resnet18()

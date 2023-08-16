@@ -3,7 +3,7 @@ from typing import Dict, List, Optional, Union
 from tensorflow.keras.callbacks import Callback as KerasCallback
 
 import ray
-from ray.train.tensorflow import TensorflowCheckpoint
+from ray.train.tensorflow import LegacyTensorflowCheckpoint
 from ray.util.annotations import PublicAPI, Deprecated
 
 
@@ -158,7 +158,7 @@ class ReportCheckpointCallback(_Callback):
         metrics = self._get_reported_metrics(logs)
 
         if when in self._checkpoint_on:
-            checkpoint = TensorflowCheckpoint.from_model(self.model)
+            checkpoint = LegacyTensorflowCheckpoint.from_model(self.model)
         else:
             checkpoint = None
 
