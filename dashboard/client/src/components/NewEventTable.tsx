@@ -38,11 +38,7 @@ type EventTableProps = {
   defaultSeverityLevels?: string[];
 };
 
-type FiltersParams = {
-  [key: string]: string | string[] | number | undefined;
-};
-
-const transformFiltersToParams = (filters: FiltersParams) => {
+const transformFiltersToParams = (filters: Filters) => {
   const params = new URLSearchParams();
   if (!filters) {
     return;
@@ -54,37 +50,33 @@ const transformFiltersToParams = (filters: FiltersParams) => {
     const t = typeof filters.entityName;
     console.info("t : ", t);
 
+    if (!key) {
+      continue;
+    }
+
     if (
       isString(key) &&
       key === "entityId" &&
-      filters.entityName &&
-      filters.entityId
+      filters.entityName !== undefined &&
+      filters.entityId !== undefined
     ) {
       params.append(
         `${encodeURIComponent(filters.entityName)}_id`,
         encodeURIComponent(filters.entityId),
       );
-    } else if (Array.isArray(filters[key])) {
-      //Process sourceType and severityLevel
-      filters[key].forEach((value) => {
-        params.append(encodeURIComponent(key), encodeURIComponent(value));
-      });
+    } else if (Array.isArray(filters[key as keyof Filters])) {
+      // Process sourceType and severityLevel
+      const filterArray = filters[key as keyof Filters] as string[];
+      if (filterArray !== undefined) {
+        filterArray.forEach((value) => {
+          params.append(encodeURIComponent(key), encodeURIComponent(value));
+        });
+      }
     }
   }
 
   return params.toString();
 };
-
-// Example filters
-const filters = {
-  sourceType: ["GCS", "CORE_WORKER"],
-  severityLevel: ["WARNING", "ERROR"],
-  entityName: "serve_replica",
-  entityId: 123,
-};
-
-const queryParams = transformFiltersToParams(filters);
-console.log(queryParams);
 
 const useStyles = makeStyles((theme) => ({
   table: {
@@ -218,7 +210,8 @@ const useEventTable = (props: EventTableProps) => {
       }
     };
     getEvent();
-  });
+  }, [filters]);
+
   // useEffect(() => {
   //   const getEvent = async () => {
   //     try {
@@ -299,6 +292,9 @@ const NewEventTable = (props: EventTableProps) => {
   return (
     <div>
       <header className={classes.filterContainer}>
+        <button onClick={() => setFilters({ ...filters, sourceType: ["GCS"] })}>
+          test
+        </button>
         <Autocomplete
           className={classes.search}
           style={{ width: 100 }}
