@@ -25,8 +25,6 @@ from ray.autoscaler.tags import (
     TAG_RAY_NODE_STATUS,
     TAG_RAY_USER_NODE_TYPE,
 )
-from ray.util.spark.cluster_init import _start_ray_worker_nodes
-
 
 logger = logging.getLogger(__name__)
 

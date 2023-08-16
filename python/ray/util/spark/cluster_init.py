@@ -43,8 +43,9 @@ RAY_ON_SPARK_COLLECT_LOG_TO_PATH = "RAY_ON_SPARK_COLLECT_LOG_TO_PATH"
 
 
 def _check_system_environment():
-    if not sys.platform.startswith("linux"):
-        raise RuntimeError("Ray on spark only supports running on Linux.")
+    # TODO: support macos
+    # if not sys.platform.startswith("linux"):
+    #     raise RuntimeError("Ray on spark only supports running on Linux.")
 
     spark_dependency_error = "ray.util.spark module requires pyspark >= 3.3"
     try:
@@ -512,7 +513,14 @@ def _setup_ray_cluster(
                 "collect_log_to_path": collect_log_to_path,
             }
         )
-        ray_head_proc, tail_output_deque = autoscaler_cluster.start()
+        ray_head_proc, tail_output_deque = autoscaler_cluster.start(
+            ray_head_ip,
+            ray_head_port,
+            ray_temp_dir,
+            dashboard_options,
+            head_node_options,
+            collect_log_to_path,
+        )
     else:
         ray_head_node_cmd = [
             sys.executable,
@@ -641,7 +649,6 @@ def _setup_ray_cluster(
                         "Ray workers failed to start."
                     ) from ray_cluster_handler.background_job_exception
 
-            return ray_cluster_handler
         except Exception:
             # If driver side setup ray-cluster routine raises exception, it might result
             # in part of ray processes has been launched (e.g. ray head or some ray workers
@@ -649,6 +656,8 @@ def _setup_ray_cluster(
             # and clean status.
             ray_cluster_handler.shutdown()
             raise
+
+    return ray_cluster_handler
 
 
 _active_ray_cluster = None
@@ -896,7 +905,7 @@ def setup_ray_cluster(
             res_profile = _create_resource_profile(num_cpus_per_node, num_gpus_per_node)
         else:
             raise ValueError(
-                "Current spark version does not support stage scheduling, so that "
+                "Current spark cluster does not support stage scheduling, so that "
                 "you cannot set the argument `num_cpus_per_node` and "
                 "`num_gpus_per_node` values. Without setting the 2 arguments, "
                 "per-Ray worker node will be assigned with number of "
@@ -1082,7 +1091,8 @@ def _start_ray_worker_nodes(
             )
 
         ray_worker_node_extra_envs = {
-            RAY_ON_SPARK_COLLECT_LOG_TO_PATH: collect_log_to_path or ""
+            RAY_ON_SPARK_COLLECT_LOG_TO_PATH: collect_log_to_path or "",
+            "RAY_ENABLE_WINDOWS_OR_OSX_CLUSTER": "1",
         }
 
         if num_gpus_per_node > 0:

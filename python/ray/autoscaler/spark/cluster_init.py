@@ -14,7 +14,6 @@ import ray._private.services
 from ray.util.annotations import DeveloperAPI
 from ray.autoscaler._private.spark.node_provider import RAY_ON_SPARK_HEAD_NODE_ID
 import ray._private.ray_constants as ray_constants
-from ray.util.spark.cluster_init import _convert_ray_node_options, exec_cmd, RAY_ON_SPARK_COLLECT_LOG_TO_PATH
 from ray.util.spark.utils import setup_sigterm_on_parent_death
 
 
@@ -62,7 +61,7 @@ class AutoscalingCluster:
         self,
         ray_head_ip,
         ray_head_port,
-        temp_dir,
+        ray_temp_dir,
         dashboard_options,
         head_node_options,
         collect_log_to_path,
@@ -73,6 +72,8 @@ class AutoscalingCluster:
         After this call returns, you can connect to the cluster with
         ray.init("auto").
         """
+        from ray.util.spark.cluster_init import _convert_ray_node_options, exec_cmd, RAY_ON_SPARK_COLLECT_LOG_TO_PATH
+
         _, autoscale_config = tempfile.mkstemp()
         with open(autoscale_config, "w") as f:
             f.write(json.dumps(self._config))
@@ -81,7 +82,7 @@ class AutoscalingCluster:
             sys.executable,
             "-m",
             "ray.util.spark.start_ray_node",
-            f"--temp-dir={temp_dir}",
+            f"--temp-dir={ray_temp_dir}",
             "--block",
             "--head",
             f"--node-ip-address={ray_head_ip}",
