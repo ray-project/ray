@@ -482,6 +482,7 @@ def _setup_ray_cluster(
         from ray.autoscaler._private.spark.spark_job_server import _start_spark_job_server
 
         # TODO: use random port.
+        # TODO: make the serving thread daemon
         spark_job_server = _start_spark_job_server("127.0.0.1", 8899, spark)
         autoscaler_cluster = AutoscalingCluster(
             head_resources={
@@ -612,6 +613,7 @@ def _setup_ray_cluster(
                     object_store_memory_per_node,
                     worker_node_options,
                     collect_log_to_path,
+                    resources=None,
                 )
             except Exception as e:
                 # NB:

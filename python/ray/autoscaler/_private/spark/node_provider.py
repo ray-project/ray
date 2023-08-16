@@ -53,7 +53,7 @@ class RayOnSparkNodeProvider(NodeProvider):
             },
         }
         self._next_node_id = 0
-        self.server_url = "https://127.0.0.1:8899"
+        self.server_url = "http://127.0.0.1:8899"
 
         self.ray_head_ip = self.provider_config["ray_head_ip"]
         self.ray_head_port = self.provider_config["ray_head_port"]
@@ -155,11 +155,11 @@ class RayOnSparkNodeProvider(NodeProvider):
                 num_gpus_per_node = resources.pop('GPU')
                 heap_memory_per_node = resources.pop('memory')
                 object_store_memory_per_node = resources.pop('object_store_memory')
-                response = requests.request(
+                response = requests.post(
                     url=self.server_url + "/create_node",
                     json={
                         "num_worker_nodes": 1,
-                        "spark_job_grou_id": self._gen_spark_job_group_id(next_id),
+                        "spark_job_group_id": self._gen_spark_job_group_id(next_id),
                         "spark_job_group_desc":
                             "This job group is for spark job which runs the Ray "
                             f"cluster worker node {next_id} connecting to ray "
@@ -196,9 +196,9 @@ class RayOnSparkNodeProvider(NodeProvider):
             except Exception as e:
                 raise e
 
-            requests.request(
+            requests.post(
                 url=self.server_url + "/terminate_node",
-                json={"spark_job_grou_id": self._gen_spark_job_group_id(node_id)}
+                json={"spark_job_group_id": self._gen_spark_job_group_id(node_id)}
             )
 
     @staticmethod

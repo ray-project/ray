@@ -21,7 +21,7 @@ class SparkJobServerRequestHandler(BaseHTTPRequestHandler):
         spark_job_group_id = data["spark_job_group_id"]
 
         if path_parts[0] == "create_node":
-            assert len(path_parts) == "1", f"Illegal request path: {path}"
+            assert len(path_parts) == 1, f"Illegal request path: {path}"
             spark_job_group_desc = data["spark_job_group_desc"]
             num_worker_nodes = data["num_worker_nodes"]
             using_stage_scheduling = data["using_stage_scheduling"]
@@ -34,6 +34,7 @@ class SparkJobServerRequestHandler(BaseHTTPRequestHandler):
             object_store_memory_per_node = data["object_store_memory_per_node"]
             worker_node_options = data["worker_node_options"]
             collect_log_to_path = data["collect_log_to_path"]
+            resources = data["resources"]
 
             def start_ray_worker_thread_fn():
                 _start_ray_worker_nodes(
@@ -51,6 +52,7 @@ class SparkJobServerRequestHandler(BaseHTTPRequestHandler):
                     object_store_memory_per_node=object_store_memory_per_node,
                     worker_node_options=worker_node_options,
                     collect_log_to_path=collect_log_to_path,
+                    resources=resources,
                 )
 
             threading.Thread(
@@ -59,8 +61,8 @@ class SparkJobServerRequestHandler(BaseHTTPRequestHandler):
             return {}
 
         elif path_parts[0] == "terminate_node":
-            assert len(path_parts) == "1", f"Illegal request path: {path}"
-            self.server.spark.cancelJobGroup(spark_job_group_id)
+            assert len(path_parts) == 1, f"Illegal request path: {path}"
+            self.server.spark.sparkContext.cancelJobGroup(spark_job_group_id)
             return {}
 
         else:
