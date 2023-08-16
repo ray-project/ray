@@ -199,7 +199,7 @@ def test_reconfigure_with_exception(serve_instance):
         serve.run(A.options(user_config="hi").bind())
 
 
-@pytest.mark.parametrize("use_handle", [False])
+@pytest.mark.parametrize("use_handle", [True, False])
 def test_redeploy_single_replica(serve_instance, use_handle):
     # Tests that redeploying a deployment with a single replica waits for the
     # replica to completely shut down before starting a new one.
@@ -232,8 +232,7 @@ def test_redeploy_single_replica(serve_instance, use_handle):
             return f"1|{os.getpid()}"
 
         async def __call__(self, request):
-            x = await self.handler(request.query_params["block"] == "True")
-            return x
+            return await self.handler(request.query_params["block"] == "True")
 
     class V2:
         async def handler(self, *args):

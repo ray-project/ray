@@ -153,12 +153,9 @@ class RayServeHandle:
         else:
             handle_tag = f"{deployment_name}#{get_random_letters()}"
 
+        # TODO(zcin): Separate deployment_id into deployment and application tags
         self.request_counter.set_default_tags(
-            {
-                "handle": handle_tag,
-                "deployment": str(self.deployment_id),
-                "application": app_name,
-            }
+            {"handle": handle_tag, "deployment": str(self.deployment_id)}
         )
 
         self._router: Optional[Router] = _router
@@ -180,7 +177,7 @@ class RayServeHandle:
         return self.deployment_id.name
 
     @property
-    def app_name(self) -> Optional[str]:
+    def app_name(self) -> str:
         return self.deployment_id.app
 
     @property

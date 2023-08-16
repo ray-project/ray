@@ -21,7 +21,7 @@ from ray.serve._private.constants import DEPLOYMENT_NAME_PREFIX_SEPARATOR
 
 class DeploymentID(NamedTuple):
     name: str
-    app: Optional[str]
+    app: str
 
     def __str__(self):
         if self.app:

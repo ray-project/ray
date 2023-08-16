@@ -1312,10 +1312,10 @@ class DeploymentState:
             (LongPollNamespace.RUNNING_REPLICAS, deployment_id),
             running_replica_infos,
         )
-        # Notify changed for Java HTTP Proxies. Since Java still only
+        # NOTE(zcin): notify changed for Java routers. Since Java only
         # supports 1.x API, there is no concept of applications in Java,
         # so the key should remain a string describing the deployment
-        # name. If there are no Java HTTP proxies, this is a no-op.
+        # name. If there are no Java routers, this is a no-op.
         self._long_poll_host.notify_changed(
             (LongPollNamespace.RUNNING_REPLICAS, str(deployment_id)),
             running_replica_infos,

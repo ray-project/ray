@@ -4,6 +4,7 @@ import sys
 import ray
 from ray import serve
 from ray.serve.built_application import BuiltApplication
+from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
 from ray._private.test_utils import wait_for_condition
 
 
@@ -76,15 +77,8 @@ class TestServeRun:
 
         def check_all_deployed():
             for i in range(len(deployments)):
-                # for deployment, response in zip(deployments, responses):
-                if (
-                    ray.get(
-                        serve.get_deployment_handle(
-                            deployments[i].name, f"app{i}"
-                        ).remote()
-                    )
-                    != responses[i]
-                ):
+                handle = serve.get_deployment_handle(deployments[i].name, f"app{i}")
+                if ray.get(handle.remote()) != responses[i]:
                     return False
 
             return True
@@ -153,7 +147,9 @@ class TestServeRun:
         serve.run(BuiltApplication(deployments, deployments[-1].name), _blocking=True)
 
         for deployment in deployments:
-            handle = serve.get_deployment_handle(deployment.name, "default")
+            handle = serve.get_deployment_handle(
+                deployment.name, SERVE_DEFAULT_APP_NAME
+            )
             assert ray.get(handle.remote("hello")) == "hello"
 
     def test_decorated_deployments(self, serve_instance):

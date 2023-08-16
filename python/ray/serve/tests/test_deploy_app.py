@@ -614,7 +614,7 @@ def test_deploy_multi_app_overwrite_apps2(client: ServeControllerClient):
             ]
         )
         for actor in actors:
-            assert "app1" not in actor["name"] and "app2" not in actor["class_name"]
+            assert "app1" not in actor["name"] and "app2" not in actor["name"]
         return True
 
     # Deployments from app1 and app2 should be deleted
