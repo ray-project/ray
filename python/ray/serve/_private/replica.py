@@ -565,7 +565,10 @@ class RayServeReplica:
             )
             self.metrics_pusher.register_task(
                 lambda: {self.replica_tag: self.get_num_pending_and_running_requests()},
-                RAY_SERVE_REPLICA_AUTOSCALING_METRIC_RECORD_PERIOD_S,
+                min(
+                    RAY_SERVE_REPLICA_AUTOSCALING_METRIC_RECORD_PERIOD_S,
+                    config.metrics_interval_s,
+                ),
                 self._add_autoscaling_metrics_point,
             )
 
