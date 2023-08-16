@@ -129,9 +129,10 @@ class BackendExecutor:
         # trainable, thus allowing for lazy checkpoint transfer to be used.
         # See https://github.com/ray-project/ray/issues/33073
         # for more context.
-        # TODO remove
-        if self._trial_info and self._trial_info.driver_ip:
-            self.worker_group._move_workers_with_ip_to_front(self._trial_info.driver_ip)
+        # TODO remove passing in trial_driver_ip.
+
+        trial_driver_ip = self._trial_info.driver_ip if self._trial_info else None
+        self.worker_group.group_workers_by_ip(trial_driver_ip)
 
         worker_locs = [
             f"{w.metadata.pid} ({w.metadata.node_ip})"
