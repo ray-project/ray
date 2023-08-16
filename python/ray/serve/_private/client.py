@@ -204,9 +204,9 @@ class ServeControllerClient:
         Raises TimeoutError if this doesn't happen before timeout_s.
         """
 
+        deployment_id = DeploymentID(deployment_name, app_name)
         start = time.time()
         while time.time() - start < timeout_s or timeout_s < 0:
-            deployment_id = DeploymentID(deployment_name, app_name)
             status_bytes = ray.get(
                 self._controller.get_deployment_status.remote(str(deployment_id))
             )
@@ -214,11 +214,15 @@ class ServeControllerClient:
             if status_bytes is not None:
                 break
 
-            logger.debug(f"Waiting for deployment {deployment_id} to be created.")
+            logger.debug(
+                f"Waiting for deployment '{deployment_id.name}' in application "
+                f"'{deployment_id.app}' to be created."
+            )
             time.sleep(CLIENT_CHECK_CREATION_POLLING_INTERVAL_S)
         else:
             raise TimeoutError(
-                f"Deployment {deployment_id} did not become HEALTHY after {timeout_s}s."
+                f"Deployment '{deployment_id}' in application '{deployment_id.app}' "
+                f"did not become HEALTHY after {timeout_s}s."
             )
 
     def _wait_for_application_running(self, name: str, timeout_s: int = -1):

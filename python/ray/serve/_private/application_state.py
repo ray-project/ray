@@ -24,7 +24,10 @@ from ray.serve._private.common import (
     EndpointTag,
     DeploymentInfo,
 )
-from ray.serve._private.constants import SERVE_LOGGER_NAME
+from ray.serve._private.constants import (
+    SERVE_LOGGER_NAME,
+    DEPLOYMENT_NAME_PREFIX_SEPARATOR,
+)
 from ray.serve._private.deploy_utils import (
     deploy_args_to_deployment_info,
     get_app_code_version,
@@ -389,7 +392,7 @@ class ApplicationState:
 
     def _get_live_deployments(self) -> List[str]:
         deps = self._deployment_state_manager.get_deployments_in_application(self._name)
-        prefix = self._name + "_"
+        prefix = self._name + DEPLOYMENT_NAME_PREFIX_SEPARATOR
         return [deployment[len(prefix) :] for deployment in deps]
 
     def _determine_app_status(self) -> Tuple[ApplicationStatus, str]:

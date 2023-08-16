@@ -403,7 +403,8 @@ def get_deployment(name: str) -> Deployment:
     """Dynamically fetch a handle to a Deployment object.
 
     This can be used to update and redeploy a deployment without access to
-    the original definition.
+    the original definition. This should only be used to fetch deployments
+    that were deployed using 1.x API.
 
     Example:
     >>> from ray import serve

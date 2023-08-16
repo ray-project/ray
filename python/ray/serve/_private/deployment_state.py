@@ -46,6 +46,7 @@ from ray.serve._private.constants import (
     REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD,
     SERVE_LOGGER_NAME,
     SERVE_NAMESPACE,
+    DEPLOYMENT_NAME_PREFIX_SEPARATOR,
 )
 from ray.serve.generated.serve_pb2 import DeploymentLanguage
 from ray.serve._private.long_poll import LongPollHost, LongPollNamespace
@@ -1302,17 +1303,19 @@ class DeploymentState:
         ):
             return
 
-        prefix = self.app_name + "_" if self.app_name else ""
+        prefix = (
+            self.app_name + DEPLOYMENT_NAME_PREFIX_SEPARATOR if self.app_name else ""
+        )
         deployment_id = DeploymentID(self._name[len(prefix) :], self.app_name)
 
-        logger.info(
-            f"Notify running replicas changed with updated object {deployment_id}.\n"
-            + f"Type: {type(deployment_id)}"
-        )
         self._long_poll_host.notify_changed(
             (LongPollNamespace.RUNNING_REPLICAS, deployment_id),
             running_replica_infos,
         )
+        # Notify changed for Java HTTP Proxies. Since Java still only
+        # supports 1.x API, there is no concept of applications in Java,
+        # so the key should remain a string describing the deployment
+        # name. If there are no Java HTTP proxies, this is a no-op.
         self._long_poll_host.notify_changed(
             (LongPollNamespace.RUNNING_REPLICAS, str(deployment_id)),
             running_replica_infos,
@@ -2465,14 +2468,18 @@ class DeploymentStateManager:
         for deployment_name, deployment_state in self._deployment_states.items():
             if filter_tag is None or deployment_name == filter_tag:
                 app_name = deployment_state.target_info.app_name
-                prefix = app_name + "_" if app_name else ""
+                prefix = app_name + DEPLOYMENT_NAME_PREFIX_SEPARATOR if app_name else ""
                 deployment_id = DeploymentID(deployment_name[len(prefix) :], app_name)
                 infos[deployment_id] = deployment_state.target_info
 
         if include_deleted:
             for name, info in self._deleted_deployment_metadata.items():
                 if filter_tag is None or name == filter_tag:
-                    prefix = info.app_name + "_" if info.app_name else ""
+                    prefix = (
+                        info.app_name + DEPLOYMENT_NAME_PREFIX_SEPARATOR
+                        if info.app_name
+                        else ""
+                    )
                     deployment_id = DeploymentID(name[len(prefix) :], info.app_name)
                     infos[deployment_id] = info
 
