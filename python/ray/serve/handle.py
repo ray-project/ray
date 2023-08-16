@@ -140,7 +140,7 @@ class _DeploymentHandleBase:
 
         return get_or_create_event_loop() == self._get_or_create_router()._event_loop
 
-    def options(
+    def _options(
         self,
         *,
         method_name: Union[str, DEFAULT] = DEFAULT.VALUE,
