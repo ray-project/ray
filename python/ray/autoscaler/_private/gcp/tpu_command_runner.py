@@ -11,7 +11,6 @@ To maintain feature completeness, we simply wrap the existing `SSHCommandRunner`
 `DockerCommandRunner` and run them as batched calls.
 
 """
-import os
 from concurrent.futures import ThreadPoolExecutor
 from types import ModuleType
 from typing import Any, Dict, Optional
@@ -114,7 +113,7 @@ class TPUCommandRunner(CommandRunnerInterface):
         at a time until a proper fix is found.
 
         """
-        num_max_concurrent_active_connections = os.getenv(
+        num_max_concurrent_active_connections = ray_constants.env_integer(
             ray_constants.RAY_TPU_MAX_CONCURRENT_CONNECTIONS_ENV_VAR, default=16
         )
         return min(self._num_workers, num_max_concurrent_active_connections)

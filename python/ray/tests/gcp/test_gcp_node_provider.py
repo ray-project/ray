@@ -128,7 +128,7 @@ def test_compute_node_list_instances_excludes_tpu():
 
     GCPCompute(mock_resource, _PROJECT_NAME, _AZ, "cluster_name").list_instances()
     filter_arg = mock_list.call_args.kwargs["filter"]
-    
+
     # Checks that the tpu negation filter is included.
     assert "tpu_cores" in filter_arg
 

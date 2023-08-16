@@ -1,7 +1,9 @@
 import pytest
 
+import os
 from ray.tests.test_autoscaler import MockProvider, MockProcessRunner
 from ray.autoscaler._private.gcp.tpu_command_runner import TPUCommandRunner
+from ray._private import ray_constants
 from getpass import getuser
 import hashlib
 
@@ -174,8 +176,33 @@ def test_tpu_docker_command_runner():
             assert x == y
 
 
+def test_max_active_connections_env_var():
+    num_workers = 2
+    process_runner = MockProcessRunner()
+    provider = MockProvider()
+    instance = MockTpuInstance(num_workers=num_workers)
+    provider.create_node({}, {}, 1)
+    cluster_name = "cluster"
+    docker_config = {"container_name": "container"}
+    args = {
+        "instance": instance,
+        "log_prefix": "prefix",
+        "node_id": "0",
+        "provider": provider,
+        "auth_config": auth_config,
+        "cluster_name": cluster_name,
+        "process_runner": process_runner,
+        "use_internal_ip": False,
+        "docker_config": docker_config,
+    }
+    cmd_runner = TPUCommandRunner(**args)
+    os.environ[ray_constants.RAY_TPU_MAX_CONCURRENT_CONNECTIONS_ENV_VAR] = "1"
+    num_connections = cmd_runner.num_connections
+    assert type(num_connections) == int
+    assert num_connections == 1
+
+
 if __name__ == "__main__":
-    import os
     import sys
 
     if os.environ.get("PARALLEL_CI"):
