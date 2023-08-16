@@ -126,7 +126,7 @@ This also lets the multi-node-type autoscaler know that there is demand for that
 See ``ray.util.accelerators`` for available accelerator types. Current automatically detected accelerator types include Nvidia GPUs, AWS-neuron-cores.
 
 AWS Neuron Core Accelerator
------------------
+---------------------------
 .. note::
 
   Ray supports a heterogeneous cluster of GPUs and NeuronCores but doesn't allow specifying resources requirements of
