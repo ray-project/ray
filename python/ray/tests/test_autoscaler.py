@@ -124,7 +124,7 @@ class MockGcsClient:
             # Any StatusCode besides UNIMPLEMENTED will do here.
             raise RpcError(
                 "server is not feeling well",
-                rpc_code=ray._raylet.GRPC_STATUS_CODE_UNAVAILABLE
+                rpc_code=ray._raylet.GRPC_STATUS_CODE_UNAVAILABLE,
             )
         elif self.drain_node_outcome == DrainNodeOutcome.GenericException:
             raise Exception("DrainNode failed in some unexpected way.")
