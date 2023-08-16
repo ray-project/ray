@@ -47,6 +47,8 @@ def get_datasets(tokenizer):
 
 
 def train_func(config):
+    """Your training function that will be launched on each worker. """
+
     # Unpack training configs
     lr = config["lr"]
     seed = config["seed"]
