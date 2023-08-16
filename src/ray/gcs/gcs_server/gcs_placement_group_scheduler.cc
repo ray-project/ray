@@ -241,8 +241,8 @@ void GcsPlacementGroupScheduler::CancelResourceReserve(
 
   return_client->CancelResourceReserve(
       *bundle_spec,
-      [this, bundle_spec, node_id](const Status &status,
-                                   const rpc::CancelResourceReserveReply &reply) {
+      [bundle_spec, node_id](const Status &status,
+                             const rpc::CancelResourceReserveReply &reply) {
         RAY_LOG(DEBUG) << "Finished cancelling the resource reserved for bundle: "
                        << bundle_spec->DebugString() << " at node " << node_id;
       });
