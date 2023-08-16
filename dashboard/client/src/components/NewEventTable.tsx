@@ -368,6 +368,10 @@ const NewEventTable = (props: EventTableProps) => {
                     dayjs(Math.floor(timestamp * 1000)).format(
                       "YYYY-MM-DD HH:mm:ss",
                     );
+                  const customFieldsDisplay =
+                    customFields && Object.keys(customFields).length > 0
+                      ? JSON.stringify(customFields)
+                      : "-";
                   return (
                     <React.Fragment>
                       <TableRow>
@@ -380,17 +384,11 @@ const NewEventTable = (props: EventTableProps) => {
                         <TableCell align="left">
                           <Tooltip
                             className={classes.overflowCell}
-                            title={
-                              customFields ? JSON.stringify(customFields) : `-`
-                            }
+                            title={customFieldsDisplay}
                             arrow
                             interactive
                           >
-                            <div>
-                              {customFields
-                                ? JSON.stringify(customFields)
-                                : `-`}
-                            </div>
+                            <div>{customFieldsDisplay}</div>
                           </Tooltip>
                         </TableCell>
                         <TableCell align="left">
