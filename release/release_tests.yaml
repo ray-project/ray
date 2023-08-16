@@ -2335,6 +2335,7 @@
   cluster:
     byod:
       pip:
+        # TODO: https://github.com/Farama-Foundation/AutoROM/issues/48
         - https://ray-ci-deps-wheels.s3.us-west-2.amazonaws.com/AutoROM.accept_rom_license-0.5.4-py3-none-any.whl
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
@@ -2459,6 +2460,7 @@
   cluster:
     byod:
       pip:
+        # TODO: https://github.com/Farama-Foundation/AutoROM/issues/48
         - https://ray-ci-deps-wheels.s3.us-west-2.amazonaws.com/AutoROM.accept_rom_license-0.5.4-py3-none-any.whl
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
@@ -2499,6 +2501,7 @@
   cluster:
     byod:
       pip:
+        # TODO: https://github.com/Farama-Foundation/AutoROM/issues/48
         - https://ray-ci-deps-wheels.s3.us-west-2.amazonaws.com/AutoROM.accept_rom_license-0.5.4-py3-none-any.whl
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
@@ -2585,6 +2588,7 @@
   cluster:
     byod:
       pip:
+        # TODO: https://github.com/Farama-Foundation/AutoROM/issues/48
         - https://ray-ci-deps-wheels.s3.us-west-2.amazonaws.com/AutoROM.accept_rom_license-0.5.4-py3-none-any.whl
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
@@ -2625,6 +2629,7 @@
   cluster:
     byod:
       pip:
+        # TODO: https://github.com/Farama-Foundation/AutoROM/issues/48
         - https://ray-ci-deps-wheels.s3.us-west-2.amazonaws.com/AutoROM.accept_rom_license-0.5.4-py3-none-any.whl
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
@@ -2665,6 +2670,7 @@
   cluster:
     byod:
       pip:
+        # TODO: https://github.com/Farama-Foundation/AutoROM/issues/48
         - https://ray-ci-deps-wheels.s3.us-west-2.amazonaws.com/AutoROM.accept_rom_license-0.5.4-py3-none-any.whl
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
@@ -2746,6 +2752,7 @@
   cluster:
     byod:
       pip:
+        # TODO: https://github.com/Farama-Foundation/AutoROM/issues/48
         - https://ray-ci-deps-wheels.s3.us-west-2.amazonaws.com/AutoROM.accept_rom_license-0.5.4-py3-none-any.whl
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
@@ -2788,6 +2795,7 @@
   cluster:
     byod:
       pip:
+        # TODO: https://github.com/Farama-Foundation/AutoROM/issues/48
         - https://ray-ci-deps-wheels.s3.us-west-2.amazonaws.com/AutoROM.accept_rom_license-0.5.4-py3-none-any.whl
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
@@ -2830,6 +2838,7 @@
   cluster:
     byod: 
       pip:
+        # TODO: https://github.com/Farama-Foundation/AutoROM/issues/48
         - https://ray-ci-deps-wheels.s3.us-west-2.amazonaws.com/AutoROM.accept_rom_license-0.5.4-py3-none-any.whl
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
