@@ -330,7 +330,9 @@ class GenericProxy(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    async def timeout_response(self, proxy_request: ProxyRequest, request_id: str):
+    async def timeout_response(
+        self, proxy_request: ProxyRequest, request_id: str
+    ) -> ProxyResponse:
         raise NotImplementedError
 
     @abstractmethod
@@ -633,13 +635,16 @@ class gRPCProxy(GenericProxy):
             response=response_proto.SerializeToString(),
         )
 
-    async def timeout_response(self, proxy_request: ProxyRequest, request_id: str):
+    async def timeout_response(
+        self, proxy_request: ProxyRequest, request_id: str
+    ) -> ProxyResponse:
         timeout_message = (
             f"Request {request_id} timed out after {self.request_timeout_s}s."
         )
         status_code = grpc.StatusCode.ABORTED
         proxy_request.send_status_code(status_code=status_code)
         proxy_request.send_details(message=timeout_message)
+        return ProxyResponse(status_code=str(status_code))
 
     async def routes_response(self, proxy_request: ProxyRequest) -> ProxyResponse:
         status_code = grpc.StatusCode.OK
@@ -861,14 +866,18 @@ class HTTPProxy(GenericProxy):
         )
         return ProxyResponse(status_code=str(status_code))
 
-    async def timeout_response(self, proxy_request: ProxyRequest, request_id: str):
+    async def timeout_response(
+        self, proxy_request: ProxyRequest, request_id: str
+    ) -> ProxyResponse:
+        status_code = 408
         response = Response(
             f"Request {request_id} timed out after {self.request_timeout_s}s.",
-            status_code=408,
+            status_code=status_code,
         )
         await response.send(
             proxy_request.scope, proxy_request.receive, proxy_request.send
         )
+        return ProxyResponse(status_code=str(status_code))
 
     async def routes_response(self, proxy_request: ProxyRequest) -> ProxyResponse:
         await starlette.responses.JSONResponse(self.route_info)(
