@@ -166,8 +166,7 @@ void SchedulerResourceReporter::FillResourceUsage(
     // Check whether resources have been changed.
     absl::flat_hash_map<std::string, double> local_resource_map(
         data.resource_load().begin(), data.resource_load().end());
-    ray::ResourceRequest local_resource =
-        ResourceMapToResourceRequest(local_resource_map, false);
+    ray::ResourceSet local_resource = ResourceSet(local_resource_map);
     if (last_reported_resources->load != local_resource) {
       data.set_resource_load_changed(true);
     }
