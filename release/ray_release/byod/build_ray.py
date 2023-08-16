@@ -12,7 +12,7 @@ BASE_IMAGE_WAIT_TIMEOUT = 7200
 BASE_IMAGE_WAIT_DURATION = 30
 DOCKER_ECR = "029272617770.dkr.ecr.us-west-2.amazonaws.com"
 DOCKER_PROJECT = "ci_base_images"
-PY_VERSIONS = ["py38", "py39"]
+PY_VERSIONS = ["py38", "py39", "py311"]
 
 
 def build_ray() -> None:
