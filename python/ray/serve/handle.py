@@ -36,9 +36,8 @@ def _create_or_get_async_loop_in_thread():
     return _global_async_loop
 
 
-@PublicAPI(stability="beta")
 @dataclass(frozen=True)
-class HandleOptions:
+class _HandleOptions:
     """Options for each ServeHandle instance.
 
     These fields can be changed by calling `.options()` on a handle.
@@ -55,8 +54,8 @@ class HandleOptions:
         multiplexed_model_id: Union[str, DEFAULT] = DEFAULT.VALUE,
         stream: Union[bool, DEFAULT] = DEFAULT.VALUE,
         _router_cls: Union[str, DEFAULT] = DEFAULT.VALUE,
-    ) -> "HandleOptions":
-        return HandleOptions(
+    ) -> "_HandleOptions":
+        return _HandleOptions(
             method_name=(
                 self.method_name if method_name == DEFAULT.VALUE else method_name
             ),
@@ -77,13 +76,13 @@ class _DeploymentHandleBase:
         self,
         deployment_name: EndpointTag,
         *,
-        handle_options: Optional[HandleOptions] = None,
+        handle_options: Optional[_HandleOptions] = None,
         _router: Optional[Router] = None,
         _is_for_http_requests: bool = False,
         _is_for_sync_context: bool = False,
     ):
         self.deployment_name = deployment_name
-        self.handle_options = handle_options or HandleOptions()
+        self.handle_options = handle_options or _HandleOptions()
         self._is_for_http_requests = _is_for_http_requests
         self._is_for_sync_context = _is_for_sync_context
 
