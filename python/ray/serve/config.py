@@ -1,5 +1,6 @@
 import inspect
 import json
+import logging
 from enum import Enum
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union, Set
 
@@ -21,11 +22,13 @@ from ray.util.placement_group import VALID_PLACEMENT_GROUP_STRATEGIES
 from ray.serve._private.constants import (
     DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT_S,
     DEFAULT_GRACEFUL_SHUTDOWN_WAIT_LOOP_S,
+    DEFAULT_GRPC_PORT,
     DEFAULT_HEALTH_CHECK_PERIOD_S,
     DEFAULT_HEALTH_CHECK_TIMEOUT_S,
     DEFAULT_HTTP_HOST,
     DEFAULT_HTTP_PORT,
     DEFAULT_MAX_CONCURRENT_QUERIES,
+    SERVE_LOGGER_NAME,
 )
 from ray.serve._private.utils import DEFAULT, DeploymentOptionUpdateType
 from ray.serve.generated.serve_pb2 import (
@@ -35,9 +38,11 @@ from ray.serve.generated.serve_pb2 import (
     ReplicaConfig as ReplicaConfigProto,
 )
 from ray._private import ray_option_utils
-from ray._private.utils import resources_from_ray_options
+from ray._private.utils import import_attr, resources_from_ray_options
 from ray._private.serialization import pickle_dumps
 from ray.util.annotations import DeveloperAPI, PublicAPI
+
+logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
 @PublicAPI(stability="stable")
@@ -698,3 +703,50 @@ class HTTPOptions(pydantic.BaseModel):
         validate_assignment = True
         extra = "forbid"
         arbitrary_types_allowed = True
+
+
+@PublicAPI(stability="beta")
+class gRPCOptions(BaseModel):
+    """Configuration options for gRPC proxy.
+
+    Args:
+        port (int):
+            Port for gRPC server if started. Default to 9000. Cannot be
+            updated once Serve has started running. Serve must be shut down and
+            restarted with the new port instead.
+        grpc_servicer_functions (List[str]):
+            The servicer functions used to add the method handlers to the gRPC server.
+            Default to empty list, which means no gRPC methods will be added
+            and no gRPC server will be started. The servicer functions need to be
+            importable from the context of where Serve is running.
+    """
+
+    port: int = DEFAULT_GRPC_PORT
+    grpc_servicer_functions: List[str] = []
+
+    @property
+    def grpc_servicer_func_callable(self) -> List[Callable]:
+        """Return a list of callable functions from the grpc_servicer_functions.
+
+        If the function is not callable or not found, it will be ignored and a warning
+        will be logged.
+        """
+        callables = []
+        for func in self.grpc_servicer_functions:
+            try:
+                imported_func = import_attr(func)
+                if callable(imported_func):
+                    callables.append(imported_func)
+                else:
+                    logger.warning(
+                        f"{func} is not a callable function! Please make sure "
+                        "the function is imported correctly."
+                    )
+            except ModuleNotFoundError:
+                logger.warning(
+                    f"{func} can't be imported! Please make sure there are no typo "
+                    "in those functions. Or you might want to rebuild service "
+                    "definitions if .proto file is changed."
+                )
+
+        return callables
