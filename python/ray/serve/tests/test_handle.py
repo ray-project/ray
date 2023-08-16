@@ -135,14 +135,14 @@ def test_sync_handle_in_thread(serve_instance):
 
     def thread_get_handle(deploy):
         handle = serve.get_deployment_handle(
-            deploy._name, SERVE_DEFAULT_APP_NAME, sync=True
+            deploy._name, SERVE_DEFAULT_APP_NAME
         )
         return handle
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
         fut = executor.submit(thread_get_handle, f)
         handle = fut.result()
-        assert ray.get(handle.remote()) == "hello"
+        assert handle.remote().result() == "hello"
 
 
 def test_handle_in_endpoint(serve_instance):
