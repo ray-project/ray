@@ -102,8 +102,8 @@ Next, if you're not set up to use your cloud provider from the command line, you
 
          .. tab:: Aliyun
 
-            First, install the Aliyun client package (``pip install aliyun-python-sdk-core aliyun-python-sdk-ecs``).
             Obtain and set the AccessKey pair of the Aliyun account as described in `the docs <https://www.alibabacloud.com/help/en/doc-detail/175967.htm>`__.
+
             Make sure to grant the necessary permissions to the RAM user and set the AccessKey pair in your cluster config file.
             Refer to the provided `aliyun/example-full.yaml </ray/python/ray/autoscaler/aliyun/example-full.yaml>`__ for a sample cluster config.
 
