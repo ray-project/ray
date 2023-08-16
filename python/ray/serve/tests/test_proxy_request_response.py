@@ -15,7 +15,7 @@ from ray.serve._private.common import gRPCRequest, StreamingHTTPRequest
 
 
 class TestASGIProxyRequest:
-    def create_asgi_serve_request(self, scope: dict) -> ASGIProxyRequest:
+    def create_asgi_proxy_request(self, scope: dict) -> ASGIProxyRequest:
         receive = MagicMock()
         send = MagicMock()
         return ASGIProxyRequest(scope=scope, receive=receive, send=send)
@@ -26,14 +26,14 @@ class TestASGIProxyRequest:
         When the request_type is not passed into the scope, it returns empty string.
         When the request_type is passed into the scope, it returns the correct value.
         """
-        serve_request = self.create_asgi_serve_request(scope={})
-        assert isinstance(serve_request, ProxyRequest)
-        assert serve_request.request_type == ""
+        proxy_request = self.create_asgi_proxy_request(scope={})
+        assert isinstance(proxy_request, ProxyRequest)
+        assert proxy_request.request_type == ""
 
         request_type = "fake-request_type"
-        serve_request = self.create_asgi_serve_request(scope={"type": request_type})
-        assert isinstance(serve_request, ProxyRequest)
-        assert serve_request.request_type == request_type
+        proxy_request = self.create_asgi_proxy_request(scope={"type": request_type})
+        assert isinstance(proxy_request, ProxyRequest)
+        assert proxy_request.request_type == request_type
 
     def test_client(self):
         """Test calling client on an instance of ASGIProxyRequest.
@@ -41,14 +41,14 @@ class TestASGIProxyRequest:
         When the client is not passed into the scope, it returns empty string.
         When the request_type is passed into the scope, it returns the correct value.
         """
-        serve_request = self.create_asgi_serve_request(scope={})
-        assert isinstance(serve_request, ProxyRequest)
-        assert serve_request.client == ""
+        proxy_request = self.create_asgi_proxy_request(scope={})
+        assert isinstance(proxy_request, ProxyRequest)
+        assert proxy_request.client == ""
 
         client = "fake-client"
-        serve_request = self.create_asgi_serve_request(scope={"client": client})
-        assert isinstance(serve_request, ProxyRequest)
-        assert serve_request.client == client
+        proxy_request = self.create_asgi_proxy_request(scope={"client": client})
+        assert isinstance(proxy_request, ProxyRequest)
+        assert proxy_request.client == client
 
     def test_method(self):
         """Test calling method on an instance of ASGIProxyRequest.
@@ -56,14 +56,14 @@ class TestASGIProxyRequest:
         When the method is not passed into the scope, it returns "WEBSOCKET". When
         the method is passed into the scope, it returns the correct value.
         """
-        serve_request = self.create_asgi_serve_request(scope={})
-        assert isinstance(serve_request, ProxyRequest)
-        assert serve_request.method == "WEBSOCKET"
+        proxy_request = self.create_asgi_proxy_request(scope={})
+        assert isinstance(proxy_request, ProxyRequest)
+        assert proxy_request.method == "WEBSOCKET"
 
         method = "fake-method"
-        serve_request = self.create_asgi_serve_request(scope={"method": method})
-        assert isinstance(serve_request, ProxyRequest)
-        assert serve_request.method == method.upper()
+        proxy_request = self.create_asgi_proxy_request(scope={"method": method})
+        assert isinstance(proxy_request, ProxyRequest)
+        assert proxy_request.method == method.upper()
 
     def test_root_path(self):
         """Test calling root_path on an instance of ASGIProxyRequest.
@@ -72,17 +72,17 @@ class TestASGIProxyRequest:
         When calling set_root_path, it correctly sets the root_path. When the
         root_path is passed into the scope, it returns the correct value.
         """
-        serve_request = self.create_asgi_serve_request(scope={})
-        assert isinstance(serve_request, ProxyRequest)
-        assert serve_request.root_path == ""
+        proxy_request = self.create_asgi_proxy_request(scope={})
+        assert isinstance(proxy_request, ProxyRequest)
+        assert proxy_request.root_path == ""
 
         root_path = "fake-root_path"
-        serve_request.set_root_path(root_path)
-        assert serve_request.root_path == root_path
+        proxy_request.set_root_path(root_path)
+        assert proxy_request.root_path == root_path
 
-        serve_request = self.create_asgi_serve_request(scope={"root_path": root_path})
-        assert isinstance(serve_request, ProxyRequest)
-        assert serve_request.root_path == root_path
+        proxy_request = self.create_asgi_proxy_request(scope={"root_path": root_path})
+        assert isinstance(proxy_request, ProxyRequest)
+        assert proxy_request.root_path == root_path
 
     def test_path(self):
         """Test calling path on an instance of ASGIProxyRequest.
@@ -91,17 +91,17 @@ class TestASGIProxyRequest:
         When calling set_path, it correctly sets the path. When the
         path is passed into the scope, it returns the correct value.
         """
-        serve_request = self.create_asgi_serve_request(scope={})
-        assert isinstance(serve_request, ProxyRequest)
-        assert serve_request.path == ""
+        proxy_request = self.create_asgi_proxy_request(scope={})
+        assert isinstance(proxy_request, ProxyRequest)
+        assert proxy_request.path == ""
 
         path = "fake-path"
-        serve_request.set_path(path)
-        assert serve_request.path == path
+        proxy_request.set_path(path)
+        assert proxy_request.path == path
 
-        serve_request = self.create_asgi_serve_request(scope={"path": path})
-        assert isinstance(serve_request, ProxyRequest)
-        assert serve_request.path == path
+        proxy_request = self.create_asgi_proxy_request(scope={"path": path})
+        assert isinstance(proxy_request, ProxyRequest)
+        assert proxy_request.path == path
 
     def test_headers(self):
         """Test calling headers on an instance of ASGIProxyRequest.
@@ -109,14 +109,14 @@ class TestASGIProxyRequest:
         When the headers are not passed into the scope, it returns empty list.
         When the headers are passed into the scope, it returns the correct value.
         """
-        serve_request = self.create_asgi_serve_request(scope={})
-        assert isinstance(serve_request, ProxyRequest)
-        assert serve_request.headers == []
+        proxy_request = self.create_asgi_proxy_request(scope={})
+        assert isinstance(proxy_request, ProxyRequest)
+        assert proxy_request.headers == []
 
         headers = [(b"fake-header-key", b"fake-header-value")]
-        serve_request = self.create_asgi_serve_request(scope={"headers": headers})
-        assert isinstance(serve_request, ProxyRequest)
-        assert serve_request.headers == headers
+        proxy_request = self.create_asgi_proxy_request(scope={"headers": headers})
+        assert isinstance(proxy_request, ProxyRequest)
+        assert proxy_request.headers == headers
 
     def test_request_object(self):
         """Test calling request_object on an instance of ASGIProxyRequest.
@@ -127,8 +127,8 @@ class TestASGIProxyRequest:
         proxy_handle = MagicMock()
         headers = [(b"fake-header-key", b"fake-header-value")]
         scope = {"headers": headers}
-        serve_request = self.create_asgi_serve_request(scope=scope)
-        request_object = serve_request.request_object(proxy_handle=proxy_handle)
+        proxy_request = self.create_asgi_proxy_request(scope=scope)
+        request_object = proxy_request.request_object(proxy_handle=proxy_handle)
 
         assert isinstance(request_object, StreamingHTTPRequest)
         assert pickle.loads(request_object.pickled_asgi_scope) == scope
@@ -141,12 +141,12 @@ class TestASGIProxyRequest:
         When the is_route_request is called with other path, it returns false.
         """
         scope = {"path": "/-/routes"}
-        serve_request = self.create_asgi_serve_request(scope=scope)
-        assert serve_request.is_route_request is True
+        proxy_request = self.create_asgi_proxy_request(scope=scope)
+        assert proxy_request.is_route_request is True
 
         scope = {"path": "/foo"}
-        serve_request = self.create_asgi_serve_request(scope=scope)
-        assert serve_request.is_route_request is False
+        proxy_request = self.create_asgi_proxy_request(scope=scope)
+        assert proxy_request.is_route_request is False
 
     def test_is_health_request(self):
         """Test calling is_health_request on an instance of ASGIProxyRequest.
@@ -155,12 +155,12 @@ class TestASGIProxyRequest:
         When the is_health_request is called with other path, it returns false.
         """
         scope = {"path": "/-/healthz"}
-        serve_request = self.create_asgi_serve_request(scope=scope)
-        assert serve_request.is_health_request is True
+        proxy_request = self.create_asgi_proxy_request(scope=scope)
+        assert proxy_request.is_health_request is True
 
         scope = {"path": "/foo"}
-        serve_request = self.create_asgi_serve_request(scope=scope)
-        assert serve_request.is_health_request is False
+        proxy_request = self.create_asgi_proxy_request(scope=scope)
+        assert proxy_request.is_health_request is False
 
 
 class TestgRPCProxyRequest:
@@ -174,22 +174,22 @@ class TestgRPCProxyRequest:
         """
         context = MagicMock()
         service_method = "/ray.serve.RayServeAPIService/ListApplications"
-        serve_request = gRPCProxyRequest(
+        proxy_request = gRPCProxyRequest(
             request_proto=MagicMock(),
             context=context,
             service_method=service_method,
             stream=MagicMock(),
         )
-        assert isinstance(serve_request, ProxyRequest)
-        assert serve_request.is_route_request is True
-        assert serve_request.is_health_request is False
+        assert isinstance(proxy_request, ProxyRequest)
+        assert proxy_request.is_route_request is True
+        assert proxy_request.is_health_request is False
 
         status_code = grpc.StatusCode.OK
-        serve_request.send_status_code(status_code=status_code)
+        proxy_request.send_status_code(status_code=status_code)
         context.set_code.assert_called_with(status_code)
 
         message = "success"
-        serve_request.send_details(message=message)
+        proxy_request.send_details(message=message)
         context.set_details.assert_called_with(message)
 
     def test_calling_healthz_method(self):
@@ -202,22 +202,22 @@ class TestgRPCProxyRequest:
         """
         context = MagicMock()
         service_method = "/ray.serve.RayServeAPIService/Healthz"
-        serve_request = gRPCProxyRequest(
+        proxy_request = gRPCProxyRequest(
             request_proto=MagicMock(),
             context=context,
             service_method=service_method,
             stream=MagicMock(),
         )
-        assert isinstance(serve_request, ProxyRequest)
-        assert serve_request.is_route_request is False
-        assert serve_request.is_health_request is True
+        assert isinstance(proxy_request, ProxyRequest)
+        assert proxy_request.is_route_request is False
+        assert proxy_request.is_health_request is True
 
         status_code = grpc.StatusCode.OK
-        serve_request.send_status_code(status_code=status_code)
+        proxy_request.send_status_code(status_code=status_code)
         context.set_code.assert_called_with(status_code)
 
         message = "success"
-        serve_request.send_details(message=message)
+        proxy_request.send_details(message=message)
         context.set_details.assert_called_with(message)
 
     def test_calling_user_defined_method(self):
@@ -244,33 +244,33 @@ class TestgRPCProxyRequest:
         method_name = "Method1"
         service_method = f"/custom.defined.Service/{method_name}"
 
-        serve_request = gRPCProxyRequest(
+        proxy_request = gRPCProxyRequest(
             request_proto=request_proto,
             context=context,
             service_method=service_method,
             stream=MagicMock(),
         )
-        assert isinstance(serve_request, ProxyRequest)
-        assert serve_request.route_path == application
-        assert pickle.loads(serve_request.request) == request_proto
-        assert serve_request.method_name == method_name.lower()
-        assert serve_request.app_name == application
-        assert serve_request.request_id == request_id
-        assert serve_request.multiplexed_model_id == multiplexed_model_id
-        assert serve_request.is_route_request is False
-        assert serve_request.is_health_request is False
+        assert isinstance(proxy_request, ProxyRequest)
+        assert proxy_request.route_path == application
+        assert pickle.loads(proxy_request.request) == request_proto
+        assert proxy_request.method_name == method_name.lower()
+        assert proxy_request.app_name == application
+        assert proxy_request.request_id == request_id
+        assert proxy_request.multiplexed_model_id == multiplexed_model_id
+        assert proxy_request.is_route_request is False
+        assert proxy_request.is_health_request is False
 
-        serve_request.send_request_id(request_id=request_id)
+        proxy_request.send_request_id(request_id=request_id)
         context.set_trailing_metadata.assert_called_with([("request_id", request_id)])
 
         proxy_handle = MagicMock()
-        request_object = serve_request.request_object(proxy_handle=proxy_handle)
+        request_object = proxy_request.request_object(proxy_handle=proxy_handle)
         assert isinstance(request_object, gRPCRequest)
         assert pickle.loads(request_object.grpc_user_request) == request_proto
         assert request_object.grpc_proxy_handle == proxy_handle
 
 
-def test_serve_response():
+def test_proxy_response():
     """Test ProxyResponse.
 
     When a ProxyResponse object is initialized with status_code, response, and
@@ -286,15 +286,15 @@ def test_serve_response():
         for i in range(10):
             yield streaming_response(i=i)
 
-    serve_response = ProxyResponse(
+    proxy_response = ProxyResponse(
         status_code=status_code,
         response=response,
         streaming_response=test_generator(),
     )
 
-    assert serve_response.status_code == status_code
-    assert serve_response.response == response
-    for idx, resp in enumerate(serve_response.streaming_response):
+    assert proxy_response.status_code == status_code
+    assert proxy_response.response == response
+    for idx, resp in enumerate(proxy_response.streaming_response):
         assert resp == streaming_response(idx)
 
 
