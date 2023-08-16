@@ -737,6 +737,7 @@ def test_e2e_bursty(serve_instance):
     # it back to 0. This bursty behavior should be smoothed by the delay
     # parameters.
     for _ in range(5):
+        ray.get(signal.send.remote(clear=True))
         assert check_autoscale_num_replicas(controller, "A") == num_replicas
         refs = [handle.remote() for _ in range(100)]
         signal.send.remote()
