@@ -65,11 +65,72 @@ def _plan_udf_map_op(
 
     if isinstance(op, MapBatches):
 
-        def transform_fn(batch):
-            res = fn(batch, *fn_args, **fn_kwargs)
-            if not isinstance(res, GeneratorType):
-                res = [batch]
-            yield from res
+        def _validate_batch(self, batch: Block) -> None:
+            if not isinstance(
+                batch,
+                (
+                    list,
+                    pa.Table,
+                    np.ndarray,
+                    collections.abc.Mapping,
+                    pd.core.frame.DataFrame,
+                ),
+            ):
+                raise ValueError(
+                    "The `fn` you passed to `map_batches` returned a value of type "
+                    f"{type(batch)}. This isn't allowed -- `map_batches` expects "
+                    "`fn` to return a `pandas.DataFrame`, `pyarrow.Table`, "
+                    "`numpy.ndarray`, `list`, or `dict[str, numpy.ndarray]`."
+                )
+
+            if isinstance(batch, list):
+                raise ValueError(
+                    f"Error validating {_truncated_repr(batch)}: "
+                    "Returning a list of objects from `map_batches` is not "
+                    "allowed in Ray 2.5. To return Python objects, "
+                    "wrap them in a named dict field, e.g., "
+                    "return `{'results': objects}` instead of just `objects`."
+                )
+
+            if isinstance(batch, collections.abc.Mapping):
+                for key, value in list(batch.items()):
+                    if not is_valid_udf_return(value):
+                        raise ValueError(
+                            f"Error validating {_truncated_repr(batch)}: "
+                            "The `fn` you passed to `map_batches` returned a "
+                            f"`dict`. `map_batches` expects all `dict` values "
+                            f"to be `list` or `np.ndarray` type, but the value "
+                            f"corresponding to key {key!r} is of type "
+                            f"{type(value)}. To fix this issue, convert "
+                            f"the {type(value)} to a `np.ndarray`."
+
+        def op_transform_fn(batches):
+            for batch in batches:
+                try:
+                    res = fn(batch, *fn_args, **fn_kwargs)
+                except ValueError as e:
+                    read_only_msgs = [
+                        "assignment destination is read-only",
+                        "buffer source array is read-only",
+                    ]
+                    err_msg = str(e)
+                    if any(msg in err_msg for msg in read_only_msgs):
+                        raise ValueError(
+                            f"Batch mapper function {fn.__name__} tried to mutate a "
+                            "zero-copy read-only batch. To be able to mutate the "
+                            "batch, pass zero_copy_batch=False to map_batches(); "
+                            "this will create a writable copy of the batch before "
+                            "giving it to fn. To elide this copy, modify your mapper "
+                            "function so it doesn't try to mutate its input."
+                        ) from e
+                    else:
+                        raise e from None
+                else:
+                    if not isinstance(res, GeneratorType):
+                        res = [batch]
+                    for out_batch in res:
+                        _validate_batch(out_batch)
+                        yield out_batch
 
         map_data_processor = BatchBasedMapDataProcessor(
             transform_fn,
@@ -79,27 +140,44 @@ def _plan_udf_map_op(
             init_fn,
         )
     else:
+
+        def validate_row_output(item):
+            if not isinstance(item, collections.abc.Mapping):
+                raise ValueError(
+                    f"Error validating {_truncated_repr(item)}: "
+                    "Standalone Python objects are not "
+                    "allowed in Ray 2.5. To return Python objects from map(), "
+                    "wrap them in a dict, e.g., "
+                    "return `{'item': item}` instead of just `item`."
+                )
+
         if isinstance(op, MapRows):
 
-            def transform_fn(row):
-                yield fn(row, *fn_args, **fn_kwargs)
+            def op_transform_fn(rows):
+                for row in rows:
+                    item = fn(row, *fn_args, **fn_kwargs)
+                    validate_row_output(item)
+                    yield item
 
         elif isinstance(op, FlatMap):
 
-            def transform_fn(row):
-                for out_row in fn(row, *fn_args, **fn_kwargs):
-                    yield out_row
+            def op_transform_fn(rows):
+                for row in rows:
+                    for out_row in fn(row, *fn_args, **fn_kwargs):
+                        validate_row_output(out_row)
+                        yield out_row
 
         elif isinstance(op, Filter):
 
-            def transform_fn(row):
-                if fn(row, *fn_args, **fn_kwargs):
-                    yield row
+            def op_transform_fn(rows):
+                for row in rows:
+                    if fn(row, *fn_args, **fn_kwargs):
+                        yield row
 
         else:
             raise ValueError(f"Found unknown logical operator during planning: {op}")
 
-        map_data_processor = RowBasedMapDataProcessor(transform_fn, init_fn)
+        map_data_processor = create_map_data_processor_for_map_op(op_transform_fn)
 
     return MapOperator.create(
         map_data_processor,
