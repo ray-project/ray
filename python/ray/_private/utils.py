@@ -417,7 +417,7 @@ def set_gpu_and_accelerator_runtime_ids() -> None:
         ValueError: If the environment variable is set to a different
             environment variable.
     """
-    ids = ray.get_runtime_context().get_gpu_and_accelerator_ids()
+    ids = ray.get_runtime_context().get_resource_ids()
     set_cuda_visible_devices(ids[ray_constants.GPU])
     set_aws_neuron_core_visible_ids(ids[ray_constants.NUM_NEURON_CORES])
 

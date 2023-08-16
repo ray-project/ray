@@ -382,7 +382,7 @@ class RuntimeContext(object):
         worker.check_connected()
         return worker.core_worker.get_actor_call_stats()
 
-    def get_gpu_and_accelerator_ids(self) -> Dict[str, List[str]]:
+    def get_resource_ids(self) -> Dict[str, List[str]]:
         """
         Get the current worker's GPU and accelerator ids.
 
@@ -394,9 +394,13 @@ class RuntimeContext(object):
         worker.check_connected()
         ids_dict: Dict[str, List[str]] = {}
         for name in [ray_constants.GPU, ray_constants.NUM_NEURON_CORES]:
-            ids_dict[name] = worker.get_resource_ids_for_resource(
+            resource_ids = worker.get_resource_ids_for_resource(
                 name, f"^{name}_group_[0-9A-Za-z]+$"
             )
+            # Convert resource_ids to strings as they can be user-configured
+            # or system-generated.
+            resource_ids = [str(i) for i in resource_ids]
+            ids_dict[name] = resource_ids
         return ids_dict
 
 
