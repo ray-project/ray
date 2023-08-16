@@ -6,7 +6,7 @@ try:
 except ImportError as exc:
     raise ImportError(
         "Can't import ray.train as some dependencies are missing. "
-        "Run `pip install ray[train]` to fix."
+        'Run `pip install "ray[train]"` to fix.'
     ) from exc
 
 
