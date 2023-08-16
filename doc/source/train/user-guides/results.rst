@@ -4,7 +4,7 @@ Inspecting Training Results
 The return value of your :meth:`Trainer.fit() <ray.train.trainer.BaseTrainer.fit>`
 call is a :class:`~ray.air.result.Result` object.
 
-The :class:`~ray.air.result.Result` object contains, among others:
+The :class:`~ray.air.result.Result` object contains, among other information:
 
 - The last reported metrics (e.g. the loss)
 - The last reported checkpoint (to load the model)
@@ -86,8 +86,8 @@ You can retrieve a list of all available checkpoints and their metrics with
     :start-after: __result_best_checkpoint_start__
     :end-before: __result_best_checkpoint_end__
 
-Storage location
-----------------
+Accessing storage location
+---------------------------
 If you need to retrieve the results later, you can get the storage location
 with :attr:`Result.path <ray.air.Result.path>`.
 
@@ -101,8 +101,8 @@ in the :class:`~ray.air.RunConfig`.
     :end-before: __result_path_end__
 
 
-Errors
-------
+Viewing Errors
+--------------
 If an error occurred during training,
 :attr:`Result.error <ray.air.Result.error>` will be set and contain the exception
 that was raised.
