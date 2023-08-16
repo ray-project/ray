@@ -300,7 +300,7 @@ def _change_working_directory(trial):
     if ray._private.worker._mode() == ray._private.worker.LOCAL_MODE:
         old_dir = os.getcwd()
         try:
-            os.chdir(trial.logdir)
+            os.chdir(trial.local_path)
             yield
         finally:
             os.chdir(old_dir)
