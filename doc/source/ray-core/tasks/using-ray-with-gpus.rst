@@ -125,8 +125,8 @@ This also lets the multi-node-type autoscaler know that there is demand for that
 
 See ``ray.util.accelerators`` for available accelerator types. Current automatically detected accelerator types include Nvidia GPUs, AWS-neuron-cores.
 
-AWS Neuron Core Accelerator
----------------------------
+AWS Neuron Core Accelerator (Experimental)
+------------------------------------------
 
 Similar to NVIDIA GPUs, Ray auto-detects `AWS Neuron Cores`_  by default.
 An user can specify `resources={"num_neuron_cores": some_number}` on
