@@ -2285,10 +2285,6 @@ Status CoreWorker::CancelTask(const ObjectID &object_id,
       return Status::Invalid("force=True is not supported for actor tasks.");
     }
 
-    if (!task_spec->IsAsyncioActor()) {
-      return Status::Invalid("Actor cancelation is only supported for async actors.");
-    }
-
     return direct_actor_submitter_->CancelTask(task_spec.value(), recursive);
   } else {
     return direct_task_submitter_->CancelTask(task_spec.value(), force_kill, recursive);

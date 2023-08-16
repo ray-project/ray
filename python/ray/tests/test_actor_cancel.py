@@ -22,17 +22,6 @@ def test_input_validation(shutdown_only):
     with pytest.raises(TypeError, match="force=True is not supported"):
         ray.cancel(a.f.remote(), force=True)
 
-    # Verify only async actor works.
-    # TODO(sang): Support regular actors.
-
-    @ray.remote
-    class RegularActor:
-        def f(self):
-            pass
-
-    a = RegularActor.remote()
-    ray.cancel(a.f.remote())
-
 
 def test_async_actor_cancel(shutdown_only):
     """

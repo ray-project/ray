@@ -81,7 +81,9 @@ TEST(SchedulingQueueTest, TestInOrder) {
   int n_ok = 0;
   int n_rej = 0;
   auto fn_ok = [&n_ok](rpc::SendReplyCallback callback) { n_ok++; };
-  auto fn_rej = [&n_rej](rpc::SendReplyCallback callback) { n_rej++; };
+  auto fn_rej = [&n_rej](const Status &status, rpc::SendReplyCallback callback) {
+    n_rej++;
+  };
   queue.Add(0, -1, fn_ok, fn_rej, nullptr);
   queue.Add(1, -1, fn_ok, fn_rej, nullptr);
   queue.Add(2, -1, fn_ok, fn_rej, nullptr);
@@ -102,7 +104,9 @@ TEST(SchedulingQueueTest, TestWaitForObjects) {
   int n_rej = 0;
 
   auto fn_ok = [&n_ok](rpc::SendReplyCallback callback) { n_ok++; };
-  auto fn_rej = [&n_rej](rpc::SendReplyCallback callback) { n_rej++; };
+  auto fn_rej = [&n_rej](const Status &status, rpc::SendReplyCallback callback) {
+    n_rej++;
+  };
   queue.Add(0, -1, fn_ok, fn_rej, nullptr);
   queue.Add(1, -1, fn_ok, fn_rej, nullptr, TaskID::Nil(), ObjectIdsToRefs({obj1}));
   queue.Add(2, -1, fn_ok, fn_rej, nullptr, TaskID::Nil(), ObjectIdsToRefs({obj2}));
@@ -129,7 +133,9 @@ TEST(SchedulingQueueTest, TestWaitForObjectsNotSubjectToSeqTimeout) {
   int n_rej = 0;
 
   auto fn_ok = [&n_ok](rpc::SendReplyCallback callback) { n_ok++; };
-  auto fn_rej = [&n_rej](rpc::SendReplyCallback callback) { n_rej++; };
+  auto fn_rej = [&n_rej](const Status &status, rpc::SendReplyCallback callback) {
+    n_rej++;
+  };
   queue.Add(0, -1, fn_ok, fn_rej, nullptr);
   queue.Add(1, -1, fn_ok, fn_rej, nullptr, TaskID::Nil(), ObjectIdsToRefs({obj1}));
 
@@ -147,7 +153,9 @@ TEST(SchedulingQueueTest, TestOutOfOrder) {
   int n_ok = 0;
   int n_rej = 0;
   auto fn_ok = [&n_ok](rpc::SendReplyCallback callback) { n_ok++; };
-  auto fn_rej = [&n_rej](rpc::SendReplyCallback callback) { n_rej++; };
+  auto fn_rej = [&n_rej](const Status &status, rpc::SendReplyCallback callback) {
+    n_rej++;
+  };
   queue.Add(2, -1, fn_ok, fn_rej, nullptr);
   queue.Add(0, -1, fn_ok, fn_rej, nullptr);
   queue.Add(3, -1, fn_ok, fn_rej, nullptr);
@@ -164,7 +172,9 @@ TEST(SchedulingQueueTest, TestSeqWaitTimeout) {
   int n_ok = 0;
   int n_rej = 0;
   auto fn_ok = [&n_ok](rpc::SendReplyCallback callback) { n_ok++; };
-  auto fn_rej = [&n_rej](rpc::SendReplyCallback callback) { n_rej++; };
+  auto fn_rej = [&n_rej](const Status &status, rpc::SendReplyCallback callback) {
+    n_rej++;
+  };
   queue.Add(2, -1, fn_ok, fn_rej, nullptr);
   queue.Add(0, -1, fn_ok, fn_rej, nullptr);
   queue.Add(3, -1, fn_ok, fn_rej, nullptr);
@@ -186,7 +196,9 @@ TEST(SchedulingQueueTest, TestSkipAlreadyProcessedByClient) {
   int n_ok = 0;
   int n_rej = 0;
   auto fn_ok = [&n_ok](rpc::SendReplyCallback callback) { n_ok++; };
-  auto fn_rej = [&n_rej](rpc::SendReplyCallback callback) { n_rej++; };
+  auto fn_rej = [&n_rej](const Status &status, rpc::SendReplyCallback callback) {
+    n_rej++;
+  };
   queue.Add(2, 2, fn_ok, fn_rej, nullptr);
   queue.Add(3, 2, fn_ok, fn_rej, nullptr);
   queue.Add(1, 2, fn_ok, fn_rej, nullptr);
@@ -201,7 +213,9 @@ TEST(SchedulingQueueTest, TestCancelQueuedTask) {
   int n_ok = 0;
   int n_rej = 0;
   auto fn_ok = [&n_ok](rpc::SendReplyCallback callback) { n_ok++; };
-  auto fn_rej = [&n_rej](rpc::SendReplyCallback callback) { n_rej++; };
+  auto fn_rej = [&n_rej](const Status &status, rpc::SendReplyCallback callback) {
+    n_rej++;
+  };
   queue->Add(-1, -1, fn_ok, fn_rej, nullptr, "", FunctionDescriptorBuilder::Empty());
   queue->Add(-1, -1, fn_ok, fn_rej, nullptr, "", FunctionDescriptorBuilder::Empty());
   queue->Add(-1, -1, fn_ok, fn_rej, nullptr, "", FunctionDescriptorBuilder::Empty());

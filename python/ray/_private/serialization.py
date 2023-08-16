@@ -296,8 +296,11 @@ class SerializationContext:
             elif error_type == ErrorType.Value("LOCAL_RAYLET_DIED"):
                 return LocalRayletDiedError()
             elif error_type == ErrorType.Value("TASK_CANCELLED"):
-                error_info = self._deserialize_error_info(data, metadata_fields)
-                return TaskCancelledError(error_message=error_info.error_message)
+                error_message = ""
+                if data:
+                    error_info = self._deserialize_error_info(data, metadata_fields)
+                    error_message = error_info.error_message
+                return TaskCancelledError(error_message=error_message)
             elif error_type == ErrorType.Value("OBJECT_LOST"):
                 return ObjectLostError(
                     object_ref.hex(), object_ref.owner_address(), object_ref.call_site()
