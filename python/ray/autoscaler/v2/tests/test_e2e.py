@@ -193,7 +193,7 @@ def test_placement_group_removal_idle_node():
                 assert node.resource_usage.idle_time_ms >= 1000
 
             return True
-        
+
         wait_for_condition(verify)
     finally:
         ray.shutdown()
