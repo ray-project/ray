@@ -451,7 +451,7 @@ class DeploymentHandleRef(_DeploymentHandleResultBase):
         import os
         os.environ["RAY_SERVE_ENABLE_NEW_HANDLE_API"] = "1"
 
-    .. doctest::
+    .. testcode::
 
         from ray import serve
         from ray.serve.handle import DeploymentHandle
@@ -488,7 +488,7 @@ class DeploymentHandleRef(_DeploymentHandleResultBase):
         import os
         os.environ["RAY_SERVE_ENABLE_NEW_HANDLE_API"] = "1"
 
-    .. doctest::
+    .. testcode::
 
         from ray import serve
         from ray.serve.handle import DeploymentHandle
@@ -582,7 +582,7 @@ class DeploymentHandleGenerator(_DeploymentHandleResultBase):
         import os
         os.environ["RAY_SERVE_ENABLE_NEW_HANDLE_API"] = "1"
 
-    .. doctest::
+    .. testcode::
 
         from typing import AsyncGenerator, Generator
 
@@ -689,7 +689,7 @@ class DeploymentHandle(_DeploymentHandleBase):
         import os
         os.environ["RAY_SERVE_ENABLE_NEW_HANDLE_API"] = "1"
 
-    .. doctest::
+    .. testcode::
 
         import ray
         from ray import serve
