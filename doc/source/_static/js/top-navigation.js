@@ -22,7 +22,6 @@ is_examples = window.location.href.endsWith("ray-overview/examples.html")
 is_get_started = window.location.href.endsWith("ray-overview/getting-started.html")
 is_use_cases = window.location.href.endsWith("ray-overview/use-cases.html")
 is_libraries = window.location.href.includes("/ray-core/") ||
-    window.location.href.includes("/ray-air/") ||
     window.location.href.includes("/data/") ||
     window.location.href.includes("/train/") ||
     window.location.href.includes("/tune/") ||
