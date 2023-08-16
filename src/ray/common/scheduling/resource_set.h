@@ -50,6 +50,8 @@ class ResourceSet {
 
   explicit ResourceSet(const absl::flat_hash_map<ResourceID, FixedPoint> &resource_map);
 
+  explicit ResourceSet(const absl::flat_hash_map<ResourceID, double> &resource_map);
+
   /// \brief Test equality with the other specified ResourceSet object.
   ///
   /// \param other: Right-hand side object for equality comparison.
@@ -91,7 +93,7 @@ class ResourceSet {
 
   /// Set a resource to the given value.
   /// NOTE: if the new value is 0, the resource will be removed.
-  void Set(ResourceID resource_id, FixedPoint value);
+  ResourceSet &Set(ResourceID resource_id, FixedPoint value);
 
   /// Check whether a particular resource exist.
   bool Has(ResourceID resource_id) const { return resources_.contains(resource_id); }

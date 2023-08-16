@@ -48,12 +48,11 @@ TEST_F(ResourceRequestTest, TestBasic) {
   ASSERT_EQ(resource_request.Size(), 2);
   ASSERT_FALSE(resource_request.IsEmpty());
 
-  // Test ResourceIds and ToMap
+  // Test ResourceIds
   auto resource_ids_it = resource_request.ResourceIds();
   auto resource_ids =
       absl::flat_hash_set<ResourceID>(resource_ids_it.begin(), resource_ids_it.end());
   ASSERT_EQ(resource_ids, absl::flat_hash_set<ResourceID>({cpu_id, custom_id1}));
-  ASSERT_EQ(resource_request.ToMap(), resource_map);
 
   // Test Set
   resource_request.Set(gpu_id, 1);
@@ -122,7 +121,7 @@ TEST_F(ResourceRequestTest, TestOperators) {
   ASSERT_FALSE(r2 >= r1);
 
   ResourceRequest r3, r4;
-  absl::flat_hash_map<ResourceID, FixedPoint> expected;
+  absl::flat_hash_map<std::string, double> expected;
 
   // === Test algebra operators ===
   //
@@ -131,25 +130,19 @@ TEST_F(ResourceRequestTest, TestOperators) {
   r1 = ResourceRequest({{cpu_id, 1}, {custom_id1, 2}});
   r2 = ResourceRequest({{cpu_id, -1}, {custom_id2, 2}});
   r3 = r1 + r2;
-  expected = {{custom_id1, 2}, {custom_id2, 2}};
-  ASSERT_EQ(r3.ToMap(), expected);
+  expected = {{custom_id1.Binary(), 2}, {custom_id2.Binary(), 2}};
+  ASSERT_EQ(r3.ToResourceMap(), expected);
   r3 = r1;
   r3 += r2;
-  ASSERT_EQ(r3.ToMap(), expected);
+  ASSERT_EQ(r3.ToResourceMap(), expected);
 
   // r4 = r1 - r2 = {cpu: 2, custom1: 2, custom2: -2}
   r4 = r1 - r2;
-  expected = {{cpu_id, 2}, {custom_id1, 2}, {custom_id2, -2}};
-  ASSERT_EQ(r4.ToMap(), expected);
+  expected = {{cpu_id.Binary(), 2}, {custom_id1.Binary(), 2}, {custom_id2.Binary(), -2}};
+  ASSERT_EQ(r4.ToResourceMap(), expected);
   r4 = r1;
   r4 -= r2;
-  ASSERT_EQ(r4.ToMap(), expected);
-
-  // Test RemoveNegative
-  r1 = ResourceRequest({{cpu_id, -1}, {custom_id1, 2}, {custom_id2, -2}});
-  r1.RemoveNegative();
-  expected = {{custom_id1, 2}};
-  ASSERT_EQ(r1.ToMap(), expected);
+  ASSERT_EQ(r4.ToResourceMap(), expected);
 }
 
 class TaskResourceInstancesTest : public ::testing::Test {};
@@ -161,8 +154,8 @@ TEST_F(TaskResourceInstancesTest, TestBasic) {
 
   absl::flat_hash_map<ResourceID, FixedPoint> resource_map({{cpu_id, 5}, {gpu_id, 5}});
 
-  ResourceRequest resource_request(resource_map);
-  TaskResourceInstances task_resource_instances(resource_request);
+  ResourceSet resource_set(resource_map);
+  TaskResourceInstances task_resource_instances(resource_set);
 
   // Test Has
   ASSERT_TRUE(task_resource_instances.Has(cpu_id));
@@ -203,7 +196,7 @@ TEST_F(TaskResourceInstancesTest, TestBasic) {
   ASSERT_EQ(task_resource_instances.Sum(gpu_id), 5);
 
   // Test ToResourceSet
-  ASSERT_EQ(task_resource_instances.ToResourceSet(), resource_request.GetResourceSet());
+  ASSERT_EQ(task_resource_instances.ToResourceSet(), resource_set);
 }
 
 }  // namespace ray

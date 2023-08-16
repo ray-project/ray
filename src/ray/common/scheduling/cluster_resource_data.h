@@ -68,6 +68,38 @@ class ResourceRequest {
 
   bool IsEmpty() const { return resources_.IsEmpty(); }
 
+  size_t Size() const { return resources_.Size(); }
+
+  void Clear() { resources_.Clear(); }
+
+  bool operator==(const ResourceRequest &other) const {
+    return this->resources_ == other.resources_;
+  }
+
+  bool operator<=(const ResourceRequest &other) const {
+    return this->resources_ <= other.resources_;
+  }
+
+  bool operator>=(const ResourceRequest &other) const {
+    return this->resources_ >= other.resources_;
+  }
+
+  bool operator!=(const ResourceRequest &other) const {
+    return this->resources_ != other.resources_;
+  }
+
+  ResourceRequest operator+(const ResourceRequest &other) const {
+    ResourceRequest res = *this;
+    res += other;
+    return res;
+  }
+
+  ResourceRequest operator-(const ResourceRequest &other) const {
+    ResourceRequest res = *this;
+    res -= other;
+    return res;
+  }
+
   ResourceRequest &operator+=(const ResourceRequest &other) {
     resources_ += other.resources_;
     return *this;
@@ -102,7 +134,7 @@ class TaskResourceInstances {
   /// Construct an empty TaskResourceInstances.
   TaskResourceInstances() {}
 
-  /// Construct a TaskResourceInstances with the values from a ResourceRequest.
+  /// Construct a TaskResourceInstances with the values from a ResourceSet.
   TaskResourceInstances(const ResourceSet &resources) {
     for (auto &resource_id : resources.ResourceIds()) {
       std::vector<FixedPoint> instances;
