@@ -20,7 +20,7 @@ from ray.serve.config import DeploymentMode
 from ray.serve._private.utils import DEFAULT, dict_keys_snake_to_camel_case
 from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.serve._private.constants import (
-    DEFAULT_UVICORN_TIMEOUT_KEEP_ALIVE_S,
+    DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_S,
     SERVE_DEFAULT_APP_NAME,
 )
 
@@ -547,10 +547,11 @@ class HTTPOptionsSchema(BaseModel, extra=Extra.forbid):
         default=None,
         description="The timeout for HTTP requests. Defaults to no timeout.",
     )
-    timeout_keep_alive_s: int = Field(
-        default=DEFAULT_UVICORN_TIMEOUT_KEEP_ALIVE_S,
-        description="The timeout for uvicorn server to close keep connections. "
-        f"Defaults to {DEFAULT_UVICORN_TIMEOUT_KEEP_ALIVE_S} seconds.",
+    keep_alive_timeout_s: int = Field(
+        default=DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_S,
+        description="The HTTP proxy will keep idle connections alive for this duration "
+        "before closing them when no requests are ongoing. Defaults to "
+        f"{DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_S} seconds.",
     )
 
 

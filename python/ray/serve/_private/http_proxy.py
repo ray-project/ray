@@ -46,7 +46,7 @@ from ray.serve._private.constants import (
     SERVE_MULTIPLEXED_MODEL_ID,
     SERVE_NAMESPACE,
     DEFAULT_LATENCY_BUCKET_MS,
-    DEFAULT_UVICORN_TIMEOUT_KEEP_ALIVE_S,
+    DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_S,
     PROXY_MIN_DRAINING_PERIOD_S,
     RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING,
     RAY_SERVE_REQUEST_ID_HEADER,
@@ -1061,7 +1061,7 @@ class HTTPProxyActor:
         node_id: NodeId,
         request_timeout_s: Optional[float] = None,
         http_middlewares: Optional[List["starlette.middleware.Middleware"]] = None,
-        timeout_keep_alive_s: int = DEFAULT_UVICORN_TIMEOUT_KEEP_ALIVE_S,
+        keep_alive_timeout_s: int = DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_S,
     ):  # noqa: F821
         configure_component_logger(
             component_name="http_proxy", component_id=node_ip_address
@@ -1096,8 +1096,8 @@ class HTTPProxyActor:
         self.host = host
         self.port = port
         self.root_path = root_path
-        self.timeout_keep_alive_s = (
-            RAY_SERVE_HTTP_KEEPALIVE_TIMEOUT_S or timeout_keep_alive_s
+        self.keep_alive_timeout_s = (
+            RAY_SERVE_HTTP_KEEPALIVE_TIMEOUT_S or keep_alive_timeout_s
         )
         self._uvicorn_server = None
 
@@ -1173,7 +1173,7 @@ Please make sure your http-host and http-port are specified correctly."""
             root_path=self.root_path,
             lifespan="off",
             access_log=False,
-            timeout_keep_alive=self.timeout_keep_alive_s,
+            timeout_keep_alive=self.keep_alive_timeout_s,
         )
         self._uvicorn_server = uvicorn.Server(config=config)
         # TODO(edoakes): we need to override install_signal_handlers here
