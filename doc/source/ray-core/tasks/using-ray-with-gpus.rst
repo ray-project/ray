@@ -128,9 +128,9 @@ See ``ray.util.accelerators`` for available accelerator types. Current automatic
 AWS Neuron Core Accelerator (Experimental)
 ------------------------------------------
 
-Similar to NVIDIA GPUs, Ray auto-detects `AWS Neuron Cores`_  by default.
-An user can specify `resources={"num_neuron_cores": some_number}` on
-task or actor resource requirements to assign the NeuronCore/s.
+Similar to Nvidia GPUs, Ray auto-detects `AWS Neuron Cores`_  by default.
+The user can specify `resources={"num_neuron_cores": some_number}` on
+task or actor resource requirements to assign the Neuron Core(s).
 
 .. _`AWS Neuron Cores` : https://awsdocs-neuron.readthedocs-hosted.com/en/latest/general/arch/model-architecture-fit.html
 
