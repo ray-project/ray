@@ -5,8 +5,6 @@ from unittest.mock import patch, MagicMock
 from ray.serve._private.http_proxy import GenericProxy, gRPCProxy, HTTPProxy
 from ray.serve._private.proxy_request_response import (
     ASGIProxyRequest,
-    gRPCProxyRequest,
-    ProxyRequest,
     ProxyResponse,
 )
 
