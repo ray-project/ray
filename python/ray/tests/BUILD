@@ -428,6 +428,14 @@ py_test(
     deps = ["//:ray_lib", ":conftest"],
 )
 
+py_test(
+    name = "vsphere/test_vsphere_node_provider",
+    size = "small",
+    srcs = ["vsphere/test_vsphere_node_provider.py"],
+    tags = ["exclusive", "small_size_python_tests", "team:serverless"],
+    deps = ["//:ray_lib", ":conftest"],
+)
+
 # Note(simon): typing tests are not included in module list
 #    because they requires globs and it might be refactored in the future.
 py_test(
