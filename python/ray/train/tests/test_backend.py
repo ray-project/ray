@@ -150,7 +150,7 @@ def test_local_world_size(ray_2_node_2_cpu):
             return train.get_context().get_local_world_size()
 
         e.start_training(train_func, datasets={}, data_config=DataConfig())
-        assert list(e.finish_training()) == [2, 1, 2]
+        assert list(e.finish_training()) == [2, 2, 1]
 
 
 def test_node_ranks(ray_2_node_2_cpu):
