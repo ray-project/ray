@@ -9,7 +9,7 @@ import ray
 
 from ray import serve
 from ray.serve.exceptions import RayServeException
-from ray.serve.handle import HandleOptions, RayServeHandle, RayServeSyncHandle
+from ray.serve.handle import _HandleOptions, RayServeHandle, RayServeSyncHandle
 from ray.serve._private.router import PowerOfTwoChoicesReplicaScheduler
 from ray.serve._private.constants import (
     RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING,
@@ -19,7 +19,7 @@ from ray.serve._private.common import RequestProtocol
 
 
 def test_handle_options():
-    default_options = HandleOptions()
+    default_options = _HandleOptions()
     assert default_options.method_name == "__call__"
     assert default_options.multiplexed_model_id == ""
     assert default_options.stream is False
