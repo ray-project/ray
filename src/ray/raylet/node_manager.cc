@@ -320,7 +320,7 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
   cluster_resource_scheduler_ = std::make_shared<ClusterResourceScheduler>(
       io_service,
       scheduling::NodeID(self_node_id_.Binary()),
-      config.resource_config.ToResourceMap(),
+      config.resource_config.GetResourceMap(),
       /*is_node_available_fn*/
       [this](scheduling::NodeID node_id) {
         return gcs_client_->Nodes().Get(NodeID::FromBinary(node_id.Binary())) != nullptr;
@@ -638,7 +638,7 @@ void NodeManager::FillNormalTaskResourceUsage(rpc::ResourcesData &resources_data
   if (last_heartbeat_resources->normal_task_resources != normal_task_resources) {
     RAY_LOG(DEBUG) << "normal_task_resources = " << normal_task_resources.DebugString();
     resources_data.set_resources_normal_task_changed(true);
-    auto resource_map = normal_task_resources.ToResourceMap();
+    auto resource_map = normal_task_resources.GetResourceMap();
     resources_data.mutable_resources_normal_task()->insert(resource_map.begin(),
                                                            resource_map.end());
     resources_data.set_resources_normal_task_timestamp(absl::GetCurrentTimeNanos());
@@ -1905,7 +1905,7 @@ void NodeManager::HandleRequestWorkerLease(rpc::RequestWorkerLeaseRequest reques
                                   .GetNodeResourceViewString(
                                       scheduling::NodeID(self_node_id_.Binary()));
             resources_data->set_resources_normal_task_changed(true);
-            auto resource_map = normal_task_resources.ToResourceMap();
+            auto resource_map = normal_task_resources.GetResourceMap();
             resources_data->mutable_resources_normal_task()->insert(resource_map.begin(),
                                                                     resource_map.end());
             resources_data->set_resources_normal_task_timestamp(
