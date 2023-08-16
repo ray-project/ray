@@ -1049,9 +1049,9 @@ class ServeController:
             logger.info(f'Saved CPU profile data to file "{self.cpu_profiler_log}"')
             return self.cpu_profiler_log
         else:
-            logger.warning(
+            logger.error(
                 "Attempted to save CPU profile data, but failed because no "
-                "CPU profiler was running! Enabled CPU profiling by enabling "
+                "CPU profiler was running! Enable CPU profiling by enabling "
                 "the RAY_SERVE_ENABLE_CPU_PROFILING env var."
             )
 
