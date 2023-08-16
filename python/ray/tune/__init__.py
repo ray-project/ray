@@ -1,3 +1,4 @@
+# Try import ray[tune] core requirements (defined in setup.py)
 try:
     import pandas  # noqa: F401
     import requests  # noqa: F401
