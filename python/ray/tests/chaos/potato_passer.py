@@ -1,6 +1,7 @@
 import asyncio
 import argparse
 import ray
+
 ray.init()
 
 """
@@ -28,7 +29,8 @@ class PotatoPasser:
         if potato % self.print_every == 0:
             print(
                 f"running, name {self.name}, count {self.count}, "
-                f"potato {potato}, target {target}")
+                f"potato {potato}, target {target}"
+            )
         if potato >= target:
             print(f"target reached! name = {self.name}, count = {self.count}")
             return target
@@ -41,8 +43,11 @@ async def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--num-actors", type=int, help="Make this many actors")
     parser.add_argument("--pass-times", type=int, help="Pass this many messages")
-    parser.add_argument("--sleep-secs", type=float, help="Sleep seconds before sending "
-                        "message to next actor")
+    parser.add_argument(
+        "--sleep-secs",
+        type=float,
+        help="Sleep seconds before sending " "message to next actor",
+    )
     args = parser.parse_args()
 
     actors = []
@@ -50,8 +55,8 @@ async def main():
         this_actor = "actor" + str(i)
         next_actor = "actor" + str((i + 1) % args.num_actors)
         actor = PotatoPasser.options(
-            name=this_actor, scheduling_strategy="SPREAD").remote(
-            this_actor, next_actor, args.sleep_secs)
+            name=this_actor, scheduling_strategy="SPREAD"
+        ).remote(this_actor, next_actor, args.sleep_secs)
         actors.append(actor)
 
     ret = await actors[0].pass_potato.remote(0, args.pass_times)
