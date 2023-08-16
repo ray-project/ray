@@ -237,12 +237,20 @@ class LongPollHost:
         for key in watched_keys:
             # Create a new asyncio event for this key
             event = asyncio.Event()
-            task = get_or_create_event_loop().create_task(event.wait())
-            async_task_to_watched_keys[task] = key
 
             # Make sure future caller of notify_changed will unblock this
             # asyncio Event.
             self.notifier_events[key].add(event)
+
+            async def wait_for_event():
+                try:
+                    await event.wait()
+                except asyncio.CancelledError:
+                    if key in self.notifier_events:
+                        self.notifier_events[key].pop(event)
+
+            task = get_or_create_event_loop().create_task(event.wait())
+            async_task_to_watched_keys[task] = key
 
         done, not_done = await asyncio.wait(
             async_task_to_watched_keys.keys(),
@@ -250,7 +258,8 @@ class LongPollHost:
             timeout=random.uniform(*LISTEN_FOR_CHANGE_REQUEST_TIMEOUT_S),
         )
 
-        [task.cancel() for task in not_done]
+        for task in not_done:
+            task.cancel()
 
         if len(done) == 0:
             return LongPollState.TIME_OUT
