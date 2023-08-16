@@ -342,7 +342,9 @@ def test_controller_recover_and_delete(shutdown_ray_and_serve):
     )
 
     # The application should be deleted.
-    wait_for_condition(lambda: SERVE_DEFAULT_APP_NAME not in serve.status().applications
+    wait_for_condition(
+        lambda: SERVE_DEFAULT_APP_NAME not in serve.status().applications
+    )
 
 
 def test_serve_stream_logs(start_and_shutdown_ray_cli_function):
