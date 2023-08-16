@@ -64,7 +64,7 @@ void OutOfOrderActorSchedulingQueue::Add(
     int64_t seq_no,
     int64_t client_processed_up_to,
     std::function<void(rpc::SendReplyCallback)> accept_request,
-    std::function<void(rpc::SendReplyCallback)> reject_request,
+    std::function<void(const Status &, rpc::SendReplyCallback)> reject_request,
     rpc::SendReplyCallback send_reply_callback,
     const std::string &concurrency_group_name,
     const ray::FunctionDescriptor &function_descriptor,
@@ -78,6 +78,10 @@ void OutOfOrderActorSchedulingQueue::Add(
                                 dependencies.size() > 0,
                                 concurrency_group_name,
                                 function_descriptor);
+  {
+    absl::MutexLock lock(&mu_);
+    pending_tasks_queued_or_executing.emplace(task_id, false);
+  }
 
   if (dependencies.size() > 0) {
     waiter_.Wait(dependencies, [this, request = std::move(request)]() mutable {
@@ -94,32 +98,67 @@ void OutOfOrderActorSchedulingQueue::Add(
 }
 
 bool OutOfOrderActorSchedulingQueue::CancelTaskIfFound(TaskID task_id) {
-  RAY_CHECK(false) << "Cannot cancel actor tasks";
-  return false;
+  absl::MutexLock lock(&mu_);
+  if (pending_tasks_queued_or_executing.find(task_id) !=
+      pending_tasks_queued_or_executing.end()) {
+    // Mark the task is canceled.
+    pending_tasks_queued_or_executing[task_id] = true;
+    return true;
+  } else {
+    return false;
+  }
 }
 
 /// Schedules as many requests as possible in sequence.
 void OutOfOrderActorSchedulingQueue::ScheduleRequests() {
   while (!pending_actor_tasks_.empty()) {
     auto request = pending_actor_tasks_.front();
+    const auto task_id = request.TaskID();
     if (is_asyncio_) {
       // Process async actor task.
       auto fiber = fiber_state_manager_->GetExecutor(request.ConcurrencyGroupName(),
                                                      request.FunctionDescriptor());
-      fiber->EnqueueFiber([request]() mutable { request.Accept(); });
+      fiber->EnqueueFiber([this, request, task_id]() mutable {
+        AcceptRequestOrRejectIfCanceled(task_id, request);
+      });
     } else {
       // Process actor tasks.
       RAY_CHECK(pool_manager_ != nullptr);
       auto pool = pool_manager_->GetExecutor(request.ConcurrencyGroupName(),
                                              request.FunctionDescriptor());
       if (pool == nullptr) {
-        request.Accept();
+        AcceptRequestOrRejectIfCanceled(task_id, request);
       } else {
-        pool->Post([request]() mutable { request.Accept(); });
+        pool->Post([this, request, task_id]() mutable {
+          AcceptRequestOrRejectIfCanceled(task_id, request);
+        });
       }
     }
     pending_actor_tasks_.pop_front();
   }
+}
+
+void OutOfOrderActorSchedulingQueue::AcceptRequestOrRejectIfCanceled(
+    TaskID task_id, InboundRequest &request) {
+  bool is_canceled = false;
+  {
+    absl::MutexLock lock(&mu_);
+    auto it = pending_tasks_queued_or_executing.find(task_id);
+    if (it != pending_tasks_queued_or_executing.end()) {
+      is_canceled = it->second;
+    }
+  }
+
+  // Accept can be very long, and we shouldn't hold a lock.
+  if (is_canceled) {
+    request.Cancel(
+        Status::SchedulingCancelled("Task is canceled before it is scheduled."));
+  } else {
+    request.Accept();
+  }
+
+  absl::MutexLock lock(&mu_);
+  pending_tasks_queued_or_executing.erase(task_id);
 }
 
 }  // namespace core

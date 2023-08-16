@@ -2201,13 +2201,12 @@ cdef void cancel_async_task(
         worker = ray._private.worker.global_worker
         eventloop, _ = worker.core_worker.get_event_loop(
             function_descriptor, name_of_concurrency_group_to_execute)
-        with current_task_id_lock:
-            future = worker.core_worker.get_task_id_to_future().get(task_id)
-            if future is not None:
-                eventloop.call_soon_threadsafe(future.cancel)
-            # else, the task is already finished. If the task
-            # wasn't finished (task is queued on a client or server side),
-            # this method shouldn't have been called.
+        future = worker.core_worker.get_queued_future(task_id)
+        if future is not None:
+            eventloop.call_soon_threadsafe(future.cancel)
+        # else, the task is already finished. If the task
+        # wasn't finished (task is queued on a client or server side),
+        # this method shouldn't have been called.
 
 
 cdef void unhandled_exception_handler(const CRayObject& error) nogil:
@@ -2959,6 +2958,7 @@ cdef class CoreWorker:
         self.fd_to_cgname_dict = None
         self.eventloop_for_default_cg = None
         self.current_runtime_env = None
+        self.task_id_to_future_lock = threading.Lock()
         self.task_id_to_future = {}
         self.thread_pool_for_async_event_loop = None
 
@@ -4181,7 +4181,7 @@ cdef class CoreWorker:
 
         future = asyncio.run_coroutine_threadsafe(coroutine, eventloop)
         if task_id:
-            with current_task_id_lock:
+            with self.task_id_to_future_lock:
                 self.task_id_to_future[task_id] = asyncio.wrap_future(
                     future, loop=eventloop)
 
@@ -4195,7 +4195,7 @@ cdef class CoreWorker:
             raise TaskCancelledError(task_id)
         finally:
             if task_id:
-                with current_task_id_lock:
+                with self.task_id_to_future_lock:
                     self.task_id_to_future.pop(task_id)
         return result
 
@@ -4227,7 +4227,13 @@ cdef class CoreWorker:
         return (CCoreWorkerProcess.GetCoreWorker().GetWorkerContext()
                 .CurrentActorMaxConcurrency())
 
-    def get_task_id_to_future(self) -> dict:
+    def get_queued_future(self, task_id: Optional[TaskID]) -> asyncio.Future:
+        """Get a asyncio.Future that's queued in the event loop."""
+        with self.task_id_to_future_lock:
+            return self.task_id_to_future.get(task_id)
+
+    def get_task_id_to_future(self):
+        # Testing-only
         return self.task_id_to_future
 
     def get_current_runtime_env(self) -> str:

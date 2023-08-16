@@ -38,7 +38,7 @@ class MockActorSchedulingQueue {
   void Add(int64_t seq_no,
            int64_t client_processed_up_to,
            std::function<void(rpc::SendReplyCallback)> accept_request,
-           std::function<void(rpc::SendReplyCallback)> reject_request,
+           std::function<void(const Status &, rpc::SendReplyCallback)> reject_request,
            rpc::SendReplyCallback send_reply_callback = nullptr,
            TaskID task_id = TaskID::Nil(),
            const std::vector<rpc::ObjectReference> &dependencies = {}) {

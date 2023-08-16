@@ -512,6 +512,19 @@ void CoreWorkerDirectActorTaskSubmitter::HandlePushTaskReply(
   } else if (status.ok()) {
     task_finisher_.CompletePendingTask(
         task_id, reply, addr, reply.is_application_error());
+  } else if (status.IsSchedulingCancelled()) {
+    std::ostringstream stream;
+    stream << "The task " << task_id << " is canceled from an actor " << actor_id
+           << " before it executes.";
+    const auto &msg = stream.str();
+    RAY_LOG(DEBUG) << msg;
+    rpc::RayErrorInfo error_info;
+    error_info.set_error_message(msg);
+    error_info.set_error_type(rpc::ErrorType::TASK_CANCELLED);
+    GetTaskFinisherWithoutMu().FailPendingTask(task_spec.TaskId(),
+                                               rpc::ErrorType::TASK_CANCELLED,
+                                               /*status*/ nullptr,
+                                               &error_info);
   } else {
     bool is_actor_dead = false;
     bool fail_immediatedly = false;
@@ -629,6 +642,8 @@ void CoreWorkerDirectActorTaskSubmitter::RetryCancelTask(TaskSpecification task_
                                                          bool force_kill,
                                                          bool recursive,
                                                          int64_t milliseconds) {
+  RAY_LOG(DEBUG) << "Task " << task_spec.TaskId() << " cancelation is retried in "
+                 << milliseconds << " ms";
   execute_after(
       io_service_,
       [this, task_spec = std::move(task_spec), force_kill, recursive] {
@@ -657,6 +672,7 @@ Status CoreWorkerDirectActorTaskSubmitter::CancelTask(TaskSpecification task_spe
   // Shouldn't hold a lock while accessing task_finisher_.
   // Task is already canceled or finished.
   if (!GetTaskFinisherWithoutMu().MarkTaskCanceled(task_id)) {
+    RAY_LOG(DEBUG) << "a task " << task_id << " is already finished or canceled";
     return Status::OK();
   }
 
@@ -668,27 +684,38 @@ Status CoreWorkerDirectActorTaskSubmitter::CancelTask(TaskSpecification task_spe
     RAY_CHECK(queue != client_queues_.end());
     if (queue->second.state == rpc::ActorTableData::DEAD) {
       // No need to decrement cur_pending_calls because it doesn't matter.
+      RAY_LOG(DEBUG) << "a task " << task_id
+                     << "'s actor is already dead. Ignoring the cancel request.";
       return Status::OK();
     }
 
-    RAY_LOG(ERROR) << "SANG-TODO Get here?";
     task_queued = queue->second.actor_submit_queue->Contains(send_pos);
     if (task_queued) {
       auto dep_resolved = queue->second.actor_submit_queue->Get(send_pos).second;
       if (!dep_resolved) {
+        RAY_LOG(DEBUG)
+            << "a task " << task_id
+            << " has been resolving dependencies. Cancel to resolve dependencies";
         resolver_.CancelDependencyResolution(task_id);
       }
+      RAY_LOG(DEBUG) << "a task " << task_id
+                     << " was queued. Mark a task is canceled from a queue.";
       queue->second.actor_submit_queue->MarkTaskCanceled(send_pos);
     }
-    RAY_LOG(ERROR) << "SANG-TODO Get there?";
   }
 
   // Fail a request immediately if it is still queued.
   // The task won't be sent to an actor in this case.
   // We cannot hold a lock when calling `FailOrRetryPendingTask`.
   if (task_queued) {
+    rpc::RayErrorInfo error_info;
+    std::ostringstream stream;
+    stream << "The task " << task_id << " is canceled from an actor " << actor_id
+           << " before it executes.";
+    error_info.set_error_message(stream.str());
+    error_info.set_error_type(rpc::ErrorType::TASK_CANCELLED);
     GetTaskFinisherWithoutMu().FailOrRetryPendingTask(
-        task_id, rpc::ErrorType::TASK_CANCELLED, /*status*/ nullptr);
+        task_id, rpc::ErrorType::TASK_CANCELLED, /*status*/ nullptr, &error_info);
     return Status::OK();
   }
 
@@ -702,7 +729,7 @@ Status CoreWorkerDirectActorTaskSubmitter::CancelTask(TaskSpecification task_spe
   // Retry in 1 second.
   {
     absl::MutexLock lock(&mu_);
-
+    RAY_LOG(DEBUG) << "a task " << task_id << " was sent to an actor. Send a cancel RPC.";
     auto queue = client_queues_.find(actor_id);
     RAY_CHECK(queue != client_queues_.end());
     if (!queue->second.rpc_client) {
@@ -725,8 +752,10 @@ Status CoreWorkerDirectActorTaskSubmitter::CancelTask(TaskSpecification task_spe
 
                          // Keep retrying every 2 seconds until a task is officially
                          // finished.
-                         if (!GetTaskFinisherWithoutMu().MarkTaskCanceled(task_id)) {
+                         if (!GetTaskFinisherWithoutMu().GetTaskSpec(task_id)) {
                            // Task is already finished.
+                           RAY_LOG(DEBUG) << "Task " << task_spec.TaskId()
+                                          << " is finished. Stop a cancel request.";
                            return;
                          }
 

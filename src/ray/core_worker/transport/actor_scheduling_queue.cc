@@ -68,15 +68,16 @@ size_t ActorSchedulingQueue::Size() const {
 }
 
 /// Add a new actor task's callbacks to the worker queue.
-void ActorSchedulingQueue::Add(int64_t seq_no,
-                               int64_t client_processed_up_to,
-                               std::function<void(rpc::SendReplyCallback)> accept_request,
-                               std::function<void(rpc::SendReplyCallback)> reject_request,
-                               rpc::SendReplyCallback send_reply_callback,
-                               const std::string &concurrency_group_name,
-                               const ray::FunctionDescriptor &function_descriptor,
-                               TaskID task_id,
-                               const std::vector<rpc::ObjectReference> &dependencies) {
+void ActorSchedulingQueue::Add(
+    int64_t seq_no,
+    int64_t client_processed_up_to,
+    std::function<void(rpc::SendReplyCallback)> accept_request,
+    std::function<void(const Status &, rpc::SendReplyCallback)> reject_request,
+    rpc::SendReplyCallback send_reply_callback,
+    const std::string &concurrency_group_name,
+    const ray::FunctionDescriptor &function_descriptor,
+    TaskID task_id,
+    const std::vector<rpc::ObjectReference> &dependencies) {
   // A seq_no of -1 means no ordering constraint. Actor tasks must be executed in order.
   RAY_CHECK(seq_no != -1);
 
@@ -97,7 +98,7 @@ void ActorSchedulingQueue::Add(int64_t seq_no,
                                                 function_descriptor);
   {
     absl::MutexLock lock(&mu_);
-    actor_task_ids_in_queue_.emplace(task_id, false);
+    pending_tasks_queued_or_executing.emplace(task_id, false);
   }
 
   if (dependencies.size() > 0) {
@@ -117,9 +118,10 @@ void ActorSchedulingQueue::Add(int64_t seq_no,
 // results in a fatal error.
 bool ActorSchedulingQueue::CancelTaskIfFound(TaskID task_id) {
   absl::MutexLock lock(&mu_);
-  if (actor_task_ids_in_queue_.find(task_id) != actor_task_ids_in_queue_.end()) {
+  if (pending_tasks_queued_or_executing.find(task_id) !=
+      pending_tasks_queued_or_executing.end()) {
     // Mark the task is canceled.
-    actor_task_ids_in_queue_[task_id] = true;
+    pending_tasks_queued_or_executing[task_id] = true;
     return true;
   } else {
     return false;
@@ -134,10 +136,10 @@ void ActorSchedulingQueue::ScheduleRequests() {
     auto head = pending_actor_tasks_.begin();
     RAY_LOG(ERROR) << "Cancelling stale RPC with seqno "
                    << pending_actor_tasks_.begin()->first << " < " << next_seq_no_;
-    head->second.Cancel();
+    head->second.Cancel(Status::Invalid("client cancelled stale rpc"));
     {
       absl::MutexLock lock(&mu_);
-      actor_task_ids_in_queue_.erase(head->second.TaskID());
+      pending_tasks_queued_or_executing.erase(head->second.TaskID());
     }
     pending_actor_tasks_.erase(head);
   }
@@ -150,35 +152,12 @@ void ActorSchedulingQueue::ScheduleRequests() {
     auto request = head->second;
     auto task_id = head->second.TaskID();
 
-    auto run_task_or_reject_if_canceled = [this](TaskID task_id,
-                                                 InboundRequest &request) {
-      bool is_canceled = false;
-      {
-        absl::MutexLock lock(&mu_);
-        auto it = actor_task_ids_in_queue_.find(task_id);
-        if (it != actor_task_ids_in_queue_.end()) {
-          is_canceled = it->second;
-        }
-      }
-      if (is_canceled) {
-        request.Cancel();
-      } else {
-        request.Accept();
-      }
-    };
-
     if (is_asyncio_) {
       // Process async actor task.
       auto fiber = fiber_state_manager_->GetExecutor(request.ConcurrencyGroupName(),
                                                      request.FunctionDescriptor());
-      fiber->EnqueueFiber([this,
-                           request,
-                           task_id,
-                           run_task_or_reject_if_canceled =
-                               std::move(run_task_or_reject_if_canceled)]() mutable {
-        run_task_or_reject_if_canceled(task_id, request);
-        absl::MutexLock lock(&mu_);
-        actor_task_ids_in_queue_.erase(task_id);
+      fiber->EnqueueFiber([this, request, task_id]() mutable {
+        AcceptRequestOrRejectIfCanceled(task_id, request);
       });
     } else {
       // Process actor tasks.
@@ -186,18 +165,10 @@ void ActorSchedulingQueue::ScheduleRequests() {
       auto pool = pool_manager_->GetExecutor(request.ConcurrencyGroupName(),
                                              request.FunctionDescriptor());
       if (pool == nullptr) {
-        run_task_or_reject_if_canceled(task_id, request);
-        absl::MutexLock lock(&mu_);
-        actor_task_ids_in_queue_.erase(task_id);
+        AcceptRequestOrRejectIfCanceled(task_id, request);
       } else {
-        pool->Post([this,
-                    request,
-                    task_id,
-                    run_task_or_reject_if_canceled =
-                        std::move(run_task_or_reject_if_canceled)]() mutable {
-          run_task_or_reject_if_canceled(task_id, request);
-          absl::MutexLock lock(&mu_);
-          actor_task_ids_in_queue_.erase(task_id);
+        pool->Post([this, request, task_id]() mutable {
+          AcceptRequestOrRejectIfCanceled(task_id, request);
         });
       }
     }
@@ -230,14 +201,37 @@ void ActorSchedulingQueue::OnSequencingWaitTimeout() {
                  << ", cancelling all queued tasks";
   while (!pending_actor_tasks_.empty()) {
     auto head = pending_actor_tasks_.begin();
-    head->second.Cancel();
+    head->second.Cancel(Status::Invalid("client cancelled stale rpc"));
     next_seq_no_ = std::max(next_seq_no_, head->first + 1);
     {
       absl::MutexLock lock(&mu_);
-      actor_task_ids_in_queue_.erase(head->second.TaskID());
+      pending_tasks_queued_or_executing.erase(head->second.TaskID());
     }
     pending_actor_tasks_.erase(head);
   }
+}
+
+void ActorSchedulingQueue::AcceptRequestOrRejectIfCanceled(TaskID task_id,
+                                                           InboundRequest &request) {
+  bool is_canceled = false;
+  {
+    absl::MutexLock lock(&mu_);
+    auto it = pending_tasks_queued_or_executing.find(task_id);
+    if (it != pending_tasks_queued_or_executing.end()) {
+      is_canceled = it->second;
+    }
+  }
+
+  // Accept can be very long, and we shouldn't hold a lock.
+  if (is_canceled) {
+    request.Cancel(
+        Status::SchedulingCancelled("Task is canceled before it is scheduled."));
+  } else {
+    request.Accept();
+  }
+
+  absl::MutexLock lock(&mu_);
+  pending_tasks_queued_or_executing.erase(task_id);
 }
 
 }  // namespace core

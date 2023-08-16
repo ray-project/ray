@@ -124,6 +124,7 @@ cdef class CoreWorker:
         object eventloop_for_default_cg
         object thread_for_default_cg
         object fd_to_cgname_dict
+        object task_id_to_future_lock
         dict task_id_to_future
         object thread_pool_for_async_event_loop
 

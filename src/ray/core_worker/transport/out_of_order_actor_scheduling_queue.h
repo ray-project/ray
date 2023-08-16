@@ -55,21 +55,27 @@ class OutOfOrderActorSchedulingQueue : public SchedulingQueue {
   void Add(int64_t seq_no,
            int64_t client_processed_up_to,
            std::function<void(rpc::SendReplyCallback)> accept_request,
-           std::function<void(rpc::SendReplyCallback)> reject_request,
+           std::function<void(const Status &, rpc::SendReplyCallback)> reject_request,
            rpc::SendReplyCallback send_reply_callback,
            const std::string &concurrency_group_name,
            const ray::FunctionDescriptor &function_descriptor,
            TaskID task_id = TaskID::Nil(),
            const std::vector<rpc::ObjectReference> &dependencies = {}) override;
 
-  // We don't allow the cancellation of actor tasks, so invoking CancelTaskIfFound
-  // results in a fatal error.
+  /// Cancel the actor task in the queue.
+  /// Tasks are in the queue if it is either queued, or executing.
+  /// Return true if a task is in the queue. False otherwise.
+  /// This method has to be THREAD-SAFE.
   bool CancelTaskIfFound(TaskID task_id) override;
 
   /// Schedules as many requests as possible in sequence.
   void ScheduleRequests() override;
 
  private:
+  /// Accept the given InboundRequest or reject it if a task id is canceled via
+  /// CancelTaskIfFound.
+  void AcceptRequestOrRejectIfCanceled(TaskID task_id, InboundRequest &request);
+
   /// The queue stores all the pending tasks.
   std::deque<InboundRequest> pending_actor_tasks_;
   /// The id of the thread that constructed this scheduling queue.
@@ -84,6 +90,10 @@ class OutOfOrderActorSchedulingQueue : public SchedulingQueue {
   /// Whether we should enqueue requests into asyncio pool. Setting this to true
   /// will instantiate all tasks as fibers that can be yielded.
   bool is_asyncio_ = false;
+  /// Mutext to protect attributes used for thread safe APIs.
+  absl::Mutex mu_;
+  /// A map of actor task IDs -> is_canceled
+  absl::flat_hash_map<TaskID, bool> pending_tasks_queued_or_executing GUARDED_BY(mu_);
 
   friend class SchedulingQueueTest;
 };

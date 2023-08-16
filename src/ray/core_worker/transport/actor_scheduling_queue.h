@@ -59,7 +59,7 @@ class ActorSchedulingQueue : public SchedulingQueue {
   void Add(int64_t seq_no,
            int64_t client_processed_up_to,
            std::function<void(rpc::SendReplyCallback)> accept_request,
-           std::function<void(rpc::SendReplyCallback)> reject_request,
+           std::function<void(const Status &, rpc::SendReplyCallback)> reject_request,
            rpc::SendReplyCallback send_reply_callback,
            const std::string &concurrency_group_name,
            const ray::FunctionDescriptor &function_descriptor,
@@ -76,6 +76,10 @@ class ActorSchedulingQueue : public SchedulingQueue {
   void ScheduleRequests() override;
 
  private:
+  /// Accept the given InboundRequest or reject it if a task id is canceled via
+  /// CancelTaskIfFound.
+  void AcceptRequestOrRejectIfCanceled(TaskID task_id, InboundRequest &request);
+
   /// Called when we time out waiting for an earlier task to show up.
   void OnSequencingWaitTimeout();
   /// Max time in seconds to wait for dependencies to show up.
@@ -102,9 +106,7 @@ class ActorSchedulingQueue : public SchedulingQueue {
   /// Mutext to protect attributes used for thread safe APIs.
   absl::Mutex mu_;
   /// A map of actor task IDs -> is_canceled
-  /// that are still in the queue (queued or executing).
-  absl::flat_hash_map<TaskID, bool> actor_task_ids_in_queue_ GUARDED_BY(mu_);
-  ;
+  absl::flat_hash_map<TaskID, bool> pending_tasks_queued_or_executing GUARDED_BY(mu_);
 
   friend class SchedulingQueueTest;
 };

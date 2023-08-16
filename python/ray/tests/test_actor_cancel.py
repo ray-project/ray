@@ -1,30 +1,14 @@
+import asyncio
 import os
-import random
-import signal
 import sys
-import threading
-import _thread
 import time
 
 import pytest
 
 import ray
-from ray.exceptions import (
-    TaskCancelledError,
-    RayTaskError,
-    GetTimeoutError,
-    WorkerCrashedError,
-    ObjectLostError,
-)
-from ray._private.utils import DeferSigint
 from ray._private.test_utils import SignalActor, wait_for_condition
-from ray.util.state import list_tasks
-
-import ray
-import asyncio
-import time
-import concurrent
 from ray.exceptions import TaskCancelledError
+from ray.util.state import list_tasks
 
 
 def test_async_actor_cancel(shutdown_only):
@@ -45,7 +29,7 @@ def test_async_actor_cancel(shutdown_only):
     class VerifyActor:
         def __init__(self):
             self.called = False
-        
+
         def called(self):
             print("called")
             self.called = True
@@ -72,11 +56,12 @@ def test_async_actor_cancel(shutdown_only):
     ray.get(v.__ray_ready__.remote())
     ray.cancel(ref)
 
-    with pytest.raises(ray.exceptions.RayTaskError) as e:
+    with pytest.raises(ray.exceptions.RayTaskError):
         ray.get(ref)
 
     # Verify asyncio.CancelledError is raised from the actor task.
     assert ray.get(v.is_called.remote())
+
 
 def test_async_actor_client_side_cancel(ray_start_cluster):
     """
@@ -98,7 +83,7 @@ def test_async_actor_client_side_cancel(ray_start_cluster):
         async def f(self):
             self.f_called = True
             await asyncio.sleep(5)
-        
+
         def is_f_called(self):
             return self.f_called
 
@@ -113,7 +98,7 @@ def test_async_actor_client_side_cancel(ray_start_cluster):
     ray.cancel(ref)
     with pytest.raises(TaskCancelledError):
         ray.get(ref)
-    
+
     cluster.add_node(num_cpus=1)
     assert not ray.get(a.is_f_called.remote())
 
@@ -125,18 +110,76 @@ def test_async_actor_client_side_cancel(ray_start_cluster):
     with pytest.raises(TaskCancelledError):
         ray.get(ref_dep_not_resolved)
 
-    # When there are large input size in-flight actor tasks
-    # tasks are queued inside a RPC layer (core_worker_client.h)
-    # In this case, we don't cancel a request from a client side
-    # but wait until it is sent to the server side and cancel it.
-    # See SendRequests() inside core_worker_client.h
-    # SANG-TODO
+
+@pytest.mark.skip(
+    reason=("The guarantee in this case is too weak now. " "Need more work.")
+)
+def test_in_flight_queued_requests_canceled(shutdown_only, monkeypatch):
+    """
+    When there are large input size in-flight actor tasks
+    tasks are queued inside a RPC layer (core_worker_client.h)
+    In this case, we don't cancel a request from a client side
+    but wait until it is sent to the server side and cancel it.
+    See SendRequests() inside core_worker_client.h
+    """
+    # Currently the max bytes is
+    # const int64_t kMaxBytesInFlight = 16 * 1024 * 1024.
+    # See core_worker_client.h.
+    input_arg = b"1" * 15 * 1024  # 15KB.
+    # Tasks are queued when there are more than 1024 tasks.
+    sig = SignalActor.remote()
+
+    @ray.remote
+    class Actor:
+        def __init__(self, signal_actor):
+            self.signal_actor = signal_actor
+
+        def f(self, input_arg):
+            ray.get(self.signal_actor.wait.remote())
+            return True
+
+    a = Actor.remote(sig)
+    refs = [a.f.remote(input_arg) for _ in range(5000)]
+
+    # Wait until the first task runs.
+    wait_for_condition(
+        lambda: len(list_tasks(filters=[("STATE", "=", "RUNNING")])) == 1
+    )
+
+    # Cancel all tasks.
+    for ref in refs:
+        ray.cancel(ref)
+
+    # The first ref is in progress, so we pop it out
+    first_ref = refs.pop(0)
+    ray.get(sig.send.remote())
+
+    # Make sure all tasks that are queued (including queued
+    # due to in-flight bytes) are canceled.
+    canceled = 0
+    for ref in refs:
+        try:
+            ray.get(ref)
+        except TaskCancelledError:
+            canceled += 1
+
+    # Verify at least half of tasks are canceled.
+    # Currently, the guarantee is weak because we cannot
+    # detect queued tasks due to inflight bytes limit.
+    # TODO(sang): Move the in flight bytes logic into
+    # actor submission queue instead of doing it inside
+    # core worker client.
+    assert canceled > 2500
+
+    # first ref shouldn't have been canceled.
+    assert ray.get(first_ref)
 
 
 def test_async_actor_server_side_cancel(shutdown_only):
     """
     Test Cancelation when a task is queued on a server side.
     """
+
     @ray.remote
     class Actor:
         async def f(self):
@@ -147,17 +190,20 @@ def test_async_actor_server_side_cancel(shutdown_only):
 
     a = Actor.options(max_concurrency=1).remote()
     ray.get(a.__ray_ready__.remote())
-    ref = a.f.remote()
+    ref = a.f.remote()  # noqa
     # Queued on a server side.
     # Task should not be executed at all.
-    # SANG-TODO
     ref2 = a.g.remote()
     ray.cancel(ref2)
-    with pytest.raises(ray.exceptions.RayTaskError):
+
+    wait_for_condition(lambda: len(list_tasks(filters=[("name", "=", "Actor.g")])) == 1)
+    task = list_tasks(filters=[("name", "=", "Actor.g")])[0]
+
+    with pytest.raises(TaskCancelledError, match=task.task_id):
         ray.get(ref2)
-    # SANG-TODO assert there's no g because it hasn't even run.
-    # RUNNING events shouldn't exist.
-    print(list_task())
+
+    # Verify the task is submitted to the worker and never executed
+    assert task.state == "SUBMITTED_TO_WORKER"
 
 
 def test_async_actor_cancel_after_task_finishes(shutdown_only):
@@ -225,7 +271,7 @@ def test_async_actor_cancel_restart(ray_start_cluster, monkeypatch):
 def test_remote_cancel(ray_start_regular):
     @ray.remote
     class Actor:
-        async def sleep(self, sg):
+        async def sleep(self):
             await asyncio.sleep(1000)
 
     @ray.remote
@@ -235,7 +281,8 @@ def test_remote_cancel(ray_start_regular):
 
     a = Actor.remote()
     sleep_ref = a.sleep.remote()
-    ref = f.remote([a.sleep.remote([sleep_ref])])
+    wait_for_condition(lambda: list_tasks(filters=[("name", "=", "Actor.sleep")]))
+    ref = f.remote([sleep_ref])  # noqa
 
     with pytest.raises(ray.exceptions.RayTaskError):
         ray.get(sleep_ref)
