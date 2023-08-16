@@ -197,7 +197,12 @@ class LongPollHost:
     the object is updated.
     """
 
-    def __init__(self, listen_for_change_request_timeout_s: Tuple[int, int] = LISTEN_FOR_CHANGE_REQUEST_TIMEOUT_S):
+    def __init__(
+        self,
+        listen_for_change_request_timeout_s: Tuple[
+            int, int
+        ] = LISTEN_FOR_CHANGE_REQUEST_TIMEOUT_S,
+    ):
         # Map object_key -> int
         self.snapshot_ids: DefaultDict[KeyType, int] = defaultdict(
             lambda: random.randint(0, 1_000_000)
@@ -216,9 +221,7 @@ class LongPollHost:
         if key is not None:
             return len(self.notifier_events[key])
         else:
-            return sum(
-                len(events) for events in self.notifier_events.values()
-            )
+            return sum(len(events) for events in self.notifier_events.values())
 
     async def listen_for_change(
         self,
@@ -270,6 +273,8 @@ class LongPollHost:
                 event = async_task_to_events[task]
                 self.notifier_events[async_task_to_watched_keys[task]].remove(event)
             except KeyError:
+                # Because we use `FIRST_COMPLETED` above, a task in `not_done` may
+                # actually have had its event removed in `notify_changed`.
                 pass
 
         if len(done) == 0:
