@@ -19,7 +19,7 @@ class MockTpuInstance:
         return "0.0.0.0"
 
     def get_external_ip(self, worker_index: int) -> str:
-        return "0.0.0.0"
+        return "1.2.3.4"
 
 
 def test_tpu_ssh_command_runner():
@@ -77,7 +77,7 @@ def test_tpu_ssh_command_runner():
         "ControlPersist=10s",
         "-o",
         "ConnectTimeout=120s",
-        "ray@0.0.0.0",
+        "ray@1.2.3.4",
         "bash",
         "--login",
         "-c",
@@ -87,17 +87,17 @@ def test_tpu_ssh_command_runner():
 
     calls = process_runner.calls
 
+    # Asserts that we do make the call once per worker in the TPU pod.
     assert len(process_runner.calls) == num_workers
 
     # Much easier to debug this loop than the function call.
     for i in range(num_workers):
         for x, y in zip(calls[i], expected):
             assert x == y
-        process_runner.assert_has_call("1.2.3.4", exact=expected)
 
 
 def test_tpu_docker_command_runner():
-    num_workers = 1
+    num_workers = 4
     process_runner = MockProcessRunner()
     provider = MockProvider()
     instance = MockTpuInstance(num_workers=num_workers)
@@ -155,7 +155,7 @@ def test_tpu_docker_command_runner():
         "ControlPersist=10s",
         "-o",
         "ConnectTimeout=120s",
-        "ray@0.0.0.0",
+        "ray@1.2.3.4",
         "bash",
         "--login",
         "-c",
@@ -164,13 +164,14 @@ def test_tpu_docker_command_runner():
     ]
 
     calls = process_runner.calls
+
+    # Asserts that we do make the call once per worker in the TPU pod.
     assert len(process_runner.calls) == num_workers
 
     # Much easier to debug this loop than the function call.
     for i in range(num_workers):
         for x, y in zip(calls[i], expected):
             assert x == y
-        process_runner.assert_has_call("1.2.3.4", exact=expected)
 
 
 if __name__ == "__main__":

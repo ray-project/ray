@@ -12,7 +12,11 @@ from ray.autoscaler._private.gcp.node import (
 
 from ray.tests.test_autoscaler import MockProcessRunner
 from ray.autoscaler._private.gcp.node_provider import GCPNodeProvider
-from ray.autoscaler._private.gcp.tpu_command_runner import TPUCommandRunner
+from ray.autoscaler._private.gcp.tpu_command_runner import (
+    TPUCommandRunner,
+    TPUVMSSHCommandRunner,
+    TPUVMDockerCommandRunner,
+)
 from ray.autoscaler._private.command_runner import SSHCommandRunner, DockerCommandRunner
 
 _PROJECT_NAME = "project-one"
@@ -116,7 +120,33 @@ def test_convert_resources_to_urls_accelerators(test_case):
     assert modified_config["guestAccelerators"][0]["acceleratorType"] == result_accel
 
 
-def test_cpu_resource_returns_standard_command_runner():
+def test_compute_node_list_instances_excludes_tpu():
+    mock_execute = MagicMock(return_value={"test": "abc"})
+    mock_list = MagicMock(return_value=MagicMock(execute=mock_execute))
+    mock_instances = MagicMock(return_value=MagicMock(list=mock_list))
+    mock_resource = MagicMock(instances=mock_instances)
+
+    GCPCompute(mock_resource, _PROJECT_NAME, _AZ, "cluster_name").list_instances()
+    filter_arg = mock_list.call_args.kwargs["filter"]
+    
+    # Checks that the tpu negation filter is included.
+    assert "tpu_cores" in filter_arg
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        (
+            {},
+            SSHCommandRunner,
+        ),
+        (
+            {"docker_config": {"container_name": "container"}},
+            DockerCommandRunner,
+        ),
+    ],
+)
+def test_cpu_resource_returns_standard_command_runner(test_case):
     mock_resource = MagicMock()
 
     def __init__(self, provider_config: dict, cluster_name: str):
@@ -128,6 +158,8 @@ def test_cpu_resource_returns_standard_command_runner():
     with patch.object(GCPNodeProvider, "__init__", __init__):
         node_provider = GCPNodeProvider({}, "")
 
+    optional_docker_config, expected_runner = test_case
+
     args = {
         "log_prefix": "test",
         "node_id": "test-instance-compute",
@@ -136,36 +168,25 @@ def test_cpu_resource_returns_standard_command_runner():
         "process_runner": MockProcessRunner(),
         "use_internal_ip": True,
     }
+    args.update(optional_docker_config)
     command_runner = node_provider.get_command_runner(**args)
-    assert isinstance(command_runner, SSHCommandRunner)
+    assert isinstance(command_runner, expected_runner)
 
 
-def test_cpu_resource_returns_standard_command_runner_docker():
-    mock_resource = MagicMock()
-
-    def __init__(self, provider_config: dict, cluster_name: str):
-        self.lock = RLock()
-        self.cached_nodes: Dict[str, GCPNode] = {}
-        self.resources: Dict[GCPNodeType, GCPResource] = {}
-        self.resources[GCPNodeType.COMPUTE] = mock_resource
-
-    with patch.object(GCPNodeProvider, "__init__", __init__):
-        node_provider = GCPNodeProvider({}, "")
-
-    args = {
-        "docker_config": {"container_name": "container"},
-        "log_prefix": "test",
-        "node_id": "test-instance-compute",
-        "auth_config": auth_config,
-        "cluster_name": "test",
-        "process_runner": MockProcessRunner(),
-        "use_internal_ip": True,
-    }
-    command_runner = node_provider.get_command_runner(**args)
-    assert isinstance(command_runner, DockerCommandRunner)
-
-
-def test_tpu_resource_returns_tpu_command_runner():
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        (
+            {},
+            TPUVMSSHCommandRunner,
+        ),
+        (
+            {"docker_config": {"container_name": "container"}},
+            TPUVMDockerCommandRunner,
+        ),
+    ],
+)
+def test_tpu_resource_returns_tpu_command_runner(test_case):
     mock_resource = MagicMock()
 
     def __init__(self, provider_config: dict, cluster_name: str):
@@ -178,6 +199,8 @@ def test_tpu_resource_returns_tpu_command_runner():
     with patch.object(GCPNodeProvider, "__init__", __init__):
         node_provider = GCPNodeProvider({}, "")
 
+    optional_docker_config, expected_runner = test_case
+
     args = {
         "log_prefix": "test",
         "node_id": "test-instance-tpu",
@@ -186,8 +209,10 @@ def test_tpu_resource_returns_tpu_command_runner():
         "process_runner": MockProcessRunner(),
         "use_internal_ip": True,
     }
+    args.update(optional_docker_config)
     command_runner = node_provider.get_command_runner(**args)
     assert isinstance(command_runner, TPUCommandRunner)
+    assert isinstance(command_runner._command_runners[0], expected_runner)
 
 
 if __name__ == "__main__":

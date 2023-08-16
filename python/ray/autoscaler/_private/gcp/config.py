@@ -68,6 +68,14 @@ def get_node_type(node: dict) -> GCPNodeType:
         )
 
     if "machineType" not in node and "acceleratorType" in node:
+        if not node["acceleratorType"].endswith("-8"):
+            # Remove once proper autoscaling support is added.
+            logger.warning(
+                "TPU pod detected. Note that while the cluster launcher can create "
+                "multiple TPU pods, proper autoscaling will not work as expected, "
+                "as all hosts in a TPU pod need to execute the same program. "
+                "Proceed with caution."
+            )
         return GCPNodeType.TPU
     return GCPNodeType.COMPUTE
 

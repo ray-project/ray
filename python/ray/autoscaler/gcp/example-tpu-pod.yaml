@@ -24,8 +24,13 @@ available_node_types:
                   sourceImage: projects/ubuntu-os-cloud/global/images/family/ubuntu-2004-lts
     ray_tpu:
         min_workers: 1
+        max_workers: 1
         resources: {"TPU": 1}  # use TPU custom resource in your code
         node_config:
+            # Note: A v4-16 will have 2 hosts.
+            # While the cluster launcher can create multiple TPU pods, note that
+            # "proper" autoscaling currently does not work as expected as all hosts
+            # in a TPU pod need to execute the same program.
             acceleratorType: v4-16
             runtimeVersion: tpu-vm-v4-base
 

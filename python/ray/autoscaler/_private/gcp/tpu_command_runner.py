@@ -11,19 +11,16 @@ To maintain feature completeness, we simply wrap the existing `SSHCommandRunner`
 `DockerCommandRunner` and run them as batched calls.
 
 """
+import os
 from concurrent.futures import ThreadPoolExecutor
 from types import ModuleType
 from typing import Any, Dict, Optional
 
+from ray._private import ray_constants
 from ray.autoscaler._private.command_runner import DockerCommandRunner, SSHCommandRunner
 from ray.autoscaler._private.gcp.node import GCPTPUNode
 from ray.autoscaler.command_runner import CommandRunnerInterface
 from ray.autoscaler.node_provider import NodeProvider
-
-# We see issues where too many concurrent connections may lead to failed SSH connections
-# when there are too many TPU hosts.
-# For now, we cap the maximum concurrent connections until we find the right fix.
-_MAX_NUM_CONCURRENT_ACTIVE_CONNECTIONS = 16
 
 
 class TPUVMSSHCommandRunner(SSHCommandRunner):
@@ -108,7 +105,19 @@ class TPUCommandRunner(CommandRunnerInterface):
 
     @property
     def num_connections(self) -> int:
-        return min(self._num_workers, _MAX_NUM_CONCURRENT_ACTIVE_CONNECTIONS)
+        """Return the number of active connections allowed at a time.
+
+        We occasionally see issues where too many concurrent connections may lead to
+        failed SSH connections when there are too many TPU hosts.
+
+        We utilize this property to cap the maximum number of active connections
+        at a time until a proper fix is found.
+
+        """
+        num_max_concurrent_active_connections = os.getenv(
+            ray_constants.RAY_TPU_MAX_CONCURRENT_CONNECTIONS_ENV_VAR, default=16
+        )
+        return min(self._num_workers, num_max_concurrent_active_connections)
 
     def run(self, *args, **kwargs) -> str:
         with ThreadPoolExecutor(self.num_connections) as executor:
@@ -116,7 +125,10 @@ class TPUCommandRunner(CommandRunnerInterface):
                 lambda i: self._command_runners[i].run(*args, **kwargs),
                 range(self._num_workers),
             )
-        # Note: This may not be the expected return result
+        # Note: the `run` abstract function may return a string representing
+        # representing command output, but this result is rarely used - especially
+        # if the node is a worker (which a TPU pod is).
+        # We return only the results from worker 0 which may not always be expected.
         return list(results)[0]
 
     def run_rsync_up(self, *args, **kwargs) -> None:
@@ -141,7 +153,8 @@ class TPUCommandRunner(CommandRunnerInterface):
 
     def remote_shell_command_str(self) -> str:
         """Return the command the user can use to open a shell."""
-        # Note: This may not be the right expected return result
+        # Note: this function is rarely used if the node is a worker.
+        # We return only the results from worker 0 which may not always be expected.
         return self._command_runners[0].remote_shell_command_str()
 
     def run_init(self, *args, **kwargs) -> Optional[bool]:
@@ -160,5 +173,9 @@ class TPUCommandRunner(CommandRunnerInterface):
                 lambda i: self._command_runners[i].run_init(*args, **kwargs),
                 range(self._num_workers),
             )
-        # Note: This may not be the right expected return result
+        # Note: the `run_init` abstract function may return a bool representing
+        # whether initialization is necessary, but this result is rarely used -
+        # especially if the node is a worker (which a TPU pod is).
+        # Here we return whether any workers require initialization, which may not be
+        # the expected result.
         return any(results)
