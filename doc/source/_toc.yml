@@ -62,11 +62,11 @@ parts:
           - file: train/key-concepts
             title: Key Concepts
           - file: train/getting-started-pytorch
-            title: "PyTorch Guide"
+            title: PyTorch Guide
           - file: train/getting-started-pytorch-lightning
-            title: "PyTorch Lightning Guide"
+            title: PyTorch Lightning Guide
           - file: train/getting-started-transformers
-            title: "Hugging Face Transformers Guide"
+            title: Hugging Face Transformers Guide
           - file: train/more-frameworks
             sections:
               - file: train/huggingface-accelerate
