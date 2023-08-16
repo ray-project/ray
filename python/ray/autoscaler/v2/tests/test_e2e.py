@@ -181,16 +181,20 @@ def test_placement_group_removal_idle_node():
         time.sleep(2)
         remove_placement_group(pg)
 
-        time.sleep(1)
         from ray.autoscaler.v2.sdk import get_cluster_status
 
-        cluster_state = get_cluster_status()
+        def verify():
+            cluster_state = get_cluster_status()
 
-        # Verify that nodes are idle.
-        assert len((cluster_state.healthy_nodes)) == 3
-        for node in cluster_state.healthy_nodes:
-            assert node.node_status == "IDLE"
-            assert node.resource_usage.idle_time_ms >= 1000
+            # Verify that nodes are idle.
+            assert len((cluster_state.healthy_nodes)) == 3
+            for node in cluster_state.healthy_nodes:
+                assert node.node_status == "IDLE"
+                assert node.resource_usage.idle_time_ms >= 1000
+
+            return True
+
+        wait_for_condition(verify)
     finally:
         ray.shutdown()
         cluster.shutdown()
