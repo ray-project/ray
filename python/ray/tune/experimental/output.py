@@ -780,7 +780,7 @@ class ProgressReporter(Callback):
         self._start_block(f"trial_{trial}_result_{saved_iter}")
 
         if isinstance(checkpoint, Checkpoint):
-            loc = f"({checkpoint.filesystem.type_name})"
+            loc = f"({checkpoint.filesystem.type_name}){checkpoint.path}"
         elif checkpoint.storage_mode == CheckpointStorage.MEMORY:
             loc = "(memory)"
         else:
