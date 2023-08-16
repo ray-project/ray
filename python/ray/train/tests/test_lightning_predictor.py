@@ -8,7 +8,7 @@ from torch.utils.data import DataLoader
 
 from ray.air.constants import MAX_REPR_LENGTH, MODEL_KEY
 from ray.train.tests.conftest import *  # noqa
-from ray.train.lightning import LightningCheckpoint, LightningPredictor
+from ray.train.lightning import LegacyLightningCheckpoint, LightningPredictor
 from ray.train.tests.dummy_preprocessor import DummyPreprocessor
 from ray.train.tests.lightning_test_utils import LightningMNISTClassifier
 
@@ -54,12 +54,12 @@ def test_predictor(
     save_checkpoint(model, ckpt_path)
 
     # Test load checkpoint from local dir or remote path
-    checkpoint = LightningCheckpoint.from_path(ckpt_path)
+    checkpoint = LegacyLightningCheckpoint.from_path(ckpt_path)
     if checkpoint_source == "from_uri":
         checkpoint.to_uri(mock_s3_bucket_uri)
-        checkpoint = LightningCheckpoint.from_uri(mock_s3_bucket_uri)
+        checkpoint = LegacyLightningCheckpoint.from_uri(mock_s3_bucket_uri)
     if checkpoint_source == "from_directory":
-        checkpoint = LightningCheckpoint.from_directory(tmpdir)
+        checkpoint = LegacyLightningCheckpoint.from_directory(tmpdir)
 
     preprocessor = DummyPreprocessor() if use_preprocessor else None
 

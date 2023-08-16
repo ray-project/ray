@@ -8,6 +8,7 @@ import unittest
 
 from ray.train.tensorflow import (
     TensorflowCheckpoint,
+    LegacyTensorflowCheckpoint,
     TensorflowTrainer,
 )
 from ray import train
@@ -34,13 +35,6 @@ def get_model():
     )
 
 
-def test_model_definition_raises_deprecation_warning():
-    model = get_model()
-    checkpoint = TensorflowCheckpoint.from_model(model)
-    with pytest.raises(DeprecationWarning):
-        checkpoint.get_model(model_definition=get_model)
-
-
 def compare_weights(w1: List[ndarray], w2: List[ndarray]) -> bool:
     if not len(w1) == len(w2):
         return False
@@ -62,41 +56,20 @@ class TestFromModel(unittest.TestCase):
         checkpoint = TensorflowCheckpoint.from_model(
             self.model, preprocessor=DummyPreprocessor(1)
         )
-        loaded_model = checkpoint.get_model(model=get_model)
+        loaded_model = checkpoint.get_model()
         preprocessor = checkpoint.get_preprocessor()
 
         assert compare_weights(loaded_model.get_weights(), self.model.get_weights())
         assert preprocessor.multiplier == 1
 
-    def test_from_model_no_definition(self):
-        checkpoint = TensorflowCheckpoint.from_model(
-            self.model, preprocessor=self.preprocessor
-        )
-        with self.assertRaises(ValueError):
-            checkpoint.get_model()
-
     def test_from_saved_model(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             model_dir_path = os.path.join(tmp_dir, "my_model")
-            self.model.save(model_dir_path)
+            self.model.save(model_dir_path, save_format="tf")
             checkpoint = TensorflowCheckpoint.from_saved_model(
                 model_dir_path, preprocessor=DummyPreprocessor(1)
             )
             loaded_model = checkpoint.get_model()
-            preprocessor = checkpoint.get_preprocessor()
-            assert compare_weights(self.model.get_weights(), loaded_model.get_weights())
-            assert preprocessor.multiplier == 1
-
-    def test_from_saved_model_warning_with_model_definition(self):
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            model_dir_path = os.path.join(tmp_dir, "my_model")
-            self.model.save(model_dir_path)
-            checkpoint = TensorflowCheckpoint.from_saved_model(
-                model_dir_path,
-                preprocessor=DummyPreprocessor(1),
-            )
-            with pytest.warns(None):
-                loaded_model = checkpoint.get_model(model=get_model)
             preprocessor = checkpoint.get_preprocessor()
             assert compare_weights(self.model.get_weights(), loaded_model.get_weights())
             assert preprocessor.multiplier == 1
@@ -127,7 +100,7 @@ def test_tensorflow_checkpoint_saved_model():
             ]
         )
         model.save("my_model")
-        checkpoint = TensorflowCheckpoint.from_saved_model("my_model")
+        checkpoint = LegacyTensorflowCheckpoint.from_saved_model("my_model")
         train.report({"my_metric": 1}, checkpoint=checkpoint)
 
     trainer = TensorflowTrainer(
@@ -150,7 +123,7 @@ def test_tensorflow_checkpoint_h5():
             ]
         )
         model.save("my_model.h5")
-        checkpoint = TensorflowCheckpoint.from_h5("my_model.h5")
+        checkpoint = LegacyTensorflowCheckpoint.from_h5("my_model.h5")
         train.report({"my_metric": 1}, checkpoint=checkpoint)
 
     trainer = TensorflowTrainer(

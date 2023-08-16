@@ -8,7 +8,7 @@ from ray.air._internal.torch_utils import convert_ndarray_batch_to_torch_tensor_
 from ray.air.checkpoint import Checkpoint
 from ray.train._internal.dl_predictor import DLPredictor
 from ray.train.predictor import DataBatchType
-from ray.train.torch.torch_checkpoint import TorchCheckpoint
+from ray.train.torch.torch_checkpoint import LegacyTorchCheckpoint
 from ray.util import log_once
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
@@ -93,7 +93,7 @@ class TorchPredictor(DLPredictor):
             use_gpu: If set, the model will be moved to GPU on instantiation and
                 prediction happens on GPU.
         """
-        checkpoint = TorchCheckpoint.from_checkpoint(checkpoint)
+        checkpoint = LegacyTorchCheckpoint.from_checkpoint(checkpoint)
         model = checkpoint.get_model(model)
         preprocessor = checkpoint.get_preprocessor()
         return cls(model=model, preprocessor=preprocessor, use_gpu=use_gpu)

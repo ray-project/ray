@@ -10,7 +10,7 @@ from ray.air.data_batch_type import DataBatchType
 from ray.air.util.data_batch_conversion import _unwrap_ndarray_object_type_if_needed
 from ray.train.predictor import Predictor
 from ray.train.sklearn._sklearn_utils import _set_cpu_params
-from ray.train.sklearn.sklearn_checkpoint import SklearnCheckpoint
+from ray.train.sklearn.sklearn_checkpoint import LegacySklearnCheckpoint
 from ray.util.joblib import register_ray
 from ray.util.annotations import PublicAPI
 
@@ -54,7 +54,7 @@ class SklearnPredictor(Predictor):
                 preprocessor from. It is expected to be from the result of a
                 ``SklearnTrainer`` run.
         """
-        checkpoint = SklearnCheckpoint.from_checkpoint(checkpoint)
+        checkpoint = LegacySklearnCheckpoint.from_checkpoint(checkpoint)
         estimator = checkpoint.get_estimator()
         preprocessor = checkpoint.get_preprocessor()
         return cls(estimator=estimator, preprocessor=preprocessor)

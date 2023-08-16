@@ -8,7 +8,7 @@ import numpy as np
 
 
 # Torch-specific
-from ray.train.torch import TorchCheckpoint
+from ray.train.torch import LegacyTorchCheckpoint
 
 import horovod.torch as hvd
 
@@ -63,7 +63,7 @@ def torch_train_loop(config):
             train_loss.backward()
             optimizer.step()
         loss = train_loss.item()
-        train.report({"loss": loss}, checkpoint=TorchCheckpoint.from_model(model))
+        train.report({"loss": loss}, checkpoint=LegacyTorchCheckpoint.from_model(model))
 
 
 def tune_horovod_torch(num_workers, num_samples, use_gpu):

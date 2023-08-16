@@ -93,7 +93,7 @@ class HorovodTrainer(DataParallelTrainer):
         import torch
         import torch.nn as nn
         from ray.train.horovod import HorovodTrainer
-        from ray.train.torch import TorchCheckpoint
+        from ray.train.torch import LegacyTorchCheckpoint
         from ray.air.config import ScalingConfig
 
         # If using GPUs, set this to True.
@@ -142,7 +142,7 @@ class HorovodTrainer(DataParallelTrainer):
                     print(f"epoch: {epoch}, loss: {loss.item()}")
                 train.report(
                     {},
-                    checkpoint=TorchCheckpoint.from_state_dict(
+                    checkpoint=LegacyTorchCheckpoint.from_state_dict(
                         model.state_dict()
                     ),
                 )

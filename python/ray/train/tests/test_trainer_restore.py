@@ -19,7 +19,7 @@ from ray.train.data_parallel_trainer import (
     _DataParallelCheckpointManager,
     DataParallelTrainer,
 )
-from ray.train.torch import TorchTrainer, TorchCheckpoint
+from ray.train.torch import TorchTrainer, LegacyTorchCheckpoint
 from ray.train.xgboost import XGBoostTrainer
 from ray.train.lightgbm import LightGBMTrainer
 from ray.train.huggingface import TransformersTrainer
@@ -521,7 +521,7 @@ def test_clear_lazy_ckpt_markers(ray_start_4_cpus):
 
         if not train.get_checkpoint():
             train.report(
-                metrics={"a": 1}, checkpoint=TorchCheckpoint.from_dict({"a": 1})
+                metrics={"a": 1}, checkpoint=LegacyTorchCheckpoint.from_dict({"a": 1})
             )
             raise RuntimeError
 

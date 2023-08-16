@@ -11,7 +11,7 @@ import torch.nn as nn
 import torch.optim as optim
 
 import ray
-from ray.train.torch import TorchCheckpoint
+from ray.train.torch import LegacyTorchCheckpoint
 from ray.data.preprocessors import BatchMapper, Chain, TorchVisionPreprocessor
 from ray import train
 from ray.train import RunConfig, ScalingConfig
@@ -57,7 +57,7 @@ def train_loop_per_worker(config):
 
         train.report(
             dict(running_loss=running_loss),
-            checkpoint=TorchCheckpoint.from_model(model),
+            checkpoint=LegacyTorchCheckpoint.from_model(model),
         )
 
 

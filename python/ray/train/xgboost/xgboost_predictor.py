@@ -8,7 +8,7 @@ from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.air.data_batch_type import DataBatchType
 from ray.air.util.data_batch_conversion import _unwrap_ndarray_object_type_if_needed
 from ray.train.predictor import Predictor
-from ray.train.xgboost.xgboost_checkpoint import XGBoostCheckpoint
+from ray.train.xgboost.xgboost_checkpoint import LegacyXGBoostCheckpoint
 from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
@@ -49,7 +49,7 @@ class XGBoostPredictor(Predictor):
                 ``XGBoostTrainer`` run.
 
         """
-        checkpoint = XGBoostCheckpoint.from_checkpoint(checkpoint)
+        checkpoint = LegacyXGBoostCheckpoint.from_checkpoint(checkpoint)
         model = checkpoint.get_model()
         preprocessor = checkpoint.get_preprocessor()
         return cls(model=model, preprocessor=preprocessor)

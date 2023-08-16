@@ -53,7 +53,7 @@ class _CheckpointMetadata:
     """Metadata about a checkpoint.
 
     Attributes:
-        checkpoint_type: The checkpoint class. For example, ``TorchCheckpoint``.
+        checkpoint_type: The checkpoint class. For example, ``LegacyTorchCheckpoint``.
         checkpoint_state: A dictionary that maps object attributes to their values. When
             you load a serialized checkpoint, restore these values.
     """
@@ -480,7 +480,7 @@ class Checkpoint:
 
         Examples:
             >>> result = TorchTrainer.fit(...)  # doctest: +SKIP
-            >>> checkpoint = TorchCheckpoint.from_checkpoint(result.checkpoint)  # doctest: +SKIP
+            >>> checkpoint = LegacyTorchCheckpoint.from_checkpoint(result.checkpoint)  # doctest: +SKIP
             >>> model = checkpoint.get_model()  # doctest: +SKIP
             Linear(in_features=1, out_features=1, bias=True)
         """  # noqa: E501

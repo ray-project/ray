@@ -2,7 +2,7 @@ import torch
 
 import ray.train as train
 from ray.train import ScalingConfig
-from ray.train.torch import TorchTrainer, TorchCheckpoint
+from ray.train.torch import TorchTrainer, LegacyTorchCheckpoint
 
 
 def train_func():
@@ -29,7 +29,7 @@ def train_func():
             optimizer.step()
             train.report({"loss": loss.item()})
 
-    train.report({}, checkpoint=TorchCheckpoint.from_model(model))
+    train.report({}, checkpoint=LegacyTorchCheckpoint.from_model(model))
 
 
 trainer = TorchTrainer(train_func, scaling_config=ScalingConfig(num_workers=4))

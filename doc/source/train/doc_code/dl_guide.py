@@ -7,7 +7,7 @@ from typing import Dict, Optional
 
 import ray
 from ray import train
-from ray.train.torch import TorchCheckpoint, TorchTrainer
+from ray.train.torch import LegacyTorchCheckpoint, TorchTrainer
 
 
 def get_datasets() -> Dict[str, ray.data.Dataset]:
@@ -18,7 +18,7 @@ def train_loop_per_worker(config: dict):
     from torchvision.models import resnet18
 
     # Checkpoint loading
-    checkpoint: Optional[TorchCheckpoint] = train.get_checkpoint()
+    checkpoint: Optional[LegacyTorchCheckpoint] = train.get_checkpoint()
     model = checkpoint.get_model() if checkpoint else resnet18()
     ray.train.torch.prepare_model(model)
 
@@ -30,7 +30,7 @@ def train_loop_per_worker(config: dict):
         # Checkpoint saving
         train.report(
             {"epoch": epoch},
-            checkpoint=TorchCheckpoint.from_model(model),
+            checkpoint=LegacyTorchCheckpoint.from_model(model),
         )
 
 

@@ -5,7 +5,7 @@ import torch
 import torch.nn as nn
 import ray.train as train
 from ray.train import RunConfig, ScalingConfig
-from ray.train.torch import TorchTrainer, TorchCheckpoint
+from ray.train.torch import TorchTrainer, LegacyTorchCheckpoint
 
 
 class LinearDataset(torch.utils.data.Dataset):
@@ -79,7 +79,9 @@ def train_func(config):
         state_dict, loss = validate_epoch(validation_loader, model, loss_fn)
         result = dict(loss=loss)
         results.append(result)
-        train.report(result, checkpoint=TorchCheckpoint.from_state_dict(state_dict))
+        train.report(
+            result, checkpoint=LegacyTorchCheckpoint.from_state_dict(state_dict)
+        )
 
     return results
 
