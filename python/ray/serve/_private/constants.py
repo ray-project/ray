@@ -24,6 +24,9 @@ DEFAULT_HTTP_HOST = "127.0.0.1"
 #: HTTP Port
 DEFAULT_HTTP_PORT = 8000
 
+#: Uvicorn timeout_keep_alive Config
+DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_S = 5
+
 #: gRPC Port
 DEFAULT_GRPC_PORT = 9000
 
