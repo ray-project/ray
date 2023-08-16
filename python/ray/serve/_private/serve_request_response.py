@@ -104,11 +104,11 @@ class gRPCServeRequest(ServeRequest):
     """ServeRequest implementation to wrap gRPC request protobuf and metadata."""
 
     def __init__(
-            self,
-            request_proto: Any,
-            context: grpc._cython.cygrpc._ServicerContext,
-            service_method: str,
-            stream: bool,
+        self,
+        request_proto: Any,
+        context: grpc._cython.cygrpc._ServicerContext,
+        service_method: str,
+        stream: bool,
     ):
         self.request = request_proto
         self.context = context
