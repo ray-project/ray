@@ -14,7 +14,6 @@ grpc::ServerUnaryReactor *GcsDebugService::CollectMemoryStats(
     grpc::CallbackServerContext *context,
     const ray::rpc::CollectMemoryStatsRequest *request,
     ray::rpc::CollectMemoryStatsReply *reply) {
-
   reply->set_stats("Not supported on this platform.");
 
   auto *reactor = context->DefaultReactor();
