@@ -6,7 +6,7 @@ import dataclasses
 from itertools import islice
 from typing import List, Tuple, Optional
 from datetime import datetime
-
+import aiohttp
 from ray._private.ray_constants import env_integer
 from ray._private.profiling import chrome_tracing_dump
 
@@ -707,7 +707,12 @@ class StateAPIManager:
             num_filtered=num_filtered,
         )
 
-    async def list_cluster_events(self, *, option: ListApiOptions) -> ListApiResponse:
+    async def list_cluster_events(
+        self, *, option: ListApiOptions, req: aiohttp.web.Request
+    ) -> ListApiResponse:
+        logger.info(f"req {type(req)}: {req}")
+        logger.info(f"option {type(option)}: {option}")
+
         """List all cluster events from the cluster.
 
         Returns:

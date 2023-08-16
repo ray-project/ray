@@ -205,6 +205,7 @@ const useEventTable = (props: EventTableProps) => {
           );
         }
       } catch (e) {
+        console.error("getEvent error: ", e);
       } finally {
         setLoading(false);
       }
