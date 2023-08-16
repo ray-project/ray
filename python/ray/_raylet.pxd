@@ -102,7 +102,6 @@ cdef class ObjectRef(BaseID):
 
     cdef CObjectID native(self)
 
-
 cdef class ActorID(BaseID):
     cdef CActorID data
 
@@ -125,6 +124,7 @@ cdef class CoreWorker:
         object eventloop_for_default_cg
         object thread_for_default_cg
         object fd_to_cgname_dict
+        object thread_pool_for_async_event_loop
 
     cdef _create_put_buffer(self, shared_ptr[CBuffer] &metadata,
                             size_t data_size, ObjectRef object_ref,

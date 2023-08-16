@@ -272,28 +272,30 @@ GPUs by setting ``devices="auto"`` and ``acelerator="auto"``.
 
 
 
-Reporting metrics and checkpoints
+Reporting checkpoints and metrics
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-To monitor progress, you can report intermediate metrics and checkpoints
-using the :class:`ray.train.lightning.RayTrainReportCallback` utility callback.
+To persist your checkpoints and monitor training progress, simply add a 
+:class:`ray.train.lightning.RayTrainReportCallback` utility callback to your Trainer. 
 
                     
 .. code-block:: diff
 
      import pytorch_lightning as pl
+     from ray.train.lightning import RayTrainReportCallback
 
      def train_func(config):
          ...
          trainer = pl.Trainer(
              ...
-    +        callbacks=[ray.train.lightning.RayTrainReportCallback()],
-             ...
+    -        callbacks=[...],
+    +        callbacks=[..., RayTrainReportCallback()],
          )
          ...
 
-Reporting metrics and checkpoints to Ray Train ensures that you can use Ray Tune and fault-tolerant training. For more details, see :ref:`train-checkpointing` and :ref:`train-fault-tolerance`.
 
+Reporting metrics and checkpoints to Ray Train enables you to support :ref:`fault-tolerant training <train-fault-tolerance>` and :ref:`hyperparameter optimization <train-tune>`. 
+Note that the :class:`ray.train.lightning.RayTrainReportCallback` only provides a simple implementation, and can be :ref:`further customized <train-dl-saving-checkpoints>`.
 
 Preparing your Lightning Trainer
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -395,7 +397,7 @@ control over their native Lightning code.
 
 .. tabs::
 
-    .. group-tab:: LightningTrainer
+    .. group-tab:: (Deprecating) LightningTrainer
 
 
         .. code-block:: python
@@ -403,8 +405,13 @@ control over their native Lightning code.
             from ray.train.lightning import LightningConfigBuilder, LightningTrainer
 
             config_builder = LightningConfigBuilder()
+            # [1] Collect model configs
             config_builder.module(cls=MNISTClassifier, lr=1e-3, feature_dim=128)
+
+            # [2] Collect checkpointing configs
             config_builder.checkpointing(monitor="val_accuracy", mode="max", save_top_k=3)
+
+            # [3] Collect pl.Trainer configs
             config_builder.trainer(
                 max_epochs=10,
                 accelerator="gpu",
@@ -412,9 +419,11 @@ control over their native Lightning code.
                 logger=CSVLogger("./logs"),
             )
 
+            # [4] Build datasets on the head node
             datamodule = MNISTDataModule(batch_size=32)
             config_builder.fit_params(datamodule=datamodule)
 
+            # [5] Execute the internal training function in a black box
             ray_trainer = LightningTrainer(
                 lightning_config=config_builder.build(),
                 scaling_config=ScalingConfig(num_workers=4, use_gpu=True),
@@ -430,7 +439,7 @@ control over their native Lightning code.
 
                 
 
-    .. group-tab:: TorchTrainer
+    .. group-tab:: (New API) TorchTrainer
 
         .. code-block:: python
             
@@ -443,25 +452,36 @@ control over their native Lightning code.
                 prepare_trainer
             ) 
 
-            def train_func_per_worker():
+            def train_func(config):
+                # [1] Create a Lightning model
                 model = MNISTClassifier(lr=1e-3, feature_dim=128)
+
+                # [2] Report Checkpoint with callback
+                ckpt_report_callback = RayTrainReportCallback()
+                
+                # [3] Create a Lighting Trainer
                 datamodule = MNISTDataModule(batch_size=32)
 
                 trainer = pl.Trainer(
                     max_epochs=10,
-                    accelerator="gpu",
                     log_every_n_steps=100,
                     logger=CSVLogger("./logs"),
                     # New configurations below
                     devices="auto",
+                    accelerator="auto",
                     strategy=RayDDPStrategy(),
                     plugins=[RayLightningEnvironment()],
-                    callbacks=[RayTrainReportCallback()],
+                    callbacks=[ckpt_report_callback],
                 )
+
+                # Validate your Lightning trainer configuration
                 trainer = prepare_trainer(trainer)
 
+                # [4] Build your datasets on each worker
+                datamodule = MNISTDataModule(batch_size=32)
                 trainer.fit(model, datamodule=datamodule)
 
+            # [5] Explicitly define and run the training function
             ray_trainer = TorchTrainer(
                 train_func_per_worker,
                 scaling_config=ScalingConfig(num_workers=4, use_gpu=True),
@@ -473,5 +493,4 @@ control over their native Lightning code.
                     ),
                 )
             )
-
             ray_trainer.fit()

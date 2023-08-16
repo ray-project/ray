@@ -115,7 +115,7 @@ py_test(
 
 py_test(
     name = "test_http_state",
-    size = "small",
+    size = "medium",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],
     deps = [":serve_lib"],
@@ -585,7 +585,7 @@ py_test(
 
 py_test(
     name = "tutorial_rllib",
-    size = "small",
+    size = "medium",
     srcs = serve_tests_srcs,
     main = "test_myst_doc.py",
     args = ["--path", "doc/source/serve/tutorials/rllib.md"],
@@ -683,7 +683,7 @@ py_test(
 
 py_test(
     name = "test_callback",
-    size = "small",
+    size = "medium",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],
     deps = [":serve_lib"],
