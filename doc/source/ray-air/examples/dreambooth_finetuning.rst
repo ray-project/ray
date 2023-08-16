@@ -143,15 +143,15 @@ storage (e.g. via NFS or EFS). In the example script below, you can adjust this 
 Training throughput
 ~~~~~~~~~~~~~~~~~~~
 
-We ran training using 2, and 4 workers/GPUs to compare throughput.
+We ran training using 1,  2, and 4 workers/GPUs to compare throughput.
 
 Setup:
 
-* One g5.12xlarge nodes with 4 A10G GPUs
+* 1 GCE g2-standard-48-nvidia-l4-4 instance with 4 GPUs
 * Model as configured below
 * Data from this example
 * 200 regularization images
-* Training for 4 epochs (800 steps)
+* Training for 4 epochs (local batch size = 2)
 * 3 runs per configuration
 
 We expect that the training time should benefit from scale and decreases when running with
