@@ -6,9 +6,7 @@ import pkg_resources
 import ray._private.ray_constants as ray_constants
 from ray._private.utils import (
     validate_node_labels,
-    check_ray_client_dependencies_installed,
 )
-
 
 logger = logging.getLogger(__name__)
 
@@ -399,12 +397,8 @@ class RayParams:
                     raise ValueError(
                         "max_worker_port must be higher than min_worker_port."
                     )
+
         if self.ray_client_server_port is not None:
-            if not check_ray_client_dependencies_installed():
-                raise ValueError(
-                    "Ray Client requires pip package `ray[client]`. "
-                    "If you installed the minimal Ray (e.g. `pip install ray`), "
-                    "please reinstall by executing `pip install ray[client]`.")
             if (
                 self.ray_client_server_port < 1024
                 or self.ray_client_server_port > 65535
