@@ -10,7 +10,7 @@ from ray.train.backend import BackendConfig, Backend, _warn_about_bad_checkpoint
 from ray.train.constants import DEFAULT_NCCL_SOCKET_IFNAME
 from ray.train._internal.worker_group import WorkerGroup
 from ray.train._internal.utils import get_address_and_port
-from ray.train.torch.torch_checkpoint import TorchCheckpoint
+from ray.train.torch.torch_checkpoint import LegacyTorchCheckpoint
 from ray.util import PublicAPI
 
 import torch
@@ -221,6 +221,6 @@ class _TorchBackend(Backend):
     def _encode_data(cls, checkpoint: Checkpoint):
         checkpoint = super()._encode_data(checkpoint)
         if type(checkpoint) is Checkpoint:
-            _warn_about_bad_checkpoint_type(TorchCheckpoint)
-            checkpoint = TorchCheckpoint.from_checkpoint(checkpoint)
+            _warn_about_bad_checkpoint_type(LegacyTorchCheckpoint)
+            checkpoint = LegacyTorchCheckpoint.from_checkpoint(checkpoint)
         return checkpoint

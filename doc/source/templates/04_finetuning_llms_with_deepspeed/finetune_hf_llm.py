@@ -5,15 +5,16 @@ import argparse
 import json
 import math
 import os
+import re
 import functools
 import time
 import tree
-import pandas as pd
 from pathlib import Path
 import torch.nn as nn
 from ray import tune  # noqa: F401
 import tqdm
 import tempfile
+from filelock import FileLock
 
 from accelerate import Accelerator, DeepSpeedPlugin
 from accelerate.utils import DummyOptim, DummyScheduler, set_seed
@@ -29,13 +30,16 @@ from ray import train
 from ray.train.torch import TorchTrainer
 import ray.util.scheduling_strategies
 
-from utils import get_checkpoint_and_refs_dir, get_mirror_link
+from utils import (
+    get_checkpoint_and_refs_dir,
+    get_mirror_link,
+    download_model,
+    get_download_path,
+)
 
 OPTIM_BETAS = (0.9, 0.999)
 OPTIM_EPS = 1e-8
 OPTIM_WEIGHT_DECAY = 0.0
-
-MIRROR_LINK = "s3://llama-2-weights/"
 
 
 def get_number_of_params(model: nn.Module):
@@ -60,7 +64,9 @@ def collate_fn(batch, tokenizer, block_size, device):
 
 def get_pretrained_path(model_id: str):
     mirror_uri = get_mirror_link(model_id)
-    ckpt_path, _ = get_checkpoint_and_refs_dir(model_id=model_id, bucket_uri=mirror_uri)
+    ckpt_path, _ = get_checkpoint_and_refs_dir(
+        model_id=model_id, bucket_uri=mirror_uri, s3_sync_args=["--no-sign-request"]
+    )
     return ckpt_path
 
 
@@ -73,20 +79,6 @@ def get_tokenizer(model_name, special_tokens):
     tokenizer.add_tokens(special_tokens, special_tokens=True)
 
     return tokenizer
-
-
-def create_ray_dataset(path):
-    # jsonl file
-    with open(path, "r") as json_file:
-        items = [json.loads(x) for x in json_file]
-
-    dataset = {"input": []}
-    for item in items:
-        assert set(item.keys()) == {"input"}
-        dataset["input"].append(item["input"])
-
-    df = pd.DataFrame.from_dict(dataset)
-    return ray.data.from_pandas(df)
 
 
 def evaluate(
@@ -171,6 +163,18 @@ def training_function(kwargs: dict):
     args = argparse.Namespace(**kwargs["args"])
     special_tokens = kwargs.get("special_tokens", [])
     model_id = config["model_name"]
+
+    # We need to download the model weights on this machine if they don't exit.
+    # We need to acquire a lock to ensure that only one process downloads the model
+    bucket_uri = get_mirror_link(model_id)
+    download_path = get_download_path(model_id)
+    base_path = Path(download_path).parent
+    base_path.mkdir(parents=True, exist_ok=True)
+    lock_file = str(base_path / f'{model_id.replace("/",  "--")}.lock')
+    with FileLock(lock_file):
+        download_model(
+            model_id=model_id, bucket_uri=bucket_uri, s3_sync_args=["--no-sign-request"]
+        )
 
     # Sample hyper-parameters for learning rate, batch size, seed and a few other HPs
     lr = config["lr"]
@@ -277,8 +281,9 @@ def training_function(kwargs: dict):
         print("Starting training ...")
         print("Number of batches on main process", train_ds_len // batch_size)
 
-    fwd_time_sum, bwd_time_sum, optim_step_time_sum = 0, 0, 0
     for epoch in range(num_epochs):
+
+        fwd_time_sum, bwd_time_sum, optim_step_time_sum = 0, 0, 0
         s_epoch = time.time()
         model.train()
         loss_sum = torch.tensor(0.0).to(accelerator.device)
@@ -557,9 +562,10 @@ def main():
         }
     )
 
-    train_ds = create_ray_dataset(args.train_path)
+    # Read data
+    train_ds = ray.data.read_json(args.train_path)
     if args.test_path is not None:
-        valid_ds = create_ray_dataset(args.test_path)
+        valid_ds = ray.data.read_json(args.test_path)
     else:
         valid_ds = None
 
@@ -567,8 +573,8 @@ def main():
     with open(args.special_token_path, "r") as json_file:
         special_tokens = json.load(json_file)["tokens"]
 
-    artifact_storage = os.environ["ANYSCALE_ARTIFACT_STORAGE"]
-    user_name = os.environ["ANYSCALE_USERNAME"]
+    artifact_storage = os.environ.get("ANYSCALE_ARTIFACT_STORAGE", "artifact_storage")
+    user_name = re.sub(r"\s+", "__", os.environ.get("ANYSCALE_USERNAME", "user"))
     storage_path = (
         f"{artifact_storage}/{user_name}/ft_llms_with_deepspeed/{args.model_name}"
     )

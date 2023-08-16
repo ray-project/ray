@@ -31,6 +31,7 @@
 #include "ray/common/status.h"
 #include "ray/gcs/pb_util.h"
 #include "ray/raylet/format/node_manager_generated.h"
+#include "ray/raylet/raylet_util.h"
 #include "ray/raylet/worker_killing_policy.h"
 #include "ray/stats/metric_defs.h"
 #include "ray/stats/stats.h"
@@ -968,7 +969,7 @@ void NodeManager::WarnResourceDeadlock() {
         << "by actors. To resolve the issue, consider creating fewer actors or "
         << "increasing the resources available to this Ray cluster.\n"
         << "Required resources for this actor or task: "
-        << exemplar.GetTaskSpecification().GetRequiredPlacementResources().ToString()
+        << exemplar.GetTaskSpecification().GetRequiredPlacementResources().DebugString()
         << "\n"
         << "Available resources on this node: "
         << cluster_resource_scheduler_->GetClusterResourceManager()
@@ -1037,7 +1038,7 @@ void NodeManager::NodeRemoved(const NodeID &node_id) {
   RAY_LOG(DEBUG) << "[NodeRemoved] Received callback from node id " << node_id;
 
   if (node_id == self_node_id_) {
-    if (!is_node_drained_) {
+    if (!is_shutdown_request_received_) {
       std::ostringstream error_message;
       error_message
           << "[Timeout] Exiting because this node manager has mistakenly been marked as "
@@ -2029,6 +2030,33 @@ void NodeManager::HandleReturnWorker(rpc::ReturnWorkerRequest request,
   send_reply_callback(status, nullptr, nullptr);
 }
 
+void NodeManager::HandleDrainRaylet(rpc::DrainRayletRequest request,
+                                    rpc::DrainRayletReply *reply,
+                                    rpc::SendReplyCallback send_reply_callback) {
+  RAY_LOG(INFO) << "Drain raylet RPC has received. Drain reason: "
+                << request.reason_message();
+
+  if (request.reason() ==
+      rpc::autoscaler::DrainNodeReason::DRAIN_NODE_REASON_IDLE_TERMINATION) {
+    const bool is_idle =
+        cluster_resource_scheduler_->GetLocalResourceManager().IsLocalNodeIdle();
+    if (is_idle) {
+      cluster_resource_scheduler_->GetLocalResourceManager().SetLocalNodeDraining();
+      reply->set_is_accepted(true);
+    } else {
+      reply->set_is_accepted(false);
+    }
+  } else {
+    // Non-rejectable draining request.
+    RAY_CHECK_EQ(request.reason(),
+                 rpc::autoscaler::DrainNodeReason::DRAIN_NODE_REASON_PREEMPTION);
+    cluster_resource_scheduler_->GetLocalResourceManager().SetLocalNodeDraining();
+    reply->set_is_accepted(true);
+  }
+
+  send_reply_callback(Status::OK(), nullptr, nullptr);
+}
+
 void NodeManager::HandleShutdownRaylet(rpc::ShutdownRayletRequest request,
                                        rpc::ShutdownRayletReply *reply,
                                        rpc::SendReplyCallback send_reply_callback) {
@@ -2038,7 +2066,7 @@ void NodeManager::HandleShutdownRaylet(rpc::ShutdownRayletRequest request,
   if (!request.graceful()) {
     std::_Exit(EXIT_SUCCESS);
   }
-  if (is_node_drained_) {
+  if (is_shutdown_request_received_) {
     RAY_LOG(INFO) << "Node already has received the shutdown request. The shutdown "
                      "request RPC is ignored.";
     return;
@@ -2047,20 +2075,10 @@ void NodeManager::HandleShutdownRaylet(rpc::ShutdownRayletRequest request,
     rpc::DrainServerCallExecutor();
     // Note that the callback is posted to the io service after the shutdown GRPC request
     // is replied. Otherwise, the RPC might not be replied to GCS before it shutsdown
-    // itself. Implementation note: When raylet is shutdown by ray stop, the CLI sends a
-    // sigterm. Raylet knows how to gracefully shutdown when it receives a sigterm. Here,
-    // we raise a sigterm to itself so that it can re-use the same graceful shutdown code
-    // path. The sigterm is handled in the entry point (raylet/main.cc)'s signal handler.
-    auto signo = SIGTERM;
-    RAY_LOG(INFO) << "Sending a signal to itself. shutting down. "
-                  << ". Signo: " << signo;
-    // raise return 0 if succeeds. If it fails to gracefully shutdown, it kills itself
-    // forcefully.
-    RAY_CHECK(std::raise(signo) == 0)
-        << "There was a failure while sending a sigterm to itself. The process will not "
-           "gracefully shutdown.";
+    // itself.
+    ShutdownRayletGracefully();
   };
-  is_node_drained_ = true;
+  is_shutdown_request_received_ = true;
   send_reply_callback(Status::OK(), shutdown_after_reply, shutdown_after_reply);
 }
 
@@ -2853,7 +2871,7 @@ void NodeManager::PublishInfeasibleTaskError(const RayTask &task) const {
     error_message
         << "The actor or task with ID " << task.GetTaskSpecification().TaskId()
         << " cannot be scheduled right now. It requires "
-        << task.GetTaskSpecification().GetRequiredPlacementResources().ToString()
+        << task.GetTaskSpecification().GetRequiredPlacementResources().DebugString()
         << " for placement, however the cluster currently cannot provide the requested "
            "resources. The required resources may be added as autoscaling takes place "
            "or placement groups are scheduled. Otherwise, consider reducing the "

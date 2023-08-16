@@ -56,7 +56,7 @@ We can configure cloud storage by telling Ray Tune to **upload to a remote** ``s
 .. code-block:: python
 
     from ray import tune
-    from ray.air.config import RunConfig
+    from ray.train import RunConfig
 
     tuner = tune.Tuner(
         trainable,
@@ -67,9 +67,9 @@ We can configure cloud storage by telling Ray Tune to **upload to a remote** ``s
     )
     tuner.fit()
 
-Ray AIR defaults to use pyarrow to perform syncing with the specified cloud ``storage_path``.
+Ray Tune defaults to use pyarrow to perform syncing with the specified cloud ``storage_path``.
 You can also pass a custom :class:`Syncer <ray.tune.syncer.Syncer>` object
-to a :class:`tune.SyncConfig <ray.tune.SyncConfig>` within the :class:`air.RunConfig <ray.air.RunConfig>`
+to a :class:`tune.SyncConfig <ray.tune.SyncConfig>` within the :class:`train.RunConfig <train.RunConfig>`
 if you want to implement custom logic for uploading/downloading from the cloud.
 See :ref:`tune-cloud-syncing` and :ref:`tune-cloud-syncing-command-line-example`
 for more details and examples of custom syncing.
@@ -121,12 +121,12 @@ On a single-node cluster
 If you're just running an experiment on a single node (e.g., on a laptop), Tune will use the
 local filesystem as the default storage location for checkpoints and other artifacts.
 Results are saved to ``~/ray_results`` in a sub-directory with a unique auto-generated name by default,
-unless you customize this with ``storage_path`` and ``name`` in :class:`~ray.air.RunConfig`.
+unless you customize this with ``storage_path`` and ``name`` in :class:`~ray.train.RunConfig`.
 
 .. code-block:: python
 
     from ray import tune
-    from ray.air.config import RunConfig
+    from ray.train import RunConfig
 
     tuner = tune.Tuner(
         trainable,
@@ -161,7 +161,7 @@ This can be configured by ``sync_on_checkpoint`` and ``sync_period`` in :class:`
 .. code-block:: python
 
     from ray import tune
-    from ray.air.config import RunConfig
+    from ray.train import RunConfig
 
     tuner = tune.Tuner(
         trainable,

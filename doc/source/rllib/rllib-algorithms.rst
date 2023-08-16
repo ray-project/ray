@@ -30,10 +30,11 @@ Algorithm                      Frameworks Discrete Actions              Continuo
 `CRR`_                         torch      **Yes** `+parametric`_        **Yes**            **Yes**                                                                   torch
 `DDPG`_                        tf + torch No                            **Yes**            **Yes**                                                                   torch
 `APEX-DDPG`_                   tf + torch No                            **Yes**            **Yes**                                                                   torch
-`ES`_                          tf + torch **Yes**                       **Yes**            No                                                                        No
+`DreamerV3`_                   tf         **Yes**                       **Yes**            No          `+RNN`_ (GRU-based by default)                                tf
 `Dreamer`_                     torch      No                            **Yes**            No          `+RNN`_                                                       torch
 `DQN`_, `Rainbow`_             tf + torch **Yes** `+parametric`_        No                 **Yes**                                                                   tf + torch
 `APEX-DQN`_                    tf + torch **Yes** `+parametric`_        No                 **Yes**                                                                   torch
+`ES`_                          tf + torch **Yes**                       **Yes**            No                                                                        No
 `IMPALA`_                      tf + torch **Yes** `+parametric`_        **Yes**            **Yes**     `+RNN`_, `+LSTM auto-wrapping`_, `+Attention`_, `+autoreg`_   tf + torch
 `LeelaChessZero`_              torch      **Yes** `+parametric`_        No                 **Yes**                                                                   torch
 `MAML`_                        tf + torch No                            **Yes**            No                                                                        torch
@@ -587,6 +588,56 @@ HalfCheetah    13000       ~15000
 
 Model-based RL
 ~~~~~~~~~~~~~~
+
+.. _dreamerv3:
+
+DreamerV3
+---------
+|tensorflow|
+`[paper] <https://arxiv.org/pdf/2301.04104v1.pdf>`__ `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/algorithms/dreamerv3/dreamerv3.py>`__
+
+DreamerV3 trains a world model in supervised fashion using real environment
+interactions. The world model's objective is to correctly predict all aspects
+of the transition dynamics of the RL environment, which includes (besides predicting the
+correct next observations) predicting the received rewards as well as a boolean episode
+continuation flag.
+A "recurrent state space model" or RSSM is used to alternatingly train the world model
+(from actual env data) as well as the critic and actor networks, both of which are trained
+on "dreamed" trajectories produced by the world model.
+
+DreamerV3 can be used in all types of environments, including those with image- or vector based
+observations, continuous- or discrete actions, as well as sparse or dense reward functions.
+
+Tuned examples: `Atari 100k <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/dreamerv3/atari_100k.py>`__, `Atari 200M <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/dreamerv3/atari_200M.py>`__, `DeepMind Control Suite <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/dreamerv3/dm_control_suite_vision.py>`__
+
+
+**Pong-v5 results (1, 2, and 4 GPUs)**:
+
+.. figure:: images/dreamerv3/pong_1_2_and_4gpus.svg
+
+    Episode mean rewards for the Pong-v5 environment (with the "100k" setting, in which only 100k environment steps are allowed):
+    Note that despite the stable sample efficiency - shown by the constant learning
+    performance per env step - the wall time improves almost linearly as we go from 1 to 4 GPUs.
+    **Left**: Episode reward over environment timesteps sampled. **Right**: Episode reward over wall-time.
+
+
+**Atari 100k results (1 vs 4 GPUs)**:
+
+.. figure:: images/dreamerv3/atari100k_1_vs_4gpus.svg
+
+    Episode mean rewards for various Atari 100k tasks on 1 vs 4 GPUs.
+    **Left**: Episode reward over environment timesteps sampled.
+    **Right**: Episode reward over wall-time.
+
+
+**DeepMind Control Suite (vision) results (1 vs 4 GPUs)**:
+
+.. figure:: images/dreamerv3/dmc_1_vs_4gpus.svg
+
+    Episode mean rewards for various Atari 100k tasks on 1 vs 4 GPUs.
+    **Left**: Episode reward over environment timesteps sampled.
+    **Right**: Episode reward over wall-time.
+
 
 .. _dreamer:
 

@@ -4,7 +4,7 @@ import logging
 import os
 from pathlib import Path
 import shutil
-from typing import Callable, Dict, List, Optional, Tuple, TYPE_CHECKING
+from typing import Callable, Dict, List, Optional, Tuple, Type, Union, TYPE_CHECKING
 
 try:
     import fsspec
@@ -39,7 +39,9 @@ logger = logging.getLogger(__file__)
 
 def _use_storage_context() -> bool:
     # Whether to enable the new simple persistence mode.
-    return bool(int(os.environ.get("RAY_AIR_NEW_PERSISTENCE_MODE", "0")))
+    from ray.train.constants import RAY_AIR_NEW_PERSISTENCE_MODE
+
+    return bool(int(os.environ.get(RAY_AIR_NEW_PERSISTENCE_MODE, "0")))
 
 
 class _ExcludingLocalFilesystem(LocalFileSystem):
@@ -272,6 +274,44 @@ def _create_directory(fs: pyarrow.fs.FileSystem, fs_path: str) -> None:
         )
 
 
+def get_fs_and_path(
+    storage_path: Union[str, os.PathLike],
+    storage_filesystem: Optional[pyarrow.fs.FileSystem] = None,
+) -> Tuple[pyarrow.fs.FileSystem, str]:
+    """Returns the fs and path from a storage path and an optional custom fs.
+
+    Args:
+        storage_path: A storage path or URI. (ex: s3://bucket/path or /tmp/ray_results)
+        storage_filesystem: A custom filesystem to use. If not provided,
+            this will be auto-resolved by pyarrow. If provided, the storage_path
+            is assumed to be prefix-stripped already, and must be a valid path
+            on the filesystem.
+
+    Raises:
+        ValueError: if the storage path is a URI and a custom filesystem is given.
+    """
+    storage_path = str(storage_path)
+
+    if storage_filesystem:
+        if is_uri(storage_path):
+            raise ValueError(
+                "If you specify a custom `storage_filesystem`, the corresponding "
+                "`storage_path` must be a *path* on that filesystem, not a URI.\n"
+                "For example: "
+                "(storage_filesystem=CustomS3FileSystem(), "
+                "storage_path='s3://bucket/path') should be changed to "
+                "(storage_filesystem=CustomS3FileSystem(), "
+                "storage_path='bucket/path')\n"
+                "This is what you provided: "
+                f"(storage_filesystem={storage_filesystem}, "
+                f"storage_path={storage_path})\n"
+                "Note that this may depend on the custom filesystem you use."
+            )
+        return storage_filesystem, storage_path
+
+    return pyarrow.fs.FileSystem.from_uri(storage_path)
+
+
 class _FilesystemSyncer(_BackgroundSyncer):
     """Syncer between local filesystem and a `storage_filesystem`."""
 
@@ -320,20 +360,25 @@ class StorageContext:
     For example, on the driver, the storage context is initialized, only knowing
     the experiment path. On the Trainable actor, the trial_dir_name is accessible.
 
-    Example with storage_path="mock:///bucket/path":
+    There are 2 types of paths:
+    1. *_fs_path: A path on the `storage_filesystem`. This is a regular path
+        which has been prefix-stripped by pyarrow.fs.FileSystem.from_uri and
+        can be joined with `os.path.join`.
+    2. *_local_path: The path on the local filesystem where results are saved to
+       before persisting to storage.
+
+    Example with storage_path="mock:///bucket/path?param=1":
 
         >>> from ray.train._internal.storage import StorageContext
         >>> import os
         >>> os.environ["RAY_AIR_LOCAL_CACHE_DIR"] = "/tmp/ray_results"
         >>> storage = StorageContext(
-        ...     storage_path="mock:///bucket/path",
+        ...     storage_path="mock://netloc/bucket/path?param=1",
         ...     sync_config=SyncConfig(),
         ...     experiment_dir_name="exp_name",
         ... )
         >>> storage.storage_filesystem   # Auto-resolved  # doctest: +ELLIPSIS
         <pyarrow._fs._MockFileSystem object...
-        >>> storage.experiment_path
-        'mock:///bucket/path/exp_name'
         >>> storage.experiment_fs_path
         'bucket/path/exp_name'
         >>> storage.experiment_local_path
@@ -346,6 +391,10 @@ class StorageContext:
         >>> storage.current_checkpoint_index = 1
         >>> storage.checkpoint_fs_path
         'bucket/path/exp_name/trial_dir/checkpoint_000001'
+        >>> storage.storage_prefix
+        URI<mock://netloc?param=1>
+        >>> str(storage.storage_prefix / storage.experiment_fs_path)
+        'mock://netloc/bucket/path/exp_name?param=1'
 
     Example with storage_path=None:
 
@@ -361,8 +410,6 @@ class StorageContext:
         '/tmp/ray_results'
         >>> storage.storage_local_path
         '/tmp/ray_results'
-        >>> storage.experiment_path
-        '/tmp/ray_results/exp_name'
         >>> storage.experiment_local_path
         '/tmp/ray_results/exp_name'
         >>> storage.experiment_fs_path
@@ -371,7 +418,10 @@ class StorageContext:
         True
         >>> storage.storage_filesystem   # Auto-resolved  # doctest: +ELLIPSIS
         <pyarrow._fs.LocalFileSystem object...
-
+        >>> storage.storage_prefix
+        URI<.>
+        >>> str(storage.storage_prefix / storage.experiment_fs_path)
+        '/tmp/ray_results/exp_name'
 
     Internal Usage Examples:
     - To copy files to the trial directory on the storage filesystem:
@@ -386,13 +436,13 @@ class StorageContext:
     def __init__(
         self,
         storage_path: Optional[str],
-        sync_config: SyncConfig,
         experiment_dir_name: str,
+        sync_config: Optional[SyncConfig] = None,
         storage_filesystem: Optional[pyarrow.fs.FileSystem] = None,
         trial_dir_name: Optional[str] = None,
-        current_checkpoint_index: Optional[int] = None,
+        current_checkpoint_index: int = 0,
     ):
-        storage_path_provided = storage_path is not None
+        custom_fs_provided = storage_filesystem is not None
 
         self.storage_local_path = _get_defaults_results_dir()
         # If `storage_path=None`, then set it to the local path.
@@ -402,40 +452,39 @@ class StorageContext:
         self.experiment_dir_name = experiment_dir_name
         self.trial_dir_name = trial_dir_name
         self.current_checkpoint_index = current_checkpoint_index
-        self.sync_config = dataclasses.replace(sync_config)
+        self.sync_config = (
+            dataclasses.replace(sync_config) if sync_config else SyncConfig()
+        )
 
-        if storage_filesystem:
-            # Custom pyarrow filesystem
-            self.storage_filesystem = storage_filesystem
-            if is_uri(self.storage_path):
-                raise ValueError(
-                    "If you specify a custom `storage_filesystem`, the corresponding "
-                    "`storage_path` must be a *path* on that filesystem, not a URI.\n"
-                    "For example: "
-                    "(storage_filesystem=CustomS3FileSystem(), "
-                    "storage_path='s3://bucket/path') should be changed to "
-                    "(storage_filesystem=CustomS3FileSystem(), "
-                    "storage_path='bucket/path')\n"
-                    "This is what you provided: "
-                    f"(storage_filesystem={storage_filesystem}, "
-                    f"storage_path={storage_path})\n"
-                    "Note that this may depend on the custom filesystem you use."
-                )
-            self.storage_fs_path = self.storage_path
-        else:
-            (
-                self.storage_filesystem,
-                self.storage_fs_path,
-            ) = pyarrow.fs.FileSystem.from_uri(self.storage_path)
+        self.storage_filesystem, self.storage_fs_path = get_fs_and_path(
+            self.storage_path, storage_filesystem
+        )
 
-        # Only initialize a syncer if a `storage_path` was provided.
+        # The storage prefix is part of the URI that is stripped away
+        # from the user-provided `storage_path` by pyarrow's `from_uri`.
+        # Ex: `storage_path="s3://bucket/path?param=1`
+        #  -> `storage_prefix=URI<s3://.?param=1>`
+        # See the doctests for more examples.
+        # This is used to construct URI's of the same format as `storage_path`.
+        # However, we don't track these URI's internally, because pyarrow only
+        # needs to interact with the prefix-stripped fs_path.
+        self.storage_prefix: URI = URI(self.storage_path).rstrip_subpath(
+            Path(self.storage_fs_path)
+        )
+
+        # Syncing is always needed if a custom `storage_filesystem` is provided.
+        # Otherwise, syncing is only needed if storage_local_path
+        # and storage_fs_path point to different locations.
+        syncing_needed = (
+            custom_fs_provided or self.storage_fs_path != self.storage_local_path
+        )
         self.syncer: Optional[Syncer] = (
             _FilesystemSyncer(
                 storage_filesystem=self.storage_filesystem,
                 sync_period=self.sync_config.sync_period,
                 sync_timeout=self.sync_config.sync_timeout,
             )
-            if storage_path_provided
+            if syncing_needed
             else None
         )
 
@@ -525,16 +574,6 @@ class StorageContext:
         return uploaded_checkpoint
 
     @property
-    def experiment_path(self) -> str:
-        """The path the experiment directory, where the format matches the
-        original `storage_path` format specified by the user.
-
-        Ex: If the user passed in storage_path="s3://bucket/path?param=1", then
-        this property returns "s3://bucket/path/exp_name?param=1".
-        """
-        return str(URI(self.storage_path) / self.experiment_dir_name)
-
-    @property
     def experiment_fs_path(self) -> str:
         """The path on the `storage_filesystem` to the experiment directory.
 
@@ -579,39 +618,31 @@ class StorageContext:
 
     @property
     def checkpoint_fs_path(self) -> str:
-        """The trial directory path on the `storage_filesystem`.
+        """The current checkpoint directory path on the `storage_filesystem`.
 
-        Raises a ValueError if `current_checkpoint_index` is not set beforehand.
+        "Current" refers to the checkpoint that is currently being created/persisted.
+        The user of this class is responsible for setting the `current_checkpoint_index`
+        (e.g., incrementing when needed).
         """
-        from ray.tune.trainable.util import TrainableUtil
-
-        if self.current_checkpoint_index is None:
-            raise RuntimeError(
-                "Should not access `checkpoint_fs_path` without setting "
-                "`current_checkpoint_index`"
-            )
-        checkpoint_dir_name = TrainableUtil._make_checkpoint_dir_name(
+        checkpoint_dir_name = StorageContext._make_checkpoint_dir_name(
             self.current_checkpoint_index
         )
         return os.path.join(self.trial_fs_path, checkpoint_dir_name)
 
+    @staticmethod
+    def get_experiment_dir_name(run_obj: Union[str, Callable, Type]) -> str:
+        from ray.tune.experiment import Experiment
+        from ray.tune.utils import date_str
 
-_storage_context: Optional[StorageContext] = None
+        run_identifier = Experiment.get_trainable_name(run_obj)
 
+        if bool(int(os.environ.get("TUNE_DISABLE_DATED_SUBDIR", 0))):
+            dir_name = run_identifier
+        else:
+            dir_name = "{}_{}".format(run_identifier, date_str())
+        return dir_name
 
-def init_shared_storage_context(storage_context: StorageContext):
-    """StorageContext can be made a global singleton by calling this method.
-
-    This singleton is only created on the initialization of remote Trainable actors.
-    On the driver, there is no global singleton, since each trial has its own
-    trial_dir_name."""
-    global _storage_context
-    _storage_context = storage_context
-
-
-def get_storage_context() -> StorageContext:
-    assert _storage_context, (
-        "You must first call `init_shared_storage_context` in order to access a "
-        "global shared copy of StorageContext."
-    )
-    return _storage_context
+    @staticmethod
+    def _make_checkpoint_dir_name(index: int):
+        """Get the name of the checkpoint directory, given an index."""
+        return f"checkpoint_{index:06d}"

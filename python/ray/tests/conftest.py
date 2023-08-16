@@ -37,6 +37,7 @@ from ray._private.test_utils import (
     start_redis_instance,
     find_available_port,
     wait_for_condition,
+    find_free_port,
 )
 from ray.cluster_utils import AutoscalingCluster, Cluster, cluster_not_supported
 
@@ -649,7 +650,7 @@ def start_cluster(ray_start_cluster_enabled, request):
     assert request.param in {"ray_client", "no_ray_client"}
     use_ray_client: bool = request.param == "ray_client"
     cluster = ray_start_cluster_enabled
-    cluster.add_node(num_cpus=4)
+    cluster.add_node(num_cpus=4, dashboard_agent_listen_port=find_free_port())
     if use_ray_client:
         cluster.head_node._ray_params.ray_client_server_port = "10004"
         cluster.head_node.start_ray_client_server()

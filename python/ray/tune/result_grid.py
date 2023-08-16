@@ -271,29 +271,32 @@ class ResultGrid:
         return None
 
     def _trial_to_result(self, trial: Trial) -> Result:
-        local_to_remote_path_fn = (
-            partial(
-                TrainableUtil.get_remote_storage_path,
-                local_path_prefix=trial.local_path,
-                remote_path_prefix=trial.remote_path,
-            )
-            if trial.uses_cloud_checkpointing
-            else None
-        )
-
         if _use_storage_context():
             from ray.train._internal.checkpoint_manager import (
                 _CheckpointManager as _NewCheckpointManager,
             )
 
-            assert isinstance(trial.checkpoint_manager, _NewCheckpointManager)
-            checkpoint = trial.checkpoint_manager.latest_checkpoint_result.checkpoint
-            best_checkpoint_results = trial.checkpoint_manager.best_checkpoint_results
+            cpm = trial.run_metadata.checkpoint_manager
+            assert isinstance(cpm, _NewCheckpointManager)
+            checkpoint = None
+            if cpm.latest_checkpoint_result:
+                checkpoint = cpm.latest_checkpoint_result.checkpoint
+            best_checkpoint_results = cpm.best_checkpoint_results
             best_checkpoints = [
                 (checkpoint_result.checkpoint, checkpoint_result.metrics)
                 for checkpoint_result in best_checkpoint_results
             ]
         else:
+            local_to_remote_path_fn = (
+                partial(
+                    TrainableUtil.get_remote_storage_path,
+                    local_path_prefix=trial.local_path,
+                    remote_path_prefix=trial.remote_path,
+                )
+                if trial.uses_cloud_checkpointing
+                else None
+            )
+
             checkpoint = trial.checkpoint.to_air_checkpoint(
                 local_to_remote_path_fn,
             )

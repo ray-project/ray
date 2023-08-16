@@ -654,6 +654,7 @@ cc_library(
     ),
     hdrs = glob(
         [
+            "src/ray/raylet/raylet_util.h",
             "src/ray/raylet/scheduling/**/*.h",
             "src/ray/core_worker/common.h",
         ],
@@ -1011,6 +1012,17 @@ cc_test(
 cc_test(
     name = "concurrency_group_manager_test",
     srcs = ["src/ray/core_worker/test/concurrency_group_manager_test.cc"],
+    copts = COPTS,
+    tags = ["team:core"],
+    deps = [
+        ":core_worker_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "fiber_state_test",
+    srcs = ["src/ray/core_worker/test/fiber_state_test.cc"],
     copts = COPTS,
     tags = ["team:core"],
     deps = [
@@ -2687,6 +2699,9 @@ genrule(
             `ls python/ray/serve/generated/*_pb2*.py` \
             )
         sed -i -E 's/from src.ray.protobuf/from ./' "$${files[@]}"
+        # Help the generated serve files to have the correct module
+        serve_files=(`ls python/ray/serve/generated/*_pb2*.py`)
+        sed -i -E 's/'"'"'src.ray.protobuf./'"'"'ray.serve.generated./' "$${serve_files[@]}"
         # TODO(sang): Build our own proto instead of creating a new proto for opencensus separately.
         # https://github.com/ray-project/ray/issues/31358
         sed -i -E 's/from opencensus.proto.metrics.v1 import/from . import/' "$${files[@]}"

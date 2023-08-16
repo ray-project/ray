@@ -21,6 +21,7 @@ from ray.air.constants import (
     EXPR_PARAM_FILE,
     TRAINING_ITERATION,
 )
+from ray.train._internal.storage import _use_storage_context
 from ray.tune.syncer import SyncConfig
 from ray.tune.utils import flatten_dict
 from ray.tune.utils.serialization import TuneFunctionDecoder
@@ -211,11 +212,11 @@ class ExperimentAnalysis:
                 experiment_state = json.load(f, cls=TuneFunctionDecoder)
                 self._experiment_states.append(experiment_state)
 
-            if "checkpoints" not in experiment_state:
+            if "trial_data" not in experiment_state:
                 raise TuneError("Experiment state invalid; no checkpoints found.")
 
             self._checkpoints_and_paths += [
-                (cp, Path(path).parent) for cp in experiment_state["checkpoints"]
+                (cp, Path(path).parent) for cp in experiment_state["trial_data"]
             ]
 
     def _maybe_download_experiment_checkpoint(
@@ -234,7 +235,7 @@ class ExperimentAnalysis:
                 Will return None if the download failed.
         """
         if is_local_path(experiment_checkpoint_path):
-            return os.path.expanduser(experiment_checkpoint_path)
+            return Path(experiment_checkpoint_path).expanduser().as_posix()
 
         assert self._local_path and self._remote_path
 
@@ -564,7 +565,7 @@ class ExperimentAnalysis:
         metric = metric or self.default_metric or TRAINING_ITERATION
 
         if isinstance(trial, str):
-            trial_dir = os.path.expanduser(trial)
+            trial_dir = Path(trial).expanduser().as_posix()
             # Get checkpoints from logdir.
             chkpt_df = TrainableUtil.get_checkpoints_paths(trial_dir)
 
@@ -977,10 +978,16 @@ class ExperimentAnalysis:
                 "since checkpointing is periodic."
             )
             self.trials = []
-            for trial_json_state, path in self._checkpoints_and_paths:
+            for (
+                trial_json_state,
+                trial_run_metadata,
+            ), path in self._checkpoints_and_paths:
                 try:
                     trial = Trial.from_json_state(trial_json_state, stub=True)
-                    trial.local_experiment_path = str(path)
+                    trial.restore_run_metadata(trial_run_metadata)
+                    # TODO(justinvyu): [handle_moved_storage_path]
+                    if not _use_storage_context():
+                        trial.local_experiment_path = str(path)
                 except Exception:
                     logger.warning(
                         f"Could not load trials from experiment checkpoint. "

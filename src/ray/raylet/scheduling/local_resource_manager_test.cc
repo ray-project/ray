@@ -127,6 +127,56 @@ TEST_F(LocalResourceManagerTest, BasicGetResourceUsageMapTest) {
   }
 }
 
+TEST_F(LocalResourceManagerTest, NodeDrainingTest) {
+  manager = std::make_unique<LocalResourceManager>(
+      local_node_id,
+      CreateNodeResources({{ResourceID::CPU(), 8.0}}),
+      nullptr,
+      nullptr,
+      nullptr);
+
+  // Make the node non-idle.
+  {
+    std::shared_ptr<TaskResourceInstances> task_allocation =
+        std::make_shared<TaskResourceInstances>();
+    ResourceRequest resource_request =
+        ResourceMapToResourceRequest({{ResourceID::CPU(), 1.0}}, false);
+    manager->AllocateLocalTaskResources(resource_request, task_allocation);
+  }
+
+  manager->SetLocalNodeDraining();
+  ASSERT_TRUE(manager->IsLocalNodeDraining());
+
+  // Make the node idle so that the node is drained and terminated.
+  std::shared_ptr<TaskResourceInstances> task_allocation =
+      std::make_shared<TaskResourceInstances>(ResourceRequest(
+          ResourceMapToResourceRequest({{ResourceID::CPU(), 1.0}}, false)));
+  EXPECT_DEATH(manager->ReleaseWorkerResources(task_allocation), ".*");
+}
+
+TEST_F(LocalResourceManagerTest, ObjectStoreMemoryDrainingTest) {
+  // Test to make sure the node is drained when object store memory is free.
+  auto used_object_store = std::make_unique<int64_t>(0);
+  manager = std::make_unique<LocalResourceManager>(
+      local_node_id,
+      CreateNodeResources({{ResourceID::ObjectStoreMemory(), 100.0}}),
+      /* get_used_object_store_memory */
+      [&used_object_store]() { return *used_object_store; },
+      nullptr,
+      nullptr);
+
+  // Make the node non-idle.
+  *used_object_store = 1;
+  manager->UpdateAvailableObjectStoreMemResource();
+
+  manager->SetLocalNodeDraining();
+  ASSERT_TRUE(manager->IsLocalNodeDraining());
+
+  // Free object store memory so that the node is drained and terminated.
+  *used_object_store = 0;
+  EXPECT_DEATH(manager->UpdateAvailableObjectStoreMemResource(), ".*");
+}
+
 TEST_F(LocalResourceManagerTest, IdleResourceTimeTest) {
   auto node_ip_resource = "node:127.0.0.1";
   auto pg_wildcard_resource = "CPU_group_4482dec0faaf5ead891ff1659a9501000000";
