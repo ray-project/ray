@@ -15,27 +15,34 @@ cost: A few dollars.
 """
 
 import numpy as np
+import os
+import pickle
+import tempfile
 
 from ray import train
 from ray.train import RunConfig
+from ray.train._checkpoint import Checkpoint
 from ray.tune.schedulers.trial_scheduler import FIFOScheduler, TrialScheduler
 from ray.tune.tune_config import TuneConfig
 from ray.tune.tuner import Tuner
 
-from ray.train.tests.util import create_dict_checkpoint, load_dict_checkpoint
-
 
 def func(config):
     starting_epoch = 0
-    if train.get_checkpoint():
-        checkpoint_dict = load_dict_checkpoint(train.get_checkpoint())
+    checkpoint = train.get_checkpoint()
+    if checkpoint:
+        with checkpoint.as_directory() as checkpoint_dir:
+            with open(os.path.join(checkpoint_dir, "ckpt.pkl"), "rb") as f:
+                checkpoint_dict = pickle.load(f)
         checkpoint_epoch = checkpoint_dict["epoch"]
         starting_epoch = checkpoint_epoch + 1
 
     for epoch in range(starting_epoch, 1000):
         checkpoint_dict = {"epoch": epoch, "large_data": np.zeros(10000000)}
-        with create_dict_checkpoint(checkpoint_dict) as checkpoint:
-            train.report({}, checkpoint=checkpoint)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with open(os.path.join(tmpdir, "ckpt.pkl"), "wb") as f:
+                pickle.dump(checkpoint_dict, f)
+            train.report({}, checkpoint=Checkpoint.from_directory(tmpdir))
 
 
 class FrequentPausesScheduler(FIFOScheduler):
