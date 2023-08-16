@@ -714,7 +714,7 @@ py_test(
 )
 
 py_test(
-    name = "test_serve_request_response",
+    name = "test_proxy_request_response",
     size = "small",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],
