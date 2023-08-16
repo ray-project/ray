@@ -861,7 +861,7 @@ def test_serving_request_through_grpc_proxy(ray_start_stop):
     request = serve_pb2.HealthzRequest()
     response, call = stub.Healthz.with_call(request=request)
     assert call.code() == grpc.StatusCode.OK
-    assert response.response == "success"
+    assert response.message == "success"
 
     # Ensures __call__ method is responding correctly.
     stub = serve_pb2_grpc.UserDefinedServiceStub(channel)
