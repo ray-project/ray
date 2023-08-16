@@ -139,7 +139,6 @@ class RayServeHandle:
     ):
         self.deployment_name = deployment_name
         self.handle_options = handle_options or _HandleOptions()
-        self._is_for_http_requests = _is_for_http_requests
 
         self.request_counter = _request_counter or metrics.Counter(
             "serve_handle_request_counter",
@@ -157,7 +156,7 @@ class RayServeHandle:
         self._router: Optional[Router] = _router
 
     def _set_request_protocol(self, request_protocol: RequestProtocol):
-        self.handle_options = HandleOptions(
+        self.handle_options = _HandleOptions(
             **{**asdict(self.handle_options), **{"_request_protocol": request_protocol}}
         )
 
