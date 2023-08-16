@@ -11,6 +11,29 @@ from ray.exceptions import TaskCancelledError
 from ray.util.state import list_tasks
 
 
+def test_input_validation(shutdown_only):
+    # Verify force=True is not working.
+    @ray.remote
+    class A:
+        async def f(self):
+            pass
+
+    a = A.remote()
+    with pytest.raises(TypeError, match="force=True is not supported"):
+        ray.cancel(a.f.remote(), force=True)
+
+    # Verify only async actor works.
+    # TODO(sang): Support regular actors.
+
+    @ray.remote
+    class RegularActor:
+        def f(self):
+            pass
+
+    a = RegularActor.remote()
+    ray.cancel(a.f.remote())
+
+
 def test_async_actor_cancel(shutdown_only):
     """
     Test async actor task is canceled and
@@ -193,17 +216,31 @@ def test_async_actor_server_side_cancel(shutdown_only):
     ref = a.f.remote()  # noqa
     # Queued on a server side.
     # Task should not be executed at all.
-    ref2 = a.g.remote()
-    ray.cancel(ref2)
+    refs = [a.g.remote() for _ in range(100)]
+    wait_for_condition(
+        lambda: len(
+            list_tasks(
+                filters=[
+                    ("name", "=", "Actor.g"),
+                    ("STATE", "=", "SUBMITTED_TO_WORKER"),
+                ]
+            )
+        )
+        == 100
+    )
 
-    wait_for_condition(lambda: len(list_tasks(filters=[("name", "=", "Actor.g")])) == 1)
-    task = list_tasks(filters=[("name", "=", "Actor.g")])[0]
+    for ref in refs:
+        ray.cancel(ref)
+    tasks = list_tasks(filters=[("name", "=", "Actor.g")])
 
-    with pytest.raises(TaskCancelledError, match=task.task_id):
-        ray.get(ref2)
+    for ref in refs:
+        with pytest.raises(TaskCancelledError, match=ref.task_id().hex()):
+            ray.get(ref)
 
     # Verify the task is submitted to the worker and never executed
-    assert task.state == "SUBMITTED_TO_WORKER"
+    # assert task.state == "SUBMITTED_TO_WORKER"
+    for task in tasks:
+        assert task.state == "SUBMITTED_TO_WORKER"
 
 
 def test_async_actor_cancel_after_task_finishes(shutdown_only):
@@ -286,6 +323,33 @@ def test_remote_cancel(ray_start_regular):
 
     with pytest.raises(ray.exceptions.RayTaskError):
         ray.get(sleep_ref)
+
+
+def test_cancel_stress(shutdown_only):
+    ray.init()
+
+    @ray.remote
+    class Actor:
+        async def sleep(self):
+            await asyncio.sleep(1000)
+
+    actors = [Actor.remote() for _ in range(30)]
+
+    refs = []
+    for _ in range(20):
+        for actor in actors:
+            for i in range(100):
+                ref = actor.sleep.remote()
+                refs.append(ref)
+                if i % 2 == 0:
+                    ray.cancel(ref)
+
+    for ref in refs:
+        ray.cancel(ref)
+
+    for ref in refs:
+        with pytest.raises((ray.exceptions.RayTaskError, TaskCancelledError)):
+            ray.get(ref)
 
 
 if __name__ == "__main__":

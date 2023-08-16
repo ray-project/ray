@@ -1568,6 +1568,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Cancel an actor task queued or running in the current worker.
   ///
   /// See params in CancelTaskOnExecutor.
+  /// For the actor task cancel protocol, see the docstring of
+  /// direct_actor_task_submitter.h::CancelTask.
   void CancelActorTaskOnExecutor(WorkerID caller_worker_id,
                                  TaskID intended_task_id,
                                  bool force_kill,

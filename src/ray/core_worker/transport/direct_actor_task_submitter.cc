@@ -639,22 +639,22 @@ std::string CoreWorkerDirectActorTaskSubmitter::DebugString(
 }
 
 void CoreWorkerDirectActorTaskSubmitter::RetryCancelTask(TaskSpecification task_spec,
-                                                         bool force_kill,
                                                          bool recursive,
                                                          int64_t milliseconds) {
   RAY_LOG(DEBUG) << "Task " << task_spec.TaskId() << " cancelation is retried in "
                  << milliseconds << " ms";
   execute_after(
       io_service_,
-      [this, task_spec = std::move(task_spec), force_kill, recursive] {
-        RAY_UNUSED(CancelTask(task_spec, force_kill, recursive));
+      [this, task_spec = std::move(task_spec), recursive] {
+        RAY_UNUSED(CancelTask(task_spec, recursive));
       },
       std::chrono::milliseconds(milliseconds));
 }
 
 Status CoreWorkerDirectActorTaskSubmitter::CancelTask(TaskSpecification task_spec,
-                                                      bool force_kill,
                                                       bool recursive) {
+  // We don't support force_kill = true for actor tasks.
+  bool force_kill = false;
   RAY_LOG(INFO) << "Cancelling a task: " << task_spec.TaskId()
                 << " for an actor: " << task_spec.ActorId()
                 << " force_kill: " << force_kill << " recursive: " << recursive;
@@ -733,7 +733,7 @@ Status CoreWorkerDirectActorTaskSubmitter::CancelTask(TaskSpecification task_spe
     auto queue = client_queues_.find(actor_id);
     RAY_CHECK(queue != client_queues_.end());
     if (!queue->second.rpc_client) {
-      RetryCancelTask(task_spec, force_kill, recursive, 1000);
+      RetryCancelTask(task_spec, recursive, 1000);
       return Status::OK();
     }
 
@@ -744,7 +744,7 @@ Status CoreWorkerDirectActorTaskSubmitter::CancelTask(TaskSpecification task_spe
     request.set_recursive(recursive);
     request.set_caller_worker_id(task_spec.CallerWorkerId().Binary());
     client->CancelTask(request,
-                       [this, task_spec, force_kill, recursive, task_id](
+                       [this, task_spec, recursive, task_id](
                            const Status &status, const rpc::CancelTaskReply &reply) {
                          RAY_LOG(DEBUG) << "CancelTask RPC response received for "
                                         << task_spec.TaskId() << " with status "
@@ -760,7 +760,7 @@ Status CoreWorkerDirectActorTaskSubmitter::CancelTask(TaskSpecification task_spe
                          }
 
                          if (!reply.attempt_succeeded()) {
-                           RetryCancelTask(task_spec, force_kill, recursive, 2000);
+                           RetryCancelTask(task_spec, recursive, 2000);
                          }
                        });
   }
