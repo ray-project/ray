@@ -28,6 +28,7 @@ from ray.serve._private.constants import (
     DEFAULT_HTTP_HOST,
     DEFAULT_HTTP_PORT,
     DEFAULT_MAX_CONCURRENT_QUERIES,
+    DEFAULT_UVICORN_TIMEOUT_KEEP_ALIVE_S,
     SERVE_LOGGER_NAME,
 )
 from ray.serve._private.utils import DEFAULT, DeploymentOptionUpdateType
@@ -683,6 +684,7 @@ class HTTPOptions(pydantic.BaseModel):
     fixed_number_replicas: Optional[int] = None
     fixed_number_selection_seed: int = 0
     request_timeout_s: Optional[float] = None
+    timeout_keep_alive_s: int = DEFAULT_UVICORN_TIMEOUT_KEEP_ALIVE_S
 
     @validator("location", always=True)
     def location_backfill_no_server(cls, v, values):

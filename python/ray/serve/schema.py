@@ -19,7 +19,10 @@ from ray.serve._private.common import (
 from ray.serve.config import DeploymentMode
 from ray.serve._private.utils import DEFAULT, dict_keys_snake_to_camel_case
 from ray.util.annotations import DeveloperAPI, PublicAPI
-from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
+from ray.serve._private.constants import (
+    DEFAULT_UVICORN_TIMEOUT_KEEP_ALIVE_S,
+    SERVE_DEFAULT_APP_NAME,
+)
 
 
 def _route_prefix_format(cls, v):
@@ -543,6 +546,11 @@ class HTTPOptionsSchema(BaseModel, extra=Extra.forbid):
     request_timeout_s: float = Field(
         default=None,
         description="The timeout for HTTP requests. Defaults to no timeout.",
+    )
+    timeout_keep_alive_s: int = Field(
+        default=DEFAULT_UVICORN_TIMEOUT_KEEP_ALIVE_S,
+        description="The timeout for uvicorn server to close keep connections. "
+        f"Defaults to {DEFAULT_UVICORN_TIMEOUT_KEEP_ALIVE_S} seconds.",
     )
 
 

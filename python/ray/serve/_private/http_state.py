@@ -470,6 +470,7 @@ class HTTPProxyStateManager:
             node_id=node_id,
             http_middlewares=self._config.middlewares,
             request_timeout_s=self._config.request_timeout_s,
+            timeout_keep_alive_s=self._config.timeout_keep_alive_s,
         )
         return proxy
 

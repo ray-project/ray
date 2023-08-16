@@ -46,6 +46,7 @@ from ray.serve._private.constants import (
     SERVE_MULTIPLEXED_MODEL_ID,
     SERVE_NAMESPACE,
     DEFAULT_LATENCY_BUCKET_MS,
+    DEFAULT_UVICORN_TIMEOUT_KEEP_ALIVE_S,
     PROXY_MIN_DRAINING_PERIOD_S,
     RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING,
     RAY_SERVE_REQUEST_ID_HEADER,
@@ -80,6 +81,9 @@ SOCKET_REUSE_PORT_ENABLED = (
     os.environ.get("SERVE_SOCKET_REUSE_PORT_ENABLED", "1") == "1"
 )
 
+RAY_SERVE_HTTP_KEEPALIVE_TIMEOUT_S = int(
+    os.environ.get("RAY_SERVE_HTTP_KEEPALIVE_TIMEOUT_S", 0)
+)
 # TODO (shrekris-anyscale): Deprecate SERVE_REQUEST_PROCESSING_TIMEOUT_S env var
 RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S = (
     float(os.environ.get("RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S", 0))
@@ -1057,6 +1061,7 @@ class HTTPProxyActor:
         node_id: NodeId,
         request_timeout_s: Optional[float] = None,
         http_middlewares: Optional[List["starlette.middleware.Middleware"]] = None,
+        timeout_keep_alive_s: int = DEFAULT_UVICORN_TIMEOUT_KEEP_ALIVE_S,
     ):  # noqa: F821
         configure_component_logger(
             component_name="http_proxy", component_id=node_ip_address
@@ -1091,6 +1096,10 @@ class HTTPProxyActor:
         self.host = host
         self.port = port
         self.root_path = root_path
+        self.timeout_keep_alive_s = (
+            RAY_SERVE_HTTP_KEEPALIVE_TIMEOUT_S or timeout_keep_alive_s
+        )
+        self._uvicorn_server = None
 
         self.setup_complete = asyncio.Event()
 
@@ -1164,15 +1173,16 @@ Please make sure your http-host and http-port are specified correctly."""
             root_path=self.root_path,
             lifespan="off",
             access_log=False,
+            timeout_keep_alive=self.timeout_keep_alive_s,
         )
-        server = uvicorn.Server(config=config)
+        self._uvicorn_server = uvicorn.Server(config=config)
         # TODO(edoakes): we need to override install_signal_handlers here
         # because the existing implementation fails if it isn't running in
         # the main thread and uvicorn doesn't expose a way to configure it.
-        server.install_signal_handlers = lambda: None
+        self._uvicorn_server.install_signal_handlers = lambda: None
 
         self.setup_complete.set()
-        await server.serve(sockets=[sock])
+        await self._uvicorn_server.serve(sockets=[sock])
 
     async def update_draining(self, draining: bool, _after: Optional[Any] = None):
         """Update the draining status of the http proxy.
@@ -1206,3 +1216,12 @@ Please make sure your http-host and http-port are specified correctly."""
         this will always return immediately.
         """
         return pickle.dumps(await self.app.receive_asgi_messages(request_id))
+
+    async def _uvicorn_keep_alive(self) -> Optional[int]:
+        """Get the keep alive timeout used for the running uvicorn server.
+
+        Return the timeout_keep_alive config used on the uvicorn server if it's running.
+        If the server is not running, return None.
+        """
+        if self._uvicorn_server:
+            return self._uvicorn_server.config.timeout_keep_alive
