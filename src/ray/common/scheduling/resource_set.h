@@ -56,6 +56,31 @@ class ResourceSet {
   /// \return True if objects are equal, False otherwise.
   bool operator==(const ResourceSet &other) const;
 
+  /// Add other's resource quantity to this one and return a new ResourceSet.
+  ResourceSet operator+(const ResourceSet &other) const;
+
+  /// Subtract other's resource quantity from this one and return a new ResourceSet.
+  ResourceSet operator-(const ResourceSet &other) const;
+
+  /// Add other's resource quantity to this one.
+  ResourceSet &operator+=(const ResourceSet &other);
+
+  /// Subtract other's resource quantity from this one.
+  ResourceSet &operator-=(const ResourceSet &other);
+
+  /// Test inequality with the other specified ResourceSet object.
+  bool operator!=(const ResourceSet &other) const { return !(*this == other); }
+
+  /// Check whether this set is a subset of another one.
+  /// If A <= B, it means for each resource, its value in A is less than or equqal to that
+  /// in B.
+  bool operator<=(const ResourceSet &other) const;
+
+  /// Check whether this set is a super set of another one.
+  /// If A >= B, it means for each resource, its value in A is larger than or equqal to
+  /// that in B.
+  bool operator>=(const ResourceSet &other) const { return other <= *this; }
+
   /// Return the quantity value associated with the specified resource.
   /// If the resource doesn't exist, return 0.
   ///
@@ -79,82 +104,6 @@ class ResourceSet {
 
   /// Return true if the resource set is empty. False otherwise.
   bool IsEmpty() const;
-
-  ResourceSet operator+(const ResourceSet &other) {
-    ResourceSet res = *this;
-    res += other;
-    return res;
-  }
-
-  ResourceSet operator-(const ResourceSet &other) {
-    ResourceSet res = *this;
-    res -= other;
-    return res;
-  }
-
-  ResourceSet &operator+=(const ResourceSet &other) {
-    for (auto &entry : other.resources_) {
-      auto it = resources_.find(entry.first);
-      if (it != resources_.end()) {
-        it->second += entry.second;
-        if (it->second == 0) {
-          resources_.erase(it);
-        }
-      } else {
-        resources_.emplace(entry.first, entry.second);
-      }
-    }
-    return *this;
-  }
-
-  ResourceSet &operator-=(const ResourceSet &other) {
-    for (auto &entry : other.resources_) {
-      auto it = resources_.find(entry.first);
-      if (it != resources_.end()) {
-        it->second -= entry.second;
-        if (it->second == 0) {
-          resources_.erase(it);
-        }
-      } else {
-        resources_.emplace(entry.first, -entry.second);
-      }
-    }
-    return *this;
-  }
-
-  bool operator!=(const ResourceSet &other) const { return !(*this == other); }
-
-  /// Check whether this set is a subset of another one.
-  /// If A <= B, it means for each resource, its value in A is less than or equqal to that
-  /// in B.
-  bool operator<=(const ResourceSet &other) const {
-    // Check all resources that exist in this.
-    for (auto &entry : resources_) {
-      auto &this_value = entry.second;
-      auto other_value = FixedPoint(0);
-      auto it = other.resources_.find(entry.first);
-      if (it != other.resources_.end()) {
-        other_value = it->second;
-      }
-      if (this_value > other_value) {
-        return false;
-      }
-    }
-    // Check all resources that exist in other, but not in this.
-    for (auto &entry : other.resources_) {
-      if (!resources_.contains(entry.first)) {
-        if (entry.second < 0) {
-          return false;
-        }
-      }
-    }
-    return true;
-  }
-
-  /// Check whether this set is a super set of another one.
-  /// If A >= B, it means for each resource, its value in A is larger than or equqal to
-  /// that in B.
-  bool operator>=(const ResourceSet &other) const { return other <= *this; }
 
   /// Remove the negative values in this set.
   void RemoveNegative() {

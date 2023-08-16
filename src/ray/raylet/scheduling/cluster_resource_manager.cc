@@ -212,19 +212,19 @@ bool ClusterResourceManager::HasSufficientResource(
   return resources.available >= resource_request.GetResourceSet();
 }
 
-bool ClusterResourceManager::AddNodeAvailableResources(
-    scheduling::NodeID node_id, const ResourceRequest &resource_request) {
+bool ClusterResourceManager::AddNodeAvailableResources(scheduling::NodeID node_id,
+                                                       const ResourceSet &resource_set) {
   auto it = nodes_.find(node_id);
   if (it == nodes_.end()) {
     return false;
   }
 
   auto node_resources = it->second.GetMutableLocalView();
-  for (auto &resource_id : resource_request.ResourceIds()) {
+  for (auto &resource_id : resource_set.ResourceIds()) {
     if (node_resources->total.Has(resource_id)) {
       auto available = node_resources->available.Get(resource_id);
       auto total = node_resources->total.Get(resource_id);
-      auto new_available = available + resource_request.Get(resource_id);
+      auto new_available = available + resource_set.Get(resource_id);
       if (new_available > total) {
         new_available = total;
       }
