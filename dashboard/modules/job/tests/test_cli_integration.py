@@ -190,9 +190,7 @@ class TestJobSubmit:
         assert "succeeded" in stdout
 
     def test_job_failed(self, ray_start_stop):
-        cmd = (
-            "python -c 'import ray; ray.init(); assert 1 == 2;'"
-        )
+        cmd = "python -c 'import ray; ray.init(); assert 1 == 2;'"
         _run_cmd(f"ray job submit -- {cmd}", should_fail=True)
 
 
