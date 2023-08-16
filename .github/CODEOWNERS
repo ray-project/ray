@@ -23,7 +23,7 @@
 /python/ray/autoscaler/_private/monitor.py @wuisawesome @DmitriGekhtman
 
 # Autoscaler
-/python/ray/autoscaler/ @wuisawesome @DmitriGekhtman @ericl @ray-project/ray-core
+/python/ray/autoscaler/ @wuisawesome @DmitriGekhtman @ericl @ray-project/ray-core @architkulkarni
 
 # Metrics
 /src/ray/stats/metric_defs.h @ray-project/ray-core
