@@ -54,7 +54,7 @@ class AimLoggerCallback(LoggerCallback):
     """
 
     VALID_HPARAMS = (str, bool, int, float, list, type(None))
-    VALID_NP_HPARAMS = (np.bool8, np.float32, np.float64, np.int32, np.int64)
+    VALID_NP_HPARAMS = (np.bool_, np.float32, np.float64, np.int32, np.int64)
 
     def __init__(
         self,

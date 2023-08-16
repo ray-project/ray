@@ -188,6 +188,21 @@ machines have 16 CPUs in addition to the 4 GPUs, each actor should have
     :end-before: __gpu_xgboost_end__
 
 
+.. _data-ingest-gbdt:
+
+How to preprocess data for training?
+------------------------------------
+
+Particularly for tabular data, Ray Data comes with out-of-the-box :ref:`preprocessors <air-preprocessors>` that implement common feature preprocessing operations.
+You can use this with Ray Train Trainers by applying them on the dataset before passing the dataset into a Trainer. For example:
+
+
+.. literalinclude:: ../data/doc_code/preprocessors.py
+    :language: python
+    :start-after: __trainer_start__
+    :end-before: __trainer_end__
+
+
 How to optimize XGBoost memory usage?
 -------------------------------------
 
