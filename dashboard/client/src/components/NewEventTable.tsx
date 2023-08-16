@@ -48,8 +48,18 @@ const transformFiltersToParams = (filters: FiltersParams) => {
     return;
   }
 
+  const isString = (value: any): value is string => typeof value === "string";
+
   for (const key in filters) {
-    if (key === "entityId" && filters.entityName && filters.entityId) {
+    const t = typeof filters.entityName;
+    console.info("t : ", t);
+
+    if (
+      isString(key) &&
+      key === "entityId" &&
+      filters.entityName &&
+      filters.entityId
+    ) {
       params.append(
         `${encodeURIComponent(filters.entityName)}_id`,
         encodeURIComponent(filters.entityId),

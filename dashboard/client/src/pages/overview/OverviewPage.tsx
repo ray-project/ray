@@ -100,7 +100,7 @@ export const OverviewPage = () => {
         title="Events"
         startExpanded
       >
-        <EventTable />
+        <NewEventTable />
       </CollapsibleSection>
       <CollapsibleSection
         className={classes.section}

@@ -15,6 +15,16 @@ from google.protobuf.json_format import MessageToDict
 
 from ray.core.generated.event_pb2 import Event
 
+eventNameToProtoMap = {
+    "COMMON": Event.SourceType.COMMON,
+    "CORE_WORKER": Event.SourceType.CORE_WORKER,
+    "GCS": Event.SourceType.GCS,
+    "RAYLET": Event.SourceType.RAYLET,
+    "CLUSTER_LIFECYCLE": Event.SourceType.CLUSTER_LIFECYCLE,
+    "AUTOSCALER": Event.SourceType.AUTOSCALER,
+    "JOBS": Event.SourceType.JOBS,
+}
+
 
 eventNameToProtoMap = {
     "COMMON": Event.SourceType.COMMON,

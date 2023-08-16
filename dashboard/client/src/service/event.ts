@@ -1,5 +1,5 @@
 import axios from "axios";
-import { EventGlobalRsp, EventRsp, NewEventRsp } from "../type/event";
+import { EventGlobalRsp, EventRsp } from "../type/event";
 
 export const getEvents = (jobId: string) => {
   if (jobId) {
@@ -23,4 +23,12 @@ export const getNewEvents = (params: any) => {
   const apiUrl = new URL(baseUrl);
   apiUrl.search = params;
   return axios.get<NewEventRsp>(apiUrl.toString());
+};
+
+export const getNewEvents = (params: string) => {
+  const baseUrl = "api/v0/cluster_events";
+  const apiUrl = new URL(baseUrl);
+  apiUrl.search = params;
+
+  return axios.get<EventRsp>(apiUrl.toString());
 };
