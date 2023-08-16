@@ -737,6 +737,7 @@ def test_e2e_bursty(serve_instance):
     # it back to 0. This bursty behavior should be smoothed by the delay
     # parameters.
     for _ in range(5):
+        ray.get(signal.send.remote(clear=True))
         assert check_autoscale_num_replicas(controller, "A") == num_replicas
         refs = [handle.remote() for _ in range(100)]
         signal.send.remote()
@@ -1205,7 +1206,9 @@ app = g.bind()
     }
 
     client.deploy_apps(ServeDeploySchema(**{"applications": [app_config]}))
-    wait_for_condition(lambda: client.get_serve_status().app_status.status == "RUNNING")
+    wait_for_condition(
+        lambda: serve.status().applications[SERVE_DEFAULT_APP_NAME].status == "RUNNING"
+    )
 
     # Step 3: Verify that it can scale from 0 to 1.
     @ray.remote
@@ -1236,7 +1239,9 @@ app = g.bind()
     # Step 4: Change the max replicas to 2
     app_config["deployments"][0]["autoscaling_config"]["max_replicas"] = 2
     client.deploy_apps(ServeDeploySchema(**{"applications": [app_config]}))
-    wait_for_condition(lambda: client.get_serve_status().app_status.status == "RUNNING")
+    wait_for_condition(
+        lambda: serve.status().applications[SERVE_DEFAULT_APP_NAME].status == "RUNNING"
+    )
     wait_for_condition(check_num_replicas, retry_interval_ms=1000, timeout=20, num=1)
 
     # Step 5: Make sure it is the same replica (lightweight change).
@@ -1249,7 +1254,9 @@ app = g.bind()
     app_config["deployments"][0]["autoscaling_config"]["initial_replicas"] = 3
     app_config["deployments"][0]["autoscaling_config"]["upscale_delay"] = 600
     client.deploy_apps(ServeDeploySchema(**{"applications": [app_config]}))
-    wait_for_condition(lambda: client.get_serve_status().app_status.status == "RUNNING")
+    wait_for_condition(
+        lambda: serve.status().applications[SERVE_DEFAULT_APP_NAME].status == "RUNNING"
+    )
     wait_for_condition(check_num_replicas, retry_interval_ms=1000, timeout=20, num=3)
 
     # Step 7: Make sure original replica is still running (lightweight change)

@@ -20,9 +20,8 @@ serve.run(driver.bind(), name="app")
     )
     run_string_as_driver(script)
 
-    print(serve.status())
-    handle = serve.get_deployment("app_driver").get_handle()
-    assert ray.get(handle.remote()) == "OK!"
+    handle = serve.get_app_handle("app")
+    assert handle.remote().result() == "OK!"
 
 
 if __name__ == "__main__":

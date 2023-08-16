@@ -516,7 +516,7 @@ def test_healthz_and_routes_on_head_and_worker_nodes(
 
     # Delete the deployment should bring the active actors down to 3 and drop
     # replicas on all nodes.
-    serve.delete(name="default")
+    serve.delete(name=SERVE_DEFAULT_APP_NAME)
 
     def _check():
         _actors = ray._private.state.actors().values()

@@ -15,7 +15,7 @@
 #include "ray/common/scheduling/cluster_resource_data.h"
 
 #include "ray/common/bundle_spec.h"
-#include "ray/common/scheduling/scheduling_resources.h"
+#include "ray/common/scheduling/resource_set.h"
 
 namespace ray {
 using namespace ::ray::scheduling;
