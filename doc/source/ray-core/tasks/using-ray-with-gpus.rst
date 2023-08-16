@@ -136,7 +136,7 @@ task or actor resource requirements to assign the Neuron Core(s).
 
 .. note::
 
-  Ray supports a heterogeneous cluster of GPUs and NeuronCores but doesn't allow specifying resources requirements of
+  Ray supports a heterogeneous cluster of GPUs and Neuron Cores but doesn't allow specifying resources requirements of
   ``num_gpus`` and ``num_neuron_cores`` together for a task or actor.
 
 .. literalinclude:: ../doc_code/neuron_core_accelerator.py
