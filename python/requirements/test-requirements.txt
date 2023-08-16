@@ -74,6 +74,7 @@ smart_open[s3]==6.2.0
 tqdm==4.64.1
 trustme==0.9.0
 testfixtures==7.0.0
+vsphere-automation-sdk @ git+https://github.com/vmware/vsphere-automation-sdk-python.git@v8.0.1.0
 werkzeug==2.1.2
 xlrd==2.0.1
 yq==3.2.2
