@@ -80,9 +80,10 @@ RUN sudo apt-get update -y && sudo apt-get upgrade -y \
         g++; fi) \
     # Either install kubectl or remove wget 
     && (if [ "$AUTOSCALER" = "autoscaler" ]; \
-        then wget -O - -q https://packages.cloud.google.com/apt/doc/apt-key.gpg | sudo apt-key add - \
+        then sudo mkdir -m 755 /etc/apt/keyrings \
+        && wget -O - -q https://pkgs.k8s.io/core:/stable:/v1.28/deb/Release.key | sudo gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg \
         && sudo touch /etc/apt/sources.list.d/kubernetes.list \
-        && echo "deb http://apt.kubernetes.io/ kubernetes-xenial main" | sudo tee -a /etc/apt/sources.list.d/kubernetes.list \
+        && echo "deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.28/deb/ /" | sudo tee -a /etc/apt/sources.list.d/kubernetes.list \
         && sudo apt-get update \
         && sudo apt-get install kubectl; \
     else sudo apt-get autoremove -y wget; \
