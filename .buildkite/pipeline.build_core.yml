@@ -1,14 +1,21 @@
-#ci:group=:book: core tests (civ2)
+#ci:group=:ray: core tests (civ2)
 
-- label: ":python: (small & client)"
+- label: ":python: core"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
-  instance_size: medium
+  instance_size: large
+  parallelism: 6
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - DL=1 ./ci/env/install-dependencies.sh
-    - bash ./ci/ci.sh prepare_docker
     - ./ci/env/env_info.sh
-    - pip install ray[client]
-    - bazel test --config=ci $(./ci/run/bazel_export_options) 
-      --test_tag_filters=client_tests,small_size_python_tests
-      -- $(bazel query "attr(tags, team:core, tests(python/ray/tests/...))") $(yq -r ".flaky_tests | map(\"-\"+.) | join(\" \")" ci/v2/test/core.tests.yml)
+    - bazel run //ci/ray_ci -- //python/ray/tests/... //python/ray/dag/... python/ray/autoscaler/v2/... core 
+      --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
+      --except-tags debug_tests,asan_tests,post_wheel_build,xcommit
+
+- label: ":python: flaky core"
+  conditions: ["RAY_CI_PYTHON_AFFECTED"]
+  instance_size: large
+  soft_fail: true
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+    - ./ci/env/env_info.sh
+    - bazel run //ci/ray_ci -- //... core --run-flaky-tests --parallelism-per-worker 3

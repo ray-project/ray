@@ -83,7 +83,7 @@ class Checkpoint:
 
     .. code-block:: python
 
-        from ray.air.checkpoint import Checkpoint
+        from ray.train import Checkpoint
 
         # Create checkpoint data dict
         checkpoint_data = {"data": 123}
@@ -108,8 +108,7 @@ class Checkpoint:
         # It is guaranteed that the original data has been recovered
         assert recovered_data == checkpoint_data
 
-    Checkpoints can be used to instantiate a :class:`Predictor`,
-    :class:`BatchPredictor`, or :class:`PredictorDeployment` class.
+    Checkpoints can be used to instantiate a :class:`Predictor`.
 
     The constructor is a private API, instead the ``from_`` methods should
     be used to create checkpoint objects
@@ -271,7 +270,7 @@ class Checkpoint:
 
         Example:
 
-            >>> from ray.air import Checkpoint
+            >>> from ray.train import Checkpoint
             >>> checkpoint = Checkpoint.from_uri("s3://some-bucket/some-location")
             >>> assert checkpoint.path == "s3://some-bucket/some-location"
             >>> checkpoint = Checkpoint.from_dict({"data": 1})
@@ -300,11 +299,11 @@ class Checkpoint:
 
         In all other cases, this will return None. Users can then choose to
         persist to cloud with
-        :meth:`Checkpoint.to_uri() <ray.air.Checkpoint.to_uri>`.
+        :meth:`Checkpoint.to_uri() <ray.train.Checkpoint.to_uri>`.
 
         Example:
 
-            >>> from ray.air import Checkpoint
+            >>> from ray.train import Checkpoint
             >>> checkpoint = Checkpoint.from_uri("s3://some-bucket/some-location")
             >>> assert checkpoint.uri == "s3://some-bucket/some-location"
             >>> checkpoint = Checkpoint.from_dict({"data": 1})
@@ -331,7 +330,7 @@ class Checkpoint:
             data: Data object containing pickled checkpoint data.
 
         Returns:
-            ray.air.checkpoint.Checkpoint: checkpoint object.
+            ray.train.Checkpoint: checkpoint object.
         """
         bytes_data = pickle.loads(data)
         if isinstance(bytes_data, dict):
@@ -360,7 +359,7 @@ class Checkpoint:
             data: Dictionary containing checkpoint data.
 
         Returns:
-            ray.air.checkpoint.Checkpoint: checkpoint object.
+            ray.train.Checkpoint: checkpoint object.
         """
         state = {}
         if _METADATA_KEY in data:
@@ -455,7 +454,7 @@ class Checkpoint:
                 Checkpoint).
 
         Returns:
-            ray.air.checkpoint.Checkpoint: checkpoint object.
+            ray.train.Checkpoint: checkpoint object.
         """
         state = {}
 
@@ -474,7 +473,7 @@ class Checkpoint:
     @classmethod
     @DeveloperAPI
     def from_checkpoint(cls, other: "Checkpoint") -> "Checkpoint":
-        """Create a checkpoint from a generic :class:`ray.air.checkpoint.Checkpoint`.
+        """Create a checkpoint from a generic :class:`ray.train.Checkpoint`.
 
         This method can be used to create a framework-specific checkpoint from a
         generic :class:`Checkpoint` object.
@@ -715,7 +714,7 @@ class Checkpoint:
             uri: Source location URI to read data from.
 
         Returns:
-            ray.air.checkpoint.Checkpoint: checkpoint object.
+            ray.train.Checkpoint: checkpoint object.
         """
         state = {}
         try:

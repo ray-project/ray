@@ -45,7 +45,23 @@ class OperatorFusionRule(Rule):
         # we fuse together MapOperator -> AllToAllOperator pairs.
         fused_dag = self._fuse_all_to_all_operators_in_dag(fused_dag)
 
+        # Update output dependencies after fusion.
+        # TODO(hchen): Instead of updating the depdencies manually,
+        # we need a better abstraction for manipulating the DAG.
+        self._remove_output_depes(fused_dag)
+        self._update_output_depes(fused_dag)
+
         return PhysicalPlan(fused_dag, self._op_map)
+
+    def _remove_output_depes(self, op: PhysicalOperator) -> None:
+        for input in op._input_dependencies:
+            input._output_dependencies = []
+            self._remove_output_depes(input)
+
+    def _update_output_depes(self, op: PhysicalOperator) -> None:
+        for input in op._input_dependencies:
+            input._output_dependencies.append(op)
+            self._update_output_depes(input)
 
     def _fuse_map_operators_in_dag(self, dag: PhysicalOperator) -> MapOperator:
         """Starting at the given operator, traverses up the DAG of operators
@@ -179,7 +195,8 @@ class OperatorFusionRule(Rule):
 
         # Only fuse if the ops' remote arguments are compatible.
         if not _are_remote_args_compatible(
-            up_logical_op._ray_remote_args or {}, down_logical_op._ray_remote_args or {}
+            getattr(up_logical_op, "_ray_remote_args", {}),
+            getattr(down_logical_op, "_ray_remote_args", {}),
         ):
             return False
 

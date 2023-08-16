@@ -19,19 +19,6 @@ num_gpus = 1
 
 config = (
     DreamerV3Config()
-    # Switch on eager_tracing by default.
-    .framework("tf2", eager_tracing=True)
-    .resources(
-        num_learner_workers=0 if num_gpus == 1 else num_gpus,
-        num_gpus_per_learner_worker=1 if num_gpus else 0,
-        num_cpus_for_local_worker=1,
-    )
-    # TODO (sven): concretize this: If you use >1 GPU and increase the batch size
-    #  accordingly, you might also want to increase the number of envs per worker
-    .rollouts(
-        num_envs_per_worker=(num_gpus or 1),
-        remote_worker_envs=True,
-    )
     .environment(
         # [2]: "We follow the evaluation protocol of Machado et al. (2018) with 200M
         # environment steps, action repeat of 4, a time limit of 108,000 steps per
@@ -49,6 +36,17 @@ config = (
             "frameskip": 1,
         }
     )
+    .resources(
+        num_learner_workers=0 if num_gpus == 1 else num_gpus,
+        num_gpus_per_learner_worker=1 if num_gpus else 0,
+        num_cpus_for_local_worker=1,
+    )
+    .rollouts(
+        # If we use >1 GPU and increase the batch size accordingly, we should also
+        # increase the number of envs per worker.
+        num_envs_per_worker=(num_gpus or 1),
+        remote_worker_envs=True,
+    )
     .reporting(
         metrics_num_episodes_for_smoothing=(num_gpus or 1),
         report_images_and_videos=False,
@@ -60,12 +58,5 @@ config = (
         model_size="S",
         training_ratio=1024,
         batch_size_B=16 * (num_gpus or 1),
-        # TODO
-        model={
-            "batch_length_T": 64,
-            "horizon_H": 15,
-            "gamma": 0.997,
-            "model_size": "S",
-        },
     )
 )

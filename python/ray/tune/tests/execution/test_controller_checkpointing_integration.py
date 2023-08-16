@@ -6,7 +6,7 @@ import pytest
 import sys
 
 import ray
-from ray.air import CheckpointConfig
+from ray.train import CheckpointConfig
 from ray.air._internal.checkpoint_manager import _TrackedCheckpoint, CheckpointStorage
 from ray.air.execution import FixedResourceManager, PlacementGroupResourceManager
 from ray.air.constants import TRAINING_ITERATION
@@ -30,7 +30,7 @@ def create_mock_components():
     class _MockScheduler(FIFOScheduler):
         errored_trials = []
 
-        def on_trial_error(self, trial_runner, trial):
+        def on_trial_error(self, tune_controller, trial):
             self.errored_trials += [trial]
 
     class _MockSearchAlg(BasicVariantGenerator):
@@ -78,7 +78,7 @@ def test_checkpoint_save_restore(
         runner.step()
 
     # Set some state that will be saved in the checkpoint
-    assert ray.get(trials[0].runner.set_info.remote(1)) == 1
+    assert ray.get(trials[0].temporary_state.ray_actor.set_info.remote(1)) == 1
 
     while trials[0].status != Trial.TERMINATED:
         runner.step()
@@ -101,7 +101,7 @@ def test_checkpoint_save_restore(
     # Restore
     runner.step()
 
-    assert ray.get(trials[1].runner.get_info.remote()) == 1
+    assert ray.get(trials[1].temporary_state.ray_actor.get_info.remote()) == 1
 
     # Run to termination
     while trials[1].status != Trial.TERMINATED:
@@ -166,8 +166,8 @@ def test_pause_resume_trial(
     while trials[0].status != Trial.RUNNING:
         runner.step()
 
-    assert ray.get(trials[0].runner.get_info.remote()) is None
-    assert ray.get(trials[0].runner.set_info.remote(1)) == 1
+    assert ray.get(trials[0].temporary_state.ray_actor.get_info.remote()) is None
+    assert ray.get(trials[0].temporary_state.ray_actor.set_info.remote(1)) == 1
 
     runner._schedule_trial_pause(trials[0], should_checkpoint=True)
 
@@ -183,7 +183,7 @@ def test_pause_resume_trial(
     while trials[0].status != Trial.RUNNING:
         runner.step()
 
-    assert ray.get(trials[0].runner.get_info.remote()) == 1
+    assert ray.get(trials[0].temporary_state.ray_actor.get_info.remote()) == 1
 
     while trials[0].status != Trial.TERMINATED:
         runner.step()
@@ -212,7 +212,9 @@ def test_checkpoint_num_to_keep(
         checkpoint_config=CheckpointConfig(num_to_keep=2),
     )
     trial.init_local_path()
-    trial.checkpoint_manager.set_delete_fn(lambda cp: shutil.rmtree(cp.dir_or_data))
+    trial.run_metadata.checkpoint_manager.set_delete_fn(
+        lambda cp: shutil.rmtree(cp.dir_or_data)
+    )
 
     def write_checkpoint(trial: Trial, index: int):
         checkpoint_dir = TrainableUtil.make_checkpoint_dir(
@@ -227,7 +229,7 @@ def test_checkpoint_num_to_keep(
             storage_mode=CheckpointStorage.PERSISTENT,
             metrics=result,
         )
-        trial.saving_to = tune_cp
+        trial.temporary_state.saving_to = tune_cp
 
         return checkpoint_dir
 
@@ -274,7 +276,9 @@ def test_checkpoint_num_to_keep(
     runner.resume()
 
     trial = runner.get_trials()[0]
-    trial.checkpoint_manager.set_delete_fn(lambda cp: shutil.rmtree(cp.dir_or_data))
+    trial.run_metadata.checkpoint_manager.set_delete_fn(
+        lambda cp: shutil.rmtree(cp.dir_or_data)
+    )
 
     # Write fourth checkpoint
     result = write_checkpoint(trial, 4)

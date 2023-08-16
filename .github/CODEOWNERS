@@ -11,7 +11,7 @@
 # NOTE: Add @ray-project/ray-docs to all following docs subdirs.
 /doc/ @ray-project/ray-docs
 /doc/source/use-cases.rst @ericl @pcmoritz
-/doc/source/templates @justinvyu @sofianhnaide
+/doc/source/templates @justinvyu @matthewdeng @sofianhnaide
 
 # ==== Ray core ====
 
@@ -54,11 +54,11 @@
 #!/python/ray/rllib/ @ray-project/ray-core
 
 # Java worker.
-/java/dependencies.bzl @kfstorm @raulchen @ericl @iycheng @WangTaoTheTonic
-/java/pom.xml @kfstorm @raulchen @ericl @iycheng @WangTaoTheTonic
-/java/pom_template.xml @kfstorm @raulchen @ericl @iycheng @WangTaoTheTonic
-/java/*/pom_template.xml @kfstorm @raulchen @ericl @iycheng @WangTaoTheTonic
-/java/api/ @kfstorm @raulchen @ericl @iycheng @WangTaoTheTonic
+/java/dependencies.bzl @kfstorm @raulchen @ericl @iycheng @WangTaoTheTonic @SongGuyang @jovany-wang
+/java/pom.xml @kfstorm @raulchen @ericl @iycheng @WangTaoTheTonic @SongGuyang @jovany-wang
+/java/pom_template.xml @kfstorm @raulchen @ericl @iycheng @WangTaoTheTonic @SongGuyang @jovany-wang
+/java/*/pom_template.xml @kfstorm @raulchen @ericl @iycheng @WangTaoTheTonic @SongGuyang @jovany-wang
+/java/api/ @kfstorm @raulchen @ericl @iycheng @WangTaoTheTonic @SongGuyang @jovany-wang
 
 # C++ worker
 /cpp/include/ray @SongGuyang @raulchen @kfstorm @ray-project/ray-core
@@ -86,7 +86,7 @@
 /doc/source/rllib/ @sven1977 @gjoliver @avnishn @arturniederfahrenhorst @smorad @maxpumperla @kouroshhakha @krfricke @ray-project/ray-docs
 
 # Cluster (docs)
-/doc/source/cluster/ @architkulkarni @wuisawesome @DmitriGekhtman @maxpumperla @pcmoritz @ray-project/ray-docs
+/doc/source/cluster/ @architkulkarni @wuisawesome @DmitriGekhtman @maxpumperla @pcmoritz @kevin85421 @ray-project/ray-docs
 
 # Tune (docs)
 /doc/source/tune/ @richardliaw @krfricke @xwjiang2010 @amogkam @matthewdeng @Yard1 @maxpumperla @ray-project/ray-docs

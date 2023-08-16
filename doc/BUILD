@@ -203,7 +203,6 @@ py_test_run_all_subdirectory(
     exclude = [
         # Too large. Use a custom test below.
         "source/ray-air/doc_code/computer_vision.py",
-        "source/ray-air/doc_code/hf_trainer.py",  # Too large
     ],
     extra_srcs = [],
     tags = ["exclusive", "team:ml"],
@@ -224,7 +223,7 @@ py_test(
 py_test_run_all_subdirectory(
     size = "large",
     include = ["source/train/doc_code/*.py"],
-    exclude = ["source/train/doc_code/predictors.py"],  # too large
+    exclude = [],
     extra_srcs = [],
     tags = ["exclusive", "team:ml"],
 )
@@ -258,14 +257,6 @@ py_test_run_all_subdirectory(
 # --------------
 # Run GPU tests
 # --------------
-
-py_test_run_all_subdirectory(
-    size = "large",
-    include = ["source/train/doc_code/predictors.py"],
-    exclude = [],
-    extra_srcs = [],
-    tags = ["exclusive", "team:ml", "ray_air", "gpu"],
-)
 
 py_test(
     name = "pytorch_resnet_finetune",
@@ -312,6 +303,7 @@ doctest(
             "source/data/batch_inference.rst",
             "source/data/transforming-data.rst",
             "source/train/faq.rst",
+	    "source/train/user-guides/data-loading-preprocessing.rst",
             "source/workflows/**/*.rst",
             "source/workflows/**/*.md",
             "source/templates/04_finetuning_llms_with_deepspeed/README.md"
@@ -340,4 +332,12 @@ doctest(
     ],
     tags = ["team:data"],
     gpu = True
+)
+
+doctest(
+    name="quarantine",
+    files = [
+	"source/train/user-guides/data-loading-preprocessing.rst",
+    ],
+    tags = ["team:data"],
 )

@@ -677,7 +677,7 @@ class _BackgroundSyncer(Syncer):
 
 
 class _DefaultSyncer(_BackgroundSyncer):
-    """Default syncer between local storage and remote URI."""
+    """Default syncer between local and remote storage, using `pyarrow.fs.copy_files`"""
 
     def _sync_up_command(
         self, local_path: str, uri: str, exclude: Optional[List] = None
@@ -832,7 +832,7 @@ class SyncerCallback(Callback):
 
         if not source_ip:
             try:
-                source_ip = trial.get_runner_ip()
+                source_ip = trial.get_ray_actor_ip()
             except RayActorError as e:
                 logger.error(
                     f"Trial {trial}: An error occurred when trying to get the "

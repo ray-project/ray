@@ -11,12 +11,14 @@ from ray.exceptions import RayActorError
 from ray.train import DataConfig
 from ray.air.checkpoint import Checkpoint
 from ray.train._internal.session import (
+    _TrainSession,
     TrainingResult,
     TrialInfo,
     get_session,
     init_session,
     shutdown_session,
 )
+from ray.train._internal.storage import _use_storage_context
 from ray.train._internal.utils import check_for_failure
 from ray.train._internal.worker_group import WorkerGroup
 from ray.train.backend import BackendConfig
@@ -345,6 +347,7 @@ class BackendExecutor:
         datasets: Dict[str, Dataset],
         data_config: DataConfig,
         checkpoint: Optional[Checkpoint] = None,
+        on_session_init: Callable[[], None] = None,
     ) -> None:
         """Executes a training function on all workers in a separate thread.
 
@@ -378,6 +381,7 @@ class BackendExecutor:
             encode_data_fn,
             checkpoint_keep_all_ranks,
             checkpoint_upload_from_workers,
+            storage,
         ):
             try:
                 init_session(
@@ -395,6 +399,7 @@ class BackendExecutor:
                     enable_lazy_checkpointing=use_lazy_checkpointing,
                     checkpoint_keep_all_ranks=checkpoint_keep_all_ranks,
                     checkpoint_upload_from_workers=(checkpoint_upload_from_workers),
+                    storage=storage,
                 )
             except ValueError:
                 raise TrainBackendError(
@@ -420,6 +425,12 @@ class BackendExecutor:
             node_rank_map,
         ) = self._create_rank_world_size_mappings()
 
+        if _use_storage_context():
+            tune_session: _TrainSession = get_session()
+            assert (
+                tune_session
+            ), "`start_training` should only be called from within Tune"
+
         futures = []
         for index in range(len(self.worker_group)):
             futures.append(
@@ -440,12 +451,16 @@ class BackendExecutor:
                     checkpoint_upload_from_workers=(
                         self._checkpoint_upload_from_workers
                     ),
+                    storage=tune_session.storage if _use_storage_context() else None,
                 )
             )
 
         self._backend.on_training_start(self.worker_group, self._backend_config)
 
         self.get_with_failure_handling(futures)
+
+        if on_session_init:
+            on_session_init()
 
         # Run the training function asynchronously in its own thread.
         def train_async():
@@ -497,24 +512,26 @@ class BackendExecutor:
             else:
                 # Return None if all results are None.
                 return None
-        first_result = results[0]
-        result_type = first_result.type
-        if any(r.type != result_type for r in results):
-            raise RuntimeError(
-                "Some workers returned results with "
-                "different types. Make sure that "
-                "`session.report()` are called the "
-                "same number of times on all workers."
-            )
+
+        if not _use_storage_context():
+            first_result = results[0]
+            result_type = first_result.type
+            if any(r.type != result_type for r in results):
+                raise RuntimeError(
+                    "Some workers returned results with "
+                    "different types. Make sure that "
+                    "`session.report()` are called the "
+                    "same number of times on all workers."
+                )
 
         return results
 
-    def _set_checkpoint_uri(self, uri: str):
+    def _set_legacy_checkpoint_uri(self, uri: str):
         """Tell remote sessions where to upload the chekcpoint."""
 
         def set_uri():
-            session = _get_session("_set_checkpoint_uri")
-            session._set_checkpoint_uri(uri)
+            session = _get_session("_set_legacy_checkpoint_uri")
+            session._set_legacy_checkpoint_uri(uri)
 
         futures = self.worker_group.execute_async(set_uri)
         self.get_with_failure_handling(futures)

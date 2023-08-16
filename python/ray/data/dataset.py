@@ -18,6 +18,7 @@ from typing import (
     Optional,
     Tuple,
     Type,
+    TypeVar,
     Union,
 )
 from uuid import uuid4
@@ -73,6 +74,7 @@ from ray.data._internal.planner.map_rows import generate_map_rows_fn
 from ray.data._internal.planner.write import generate_write_fn
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.remote_fn import cached_remote_fn
+from ray.data._internal.sort import SortKey
 from ray.data._internal.split import _get_num_rows, _split_at_indices
 from ray.data._internal.stage_impl import (
     LimitStage,
@@ -102,7 +104,6 @@ from ray.data.block import (
     UserDefinedFunction,
     _apply_strict_mode_batch_format,
     _apply_strict_mode_batch_size,
-    _validate_key_fn,
 )
 from ray.data.context import (
     ESTIMATED_SAFE_MEMORY_FRACTION,
@@ -115,6 +116,7 @@ from ray.data.datasource import (
     CSVDatasource,
     Datasource,
     DefaultBlockWritePathProvider,
+    ImageDatasource,
     JSONDatasource,
     NumpyDatasource,
     ParquetDatasource,
@@ -152,7 +154,6 @@ if TYPE_CHECKING:
     from tensorflow_metadata.proto.v0 import schema_pb2
 
     from ray.data._internal.execution.interfaces import Executor, NodeIdStr
-    from ray.data._internal.torch_iterable_dataset import TorchTensorBatchType
     from ray.data.dataset_pipeline import DatasetPipeline
     from ray.data.grouped_data import GroupedData
 
@@ -164,6 +165,9 @@ TensorflowFeatureTypeSpec = Union[
 ]
 
 TensorFlowTensorBatchType = Union["tf.Tensor", Dict[str, "tf.Tensor"]]
+
+CollatedData = TypeVar("CollatedData")
+TorchBatchType = Union[Dict[str, "torch.Tensor"], CollatedData]
 
 
 @PublicAPI
@@ -1843,7 +1847,7 @@ class Dataset:
         # Always allow None since groupby interprets that as grouping all
         # records into a single global group.
         if key is not None:
-            _validate_key_fn(self.schema(fetch_if_missing=True), key)
+            SortKey(key).validate_schema(self.schema(fetch_if_missing=True))
 
         return GroupedData(self, key)
 
@@ -2149,8 +2153,17 @@ class Dataset:
         ret = self._aggregate_on(Std, on, ignore_nulls, ddof=ddof)
         return self._aggregate_result(ret)
 
-    def sort(self, key: Optional[str] = None, descending: bool = False) -> "Dataset":
-        """Sort the :class:`Dataset` by the specified column.
+    def sort(
+        self,
+        key: Union[str, List[str], None] = None,
+        descending: Union[bool, List[bool]] = False,
+    ) -> "Dataset":
+        """Sort the dataset by the specified key column or key function.
+
+        .. note::
+            The `descending` parameter must be a boolean, or a list of booleans.
+            If it is a list, all items in the list must share the same direction.
+            Multi-directional sort is not supported yet.
 
         Examples:
             >>> import ray
@@ -2161,22 +2174,22 @@ class Dataset:
         Time complexity: O(dataset size * log(dataset size / parallelism))
 
         Args:
-            key: The column to sort by. To sort by multiple columns, call
-                :meth:`Dataset.map` and generate a new column to sort by.
-            descending: Whether to sort in descending order.
+            key: The column or a list of columns to sort by.
+            descending: Whether to sort in descending order. Must be a boolean or a list
+                of booleans matching the number of the columns.
 
         Returns:
             A new, sorted :class:`Dataset`.
         """
 
-        plan = self._plan.with_stage(SortStage(self, key, descending))
+        sort_key = SortKey(key, descending)
+        plan = self._plan.with_stage(SortStage(self, sort_key))
 
         logical_plan = self._logical_plan
         if logical_plan is not None:
             op = Sort(
                 logical_plan.dag,
-                key=key,
-                descending=descending,
+                sort_key=sort_key,
             )
             logical_plan = LogicalPlan(op)
         return Dataset(plan, self._epoch, self._lazy, logical_plan)
@@ -2293,8 +2306,12 @@ class Dataset:
         batch_format = _apply_strict_mode_batch_format(batch_format)
         try:
             res = next(
-                self.iter_batches(
-                    batch_size=batch_size, prefetch_batches=0, batch_format=batch_format
+                iter(
+                    self.iter_batches(
+                        batch_size=batch_size,
+                        prefetch_batches=0,
+                        batch_format=batch_format,
+                    )
                 )
             )
         except StopIteration:
@@ -2781,6 +2798,65 @@ class Dataset:
             **pandas_json_args,
         )
 
+    @PublicAPI(stability="alpha")
+    @ConsumptionAPI
+    def write_images(
+        self,
+        path: str,
+        column: str,
+        file_format: str = "png",
+        *,
+        filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+        try_create_dir: bool = True,
+        arrow_open_stream_args: Optional[Dict[str, Any]] = None,
+        ray_remote_args: Dict[str, Any] = None,
+    ) -> None:
+        """Writes the :class:`~ray.data.Dataset` to images.
+
+        Examples:
+            >>> import ray
+            >>> ds = ray.data.read_images("s3://anonymous@ray-example-data/image-datasets/simple")
+            >>> ds.write_images("local:///tmp/images", column="image")
+
+        Time complexity: O(dataset size / parallelism)
+
+        Args:
+            path: The path to the destination root directory, where
+                the images are written to.
+            column: The column containing the data you want to write to images.
+            file_format: The image file format to write with. For available options,
+                see `Image file formats <https://pillow.readthedocs.io/en/latest\
+                /handbook/image-file-formats.html>`.
+            filesystem: The pyarrow filesystem implementation to write to.
+                These filesystems are specified in the
+                `pyarrow docs <https://arrow.apache.org/docs\
+                /python/api/filesystems.html#filesystem-implementations>`_.
+                Specify this if you need to provide specific configurations to the
+                filesystem. By default, the filesystem is automatically selected based
+                on the scheme of the paths. For example, if the path begins with
+                ``s3://``, the ``S3FileSystem`` is used.
+            try_create_dir: If ``True``, attempts to create all directories in the
+                destination path. Does nothing if all directories already
+                exist. Defaults to ``True``.
+            arrow_open_stream_args: kwargs passed to
+                `pyarrow.fs.FileSystem.open_output_stream <https://arrow.apache.org\
+                /docs/python/generated/pyarrow.fs.FileSystem.html\
+                #pyarrow.fs.FileSystem.open_output_stream>`_, which is used when
+                opening the file to write to.
+            ray_remote_args: kwargs passed to :meth:`~ray.remote` in the write tasks.
+        """  # noqa: E501
+        self.write_datasource(
+            ImageDatasource(),
+            ray_remote_args=ray_remote_args,
+            path=path,
+            dataset_uuid=self._uuid,
+            filesystem=filesystem,
+            try_create_dir=try_create_dir,
+            open_stream_args=arrow_open_stream_args,
+            column=column,
+            file_format=file_format,
+        )
+
     @ConsumptionAPI
     def write_csv(
         self,
@@ -3241,6 +3317,7 @@ class Dataset:
             try:
                 import pandas as pd
 
+                datasource.on_write_start(**write_args)
                 self._write_ds = Dataset(
                     plan, self._epoch, self._lazy, logical_plan
                 ).materialize()
@@ -3250,7 +3327,7 @@ class Dataset:
                     for block in blocks
                 )
                 write_results = [block["write_result"][0] for block in blocks]
-                datasource.on_write_complete(write_results)
+                datasource.on_write_complete(write_results, **write_args)
             except Exception as e:
                 datasource.on_write_failed([], e)
                 raise
@@ -3336,7 +3413,7 @@ class Dataset:
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
-        _collate_fn: Optional[Callable[[DataBatch], Any]] = None,
+        _collate_fn: Optional[Callable[[DataBatch], CollatedData]] = None,
         # Deprecated.
         prefetch_blocks: int = 0,
     ) -> Iterator[DataBatch]:
@@ -3408,14 +3485,14 @@ class Dataset:
         prefetch_batches: int = 1,
         batch_size: Optional[int] = 256,
         dtypes: Optional[Union["torch.dtype", Dict[str, "torch.dtype"]]] = None,
-        device: Optional[str] = None,
-        collate_fn: Optional[Callable[[Dict[str, np.ndarray]], Any]] = None,
+        device: str = "auto",
+        collate_fn: Optional[Callable[[Dict[str, np.ndarray]], CollatedData]] = None,
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
         # Deprecated
         prefetch_blocks: int = 0,
-    ) -> Iterator["TorchTensorBatchType"]:
+    ) -> Iterator[TorchBatchType]:
         """Return an iterator over batches of data represented as Torch tensors.
 
         This iterator yields batches of type ``Dict[str, torch.Tensor]``.
@@ -3423,22 +3500,34 @@ class Dataset:
         your data to Torch tensors.
 
         Examples:
+            >>> import ray
+            >>> for batch in ray.data.range(
+            ...     12,
+            ... ).iter_torch_batches(batch_size=4):
+            ...     print(batch)
+            {'id': tensor([0, 1, 2, 3])}
+            {'id': tensor([4, 5, 6, 7])}
+            {'id': tensor([ 8,  9, 10, 11])}
 
-            .. testcode::
+            Use the ``collate_fn`` to customize how the tensor batch is created.
 
-                import ray
+            >>> from typing import Any, Dict
+            >>> import torch
+            >>> import numpy as np
+            >>> import ray
+            >>> def collate_fn(batch: Dict[str, np.ndarray]) -> Any:
+            ...     return torch.stack(
+            ...         [torch.as_tensor(array) for array in batch.values()],
+            ...         axis=1
+            ...     )
+            >>> dataset = ray.data.from_items([
+            ...     {"col_1": 1, "col_2": 2},
+            ...     {"col_1": 3, "col_2": 4}])
+            >>> for batch in dataset.iter_torch_batches(collate_fn=collate_fn):
+            ...     print(batch)
+            tensor([[1, 2],
+                    [3, 4]])
 
-                # This dataset contains three images.
-                ds = ray.data.read_images("example://image-datasets/simple")
-
-                for batch in ds.iter_torch_batches(batch_size=2):
-                    print(batch)
-
-            .. testoutput::
-                :options: +MOCK
-
-                {'image': <tf.Tensor: shape=(2, 32, 32, 3), dtype=uint8, numpy=array([[[[...]]]], dtype=uint8)>}
-                {'image': <tf.Tensor: shape=(1, 32, 32, 3), dtype=uint8, numpy=array([[[[...]]]], dtype=uint8)>}
 
         Time complexity: O(1)
 
@@ -3451,17 +3540,25 @@ class Dataset:
                 blocks as batches (blocks may contain different number of rows).
                 The final batch may include fewer than ``batch_size`` rows if
                 ``drop_last`` is ``False``. Defaults to 256.
-            dtypes: The Torch dtype(s) for the created tensor(s); if ``None``, the
-                dtype is inferred from the tensor data.
-            device: The device on which the tensor should be placed; if ``None``, the
-                Torch tensor is constructed on CPU.
+            dtypes: The Torch dtype(s) for the created tensor(s); if ``None``, the dtype
+                is inferred from the tensor data. You can't use this parameter with
+                ``collate_fn``.
+            device: The device on which the tensor should be placed. Defaults to
+                "auto" which moves the tensors to the appropriate device when the
+                Dataset is passed to Ray Train and ``collate_fn`` is not provided.
+                Otherwise, defaults to CPU. You can't use this parameter with
+                ``collate_fn``.
             collate_fn: A function to convert a Numpy batch to a PyTorch tensor batch.
-                Potential use cases include collating along a dimension other than the
-                first, padding sequences of various lengths, or generally handling
-                batches of different length tensors. If not provided, the default
-                collate function is used which simply converts the batch of numpy
-                arrays to a batch of PyTorch tensors. This API is still experimental
-                and is subject to change.
+                When this parameter is specified, the user should manually handle the
+                host to device data transfer outside of collate_fn.
+                This is useful for further processing the data after it has been
+                batched. Potential use cases include collating along a dimension other
+                than the first, padding sequences of various lengths, or generally
+                handling batches of different length tensors. If not provided, the
+                default collate function is used which simply converts the batch of
+                numpy arrays to a batch of PyTorch tensors. This API is still
+                experimental and is subject to change. You can't use this parameter in
+                conjunction with ``dtypes`` or ``device``.
             drop_last: Whether to drop the last batch if it's incomplete.
             local_shuffle_buffer_size: If not ``None``, the data is randomly shuffled
                 using a local in-memory shuffle buffer, and this value serves as the
@@ -4048,7 +4145,7 @@ class Dataset:
 
         Raises:
             ValueError: if the number of rows in the :class:`~ray.data.Dataset` exceeds
-            ``limit``.
+                ``limit``.
         """
         count = self.count()
         if limit is not None and count > limit:

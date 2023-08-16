@@ -291,9 +291,12 @@ class ClusterStatusParser:
 
         for constraint_request in state.cluster_resource_constraints:
             demand = ClusterConstraintDemand(
-                bundles_by_count=cls._aggregate_resource_requests_by_shape(
-                    constraint_request.min_bundles
-                ),
+                bundles_by_count=[
+                    ResourceRequestByCount(
+                        bundle=dict(r.request.resources_bundle.items()), count=r.count
+                    )
+                    for r in constraint_request.min_bundles
+                ]
             )
             constraint_demand.append(demand)
 

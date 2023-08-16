@@ -46,10 +46,10 @@ from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
 
 import ray
 import ray.cloudpickle as pickle
-from ray import air, tune
-from ray.air import Checkpoint, session
+from ray import train, tune
+from ray.train import Checkpoint
 from ray.tune import TuneError
-from ray.tune.execution.trial_runner import _find_newest_experiment_checkpoint
+from ray.tune.execution.experiment_state import _find_newest_experiment_checkpoint
 from ray.tune.utils.serialization import TuneFunctionDecoder
 
 TUNE_SCRIPT = os.path.join(os.path.dirname(__file__), "_tune_script.py")
@@ -82,9 +82,9 @@ class TrialStub:
         trial_id: str,
         status: str,
         config: Dict[str, Any],
-        _local_experiment_path: str,
+        _legacy_local_experiment_path: str,
         experiment_tag: str,
-        _last_result: Dict[str, Any],
+        last_result: Dict[str, Any],
         relative_logdir: str,
         *args,
         **kwargs,
@@ -93,12 +93,10 @@ class TrialStub:
         self.trial_id = trial_id
         self.status = status
         self.config = config
-        self.local_experiment_path = _local_experiment_path
+        self.local_experiment_path = _legacy_local_experiment_path
         self.experiment_tag = experiment_tag
-        self.last_result = _last_result
+        self.last_result = last_result
         self.relative_logdir = relative_logdir
-
-        self.local_experiment_dir = None
 
         # Ignore remaining arguments
 
@@ -555,8 +553,10 @@ def load_experiment_checkpoint_from_state_file(
         runner_state = json.load(f, cls=TuneFunctionDecoder)
 
     trials = []
-    for trial_cp_str in runner_state["checkpoints"]:
+    for trial_cp_str, trial_runtime_str in runner_state["trial_data"]:
         parsed = json.loads(trial_cp_str, cls=TuneFunctionDecoder)
+        runtime = json.loads(trial_cp_str, cls=TuneFunctionDecoder)
+        parsed.update(runtime)
         trial = TrialStub(**parsed)
         trials.append(trial)
 
@@ -1037,11 +1037,11 @@ def test_head_node_syncing_disabled_error():
     # Raise an error for checkpointing + no storage path
     def train_fn(config):
         time.sleep(1)
-        session.report({"score": 1}, checkpoint=Checkpoint.from_dict({"dummy": 1}))
+        train.report({"score": 1}, checkpoint=Checkpoint.from_dict({"dummy": 1}))
 
     tuner = tune.Tuner(
         tune.with_resources(train_fn, {"CPU": 2.0}),
-        run_config=air.RunConfig(storage_path=None),
+        run_config=train.RunConfig(storage_path=None),
         tune_config=tune.TuneConfig(num_samples=6),
     )
     with pytest.raises(TuneError) as error_context:
@@ -1053,7 +1053,7 @@ def test_head_node_syncing_disabled_error():
     # Workaround: continue running, with syncing explicitly disabled
     tuner = tune.Tuner(
         tune.with_resources(train_fn, {"CPU": 2.0}),
-        run_config=air.RunConfig(
+        run_config=train.RunConfig(
             storage_path=None,
             sync_config=tune.SyncConfig(syncer=None),
         ),
@@ -1064,11 +1064,11 @@ def test_head_node_syncing_disabled_error():
 
     # Not hard failing for multi-node with no checkpointing
     def train_fn_no_checkpoint(config):
-        session.report({"score": 1})
+        train.report({"score": 1})
 
     tuner = tune.Tuner(
         tune.with_resources(train_fn_no_checkpoint, {"CPU": 2.0}),
-        run_config=air.RunConfig(storage_path=None),
+        run_config=train.RunConfig(storage_path=None),
         tune_config=tune.TuneConfig(num_samples=4),
     )
     tuner.fit()

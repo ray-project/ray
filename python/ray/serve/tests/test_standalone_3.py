@@ -23,6 +23,9 @@ from ray.serve._private.constants import (
     SERVE_DEFAULT_APP_NAME,
 )
 from ray.serve.context import get_global_client
+from ray.serve.schema import ServeInstanceDetails
+from ray.serve._private.utils import get_head_node_id
+from ray.serve._private.common import HTTPProxyStatus
 from ray.tests.conftest import call_ray_stop_only  # noqa: F401
 
 
@@ -288,10 +291,11 @@ def test_handle_early_detect_failure(shutdown_ray):
 
 
 def test_autoscaler_shutdown_node_http_everynode(
-    shutdown_ray, call_ray_stop_only  # noqa: F811
+    monkeypatch, shutdown_ray, call_ray_stop_only  # noqa: F811
 ):
+    monkeypatch.setenv("RAY_SERVE_PROXY_MIN_DRAINING_PERIOD_S", "1")
     cluster = AutoscalingCluster(
-        head_resources={"CPU": 2},
+        head_resources={"CPU": 4},
         worker_node_types={
             "cpu_node": {
                 "resources": {
@@ -309,20 +313,23 @@ def test_autoscaler_shutdown_node_http_everynode(
 
     serve.start(http_options={"location": "EveryNode"})
 
-    @ray.remote
-    class Placeholder:
-        def ready(self):
-            return 1
+    @serve.deployment(
+        num_replicas=2,
+        ray_actor_options={"num_cpus": 3},
+    )
+    class A:
+        def __call__(self, *args):
+            return "hi"
 
-    a = Placeholder.options(resources={"IS_WORKER": 1}).remote()
-    assert ray.get(a.ready.remote()) == 1
+    serve.run(A.bind(), name="app_f")
 
-    # 2 proxies, 1 controller, and one placeholder.
-    wait_for_condition(lambda: len(ray._private.state.actors()) == 4)
+    # 2 proxies, 1 controller, 2 replicas.
+    wait_for_condition(lambda: len(ray._private.state.actors()) == 5)
     assert len(ray.nodes()) == 2
 
-    # Now make sure the placeholder actor exits.
-    ray.kill(a)
+    # Stop all deployment replicas.
+    serve.delete("app_f")
+
     # The http proxy on worker node should exit as well.
     wait_for_condition(
         lambda: len(
@@ -335,9 +342,98 @@ def test_autoscaler_shutdown_node_http_everynode(
         )
         == 2
     )
+    client = get_global_client()
+    serve_details = ServeInstanceDetails(
+        **ray.get(client._controller.get_serve_instance_details.remote())
+    )
+    assert len(serve_details.http_proxies) == 1
+    assert (
+        serve_details.http_proxies[get_head_node_id()].status == HTTPProxyStatus.HEALTHY
+    )
+
     # Only head node should exist now.
     wait_for_condition(
         lambda: len(list(filter(lambda n: n["Alive"], ray.nodes()))) == 1
+    )
+
+    # Clean up serve.
+    serve.shutdown()
+
+
+def test_drain_and_undrain_http_proxy_actors(
+    monkeypatch, shutdown_ray, call_ray_stop_only  # noqa: F811
+):
+    """Test the state transtion of the proxy actor between
+    HEALTHY, DRAINING and DRAINED
+    """
+    monkeypatch.setenv("RAY_SERVE_PROXY_MIN_DRAINING_PERIOD_S", "10")
+
+    cluster = Cluster()
+    head_node = cluster.add_node(num_cpus=0)
+    cluster.add_node(num_cpus=1)
+    cluster.add_node(num_cpus=1)
+    cluster.wait_for_nodes()
+    ray.init(address=head_node.address)
+    serve.start(http_options={"location": "EveryNode"})
+
+    @serve.deployment
+    class HelloModel:
+        def __call__(self):
+            return "hello"
+
+    serve.run(HelloModel.options(num_replicas=2).bind())
+
+    # 3 proxies, 1 controller, 2 replicas.
+    wait_for_condition(lambda: len(ray._private.state.actors()) == 6)
+    assert len(ray.nodes()) == 3
+
+    client = get_global_client()
+    serve_details = ServeInstanceDetails(
+        **ray.get(client._controller.get_serve_instance_details.remote())
+    )
+    proxy_actor_ids = {
+        proxy.actor_id for _, proxy in serve_details.http_proxies.items()
+    }
+    assert len(proxy_actor_ids) == 3
+
+    serve.run(HelloModel.options(num_replicas=1).bind())
+    # 1 proxy should be draining
+
+    def check_proxy_status(proxy_status_to_count):
+        serve_details = ServeInstanceDetails(
+            **ray.get(client._controller.get_serve_instance_details.remote())
+        )
+        proxy_status_list = [
+            proxy.status for _, proxy in serve_details.http_proxies.items()
+        ]
+        return {
+            status: proxy_status_list.count(status) for status in proxy_status_list
+        } == proxy_status_to_count
+
+    wait_for_condition(
+        condition_predictor=check_proxy_status,
+        proxy_status_to_count={HTTPProxyStatus.HEALTHY: 2, HTTPProxyStatus.DRAINING: 1},
+    )
+
+    serve.run(HelloModel.options(num_replicas=2).bind())
+    # The draining proxy should become healthy.
+    wait_for_condition(
+        condition_predictor=check_proxy_status,
+        proxy_status_to_count={HTTPProxyStatus.HEALTHY: 3},
+    )
+    serve_details = ServeInstanceDetails(
+        **ray.get(client._controller.get_serve_instance_details.remote())
+    )
+    {
+        proxy.actor_id for _, proxy in serve_details.http_proxies.items()
+    } == proxy_actor_ids
+
+    serve.run(HelloModel.options(num_replicas=1).bind())
+    # 1 proxy should be draining and eventually be drained.
+    wait_for_condition(
+        condition_predictor=check_proxy_status,
+        timeout=40,
+        proxy_status_to_count={HTTPProxyStatus.HEALTHY: 2},
     )
 
     # Clean up serve.
@@ -423,7 +519,7 @@ def test_healthz_and_routes_on_head_and_worker_nodes(
 
     # Delete the deployment should bring the active actors down to 3 and drop
     # replicas on all nodes.
-    serve.delete(name="default")
+    serve.delete(name=SERVE_DEFAULT_APP_NAME)
 
     def _check():
         _actors = ray._private.state.actors().values()

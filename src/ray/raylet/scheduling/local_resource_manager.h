@@ -26,7 +26,7 @@
 #include "ray/common/ray_syncer/ray_syncer.h"
 #include "ray/common/scheduling/cluster_resource_data.h"
 #include "ray/common/scheduling/fixed_point.h"
-#include "ray/common/scheduling/scheduling_resources.h"
+#include "ray/common/scheduling/resource_set.h"
 #include "ray/gcs/gcs_client/accessor.h"
 #include "ray/gcs/gcs_client/gcs_client.h"
 #include "ray/util/logging.h"
@@ -153,6 +153,14 @@ class LocalResourceManager : public syncer::ReporterInterface {
   /// Record the metrics.
   void RecordMetrics() const;
 
+  bool IsLocalNodeIdle() const { return GetResourceIdleTime() != absl::nullopt; }
+
+  /// Change the local node to the draining state.
+  /// After that, no new tasks can be scheduled onto the local node.
+  void SetLocalNodeDraining();
+
+  bool IsLocalNodeDraining() const { return is_local_node_draining_; }
+
  private:
   struct ResourceUsage {
     double avail;
@@ -164,8 +172,11 @@ class LocalResourceManager : public syncer::ReporterInterface {
   absl::flat_hash_map<std::string, LocalResourceManager::ResourceUsage>
   GetResourceUsageMap() const;
 
-  /// Notify the subscriber that the local resouces has changed.
-  void OnResourceChanged();
+  /// Notify the subscriber that the local resouces or state has changed.
+  void OnResourceOrStateChanged();
+
+  /// Convert local resources to NodeResources.
+  NodeResources ToNodeResources() const;
 
   /// Increase the available capacities of the instances of a given resource.
   ///
@@ -282,6 +293,9 @@ class LocalResourceManager : public syncer::ReporterInterface {
   // Version of this resource. It will incr by one whenever the state changed.
   int64_t version_ = 0;
 
+  // Whether the local node is being drained or not.
+  bool is_local_node_draining_ = false;
+
   FRIEND_TEST(ClusterResourceSchedulerTest, SchedulingUpdateTotalResourcesTest);
   FRIEND_TEST(ClusterResourceSchedulerTest, AvailableResourceInstancesOpsTest);
   FRIEND_TEST(ClusterResourceSchedulerTest, TaskResourceInstancesTest);
@@ -290,10 +304,12 @@ class LocalResourceManager : public syncer::ReporterInterface {
   FRIEND_TEST(ClusterResourceSchedulerTest, TaskResourceInstanceWithHardRequestTest);
   FRIEND_TEST(ClusterResourceSchedulerTest, TaskResourceInstanceWithoutCpuUnitTest);
   FRIEND_TEST(ClusterResourceSchedulerTest, CustomResourceInstanceTest);
+  FRIEND_TEST(ClusterResourceSchedulerTest, TaskGPUResourceInstancesTest);
 
   friend class LocalResourceManagerTest;
   FRIEND_TEST(LocalResourceManagerTest, BasicGetResourceUsageMapTest);
   FRIEND_TEST(LocalResourceManagerTest, IdleResourceTimeTest);
+  FRIEND_TEST(LocalResourceManagerTest, ObjectStoreMemoryDrainingTest);
 };
 
 }  // end namespace ray

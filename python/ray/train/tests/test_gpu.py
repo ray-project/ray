@@ -3,7 +3,6 @@ import time
 
 from unittest.mock import patch
 import pytest
-import numpy as np
 import torch
 import torchvision
 from torch.nn.parallel import DistributedDataParallel
@@ -12,11 +11,9 @@ from torch.utils.data import DataLoader, DistributedSampler
 import ray
 import ray.data
 from ray.exceptions import RayTaskError
-from ray.air import session
-from ray import tune
+from ray import train, tune
 
-import ray.train as train
-from ray.air.config import ScalingConfig
+from ray.train import ScalingConfig
 from ray.train.constants import DEFAULT_NCCL_SOCKET_IFNAME
 from ray.train.examples.pytorch.torch_linear_example import LinearDataset
 from ray.train.torch.config import TorchConfig, _TorchBackend
@@ -65,7 +62,7 @@ def test_torch_get_device(
             visible_devices = os.environ["CUDA_VISIBLE_DEVICES"]
             assert visible_devices == "1,2"
         if num_gpus_per_worker > 1:
-            session.report(
+            train.report(
                 dict(
                     devices=sorted(
                         [device.index for device in train.torch.get_device()]
@@ -73,7 +70,7 @@ def test_torch_get_device(
                 )
             )
         else:
-            session.report(dict(devices=train.torch.get_device().index))
+            train.report(dict(devices=train.torch.get_device().index))
 
     trainer = TorchTrainerPatchedMultipleReturns(
         train_fn,
@@ -104,7 +101,7 @@ def test_torch_get_device_dist(ray_2_node_2_gpu, num_gpus_per_worker):
     @patch("torch.cuda.is_available", lambda: True)
     def train_fn():
         if num_gpus_per_worker > 1:
-            session.report(
+            train.report(
                 dict(
                     devices=sorted(
                         [device.index for device in train.torch.get_device()]
@@ -112,7 +109,7 @@ def test_torch_get_device_dist(ray_2_node_2_gpu, num_gpus_per_worker):
                 )
             )
         else:
-            session.report(dict(devices=train.torch.get_device().index))
+            train.report(dict(devices=train.torch.get_device().index))
 
     trainer = TorchTrainerPatchedMultipleReturns(
         train_fn,
@@ -201,12 +198,12 @@ def test_torch_prepare_model_uses_device(ray_start_4_cpus_2_gpus):
     @patch.object(
         ray.train.torch.train_loop_utils,
         "get_device",
-        lambda: torch.device(f"cuda:{1 - session.get_local_rank()}"),
+        lambda: torch.device(f"cuda:{1 - train.get_context().get_local_rank()}"),
     )
     def train_func():
         # These assert statements must hold for prepare_model to wrap with DDP.
         assert torch.cuda.is_available()
-        assert session.get_world_size() > 1
+        assert train.get_context().get_world_size() > 1
         model = torch.nn.Linear(1, 1)
         data = torch.ones(1)
         data = data.to(train.torch.get_device())
@@ -298,7 +295,7 @@ def test_enable_reproducibility(ray_start_4_cpus_2_gpus, data_loader_num_workers
                 loss.backward()
                 optimizer.step()
 
-        session.report(dict(loss=loss.item()))
+        train.report(dict(loss=loss.item()))
 
     trainer = TorchTrainer(
         train_func, scaling_config=ScalingConfig(num_workers=2, use_gpu=True)
@@ -343,7 +340,7 @@ def test_torch_fail_on_nccl_timeout(ray_start_4_cpus_2_gpus):
 
         # Rank 0 worker will never reach the collective operation.
         # NCCL should timeout.
-        if session.get_world_rank() == 0:
+        if train.get_context().get_world_rank() == 0:
             while True:
                 time.sleep(100)
 
@@ -359,35 +356,6 @@ def test_torch_fail_on_nccl_timeout(ray_start_4_cpus_2_gpus):
     with pytest.raises(TrainingFailedError) as exc_info:
         trainer.fit()
     assert isinstance(exc_info.value.__cause__, RayTaskError)
-
-
-@pytest.mark.parametrize("use_gpu", (True, False))
-def test_torch_iter_torch_batches_auto_device(ray_start_4_cpus_2_gpus, use_gpu):
-    """
-    Tests that iter_torch_batches in TorchTrainer worker function uses the
-    default device.
-    """
-
-    def train_fn():
-        dataset = session.get_dataset_shard("train")
-        for batch in dataset.iter_torch_batches(dtypes=torch.float, device="cpu"):
-            assert str(batch["data"].device) == "cpu"
-
-        # Autodetect
-        for batch in dataset.iter_torch_batches(dtypes=torch.float):
-            assert str(batch["data"].device) == str(train.torch.get_device())
-
-    dataset = ray.data.from_numpy(np.array([[1, 2, 3, 4, 5], [1, 2, 3, 4, 5]]).T)
-    # Test that this works outside a Train function
-    for batch in dataset.iter_torch_batches(dtypes=torch.float, device="cpu"):
-        assert str(batch["data"].device) == "cpu"
-
-    trainer = TorchTrainer(
-        train_fn,
-        scaling_config=ScalingConfig(num_workers=2, use_gpu=use_gpu),
-        datasets={"train": dataset},
-    )
-    trainer.fit()
 
 
 if __name__ == "__main__":

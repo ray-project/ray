@@ -739,6 +739,28 @@ class ProgressReporter(Callback):
         )
         self._print_result(trial)
 
+    def on_trial_error(
+        self, iteration: int, trials: List["Trial"], trial: "Trial", **info
+    ):
+        curr_time_str, running_time_str = _get_time_str(self._start_time, time.time())
+        finished_iter = 0
+        if trial.last_result and TRAINING_ITERATION in trial.last_result:
+            finished_iter = trial.last_result[TRAINING_ITERATION]
+
+        self._start_block(f"trial_{trial}_error")
+        print(
+            f"{self._addressing_tmpl.format(trial)} "
+            f"errored after {finished_iter} iterations "
+            f"at {curr_time_str}. Total running time: {running_time_str}\n"
+            f"Error file: {trial.error_file}"
+        )
+        self._print_result(trial)
+
+    def on_trial_recover(
+        self, iteration: int, trials: List["Trial"], trial: "Trial", **info
+    ):
+        self.on_trial_error(iteration=iteration, trials=trials, trial=trial, **info)
+
     def on_checkpoint(
         self,
         iteration: int,
@@ -970,6 +992,10 @@ class TuneTerminalReporter(TuneReporterBase):
         if more_infos:
             print(", ".join(more_infos))
 
+        if not force:
+            # Only print error table at end of training
+            return
+
         trials_with_error = _get_trials_with_error(trials)
         if not trials_with_error:
             return
@@ -980,7 +1006,8 @@ class TuneTerminalReporter(TuneReporterBase):
         fail_table_data = [
             [
                 str(trial),
-                str(trial.num_failures) + ("" if trial.status == Trial.ERROR else "*"),
+                str(trial.run_metadata.num_failures)
+                + ("" if trial.status == Trial.ERROR else "*"),
                 trial.error_file,
             ]
             for trial in trials_with_error
