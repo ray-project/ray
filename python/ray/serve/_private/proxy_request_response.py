@@ -14,8 +14,8 @@ from ray.serve._private.common import gRPCRequest, StreamingHTTPRequest
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
-class ServeRequest(ABC):
-    """Base ServeRequest class to use in the common interface among proxies"""
+class ProxyRequest(ABC):
+    """Base ProxyRequest class to use in the common interface among proxies"""
 
     @property
     @abstractmethod
@@ -43,8 +43,8 @@ class ServeRequest(ABC):
         raise NotImplementedError
 
 
-class ASGIServeRequest(ServeRequest):
-    """ServeRequest implementation to wrap ASGI scope, receive, and send."""
+class ASGIProxyRequest(ProxyRequest):
+    """ProxyRequest implementation to wrap ASGI scope, receive, and send."""
 
     def __init__(self, scope: Scope, receive: Receive, send: Send):
         self.scope = scope
@@ -100,8 +100,8 @@ class ASGIServeRequest(ServeRequest):
         )
 
 
-class gRPCServeRequest(ServeRequest):
-    """ServeRequest implementation to wrap gRPC request protobuf and metadata."""
+class gRPCProxyRequest(ProxyRequest):
+    """ProxyRequest implementation to wrap gRPC request protobuf and metadata."""
 
     def __init__(
         self,
@@ -173,8 +173,8 @@ class gRPCServeRequest(ServeRequest):
         )
 
 
-class ServeResponse:
-    """ServerResponse class to use in the common interface among proxies"""
+class ProxyResponse:
+    """ProxyResponse class to use in the common interface among proxies"""
 
     def __init__(
         self,
