@@ -2,7 +2,6 @@ import copy
 import datetime
 import warnings
 from functools import partial
-import grpc
 import logging
 import os
 from pathlib import Path
@@ -22,6 +21,7 @@ from typing import (
     TYPE_CHECKING,
 )
 
+import ray
 from ray.air import CheckpointConfig
 from ray.air._internal.uri_utils import URI
 from ray.exceptions import RpcError
@@ -184,7 +184,7 @@ class Experiment:
         try:
             self._run_identifier = Experiment.register_if_needed(run)
         except RpcError as e:
-            if e.rpc_code == grpc.StatusCode.RESOURCE_EXHAUSTED.value[0]:
+            if e.rpc_code == ray._raylet.GRPC_STATUS_CODE_RESOURCE_EXHAUSTED:
                 raise TuneError(
                     f"The Trainable/training function is too large for grpc resource "
                     f"limit. Check that its definition is not implicitly capturing a "
