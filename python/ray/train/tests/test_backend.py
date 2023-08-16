@@ -163,7 +163,7 @@ def test_node_ranks(ray_2_node_2_cpu):
             return train.get_context().get_node_rank()
 
         e.start_training(train_func, datasets={}, data_config=DataConfig())
-        assert list(e.finish_training()) == [0, 1, 0]
+        assert list(e.finish_training()) == [0, 0, 1]
 
 
 def test_train_failure(ray_start_2_cpus):
