@@ -26,7 +26,7 @@
 #include "ray/common/client_connection.h"
 #include "ray/common/task/task_common.h"
 #include "ray/common/task/task_util.h"
-#include "ray/common/scheduling/scheduling_resources.h"
+#include "ray/common/scheduling/resource_set.h"
 #include "ray/pubsub/subscriber.h"
 #include "ray/object_manager/object_manager.h"
 #include "ray/raylet/agent_manager.h"

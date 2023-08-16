@@ -1042,7 +1042,7 @@ ResourceRequest LocalTaskManager::CalcNormalTaskResources() const {
 uint64_t LocalTaskManager::MaxRunningTasksPerSchedulingClass(
     SchedulingClass sched_cls_id) const {
   auto sched_cls = TaskSpecification::GetSchedulingClassDescriptor(sched_cls_id);
-  double cpu_req = sched_cls.resource_set.GetNumCpusAsDouble();
+  double cpu_req = sched_cls.resource_set.Get(ResourceID::CPU()).Double();
   uint64_t total_cpus =
       cluster_resource_scheduler_->GetLocalResourceManager().GetNumCpus();
 
@@ -1097,7 +1097,7 @@ void LocalTaskManager::DebugStr(std::stringstream &buffer) const {
            << worker->GetAssignedTask()
                   .GetTaskSpecification()
                   .GetRequiredResources()
-                  .ToString()
+                  .DebugString()
            << "\n";
   }
   buffer << "}\n";
