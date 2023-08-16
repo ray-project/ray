@@ -9,7 +9,7 @@ except ImportError:
 from ray.air.checkpoint import Checkpoint
 from ray.air.constants import MODEL_KEY
 from ray.train.gbdt_trainer import GBDTTrainer
-from ray.train.xgboost.xgboost_checkpoint import XGBoostCheckpoint
+from ray.train.xgboost.xgboost_checkpoint import LegacyXGBoostCheckpoint
 from ray.util.annotations import PublicAPI
 
 import xgboost
@@ -112,7 +112,7 @@ class XGBoostTrainer(GBDTTrainer):
         self, checkpoint: Checkpoint
     ) -> Tuple[xgboost.Booster, Optional["Preprocessor"]]:
         # TODO(matt): Replace this when preprocessor arg is removed.
-        checkpoint = XGBoostCheckpoint.from_checkpoint(checkpoint)
+        checkpoint = LegacyXGBoostCheckpoint.from_checkpoint(checkpoint)
         return checkpoint.get_model(), checkpoint.get_preprocessor()
 
     def _save_model(self, model: xgboost.Booster, path: str):
