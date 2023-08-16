@@ -19,7 +19,7 @@ from ray.serve._private.utils import (
 )
 from ray.serve._private.router import Router, RequestMetadata
 from ray.util import metrics
-from ray.util.annotations import Deprecated, PublicAPI
+from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
 
 _global_async_loop = None
 
@@ -393,11 +393,6 @@ class _DeploymentHandleResultBase:
         self._assign_request_task = loop.create_task(assign_request_coro)
         self._loop = loop
 
-    def cancel(self):
-        # TODO(edoakes): when actor task cancellation is supported, we should cancel
-        # the scheduled actor task here if the assign request task is done.
-        self._assign_request_task.cancel()
-
     async def _to_object_ref_or_gen(
         self,
     ) -> Union[ray.ObjectRef, StreamingObjectRefGenerator]:
@@ -411,24 +406,207 @@ class _DeploymentHandleResultBase:
         )
         return future.result()
 
+    def cancel(self):
+        """Attempt to cancel the `DeploymentHandle` call.
 
+        This is best effort and will only successfully cancel the call if it has not yet
+        been assigned to a replica actor. If the call is successfully cancelled,
+        subsequent operations on the ref will raise an `asyncio.CancelledError` (or a
+        `concurrent.futures.CancelledError` if using synchronous methods like
+        `.result()`).
+        """
+        # TODO(edoakes): when actor task cancellation is supported, we should cancel
+        # the scheduled actor task here if the assign request task is done.
+        self._assign_request_task.cancel()
+
+
+@PublicAPI(stability="alpha")
 class DeploymentHandleRef(_DeploymentHandleResultBase):
+    """A future-like object wrapping the result of a unary deployment handle call.
+
+    From inside a deployment, a `DeploymentHandleRef` can be awaited to retrieve the,
+    output of the call without blocking the asyncio event loop.
+
+    From outside a deployment, `.result()` can be used to retrieve the output in a
+    blocking manner.
+
+    Example:
+
+    .. testsetup::
+
+        import os
+        os.environ["RAY_SERVE_ENABLE_NEW_HANDLE_API"] = "1"
+
+    .. doctest::
+
+        from ray import serve
+        from ray.serve.handle import DeploymentHandle
+
+        @serve.deployment
+        class Downstream:
+            def say_hi(self, message: str) -> str:
+                return f"Hello {message}!"
+
+        @serve.deployment
+        class Caller:
+            def __init__(self, handle: DeploymentHandle):
+                self._downstream_handle = handle
+
+        async def __call__(self, message: str) -> str:
+            # Inside a deployment: `await` the result to enable concurrency.
+            ref: DeploymentHandleRef = self._downstream_handle.say_hi.remote(message)
+            return await ref
+
+        app = Caller.bind(Downstream.bind())
+        handle: DeploymentHandle = serve.run(app)
+
+        # Outside a deployment: call `.result()` to get output.
+        ref: DeploymentHandleRef = handle.remote("world")
+        assert ref.result() == "Hello world!"
+
+    A `DeploymentHandleRef` can be passed directly to another `DeploymentHandle` call
+    without fetching the result to enable composing multiple deployments together.
+
+    Example:
+
+    .. testsetup::
+
+        import os
+        os.environ["RAY_SERVE_ENABLE_NEW_HANDLE_API"] = "1"
+
+    .. doctest::
+
+        from ray import serve
+        from ray.serve.handle import DeploymentHandle
+
+        @serve.deployment
+        class Adder:
+            def add(self, int: str) -> int:
+                return int + 1
+
+        @serve.deployment
+        class Caller:
+            def __init__(self, handle: DeploymentHandle):
+                self._adder_handle = handle
+
+        async def __call__(self, start: int) -> int:
+            return await self._adder_handle.add.remote(
+                # Pass the ref directly to another handle call without awaiting.
+                self._adder_handle.add.remote(start)
+            )
+
+        app = Caller.bind(Adder.bind())
+        handle: DeploymentHandle = serve.run(app)
+        assert handle.remote(0).result() == 2
+    """
+
     def __await__(self):
+        """Yields the final result of the deployment handle call."""
         obj_ref = yield from self._assign_request_task.__await__()
         result = yield from obj_ref.__await__()
         return result
 
     def result(self, timeout_s: Optional[float] = None) -> Any:
+        """Fetch the result of the handle call synchronously.
+
+        This should *not* be used from within a deployment as it runs in an asyncio
+        event loop. For model composition, `await` the ref instead.
+
+        If `timeout_s` is provided and the result is not available before the timeout,
+        a `TimeoutError` is raised.
+        """
         return ray.get(self._to_object_ref_sync(), timeout=timeout_s)
 
+    @DeveloperAPI
     async def _to_object_ref(self) -> ray.ObjectRef:
+        """Advanced API to convert the ref to a Ray `ObjectRef`.
+
+        This is used to pass the output of a `DeploymentHandle` call to a Ray task or
+        actor method call.
+
+        This method is `async def` because it will block until the handle call has been
+        assigned to a replica actor. If there are many requests in flight and all
+        replicas' queues are full, this may be a slow operation.
+        """
         return await self._to_object_ref_or_gen()
 
+    @DeveloperAPI
     def _to_object_ref_sync(self) -> ray.ObjectRef:
+        """Advanced API to convert the ref to a Ray `ObjectRef`.
+
+        This is used to pass the output of a `DeploymentHandle` call to a Ray task or
+        actor method call.
+
+        This method is a *blocking* call because it will block until the handle call has
+        been assigned to a replica actor. If there are many requests in flight and all
+        replicas' queues are full, this may be a slow operation.
+
+        From inside a deployment, `_to_object_ref` should be used instead to avoid
+        blocking the asyncio event loop.
+        """
         return self._to_object_ref_or_gen_sync()
 
 
+@PublicAPI(stability="alpha")
 class DeploymentHandleGenerator(_DeploymentHandleResultBase):
+    """A future-like object wrapping the result of a streaming deployment handle call.
+
+    This is returned when using `handle.options(stream=True)` and calling a generator
+    deployment method.
+
+    `DeploymentHandleGenerator` is both a synchronous and asynchronous iterator.
+
+    When iterating over results from inside a deployment, `async for` should be used to
+    avoid blocking the asyncio event loop.
+
+    When iterating over results from outside a deployment, use a standard `for` loop.
+
+    Example:
+
+    .. testsetup::
+
+        import os
+        os.environ["RAY_SERVE_ENABLE_NEW_HANDLE_API"] = "1"
+
+    .. doctest::
+
+        from typing import AsyncGenerator, Generator
+
+        from ray import serve
+        from ray.serve.handle import DeploymentHandle
+
+        @serve.deployment
+        class Streamer:
+            def generate_numbers(self, limit: int) -> Generator[int]:
+                for i in range(limit):
+                    yield i
+
+        @serve.deployment
+        class Caller:
+            def __init__(self, handle: DeploymentHandle):
+                # Set `stream=True` on the handle to enable streaming calls.
+                self._streaming_handle = handle.options(stream=True)
+
+        async def __call__(self, limit: int) -> AsyncIterator[int]:
+            gen: DeploymentHandleGenerator = (
+                self._streaming_handle.generate_numbers.remote(limit)
+            )
+
+            # Inside a deployment: use `async for` to enable concurrency.
+            async for i in gen:
+                yield i
+
+        app = Caller.bind(Streamer.bind())
+        handle: DeploymentHandle = serve.run(app)
+
+        # Outside a deployment: use a standard `for` loop.
+        gen: DeploymentHandleGenerator = handle.options(stream=True).remote(10)
+        assert [i for i in gen] == list(range(10))
+
+    A `DeploymentHandleGenerator` *cannot* currently be passed to another
+    `DeploymentHandle` call.
+    """
+
     def __init__(
         self,
         assign_request_coro: Coroutine,
@@ -457,10 +635,27 @@ class DeploymentHandleGenerator(_DeploymentHandleResultBase):
         next_obj_ref = self._obj_ref_gen.__next__()
         return ray.get(next_obj_ref)
 
+    @DeveloperAPI
     async def _to_object_ref_gen(self) -> StreamingObjectRefGenerator:
+        """Advanced API to convert the generator to a Ray `StreamingObjectRefGenerator`.
+
+        This method is `async def` because it will block until the handle call has been
+        assigned to a replica actor. If there are many requests in flight and all
+        replicas' queues are full, this may be a slow operation.
+        """
         return await self._to_object_ref_or_gen()
 
+    @DeveloperAPI
     def _to_object_ref_gen_sync(self) -> StreamingObjectRefGenerator:
+        """Advanced API to convert the generator to a Ray `StreamingObjectRefGenerator`.
+
+        This method is a *blocking* call because it will block until the handle call has
+        been assigned to a replica actor. If there are many requests in flight and all
+        replicas' queues are full, this may be a slow operation.
+
+        From inside a deployment, `_to_object_ref_gen` should be used instead to avoid
+        blocking the asyncio event loop.
+        """
         return self._to_object_ref_or_gen_sync()
 
 
@@ -468,40 +663,43 @@ class DeploymentHandleGenerator(_DeploymentHandleResultBase):
 class DeploymentHandle(_DeploymentHandleBase):
     """A handle used to make requests to a deployment at runtime.
 
-    This is used to compose multiple deployments into a single application. After
-    building the application, this handle is substituted at runtime for deployments
-    passed as arguments via `.bind()`.
+    This is primarily used to compose multiple deployments within a single application.
+    It can also be used to make calls to the ingress deployment of an application (e.g.,
+    for programmatic testing).
 
     Example:
 
-    .. code-block:: python
+
+    .. testsetup::
+
+        import os
+        os.environ["RAY_SERVE_ENABLE_NEW_HANDLE_API"] = "1"
+
+    .. doctest::
 
         import ray
         from ray import serve
-        from ray.serve.handle import DeploymentHandle
+        from ray.serve.handle import DeploymentHandle, DeploymentHandleRef
 
         @serve.deployment
         class Downstream:
-            def __init__(self, message: str):
+            def say_hi(self, message: str):
+                return f"Hello {message}!"
                 self._message = message
-
-        def __call__(self, name: str) -> str:
-            return self._message + name
 
         @serve.deployment
         class Ingress:
-            def __init__(self, handle: RayServeHandle):
-                self._handle = handle
+            def __init__(self, handle: DeploymentHandle):
+                self._downstream_handle = handle
 
             async def __call__(self, name: str) -> str:
-                return await self._handle.remote(name)
+                ref: DeploymentHandleRef = self._handle.say_hi.remote(name)
+                return await ref
 
         app = Ingress.bind(Downstream.bind("Hello "))
         handle: DeploymentHandle = serve.run(app)
-
-        # Prints "Hello Mr. Magoo"
-        print(handle.remote("Mr. Magoo").get())
-
+        ref: DeploymentHandleRef = handle.remote("world")
+        assert ref.result() == "Hello world!"
     """
 
     def options(
@@ -519,11 +717,10 @@ class DeploymentHandle(_DeploymentHandleBase):
 
         .. code-block:: python
 
-            # The following two lines are equivalent:
-            result = await handle.other_method.remote(*args)
-            result = await handle.options(method_name="other_method").remote(*args)
-            result = await handle.options(
-                multiplexed_model_id="model:v1").remote(*args)
+            ref = handle.options(
+                method_name="other_method",
+                multiplexed_model_id="model:v1",
+            ).remote()
         """
         return self._options(
             method_name=method_name,
@@ -536,19 +733,26 @@ class DeploymentHandle(_DeploymentHandleBase):
     def remote(
         self, *args, **kwargs
     ) -> Union[DeploymentHandleRef, DeploymentHandleGenerator]:
-        """Issue an asynchronous request to the __call__ method of the deployment.
+        """Issue a call to the deployment.
 
-        Returns an `asyncio.Task` whose underlying result is a Ray ObjectRef that
-        points to the final result of the request.
+        By default, the result is a `DeploymentHandleRef` that can be awaited to fetch
+        the result of the call or passed to another `.remote()` call to compose multiple
+        deployments.
 
-        The final result can be retrieved by awaiting the ObjectRef.
+        If `handle.options(stream=True)` is set and a generator method is called, this
+        returns a `DeploymentHandleGenerator` instead.
 
         Example:
 
         .. code-block:: python
 
-            obj_ref = await handle.remote(*args)
-            result = await obj_ref
+            # Fetch the result directly.
+            ref = handle.remote()
+            result = await ref
+
+            # Pass the result to another handle call.
+            composed_ref = handle2.remote(handle1.remote())
+            composed_result = await composed_ref
 
         """
         loop = self._get_or_create_router()._event_loop
