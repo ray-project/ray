@@ -12,6 +12,12 @@ from ray.autoscaler._private.gcp.node import (
 
 from ray.tests.test_autoscaler import MockProcessRunner
 from ray.autoscaler._private.gcp.node_provider import GCPNodeProvider
+from ray.autoscaler._private.gcp.config import (
+    get_node_type,
+    get_num_tpu_chips,
+    is_single_host_tpu,
+    _has_tpus_in_node_configs,
+)
 from ray.autoscaler._private.gcp.tpu_command_runner import (
     TPUCommandRunner,
     TPUVMSSHCommandRunner,
@@ -213,6 +219,88 @@ def test_tpu_resource_returns_tpu_command_runner(test_case):
     command_runner = node_provider.get_command_runner(**args)
     assert isinstance(command_runner, TPUCommandRunner)
     assert isinstance(command_runner._command_runners[0], expected_runner)
+
+
+def test_tpu_config_cannot_have_accelerator_type_and_config():
+    node = {
+        "acceleratorType": "abc",
+        "acceleratorConfig": {"abc": "def"},
+    }
+    with pytest.raises(ValueError):
+        get_node_type(node)
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        ({"acceleratorType": "v2-8"}, 4, True),
+        ({"acceleratorType": "v3-8"}, 4, True),
+        ({"acceleratorType": "v4-8"}, 4, True),
+        # Note: Topology only supported in v4
+        ({"acceleratorConfig": {"type": "V4", "topology": "2x2x1"}}, 4, True),
+        ({"acceleratorType": "v2-32"}, 16, False),
+        ({"acceleratorType": "v3-128"}, 64, False),
+        ({"acceleratorType": "v4-4096"}, 2048, False),
+        ({"acceleratorConfig": {"type": "V4", "topology": "2x2x8"}}, 32, False),
+        ({"acceleratorConfig": {"type": "V4", "topology": "4x4x4"}}, 64, False),
+    ],
+)
+def test_tpu_chip_calculation_single_host_logic(test_case):
+    node, expected_chips, expected_singlehost = test_case
+    assert get_num_tpu_chips(node) == expected_chips
+    assert is_single_host_tpu(node) == expected_singlehost
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        ({"machineType": "n2-standard-4"}, GCPNodeType.COMPUTE, False),
+        (
+            {
+                "machineType": "n2-standard-4",
+                "acceleratorType": {
+                    "guestAccelerators": {
+                        "acceleratorType": "V100",
+                        "acceleratorCount": 1,
+                    }
+                },
+            },
+            GCPNodeType.COMPUTE,
+            False,
+        ),
+        ({"acceleratorType": "v2-8"}, GCPNodeType.TPU, True),
+        ({"acceleratorType": "v3-8"}, GCPNodeType.TPU, True),
+        ({"acceleratorType": "v4-8"}, GCPNodeType.TPU, True),
+        # Note: Topology only supported in v4
+        (
+            {"acceleratorConfig": {"type": "V4", "topology": "2x2x1"}},
+            GCPNodeType.TPU,
+            True,
+        ),
+        ({"acceleratorType": "v2-32"}, GCPNodeType.TPU, True),
+        ({"acceleratorType": "v3-128"}, GCPNodeType.TPU, True),
+        ({"acceleratorType": "v4-4096"}, GCPNodeType.TPU, True),
+        (
+            {"acceleratorConfig": {"type": "V4", "topology": "2x2x8"}},
+            GCPNodeType.TPU,
+            True,
+        ),
+        (
+            {"acceleratorConfig": {"type": "V4", "topology": "4x4x4"}},
+            GCPNodeType.TPU,
+            True,
+        ),
+    ],
+)
+def test_get_node_type_and_has_tpu(test_case):
+    node, expected_compute_type, expected_is_tpu = test_case
+    assert get_node_type(node) == expected_compute_type
+    config = {
+        "available_node_types": {
+            "node_type_1": {"node_config": node},
+        },
+    }
+    assert _has_tpus_in_node_configs(config) == expected_is_tpu
 
 
 if __name__ == "__main__":

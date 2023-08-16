@@ -47,6 +47,27 @@ HAS_TPU_PROVIDER_FIELD = "_has_tpus"
 # with ServiceAccounts.
 
 
+def get_num_tpu_chips(node: dict) -> int:
+    chips = 0
+    if "acceleratorType" in node:
+        accelerator_type = node["acceleratorType"]
+        # `acceleratorType` is typically v{chip}-{cores}
+        cores = int(accelerator_type.split("-")[1])
+        chips = cores / 2
+    if "acceleratorConfig" in node:
+        topology = node["acceleratorConfig"]["topology"]
+        # `topology` is typically {chips}x{chips}x{chips}
+        # Multiply all dimensions together to get total number of chips
+        chips = 1
+        for dim in topology.split("x"):
+            chips *= int(dim)
+    return chips
+
+
+def is_single_host_tpu(node: dict) -> bool:
+    return get_num_tpu_chips(node) == 4
+
+
 def get_node_type(node: dict) -> GCPNodeType:
     """Returns node type based on the keys in ``node``.
 
@@ -58,17 +79,26 @@ def get_node_type(node: dict) -> GCPNodeType:
     This works for both node configs and API returned nodes.
     """
 
-    if "machineType" not in node and "acceleratorType" not in node:
+    if (
+        "machineType" not in node
+        and "acceleratorType" not in node
+        and "acceleratorConfig" not in node
+    ):
         raise ValueError(
-            "Invalid node. For a Compute instance, 'machineType' is "
-            "required. "
-            "For a TPU instance, 'acceleratorType' and no 'machineType' "
-            "is required. "
-            f"Got {list(node)}"
+            "Invalid node. For a Compute instance, 'machineType' is required."
+            "For a TPU instance, 'acceleratorType' OR 'acceleratorConfig' and "
+            f"no 'machineType' is required. Got {list(node)}."
         )
 
-    if "machineType" not in node and "acceleratorType" in node:
-        if not node["acceleratorType"].endswith("-8"):
+    if "machineType" not in node and (
+        "acceleratorType" in node or "acceleratorConfig" in node
+    ):
+        if "acceleratorType" in node and "acceleratorConfig" in node:
+            raise ValueError(
+                "For TPU usage, acceleratorType and acceleratorConfig "
+                "cannot both be set."
+            )
+        if is_single_host_tpu(node):
             # Remove once proper autoscaling support is added.
             logger.warning(
                 "TPU pod detected. Note that while the cluster launcher can create "
