@@ -134,27 +134,55 @@ class TestASGIServeRequest:
         assert pickle.loads(request_object.pickled_asgi_scope) == scope
         assert request_object.http_proxy_handle == proxy_handle
 
+    def test_is_route_request(self):
+        """Test calling is_route_request on an instance of ASGIServeRequest.
+
+        When the is_route_request is called with `/-/routes`, it returns true.
+        When the is_route_request is called with other path, it returns false.
+        """
+        scope = {"path": "/-/routes"}
+        serve_request = self.create_asgi_serve_request(scope=scope)
+        assert serve_request.is_route_request is True
+
+        scope = {"path": "/foo"}
+        serve_request = self.create_asgi_serve_request(scope=scope)
+        assert serve_request.is_route_request is False
+
+    def test_is_health_request(self):
+        """Test calling is_health_request on an instance of ASGIServeRequest.
+
+        When the is_health_request is called with `/-/healthz`, it returns true.
+        When the is_health_request is called with other path, it returns false.
+        """
+        scope = {"path": "/-/healthz"}
+        serve_request = self.create_asgi_serve_request(scope=scope)
+        assert serve_request.is_health_request is True
+
+        scope = {"path": "/foo"}
+        serve_request = self.create_asgi_serve_request(scope=scope)
+        assert serve_request.is_health_request is False
+
 
 class TestgRPCServeRequest:
     def test_calling_list_applications_method(self):
         """Test initialize gRPCServeRequest with list applications service method.
 
         When the gRPCServeRequest is initialized with list application service method,
-        route_path should be set to "/-/routes". `send_status_code()` and
-        `send_details()` should also work accordingly to be able to send the into back
-        to the client.
+        calling is_route_request should return true and calling is_health_request
+        should return false. `send_status_code()` and `send_details()` should also work
+        accordingly to be able to send the into back to the client.
         """
         context = MagicMock()
         service_method = "/ray.serve.RayServeAPIService/ListApplications"
         serve_request = gRPCServeRequest(
             request_proto=MagicMock(),
             context=context,
-            match_target=MagicMock(),
             service_method=service_method,
             stream=MagicMock(),
         )
         assert isinstance(serve_request, ServeRequest)
-        assert serve_request.route_path == "/-/routes"
+        assert serve_request.is_route_request is True
+        assert serve_request.is_health_request is False
 
         status_code = grpc.StatusCode.OK
         serve_request.send_status_code(status_code=status_code)
@@ -167,8 +195,9 @@ class TestgRPCServeRequest:
     def test_calling_healthz_method(self):
         """Test initialize gRPCServeRequest with healthz service method.
 
-        When the gRPCServeRequest is initialized with healthz service method, route_path
-        should be set to "/-/healthz". `send_status_code()` and `send_details()` should
+        When the gRPCServeRequest is initialized with healthz service method, calling
+        is_route_request should return false and calling is_health_request
+        should return true. `send_status_code()` and `send_details()` should
         also work accordingly to be able to send the into back to the client.
         """
         context = MagicMock()
@@ -176,12 +205,12 @@ class TestgRPCServeRequest:
         serve_request = gRPCServeRequest(
             request_proto=MagicMock(),
             context=context,
-            match_target=MagicMock(),
             service_method=service_method,
             stream=MagicMock(),
         )
         assert isinstance(serve_request, ServeRequest)
-        assert serve_request.route_path == "/-/healthz"
+        assert serve_request.is_route_request is False
+        assert serve_request.is_health_request is True
 
         status_code = grpc.StatusCode.OK
         serve_request.send_status_code(status_code=status_code)
@@ -195,7 +224,8 @@ class TestgRPCServeRequest:
         """Test initialize gRPCServeRequest with user defined service method.
 
         When the gRPCServeRequest is initialized with user defined service method,
-        all attributes should be setup accordingly. `send_request_id()` should
+        all attributes should be setup accordingly. Calling both is_route_request
+        and is_health_request should return false. `send_request_id()` should
         also work accordingly to be able to send the into back to the client.
         `request_object()` generates a gRPCRequest object with the correct attributes.
         """
@@ -214,25 +244,21 @@ class TestgRPCServeRequest:
         method_name = "Method1"
         service_method = f"/custom.defined.Service/{method_name}"
 
-        def mocked_match_target(app_name: str) -> str:
-            if app_name == application:
-                return "matched_path"
-            return "unmatched_path"
-
         serve_request = gRPCServeRequest(
             request_proto=request_proto,
             context=context,
-            match_target=mocked_match_target,
             service_method=service_method,
             stream=MagicMock(),
         )
         assert isinstance(serve_request, ServeRequest)
-        assert serve_request.route_path == "matched_path"
+        assert serve_request.route_path == application
         assert pickle.loads(serve_request.request) == request_proto
         assert serve_request.method_name == method_name.lower()
         assert serve_request.app_name == application
         assert serve_request.request_id == request_id
         assert serve_request.multiplexed_model_id == multiplexed_model_id
+        assert serve_request.is_route_request is False
+        assert serve_request.is_health_request is False
 
         serve_request.send_request_id(request_id=request_id)
         context.set_trailing_metadata.assert_called_with([("request_id", request_id)])
