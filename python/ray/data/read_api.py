@@ -58,7 +58,6 @@ from ray.data.datasource import (
     ParquetMetadataProvider,
     PathPartitionFilter,
     RangeDatasource,
-    ReadTask,
     SQLDatasource,
     TextDatasource,
     TFRecordDatasource,
@@ -70,6 +69,7 @@ from ray.data.datasource._default_metadata_providers import (
     get_parquet_bulk_metadata_provider,
     get_parquet_metadata_provider,
 )
+from ray.data.datasource.datasource import Reader
 from ray.data.datasource.file_based_datasource import (
     _unwrap_arrow_serialization_workaround,
     _wrap_arrow_serialization_workaround,
@@ -351,8 +351,8 @@ def read_datasource(
             requested_parallelism,
             min_safe_parallelism,
             inmemory_size,
-            read_tasks,
-        ) = _get_read_tasks(datasource, ctx, cur_pg, parallelism, local_uri, read_args)
+            reader,
+        ) = _get_reader(datasource, ctx, cur_pg, parallelism, local_uri, read_args)
     else:
         # Prepare read in a remote task at same node.
         # NOTE: in Ray client mode, this is expected to be run on head node.
@@ -361,17 +361,12 @@ def read_datasource(
             ray.get_runtime_context().get_node_id(),
             soft=False,
         )
-        get_read_tasks = cached_remote_fn(
-            _get_read_tasks, retry_exceptions=False, num_cpus=0
+        get_reader = cached_remote_fn(
+            _get_reader, retry_exceptions=False, num_cpus=0
         ).options(scheduling_strategy=scheduling_strategy)
 
-        (
-            requested_parallelism,
-            min_safe_parallelism,
-            inmemory_size,
-            read_tasks,
-        ) = ray.get(
-            get_read_tasks.remote(
+        (requested_parallelism, min_safe_parallelism, inmemory_size, reader,) = ray.get(
+            get_reader.remote(
                 datasource,
                 ctx,
                 cur_pg,
@@ -381,9 +376,14 @@ def read_datasource(
             )
         )
 
+    # TODO(hchen/chengsu): Remove the duplicated get_read_tasks call here after
+    # removing LazyBlockList code path.
+    read_tasks = reader.get_read_tasks(requested_parallelism)
+
     # Compute the number of blocks the read will return. If the number of blocks is
     # expected to be less than the requested parallelism, boost the number of blocks
     # by adding an additional split into `k` pieces to each read task.
+    additional_split_factor = None
     if read_tasks:
         if inmemory_size:
             expected_block_size = inmemory_size / len(read_tasks)
@@ -407,6 +407,7 @@ def read_datasource(
             for r in read_tasks:
                 r._set_additional_split_factor(k)
             estimated_num_blocks = estimated_num_blocks * k
+            additional_split_factor = k
         logger.debug("Estimated num output blocks {estimated_num_blocks}")
     else:
         estimated_num_blocks = 0
@@ -437,9 +438,13 @@ def read_datasource(
     )
     block_list._estimated_num_blocks = estimated_num_blocks
 
-    # TODO(hchen): move _get_read_tasks and related code to the Read physical operator,
-    # after removing LazyBlockList code path.
-    read_op = Read(datasource, read_tasks, estimated_num_blocks, ray_remote_args)
+    read_op = Read(
+        datasource,
+        reader,
+        requested_parallelism,
+        additional_split_factor,
+        ray_remote_args,
+    )
     logical_plan = LogicalPlan(read_op)
 
     return Dataset(
@@ -2281,15 +2286,15 @@ def from_torch(
     return from_items(list(dataset))
 
 
-def _get_read_tasks(
+def _get_reader(
     ds: Datasource,
     ctx: DataContext,
     cur_pg: Optional[PlacementGroup],
     parallelism: int,
     local_uri: bool,
     kwargs: dict,
-) -> Tuple[int, int, Optional[int], List[ReadTask]]:
-    """Generates read tasks.
+) -> Tuple[int, int, Optional[int], Reader]:
+    """Generates reader.
 
     Args:
         ds: Datasource to read from.
@@ -2300,7 +2305,7 @@ def _get_read_tasks(
 
     Returns:
         Request parallelism from the datasource, the min safe parallelism to avoid
-        OOM, the estimated inmemory data size, and list of read tasks generated.
+        OOM, the estimated inmemory data size, and the reader generated.
     """
     kwargs = _unwrap_arrow_serialization_workaround(kwargs)
     if local_uri:
@@ -2314,7 +2319,7 @@ def _get_read_tasks(
         requested_parallelism,
         min_safe_parallelism,
         mem_size,
-        reader.get_read_tasks(requested_parallelism),
+        reader,
     )
 
 

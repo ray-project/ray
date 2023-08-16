@@ -42,7 +42,10 @@ def _plan_read_op(op: Read) -> PhysicalOperator:
     """
 
     def get_input_data() -> List[RefBundle]:
-        read_tasks = op._read_tasks
+        read_tasks = op._reader.get_read_tasks(op._parallelism)
+        if op._additional_split_factor is not None:
+            for r in read_tasks:
+                r._set_additional_split_factor(op._additional_split_factor)
         return [
             RefBundle(
                 [
