@@ -89,7 +89,6 @@ librariesMenu.setAttribute("class", "menu")
 librariesMenu.innerHTML = "<a href='#'>Libraries" + downCaret + "</a>"
 librariesList = document.createElement("ul")
 librariesList.innerHTML += "<li><a href='" + getNavURL("ray-core/walkthrough.html") + "'><span class='primary'>Ray Core</span><span class='secondary'>Scale general Python applications</span></a></li>"
-librariesList.innerHTML += "<li><a href='" + getNavURL("ray-air/getting-started.html") + "'><span class='primary'>Ray AIR</span><span class='secondary'>Scale AI applications</span></a></li>"
 librariesList.innerHTML += "<li><a href='" + getNavURL("data/data.html") + "'><span class='primary'>Ray Data</span><span class='secondary'>Scale data ingest and preprocessing</span></a></li>"
 librariesList.innerHTML += "<li><a href='" + getNavURL("train/train.html") + "'><span class='primary'>Ray Train</span><span class='secondary'>Scale machine learning training</span></a></li>"
 librariesList.innerHTML += "<li><a href='" + getNavURL("tune/index.html") + "'><span class='primary'>Ray Tune</span><span class='secondary'>Scale hyperparameter tuning</span></a></li>"
