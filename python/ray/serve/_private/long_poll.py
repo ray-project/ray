@@ -315,9 +315,10 @@ class LongPollHost:
         if key == LongPollNamespace.ROUTE_TABLE:
             # object_snapshot is Dict[EndpointTag, EndpointInfo]
             xlang_endpoints = {
-                endpoint_tag: EndpointInfoProto(route=endpoint_info.route)
+                str(endpoint_tag): EndpointInfoProto(route=endpoint_info.route)
                 for endpoint_tag, endpoint_info in object_snapshot.items()
             }
+            logger.info(f"sending xlang_endpoints {xlang_endpoints}")
             return EndpointSet(endpoints=xlang_endpoints).SerializeToString()
         elif isinstance(key, tuple) and key[0] == LongPollNamespace.RUNNING_REPLICAS:
             # object_snapshot is List[RunningReplicaInfo]

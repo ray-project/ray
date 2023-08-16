@@ -1305,20 +1305,16 @@ class DeploymentState:
         prefix = self.app_name + "_" if self.app_name else ""
         deployment_id = DeploymentID(self._name[len(prefix) :], self.app_name)
 
-        if (
-            self._target_state.info.deployment_config.deployment_language
-            == DeploymentLanguage.JAVA
-        ):
-            updated_object = str(deployment_id)
-        else:
-            updated_object = deployment_id
-
         logger.info(
-            f"Notify running replicas changed with updated object {updated_object}.\n"
-            + f"Type: {type(updated_object)}"
+            f"Notify running replicas changed with updated object {deployment_id}.\n"
+            + f"Type: {type(deployment_id)}"
         )
         self._long_poll_host.notify_changed(
-            (LongPollNamespace.RUNNING_REPLICAS, updated_object),
+            (LongPollNamespace.RUNNING_REPLICAS, deployment_id),
+            running_replica_infos,
+        )
+        self._long_poll_host.notify_changed(
+            (LongPollNamespace.RUNNING_REPLICAS, str(deployment_id)),
             running_replica_infos,
         )
         self._last_notified_running_replica_infos = running_replica_infos
