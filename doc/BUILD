@@ -318,6 +318,7 @@ doctest(
             "source/data/batch_inference.rst",
             "source/data/transforming-data.rst",
             "source/train/faq.rst",
+	    "source/train/user-guides/data-loading-preprocessing.rst",
             "source/workflows/**/*.rst",
             "source/workflows/**/*.md",
             "source/templates/04_finetuning_llms_with_deepspeed/README.md"
@@ -346,4 +347,12 @@ doctest(
     ],
     tags = ["team:data"],
     gpu = True
+)
+
+doctest(
+    name="quarantine",
+    files = [
+	"source/train/user-guides/data-loading-preprocessing.rst",
+    ],
+    tags = ["team:data"],
 )

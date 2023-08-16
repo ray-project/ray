@@ -20,7 +20,7 @@
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "ray/common/ray_config.h"
-#include "ray/common/scheduling/scheduling_resources.h"
+#include "ray/common/scheduling/resource_set.h"
 #include "ray/common/scheduling/scheduling_ids.h"
 #include "mock/ray/gcs/gcs_client/gcs_client.h"
 #ifdef UNORDERED_VS_ABSL_MAPS_EVALUATION
@@ -84,25 +84,25 @@ ResourceRequest CreateResourceRequest(
 
 NodeResources CreateNodeResources(
     const absl::flat_hash_map<ResourceID, double> &resource_map) {
-  return NodeResources(CreateResourceRequest(resource_map));
+  return NodeResources(ResourceSet(resource_map));
 }
 
-ResourceRequest RandomResourceRequest() {
+ResourceSet RandomResourceSet() {
   auto ids = {ResourceID::CPU(),
               ResourceID::Memory(),
               ResourceID::GPU(),
               ResourceID("custom1"),
               ResourceID("custom2")};
-  ResourceRequest resource_request;
+  ResourceSet resource_set;
   for (auto &id : ids) {
     if (rand() % 3 != 0) {
-      resource_request.Set(id, rand() % 10);
+      resource_set.Set(id, rand() % 10);
     }
   }
-  return resource_request;
+  return resource_set;
 }
 
-NodeResources RandomNodeResources() { return NodeResources(RandomResourceRequest()); }
+NodeResources RandomNodeResources() { return NodeResources(RandomResourceSet()); }
 
 class ClusterResourceSchedulerTest : public ::testing::Test {
  public:
@@ -1760,7 +1760,7 @@ TEST_F(ClusterResourceSchedulerTest, AffinityWithBundleScheduleTest) {
   ResourceRequest bundle_resource_request =
       CreateResourceRequest(AddPlacementGroupConstraint(
           {{"CPU", 1}, {"memory", 100}}, bundle_1.first, bundle_1.second));
-  NodeResources node_resources = NodeResources(bundle_resource_request);
+  NodeResources node_resources = NodeResources(bundle_resource_request.GetResourceSet());
   instrumented_io_context io_service;
   ClusterResourceScheduler resource_scheduler(io_service,
                                               scheduling::NodeID(node_1.Binary()),
@@ -1769,7 +1769,8 @@ TEST_F(ClusterResourceSchedulerTest, AffinityWithBundleScheduleTest) {
   ResourceRequest bundle_resource_request_2 =
       CreateResourceRequest(AddPlacementGroupConstraint(
           {{"CPU", 1}, {"memory", 100}}, bundle_2.first, bundle_2.second));
-  NodeResources node_resources_2 = NodeResources(bundle_resource_request_2);
+  NodeResources node_resources_2 =
+      NodeResources(bundle_resource_request_2.GetResourceSet());
   resource_scheduler.GetClusterResourceManager().AddOrUpdateNode(
       scheduling::NodeID(node_2.Binary()), node_resources_2);
   resource_scheduler.GetClusterResourceManager()

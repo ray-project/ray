@@ -12,7 +12,7 @@ from ray.air.util.data_batch_conversion import (
 )
 from ray.data.preprocessor import Preprocessor
 from ray.train.predictor import TYPE_TO_ENUM
-from ray.train.tensorflow import TensorflowCheckpoint, TensorflowPredictor
+from ray.train.tensorflow import LegacyTensorflowCheckpoint, TensorflowPredictor
 from typing import Tuple
 
 from ray.train.tests.dummy_preprocessor import DummyPreprocessor
@@ -72,7 +72,7 @@ def test_repr():
 
 def create_checkpoint_preprocessor() -> Tuple[Checkpoint, Preprocessor]:
     preprocessor = DummyPreprocessor()
-    checkpoint = TensorflowCheckpoint.from_model(
+    checkpoint = LegacyTensorflowCheckpoint.from_model(
         build_model(), preprocessor=preprocessor
     )
 
@@ -97,13 +97,13 @@ def test_tensorflow_checkpoint():
     model.build(input_shape=(1,))
     preprocessor = DummyPreprocessor()
 
-    checkpoint = TensorflowCheckpoint.from_model(model, preprocessor=preprocessor)
+    checkpoint = LegacyTensorflowCheckpoint.from_model(model, preprocessor=preprocessor)
     assert (
         checkpoint.get_model(model=build_raw_model).get_weights() == model.get_weights()
     )
 
     with checkpoint.as_directory() as path:
-        checkpoint = TensorflowCheckpoint.from_directory(path)
+        checkpoint = LegacyTensorflowCheckpoint.from_directory(path)
         checkpoint_preprocessor = checkpoint.get_preprocessor()
         assert (
             checkpoint.get_model(model=build_raw_model).get_weights()
