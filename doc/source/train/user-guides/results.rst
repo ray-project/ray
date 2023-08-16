@@ -89,16 +89,27 @@ You can retrieve a list of all available checkpoints and their metrics with
 Accessing storage location
 ---------------------------
 If you need to retrieve the results later, you can get the storage location
-with :attr:`Result.path <ray.air.Result.path>`.
+of the training run with :attr:`Result.path <ray.air.Result.path>`.
 
 This path will correspond to the :ref:`storage_path <train-log-dir>` you configured
-in the :class:`~ray.air.RunConfig`.
+in the :class:`~ray.air.RunConfig`. It will be a
+(nested) subdirectory within that path, usually
+of the form `TrainerName_date-string/TrainerName_id_00000_0_...`.
 
 
 .. literalinclude:: ../doc_code/key_concepts.py
     :language: python
     :start-after: __result_path_start__
     :end-before: __result_path_end__
+
+
+You can restore a result with :meth:`Result.from_path <ray.air.Result.from_path>`:
+
+.. literalinclude:: ../doc_code/key_concepts.py
+    :language: python
+    :start-after: __result_restore_start__
+    :end-before: __result_restore_end__
+
 
 
 Viewing Errors

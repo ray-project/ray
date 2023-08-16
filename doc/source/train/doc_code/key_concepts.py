@@ -196,8 +196,17 @@ with best_checkpoint.as_directory() as tmpdir:
 # __result_best_checkpoint_end__
 
 # __result_path_start__
-print("Results location", result.path)
+result_path = result.path
+print("Results location", result_path)
 # __result_path_end__
+
+
+# __result_restore_start__
+from ray.air import Result
+
+restored_result = Result.from_path(result_path)
+print("Restored loss", result.metrics["loss"])
+# __result_restore_end__
 
 
 # __result_error_start__
