@@ -14,11 +14,11 @@
 
 #pragma once
 
+#include <boost/range/adaptor/map.hpp>
 #include <string>
 #include <unordered_map>
 
 #include "absl/container/flat_hash_map.h"
-#include "ray/common/scheduling/cluster_resource_data.h"
 #include "ray/common/scheduling/fixed_point.h"
 #include "ray/common/scheduling/scheduling_ids.h"
 
@@ -31,6 +31,9 @@ using scheduling::ResourceID;
 /// resource value is changed to 0, the resource will be removed.
 class ResourceSet {
  public:
+  using ResourceIdIterator =
+      boost::select_first_range<absl::flat_hash_map<ResourceID, FixedPoint>>;
+
   static std::shared_ptr<ResourceSet> Nil() {
     static auto nil = std::make_shared<ResourceSet>();
     return nil;
@@ -45,11 +48,40 @@ class ResourceSet {
   /// \brief Constructs ResourceSet from the specified resource map.
   explicit ResourceSet(const absl::flat_hash_map<std::string, double> &resource_map);
 
+  explicit ResourceSet(const absl::flat_hash_map<ResourceID, FixedPoint> &resource_map);
+
+  explicit ResourceSet(const absl::flat_hash_map<ResourceID, double> &resource_map);
+
   /// \brief Test equality with the other specified ResourceSet object.
   ///
   /// \param other: Right-hand side object for equality comparison.
   /// \return True if objects are equal, False otherwise.
   bool operator==(const ResourceSet &other) const;
+
+  /// Add other's resource quantity to this one and return a new ResourceSet.
+  ResourceSet operator+(const ResourceSet &other) const;
+
+  /// Subtract other's resource quantity from this one and return a new ResourceSet.
+  ResourceSet operator-(const ResourceSet &other) const;
+
+  /// Add other's resource quantity to this one.
+  ResourceSet &operator+=(const ResourceSet &other);
+
+  /// Subtract other's resource quantity from this one.
+  ResourceSet &operator-=(const ResourceSet &other);
+
+  /// Test inequality with the other specified ResourceSet object.
+  bool operator!=(const ResourceSet &other) const { return !(*this == other); }
+
+  /// Check whether this set is a subset of another one.
+  /// If A <= B, it means for each resource, its value in A is less than or equqal to that
+  /// in B.
+  bool operator<=(const ResourceSet &other) const;
+
+  /// Check whether this set is a super set of another one.
+  /// If A >= B, it means for each resource, its value in A is larger than or equqal to
+  /// that in B.
+  bool operator>=(const ResourceSet &other) const { return other <= *this; }
 
   /// Return the quantity value associated with the specified resource.
   /// If the resource doesn't exist, return 0.
@@ -61,10 +93,33 @@ class ResourceSet {
 
   /// Set a resource to the given value.
   /// NOTE: if the new value is 0, the resource will be removed.
-  void Set(ResourceID resource_id, FixedPoint value);
+  ResourceSet &Set(ResourceID resource_id, FixedPoint value);
+
+  /// Check whether a particular resource exist.
+  bool Has(ResourceID resource_id) const { return resources_.contains(resource_id); }
+
+  /// Return the number of resources in this set.
+  size_t Size() const { return resources_.size(); }
+
+  /// Clear the whole set.
+  void Clear() { resources_.clear(); }
 
   /// Return true if the resource set is empty. False otherwise.
   bool IsEmpty() const;
+
+  /// Remove the negative values in this set.
+  void RemoveNegative() {
+    for (auto it = resources_.begin(); it != resources_.end();) {
+      if (it->second < 0) {
+        resources_.erase(it++);
+      } else {
+        it++;
+      }
+    }
+  }
+
+  /// Return a boost::range object that can be used as an iterator of the resource IDs.
+  ResourceIdIterator ResourceIds() const { return boost::adaptors::keys(resources_); }
 
   // TODO(atumanov): implement const_iterator class for the ResourceSet container.
   // TODO(williamma12): Make sure that everywhere we use doubles we don't

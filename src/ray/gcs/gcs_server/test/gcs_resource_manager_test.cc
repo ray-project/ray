@@ -87,8 +87,8 @@ TEST_F(GcsResourceManagerTest, TestBasic) {
       /*ignore_object_store_memory_requirement=*/true));
 
   // Test `ReleaseResources`.
-  ASSERT_TRUE(cluster_resource_manager_.AddNodeAvailableResources(scheduling_node_id,
-                                                                  resource_request));
+  ASSERT_TRUE(cluster_resource_manager_.AddNodeAvailableResources(
+      scheduling_node_id, resource_request.GetResourceSet()));
 }
 
 TEST_F(GcsResourceManagerTest, TestResourceUsageAPI) {
