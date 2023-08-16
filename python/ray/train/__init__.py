@@ -1,3 +1,14 @@
+try:
+    import pandas  # noqa: F401
+    import requests  # noqa: F401
+    import pyarrow  # noqa: F401
+except ImportError as exc:
+    raise ImportError(
+        "Can't import ray.train as some dependencies are missing. "
+        "Run `pip install ray[train]` to fix."
+    ) from exc
+
+
 from ray._private.usage import usage_lib
 from ray.train._internal.data_config import DataConfig
 from ray.train._internal.session import get_checkpoint, get_dataset_shard, report
