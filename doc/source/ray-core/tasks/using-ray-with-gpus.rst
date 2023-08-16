@@ -123,7 +123,10 @@ This also lets the multi-node-type autoscaler know that there is demand for that
     :start-after: __accelerator_type_start__
     :end-before: __accelerator_type_end__
 
-See ``ray.util.accelerators`` for available accelerator types. Current automatically detected accelerator types include Nvidia GPUs, AWS-neuron-cores.
+See ``ray.util.accelerators`` for available accelerator types. Current automatically detected accelerator types include:
+
+ - Nvidia GPUs
+ - AWS Neuron Cores
 
 AWS Neuron Core Accelerator (Experimental)
 ------------------------------------------
