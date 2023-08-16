@@ -96,7 +96,7 @@ py_test(
 
 py_test(
     name = "test_e2e",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_e2e.py"],
     tags = ["team:core", "exclusive"],
     deps = ["//:ray_lib", ":conftest"],
