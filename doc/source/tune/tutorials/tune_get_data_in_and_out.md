@@ -193,7 +193,7 @@ The `ray.train.report` API is used to get data out of the Trainable workers. It 
 
 ### Reporting metrics with Tune
 
-*Metrics* are values passed through the `metrics` argument in a `train.report` call. Metrics can be used by Tune [Search Algorithms](search-alg-ref) and [Schedulers](schedulers-ref) to direct the search. After the tuning run is complete, you can [analyze the results](/tune/examples/tune_analyze_results), which include the reported metrics.
+*Metrics* are values passed through the `metrics` argument in a `train.report` call. Metrics can be used by Tune [Search Algorithms](search-alg-ref) and [Schedulers](schedulers-ref) to direct the search. After the tuning run is complete, you can [analyze the results](tune-analysis-guide), which include the reported metrics.
 
 ```{note}
 Similarly to search space values, each value reported as a metric will be saved directly in the Trial metadata. This means that every value reported as a metric **must** be serializable and take up a small amount of memory.
@@ -290,7 +290,7 @@ Aside from metrics, you may want to save the state of your trained model and any
 
 Ray Train provides a [`Checkpoint`](checkpoint-api-ref) API for that purpose. `Checkpoint` objects can be created from various sources (dictionaries, directories, cloud storage).
 
-In Ray Tune, `Checkpoints` are created by the user in their Trainable functions and reported using the optional `checkpoint` argument of `train.report`. `Checkpoints` can contain arbitrary data and can be freely passed around the Ray cluster. After a tuning run is over, `Checkpoints` can be [obtained from the results](/tune/examples/tune_analyze_results).
+In Ray Tune, `Checkpoints` are created by the user in their Trainable functions and reported using the optional `checkpoint` argument of `train.report`. `Checkpoints` can contain arbitrary data and can be freely passed around the Ray cluster. After a tuning run is over, `Checkpoints` can be [obtained from the results](tune-analysis-guide).
 
 Ray Tune can be configured to [automatically sync checkpoints to cloud storage](tune-storage-options), keep only a certain number of checkpoints to save space (with {class}`ray.train.CheckpointConfig`) and more.
 
