@@ -21,6 +21,7 @@ from ray.serve.config import (
     HTTPOptions,
 )
 from ray.serve._private.constants import (
+    DEFAULT_GRPC_PORT,
     DEFAULT_HTTP_HOST,
     DEFAULT_HTTP_PORT,
     SERVE_DEFAULT_APP_NAME,
@@ -452,7 +453,7 @@ def run(
     port: int = DEFAULT_HTTP_PORT,
     name: str = SERVE_DEFAULT_APP_NAME,
     route_prefix: str = DEFAULT.VALUE,
-    grpc_port: int = -1,
+    grpc_port: int = DEFAULT_GRPC_PORT,
     grpc_servicer_functions: List[str] = (),
 ) -> Optional[RayServeSyncHandle]:
     """Run an application and return a handle to its ingress deployment.
@@ -476,8 +477,7 @@ def run(
         route_prefix: Route prefix for HTTP requests. If not provided, it will use
             route_prefix of the ingress deployment. If specified neither as an argument
             nor in the ingress deployment, the route prefix will default to '/'.
-        port: Port for gRPC server. Defaults to -1, meaning not starting the gRPC
-            server.
+        port: Port for gRPC server. Defaults to 9000.
         grpc_servicer_functions: List of gRPC add_servicer_to_server functions to add
             to Serve's gRPC proxy. Default empty, meaning not to start the gRPC server.
 

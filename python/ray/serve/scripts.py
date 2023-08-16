@@ -21,6 +21,7 @@ from ray.dashboard.modules.serve.sdk import ServeSubmissionClient
 from ray.serve.api import build as build_app
 from ray.serve.config import DeploymentMode, gRPCOptions
 from ray.serve._private.constants import (
+    DEFAULT_GRPC_PORT,
     DEFAULT_HTTP_HOST,
     DEFAULT_HTTP_PORT,
     SERVE_NAMESPACE,
@@ -163,10 +164,10 @@ def cli():
 )
 @click.option(
     "--grpc-port",
-    default=-1,
+    default=DEFAULT_GRPC_PORT,
     required=False,
     type=int,
-    help="Port for gRPC proxies to listen on. Defaults not to start gRPC server.",
+    help="Port for gRPC proxies to listen on. " f"Defaults to {DEFAULT_GRPC_PORT}.",
 )
 @click.option(
     "--grpc-servicer-functions",
