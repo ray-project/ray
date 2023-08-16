@@ -12,6 +12,7 @@ from ray.dashboard.consts import GCS_RPC_TIMEOUT_SECONDS
 from ray.autoscaler._private.util import (
     LoadMetricsSummary,
     get_per_node_breakdown_as_dict,
+    parse_usage,
 )
 import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.optional_utils as dashboard_optional_utils
@@ -246,6 +247,35 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
         )
 
     async def get_nodes_logical_resources(self) -> dict:
+
+        from ray.autoscaler.v2.utils import is_autoscaler_v2
+
+        if is_autoscaler_v2():
+            from ray.autoscaler.v2.sdk import get_cluster_status
+
+            try:
+                cluster_status = get_cluster_status()
+            except Exception:
+                logger.exception("Error getting cluster status")
+                return {}
+
+            per_node_resources = {}
+            # TODO(rickyx): we should just return structure data rather than strings.
+            for node in cluster_status.healthy_nodes:
+                if not node.resource_usage:
+                    continue
+
+                usage_dict = {
+                    r.resource_name: (r.used, r.total)
+                    for r in node.resource_usage.usage
+                }
+                per_node_resources[node.node_id] = "\n".join(
+                    parse_usage(usage_dict, verbose=True)
+                )
+
+            return per_node_resources
+
+        # Legacy autoscaler status code.
         (status_string, error) = await asyncio.gather(
             *[
                 self._gcs_aio_client.internal_kv_get(
@@ -257,7 +287,8 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
                 ]
             ]
         )
-
+        if not status_string:
+            return {}
         status_dict = json.loads(status_string)
 
         lm_summary_dict = status_dict.get("load_metrics_report")
