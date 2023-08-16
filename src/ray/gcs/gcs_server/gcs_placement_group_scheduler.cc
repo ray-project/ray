@@ -643,12 +643,13 @@ void GcsPlacementGroupScheduler::CommitBundleResources(
       cluster_resource_scheduler_.GetClusterResourceManager();
   auto node_bundle_resources_map = ToNodeBundleResourcesMap(bundle_locations);
   for (const auto &[node_id, node_bundle_resources] : node_bundle_resources_map) {
-    for (const auto &[resource_id, capacity] : node_bundle_resources.ToMap()) {
+    for (const auto &resource_id : node_bundle_resources.ResourceIds()) {
       // A placement group's wildcard resource has to be the sum of all related bundles.
       // Even though `ToNodeBundleResourcesMap` has already considered this,
       // it misses the scenario in which single (or subset of) bundle is rescheduled.
       // When commiting this single bundle, its wildcard resource would wrongly overwrite
       // the existing value, unless using the following additive operation.
+      auto capacity = node_bundle_resources.Get(resource_id);
       if (IsPlacementGroupWildcardResource(resource_id.Binary())) {
         auto new_capacity =
             capacity +
@@ -750,8 +751,8 @@ bool GcsPlacementGroupScheduler::TryReleasingBundleResources(
   // cluster_resource_manager_.
   cluster_resource_manager.DeleteResources(node_id, bundle_resource_ids);
   // Add reserved bundle resources back to the node.
-  cluster_resource_manager.AddNodeAvailableResources(node_id,
-                                                     bundle_spec->GetRequiredResources());
+  cluster_resource_manager.AddNodeAvailableResources(
+      node_id, bundle_spec->GetRequiredResources().GetResourceSet());
   return true;
 }
 

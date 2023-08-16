@@ -110,17 +110,11 @@ TEST_F(ClusterResourceManagerTest, SubtractAndAddNodeAvailableResources) {
   ASSERT_TRUE(node_resources.available.Get(ResourceID::CPU()) == 0);
 
   // Add resources back.
-  manager->AddNodeAvailableResources(
-      node0,
-      ResourceMapToResourceRequest({{"CPU", 1}},
-                                   /*requires_object_store_memory=*/false));
+  manager->AddNodeAvailableResources(node0, ResourceSet({{"CPU", FixedPoint(1)}}));
   ASSERT_TRUE(node_resources.available.Get(ResourceID::CPU()) == 1);
 
   // Add again and make sure the available == 1 (<= total).
-  manager->AddNodeAvailableResources(
-      node0,
-      ResourceMapToResourceRequest({{"CPU", 1}},
-                                   /*requires_object_store_memory=*/false));
+  manager->AddNodeAvailableResources(node0, ResourceSet({{"CPU", FixedPoint(1)}}));
   ASSERT_TRUE(node_resources.available.Get(ResourceID::CPU()) == 1);
 }
 
