@@ -261,6 +261,7 @@ def configure_component_memory_profiler(
                     suffix=f"_memray_{restart_counter}.bin",
                 )
                 memray_file_path = os.path.join(logs_dir, memray_file_name)
+                restart_counter += 1
 
             # Memray usually tracks the memory usage of only a block of code
             # within a context manager. We explicitly call __enter__ here
