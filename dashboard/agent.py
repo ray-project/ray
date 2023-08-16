@@ -115,6 +115,7 @@ class DashboardAgent:
 
     def _init_non_minimal(self):
         from ray._private.gcs_pubsub import GcsAioPublisher
+
         self.aio_publisher = GcsAioPublisher(address=self.gcs_address)
 
         try:

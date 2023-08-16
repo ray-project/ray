@@ -117,12 +117,15 @@ class MockGcsClient:
         """
         self.drain_node_call_count += 1
         if self.drain_node_outcome == DrainNodeOutcome.Unimplemented:
-            raise RpcError("not implemented!",
-                           rpc_code=ray._raylet.GRPC_STATUS_CODE_UNIMPLEMENTED)
+            raise RpcError(
+                "not implemented!", rpc_code=ray._raylet.GRPC_STATUS_CODE_UNIMPLEMENTED
+            )
         elif self.drain_node_outcome == DrainNodeOutcome.GenericRpcError:
             # Any StatusCode besides UNIMPLEMENTED will do here.
-            raise RpcError("server is not feeling well",
-                           rpc_code=ray._raylet.GRPC_STATUS_CODE_UNAVAILABLE)
+            raise RpcError(
+                "server is not feeling well",
+                rpc_code=ray._raylet.GRPC_STATUS_CODE_UNAVAILABLE
+            )
         elif self.drain_node_outcome == DrainNodeOutcome.GenericException:
             raise Exception("DrainNode failed in some unexpected way.")
 
