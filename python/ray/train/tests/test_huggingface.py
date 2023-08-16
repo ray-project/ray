@@ -30,7 +30,7 @@ def test_huggingface_imports(ray_start_4_cpus):
             HuggingFaceCheckpoint,
             HuggingFacePredictor,
             HuggingFaceTrainer,
-            TransformersCheckpoint,
+            LegacyTransformersCheckpoint,
             TransformersPredictor,
             TransformersTrainer,
         )
@@ -59,7 +59,7 @@ def test_huggingface_imports(ray_start_4_cpus):
             HuggingFaceTrainer(DUMMY_TRAINER_INIT_PER_WORKER)
 
         with pytest.raises(ImportError, match="transformers"):
-            TransformersCheckpoint.from_model(DUMMY_MODEL, path=DUMMY_PATH)
+            LegacyTransformersCheckpoint.from_model(DUMMY_MODEL, path=DUMMY_PATH)
 
         with pytest.raises(ImportError, match="transformers"):
             TransformersPredictor(DUMMY_PIPELINE)
