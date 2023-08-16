@@ -849,17 +849,17 @@ def test_serving_request_through_grpc_proxy(ray_start_stop):
 
     # Ensures routes path succeeding.
     def check_app_deployed():
-        request = serve_pb2.RoutesRequest()
-        response, call = stub.ServeRoutes.with_call(request=request)
-        assert call.code() == grpc.StatusCode.OK
-        assert response.application_names == [app_name]
+        _request = serve_pb2.ListApplicationsRequest()
+        _response, _call = stub.ListApplications.with_call(request=_request)
+        assert _call.code() == grpc.StatusCode.OK
+        assert _response.application_names == [app_name]
         return True
 
     wait_for_condition(check_app_deployed)
 
     # Ensures healthz path succeeding.
-    request = serve_pb2.RoutesRequest()
-    response, call = stub.ServeHealthz.with_call(request=request)
+    request = serve_pb2.HealthzRequest()
+    response, call = stub.Healthz.with_call(request=request)
     assert call.code() == grpc.StatusCode.OK
     assert response.response == "success"
 
