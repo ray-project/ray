@@ -165,7 +165,11 @@ export const ProgressBar = ({
           {
             value: finalTotal - segmentTotal,
             label: unaccountedLabel ?? "Unaccounted",
-            hint: "Unaccounted tasks can happen when there are too many tasks. Ray drops older tasks to conserve memory.",
+            hint:
+              "Unaccounted tasks can happen when there are too many tasks for the Ray Dashboard " +
+              "to keep track of. Ray Dashboard will garbage collect old task data to conserve memory.\n" +
+              "NOTE: This is only an UI limitation. Ray Dashboard only garbage collects tasks that have " +
+              "already finished or errored.",
             color: "#EEEEEE",
           },
         ]
