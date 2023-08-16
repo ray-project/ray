@@ -8,7 +8,6 @@ import pytest
 
 import ray
 from ray._private.utils import get_or_create_event_loop
-from ray._private.test_utils import wait_for_condition
 from ray.serve._private.common import EndpointTag, EndpointInfo, RunningReplicaInfo
 from ray.serve._private.long_poll import (
     LongPollClient,
