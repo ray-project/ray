@@ -53,6 +53,7 @@ This is fixed by added custom filename mappings in `source/conf.py` (look for "a
 
    serve.get_replica_context
    serve.get_multiplexed_model_id
+   serve.get_app_handle
 ```
 
 ### Running Applications
@@ -66,6 +67,7 @@ This is fixed by added custom filename mappings in `source/conf.py` (look for "a
    serve.delete
    serve.start
    serve.shutdown
+   serve.status
 ```
 
 (serve-cli)=

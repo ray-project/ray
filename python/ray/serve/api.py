@@ -775,6 +775,7 @@ def status() -> ServeStatus:
         # Serve has not started yet
         return ServeStatus()
 
+    record_extra_usage_tag(TagKey.SERVE_STATUS_API_USED, "1")
     details = ServeInstanceDetails(**client.get_serve_details())
     return details._get_status()
 
@@ -817,6 +818,7 @@ def get_app_handle(
     if ingress is None:
         raise RayServeException(f"Application '{name}' does not exist.")
 
+    record_extra_usage_tag(TagKey.SERVE_GET_APP_HANDLE_API_USED, "1")
     internal_replica_context = get_internal_replica_context()
     if sync is None:
         # If sync is unspecified, default to async within a deployment
@@ -863,6 +865,7 @@ def get_deployment_handle(
         else:
             app_name = internal_replica_context.app_name
 
+    record_extra_usage_tag(TagKey.SERVE_GET_DEPLOYMENT_HANDLE_API_USED, "1")
     if sync is None:
         # If sync is unspecified, default to async within a deployment
         # and default to sync outside a deployment
