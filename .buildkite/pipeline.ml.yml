@@ -340,7 +340,7 @@
 
 ##### STORAGE REFACTOR
 
-- label: ":steam_locomotive: Train tests and examples"
+- label: ":steam_locomotive: :floppy_disk: New persistence mode: Train tests and examples"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_TRAIN_AFFECTED"]
   instance_size: large
   parallelism: 4
@@ -352,11 +352,11 @@
     - ./ci/env/env_info.sh
     - ./ci/run/run_bazel_test_with_sharding.sh
       --config=ci $(./ci/run/bazel_export_options)
-      --test_tag_filters=-gpu_only,-gpu,-minimal,-tune,-needs_credentials,-doctest
+      --test_tag_filters=-gpu_only,-gpu,-minimal,-tune,-needs_credentials,-doctest,-no_new_storage
       --test_env=RAY_AIR_NEW_PERSISTENCE_MODE=1
       python/ray/train/...
 
-- label: ":steam_locomotive: :octopus: Train + Tune tests and examples"
+- label: ":steam_locomotive: :octopus: :floppy_disk: New persistence mode: Train + Tune tests and examples"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_TRAIN_AFFECTED"]
   instance_size: medium
   commands:
@@ -364,12 +364,12 @@
     - TRAIN_TESTING=1 TUNE_TESTING=1 ./ci/env/install-dependencies.sh
     - ./ci/env/env_info.sh
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only 
-      --test_tag_filters=tune,-gpu_only,-ray_air,-gpu,-doctest
+      --test_tag_filters=tune,-gpu_only,-ray_air,-gpu,-doctest,-no_new_storage
       --test_env=RAY_AIR_NEW_PERSISTENCE_MODE=1
       python/ray/train/...
 
 
-- label: ":octopus: :floppy_disk: Storage context refactor: Tune tests and examples (small)"
+- label: ":octopus: :floppy_disk: New persistence mode: Tune tests and examples (small)"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_TUNE_AFFECTED"]
   instance_size: small
   parallelism: 3
@@ -379,11 +379,11 @@
     - ./ci/env/env_info.sh
     - ./ci/run/run_bazel_test_with_sharding.sh
       --config=ci $(./ci/run/bazel_export_options) --build_tests_only
-      --test_tag_filters=-medium_instance,-soft_imports,-gpu_only,-rllib,-multinode
+      --test_tag_filters=-medium_instance,-soft_imports,-gpu_only,-rllib,-multinode,-no_new_storage
       --test_env=RAY_AIR_NEW_PERSISTENCE_MODE=1
       python/ray/tune/...
 
-- label: ":octopus: :floppy_disk: Storage context refactor: Tune tests and examples (medium)"
+- label: ":octopus: :floppy_disk: New persistence mode: Tune tests and examples (medium)"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_TUNE_AFFECTED"]
   instance_size: medium
   commands:
@@ -391,7 +391,7 @@
     - TUNE_TESTING=1 DATA_PROCESSING_TESTING=1 ./ci/env/install-dependencies.sh
     - ./ci/env/env_info.sh
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only
-      --test_tag_filters=medium_instance,-soft_imports,-gpu_only,-rllib,-multinode
+      --test_tag_filters=medium_instance,-soft_imports,-gpu_only,-rllib,-multinode,-no_new_storage
       --test_env=RAY_AIR_NEW_PERSISTENCE_MODE=1
       python/ray/tune/...
 
