@@ -429,17 +429,17 @@ py_test(
 )
 
 py_test(
-    name = "vsphere/test_vsphere_node_provider",
+    name = "test_gcp_tpu_command_runner",
     size = "small",
-    srcs = ["vsphere/test_vsphere_node_provider.py"],
+    srcs = ["gcp/test_gcp_tpu_command_runner.py"],
     tags = ["exclusive", "small_size_python_tests", "team:serverless"],
     deps = ["//:ray_lib", ":conftest"],
 )
 
 py_test(
-    name = "test_gcp_tpu_command_runner",
+    name = "vsphere/test_vsphere_node_provider",
     size = "small",
-    srcs = ["gcp/test_gcp_tpu_command_runner.py"],
+    srcs = ["vsphere/test_vsphere_node_provider.py"],
     tags = ["exclusive", "small_size_python_tests", "team:serverless"],
     deps = ["//:ray_lib", ":conftest"],
 )
