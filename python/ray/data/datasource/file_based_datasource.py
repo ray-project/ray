@@ -513,10 +513,10 @@ class _FileBasedDatasourceReader(Reader):
         reader_args = self._reader_args
         partitioning = self._partitioning
 
-        paths, file_sizes = self._file_metadata_shuffler.shuffle_files(
-            self._paths,
-            self._file_sizes,
+        paths_and_sizes = self._file_metadata_shuffler.shuffle_files(
+            list(zip(self._paths, self._file_sizes))
         )
+        paths, file_sizes = list(map(list, zip(*paths_and_sizes)))
 
         read_stream = self._delegate._read_stream
         filesystem = _wrap_s3_serialization_workaround(self._filesystem)
