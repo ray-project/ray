@@ -117,7 +117,7 @@ class Executor {
         }                                                                                \
         delete executor;                                                                 \
       } else {                                                                           \
-        /* In case of GCS failure, we queue the request and these requets will be */     \
+        /* In case of GCS failure, we queue the request and these requests will be */    \
         /* executed once GCS is back. */                                                 \
         gcs_is_down_ = true;                                                             \
         auto request_bytes = request.ByteSizeLong();                                     \
@@ -359,6 +359,11 @@ class GcsRpcClient {
   /// Get available resources of all nodes from the GCS Service.
   VOID_GCS_RPC_CLIENT_METHOD(NodeResourceInfoGcsService,
                              GetAllAvailableResources,
+                             node_resource_info_grpc_client_,
+                             /*method_timeout_ms*/ -1, )
+
+  VOID_GCS_RPC_CLIENT_METHOD(NodeResourceInfoGcsService,
+                             GetDrainingNodes,
                              node_resource_info_grpc_client_,
                              /*method_timeout_ms*/ -1, )
 

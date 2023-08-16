@@ -48,9 +48,8 @@ class MosaicTrainer(TorchTrainer):
         from composer.algorithms import LabelSmoothing
 
         import ray
-        from ray.air.config import ScalingConfig
         import ray.train as train
-        from ray.air import session
+        from ray.train import ScalingConfig
         from ray.train.mosaic import MosaicTrainer
 
         def trainer_init_per_worker(config):
@@ -156,6 +155,12 @@ class MosaicTrainer(TorchTrainer):
         preprocessor: Optional["Preprocessor"] = None,
         resume_from_checkpoint: Optional[Checkpoint] = None,
     ):
+
+        warnings.warn(
+            "This MosaicTrainer will be deprecated in Ray 2.8. "
+            "It is recommended to use the TorchTrainer instead.",
+            DeprecationWarning,
+        )
 
         self._validate_trainer_init_per_worker(
             trainer_init_per_worker, "trainer_init_per_worker"

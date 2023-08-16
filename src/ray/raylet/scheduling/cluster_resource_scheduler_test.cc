@@ -20,7 +20,7 @@
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "ray/common/ray_config.h"
-#include "ray/common/scheduling/scheduling_resources.h"
+#include "ray/common/scheduling/resource_set.h"
 #include "ray/common/scheduling/scheduling_ids.h"
 #include "mock/ray/gcs/gcs_client/gcs_client.h"
 #ifdef UNORDERED_VS_ABSL_MAPS_EVALUATION
@@ -362,6 +362,40 @@ TEST_F(ClusterResourceSchedulerTest, NodeAffinitySchedulingStrategyTest) {
                                                              &violations,
                                                              &is_infeasible);
   ASSERT_EQ(node_id_4, local_node_id);
+
+  // Allocate some local resources so the local node is not idle and won't be drained
+  // immediately.
+  auto task_allocation = std::make_shared<TaskResourceInstances>();
+  ASSERT_TRUE(resource_scheduler.GetLocalResourceManager().AllocateLocalTaskResources(
+      resource_request, task_allocation));
+  // Drain the local node so that it's not schedulable for new tasks.
+  resource_scheduler.GetLocalResourceManager().SetLocalNodeDraining();
+
+  scheduling_strategy.mutable_node_affinity_scheduling_strategy()->set_node_id(
+      local_node_id.Binary());
+  scheduling_strategy.mutable_node_affinity_scheduling_strategy()->set_soft(false);
+  auto node_id_5 = resource_scheduler.GetBestSchedulableNode(resource_request,
+                                                             scheduling_strategy,
+                                                             false,
+                                                             false,
+                                                             false,
+                                                             std::string(),
+                                                             &violations,
+                                                             &is_infeasible);
+  ASSERT_TRUE(node_id_5.IsNil());
+
+  scheduling_strategy.mutable_node_affinity_scheduling_strategy()->set_node_id(
+      local_node_id.Binary());
+  scheduling_strategy.mutable_node_affinity_scheduling_strategy()->set_soft(true);
+  auto node_id_6 = resource_scheduler.GetBestSchedulableNode(resource_request,
+                                                             scheduling_strategy,
+                                                             false,
+                                                             false,
+                                                             false,
+                                                             std::string(),
+                                                             &violations,
+                                                             &is_infeasible);
+  ASSERT_EQ(node_id_6, remote_node_id);
 }
 
 TEST_F(ClusterResourceSchedulerTest, SpreadSchedulingStrategyTest) {
@@ -1036,6 +1070,9 @@ TEST_F(ClusterResourceSchedulerTest, TaskGPUResourceInstancesTest) {
                            available_gpu_instances.end(),
                            expected_available_gpu_instances.begin()));
 
+    ASSERT_FALSE(
+        resource_scheduler.GetLocalResourceManager().GetResourceIdleTime().has_value());
+
     resource_scheduler.GetLocalResourceManager().AddResourceInstances(
         ResourceID::GPU(), allocate_gpu_instances);
     available_gpu_instances = resource_scheduler.GetLocalResourceManager()
@@ -1047,10 +1084,16 @@ TEST_F(ClusterResourceSchedulerTest, TaskGPUResourceInstancesTest) {
                            available_gpu_instances.end(),
                            expected_available_gpu_instances.begin()));
 
+    ASSERT_TRUE(
+        resource_scheduler.GetLocalResourceManager().GetResourceIdleTime().has_value());
+
     allocate_gpu_instances = {1.5, 1.5, .5, 1.5};
     std::vector<double> underflow =
         resource_scheduler.GetLocalResourceManager().SubtractResourceInstances(
             ResourceID::GPU(), allocate_gpu_instances);
+    ASSERT_FALSE(
+        resource_scheduler.GetLocalResourceManager().GetResourceIdleTime().has_value());
+
     std::vector<double> expected_underflow{.5, .5, 0., .5};
     ASSERT_TRUE(
         std::equal(underflow.begin(), underflow.end(), expected_underflow.begin()));
@@ -1067,6 +1110,8 @@ TEST_F(ClusterResourceSchedulerTest, TaskGPUResourceInstancesTest) {
     std::vector<double> overflow =
         resource_scheduler.GetLocalResourceManager().AddResourceInstances(
             ResourceID::GPU(), allocate_gpu_instances);
+    ASSERT_FALSE(
+        resource_scheduler.GetLocalResourceManager().GetResourceIdleTime().has_value());
     std::vector<double> expected_overflow{.0, .0, .5, 0.};
     ASSERT_TRUE(std::equal(overflow.begin(), overflow.end(), expected_overflow.begin()));
     available_gpu_instances = resource_scheduler.GetLocalResourceManager()

@@ -49,7 +49,7 @@ CHECKPOINT_KEY = "serve-application-state-checkpoint"
 class BuildAppStatus(Enum):
     """Status of the build application task."""
 
-    NO_TASK_STARTED = 1
+    NO_TASK_IN_PROGRESS = 1
     IN_PROGRESS = 2
     SUCCEEDED = 3
     FAILED = 4
@@ -67,6 +67,7 @@ class BuildAppTaskInfo:
 
     obj_ref: ObjectRef
     code_version: str
+    finished: bool
 
 
 @dataclass
@@ -121,8 +122,9 @@ class ApplicationState:
         self._status_msg = ""
         self._deployment_state_manager = deployment_state_manager
         self._endpoint_state = endpoint_state
-        self._route_prefix = None
-        self._docs_path = None
+        self._route_prefix: Optional[str] = None
+        self._docs_path: Optional[str] = None
+        self._ingress_deployment_name: str = None
 
         self._status: ApplicationStatus = ApplicationStatus.DEPLOYING
         self._deployment_timestamp = time.time()
@@ -166,15 +168,15 @@ class ApplicationState:
         return self._deployment_timestamp
 
     @property
-    def build_app_obj_ref(self) -> Optional[ObjectRef]:
-        return self._build_app_obj_ref
-
-    @property
     def target_deployments(self) -> List[str]:
         """List of target deployment names in application."""
         if self._target_state.deployment_infos is None:
             return []
         return list(self._target_state.deployment_infos.keys())
+
+    @property
+    def ingress_deployment(self) -> Optional[str]:
+        return self._ingress_deployment_name
 
     def recover_target_state_from_checkpoint(
         self, checkpoint_data: ApplicationTargetState
@@ -191,9 +193,9 @@ class ApplicationState:
 
     def _set_target_state(
         self,
-        deployment_infos: Optional[Dict[str, DeploymentInfo]] = None,
-        code_version: str = None,
-        target_config: Optional[ServeApplicationSchema] = None,
+        deployment_infos: Optional[Dict[str, DeploymentInfo]],
+        code_version: str,
+        target_config: Optional[ServeApplicationSchema],
         deleting: bool = False,
     ):
         """Set application target state.
@@ -211,6 +213,13 @@ class ApplicationState:
         else:
             self._update_status(ApplicationStatus.DEPLOYING)
 
+        if deployment_infos is None:
+            self._ingress_deployment_name = None
+        else:
+            for name, info in deployment_infos.items():
+                if info.ingress:
+                    self._ingress_deployment_name = name
+
         target_state = ApplicationTargetState(
             deployment_infos, code_version, target_config, deleting
         )
@@ -221,13 +230,6 @@ class ApplicationState:
         self._save_checkpoint_func(writeahead_checkpoints={self._name: target_state})
         # Set target state
         self._target_state = target_state
-
-    def _set_target_state_deleting(self):
-        """Set target state to deleting.
-
-        Wipes the target deployment infos, code version, and config.
-        """
-        self._set_target_state(dict(), None, None, True)
 
     def _set_target_state_deployment_infos(
         self, deployment_infos: Optional[Dict[str, DeploymentInfo]]
@@ -246,6 +248,13 @@ class ApplicationState:
             code_version=self._target_state.code_version,
             target_config=target_config,
         )
+
+    def _set_target_state_deleting(self):
+        """Set target state to deleting.
+
+        Wipes the target deployment infos, code version, and config.
+        """
+        self._set_target_state(dict(), None, None, True)
 
     def _delete_deployment(self, name):
         self._endpoint_state.delete_endpoint(name)
@@ -292,52 +301,91 @@ class ApplicationState:
         else:
             self._endpoint_state.delete_endpoint(deployment_name)
 
-    def apply_deployment_args(
-        self,
-        deployment_params: List[Dict],
-        code_version: str = None,
-    ) -> None:
-        """Set the list of deployment infos in application target state.
+    def deploy(self, deployment_infos: Dict[str, DeploymentInfo]):
+        """Deploy application from list of deployment infos.
 
-        Args:
-            deployment_params: list of deployment parameters, including
-                all deployment information.
-            code_version: the application code version associated with
-                the set of deployments.
+        This function should only be called if the app is being deployed
+        through serve.run instead of from a config.
 
-        Raises:
-            RayServeException: If there is more than one deployment with
-                a non-null route prefix or docs path.
+        Raises: RayServeException if there is more than one route prefix
+            or docs path.
         """
 
-        for params in deployment_params:
-            if params["docs_path"] is not None:
-                self._docs_path = params["docs_path"]
-            params["deployment_name"] = params.pop("name")
-            params["app_name"] = self._name
-
-        deployment_infos = {
-            params["deployment_name"]: deploy_args_to_deployment_info(**params)
-            for params in deployment_params
-        }
-
-        # Check route prefix
-        self._route_prefix, self._docs_path = self._check_deployment_routes(
-            deployment_infos
-        )
+        # Check routes are unique in deployment infos
+        self._route_prefix, self._docs_path = self._check_routes(deployment_infos)
 
         self._set_target_state(
             deployment_infos=deployment_infos,
-            code_version=code_version,
-            target_config=self._target_state.config,
+            code_version=None,
+            target_config=None,
         )
 
     def deploy_config(
         self, config: ServeApplicationSchema, deployment_time: int
     ) -> None:
-        """Deploys an application config."""
+        """Deploys an application config.
+
+        If the code version matches that of the current live deployments
+        then it only applies the updated config to the deployment state
+        manager. If the code version doesn't match, this will re-build
+        the application.
+        """
+
         self._deployment_timestamp = deployment_time
         self._set_target_state_config(config)
+
+        config_version = get_app_code_version(config)
+        if config_version == self._target_state.code_version:
+            try:
+                overrided_infos = override_deployment_info(
+                    self._name,
+                    self._target_state.deployment_infos,
+                    self._target_state.config,
+                )
+                self._check_routes(overrided_infos)
+                self._set_target_state_deployment_infos(overrided_infos)
+            except (TypeError, ValueError, RayServeException):
+                self._set_target_state_deployment_infos(None)
+                self._update_status(
+                    ApplicationStatus.DEPLOY_FAILED, traceback.format_exc()
+                )
+            except Exception:
+                self._set_target_state_deployment_infos(None)
+                self._update_status(
+                    BuildAppStatus.FAILED,
+                    (
+                        f"Unexpected error occured while applying config for "
+                        f"application '{self._name}': \n{traceback.format_exc()}"
+                    ),
+                )
+        else:
+            # If there is an in progress build task, cancel it.
+            if self._build_app_task_info and not self._build_app_task_info.finished:
+                logger.info(
+                    f'Received new config for application "{self._name}". '
+                    "Cancelling previous request."
+                )
+                ray.cancel(self._build_app_task_info.obj_ref)
+
+            # Halt reconciliation of target deployments
+            self._set_target_state_deployment_infos(None)
+
+            # Kick off new build app task
+            logger.info(
+                f"Starting build_serve_application task for application {self._name}."
+            )
+            build_app_obj_ref = build_serve_application.options(
+                runtime_env=self._target_state.config.runtime_env
+            ).remote(
+                self._target_state.config.import_path,
+                self._target_state.config.deployment_names,
+                config_version,
+                self._target_state.config.name,
+                self._target_state.config.args,
+            )
+            self._build_app_task_info = BuildAppTaskInfo(
+                build_app_obj_ref, config_version, False
+            )
 
     def _get_live_deployments(self) -> List[str]:
         return self._deployment_state_manager.get_deployments_in_application(self._name)
@@ -386,100 +434,89 @@ class ApplicationState:
         else:
             return ApplicationStatus.DEPLOYING, ""
 
-    def _start_or_reconcile_build_app_task(self) -> Tuple[Tuple, BuildAppStatus, str]:
-        """If necessary, start or reconcile the in-progress build task.
-
-        If the current code version is inconsistent with that of the
-        target config, either start a new build task or reconcile an
-        in-progress one. Note self._build_app_task_info is reset when
-        task finishes, regardless of whether it finished successfully
+    def _reconcile_build_app_task(self) -> Tuple[Tuple, BuildAppStatus, str]:
+        """If necessary, reconcile the in-progress build task.
 
         Returns:
-            Deploy arguments (Tuple[List, str]):
+            Deploy arguments (Dict[str, DeploymentInfo]):
                 The deploy arguments returned from the build app task
                 and their code version.
             Status (BuildAppStatus):
-                NO_TASK_STARTED:
-                SUCCEEDED: task finished successfully.
-                FAILED: an error occurred during execution of build app task
-                IN_PROGRESS: task hasn't finished yet.
+                NO_TASK_IN_PROGRESS: There is no build task to reconcile.
+                SUCCEEDED: Task finished successfully.
+                FAILED: An error occurred during execution of build app task
+                IN_PROGRESS: Task hasn't finished yet.
             Error message (str):
                 Non-empty string if status is DEPLOY_FAILED or UNHEALTHY
         """
-        if self._target_state.config is None:
-            return None, BuildAppStatus.NO_TASK_STARTED, ""
-
-        config_version = get_app_code_version(self._target_state.config)
-        if config_version == self._target_state.code_version:
-            return None, BuildAppStatus.NO_TASK_STARTED, ""
-
-        # If there is a non-null target config, and the current code
-        # version is out of sync with that target config, we need to
-        # rebuild the application with the new target config
         if (
-            self._build_app_task_info is None
-            or self._build_app_task_info.code_version != config_version
+            self._target_state.config is None
+            or self._build_app_task_info is None
+            or self._build_app_task_info.finished
         ):
-            # If there is an in progress build task, cancel it.
-            if self._build_app_task_info:
-                logger.info(
-                    f'Received new config for application "{self._name}". '
-                    "Cancelling previous request."
+            return None, BuildAppStatus.NO_TASK_IN_PROGRESS, ""
+
+        if not check_obj_ref_ready_nowait(self._build_app_task_info.obj_ref):
+            return None, BuildAppStatus.IN_PROGRESS, ""
+
+        # Retrieve build app task result
+        self._build_app_task_info.finished = True
+        try:
+            args, err = ray.get(self._build_app_task_info.obj_ref)
+            if err is None:
+                logger.info(f"Deploy task for app '{self._name}' ran successfully.")
+            else:
+                return (
+                    None,
+                    BuildAppStatus.FAILED,
+                    (f"Deploying app '{self._name}' failed with " f"exception:\n{err}"),
                 )
-                ray.cancel(self._build_app_task_info.obj_ref)
-
-            # Halt reconciliation of target deployments
-            self._set_target_state_deployment_infos(None)
-
-            # Kick off new build app task
-            logger.info(
-                f"Starting build_serve_application task for application {self._name}."
-            )
-            build_app_obj_ref = build_serve_application.options(
-                runtime_env=self._target_state.config.runtime_env
-            ).remote(
-                self._target_state.config.import_path,
-                self._target_state.config.deployment_names,
-                config_version,
-                self._target_state.config.name,
-                self._target_state.config.args,
-            )
-            self._build_app_task_info = BuildAppTaskInfo(
-                build_app_obj_ref, config_version
-            )
-        elif check_obj_ref_ready_nowait(self._build_app_task_info.obj_ref):
-            build_app_obj_ref = self._build_app_task_info.obj_ref
-            self._build_app_task_info = None
-            try:
-                args, err = ray.get(build_app_obj_ref)
-                if err is None:
-                    logger.info(f"Deploy task for app '{self._name}' ran successfully.")
-                    return (args, config_version), BuildAppStatus.SUCCEEDED, ""
-                else:
-                    error_msg = (
-                        f"Deploying app '{self._name}' failed with "
-                        f"exception:\n{err}"
-                    )
-                    logger.warning(error_msg)
-                    return None, BuildAppStatus.FAILED, error_msg
-            except RuntimeEnvSetupError:
-                error_msg = (
+        except RuntimeEnvSetupError:
+            return (
+                None,
+                BuildAppStatus.FAILED,
+                (
                     f"Runtime env setup for app '{self._name}' failed:\n"
                     + traceback.format_exc()
-                )
-                logger.warning(error_msg)
-                return None, BuildAppStatus.FAILED, error_msg
-            except Exception:
-                error_msg = (
+                ),
+            )
+        except Exception:
+            return (
+                None,
+                BuildAppStatus.FAILED,
+                (
                     f"Unexpected error occured while deploying application "
                     f"'{self._name}': \n{traceback.format_exc()}"
+                ),
+            )
+
+        # Convert serializable deployment args to deployment infos and
+        # apply option overrides from config
+        try:
+            deployment_infos = {
+                params["deployment_name"]: deploy_args_to_deployment_info(
+                    **params, app_name=self._name
                 )
-                logger.warning(error_msg)
-                return None, BuildAppStatus.FAILED, error_msg
+                for params in args
+            }
+            overrided_infos = override_deployment_info(
+                self._name, deployment_infos, self._target_state.config
+            )
+            self._route_prefix, self._docs_path = self._check_routes(overrided_infos)
+            return overrided_infos, BuildAppStatus.SUCCEEDED, ""
+        except (TypeError, ValueError, RayServeException):
+            return None, BuildAppStatus.FAILED, traceback.format_exc()
+        except Exception:
+            return (
+                None,
+                BuildAppStatus.FAILED,
+                (
+                    f"Unexpected error occured while applying config for application "
+                    f"'{self._name}': \n{traceback.format_exc()}"
+                ),
+            )
 
-        return None, BuildAppStatus.IN_PROGRESS, ""
-
-    def _check_deployment_routes(
+    def _check_routes(
         self, deployment_infos: Dict[str, DeploymentInfo]
     ) -> Tuple[str, str]:
         """Check route prefixes and docs paths of deployments in app.
@@ -525,30 +562,15 @@ class ApplicationState:
 
         return route_prefix, docs_path
 
-    def _reconcile_target_deployments(self) -> Optional[str]:
+    def _reconcile_target_deployments(self) -> None:
         """Reconcile target deployments in application target state.
 
         Ensure each deployment is running on up-to-date info, and
         remove outdated deployments from the application.
-
-        Returns: error is there is any
         """
 
-        # Apply override options from target config to each deployment
-        overrided_infos = override_deployment_info(
-            self._name,
-            self._target_state.deployment_infos,
-            self._target_state.config,
-        )
-        try:
-            self._route_prefix, self._docs_path = self._check_deployment_routes(
-                overrided_infos
-            )
-        except RayServeException as e:
-            return repr(e)
-
         # Set target state for each deployment
-        for deployment_name, info in overrided_infos.items():
+        for deployment_name, info in self._target_state.deployment_infos.items():
             self.apply_deployment_info(deployment_name, info)
 
         # Delete outdated deployments
@@ -567,9 +589,13 @@ class ApplicationState:
             deleted.
         """
 
-        args, task_status, msg = self._start_or_reconcile_build_app_task()
+        infos, task_status, msg = self._reconcile_build_app_task()
         if task_status == BuildAppStatus.SUCCEEDED:
-            self.apply_deployment_args(*args)
+            self._set_target_state(
+                deployment_infos=infos,
+                code_version=self._build_app_task_info.code_version,
+                target_config=self._target_state.config,
+            )
         elif task_status == BuildAppStatus.FAILED:
             self._update_status(ApplicationStatus.DEPLOY_FAILED, msg)
 
@@ -577,13 +603,9 @@ class ApplicationState:
         # have info on what the target list of deployments is, so don't
         # perform reconciliation or check on deployment statuses
         if self._target_state.deployment_infos is not None:
-            err = self._reconcile_target_deployments()
-            if err:
-                logger.info(f"Failed to deploy application {self._name}: {err}")
-                self._update_status(ApplicationStatus.DEPLOY_FAILED, err)
-            else:
-                status, status_msg = self._determine_app_status()
-                self._update_status(status, status_msg)
+            self._reconcile_target_deployments()
+            status, status_msg = self._determine_app_status()
+            self._update_status(status, status_msg)
 
         # Check if app is ready to be deleted
         if self._target_state.deleting:
@@ -629,6 +651,12 @@ class ApplicationState:
         return {k: v for k, v in details.items() if v is not None}
 
     def _update_status(self, status: ApplicationStatus, status_msg: str = "") -> None:
+        if status_msg and status in [
+            ApplicationStatus.DEPLOY_FAILED,
+            ApplicationStatus.UNHEALTHY,
+        ]:
+            logger.warning(status_msg)
+
         self._status = status
         self._status_msg = status_msg
 
@@ -710,7 +738,14 @@ class ApplicationStateManager:
         record_extra_usage_tag(
             TagKey.SERVE_NUM_APPS, str(len(self._application_states))
         )
-        self._application_states[name].apply_deployment_args(deployment_args)
+
+        deployment_infos = {
+            params["deployment_name"]: deploy_args_to_deployment_info(
+                **params, app_name=name
+            )
+            for params in deployment_args
+        }
+        self._application_states[name].deploy(deployment_infos)
 
     def deploy_config(
         self,
@@ -772,6 +807,12 @@ class ApplicationStateManager:
 
     def get_route_prefix(self, name: str) -> Optional[str]:
         return self._application_states[name].route_prefix
+
+    def get_ingress_deployment_name(self, name: str) -> Optional[str]:
+        if name not in self._application_states:
+            return None
+
+        return self._application_states[name].ingress_deployment
 
     def list_app_statuses(self) -> Dict[str, ApplicationStatusInfo]:
         """Return a dictionary with {app name: application info}"""
@@ -892,8 +933,8 @@ def build_serve_application(
         # happens when deploy_apps() is called.
         logger.info("Existing config deployment request terminated.")
         return None, None
-    except Exception as e:
-        return None, repr(e)
+    except Exception:
+        return None, traceback.format_exc()
 
 
 def override_deployment_info(
@@ -910,6 +951,10 @@ def override_deployment_info(
             options to override those loaded from code.
 
     Returns: the updated deployment infos.
+
+    Raises:
+        ValueError: If config options have invalid values.
+        TypeError: If config options have invalid types.
     """
 
     deployment_infos = deepcopy(deployment_infos)
@@ -962,11 +1007,21 @@ def override_deployment_info(
             # if the code sets options to None).
             override_actor_options = replica_config.ray_actor_options or {}
 
+        override_placement_group_bundles = options.pop(
+            "placement_group_bundles", replica_config.placement_group_bundles
+        )
+        override_placement_group_strategy = options.pop(
+            "placement_group_strategy", replica_config.placement_group_strategy
+        )
+
         merged_env = override_runtime_envs_except_env_vars(
             app_runtime_env, override_actor_options.get("runtime_env", {})
         )
         override_actor_options.update({"runtime_env": merged_env})
         replica_config.update_ray_actor_options(override_actor_options)
+        replica_config.update_placement_group_options(
+            override_placement_group_bundles, override_placement_group_strategy
+        )
         override_options["replica_config"] = replica_config
 
         # Override deployment config options

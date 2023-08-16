@@ -60,23 +60,12 @@ def _is_module_trainable(module_id: ModuleID, batch: MultiAgentBatch) -> bool:
 
 class LearnerGroup:
     """Coordinator of Learners.
-    Public API:
-        .update(batch) -> updates the RLModule based on gradient descent algos.
-        .additional_update() -> any additional non-gradient based updates will get
-                                called from this entry point.
-        .get_state() -> returns the state of the RLModule and RLOptimizer from
-                        all of the Learners.
-        .set_state() -> sets the state of all the Learners.
-        .get_weights() -> returns the weights of the RLModule from the Learner(s).
-        .set_weights() -> sets the weights of the RLModule in the Learner(s).
-        .add_module() -> add a new RLModule to the MultiAgentRLModule being trained by
-                         this LearnerGroup.
-        .remove_module() -> remove an RLModule from the MultiAgentRLModule being trained
-                            by this LearnerGroup.
+
     Args:
         learner_spec: The specification for constructing Learners.
         max_queue_len: The maximum number of batches to queue up if doing async_update
             If the queue is full itwill evict the oldest batch first.
+
     """
 
     def __init__(
@@ -442,9 +431,16 @@ class LearnerGroup:
                 refs.append(ref)
             ray.get(refs)
 
-    def set_weights(self, weights) -> None:
-        # TODO (Kourosh) Set / get weight has to be thoroughly
-        #  tested across actors and multi-gpus
+    def set_weights(self, weights: Mapping[str, Any]) -> None:
+        """Set the weights of the MultiAgentRLModule maintained by each Learner.
+
+        The weights don't have to include all the modules in the MARLModule.
+            This way the weights of only some of the Agents can be set.
+
+        Args:
+            weights: The weights to set each RLModule in the MARLModule to.
+
+        """
         if self.is_local:
             self._learner.set_module_state(weights)
         else:
@@ -455,6 +451,15 @@ class LearnerGroup:
             self._get_results(results_or_errors)
 
     def get_weights(self, module_ids: Optional[Set[str]] = None) -> Mapping[str, Any]:
+        """Get the weights of the MultiAgentRLModule maintained by each Learner.
+
+        Args:
+            module_ids: The ids of the modules to get the weights of.
+
+        Returns:
+            A mapping of module ids to their weights.
+
+        """
         if self.is_local:
             state = self._learner.get_module_state(module_ids)
         else:

@@ -198,7 +198,7 @@ You can save trial artifacts directly in the trainable, as shown below:
         .. code-block:: python
 
             import logging_library  # ex: mlflow, wandb
-            from ray.air import session
+            from ray import train
 
             def trainable(config):
                 logging_library.init(
@@ -220,7 +220,7 @@ You can save trial artifacts directly in the trainable, as shown below:
                     with open(f"./artifact_{step}.txt", "w") as f:
                         f.write("Artifact Data")
 
-                    session.report(results)
+                    train.report(results)
 
 
     .. tab-item:: Class API

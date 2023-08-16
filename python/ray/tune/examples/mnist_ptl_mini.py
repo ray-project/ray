@@ -14,7 +14,7 @@ from torchvision import transforms
 from torchvision.datasets import MNIST
 from ray.tune.integration.pytorch_lightning import TuneReportCallback
 
-from ray import air, tune
+from ray import train, tune
 
 
 PATH_DATASETS = os.environ.get("PATH_DATASETS", ".")
@@ -148,7 +148,7 @@ def tune_mnist(num_samples=10, num_epochs=10, gpus_per_trial=0):
             mode="min",
             num_samples=num_samples,
         ),
-        run_config=air.RunConfig(
+        run_config=train.RunConfig(
             name="tune_mnist",
         ),
         param_space=config,

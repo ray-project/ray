@@ -62,7 +62,7 @@ message LabelExists {}
 message LabelDoesNotExist {}
 
 message LabelOperator {
-  oneof LabelOperator {
+  oneof label_operator {
     LabelIn label_in = 1;
     LabelNotIn label_not_in = 2;
     LabelExists label_exists = 3;

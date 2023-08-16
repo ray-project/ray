@@ -423,15 +423,15 @@ Suppose your cluster has 4 nodes, each with 16 CPUs. To limit to at most
 Using models from Ray Train
 ---------------------------
 
-Models that have been trained with :ref:`Ray Train <train-docs>` can then be used for batch inference with :ref:`Ray Data <data>` via the :class:`Checkpoint <ray.air.checkpoint.Checkpoint>` that is returned by :ref:`Ray Train <train-docs>`.
+Models that have been trained with :ref:`Ray Train <train-docs>` can then be used for batch inference with :ref:`Ray Data <data>` via the :class:`Checkpoint <ray.train.Checkpoint>` that is returned by :ref:`Ray Train <train-docs>`.
 
 **Step 1:** Train a model with :ref:`Ray Train <train-docs>`.
 
 .. testcode::
 
     import ray
+    from ray.train import ScalingConfig
     from ray.train.xgboost import XGBoostTrainer
-    from ray.air.config import ScalingConfig
 
     dataset = ray.data.read_csv("s3://anonymous@air-example-data/breast_cancer.csv")
     train_dataset, valid_dataset = dataset.train_test_split(test_size=0.3)
@@ -456,13 +456,13 @@ Models that have been trained with :ref:`Ray Train <train-docs>` can then be use
 
     ...
 
-**Step 2:** Extract the :class:`Checkpoint <ray.air.checkpoint.Checkpoint>` from the training :class:`Result <ray.air.Result>`.
+**Step 2:** Extract the :class:`Checkpoint <ray.train.Checkpoint>` from the training :class:`Result <ray.train.Result>`.
 
 .. testcode::
 
     checkpoint = result.checkpoint
 
-**Step 3:** Use Ray Data for batch inference. To load in the model from the :class:`Checkpoint <ray.air.checkpoint.Checkpoint>` inside the Python class, use one of the :ref:`framework-specific Checkpoint classes <train-framework-catalog>`.
+**Step 3:** Use Ray Data for batch inference. To load in the model from the :class:`Checkpoint <ray.train.Checkpoint>` inside the Python class, use one of the framework-specific Checkpoint classes.
 
 In this case, we use the :class:`XGBoostCheckpoint <ray.train.xgboost.XGBoostCheckpoint>` to load the model.
 
@@ -475,14 +475,14 @@ The rest of the logic looks the same as in the `Quickstart <#quickstart>`_.
     import numpy as np
     import xgboost
 
-    from ray.air import Checkpoint
-    from ray.train.xgboost import XGBoostCheckpoint
+    from ray.train import Checkpoint
+    from ray.train.xgboost import LegacyXGBoostCheckpoint
 
     test_dataset = valid_dataset.drop_columns(["target"])
 
     class XGBoostPredictor:
         def __init__(self, checkpoint: Checkpoint):
-            xgboost_checkpoint = XGBoostCheckpoint.from_checkpoint(checkpoint)
+            xgboost_checkpoint = LegacyXGBoostCheckpoint.from_checkpoint(checkpoint)
             self.model = xgboost_checkpoint.get_model()
         
         def __call__(self, data: pd.DataFrame) -> Dict[str, np.ndarray]:
@@ -507,75 +507,3 @@ The rest of the logic looks the same as in the `Quickstart <#quickstart>`_.
     :options: +MOCK
 
     {'predictions': 0.9969483017921448}
-
-Benchmarks
-----------
-
-Below we document key performance benchmarks for common batch prediction workloads.
-
-
-XGBoost Batch Prediction
-~~~~~~~~~~~~~~~~~~~~~~~~
-
-This task uses the BatchPredictor module to process different amounts of data
-using an XGBoost model.
-
-We test out the performance across different cluster sizes and data sizes.
-
-- `XGBoost Prediction Script`_
-- `XGBoost Cluster Configuration`_
-
-.. TODO: Add script for generating data and running the benchmark.
-
-.. list-table::
-
-    * - **Cluster Setup**
-      - **Data Size**
-      - **Performance**
-      - **Command**
-    * - 1 m5.4xlarge node (1 actor)
-      - 10 GB (26M rows)
-      - 275 s (94.5k rows/s)
-      - `python xgboost_benchmark.py --size 10GB`
-    * - 10 m5.4xlarge nodes (10 actors)
-      - 100 GB (260M rows)
-      - 331 s (786k rows/s)
-      - `python xgboost_benchmark.py --size 100GB`
-
-
-GPU image batch prediction
-~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-This task uses the BatchPredictor module to process different amounts of data
-using a Pytorch pre-trained ResNet model.
-
-We test out the performance across different cluster sizes and data sizes.
-
-- `GPU image batch prediction script`_
-- `GPU prediction small cluster configuration`_
-- `GPU prediction large cluster configuration`_
-
-.. list-table::
-
-    * - **Cluster Setup**
-      - **Data Size**
-      - **Performance**
-      - **Command**
-    * - 1 g4dn.8xlarge node
-      - 1 GB (1623 images)
-      - 46.12 s (35.19 images/sec)
-      - `python gpu_batch_inference.py --data-directory=1G-image-data-synthetic-raw --data-format=raw`
-    * - 1 g4dn.8xlarge node
-      - 20 GB (32460 images)
-      - 285.2 s (113.81 images/sec)
-      - `python gpu_batch_inference.py --data-directory=20G-image-data-synthetic-raw --data-format=raw`
-    * - 4 g4dn.12xlarge nodes
-      - 100 GB (162300 images)
-      - 304.01 s (533.86 images/sec)
-      - `python gpu_batch_inference.py --data-directory=100G-image-data-synthetic-raw --data-format=raw`
-
-.. _`XGBoost Prediction Script`: https://github.com/ray-project/ray/blob/a241e6a0f5a630d6ed5b84cce30c51963834d15b/release/air_tests/air_benchmarks/workloads/xgboost_benchmark.py#L63-L71
-.. _`XGBoost Cluster Configuration`: https://github.com/ray-project/ray/blob/a241e6a0f5a630d6ed5b84cce30c51963834d15b/release/air_tests/air_benchmarks/xgboost_compute_tpl.yaml#L6-L24
-.. _`GPU image batch prediction script`: https://github.com/ray-project/ray/blob/master/release/air_tests/air_benchmarks/workloads/gpu_batch_inference.py#L18-L49
-.. _`GPU prediction small cluster configuration`: https://github.com/ray-project/ray/blob/master/release/air_tests/air_benchmarks/compute_gpu_1_cpu_16_aws.yaml#L6-L15
-.. _`GPU prediction large cluster configuration`: https://github.com/ray-project/ray/blob/master/release/air_tests/air_benchmarks/compute_gpu_4x4_aws.yaml#L6-L15

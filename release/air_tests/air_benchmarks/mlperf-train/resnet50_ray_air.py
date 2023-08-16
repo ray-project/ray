@@ -11,11 +11,9 @@ import torchvision
 import torch
 
 import ray
-from ray.air import session
 from ray.train.tensorflow import prepare_dataset_shard, TensorflowTrainer
-from ray.air.config import ScalingConfig
-from ray.train import DataConfig
-from ray import tune
+from ray.train import DataConfig, ScalingConfig
+from ray import train, tune
 from ray.tune import Tuner
 from ray.data.datasource.partitioning import Partitioning
 
@@ -85,7 +83,7 @@ def train_loop_for_worker(config):
             # model.compile(optimizer="rmsprop", loss="sparse_categorical_crossentropy")
             model.compile(optimizer="Adam", loss="mean_squared_error", metrics=["mse"])
 
-    dataset_shard = session.get_dataset_shard("train")
+    dataset_shard = train.get_dataset_shard("train")
     _tf_dataset = None
     synthetic_dataset = None
     if config["data_loader"] == TF_DATA:
@@ -198,7 +196,7 @@ def train_loop_for_worker(config):
             )
         )
 
-        session.report(
+        train.report(
             {
                 "all_epoch_times_s": epoch_times,
                 "all_throughputs_imgs_s": throughputs,
@@ -433,6 +431,8 @@ def append_to_test_output_json(path, metrics):
     perf_metrics = defaultdict(dict)
     perf_metrics.update(output_json.get("perf_metrics", {}))
     perf_metric_name = f"{data_loader}_{num_images_per_file}-images-per-file_{num_files}-num-files-{num_cpu_nodes}-num-cpu-nodes_throughput-img-per-second"  # noqa: E501
+    # "." is not supported in metrics querying.
+    perf_metric_name = perf_metric_name.replace(".", "_")
     perf_metrics[perf_metric_name].update(
         {
             "THROUGHPUT": metrics["tput_images_per_s"],
@@ -569,7 +569,6 @@ if __name__ == "__main__":
 
             # Enable block splitting to support larger file sizes w/o OOM.
             ctx = ray.data.context.DataContext.get_current()
-            ctx.block_splitting_enabled = True
 
             options.resource_limits.object_store_memory = 10e9
 

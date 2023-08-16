@@ -24,8 +24,6 @@ class MinimalClusterManager(ClusterManager):
     def create_cluster_env(self):
         assert self.cluster_env_id is None
 
-        if not self.cluster_env:
-            return
         assert self.cluster_env_name
 
         logger.info(

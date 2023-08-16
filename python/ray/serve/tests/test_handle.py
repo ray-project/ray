@@ -8,18 +8,17 @@ import requests
 import ray
 
 from ray import serve
-from ray.serve.context import get_global_client
 from ray.serve.exceptions import RayServeException
-from ray.serve.handle import HandleOptions, RayServeHandle, RayServeSyncHandle
+from ray.serve.handle import _HandleOptions, RayServeHandle, RayServeSyncHandle
+from ray.serve._private.router import PowerOfTwoChoicesReplicaScheduler
 from ray.serve._private.constants import (
-    DEPLOYMENT_NAME_PREFIX_SEPARATOR,
     RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING,
     SERVE_DEFAULT_APP_NAME,
 )
 
 
 def test_handle_options():
-    default_options = HandleOptions()
+    default_options = _HandleOptions()
     assert default_options.method_name == "__call__"
     assert default_options.multiplexed_model_id == ""
     assert default_options.stream is False
@@ -135,10 +134,9 @@ def test_sync_handle_in_thread(serve_instance):
     handle = serve.run(f.bind())
 
     def thread_get_handle(deploy):
-        deployment_name = (
-            f"{SERVE_DEFAULT_APP_NAME}{DEPLOYMENT_NAME_PREFIX_SEPARATOR}{deploy._name}"
+        handle = serve.get_deployment_handle(
+            deploy._name, SERVE_DEFAULT_APP_NAME, sync=True
         )
-        handle = get_global_client().get_handle(deployment_name, sync=True)
         return handle
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
@@ -351,6 +349,37 @@ def test_call_function_with_argument(serve_instance):
 
     h = serve.run(Ingress.bind(echo.bind()))
     assert ray.get(h.remote("sned")) == "Hi sned"
+
+
+def test_handle_options_with_same_router(serve_instance):
+    """Make sure that multiple handles share same router object."""
+
+    @serve.deployment
+    def echo(name: str):
+        return f"Hi {name}"
+
+    handle = serve.run(echo.bind())
+    handle2 = handle.options(multiplexed_model_id="model2")
+    assert handle._router
+    assert id(handle2._router) == id(handle._router)
+
+
+class MyRouter(PowerOfTwoChoicesReplicaScheduler):
+    pass
+
+
+def test_handle_options_custom_router(serve_instance):
+    @serve.deployment
+    def echo(name: str):
+        return f"Hi {name}"
+
+    handle = serve.run(echo.bind())
+    handle2 = handle.options(_router_cls="ray.serve.tests.test_handle.MyRouter")
+    ray.get(handle2.remote("HI"))
+    print("Router class used", handle2._router._replica_scheduler)
+    assert (
+        "MyRouter" in handle2._router._replica_scheduler.__class__.__name__
+    ), handle2._router._replica_scheduler
 
 
 if __name__ == "__main__":

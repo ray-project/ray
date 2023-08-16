@@ -288,8 +288,16 @@ pre {
 }
 
 @media (max-width: 900px) {
+  /* If the window is too small, hide the custom sticky navigation bar at the top of the page.
+  Also make the pydata-sphinx-theme nav bar, which usually sits below the top nav bar, stick
+  to the top of the page.
+  */
     .top-nav-content {
         display: none;
+    }
+    div.header-article.row.sticky-top.noprint {
+      position: sticky;
+      top: 0;
     }
 }
 
@@ -391,7 +399,7 @@ pre {
 
 @media (max-width: 1000px) {
   .top-nav-content > button.try-anyscale {
-    display: none;;
+    display: none;
   }
 }
 

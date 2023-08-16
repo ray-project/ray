@@ -1,3 +1,4 @@
+import os
 from typing import Any, Dict, Optional, Tuple, TYPE_CHECKING
 
 try:
@@ -6,8 +7,9 @@ except ImportError:
     from distutils.version import LooseVersion as Version
 
 from ray.air.checkpoint import Checkpoint
+from ray.air.constants import MODEL_KEY
 from ray.train.gbdt_trainer import GBDTTrainer
-from ray.train.xgboost.xgboost_checkpoint import XGBoostCheckpoint
+from ray.train.xgboost.xgboost_checkpoint import LegacyXGBoostCheckpoint
 from ray.util.annotations import PublicAPI
 
 import xgboost
@@ -38,7 +40,7 @@ class XGBoostTrainer(GBDTTrainer):
             import ray
 
             from ray.train.xgboost import XGBoostTrainer
-            from ray.air.config import ScalingConfig
+            from ray.train import ScalingConfig
 
             train_dataset = ray.data.from_items(
                 [{"x": x, "y": x + 1} for x in range(32)])
@@ -95,13 +97,22 @@ class XGBoostTrainer(GBDTTrainer):
     }
     _init_model_arg_name: str = "xgb_model"
 
+    @staticmethod
+    def get_model(checkpoint: Checkpoint) -> xgboost.Booster:
+        """Retrieve the XGBoost model stored in this checkpoint."""
+        with checkpoint.as_directory() as checkpoint_path:
+            booster = xgboost.Booster()
+            booster.load_model(os.path.join(checkpoint_path, MODEL_KEY))
+            return booster
+
     def _train(self, **kwargs):
         return xgboost_ray.train(**kwargs)
 
     def _load_checkpoint(
         self, checkpoint: Checkpoint
     ) -> Tuple[xgboost.Booster, Optional["Preprocessor"]]:
-        checkpoint = XGBoostCheckpoint.from_checkpoint(checkpoint)
+        # TODO(matt): Replace this when preprocessor arg is removed.
+        checkpoint = LegacyXGBoostCheckpoint.from_checkpoint(checkpoint)
         return checkpoint.get_model(), checkpoint.get_preprocessor()
 
     def _save_model(self, model: xgboost.Booster, path: str):

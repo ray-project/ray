@@ -132,7 +132,7 @@ predictions.show(limit=1)
           </div>
           <div class="tab-pane fade" id="v-pills-training" role="tabpanel" aria-labelledby="v-pills-training-tab" style="user-select:none;">
             <pre style="margin:0;"><code class="language-python not-selectable">
-from ray.air.config import ScalingConfig
+from ray.train import ScalingConfig
 from ray.train.torch import TorchTrainer
 
 # Step 1: setup PyTorch model training as you normally would
@@ -166,7 +166,7 @@ result = trainer.fit()
           <div class="tab-pane fade" id="v-pills-tuning" role="tabpanel" aria-labelledby="v-pills-tuning-tab" style="user-select:none;" style="user-select:none;">
             <pre style="margin:0;"><code class="language-python not-selectable">
 from ray import tune
-from ray.air.config import ScalingConfig
+from ray.train import ScalingConfig
 from ray.train.lightgbm import LightGBMTrainer
 
 train_dataset, eval_dataset = ...

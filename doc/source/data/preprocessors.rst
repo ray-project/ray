@@ -5,7 +5,7 @@ Using Preprocessors
 
 Data preprocessing is a common technique for transforming raw data into features for a machine learning model.
 In general, you may want to apply the same preprocessing logic to your offline training data and online inference data.
-Ray AIR provides several common preprocessors out of the box and interfaces to define your own custom logic.
+Ray Data provides several common preprocessors out of the box and interfaces to define your own custom logic.
 
 .. https://docs.google.com/drawings/d/1ZIbsXv5vvwTVIEr2aooKxuYJ_VL7-8VMNlRinAiPaTI/edit
 
@@ -15,7 +15,7 @@ Ray AIR provides several common preprocessors out of the box and interfaces to d
 Overview
 --------
 
-The most common way of using a preprocessor is by passing it as an argument to the constructor of a Ray Train :ref:`Trainer <train-getting-started>` in conjunction with a :ref:`Ray Data dataset <data>`.
+The most common way of using a preprocessor is by passing it as an argument to the constructor of a Ray Train :ref:`Trainer <train-docs>` in conjunction with a :ref:`Ray Data dataset <data>`.
 For example, the following code trains a model with a preprocessor that normalizes the data.
 
 .. literalinclude:: doc_code/preprocessors.py
@@ -55,8 +55,8 @@ Finally, call ``transform_batch`` on a single batch of data.
     :start-after: __preprocessor_transform_batch_start__
     :end-before: __preprocessor_transform_batch_end__
 
-Life of an AIR preprocessor
----------------------------
+Life of a preprocessor
+----------------------
 
 Now that we've gone over the basics, let's dive into how ``Preprocessor``\s fit into an end-to-end application built with AIR.
 The diagram below depicts an overview of the main steps of a ``Preprocessor``:
@@ -119,7 +119,7 @@ Predictor
 A ``Predictor`` can be constructed from a saved ``Checkpoint``. If the ``Checkpoint`` contains a ``Preprocessor``,
 then the ``Preprocessor`` calls ``transform_batch`` on input batches prior to performing inference.
 
-In the following example, we show the Batch Predictor flow.
+In the following example, we show the batch inference flow.
 
 .. literalinclude:: doc_code/preprocessors.py
     :language: python
@@ -132,7 +132,7 @@ Types of preprocessors
 Built-in preprocessors
 ~~~~~~~~~~~~~~~~~~~~~~
 
-Ray AIR provides a handful of preprocessors out of the box.
+Ray Data provides a handful of preprocessors out of the box.
 
 **Generic preprocessors**
 
