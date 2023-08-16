@@ -632,6 +632,48 @@ def test_get_cluster_status(ray_start_with_dashboard):
     os.environ.get("RAY_MINIMAL") == "1",
     reason="This test is not supposed to work for minimal installation.",
 )
+@pytest.mark.parametrize(
+    "call_ray_start",
+    [
+        """ray start --no-monitor --head --num-cpus 1 \
+--system-config={"enable_autoscaler_v2":true}""",
+        """ray start --head --num-cpus 1""",
+    ],
+    indirect=True,
+)
+def test_get_nodes_summary(call_ray_start):
+
+    # The sleep is needed since it seems a previous shutdown could be not yet
+    # done when the next test starts. This prevents a previous cluster to be
+    # connected the current test session.
+    time.sleep(5)
+    address_info = ray.init(address=call_ray_start)
+    webui_url = address_info["webui_url"]
+    webui_url = format_web_url(webui_url)
+
+    def get_nodes_summary():
+        response = requests.get(f"{webui_url}/nodes?view=summary")
+        response.raise_for_status()
+        response = response.json()
+        print(response)
+
+        assert response["data"]["nodeLogicalResources"]
+        assert "0.0/1.0 CPU" in "".join(
+            response["data"]["nodeLogicalResources"].values()
+        )
+
+    assert wait_until_succeeded_without_exception(
+        get_nodes_summary,
+        (requests.RequestException,),
+        timeout_ms=10 * 1000,
+        retry_interval_ms=1000,
+    )
+
+
+@pytest.mark.skipif(
+    os.environ.get("RAY_MINIMAL") == "1",
+    reason="This test is not supposed to work for minimal installation.",
+)
 def test_immutable_types():
     d = {str(i): i for i in range(1000)}
     d["list"] = list(range(1000))
