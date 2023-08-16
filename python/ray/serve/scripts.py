@@ -467,7 +467,7 @@ def run(
             visualizer = GraphVisualizer()
             visualizer.visualize_with_gradio(handle)
         elif reload:
-            if blocking:
+            if not blocking:
                 raise click.ClickException(
                     "The --non-blocking option conflicts with the --reload option."
                 )
@@ -475,6 +475,7 @@ def run(
                 watch_dir = working_dir
             else:
                 watch_dir = app_dir
+
             for changes in watchfiles.watch(
                 watch_dir,
                 rust_timeout=10000,
@@ -482,7 +483,12 @@ def run(
             ):
                 if changes:
                     cli_logger.info(
-                        f"Detected file change in path {watch_dir}. Redeploying Serve app."
+                        f"Detected file change in path {watch_dir}. Redeploying app."
+                    )
+                    # The module needs to be reloaded with `importlib` in order to pick
+                    # up any changes.
+                    app = _private_api.call_app_builder_with_args_if_necessary(
+                        import_attr(import_path, reload_module=True), args_dict
                     )
                     serve.run(app, host=host, port=port)
 

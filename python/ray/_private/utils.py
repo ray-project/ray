@@ -1167,8 +1167,10 @@ def deprecated(
     return deprecated_wrapper
 
 
-def import_attr(full_path: str):
+def import_attr(full_path: str, *, reload_module: bool = False):
     """Given a full import path to a module attr, return the imported attr.
+
+    If `reload_module` is set, the module will be reloaded using `importlib.reload`.
 
     For example, the following are equivalent:
         MyClass = import_attr("module.submodule:MyClass")
@@ -1194,6 +1196,8 @@ def import_attr(full_path: str):
         attr_name = full_path[last_period_idx + 1 :]
 
     module = importlib.import_module(module_name)
+    if reload_module:
+        importlib.reload(module)
     return getattr(module, attr_name)
 
 
