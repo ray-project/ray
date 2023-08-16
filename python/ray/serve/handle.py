@@ -15,6 +15,7 @@ from ray.serve._private.constants import (
 )
 from ray.serve._private.utils import (
     get_random_letters,
+    record_serve_tag,
     DEFAULT,
 )
 from ray.serve._private.router import Router, RequestMetadata
@@ -103,6 +104,16 @@ class _DeploymentHandleBase:
 
     def _get_or_create_router(self) -> Router:
         if self._router is None:
+            # Record telemetry data. We do it here to only record telemetry when
+            # the handle is actually used, not just constructed
+            # (e.g., from `serve.run`).
+            if self.__class__ == DeploymentHandle:
+                record_serve_tag("SERVE_DEPLOYMENT_HANDLE_API_USED", "1")
+            elif self.__class__ == RayServeHandle:
+                record_serve_tag("SERVE_RAY_SERVE_HANDLE_API_USED", "1")
+            elif self.__class__ == RayServeSyncHandle:
+                record_serve_tag("SERVE_RAY_SERVE_SYNC_HANDLE_API_USED", "1")
+
             if self._is_for_sync_context:
                 event_loop = _create_or_get_async_loop_in_thread()
             else:
@@ -129,7 +140,7 @@ class _DeploymentHandleBase:
 
         return get_or_create_event_loop() == self._get_or_create_router()._event_loop
 
-    def _options(
+    def options(
         self,
         *,
         method_name: Union[str, DEFAULT] = DEFAULT.VALUE,
@@ -396,6 +407,9 @@ class _DeploymentHandleResultBase:
     async def _to_object_ref_or_gen(
         self,
     ) -> Union[ray.ObjectRef, StreamingObjectRefGenerator]:
+        # Record telemetry for using the developer API to convert to an object
+        # ref. Recorded here because all of the other codepaths go through this.
+        record_serve_tag("SERVE_DEPLOYMENT_HANDLE_TO_OBJECT_REF_API_USED", "1")
         return await self._assign_request_task
 
     def _to_object_ref_or_gen_sync(
