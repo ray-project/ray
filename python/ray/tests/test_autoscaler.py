@@ -15,7 +15,6 @@ from unittest.mock import (
     patch,
 )
 
-import grpc
 import pytest
 import yaml
 from jsonschema.exceptions import ValidationError
@@ -69,6 +68,8 @@ from ray.autoscaler.tags import (
 from ray.tests.test_batch_node_provider_unit import (
     MockBatchingNodeProvider,
 )
+from ray.exceptions import RpcError
+
 
 WORKER_FILTER = {TAG_RAY_NODE_KIND: NODE_KIND_WORKER}
 
@@ -94,20 +95,6 @@ class DrainNodeOutcome(str, Enum):
     DrainDisabled = "DrainDisabled"
 
 
-class MockRpcException(grpc.RpcError):
-    """Mock RpcError with a specified status code.
-
-    Note (Dmitri): It might be possible to do this already with standard tools
-    in the `grpc` module, but how wasn't immediately obvious to me.
-    """
-
-    def __init__(self, status_code: grpc.StatusCode):
-        self.status_code = status_code
-
-    def code(self):
-        return self.status_code
-
-
 class MockGcsClient:
     """Mock for GCSClient used by autoscaler to drain Ray nodes.
 
@@ -130,10 +117,12 @@ class MockGcsClient:
         """
         self.drain_node_call_count += 1
         if self.drain_node_outcome == DrainNodeOutcome.Unimplemented:
-            raise MockRpcException(status_code=grpc.StatusCode.UNIMPLEMENTED)
+            raise RpcError("not implemented!",
+                           rpc_code=ray._raylet.GRPC_STATUS_CODE_UNIMPLEMENTED)
         elif self.drain_node_outcome == DrainNodeOutcome.GenericRpcError:
             # Any StatusCode besides UNIMPLEMENTED will do here.
-            raise MockRpcException(status_code=grpc.StatusCode.UNAVAILABLE)
+            raise RpcError("server is not feeling well",
+                           rpc_code=ray._raylet.GRPC_STATUS_CODE_UNAVAILABLE)
         elif self.drain_node_outcome == DrainNodeOutcome.GenericException:
             raise Exception("DrainNode failed in some unexpected way.")
 
