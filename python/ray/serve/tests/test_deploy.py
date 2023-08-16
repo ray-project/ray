@@ -511,8 +511,8 @@ def test_redeploy_scale_down(serve_instance, use_handle):
     @ray.remote(num_cpus=0)
     def call():
         if use_handle:
-            handle = serve.get_app_handle("app", sync=True)
-            ret = ray.get(handle.remote())
+            handle = serve.get_app_handle("app")
+            ret = handle.remote().result()
         else:
             ret = requests.get(f"http://localhost:8000/{name}").text
 
@@ -562,8 +562,8 @@ def test_redeploy_scale_up(serve_instance, use_handle):
     @ray.remote(num_cpus=0)
     def call():
         if use_handle:
-            handle = serve.get_app_handle("app", sync=True)
-            ret = ray.get(handle.remote())
+            handle = serve.get_app_handle("app")
+            ret = handle.remote().result()
         else:
             ret = requests.get(f"http://localhost:8000/{name}").text
 
