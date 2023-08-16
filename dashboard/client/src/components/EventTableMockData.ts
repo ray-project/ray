@@ -3,19 +3,31 @@
 const SEVERITIES = ["INFO", "DEBUG"];
 const SOURCES = ["Serve", "GCS", "AUTOSCALER"];
 const MESSAGES = [
-  "Serve App {app name} started.",
-  "Serve App {app name} deleted.",
-  "Deployment {deployment name} created",
-  "Deployment {deployment name} is running",
-  "Deployment {deployment name} deleted.",
-  "Serve Deployment “job” started.",
-  "Replica {replica name} started",
+  "Serve App {app name} started. Serve App {app name} started. Serve App {app name} started.  {app name} started. Serve App {app name} started. {app name} started. Serve App {app name} started. ",
+  "Serve App {app name} deleted. {app name} started. Serve App {app name} started. {app name} started. Serve App {app name} started.",
+  "Deployment {deployment name} created {app name} started. Serve App {app name} started. {app name} started. Serve App {app name} started.",
+  "Deployment {deployment name} is running {app name} started. Serve App {app name} started. {app name} started. Serve App {app name} started.",
+  "Deployment {deployment name} deleted. {app name} started. Serve App {app name} started. {app name} started. Serve App {app name} started.",
+  "Serve Deployment “job” started. {app name} started. Serve App {app name} started. {app name} started. Serve App {app name} started.",
+  "Replica {replica name} started {app name} started. Serve App {app name} started. {app name} started. Serve App {app name} started.",
   "Replica {replica name} died",
   "Ray Serve server is running.",
   "Ray Serve server is terminated.",
   "Ray Serve HTTP Proxy started on node {node id}, {node ip}",
   "Ray Serve HTTP Proxy removed from node {node id}, {node ip}",
 ];
+
+let longMessage = "";
+const targetLength = 500;
+
+while (longMessage.length < targetLength) {
+  longMessage += MESSAGES.join("");
+  if (longMessage.length >= targetLength) {
+    longMessage = longMessage.substring(0, targetLength);
+  }
+}
+
+console.log(longMessage);
 
 const CUSTOM_MESSAGES = [
   "Terminating instance i-xxx due to compute config live update.",

@@ -39,10 +39,6 @@ type EventTableProps = {
   defaultSeverityLevels?: string[];
 };
 
-type FiltersParams = {
-  [key: string]: string | string[] | number | undefined;
-};
-
 // const transformFiltersToParams = (filters: FiltersParams) => {
 //   const params = new URLSearchParams();
 //   if (!filters) {
@@ -137,7 +133,7 @@ const useStyles = makeStyles((theme) => ({
   },
   OverflowCol: {
     display: "block",
-    width: "100px",
+    width: "400px",
     overflow: "hidden",
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
@@ -148,15 +144,19 @@ const useStyles = makeStyles((theme) => ({
   message: {
     maxWidth: "200",
   },
+  pagination: {
+    marginTop: theme.spacing(3),
+  },
 }));
 
 const columns = [
-  { label: "Severity" },
-  { label: "Timestamp" },
-  { label: "Source" },
-  { label: "Custom Fields" },
-  { label: "Message" },
+  { label: "Severity", align: "center" },
+  { label: "Timestamp", align: "center" },
+  { label: "Source", align: "center" },
+  { label: "Custom Fields", align: "left" },
+  { label: "Message", align: "left" },
 ];
+type Align = "inherit" | "left" | "center" | "right" | "justify";
 
 type Filters = {
   sourceType: string[]; // TODO: Chao, multi-select severity level in filters button is a P1
@@ -296,17 +296,6 @@ const NewEventTable = (props: EventTableProps) => {
       <header className={classes.filterContainer}>
         <Autocomplete
           className={classes.search}
-          style={{ width: 100 }}
-          options={sourceOptions}
-          onInputChange={(_: any, value: string) => {
-            changeFilter("sourceType", value.trim());
-          }}
-          renderInput={(params: TextFieldProps) => (
-            <TextField {...params} label="Source" />
-          )}
-        />
-        <Autocomplete
-          className={classes.search}
           style={{ width: 140 }}
           options={severityOptions}
           onInputChange={(_: any, value: string) => {
@@ -316,9 +305,20 @@ const NewEventTable = (props: EventTableProps) => {
             <TextField {...params} label="Severity" />
           )}
         />
+        <Autocomplete
+          className={classes.search}
+          style={{ width: 100 }}
+          options={sourceOptions}
+          onInputChange={(_: any, value: string) => {
+            changeFilter("sourceType", value.trim());
+          }}
+          renderInput={(params: TextFieldProps) => (
+            <TextField {...params} label="Source" />
+          )}
+        />
         <TextField
           className={classes.search}
-          label="Msg"
+          label="Message"
           InputProps={{
             onChange: ({ target: { value } }) => {
               changeFilter("message", value.trim());
@@ -336,8 +336,8 @@ const NewEventTable = (props: EventTableProps) => {
           <Table className={classes.tableContainer}>
             <TableHead>
               <TableRow>
-                {columns.map(({ label }) => (
-                  <TableCell align="center" key={label}>
+                {columns.map(({ label, align }) => (
+                  <TableCell key={label} align={align as Align}>
                     <Box
                       display="flex"
                       justifyContent="center"
@@ -371,23 +371,29 @@ const NewEventTable = (props: EventTableProps) => {
                   return (
                     <React.Fragment>
                       <TableRow>
-                        <StyledTableCell>
+                        <TableCell align="center">
                           <StatusChip status={severity} type={severity} />
-                        </StyledTableCell>
-                        <StyledTableCell>{realTimestamp}</StyledTableCell>
-                        <StyledTableCell>{sourceType}</StyledTableCell>
+                        </TableCell>
+                        <TableCell align="center">{realTimestamp}</TableCell>
+                        <TableCell align="center">{sourceType}</TableCell>
 
-                        <StyledTableCell>
+                        <TableCell align="left">
                           <Tooltip
                             className={classes.overflowCell}
-                            title={JSON.stringify(customFields)}
+                            title={
+                              customFields ? JSON.stringify(customFields) : `-`
+                            }
                             arrow
                             interactive
                           >
-                            <div>{JSON.stringify(customFields)}</div>
+                            <div>
+                              {customFields
+                                ? JSON.stringify(customFields)
+                                : `-`}
+                            </div>
                           </Tooltip>
-                        </StyledTableCell>
-                        <StyledTableCell>
+                        </TableCell>
+                        <TableCell align="left">
                           <Tooltip
                             className={classes.overflowCell}
                             title={message}
@@ -396,7 +402,7 @@ const NewEventTable = (props: EventTableProps) => {
                           >
                             <div>{message}</div>
                           </Tooltip>
-                        </StyledTableCell>
+                        </TableCell>
                       </TableRow>
                     </React.Fragment>
                   );
@@ -408,6 +414,7 @@ const NewEventTable = (props: EventTableProps) => {
       </body>
       <footer>
         <Pagination
+          className={classes.pagination}
           count={pagination.total}
           page={pagination.pageNo}
           onChange={(event: React.ChangeEvent<unknown>, value: number) => {
