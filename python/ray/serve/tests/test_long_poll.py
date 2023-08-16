@@ -8,10 +8,12 @@ import pytest
 
 import ray
 from ray._private.utils import get_or_create_event_loop
+from ray._private.test_utils import wait_for_condition
 from ray.serve._private.common import EndpointTag, EndpointInfo, RunningReplicaInfo
 from ray.serve._private.long_poll import (
     LongPollClient,
     LongPollHost,
+    LongPollState,
     UpdatedObject,
     LongPollNamespace,
 )
@@ -21,6 +23,28 @@ from ray.serve.generated.serve_pb2 import (
     EndpointSet,
     ActorNameList,
 )
+
+
+def test_notifier_events_cleared_without_update(serve_instance):
+    """XXX: TODO."""
+    host = ray.remote(LongPollHost).remote(
+        listen_for_change_request_timeout_s=(0.1, 0.1)
+    )
+
+    ray.get(host.notify_changed.remote("key_1", 999))
+
+    object_ref = host.listen_for_change.remote({"key_1": -1, "key_2": -1})
+    result: Dict[str, UpdatedObject] = ray.get(object_ref)
+    assert set(result.keys()) == {"key_1"}
+    assert {v.object_snapshot for v in result.values()} == {999}
+    new_snapshot_ids = {k: v.snapshot_id for k, v in result.items()}
+
+    object_ref = host.listen_for_change.remote(new_snapshot_ids)
+    assert ray.get(object_ref) == LongPollState.TIME_OUT
+
+    wait_for_condition(
+        lambda: ray.get(host._get_num_notifier_events.remote()) == 0
+    )
 
 
 def test_host_standalone(serve_instance):
