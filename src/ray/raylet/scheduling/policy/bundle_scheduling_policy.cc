@@ -310,7 +310,7 @@ SchedulingResult BundlePackSchedulingPolicy::Schedule(
     // If `PackSchedule` fails, the id of some nodes may be nil.
     if (!result_nodes[index].IsNil()) {
       RAY_CHECK(cluster_resource_manager_.AddNodeAvailableResources(
-          result_nodes[index], *sorted_resource_request_list[index]));
+          result_nodes[index], (*sorted_resource_request_list[index]).GetResourceSet()));
     }
   }
 
@@ -380,7 +380,7 @@ SchedulingResult BundleSpreadSchedulingPolicy::Schedule(
     // If `PackSchedule` fails, the id of some nodes may be nil.
     if (!result_nodes[index].IsNil()) {
       RAY_CHECK(cluster_resource_manager_.AddNodeAvailableResources(
-          result_nodes[index], *sorted_resource_request_list[index]));
+          result_nodes[index], (*sorted_resource_request_list[index]).GetResourceSet()));
     }
   }
 

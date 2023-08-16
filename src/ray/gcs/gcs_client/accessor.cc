@@ -749,21 +749,21 @@ void NodeResourceInfoAccessor::FillResourceUsageRequest(
 
   auto resources_data = resources.mutable_resources();
   resources_data->clear_resources_total();
-  for (const auto &resource_pair : cached_resources.total.ToResourceMap()) {
+  for (const auto &resource_pair : cached_resources.total.GetResourceMap()) {
     (*resources_data->mutable_resources_total())[resource_pair.first] =
         resource_pair.second;
   }
 
   resources_data->clear_resources_available();
   resources_data->set_resources_available_changed(true);
-  for (const auto &resource_pair : cached_resources.available.ToResourceMap()) {
+  for (const auto &resource_pair : cached_resources.available.GetResourceMap()) {
     (*resources_data->mutable_resources_available())[resource_pair.first] =
         resource_pair.second;
   }
 
   resources_data->clear_resource_load();
   resources_data->set_resource_load_changed(true);
-  for (const auto &resource_pair : cached_resources.load.ToResourceMap()) {
+  for (const auto &resource_pair : cached_resources.load.GetResourceMap()) {
     (*resources_data->mutable_resource_load())[resource_pair.first] =
         resource_pair.second;
   }
