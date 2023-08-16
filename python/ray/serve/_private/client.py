@@ -278,6 +278,7 @@ class ServeControllerClient:
             route_prefix=route_prefix,
         )
         controller_deploy_args.pop("ingress")
+        controller_deploy_args["name"] = controller_deploy_args.pop("deployment_name")
 
         updating = ray.get(
             self._controller.deploy.remote(
@@ -311,12 +312,13 @@ class ServeControllerClient:
                     deployment["init_kwargs"],
                     ingress=deployment["ingress"],
                     ray_actor_options=deployment["ray_actor_options"],
+                    placement_group_bundles=deployment["placement_group_bundles"],
+                    placement_group_strategy=deployment["placement_group_strategy"],
                     config=deployment["config"],
                     version=deployment["version"],
                     route_prefix=deployment["route_prefix"],
                     is_driver_deployment=deployment["is_driver_deployment"],
                     docs_path=deployment["docs_path"],
-                    app_name=name,
                 )
             )
 

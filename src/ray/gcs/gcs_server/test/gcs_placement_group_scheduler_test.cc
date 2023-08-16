@@ -1337,8 +1337,8 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestWaitingRemovedBundles) {
     for (const auto &resource_entry : bundle->GetFormattedResources()) {
       cluster_resource_scheduler_->GetClusterResourceManager().AddNodeAvailableResources(
           scheduling::NodeID(node->node_id()),
-          ResourceRequest({{scheduling::ResourceID(resource_entry.first),
-                            FixedPoint(resource_entry.second)}}));
+          ResourceSet({{scheduling::ResourceID(resource_entry.first),
+                        FixedPoint(resource_entry.second)}}));
     }
   }
 

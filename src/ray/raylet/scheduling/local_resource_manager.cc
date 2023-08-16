@@ -19,6 +19,7 @@
 
 #include "ray/common/grpc_util.h"
 #include "ray/common/ray_config.h"
+#include "ray/raylet/raylet_util.h"
 
 namespace ray {
 
@@ -65,6 +66,8 @@ bool LocalResourceManager::IsAvailableResourceEmpty(
 std::string LocalResourceManager::DebugString(void) const {
   std::stringstream buffer;
   buffer << local_resources_.DebugString();
+  buffer << " is_draining: " << IsLocalNodeDraining();
+  buffer << " is_idle: " << IsLocalNodeIdle();
   return buffer.str();
 }
 
@@ -349,8 +352,8 @@ void LocalResourceManager::ReleaseWorkerResources(
 
 NodeResources LocalResourceManager::ToNodeResources() const {
   NodeResources node_resources;
-  node_resources.available = local_resources_.available.ToResourceRequest();
-  node_resources.total = local_resources_.total.ToResourceRequest();
+  node_resources.available = local_resources_.available.ToResourceSet();
+  node_resources.total = local_resources_.total.ToResourceSet();
   node_resources.labels = local_resources_.labels;
   node_resources.is_draining = is_local_node_draining_;
   return node_resources;
@@ -371,7 +374,6 @@ void LocalResourceManager::UpdateAvailableObjectStoreMemResource() {
   if (new_available != local_resources_.available.Get(ResourceID::ObjectStoreMemory())) {
     local_resources_.available.Set(ResourceID::ObjectStoreMemory(),
                                    std::move(new_available));
-    OnResourceOrStateChanged();
 
     // This is more of a discrete approximate of the last idle object store memory usage.
     // TODO(rickyx): in order to know exactly when object store becomes idle/busy, we
@@ -385,6 +387,8 @@ void LocalResourceManager::UpdateAvailableObjectStoreMemResource() {
       RAY_LOG(INFO) << "Object store memory is not idle.";
       resources_last_idle_time_[ResourceID::ObjectStoreMemory()] = absl::nullopt;
     }
+
+    OnResourceOrStateChanged();
   }
 }
 
@@ -399,10 +403,9 @@ void LocalResourceManager::FillResourceUsage(rpc::ResourcesData &resources_data)
     last_report_resources_.reset(new NodeResources(node_resources));
   }
 
-  for (auto entry : resources.total.ToMap()) {
-    auto resource_id = entry.first;
-    auto label = ResourceID(resource_id).Binary();
-    auto total = entry.second;
+  for (auto resource_id : resources.total.ResourceIds()) {
+    auto label = resource_id.Binary();
+    auto total = resources.total.Get(resource_id);
     auto available = resources.available.Get(resource_id);
     auto last_total = last_report_resources_->total.Get(resource_id);
     auto last_available = last_report_resources_->available.Get(resource_id);
@@ -457,10 +460,9 @@ std::optional<syncer::RaySyncMessage> LocalResourceManager::CreateSyncMessage(
 
   NodeResources resources = ToNodeResources();
 
-  for (auto entry : resources.total.ToMap()) {
-    auto resource_id = entry.first;
-    auto label = ResourceID(resource_id).Binary();
-    auto total = entry.second;
+  for (auto resource_id : resources.total.ResourceIds()) {
+    auto label = resource_id.Binary();
+    auto total = resources.total.Get(resource_id);
     auto available = resources.available.Get(resource_id);
 
     resources_data.set_resources_available_changed(true);
@@ -512,11 +514,8 @@ ray::gcs::NodeResourceInfoAccessor::ResourceMap LocalResourceManager::GetResourc
 void LocalResourceManager::OnResourceOrStateChanged() {
   if (IsLocalNodeDraining() && IsLocalNodeIdle()) {
     // The node is drained.
-    // Sending a SIGTERM to itself is equivalent to gracefully shutting down raylet.
     RAY_LOG(INFO) << "The node is drained, exiting...";
-    RAY_CHECK(std::raise(SIGTERM) == 0) << "There was a failure while sending a "
-                                           "sigterm to itself. The process will not "
-                                           "gracefully shutdown.";
+    raylet::ShutdownRayletGracefully();
   }
 
   ++version_;
@@ -538,10 +537,10 @@ bool LocalResourceManager::ResourcesExist(scheduling::ResourceID resource_id) co
 absl::flat_hash_map<std::string, LocalResourceManager::ResourceUsage>
 LocalResourceManager::GetResourceUsageMap() const {
   const auto &local_resources = GetLocalResources();
-  const auto &avail_map =
-      local_resources.GetAvailableResourceInstances().ToResourceRequest().ToResourceMap();
-  const auto &total_map =
-      local_resources.GetTotalResourceInstances().ToResourceRequest().ToResourceMap();
+  const auto avail_map =
+      local_resources.GetAvailableResourceInstances().ToResourceSet().GetResourceMap();
+  const auto total_map =
+      local_resources.GetTotalResourceInstances().ToResourceSet().GetResourceMap();
 
   absl::flat_hash_map<std::string, ResourceUsage> resource_usage_map;
   for (const auto &it : total_map) {
