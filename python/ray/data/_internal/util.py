@@ -513,3 +513,20 @@ def unify_block_metadata_schema(
         # return the first schema.
         return schemas_to_unify[0]
     return None
+
+
+def get_attribute_from_class_name(class_name: str) -> Any:
+    """Get Python attribute from the provided class name.
+
+    The caller needs to make sure the provided class name includes
+    full module name, and can be imported successfully.
+    """
+    from importlib import import_module
+
+    paths = class_name.split(".")
+    if len(paths) < 2:
+        raise ValueError(f"Cannot create object from {class_name}.")
+
+    module_name = ".".join(paths[:-1])
+    attribute_name = paths[-1]
+    return getattr(import_module(module_name), attribute_name)
