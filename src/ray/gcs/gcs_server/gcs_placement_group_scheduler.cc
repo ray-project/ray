@@ -25,14 +25,12 @@ GcsPlacementGroupScheduler::GcsPlacementGroupScheduler(
     std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
     const gcs::GcsNodeManager &gcs_node_manager,
     ClusterResourceScheduler &cluster_resource_scheduler,
-    std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool,
-    gcs_syncer::RaySyncer *ray_syncer)
+    std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool)
     : return_timer_(io_context),
       gcs_table_storage_(std::move(gcs_table_storage)),
       gcs_node_manager_(gcs_node_manager),
       cluster_resource_scheduler_(cluster_resource_scheduler),
-      raylet_client_pool_(raylet_client_pool),
-      ray_syncer_(ray_syncer) {}
+      raylet_client_pool_(raylet_client_pool) {}
 
 void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
     std::shared_ptr<GcsPlacementGroup> placement_group,
@@ -247,15 +245,6 @@ void GcsPlacementGroupScheduler::CancelResourceReserve(
                                    const rpc::CancelResourceReserveReply &reply) {
         RAY_LOG(DEBUG) << "Finished cancelling the resource reserved for bundle: "
                        << bundle_spec->DebugString() << " at node " << node_id;
-        if (ray_syncer_ != nullptr) {
-          auto &resources = bundle_spec->GetFormattedResources();
-          rpc::NodeResourceChange node_resource_change;
-          for (const auto &iter : resources) {
-            node_resource_change.add_deleted_resources(iter.first);
-          }
-          node_resource_change.set_node_id(node_id.Binary());
-          ray_syncer_->Update(std::move(node_resource_change));
-        }
       });
 }
 
@@ -306,16 +295,6 @@ void GcsPlacementGroupScheduler::CommitAllBundles(
       for (const auto &bundle : bundles_per_node) {
         lease_status_tracker->MarkCommitRequestReturned(node_id, bundle, status);
         (*commited_bundle_locations)[bundle->BundleId()] = {node_id, bundle};
-
-        if (ray_syncer_ != nullptr) {
-          auto &resources = bundle->GetFormattedResources();
-          // Push the message to syncer so that it can be broadcasted to all other nodes
-          rpc::NodeResourceChange node_resource_change;
-          node_resource_change.set_node_id(node_id.Binary());
-          node_resource_change.mutable_updated_resources()->insert(resources.begin(),
-                                                                   resources.end());
-          ray_syncer_->Update(std::move(node_resource_change));
-        }
       }
       // Commit the bundle resources on the remote node to the cluster resources.
       CommitBundleResources(commited_bundle_locations);
