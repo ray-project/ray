@@ -4920,22 +4920,9 @@
       frequency: manual
       cluster:
         cluster_compute: tpl_64_gce.yaml
+    - __suffix__: aws.py311
+      python: "3.11"
 
-- name: microbenchmark_311
-  group: core-daily-test
-  team: core
-  frequency: manual
-  working_dir: microbenchmark
-
-  python: "3.11"
-
-  cluster:
-    byod: {}
-    cluster_compute: tpl_64.yaml
-
-  run:
-    timeout: 1800
-    script: OMP_NUM_THREADS=64 RAY_ADDRESS=local python run_microbenchmark.py
 
 - name: benchmark_worker_startup
   group: core-daily-test
