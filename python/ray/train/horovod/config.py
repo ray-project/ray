@@ -7,6 +7,7 @@ from dataclasses import dataclass
 import ray
 from ray.air.checkpoint import Checkpoint
 from ray.train.backend import BackendConfig, Backend, _warn_about_bad_checkpoint_type
+from ray.train._internal.storage import _use_storage_context
 from ray.train._internal.utils import update_env_vars
 from ray.train._internal.worker_group import WorkerGroup, Worker
 
@@ -144,8 +145,12 @@ class _HorovodBackend(Backend):
 
         worker_group.execute(update_env_vars, coordinator_envs)
 
+    # TODO(justinvyu): [code_removal]
     @classmethod
     def _encode_data(cls, checkpoint: Checkpoint):
+        if _use_storage_context():
+            return checkpoint
+
         checkpoint = super()._encode_data(checkpoint)
         if type(checkpoint) is Checkpoint:
             if checkpoint.get_internal_representation()[0] == "data_dict":
