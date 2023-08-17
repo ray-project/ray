@@ -2,14 +2,14 @@ import asyncio
 import concurrent.futures
 from dataclasses import dataclass
 import threading
-from typing import Any, AsyncIterator, Coroutine, Iterator, Optional, Union
+from typing import Any, AsyncIterator, Coroutine, Dict, Iterator, Optional, Tuple, Union
 
 import ray
 from ray._private.utils import get_or_create_event_loop
 from ray._raylet import StreamingObjectRefGenerator
 
 from ray import serve
-from ray.serve._private.common import EndpointTag
+from ray.serve._private.common import DeploymentID
 from ray.serve._private.constants import (
     RAY_SERVE_ENABLE_NEW_ROUTING,
 )
@@ -75,14 +75,15 @@ class _HandleOptions:
 class _DeploymentHandleBase:
     def __init__(
         self,
-        deployment_name: EndpointTag,
+        deployment_name: str,
+        app_name: str,
         *,
         handle_options: Optional[_HandleOptions] = None,
         _router: Optional[Router] = None,
         _is_for_http_requests: bool = False,
         _is_for_sync_context: bool = False,
     ):
-        self.deployment_name = deployment_name
+        self.deployment_id = DeploymentID(deployment_name, app_name)
         self.handle_options = handle_options or _HandleOptions()
         self._is_for_http_requests = _is_for_http_requests
         self._is_for_sync_context = _is_for_sync_context
@@ -95,9 +96,14 @@ class _DeploymentHandleBase:
             ),
             tag_keys=("handle", "deployment", "route", "application"),
         )
-        handle_tag = f"{self.deployment_name}#{get_random_letters()}"
+        if app_name:
+            handle_tag = f"{app_name}#{deployment_name}#{get_random_letters()}"
+        else:
+            handle_tag = f"{deployment_name}#{get_random_letters()}"
+
+        # TODO(zcin): Separate deployment_id into deployment and application tags
         self.request_counter.set_default_tags(
-            {"handle": handle_tag, "deployment": self.deployment_name}
+            {"handle": handle_tag, "deployment": str(self.deployment_id)}
         )
 
         self._router: Optional[Router] = _router
@@ -121,13 +127,21 @@ class _DeploymentHandleBase:
 
             self._router = Router(
                 serve.context.get_global_client()._controller,
-                self.deployment_name,
+                self.deployment_id,
                 event_loop=event_loop,
                 _use_new_routing=RAY_SERVE_ENABLE_NEW_ROUTING,
                 _router_cls=self.handle_options._router_cls,
             )
 
         return self._router
+
+    @property
+    def deployment_name(self) -> str:
+        return self.deployment_id.name
+
+    @property
+    def app_name(self) -> str:
+        return self.deployment_id.app
 
     @property
     def _is_same_loop(self) -> bool:
@@ -166,23 +180,24 @@ class _DeploymentHandleBase:
 
         return cls(
             self.deployment_name,
+            self.app_name,
             handle_options=new_handle_options,
             _router=None if _router_cls != DEFAULT.VALUE else self._router,
             _is_for_http_requests=self._is_for_http_requests,
             _is_for_sync_context=self._is_for_sync_context,
         )
 
-    def _remote(self, deployment_name, handle_options, args, kwargs) -> Coroutine:
+    def _remote(self, args: Tuple[Any], kwargs: Dict[str, Any]) -> Coroutine:
         _request_context = ray.serve.context._serve_request_context.get()
         request_metadata = RequestMetadata(
             _request_context.request_id,
-            deployment_name,
-            call_method=handle_options.method_name,
+            self.deployment_name,
+            call_method=self.handle_options.method_name,
             is_http_request=self._is_for_http_requests,
             route=_request_context.route,
             app_name=_request_context.app_name,
-            multiplexed_model_id=handle_options.multiplexed_model_id,
-            is_streaming=handle_options.stream,
+            multiplexed_model_id=self.handle_options.multiplexed_model_id,
+            is_streaming=self.handle_options.stream,
         )
         self.request_counter.inc(
             tags={
@@ -306,9 +321,7 @@ class RayServeHandle(_DeploymentHandleBase):
 
         """
         loop = self._get_or_create_router()._event_loop
-        result_coro = self._remote(
-            self.deployment_name, self.handle_options, args, kwargs
-        )
+        result_coro = self._remote(args, kwargs)
         return asyncio.ensure_future(result_coro, loop=loop)
 
 
@@ -379,7 +392,7 @@ class RayServeSyncHandle(_DeploymentHandleBase):
             result = ray.get(obj_ref)
 
         """
-        coro = self._remote(self.deployment_name, self.handle_options, args, kwargs)
+        coro = self._remote(args, kwargs)
         future: concurrent.futures.Future = asyncio.run_coroutine_threadsafe(
             coro, self._get_or_create_router()._event_loop
         )
@@ -770,9 +783,7 @@ class DeploymentHandle(_DeploymentHandleBase):
 
         """
         loop = self._get_or_create_router()._event_loop
-        result_coro = self._remote(
-            self.deployment_name, self.handle_options, args, kwargs
-        )
+        result_coro = self._remote(args, kwargs)
         if self.handle_options.stream:
             return DeploymentResponseGenerator(result_coro, loop=loop)
         else:

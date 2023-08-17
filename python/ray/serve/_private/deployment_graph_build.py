@@ -7,8 +7,8 @@ from ray import cloudpickle
 from ray.serve.deployment import Deployment, schema_to_deployment
 from ray.serve.deployment_graph import RayServeDAGHandle
 from ray.serve._private.constants import (
-    DEPLOYMENT_NAME_PREFIX_SEPARATOR,
     RAY_SERVE_ENABLE_NEW_HANDLE_API,
+    SERVE_DEFAULT_APP_NAME,
 )
 from ray.serve._private.deployment_method_node import DeploymentMethodNode
 from ray.serve._private.deployment_node import DeploymentNode
@@ -36,7 +36,9 @@ from ray.dag.utils import _DAGNodeNameGenerator
 from ray.experimental.gradio_utils import type_to_string
 
 
-def build(ray_dag_root_node: DAGNode, name: str = None) -> List[Deployment]:
+def build(
+    ray_dag_root_node: DAGNode, name: str = SERVE_DEFAULT_APP_NAME
+) -> List[Deployment]:
     """Do all the DAG transformation, extraction and generation needed to
     produce a runnable and deployable serve pipeline application from a valid
     DAG authored with Ray DAG API.
@@ -154,7 +156,7 @@ def get_and_validate_ingress_deployment(
 
 
 def transform_ray_dag_to_serve_dag(
-    dag_node: DAGNode, node_name_generator: _DAGNodeNameGenerator, name: str = None
+    dag_node: DAGNode, node_name_generator: _DAGNodeNameGenerator, app_name: str
 ):
     """
     Transform a Ray DAG to a Serve DAG. Map ClassNode to DeploymentNode with
@@ -179,9 +181,9 @@ def transform_ray_dag_to_serve_dag(
                 node, DeploymentFunctionNode
             ):
                 if RAY_SERVE_ENABLE_NEW_HANDLE_API:
-                    return DeploymentHandle(node._deployment.name)
+                    return DeploymentHandle(node._deployment.name, app_name)
                 else:
-                    return RayServeHandle(node._deployment.name)
+                    return RayServeHandle(node._deployment.name, app_name)
             elif isinstance(node, DeploymentExecutorNode):
                 return node._deployment_handle
 
@@ -222,9 +224,6 @@ def transform_ray_dag_to_serve_dag(
         ):
             deployment_name = deployment_shell.name
 
-        if name:
-            deployment_name = name + DEPLOYMENT_NAME_PREFIX_SEPARATOR + deployment_name
-
         # Set the route prefix, prefer the one user supplied,
         # otherwise set it to /deployment_name
         if (
@@ -247,6 +246,7 @@ def transform_ray_dag_to_serve_dag(
 
         return DeploymentNode(
             deployment,
+            app_name,
             dag_node.get_args(),
             dag_node.get_kwargs(),
             dag_node.get_options(),
@@ -268,6 +268,7 @@ def transform_ray_dag_to_serve_dag(
         return DeploymentMethodNode(
             parent_deployment_node._deployment,
             dag_node._method_name,
+            app_name,
             dag_node.get_args(),
             dag_node.get_kwargs(),
             dag_node.get_options(),
@@ -296,13 +297,10 @@ def transform_ray_dag_to_serve_dag(
             ):
                 deployment_name = schema.name
 
-        # Update the deployment name if the application name provided.
-        if name:
-            deployment_name = name + DEPLOYMENT_NAME_PREFIX_SEPARATOR + deployment_name
-
         return DeploymentFunctionNode(
             dag_node._body,
             deployment_name,
+            app_name,
             dag_node.get_args(),
             dag_node.get_kwargs(),
             dag_node.get_options(),
