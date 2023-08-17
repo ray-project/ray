@@ -305,7 +305,7 @@ def _find_address_from_flag(flag: str):
     #     --java_worker_command= --cpp_worker_command=
     #     --redis_password=[MASKED] --temp_dir=/tmp/ray --session_dir=...
     #     --metrics-agent-port=41856 --metrics_export_port=64229
-    #     --agent_command=/usr/bin/python
+    #     --dashboard_agent_command=/usr/bin/python
     #     -u /usr/local/lib/python3.8/dist-packages/ray/dashboard/agent.py
     #         --redis-address=123.456.78.910:6379 --metrics-export-port=64229
     #         --dashboard-agent-port=41856 --node-manager-port=58578
@@ -1084,7 +1084,9 @@ def start_api_server(
             no redirection should happen, then this should be None.
 
     Returns:
-        ProcessInfo for the process that was started.
+        A tuple of :
+            - Dashboard URL if dashboard enabled and started.
+            - ProcessInfo for the process that was started.
     """
     try:
         # Make sure port is available.
@@ -1355,6 +1357,7 @@ def start_raylet(
     node_manager_port: int,
     raylet_name: str,
     plasma_store_name: str,
+    cluster_id: str,
     worker_path: str,
     setup_worker_path: str,
     storage: str,
@@ -1375,6 +1378,7 @@ def start_raylet(
     metrics_agent_port: Optional[int] = None,
     metrics_export_port: Optional[int] = None,
     dashboard_agent_listen_port: Optional[int] = None,
+    runtime_env_agent_port: Optional[int] = None,
     use_valgrind: bool = False,
     use_profiler: bool = False,
     stdout_file: Optional[str] = None,
@@ -1389,6 +1393,7 @@ def start_raylet(
     env_updates: Optional[dict] = None,
     node_name: Optional[str] = None,
     webui: Optional[str] = None,
+    labels: Optional[dict] = None,
 ):
     """Start a raylet, which is a combined local scheduler and object manager.
 
@@ -1422,7 +1427,9 @@ def start_raylet(
         metrics_agent_port: The port where metrics agent is bound to.
         metrics_export_port: The port at which metrics are exposed to.
         dashboard_agent_listen_port: The port at which the dashboard agent
-            listens to for http.
+            listens to for HTTP.
+        runtime_env_agent_port: The port at which the runtime env agent
+            listens to for HTTP.
         use_valgrind: True if the raylet should be started inside
             of valgrind. If this is True, use_profiler must be False.
         use_profiler: True if the raylet should be started inside
@@ -1441,7 +1448,7 @@ def start_raylet(
         ray_debugger_external: True if the Ray debugger should be made
             available externally to this node.
         env_updates: Environment variable overrides.
-
+        labels: The key-value labels of the node.
     Returns:
         ProcessInfo for the process that was started.
     """
@@ -1524,12 +1531,15 @@ def start_raylet(
             f"--redis-address={redis_address}",
             f"--temp-dir={temp_dir}",
             f"--metrics-agent-port={metrics_agent_port}",
+            f"--runtime-env-agent-port={runtime_env_agent_port}",
             f"--logging-rotate-bytes={max_bytes}",
             f"--logging-rotate-backup-count={backup_count}",
+            f"--runtime-env-agent-port={runtime_env_agent_port}",
             f"--gcs-address={gcs_address}",
             f"--session-name={session_name}",
             f"--temp-dir={temp_dir}",
             f"--webui={webui}",
+            f"--cluster-id={cluster_id}",
         ]
     )
 
@@ -1552,7 +1562,11 @@ def start_raylet(
     if max_worker_port is None:
         max_worker_port = 0
 
-    agent_command = [
+    labels_json_str = ""
+    if labels:
+        labels_json_str = json.dumps(labels)
+
+    dashboard_agent_command = [
         *_build_python_executable_command_memory_profileable(
             ray_constants.PROCESS_TYPE_DASHBOARD_AGENT, session_dir
         ),
@@ -1566,7 +1580,6 @@ def start_raylet(
         f"--raylet-name={raylet_name}",
         f"--temp-dir={temp_dir}",
         f"--session-dir={session_dir}",
-        f"--runtime-env-dir={resource_dir}",
         f"--log-dir={log_dir}",
         f"--logging-rotate-bytes={max_bytes}",
         f"--logging-rotate-backup-count={backup_count}",
@@ -1576,18 +1589,33 @@ def start_raylet(
     if stdout_file is None and stderr_file is None:
         # If not redirecting logging to files, unset log filename.
         # This will cause log records to go to stderr.
-        agent_command.append("--logging-filename=")
+        dashboard_agent_command.append("--logging-filename=")
         # Use stderr log format with the component name as a message prefix.
         logging_format = ray_constants.LOGGER_FORMAT_STDERR.format(
             component=ray_constants.PROCESS_TYPE_DASHBOARD_AGENT
         )
-        agent_command.append(f"--logging-format={logging_format}")
+        dashboard_agent_command.append(f"--logging-format={logging_format}")
 
     if not ray._private.utils.check_dashboard_dependencies_installed():
         # If dependencies are not installed, it is the minimally packaged
         # ray. We should restrict the features within dashboard agent
         # that requires additional dependencies to be downloaded.
-        agent_command.append("--minimal")
+        dashboard_agent_command.append("--minimal")
+
+    runtime_env_agent_command = [
+        *_build_python_executable_command_memory_profileable(
+            ray_constants.PROCESS_TYPE_RUNTIME_ENV_AGENT, session_dir
+        ),
+        os.path.join(RAY_PATH, "_private", "runtime_env", "agent", "main.py"),
+        f"--node-ip-address={node_ip_address}",
+        f"--runtime-env-agent-port={runtime_env_agent_port}",
+        f"--gcs-address={gcs_address}",
+        f"--runtime-env-dir={resource_dir}",
+        f"--logging-rotate-bytes={max_bytes}",
+        f"--logging-rotate-backup-count={backup_count}",
+        f"--log-dir={log_dir}",
+        f"--temp-dir={temp_dir}",
+    ]
 
     command = [
         RAYLET_EXECUTABLE,
@@ -1610,11 +1638,14 @@ def start_raylet(
         f"--resource_dir={resource_dir}",
         f"--metrics-agent-port={metrics_agent_port}",
         f"--metrics_export_port={metrics_export_port}",
+        f"--runtime_env_agent_port={runtime_env_agent_port}",
         f"--object_store_memory={object_store_memory}",
         f"--plasma_directory={plasma_directory}",
         f"--ray-debugger-external={1 if ray_debugger_external else 0}",
         f"--gcs-address={gcs_address}",
         f"--session-name={session_name}",
+        f"--labels={labels_json_str}",
+        f"--cluster-id={cluster_id}",
     ]
 
     if is_head_node:
@@ -1625,7 +1656,16 @@ def start_raylet(
     command.append(
         "--num_prestart_python_workers={}".format(int(resource_spec.num_cpus))
     )
-    command.append("--agent_command={}".format(subprocess.list2cmdline(agent_command)))
+    command.append(
+        "--dashboard_agent_command={}".format(
+            subprocess.list2cmdline(dashboard_agent_command)
+        )
+    )
+    command.append(
+        "--runtime_env_agent_command={}".format(
+            subprocess.list2cmdline(runtime_env_agent_command)
+        )
+    )
     if huge_pages:
         command.append("--huge_pages")
     if socket_to_use:
@@ -1970,7 +2010,7 @@ def start_ray_client_server(
     stderr_file: Optional[int] = None,
     redis_password: Optional[int] = None,
     fate_share: Optional[bool] = None,
-    metrics_agent_port: Optional[int] = None,
+    runtime_env_agent_address: Optional[str] = None,
     server_type: str = "proxy",
     serialized_runtime_env_context: Optional[str] = None,
 ):
@@ -1985,6 +2025,8 @@ def start_ray_client_server(
         stderr_file: A file handle opened for writing to redirect stderr to. If
             no redirection should happen, then this should be None.
         redis_password: The password of the redis server.
+        runtime_env_agent_address: Address to the Runtime Env Agent listens on via HTTP.
+            Only needed when server_type == "proxy".
         server_type: Whether to start the proxy version of Ray Client.
         serialized_runtime_env_context (str|None): If specified, the serialized
             runtime_env_context to start the client server in.
@@ -2017,8 +2059,11 @@ def start_ray_client_server(
         command.append(
             f"--serialized-runtime-env-context={serialized_runtime_env_context}"  # noqa: E501
         )
-    if metrics_agent_port:
-        command.append(f"--metrics-agent-port={metrics_agent_port}")
+    if server_type == "proxy":
+        assert len(runtime_env_agent_address) > 0
+    if runtime_env_agent_address:
+        command.append(f"--runtime-env-agent-address={runtime_env_agent_address}")
+
     process_info = start_ray_process(
         command,
         ray_constants.PROCESS_TYPE_RAY_CLIENT_SERVER,

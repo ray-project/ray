@@ -1,10 +1,12 @@
 from abc import ABCMeta, abstractmethod
 import math
+from typing import List
 
 from ray.serve.config import AutoscalingConfig
-from ray.serve._private.constants import CONTROL_LOOP_PERIOD_S
+from ray.serve._private.constants import CONTROL_LOOP_PERIOD_S, SERVE_LOGGER_NAME
+import logging
 
-from typing import List
+logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
 def calculate_desired_num_replicas(
@@ -43,6 +45,17 @@ def calculate_desired_num_replicas(
     # Multiply the distance to 1 by the smoothing ("gain") factor (default=1).
     smoothed_error_ratio = 1 + ((error_ratio - 1) * autoscaling_config.smoothing_factor)
     desired_num_replicas = math.ceil(current_num_replicas * smoothed_error_ratio)
+
+    # If error_ratio = 0, meaning there is no more traffic, and desired
+    # num replicas is stuck at a positive number due to the math.ceil
+    # above, decrease desired_num_replicas by one so that the deployment
+    # can eventually scale to 0.
+    if (
+        error_ratio == 0
+        and desired_num_replicas == current_num_replicas
+        and desired_num_replicas >= 1
+    ):
+        desired_num_replicas -= 1
 
     # Ensure min_replicas <= desired_num_replicas <= max_replicas.
     desired_num_replicas = min(autoscaling_config.max_replicas, desired_num_replicas)
@@ -132,9 +145,12 @@ class BasicAutoscalingPolicy(AutoscalingPolicy):
     ) -> int:
 
         if len(current_num_ongoing_requests) == 0:
-            # When 0 replica and queries queued, scale up the replicas
+            # When 0 replicas and queries are queued, scale up the replicas
             if current_handle_queued_queries > 0:
-                return max(1, curr_target_num_replicas)
+                return max(
+                    math.ceil(1 * self.config.smoothing_factor),
+                    curr_target_num_replicas,
+                )
             return curr_target_num_replicas
 
         decision_num_replicas = curr_target_num_replicas

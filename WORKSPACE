@@ -21,9 +21,8 @@ load("@bazel_skylib//lib:versions.bzl", "versions")
 # TODO (shrekris-anyscale): Update the min version to 4.2.2 once Windows uses
 # it in CI.
 
-# When the bazel version is updated, make sure to update it
-# in setup.py as well.
-versions.check(minimum_bazel_version = "5.4.0")
+# Please keep this in sync with the .bazeliskrc file.
+versions.check(minimum_bazel_version = "5.4.1")
 
 # Tools to generate `compile_commands.json` to enable awesome tooling of the C language family.
 # Just run `bazel run @hedron_compile_commands//:refresh_all`
@@ -38,6 +37,43 @@ http_archive(
     url = "https://github.com/bazelbuild/rules_python/releases/download/0.21.0/rules_python-0.21.0.tar.gz",
 )
 
+load("@rules_python//python:repositories.bzl", "python_register_toolchains")
+
+python_register_toolchains(
+    name = "python3_9",
+    python_version = "3.9",
+    register_toolchains = False,
+)
+
+load("@python3_9//:defs.bzl", python39 = "interpreter")
 load("@rules_python//python/pip_install:repositories.bzl", "pip_install_dependencies")
 
 pip_install_dependencies()
+
+load("@rules_python//python:pip.bzl", "pip_parse")
+
+pip_parse(
+    name = "py_deps_buildkite",
+    python_interpreter_target = python39,
+    requirements_lock = "//release:requirements_buildkite.txt",
+)
+
+pip_parse(
+    name = "py_deps_ray_ci",
+    python_interpreter_target = python39,
+    requirements_lock = "//release:requirements_buildkite.txt",
+)
+
+load("@py_deps_buildkite//:requirements.bzl", install_py_deps_buildkite = "install_deps")
+load("@py_deps_ray_ci//:requirements.bzl", install_py_deps_ray_ci = "install_deps")
+
+install_py_deps_buildkite()
+
+install_py_deps_ray_ci()
+
+register_toolchains("//:python_toolchain")
+
+register_execution_platforms(
+    "@local_config_platform//:host",
+    "//:hermetic_python_platform",
+)

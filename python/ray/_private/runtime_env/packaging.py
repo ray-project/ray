@@ -18,7 +18,6 @@ from ray._private.ray_constants import (
     RAY_RUNTIME_ENV_URI_PIN_EXPIRATION_S_ENV_VAR,
     RAY_RUNTIME_ENV_IGNORE_GITIGNORE,
 )
-from ray._private.gcs_utils import GcsAioClient
 from ray._private.thirdparty.pathspec import PathSpec
 from ray.experimental.internal_kv import (
     _internal_kv_exists,
@@ -183,7 +182,7 @@ def parse_uri(pkg_uri: str) -> Tuple[Protocol, str]:
     only for setting up local directory folders by using package name as path.
 
     >>> parse_uri("https://test.com/file.zip")
-    (Protocol.HTTPS, "https_test_com_file.zip")
+    (<Protocol.HTTPS: 'https'>, 'https_test_com_file.zip')
     """
     uri = urlparse(pkg_uri)
     try:
@@ -450,9 +449,8 @@ def get_uri_for_directory(directory: str, excludes: Optional[List[str]] = None) 
 
     Examples:
 
-    .. code-block:: python
-        >>> get_uri_for_directory("/my_directory")
-        .... _ray_pkg_af2734982a741.zip
+        >>> get_uri_for_directory("/my_directory")  # doctest: +SKIP
+        _ray_pkg_af2734982a741.zip
 
     Args:
         directory: The directory.
@@ -594,7 +592,7 @@ def get_local_dir_from_uri(uri: str, base_directory: str) -> Path:
 async def download_and_unpack_package(
     pkg_uri: str,
     base_directory: str,
-    gcs_aio_client: Optional[GcsAioClient] = None,
+    gcs_aio_client: Optional["GcsAioClient"] = None,  # noqa: F821
     logger: Optional[logging.Logger] = default_logger,
 ) -> str:
     """Download the package corresponding to this URI and unpack it if zipped.

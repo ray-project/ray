@@ -1,10 +1,11 @@
-import pytest
-import ray
-from ray.data.tests.test_execution_optimizer import _check_usage_record
-import torch
-from ray.data.tests.conftest import *  # noqa
 import pandas
+import pytest
 import raydp
+import torch
+
+import ray
+from ray.data.tests.conftest import *  # noqa
+from ray.data.tests.test_execution_optimizer import _check_usage_record
 
 
 # RayDP tests require Ray Java. Make sure ray jar is built before running this test.
@@ -51,10 +52,10 @@ def test_from_spark_e2e(enable_optimizer, spark):
     assert values == rows
 
     # Check that metadata fetch is included in stats.
-    assert "FromArrowRefs" in ds.stats()
-    # Underlying implementation uses `FromArrowRefs` operator
-    assert ds._plan._logical_plan.dag.name == "FromArrowRefs"
-    _check_usage_record(["FromArrowRefs"])
+    assert "FromArrow" in ds.stats()
+    # Underlying implementation uses `FromArrow` operator
+    assert ds._plan._logical_plan.dag.name == "FromArrow"
+    _check_usage_record(["FromArrow"])
 
 
 def test_raydp_to_torch_iter(spark):

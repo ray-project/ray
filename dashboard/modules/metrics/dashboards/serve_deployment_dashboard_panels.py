@@ -10,7 +10,7 @@ from ray.dashboard.modules.metrics.dashboards.common import (
 SERVE_DEPLOYMENT_GRAFANA_PANELS = [
     Panel(
         id=1,
-        title="Deployments",
+        title="Replicas per deployment",
         description='Number of replicas per deployment. Ignores "Route" variable.',
         unit="replicas",
         targets=[
@@ -118,6 +118,138 @@ SERVE_DEPLOYMENT_GRAFANA_PANELS = [
         fill=0,
         stack=False,
         grid_pos=GridPos(0, 2, 8, 8),
+    ),
+    Panel(
+        id=8,
+        title="Pending requests per replica",
+        description="Pending requests for each replica.",
+        unit="requests",
+        targets=[
+            Target(
+                expr="sum(ray_serve_replica_pending_queries{{{global_filters}}}) by (deployment, replica)",
+                legend="{{replica}}",
+            ),
+        ],
+        fill=0,
+        stack=False,
+        grid_pos=GridPos(8, 2, 8, 8),
+    ),
+    Panel(
+        id=9,
+        title="Running requests per replica",
+        description="Current running requests for each replica.",
+        unit="requests",
+        targets=[
+            Target(
+                expr="sum(ray_serve_replica_processing_queries{{{global_filters}}}) by (deployment, replica)",
+                legend="{{replica}}",
+            ),
+        ],
+        fill=0,
+        stack=False,
+        grid_pos=GridPos(16, 2, 8, 8),
+    ),
+    Panel(
+        id=10,
+        title="Multiplexed models per replica",
+        description="The number of multiplexed models for each replica.",
+        unit="models",
+        targets=[
+            Target(
+                expr="sum(ray_serve_num_multiplexed_models{{{global_filters}}}) by (deployment, replica)",
+                legend="{{replica}}",
+            ),
+        ],
+        fill=0,
+        stack=False,
+        grid_pos=GridPos(0, 3, 8, 8),
+    ),
+    Panel(
+        id=11,
+        title="Multiplexed model loads per replica",
+        description="The number of times of multiplexed models loaded for each replica.",
+        unit="times",
+        targets=[
+            Target(
+                expr="sum(ray_serve_multiplexed_models_load_counter{{{global_filters}}}) by (deployment, replica)",
+                legend="{{replica}}",
+            ),
+        ],
+        fill=0,
+        stack=False,
+        grid_pos=GridPos(8, 3, 8, 8),
+    ),
+    Panel(
+        id=12,
+        title="Multiplexed model unloads per replica",
+        description="The number of times of multiplexed models unloaded for each replica.",
+        unit="times",
+        targets=[
+            Target(
+                expr="sum(ray_serve_multiplexed_models_unload_counter{{{global_filters}}}) by (deployment, replica)",
+                legend="{{replica}}",
+            ),
+        ],
+        fill=0,
+        stack=False,
+        grid_pos=GridPos(16, 3, 8, 8),
+    ),
+    Panel(
+        id=13,
+        title="P99 latency of multiplexed model loads per replica",
+        description="P99 latency of mutliplexed model load per replica.",
+        unit="ms",
+        targets=[
+            Target(
+                expr="histogram_quantile(0.99, sum(rate(ray_serve_multiplexed_model_load_latency_ms_bucket{{{global_filters}}}[5m])) by (deployment, replica, le))",
+                legend="{{replica}}",
+            ),
+        ],
+        fill=0,
+        stack=False,
+        grid_pos=GridPos(0, 4, 8, 8),
+    ),
+    Panel(
+        id=14,
+        title="P99 latency of multiplexed model unloads per replica",
+        description="P99 latency of mutliplexed model unload per replica.",
+        unit="ms",
+        targets=[
+            Target(
+                expr="histogram_quantile(0.99, sum(rate(ray_serve_multiplexed_model_unload_latency_ms_bucket{{{global_filters}}}[5m])) by (deployment, replica, le))",
+                legend="{{replica}}",
+            ),
+        ],
+        fill=0,
+        stack=False,
+        grid_pos=GridPos(8, 4, 8, 8),
+    ),
+    Panel(
+        id=15,
+        title="Multiplexed model ids per replica",
+        description="The ids of multiplexed models for each replica.",
+        unit="model",
+        targets=[
+            Target(
+                expr="ray_serve_registered_multiplexed_model_id{{{global_filters}}}",
+                legend="{{replica}}:{{model_id}}",
+            ),
+        ],
+        grid_pos=GridPos(16, 4, 8, 8),
+        stack=False,
+    ),
+    Panel(
+        id=16,
+        title="Multiplexed model cache hit rate",
+        description="The cache hit rate of multiplexed models for the deployment.",
+        unit="%",
+        targets=[
+            Target(
+                expr="(1 - sum(rate(ray_serve_multiplexed_models_load_counter{{{global_filters}}}[5m]))/sum(rate(ray_serve_multiplexed_get_model_requests_counter{{{global_filters}}}[5m])))",
+                legend="{{replica}}",
+            ),
+        ],
+        grid_pos=GridPos(0, 5, 8, 8),
     ),
 ]
 

@@ -32,9 +32,8 @@ import torch
 import torch.nn as nn
 
 from ray import train
-from ray.air import session
-from ray.air.config import ScalingConfig
-from ray.train.torch import TorchCheckpoint, TorchTrainer
+from ray.train import ScalingConfig
+from ray.train.torch import LegacyTorchCheckpoint, TorchTrainer
 
 
 def create_model(input_features):
@@ -54,9 +53,9 @@ def train_loop_per_worker(config):
     epochs = config["num_epochs"]
     num_features = config["num_features"]
 
-    # Get the Datastream shard for this data parallel worker,
+    # Get the Dataset shard for this data parallel worker,
     # and convert it to a PyTorch Dataset.
-    train_data = session.get_dataset_shard("train")
+    train_data = train.get_dataset_shard("train")
     # Create model.
     model = create_model(num_features)
     model = train.torch.prepare_model(model)
@@ -76,7 +75,7 @@ def train_loop_per_worker(config):
             train_loss.backward()
             optimizer.step()
         loss = train_loss.item()
-        session.report({"loss": loss}, checkpoint=TorchCheckpoint.from_model(model))
+        train.report({"loss": loss}, checkpoint=LegacyTorchCheckpoint.from_model(model))
 
 
 num_features = len(train_dataset.schema().names) - 1
@@ -98,8 +97,8 @@ trainer = TorchTrainer(
     preprocessor=preprocessor,
 )
 # Execute training.
-result = trainer.fit()
-print(f"Last result: {result.metrics}")
+best_result = trainer.fit()
+print(f"Last result: {best_result.metrics}")
 # Last result: {'loss': 0.6559339960416158, ...}
 # __air_pytorch_train_end__
 
@@ -112,7 +111,7 @@ metric = "loss"
 
 # __air_tune_generic_start__
 from ray.tune.tuner import Tuner, TuneConfig
-from ray.air.config import RunConfig
+from ray.train import RunConfig
 
 tuner = Tuner(
     trainer,
@@ -127,22 +126,3 @@ best_result = result_grid.get_best_result()
 print("Best Result:", best_result)
 # Best Result: Result(metrics={'loss': 0.278409322102863, ...})
 # __air_tune_generic_end__
-
-# __air_pytorch_batchpred_start__
-from ray.train.batch_predictor import BatchPredictor
-from ray.train.torch import TorchPredictor
-
-# You can also create a checkpoint from a trained model using
-# `TorchCheckpoint.from_model`.
-checkpoint = best_result.checkpoint
-
-batch_predictor = BatchPredictor.from_checkpoint(
-    checkpoint, TorchPredictor, model=create_model(num_features)
-)
-
-predicted_probabilities = batch_predictor.predict(test_dataset)
-predicted_probabilities.show()
-# {'predictions': array([1.], dtype=float32)}
-# {'predictions': array([0.], dtype=float32)}
-# ...
-# __air_pytorch_batchpred_end__

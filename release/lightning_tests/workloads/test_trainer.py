@@ -4,7 +4,7 @@ import json
 from pytorch_lightning.loggers.csv_logs import CSVLogger
 
 import ray
-from ray.air.config import ScalingConfig
+from ray.train import RunConfig, ScalingConfig
 from ray.train.lightning import LightningTrainer, LightningConfigBuilder
 
 from lightning_test_utils import MNISTClassifier, MNISTDataModule
@@ -23,7 +23,7 @@ if __name__ == "__main__":
             logger=CSVLogger("logs", name="my_exp_name"),
         )
         .fit_params(datamodule=MNISTDataModule(batch_size=128))
-        .checkpointing(monitor="ptl/val_accuracy", mode="max", save_last=True)
+        .checkpointing(monitor="val_accuracy", mode="max", save_last=True)
         .build()
     )
 
@@ -34,6 +34,7 @@ if __name__ == "__main__":
     trainer = LightningTrainer(
         lightning_config=lightning_config,
         scaling_config=scaling_config,
+        run_config=RunConfig(storage_path="/mnt/cluster_storage"),
     )
 
     result = trainer.fit()
@@ -41,7 +42,7 @@ if __name__ == "__main__":
     taken = time.time() - start
     result = {
         "time_taken": taken,
-        "ptl/val_accuracy": result.metrics["ptl/val_accuracy"],
+        "val_accuracy": result.metrics["val_accuracy"],
     }
     test_output_json = os.environ.get(
         "TEST_OUTPUT_JSON", "/tmp/lightning_trainer_test.json"

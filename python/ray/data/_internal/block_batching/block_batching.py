@@ -1,21 +1,21 @@
 import collections
 import itertools
-from typing import Any, Callable, Iterator, Optional, TypeVar, Union
 from contextlib import nullcontext
+from typing import Any, Callable, Iterator, Optional, TypeVar, Union
 
 import ray
 from ray.data._internal.block_batching.interfaces import BlockPrefetcher
 from ray.data._internal.block_batching.util import (
-    resolve_block_refs,
+    ActorBlockPrefetcher,
+    WaitBlockPrefetcher,
     blocks_to_batches,
-    format_batches,
     collate,
     extract_data_from_batch,
-    WaitBlockPrefetcher,
-    ActorBlockPrefetcher,
+    format_batches,
+    resolve_block_refs,
 )
 from ray.data._internal.memory_tracing import trace_deallocation
-from ray.data._internal.stats import DatasetPipelineStats, DatastreamStats
+from ray.data._internal.stats import DatasetPipelineStats, DatasetStats
 from ray.data.block import Block, DataBatch
 from ray.data.context import DataContext
 from ray.types import ObjectRef
@@ -26,7 +26,7 @@ T = TypeVar("T")
 def batch_block_refs(
     block_refs: Iterator[ObjectRef[Block]],
     *,
-    stats: Optional[Union[DatastreamStats, DatasetPipelineStats]] = None,
+    stats: Optional[Union[DatasetStats, DatasetPipelineStats]] = None,
     prefetch_blocks: int = 0,
     clear_block_after_read: bool = False,
     batch_size: Optional[int] = None,
@@ -42,8 +42,8 @@ def batch_block_refs(
     This takes a block iterator and creates batch_size batches, slicing,
     unioning, shuffling, prefetching, and formatting blocks as needed.
 
-    This is used by both Datastream.iter_batches()/DatasetPipeline.iter_batches()
-    and Datastream.map_batches()/DatasetPipeline.map_batches().
+    This is used by both Dataset.iter_batches()/DatasetPipeline.iter_batches()
+    and Dataset.map_batches()/DatasetPipeline.map_batches().
 
     Args:
         block_refs: An iterator over block object references.
@@ -114,7 +114,7 @@ def batch_block_refs(
 def batch_blocks(
     blocks: Iterator[Block],
     *,
-    stats: Optional[Union[DatastreamStats, DatasetPipelineStats]] = None,
+    stats: Optional[Union[DatasetStats, DatasetPipelineStats]] = None,
     batch_size: Optional[int] = None,
     batch_format: str = "default",
     drop_last: bool = False,
@@ -164,7 +164,7 @@ def _prefetch_blocks(
     prefetcher: BlockPrefetcher,
     num_blocks_to_prefetch: int,
     eager_free: bool = False,
-    stats: Optional[Union[DatastreamStats, DatasetPipelineStats]] = None,
+    stats: Optional[Union[DatasetStats, DatasetPipelineStats]] = None,
 ) -> Iterator[ObjectRef[Block]]:
     """Given an iterable of Block Object References, returns an iterator
     over these object reference while prefetching `num_block_to_prefetch`
@@ -174,7 +174,7 @@ def _prefetch_blocks(
         block_ref_iter: An iterator over block object references.
         num_blocks_to_prefetch: The number of blocks to prefetch ahead of the
             current block during the scan.
-        stats: Datastream stats object used to store block wait time.
+        stats: Dataset stats object used to store block wait time.
     """
     if num_blocks_to_prefetch == 0:
         for block_ref in block_ref_iter:
@@ -203,3 +203,4 @@ def _prefetch_blocks(
         trace_deallocation(
             block_ref, "block_batching._prefetch_blocks", free=eager_free
         )
+    prefetcher.stop()

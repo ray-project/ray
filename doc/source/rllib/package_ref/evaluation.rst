@@ -42,7 +42,6 @@ Constructor
    :toctree: doc/
 
    RolloutWorker
-   RolloutWorker.as_remote
 
 Multi agent
 ~~~~~~~~~~~

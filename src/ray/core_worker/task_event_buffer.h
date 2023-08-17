@@ -81,6 +81,8 @@ class TaskStatusEvent : public TaskEvent {
  public:
   /// A class that contain data that will be converted to rpc::TaskStateUpdate
   struct TaskStateUpdate {
+    TaskStateUpdate() {}
+
     TaskStateUpdate(const absl::optional<const rpc::RayErrorInfo> &error_info)
         : error_info_(error_info) {}
 
@@ -89,6 +91,11 @@ class TaskStatusEvent : public TaskEvent {
 
     TaskStateUpdate(const rpc::TaskLogInfo &task_log_info)
         : task_log_info_(task_log_info) {}
+
+    TaskStateUpdate(const std::string &actor_repr_name, uint32_t pid)
+        : actor_repr_name_(actor_repr_name), pid_(pid) {}
+
+    TaskStateUpdate(uint32_t pid) : pid_(pid) {}
 
    private:
     friend class TaskStatusEvent;
@@ -101,6 +108,10 @@ class TaskStatusEvent : public TaskEvent {
     const absl::optional<rpc::RayErrorInfo> error_info_ = absl::nullopt;
     /// Task log info.
     const absl::optional<rpc::TaskLogInfo> task_log_info_ = absl::nullopt;
+    /// Actor task repr name.
+    const std::string actor_repr_name_ = "";
+    /// Worker's pid if it's a RUNNING status change.
+    const absl::optional<uint32_t> pid_ = absl::nullopt;
   };
 
   explicit TaskStatusEvent(
@@ -263,6 +274,8 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   /// \param gcs_client GCS client
   /// \param job_id Corresponding Job ID
   TaskEventBufferImpl(std::unique_ptr<gcs::GcsClient> gcs_client, const JobID &job_id);
+
+  ~TaskEventBufferImpl() override;
 
   void AddTaskEvent(std::unique_ptr<TaskEvent> task_event)
       LOCKS_EXCLUDED(mutex_) override;

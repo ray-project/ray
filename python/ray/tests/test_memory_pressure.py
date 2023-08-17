@@ -16,7 +16,7 @@ from ray._private.utils import get_system_memory
 from ray._private.utils import get_used_memory
 from ray._private.state_api_test_utils import verify_failed_task
 
-from ray.experimental.state.state_manager import StateDataSourceClient
+from ray.util.state.state_manager import StateDataSourceClient
 
 
 memory_usage_threshold = 0.65
@@ -40,7 +40,8 @@ def get_local_state_client():
         node_id = node["NodeID"]
         ip = node["NodeManagerAddress"]
         port = int(node["NodeManagerPort"])
-        client.register_raylet_client(node_id, ip, port)
+        runtime_env_agent_port = int(node["RuntimeEnvAgentPort"])
+        client.register_raylet_client(node_id, ip, port, runtime_env_agent_port)
         client.register_agent_client(node_id, ip, port)
 
     return client
@@ -71,7 +72,7 @@ def ray_with_memory_monitor_no_oom_retry(shutdown_only):
         object_store_memory=100 * 1024 * 1024,
         _system_config={
             "memory_usage_threshold": memory_usage_threshold,
-            "memory_monitor_refresh_ms": 100,
+            "memory_monitor_refresh_ms": memory_monitor_refresh_ms,
             "metrics_report_interval_ms": 100,
             "task_failure_entry_ttl_ms": 2 * 60 * 1000,
             "task_oom_retries": 0,
@@ -570,6 +571,7 @@ def test_one_actor_max_fifo_kill_previous_actor(shutdown_only):
         _system_config={
             "worker_killing_policy": "retriable_fifo",
             "memory_usage_threshold": 0.7,
+            "memory_monitor_refresh_ms": memory_monitor_refresh_ms,
         },
     ):
         bytes_to_alloc = get_additional_bytes_to_reach_memory_usage_pct(0.5)

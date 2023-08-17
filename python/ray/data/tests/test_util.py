@@ -1,13 +1,17 @@
-import pytest
-import ray
-import numpy as np
+from typing import Any, Dict, Optional
 
-from ray.data._internal.util import _check_pyarrow_version, _split_list
+import numpy as np
+import pytest
+
+import ray
+from ray.data._internal.logical.operators.read_operator import Read
 from ray.data._internal.memory_tracing import (
+    leak_report,
     trace_allocation,
     trace_deallocation,
-    leak_report,
 )
+from ray.data._internal.util import _check_pyarrow_version, _split_list
+from ray.data.datasource.parquet_datasource import ParquetDatasource
 from ray.data.tests.conftest import *  # noqa: F401, F403
 
 
@@ -85,6 +89,20 @@ def test_list_splits():
     assert _split_list(list(range(5)), 1) == [[0, 1, 2, 3, 4]]
     assert _split_list(["foo", 1, [0], None], 2) == [["foo", 1], [[0], None]]
     assert _split_list(["foo", 1, [0], None], 3) == [["foo", 1], [[0]], [None]]
+
+
+def get_parquet_read_logical_op(
+    ray_remote_args: Optional[Dict[str, Any]] = None
+) -> Read:
+    datasource = ParquetDatasource()
+    reader = datasource.create_reader(paths="example://iris.parquet")
+    read_op = Read(
+        datasource=datasource,
+        reader=reader,
+        parallelism=10,
+        ray_remote_args=ray_remote_args,
+    )
+    return read_op
 
 
 if __name__ == "__main__":

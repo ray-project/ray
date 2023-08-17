@@ -1,7 +1,7 @@
 (serve-gradio-dag-visualization)=
 # Visualizing a Deployment Graph with Gradio
 
-You can visualize the [deployment graph](serve-model-composition-deployment-graph) you built with [Gradio](https://gradio.app/). This integration allows you to interactively run your deployment graph through the Gradio UI and see the intermediate outputs of each node in real time as they finish evaluation.
+You can visualize the [deployment graph](serve-deployment-graphs) you built with [Gradio](https://gradio.app/). This integration allows you to interactively run your deployment graph through the Gradio UI and see the intermediate outputs of each node in real time as they finish evaluation.
 
 To access this feature, you need to install Gradio. 
 :::{note} 
@@ -13,27 +13,33 @@ pip install gradio
 
 Additionally, you can optionally install `pydot` and `graphviz`. This will allow this tool to incorporate the complementary [graphical illustration](pydot-visualize-dag) of the nodes and edges.
 
-:::{tab-set}
+::::{tab-set}
 
-::::{tab-item} MacOS
+:::{tab-item} MacOS
+
 ```
 pip install -U pydot && brew install graphviz
 ```
-::::
 
-::::{tab-item} Windows
+:::
+
+:::{tab-item} Windows
+
 ```
 pip install -U pydot && winget install graphviz
 ```
-::::
 
-::::{tab-item} Linux
+:::
+
+:::{tab-item} Linux
+
 ```
 pip install -U pydot && sudo apt-get install -y graphviz
 ```
-::::
 
 :::
+
+::::
 
 Also, for the [quickstart example](gradio-vis-quickstart), install the `transformers` module to pull models through [HuggingFace's Pipelines](https://huggingface.co/docs/transformers/main_classes/pipelines).
 ```console
@@ -115,9 +121,9 @@ new_root_node = DAGDriver.bind(old_root_node)
 
 Since the Gradio UI is set at deploy time, the type of Gradio component used to display intermediate outputs of the graph is also statically determined from the graph deployed. It is important that the correct Gradio component is used for each graph node.
 
-The developer simply needs to specify the return type annotation of each function or method in the deployment graph.
+Specify the return type annotation of each function or method in the deployment graph.
 :::{note}
-If no return type annotation is specified for a node, then the Gradio component for that node will default to a [Gradio Textbox](https://gradio.app/docs/#textbox).
+If no return type annotation is specified for a node, then the Gradio component for that node will default to a [Gradio Textbox](https://www.gradio.app/docs/textbox).
 :::
 
 The following table lists the supported data types and which Gradio component they're displayed on.
@@ -128,20 +134,20 @@ The following table lists the supported data types and which Gradio component th
 * - Data Type
   - Gradio component
 * - `int`, `float`
-  - [Numeric field](https://gradio.app/docs/#number)
+  - [Numeric field](https://www.gradio.app/docs/number)
 * - `str`
-  - [Textbox](https://gradio.app/docs/#textbox)
+  - [Textbox](https://www.gradio.app/docs/textbox)
 * - `bool`
-  - [Checkbox](https://gradio.app/docs/#checkbox)
+  - [Checkbox](https://www.gradio.app/docs/checkbox)
 * - `pd.Dataframe`
-  - [DataFrame](https://gradio.app/docs/#dataframe)
+  - [DataFrame](https://www.gradio.app/docs/dataframe)
 * - `list`, `dict`, `np.ndarray`
-  - [JSON field](https://gradio.app/docs/#json)
+  - [JSON field](https://www.gradio.app/docs/json)
 * - `PIL.Image`, `torch.Tensor`
-  - [Image](https://gradio.app/docs/#image)
+  - [Image](https://www.gradio.app/docs/image)
 :::
 
-For instance, the output of the following function node will be displayed through a [Gradio Checkbox](https://gradio.app/docs/#textbox).
+For instance, the output of the following function node will be displayed through a [Gradio Checkbox](https://www.gradio.app/docs/textbox).
 ```python
 @serve.deployment
 def is_valid(begin, end) -> bool:
@@ -165,15 +171,15 @@ The following table describes the supported input data types and which Gradio co
 * - Data Type
   - Gradio component
 * - `int`, `float`
-  - [Numeric field](https://gradio.app/docs/#number)
+  - [Numeric field](https://www.gradio.app/docs/number)
 * - `str`
-  - [Textbox](https://gradio.app/docs/#textbox)
+  - [Textbox](https://www.gradio.app/docs/textbox)
 * - `bool`
-  - [Checkbox](https://gradio.app/docs/#checkbox)
+  - [Checkbox](https://www.gradio.app/docs/checkbox)
 * - `pd.Dataframe`
-  - [DataFrame](https://gradio.app/docs/#dataframe)
+  - [DataFrame](https://www.gradio.app/docs/dataframe)
 * - `PIL.Image`, `torch.Tensor`
-  - [Image](https://gradio.app/docs/#image)
+  - [Image](https://www.gradio.app/docs/image)
 :::
 
 #### Single Input
@@ -188,7 +194,7 @@ with InputNode(input_type=ImageFile) as user_input:
 :::{note}
 Notice there is a single input, which is stored in `user_input` (an instance of `InputNode`). The data type of this single input must be one of the supported input data types.
 :::
-When initializating `InputNode()`, the data type can be specified by passing in a `type` variable to the parameter `input_type`. Here, the type is specified to be `ImageFile`, so the Gradio visualization will take in user input through an [Image component](https://gradio.app/docs/#image).
+When initializating `InputNode()`, the data type can be specified by passing in a `type` variable to the parameter `input_type`. Here, the type is specified to be `ImageFile`, so the Gradio visualization will take in user input through an [Image component](https://www.gradio.app/docs/image).
 ![single input example](https://raw.githubusercontent.com/ray-project/images/master/docs/serve/gradio_visualization/single_input.png)
 
 #### Multiple Inputs
@@ -205,6 +211,6 @@ with InputNode(input_type={0: int, 1: str, "id": str}) as user_input:
 Notice there are multiple inputs: `user_input[0]`, `user_input[1]`, and `user_input["id"]`. They are accessed by indexing into `user_input`. The data types for each of these inputs must be one of the supported input data types.
 :::
 
-When initializing `InputNode()`, these data types can be specified by passing in a dictionary that maps key to `type` (where key is integer or string) to the parameter `input_type`. Here, the input types are specified to be `int`, `str`, and `str`, so the Gradio visualization will take in the three inputs through one [Numeric Field](https://gradio.app/docs/#number) and two [Textboxes](https://gradio.app/docs/#textbox).
+When initializing `InputNode()`, these data types can be specified by passing in a dictionary that maps key to `type` (where key is integer or string) to the parameter `input_type`. Here, the input types are specified to be `int`, `str`, and `str`, so the Gradio visualization will take in the three inputs through one [Numeric Field](https://www.gradio.app/docs/number) and two [Textboxes](https://www.gradio.app/docs/textbox).
 
 ![multiple input example](https://raw.githubusercontent.com/ray-project/images/master/docs/serve/gradio_visualization/multiple_inputs.png)

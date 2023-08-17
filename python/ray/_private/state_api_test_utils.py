@@ -10,10 +10,10 @@ import pprint
 import time
 import traceback
 from typing import Callable, Dict, List, Optional, Tuple, Union
-from ray.experimental.state.api import list_tasks
+from ray.util.state import list_tasks
 import ray
 from ray.actor import ActorHandle
-from ray.experimental.state.api import list_workers
+from ray.util.state import list_workers
 
 
 @dataclass

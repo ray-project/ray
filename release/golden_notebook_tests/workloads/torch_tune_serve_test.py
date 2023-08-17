@@ -6,8 +6,7 @@ import time
 import subprocess
 
 import ray
-from ray.air import session
-from ray.air.config import ScalingConfig, RunConfig
+from ray.train import ScalingConfig, RunConfig
 from ray.air.util.node import _force_on_current_node
 from ray.tune.tune_config import TuneConfig
 import requests
@@ -16,7 +15,7 @@ import torch.nn as nn
 import torchvision.transforms as transforms
 from filelock import FileLock
 from ray import serve, tune, train
-from ray.train.torch import TorchTrainer, TorchCheckpoint
+from ray.train.torch import TorchTrainer, LegacyTorchCheckpoint
 from ray.tune import Tuner
 from torch.utils.data import DataLoader, Subset
 from torchvision.datasets import MNIST
@@ -100,9 +99,9 @@ def training_loop(config):
         train_epoch(train_loader, model, criterion, optimizer)
         validation_loss = validate_epoch(validation_loader, model, criterion)
 
-        session.report(
+        train.report(
             validation_loss,
-            checkpoint=TorchCheckpoint.from_state_dict(model.module.state_dict()),
+            checkpoint=LegacyTorchCheckpoint.from_state_dict(model.module.state_dict()),
         )
 
 
@@ -127,6 +126,7 @@ def train_mnist(test_mode=False, num_workers=1, use_gpu=False):
         ),
         run_config=RunConfig(
             verbose=1,
+            storage_path="/mnt/cluster_storage",
         ),
     )
 
@@ -144,7 +144,7 @@ def get_remote_model(remote_model_checkpoint_path):
 
 
 def get_model(model_checkpoint_path):
-    checkpoint_dict = TorchCheckpoint.from_directory(model_checkpoint_path)
+    checkpoint_dict = LegacyTorchCheckpoint.from_directory(model_checkpoint_path)
     model_state = checkpoint_dict.to_dict()["model"]
 
     model = resnet18()

@@ -1,4 +1,6 @@
 import contextlib
+import uuid
+
 import pytest
 import time
 import torch
@@ -8,18 +10,16 @@ import ray
 from ray.train.examples.pytorch.torch_linear_example import (
     train_func as linear_train_func,
 )
-from ray.train.batch_predictor import BatchPredictor
 from ray.train.constants import DISABLE_LAZY_CHECKPOINTING_ENV
 from ray.train.torch import TorchPredictor, TorchTrainer
-from ray.air.config import ScalingConfig
+from ray.train import RunConfig, ScalingConfig
 from ray.train.torch import TorchConfig
 from ray.train.trainer import TrainingFailedError
 import ray.train as train
 from unittest.mock import patch
 from ray.cluster_utils import Cluster
-from ray.air import session
 from ray.train.tests.dummy_preprocessor import DummyPreprocessor
-from ray.train.torch.torch_checkpoint import TorchCheckpoint
+from ray.train.torch.torch_checkpoint import LegacyTorchCheckpoint
 
 
 @pytest.fixture
@@ -69,7 +69,7 @@ def test_torch_e2e(ray_start_4_cpus, prepare_model):
         model = torch.nn.Linear(3, 1)
         if prepare_model:
             model = train.torch.prepare_model(model)
-        session.report({}, checkpoint=TorchCheckpoint.from_model(model))
+        train.report({}, checkpoint=LegacyTorchCheckpoint.from_model(model))
 
     scaling_config = ScalingConfig(num_workers=2)
     trainer = TorchTrainer(
@@ -80,13 +80,6 @@ def test_torch_e2e(ray_start_4_cpus, prepare_model):
     result = trainer.fit()
     assert isinstance(result.checkpoint.get_preprocessor(), DummyPreprocessor)
 
-    predict_dataset = ray.data.range(9)
-    batch_predictor = BatchPredictor.from_checkpoint(result.checkpoint, TorchPredictor)
-    predictions = batch_predictor.predict(
-        predict_dataset, batch_size=3, dtype=torch.float
-    )
-    assert predictions.count() == 3
-
 
 @pytest.mark.parametrize("prepare_model", (True, False))
 def test_torch_e2e_state_dict(ray_start_4_cpus, prepare_model):
@@ -94,8 +87,8 @@ def test_torch_e2e_state_dict(ray_start_4_cpus, prepare_model):
         model = torch.nn.Linear(3, 1)
         if prepare_model:
             model = train.torch.prepare_model(model)
-        session.report(
-            {}, checkpoint=TorchCheckpoint.from_state_dict(model.state_dict())
+        train.report(
+            {}, checkpoint=LegacyTorchCheckpoint.from_state_dict(model.state_dict())
         )
 
     scaling_config = ScalingConfig(num_workers=2)
@@ -111,15 +104,6 @@ def test_torch_e2e_state_dict(ray_start_4_cpus, prepare_model):
     with pytest.raises(ValueError):
         TorchPredictor.from_checkpoint(result.checkpoint)
 
-    predict_dataset = ray.data.range(9)
-    batch_predictor = BatchPredictor.from_checkpoint(
-        result.checkpoint, TorchPredictor, model=torch.nn.Linear(3, 1)
-    )
-    predictions = batch_predictor.predict(
-        predict_dataset, batch_size=3, dtype=torch.float
-    )
-    assert predictions.count() == 3
-
 
 # We can't really test for prepare_model here as we can't detect what the user
 # has saved without loading (and thus triggering the exception anyway)
@@ -128,7 +112,7 @@ def test_torch_e2e_dir(ray_start_4_cpus, tmpdir, lazy_checkpointing):
     def train_func():
         model = torch.nn.Linear(3, 1)
         torch.save(model, os.path.join(tmpdir, "model"))
-        session.report({}, checkpoint=TorchCheckpoint.from_directory(tmpdir))
+        train.report({}, checkpoint=LegacyTorchCheckpoint.from_directory(tmpdir))
 
     scaling_config = ScalingConfig(num_workers=2)
     with patch.dict(
@@ -142,7 +126,7 @@ def test_torch_e2e_dir(ray_start_4_cpus, tmpdir, lazy_checkpointing):
         result = trainer.fit()
     isinstance(result.checkpoint.get_preprocessor(), DummyPreprocessor)
 
-    # TODO(ml-team): Add a way for TorchCheckpoint to natively support
+    # TODO(ml-team): Add a way for LegacyTorchCheckpoint to natively support
     # models from files
     class TorchScorer:
         def __init__(self):
@@ -150,7 +134,7 @@ def test_torch_e2e_dir(ray_start_4_cpus, tmpdir, lazy_checkpointing):
                 model = torch.load(os.path.join(checkpoint_path, "model"))
             preprocessor = result.checkpoint.get_preprocessor()
             self.pred = TorchPredictor.from_checkpoint(
-                TorchCheckpoint.from_model(model, preprocessor=preprocessor)
+                LegacyTorchCheckpoint.from_model(model, preprocessor=preprocessor)
             )
 
         def __call__(self, x):
@@ -170,9 +154,9 @@ def test_checkpoint_freq(ray_start_4_cpus):
     # checkpoint_freq is not supported so raise an error
     trainer = TorchTrainer(
         train_loop_per_worker=lambda config: None,
-        scaling_config=ray.air.ScalingConfig(num_workers=1),
-        run_config=ray.air.RunConfig(
-            checkpoint_config=ray.air.CheckpointConfig(
+        scaling_config=train.ScalingConfig(num_workers=1),
+        run_config=train.RunConfig(
+            checkpoint_config=train.CheckpointConfig(
                 checkpoint_frequency=2,
             ),
         ),
@@ -187,7 +171,7 @@ def test_torch_session_errors(ray_start_4_cpus):
     def train_func():
         model = torch.nn.Linear(1, 1).state_dict()
         with pytest.raises(ValueError):
-            session.report(model)
+            train.report(model)
 
     scaling_config = ScalingConfig(num_workers=2)
     trainer = TorchTrainer(
@@ -201,7 +185,7 @@ def test_single_worker_failure(ray_start_4_cpus):
     """Tests if training fails upon any worker failure."""
 
     def single_worker_fail():
-        if session.get_world_rank() == 0:
+        if train.get_context().get_world_rank() == 0:
             raise RuntimeError
         else:
             time.sleep(1000000)
@@ -224,7 +208,7 @@ def test_single_worker_failure(ray_start_4_cpus):
 
 #     def train_func():
 #         model = torch.nn.Linear(1, 1).state_dict()
-#         session.report({}, checkpoint=TorchCheckpoint.from_dict({"model": model}))
+#         train.report({}, checkpoint=LegacyTorchCheckpoint.from_dict({"model": model}))
 
 #     scaling_config = ScalingConfig(num_workers=2)
 #     trainer = TorchTrainer(
@@ -239,7 +223,7 @@ def test_single_worker_failure(ray_start_4_cpus):
 
 #     def train_func():
 #         model = torch.nn.Linear(1, 1).state_dict()
-#         session.report({}, checkpoint=Checkpoint.from_dict({"model": model}))
+#         train.report({}, checkpoint=Checkpoint.from_dict({"model": model}))
 
 #     trainer = TorchTrainer(
 #         train_loop_per_worker=train_func,
@@ -257,8 +241,7 @@ def test_tune_torch_get_device_gpu(num_gpus_per_worker):
     """Tests if GPU ids are set correctly when running train concurrently in nested actors
     (for example when used with Tune).
     """
-    from ray.air.config import ScalingConfig
-    import time
+    from ray.train import ScalingConfig
 
     num_samples = 2
     num_workers = 2
@@ -269,6 +252,7 @@ def test_tune_torch_get_device_gpu(num_gpus_per_worker):
     # Divide by two because of a 2 node cluster.
     gpus_per_node = total_gpus_required // 2
 
+    exception = None
     # Use the same number of cpus per node as gpus per node.
     with ray_start_2_node_cluster(
         num_cpus_per_node=gpus_per_node, num_gpus_per_node=gpus_per_node
@@ -290,12 +274,14 @@ def test_tune_torch_get_device_gpu(num_gpus_per_worker):
         @ray.remote(num_cpus=0)
         class TrialActor:
             def __init__(self, warmup_steps):
-                # adding warmup_steps to the config
-                # to avoid the error of checkpoint name conflict
-                time.sleep(2 * warmup_steps)
                 self.trainer = TorchTrainer(
                     train_fn,
                     torch_config=TorchConfig(backend="gloo"),
+                    run_config=RunConfig(
+                        # Use a unique name to avoid using the same
+                        # experiment directory
+                        name=f"test_tune_torch_get_device_gpu_{uuid.uuid4()}"
+                    ),
                     scaling_config=ScalingConfig(
                         num_workers=num_workers,
                         use_gpu=True,
@@ -313,8 +299,15 @@ def test_tune_torch_get_device_gpu(num_gpus_per_worker):
             def run(self):
                 return self.trainer.fit()
 
-        actors = [TrialActor.remote(1) for _ in range(num_samples)]
-        ray.get([actor.run.remote() for actor in actors])
+        try:
+            actors = [TrialActor.remote(1) for _ in range(num_samples)]
+            ray.get([actor.run.remote() for actor in actors])
+        except Exception as exc:
+            exception = exc
+
+    # Raise exception after Ray cluster has been shutdown to avoid corrupted state
+    if exception:
+        raise exception
 
 
 def test_torch_auto_unwrap(ray_start_4_cpus):
@@ -327,7 +320,7 @@ def test_torch_auto_unwrap(ray_start_4_cpus):
         model = train.torch.prepare_model(model)
 
         # Save DDP wrapped model.
-        session.report({}, checkpoint=TorchCheckpoint.from_model(model))
+        train.report({}, checkpoint=LegacyTorchCheckpoint.from_model(model))
 
     trainer = TorchTrainer(
         train_loop_per_worker=train_fn,
@@ -348,7 +341,7 @@ def test_torch_amp(ray_start_4_cpus):
         model = torch.nn.Linear(1, 1)
         model = train.torch.prepare_model(model)
 
-        session.report({}, checkpoint=TorchCheckpoint.from_model(model))
+        train.report({}, checkpoint=LegacyTorchCheckpoint.from_model(model))
 
     trainer = TorchTrainer(
         train_fn,
@@ -375,7 +368,7 @@ def test_torch_amp_with_custom_get_state(ray_start_4_cpus):
         model = train.torch.prepare_model(model)
 
         # Make sure model is serializable even with amp enabled.
-        session.report({}, checkpoint=TorchCheckpoint.from_model(model))
+        train.report({}, checkpoint=LegacyTorchCheckpoint.from_model(model))
 
     trainer = TorchTrainer(
         train_fn,
@@ -389,11 +382,12 @@ def test_torch_env_vars(ray_start_4_cpus):
     """Check that env vars are set as expected."""
 
     def train_func(config):
-        assert os.environ["LOCAL_RANK"] == str(session.get_local_rank())
-        assert os.environ["RANK"] == str(session.get_world_rank())
-        assert os.environ["LOCAL_WORLD_SIZE"] == str(session.get_local_world_size())
-        assert os.environ["WORLD_SIZE"] == str(session.get_world_size())
-        assert os.environ["NODE_RANK"] == str(session.get_node_rank())
+        context = train.get_context()
+        assert os.environ["LOCAL_RANK"] == str(context.get_local_rank())
+        assert os.environ["RANK"] == str(context.get_world_rank())
+        assert os.environ["LOCAL_WORLD_SIZE"] == str(context.get_local_world_size())
+        assert os.environ["WORLD_SIZE"] == str(context.get_world_size())
+        assert os.environ["NODE_RANK"] == str(context.get_node_rank())
 
         assert os.environ["ACCELERATE_TORCH_DEVICE"] == str(train.torch.get_device())
 

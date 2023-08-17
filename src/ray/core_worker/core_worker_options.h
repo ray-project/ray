@@ -44,6 +44,7 @@ struct CoreWorkerOptions {
       const std::string &serialized_retry_exception_allowlist,
       std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> *returns,
       std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> *dynamic_returns,
+      std::vector<std::pair<ObjectID, bool>> *streaming_generator_returns,
       std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb_bytes,
       bool *is_retryable_error,
       // Application error string, empty if no error.
@@ -56,7 +57,12 @@ struct CoreWorkerOptions {
       // used for actor creation task.
       const std::vector<ConcurrencyGroup> &defined_concurrency_groups,
       const std::string name_of_concurrency_group_to_execute,
-      bool is_reattempt)>;
+      bool is_reattempt,
+      // True if the task is for streaming generator.
+      // TODO(sang): Remove it and combine it with dynamic returns.
+      bool is_streaming_generator,
+      // True if task can be retried upon exception.
+      bool retry_exception)>;
 
   CoreWorkerOptions()
       : store_socket(""),
@@ -86,6 +92,7 @@ struct CoreWorkerOptions {
         metrics_agent_port(-1),
         connect_on_start(true),
         runtime_env_hash(0),
+        cluster_id(ClusterID::Nil()),
         session_name(""),
         entrypoint(""),
         worker_launch_time_ms(-1),
@@ -176,6 +183,8 @@ struct CoreWorkerOptions {
   /// may not have the same pid as the process the worker pool
   /// starts (due to shim processes).
   StartupToken startup_token{0};
+  /// Cluster ID associated with the core worker.
+  ClusterID cluster_id;
   /// The function to allocate a new object for the memory store.
   /// This allows allocating the objects in the language frontend's memory.
   /// For example, for the Java worker, we can allocate the objects in the JVM heap

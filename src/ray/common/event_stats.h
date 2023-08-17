@@ -14,7 +14,6 @@
 
 #pragma once
 
-#include <boost/asio.hpp>
 #include <limits>
 
 #include "absl/container/flat_hash_map.h"

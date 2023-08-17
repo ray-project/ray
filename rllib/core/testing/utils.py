@@ -1,12 +1,15 @@
-from typing import Type, Union, TYPE_CHECKING
+from typing import Optional, Type, Union, TYPE_CHECKING
 
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.core.learner.learner_group import LearnerGroup
-from ray.rllib.core.learner.learner import LearnerSpec, FrameworkHPs
+from ray.rllib.core.learner.learner import (
+    FrameworkHyperparameters,
+    LearnerSpec,
+)
 from ray.rllib.core.learner.scaling_config import LearnerGroupScalingConfig
-
+from ray.rllib.core.testing.testing_learner import BaseTestingLearnerHyperparameters
 from ray.rllib.core.rl_module.marl_module import (
     MultiAgentRLModuleSpec,
     MultiAgentRLModule,
@@ -30,7 +33,7 @@ DEFAULT_POLICY_ID = "default_policy"
 
 @DeveloperAPI
 def get_learner_class(framework: str) -> Type["Learner"]:
-    if framework == "tf":
+    if framework == "tf2":
         from ray.rllib.core.testing.tf.bc_learner import BCTfLearner
 
         return BCTfLearner
@@ -44,7 +47,7 @@ def get_learner_class(framework: str) -> Type["Learner"]:
 
 @DeveloperAPI
 def get_module_class(framework: str) -> Type["RLModule"]:
-    if framework == "tf":
+    if framework == "tf2":
         from ray.rllib.core.testing.tf.bc_module import DiscreteBCTFModule
 
         return DiscreteBCTFModule
@@ -70,7 +73,7 @@ def get_module_spec(framework: str, env: "gym.Env", is_multi_agent: bool = False
         # TODO (Kourosh): Make this more multi-agent for example with policy ids "1",
         # and "2".
         return MultiAgentRLModuleSpec(
-            module_class=MultiAgentRLModule, module_specs={DEFAULT_POLICY_ID: spec}
+            marl_module_class=MultiAgentRLModule, module_specs={DEFAULT_POLICY_ID: spec}
         )
     else:
         return spec
@@ -78,7 +81,7 @@ def get_module_spec(framework: str, env: "gym.Env", is_multi_agent: bool = False
 
 @DeveloperAPI
 def get_optimizer_default_class(framework: str) -> Type[Optimizer]:
-    if framework == "tf":
+    if framework == "tf2":
         import tensorflow as tf
 
         return tf.keras.optimizers.Adam
@@ -92,30 +95,42 @@ def get_optimizer_default_class(framework: str) -> Type[Optimizer]:
 
 @DeveloperAPI
 def get_learner(
+    *,
     framework: str,
+    framework_hps: Optional[FrameworkHyperparameters] = None,
     env: "gym.Env",
-    learning_rate: float = 1e-3,
+    learner_hps: Optional[BaseTestingLearnerHyperparameters] = None,
     is_multi_agent: bool = False,
 ) -> "Learner":
     """Construct a learner for testing.
 
     Args:
         framework: The framework used for training.
+        framework_hps: The FrameworkHyperparameters instance to pass to the
+            Learner's constructor.
         env: The environment to train on.
-        learning_rate: The learning rate to use for each learner.
+        learner_hps: The LearnerHyperparameter instance to pass to the Learner's
+            constructor.
         is_multi_agent: Whether to construct a multi agent rl module.
 
     Returns:
         A learner.
 
     """
-
+    # Get our testing (BC) Learner class (given the framework).
     _cls = get_learner_class(framework)
+    # Get our RLModule spec to use.
     spec = get_module_spec(framework=framework, env=env, is_multi_agent=is_multi_agent)
-    # adding learning rate as a configurable parameter to avoid hardcoding it
+    # Adding learning rate as a configurable parameter to avoid hardcoding it
     # and information leakage across tests that rely on knowing the LR value
     # that is used in the learner.
-    return _cls(module_spec=spec, optimizer_config={"lr": learning_rate})
+    learner = _cls(
+        module_spec=spec,
+        learner_hyperparameters=learner_hps or BaseTestingLearnerHyperparameters(),
+        framework_hyperparameters=framework_hps or FrameworkHyperparameters(),
+    )
+    learner.build()
+    return learner
 
 
 @DeveloperAPI
@@ -123,9 +138,8 @@ def get_learner_group(
     framework: str,
     env: "gym.Env",
     scaling_config: LearnerGroupScalingConfig,
-    learning_rate: float = 1e-3,
     is_multi_agent: bool = False,
-    eager_tracing: bool = False,
+    eager_tracing: bool = True,
 ) -> LearnerGroup:
     """Construct a learner_group for testing.
 
@@ -134,7 +148,6 @@ def get_learner_group(
         env: The environment to train on.
         scaling_config: A config for the amount and types of resources to use for
             training.
-        learning_rate: The learning rate to use for each learner.
         is_multi_agent: Whether to construct a multi agent rl module.
         eager_tracing: TF Specific. Whether to use tf.function for tracing
             optimizations.
@@ -143,18 +156,19 @@ def get_learner_group(
         A learner_group.
 
     """
-    if framework == "tf":
-        learner_hps = FrameworkHPs(eager_tracing=eager_tracing)
+    if framework == "tf2":
+        framework_hps = FrameworkHyperparameters(eager_tracing=eager_tracing)
     else:
-        learner_hps = None
+        framework_hps = None
+
     learner_spec = LearnerSpec(
         learner_class=get_learner_class(framework),
         module_spec=get_module_spec(
             framework=framework, env=env, is_multi_agent=is_multi_agent
         ),
-        optimizer_config={"lr": learning_rate},
-        learner_scaling_config=scaling_config,
-        learner_hyperparameters=learner_hps,
+        learner_group_scaling_config=scaling_config,
+        learner_hyperparameters=BaseTestingLearnerHyperparameters(),
+        framework_hyperparameters=framework_hps,
     )
     lg = LearnerGroup(learner_spec)
 

@@ -1,12 +1,17 @@
-import os
 import pytorch_lightning as pl
 import torch
 import torch.nn as nn
 import tempfile
 
-from ray.train.lightning import LightningCheckpoint
+import ray
 from ray.air.constants import MODEL_KEY
 from torch.utils.data import DataLoader
+from ray.train.tests.lightning_test_utils import LinearModule, DummyDataModule
+from ray.train.lightning import (
+    LightningCheckpoint,
+    LightningConfigBuilder,
+    LightningTrainer,
+)
 
 
 class Net(pl.LightningModule):
@@ -54,12 +59,6 @@ def test_load_from_path():
         )
         assert torch.equal(checkpoint_model.linear.weight, model.linear.weight)
 
-        # Ensure the model checkpoint was copied into a tmp dir
-        cached_checkpoint_dir = lightning_checkpoint._cache_dir
-        cached_checkpoint_path = f"{cached_checkpoint_dir}/{MODEL_KEY}"
-        assert os.path.exists(cached_checkpoint_dir)
-        assert os.path.exists(cached_checkpoint_path)
-
         # Check the model outputs
         for i, batch in enumerate(dataloader):
             output = model.predict_step(batch, i)
@@ -98,6 +97,42 @@ def test_from_directory():
             output = model.predict_step(batch, i)
             checkpoint_output = checkpoint_model.predict_step(batch, i)
             assert torch.equal(output, checkpoint_output)
+
+
+def test_fsdp_checkpoint():
+    num_epochs = 1
+    batch_size = 8
+    input_dim = 32
+    output_dim = 4
+    dataset_size = 256
+
+    datamodule = DummyDataModule(batch_size, dataset_size)
+
+    config_builder = (
+        LightningConfigBuilder()
+        .module(
+            LinearModule, input_dim=input_dim, output_dim=output_dim, strategy="fsdp"
+        )
+        .trainer(max_epochs=num_epochs, accelerator="gpu")
+        .strategy("fsdp")
+        .checkpointing(save_last=True)
+        .fit_params(datamodule=datamodule)
+    )
+
+    scaling_config = ray.train.ScalingConfig(num_workers=2, use_gpu=True)
+
+    trainer = LightningTrainer(
+        lightning_config=config_builder.build(), scaling_config=scaling_config
+    )
+
+    results = trainer.fit()
+
+    with results.checkpoint.as_directory() as checkpoint_dir:
+        checkpoint = torch.load(f"{checkpoint_dir}/{MODEL_KEY}")
+        model = LinearModule(input_dim=input_dim, output_dim=output_dim)
+
+        for key in model.state_dict().keys():
+            assert key in checkpoint["state_dict"]
 
 
 if __name__ == "__main__":

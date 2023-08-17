@@ -367,6 +367,7 @@ def test_no_worker_child_process_leaks(ray_start_cluster, tmp_path):
     """
 
     output_file_path = tmp_path / "leaked_pids.json"
+    ray_start_cluster.add_node()
     driver_script = f"""
 import ray
 import json
@@ -448,6 +449,118 @@ while True:
         condition_predictor=lambda: all([not proc.is_running() for proc in processes]),
         timeout=30,
     )
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="Only works on linux.")
+def test_worker_cleans_up_child_procs_on_raylet_death(ray_start_cluster, tmp_path):
+    """
+    CoreWorker kills its child processes if the raylet dies.
+    This test creates 20 leaked processes; 10 from a single actor task, and
+    10 from distinct non-actor tasks.
+
+    Once the raylet dies, the test verifies all leaked processes are cleaned up.
+    """
+
+    output_file_path = tmp_path / "leaked_pids.json"
+    ray_start_cluster.add_node()
+    driver_script = f"""
+import ray
+import json
+import multiprocessing
+import shutil
+import time
+import os
+import setproctitle
+
+def change_name_and_sleep(label: str, index: int) -> None:
+    proctitle = "child_proc_name_prefix_" + label + "_" + str(index)
+    setproctitle.setproctitle(proctitle)
+    time.sleep(1000)
+
+def create_child_proc(label, index):
+    proc = multiprocessing.Process(
+        target=change_name_and_sleep,
+        args=(label, index,),
+        daemon=True,
+    )
+    proc.start()
+    return proc.pid
+
+@ray.remote
+class LeakerActor:
+    def create_leaked_child_process(self, num_to_leak):
+        print("creating leaked process", os.getpid())
+
+        pids = []
+        for index in range(num_to_leak):
+            pid = create_child_proc("actor", index)
+            pids.append(pid)
+
+        return pids
+
+@ray.remote
+def leaker_task(index):
+    print("Creating leaked process", os.getpid())
+    return create_child_proc("task", index)
+
+num_to_leak_per_type = 10
+print('starting actors')
+actor = LeakerActor.remote()
+actor_leaked_pids = ray.get(actor.create_leaked_child_process.remote(
+    num_to_leak=num_to_leak_per_type,
+))
+
+task_leaked_pids = ray.get([
+    leaker_task.remote(index) for index in range(num_to_leak_per_type)
+])
+leaked_pids = actor_leaked_pids + task_leaked_pids
+
+final_file = "{output_file_path}"
+tmp_file = final_file + ".tmp"
+with open(tmp_file, "w") as f:
+    json.dump(leaked_pids, f)
+shutil.move(tmp_file, final_file)
+
+while True:
+    print(os.getpid())
+    time.sleep(1)
+    """
+
+    print("Running string as driver")
+    driver_proc = run_string_as_driver_nonblocking(driver_script)
+
+    # Wait for the json file containing the child PIDS
+    # to be present.
+    print("Waiting for child pids json")
+    wait_for_condition(
+        condition_predictor=lambda: Path(output_file_path).exists(),
+        timeout=30,
+    )
+
+    # Load the PIDs of the child processes.
+    with open(output_file_path, "r") as f:
+        pids = json.load(f)
+
+    # Validate all children of the worker processes are in a sleeping state.
+    processes = [psutil.Process(pid) for pid in pids]
+    assert all([proc.status() == psutil.STATUS_SLEEPING for proc in processes])
+
+    # Obtain psutil handle for raylet process
+    raylet_proc = [p for p in psutil.process_iter() if p.name() == "raylet"]
+    assert len(raylet_proc) == 1
+    raylet_proc = raylet_proc[0]
+
+    # Kill the raylet process and reap the zombie
+    raylet_proc.kill()
+    raylet_proc.wait()
+
+    print("Waiting for child procs to die")
+    wait_for_condition(
+        condition_predictor=lambda: all([not proc.is_running() for proc in processes]),
+        timeout=30,
+    )
+
+    driver_proc.kill()
 
 
 if __name__ == "__main__":

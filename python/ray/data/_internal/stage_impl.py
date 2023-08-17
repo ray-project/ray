@@ -1,38 +1,34 @@
 import itertools
-from typing import Any, Dict, Tuple, List, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 import ray
+from ray.data._internal.block_list import BlockList
+from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
+from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.fast_repartition import fast_repartition
 from ray.data._internal.plan import AllToAllStage
+from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.shuffle_and_partition import (
     PushBasedShufflePartitionOp,
     SimpleShufflePartitionOp,
 )
-from ray.data._internal.split import (
-    _split_at_index,
-    _split_at_indices,
-)
-from ray.data._internal.block_list import BlockList
-from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
-from ray.data._internal.execution.interfaces import TaskContext
-from ray.data._internal.remote_fn import cached_remote_fn
-from ray.data._internal.sort import sort_impl
-from ray.data.context import DataContext
+from ray.data._internal.sort import SortKey, sort_impl
+from ray.data._internal.split import _split_at_index, _split_at_indices
 from ray.data.block import (
-    _validate_key_fn,
     Block,
-    BlockPartition,
-    BlockMetadata,
     BlockAccessor,
     BlockExecStats,
+    BlockMetadata,
+    BlockPartition,
 )
+from ray.data.context import DataContext
 
 if TYPE_CHECKING:
-    from ray.data import Datastream
+    from ray.data import Dataset
 
 
 class RepartitionStage(AllToAllStage):
-    """Implementation of `Datastream.repartition()`."""
+    """Implementation of `Dataset.repartition()`."""
 
     def __init__(self, num_blocks: int, shuffle: bool):
         if shuffle:
@@ -96,7 +92,7 @@ class RepartitionStage(AllToAllStage):
 
 
 class RandomizeBlocksStage(AllToAllStage):
-    """Implementation of `Datastream.randomize_blocks()`."""
+    """Implementation of `Dataset.randomize_blocks()`."""
 
     def __init__(self, seed: Optional[int]):
         self._seed = seed
@@ -112,7 +108,7 @@ class RandomizeBlocksStage(AllToAllStage):
 
 
 class RandomShuffleStage(AllToAllStage):
-    """Implementation of `Datastream.random_shuffle()`."""
+    """Implementation of `Dataset.random_shuffle()`."""
 
     def __init__(
         self,
@@ -167,11 +163,11 @@ class RandomShuffleStage(AllToAllStage):
 
 
 class ZipStage(AllToAllStage):
-    """Implementation of `Datastream.zip()`."""
+    """Implementation of `Dataset.zip()`."""
 
-    def __init__(self, other: "Datastream"):
+    def __init__(self, other: "Dataset"):
         def do_zip_all(block_list: BlockList, clear_input_blocks: bool, *_):
-            # Repartition other to align with the base datastream, and then zip together
+            # Repartition other to align with the base dataset, and then zip together
             # the blocks in parallel.
             # TODO(Clark): Port this to a streaming zip, e.g. push block pairs through
             # an actor that buffers and zips.
@@ -190,7 +186,7 @@ class ZipStage(AllToAllStage):
             )
             inverted = False
             if sum(other_block_bytes) > sum(base_block_bytes):
-                # Make sure that other is the smaller datastream, so we minimize
+                # Make sure that other is the smaller dataset, so we minimize
                 # splitting work when aligning other with base.
                 # TODO(Clark): Improve this heuristic for minimizing splitting work,
                 # e.g. by generating the splitting plans for each route (via
@@ -207,14 +203,14 @@ class ZipStage(AllToAllStage):
             indices = list(itertools.accumulate(base_block_rows))
             indices.pop(-1)
 
-            # Check that each datastream has the same number of rows.
+            # Check that each dataset has the same number of rows.
             # TODO(Clark): Support different number of rows via user-directed
             # dropping/padding.
             total_base_rows = sum(base_block_rows)
             total_other_rows = sum(other_block_rows)
             if total_base_rows != total_other_rows:
                 raise ValueError(
-                    "Cannot zip datastreams of different number of rows: "
+                    "Cannot zip datasets of different number of rows: "
                     f"{total_base_rows}, {total_other_rows}"
                 )
 
@@ -313,16 +309,16 @@ def _do_zip(
 
 
 class SortStage(AllToAllStage):
-    """Implementation of `Datastream.sort()`."""
+    """Implementation of `Dataset.sort()`."""
 
-    def __init__(self, ds: "Datastream", key: Optional[str], descending: bool):
+    def __init__(self, ds: "Dataset", sort_key: SortKey):
         def do_sort(
             block_list,
             ctx: TaskContext,
             clear_input_blocks: bool,
             *_,
         ):
-            # Handle empty datastream.
+            # Handle empty dataset.
             if block_list.initial_num_blocks() == 0:
                 return block_list, {}
             if clear_input_blocks:
@@ -330,15 +326,8 @@ class SortStage(AllToAllStage):
                 block_list.clear()
             else:
                 blocks = block_list
-            schema = ds.schema(fetch_if_missing=True)
-            if isinstance(key, list):
-                if not key:
-                    raise ValueError("`key` must be a list of non-zero length")
-                for subkey in key:
-                    _validate_key_fn(schema, subkey)
-            else:
-                _validate_key_fn(schema, key)
-            return sort_impl(blocks, clear_input_blocks, key, descending, ctx)
+            sort_key.validate_schema(ds.schema(fetch_if_missing=True))
+            return sort_impl(blocks, clear_input_blocks, sort_key, ctx)
 
         super().__init__(
             "Sort",
@@ -349,7 +338,7 @@ class SortStage(AllToAllStage):
 
 
 class LimitStage(AllToAllStage):
-    """Implementation of `Datastream.limit()`."""
+    """Implementation of `Dataset.limit()`."""
 
     def __init__(self, limit: int):
         self._limit = limit

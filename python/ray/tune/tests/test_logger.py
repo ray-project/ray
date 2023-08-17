@@ -11,6 +11,12 @@ import shutil
 import numpy as np
 
 import ray
+from ray.air.constants import (
+    EXPR_PARAM_FILE,
+    EXPR_PARAM_PICKLE_FILE,
+    EXPR_PROGRESS_FILE,
+    EXPR_RESULT_FILE,
+)
 from ray.cloudpickle import cloudpickle
 from ray.tune.logger import (
     CSVLoggerCallback,
@@ -21,12 +27,6 @@ from ray.tune.logger import (
     TBXLogger,
 )
 from ray.tune.logger.aim import AimLoggerCallback
-from ray.tune.result import (
-    EXPR_PARAM_FILE,
-    EXPR_PARAM_PICKLE_FILE,
-    EXPR_PROGRESS_FILE,
-    EXPR_RESULT_FILE,
-)
 from ray.tune.utils import flatten_dict
 
 
@@ -65,7 +65,7 @@ class Trial:
     def __hash__(self):
         return hash(self.trial_id)
 
-    def get_runner_ip(self) -> str:
+    def get_ray_actor_ip(self) -> str:
         return ray.util.get_node_ip_address()
 
 
@@ -205,7 +205,7 @@ class LoggerSuite(unittest.TestCase):
             "b": [1, 2],
             "c": {"c": {"D": 123}},
             "d": np.int64(1),
-            "e": np.bool8(True),
+            "e": np.bool_(True),
             "f": None,
         }
         t = Trial(evaluated_params=config, trial_id="tbx", logdir=self.test_dir)
@@ -224,7 +224,7 @@ class LoggerSuite(unittest.TestCase):
             "c": {"c": {"D": 123}},
             "int32": np.int32(1),
             "int64": np.int64(2),
-            "bool8": np.bool8(True),
+            "bool8": np.bool_(True),
             "float32": np.float32(3),
             "float64": np.float64(4),
             "bad": np.float128(4),
@@ -321,7 +321,7 @@ class AimLoggerSuite(unittest.TestCase):
             "c": {"d": {"e": 123}},
             "int32": np.int32(1),
             "int64": np.int64(2),
-            "bool8": np.bool8(True),
+            "bool8": np.bool_(True),
             "float32": np.float32(3),
             "float64": np.float64(4),
             "bad": Dummy(),

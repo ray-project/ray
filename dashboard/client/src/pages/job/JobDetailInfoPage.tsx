@@ -1,6 +1,9 @@
 import { createStyles, makeStyles, Typography } from "@material-ui/core";
 import React from "react";
-import { CodeDialogButtonWithPreview } from "../../common/CodeDialogButton";
+import {
+  CodeDialogButton,
+  CodeDialogButtonWithPreview,
+} from "../../common/CodeDialogButton";
 import { DurationText } from "../../common/DurationText";
 import { formatDateFromTimeMs } from "../../common/formatUtils";
 import { JobStatusWithIcon } from "../../common/JobStatus";
@@ -8,6 +11,7 @@ import {
   CpuProfilingLink,
   CpuStackTraceLink,
 } from "../../common/ProfilingLink";
+import { filterRuntimeEnvSystemVariables } from "../../common/util";
 import Loading from "../../components/Loading";
 import { MetadataSection } from "../../components/MetadataSection";
 import { StatusChip } from "../../components/StatusChip";
@@ -16,7 +20,6 @@ import { UnifiedJob } from "../../type/job";
 import { MainNavPageInfo } from "../layout/mainNavContext";
 
 import { useJobDetail } from "./hook/useJobDetail";
-import { JobLogsLink } from "./JobDetail";
 
 const useStyle = makeStyles((theme) => ({
   root: {
@@ -38,7 +41,7 @@ export const JobDetailInfoPage = () => {
           pageInfo={{
             title: "Info",
             id: "job-info",
-            path: undefined,
+            path: "info",
           }}
         />
         <Loading loading={isLoading} />
@@ -96,7 +99,18 @@ export const JobMetadataSection = ({ job }: JobMetadataSectionProps) => {
         },
         {
           label: "Status",
-          content: <JobStatusWithIcon job={job} />,
+          content: (
+            <React.Fragment>
+              <JobStatusWithIcon job={job} />{" "}
+              {job.message && (
+                <CodeDialogButton
+                  title="Status details"
+                  code={job.message}
+                  buttonText="View details"
+                />
+              )}
+            </React.Fragment>
+          ),
         },
         {
           label: "Job ID",
@@ -138,6 +152,23 @@ export const JobMetadataSection = ({ job }: JobMetadataSectionProps) => {
             value: job.end_time ? formatDateFromTimeMs(job.end_time) : "-",
           },
         },
+        {
+          label: "Runtime environment",
+          ...(job.runtime_env
+            ? {
+                content: (
+                  <CodeDialogButton
+                    title="Runtime environment"
+                    code={filterRuntimeEnvSystemVariables(job.runtime_env)}
+                  />
+                ),
+              }
+            : {
+                content: {
+                  value: "-",
+                },
+              }),
+        },
         ...(job.type === "SUBMISSION"
           ? [
               {
@@ -157,8 +188,6 @@ export const JobMetadataSection = ({ job }: JobMetadataSectionProps) => {
           label: "Actions",
           content: (
             <div>
-              <JobLogsLink job={job} />
-              <br />
               <CpuProfilingLink
                 pid={job.driver_info?.pid}
                 ip={job.driver_info?.node_ip_address}

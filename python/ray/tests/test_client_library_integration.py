@@ -14,11 +14,11 @@ def test_rllib_integration(ray_start_regular):
 
         # Confirming the behavior of this context manager.
         # (Client mode hook not yet enabled.)
-        assert not client_mode_should_convert(auto_init=True)
+        assert not client_mode_should_convert()
         # Need to enable this for client APIs to be used.
         with enable_client_mode():
             # Confirming mode hook is enabled.
-            assert client_mode_should_convert(auto_init=True)
+            assert client_mode_should_convert()
 
             config = dqn.SIMPLE_Q_DEFAULT_CONFIG.copy()
             # Run locally.
@@ -38,11 +38,11 @@ def test_rllib_integration_tune(ray_start_regular):
     with ray_start_client_server():
         # Confirming the behavior of this context manager.
         # (Client mode hook not yet enabled.)
-        assert not client_mode_should_convert(auto_init=True)
+        assert not client_mode_should_convert()
         # Need to enable this for client APIs to be used.
         with enable_client_mode():
             # Confirming mode hook is enabled.
-            assert client_mode_should_convert(auto_init=True)
+            assert client_mode_should_convert()
             tune.run(
                 "DQN", config={"env": "CartPole-v1"}, stop={"training_iteration": 2}
             )

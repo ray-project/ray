@@ -5,19 +5,23 @@ from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.algorithms.simple_q.simple_q import SimpleQ, SimpleQConfig
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.deprecation import DEPRECATED_VALUE
+from ray.rllib.utils.deprecation import (
+    DEPRECATED_VALUE,
+    Deprecated,
+    ALGO_DEPRECATION_WARNING,
+)
 
 logger = logging.getLogger(__name__)
 
 
 class DDPGConfig(SimpleQConfig):
-    """Defines a configuration class from which a DDPG Trainer can be built.
+    """Defines a configuration class from which a DDPG can be built.
 
     Example:
         >>> from ray.rllib.algorithms.ddpg.ddpg import DDPGConfig
         >>> config = DDPGConfig().training(lr=0.01).resources(num_gpus=1)
         >>> print(config.to_dict())  # doctest: +SKIP
-        >>> # Build a Trainer object from the config and run one training iteration.
+        >>> # Build a Algorithm object from the config and run one training iteration.
         >>> algo = config.build(env="Pendulum-v1") # doctest: +SKIP
         >>> algo.train()  # doctest: +SKIP
 
@@ -116,7 +120,7 @@ class DDPGConfig(SimpleQConfig):
         self.target_network_update_freq = 0
         # Number of timesteps to collect from rollout workers before we start
         # sampling from replay buffers for learning. Whether we count this in agent
-        # steps  or environment steps depends on config["multiagent"]["count_steps_by"].
+        # steps  or environment steps depends on config.multi_agent(count_steps_by=..).
         self.num_steps_sampled_before_learning_starts = 1500
 
         # .rollouts()
@@ -287,6 +291,12 @@ class DDPGConfig(SimpleQConfig):
             return self.rollout_fragment_length
 
 
+@Deprecated(
+    old="rllib/algorithms/ddpg/",
+    new="rllib_contrib/ddpg/",
+    help=ALGO_DEPRECATION_WARNING,
+    error=False,
+)
 class DDPG(SimpleQ):
     @classmethod
     @override(SimpleQ)

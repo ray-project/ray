@@ -1,13 +1,23 @@
-from collections import abc
 import functools
+import logging
+from collections import abc
 from typing import Union, Mapping, Any, Callable
 
-from ray.util.annotations import DeveloperAPI
-
-from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.core.models.specs.specs_base import Spec, TypeSpec
 from ray.rllib.core.models.specs.specs_dict import SpecDict
 from ray.rllib.core.models.specs.typing import SpecType
+from ray.rllib.utils.nested_dict import NestedDict
+from ray.util.annotations import DeveloperAPI
+
+logger = logging.getLogger(__name__)
+
+
+@DeveloperAPI
+class SpecCheckingError(Exception):
+    """Raised when there is an error in the spec checking.
+
+    This Error is raised when inputs or outputs do match the defined specs.
+    """
 
 
 @DeveloperAPI
@@ -31,47 +41,35 @@ def convert_to_canonical_format(spec: SpecType) -> Union[Spec, SpecDict]:
         - a single constraint. The constraint can be a Spec object, a type, or None.
 
 
-    Examples of canoncial format #1:
+        Examples of canoncial format #1:
 
-    .. code-block:: python
-        spec = ["foo", ("bar", "baz")]
-        output = convert_to_canonical_format(spec)
-        # output = SpecDict({"foo": None, ("bar", "baz"): None})
+        >>> spec = {'foo': int, 'bar': {'baz': None}}
+        >>> convert_to_canonical_format(spec)
+        SpecDict({'foo': TypeSpec(<class 'int'>), 'bar': SpecDict({'baz': None})})
 
-        spec = {"foo": int, "bar": {"baz": None}}
-        output = convert_to_canonical_format(spec)
-        # output = SpecDict(
-        #   {"foo": TypeSpec(int), "bar": SpecDict({"baz": None})}
-        # )
+        >>> spec = ['foo', ('bar', 'baz')]
+        >>> convert_to_canonical_format(spec)
+        SpecDict({'foo': None, 'bar': SpecDict({'baz': None})})
 
-        spec = {"foo": int, "bar": {"baz": str}}
-        output = convert_to_canonical_format(spec)
-        # output = SpecDict(
-        #   {"foo": TypeSpec(int), "bar": SpecDict({"baz": TypeSpec(str)})}
-        # )
+        >>> from ray.rllib.core.models.specs.specs_base import TensorSpec
+        >>> spec = {'bar': {'baz': TensorSpec('b,h', framework='torch')}}
+        >>> convert_to_canonical_format(spec)
+        SpecDict({'bar': SpecDict({'baz': TensorSpec(shape=('b', 'h'), dtype=None)})})
 
-        spec = {"foo": int, "bar": {"baz": TensorSpec("b,h", framework="torch")}}
-        output = convert_to_canonical_format(spec)
-        # output = SpecDict(
-        #   {"foo": TypeSpec(int), "bar": SpecDict({"baz": TensorSpec("b,h",
-        framework="torch")})}
-        # )
+        Example of canoncial format #2:
 
+        >>> from ray.rllib.core.models.specs.specs_base import TensorSpec
 
-    # Example of canoncial format #2:
+        >>> spec = int
+        >>> convert_to_canonical_format(spec)
+        TypeSpec(<class 'int'>)
 
-    .. code-block:: python
-        spec = int
-        output = convert_to_canonical_format(spec)
-        # output = TypeSpec(int)
+        >>> spec = None
+        >>> convert_to_canonical_format(spec) # Returns None
 
-        spec = None
-        output = convert_to_canonical_format(spec)
-        # output = None
-
-        spec = TensorSpec("b,h", framework="torch")
-        output = convert_to_canonical_format(spec)
-        # output = TensorSpec("b,h", framework="torch")
+        >>> spec = TensorSpec('b,h', framework='torch')
+        >>> convert_to_canonical_format(spec)
+        TensorSpec(shape=('b', 'h'), dtype=None)
 
     Args:
         spec: The spec to convert to canonical format.
@@ -161,7 +159,7 @@ def _validate(
         try:
             spec.validate(data)
         except ValueError as e:
-            raise ValueError(
+            raise SpecCheckingError(
                 f"{tag} spec validation failed on "
                 f"{cls_instance.__class__.__name__}.{method.__name__}, {e}."
             )
@@ -173,6 +171,7 @@ def _validate(
 def check_input_specs(
     input_specs: str,
     *,
+    only_check_on_retry: bool = True,
     filter: bool = False,
     cache: bool = False,
 ):
@@ -189,18 +188,26 @@ def check_input_specs(
 
     Examples (See more examples in ../tests/test_specs_dict.py):
 
-        >>> class MyModel(nn.Module):
-        ...     @property
-        ...     def input_specs(self):
-        ...         return {"obs": TensorSpec("b, d", d=64)}
-        ...
-        ...     @check_input_specs("input_specs")
-        ...     def forward(self, input_data, return_loss=False):
-        ...         ...
+    .. testcode::
 
-        >>> model = MyModel()
-        >>> model.forward({"obs": torch.randn(32, 64)}) # No error
-        >>> model.forward({"obs": torch.randn(32, 32)}) # raises ValueError
+        import torch
+        from torch import nn
+        from ray.rllib.core.models.specs.specs_base import TensorSpec
+
+        class MyModel(nn.Module):
+            @property
+            def input_specs(self):
+                return {"obs": TensorSpec("b, d", d=64)}
+
+            @check_input_specs("input_specs", only_check_on_retry=False)
+            def forward(self, input_data, return_loss=False):
+                ...
+
+        model = MyModel()
+        model.forward({"obs": torch.randn(32, 64)})
+
+        # The following would raise an Error
+        # model.forward({"obs": torch.randn(32, 32)})
 
     Args:
         func: The instance method to decorate. It should be a callable that takes
@@ -210,6 +217,9 @@ def check_input_specs(
             string in input_specs and returns the `SpecDict`, `Spec`, or simply the
             `Type` that the `input_data` should comply with. It can also be None or
             empty list / dict to enforce no input spec.
+        only_check_on_retry: If True, the spec will not be checked. Only if the
+            decorated method raises an Exception, we check the spec to provide a more
+            informative error message.
         filter: If True, and `input_data` is a nested dict the `input_data` will be
             filtered by its corresponding spec tree structure and then passed into the
             implemented function to make sure user is not confounded with unnecessary
@@ -231,12 +241,36 @@ def check_input_specs(
         def wrapper(self, input_data, **kwargs):
             if cache and not hasattr(self, "__checked_input_specs_cache__"):
                 self.__checked_input_specs_cache__ = {}
+            if cache and func.__name__ not in self.__checked_input_specs_cache__:
+                self.__checked_input_specs_cache__[func.__name__] = True
 
+            initial_exception = None
+            if only_check_on_retry:
+                # Attempt to run the function without spec checking
+                try:
+                    return func(self, input_data, **kwargs)
+                except SpecCheckingError as e:
+                    raise e
+                except Exception as e:
+                    # We store the initial exception to raise it later if the spec
+                    # check fails.
+                    initial_exception = e
+                    logger.error(
+                        f"Exception {e} raised on function call without checkin "
+                        f"input specs. RLlib will now attempt to check the spec "
+                        f"before calling the function again."
+                    )
+
+            # If the function was not executed successfully yet, we check specs
             checked_data = input_data
             if input_specs:
-                spec = getattr(self, input_specs, "___NOT_FOUND___")
-                if spec == "___NOT_FOUND___":
-                    raise ValueError(f"object {self} has no attribute {input_specs}.")
+                if hasattr(self, input_specs):
+                    spec = getattr(self, input_specs)
+                else:
+                    raise SpecCheckingError(
+                        f"object {self} has no attribute {input_specs}."
+                    )
+
                 if spec is not None:
                     spec = convert_to_canonical_format(spec)
                     checked_data = _validate(
@@ -252,12 +286,12 @@ def check_input_specs(
                         # filtering should happen regardless of cache
                         checked_data = checked_data.filter(spec)
 
-            output_data = func(self, checked_data, **kwargs)
+            # If we have encountered an exception from calling `func` already,
+            # we raise it again here and don't need to call func again.
+            if initial_exception:
+                raise initial_exception
 
-            if cache and func.__name__ not in self.__checked_input_specs_cache__:
-                self.__checked_input_specs_cache__[func.__name__] = True
-
-            return output_data
+            return func(self, checked_data, **kwargs)
 
         wrapper.__checked_input_specs__ = True
         return wrapper
@@ -282,14 +316,20 @@ def check_output_specs(
 
     Examples (See more examples in ../tests/test_specs_dict.py):
 
-        >>> class MyModel(nn.Module):
-        ...     @property
-        ...     def output_specs(self):
-        ...         return {"obs": TensorSpec("b, d", d=64)}
-        ...
-        ...     @check_output_specs("output_specs")
-        ...     def forward(self, input_data, return_loss=False):
-        ...         return {"obs": torch.randn(32, 64)}
+    .. testcode::
+
+        import torch
+        from torch import nn
+        from ray.rllib.core.models.specs.specs_base import TensorSpec
+
+        class MyModel(nn.Module):
+            @property
+            def output_specs(self):
+                return {"obs": TensorSpec("b, d", d=64)}
+
+            @check_output_specs("output_specs")
+            def forward(self, input_data, return_loss=False):
+                return {"obs": torch.randn(32, 64)}
 
     Args:
         func: The instance method to decorate. It should be a callable that takes
@@ -321,9 +361,11 @@ def check_output_specs(
             output_data = func(self, input_data, **kwargs)
 
             if output_specs:
-                spec = getattr(self, output_specs, "___NOT_FOUND___")
-                if spec == "___NOT_FOUND___":
+                if hasattr(self, output_specs):
+                    spec = getattr(self, output_specs)
+                else:
                     raise ValueError(f"object {self} has no attribute {output_specs}.")
+
                 if spec is not None:
                     spec = convert_to_canonical_format(spec)
                     _validate(

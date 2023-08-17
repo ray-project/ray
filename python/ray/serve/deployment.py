@@ -5,6 +5,7 @@ from typing import (
     Any,
     Callable,
     Dict,
+    List,
     Optional,
     Tuple,
     Union,
@@ -32,18 +33,46 @@ from ray.serve.schema import (
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
-@PublicAPI
+@PublicAPI(stability="beta")
 class Application(DAGNodeBase):
-    """Returned from `Deployment.bind()`.
+    """One or more deployments bound with arguments that can be deployed together.
 
     Can be passed into another `Deployment.bind()` to compose multiple deployments in a
     single application, passed to `serve.run`, or deployed via a Serve config file.
+
+    For example, to define an Application and run it in Python:
+
+        .. code-block:: python
+
+            from ray import serve
+            from ray.serve import Application
+
+            @serve.deployment
+            class MyDeployment:
+                pass
+
+            app: Application = MyDeployment.bind(OtherDeployment.bind())
+            serve.run(app)
+
+    To run the same app using the command line interface (CLI):
+
+        .. code-block:: bash
+
+            serve run python_file:app
+
+    To deploy the same app via a config file:
+
+        .. code-block:: yaml
+
+            applications:
+                my_app:
+                    import_path: python_file:app
+
     """
 
     def __init__(
         self, *, _internal_dag_node: Optional[Union[ClassNode, FunctionNode]] = None
     ):
-        """This class should not be constructed directly."""
         if _internal_dag_node is None:
             raise RuntimeError("This class should not be constructed directly.")
 
@@ -67,6 +96,32 @@ class Application(DAGNodeBase):
 
 @PublicAPI
 class Deployment:
+    """Class (or function) decorated with the `@serve.deployment` decorator.
+
+    This is run on a number of replica actors. Requests to those replicas call
+    this class.
+
+    One or more deployments can be composed together into an `Application` which is
+    then run via `serve.run` or a config file.
+
+    Example:
+
+    .. code-block:: python
+
+        @serve.deployment
+        class MyDeployment:
+            def __init__(self, name: str):
+                self._name = name
+
+            def __call__(self, request):
+                return "Hello world!"
+
+            app = MyDeployment.bind()
+            # Run via `serve.run` or the `serve run` CLI command.
+            serve.run(app)
+
+    """
+
     def __init__(
         self,
         func_or_class: Union[Callable, str],
@@ -77,16 +132,11 @@ class Deployment:
         init_kwargs: Optional[Tuple[Any]] = None,
         route_prefix: Union[str, None, DEFAULT] = DEFAULT.VALUE,
         ray_actor_options: Optional[Dict] = None,
+        placement_group_bundles: Optional[List[Dict[str, float]]] = None,
+        placement_group_strategy: Optional[str] = None,
         is_driver_deployment: Optional[bool] = False,
         _internal=False,
     ) -> None:
-        """Construct a Deployment. CONSTRUCTOR SHOULDN'T BE USED DIRECTLY.
-
-        Deployments should be created, retrieved, and updated using
-        `@serve.deployment`, `serve.get_deployment`, and `Deployment.options`,
-        respectively.
-        """
-
         if not _internal:
             raise RuntimeError(
                 "The Deployment constructor should not be called "
@@ -115,6 +165,21 @@ class Deployment:
                 raise ValueError("route_prefix may not contain wildcards.")
         if not (ray_actor_options is None or isinstance(ray_actor_options, dict)):
             raise TypeError("ray_actor_options must be a dict.")
+        if placement_group_bundles is not None:
+            if not isinstance(placement_group_bundles, list):
+                raise TypeError("placement_group_bundles must be a list.")
+
+            for bundle in placement_group_bundles:
+                if not isinstance(bundle, dict):
+                    raise TypeError(
+                        "placement_group_bundles entries must be "
+                        f"dicts, got {type(bundle)}."
+                    )
+        if not (
+            placement_group_strategy is None
+            or isinstance(placement_group_strategy, str)
+        ):
+            raise TypeError("placement_group_strategy must be a string.")
 
         if is_driver_deployment is True:
             if config.num_replicas != 1:
@@ -144,6 +209,8 @@ class Deployment:
         self._init_kwargs = init_kwargs
         self._route_prefix = route_prefix
         self._ray_actor_options = ray_actor_options
+        self._placement_group_bundles = placement_group_bundles
+        self._placement_group_strategy = placement_group_strategy
         self._is_driver_deployment = is_driver_deployment
         self._docs_path = docs_path
 
@@ -154,10 +221,6 @@ class Deployment:
 
     @property
     def version(self) -> Optional[str]:
-        """Version of this deployment.
-
-        If None, will be redeployed every time `.deploy()` is called.
-        """
         return self._version
 
     @property
@@ -194,17 +257,14 @@ class Deployment:
 
     @property
     def init_args(self) -> Tuple[Any]:
-        """Positional args passed to the underlying class's constructor."""
         return self._init_args
 
     @property
     def init_kwargs(self) -> Tuple[Any]:
-        """Keyword args passed to the underlying class's constructor."""
         return self._init_kwargs
 
     @property
     def url(self) -> Optional[str]:
-        """Full HTTP url for this deployment."""
         if self._route_prefix is None or self._is_driver_deployment:
             # this deployment is not exposed over HTTP
             return None
@@ -226,7 +286,7 @@ class Deployment:
         """
 
         copied_self = copy(self)
-        copied_self._func_or_class = "dummpy.module"
+        copied_self._func_or_class = "dummy.module"
         schema_shell = deployment_to_schema(copied_self)
 
         if inspect.isfunction(self._func_or_class):
@@ -346,6 +406,7 @@ class Deployment:
 
         return get_global_client().get_handle(
             self._name,
+            app_name="",
             missing_ok=True,
             sync=sync,
         )
@@ -361,6 +422,8 @@ class Deployment:
         init_kwargs: Default[Dict[Any, Any]] = DEFAULT.VALUE,
         route_prefix: Default[Union[str, None]] = DEFAULT.VALUE,
         ray_actor_options: Default[Optional[Dict]] = DEFAULT.VALUE,
+        placement_group_bundles: Optional[List[Dict[str, float]]] = DEFAULT.VALUE,
+        placement_group_strategy: Optional[str] = DEFAULT.VALUE,
         user_config: Default[Optional[Any]] = DEFAULT.VALUE,
         max_concurrent_queries: Default[int] = DEFAULT.VALUE,
         autoscaling_config: Default[
@@ -378,14 +441,7 @@ class Deployment:
         Only those options passed in will be updated, all others will remain
         unchanged from the existing deployment.
 
-        Args:
-            Refer to @serve.deployment decorator docstring for all non-private
-            arguments.
-
-            _internal: If True, this function won't log deprecation warnings
-                and won't update this deployment's config's
-                user_configured_option_names. It should only be True when used
-                internally by Serve. It should be False when called by users.
+        Refer to the `@serve.deployment` decorator docs for available arguments.
         """
 
         # NOTE: The user_configured_option_names should be the first thing that's
@@ -451,6 +507,12 @@ class Deployment:
         if ray_actor_options is DEFAULT.VALUE:
             ray_actor_options = self._ray_actor_options
 
+        if placement_group_bundles is DEFAULT.VALUE:
+            placement_group_bundles = self._placement_group_bundles
+
+        if placement_group_strategy is DEFAULT.VALUE:
+            placement_group_strategy = self._placement_group_strategy
+
         if autoscaling_config is not DEFAULT.VALUE:
             new_config.autoscaling_config = autoscaling_config
 
@@ -478,6 +540,8 @@ class Deployment:
             init_kwargs=init_kwargs,
             route_prefix=route_prefix,
             ray_actor_options=ray_actor_options,
+            placement_group_bundles=placement_group_bundles,
+            placement_group_strategy=placement_group_strategy,
             _internal=True,
             is_driver_deployment=is_driver_deployment,
         )
@@ -505,10 +569,13 @@ class Deployment:
         is_driver_deployment: bool = DEFAULT.VALUE,
         _internal: bool = False,
     ) -> None:
-        """Overwrite this deployment's options. Mutates the deployment.
+        """Overwrite this deployment's options in-place.
 
         Only those options passed in will be updated, all others will remain
         unchanged.
+
+        Refer to the @serve.deployment decorator docstring for all non-private
+        arguments.
         """
 
         validated = self.options(
@@ -594,6 +661,8 @@ def deployment_to_schema(
         "health_check_period_s": d._config.health_check_period_s,
         "health_check_timeout_s": d._config.health_check_timeout_s,
         "ray_actor_options": ray_actor_options_schema,
+        "placement_group_strategy": d._placement_group_strategy,
+        "placement_group_bundles": d._placement_group_bundles,
         "is_driver_deployment": d._is_driver_deployment,
     }
 
@@ -629,6 +698,16 @@ def schema_to_deployment(s: DeploymentSchema) -> Deployment:
     else:
         ray_actor_options = s.ray_actor_options.dict(exclude_unset=True)
 
+    if s.placement_group_bundles is DEFAULT.VALUE:
+        placement_group_bundles = None
+    else:
+        placement_group_bundles = s.placement_group_bundles
+
+    if s.placement_group_strategy is DEFAULT.VALUE:
+        placement_group_strategy = None
+    else:
+        placement_group_strategy = s.placement_group_strategy
+
     if s.is_driver_deployment is DEFAULT.VALUE:
         is_driver_deployment = False
     else:
@@ -654,6 +733,8 @@ def schema_to_deployment(s: DeploymentSchema) -> Deployment:
         init_kwargs={},
         route_prefix=s.route_prefix,
         ray_actor_options=ray_actor_options,
+        placement_group_bundles=placement_group_bundles,
+        placement_group_strategy=placement_group_strategy,
         _internal=True,
         is_driver_deployment=is_driver_deployment,
     )

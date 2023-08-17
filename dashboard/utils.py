@@ -50,7 +50,7 @@ class DashboardAgentModule(abc.ABC):
         """
         Run the module in an asyncio loop. An agent module can provide
         servicers to the server.
-        :param server: Asyncio GRPC server.
+        :param server: Asyncio GRPC server, or None if ray is minimal.
         """
 
     @staticmethod
@@ -58,7 +58,7 @@ class DashboardAgentModule(abc.ABC):
     def is_minimal_module():
         """
         Return True if the module is minimal, meaning it
-        should work with `pip install ray` that doesn't requires additonal
+        should work with `pip install ray` that doesn't requires additional
         dependencies.
         """
 
@@ -79,7 +79,7 @@ class DashboardHeadModule(abc.ABC):
         """
         Run the module in an asyncio loop. A head module can provide
         servicers to the server.
-        :param server: Asyncio GRPC server.
+        :param server: Asyncio GRPC server, or None if ray is minimal.
         """
 
     @staticmethod
@@ -87,7 +87,7 @@ class DashboardHeadModule(abc.ABC):
     def is_minimal_module():
         """
         Return True if the module is minimal, meaning it
-        should work with `pip install ray` that doesn't requires additonal
+        should work with `pip install ray` that doesn't requires additional
         dependencies.
         """
 

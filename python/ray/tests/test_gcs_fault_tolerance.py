@@ -17,11 +17,6 @@ from ray._private.test_utils import (
     wait_for_pid_to_exit,
     run_string_as_driver,
 )
-from ray._private.gcs_pubsub import (
-    GcsPublisher,
-    GcsErrorSubscriber,
-)
-from ray.core.generated.gcs_pb2 import ErrorTableData
 
 import psutil
 
@@ -438,13 +433,16 @@ def test_gcs_aio_client_reconnect(
     passed = [False]
 
     async def async_kv_get():
-        gcs_aio_client = gcs_utils.GcsAioClient(
-            address=gcs_address, nums_reconnect_retry=20 if auto_reconnect else 0
-        )
         if not auto_reconnect:
             with pytest.raises(Exception):
+                gcs_aio_client = gcs_utils.GcsAioClient(
+                    address=gcs_address, nums_reconnect_retry=0
+                )
                 await gcs_aio_client.internal_kv_get(b"a", None)
         else:
+            gcs_aio_client = gcs_utils.GcsAioClient(
+                address=gcs_address, nums_reconnect_retry=20
+            )
             assert await gcs_aio_client.internal_kv_get(b"a", None) == b"b"
         return True
 
@@ -672,23 +670,23 @@ def test_publish_and_subscribe_error_info(ray_start_regular_with_external_redis)
     address_info = ray_start_regular_with_external_redis
     gcs_server_addr = address_info["gcs_address"]
 
-    subscriber = GcsErrorSubscriber(address=gcs_server_addr)
+    subscriber = ray._raylet.GcsErrorSubscriber(address=gcs_server_addr)
     subscriber.subscribe()
 
-    publisher = GcsPublisher(address=gcs_server_addr)
-    err1 = ErrorTableData(error_message="test error message 1")
-    err2 = ErrorTableData(error_message="test error message 2")
+    publisher = ray._raylet.GcsPublisher(address=gcs_server_addr)
     print("sending error message 1")
-    publisher.publish_error(b"aaa_id", err1)
+    publisher.publish_error(b"aaa_id", "", "test error message 1")
 
     ray._private.worker._global_node.kill_gcs_server()
     ray._private.worker._global_node.start_gcs_server()
 
     print("sending error message 2")
-    publisher.publish_error(b"bbb_id", err2)
+    publisher.publish_error(b"bbb_id", "", "test error message 2")
     print("done")
 
-    assert subscriber.poll() == (b"bbb_id", err2)
+    (key_id, err) = subscriber.poll()
+    assert key_id == b"bbb_id"
+    assert err["error_message"] == "test error message 2"
 
     subscriber.close()
 
@@ -725,8 +723,18 @@ def test_redis_failureover(redis_replicas, ray_start_cluster_head_with_external_
 
     redis_addr = os.environ.get("RAY_REDIS_ADDRESS")
     ip, port = redis_addr.split(":")
-    cli = redis.Redis(ip, port)
-    nodes = cli.cluster("nodes")
+    redis_cli = redis.Redis(ip, port)
+
+    def get_connected_nodes():
+        return [
+            (k, v) for (k, v) in redis_cli.cluster("nodes").items() if v["connected"]
+        ]
+
+    wait_for_condition(
+        lambda: len(get_connected_nodes())
+        == int(os.environ.get("TEST_EXTERNAL_REDIS_REPLICAS"))
+    )
+    nodes = redis_cli.cluster("nodes")
     leader_cli = None
     follower_cli = []
     for addr in nodes:
@@ -736,6 +744,7 @@ def test_redis_failureover(redis_replicas, ray_start_cluster_head_with_external_
         flags = meta["flags"].split(",")
         if "master" in flags:
             leader_cli = cli
+            print("LEADER", addr, redis_addr)
         else:
             follower_cli.append(cli)
 
@@ -774,6 +783,10 @@ def test_redis_failureover(redis_replicas, ray_start_cluster_head_with_external_
     print("GCS killed")
 
     follower_cli[0].cluster("failover", "takeover")
+    wait_for_condition(
+        lambda: len(get_connected_nodes())
+        == int(os.environ.get("TEST_EXTERNAL_REDIS_REPLICAS")) - 1
+    )
 
     # Kill Counter actor. It should restart after GCS is back
     c_process.kill()
@@ -781,6 +794,7 @@ def test_redis_failureover(redis_replicas, ray_start_cluster_head_with_external_
     cluster.head_node.kill_gcs_server(False)
 
     print("Start gcs")
+    sleep(2)
     cluster.head_node.start_gcs_server()
 
     assert len(ray.nodes()) == 1
@@ -793,11 +807,15 @@ ray.init('{cluster.address}')
 def f():
     return 10
 assert ray.get(f.remote()) == 10
+
 c = ray.get_actor("c", namespace="test")
-assert ray.get(c.r.remote(10)) == 10
+v = ray.get(c.r.remote(10))
+assert v == 10
+print("DONE")
 """
+
     # Make sure the cluster is usable
-    run_string_as_driver(driver_script)
+    wait_for_condition(lambda: "DONE" in run_string_as_driver(driver_script))
 
     # Now make follower_cli[0] become replica
     # and promote follower_cli[1] as leader
@@ -807,7 +825,7 @@ assert ray.get(c.r.remote(10)) == 10
     gcs_server_pid = gcs_server_process.pid
     # GCS should exit in this case
     print(">>> Waiting gcs server to exit", gcs_server_pid)
-    wait_for_pid_to_exit(gcs_server_pid, 1000)
+    wait_for_pid_to_exit(gcs_server_pid, 10000)
 
 
 @pytest.mark.parametrize(

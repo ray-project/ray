@@ -16,7 +16,11 @@ from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.utils import force_list
 from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.debug import summarize
-from ray.rllib.utils.deprecation import deprecation_warning, DEPRECATED_VALUE
+from ray.rllib.utils.deprecation import (
+    deprecation_warning,
+    DEPRECATED_VALUE,
+    Deprecated,
+)
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.metrics import (
     DIFF_NUM_GRAD_UPDATES_VS_SAMPLER_POLICY,
@@ -39,7 +43,7 @@ logger = logging.getLogger(__name__)
 TOWER_SCOPE_NAME = "tower"
 
 
-@DeveloperAPI
+@Deprecated(error=False)
 class DynamicTFPolicy(TFPolicy):
     """A TFPolicy that auto-defines placeholders dynamically at runtime.
 
@@ -919,7 +923,7 @@ class DynamicTFPolicy(TFPolicy):
         return losses
 
 
-@DeveloperAPI
+@Deprecated(error=False)
 class TFMultiGPUTowerStack:
     """Optimizer that runs in parallel across multiple local devices.
 

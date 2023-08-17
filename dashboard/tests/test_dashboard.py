@@ -39,9 +39,9 @@ from ray._private.test_utils import (
 import ray.scripts.scripts as scripts
 from ray.dashboard import dashboard
 from ray.dashboard.head import DashboardHead
-from ray.experimental.state.api import StateApiClient
-from ray.experimental.state.common import ListApiOptions, StateResource
-from ray.experimental.state.exception import ServerUnavailable
+from ray.util.state import StateApiClient
+from ray.util.state.common import ListApiOptions, StateResource
+from ray.util.state.exception import ServerUnavailable
 from ray.experimental.internal_kv import _initialize_internal_kv
 from unittest.mock import MagicMock
 from ray.dashboard.utils import DashboardHeadModule
@@ -227,9 +227,9 @@ def test_agent_report_unexpected_raylet_death(shutdown_only):
     errors = get_error_message(p, 1, ray_constants.RAYLET_DIED_ERROR)
     assert len(errors) == 1, errors
     err = errors[0]
-    assert err.type == ray_constants.RAYLET_DIED_ERROR
-    assert "Termination is unexpected." in err.error_message, err.error_message
-    assert "Raylet logs:" in err.error_message, err.error_message
+    assert err["type"] == ray_constants.RAYLET_DIED_ERROR
+    assert "Termination is unexpected." in err["error_message"], err["error_message"]
+    assert "Raylet logs:" in err["error_message"], err["error_message"]
     assert (
         os.path.getsize(os.path.join(node.get_session_dir_path(), "logs", "raylet.out"))
         < 1 * 1024**2
@@ -268,31 +268,47 @@ def test_agent_report_unexpected_raylet_death_large_file(shutdown_only):
     errors = get_error_message(p, 1, ray_constants.RAYLET_DIED_ERROR)
     assert len(errors) == 1, errors
     err = errors[0]
-    assert err.type == ray_constants.RAYLET_DIED_ERROR
-    assert "Termination is unexpected." in err.error_message, err.error_message
-    assert "Raylet logs:" in err.error_message, err.error_message
+    assert err["type"] == ray_constants.RAYLET_DIED_ERROR
+    assert "Termination is unexpected." in err["error_message"], err["error_message"]
+    assert "Raylet logs:" in err["error_message"], err["error_message"]
 
 
 @pytest.mark.parametrize(
     "ray_start_with_dashboard",
     [
         {"dashboard_host": "127.0.0.1"},
-        {"dashboard_host": "0.0.0.0"},
-        {"dashboard_host": "::"},
+        {"dashboard_host": "localhost"},
     ],
     indirect=True,
 )
-def test_dashboard_address(ray_start_with_dashboard):
+def test_dashboard_address_local(ray_start_with_dashboard):
     webui_url = ray_start_with_dashboard["webui_url"]
     if os.environ.get("RAY_MINIMAL") == "1":
         # In the minimal installation, webui url shouldn't be configured.
         assert webui_url == ""
     else:
         webui_ip = webui_url.split(":")[0]
-        print(ipaddress.ip_address(webui_ip))
-        print(webui_ip)
         assert not ipaddress.ip_address(webui_ip).is_unspecified
-        assert webui_ip in ["127.0.0.1", ray_start_with_dashboard["node_ip_address"]]
+        assert webui_ip == "127.0.0.1"
+
+
+@pytest.mark.parametrize(
+    "ray_start_with_dashboard",
+    [
+        {"dashboard_host": "0.0.0.0"},
+        {"dashboard_host": "::"},
+    ],
+    indirect=True,
+)
+def test_dashboard_address_global(ray_start_with_dashboard):
+    webui_url = ray_start_with_dashboard["webui_url"]
+    if os.environ.get("RAY_MINIMAL") == "1":
+        # In the minimal installation, webui url shouldn't be configured.
+        assert webui_url == ""
+    else:
+        webui_ip = webui_url.split(":")[0]
+        assert not ipaddress.ip_address(webui_ip).is_unspecified
+        assert webui_ip == ray_start_with_dashboard["node_ip_address"]
 
 
 @pytest.mark.skipif(
@@ -610,6 +626,48 @@ def test_get_cluster_status(ray_start_with_dashboard):
     assert response.json()["data"]["autoscalingError"] == "world"
     assert "clusterStatus" in response.json()["data"]
     assert "loadMetricsReport" in response.json()["data"]["clusterStatus"]
+
+
+@pytest.mark.skipif(
+    os.environ.get("RAY_MINIMAL") == "1",
+    reason="This test is not supposed to work for minimal installation.",
+)
+@pytest.mark.parametrize(
+    "call_ray_start",
+    [
+        """ray start --no-monitor --head --num-cpus 1 \
+--system-config={"enable_autoscaler_v2":true}""",
+        """ray start --head --num-cpus 1""",
+    ],
+    indirect=True,
+)
+def test_get_nodes_summary(call_ray_start):
+
+    # The sleep is needed since it seems a previous shutdown could be not yet
+    # done when the next test starts. This prevents a previous cluster to be
+    # connected the current test session.
+    time.sleep(5)
+    address_info = ray.init(address=call_ray_start)
+    webui_url = address_info["webui_url"]
+    webui_url = format_web_url(webui_url)
+
+    def get_nodes_summary():
+        response = requests.get(f"{webui_url}/nodes?view=summary")
+        response.raise_for_status()
+        response = response.json()
+        print(response)
+
+        assert response["data"]["nodeLogicalResources"]
+        assert "0.0/1.0 CPU" in "".join(
+            response["data"]["nodeLogicalResources"].values()
+        )
+
+    assert wait_until_succeeded_without_exception(
+        get_nodes_summary,
+        (requests.RequestException,),
+        timeout_ms=10 * 1000,
+        retry_interval_ms=1000,
+    )
 
 
 @pytest.mark.skipif(

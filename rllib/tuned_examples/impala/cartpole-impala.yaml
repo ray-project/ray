@@ -8,9 +8,8 @@ cartpole-impala:
         # Works for both torch and tf.
         framework: tf2
         num_gpus: 0
-        vtrace_drop_last_ts: false
-        _enable_rl_module_api: True
-        _enable_learner_api: True
+        _enable_rl_module_api: true
+        _enable_learner_api: true
         grad_clip: 40
         num_workers: 2
         num_learner_workers: 1

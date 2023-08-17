@@ -341,7 +341,8 @@ void GcsActorScheduler::RetryLeasingWorkerFromNode(
   RAY_UNUSED(execute_after(
       io_context_,
       [this, node, actor] { DoRetryLeasingWorkerFromNode(actor, node); },
-      RayConfig::instance().gcs_lease_worker_retry_interval_ms()));
+      std::chrono::milliseconds(
+          RayConfig::instance().gcs_lease_worker_retry_interval_ms())));
 }
 
 void GcsActorScheduler::DoRetryLeasingWorkerFromNode(
@@ -404,6 +405,8 @@ void GcsActorScheduler::HandleWorkerLeaseGrantedReply(
                   .second);
     actor->UpdateAddress(leased_worker->GetAddress());
     actor->GetMutableActorTableData()->set_pid(reply.worker_pid());
+    actor->GetMutableTaskSpec()->set_lease_grant_timestamp_ms(current_sys_time_ms());
+    actor->GetCreationTaskSpecification().EmitTaskMetrics();
     // Make sure to connect to the client before persisting actor info to GCS.
     // Without this, there could be a possible race condition. Related issues:
     // https://github.com/ray-project/ray/pull/9215/files#r449469320
@@ -504,7 +507,8 @@ void GcsActorScheduler::RetryCreatingActorOnWorker(
   RAY_UNUSED(execute_after(
       io_context_,
       [this, actor, worker] { DoRetryCreatingActorOnWorker(actor, worker); },
-      RayConfig::instance().gcs_create_actor_retry_interval_ms()));
+      std::chrono::milliseconds(
+          RayConfig::instance().gcs_create_actor_retry_interval_ms())));
 }
 
 void GcsActorScheduler::DoRetryCreatingActorOnWorker(
@@ -668,7 +672,8 @@ void GcsActorScheduler::ReturnActorAcquiredResources(std::shared_ptr<GcsActor> a
   auto &cluster_resource_manager =
       cluster_task_manager_->GetClusterResourceScheduler()->GetClusterResourceManager();
   cluster_resource_manager.AddNodeAvailableResources(
-      scheduling::NodeID(actor->GetNodeID().Binary()), actor->GetAcquiredResources());
+      scheduling::NodeID(actor->GetNodeID().Binary()),
+      actor->GetAcquiredResources().GetResourceSet());
   actor->SetAcquiredResources(ResourceRequest());
 }
 

@@ -8,6 +8,7 @@ from ray.dashboard.modules.job.utils import (
     file_tail_iterator,
     strip_keys_with_value_none,
     parse_and_validate_request,
+    redact_url_password,
 )
 
 
@@ -24,6 +25,27 @@ def test_strip_keys_with_value_none():
     assert strip_keys_with_value_none(d) == d
     d = {"a": 1, "b": None, "c": None}
     assert strip_keys_with_value_none(d) == {"a": 1}
+
+
+def test_redact_url_password():
+    url = "http://user:password@host:port"
+    assert redact_url_password(url) == "http://user:<redacted>@host:port"
+    url = "http://user:password@host:port?query=1"
+    assert redact_url_password(url) == "http://user:<redacted>@host:port?query=1"
+    url = "http://user:password@host:port?query=1&password=2"
+    assert (
+        redact_url_password(url)
+        == "http://user:<redacted>@host:port?query=1&password=2"
+    )
+    url = "https://user:password@127.0.0.1:8080"
+    assert redact_url_password(url) == "https://user:<redacted>@127.0.0.1:8080"
+    url = "https://user:password@host:port?query=1"
+    assert redact_url_password(url) == "https://user:<redacted>@host:port?query=1"
+    url = "https://user:password@host:port?query=1&password=2"
+    assert (
+        redact_url_password(url)
+        == "https://user:<redacted>@host:port?query=1&password=2"
+    )
 
 
 # Mock for aiohttp.web.Request, which should not be constructed directly.

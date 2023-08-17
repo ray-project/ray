@@ -1,20 +1,20 @@
 import logging
 import threading
-from typing import Any, Callable, Iterator, List, Optional, Tuple, TypeVar, Union
 from collections import deque
 from contextlib import nullcontext
+from typing import Any, Callable, Iterator, List, Optional, Tuple, TypeVar, Union
 
 import ray
-from ray.types import ObjectRef
 from ray.actor import ActorHandle
-from ray.data.block import Block, BlockAccessor, DataBatch
 from ray.data._internal.batcher import Batcher, ShufflingBatcher
 from ray.data._internal.block_batching.interfaces import (
     Batch,
-    CollatedBatch,
     BlockPrefetcher,
+    CollatedBatch,
 )
-from ray.data._internal.stats import DatasetPipelineStats, DatastreamStats
+from ray.data._internal.stats import DatasetPipelineStats, DatasetStats
+from ray.data.block import Block, BlockAccessor, DataBatch
+from ray.types import ObjectRef
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 T = TypeVar("T")
@@ -39,7 +39,7 @@ def _calculate_ref_hits(refs: List[ObjectRef[Any]]) -> Tuple[int, int, int]:
 
 def resolve_block_refs(
     block_ref_iter: Iterator[ObjectRef[Block]],
-    stats: Optional[Union[DatastreamStats, DatasetPipelineStats]] = None,
+    stats: Optional[Union[DatasetStats, DatasetPipelineStats]] = None,
 ) -> Iterator[Block]:
     """Resolves the block references for each logical batch.
 
@@ -71,7 +71,7 @@ def resolve_block_refs(
 
 def blocks_to_batches(
     block_iter: Iterator[Block],
-    stats: Optional[Union[DatastreamStats, DatasetPipelineStats]] = None,
+    stats: Optional[Union[DatasetStats, DatasetPipelineStats]] = None,
     batch_size: Optional[int] = None,
     drop_last: bool = False,
     shuffle_buffer_min_size: Optional[int] = None,
@@ -86,7 +86,7 @@ def blocks_to_batches(
 
     Args:
         block_iter: An iterator over blocks.
-        stats: Datastream stats object used to store block batching time.
+        stats: Dataset stats object used to store block batching time.
         batch_size: Record batch size, or None to let the system pick.
         drop_last: Whether to drop the last batch if it's incomplete.
         shuffle_buffer_min_size: If non-None, the data will be randomly shuffled
@@ -143,7 +143,7 @@ def blocks_to_batches(
 def format_batches(
     block_iter: Iterator[Batch],
     batch_format: Optional[str],
-    stats: Optional[Union[DatastreamStats, DatasetPipelineStats]] = None,
+    stats: Optional[Union[DatasetStats, DatasetPipelineStats]] = None,
 ) -> Iterator[Batch]:
     """Given an iterator of blocks, returns an iterator of formatted batches.
 
@@ -166,18 +166,44 @@ def format_batches(
 def collate(
     batch_iter: Iterator[Batch],
     collate_fn: Optional[Callable[[DataBatch], Any]],
-    stats: Optional[DatastreamStats] = None,
+    stats: Optional[DatasetStats] = None,
 ) -> Iterator[CollatedBatch]:
     """Returns an iterator with the provided collate_fn applied to items of the batch
     iterator.
 
     Args:
         batch_iter: An iterator over formatted batches.
+        collate_fn: A function to apply to each batch.
+        stats: An optional stats object to record formatting times.
     """
     for batch in batch_iter:
         with stats.iter_collate_batch_s.timer() if stats else nullcontext():
             collated_batch = collate_fn(batch.data)
         yield CollatedBatch(batch.batch_idx, collated_batch)
+
+
+def finalize_batches(
+    batch_iter: Iterator[CollatedBatch],
+    finalize_fn: Callable[[Any], Any],
+    stats: Optional[DatasetStats] = None,
+) -> Iterator[CollatedBatch]:
+    """Returns an iterator with the provided finalize_fn applied to items of the batch
+    iterator.
+
+    This is the same as `collate` except the input batches can be of type Any.
+
+    Args:
+        batch_iter: An iterator over processed batches.
+        finalize_fn: A function to apply to each batch.
+        stats: An optional stats object to record formatting times.
+
+    Returns:
+        An iterator over batch index and the finalized batch.
+    """
+    for batch in batch_iter:
+        with stats.iter_finalize_batch_s.timer() if stats else nullcontext():
+            finalized_batch = finalize_fn(batch.data)
+        yield CollatedBatch(batch.batch_idx, finalized_batch)
 
 
 def extract_data_from_batch(batch_iter: Iterator[Batch]) -> Iterator[Any]:
@@ -278,19 +304,58 @@ def make_async_gen(
             output_queue.release(num_threads_alive)
 
 
-PREFETCHER_ACTOR_NAMESPACE = "ray.datastream"
+PREFETCHER_ACTOR_NAMESPACE = "ray.dataset"
 
 
 class WaitBlockPrefetcher(BlockPrefetcher):
     """Block prefetcher using ray.wait."""
 
-    def prefetch_blocks(self, blocks: ObjectRef[Block]):
-        ray.wait(blocks, num_returns=1, fetch_local=True)
+    def __init__(self):
+        self._blocks = []
+        self._stopped = False
+        self._condition = threading.Condition()
+        self._thread = threading.Thread(
+            target=self._run,
+            name="Prefetcher",
+            daemon=True,
+        )
+        self._thread.start()
+
+    def _run(self):
+        while True:
+            try:
+                blocks_to_wait = []
+                with self._condition:
+                    if len(self._blocks) > 0:
+                        blocks_to_wait, self._blocks = self._blocks[:], []
+                    else:
+                        if self._stopped:
+                            return
+                        blocks_to_wait = []
+                        self._condition.wait()
+                if len(blocks_to_wait) > 0:
+                    ray.wait(blocks_to_wait, num_returns=1, fetch_local=True)
+            except Exception:
+                logger.exception("Error in prefetcher thread.")
+
+    def prefetch_blocks(self, blocks: List[ObjectRef[Block]]):
+        with self._condition:
+            if self._stopped:
+                raise RuntimeError("Prefetcher is stopped.")
+            self._blocks = blocks
+            self._condition.notify()
+
+    def stop(self):
+        with self._condition:
+            if self._stopped:
+                return
+            self._stopped = True
+            self._condition.notify()
+
+    def __del__(self):
+        self.stop()
 
 
-# ray.wait doesn't work as expected, so we have an
-# actor-based prefetcher as a work around. See
-# https://github.com/ray-project/ray/issues/23983 for details.
 class ActorBlockPrefetcher(BlockPrefetcher):
     """Block prefetcher using a local actor."""
 
@@ -300,7 +365,7 @@ class ActorBlockPrefetcher(BlockPrefetcher):
     @staticmethod
     def _get_or_create_actor_prefetcher() -> "ActorHandle":
         node_id = ray.get_runtime_context().get_node_id()
-        actor_name = f"datastream-block-prefetcher-{node_id}"
+        actor_name = f"dataset-block-prefetcher-{node_id}"
         return _BlockPretcher.options(
             scheduling_strategy=NodeAffinitySchedulingStrategy(node_id, soft=False),
             name=actor_name,
@@ -308,7 +373,7 @@ class ActorBlockPrefetcher(BlockPrefetcher):
             get_if_exists=True,
         ).remote()
 
-    def prefetch_blocks(self, blocks: ObjectRef[Block]):
+    def prefetch_blocks(self, blocks: List[ObjectRef[Block]]):
         self.prefetch_actor.prefetch.remote(*blocks)
 
 

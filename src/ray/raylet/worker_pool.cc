@@ -71,7 +71,7 @@ namespace raylet {
 WorkerPool::WorkerPool(instrumented_io_context &io_service,
                        const NodeID node_id,
                        const std::string node_address,
-                       int num_workers_soft_limit,
+                       const std::function<int64_t()> &get_num_cpus_available,
                        int num_prestarted_python_workers,
                        int maximum_startup_concurrency,
                        int min_worker_port,
@@ -87,7 +87,7 @@ WorkerPool::WorkerPool(instrumented_io_context &io_service,
       io_service_(&io_service),
       node_id_(node_id),
       node_address_(node_address),
-      num_workers_soft_limit_(num_workers_soft_limit),
+      get_num_cpus_available_(get_num_cpus_available),
       maximum_startup_concurrency_(maximum_startup_concurrency),
       gcs_client_(std::move(gcs_client)),
       native_library_path_(native_library_path),
@@ -173,8 +173,12 @@ void WorkerPool::SetNodeManagerPort(int node_manager_port) {
   node_manager_port_ = node_manager_port;
 }
 
-void WorkerPool::SetAgentManager(std::shared_ptr<AgentManager> agent_manager) {
-  agent_manager_ = agent_manager;
+void WorkerPool::SetRuntimeEnvAgentClient(
+    std::shared_ptr<RuntimeEnvAgentClient> runtime_env_agent_client) {
+  if (!runtime_env_agent_client) {
+    RAY_LOG(FATAL) << "SetRuntimeEnvAgentClient requires non empty pointer";
+  }
+  runtime_env_agent_client_ = runtime_env_agent_client;
 }
 
 void WorkerPool::PopWorkerCallbackAsync(const PopWorkerCallback &callback,
@@ -216,7 +220,6 @@ void WorkerPool::AddWorkerProcess(
     const std::vector<std::string> &dynamic_options) {
   state.worker_processes.emplace(worker_startup_token_counter_,
                                  WorkerProcessInfo{/*is_pending_registration=*/true,
-                                                   {},
                                                    worker_type,
                                                    proc,
                                                    start,
@@ -773,7 +776,6 @@ void WorkerPool::OnWorkerStarted(const std::shared_ptr<WorkerInterface> &worker)
   auto it = state.worker_processes.find(worker_startup_token);
   if (it != state.worker_processes.end()) {
     it->second.is_pending_registration = false;
-    it->second.alive_started_workers.insert(worker);
     // We may have slots to start more workers now.
     TryStartIOWorkers(worker->GetLanguage());
   }
@@ -1007,9 +1009,14 @@ void WorkerPool::PushWorker(const std::shared_ptr<WorkerInterface> &worker) {
   if (!used) {
     // Put the worker to the idle pool.
     state.idle.insert(worker);
-    int64_t now = get_time_();
-    idle_of_all_languages_.emplace_back(worker, now);
-    idle_of_all_languages_map_[worker] = now;
+    auto now = get_time_();
+    if (found) {
+      // If the worker was just started, then we should consider it first when
+      // choosing which idle workers to kill because it is cold.
+      idle_of_all_languages_.push_front(std::make_pair(worker, now));
+    } else {
+      idle_of_all_languages_.emplace_back(worker, now);
+    }
   } else if (!found) {
     RAY_LOG(INFO) << "Worker not returned to the idle pool after being used. This may "
                      "cause a worker leak, worker id:"
@@ -1022,181 +1029,117 @@ void WorkerPool::PushWorker(const std::shared_ptr<WorkerInterface> &worker) {
 }
 
 void WorkerPool::TryKillingIdleWorkers() {
-  RAY_CHECK(idle_of_all_languages_.size() == idle_of_all_languages_map_.size());
-
   int64_t now = get_time_();
-  size_t running_size = 0;
-  for (const auto &worker : GetAllRegisteredWorkers()) {
-    if (!worker->IsDead() && worker->GetWorkerType() == rpc::WorkerType::WORKER) {
-      running_size++;
-    }
-  }
-  // Subtract the number of pending exit workers first. This will help us killing more
-  // idle workers that it needs to.
-  RAY_CHECK(running_size >= pending_exit_idle_workers_.size());
-  running_size -= pending_exit_idle_workers_.size();
-  // Kill idle workers in FIFO order.
-  for (const auto &idle_pair : idle_of_all_languages_) {
-    const auto &idle_worker = idle_pair.first;
-    const auto &job_id = idle_worker->GetAssignedJobId();
 
-    RAY_LOG(DEBUG) << " Checking idle worker "
-                   << idle_worker->GetAssignedTask().GetTaskSpecification().DebugString()
-                   << " worker id " << idle_worker->WorkerId();
-
-    if (running_size <= static_cast<size_t>(num_workers_soft_limit_)) {
-      if (!finished_jobs_.contains(job_id)) {
-        // Ignore the soft limit for jobs that have already finished, as we
-        // should always clean up these workers.
-        RAY_LOG(DEBUG) << "job not finished. Not going to kill worker "
-                       << idle_worker->WorkerId();
-        continue;
-      }
-    }
-
-    if (now - idle_pair.second <
-        RayConfig::instance().idle_worker_killing_time_threshold_ms()) {
-      break;
-    }
-
+  // Filter out all idle workers that are already dead and/or associated with
+  // jobs that have already finished.
+  int64_t num_killable_idle_workers = 0;
+  for (auto it = idle_of_all_languages_.begin(); it != idle_of_all_languages_.end();) {
+    const auto &idle_worker = it->first;
     if (idle_worker->IsDead()) {
-      RAY_LOG(DEBUG) << "idle worker is already dead. Not going to kill worker "
-                     << idle_worker->WorkerId();
-      // This worker has already been killed.
-      // This is possible because a Java worker process may hold multiple workers.
-      continue;
-    }
-    auto worker_startup_token = idle_worker->GetStartupToken();
-    auto &worker_state = GetStateForLanguage(idle_worker->GetLanguage());
-
-    auto it = worker_state.worker_processes.find(worker_startup_token);
-    if (it != worker_state.worker_processes.end() && it->second.is_pending_registration) {
-      // A Java worker process may hold multiple workers.
-      // Some workers of this process are pending registration. Skip killing this worker.
+      it = idle_of_all_languages_.erase(it);
       continue;
     }
 
-    // TODO(clarng): get rid of multiple workers per process code here, as that is
-    // not longer supported.
-    auto process = idle_worker->GetProcess();
-    // Make sure all workers in this worker process are idle.
-    // This block of code is needed by Java workers.
-    auto workers_in_the_same_process = GetWorkersByProcess(process);
-    bool can_be_killed = true;
-    for (const auto &worker : workers_in_the_same_process) {
-      if (worker_state.idle.count(worker) == 0 ||
-          now - idle_of_all_languages_map_[worker] <
+    const auto &job_id = idle_worker->GetAssignedJobId();
+    if (finished_jobs_.count(job_id) > 0) {
+      // The job has finished, so we should kill the worker immediately.
+      KillIdleWorker(idle_worker, it->second);
+      it = idle_of_all_languages_.erase(it);
+    } else {
+      if (it->second == -1 ||
+          now - it->second >
               RayConfig::instance().idle_worker_killing_time_threshold_ms()) {
-        // Another worker in this process isn't idle, or hasn't been idle for a while, so
-        // this process can't be killed.
-        can_be_killed = false;
-        break;
+        // The job has not yet finished and the worker has been idle for longer
+        // than the timeout.
+        num_killable_idle_workers++;
       }
-
-      // Skip killing the worker process if there's any inflight `Exit` RPC requests to
-      // this worker process.
-      if (pending_exit_idle_workers_.count(worker->WorkerId())) {
-        can_be_killed = false;
-        break;
-      }
+      it++;
     }
-    if (!can_be_killed) {
-      continue;
-    }
+  }
 
-    RAY_CHECK(running_size >= workers_in_the_same_process.size());
-    if (running_size - workers_in_the_same_process.size() <
-        static_cast<size_t>(num_workers_soft_limit_)) {
-      // A Java worker process may contain multiple workers. Killing more workers than we
-      // expect may slow the job.
-      if (!finished_jobs_.count(job_id)) {
-        // Ignore the soft limit for jobs that have already finished, as we
-        // should always clean up these workers.
-        return;
-      }
-    }
+  // Compute the soft limit for the number of idle workers to keep around.
+  // This assumes the common case where each task requires 1 CPU.
+  const auto num_desired_idle_workers = get_num_cpus_available_();
+  RAY_LOG(DEBUG) << "Idle workers: " << idle_of_all_languages_.size()
+                 << ", idle workers that are eligible to kill: "
+                 << num_killable_idle_workers
+                 << ", num desired workers : " << num_desired_idle_workers;
 
-    for (const auto &worker : workers_in_the_same_process) {
-      RAY_LOG(DEBUG) << "The worker pool has " << running_size
-                     << " registered workers which exceeds the soft limit of "
-                     << num_workers_soft_limit_ << ", and worker " << worker->WorkerId()
-                     << " with pid " << process.GetId()
-                     << " has been idle for a a while. Kill it.";
-      // To avoid object lost issue caused by forcibly killing, send an RPC request to the
-      // worker to allow it to do cleanup before exiting. We kill it anyway if the driver
-      // is already exited.
-      if (!worker->IsDead()) {
-        RAY_LOG(DEBUG) << "Sending exit message to worker " << worker->WorkerId();
-        // Register the worker to pending exit so that we can correctly calculate the
-        // running_size.
-        // This also means that there's an inflight `Exit` RPC request to the worker.
-        pending_exit_idle_workers_.emplace(worker->WorkerId(), worker);
-        auto rpc_client = worker->rpc_client();
-        RAY_CHECK(rpc_client);
-        RAY_CHECK(running_size > 0);
-        running_size--;
-        rpc::ExitRequest request;
-        if (finished_jobs_.contains(job_id) &&
-            RayConfig::instance().kill_idle_workers_of_terminated_job()) {
-          RAY_LOG(INFO) << "Force exiting worker whose job has exited "
-                        << worker->WorkerId();
-          request.set_force_exit(true);
+  // Iterate through the list and try to kill enough workers so that we are at
+  // the soft limit.
+  auto it = idle_of_all_languages_.begin();
+  while (num_killable_idle_workers > num_desired_idle_workers &&
+         it != idle_of_all_languages_.end()) {
+    if (it->second == -1 ||
+        now - it->second >
+            RayConfig::instance().idle_worker_killing_time_threshold_ms()) {
+      RAY_LOG(DEBUG) << "Number of idle workers " << num_killable_idle_workers
+                     << " is larger than the number of desired workers "
+                     << num_desired_idle_workers << " killing idle worker with PID "
+                     << it->first->GetProcess().GetId();
+      KillIdleWorker(it->first, it->second);
+      it = idle_of_all_languages_.erase(it);
+      num_killable_idle_workers--;
+    } else {
+      it++;
+    }
+  }
+}
+
+void WorkerPool::KillIdleWorker(std::shared_ptr<WorkerInterface> idle_worker,
+                                int64_t last_time_used_ms) {
+  // To avoid object lost issue caused by forcibly killing, send an RPC request to the
+  // worker to allow it to do cleanup before exiting. We kill it anyway if the driver
+  // is already exited.
+  RAY_LOG(DEBUG) << "Sending exit message to worker " << idle_worker->WorkerId();
+  // Register the worker to pending exit so that we can correctly calculate the
+  // running_size.
+  // This also means that there's an inflight `Exit` RPC request to the worker.
+  pending_exit_idle_workers_.emplace(idle_worker->WorkerId(), idle_worker);
+  auto rpc_client = idle_worker->rpc_client();
+  RAY_CHECK(rpc_client);
+  rpc::ExitRequest request;
+  const auto &job_id = idle_worker->GetAssignedJobId();
+  if (finished_jobs_.contains(job_id) &&
+      RayConfig::instance().kill_idle_workers_of_terminated_job()) {
+    RAY_LOG(INFO) << "Force exiting worker whose job has exited "
+                  << idle_worker->WorkerId();
+    request.set_force_exit(true);
+  }
+  rpc_client->Exit(
+      request,
+      [this, idle_worker, last_time_used_ms](const ray::Status &status,
+                                             const rpc::ExitReply &r) {
+        RAY_CHECK(pending_exit_idle_workers_.erase(idle_worker->WorkerId()));
+        if (!status.ok()) {
+          RAY_LOG(ERROR) << "Failed to send exit request: " << status.ToString();
         }
-        rpc_client->Exit(
-            request, [this, worker](const ray::Status &status, const rpc::ExitReply &r) {
-              RAY_CHECK(pending_exit_idle_workers_.erase(worker->WorkerId()));
-              if (!status.ok()) {
-                RAY_LOG(ERROR) << "Failed to send exit request: " << status.ToString();
-              }
 
-              // In case of failed to send request, we remove it from pool as well
-              // TODO (iycheng): We should handle the grpc failure in better way.
-              if (!status.ok() || r.success()) {
-                RAY_LOG(DEBUG) << "Removed worker " << worker->WorkerId();
-                auto &worker_state = GetStateForLanguage(worker->GetLanguage());
-                // If we could kill the worker properly, we remove them from the idle
-                // pool.
-                RemoveWorker(worker_state.idle, worker);
-                // We always mark the worker as dead.
-                // If the worker is not idle at this moment, we'd want to mark it as dead
-                // so it won't be reused later.
-                if (!worker->IsDead()) {
-                  worker->MarkDead();
-                }
-              } else {
-                RAY_LOG(DEBUG) << "Failed to remove worker " << worker->WorkerId();
-                // We re-insert the idle worker to the back of the queue if it fails to
-                // kill the worker (e.g., when the worker owns the object). Without this,
-                // if the first N workers own objects, it can't kill idle workers that are
-                // >= N+1.
-                const auto &idle_pair = idle_of_all_languages_.front();
-                idle_of_all_languages_.push_back(idle_pair);
-                idle_of_all_languages_.pop_front();
-                RAY_CHECK(idle_of_all_languages_.size() ==
-                          idle_of_all_languages_map_.size());
-              }
-            });
-      } else {
-        RAY_LOG(DEBUG) << "Removing dead worker " << worker->WorkerId();
-
-        // Even it's a dead worker, we still need to remove them from the pool.
-        RemoveWorker(worker_state.idle, worker);
-      }
-    }
-  }
-
-  std::list<std::pair<std::shared_ptr<WorkerInterface>, int64_t>>
-      new_idle_of_all_languages;
-  idle_of_all_languages_map_.clear();
-  for (const auto &idle_pair : idle_of_all_languages_) {
-    if (!idle_pair.first->IsDead()) {
-      new_idle_of_all_languages.push_back(idle_pair);
-      idle_of_all_languages_map_.emplace(idle_pair);
-    }
-  }
-
-  idle_of_all_languages_ = std::move(new_idle_of_all_languages);
-  RAY_CHECK(idle_of_all_languages_.size() == idle_of_all_languages_map_.size());
+        // In case of failed to send request, we remove it from pool as well
+        // TODO (iycheng): We should handle the grpc failure in better way.
+        if (!status.ok() || r.success()) {
+          RAY_LOG(DEBUG) << "Removed worker " << idle_worker->WorkerId();
+          auto &worker_state = GetStateForLanguage(idle_worker->GetLanguage());
+          // If we could kill the worker properly, we remove them from the idle
+          // pool.
+          RemoveWorker(worker_state.idle, idle_worker);
+          // We always mark the worker as dead.
+          // If the worker is not idle at this moment, we'd want to mark it as dead
+          // so it won't be reused later.
+          if (!idle_worker->IsDead()) {
+            idle_worker->MarkDead();
+          }
+        } else {
+          RAY_LOG(DEBUG) << "Failed to remove worker " << idle_worker->WorkerId();
+          // We re-insert the idle worker to the back of the queue if it fails to
+          // kill the worker (e.g., when the worker owns the object). Without this,
+          // if the first N workers own objects, it can't kill idle workers that are
+          // >= N+1.
+          idle_of_all_languages_.push_back(
+              std::make_pair(idle_worker, last_time_used_ms));
+        }
+      });
 }
 
 void WorkerPool::PopWorker(const TaskSpecification &task_spec,
@@ -1297,7 +1240,6 @@ void WorkerPool::PopWorker(const TaskSpecification &task_spec,
     lit--;
     worker = std::move(lit->first);
     idle_of_all_languages_.erase(lit);
-    idle_of_all_languages_map_.erase(worker);
     break;
   }
 
@@ -1361,8 +1303,8 @@ void WorkerPool::PopWorker(const TaskSpecification &task_spec,
 }
 
 void WorkerPool::PrestartWorkers(const TaskSpecification &task_spec,
-                                 int64_t backlog_size,
-                                 int64_t num_available_cpus) {
+                                 int64_t backlog_size) {
+  int64_t num_available_cpus = get_num_cpus_available_();
   // Code path of task that needs a dedicated worker.
   RAY_LOG(DEBUG) << "PrestartWorkers, num_available_cpus " << num_available_cpus
                  << " backlog_size " << backlog_size << " task spec "
@@ -1388,7 +1330,9 @@ void WorkerPool::PrestartWorkers(const TaskSpecification &task_spec,
     // Account for workers that are idle or already starting.
     int64_t num_needed = desired_usable_workers - num_usable_workers;
     RAY_LOG(DEBUG) << "Prestarting " << num_needed << " workers given task backlog size "
-                   << backlog_size << " and available CPUs " << num_available_cpus;
+                   << backlog_size << " and available CPUs " << num_available_cpus
+                   << " num idle workers " << state.idle.size()
+                   << " num registered workers " << state.registered_workers.size();
     PrestartDefaultCpuWorkers(task_spec.GetLanguage(), num_needed);
   }
 }
@@ -1417,7 +1361,7 @@ void WorkerPool::DisconnectWorker(const std::shared_ptr<WorkerInterface> &worker
   auto &state = GetStateForLanguage(worker->GetLanguage());
   auto it = state.worker_processes.find(worker->GetStartupToken());
   if (it != state.worker_processes.end()) {
-    if (!RemoveWorker(it->second.alive_started_workers, worker)) {
+    if (it->second.is_pending_registration) {
       // Worker is either starting or started,
       // if it's not started, we should remove it from starting.
       it->second.is_pending_registration = false;
@@ -1425,11 +1369,9 @@ void WorkerPool::DisconnectWorker(const std::shared_ptr<WorkerInterface> &worker
         TryPendingPopWorkerRequests(worker->GetLanguage());
       }
     }
-    if (it->second.alive_started_workers.size() == 0 &&
-        !it->second.is_pending_registration) {
-      DeleteRuntimeEnvIfPossible(it->second.runtime_env_info.serialized_runtime_env());
-      RemoveWorkerProcess(state, worker->GetStartupToken());
-    }
+
+    DeleteRuntimeEnvIfPossible(it->second.runtime_env_info.serialized_runtime_env());
+    RemoveWorkerProcess(state, worker->GetStartupToken());
   }
   RAY_CHECK(RemoveWorker(state.registered_workers, worker));
 
@@ -1449,7 +1391,6 @@ void WorkerPool::DisconnectWorker(const std::shared_ptr<WorkerInterface> &worker
        it++) {
     if (it->first == worker) {
       idle_of_all_languages_.erase(it);
-      idle_of_all_languages_map_.erase(worker);
       break;
     }
   }
@@ -1605,20 +1546,6 @@ void WorkerPool::TryStartIOWorkers(const Language &language,
   }
 }
 
-std::unordered_set<std::shared_ptr<WorkerInterface>> WorkerPool::GetWorkersByProcess(
-    const Process &process) {
-  std::unordered_set<std::shared_ptr<WorkerInterface>> workers_of_process;
-  for (auto &entry : states_by_lang_) {
-    auto &worker_state = entry.second;
-    for (const auto &worker : worker_state.registered_workers) {
-      if (worker->GetProcess().GetId() == process.GetId()) {
-        workers_of_process.insert(worker);
-      }
-    }
-  }
-  return workers_of_process;
-}
-
 std::string WorkerPool::DebugString() const {
   std::stringstream result;
   result << "WorkerPool:";
@@ -1669,7 +1596,7 @@ void WorkerPool::GetOrCreateRuntimeEnv(
     const std::string &serialized_allocated_resource_instances) {
   RAY_LOG(DEBUG) << "GetOrCreateRuntimeEnv for job " << job_id << " with runtime_env "
                  << serialized_runtime_env;
-  agent_manager_->GetOrCreateRuntimeEnv(
+  runtime_env_agent_client_->GetOrCreateRuntimeEnv(
       job_id,
       serialized_runtime_env,
       runtime_env_config,
@@ -1695,7 +1622,7 @@ void WorkerPool::GetOrCreateRuntimeEnv(
 void WorkerPool::DeleteRuntimeEnvIfPossible(const std::string &serialized_runtime_env) {
   RAY_LOG(DEBUG) << "DeleteRuntimeEnvIfPossible " << serialized_runtime_env;
   if (!IsRuntimeEnvEmpty(serialized_runtime_env)) {
-    agent_manager_->DeleteRuntimeEnvIfPossible(
+    runtime_env_agent_client_->DeleteRuntimeEnvIfPossible(
         serialized_runtime_env, [serialized_runtime_env](bool successful) {
           if (!successful) {
             RAY_LOG(ERROR) << "Delete runtime env failed";

@@ -1,10 +1,12 @@
 import abc
-from dataclasses import dataclass
 import datetime
-import gymnasium as gym
 import json
 import pathlib
-from typing import Any, Dict, Mapping, Optional, Type, TYPE_CHECKING, Union
+from dataclasses import dataclass
+from typing import Mapping, Any, TYPE_CHECKING, Optional, Type, Dict, Union
+
+import gymnasium as gym
+import tree
 
 if TYPE_CHECKING:
     from ray.rllib.core.rl_module.marl_module import (
@@ -18,6 +20,11 @@ from ray.rllib.utils.annotations import (
     ExperimentalAPI,
     OverrideToImplementCustomLogic_CallToSuperRecommended,
 )
+from ray.rllib.utils.typing import ViewRequirementsDict
+from ray.rllib.utils.annotations import OverrideToImplementCustomLogic
+from ray.rllib.core.models.base import STATE_IN, STATE_OUT
+from ray.rllib.policy.policy import get_gym_space_from_struct_of_tensors
+from ray.rllib.policy.view_requirement import ViewRequirement
 
 from ray.rllib.core.models.specs.typing import SpecType
 from ray.rllib.core.models.specs.checker import (
@@ -28,6 +35,7 @@ from ray.rllib.core.models.specs.checker import (
 from ray.rllib.models.distributions import Distribution
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
 from ray.rllib.utils.nested_dict import NestedDict
+from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.typing import SampleBatchType
 from ray.rllib.utils.serialization import (
     gym_space_from_dict,
@@ -41,7 +49,7 @@ ModuleID = str
 RLMODULE_METADATA_FILE_NAME = "rl_module_metadata.json"
 RLMODULE_METADATA_SPEC_CLASS_KEY = "module_spec_class"
 RLMODULE_METADATA_SPEC_KEY = "module_spec_dict"
-RLMODULE_STATE_DIR_NAME = "module_state_path"
+RLMODULE_STATE_DIR_NAME = "module_state_dir"
 RLMODULE_METADATA_RAY_VERSION_KEY = "ray_version"
 RLMODULE_METADATA_RAY_COMMIT_HASH_KEY = "ray_commit_hash"
 RLMODULE_METADATA_CHECKPOINT_DATE_TIME_KEY = "checkpoint_date_time"
@@ -50,7 +58,7 @@ RLMODULE_METADATA_CHECKPOINT_DATE_TIME_KEY = "checkpoint_date_time"
 @ExperimentalAPI
 @dataclass
 class SingleAgentRLModuleSpec:
-    """A utility spec class to make it constructing RLModules (in single-agent case) easier.
+    """Utility spec class to make constructing RLModules (in single-agent case) easier.
 
     Args:
         module_class: The RLModule class to use.
@@ -61,13 +69,16 @@ class SingleAgentRLModuleSpec:
         action_space: The action space of the RLModule.
         model_config_dict: The model config dict to use.
         catalog_class: The Catalog class to use.
+        load_state_path: The path to the module state to load from. NOTE: This must be
+            an absolute path.
     """
 
     module_class: Optional[Type["RLModule"]] = None
     observation_space: Optional[gym.Space] = None
     action_space: Optional[gym.Space] = None
-    model_config_dict: Optional[Mapping[str, Any]] = None
+    model_config_dict: Optional[Dict[str, Any]] = None
     catalog_class: Optional[Type["Catalog"]] = None
+    load_state_path: Optional[str] = None
 
     def get_rl_module_config(self) -> "RLModuleConfig":
         """Returns the RLModule config for this spec."""
@@ -90,7 +101,8 @@ class SingleAgentRLModuleSpec:
             raise ValueError("Model config is not set.")
 
         module_config = self.get_rl_module_config()
-        return self.module_class(module_config)
+        module = self.module_class(module_config)
+        return module
 
     @classmethod
     def from_module(cls, module: "RLModule") -> "SingleAgentRLModuleSpec":
@@ -128,13 +140,14 @@ class SingleAgentRLModuleSpec:
         model_config_dict = module_config.model_config_dict
         catalog_class = module_config.catalog_class
 
-        return SingleAgentRLModuleSpec(
+        spec = SingleAgentRLModuleSpec(
             module_class=module_class,
             observation_space=observation_space,
             action_space=action_space,
             model_config_dict=model_config_dict,
             catalog_class=catalog_class,
         )
+        return spec
 
     def update(self, other) -> None:
         """Updates this spec with the given other spec. Works like dict.update()."""
@@ -148,6 +161,7 @@ class SingleAgentRLModuleSpec:
         self.action_space = other.action_space or self.action_space
         self.model_config_dict = other.model_config_dict or self.model_config_dict
         self.catalog_class = other.catalog_class or self.catalog_class
+        self.load_state_path = other.load_state_path or self.load_state_path
 
 
 @ExperimentalAPI
@@ -167,7 +181,7 @@ class RLModuleConfig:
 
     observation_space: gym.Space = None
     action_space: gym.Space = None
-    model_config_dict: Mapping[str, Any] = None
+    model_config_dict: Dict[str, Any] = None
     catalog_class: Type["Catalog"] = None
 
     def get_catalog(self) -> "Catalog":
@@ -218,42 +232,104 @@ class RLModule(abc.ABC):
     Subclasses should call super().__init__(config) in their __init__ method.
     Here is the pseudocode for how the forward methods are called:
 
-    During Training (acting in env from each rollout worker):
+    Example for creating a sampling loop:
 
-    .. code-block:: python
+    .. testcode::
 
-        module = RLModule(...)
+        from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import (
+            PPOTorchRLModule
+        )
+        from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
+        import gymnasium as gym
+        import torch
+
+        env = gym.make("CartPole-v1")
+
+        # Create a single agent RL module spec.
+        module_spec = SingleAgentRLModuleSpec(
+            module_class=PPOTorchRLModule,
+            observation_space=env.observation_space,
+            action_space=env.action_space,
+            model_config_dict = {"hidden": [128, 128]},
+            catalog_class = PPOCatalog,
+        )
+        module = module_spec.build()
+        action_dist_class = module.get_inference_action_dist_cls()
         obs, info = env.reset()
+        terminated = False
 
-        while not env.terminated:
-            fwd_outputs = module.forward_exploration({"obs": obs})
+        while not terminated:
+            fwd_ins = {"obs": torch.Tensor([obs])}
+            fwd_outputs = module.forward_exploration(fwd_ins)
             # this can be either deterministic or stochastic distribution
-            action = fwd_outputs["action_dist"].sample()
+            action_dist = action_dist_class.from_logits(
+                fwd_outputs["action_dist_inputs"]
+            )
+            action = action_dist.sample()[0].numpy()
             obs, reward, terminated, truncated, info = env.step(action)
 
 
+    Example for training:
 
-    During Training (learning the policy)
+    .. testcode::
 
-    .. code-block:: python
+        from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import (
+            PPOTorchRLModule
+        )
+        from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
+        import gymnasium as gym
+        import torch
 
-        module = RLModule(...)
-        fwd_ins = {"obs": obs, "action": action, "reward": reward, "next_obs": next_obs}
+        env = gym.make("CartPole-v1")
+
+        # Create a single agent RL module spec.
+        module_spec = SingleAgentRLModuleSpec(
+            module_class=PPOTorchRLModule,
+            observation_space=env.observation_space,
+            action_space=env.action_space,
+            model_config_dict = {"hidden": [128, 128]},
+            catalog_class = PPOCatalog,
+        )
+        module = module_spec.build()
+
+        fwd_ins = {"obs": torch.Tensor([obs])}
         fwd_outputs = module.forward_train(fwd_ins)
-        loss = compute_loss(fwd_outputs, fwd_ins)
-        update_params(module, loss)
+        # loss = compute_loss(fwd_outputs, fwd_ins)
+        # update_params(module, loss)
 
-    During Inference (acting in env during evaluation)
+    Example for inference:
 
-    .. code-block:: python
+    .. testcode::
 
-        module = RLModule(...)
-        obs, info = env.reset()
+        from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import (
+            PPOTorchRLModule
+        )
+        from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
+        import gymnasium as gym
+        import torch
 
-        while not env.terminated:
-            fwd_outputs = module.forward_inference({"obs": obs})
-            action = fwd_outputs["action_dist"].sample()
+        env = gym.make("CartPole-v1")
+
+        # Create a single agent RL module spec.
+        module_spec = SingleAgentRLModuleSpec(
+            module_class=PPOTorchRLModule,
+            observation_space=env.observation_space,
+            action_space=env.action_space,
+            model_config_dict = {"hidden": [128, 128]},
+            catalog_class = PPOCatalog,
+        )
+        module = module_spec.build()
+
+        while not terminated:
+            fwd_ins = {"obs": torch.Tensor([obs])}
+            fwd_outputs = module.forward_inference(fwd_ins)
+            # this can be either deterministic or stochastic distribution
+            action_dist = action_dist_class.from_logits(
+                fwd_outputs["action_dist_inputs"]
+            )
+            action = action_dist.sample()[0].numpy()
             obs, reward, terminated, truncated, info = env.step(action)
+
 
     Args:
         config: The config for the RLModule.
@@ -279,7 +355,19 @@ class RLModule(abc.ABC):
 
     def __init__(self, config: RLModuleConfig):
         self.config = config
+        # Make sure, `setup()` is only called once, no matter what. In some cases
+        # of multiple inheritance (and with our __post_init__ functionality in place,
+        # this might get called twice.
+        if hasattr(self, "_is_setup") and self._is_setup:
+            raise RuntimeError(
+                "`RLModule.setup()` called twice within your RLModule implementation "
+                f"{self}! Make sure you are using the proper inheritance order "
+                "(TorchRLModule before [Algo]RLModule) or (TfRLModule before "
+                "[Algo]RLModule) and that you are using `super().__init__(...)` in "
+                "your custom constructor."
+            )
         self.setup()
+        self._is_setup = True
 
     def __init_subclass__(cls, **kwargs):
         # Automatically add a __post_init__ method to all subclasses of RLModule.
@@ -321,6 +409,7 @@ class RLModule(abc.ABC):
             self.output_specs_inference()
         )
 
+    @OverrideToImplementCustomLogic
     def setup(self):
         """Sets up the components of the module.
 
@@ -328,13 +417,134 @@ class RLModule(abc.ABC):
         therefore, the subclass should call super.__init__() in its constructor. This
         abstraction can be used to create any component that your RLModule needs.
         """
+        pass
 
-    def get_initial_state(self) -> NestedDict:
+    @OverrideToImplementCustomLogic
+    def get_train_action_dist_cls(self) -> Type[Distribution]:
+        """Returns the action distribution class for this RLModule used for training.
+
+        This class is used to create action distributions from outputs of the
+        forward_train method. If the case that no action distribution class is needed,
+        this method can return None.
+
+        Note that RLlib's distribution classes all implement the `Distribution`
+        interface. This requires two special methods: `Distribution.from_logits()` and
+        `Distribution.to_deterministic()`. See the documentation for `Distribution`
+        for more detail.
+        """
+        raise NotImplementedError
+
+    @OverrideToImplementCustomLogic
+    def get_exploration_action_dist_cls(self) -> Type[Distribution]:
+        """Returns the action distribution class for this RLModule used for exploration.
+
+        This class is used to create action distributions from outputs of the
+        forward_exploration method. If the case that no action distribution class is
+        needed, this method can return None.
+
+        Note that RLlib's distribution classes all implement the `Distribution`
+        interface. This requires two special methods: `Distribution.from_logits()` and
+        `Distribution.to_deterministic()`. See the documentation for `Distribution`
+        for more detail.
+        """
+        raise NotImplementedError
+
+    @OverrideToImplementCustomLogic
+    def get_inference_action_dist_cls(self) -> Type[Distribution]:
+        """Returns the action distribution class for this RLModule used for inference.
+
+        This class is used to create action distributions from outputs of the forward
+        inference method. If the case that no action distribution class is needed,
+        this method can return None.
+
+        Note that RLlib's distribution classes all implement the `Distribution`
+        interface. This requires two special methods: `Distribution.from_logits()` and
+        `Distribution.to_deterministic()`. See the documentation for `Distribution`
+        for more detail.
+        """
+        raise NotImplementedError
+
+    @OverrideToImplementCustomLogic
+    def get_initial_state(self) -> Any:
         """Returns the initial state of the module.
 
-        This is used for recurrent models.
+        This can be used for recurrent models.
         """
         return {}
+
+    @OverrideToImplementCustomLogic
+    def is_stateful(self) -> bool:
+        """Returns True if the initial state is empty.
+
+        By default, RLlib assumes that the module is not recurrent if the initial
+        state is an empty dict and recurrent otherwise.
+        This behavior can be overridden by implementing this method.
+        """
+        initial_state = self.get_initial_state()
+        assert isinstance(initial_state, dict), (
+            "The initial state of an RLModule must be a dict, but is "
+            f"{type(initial_state)} instead."
+        )
+        return bool(initial_state)
+
+    @OverrideToImplementCustomLogic
+    def update_default_view_requirements(
+        self, defaults: ViewRequirementsDict
+    ) -> Mapping[str, ViewRequirement]:
+        """Updates default view requirements with the view requirements of this module.
+
+        This method should be called with view requirements that already contain
+        information such as the given observation space, action space, etc.
+        This method may then add additional shifts or state columns to the view
+        requirements, or apply other changes.
+
+        Args:
+            defaults: The default view requirements to update.
+
+        Returns:
+            The updated view requirements.
+        """
+        if self.is_stateful():
+            # get the initial state in numpy format, infer the state from it, and create
+            # appropriate view requirements.
+            init_state = convert_to_numpy(self.get_initial_state())
+            init_state = tree.map_structure(lambda x: x[None], init_state)
+            space = get_gym_space_from_struct_of_tensors(init_state, batched_input=True)
+            max_seq_len = self.config.model_config_dict["max_seq_len"]
+            assert max_seq_len is not None
+            defaults[STATE_IN] = ViewRequirement(
+                data_col=STATE_OUT,
+                shift=-1,
+                used_for_compute_actions=True,
+                used_for_training=True,
+                batch_repeat_value=max_seq_len,
+                space=space,
+            )
+
+            if self.config.model_config_dict["lstm_use_prev_action"]:
+                defaults[SampleBatch.PREV_ACTIONS] = ViewRequirement(
+                    data_col=SampleBatch.ACTIONS,
+                    shift=-1,
+                    used_for_compute_actions=True,
+                    used_for_training=True,
+                )
+
+            if self.config.model_config_dict["lstm_use_prev_reward"]:
+                defaults[SampleBatch.PREV_REWARDS] = ViewRequirement(
+                    data_col=SampleBatch.REWARDS,
+                    shift=-1,
+                    used_for_compute_actions=True,
+                    used_for_training=True,
+                )
+
+            defaults[STATE_OUT] = ViewRequirement(
+                data_col=STATE_OUT,
+                used_for_compute_actions=False,
+                used_for_training=True,
+                space=space,
+            )
+
+        return defaults
 
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     def output_specs_inference(self) -> SpecType:
@@ -381,8 +591,10 @@ class RLModule(abc.ABC):
     @check_input_specs("_input_specs_inference")
     @check_output_specs("_output_specs_inference")
     def forward_inference(self, batch: SampleBatchType, **kwargs) -> Mapping[str, Any]:
-        """Forward-pass during evaluation, called from the sampler. This method should
-        not be overriden. Instead, override the _forward_inference method.
+        """Forward-pass during evaluation, called from the sampler.
+
+        This method should not be overriden to implement a custom forward inference
+        method. Instead, override the _forward_inference method.
 
         Args:
             batch: The input batch. This input batch should comply with
@@ -404,8 +616,10 @@ class RLModule(abc.ABC):
     def forward_exploration(
         self, batch: SampleBatchType, **kwargs
     ) -> Mapping[str, Any]:
-        """Forward-pass during exploration, called from the sampler. This method should
-        not be overriden. Instead, override the _forward_exploration method.
+        """Forward-pass during exploration, called from the sampler.
+
+        This method should not be overriden to implement a custom forward exploration
+        method. Instead, override the _forward_exploration method.
 
         Args:
             batch: The input batch. This input batch should comply with
@@ -451,20 +665,20 @@ class RLModule(abc.ABC):
     def set_state(self, state_dict: Mapping[str, Any]) -> None:
         """Sets the state dict of the module."""
 
-    def save_state(self, path: Union[str, pathlib.Path]) -> None:
-        """Saves the weights of this RLModule to path.
+    def save_state(self, dir: Union[str, pathlib.Path]) -> None:
+        """Saves the weights of this RLModule to the directory dir.
 
         Args:
-            path: The file path to save the checkpoint to.
+            dir: The directory to save the checkpoint to.
 
         """
         raise NotImplementedError
 
-    def load_state(self, path: Union[str, pathlib.Path]) -> None:
-        """Loads the weights of an RLModule from path.
+    def load_state(self, dir: Union[str, pathlib.Path]) -> None:
+        """Loads the weights of an RLModule from the directory dir.
 
         Args:
-            path: The directory to load the checkpoint from.
+            dir: The directory to load the checkpoint from.
         """
         raise NotImplementedError
 
@@ -574,7 +788,7 @@ class RLModule(abc.ABC):
         path.mkdir(parents=True, exist_ok=True)
         module_state_dir = path / RLMODULE_STATE_DIR_NAME
         module_state_dir.mkdir(parents=True, exist_ok=True)
-        self.save_state(module_state_dir / self._module_state_file_name())
+        self.save_state(module_state_dir)
         self._save_module_metadata(path, SingleAgentRLModuleSpec)
 
     @classmethod
@@ -598,8 +812,7 @@ class RLModule(abc.ABC):
         metadata_path = path / RLMODULE_METADATA_FILE_NAME
         module = cls._from_metadata_file(metadata_path)
         module_state_dir = path / RLMODULE_STATE_DIR_NAME
-        state_path = module_state_dir / module._module_state_file_name()
-        module.load_state(state_path)
+        module.load_state(module_state_dir)
         return module
 
     def as_multi_agent(self) -> "MultiAgentRLModule":

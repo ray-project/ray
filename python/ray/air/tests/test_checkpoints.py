@@ -15,6 +15,7 @@ import boto3
 import ray
 from ray.air._internal.remote_storage import _ensure_directory, delete_at_uri
 from ray.air._internal.uri_utils import URI
+from ray.air._internal.util import _copy_dir_ignore_conflicts
 from ray.air.checkpoint import _DICT_CHECKPOINT_ADDITIONAL_FILE_KEY, Checkpoint
 from ray.air.constants import MAX_REPR_LENGTH, PREPROCESSOR_KEY
 from ray.data import Preprocessor
@@ -109,13 +110,13 @@ class TestCheckpointTypeCasting:
             StubCheckpoint.from_uri(uri)
 
     def test_e2e(self):
-        from ray.air import session
-        from ray.air.config import ScalingConfig
+        from ray import train
+        from ray.train import ScalingConfig
         from ray.train.torch import TorchTrainer
 
         def train_loop_per_worker():
             checkpoint = StubCheckpoint.from_dict({"spam": "ham"})
-            session.report({}, checkpoint=checkpoint)
+            train.report({}, checkpoint=checkpoint)
 
         trainer = TorchTrainer(
             train_loop_per_worker=train_loop_per_worker,
@@ -159,6 +160,34 @@ class TestCheckpointSerializedAttrs:
         assert new_recovered_checkpoint.foo == "bar"
         assert not list(Path(path).glob("*"))
 
+    def test_copy_dir_ignore_conflicts(self):
+        tmpdir = Path(tempfile.mkdtemp())
+
+        src_dir = tmpdir / "src"
+        dst_dir = tmpdir / "dst"
+
+        src_dir.mkdir()
+        dst_dir.mkdir()
+
+        (src_dir / "foo.txt").touch()
+        (src_dir / "bar.txt").touch()
+        (src_dir / "a").mkdir()
+        (src_dir / "a" / "a.txt").touch()
+        (src_dir / "b").mkdir()
+        (src_dir / "b" / "b.txt").touch()
+
+        # Has a file conflict.
+        (dst_dir / "foo.txt").touch()
+        # Has a directory conflict.
+        (dst_dir / "a").mkdir()
+
+        _copy_dir_ignore_conflicts(src_dir, dst_dir)
+
+        assert (dst_dir / "foo.txt").exists()
+        assert (dst_dir / "bar.txt").exists()
+        assert (dst_dir / "a" / "a.txt").exists()
+        assert (dst_dir / "b" / "b.txt").exists()
+
     def test_uri(self):
         checkpoint = StubCheckpoint.from_dict({"spam": "ham"})
         assert "foo" in checkpoint._SERIALIZED_ATTRS
@@ -170,15 +199,15 @@ class TestCheckpointSerializedAttrs:
         assert recovered_checkpoint.foo == "bar"
 
     def test_e2e(self):
-        from ray.air import session
-        from ray.air.config import ScalingConfig
+        from ray import train
+        from ray.train import ScalingConfig
         from ray.train.torch import TorchTrainer
 
         def train_loop_per_worker():
             checkpoint = StubCheckpoint.from_dict({"spam": "ham"})
             assert "foo" in checkpoint._SERIALIZED_ATTRS
             checkpoint.foo = "bar"
-            session.report({}, checkpoint=checkpoint)
+            train.report({}, checkpoint=checkpoint)
 
         trainer = TorchTrainer(
             train_loop_per_worker=train_loop_per_worker,

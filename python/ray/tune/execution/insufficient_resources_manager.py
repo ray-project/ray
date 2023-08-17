@@ -3,7 +3,7 @@ from functools import lru_cache
 import os
 import ray
 import time
-from typing import Dict
+from typing import Dict, Optional, Tuple
 
 from ray.tune.execution.cluster_info import _is_ray_cluster
 from ray.tune.experiment import Trial
@@ -18,10 +18,10 @@ def _get_cluster_resources_no_autoscaler() -> Dict:
     return ray.cluster_resources()
 
 
-def _get_trial_cpu_and_gpu(trial: Trial) -> Dict:
+def _get_trial_cpu_and_gpu(trial: Trial) -> Tuple[int, int]:
     cpu = trial.placement_group_factory.required_resources.get("CPU", 0)
     gpu = trial.placement_group_factory.required_resources.get("GPU", 0)
-    return {"CPU": cpu, "GPU": gpu}
+    return cpu, gpu
 
 
 def _can_fulfill_no_autoscaler(trial: Trial) -> bool:
@@ -30,11 +30,11 @@ def _can_fulfill_no_autoscaler(trial: Trial) -> bool:
     For no autoscaler case.
     """
     assert trial.status == Trial.PENDING
-    trial_cpu_gpu = _get_trial_cpu_and_gpu(trial)
+    asked_cpus, asked_gpus = _get_trial_cpu_and_gpu(trial)
 
-    return trial_cpu_gpu["CPU"] <= _get_cluster_resources_no_autoscaler().get(
+    return asked_cpus <= _get_cluster_resources_no_autoscaler().get(
         "CPU", 0
-    ) and trial_cpu_gpu["GPU"] <= _get_cluster_resources_no_autoscaler().get("GPU", 0)
+    ) and asked_gpus <= _get_cluster_resources_no_autoscaler().get("GPU", 0)
 
 
 @lru_cache()
@@ -52,38 +52,68 @@ def _get_insufficient_resources_warning_threshold() -> float:
         return float(os.environ.get("TUNE_WARN_INSUFFICENT_RESOURCE_THRESHOLD_S", "60"))
 
 
+MSG_TRAIN_START = (
+    "Training has not started in the last {wait_time:.0f} seconds. "
+    "This could be due to the cluster not having enough resources available. "
+)
+MSG_TRAIN_INSUFFICIENT = (
+    "You asked for {asked_cpus} CPUs and {asked_gpus} GPUs, but the cluster only "
+    "has {cluster_cpus} CPUs and {cluster_gpus} GPUs available. "
+)
+MSG_TRAIN_END = (
+    "Stop the training and adjust the required resources (e.g. via the "
+    "`ScalingConfig` or `resources_per_trial`, or `num_workers` for rllib), "
+    "or add more resources to your cluster."
+)
+
+MSG_TUNE_START = (
+    "No trial is running and no new trial has been started within "
+    "the last {wait_time:.0f} seconds. "
+    "This could be due to the cluster not having enough resources available. "
+)
+MSG_TUNE_INSUFFICIENT = (
+    "You asked for {asked_cpus} CPUs and {asked_gpus} GPUs per trial, "
+    "but the cluster only has {cluster_cpus} CPUs and {cluster_gpus} GPUs available. "
+)
+MSG_TUNE_END = (
+    "Stop the tuning and adjust the required resources (e.g. via the "
+    "`ScalingConfig` or `resources_per_trial`, or `num_workers` for rllib), "
+    "or add more resources to your cluster."
+)
+
+
 # TODO(xwjiang): Consider having a help page with more detailed instructions.
 @lru_cache()
-def _get_insufficient_resources_warning_msg() -> str:
-    msg = (
-        f"No trial is running and no new trial has been started within"
-        f" at least the last "
-        f"{_get_insufficient_resources_warning_threshold()} seconds. "
-        f"This could be due to the cluster not having enough "
-        f"resources available to start the next trial. "
-        f"Stop the tuning job and adjust the resources requested per trial "
-        f"(possibly via `resources_per_trial` or via `num_workers` for rllib) "
-        f"and/or add more resources to your Ray runtime."
-    )
-    if _is_ray_cluster():
-        return "Ignore this message if the cluster is autoscaling. " + msg
+def _get_insufficient_resources_warning_msg(
+    for_train: bool = False, trial: Optional[Trial] = None
+) -> str:
+    msg = "Ignore this message if the cluster is autoscaling. "
+
+    if for_train:
+        start = MSG_TRAIN_START
+        insufficient = MSG_TRAIN_INSUFFICIENT
+        end = MSG_TRAIN_END
     else:
-        return msg
+        start = MSG_TUNE_START
+        insufficient = MSG_TUNE_INSUFFICIENT
+        end = MSG_TUNE_END
 
+    msg += start.format(wait_time=_get_insufficient_resources_warning_threshold())
 
-# A beefed up version when Tune Error is raised.
-def _get_insufficient_resources_error_msg(trial: Trial) -> str:
-    trial_cpu_gpu = _get_trial_cpu_and_gpu(trial)
-    return (
-        f"Ignore this message if the cluster is autoscaling. "
-        f"You asked for {trial_cpu_gpu['CPU']} cpu and "
-        f"{trial_cpu_gpu['GPU']} gpu per trial, but the cluster only has "
-        f"{_get_cluster_resources_no_autoscaler().get('CPU', 0)} cpu and "
-        f"{_get_cluster_resources_no_autoscaler().get('GPU', 0)} gpu. "
-        f"Stop the tuning job and adjust the resources requested per trial "
-        f"(possibly via `resources_per_trial` or via `num_workers` for rllib) "
-        f"and/or add more resources to your Ray runtime."
-    )
+    if trial:
+        asked_cpus, asked_gpus = _get_trial_cpu_and_gpu(trial)
+        cluster_resources = _get_cluster_resources_no_autoscaler()
+
+        msg += insufficient.format(
+            asked_cpus=asked_cpus,
+            asked_gpus=asked_gpus,
+            cluster_cpus=cluster_resources.get("CPU", 0),
+            cluster_gpus=cluster_resources.get("GPU", 0),
+        )
+
+    msg += end
+
+    return msg
 
 
 class _InsufficientResourcesManager:
@@ -94,10 +124,11 @@ class _InsufficientResourcesManager:
     act upon.
     """
 
-    def __init__(self):
+    def __init__(self, for_train: bool = False):
         # The information tracked across the life time of Tune loop.
         self._no_running_trials_since = -1
         self._last_trial_num = -1
+        self._for_train = for_train
 
     def on_no_available_trials(self, all_trials):
         """Tracks information across the life of Tune loop and makes guesses
@@ -115,22 +146,21 @@ class _InsufficientResourcesManager:
                 time.monotonic() - self._no_running_trials_since
                 > _get_insufficient_resources_warning_threshold()
             ):
-                if not _is_ray_cluster():  # autoscaler not enabled
-                    # If any of the pending trial cannot be fulfilled,
-                    # that's a good enough hint of trial resources not enough.
-                    for trial in all_trials:
-                        if (
-                            trial.status is Trial.PENDING
-                            and not _can_fulfill_no_autoscaler(trial)
-                        ):
-                            # TODO(xwjiang):
-                            #  Raise an Error once #18608 is resolved.
-                            logger.warning(_get_insufficient_resources_error_msg(trial))
-                            break
-                else:
-                    # TODO(xwjiang): #17799.
-                    #  Output a more helpful msg for autoscaler.
-                    logger.warning(_get_insufficient_resources_warning_msg())
+                can_fulfill_any = any(
+                    trial.status == Trial.PENDING and _can_fulfill_no_autoscaler(trial)
+                    for trial in all_trials
+                )
+
+                if can_fulfill_any:
+                    # If one trial can be fulfilled, it will be fulfilled eventually
+                    self._no_running_trials_since = -1
+                    return
+
+                # Otherwise, can fulfill none
+                msg = _get_insufficient_resources_warning_msg(
+                    for_train=self._for_train, trial=all_trials[0]
+                )
+                logger.warning(msg)
                 self._no_running_trials_since = time.monotonic()
         else:
             self._no_running_trials_since = -1

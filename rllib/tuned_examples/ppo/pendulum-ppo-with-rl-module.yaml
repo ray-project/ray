@@ -21,6 +21,7 @@ pendulum-ppo:
         enable_connectors: true
         model:
             fcnet_activation: relu
+        _enable_learner_api: true
         _enable_rl_module_api: true
         # Need to unset this b/c we are using the RLModule API, which
         # provides exploration control via the RLModule's `forward_exploration` method.

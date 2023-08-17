@@ -6,11 +6,10 @@ import xgboost as xgb
 
 import ray
 from ray import tune
-from ray.air.checkpoint import Checkpoint
+from ray.train import Checkpoint, ScalingConfig
 from ray.train.constants import TRAIN_DATASET_KEY
 
-from ray.train.xgboost import XGBoostCheckpoint, XGBoostTrainer
-from ray.air.config import ScalingConfig
+from ray.train.xgboost import LegacyXGBoostCheckpoint, XGBoostTrainer
 from ray.data.preprocessor import Preprocessor
 
 from sklearn.datasets import load_breast_cancer
@@ -101,8 +100,8 @@ def test_resume_from_checkpoint(ray_start_4_cpus, tmpdir):
         datasets={TRAIN_DATASET_KEY: train_dataset, "valid": valid_dataset},
     )
     result = trainer.fit()
-    checkpoint = XGBoostCheckpoint.from_checkpoint(result.checkpoint)
-    xgb_model = checkpoint.get_model()
+    checkpoint = result.checkpoint
+    xgb_model = XGBoostTrainer.get_model(checkpoint)
     assert get_num_trees(xgb_model) == 5
 
     # Move checkpoint to a different directory.
@@ -115,12 +114,12 @@ def test_resume_from_checkpoint(ray_start_4_cpus, tmpdir):
         scaling_config=scale_config,
         label_column="target",
         params=params,
-        num_boost_round=5,
+        num_boost_round=10,
         datasets={TRAIN_DATASET_KEY: train_dataset, "valid": valid_dataset},
         resume_from_checkpoint=resume_from,
     )
     result = trainer.fit()
-    checkpoint = XGBoostCheckpoint.from_checkpoint(result.checkpoint)
+    checkpoint = LegacyXGBoostCheckpoint.from_checkpoint(result.checkpoint)
     model = checkpoint.get_model()
     assert get_num_trees(model) == 10
 
@@ -141,8 +140,8 @@ def test_checkpoint_freq(ray_start_4_cpus, freq_end_expected):
     train_dataset = ray.data.from_pandas(train_df)
     valid_dataset = ray.data.from_pandas(test_df)
     trainer = XGBoostTrainer(
-        run_config=ray.air.RunConfig(
-            checkpoint_config=ray.air.CheckpointConfig(
+        run_config=ray.train.RunConfig(
+            checkpoint_config=ray.train.CheckpointConfig(
                 checkpoint_frequency=freq, checkpoint_at_end=end
             )
         ),
@@ -176,7 +175,7 @@ def test_preprocessor_in_checkpoint(ray_start_4_cpus, tmpdir):
             super().__init__()
             self.is_same = True
 
-        def fit(self, dataset):
+        def _fit(self, dataset):
             self.fitted_ = True
 
         def _transform_pandas(self, df: "pd.DataFrame") -> "pd.DataFrame":
@@ -197,7 +196,7 @@ def test_preprocessor_in_checkpoint(ray_start_4_cpus, tmpdir):
     checkpoint_path = checkpoint.to_directory(tmpdir)
     resume_from = Checkpoint.from_directory(checkpoint_path)
 
-    resume_from = XGBoostCheckpoint.from_checkpoint(resume_from)
+    resume_from = LegacyXGBoostCheckpoint.from_checkpoint(resume_from)
 
     model, preprocessor = resume_from.get_model(), resume_from.get_preprocessor()
     assert get_num_trees(model) == 10
@@ -246,7 +245,7 @@ def test_validation(ray_start_4_cpus):
 
 
 def test_distributed_data_loading(ray_start_4_cpus):
-    """Checks that XGBoostTrainer does distributed data loading for Datastreams."""
+    """Checks that XGBoostTrainer does distributed data loading for Datasets."""
 
     class DummyXGBoostTrainer(XGBoostTrainer):
         def _train(self, params, dtrain, **kwargs):

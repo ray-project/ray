@@ -152,6 +152,8 @@ message DeploymentVersion {
   string code_version = 1;
   DeploymentConfig deployment_config = 2;
   string ray_actor_options = 3;
+  string placement_group_bundles = 4;
+  string placement_group_strategy = 5;
 }
 
 message ReplicaConfig {
@@ -160,6 +162,8 @@ message ReplicaConfig {
   bytes init_args = 3;
   bytes init_kwargs = 4;
   string ray_actor_options = 5;
+  string placement_group_bundles = 6;
+  string placement_group_strategy = 7;
 }
 
 message DeploymentInfo {
@@ -187,9 +191,9 @@ message DeploymentRouteList {
 enum DeploymentStatus {
   // Keep frontend code of ServeDeploymentStatus in dashboard/client/src/type/serve.ts
   // in sync with this enum
-  UPDATING = 0;
-  HEALTHY = 1;
-  UNHEALTHY = 2;
+  DEPLOYMENT_STATUS_UPDATING = 0;
+  DEPLOYMENT_STATUS_HEALTHY = 1;
+  DEPLOYMENT_STATUS_UNHEALTHY = 2;
 }
 
 message DeploymentStatusInfo {
@@ -206,11 +210,12 @@ message DeploymentStatusInfoList {
 enum ApplicationStatus {
   // Keep frontend code of ServeApplicationStatus in dashboard/client/src/type/serve.ts
   // in sync with this enum
-  DEPLOYING = 0;
-  RUNNING = 1;
-  DEPLOY_FAILED = 2;
-  DELETING = 3;
-  NOT_STARTED = 5;
+  APPLICATION_STATUS_DEPLOYING = 0;
+  APPLICATION_STATUS_RUNNING = 1;
+  APPLICATION_STATUS_DEPLOY_FAILED = 2;
+  APPLICATION_STATUS_DELETING = 3;
+  APPLICATION_STATUS_NOT_STARTED = 5;
+  APPLICATION_STATUS_UNHEALTHY = 6;
 }
 
 message ApplicationStatusInfo {
@@ -236,4 +241,61 @@ message PredictResponse {
 
 service PredictAPIsService {
   rpc Predict(PredictRequest) returns (PredictResponse);
+}
+
+// Used for gRPC proxy health check
+message ListApplicationsRequest {}
+
+message ListApplicationsResponse {
+  repeated string application_names = 1;
+}
+
+message HealthzRequest {}
+
+message HealthzResponse {
+  string message = 1;
+}
+
+service RayServeAPIService {
+  rpc ListApplications(ListApplicationsRequest) returns (ListApplicationsResponse);
+  rpc Healthz(HealthzRequest) returns (HealthzResponse);
+}
+
+// Used for gRPC related tests
+message UserDefinedMessage {
+  string name = 1;
+  string foo = 2;
+  int64 num = 3;
+}
+
+message UserDefinedResponse {
+  string greeting = 1;
+  int64 num_x2 = 2;
+}
+
+message UserDefinedMessage2 {}
+
+message UserDefinedResponse2 {
+  string greeting = 1;
+}
+
+message FruitAmounts {
+  int64 orange = 1;
+  int64 apple = 2;
+  int64 banana = 3;
+}
+
+message FruitCosts {
+  float costs = 1;
+}
+
+service UserDefinedService {
+  rpc __call__(UserDefinedMessage) returns (UserDefinedResponse);
+  rpc Method1(UserDefinedMessage) returns (UserDefinedResponse);
+  rpc Method2(UserDefinedMessage2) returns (UserDefinedResponse2);
+  rpc Streaming(UserDefinedMessage) returns (stream UserDefinedResponse);
+}
+
+service FruitService {
+  rpc FruitStand(FruitAmounts) returns (FruitCosts);
 }

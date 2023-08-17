@@ -1,35 +1,28 @@
 import itertools
 import logging
-import pathlib
 import os
+import pathlib
 import re
-from typing import (
-    List,
-    Optional,
-    Union,
-    Iterator,
-    Tuple,
-    Any,
-    TYPE_CHECKING,
-)
-
-if TYPE_CHECKING:
-    import pyarrow
+from typing import TYPE_CHECKING, Any, Iterator, List, Optional, Tuple, Union
 
 from ray.data.block import BlockMetadata
 from ray.data.datasource.partitioning import Partitioning
 from ray.util.annotations import DeveloperAPI
+
+if TYPE_CHECKING:
+    import pyarrow
+
 
 logger = logging.getLogger(__name__)
 
 
 @DeveloperAPI
 class FileMetadataProvider:
-    """Abstract callable that provides metadata for the files of a single datastream block.
+    """Abstract callable that provides metadata for the files of a single dataset block.
 
     Current subclasses:
-        BaseFileMetadataProvider
-        ParquetMetadataProvider
+        - :class:`BaseFileMetadataProvider`
+        - :class:`ParquetMetadataProvider`
     """
 
     def _get_block_metadata(
@@ -40,10 +33,10 @@ class FileMetadataProvider:
     ) -> BlockMetadata:
         """Resolves and returns block metadata for files in the given paths.
 
-        All file paths provided should belong to a single datastream block.
+        All file paths provided should belong to a single dataset block.
 
         Args:
-            paths: The file paths for a single datastream block.
+            paths: The file paths for a single dataset block.
             schema: The user-provided or inferred schema for the given paths,
                 if any.
 
@@ -63,13 +56,15 @@ class FileMetadataProvider:
 
 @DeveloperAPI
 class BaseFileMetadataProvider(FileMetadataProvider):
-    """Abstract callable that provides metadata for FileBasedDatasource
-     implementations that reuse the base `prepare_read` method.
+    """Abstract callable that provides metadata for
+    :class:`~ray.data.datasource.file_based_datasource.FileBasedDatasource`
+    implementations that reuse the base :meth:`~ray.data.Datasource.prepare_read`
+    method.
 
     Also supports file and file size discovery in input directory paths.
 
-     Current subclasses:
-         DefaultFileMetadataProvider
+    Current subclasses:
+        - :class:`DefaultFileMetadataProvider`
     """
 
     def _get_block_metadata(
@@ -80,17 +75,17 @@ class BaseFileMetadataProvider(FileMetadataProvider):
         rows_per_file: Optional[int],
         file_sizes: List[Optional[int]],
     ) -> BlockMetadata:
-        """Resolves and returns block metadata for files of a single datastream block.
+        """Resolves and returns block metadata for files of a single dataset block.
 
         Args:
-            paths: The file paths for a single datastream block. These
+            paths: The file paths for a single dataset block. These
                 paths will always be a subset of those previously returned from
-                `expand_paths()`.
+                :meth:`.expand_paths`.
             schema: The user-provided or inferred schema for the given file
                 paths, if any.
             rows_per_file: The fixed number of rows per input file, or None.
             file_sizes: Optional file size per input file previously returned
-                from `expand_paths()`, where `file_sizes[i]` holds the size of
+                from :meth:`.expand_paths`, where `file_sizes[i]` holds the size of
                 the file at `paths[i]`.
 
         Returns:
@@ -107,31 +102,33 @@ class BaseFileMetadataProvider(FileMetadataProvider):
     ) -> Iterator[Tuple[str, int]]:
         """Expands all paths into concrete file paths by walking directories.
 
-         Also returns a sidecar of file sizes.
+        Also returns a sidecar of file sizes.
 
         The input paths must be normalized for compatibility with the input
         filesystem prior to invocation.
 
-         Args:
-             paths: A list of file and/or directory paths compatible with the
-                 given filesystem.
-             filesystem: The filesystem implementation that should be used for
-                 expanding all paths and reading their files.
-             ignore_missing_paths: If True, ignores any file paths in ``paths`` that
+        Args:
+            paths: A list of file and/or directory paths compatible with the
+                given filesystem.
+            filesystem: The filesystem implementation that should be used for
+                expanding all paths and reading their files.
+            ignore_missing_paths: If True, ignores any file paths in ``paths`` that
                 are not found. Defaults to False.
 
-         Returns:
-             An iterator of (file_path, file_size) pairs. None may be returned for the
-             file size if it is either unknown or will be fetched later by
-             `_get_block_metadata()`, but the length of both lists must be equal.
+        Returns:
+            An iterator of `(file_path, file_size)` pairs. None may be returned for the
+            file size if it is either unknown or will be fetched later by
+            `_get_block_metadata()`, but the length of
+            both lists must be equal.
         """
         raise NotImplementedError
 
 
 @DeveloperAPI
 class DefaultFileMetadataProvider(BaseFileMetadataProvider):
-    """Default metadata provider for FileBasedDatasource implementations that
-    reuse the base `prepare_read` method.
+    """Default metadata provider for
+    :class:`~ray.data.datasource.file_based_datasource.FileBasedDatasource`
+    implementations that reuse the base `prepare_read` method.
 
     Calculates block size in bytes as the sum of its constituent file sizes,
     and assumes a fixed number of rows per file.
@@ -169,12 +166,15 @@ class DefaultFileMetadataProvider(BaseFileMetadataProvider):
 
 @DeveloperAPI
 class FastFileMetadataProvider(DefaultFileMetadataProvider):
-    """Fast Metadata provider for FileBasedDatasource implementations.
+    """Fast Metadata provider for
+    :class:`~ray.data.datasource.file_based_datasource.FileBasedDatasource`
+    implementations.
 
-    Offers improved performance vs. DefaultFileMetadataProvider by skipping directory
-    path expansion and file size collection. While this performance improvement may be
-    negligible for local filesystems, it can be substantial for cloud storage service
-    providers.
+    Offers improved performance vs.
+    :class:`DefaultFileMetadataProvider`
+    by skipping directory path expansion and file size collection.
+    While this performance improvement may be negligible for local filesystems,
+    it can be substantial for cloud storage service providers.
 
     This should only be used when all input paths exist and are known to be files.
     """
@@ -206,14 +206,14 @@ class FastFileMetadataProvider(DefaultFileMetadataProvider):
 class ParquetMetadataProvider(FileMetadataProvider):
     """Abstract callable that provides block metadata for Arrow Parquet file fragments.
 
-    All file fragments should belong to a single datastream block.
+    All file fragments should belong to a single dataset block.
 
     Supports optional pre-fetching of ordered metadata for all file fragments in
     a single batch to help optimize metadata resolution.
 
     Current subclasses:
-        DefaultParquetMetadataProvider
-    """
+        - :class:`~ray.data.datasource.file_meta_provider.DefaultParquetMetadataProvider`
+    """  # noqa: E501
 
     def _get_block_metadata(
         self,
@@ -223,10 +223,10 @@ class ParquetMetadataProvider(FileMetadataProvider):
         pieces: List["pyarrow.dataset.ParquetFileFragment"],
         prefetched_metadata: Optional[List[Any]],
     ) -> BlockMetadata:
-        """Resolves and returns block metadata for files of a single datastream block.
+        """Resolves and returns block metadata for files of a single dataset block.
 
         Args:
-            paths: The file paths for a single datastream block.
+            paths: The file paths for a single dataset block.
             schema: The user-provided or inferred schema for the given file
                 paths, if any.
             pieces: The Parquet file fragments derived from the input file paths.
@@ -247,8 +247,8 @@ class ParquetMetadataProvider(FileMetadataProvider):
         """Pre-fetches file metadata for all Parquet file fragments in a single batch.
 
         Subsets of the metadata returned will be provided as input to
-        subsequent calls to _get_block_metadata() together with their
-        corresponding Parquet file fragments.
+        subsequent calls to :meth:`~FileMetadataProvider._get_block_metadata` together
+        with their corresponding Parquet file fragments.
 
         Implementations that don't support pre-fetching file metadata shouldn't
         override this method.
@@ -269,7 +269,7 @@ class DefaultParquetMetadataProvider(ParquetMetadataProvider):
     """The default file metadata provider for ParquetDatasource.
 
     Aggregates total block bytes and number of rows using the Parquet file metadata
-    associated with a list of Arrow Parquet datastream file fragments.
+    associated with a list of Arrow Parquet dataset file fragments.
     """
 
     def _get_block_metadata(
@@ -310,14 +310,14 @@ class DefaultParquetMetadataProvider(ParquetMetadataProvider):
         pieces: List["pyarrow.dataset.ParquetFileFragment"],
         **ray_remote_args,
     ) -> Optional[List["pyarrow.parquet.FileMetaData"]]:
+        from ray.data.datasource.file_based_datasource import _fetch_metadata_parallel
         from ray.data.datasource.parquet_datasource import (
             PARALLELIZE_META_FETCH_THRESHOLD,
             PIECES_PER_META_FETCH,
-            _SerializedPiece,
-            _fetch_metadata_serialization_wrapper,
             _fetch_metadata,
+            _fetch_metadata_serialization_wrapper,
+            _SerializedPiece,
         )
-        from ray.data.datasource.file_based_datasource import _fetch_metadata_parallel
 
         if len(pieces) > PARALLELIZE_META_FETCH_THRESHOLD:
             # Wrap Parquet fragments in serialization workaround.
@@ -362,7 +362,7 @@ def _handle_read_os_error(error: OSError, paths: Union[str, List[str]]) -> str:
                 "You can also run AWS CLI command to get more detailed error message "
                 "(e.g., aws s3 ls <file-name>). "
                 "See https://awscli.amazonaws.com/v2/documentation/api/latest/reference/s3/index.html "  # noqa
-                "and https://docs.ray.io/en/latest/data/creating-datastreams.html#reading-from-remote-storage "  # noqa
+                "and https://docs.ray.io/en/latest/data/creating-datasets.html#reading-from-remote-storage "  # noqa
                 "for more information."
             )
         )
@@ -378,6 +378,7 @@ def _expand_paths(
 ) -> Iterator[Tuple[str, int]]:
     """Get the file sizes for all provided file paths."""
     from pyarrow.fs import LocalFileSystem
+
     from ray.data.datasource.file_based_datasource import (
         FILE_SIZE_FETCH_PARALLELIZATION_THRESHOLD,
         _unwrap_protocol,
@@ -390,7 +391,6 @@ def _expand_paths(
     #    if using partitioning), fetch all file infos at this prefix and filter to the
     #    provided paths on the client; this should be a single file info request.
     # 3. If more than threshold requests required, parallelize them via Ray tasks.
-
     # 1. Small # of paths case.
     if (
         len(paths) < FILE_SIZE_FETCH_PARALLELIZATION_THRESHOLD
@@ -461,9 +461,9 @@ def _get_file_infos_parallel(
 ) -> Iterator[Tuple[str, int]]:
     from ray.data.datasource.file_based_datasource import (
         PATHS_PER_FILE_SIZE_FETCH_TASK,
-        _wrap_s3_serialization_workaround,
-        _unwrap_s3_serialization_workaround,
         _fetch_metadata_parallel,
+        _unwrap_s3_serialization_workaround,
+        _wrap_s3_serialization_workaround,
     )
 
     # Capture the filesystem in the fetcher func closure, but wrap it in our

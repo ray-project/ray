@@ -1,6 +1,5 @@
 from typing import List, Union
 from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 
 torch, nn = try_import_torch()
 
@@ -10,7 +9,6 @@ def make_time_major(
     *,
     trajectory_len: int = None,
     recurrent_seq_len: int = None,
-    drop_last: bool = False,
 ):
     """Swaps batch and trajectory axis.
 
@@ -22,8 +20,6 @@ def make_time_major(
             If None then `recurrent_seq_len` must be set.
         recurrent_seq_len: Sequence lengths if recurrent.
             If None then `trajectory_len` must be set.
-        drop_last: A bool indicating whether to drop the last
-            trajectory item.
 
     Returns:
         res: A tensor with swapped axes or a list of tensors with
@@ -31,7 +27,7 @@ def make_time_major(
     """
     if isinstance(tensor, (list, tuple)):
         return [
-            make_time_major(_tensor, trajectory_len, recurrent_seq_len, drop_last)
+            make_time_major(_tensor, trajectory_len, recurrent_seq_len)
             for _tensor in tensor
         ]
 
@@ -54,8 +50,6 @@ def make_time_major(
     # Swap B and T axes.
     res = torch.transpose(rs, 1, 0)
 
-    if drop_last:
-        return res[:-1]
     return res
 
 
@@ -113,25 +107,6 @@ def vtrace_torch(
             on rho_s in \rho_s \delta log \pi(a|x) (r + \gamma v_{s+1} - V(x_s)).
     """
     log_rhos = target_action_log_probs - behaviour_action_log_probs
-    discounts = convert_to_torch_tensor(discounts)
-    rewards = convert_to_torch_tensor(rewards)
-    values = convert_to_torch_tensor(values)
-    bootstrap_value = convert_to_torch_tensor(bootstrap_value)
-    if clip_rho_threshold is not None:
-        clip_rho_threshold = convert_to_torch_tensor(clip_rho_threshold)
-    if clip_pg_rho_threshold is not None:
-        clip_pg_rho_threshold = convert_to_torch_tensor(clip_pg_rho_threshold)
-
-    # Make sure tensor ranks are consistent.
-    rho_rank = log_rhos.dim()  # Usually 2.
-    assert values.dim() == rho_rank
-    assert bootstrap_value.dim() == rho_rank - 1
-    assert discounts.dim() == rho_rank
-    assert rewards.dim() == rho_rank
-    if clip_rho_threshold is not None:
-        assert clip_rho_threshold.dim() == 0
-    if clip_pg_rho_threshold is not None:
-        assert clip_pg_rho_threshold.dim() == 0
 
     rhos = torch.exp(log_rhos)
     if clip_rho_threshold is not None:
@@ -147,11 +122,17 @@ def vtrace_torch(
 
     deltas = clipped_rhos * (rewards + discounts * values_t_plus_1 - values)
 
-    vs_minus_v_xs = [torch.zeros_like(bootstrap_value)]
-    for i in reversed(range(len(discounts))):
-        discount_t, c_t, delta_t = discounts[i], cs[i], deltas[i]
-        vs_minus_v_xs.append(delta_t + discount_t * c_t * vs_minus_v_xs[-1])
-    vs_minus_v_xs = torch.stack(vs_minus_v_xs[1:])
+    # Only move the for-loop to CPU.
+    discounts_cpu = discounts.to("cpu")
+    cs_cpu = cs.to("cpu")
+    deltas_cpu = deltas.to("cpu")
+    vs_minus_v_xs_cpu = [torch.zeros_like(bootstrap_value, device="cpu")]
+    for i in reversed(range(len(discounts_cpu))):
+        discount_t, c_t, delta_t = discounts_cpu[i], cs_cpu[i], deltas_cpu[i]
+        vs_minus_v_xs_cpu.append(delta_t + discount_t * c_t * vs_minus_v_xs_cpu[-1])
+    vs_minus_v_xs_cpu = torch.stack(vs_minus_v_xs_cpu[1:])
+    # Move results back to GPU - if applicable.
+    vs_minus_v_xs = vs_minus_v_xs_cpu.to(deltas.device)
 
     # Reverse the results back to original order.
     vs_minus_v_xs = torch.flip(vs_minus_v_xs, dims=[0])

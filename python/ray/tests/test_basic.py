@@ -1051,7 +1051,7 @@ def test_failed_task(ray_start_shared_local_modes, error_pubsub):
         msgs = get_error_message(p, 2, ray._private.ray_constants.TASK_PUSH_ERROR)
         assert len(msgs) == 2
         for msg in msgs:
-            assert "Test function 1 intentionally failed." in msg.error_message
+            assert "Test function 1 intentionally failed." in msg["error_message"]
 
     x = throw_exception_fct2.remote()
     try:
@@ -1097,6 +1097,27 @@ def test_failed_task(ray_start_shared_local_modes, error_pubsub):
     else:
         # ray.get should throw an exception.
         assert False
+
+
+def test_import_ray_does_not_import_grpc():
+    # First unload grpc and ray
+    if "grpc" in sys.modules:
+        del sys.modules["grpc"]
+    if "ray" in sys.modules:
+        del sys.modules["ray"]
+
+    # Then import ray from scratch
+    import ray  # noqa: F401
+
+    # Make sure grpc did not get imported by "import ray"
+    assert "grpc" not in sys.modules
+
+    # Load grpc back so other tests will not be affected
+    try:
+        import grpc  # noqa: F401
+    except ImportError:
+        # It's ok if we don't have grpc installed.
+        pass
 
 
 if __name__ == "__main__":

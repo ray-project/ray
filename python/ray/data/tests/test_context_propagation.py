@@ -1,13 +1,46 @@
-import pytest
 import pandas as pd
+import pytest
 
 import ray
-from ray.tests.conftest import *  # noqa
+from ray._private.test_utils import run_string_as_driver
 from ray.data.block import BlockMetadata
 from ray.data.context import DataContext
 from ray.data.datasource import Datasource, ReadTask
 from ray.data.tests.util import extract_values
-from ray._private.test_utils import run_string_as_driver
+from ray.tests.conftest import *  # noqa
+
+
+def test_context_saved_when_dataset_created(ray_start_regular_shared):
+    ctx = DataContext.get_current()
+    d1 = ray.data.range(10)
+    d2 = ray.data.range(10)
+    assert ctx.eager_free
+    assert d1.context.eager_free
+    assert d2.context.eager_free
+
+    d1.context.eager_free = False
+    assert not d1.context.eager_free
+    assert d2.context.eager_free
+    assert ctx.eager_free
+
+    @ray.remote(num_cpus=0)
+    def check(d1, d2):
+        assert not d1.context.eager_free
+        assert d2.context.eager_free
+
+    ray.get(check.remote(d1, d2))
+
+    @ray.remote(num_cpus=0)
+    def check2(d):
+        d.take()
+
+    @ray.remote(num_cpus=0)
+    def check3(d):
+        list(d.streaming_split(1)[0].iter_batches())
+
+    d1.context.execution_options.resource_limits.cpu = 0.1
+    ray.get(check2.remote(d2))
+    ray.get(check3.remote(d2))
 
 
 def test_read(ray_start_regular_shared):

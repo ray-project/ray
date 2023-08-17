@@ -269,7 +269,7 @@ def test_load_trial_from_json_state(tmpdir):
     trial.status = Trial.TERMINATED
 
     checkpoint_logdir = os.path.join(trial.local_path, "checkpoint_00000")
-    trial.checkpoint_manager.on_checkpoint(
+    trial.run_metadata.checkpoint_manager.on_checkpoint(
         _TrackedCheckpoint(
             dir_or_data=checkpoint_logdir,
             storage_mode=CheckpointStorage.PERSISTENT,
@@ -278,9 +278,9 @@ def test_load_trial_from_json_state(tmpdir):
     )
 
     # After loading, the trial state should be the same
-    json_state = trial.get_json_state()
+    json_state, _ = trial.get_json_state()
     new_trial = Trial.from_json_state(json_state, stub=True)
-    assert new_trial.get_json_state() == json_state
+    assert new_trial.get_json_state()[0] == json_state
 
 
 def test_change_trial_local_dir(tmpdir):
@@ -291,7 +291,7 @@ def test_change_trial_local_dir(tmpdir):
     trial.status = Trial.TERMINATED
 
     checkpoint_logdir = os.path.join(trial.local_path, "checkpoint_00000")
-    trial.checkpoint_manager.on_checkpoint(
+    trial.run_metadata.checkpoint_manager.on_checkpoint(
         _TrackedCheckpoint(
             dir_or_data=checkpoint_logdir,
             storage_mode=CheckpointStorage.PERSISTENT,
@@ -308,6 +308,18 @@ def test_change_trial_local_dir(tmpdir):
 
         assert trial.local_path.startswith(new_local_dir)
         assert trial.get_trial_checkpoints()[0].dir_or_data.startswith(new_local_dir)
+
+
+def test_trial_logdir_length(tmpdir):
+    """Test that trial local paths with a long logdir are truncated"""
+    trial = Trial(
+        trainable_name="none",
+        experiment_path=str(tmpdir),
+        stub=True,
+        config={"a" * 50: 5.0 / 7, "b" * 50: "long" * 40},
+    )
+    trial.init_local_path()
+    assert len(os.path.basename(trial.local_path)) < 200
 
 
 if __name__ == "__main__":

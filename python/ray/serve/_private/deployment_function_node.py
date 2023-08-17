@@ -4,7 +4,7 @@ from ray.dag.dag_node import DAGNode
 from ray.dag.format_utils import get_dag_node_str
 from ray.serve.deployment import Deployment, schema_to_deployment
 from ray.serve.config import DeploymentConfig
-from ray.serve.handle import RayServeDeploymentHandle
+from ray.serve.handle import RayServeHandle
 from ray.serve.schema import DeploymentSchema
 
 
@@ -15,6 +15,7 @@ class DeploymentFunctionNode(DAGNode):
         self,
         func_body: Union[Callable, str],
         deployment_name,
+        app_name,
         func_args,
         func_kwargs,
         func_options,
@@ -22,6 +23,7 @@ class DeploymentFunctionNode(DAGNode):
     ):
         self._body = func_body
         self._deployment_name = deployment_name
+        self._app_name = app_name
         super().__init__(
             func_args,
             func_kwargs,
@@ -62,8 +64,8 @@ class DeploymentFunctionNode(DAGNode):
                 ray_actor_options=func_options,
                 _internal=True,
             )
-        # TODO (jiaodong): Polish with async handle support later
-        self._deployment_handle = RayServeDeploymentHandle(self._deployment.name)
+
+        self._deployment_handle = RayServeHandle(self._deployment.name, self._app_name)
 
     def _copy_impl(
         self,
@@ -75,6 +77,7 @@ class DeploymentFunctionNode(DAGNode):
         return DeploymentFunctionNode(
             self._body,
             self._deployment_name,
+            self._app_name,
             new_args,
             new_kwargs,
             new_options,

@@ -2,6 +2,7 @@ import abc
 import urllib.parse
 from functools import partial
 import threading
+import traceback
 from typing import (
     Any,
     Callable,
@@ -18,6 +19,7 @@ import logging
 import os
 import time
 from dataclasses import dataclass
+
 
 try:
     import fsspec
@@ -39,17 +41,22 @@ from ray.air._internal.remote_storage import (
     delete_at_uri,
     is_non_local_path_uri,
 )
-from ray.air.constants import LAZY_CHECKPOINT_MARKER_FILE
+from ray.air.constants import (
+    LAZY_CHECKPOINT_MARKER_FILE,
+    REENABLE_DEPRECATED_SYNC_TO_HEAD_NODE,
+    TRAINING_ITERATION,
+)
 from ray.exceptions import RayActorError
 from ray.tune import TuneError
 from ray.tune.callback import Callback
-from ray.tune.result import TRAINING_ITERATION, TIME_TOTAL_S
+from ray.tune.result import TIME_TOTAL_S
 from ray.tune.utils.file_transfer import sync_dir_between_nodes
 from ray.util import log_once
 from ray.util.annotations import PublicAPI, DeveloperAPI
 from ray.widgets import Template
 
 if TYPE_CHECKING:
+    from ray.train._checkpoint import Checkpoint
     from ray.tune.experiment import Trial
 
 logger = logging.getLogger(__name__)
@@ -75,6 +82,39 @@ _EXCLUDE_FROM_SYNC = [
 ]
 
 
+class _HeadNodeSyncDeprecationWarning(DeprecationWarning):
+    """Error raised when trying to rely on deprecated head node syncing when
+    checkpointing across multiple nodes."""
+
+    pass
+
+
+_SYNC_TO_HEAD_DEPRECATION_MESSAGE = (
+    "Ray AIR no longer supports the synchronization of checkpoints and other "
+    "artifacts from worker nodes to the head node. This means that the "
+    "checkpoints and artifacts saved by trials scheduled on worker nodes will not be "
+    "accessible during the run (e.g., resuming from a checkpoint "
+    "after a failure) or after the run "
+    "(e.g., loading the checkpoint of a trial that ran on an already "
+    "terminated worker node).\n\n"
+    "To fix this issue, configure AIR to use either:\n"
+    "(1) Cloud storage: `RunConfig(storage_path='s3://your/bucket')`\n"
+    "(2) A network filesystem mounted on all nodes: "
+    "`RunConfig(storage_path='/mnt/path/to/nfs_storage')`\n"
+    "See this Github issue for more details on transitioning to cloud storage/NFS "
+    "as well as an explanation on why this functionality is "
+    "being removed: https://github.com/ray-project/ray/issues/37177\n"
+    "If you are already using NFS, you can ignore this warning message.\n\n"
+    "Other temporary workarounds:\n"
+    "- If you want to avoid errors/warnings and continue running with "
+    "syncing explicitly turned off, set `RunConfig(SyncConfig(syncer=None))`\n"
+    "- Or, to re-enable the head node syncing behavior, set the "
+    f"environment variable {REENABLE_DEPRECATED_SYNC_TO_HEAD_NODE}=1\n"
+    "  - **Note that this functionality will tentatively be hard-deprecated in "
+    "Ray 2.7.** See the linked issue for the latest information."
+)
+
+
 @PublicAPI
 @dataclass
 class SyncConfig:
@@ -83,10 +123,9 @@ class SyncConfig:
     See :ref:`tune-persisted-experiment-data` for an overview of what data is
     synchronized.
 
-    If an ``upload_dir`` is specified, both experiment and trial checkpoints
-    will be stored on remote (cloud) storage. Synchronization then only
-    happens via uploading/downloading from this remote storage -- no syncing will
-    happen between nodes.
+    If a remote ``RunConfig(storage_path)`` is specified, both experiment and trial
+    checkpoints will be stored on remote (cloud) storage. Synchronization then only
+    happens via uploading/downloading from this remote storage.
 
     There are a few scenarios where syncing takes place:
 
@@ -94,25 +133,27 @@ class SyncConfig:
         (which includes experiment state such as searcher state, the list of trials
         and their statuses, and trial metadata)
     (2) Workers directly syncing trial checkpoints to the cloud
-    (3) Workers syncing their trial directories to the head node
-        (this is the default option when no cloud storage is used)
+    (3) Workers syncing their trial directories to the head node (Deprecated)
     (4) Workers syncing artifacts (which include all files saved in the trial directory
         *except* for checkpoints) directly to the cloud.
+
+    .. warning::
+        When running on multiple nodes, using the local filesystem of the head node as
+        the persistent storage location is *deprecated*.
+        If you save trial checkpoints and run on a multi-node cluster,
+        Tune will raise an error by default, if NFS or cloud storage is not setup.
+        See `this issue <https://github.com/ray-project/ray/issues/37177>`_
+        for more information, including temporary workarounds
+        as well as the deprecation and removal schedule.
 
     See :ref:`tune-storage-options` for more details and examples.
 
     Args:
-        upload_dir: Optional URI to sync training results and checkpoints
-            to (e.g. ``s3://bucket``, ``gs://bucket`` or ``hdfs://path``).
-            Specifying this will enable cloud-based checkpointing.
-        syncer: If ``upload_dir`` is specified, then this config accepts a custom
-            syncer subclassing :class:`~ray.tune.syncer.Syncer` which will be
+        upload_dir: This config is deprecated in favor of ``RunConfig(storage_path)``.
+        syncer: If a cloud ``storage_path`` is configured, then this config accepts a
+            custom syncer subclassing :class:`~ray.tune.syncer.Syncer` which will be
             used to synchronize checkpoints to/from cloud storage.
-            If no ``upload_dir`` is specified, this config can be set to ``None``,
-            which disables the default worker-to-head-node syncing.
-            Defaults to ``"auto"`` (auto detect), which assigns a default syncer
-            that uses pyarrow to handle cloud storage syncing when ``upload_dir``
-            is provided.
+            Defaults to ``"auto"`` (auto detect), which defaults to use ``pyarrow.fs``.
         sync_period: Minimum time in seconds to wait between two sync operations.
             A smaller ``sync_period`` will have more up-to-date data at the sync
             location but introduces more syncing overhead.
@@ -128,10 +169,10 @@ class SyncConfig:
             trial directory (accessed via `session.get_trial_dir()`) to the cloud.
             Artifact syncing happens at the same frequency as trial checkpoint syncing.
             **Note**: This is scenario (4).
-        sync_on_checkpoint: If *True*, a sync from a worker's remote trial directory
+        sync_on_checkpoint: This config is deprecated.
+            If *True*, a sync from a worker's remote trial directory
             to the head node will be forced on every trial checkpoint, regardless
-            of the ``sync_period``.
-            Defaults to True.
+            of the ``sync_period``. Defaults to True.
             **Note**: This is ignored if ``upload_dir`` is specified, since this
             only applies to worker-to-head-node syncing (3).
     """
@@ -456,25 +497,36 @@ class Syncer(abc.ABC):
             self.last_sync_down_time = now
             return result
 
-    def wait_or_retry(self, max_retries: int = 3, backoff_s: int = 5):
+    def wait_or_retry(self, max_retries: int = 2, backoff_s: int = 5):
         assert max_retries > 0
-        last_error = None
-        for _ in range(max_retries):
+        last_error_traceback = None
+        for i in range(max_retries + 1):
             try:
                 self.wait()
             except Exception as e:
+                attempts_remaining = max_retries - i
+
+                # If we're out of retries, then save the full traceback of the last
+                # error and show it when raising an exception.
+                if attempts_remaining == 0:
+                    last_error_traceback = traceback.format_exc()
+                    break
+
                 logger.error(
-                    f"Caught sync error: {e}. "
-                    f"Retrying after sleeping for {backoff_s} seconds..."
+                    f"The latest sync operation failed with the following error: "
+                    f"{repr(e)}\n"
+                    f"Retrying {attempts_remaining} more time(s) after sleeping "
+                    f"for {backoff_s} seconds..."
                 )
-                last_error = e
                 time.sleep(backoff_s)
                 self.retry()
                 continue
+            # Succeeded!
             return
         raise TuneError(
-            f"Failed sync even after {max_retries} retries."
-        ) from last_error
+            f"Failed sync even after {max_retries} retries. "
+            f"The latest sync failed with the following error:\n{last_error_traceback}"
+        )
 
     def reset(self):
         self.last_sync_up_time = float("-inf")
@@ -532,6 +584,21 @@ class _BackgroundSyncer(Syncer):
             and time.time() - self._sync_process.start_time < self.sync_timeout
         )
 
+    def _launch_sync_process(self, sync_command: Tuple[Callable, Dict]):
+        """Waits for the previous sync process to finish,
+        then launches a new process that runs the given command."""
+        if self._sync_process:
+            try:
+                self.wait()
+            except Exception:
+                logger.warning(
+                    f"Last sync command failed with the following error:\n"
+                    f"{traceback.format_exc()}"
+                )
+
+        self._current_cmd = sync_command
+        self.retry()
+
     def sync_up(
         self, local_dir: str, remote_dir: str, exclude: Optional[List] = None
     ) -> bool:
@@ -541,16 +608,11 @@ class _BackgroundSyncer(Syncer):
                 f"skipping sync up of {local_dir} to {remote_dir}"
             )
             return False
-        elif self._sync_process:
-            try:
-                self.wait()
-            except Exception as e:
-                logger.warning(f"Last sync command failed: {e}")
 
-        self._current_cmd = self._sync_up_command(
+        sync_up_cmd = self._sync_up_command(
             local_path=local_dir, uri=remote_dir, exclude=exclude
         )
-        self.retry()
+        self._launch_sync_process(sync_up_cmd)
 
         return True
 
@@ -568,16 +630,9 @@ class _BackgroundSyncer(Syncer):
                 f"skipping sync down of {remote_dir} to {local_dir}"
             )
             return False
-        elif self._sync_process:
-            try:
-                self.wait()
-            except Exception as e:
-                logger.warning(f"Last sync command failed: {e}")
 
-        self._current_cmd = self._sync_down_command(
-            uri=remote_dir, local_path=local_dir
-        )
-        self.retry()
+        sync_down_cmd = self._sync_down_command(uri=remote_dir, local_path=local_dir)
+        self._launch_sync_process(sync_down_cmd)
 
         return True
 
@@ -590,14 +645,9 @@ class _BackgroundSyncer(Syncer):
                 f"Last sync still in progress, skipping deletion of {remote_dir}"
             )
             return False
-        elif self._sync_process:
-            try:
-                self.wait()
-            except Exception as e:
-                logger.warning(f"Last sync command failed: {e}")
 
-        self._current_cmd = self._delete_command(uri=remote_dir)
-        self.retry()
+        delete_cmd = self._delete_command(uri=remote_dir)
+        self._launch_sync_process(delete_cmd)
 
         return True
 
@@ -609,12 +659,10 @@ class _BackgroundSyncer(Syncer):
             try:
                 self._sync_process.wait(timeout=self.sync_timeout)
             except Exception as e:
-                # Let `TimeoutError` pass through, to be handled separately
-                # from errors thrown by the sync operation
-                if isinstance(e, TimeoutError):
-                    raise e
-                raise TuneError(f"Sync process failed: {e}") from e
+                raise e
             finally:
+                # Regardless of whether the sync process succeeded within the timeout,
+                # clear the sync process so a new one can be created.
                 self._sync_process = None
 
     def retry(self):
@@ -631,7 +679,7 @@ class _BackgroundSyncer(Syncer):
 
 
 class _DefaultSyncer(_BackgroundSyncer):
-    """Default syncer between local storage and remote URI."""
+    """Default syncer between local and remote storage, using `pyarrow.fs.copy_files`"""
 
     def _sync_up_command(
         self, local_path: str, uri: str, exclude: Optional[List] = None
@@ -782,19 +830,11 @@ class SyncerCallback(Callback):
         if not self._enabled or trial.uses_cloud_checkpointing:
             return False
 
-        sync_process = self._get_trial_sync_process(trial)
-
-        # Always run if force=True
-        # Otherwise, only run if we should sync (considering sync period)
-        # and if there is no sync currently still running.
-        if not force and (not self._should_sync(trial) or sync_process.is_running):
-            return False
-
         source_ip = self._trial_ips.get(trial.trial_id, None)
 
         if not source_ip:
             try:
-                source_ip = trial.get_runner_ip()
+                source_ip = trial.get_ray_actor_ip()
             except RayActorError as e:
                 logger.error(
                     f"Trial {trial}: An error occurred when trying to get the "
@@ -806,6 +846,22 @@ class SyncerCallback(Callback):
                 return False
 
         self._trial_ips[trial.trial_id] = source_ip
+
+        if not bool(int(os.environ.get(REENABLE_DEPRECATED_SYNC_TO_HEAD_NODE, "0"))):
+            # Only log a warning for remote trials, since
+            # this only affects artifacts that are saved on worker nodes.
+            if source_ip != ray.util.get_node_ip_address():
+                if log_once("deprecated_head_node_sync"):
+                    logger.warning(_SYNC_TO_HEAD_DEPRECATION_MESSAGE)
+            return False
+
+        sync_process = self._get_trial_sync_process(trial)
+
+        # Always run if force=True
+        # Otherwise, only run if we should sync (considering sync period)
+        # and if there is no sync currently still running.
+        if not force and (not self._should_sync(trial) or sync_process.is_running):
+            return False
 
         try:
             sync_process.wait()
@@ -876,19 +932,44 @@ class SyncerCallback(Callback):
         iteration: int,
         trials: List["Trial"],
         trial: "Trial",
-        checkpoint: _TrackedCheckpoint,
+        checkpoint: Union["_TrackedCheckpoint", "Checkpoint"],
         **info,
     ):
+        if not hasattr(checkpoint, "storage_mode"):
+            # Syncer should be disabled for new storage path
+            raise RuntimeError(
+                "Internal error: Got new Train Checkpoint object in Syncer: "
+                f"{checkpoint}. Please raise an error on "
+                f"https://github.com/ray-project/ray/issues"
+            )
+
+        if not self._enabled or trial.uses_cloud_checkpointing:
+            return
+
         if checkpoint.storage_mode == CheckpointStorage.MEMORY:
             return
 
-        if self._sync_trial_dir(
-            trial, force=trial.sync_on_checkpoint, wait=True
-        ) and not os.path.exists(checkpoint.dir_or_data):
-            raise TuneError(
-                f"Trial {trial}: Checkpoint path {checkpoint.dir_or_data} not "
-                "found after successful sync down."
+        if not bool(int(os.environ.get(REENABLE_DEPRECATED_SYNC_TO_HEAD_NODE, "0"))):
+            # If we have saved a checkpoint, but it's not accessible on the driver,
+            # that means that it lives on some other node and would be synced to head
+            # prior to Ray 2.6.
+            if not os.path.exists(checkpoint.dir_or_data):
+                raise _HeadNodeSyncDeprecationWarning(_SYNC_TO_HEAD_DEPRECATION_MESSAGE)
+            # else:
+            #   No need to raise an error about syncing, since the driver can find
+            #   the checkpoint, because either:
+            #   - the checkpoint lives on the head node
+            #   - a shared filesystem is used
+        else:
+            # Old head node syncing codepath
+            synced = self._sync_trial_dir(
+                trial, force=trial.sync_on_checkpoint, wait=True
             )
+            if synced and not os.path.exists(checkpoint.dir_or_data):
+                raise TuneError(
+                    f"Trial {trial}: Checkpoint path {checkpoint.dir_or_data} not "
+                    "found after successful sync down."
+                )
 
     def wait_for_all(self):
         # Remove any sync processes as needed, and only wait on the remaining ones.

@@ -6,11 +6,10 @@ import torch.utils.data
 import torchvision
 from torchvision import transforms, datasets
 
-from ray.air import session
-from ray.air.config import ScalingConfig
+from ray.train import ScalingConfig
+from ray.air.constants import TRAINING_ITERATION
 import ray.train as train
 from ray.train.trainer import TrainingFailedError
-from ray.tune.result import TRAINING_ITERATION
 
 
 scaling_config = ScalingConfig(num_workers=2, use_gpu=False)
@@ -48,7 +47,7 @@ def trainer_init_per_worker(config):
         list(range(64)),
     )
 
-    batch_size_per_worker = BATCH_SIZE // session.get_world_size()
+    batch_size_per_worker = BATCH_SIZE // train.get_context().get_world_size()
     train_dataloader = torch.utils.data.DataLoader(
         train_dataset, batch_size=batch_size_per_worker, shuffle=True
     )
@@ -60,7 +59,9 @@ def trainer_init_per_worker(config):
     test_dataloader = train.torch.prepare_data_loader(test_dataloader)
 
     evaluator = Evaluator(
-        dataloader=test_dataloader, label="my_evaluator", metrics=Accuracy()
+        dataloader=test_dataloader,
+        label="my_evaluator",
+        metrics=Accuracy(task="multiclass", num_classes=10, top_k=1),
     )
 
     # prepare optimizer

@@ -25,7 +25,7 @@
   "templating": {
     "list": [
       {
-        "allValue": null,
+        "allValue": ".+",
         "current": {
           "selected": false
         },
@@ -34,7 +34,7 @@
         "description": "Filter queries to specific ray sessions.",
         "error": null,
         "hide": 0,
-        "includeAll": false,
+        "includeAll": true,
         "label": null,
         "multi": false,
         "name": "SessionName",

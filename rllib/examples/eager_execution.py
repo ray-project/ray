@@ -26,8 +26,8 @@ tf1, tf, tfv = try_import_tf()
 # >> x.numpy()
 # 0.0
 
-# RLlib will automatically enable eager mode, if you set
-# AlgorithmConfig.framework("tf2", eager_tracing=False).
+# RLlib will enable eager execution mode, if you set
+# `AlgorithmConfig.framework("tf2", eager_tracing=False)`.
 # If you would like to remain in tf static-graph mode, but still use tf2.x's
 # new APIs (some of which are not supported by tf1.x), specify your "framework"
 # as "tf" and check for the version (tfv) to be 2:

@@ -3,11 +3,10 @@ import os
 from typing import TYPE_CHECKING
 
 import numpy as np
-from pandas.api.types import is_int64_dtype, is_float_dtype, is_object_dtype
 import pytest
+from pandas.api.types import is_float_dtype, is_int64_dtype, is_object_dtype
 
 import ray
-
 from ray.tests.conftest import *  # noqa
 
 if TYPE_CHECKING:
@@ -51,6 +50,15 @@ def tf_records_partial():
                     "bytes_partial": tf.train.Feature(
                         bytes_list=tf.train.BytesList(value=[])
                     ),
+                    "string_item": tf.train.Feature(
+                        bytes_list=tf.train.BytesList(value=[b"uvw"])
+                    ),
+                    "string_list": tf.train.Feature(
+                        bytes_list=tf.train.BytesList(value=[b"xyz", b"999"])
+                    ),
+                    "string_partial": tf.train.Feature(
+                        bytes_list=tf.train.BytesList(value=[])
+                    ),
                 }
             )
         ),
@@ -85,6 +93,15 @@ def tf_records_partial():
                     "bytes_partial": tf.train.Feature(
                         bytes_list=tf.train.BytesList(value=[b"hello"])
                     ),
+                    "string_item": tf.train.Feature(
+                        bytes_list=tf.train.BytesList(value=[b"mno"])
+                    ),
+                    "string_list": tf.train.Feature(
+                        bytes_list=tf.train.BytesList(value=[b"pqr", b"111"])
+                    ),
+                    "string_partial": tf.train.Feature(
+                        bytes_list=tf.train.BytesList(value=[b"world"])
+                    ),
                 }
             )
         ),
@@ -105,6 +122,9 @@ def data_partial(with_tf_schema):
             "bytes_item": [b"abc"] if with_tf_schema else b"abc",
             "bytes_list": [b"def", b"1234"],
             "bytes_partial": [] if with_tf_schema else None,
+            "string_item": ["uvw"] if with_tf_schema else "uvw",
+            "string_list": ["xyz", "999"],
+            "string_partial": [] if with_tf_schema else None,
         },
         # Row two.
         {
@@ -117,6 +137,9 @@ def data_partial(with_tf_schema):
             "bytes_item": [b"ghi"] if with_tf_schema else b"ghi",
             "bytes_list": [b"jkl", b"5678"],
             "bytes_partial": [b"hello"] if with_tf_schema else b"hello",
+            "string_item": ["mno"] if with_tf_schema else "mno",
+            "string_list": ["pqr", "111"],
+            "string_partial": ["world"] if with_tf_schema else "world",
         },
     ]
 
@@ -166,6 +189,18 @@ def tf_records_empty():
                     "bytes_empty": tf.train.Feature(
                         bytes_list=tf.train.BytesList(value=[])
                     ),
+                    "string_item": tf.train.Feature(
+                        bytes_list=tf.train.BytesList(value=[b"uvw"])
+                    ),
+                    "string_list": tf.train.Feature(
+                        bytes_list=tf.train.BytesList(value=[b"xyz", b"999"])
+                    ),
+                    "string_partial": tf.train.Feature(
+                        bytes_list=tf.train.BytesList(value=[])
+                    ),
+                    "string_empty": tf.train.Feature(
+                        bytes_list=tf.train.BytesList(value=[])
+                    ),
                 }
             )
         ),
@@ -209,6 +244,18 @@ def tf_records_empty():
                     "bytes_empty": tf.train.Feature(
                         bytes_list=tf.train.BytesList(value=[])
                     ),
+                    "string_item": tf.train.Feature(
+                        bytes_list=tf.train.BytesList(value=[b"mno"])
+                    ),
+                    "string_list": tf.train.Feature(
+                        bytes_list=tf.train.BytesList(value=[b"pqr", b"111"])
+                    ),
+                    "string_partial": tf.train.Feature(
+                        bytes_list=tf.train.BytesList(value=[b"world"])
+                    ),
+                    "string_empty": tf.train.Feature(
+                        bytes_list=tf.train.BytesList(value=[])
+                    ),
                 }
             )
         ),
@@ -233,6 +280,10 @@ def data_empty(with_tf_schema):
             "bytes_list": [b"def", b"1234"],
             "bytes_partial": [],
             "bytes_empty": [],
+            "string_item": ["uvw"] if with_tf_schema else "uvw",
+            "string_list": ["xyz", "999"],
+            "string_partial": [] if with_tf_schema else None,
+            "string_empty": [],
         },
         # Row two.
         {
@@ -248,6 +299,10 @@ def data_empty(with_tf_schema):
             "bytes_list": [b"jkl", b"5678"],
             "bytes_partial": [b"hello"] if with_tf_schema else b"hello",
             "bytes_empty": [],
+            "string_item": ["mno"] if with_tf_schema else "mno",
+            "string_list": ["pqr", "111"],
+            "string_partial": ["world"] if with_tf_schema else "world",
+            "string_empty": [],
         },
     ]
 
@@ -269,6 +324,17 @@ def _features_to_schema(features: "tf.train.Features") -> "schema_pb2.Schema":
 
 
 def _ds_eq_streaming(ds_expected, ds_actual) -> bool:
+    # Casting the strings to bytes for comparing string features
+    def _str2bytes(d):
+        for k, v in d.items():
+            if "string" in k:
+                if isinstance(v, list):
+                    d[k] = [vv.encode() for vv in v]
+                elif isinstance(v, str):
+                    d[k] = v.encode()
+        return d
+
+    ds_expected = ds_expected.map(_str2bytes)
     assert ds_expected.take() == ds_actual.take()
 
 
@@ -278,8 +344,8 @@ def test_read_tfrecords(
     ray_start_regular_shared,
     tmp_path,
 ):
-    import tensorflow as tf
     import pandas as pd
+    import tensorflow as tf
 
     example = tf_records_empty()[0]
 
@@ -317,6 +383,12 @@ def test_read_tfrecords(
     assert is_object_dtype(dict(df.dtypes)["bytes_list"])
     assert is_object_dtype(dict(df.dtypes)["bytes_empty"])
 
+    # strings are of `object` dtype in pandas
+    assert is_object_dtype(dict(df.dtypes)["string_item"])
+    assert is_object_dtype(dict(df.dtypes)["string_partial"])
+    assert is_object_dtype(dict(df.dtypes)["string_list"])
+    assert is_object_dtype(dict(df.dtypes)["string_empty"])
+
     # If the schema is specified, we should not perform the
     # automatic unwrapping of single-element lists.
     if with_tf_schema:
@@ -340,11 +412,18 @@ def test_read_tfrecords(
     if with_tf_schema:
         assert isinstance(df["bytes_item"], pd.Series)
         assert df["bytes_item"].tolist() == [[b"abc"]]
+        assert isinstance(df["string_item"], pd.Series)
+        assert df["string_item"].tolist() == [[b"uvw"]]  # strings are read as bytes
     else:
         assert list(df["bytes_item"]) == [b"abc"]
+        assert list(df["string_item"]) == [b"uvw"]
     assert np.array_equal(df["bytes_list"][0], np.array([b"def", b"1234"]))
     assert np.array_equal(df["bytes_partial"][0], np.array([], dtype=np.bytes_))
     assert np.array_equal(df["bytes_empty"][0], np.array([], dtype=np.bytes_))
+
+    assert np.array_equal(df["string_list"][0], np.array([b"xyz", b"999"]))
+    assert np.array_equal(df["string_partial"][0], np.array([], dtype=np.bytes_))
+    assert np.array_equal(df["string_empty"][0], np.array([], dtype=np.bytes_))
 
 
 @pytest.mark.parametrize("ignore_missing_paths", [True, False])

@@ -1,10 +1,10 @@
-base_image: {{ env["RAY_IMAGE_ML_NIGHTLY_GPU"] | default("anyscale/ray-ml:nightly-py37-gpu") }}
+base_image: {{ env["RAY_IMAGE_ML_NIGHTLY_GPU"] }}
 
 python:
   pip_packages:
     - boto3
-    - pyarrow<7.0.0
     - tqdm
+    - mosaicml-streaming
   conda_packages: []
 
 post_build_cmds:

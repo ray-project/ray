@@ -19,6 +19,7 @@
 
 #include "ray/common/ray_config.h"
 #include "ray/common/runtime_env_common.h"
+#include "ray/stats/metric_defs.h"
 #include "ray/util/logging.h"
 
 namespace ray {
@@ -47,11 +48,9 @@ SchedulingClass TaskSpecification::GetSchedulingClass(
     sched_cls_id = ++next_sched_id_;
     // TODO(ekl) we might want to try cleaning up task types in these cases
     if (sched_cls_id > 100) {
-      RAY_LOG(WARNING) << "More than " << sched_cls_id
-                       << " types of tasks seen, this may reduce performance.";
-    } else if (sched_cls_id > 1000) {
-      RAY_LOG(ERROR) << "More than " << sched_cls_id
-                     << " types of tasks seen, this may reduce performance.";
+      RAY_LOG_EVERY_MS(WARNING, 1000)
+          << "More than " << sched_cls_id
+          << " types of tasks seen, this may reduce performance.";
     }
     sched_cls_to_id_[sched_cls] = sched_cls_id;
     sched_id_to_cls_.emplace(sched_cls_id, sched_cls);
@@ -199,7 +198,7 @@ int TaskSpecification::GetRuntimeEnvHash() const {
   WorkerCacheKey env = {SerializedRuntimeEnv(),
                         GetRequiredResources().GetResourceMap(),
                         IsActorCreationTask(),
-                        GetRequiredResources().GetResource("GPU") > 0};
+                        GetRequiredResources().Get(scheduling::ResourceID::GPU()) > 0};
   return env.IntHash();
 }
 
@@ -216,7 +215,30 @@ ObjectID TaskSpecification::ReturnId(size_t return_index) const {
   return ObjectID::FromIndex(TaskId(), return_index + 1);
 }
 
+size_t TaskSpecification::NumStreamingGeneratorReturns() const {
+  return message_->num_streaming_generator_returns();
+}
+
+ObjectID TaskSpecification::StreamingGeneratorReturnId(size_t generator_index) const {
+  // Streaming generator task has only 1 return ID.
+  RAY_CHECK_EQ(NumReturns(), 1UL);
+  RAY_CHECK_LT(generator_index, RayConfig::instance().max_num_generator_returns());
+  // index 1 is reserved for the first task return from a generator task itself.
+  return ObjectID::FromIndex(TaskId(), 2 + generator_index);
+}
+
+void TaskSpecification::SetNumStreamingGeneratorReturns(
+    uint64_t num_streaming_generator_returns) {
+  message_->set_num_streaming_generator_returns(num_streaming_generator_returns);
+}
+
 bool TaskSpecification::ReturnsDynamic() const { return message_->returns_dynamic(); }
+
+// TODO(sang): Merge this with ReturnsDynamic once migrating to the
+// streaming generator.
+bool TaskSpecification::IsStreamingGenerator() const {
+  return message_->streaming_generator();
+}
 
 std::vector<ObjectID> TaskSpecification::DynamicReturnIds() const {
   RAY_CHECK(message_->returns_dynamic());
@@ -375,6 +397,10 @@ const rpc::Address &TaskSpecification::CallerAddress() const {
   return message_->caller_address();
 }
 
+bool TaskSpecification::ShouldRetryExceptions() const {
+  return message_->retry_exceptions();
+}
+
 WorkerID TaskSpecification::CallerWorkerId() const {
   return WorkerID::FromBinary(message_->caller_address().worker_id());
 }
@@ -521,6 +547,20 @@ bool TaskSpecification::IsRetriable() const {
     return false;
   }
   return true;
+}
+
+void TaskSpecification::EmitTaskMetrics() const {
+  double duration_s = (GetMessage().lease_grant_timestamp_ms() -
+                       GetMessage().dependency_resolution_timestamp_ms()) /
+                      1000;
+
+  if (IsActorCreationTask()) {
+    stats::STATS_scheduler_placement_time_s.Record(duration_s,
+                                                   {{"WorkloadType", "Actor"}});
+  } else {
+    stats::STATS_scheduler_placement_time_s.Record(duration_s,
+                                                   {{"WorkloadType", "Task"}});
+  }
 }
 
 std::string TaskSpecification::CallSiteString() const {

@@ -1,9 +1,9 @@
-from typing import Iterable, List, Dict, Optional, Type, Union
+from typing import Dict, Iterable, List, Optional, Type, Union
 
-import pandas as pd
 import numpy as np
+import pandas as pd
 
-from ray.data import Datastream
+from ray.data import Dataset
 from ray.data.aggregate import Max, Min
 from ray.data.preprocessor import Preprocessor
 from ray.util.annotations import PublicAPI
@@ -253,7 +253,7 @@ class UniformKBinsDiscretizer(_AbstractKBinsDiscretizer):
         self.duplicates = duplicates
         self.dtypes = dtypes
 
-    def _fit(self, datastream: Datastream) -> Preprocessor:
+    def _fit(self, dataset: Dataset) -> Preprocessor:
         self._validate_on_fit()
         stats = {}
         aggregates = []
@@ -267,7 +267,7 @@ class UniformKBinsDiscretizer(_AbstractKBinsDiscretizer):
                 self._fit_uniform_covert_bin_to_aggregate_if_needed(column)
             )
 
-        aggregate_stats = datastream.aggregate(*aggregates)
+        aggregate_stats = dataset.aggregate(*aggregates)
         mins = {}
         maxes = {}
         for key, value in aggregate_stats.items():

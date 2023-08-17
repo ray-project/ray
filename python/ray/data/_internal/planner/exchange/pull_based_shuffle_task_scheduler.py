@@ -1,8 +1,10 @@
 from typing import Any, Dict, List, Optional, Tuple
 
-from ray.data._internal.execution.interfaces import RefBundle
-from ray.data._internal.planner.exchange.interfaces import ExchangeTaskScheduler
-from ray.data._internal.progress_bar import ProgressBar
+from ray.data._internal.execution.interfaces import RefBundle, TaskContext
+from ray.data._internal.planner.exchange.interfaces import (
+    ExchangeTaskScheduler,
+    ExchangeTaskSpec,
+)
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.stats import StatsDict
 
@@ -24,6 +26,7 @@ class PullBasedShuffleTaskScheduler(ExchangeTaskScheduler):
         self,
         refs: List[RefBundle],
         output_num_blocks: int,
+        ctx: TaskContext,
         map_ray_remote_args: Optional[Dict[str, Any]] = None,
         reduce_ray_remote_args: Optional[Dict[str, Any]] = None,
     ) -> Tuple[List[RefBundle], StatsDict]:
@@ -47,7 +50,10 @@ class PullBasedShuffleTaskScheduler(ExchangeTaskScheduler):
         shuffle_map = cached_remote_fn(self._exchange_spec.map)
         shuffle_reduce = cached_remote_fn(self._exchange_spec.reduce)
 
-        map_bar = ProgressBar("Shuffle Map", total=input_num_blocks)
+        sub_progress_bar_dict = ctx.sub_progress_bar_dict
+        bar_name = ExchangeTaskSpec.MAP_SUB_PROGRESS_BAR_NAME
+        assert bar_name in sub_progress_bar_dict, sub_progress_bar_dict
+        map_bar = sub_progress_bar_dict[bar_name]
 
         shuffle_map_out = [
             shuffle_map.options(
@@ -64,20 +70,23 @@ class PullBasedShuffleTaskScheduler(ExchangeTaskScheduler):
             shuffle_map_out[i] = refs[:-1]
 
         shuffle_map_metadata = map_bar.fetch_until_complete(shuffle_map_metadata)
-        map_bar.close()
 
-        reduce_bar = ProgressBar("Shuffle Reduce", total=output_num_blocks)
+        bar_name = ExchangeTaskSpec.REDUCE_SUB_PROGRESS_BAR_NAME
+        assert bar_name in sub_progress_bar_dict, sub_progress_bar_dict
+        reduce_bar = sub_progress_bar_dict[bar_name]
+
         shuffle_reduce_out = [
-            shuffle_reduce.options(**reduce_ray_remote_args, num_returns=2,).remote(
+            shuffle_reduce.options(**reduce_ray_remote_args, num_returns=2).remote(
                 *self._exchange_spec._reduce_args,
                 *[shuffle_map_out[i][j] for i in range(input_num_blocks)],
             )
             for j in range(output_num_blocks)
         ]
 
-        new_blocks, new_metadata = zip(*shuffle_reduce_out)
+        new_blocks, new_metadata = [], []
+        if shuffle_reduce_out:
+            new_blocks, new_metadata = zip(*shuffle_reduce_out)
         new_metadata = reduce_bar.fetch_until_complete(list(new_metadata))
-        reduce_bar.close()
 
         output = []
         for block, meta in zip(new_blocks, new_metadata):
