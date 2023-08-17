@@ -328,7 +328,7 @@
 
   frequency: nightly
   team: ml
-
+  new_persistence: "True"
   cluster:
     byod:
       type: gpu
@@ -336,7 +336,7 @@
 
   run:
     timeout: 3600
-    script: python workloads/data_benchmark.py --dataset-size-gb=200 --num-workers=20
+    script: RAY_AIR_NEW_PERSISTENCE_MODE=1 python workloads/data_benchmark.py --dataset-size-gb=200 --num-workers=20
 
     wait_for_nodes:
       num_nodes: 20
