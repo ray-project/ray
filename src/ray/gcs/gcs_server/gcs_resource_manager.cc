@@ -135,8 +135,8 @@ void GcsResourceManager::UpdateFromResourceReport(const rpc::ResourcesData &data
   if (RayConfig::instance().gcs_actor_scheduling_enabled()) {
     UpdateNodeNormalTaskResources(node_id, data);
   } else {
-    if (!cluster_resource_manager_.UpdateNodeAvailableResourcesIfExist(
-            scheduling::NodeID(node_id.Binary()), data)) {
+    if (!cluster_resource_manager_.UpdateNode(scheduling::NodeID(node_id.Binary()),
+                                              data)) {
       RAY_LOG(INFO)
           << "[UpdateFromResourceReport]: received resource usage from unknown node id "
           << node_id;

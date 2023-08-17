@@ -89,6 +89,12 @@ bool ClusterResourceManager::UpdateNode(scheduling::NodeID node_id,
     local_view.object_pulls_queued = resource_data.object_pulls_queued();
   }
 
+  // Update the idle duration for the node in terms of resources usage.
+  local_view.idle_resource_duration_ms = resource_data.idle_duration_ms();
+
+  // Last update time to the local node resources view.
+  local_view.last_resource_update_time = absl::Now();
+
   local_view.is_draining = resource_data.is_draining();
 
   AddOrUpdateNode(node_id, local_view);
@@ -229,39 +235,6 @@ bool ClusterResourceManager::AddNodeAvailableResources(scheduling::NodeID node_i
       node_resources->available.Set(resource_id, new_available);
     }
   }
-  return true;
-}
-
-bool ClusterResourceManager::UpdateNodeAvailableResourcesIfExist(
-    scheduling::NodeID node_id, const rpc::ResourcesData &resource_data) {
-  auto iter = nodes_.find(node_id);
-  if (iter == nodes_.end()) {
-    return false;
-  }
-
-  if (!resource_data.resources_available_changed()) {
-    return true;
-  }
-
-  auto resources =
-      ResourceMapToResourceRequest(MapFromProtobuf(resource_data.resources_available()),
-                                   /*requires_object_store_memory=*/false);
-  auto node_resources = iter->second.GetMutableLocalView();
-  // Note, by iterating over "total", we only update existing resources.
-  // Do not iterating over "available", because some resources may have been removed
-  // from available.
-  for (auto &resource_id : node_resources->total.ResourceIds()) {
-    node_resources->available.Set(resource_id, resources.Get(resource_id));
-  }
-
-  // Update the idle duration for the node in terms of resources usage.
-  node_resources->idle_resource_duration_ms = resource_data.idle_duration_ms();
-
-  // Last update time to the local node resources view.
-  node_resources->last_resource_update_time = absl::Now();
-
-  node_resources->is_draining = resource_data.is_draining();
-
   return true;
 }
 
