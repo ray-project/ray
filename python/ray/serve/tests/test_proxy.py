@@ -1,5 +1,6 @@
 import sys
 from unittest.mock import patch, MagicMock
+from typing import AsyncGenerator
 
 import grpc
 import pytest
@@ -10,7 +11,13 @@ from ray.serve._private.constants import (
     DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_S,
     SERVE_NAMESPACE,
 )
-from ray.serve._private.http_proxy import GenericProxy, gRPCProxy, HTTPProxy
+from ray.serve._private.http_proxy import (
+    GenericProxy,
+    gRPCProxy,
+    HTTPProxy,
+    success_message,
+    TIMEOUT_ERROR_CODE,
+)
 from ray.serve._private.proxy_request_response import (
     ASGIProxyRequest,
     gRPCProxyRequest,
@@ -112,31 +119,34 @@ class TestgRPCProxy:
         response_proto = serve_pb2.ListApplicationsResponse()
         response_proto.ParseFromString(response.response)
         assert response_proto.application_names == [str(endpoint)]
+        proxy_request.send_status_code.assert_called_with(status_code=routes_status)
+        proxy_request.send_details.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_health_response(self):
         """Test gRPCProxy set up the correct health response"""
         grpc_proxy = self.create_grpc_proxy()
-        request_proto = serve_pb2.UserDefinedMessage(name="foo", num=30, foo="bar")
-        proxy_request = gRPCProxyRequest(
-            request_proto=request_proto,
-            context=MagicMock(),
-            service_method="service_method",
-            stream=False,
-        )
+        proxy_request = AsyncMock()
+        health_status = grpc.StatusCode.OK
         response = await grpc_proxy.health_response(proxy_request=proxy_request)
+
         assert isinstance(response, ProxyResponse)
         assert response.status_code == str(grpc.StatusCode.OK)
+        response_proto = serve_pb2.HealthzResponse()
+        response_proto.ParseFromString(response.response)
+        assert response_proto.message == success_message
+        proxy_request.send_status_code.assert_called_with(status_code=health_status)
+        proxy_request.send_details.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_service_handler_factory(self):
+        """Test gRPCProxy service_handler_factory returns the correct entrypoints"""
         grpc_proxy = self.create_grpc_proxy()
         request_proto = serve_pb2.UserDefinedMessage(name="foo", num=30, foo="bar")
         unary_entrypoint = grpc_proxy.service_handler_factory(
             service_method="service_method", stream=False
         )
         assert unary_entrypoint.__name__ == "unary_unary"
-
         mocked_proxy_request_unary = AsyncMock()
         with patch.object(grpc_proxy, "proxy_request", mocked_proxy_request_unary):
             await unary_entrypoint(request_proto=request_proto, context=MagicMock())
@@ -146,6 +156,19 @@ class TestgRPCProxy:
             service_method="service_method", stream=True
         )
         assert streaming_entrypoint.__name__ == "unary_stream"
+        mocked_proxy_request_stream = AsyncMock()
+        with patch.object(grpc_proxy, "proxy_request", mocked_proxy_request_stream):
+            response = streaming_entrypoint(
+                request_proto=request_proto, context=MagicMock()
+            )
+            assert isinstance(response, AsyncGenerator)
+            while True:
+                try:
+                    obj_ref = await response.__anext__()
+                    _ = await obj_ref
+                except StopAsyncIteration:
+                    break
+        mocked_proxy_request_stream.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_send_request_to_replica_unary(self):
@@ -230,7 +253,7 @@ class TestgRPCProxy:
             proxy_request=proxy_request,
         )
         assert isinstance(response, ProxyResponse)
-        assert response.status_code == str(grpc.StatusCode.INTERNAL)
+        assert response.status_code == str(TIMEOUT_ERROR_CODE)
 
 
 @pytest.mark.skipif(sys.version_info < (3, 8), reason="requires python3.8 or higher")
