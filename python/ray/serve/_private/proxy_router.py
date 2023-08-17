@@ -45,9 +45,6 @@ class LongestPrefixRouter(ProxyRouter):
         # Map of application name to is_cross_language.
         self.app_to_is_cross_language: Dict[ApplicationName, bool] = dict()
 
-    def endpoint_exists(self, endpoint: EndpointTag) -> bool:
-        return endpoint in self.handles
-
     def update_routes(self, endpoints: Dict[EndpointTag, EndpointInfo]) -> None:
         logger.info(
             f"Got updated endpoints: {endpoints}.", extra={"log_to_stderr": False}
