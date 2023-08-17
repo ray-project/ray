@@ -34,6 +34,8 @@ from unittest.mock import AsyncMock
 @patch("ray.serve._private.http_proxy.ray.get_runtime_context", MagicMock())
 @patch("ray.serve._private.http_proxy.ray.get_actor", MagicMock())
 class TestgRPCProxy:
+    """Test methods implemented on gRPCProxy"""
+
     def create_grpc_proxy(self):
         controller_name = "fake-controller_name"
         node_id = "fake-node_id"
@@ -46,25 +48,25 @@ class TestgRPCProxy:
         )
 
     def test_subclass_from_generic_proxy(self):
-        """Test gRPCProxy is a subclass from GenericProxy"""
+        """Test gRPCProxy is a subclass from GenericProxy."""
         grpc_proxy = self.create_grpc_proxy()
         assert isinstance(grpc_proxy, GenericProxy)
 
     def test_protocol(self):
-        """Test gRPCProxy set up the correct protocol property"""
+        """Test gRPCProxy set up the correct protocol property."""
         grpc_proxy = self.create_grpc_proxy()
         assert isinstance(grpc_proxy.protocol, RequestProtocol)
         assert grpc_proxy.protocol == "gRPC"
 
     def test_success_status_code(self):
-        """Test gRPCProxy set up the correct success status code"""
+        """Test gRPCProxy set up the correct success status code."""
         grpc_proxy = self.create_grpc_proxy()
         assert isinstance(grpc_proxy.success_status_code, str)
         assert grpc_proxy.success_status_code == str(grpc.StatusCode.OK)
 
     @pytest.mark.asyncio
     async def test_not_found(self):
-        """Test gRPCProxy set up the correct not found response"""
+        """Test gRPCProxy set up the correct not found response."""
         grpc_proxy = self.create_grpc_proxy()
         proxy_request = AsyncMock()
         not_found_status = grpc.StatusCode.NOT_FOUND
@@ -77,7 +79,7 @@ class TestgRPCProxy:
 
     @pytest.mark.asyncio
     async def test_draining_response(self):
-        """Test gRPCProxy set up the correct draining response"""
+        """Test gRPCProxy set up the correct draining response."""
         grpc_proxy = self.create_grpc_proxy()
         proxy_request = AsyncMock()
         draining_status = grpc.StatusCode.ABORTED
@@ -90,7 +92,7 @@ class TestgRPCProxy:
 
     @pytest.mark.asyncio
     async def test_timeout_response(self):
-        """Test gRPCProxy set up the correct timeout response"""
+        """Test gRPCProxy set up the correct timeout response."""
         grpc_proxy = self.create_grpc_proxy()
         proxy_request = AsyncMock()
         timeout_status = grpc.StatusCode.ABORTED
@@ -105,7 +107,7 @@ class TestgRPCProxy:
 
     @pytest.mark.asyncio
     async def test_routes_response(self):
-        """Test gRPCProxy set up the correct routes response"""
+        """Test gRPCProxy set up the correct routes response."""
         grpc_proxy = self.create_grpc_proxy()
         endpoint = EndpointTag("endpoint", "app1")
         route_info = {"/route": endpoint}
@@ -124,7 +126,7 @@ class TestgRPCProxy:
 
     @pytest.mark.asyncio
     async def test_health_response(self):
-        """Test gRPCProxy set up the correct health response"""
+        """Test gRPCProxy set up the correct health response."""
         grpc_proxy = self.create_grpc_proxy()
         proxy_request = AsyncMock()
         health_status = grpc.StatusCode.OK
@@ -140,7 +142,7 @@ class TestgRPCProxy:
 
     @pytest.mark.asyncio
     async def test_service_handler_factory(self):
-        """Test gRPCProxy service_handler_factory returns the correct entrypoints"""
+        """Test gRPCProxy service_handler_factory returns the correct entrypoints."""
         grpc_proxy = self.create_grpc_proxy()
         request_proto = serve_pb2.UserDefinedMessage(name="foo", num=30, foo="bar")
         unary_entrypoint = grpc_proxy.service_handler_factory(
@@ -172,6 +174,9 @@ class TestgRPCProxy:
 
     @pytest.mark.asyncio
     async def test_send_request_to_replica_unary(self):
+        """Test gRPCProxy send_request_to_replica_unary redirects to
+        send_request_to_replica_streaming.
+        """
         grpc_proxy = self.create_grpc_proxy()
         mocked_send_request_to_replica_streaming = AsyncMock()
         with patch.object(
@@ -185,43 +190,83 @@ class TestgRPCProxy:
         mocked_send_request_to_replica_streaming.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_setup_request_context_and_handle(self):
+    @patch("ray.serve._private.http_proxy.ray.serve.context._serve_request_context")
+    async def test_setup_request_context_and_handle(self, mocked_serve_request_context):
+        """Test gRPCProxy setup_request_context_and_handle sets the correct runtime
+        context and returns the correct handle and request id.
+        """
         grpc_proxy = self.create_grpc_proxy()
         handle = MagicMock()
-        context = MagicMock()
         request_id = "fake-request-id"
-        context.invocation_metadata.return_value = [("request_id", request_id)]
-        request_proto = serve_pb2.UserDefinedMessage(name="foo", num=30, foo="bar")
-        proxy_request = gRPCProxyRequest(
-            request_proto=request_proto,
-            context=context,
-            service_method="service_method",
-            stream=False,
-        )
+        app_name = "fake-app-name"
+        route_path = "/fake-route-path"
+        multiplexed_model_id = "fake-multiplexed-model-id"
+        stream = False
+        method_name = "fake-method_name"
+        proxy_request = AsyncMock()
+        proxy_request.request_id = request_id
+        proxy_request.multiplexed_model_id = multiplexed_model_id
+        proxy_request.stream = stream
+        proxy_request.method_name = "fake-method_name"
         (
-            returned_context,
+            returned_handle,
             returned_request_id,
         ) = grpc_proxy.setup_request_context_and_handle(
-            app_name="fake-app-name",
+            app_name=app_name,
             handle=handle,
-            route_path="/fake-route-path",
+            route_path=route_path,
             proxy_request=proxy_request,
         )
-        handle._set_request_protocol.assert_called_with(RequestProtocol.GRPC)
+
         assert returned_request_id == request_id
+        handle._set_request_protocol.assert_called_with(RequestProtocol.GRPC)
+        handle.options.assert_called_with(
+            stream=stream,
+            multiplexed_model_id=multiplexed_model_id,
+            method_name=method_name,
+        )
+        expected_request_context = ray.serve.context.RequestContext(
+            route=route_path,
+            request_id=request_id,
+            app_name=app_name,
+            multiplexed_model_id=multiplexed_model_id,
+        )
+        mocked_serve_request_context.set.assert_called_with(expected_request_context)
+        proxy_request.send_request_id.assert_called_with(request_id=request_id)
+
+    @pytest.mark.asyncio
+    async def test_streaming_generator_helper(self):
+        """Test gRPCProxy _streaming_generator_helper returns a generator."""
+        grpc_proxy = self.create_grpc_proxy()
+        obj_ref_generator = MagicMock()
+        obj_ref_generator._next_async.side_effect = StopAsyncIteration()
+        generator = grpc_proxy._streaming_generator_helper(
+            obj_ref_generator=obj_ref_generator
+        )
+        assert isinstance(generator, AsyncGenerator)
+        while True:
+            try:
+                obj_ref = await generator.__anext__()
+                _ = await obj_ref
+            except StopAsyncIteration:
+                break
 
     @pytest.mark.asyncio
     async def test_consume_generator_stream(self):
+        """Test gRPCProxy _consume_generator_stream returns the correct response."""
         grpc_proxy = self.create_grpc_proxy()
         mocked_streaming_generator_helper = AsyncMock()
         with patch.object(
             grpc_proxy, "_streaming_generator_helper", mocked_streaming_generator_helper
         ):
-            await grpc_proxy._consume_generator_stream(obj_ref=MagicMock())
+            response = await grpc_proxy._consume_generator_stream(obj_ref=MagicMock())
         mocked_streaming_generator_helper.assert_called_once()
+        assert response.status_code == str(grpc_proxy.success_status_code)
+        assert response.streaming_response is not None
 
     @pytest.mark.asyncio
     async def test_consume_generator_unary(self):
+        """Test gRPCProxy _consume_generator_unary returns the correct response."""
         grpc_proxy = self.create_grpc_proxy()
         response_bytes = b"fake-response-bytes"
 
@@ -231,6 +276,7 @@ class TestgRPCProxy:
         MagicMock.__await__ = lambda x: async_magic().__await__()
         obj_ref = MagicMock()
         response = await grpc_proxy._consume_generator_unary(obj_ref=obj_ref)
+        assert response.status_code == str(grpc_proxy.success_status_code)
         assert response.response == response_bytes
 
     @pytest.mark.skipif(
@@ -239,27 +285,49 @@ class TestgRPCProxy:
     )
     @pytest.mark.asyncio
     async def test_send_request_to_replica_streaming(self):
+        """Test gRPCProxy send_request_to_replica_streaming returns the correct
+        response.
+        """
         grpc_proxy = self.create_grpc_proxy()
         request_proto = serve_pb2.UserDefinedMessage(name="foo", num=30, foo="bar")
         proxy_request = gRPCProxyRequest(
             request_proto=request_proto,
             context=MagicMock(),
             service_method="service_method",
-            stream=True,
+            stream=False,
         )
-        response = await grpc_proxy.send_request_to_replica_streaming(
-            request_id="fake-request-id",
-            handle=MagicMock(),
-            proxy_request=proxy_request,
-        )
-        assert isinstance(response, ProxyResponse)
-        assert response.status_code == str(TIMEOUT_ERROR_CODE)
+        response_bytes = b"fake-response-bytes"
+
+        async def async_magic():
+            return response_bytes
+
+        MagicMock.__await__ = lambda x: async_magic().__await__()
+        response = MagicMock()
+        mocked_assign_request_with_timeout = AsyncMock(return_value=response)
+        mocked_consume_generator_stream = AsyncMock(return_value=response)
+        with patch.object(
+            grpc_proxy,
+            "_assign_request_with_timeout",
+            mocked_assign_request_with_timeout,
+        ), patch.object(
+            grpc_proxy, "_consume_generator_stream", mocked_consume_generator_stream
+        ):
+            returned_response = await grpc_proxy.send_request_to_replica_streaming(
+                request_id="fake-request-id",
+                handle=MagicMock(),
+                proxy_request=proxy_request,
+            )
+        assert isinstance(returned_response, ProxyResponse)
+        assert returned_response.status_code == str(grpc_proxy.success_status_code)
+        assert returned_response.response == response_bytes
 
 
 @pytest.mark.skipif(sys.version_info < (3, 8), reason="requires python3.8 or higher")
 @patch("ray.serve._private.http_proxy.ray.get_runtime_context", MagicMock())
 @patch("ray.serve._private.http_proxy.ray.get_actor", MagicMock())
 class TestHTTPProxy:
+    """Test methods implemented on HTTPProxy"""
+
     def create_http_proxy(self):
         controller_name = "fake-controller_name"
         node_id = "fake-node_id"
