@@ -24,7 +24,7 @@ from ray.data._internal.logical.operators.map_operator import (
 )
 from ray.data._internal.numpy_support import is_valid_udf_return
 from ray.data._internal.util import _truncated_repr, validate_compute
-from ray.data.block import Block, CallableClass
+from ray.data.block import Block, BlockAccessor, CallableClass
 
 
 def _parse_op_fn(op: AbstractUDFMap):
@@ -105,7 +105,18 @@ def _create_map_data_processor_for_map_batches_op(op: MapBatches):
     def op_transform_fn(batches, _):
         for batch in batches:
             try:
-                res = fn(batch)
+                if (
+                    not isinstance(batch, collections.abc.Mapping)
+                    and BlockAccessor.for_block(batch).num_rows() == 0
+                ):
+                    # Ignore empty batches.
+                    # TODO(hchen): This workaround is because some AllToAll operators
+                    # don't preserve the schema for emtpy blocks.
+                    res = []
+                else:
+                    res = fn(batch)
+                    if not isinstance(res, GeneratorType):
+                        res = [res]
             except ValueError as e:
                 read_only_msgs = [
                     "assignment destination is read-only",
@@ -124,8 +135,6 @@ def _create_map_data_processor_for_map_batches_op(op: MapBatches):
                 else:
                     raise e from None
             else:
-                if not isinstance(res, GeneratorType):
-                    res = [res]
                 for out_batch in res:
                     validate_batch(out_batch)
                     yield out_batch
