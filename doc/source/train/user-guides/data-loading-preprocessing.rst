@@ -206,8 +206,8 @@ The datasets passed into the Trainer's ``datasets`` can be accessed inside of th
 
 The default splitting behavior is as follows:
 
-- The ``"train"`` dataset is split (i.e. sharded) across the training workers. :meth:`ray.train.get_dataset_shard` will return ``1/n`` of the dataset, where ``n`` is the number of training workers.
-- All other dataset are not split. :meth:`ray.train.get_dataset_shard` will return the full dataset.
+- The ``"train"`` dataset is split (i.e. sharded) across the training workers. :meth:`~ray.train.get_dataset_shard` will return ``1/n`` of the dataset, where ``n`` is the number of training workers.
+- All other dataset are not split. :meth:`~ray.train.get_dataset_shard` will return the full dataset.
 
 This behavior can be overwritten by passing in the ``dataset_config`` argument. For more information on configuring splitting logic, see :ref:`Splitting datasets <train-datasets-split>`.
 
