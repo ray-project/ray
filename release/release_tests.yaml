@@ -85,14 +85,14 @@
 
   frequency: nightly
   team: ml
-
+  new_persistence: "True"
   cluster:
     byod: {}
     cluster_compute: cpt_autoscaling_1-3_aws.yaml
 
   run:
     timeout: 3600
-    script: python workloads/tune_scale_up_down.py
+    script: RAY_AIR_NEW_PERSISTENCE_MODE=1 python workloads/tune_scale_up_down.py
     wait_for_nodes:
       num_nodes: 0
 
