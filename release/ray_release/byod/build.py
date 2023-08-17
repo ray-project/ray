@@ -106,7 +106,7 @@ def build_anyscale_base_byod_images(tests: List[Test]) -> None:
     """
     Builds the Anyscale BYOD images for the given tests.
     """
-    build_ray()
+    build_ray(tests)
     _download_dataplane_build_file()
     to_be_built = {}
     built = set()
