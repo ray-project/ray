@@ -706,9 +706,15 @@ TASK = {
 def test_get_task_traceback_running_task(shutdown_only):
     """
     Verify that we throw an error for a non-running task.
+
     """
-    context = ray.init()
-    dashboard_url = f"http://{context['webuiurl']}"
+    # The sleep is needed since it seems a previous shutdown could be not yet
+    # done when the next test starts. This prevents a previous cluster to be
+    # connected the current test session.
+
+    time.sleep(5)
+    address_info = ray.init()
+    webui_url = format_web_url(address_info["webui_url"])
 
     @ray.remote
     def f():
@@ -731,7 +737,7 @@ def test_get_task_traceback_running_task(shutdown_only):
     }
 
     def verify():
-        resp = requests.get(f"{dashboard_url}/task/traceback", params=params)
+        resp = requests.get(f"{webui_url}/task/traceback", params=params)
         print(f"resp.text {type(resp.text)}: {resp.text}")
 
         assert "Process" in resp.text
@@ -744,8 +750,14 @@ def test_get_task_traceback_non_running_task(shutdown_only):
     """
     Verify that we throw an error for a non-running task.
     """
-    context = ray.init()
-    dashboard_url = f"http://{context['webui_url']}"
+
+    # The sleep is needed since it seems a previous shutdown could be not yet
+    # done when the next test starts. This prevents a previous cluster to be
+    # connected the current test session.
+
+    time.sleep(5)
+    address_info = ray.init()
+    webui_url = format_web_url(address_info["webui_url"])
 
     @ray.remote
     def f():
@@ -762,7 +774,7 @@ def test_get_task_traceback_non_running_task(shutdown_only):
     # Make sure the API works.
     def verify():
         with pytest.raises(requests.exceptions.HTTPError) as exc_info:
-            resp = requests.get(f"{dashboard_url}/task/traceback", params=params)
+            resp = requests.get(f"{webui_url}/task/traceback", params=params)
             resp.raise_for_status()
         assert isinstance(exc_info.value, requests.exceptions.HTTPError)
         return True
@@ -774,8 +786,14 @@ def test_get_cpu_profile_non_running_task(shutdown_only):
     """
     Verify that we throw an error for a non-running task.
     """
-    context = ray.init()
-    dashboard_url = f"http://{context['webui_url']}"
+    
+    # The sleep is needed since it seems a previous shutdown could be not yet
+    # done when the next test starts. This prevents a previous cluster to be
+    # connected the current test session.
+
+    time.sleep(5)
+    address_info = ray.init()
+    webui_url = format_web_url(address_info["webui_url"])
 
     @ray.remote
     def f():
@@ -792,7 +810,7 @@ def test_get_cpu_profile_non_running_task(shutdown_only):
     # Make sure the API works.
     def verify():
         with pytest.raises(requests.exceptions.HTTPError) as exc_info:
-            resp = requests.get(f"{dashboard_url}/task/cpu_profile", params=params)
+            resp = requests.get(f"{webui_url}/task/cpu_profile", params=params)
             resp.raise_for_status()
         assert isinstance(exc_info.value, requests.exceptions.HTTPError)
         return True
