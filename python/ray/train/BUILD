@@ -9,6 +9,8 @@ doctest(
             # GPU tests
             "tensorflow/tensorflow_trainer.py",
             "huggingface/transformers/transformers_trainer.py",
+            "accelerate/accelerate_torch_trainer.py",
+            "deepspeed/deepspeed_torch_trainer.py",
             "_internal/session.py",
             "context.py"
         ]
@@ -21,6 +23,8 @@ doctest(
     files = [
         "tensorflow/tensorflow_trainer.py",
         "huggingface/transformers/transformers_trainer.py",
+        "accelerate/accelerate_torch_trainer.py",
+        "deepspeed/deepspeed_torch_trainer.py",
         "_internal/session.py",
         "context.py"
     ],

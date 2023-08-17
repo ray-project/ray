@@ -1,13 +1,16 @@
-# __accelerate_torch_basic_example_start__
+"""
+Minimal Ray Train + Accelerate example adapted from
+https://github.com/huggingface/accelerate/blob/main/examples/nlp_example.py
 
-# Minimal Ray Train + Accelerate example adapted from
-# https://github.com/huggingface/accelerate/blob/main/examples/nlp_example.py
+Fine-tune a BERT model with Hugging Face Accelerate and Ray Train
+"""
 
 import evaluate
 import torch
-
 from accelerate import Accelerator
 from datasets import load_dataset
+from tempfile import TemporaryDirectory
+from tqdm import tqdm
 from torch.optim import AdamW
 from torch.utils.data import DataLoader
 from transformers import (
@@ -16,8 +19,6 @@ from transformers import (
     get_linear_schedule_with_warmup,
     set_seed,
 )
-from tempfile import TemporaryDirectory
-from tqdm import tqdm
 
 import ray.train
 from ray.train import ScalingConfig, Checkpoint
@@ -47,7 +48,7 @@ def get_datasets(tokenizer):
 
 
 def train_func(config):
-    """Your training function that will be launched on each worker. """
+    """Your training function that will be launched on each worker."""
 
     # Unpack training configs
     lr = config["lr"]
@@ -179,5 +180,3 @@ if __name__ == "__main__":
     )
 
     result = trainer.fit()
-
-# __accelerate_torch_basic_example_end__

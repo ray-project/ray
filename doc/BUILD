@@ -225,8 +225,6 @@ py_test_run_all_subdirectory(
     include = ["source/train/doc_code/*.py"],
     exclude = [
         "source/train/doc_code/hf_trainer.py",  # Too large
-        "source/train/doc_code/accelerate_torch_trainer.py", # GPU test
-        "source/train/doc_code/deepspeed_torch_trainer.py",  # GPU test
     ],
     extra_srcs = [],
     tags = ["exclusive", "team:ml"],
@@ -270,17 +268,6 @@ py_test(
     tags = ["exclusive", "team:ml", "gpu", "ray_air"],
     data = ["//doc/source/train/examples/pytorch:train_pytorch_examples"],
     args = ["--path", "doc/source/train/examples/pytorch/pytorch_resnet_finetune.ipynb"]
-)
-
-py_test_run_all_subdirectory(
-    size = "large",
-    include = [
-        "source/train/doc_code/accelerate_torch_trainer.py", # GPU test
-        "source/train/doc_code/deepspeed_torch_trainer.py",  # GPU test
-    ],
-    exclude = [],
-    extra_srcs = [],
-    tags = ["exclusive", "team:ml", "gpu"],
 )
 
 # --------------------------------------------------------------------

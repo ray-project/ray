@@ -1,11 +1,19 @@
-# Minimal Ray Train + DeepSpeed example adapted from
-# https://github.com/huggingface/accelerate/blob/main/examples/nlp_example.py
+# __deepspeed_torch_basic_example_start__
+"""
+Minimal Ray Train + DeepSpeed example adapted from
+https://github.com/huggingface/accelerate/blob/main/examples/nlp_example.py
 
+Fine-tune a BERT model with DeepSpeed ZeRO-3 and Ray Train
+"""
+
+import os
 import deepspeed
 import evaluate
 import torch
+
 from datasets import load_dataset
 from deepspeed.accelerator import get_accelerator
+from tempfile import TemporaryDirectory
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 from transformers import (
@@ -14,8 +22,17 @@ from transformers import (
     set_seed,
 )
 
-from ray.train import ScalingConfig
+import ray
+import ray.train
+
+# TODO(ml-team): Change this to ray.train.Checkpoint
+from ray.train._checkpoint import Checkpoint
+from ray.train import ScalingConfig, RunConfig, CheckpointConfig
 from ray.train.torch import TorchTrainer
+
+# TODO(ml-team): Remove this:
+os.environ["RAY_AIR_NEW_PERSISTENCE_MODE"] = "1"
+ray.init(runtime_env={"env_vars": {"RAY_AIR_NEW_PERSISTENCE_MODE": "1"}})
 
 
 def get_datasets(tokenizer):
@@ -43,6 +60,8 @@ def get_datasets(tokenizer):
 
 
 def train_func(config):
+    """Your training function that will be launched on each worker."""
+
     # Set global random seed
     set_seed(config["seed"])
 
@@ -120,6 +139,21 @@ def train_func(config):
         if model.global_rank == 0:
             print(f"epoch {epoch}:", eval_metric)
 
+        # Report Checkpoint and metrics to Ray Train
+        # ==========================================
+        with TemporaryDirectory() as tmpdir:
+            model.save_checkpoint(f"{tmpdir}/ckpt_{epoch}")
+
+            # Ensure all workers finished saving their checkpoint shard
+            torch.distributed.barrier()
+
+            # Report all shards on a node from local rank 0
+            if model.local_rank == 0:
+                checkpoint = Checkpoint.from_directory(tmpdir)
+            else:
+                checkpoint = None
+            ray.train.report(metrics=eval_metric, checkpoint=checkpoint)
+
 
 if __name__ == "__main__":
     deepspeed_config = {
@@ -158,7 +192,20 @@ if __name__ == "__main__":
     trainer = TorchTrainer(
         train_func,
         train_loop_config=training_config,
+        run_config=RunConfig(
+            name="ray-deepspeed-demo",
+            checkpoint_config=CheckpointConfig(
+                num_to_keep=2,
+                checkpoint_score_attribute="f1",
+                checkpoint_score_order="max",
+            ),
+        ),
         scaling_config=ScalingConfig(num_workers=4, use_gpu=True),
     )
 
-    trainer.fit()
+    result = trainer.fit()
+
+    # Retrieve the best checkponints from results
+    result.best_checkpoints
+
+# __deepspeed_torch_basic_example_end__
