@@ -34,7 +34,6 @@ from ray.rllib.utils.annotations import DeveloperAPI, PublicAPI
 from ray.rllib.utils.deprecation import (
     DEPRECATED_VALUE,
     deprecation_warning,
-    Deprecated,
 )
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
@@ -202,7 +201,6 @@ MODEL_DEFAULTS: ModelConfigDict = {
 # fmt: on
 
 
-@Deprecated(old="rllib.models.catalog.ModelCatalog", error=False)
 class ModelCatalog:
     """Registry of models, preprocessors, and action distributions for envs.
 

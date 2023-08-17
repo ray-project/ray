@@ -23,7 +23,7 @@ from ray.rllib.utils.annotations import (
     override,
     ExperimentalAPI,
 )
-from ray.rllib.utils.deprecation import deprecation_warning, Deprecated
+from ray.rllib.utils.deprecation import deprecation_warning
 from ray.util import log_once
 
 

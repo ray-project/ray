@@ -8,7 +8,6 @@ from ray.rllib.utils.annotations import (
 )
 from ray.rllib.models.temp_spec_classes import TensorDict, ModelConfig
 from ray.rllib.models.base_model import RecurrentModel, Model, ModelIO
-from ray.rllib.utils.deprecation import Deprecated
 
 
 class TorchModelIO(ModelIO):

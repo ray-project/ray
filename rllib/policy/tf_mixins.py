@@ -11,7 +11,6 @@ from ray.rllib.policy.policy import Policy, PolicyState
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy import TFPolicy
 from ray.rllib.utils.annotations import DeveloperAPI, override
-from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.framework import get_variable, try_import_tf
 from ray.rllib.utils.schedules import PiecewiseSchedule
 from ray.rllib.utils.tf_utils import make_tf_callable

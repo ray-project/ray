@@ -3706,7 +3706,6 @@ class AlgorithmConfig(_Config):
         pass
 
     @property
-    @Deprecated(new="AlgorithmConfig.rollouts(num_rollout_workers=..)", error=False)
+    @Deprecated(new="AlgorithmConfig.rollouts(num_rollout_workers=..)", error=True)
     def num_workers(self):
-        """For backward-compatibility purposes only."""
-        return self.num_rollout_workers
+        pass

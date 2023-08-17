@@ -19,7 +19,6 @@ from ray.rllib.utils.debug import summarize
 from ray.rllib.utils.deprecation import (
     deprecation_warning,
     DEPRECATED_VALUE,
-    Deprecated,
 )
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.metrics import (

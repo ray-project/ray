@@ -2,7 +2,6 @@ from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.tf.tf_modelv2 import TFModelV2
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.deprecation import Deprecated
 
 _, tf, _ = try_import_tf()
 

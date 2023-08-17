@@ -21,7 +21,6 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import (
     DEPRECATED_VALUE,
     deprecation_warning,
-    Deprecated,
 )
 from ray.rllib.utils.error import ERR_MSG_TF_POLICY_CANNOT_SAVE_KERAS_MODEL
 from ray.rllib.utils.framework import try_import_tf
@@ -341,17 +340,15 @@ def _build_eager_tf_policy(
     base = add_mixins(EagerTFPolicy, mixins)
 
     if obs_include_prev_action_reward != DEPRECATED_VALUE:
-        deprecation_warning(old="obs_include_prev_action_reward", error=False)
+        deprecation_warning(old="obs_include_prev_action_reward", error=True)
 
     if extra_action_fetches_fn is not None:
         deprecation_warning(
-            old="extra_action_fetches_fn", new="extra_action_out_fn", error=False
+            old="extra_action_fetches_fn", new="extra_action_out_fn", error=True
         )
-        extra_action_out_fn = extra_action_fetches_fn
 
     if gradients_fn is not None:
-        deprecation_warning(old="gradients_fn", new="compute_gradients_fn", error=False)
-        compute_gradients_fn = gradients_fn
+        deprecation_warning(old="gradients_fn", new="compute_gradients_fn", error=True)
 
     class eager_policy_cls(base):
         def __init__(self, observation_space, action_space, config):

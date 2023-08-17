@@ -5,7 +5,6 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple, Type
 
 import ray
 from ray.actor import ActorClass, ActorHandle
-from ray.rllib.utils.deprecation import Deprecated
 
 logger = logging.getLogger(__name__)
 
