@@ -3944,6 +3944,7 @@
   working_dir: rllib_tests
 
   frequency: nightly
+  stable: false
   team: rllib
 
   cluster:
@@ -3974,6 +3975,7 @@
   working_dir: rllib_tests
 
   frequency: nightly
+  stable: false
   team: rllib
   python: "3.8"
   cluster:
