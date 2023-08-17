@@ -440,9 +440,18 @@ class DataParallelTrainer(BaseTrainer):
                 # (ex: global rank 0 worker) from needing to report a checkpoint.
                 # All workers reported a checkpoint to the same fs path, so there's
                 # no need to report multiple checkpoints to Tune.
-                at_least_one_reported_checkpoint = any(
-                    result.checkpoint is not None for result in results
+                worker_checkpoints = [
+                    result.checkpoint
+                    for result in results
+                    if result.checkpoint is not None
+                ]
+                at_least_one_reported_checkpoint = len(worker_checkpoints) > 0
+                # Make sure that all workers uploaded to the same location.
+                assert all(
+                    checkpoint.path == tune_session.storage.checkpoint_fs_path
+                    for checkpoint in worker_checkpoints
                 )
+
                 checkpoint = (
                     NewCheckpoint(
                         filesystem=tune_session.storage.storage_filesystem,
