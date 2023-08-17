@@ -1,0 +1,4 @@
+name: "forge"
+froms:
+  - ubuntu:20.04
+dockerfile: ci/docker/forge.Dockerfile
