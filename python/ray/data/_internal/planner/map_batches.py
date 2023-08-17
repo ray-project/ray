@@ -64,7 +64,7 @@ def generate_map_batches_fn(
             block_iter = iter(blocks)
             first_block = next(block_iter)
             blocks = itertools.chain([first_block], block_iter)
-            empty_block = BlockAccessor.for_block(first_block).builder().build()
+            empty_block = BlockAccessor.for_block(first_block).slice(0, 0, copy=True)
             # Don't hold the first block in memory, so we reset the reference.
             first_block = None
         except StopIteration:
