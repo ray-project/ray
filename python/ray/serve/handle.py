@@ -71,7 +71,9 @@ class _HandleOptions:
             _router_cls=self._router_cls
             if _router_cls == DEFAULT.VALUE
             else _router_cls,
-            _request_protocol=self._request_protocol if _request_protocol == DEFAULT.VALUE else _request_protocol,
+            _request_protocol=self._request_protocol
+            if _request_protocol == DEFAULT.VALUE
+            else _request_protocol,
         )
 
 
