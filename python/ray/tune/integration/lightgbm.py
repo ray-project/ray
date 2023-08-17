@@ -179,7 +179,7 @@ class _TuneCheckpointCallback(TuneCallback):
 
 class TuneReportCallback(TuneReportCheckpointCallback):
     def __init__(self, *args, **kwargs):
-        with log_once("tune_report_deprecated"):
+        if log_once("tune_report_deprecated"):
             warnings.warn(
                 "`ray.tune.integration.lightgbm.TuneReportCallback` is deprecated. "
                 "Use `ray.tune.integration.lightgbm.TuneCheckpointReportCallback` "
