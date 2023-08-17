@@ -76,9 +76,6 @@ class ZipOperator(PhysicalOperator):
     def get_stats(self) -> StatsDict:
         return self._stats
 
-    def get_transformation_fn(self) -> Callable:
-        return self._zip
-
     def _zip(
         self, left_input: List[RefBundle], right_input: List[RefBundle]
     ) -> Tuple[List[RefBundle], StatsDict]:

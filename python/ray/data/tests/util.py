@@ -5,11 +5,6 @@ from contextlib import contextmanager
 
 import ray
 from ray.data._internal.execution.interfaces.physical_operator import PhysicalOperator
-from ray.data._internal.execution.operators.map_data_processor import (
-    MapDataProcessor,
-    MapTransformDataType,
-    MapTransformFn,
-)
 
 
 @ray.remote

@@ -18,8 +18,7 @@ from ray.data._internal.planner.exchange.split_repartition_task_scheduler import
 from ray.data._internal.stats import StatsDict
 from ray.data.context import DataContext
 
-if TYPE_CHECKING:
-    from python.ray.data._internal.execution.interfaces import MapTransformFn
+from ray.data._internal.execution.operators.map_data_processor import MapDataProcessor
 
 
 def generate_repartition_fn(
@@ -32,13 +31,13 @@ def generate_repartition_fn(
         refs: List[RefBundle],
         ctx: TaskContext,
     ) -> Tuple[List[RefBundle], StatsDict]:
-        # If map_transform_fn is specified (e.g. from fusing
+        # If map_data_processor is specified (e.g. from fusing
         # MapOperator->AllToAllOperator), we pass a map function which
         # is applied to each block before shuffling.
-        map_transform_fn: Optional["MapTransformFn"] = ctx.upstream_map_transform_fn
+        map_data_processor: Optional["MapDataProcessor"] = ctx.upstream_map_data_processor
         upstream_map_fn = None
-        if map_transform_fn:
-            upstream_map_fn = lambda block: map_transform_fn(block, ctx)  # noqa: E731
+        if map_data_processor:
+            upstream_map_fn = lambda block: map_data_processor.process(block, ctx)  # noqa: E731
 
         shuffle_spec = ShuffleTaskSpec(
             random_shuffle=False,
