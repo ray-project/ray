@@ -1,4 +1,4 @@
-from typing import Iterator, List
+from typing import Iterable, Iterator, List
 
 import ray
 import ray.cloudpickle as cloudpickle
@@ -67,7 +67,7 @@ def _plan_read_op(op: Read) -> PhysicalOperator:
         input_data_factory=get_input_data, num_output_blocks=op._estimated_num_blocks
     )
 
-    def do_read(blocks: Iterator[ReadTask]) -> Iterator[Block]:
+    def do_read(blocks: Iterable[ReadTask]) -> Iterable[Block]:
         for read_task in blocks:
             yield from read_task()
 
