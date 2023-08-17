@@ -479,7 +479,6 @@ class ServeControllerClient:
         app_name: Optional[str] = "default",
         missing_ok: Optional[bool] = False,
         sync: bool = True,
-        _is_for_http_requests: bool = False,
     ) -> Union[RayServeHandle, RayServeSyncHandle]:
         """Retrieve RayServeHandle for service deployment to invoke it from Python.
 
@@ -490,8 +489,6 @@ class ServeControllerClient:
             sync: If true, then Serve will return a ServeHandle that
                 works everywhere. Otherwise, Serve will return a ServeHandle
                 that's only usable in asyncio loop.
-            _is_for_http_requests: Indicates that this handle will be used
-                to send HTTP requests from the proxy to ingress deployment replicas.
 
         Returns:
             RayServeHandle
@@ -514,21 +511,18 @@ class ServeControllerClient:
             handle = DeploymentHandle(
                 deployment_name,
                 app_name,
-                _is_for_http_requests=_is_for_http_requests,
                 _is_for_sync_context=sync,
             )
         elif sync:
             handle = RayServeSyncHandle(
                 deployment_name,
                 app_name,
-                _is_for_http_requests=_is_for_http_requests,
                 _is_for_sync_context=sync,
             )
         else:
             handle = RayServeHandle(
                 deployment_name,
                 app_name,
-                _is_for_http_requests=_is_for_http_requests,
                 _is_for_sync_context=sync,
             )
 

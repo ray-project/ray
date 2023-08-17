@@ -1,6 +1,6 @@
 import asyncio
 import concurrent.futures
-from dataclasses import dataclass
+from dataclasses import dataclass, asdict
 import threading
 from typing import Any, AsyncIterator, Coroutine, Dict, Iterator, Optional, Tuple, Union
 
@@ -9,7 +9,7 @@ from ray._private.utils import get_or_create_event_loop
 from ray._raylet import StreamingObjectRefGenerator
 
 from ray import serve
-from ray.serve._private.common import DeploymentID
+from ray.serve._private.common import DeploymentID, RequestProtocol
 from ray.serve._private.constants import (
     RAY_SERVE_ENABLE_NEW_ROUTING,
 )
@@ -48,6 +48,7 @@ class _HandleOptions:
     multiplexed_model_id: str = ""
     stream: bool = False
     _router_cls: str = ""
+    _request_protocol: str = RequestProtocol.UNDEFINED
 
     def copy_and_update(
         self,
@@ -55,6 +56,7 @@ class _HandleOptions:
         multiplexed_model_id: Union[str, DEFAULT] = DEFAULT.VALUE,
         stream: Union[bool, DEFAULT] = DEFAULT.VALUE,
         _router_cls: Union[str, DEFAULT] = DEFAULT.VALUE,
+        _request_protocol: Union[str, DEFAULT] = DEFAULT.VALUE,
     ) -> "_HandleOptions":
         return _HandleOptions(
             method_name=(
@@ -69,6 +71,7 @@ class _HandleOptions:
             _router_cls=self._router_cls
             if _router_cls == DEFAULT.VALUE
             else _router_cls,
+            _request_protocol=self._request_protocol if _request_protocol == DEFAULT.VALUE else _request_protocol,
         )
 
 
@@ -80,15 +83,14 @@ class _DeploymentHandleBase:
         *,
         handle_options: Optional[_HandleOptions] = None,
         _router: Optional[Router] = None,
-        _is_for_http_requests: bool = False,
         _is_for_sync_context: bool = False,
+        _request_counter: Optional[metrics.Counter] = None,
     ):
         self.deployment_id = DeploymentID(deployment_name, app_name)
         self.handle_options = handle_options or _HandleOptions()
-        self._is_for_http_requests = _is_for_http_requests
         self._is_for_sync_context = _is_for_sync_context
 
-        self.request_counter = metrics.Counter(
+        self.request_counter = _request_counter or metrics.Counter(
             "serve_handle_request_counter",
             description=(
                 "The number of handle.remote() calls that have been "
@@ -107,6 +109,11 @@ class _DeploymentHandleBase:
         )
 
         self._router: Optional[Router] = _router
+
+    def _set_request_protocol(self, request_protocol: RequestProtocol):
+        self.handle_options = self.handle_options.copy_and_update(
+            __request_protocol=request_protocol
+        )
 
     def _get_or_create_router(self) -> Router:
         if self._router is None:
@@ -183,30 +190,8 @@ class _DeploymentHandleBase:
             self.app_name,
             handle_options=new_handle_options,
             _router=None if _router_cls != DEFAULT.VALUE else self._router,
-            _is_for_http_requests=self._is_for_http_requests,
+            _request_counter=self.request_counter,
             _is_for_sync_context=self._is_for_sync_context,
-        )
-
-    def _remote(self, args: Tuple[Any], kwargs: Dict[str, Any]) -> Coroutine:
-        _request_context = ray.serve.context._serve_request_context.get()
-        request_metadata = RequestMetadata(
-            _request_context.request_id,
-            self.deployment_name,
-            call_method=self.handle_options.method_name,
-            is_http_request=self._is_for_http_requests,
-            route=_request_context.route,
-            app_name=self.app_name,
-            multiplexed_model_id=self.handle_options.multiplexed_model_id,
-            is_streaming=self.handle_options.stream,
-        )
-        self.request_counter.inc(
-            tags={
-                "route": _request_context.route,
-                "application": _request_context.app_name,
-            }
-        )
-        return self._get_or_create_router().assign_request(
-            request_metadata, *args, **kwargs
         )
 
     def __getattr__(self, name):
@@ -229,7 +214,6 @@ class _DeploymentHandleBase:
             "deployment_name": self.deployment_name,
             "app_name": self.app_name,
             "handle_options": self.handle_options,
-            "_is_for_http_requests": self._is_for_http_requests,
             "_is_for_sync_context": self._is_for_sync_context,
         }
         return self.__class__._deserialize, (serialized_constructor_args,)
