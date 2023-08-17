@@ -39,9 +39,9 @@ class LongestPrefixRouter(ProxyRouter):
         # Routes sorted in order of decreasing length.
         self.sorted_routes: List[str] = list()
         # Endpoints associated with the routes.
-        self.route_info: Dict[str, Tuple[EndpointTag, ApplicationName]] = dict()
+        self.route_info: Dict[str, EndpointTag] = dict()
         # Contains a ServeHandle for each endpoint.
-        self.handles: Dict[str, RayServeHandle] = dict()
+        self.handles: Dict[EndpointTag, RayServeHandle] = dict()
         # Map of application name to is_cross_language.
         self.app_to_is_cross_language: Dict[ApplicationName, bool] = dict()
 
@@ -59,12 +59,14 @@ class LongestPrefixRouter(ProxyRouter):
         app_to_is_cross_language = {}
         for endpoint, info in endpoints.items():
             routes.append(info.route)
-            route_info[info.route] = (endpoint, info.app_name)
-            app_to_is_cross_language[info.app_name] = info.app_is_cross_language
+            route_info[info.route] = endpoint
+            app_to_is_cross_language[endpoint.app] = info.app_is_cross_language
             if endpoint in self.handles:
                 existing_handles.remove(endpoint)
             else:
-                self.handles[endpoint] = self._get_handle(endpoint).options(
+                self.handles[endpoint] = self._get_handle(
+                    endpoint.name, endpoint.app
+                ).options(
                     # Streaming codepath isn't supported for Java.
                     stream=(
                         RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING
@@ -91,10 +93,8 @@ class LongestPrefixRouter(ProxyRouter):
         self, target_route: str
     ) -> Optional[Tuple[str, RayServeHandle, str, bool]]:
         """Return the longest prefix match among existing routes for the route.
-
         Args:
             target_route: route to match against.
-
         Returns:
             (route, handle, app_name, is_cross_language) if found, else None.
         """
@@ -116,12 +116,12 @@ class LongestPrefixRouter(ProxyRouter):
                     matched = True
 
                 if matched:
-                    endpoint, app_name = self.route_info[route]
+                    endpoint = self.route_info[route]
                     return (
                         route,
                         self.handles[endpoint],
-                        app_name,
-                        self.app_to_is_cross_language[app_name],
+                        endpoint.app,
+                        self.app_to_is_cross_language[endpoint.app],
                     )
 
         return None
@@ -148,7 +148,9 @@ class EndpointRouter(ProxyRouter):
             if endpoint in self.handles:
                 existing_handles.remove(endpoint)
             else:
-                self.handles[endpoint] = self._get_handle(endpoint).options(
+                self.handles[endpoint] = self._get_handle(
+                    endpoint.name, endpoint.app
+                ).options(
                     # Streaming codepath isn't supported for Java.
                     stream=(
                         RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING
@@ -169,17 +171,19 @@ class EndpointRouter(ProxyRouter):
         self, target_route: str
     ) -> Optional[Tuple[str, RayServeHandle, str, bool]]:
         """Return the endpoint match among existing routes for the route.
-
         Args:
             target_route: endpoint to match against.
-
         Returns:
             (route, handle, app_name, is_cross_language) if found, else None.
         """
-        if target_route not in self.handles:
-            return None
+        for endpoint_tag, handle in self.handles.items():
+            if target_route == str(endpoint_tag):
+                endpoint_info = self.endpoints[endpoint_tag]
+                return (
+                    endpoint_info.route,
+                    handle,
+                    endpoint_tag.app,
+                    endpoint_info.app_is_cross_language,
+                )
 
-        handle = self.handles[target_route]
-        info = self.endpoints[target_route]
-
-        return info.route, handle, info.app_name, info.app_is_cross_language
+        return None

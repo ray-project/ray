@@ -60,6 +60,7 @@ from ray.serve._private.long_poll import LongPollClient, LongPollNamespace
 from ray.serve._private.logging_utils import (
     access_log_msg,
     configure_component_logger,
+    configure_component_cpu_profiler,
     configure_component_memory_profiler,
     get_component_logger_file_path,
 )
@@ -181,9 +182,10 @@ class GenericProxy(ABC):
                 extra={"log_to_stderr": False},
             )
 
-        def get_handle(name):
+        def get_handle(deployment_name, app_name):
             return serve.context.get_global_client().get_handle(
-                name,
+                deployment_name,
+                app_name,
                 sync=False,
                 missing_ok=True,
             )
@@ -287,7 +289,7 @@ class GenericProxy(ABC):
         return self._draining_start_time is not None
 
     def _update_routes(self, endpoints: Dict[EndpointTag, EndpointInfo]) -> None:
-        self.route_info: Dict[str, Tuple[EndpointTag, List[str]]] = dict()
+        self.route_info: Dict[str, EndpointTag] = dict()
         for endpoint, info in endpoints.items():
             route = info.route
             self.route_info[route] = endpoint
@@ -502,7 +504,7 @@ class GenericProxy(ABC):
                 )
                 self.deployment_request_error_counter.inc(
                     tags={
-                        "deployment": handle.deployment_name,
+                        "deployment": str(handle.deployment_id),
                         "error_code": proxy_response.status_code,
                         "method": method,
                         "route": route_path,
@@ -657,8 +659,9 @@ class gRPCProxy(GenericProxy):
         status_code = grpc.StatusCode.OK
         proxy_request.send_status_code(status_code=status_code)
         proxy_request.send_details(message=success_message)
+        application_names = [str(endpoint) for endpoint in self.route_info.values()]
         response_proto = ListApplicationsResponse(
-            application_names=self.route_info.values()
+            application_names=application_names,
         )
         return ProxyResponse(
             status_code=str(status_code),
@@ -887,9 +890,9 @@ class HTTPProxy(GenericProxy):
         return ProxyResponse(status_code=str(status_code))
 
     async def routes_response(self, proxy_request: ProxyRequest) -> ProxyResponse:
-        await starlette.responses.JSONResponse(self.route_info)(
-            proxy_request.scope, proxy_request.receive, proxy_request.send
-        )
+        await starlette.responses.JSONResponse(
+            {route: str(endpoint) for route, endpoint in self.route_info.items()}
+        )(proxy_request.scope, proxy_request.receive, proxy_request.send)
         return ProxyResponse(status_code=self.success_status_code)
 
     async def health_response(self, proxy_request: ProxyRequest) -> ProxyResponse:
@@ -1283,6 +1286,9 @@ class HTTPProxyActor:
         configure_component_memory_profiler(
             component_name="http_proxy", component_id=node_ip_address
         )
+        self.cpu_profiler, self.cpu_profiler_log = configure_component_cpu_profiler(
+            component_name="http_proxy", component_id=node_ip_address
+        )
 
         if http_middlewares is None:
             http_middlewares = [Middleware(RequestIdMiddleware)]
@@ -1506,6 +1512,27 @@ class HTTPProxyActor:
         this will always return immediately.
         """
         return pickle.dumps(await self.http_proxy.receive_asgi_messages(request_id))
+
+    def _save_cpu_profile_data(self) -> str:
+        """Saves CPU profiling data, if CPU profiling is enabled.
+
+        Logs a warning if CPU profiling is disabled.
+        """
+
+        if self.cpu_profiler is not None:
+            import marshal
+
+            self.cpu_profiler.snapshot_stats()
+            with open(self.cpu_profiler_log, "wb") as f:
+                marshal.dump(self.cpu_profiler.stats, f)
+            logger.info(f'Saved CPU profile data to file "{self.cpu_profiler_log}"')
+            return self.cpu_profiler_log
+        else:
+            logger.error(
+                "Attempted to save CPU profile data, but failed because no "
+                "CPU profiler was running! Enable CPU profiling by enabling "
+                "the RAY_SERVE_ENABLE_CPU_PROFILING env var."
+            )
 
     async def _uvicorn_keep_alive(self) -> Optional[int]:
         """Get the keep alive timeout used for the running uvicorn server.

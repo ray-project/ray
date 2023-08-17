@@ -733,7 +733,7 @@ def build(
                 f"Expected '{import_path}' to be an Application but got {type(app)}."
             )
 
-        app = build_app(app)
+        app = build_app(app, name)
         schema = ServeApplicationSchema(
             import_path=import_path,
             runtime_env={},
@@ -769,7 +769,9 @@ def build(
             )
 
         config_str += yaml.dump(
-            build_app_config(import_paths[0], kubernetes_format),
+            build_app_config(
+                import_paths[0], kubernetes_format, SERVE_DEFAULT_APP_NAME
+            ),
             Dumper=ServeApplicationSchemaDumper,
             default_flow_style=False,
             sort_keys=False,

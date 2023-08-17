@@ -16,7 +16,7 @@ from ray.serve._private.proxy_request_response import (
     gRPCProxyRequest,
     ProxyResponse,
 )
-from ray.serve._private.common import RequestProtocol
+from ray.serve._private.common import EndpointTag, RequestProtocol
 from ray.serve._private.constants import RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING
 from ray.serve.generated import serve_pb2
 
@@ -100,7 +100,8 @@ class TestgRPCProxy:
     async def test_routes_response(self):
         """Test gRPCProxy set up the correct routes response"""
         grpc_proxy = self.create_grpc_proxy()
-        route_info = {"/route": "endpoint"}
+        endpoint = EndpointTag("endpoint", "app1")
+        route_info = {"/route": endpoint}
         grpc_proxy.route_info = route_info
         proxy_request = AsyncMock()
         routes_status = grpc.StatusCode.OK
@@ -110,7 +111,7 @@ class TestgRPCProxy:
         assert response.status_code == str(routes_status)
         response_proto = serve_pb2.ListApplicationsResponse()
         response_proto.ParseFromString(response.response)
-        assert response_proto.application_names == list(route_info.values())
+        assert response_proto.application_names == [str(endpoint)]
 
     @pytest.mark.asyncio
     async def test_health_response(self):
@@ -211,7 +212,7 @@ class TestgRPCProxy:
 
     @pytest.mark.skipif(
         not RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING,
-        reason="Not supported w/o streaming."
+        reason="Not supported w/o streaming.",
     )
     @pytest.mark.asyncio
     async def test_send_request_to_replica_streaming(self):
@@ -401,7 +402,7 @@ class TestHTTPProxy:
 
     @pytest.mark.skipif(
         not RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING,
-        reason="Not supported w/ streaming."
+        reason="Not supported w/ streaming.",
     )
     @pytest.mark.asyncio
     async def test_send_request_to_replica_streaming(self):

@@ -416,7 +416,8 @@ def get_deployment(name: str) -> Deployment:
     """Dynamically fetch a handle to a Deployment object.
 
     This can be used to update and redeploy a deployment without access to
-    the original definition.
+    the original definition. This should only be used to fetch deployments
+    that were deployed using 1.x API.
 
     Example:
     >>> from ray import serve
@@ -552,8 +553,9 @@ def run(
         # The deployment state is not guaranteed to be created after
         # deploy_application returns; the application state manager will
         # need another reconcile iteration to create it.
-        client._wait_for_deployment_created(ingress.name)
-        return ingress._get_handle()
+        client._wait_for_deployment_created(ingress.name, name)
+        handle = client.get_handle(ingress.name, name, missing_ok=True)
+        return handle
 
 
 @PublicAPI(stability="alpha")
@@ -845,7 +847,7 @@ def get_app_handle(
         # and default to sync outside a deployment
         sync = internal_replica_context is None
 
-    return client.get_handle(ingress, sync=sync)
+    return client.get_handle(ingress, name, sync=sync)
 
 
 @DeveloperAPI
@@ -890,4 +892,4 @@ def get_deployment_handle(
         # and default to sync outside a deployment
         sync = internal_replica_context is None
 
-    return client.get_handle(f"{app_name}_{deployment_name}", sync=sync)
+    return client.get_handle(deployment_name, app_name, sync=sync)
