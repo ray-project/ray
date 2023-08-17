@@ -12,7 +12,7 @@ configure_make(
     args = ["-j"],
     visibility = ["//visibility:public"],
     out_static_libs = ["libtcmalloc_and_profiler.a"],
-    configure_prefix = "CC=gcc CXX=g++",
+    configure_prefix = "CC= CXX=",
     deps = ["@libunwind//:libunwind"],
     configure_options = [
         "--enable-libunwind",
