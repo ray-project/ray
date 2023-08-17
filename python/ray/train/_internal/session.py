@@ -174,7 +174,7 @@ class _TrainSession:
 
         if _use_storage_context():
             assert storage
-            logger.debug(f"StorageContext on SESSION {world_rank}:\n{storage}")
+            logger.info(f"StorageContext on SESSION (rank={world_rank}):\n{storage}")
 
             # Change the working directory to the local trial directory.
             # -> All workers on the same node share a working directory.
