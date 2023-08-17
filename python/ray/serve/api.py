@@ -371,28 +371,27 @@ def deployment(
     )
     deployment_config.user_configured_option_names = set(user_configured_option_names)
 
-    replica_config = ReplicaConfig.create(
-        _func_or_class,
-        init_args=(init_args if init_args is not DEFAULT.VALUE else None),
-        init_kwargs=(init_kwargs if init_kwargs is not DEFAULT.VALUE else None),
-        ray_actor_options=(
-            ray_actor_options if ray_actor_options is not DEFAULT.VALUE else None
-        ),
-        placement_group_bundles=(
-            placement_group_bundles
-            if placement_group_bundles is not DEFAULT.VALUE
-            else None
-        ),
-        placement_group_strategy=(
-            placement_group_strategy
-            if placement_group_strategy is not DEFAULT.VALUE
-            else None
-        ),
-    )
-
     def decorator(_func_or_class):
-        return Deployment(
+        replica_config = ReplicaConfig.create(
             _func_or_class,
+            init_args=(init_args if init_args is not DEFAULT.VALUE else None),
+            init_kwargs=(init_kwargs if init_kwargs is not DEFAULT.VALUE else None),
+            ray_actor_options=(
+                ray_actor_options if ray_actor_options is not DEFAULT.VALUE else None
+            ),
+            placement_group_bundles=(
+                placement_group_bundles
+                if placement_group_bundles is not DEFAULT.VALUE
+                else None
+            ),
+            placement_group_strategy=(
+                placement_group_strategy
+                if placement_group_strategy is not DEFAULT.VALUE
+                else None
+            ),
+        )
+
+        return Deployment(
             name if name is not DEFAULT.VALUE else _func_or_class.__name__,
             deployment_config,
             replica_config,

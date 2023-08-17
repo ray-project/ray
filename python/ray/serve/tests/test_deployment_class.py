@@ -144,7 +144,7 @@ class TestDeploymentOptions:
             "name"
             in deschematized_deployment._deployment_config.user_configured_option_names
         ):
-            deschematized_deployment._deployment_config.user_configured_option_names.remove(
+            deschematized_deployment._deployment_config.user_configured_option_names.remove(  # noqa: E501
                 "name"
             )
 

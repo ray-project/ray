@@ -424,25 +424,6 @@ class ReplicaConfig:
         if not (init_kwargs is None or isinstance(init_kwargs, dict)):
             raise TypeError("init_kwargs must be a dict.")
 
-        if not (ray_actor_options is None or isinstance(ray_actor_options, dict)):
-            raise TypeError("ray_actor_options must be a dict.")
-
-        if placement_group_bundles is not None:
-            if not isinstance(placement_group_bundles, list):
-                raise TypeError("placement_group_bundles must be a list.")
-
-            for bundle in placement_group_bundles:
-                if not isinstance(bundle, dict):
-                    raise TypeError(
-                        "placement_group_bundles entries must be "
-                        f"dicts, got {type(bundle)}."
-                    )
-        if not (
-            placement_group_strategy is None
-            or isinstance(placement_group_strategy, str)
-        ):
-            raise TypeError("placement_group_strategy must be a string.")
-
         if inspect.isfunction(deployment_def):
             if init_args:
                 raise ValueError("init_args not supported for function deployments.")

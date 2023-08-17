@@ -249,15 +249,15 @@ class Deployment:
         """
 
         copied_self = copy(self)
-        copied_self._func_or_class = "dummy.module"
+        copied_self._replica_config._deployment_def = "dummy.module"
         schema_shell = deployment_to_schema(copied_self)
 
-        if inspect.isfunction(self._func_or_class):
+        if inspect.isfunction(self._replica_config.deployment_def):
             dag_node = FunctionNode(
-                self._func_or_class,
+                self._replica_config.deployment_def,
                 args,  # Used to bind and resolve DAG only, can take user input
                 kwargs,  # Used to bind and resolve DAG only, can take user input
-                self._ray_actor_options or dict(),
+                self._replica_config.ray_actor_options or dict(),
                 other_args_to_resolve={
                     "deployment_schema": schema_shell,
                     "is_from_serve_deployment": True,
@@ -265,10 +265,10 @@ class Deployment:
             )
         else:
             dag_node = ClassNode(
-                self._func_or_class,
+                self._replica_config.deployment_def,
                 args,
                 kwargs,
-                cls_options=self._ray_actor_options or dict(),
+                cls_options=self._replica_config.ray_actor_options or dict(),
                 other_args_to_resolve={
                     "deployment_schema": schema_shell,
                     "is_from_serve_deployment": True,
@@ -301,17 +301,17 @@ class Deployment:
             init_kwargs: kwargs to pass to the class __init__
                 method. Not valid if this deployment wraps a function.
         """
-        if len(init_args) == 0 and self._init_args is not None:
-            init_args = self._init_args
-        if len(init_kwargs) == 0 and self._init_kwargs is not None:
-            init_kwargs = self._init_kwargs
+        if len(init_args) == 0 and self._replica_config.init_args is not None:
+            init_args = self._replica_config.init_args
+        if len(init_kwargs) == 0 and self._replica_config.init_kwargs is not None:
+            init_kwargs = self._replica_config.init_kwargs
 
         return get_global_client().deploy(
             self._name,
-            self._func_or_class,
+            self._replica_config.deployment_def,
             init_args,
             init_kwargs,
-            ray_actor_options=self._ray_actor_options,
+            ray_actor_options=self._replica_config.ray_actor_options,
             config=self._deployment_config,
             version=self._version,
             route_prefix=self.route_prefix,
@@ -451,7 +451,7 @@ class Deployment:
             new_deployment_config.max_concurrent_queries = max_concurrent_queries
 
         if func_or_class is None:
-            func_or_class = self._func_or_class
+            func_or_class = self._replica_config.deployment_def
 
         if name is DEFAULT.VALUE:
             name = self._name
@@ -460,23 +460,23 @@ class Deployment:
             version = self._version
 
         if init_args is DEFAULT.VALUE:
-            init_args = self._init_args
+            init_args = self._replica_config.init_args
 
         if init_kwargs is DEFAULT.VALUE:
-            init_kwargs = self._init_kwargs
+            init_kwargs = self._replica_config.init_kwargs
 
         if route_prefix is DEFAULT.VALUE:
             # Default is to keep the previous value
             route_prefix = self._route_prefix
 
         if ray_actor_options is DEFAULT.VALUE:
-            ray_actor_options = self._ray_actor_options
+            ray_actor_options = self._replica_config.ray_actor_options
 
         if placement_group_bundles is DEFAULT.VALUE:
-            placement_group_bundles = self._placement_group_bundles
+            placement_group_bundles = self._replica_config.placement_group_bundles
 
         if placement_group_strategy is DEFAULT.VALUE:
-            placement_group_strategy = self._placement_group_strategy
+            placement_group_strategy = self._replica_config.placement_group_strategy
 
         if autoscaling_config is not DEFAULT.VALUE:
             new_deployment_config.autoscaling_config = autoscaling_config
@@ -500,17 +500,21 @@ class Deployment:
         if is_driver_deployment is DEFAULT.VALUE:
             is_driver_deployment = self._is_driver_deployment
 
-        return Deployment(
+        new_replica_config = ReplicaConfig.create(
             func_or_class,
-            name,
-            new_deployment_config,
-            version=version,
             init_args=init_args,
             init_kwargs=init_kwargs,
-            route_prefix=route_prefix,
             ray_actor_options=ray_actor_options,
             placement_group_bundles=placement_group_bundles,
             placement_group_strategy=placement_group_strategy,
+        )
+
+        return Deployment(
+            name,
+            new_deployment_config,
+            new_replica_config,
+            version=version,
+            route_prefix=route_prefix,
             _internal=True,
             is_driver_deployment=is_driver_deployment,
         )
@@ -567,14 +571,11 @@ class Deployment:
             is_driver_deployment=is_driver_deployment,
         )
 
-        self._func_or_class = validated._func_or_class
         self._name = validated._name
         self._version = validated._version
-        self._init_args = validated._init_args
-        self._init_kwargs = validated._init_kwargs
         self._route_prefix = validated._route_prefix
-        self._ray_actor_options = validated._ray_actor_options
         self._deployment_config = validated._deployment_config
+        self._replica_config = validated._replica_config
 
     def __eq__(self, other):
         return all(
@@ -582,11 +583,12 @@ class Deployment:
                 self._name == other._name,
                 self._version == other._version,
                 self._deployment_config == other._deployment_config,
-                self._init_args == other._init_args,
-                self._init_kwargs == other._init_kwargs,
+                self._replica_config.init_args == other._replica_config.init_args,
+                self._replica_config.init_kwargs == other._replica_config.init_kwargs,
                 # compare route prefix with default value resolved
                 self.route_prefix == other.route_prefix,
-                self._ray_actor_options == self._ray_actor_options,
+                self._replica_config.ray_actor_options
+                == self._replica_config.ray_actor_options,
             ]
         )
 
@@ -627,13 +629,13 @@ def deployment_to_schema(
         "max_concurrent_queries": d.max_concurrent_queries,
         "user_config": d.user_config,
         "autoscaling_config": d._deployment_config.autoscaling_config,
-        "graceful_shutdown_wait_loop_s": d._deployment_config.graceful_shutdown_wait_loop_s,
+        "graceful_shutdown_wait_loop_s": d._deployment_config.graceful_shutdown_wait_loop_s,  # noqa: E501
         "graceful_shutdown_timeout_s": d._deployment_config.graceful_shutdown_timeout_s,
         "health_check_period_s": d._deployment_config.health_check_period_s,
         "health_check_timeout_s": d._deployment_config.health_check_timeout_s,
         "ray_actor_options": ray_actor_options_schema,
-        "placement_group_strategy": d._replica_config._placement_group_strategy,
-        "placement_group_bundles": d._replica_config._placement_group_bundles,
+        "placement_group_strategy": d._replica_config.placement_group_strategy,
+        "placement_group_bundles": d._replica_config.placement_group_bundles,
         "is_driver_deployment": d._is_driver_deployment,
     }
 
@@ -687,7 +689,7 @@ def schema_to_deployment(s: DeploymentSchema) -> Deployment:
     else:
         is_driver_deployment = s.is_driver_deployment
 
-    config = DeploymentConfig.from_default(
+    deployment_config = DeploymentConfig.from_default(
         num_replicas=s.num_replicas,
         user_config=s.user_config,
         max_concurrent_queries=s.max_concurrent_queries,
@@ -697,18 +699,24 @@ def schema_to_deployment(s: DeploymentSchema) -> Deployment:
         health_check_period_s=s.health_check_period_s,
         health_check_timeout_s=s.health_check_timeout_s,
     )
-    config.user_configured_option_names = s.get_user_configured_option_names()
+    deployment_config.user_configured_option_names = (
+        s.get_user_configured_option_names()
+    )
 
-    return Deployment(
-        func_or_class="",
-        name=s.name,
-        deployment_config=config,
+    replica_config = ReplicaConfig.create(
+        deployment_def="",
         init_args=(),
         init_kwargs={},
-        route_prefix=s.route_prefix,
         ray_actor_options=ray_actor_options,
         placement_group_bundles=placement_group_bundles,
         placement_group_strategy=placement_group_strategy,
+    )
+
+    return Deployment(
+        name=s.name,
+        deployment_config=deployment_config,
+        replica_config=replica_config,
+        route_prefix=s.route_prefix,
         _internal=True,
         is_driver_deployment=is_driver_deployment,
     )
