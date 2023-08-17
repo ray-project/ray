@@ -42,6 +42,7 @@ from ray.serve._private.http_state import HTTPProxyStateManager
 from ray.serve._private.logging_utils import (
     configure_component_logger,
     configure_component_memory_profiler,
+    configure_component_cpu_profiler,
     get_component_logger_file_path,
 )
 from ray.serve._private.long_poll import LongPollHost
@@ -119,6 +120,9 @@ class ServeController:
             component_name="controller", component_id=str(os.getpid())
         )
         configure_component_memory_profiler(
+            component_name="controller", component_id=str(os.getpid())
+        )
+        self.cpu_profiler, self.cpu_profiler_log = configure_component_cpu_profiler(
             component_name="controller", component_id=str(os.getpid())
         )
         if RAY_SERVE_CONTROLLER_CALLBACK_IMPORT_PATH:
@@ -1029,6 +1033,27 @@ class ServeController:
             return
 
         await self._shutdown.wait()
+
+    def _save_cpu_profile_data(self) -> str:
+        """Saves CPU profiling data, if CPU profiling is enabled.
+
+        Logs a warning if CPU profiling is disabled.
+        """
+
+        if self.cpu_profiler is not None:
+            import marshal
+
+            self.cpu_profiler.snapshot_stats()
+            with open(self.cpu_profiler_log, "wb") as f:
+                marshal.dump(self.cpu_profiler.stats, f)
+            logger.info(f'Saved CPU profile data to file "{self.cpu_profiler_log}"')
+            return self.cpu_profiler_log
+        else:
+            logger.error(
+                "Attempted to save CPU profile data, but failed because no "
+                "CPU profiler was running! Enable CPU profiling by enabling "
+                "the RAY_SERVE_ENABLE_CPU_PROFILING env var."
+            )
 
 
 @ray.remote(num_cpus=0)
