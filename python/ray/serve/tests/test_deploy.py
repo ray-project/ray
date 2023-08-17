@@ -211,7 +211,7 @@ def test_redeploy_single_replica(serve_instance, use_handle):
     def call(block=False):
         if use_handle:
             handle = serve.get_deployment_handle(name, "app")
-            ret = ray.get(handle.handler.remote(block))
+            ret = handle.handler.remote(block).result()
         else:
             ret = requests.get(
                 f"http://localhost:8000/{name}", params={"block": block}
