@@ -6,13 +6,13 @@ except ImportError:
     pyarrow = None
 
 if TYPE_CHECKING:
-    from ray.data._internal.sort import SortKeyT
+    from ray.data._internal.sort import SortKey
 
 
-def sort(table: "pyarrow.Table", key: "SortKeyT", descending: bool) -> "pyarrow.Table":
+def sort(table: "pyarrow.Table", sort_key: "SortKey") -> "pyarrow.Table":
     import pyarrow.compute as pac
 
-    indices = pac.sort_indices(table, sort_keys=key)
+    indices = pac.sort_indices(table, sort_keys=sort_key.to_arrow_sort_args())
     return take_table(table, indices)
 
 
@@ -256,10 +256,12 @@ def concat(blocks: List["pyarrow.Table"]) -> "pyarrow.Table":
 
 
 def concat_and_sort(
-    blocks: List["pyarrow.Table"], key: "SortKeyT", descending: bool
+    blocks: List["pyarrow.Table"], sort_key: "SortKey"
 ) -> "pyarrow.Table":
+    import pyarrow.compute as pac
+
     ret = concat(blocks)
-    indices = pyarrow.compute.sort_indices(ret, sort_keys=key)
+    indices = pac.sort_indices(ret, sort_keys=sort_key.to_arrow_sort_args())
     return take_table(ret, indices)
 
 
@@ -284,3 +286,17 @@ def combine_chunks(table: "pyarrow.Table") -> "pyarrow.Table":
             arr = col.combine_chunks()
         new_cols.append(arr)
     return pyarrow.Table.from_arrays(new_cols, schema=table.schema)
+
+
+def to_pylist(table: "pyarrow.Table") -> "pyarrow.Table":
+    """Convert the Table to a list of rows / dictionaries.
+
+    Required for compatibility with Arrow 6.
+    """
+    pydict = table.to_pydict()
+    names = table.schema.names
+    pylist = [
+        {column: pydict[column][row] for column in names}
+        for row in range(table.num_rows)
+    ]
+    return pylist

@@ -449,8 +449,8 @@ class WandbLoggerCallback(LoggerCallback):
 
             import random
 
-            from ray import tune
-            from ray.air import session, RunConfig
+            from ray import train, tune
+            from ray.train import RunConfig
             from ray.air.integrations.wandb import WandbLoggerCallback
 
 
@@ -459,7 +459,7 @@ class WandbLoggerCallback(LoggerCallback):
                 for epoch in range(2, config["epochs"]):
                     acc = 1 - (2 + config["lr"]) ** -epoch - random.random() / epoch - offset
                     loss = (2 + config["lr"]) ** -epoch + random.random() / epoch + offset
-                    session.report({"acc": acc, "loss": loss})
+                    train.report({"acc": acc, "loss": loss})
 
 
             tuner = tune.Tuner(
@@ -636,10 +636,17 @@ class WandbLoggerCallback(LoggerCallback):
                 num_cpus=0,
                 **_force_on_current_node(),
                 runtime_env={"env_vars": env_vars},
+                max_restarts=-1,
+                max_task_retries=-1,
             )(self._logger_actor_cls)
 
         self._trial_queues[trial] = Queue(
-            actor_options={"num_cpus": 0, **_force_on_current_node()}
+            actor_options={
+                "num_cpus": 0,
+                **_force_on_current_node(),
+                "max_restarts": -1,
+                "max_task_retries": -1,
+            }
         )
         self._trial_logging_actors[trial] = self._remote_logger_class.remote(
             logdir=trial.local_path,

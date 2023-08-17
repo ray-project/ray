@@ -3,7 +3,7 @@
 import argparse
 
 import ray
-from ray import air, tune
+from ray import train, tune
 from ray.tune.schedulers.pb2 import PB2
 from ray.tune.examples.pbt_function import pbt_function
 
@@ -29,13 +29,13 @@ if __name__ == "__main__":
 
     tuner = tune.Tuner(
         pbt_function,
-        run_config=air.RunConfig(
+        run_config=train.RunConfig(
             name="pbt_test",
             verbose=False,
             stop={
                 "training_iteration": 30,
             },
-            failure_config=air.FailureConfig(
+            failure_config=train.FailureConfig(
                 fail_fast=True,
             ),
         ),

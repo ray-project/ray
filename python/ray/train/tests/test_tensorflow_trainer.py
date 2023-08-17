@@ -2,18 +2,16 @@ import os
 import pytest
 
 import ray
-from ray.air import session
+from ray import train
+from ray.train import ScalingConfig
 from ray.train.examples.tf.tensorflow_regression_example import (
     train_func as tensorflow_linear_train_func,
 )
-from ray.air.config import ScalingConfig
 from ray.data.preprocessors import Concatenator
-from ray.train.batch_predictor import BatchPredictor
 from ray.train.constants import TRAIN_DATASET_KEY
 from ray.train.tensorflow import (
-    TensorflowPredictor,
     TensorflowTrainer,
-    TensorflowCheckpoint,
+    LegacyTensorflowCheckpoint,
 )
 from ray.train.tests.dummy_preprocessor import DummyPreprocessor
 
@@ -72,7 +70,7 @@ def test_tensorflow_linear(ray_start_4_cpus, num_workers):
 def test_tensorflow_e2e(ray_start_4_cpus):
     def train_func():
         model = build_model()
-        session.report({}, checkpoint=TensorflowCheckpoint.from_model(model))
+        train.report({}, checkpoint=LegacyTensorflowCheckpoint.from_model(model))
 
     scaling_config = ScalingConfig(num_workers=2)
     trainer = TensorflowTrainer(
@@ -83,19 +81,12 @@ def test_tensorflow_e2e(ray_start_4_cpus):
     result = trainer.fit()
     assert isinstance(result.checkpoint.get_preprocessor(), DummyPreprocessor)
 
-    batch_predictor = BatchPredictor.from_checkpoint(
-        result.checkpoint, TensorflowPredictor, model_definition=build_model
-    )
-
-    predict_dataset = ray.data.range(3)
-    predictions = batch_predictor.predict(predict_dataset)
-    assert predictions.count() == 3
-
 
 def test_report_and_load_using_ml_session(ray_start_4_cpus):
     def train_func():
-        if session.get_checkpoint():
-            with session.get_checkpoint().as_directory() as checkpoint_dir:
+        checkpoint = train.get_checkpoint()
+        if checkpoint:
+            with checkpoint.as_directory() as checkpoint_dir:
                 import tensorflow as tf
 
                 model = tf.keras.models.load_model(checkpoint_dir)
@@ -103,9 +94,9 @@ def test_report_and_load_using_ml_session(ray_start_4_cpus):
             model = build_model()
 
         model.save("my_model")
-        session.report(
+        train.report(
             metrics={"iter": 1},
-            checkpoint=TensorflowCheckpoint.from_saved_model("my_model"),
+            checkpoint=LegacyTensorflowCheckpoint.from_saved_model("my_model"),
         )
 
     scaling_config = ScalingConfig(num_workers=2)

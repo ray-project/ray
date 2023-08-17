@@ -1,17 +1,18 @@
 import os
 import tempfile
-from typing import Optional
+from typing import List, Optional
 
 import numpy as np
 import pandas as pd
 import pytest
 import requests
+from starlette.requests import Request
 from fastapi import Depends, FastAPI
 
 import ray
 from ray import serve
-from ray.air.checkpoint import Checkpoint
-from ray.serve.air_integrations import _BatchingManager, PredictorDeployment
+from ray.train import Checkpoint
+from ray.serve.air_integrations import _BatchingManager
 from ray.serve.dag import InputNode
 from ray.serve.deployment_graph import RayServeDAGHandle
 from ray.serve._private.deployment_graph_build import build
@@ -159,70 +160,78 @@ def send_request(**requests_kargs):
 
 
 def test_simple_adder(serve_instance):
-    PredictorDeployment.options(name="Adder").deploy(
-        predictor_cls=AdderPredictor,
+    @serve.deployment
+    class AdderDeployment:
+        def __init__(self, checkpoint: Checkpoint):
+            self.predictor = AdderPredictor.from_checkpoint(checkpoint)
+
+        async def __call__(self, request: Request):
+            data = await request.json()
+            return self.predictor.predict(np.array(data["array"]))
+
+    AdderDeployment.options(name="Adder").deploy(
         checkpoint=Checkpoint.from_dict({"increment": 2}),
     )
     resp = ray.get(send_request.remote(json={"array": [40]}))
-    assert resp == {"value": [42], "batch_size": 1}
+    assert resp == [{"value": 42, "batch_size": 1}]
 
 
 def test_predictor_kwargs(serve_instance):
-    PredictorDeployment.options(name="Adder").deploy(
-        predictor_cls=AdderPredictor,
+    @serve.deployment
+    class AdderDeployment:
+        def __init__(self, checkpoint: Checkpoint):
+            self.predictor = AdderPredictor.from_checkpoint(checkpoint)
+
+        async def __call__(self, request: Request):
+            data = await request.json()
+            return self.predictor.predict(
+                np.array(data["array"]), override_increment=100
+            )
+
+    AdderDeployment.options(name="Adder").deploy(
         checkpoint=Checkpoint.from_dict({"increment": 2}),
-        predict_kwargs={"override_increment": 100},
     )
+
     resp = ray.get(send_request.remote(json={"array": [40]}))
-    assert resp == {"value": [140], "batch_size": 1}
+    assert resp == [{"value": 140, "batch_size": 1}]
 
 
 def test_predictor_from_checkpoint_kwargs(serve_instance):
-    PredictorDeployment.options(name="Adder").deploy(
-        predictor_cls=AdderPredictor,
+    @serve.deployment
+    class AdderDeployment:
+        def __init__(self, checkpoint: Checkpoint):
+            self.predictor = AdderPredictor.from_checkpoint(checkpoint, do_double=True)
+
+        async def __call__(self, request: Request):
+            data = await request.json()
+            return self.predictor.predict(np.array(data["array"]))
+
+    AdderDeployment.options(name="Adder").deploy(
         checkpoint=Checkpoint.from_dict({"increment": 2}),
-        do_double=True,
     )
     resp = ray.get(send_request.remote(json={"array": [40]}))
-    assert resp == {"value": [84], "batch_size": 1}
+    assert resp == [{"value": 84, "batch_size": 1}]
 
 
 def test_batching(serve_instance):
-    PredictorDeployment.options(name="Adder").deploy(
-        predictor_cls=AdderPredictor,
+    @serve.deployment
+    class AdderDeployment:
+        def __init__(self, checkpoint: Checkpoint):
+            self.predictor = AdderPredictor.from_checkpoint(checkpoint)
+
+        @serve.batch(max_batch_size=2, batch_wait_timeout_s=1000)
+        async def __call__(self, requests: List[Request]):
+            items = [await request.json() for request in requests]
+            batch = np.concatenate([np.array(item["array"]) for item in items])
+            return self.predictor.predict(batch)
+
+    AdderDeployment.options(name="Adder").deploy(
         checkpoint=Checkpoint.from_dict({"increment": 2}),
-        batching_params=dict(max_batch_size=2, batch_wait_timeout_s=1000),
     )
 
     refs = [send_request.remote(json={"array": [40]}) for _ in range(2)]
     for resp in ray.get(refs):
-        assert resp == {"value": [42], "batch_size": 2}
-
-
-class TakeArrayReturnDataFramePredictor(Predictor):
-    def __init__(self, increment: int) -> None:
-        self.increment = increment
-
-    @classmethod
-    def from_checkpoint(
-        cls, checkpoint: Checkpoint
-    ) -> "TakeArrayReturnDataFramePredictor":
-        return cls(checkpoint.to_dict()["increment"])
-
-    def predict(self, data: np.ndarray) -> DataBatchType:
-        return pd.DataFrame(data + self.increment, columns=["col_a", "col_b"])
-
-
-def test_mixed_input_output_type_with_batching(serve_instance):
-    PredictorDeployment.options(name="Adder").deploy(
-        predictor_cls=TakeArrayReturnDataFramePredictor,
-        checkpoint=Checkpoint.from_dict({"increment": 2}),
-        batching_params=dict(max_batch_size=2, batch_wait_timeout_s=1000),
-    )
-
-    refs = [send_request.remote(json={"array": [40, 45]}) for _ in range(2)]
-    for resp in ray.get(refs):
-        assert resp == [{"col_a": 42.0, "col_b": 47.0}]
+        assert resp == {"value": 42, "batch_size": 2}
 
 
 app = FastAPI()
@@ -244,15 +253,20 @@ def test_air_integrations_in_pipeline(serve_instance):
     uri = f"file://{path}/test_uri"
     Checkpoint.from_dict({"increment": 2}).to_uri(uri)
 
-    predictor_cls = "ray.serve.tests.test_air_integrations.AdderPredictor"
+    @serve.deployment
+    class AdderDeployment:
+        def __init__(self, checkpoint: Checkpoint):
+            self.predictor = AdderPredictor.from_checkpoint(checkpoint)
+
+        async def __call__(self, data):
+            return self.predictor.predict(data)
 
     with InputNode() as dag_input:
-        m1 = PredictorDeployment.bind(
-            predictor_cls=predictor_cls,
-            checkpoint=uri,
+        m1 = AdderDeployment.bind(
+            checkpoint=Checkpoint.from_uri(uri),
         )
-        dag = m1.predict.bind(dag_input)
-    deployments = build(Ingress.bind(dag))
+        dag = m1.__call__.bind(dag_input)
+    deployments = build(Ingress.bind(dag), "")
     for d in deployments:
         d.deploy()
 
@@ -267,19 +281,29 @@ def test_air_integrations_reconfigure(serve_instance):
     uri = f"file://{path}/test_uri"
     Checkpoint.from_dict({"increment": 2}).to_uri(uri)
 
-    predictor_cls = "ray.serve.tests.test_air_integrations.AdderPredictor"
+    @serve.deployment
+    class AdderDeployment:
+        def __init__(self, checkpoint: Checkpoint):
+            self.predictor = AdderPredictor.from_checkpoint(checkpoint)
+
+        def reconfigure(self, config):
+            self.predictor = AdderPredictor.from_checkpoint(
+                Checkpoint.from_dict(config["checkpoint"])
+            )
+
+        async def __call__(self, data):
+            return self.predictor.predict(data)
+
     additional_config = {
         "checkpoint": {"increment": 5},
-        "predictor_cls": "ray.serve.tests.test_air_integrations.AdderPredictor",
     }
 
     with InputNode() as dag_input:
-        m1 = PredictorDeployment.options(user_config=additional_config).bind(
-            predictor_cls=predictor_cls,
-            checkpoint=uri,
+        m1 = AdderDeployment.options(user_config=additional_config).bind(
+            checkpoint=Checkpoint.from_uri(uri),
         )
-        dag = m1.predict.bind(dag_input)
-    deployments = build(Ingress.bind(dag))
+        dag = m1.__call__.bind(dag_input)
+    deployments = build(Ingress.bind(dag), "")
     for d in deployments:
         d.deploy()
 

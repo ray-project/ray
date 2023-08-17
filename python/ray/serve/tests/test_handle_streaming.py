@@ -57,6 +57,18 @@ class SyncStreamer:
         return n
 
 
+@serve.deployment
+def sync_gen_function(n: int):
+    for i in range(n):
+        yield i
+
+
+@serve.deployment
+async def async_gen_function(n: int):
+    for i in range(n):
+        yield i
+
+
 @pytest.mark.skipif(
     not RAY_SERVE_ENABLE_NEW_ROUTING, reason="Routing FF must be enabled."
 )
@@ -268,6 +280,35 @@ class TestDeploymentHandleStreaming:
                     assert await (await obj_ref_gen2.__anext__())
 
         h = serve.run(Delegate.bind(deployment.bind(), deployment.bind()))
+        ray.get(h.remote())
+
+
+@pytest.mark.skipif(
+    not RAY_SERVE_ENABLE_NEW_ROUTING, reason="Routing FF must be enabled."
+)
+@pytest.mark.parametrize("deployment", [sync_gen_function, async_gen_function])
+class TestGeneratorFunctionDeployment:
+    def test_app_handle(self, deployment: Deployment):
+        h = serve.run(deployment.bind()).options(stream=True)
+        obj_ref_gen = h.remote(5)
+        assert ray.get(list(obj_ref_gen)) == list(range(5))
+
+    def test_deployment_handle(self, deployment: Deployment):
+        @serve.deployment
+        class Delegate:
+            def __init__(self, f: RayServeHandle):
+                self._f = f.options(stream=True)
+
+            async def __call__(self):
+                obj_ref_gen = await self._f.remote(5)
+
+                results = []
+                async for obj_ref in obj_ref_gen:
+                    results.append(await obj_ref)
+
+                assert results == list(range(5))
+
+        h = serve.run(Delegate.bind(deployment.bind()))
         ray.get(h.remote())
 
 

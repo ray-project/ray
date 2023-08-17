@@ -28,9 +28,6 @@
 #include "ray/util/util.h"
 
 namespace ray {
-
-class GcsClientTest;
-class GcsClientTest_TestCheckAlive_Test;
 namespace rpc {
 
 /// Represents an outgoing gRPC request.
@@ -148,10 +145,10 @@ class ClientCallImpl : public ClientCall {
 /// The lifecycle of a `ClientCallTag` is as follows.
 ///
 /// When a client submits a new gRPC request, a new `ClientCallTag` object will be created
-/// by `ClientCallManager::CreateCall`. Then the object will be used as the tag of
+/// by `ClientCallMangager::CreateCall`. Then the object will be used as the tag of
 /// `CompletionQueue`.
 ///
-/// When the reply is received, `ClientCallManager` will get the address of this object
+/// When the reply is received, `ClientCallMangager` will get the address of this object
 /// via `CompletionQueue`'s tag. And the manager should call
 /// `GetCall()->OnReplyReceived()` and then delete this object.
 class ClientCallTag {
@@ -270,19 +267,8 @@ class ClientCallManager {
     return call;
   }
 
-  void SetClusterId(const ClusterID &cluster_id) {
-    if (!cluster_id_.IsNil() && (cluster_id_ != cluster_id)) {
-      RAY_LOG(FATAL) << "Expected cluster ID to be Nil or " << cluster_id << ", but got"
-                     << cluster_id_;
-    }
-    cluster_id_ = cluster_id;
-  }
-
   /// Get the main service of this rpc.
   instrumented_io_context &GetMainService() { return main_service_; }
-
-  friend class ray::GcsClientTest;
-  FRIEND_TEST(ray::GcsClientTest, TestCheckAlive);
 
  private:
   /// This function runs in a background thread. It keeps polling events from the

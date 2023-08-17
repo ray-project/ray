@@ -145,7 +145,7 @@ async def test_get_all_job_info(call_ray_start, tmp_path):  # noqa: F811
     )
 
     found = False
-    for job_table_entry in (await gcs_aio_client.get_all_job_info()).job_info_list:
+    for job_table_entry in (await gcs_aio_client.get_all_job_info()).values():
         if job_table_entry.config.metadata.get(JOB_ID_METADATA_KEY) == submission_id:
             found = True
             # Check that the job info is populated correctly.
@@ -191,7 +191,7 @@ async def test_get_all_job_info_with_is_running_tasks(call_ray_start):  # noqa: 
     async def check_is_running_tasks(job_id, expected_is_running_tasks):
         """Return True if the driver indicated by job_id is currently running tasks."""
         found = False
-        for job_table_entry in (await gcs_aio_client.get_all_job_info()).job_info_list:
+        for job_table_entry in (await gcs_aio_client.get_all_job_info()).values():
             if job_table_entry.job_id.hex() == job_id:
                 found = True
                 return job_table_entry.is_running_tasks == expected_is_running_tasks
@@ -1136,6 +1136,7 @@ async def test_job_runs_with_no_resources_available(job_manager):
         ray.cancel(hanging_ref)
 
 
+@pytest.mark.asyncio
 async def test_failed_job_logs_max_char(job_manager):
     """Test failed jobs does not print out too many logs"""
 
@@ -1148,7 +1149,7 @@ async def test_failed_job_logs_max_char(job_manager):
         entrypoint=print_large_logs_cmd,
     )
 
-    await async_wait_for_condition(
+    await async_wait_for_condition_async_predicate(
         check_job_failed, job_manager=job_manager, job_id=job_id
     )
 
@@ -1156,7 +1157,8 @@ async def test_failed_job_logs_max_char(job_manager):
     job_info = await job_manager.get_job_info(job_id)
     assert job_info
     assert len(job_info.message) == 20000 + len(
-        "Job failed due to an application error, " "last available logs:\n"
+        "Job entrypoint command failed with exit code 1,"
+        " last available logs (truncated to 20,000 chars):\n"
     )
 
 

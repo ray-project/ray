@@ -210,6 +210,9 @@ class TestTrajectoryViewAPI(unittest.TestCase):
                 sgd_minibatch_size=201,
                 num_sgd_iter=5,
             )
+            # Batch-norm models have not been migrated to the RL Module API yet.
+            .training(_enable_learner_api=False)
+            .rl_module(_enable_rl_module_api=False)
         )
 
         for _ in framework_iterator(config, frameworks="tf2"):

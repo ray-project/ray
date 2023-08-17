@@ -37,9 +37,6 @@ install_bazel() {
   fi
 
   "${SCRIPT_DIR}"/install-bazel.sh
-  if [ -f /etc/profile.d/bazel.sh ]; then
-    . /etc/profile.d/bazel.sh
-  fi
 }
 
 install_base() {
@@ -232,7 +229,7 @@ install_upgrade_pip() {
   fi
 
   if "${python}" -m pip --version || "${python}" -m ensurepip; then  # Configure pip if present
-    "${python}" -m pip install --upgrade "pip<23.1"
+    "${python}" -m pip install --upgrade pip
 
     # If we're in a CI environment, do some configuration
     if [ "${CI-}" = true ]; then
@@ -354,6 +351,14 @@ install_pip_packages() {
     requirements_files+=("${WORKSPACE_DIR}/python/requirements/ml/rllib-test-requirements.txt")
     #TODO(amogkam): Add this back to rllib-requirements.txt once mlagents no longer pins torch<1.9.0 version.
     pip install --no-dependencies mlagents==0.28.0
+
+    # Install MuJoCo.
+    sudo apt install libosmesa6-dev libgl1-mesa-glx libglfw3 patchelf -y
+    wget https://mujoco.org/download/mujoco210-linux-x86_64.tar.gz
+    mkdir -p /root/.mujoco
+    mv mujoco210-linux-x86_64.tar.gz /root/.mujoco/.
+    (cd /root/.mujoco && tar -xf /root/.mujoco/mujoco210-linux-x86_64.tar.gz)
+    export LD_LIBRARY_PATH=${LD_LIBRARY_PATH:-}:/root/.mujoco/mujoco210/bin
   fi
 
   # Additional Train test dependencies.
@@ -457,6 +462,16 @@ install_pip_packages() {
 
   # Generate the pip command with collected requirements files
   pip_cmd="pip install -U -c ${WORKSPACE_DIR}/python/requirements.txt"
+
+  if [[ -f "${WORKSPACE_DIR}/python/requirements_compiled.txt"  &&  "${PYTHON-}" != "3.7" && "${OSTYPE}" != msys ]]; then
+    # On Python 3.7, we don't, as the dependencies are compiled for 3.8+
+    # and we don't build ray-ml images. This means we don't have to keep
+    # consistency between CI and docker images.
+    # On Windows, some pinned dependencies are not built for win, so we
+    # skip this until we have a good wy to resolve cross-platform dependencies.
+    pip_cmd+=" -c ${WORKSPACE_DIR}/python/requirements_compiled.txt"
+  fi
+
   for file in "${requirements_files[@]}"; do
      pip_cmd+=" -r ${file}"
   done
@@ -493,9 +508,9 @@ install_pip_packages() {
 }
 
 install_thirdparty_packages() {
-  # shellcheck disable=SC2262
-  alias pip="python -m pip"
-  CC=gcc pip install psutil setproctitle==1.2.2 colorama --target="${WORKSPACE_DIR}/python/ray/thirdparty_files"
+  mkdir -p "${WORKSPACE_DIR}/python/ray/thirdparty_files"
+  RAY_THIRDPARTY_FILES="$(realpath "${WORKSPACE_DIR}/python/ray/thirdparty_files")"
+  CC=gcc python -m pip install psutil setproctitle==1.2.2 colorama --target="${RAY_THIRDPARTY_FILES}"
 }
 
 install_dependencies() {
@@ -533,7 +548,7 @@ install_dependencies() {
   install_thirdparty_packages
 }
 
-install_dependencies "$@"
+install_dependencies
 
 # Pop caller's shell options (quietly)
 { set -vx; eval "${SHELLOPTS_STACK##*|}"; SHELLOPTS_STACK="${SHELLOPTS_STACK%|*}"; } 2> /dev/null

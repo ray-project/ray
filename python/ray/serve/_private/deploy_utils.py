@@ -1,4 +1,4 @@
-from typing import Dict, Tuple, Union, Callable, Type, Optional, Any
+from typing import Any, Callable, Dict, List, Optional, Tuple, Type, Union
 import hashlib
 import json
 import logging
@@ -7,7 +7,7 @@ import time
 from ray.serve.config import ReplicaConfig, DeploymentConfig
 from ray.serve.schema import ServeApplicationSchema
 from ray.serve._private.constants import SERVE_LOGGER_NAME
-from ray.serve._private.common import DeploymentInfo
+from ray.serve._private.common import DeploymentInfo, DeploymentID
 
 import ray
 import ray.util.serialization_addons
@@ -20,13 +20,15 @@ def get_deploy_args(
     deployment_def: Union[Callable, Type[Callable], str],
     init_args: Tuple[Any],
     init_kwargs: Dict[Any, Any],
+    ingress: bool = False,
     ray_actor_options: Optional[Dict] = None,
+    placement_group_bundles: Optional[List[Dict[str, float]]] = None,
+    placement_group_strategy: Optional[str] = None,
     config: Optional[Union[DeploymentConfig, Dict[str, Any]]] = None,
     version: Optional[str] = None,
     route_prefix: Optional[str] = None,
     is_driver_deployment: Optional[str] = None,
     docs_path: Optional[str] = None,
-    app_name: Optional[str] = None,
 ) -> Dict:
     """
     Takes a deployment's configuration, and returns the arguments needed
@@ -53,6 +55,8 @@ def get_deploy_args(
         init_args=init_args,
         init_kwargs=init_kwargs,
         ray_actor_options=ray_actor_options,
+        placement_group_bundles=placement_group_bundles,
+        placement_group_strategy=placement_group_strategy,
     )
 
     if isinstance(config, dict):
@@ -64,26 +68,15 @@ def get_deploy_args(
 
     deployment_config.version = version
 
-    if (
-        deployment_config.autoscaling_config is not None
-        and deployment_config.max_concurrent_queries
-        < deployment_config.autoscaling_config.target_num_ongoing_requests_per_replica  # noqa: E501
-    ):
-        logger.warning(
-            "Autoscaling will never happen, "
-            "because 'max_concurrent_queries' is less than "
-            "'target_num_ongoing_requests_per_replica' now."
-        )
-
     controller_deploy_args = {
-        "name": name,
+        "deployment_name": name,
         "deployment_config_proto_bytes": deployment_config.to_proto_bytes(),
         "replica_config_proto_bytes": replica_config.to_proto_bytes(),
         "route_prefix": route_prefix,
         "deployer_job_id": ray.get_runtime_context().get_job_id(),
         "is_driver_deployment": is_driver_deployment,
         "docs_path": docs_path,
-        "app_name": app_name,
+        "ingress": ingress,
     }
 
     return controller_deploy_args
@@ -95,8 +88,10 @@ def deploy_args_to_deployment_info(
     replica_config_proto_bytes: bytes,
     deployer_job_id: Union[str, bytes],
     route_prefix: Optional[str],
+    docs_path: Optional[str],
     is_driver_deployment: Optional[bool] = False,
     app_name: Optional[str] = None,
+    ingress: bool = False,
     **kwargs,
 ) -> DeploymentInfo:
     """Takes deployment args passed to the controller after building an application and
@@ -116,7 +111,7 @@ def deploy_args_to_deployment_info(
         ).hex()
 
     return DeploymentInfo(
-        actor_name=deployment_name,
+        actor_name=str(DeploymentID(deployment_name, app_name)),
         version=version,
         deployment_config=deployment_config,
         replica_config=replica_config,
@@ -125,6 +120,8 @@ def deploy_args_to_deployment_info(
         is_driver_deployment=is_driver_deployment,
         app_name=app_name,
         route_prefix=route_prefix,
+        docs_path=docs_path,
+        ingress=ingress,
     )
 
 
@@ -141,6 +138,7 @@ def get_app_code_version(app_config: ServeApplicationSchema) -> str:
         {
             "import_path": app_config.import_path,
             "runtime_env": app_config.runtime_env,
+            "args": app_config.args,
         },
         sort_keys=True,
     ).encode("utf-8")

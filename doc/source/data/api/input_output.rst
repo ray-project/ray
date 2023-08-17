@@ -65,6 +65,7 @@ Images
    :toctree: doc/
 
    read_images
+   Dataset.write_images
 
 Binary
 ------
@@ -224,7 +225,6 @@ Partitioning API
 
    datasource.Partitioning
    datasource.PartitionStyle
-   datasource.PathPartitionEncoder
    datasource.PathPartitionParser
    datasource.PathPartitionFilter
    datasource.FileExtensionFilter

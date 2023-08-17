@@ -6,10 +6,10 @@ import tensorflow as tf
 
 from ray.util import log_once
 from ray.train.predictor import DataBatchType
-from ray.air.checkpoint import Checkpoint
+from ray.train import Checkpoint
 from ray.air._internal.tensorflow_utils import convert_ndarray_batch_to_tf_tensor_batch
 from ray.train._internal.dl_predictor import DLPredictor
-from ray.train.tensorflow.tensorflow_checkpoint import TensorflowCheckpoint
+from ray.train.tensorflow.tensorflow_checkpoint import LegacyTensorflowCheckpoint
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
 if TYPE_CHECKING:
@@ -95,10 +95,10 @@ class TensorflowPredictor(DLPredictor):
             model_definition: A callable that returns a TensorFlow Keras model
                 to use. Model weights will be loaded from the checkpoint.
                 This is only needed if the `checkpoint` was created from
-                `TensorflowCheckpoint.from_model`.
+                `LegacyTensorflowCheckpoint.from_model`.
             use_gpu: Whether GPU should be used during prediction.
         """
-        checkpoint = TensorflowCheckpoint.from_checkpoint(checkpoint)
+        checkpoint = LegacyTensorflowCheckpoint.from_checkpoint(checkpoint)
         model = checkpoint.get_model(model_definition)
         preprocessor = checkpoint.get_preprocessor()
         return cls(
@@ -181,43 +181,45 @@ class TensorflowPredictor(DLPredictor):
 
         Examples:
 
-            >>> import numpy as np
-            >>> import tensorflow as tf
-            >>> from ray.train.tensorflow import TensorflowPredictor
-            >>>
-            >>> def build_model():
-            ...     return tf.keras.Sequential(
-            ...         [
-            ...             tf.keras.layers.InputLayer(input_shape=()),
-            ...             tf.keras.layers.Flatten(),
-            ...             tf.keras.layers.Dense(1),
-            ...         ]
-            ...     )
-            >>>
-            >>> weights = [np.array([[2.0]]), np.array([0.0])]
-            >>> predictor = TensorflowPredictor(model=build_model())
-            >>>
-            >>> data = np.asarray([1, 2, 3])
-            >>> predictions = predictor.predict(data) # doctest: +SKIP
+        .. testcode::
 
-            >>> import pandas as pd
-            >>> import tensorflow as tf
-            >>> from ray.train.tensorflow import TensorflowPredictor
-            >>>
-            >>> def build_model():
-            ...     input1 = tf.keras.layers.Input(shape=(1,), name="A")
-            ...     input2 = tf.keras.layers.Input(shape=(1,), name="B")
-            ...     merged = tf.keras.layers.Concatenate(axis=1)([input1, input2])
-            ...     output = tf.keras.layers.Dense(2, input_dim=2)(merged)
-            ...     return tf.keras.models.Model(
-            ...         inputs=[input1, input2], outputs=output)
-            >>>
-            >>> predictor = TensorflowPredictor(model=build_model())
-            >>>
-            >>> # Pandas dataframe.
-            >>> data = pd.DataFrame([[1, 2], [3, 4]], columns=["A", "B"])
-            >>>
-            >>> predictions = predictor.predict(data) # doctest: +SKIP
+            import numpy as np
+            import tensorflow as tf
+            from ray.train.tensorflow import TensorflowPredictor
+
+            def build_model():
+                return tf.keras.Sequential(
+                    [
+                        tf.keras.layers.InputLayer(input_shape=()),
+                        tf.keras.layers.Flatten(),
+                        tf.keras.layers.Dense(1),
+                    ]
+                )
+
+            weights = [np.array([[2.0]]), np.array([0.0])]
+            predictor = TensorflowPredictor(model=build_model())
+
+            data = np.asarray([1, 2, 3])
+            predictions = predictor.predict(data)
+
+            import pandas as pd
+            import tensorflow as tf
+            from ray.train.tensorflow import TensorflowPredictor
+
+            def build_model():
+                input1 = tf.keras.layers.Input(shape=(1,), name="A")
+                input2 = tf.keras.layers.Input(shape=(1,), name="B")
+                merged = tf.keras.layers.Concatenate(axis=1)([input1, input2])
+                output = tf.keras.layers.Dense(2, input_dim=2)(merged)
+                return tf.keras.models.Model(
+                    inputs=[input1, input2], outputs=output)
+
+            predictor = TensorflowPredictor(model=build_model())
+
+            # Pandas dataframe.
+            data = pd.DataFrame([[1, 2], [3, 4]], columns=["A", "B"])
+
+            predictions = predictor.predict(data)
 
         Returns:
             DataBatchType: Prediction result. The return type will be the same as the

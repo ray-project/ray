@@ -7,6 +7,7 @@ import subprocess
 import sys
 import time
 
+from ray_release.byod.build_ray import build_ray
 from ray_release.config import RELEASE_PACKAGE_DIR
 from ray_release.configs.global_config import get_global_config
 from ray_release.logger import logger
@@ -17,8 +18,8 @@ from ray_release.test import (
 )
 
 DATAPLANE_S3_BUCKET = "ray-release-automation-results"
-DATAPLANE_FILENAME = "dataplane_20230622.tgz"
-DATAPLANE_DIGEST = "141788597b798e407f6131d10f34d09bbae4648b3acd91d776e3e8ef013b64bb"
+DATAPLANE_FILENAME = "dataplane_20230718.tgz"
+DATAPLANE_DIGEST = "a3ad426b05f5cf1981fe684ccbffc1dded5e1071a99184d1072b7fc7b4daf8bc"
 BASE_IMAGE_WAIT_TIMEOUT = 7200
 BASE_IMAGE_WAIT_DURATION = 30
 RELEASE_BYOD_DIR = os.path.join(RELEASE_PACKAGE_DIR, "ray_release/byod")
@@ -105,13 +106,14 @@ def build_anyscale_base_byod_images(tests: List[Test]) -> None:
     """
     Builds the Anyscale BYOD images for the given tests.
     """
+    build_ray()
     _download_dataplane_build_file()
     to_be_built = {}
     built = set()
     for test in tests:
         if not test.is_byod_cluster():
             continue
-        to_be_built[test.get_ray_image()] = test
+        to_be_built[test.get_anyscale_base_byod_image()] = test
 
     env = os.environ.copy()
     env["DOCKER_BUILDKIT"] = "1"
@@ -121,8 +123,7 @@ def build_anyscale_base_byod_images(tests: List[Test]) -> None:
         len(built) < len(to_be_built)
         and int(time.time()) - start < BASE_IMAGE_WAIT_TIMEOUT
     ):
-        for ray_image, test in to_be_built.items():
-            byod_image = test.get_anyscale_base_byod_image()
+        for byod_image, test in to_be_built.items():
             byod_requirements = (
                 f"{REQUIREMENTS_BYOD}_{test.get('python', PYTHON_VERSION)}.txt"
                 if test.get_byod_type() == "cpu"
@@ -130,8 +131,9 @@ def build_anyscale_base_byod_images(tests: List[Test]) -> None:
             )
             if _byod_image_exist(test):
                 logger.info(f"Image {byod_image} already exists")
-                built.add(ray_image)
+                built.add(byod_image)
                 continue
+            ray_image = test.get_ray_image()
             if not _ray_image_exist(ray_image):
                 # TODO(can): instead of waiting for the base image to be built, we can
                 #  build it ourselves
@@ -178,7 +180,7 @@ def build_anyscale_base_byod_images(tests: List[Test]) -> None:
                     env=env,
                 )
                 _validate_and_push(byod_image)
-                built.add(ray_image)
+                built.add(byod_image)
 
 
 def _validate_and_push(byod_image: str) -> None:
@@ -201,10 +203,14 @@ def _validate_and_push(byod_image: str) -> None:
         .decode("utf-8")
         .strip()
     )
-    expected_ray_commit = _get_ray_commit()
-    assert (
-        docker_ray_commit == expected_ray_commit
-    ), f"Expected ray commit {expected_ray_commit}, found {docker_ray_commit}"
+    if os.environ.get("RAY_IMAGE_TAG"):
+        logger.info(f"Ray commit from image: {docker_ray_commit}")
+    else:
+        expected_ray_commit = _get_ray_commit()
+        assert (
+            docker_ray_commit == expected_ray_commit
+        ), f"Expected ray commit {expected_ray_commit}, found {docker_ray_commit}"
+    logger.info(f"Pushing image to ECR: {byod_image}")
     subprocess.check_call(
         ["docker", "push", byod_image],
         stdout=sys.stderr,
@@ -250,6 +256,9 @@ def _byod_image_exist(test: Test, base_image: bool = True) -> bool:
     Checks if the given Anyscale BYOD image exists.
     """
     if os.environ.get("BYOD_NO_CACHE", False):
+        return False
+    if test.is_gce():
+        # TODO(can): check image existence on GCE; without this, we'll always rebuild
         return False
     client = boto3.client("ecr", region_name="us-west-2")
     image_tag = (

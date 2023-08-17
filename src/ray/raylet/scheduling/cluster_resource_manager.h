@@ -23,8 +23,8 @@
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "ray/common/bundle_location_index.h"
-#include "ray/raylet/scheduling/cluster_resource_data.h"
-#include "ray/raylet/scheduling/fixed_point.h"
+#include "ray/common/scheduling/cluster_resource_data.h"
+#include "ray/common/scheduling/fixed_point.h"
 #include "ray/raylet/scheduling/local_resource_manager.h"
 #include "ray/util/logging.h"
 #include "src/ray/protobuf/gcs.pb.h"
@@ -107,7 +107,7 @@ class ClusterResourceManager {
   /// Add available resource to a given node.
   /// Return false if such node doesn't exist.
   bool AddNodeAvailableResources(scheduling::NodeID node_id,
-                                 const ResourceRequest &resource_request);
+                                 const ResourceSet &resource_set);
 
   /// Update node available resources.
   /// NOTE: This method only updates the existing resources of the node, and the
@@ -129,7 +129,12 @@ class ClusterResourceManager {
     return nodes_.count(node_id) > 0;
   }
 
-  void DebugString(std::stringstream &buffer) const;
+  bool IsNodeDraining(const scheduling::NodeID &node_id) const {
+    const auto &node = map_find_or_die(nodes_, node_id);
+    return node.GetLocalView().is_draining;
+  }
+
+  std::string DebugString() const;
 
   BundleLocationIndex &GetBundleLocationIndex();
 

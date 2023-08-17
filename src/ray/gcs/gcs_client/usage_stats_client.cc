@@ -17,11 +17,10 @@
 namespace ray {
 namespace gcs {
 UsageStatsClient::UsageStatsClient(const std::string &gcs_address,
-                                   instrumented_io_context &io_service,
-                                   const ClusterID &cluster_id) {
+                                   instrumented_io_context &io_service) {
   GcsClientOptions options(gcs_address);
   gcs_client_ = std::make_unique<GcsClient>(options);
-  RAY_CHECK_OK(gcs_client_->Connect(io_service, cluster_id));
+  RAY_CHECK_OK(gcs_client_->Connect(io_service));
 }
 
 void UsageStatsClient::RecordExtraUsageTag(usage::TagKey key, const std::string &value) {

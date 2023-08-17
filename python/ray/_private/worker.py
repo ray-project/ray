@@ -73,7 +73,9 @@ from ray._private.ray_logging import (
 from ray._private.runtime_env.constants import RAY_JOB_CONFIG_JSON_ENV_VAR
 from ray._private.runtime_env.py_modules import upload_py_modules_if_needed
 from ray._private.runtime_env.working_dir import upload_working_dir_if_needed
-from ray._private.runtime_env.setup_hook import upload_worker_setup_hook_if_needed
+from ray._private.runtime_env.setup_hook import (
+    upload_worker_process_setup_hook_if_needed,
+)
 from ray._private.storage import _load_class
 from ray._private.utils import get_ray_doc_version
 from ray.exceptions import ObjectStoreFullError, RayError, RaySystemError, RayTaskError
@@ -424,8 +426,10 @@ class Worker:
         self.mode = None
         self.actors = {}
         # When the worker is constructed. Record the original value of the
-        # CUDA_VISIBLE_DEVICES environment variable.
-        self.original_gpu_ids = ray._private.utils.get_cuda_visible_devices()
+        # (CUDA_VISIBLE_DEVICES, NEURON_RT_VISIBLE_CORES, ..) environment variables.
+        self.original_gpu_and_accelerator_runtime_ids = (
+            ray._private.utils.get_gpu_and_accelerator_runtime_ids()
+        )
         # A dictionary that maps from driver id to SerializationContext
         # TODO: clean up the SerializationContext once the job finished.
         self.serialization_context_map = {}
@@ -830,6 +834,54 @@ class Worker:
             # Close the pubsub client to avoid leaking file descriptors.
             subscriber.close()
 
+    def get_resource_ids_for_resource(
+        self, resource_name: str, resource_regex: str
+    ) -> Union[List[str], List[int]]:
+        """Get the resource IDs that are assigned to the given resource.
+
+        Args:
+            resource_name: The name of the resource.
+            resource_regex: The regex of the resource.
+
+        Returns:
+            (List[str]) The IDs that are assigned to the given resource pre-configured.
+            (List[int]) The IDs that are assigned to the given resource.
+
+        """
+        resource_ids = self.core_worker.resource_ids()
+        assigned_ids = set()
+        # Handle both normal and placement group GPU, accelerator resources.
+        # Note: We should only get the GPU, accelerator ids from the placement
+        # group resource that does not contain the bundle index!
+        import re
+
+        for resource, assignment in resource_ids.items():
+            if resource == resource_name or re.match(resource_regex, resource):
+                for resource_id, _ in assignment:
+                    assigned_ids.add(resource_id)
+
+        # If the user had already set the environment variables
+        # (CUDA_VISIBLE_DEVICES, NEURON_RT_VISIBLE_CORES, ..) then respect that
+        # in the sense that only IDs that appear in (CUDA_VISIBLE_DEVICES,
+        # NEURON_RT_VISIBLE_CORES, ..) should be returned.
+        if (
+            self.original_gpu_and_accelerator_runtime_ids.get(resource_name, None)
+            is not None
+        ):
+            runtime_ids = self.original_gpu_and_accelerator_runtime_ids[resource_name]
+            assigned_ids = [str(runtime_ids[i]) for i in assigned_ids]
+            # Give all accelerator ids local_mode.
+            if self.mode == LOCAL_MODE:
+                if resource_name == ray_constants.GPU:
+                    max_runtime_ids = self.node.get_resource_spec().num_gpus
+                else:
+                    max_runtime_ids = self.node.get_resource_spec().resources.get(
+                        resource_name, None
+                    )
+                if max_runtime_ids:
+                    assigned_ids = runtime_ids[:max_runtime_ids]
+        return list(assigned_ids)
+
 
 @PublicAPI
 @client_mode_hook
@@ -846,42 +898,9 @@ def get_gpu_ids():
     """
     worker = global_worker
     worker.check_connected()
-
-    if worker.mode != WORKER_MODE:
-        if log_once("worker_get_gpu_ids_empty_from_driver"):
-            logger.warning(
-                "`ray.get_gpu_ids()` will always return the empty list when "
-                "called from the driver. This is because Ray does not manage "
-                "GPU allocations to the driver process."
-            )
-
-    # TODO(ilr) Handle inserting resources in local mode
-    all_resource_ids = global_worker.core_worker.resource_ids()
-    assigned_ids = set()
-    for resource, assignment in all_resource_ids.items():
-        # Handle both normal and placement group GPU resources.
-        # Note: We should only get the GPU ids from the placement
-        # group resource that does not contain the bundle index!
-        import re
-
-        if resource == "GPU" or re.match(r"^GPU_group_[0-9A-Za-z]+$", resource):
-            for resource_id, _ in assignment:
-                assigned_ids.add(resource_id)
-
-    assigned_ids = list(assigned_ids)
-    # If the user had already set CUDA_VISIBLE_DEVICES, then respect that (in
-    # the sense that only GPU IDs that appear in CUDA_VISIBLE_DEVICES should be
-    # returned).
-    if global_worker.original_gpu_ids is not None:
-        assigned_ids = [
-            global_worker.original_gpu_ids[gpu_id] for gpu_id in assigned_ids
-        ]
-        # Give all GPUs in local_mode.
-        if global_worker.mode == LOCAL_MODE:
-            max_gpus = global_worker.node.get_resource_spec().num_gpus
-            assigned_ids = global_worker.original_gpu_ids[:max_gpus]
-
-    return assigned_ids
+    return worker.get_resource_ids_for_resource(
+        ray_constants.GPU, f"^{ray_constants.GPU}_group_[0-9A-Za-z]+$"
+    )
 
 
 @Deprecated(
@@ -1151,7 +1170,7 @@ def init(
 
     To connect to an existing remote cluster, use this as follows (substituting
     in the appropriate address). Note the addition of "ray://" at the beginning
-    of the address.
+    of the address. This requires `ray[client]`.
 
     .. testcode::
         :skipif: True
@@ -1579,7 +1598,7 @@ def init(
                 spawn_reaper=False,
                 connect_only=True,
             )
-        except ConnectionError:
+        except (ConnectionError, RuntimeError):
             if gcs_address == ray._private.utils.read_ray_address(_temp_dir):
                 logger.info(
                     "Failed to connect to the default Ray cluster address at "
@@ -1588,7 +1607,7 @@ def init(
                     "address to connect to, run `ray stop` or restart Ray with "
                     "`ray start`."
                 )
-            raise
+            raise ConnectionError
 
     # Log a message to find the Ray address that we connected to and the
     # dashboard URL.
@@ -1781,26 +1800,57 @@ autoscaler_log_fyi_printed = False
 def filter_autoscaler_events(lines: List[str]) -> Iterator[str]:
     """Given raw log lines from the monitor, return only autoscaler events.
 
-    Autoscaler events are denoted by the ":event_summary:" magic token.
+    For Autoscaler V1:
+        Autoscaler events are denoted by the ":event_summary:" magic token.
+    For Autoscaler V2:
+        Autoscaler events are published from log_monitor.py which read
+        them from the `event_AUTOSCALER.log`.
     """
-    global autoscaler_log_fyi_printed
 
     if not ray_constants.AUTOSCALER_EVENTS:
         return
 
-    # Print out autoscaler events only, ignoring other messages.
-    for line in lines:
-        if ray_constants.LOG_PREFIX_EVENT_SUMMARY in line:
-            if not autoscaler_log_fyi_printed:
-                yield (
-                    "Tip: use `ray status` to view detailed "
-                    "cluster status. To disable these "
-                    "messages, set RAY_SCHEDULER_EVENTS=0."
-                )
-                autoscaler_log_fyi_printed = True
-            # The event text immediately follows the ":event_summary:"
-            # magic token.
-            yield line.split(ray_constants.LOG_PREFIX_EVENT_SUMMARY)[1]
+    AUTOSCALER_LOG_FYI = (
+        "Tip: use `ray status` to view detailed "
+        "cluster status. To disable these "
+        "messages, set RAY_SCHEDULER_EVENTS=0."
+    )
+
+    def autoscaler_log_fyi_needed() -> bool:
+        global autoscaler_log_fyi_printed
+        if not autoscaler_log_fyi_printed:
+            autoscaler_log_fyi_printed = True
+            return True
+        return False
+
+    from ray.autoscaler.v2.utils import is_autoscaler_v2
+
+    if is_autoscaler_v2():
+        from ray._private.event.event_logger import parse_event, filter_event_by_level
+
+        for event_line in lines:
+            if autoscaler_log_fyi_needed():
+                yield AUTOSCALER_LOG_FYI
+
+            event = parse_event(event_line)
+            if not event or not event.message:
+                continue
+
+            if filter_event_by_level(
+                event, ray_constants.RAY_LOG_TO_DRIVER_EVENT_LEVEL
+            ):
+                continue
+
+            yield event.message
+    else:
+        # Print out autoscaler events only, ignoring other messages.
+        for line in lines:
+            if ray_constants.LOG_PREFIX_EVENT_SUMMARY in line:
+                if autoscaler_log_fyi_needed():
+                    yield AUTOSCALER_LOG_FYI
+                # The event text immediately follows the ":event_summary:"
+                # magic token.
+                yield line.split(ray_constants.LOG_PREFIX_EVENT_SUMMARY)[1]
 
 
 def time_string() -> str:
@@ -2170,7 +2220,7 @@ def connect(
         runtime_env = upload_working_dir_if_needed(
             runtime_env, scratch_dir, logger=logger
         )
-        runtime_env = upload_worker_setup_hook_if_needed(
+        runtime_env = upload_worker_process_setup_hook_if_needed(
             runtime_env,
             worker,
         )
@@ -2210,6 +2260,7 @@ def connect(
         logs_dir = ""
     else:
         logs_dir = node.get_logs_dir_path()
+
     worker.core_worker = ray._raylet.CoreWorker(
         mode,
         node.plasma_store_socket_name,
@@ -2229,6 +2280,7 @@ def connect(
         runtime_env_hash,
         startup_token,
         session_name,
+        node.cluster_id,
         "" if mode != SCRIPT_MODE else entrypoint,
         worker_launch_time_ms,
         worker_launched_time_ms,
@@ -3094,22 +3146,31 @@ def remote(
     dynamically modified with the same arguments as above using
     ``.options()`` as follows:
 
-    >>> @ray.remote(num_gpus=1, max_calls=1, num_returns=2)
-    ... def f():
-    ...     return 1, 2
-    >>>
-    >>> f_with_2_gpus = f.options(num_gpus=2) # doctest: +SKIP
-    >>> object_ref = f_with_2_gpus.remote() # doctest: +SKIP
-    >>> assert ray.get(object_ref) == (1, 2) # doctest: +SKIP
+    .. testcode::
+        :hide:
 
-    >>> @ray.remote(num_cpus=2, resources={"CustomResource": 1})
-    ... class Foo:
-    ...     def method(self):
-    ...         return 1
-    >>>
-    >>> Foo_with_no_resources = Foo.options(num_cpus=1, resources=None)
-    >>> foo_actor = Foo_with_no_resources.remote()
-    >>> assert ray.get(foo_actor.method.remote()) == 1
+        ray.shutdown()
+
+        ray.init(num_cpus=5, num_gpus=5)
+
+    .. testcode::
+
+        @ray.remote(num_gpus=1, max_calls=1, num_returns=2)
+        def f():
+            return 1, 2
+
+        f_with_2_gpus = f.options(num_gpus=2)
+        object_refs = f_with_2_gpus.remote()
+        assert ray.get(object_refs) == [1, 2]
+
+        @ray.remote(num_cpus=2, resources={"CustomResource": 1})
+        class Foo:
+            def method(self):
+                return 1
+
+        Foo_with_no_resources = Foo.options(num_cpus=1, resources=None)
+        foo_actor = Foo_with_no_resources.remote()
+        assert ray.get(foo_actor.method.remote()) == 1
 
 
     A remote actor will be terminated when all actor handle to it

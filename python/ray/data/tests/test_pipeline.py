@@ -582,8 +582,8 @@ def test_json_write(ray_start_regular_shared, tmp_path):
     path = os.path.join(tmp_path, "test_json_dir")
     ds, df = _prepare_dataset_to_write(path)
     ds.write_json(path)
-    path1 = os.path.join(path, "data_000000_000000.json")
-    path2 = os.path.join(path, "data_000001_000000.json")
+    path1 = os.path.join(path, "data_000000_000000_000000.json")
+    path2 = os.path.join(path, "data_000001_000000_000000.json")
     dfds = pd.concat([pd.read_json(path1, lines=True), pd.read_json(path2, lines=True)])
     assert df.equals(dfds)
 
@@ -592,8 +592,8 @@ def test_csv_write(ray_start_regular_shared, tmp_path):
     path = os.path.join(tmp_path, "test_csv_dir")
     ds, df = _prepare_dataset_to_write(path)
     ds.write_csv(path)
-    path1 = os.path.join(path, "data_000000_000000.csv")
-    path2 = os.path.join(path, "data_000001_000000.csv")
+    path1 = os.path.join(path, "data_000000_000000_000000.csv")
+    path2 = os.path.join(path, "data_000001_000000_000000.csv")
     dfds = pd.concat([pd.read_csv(path1), pd.read_csv(path2)])
     assert df.equals(dfds)
 
@@ -602,8 +602,8 @@ def test_parquet_write(ray_start_regular_shared, tmp_path):
     path = os.path.join(tmp_path, "test_parquet_dir")
     ds, df = _prepare_dataset_to_write(path)
     ds.write_parquet(path)
-    path1 = os.path.join(path, "data_000000_000000.parquet")
-    path2 = os.path.join(path, "data_000001_000000.parquet")
+    path1 = os.path.join(path, "data_000000_000000_000000.parquet")
+    path2 = os.path.join(path, "data_000001_000000_000000.parquet")
     dfds = pd.concat([pd.read_parquet(path1), pd.read_parquet(path2)])
     assert df.equals(dfds)
 

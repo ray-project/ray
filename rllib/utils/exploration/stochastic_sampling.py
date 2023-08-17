@@ -3,10 +3,9 @@ import gymnasium as gym
 import numpy as np
 from typing import Optional, Union
 
-from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.models.modelv2 import ModelV2
-from ray.rllib.utils.annotations import override
+from ray.rllib.utils.annotations import override, PublicAPI
 from ray.rllib.utils.exploration.exploration import Exploration
 from ray.rllib.utils.exploration.random import Random
 from ray.rllib.utils.framework import (
@@ -21,7 +20,7 @@ tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
 
 
-@Deprecated(error=False)
+@PublicAPI
 class StochasticSampling(Exploration):
     """An exploration that simply samples from a distribution.
 

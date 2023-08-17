@@ -6,12 +6,12 @@ import numpy as np
 import tensorflow as tf
 
 import ray
-from ray.air import session
+from ray import train
 from ray.air.integrations.keras import Callback, ReportCheckpointCallback
 from ray.train.constants import TRAIN_DATASET_KEY
-from ray.air.config import ScalingConfig
+from ray.train import ScalingConfig
 from ray.train.tensorflow import (
-    TensorflowCheckpoint,
+    LegacyTensorflowCheckpoint,
     TensorflowTrainer,
     TensorflowPredictor,
 )
@@ -30,7 +30,7 @@ class TestReportCheckpointCallback:
         )
         return model
 
-    @patch("ray.air.session.report")
+    @patch("ray.train.report")
     @pytest.mark.parametrize(
         "metrics, expected_metrics_keys",
         [
@@ -53,10 +53,10 @@ class TestReportCheckpointCallback:
             callbacks=[ReportCheckpointCallback(metrics=metrics)],
         )
 
-        for (metrics,), _ in ray.air.session.report.call_args_list:
+        for (metrics,), _ in ray.train.report.call_args_list:
             assert metrics.keys() == expected_metrics_keys
 
-    @patch("ray.air.session.report")
+    @patch("ray.train.report")
     def test_report_with_default_arguments(self, mock_report, model):
         # This tests `ReportCheckpointCallback` with default arguments. The test
         # simulates the end of an epoch, and asserts that a metric and checkpoint are
@@ -66,12 +66,12 @@ class TestReportCheckpointCallback:
 
         callback.on_epoch_end(0, {"loss": 0})
 
-        assert len(ray.air.session.report.call_args_list) == 1
-        metrics, checkpoint = self.parse_call(ray.air.session.report.call_args_list[0])
+        assert len(ray.train.report.call_args_list) == 1
+        metrics, checkpoint = self.parse_call(ray.train.report.call_args_list[0])
         assert metrics == {"loss": 0}
         assert checkpoint is not None
 
-    @patch("ray.air.session.report")
+    @patch("ray.train.report")
     def test_checkpoint_on_list(self, mock_report, model):
         # This tests `ReportCheckpointCallback` when `checkpoint_on` is a `list`. The
         # test simulates each event in `checkpoint_on`, and asserts that a checkpoint
@@ -84,13 +84,13 @@ class TestReportCheckpointCallback:
         callback.on_train_batch_end(0, {"loss": 0})
         callback.on_epoch_end(0, {"loss": 0})
 
-        assert len(ray.air.session.report.call_args_list) == 2
-        _, first_checkpoint = self.parse_call(ray.air.session.report.call_args_list[0])
+        assert len(ray.train.report.call_args_list) == 2
+        _, first_checkpoint = self.parse_call(ray.train.report.call_args_list[0])
         assert first_checkpoint is not None
-        _, second_checkpoint = self.parse_call(ray.air.session.report.call_args_list[0])
+        _, second_checkpoint = self.parse_call(ray.train.report.call_args_list[0])
         assert second_checkpoint is not None
 
-    @patch("ray.air.session.report")
+    @patch("ray.train.report")
     def test_report_metrics_on_list(self, mock_report, model):
         # This tests `ReportCheckpointCallback` when `report_metrics_on` is a `list`.
         # The test simulates each event in `report_metrics_on`, and asserts that metrics
@@ -103,13 +103,13 @@ class TestReportCheckpointCallback:
         callback.on_train_batch_end(0, {"loss": 0})
         callback.on_epoch_end(0, {"loss": 1})
 
-        assert len(ray.air.session.report.call_args_list) == 2
-        first_metric, _ = self.parse_call(ray.air.session.report.call_args_list[0])
+        assert len(ray.train.report.call_args_list) == 2
+        first_metric, _ = self.parse_call(ray.train.report.call_args_list[0])
         assert first_metric == {"loss": 0}
-        second_metric, _ = self.parse_call(ray.air.session.report.call_args_list[1])
+        second_metric, _ = self.parse_call(ray.train.report.call_args_list[1])
         assert second_metric == {"loss": 1}
 
-    @patch("ray.air.session.report")
+    @patch("ray.train.report")
     def test_report_and_checkpoint_on_different_events(self, mock_report, model):
         # This tests `ReportCheckpointCallback` when `report_metrics_on` and
         # `checkpoint_on` are different. The test asserts that:
@@ -124,14 +124,14 @@ class TestReportCheckpointCallback:
         callback.on_train_batch_end(0, {"loss": 0})
         callback.on_epoch_end(0, {"loss": 1})
 
-        assert len(ray.air.session.report.call_args_list) == 2
+        assert len(ray.train.report.call_args_list) == 2
         first_metric, first_checkpoint = self.parse_call(
-            ray.air.session.report.call_args_list[0]
+            ray.train.report.call_args_list[0]
         )
         assert first_metric == {"loss": 0}
         assert first_checkpoint is None
         second_metric, second_checkpoint = self.parse_call(
-            ray.air.session.report.call_args_list[1]
+            ray.train.report.call_args_list[1]
         )
         # We should always include metrics, even if it isn't during one of the events
         # specified in `report_metrics_on`.
@@ -174,7 +174,7 @@ def train_func(config: dict):
             metrics=[tf.keras.metrics.mean_squared_error],
         )
 
-    dataset = session.get_dataset_shard("train")
+    dataset = train.get_dataset_shard("train")
 
     for _ in range(config.get("epoch", 3)):
         tf_dataset = dataset.to_tf("x", "y", batch_size=32)
@@ -193,8 +193,8 @@ def test_keras_callback_e2e():
         datasets={TRAIN_DATASET_KEY: get_dataset()},
     )
     checkpoint = trainer.fit().checkpoint
-    assert isinstance(checkpoint, TensorflowCheckpoint)
-    assert checkpoint._flavor == TensorflowCheckpoint.Flavor.MODEL_WEIGHTS
+    assert isinstance(checkpoint, LegacyTensorflowCheckpoint)
+    assert checkpoint._flavor == LegacyTensorflowCheckpoint.Flavor.MODEL_WEIGHTS
 
     predictor = TensorflowPredictor.from_checkpoint(
         checkpoint, model_definition=build_model

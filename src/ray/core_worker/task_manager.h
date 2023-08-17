@@ -143,7 +143,7 @@ class ObjectRefStream {
   /// Get all the ObjectIDs that are not read yet via TryReadNextItem.
   ///
   /// \return A list of object IDs that are not read yet.
-  std::vector<ObjectID> GetItemsUnconsumed() const;
+  absl::flat_hash_set<ObjectID> GetItemsUnconsumed() const;
 
  private:
   ObjectID GetObjectRefAtIndex(int64_t generator_index) const;
@@ -255,8 +255,8 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
    *
    * - The stream must be created when a task is submitted first time. The stream
    * must be deleted by the language frontend when the stream
-   * is not used anymore. The APIs guarantee to clean up object references
-   * associated with the stream.
+   * is not used anymore. The DelObjectRefStream APIs guarantee to clean
+   * up object references associated with the stream.
    * - The generator return values are reported via HandleReportGeneratorItemReturns.
    * The report ordering is not guaranteed. HandleReportGeneratorItemReturns
    * must handle the out of ordering report correctly.
@@ -283,7 +283,7 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   ///
   /// \return True if a task return is registered. False otherwise.
   bool HandleReportGeneratorItemReturns(
-      const rpc::ReportGeneratorItemReturnsRequest &request);
+      const rpc::ReportGeneratorItemReturnsRequest &request) LOCKS_EXCLUDED(mu_);
 
   /// Temporarily register a given generator return reference.
   ///
@@ -309,7 +309,8 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// \param generator_id The return ref ID of a generator task.
   /// \return True if we temporarily owned the reference. False otherwise.
   bool TemporarilyOwnGeneratorReturnRefIfNeeded(const ObjectID &object_id,
-                                                const ObjectID &generator_id);
+                                                const ObjectID &generator_id)
+      LOCKS_EXCLUDED(mu_);
 
   /// Delete the object ref stream.
   ///
@@ -324,13 +325,13 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   ///
   /// \param[in] generator_id The object ref id of the streaming
   /// generator task.
-  void DelObjectRefStream(const ObjectID &generator_id);
+  void DelObjectRefStream(const ObjectID &generator_id) LOCKS_EXCLUDED(mu_);
 
   /// Return true if the object ref stream exists.
   ///
   /// \param[in] generator_id The object ref id of the streaming
   /// generator task.
-  bool ObjectRefStreamExists(const ObjectID &generator_id);
+  bool ObjectRefStreamExists(const ObjectID &generator_id) LOCKS_EXCLUDED(mu_);
 
   /// Read object reference of the next index from the
   /// object stream of a generator_id.
@@ -347,7 +348,8 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// \param[out] object_id_out The next object ID from the stream.
   /// Nil ID is returned if the next index hasn't been written.
   /// \return ObjectRefEndOfStream if it reaches to EoF. Ok otherwise.
-  Status TryReadObjectRefStream(const ObjectID &generator_id, ObjectID *object_id_out);
+  Status TryReadObjectRefStream(const ObjectID &generator_id, ObjectID *object_id_out)
+      LOCKS_EXCLUDED(mu_);
 
   /// Read the next index of a ObjectRefStream of generator_id without
   /// consuming an index.
@@ -358,7 +360,7 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// generator task.
   /// \return A object reference of the next index.
   /// It should not be nil.
-  ObjectID PeekObjectRefStream(const ObjectID &generator_id);
+  ObjectID PeekObjectRefStream(const ObjectID &generator_id) LOCKS_EXCLUDED(mu_);
 
   /// Returns true if task can be retried.
   ///
@@ -711,7 +713,12 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// this should be used when a task fails (which means we know the task won't
   /// report any more generator return values).
   void MarkEndOfStream(const ObjectID &generator_id, int64_t end_of_stream_index)
-      LOCKS_EXCLUDED(mu_);
+      LOCKS_EXCLUDED(objet_ref_stream_ops_mu_) LOCKS_EXCLUDED(mu_);
+
+  /// See TemporarilyOwnGeneratorReturnRefIfNeeded for a docstring.
+  bool TemporarilyOwnGeneratorReturnRefIfNeededInternal(const ObjectID &object_id,
+                                                        const ObjectID &generator_id)
+      EXCLUSIVE_LOCKS_REQUIRED(objet_ref_stream_ops_mu_) LOCKS_EXCLUDED(mu_);
 
   /// Used to store task results.
   std::shared_ptr<CoreWorkerMemoryStore> in_memory_store_;
@@ -722,7 +729,8 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   std::shared_ptr<ReferenceCounter> reference_counter_;
 
   /// Mapping from a streaming generator task id -> object ref stream.
-  absl::flat_hash_map<ObjectID, ObjectRefStream> object_ref_streams_ GUARDED_BY(mu_);
+  absl::flat_hash_map<ObjectID, ObjectRefStream> object_ref_streams_
+      GUARDED_BY(objet_ref_stream_ops_mu_);
 
   /// Callback to store objects in plasma. This is used for objects that were
   /// originally stored in plasma. During reconstruction, we ensure that these
@@ -746,6 +754,10 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
 
   /// Protects below fields.
   mutable absl::Mutex mu_;
+
+  /// The lock to protect concurrency problems when
+  /// using object ref stream APIs
+  mutable absl::Mutex objet_ref_stream_ops_mu_;
 
   /// Tracks per-task-state counters for metric purposes.
   TaskStatusCounter task_counter_ GUARDED_BY(mu_);

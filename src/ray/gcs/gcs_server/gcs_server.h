@@ -28,7 +28,6 @@
 #include "ray/gcs/gcs_server/gcs_task_manager.h"
 #include "ray/gcs/gcs_server/grpc_based_resource_broadcaster.h"
 #include "ray/gcs/gcs_server/pubsub_handler.h"
-#include "ray/gcs/gcs_server/ray_syncer.h"
 #include "ray/gcs/gcs_server/runtime_env_handler.h"
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
 #include "ray/gcs/redis_client.h"
@@ -58,6 +57,7 @@ struct GcsServerConfig {
   std::string log_dir;
   // This includes the config list of raylet.
   std::string raylet_config_list;
+  std::string session_name;
 };
 
 class GcsNodeManager;
@@ -248,11 +248,6 @@ class GcsServer {
   /// Monitor service for monitor server
   std::unique_ptr<rpc::MonitorGrpcService> monitor_grpc_service_;
 
-  /// Synchronization service for ray.
-  /// TODO(iycheng): Deprecate this gcs_ray_syncer_ one once we roll out
-  /// to ray_syncer_.
-  std::unique_ptr<gcs_syncer::RaySyncer> gcs_ray_syncer_;
-
   /// Ray Syncer realted fields.
   std::unique_ptr<syncer::RaySyncer> ray_syncer_;
   std::unique_ptr<syncer::RaySyncerService> ray_syncer_service_;
@@ -284,7 +279,7 @@ class GcsServer {
   /// Independent task info service from the main grpc service.
   std::unique_ptr<rpc::TaskInfoGrpcService> task_info_service_;
   /// Gcs Autoscaler state manager.
-  std::unique_ptr<rpc::AutoscalerStateGrpcService> autoscaler_state_service_;
+  std::unique_ptr<rpc::autoscaler::AutoscalerStateGrpcService> autoscaler_state_service_;
   /// Backend client.
   std::shared_ptr<RedisClient> redis_client_;
   /// A publisher for publishing gcs messages.

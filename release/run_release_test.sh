@@ -31,15 +31,16 @@ RAY_TEST_SCRIPT=${RAY_TEST_SCRIPT-ray_release/scripts/run_release_test.py}
 RELEASE_RESULTS_DIR=${RELEASE_RESULTS_DIR-/tmp/artifacts}
 BUILDKITE_MAX_RETRIES=1
 BUILDKITE_RETRY_CODE=79
-BUILDKITE_TIME_LIMIT_FOR_RETRY=1800
+BUILDKITE_TIME_LIMIT_FOR_RETRY=10800 # 3 hours
 
 export RAY_TEST_REPO RAY_TEST_BRANCH RELEASE_RESULTS_DIR BUILDKITE_MAX_RETRIES BUILDKITE_RETRY_CODE BUILDKITE_TIME_LIMIT_FOR_RETRY
 
 if [ -n "${RAY_COMMIT_OF_WHEEL-}" ]; then 
   git config --global --add safe.directory /workdir
   HEAD_COMMIT=$(git rev-parse HEAD)
+  HEAD_BRANCH=$(git rev-parse --abbrev-ref HEAD)
   echo "The test repo has head commit of ${HEAD_COMMIT}"
-  if [ "${HEAD_COMMIT}" != "${RAY_COMMIT_OF_WHEEL}" ]; then
+  if [[ "${HEAD_COMMIT}" != "${RAY_COMMIT_OF_WHEEL}" && ("${HEAD_BRANCH}" == "master" || "${HEAD_BRANCH}" = releases/*) ]]; then
     echo "The checked out test code doesn't match with the installed wheel. \
           This is likely due to a racing condition when a PR is landed between \
           a wheel is installed and test code is checked out."
@@ -152,7 +153,7 @@ else
   echo "RELEASE MANAGER: This could be an error in the test. Please REVIEW THE LOGS and ping the test owner."
 fi
 
-if [[ ("$REASON" == "infra error" || "$REASON" == "infra timeout") && ("$RUNTIME" -le "$BUILDKITE_TIME_LIMIT_FOR_RETRY") ]]; then
+if [[ "$EXIT_CODE" -ne 0 && "$RUNTIME" -le "$BUILDKITE_TIME_LIMIT_FOR_RETRY" ]]; then
   exit "$BUILDKITE_RETRY_CODE"
 else
   exit "$EXIT_CODE"
