@@ -426,8 +426,10 @@ class Worker:
         self.mode = None
         self.actors = {}
         # When the worker is constructed. Record the original value of the
-        # CUDA_VISIBLE_DEVICES environment variable.
-        self.original_gpu_ids = ray._private.utils.get_cuda_visible_devices()
+        # (CUDA_VISIBLE_DEVICES, NEURON_RT_VISIBLE_CORES, ..) environment variables.
+        self.original_gpu_and_accelerator_runtime_ids = (
+            ray._private.utils.get_gpu_and_accelerator_runtime_ids()
+        )
         # A dictionary that maps from driver id to SerializationContext
         # TODO: clean up the SerializationContext once the job finished.
         self.serialization_context_map = {}
@@ -832,6 +834,54 @@ class Worker:
             # Close the pubsub client to avoid leaking file descriptors.
             subscriber.close()
 
+    def get_resource_ids_for_resource(
+        self, resource_name: str, resource_regex: str
+    ) -> Union[List[str], List[int]]:
+        """Get the resource IDs that are assigned to the given resource.
+
+        Args:
+            resource_name: The name of the resource.
+            resource_regex: The regex of the resource.
+
+        Returns:
+            (List[str]) The IDs that are assigned to the given resource pre-configured.
+            (List[int]) The IDs that are assigned to the given resource.
+
+        """
+        resource_ids = self.core_worker.resource_ids()
+        assigned_ids = set()
+        # Handle both normal and placement group GPU, accelerator resources.
+        # Note: We should only get the GPU, accelerator ids from the placement
+        # group resource that does not contain the bundle index!
+        import re
+
+        for resource, assignment in resource_ids.items():
+            if resource == resource_name or re.match(resource_regex, resource):
+                for resource_id, _ in assignment:
+                    assigned_ids.add(resource_id)
+
+        # If the user had already set the environment variables
+        # (CUDA_VISIBLE_DEVICES, NEURON_RT_VISIBLE_CORES, ..) then respect that
+        # in the sense that only IDs that appear in (CUDA_VISIBLE_DEVICES,
+        # NEURON_RT_VISIBLE_CORES, ..) should be returned.
+        if (
+            self.original_gpu_and_accelerator_runtime_ids.get(resource_name, None)
+            is not None
+        ):
+            runtime_ids = self.original_gpu_and_accelerator_runtime_ids[resource_name]
+            assigned_ids = [str(runtime_ids[i]) for i in assigned_ids]
+            # Give all accelerator ids local_mode.
+            if self.mode == LOCAL_MODE:
+                if resource_name == ray_constants.GPU:
+                    max_runtime_ids = self.node.get_resource_spec().num_gpus
+                else:
+                    max_runtime_ids = self.node.get_resource_spec().resources.get(
+                        resource_name, None
+                    )
+                if max_runtime_ids:
+                    assigned_ids = runtime_ids[:max_runtime_ids]
+        return list(assigned_ids)
+
 
 @PublicAPI
 @client_mode_hook
@@ -848,42 +898,9 @@ def get_gpu_ids():
     """
     worker = global_worker
     worker.check_connected()
-
-    if worker.mode != WORKER_MODE:
-        if log_once("worker_get_gpu_ids_empty_from_driver"):
-            logger.warning(
-                "`ray.get_gpu_ids()` will always return the empty list when "
-                "called from the driver. This is because Ray does not manage "
-                "GPU allocations to the driver process."
-            )
-
-    # TODO(ilr) Handle inserting resources in local mode
-    all_resource_ids = global_worker.core_worker.resource_ids()
-    assigned_ids = set()
-    for resource, assignment in all_resource_ids.items():
-        # Handle both normal and placement group GPU resources.
-        # Note: We should only get the GPU ids from the placement
-        # group resource that does not contain the bundle index!
-        import re
-
-        if resource == "GPU" or re.match(r"^GPU_group_[0-9A-Za-z]+$", resource):
-            for resource_id, _ in assignment:
-                assigned_ids.add(resource_id)
-
-    assigned_ids = list(assigned_ids)
-    # If the user had already set CUDA_VISIBLE_DEVICES, then respect that (in
-    # the sense that only GPU IDs that appear in CUDA_VISIBLE_DEVICES should be
-    # returned).
-    if global_worker.original_gpu_ids is not None:
-        assigned_ids = [
-            global_worker.original_gpu_ids[gpu_id] for gpu_id in assigned_ids
-        ]
-        # Give all GPUs in local_mode.
-        if global_worker.mode == LOCAL_MODE:
-            max_gpus = global_worker.node.get_resource_spec().num_gpus
-            assigned_ids = global_worker.original_gpu_ids[:max_gpus]
-
-    return assigned_ids
+    return worker.get_resource_ids_for_resource(
+        ray_constants.GPU, f"^{ray_constants.GPU}_group_[0-9A-Za-z]+$"
+    )
 
 
 @Deprecated(
