@@ -3529,7 +3529,7 @@
         cluster_compute: gpu_2x4_t4_gce.yaml
       run:
         timeout: 3600
-        script: bash run_train_opt_2_7b.sh --storage gcs
+        script: RAY_AIR_NEW_PERSISTENCE_MODE=1 bash run_train_opt_2_7b.sh --storage gcs
 
         wait_for_nodes:
           num_nodes: 2
@@ -3551,7 +3551,7 @@
 
   run:
     timeout: 3600
-    script: bash run_inference_opt_30b.sh --storage aws
+    script: RAY_AIR_NEW_PERSISTENCE_MODE=1 bash run_inference_opt_30b.sh --storage aws
 
     wait_for_nodes:
       num_nodes: 1
