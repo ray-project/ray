@@ -61,7 +61,7 @@ Ray Examples
         How OpenAI Uses Ray to Train Tools like ChatGPT
 
     .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item llm gen-ai
+        :class-item: gallery-item llm gen-ai huggingface
         :link: /ray-air/examples/gptj_deepspeed_fine_tuning
         :link-type: doc
 
