@@ -8,7 +8,7 @@ from ray.air.checkpoint import Checkpoint
 from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.air.data_batch_type import DataBatchType
 from ray.air.util.data_batch_conversion import _unwrap_ndarray_object_type_if_needed
-from ray.train.lightgbm.lightgbm_checkpoint import LightGBMCheckpoint
+from ray.train.lightgbm.lightgbm_checkpoint import LegacyLightGBMCheckpoint
 from ray.train.predictor import Predictor
 from ray.util.annotations import PublicAPI
 
@@ -50,7 +50,7 @@ class LightGBMPredictor(Predictor):
                 ``LightGBMTrainer`` run.
 
         """
-        checkpoint = LightGBMCheckpoint.from_checkpoint(checkpoint)
+        checkpoint = LegacyLightGBMCheckpoint.from_checkpoint(checkpoint)
         model = checkpoint.get_model()
         preprocessor = checkpoint.get_preprocessor()
         return cls(model=model, preprocessor=preprocessor)
