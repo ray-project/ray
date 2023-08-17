@@ -72,7 +72,6 @@ class PopulationBasedTrainingMemoryTest(unittest.TestCase):
 
                 with open(file_path, "wb") as fp:
                     pickle.dump((self.large_object, self.iter, self.a), fp)
-                return file_path
 
             def load_checkpoint(self, checkpoint_dir):
                 file_path = os.path.join(checkpoint_dir, "model.mock")
@@ -132,7 +131,6 @@ class PopulationBasedTrainingFileDescriptorTest(unittest.TestCase):
 
                 with open(file_path, "wb") as fp:
                     pickle.dump((self.iter, self.a), fp)
-                return file_path
 
             def load_checkpoint(self, checkpoint_dir):
                 file_path = os.path.join(checkpoint_dir, "model.mock")
@@ -452,7 +450,6 @@ class PopulationBasedTrainingResumeTest(unittest.TestCase):
                 checkpoint_path = os.path.join(tmp_checkpoint_dir, "model.mock")
                 with open(checkpoint_path, "wb") as fp:
                     pickle.dump((self.a, self.b, self.iter), fp)
-                return tmp_checkpoint_dir
 
             def load_checkpoint(self, tmp_checkpoint_dir):
                 checkpoint_path = os.path.join(tmp_checkpoint_dir, "model.mock")

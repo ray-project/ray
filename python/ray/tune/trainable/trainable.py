@@ -522,6 +522,7 @@ class Trainable:
                         raise ValueError(
                             "The returned checkpoint path from `save_checkpoint` "
                             "must be None or the same as the provided path argument."
+                            f"Got {checkpoint_dict_or_path} != {checkpoint_dir}"
                         )
 
                 local_checkpoint = NewCheckpoint.from_directory(checkpoint_dir)
