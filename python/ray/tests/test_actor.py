@@ -1226,9 +1226,9 @@ def test_keep_calling_get_actor(ray_start_regular_shared):
 @pytest.mark.parametrize(
     "actor_type",
     [
-        # "actor",
+        "actor",
         "threaded_actor",
-        # "async_actor",
+        "async_actor",
     ],
 )
 def test_actor_parent_task_correct(shutdown_only, actor_type):
