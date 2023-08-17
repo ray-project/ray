@@ -58,7 +58,7 @@ class XGBoostTrainer(GBDTTrainer):
             ...
 
     Args:
-        datasets: Datasets to use for training and validation. Must include a
+        datasets: The Ray Datasets to use for training and validation. Must include a
             "train" key denoting the training dataset. If a ``preprocessor``
             is provided and has not already been fit, it will be fit on the training
             dataset. All datasets will be transformed by the ``preprocessor`` if
@@ -72,7 +72,7 @@ class XGBoostTrainer(GBDTTrainer):
         dmatrix_params: Dict of ``dataset name:dict of kwargs`` passed to respective
             :class:`xgboost_ray.RayDMatrix` initializations, which in turn are passed
             to ``xgboost.DMatrix`` objects created on each worker. For example, this can
-            be used to add sample weights with the ``weights`` parameter.
+            be used to add sample weights with the ``weight`` parameter.
         num_boost_round: Target number of boosting iterations (trees in the model).
             Note that unlike in ``xgboost.train``, this is the target number
             of trees, meaning that if you set ``num_boost_round=10`` and pass a model
