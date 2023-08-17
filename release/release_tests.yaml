@@ -1773,7 +1773,7 @@
 
   frequency: nightly-3x
   team: ml
-
+  new_persistence: "True"
   cluster:
     byod:
       type: gpu
@@ -1785,7 +1785,7 @@
 
   run:
     timeout: 2000
-    script: python tune_rllib/run_connect_tests.py
+    script: RAY_AIR_NEW_PERSISTENCE_MODE=1 python tune_rllib/run_connect_tests.py
     wait_for_nodes:
       num_nodes: 9
 
