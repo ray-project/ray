@@ -4,9 +4,12 @@ set -euo pipefail
 
 TMP_DIR="$(mktemp -d)"
 
-curl -sL 'https://github.com/ray-project/rayci/releases/download/0.1/wanda-linux-amd64' -o "$TMP_DIR/wanda"
+curl -sL 'https://github.com/ray-project/rayci/releases/download/v0.1.3/wanda-linux-amd64' -o "$TMP_DIR/wanda"
 chmod +x "$TMP_DIR/wanda"
-WANDA=("$TMP_DIR/wanda")
+WANDA=(
+  "$TMP_DIR/wanda"
+  -name_prefix cr.ray.io/rayproject/
+) 
 
 export DOCKER_BUILDKIT=1
 
@@ -20,6 +23,7 @@ IMAGE_CI_TEST_BASE="${CI_TMP_REPO}:${IMAGE_PREFIX}-ci-test-base"
 
 docker pull "${IMAGE_CI_TEST_BASE}"
 docker tag "${IMAGE_CI_TEST_BASE}" cr.ray.io/rayproject/oss-ci-base_test
+docker tag "${IMAGE_CI_TEST_BASE}" oss-ci-base_test  # For old wanda spec file.
 
 echo "--- Build CI build base"
 

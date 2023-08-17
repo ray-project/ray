@@ -4,9 +4,12 @@ set -euo pipefail
 
 TMP_DIR="$(mktemp -d)"
 
-curl -sL 'https://github.com/ray-project/rayci/releases/download/0.1/wanda-linux-amd64' -o "$TMP_DIR/wanda"
+curl -sL 'https://github.com/ray-project/rayci/releases/download/v0.1.3/wanda-linux-amd64' -o "$TMP_DIR/wanda"
 chmod +x "$TMP_DIR/wanda"
-WANDA=("$TMP_DIR/wanda")
+WANDA=(
+  "$TMP_DIR/wanda"
+  -name_prefix cr.ray.io/rayproject/
+)
 
 export DOCKER_BUILDKIT=1
 
