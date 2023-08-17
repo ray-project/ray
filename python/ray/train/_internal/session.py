@@ -171,8 +171,7 @@ class _TrainSession:
 
         if _use_storage_context():
             assert storage
-            logger.debug(f"StorageContext on TRAIN WORKER {world_rank}:\n{storage}")
-            storage._check_validation_file()
+            logger.debug(f"StorageContext on SESSION {world_rank}:\n{storage}")
 
             # Change the working directory to the local trial directory.
             # -> All workers on the same node share a working directory.
@@ -575,7 +574,7 @@ class _TrainSession:
                     "Passing objects containg Torch tensors as metrics "
                     "is not supported as it will throw an exception on "
                     "deserialization. You can either convert the tensors "
-                    "to Python objects or use a `TorchCheckpoint` as the "
+                    "to Python objects or use a `LegacyTorchCheckpoint` as the "
                     "`checkpoint` argument of `ray.train.report` to "
                     "store your Torch objects."
                 )

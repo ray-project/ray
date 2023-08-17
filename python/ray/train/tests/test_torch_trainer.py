@@ -19,7 +19,7 @@ import ray.train as train
 from unittest.mock import patch
 from ray.cluster_utils import Cluster
 from ray.train.tests.dummy_preprocessor import DummyPreprocessor
-from ray.train.torch.torch_checkpoint import TorchCheckpoint
+from ray.train.torch.torch_checkpoint import LegacyTorchCheckpoint
 
 
 @pytest.fixture
@@ -69,7 +69,7 @@ def test_torch_e2e(ray_start_4_cpus, prepare_model):
         model = torch.nn.Linear(3, 1)
         if prepare_model:
             model = train.torch.prepare_model(model)
-        train.report({}, checkpoint=TorchCheckpoint.from_model(model))
+        train.report({}, checkpoint=LegacyTorchCheckpoint.from_model(model))
 
     scaling_config = ScalingConfig(num_workers=2)
     trainer = TorchTrainer(
@@ -87,7 +87,9 @@ def test_torch_e2e_state_dict(ray_start_4_cpus, prepare_model):
         model = torch.nn.Linear(3, 1)
         if prepare_model:
             model = train.torch.prepare_model(model)
-        train.report({}, checkpoint=TorchCheckpoint.from_state_dict(model.state_dict()))
+        train.report(
+            {}, checkpoint=LegacyTorchCheckpoint.from_state_dict(model.state_dict())
+        )
 
     scaling_config = ScalingConfig(num_workers=2)
     trainer = TorchTrainer(
@@ -110,7 +112,7 @@ def test_torch_e2e_dir(ray_start_4_cpus, tmpdir, lazy_checkpointing):
     def train_func():
         model = torch.nn.Linear(3, 1)
         torch.save(model, os.path.join(tmpdir, "model"))
-        train.report({}, checkpoint=TorchCheckpoint.from_directory(tmpdir))
+        train.report({}, checkpoint=LegacyTorchCheckpoint.from_directory(tmpdir))
 
     scaling_config = ScalingConfig(num_workers=2)
     with patch.dict(
@@ -124,7 +126,7 @@ def test_torch_e2e_dir(ray_start_4_cpus, tmpdir, lazy_checkpointing):
         result = trainer.fit()
     isinstance(result.checkpoint.get_preprocessor(), DummyPreprocessor)
 
-    # TODO(ml-team): Add a way for TorchCheckpoint to natively support
+    # TODO(ml-team): Add a way for LegacyTorchCheckpoint to natively support
     # models from files
     class TorchScorer:
         def __init__(self):
@@ -132,7 +134,7 @@ def test_torch_e2e_dir(ray_start_4_cpus, tmpdir, lazy_checkpointing):
                 model = torch.load(os.path.join(checkpoint_path, "model"))
             preprocessor = result.checkpoint.get_preprocessor()
             self.pred = TorchPredictor.from_checkpoint(
-                TorchCheckpoint.from_model(model, preprocessor=preprocessor)
+                LegacyTorchCheckpoint.from_model(model, preprocessor=preprocessor)
             )
 
         def __call__(self, x):
@@ -206,7 +208,7 @@ def test_single_worker_failure(ray_start_4_cpus):
 
 #     def train_func():
 #         model = torch.nn.Linear(1, 1).state_dict()
-#         train.report({}, checkpoint=TorchCheckpoint.from_dict({"model": model}))
+#         train.report({}, checkpoint=LegacyTorchCheckpoint.from_dict({"model": model}))
 
 #     scaling_config = ScalingConfig(num_workers=2)
 #     trainer = TorchTrainer(
@@ -318,7 +320,7 @@ def test_torch_auto_unwrap(ray_start_4_cpus):
         model = train.torch.prepare_model(model)
 
         # Save DDP wrapped model.
-        train.report({}, checkpoint=TorchCheckpoint.from_model(model))
+        train.report({}, checkpoint=LegacyTorchCheckpoint.from_model(model))
 
     trainer = TorchTrainer(
         train_loop_per_worker=train_fn,
@@ -339,7 +341,7 @@ def test_torch_amp(ray_start_4_cpus):
         model = torch.nn.Linear(1, 1)
         model = train.torch.prepare_model(model)
 
-        train.report({}, checkpoint=TorchCheckpoint.from_model(model))
+        train.report({}, checkpoint=LegacyTorchCheckpoint.from_model(model))
 
     trainer = TorchTrainer(
         train_fn,
@@ -366,7 +368,7 @@ def test_torch_amp_with_custom_get_state(ray_start_4_cpus):
         model = train.torch.prepare_model(model)
 
         # Make sure model is serializable even with amp enabled.
-        train.report({}, checkpoint=TorchCheckpoint.from_model(model))
+        train.report({}, checkpoint=LegacyTorchCheckpoint.from_model(model))
 
     trainer = TorchTrainer(
         train_fn,

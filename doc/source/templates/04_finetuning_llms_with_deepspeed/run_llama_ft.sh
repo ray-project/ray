@@ -1,16 +1,6 @@
 #!/bin/bash
 
 
-# Function to prepare nodes
-prepare_nodes() {
-    local model_id=$1
-    echo "Preparing nodes..."
-    if ! python prepare_nodes.py --hf-model-id "${model_id}"; then
-        echo "Failed to prepare nodes. Exiting..."
-        exit 1
-    fi
-}
-
 # Function to check if data directory exists, if not, run create_dataset.py
 check_and_create_dataset() {
     local data_dir=$1
@@ -96,7 +86,6 @@ esac
 MODEL_ID="meta-llama/Llama-2-${SIZE}-hf"
 CONFIG_DIR="./deepspeed_configs/zero_3_llama_2_${SIZE}.json"
 
-prepare_nodes "${MODEL_ID}"
 check_and_create_dataset "${DATA_DIR}"
 fine_tune "$BS" "$ND" "$MODEL_ID" "$BASE_DIR" "$CONFIG_DIR" "$TRAIN_PATH" "$TEST_PATH" "$TOKEN_PATH" "${params[@]}"
 

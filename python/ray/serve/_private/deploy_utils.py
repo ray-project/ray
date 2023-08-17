@@ -7,7 +7,7 @@ import time
 from ray.serve.config import ReplicaConfig, DeploymentConfig
 from ray.serve.schema import ServeApplicationSchema
 from ray.serve._private.constants import SERVE_LOGGER_NAME
-from ray.serve._private.common import DeploymentInfo
+from ray.serve._private.common import DeploymentInfo, DeploymentID
 
 import ray
 import ray.util.serialization_addons
@@ -29,7 +29,6 @@ def get_deploy_args(
     route_prefix: Optional[str] = None,
     is_driver_deployment: Optional[str] = None,
     docs_path: Optional[str] = None,
-    app_name: Optional[str] = None,
 ) -> Dict:
     """
     Takes a deployment's configuration, and returns the arguments needed
@@ -70,14 +69,13 @@ def get_deploy_args(
     deployment_config.version = version
 
     controller_deploy_args = {
-        "name": name,
+        "deployment_name": name,
         "deployment_config_proto_bytes": deployment_config.to_proto_bytes(),
         "replica_config_proto_bytes": replica_config.to_proto_bytes(),
         "route_prefix": route_prefix,
         "deployer_job_id": ray.get_runtime_context().get_job_id(),
         "is_driver_deployment": is_driver_deployment,
         "docs_path": docs_path,
-        "app_name": app_name,
         "ingress": ingress,
     }
 
@@ -93,6 +91,7 @@ def deploy_args_to_deployment_info(
     docs_path: Optional[str],
     is_driver_deployment: Optional[bool] = False,
     app_name: Optional[str] = None,
+    ingress: bool = False,
     **kwargs,
 ) -> DeploymentInfo:
     """Takes deployment args passed to the controller after building an application and
@@ -112,7 +111,7 @@ def deploy_args_to_deployment_info(
         ).hex()
 
     return DeploymentInfo(
-        actor_name=deployment_name,
+        actor_name=str(DeploymentID(deployment_name, app_name)),
         version=version,
         deployment_config=deployment_config,
         replica_config=replica_config,
@@ -122,6 +121,7 @@ def deploy_args_to_deployment_info(
         app_name=app_name,
         route_prefix=route_prefix,
         docs_path=docs_path,
+        ingress=ingress,
     )
 
 
