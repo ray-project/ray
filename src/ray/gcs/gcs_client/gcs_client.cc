@@ -146,22 +146,7 @@ std::pair<std::string, int> GcsClient::GetGcsServerAddress() const {
   return gcs_rpc_client_->GetAddress();
 }
 
-PythonGcsClient::PythonGcsClient(const GcsClientOptions &options) : options_(options) {
-  RAY_UNUSED(ConnectChannel());
-}
-
-Status PythonGcsClient::ConnectChannel() {
-  channel_ =
-      rpc::GcsRpcClient::CreateGcsChannel(options_.gcs_address_, options_.gcs_port_);
-  kv_stub_ = rpc::InternalKVGcsService::NewStub(channel_);
-  runtime_env_stub_ = rpc::RuntimeEnvGcsService::NewStub(channel_);
-  node_info_stub_ = rpc::NodeInfoGcsService::NewStub(channel_);
-  job_info_stub_ = rpc::JobInfoGcsService::NewStub(channel_);
-  node_resource_info_stub_ = rpc::NodeResourceInfoStub::NewStub(channel_);
-  autoscaler_stub_ = rpc::autoscaler::AutoscalerStateService::NewStub(channel_);
-
-  return Status::OK();
-}
+PythonGcsClient::PythonGcsClient(const GcsClientOptions &options) : options_(options) {}
 
 namespace {
 Status HandleGcsError(rpc::GcsStatus status) {
@@ -180,6 +165,7 @@ Status PythonGcsClient::Connect(const ClusterID &cluster_id,
   runtime_env_stub_ = rpc::RuntimeEnvGcsService::NewStub(channel_);
   node_info_stub_ = rpc::NodeInfoGcsService::NewStub(channel_);
   job_info_stub_ = rpc::JobInfoGcsService::NewStub(channel_);
+  node_resource_info_stub_ = rpc::NodeResourceInfoGcsService::NewStub(channel_);
   autoscaler_stub_ = rpc::autoscaler::AutoscalerStateService::NewStub(channel_);
   if (cluster_id.IsNil()) {
     size_t tries = num_retries + 1;
