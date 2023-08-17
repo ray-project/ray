@@ -11,8 +11,8 @@ from ray._private.test_utils import SignalActor
 from ray import serve
 from ray.serve.handle import (
     DeploymentHandle,
-    DeploymentHandleRef,
-    DeploymentHandleGenerator,
+    DeploymentResponse,
+    DeploymentResponseGenerator,
     RayServeHandle,
     RayServeSyncHandle,
 )
@@ -33,7 +33,7 @@ def test_basic(serve_instance):
 
         async def __call__(self):
             ref = self._new_handle.remote()
-            assert isinstance(ref, DeploymentHandleRef)
+            assert isinstance(ref, DeploymentResponse)
             return await ref
 
     handle: RayServeSyncHandle = serve.run(Deployment.bind(downstream.bind()))
@@ -133,7 +133,7 @@ def test_get_app_and_deployment_handle(serve_instance):
             assert isinstance(handle, DeploymentHandle)
 
             ref = handle.remote()
-            assert isinstance(ref, DeploymentHandleRef)
+            assert isinstance(ref, DeploymentResponse)
             return await ref
 
     serve.run(Deployment.bind(downstream.bind()))
@@ -240,7 +240,7 @@ def test_generators(serve_instance):
 
         async def __call__(self):
             gen = self._handle.remote()
-            assert isinstance(gen, DeploymentHandleGenerator)
+            assert isinstance(gen, DeploymentResponseGenerator)
             async for i in gen:
                 yield i
 
@@ -249,7 +249,7 @@ def test_generators(serve_instance):
     )
 
     gen = handle.options(stream=True).remote()
-    assert isinstance(gen, DeploymentHandleGenerator)
+    assert isinstance(gen, DeploymentResponseGenerator)
     assert list(gen) == list(range(10))
 
 
@@ -268,7 +268,7 @@ def test_convert_to_object_ref_gen(serve_instance):
 
         async def __call__(self):
             gen = self._handle.remote()
-            assert isinstance(gen, DeploymentHandleGenerator)
+            assert isinstance(gen, DeploymentResponseGenerator)
 
             obj_ref_gen = await gen._to_object_ref_gen()
             async for obj_ref in obj_ref_gen:
@@ -279,7 +279,7 @@ def test_convert_to_object_ref_gen(serve_instance):
     )
 
     gen = handle.options(stream=True).remote()
-    assert isinstance(gen, DeploymentHandleGenerator)
+    assert isinstance(gen, DeploymentResponseGenerator)
     obj_ref_gen = gen._to_object_ref_gen_sync()
     assert ray.get([obj_ref for obj_ref in obj_ref_gen]) == list(range(10))
 

@@ -5,7 +5,7 @@ import pytest
 from ray import serve
 from ray.serve.handle import (
     DeploymentHandle,
-    DeploymentHandleRef,
+    DeploymentResponse,
 )
 from ray.serve._private.constants import RAY_SERVE_ENABLE_NEW_HANDLE_API
 
@@ -27,7 +27,7 @@ def test_basic(serve_instance):
 
         async def __call__(self):
             ref = self._handle.remote()
-            assert isinstance(ref, DeploymentHandleRef)
+            assert isinstance(ref, DeploymentResponse)
             return await ref
 
     handle: DeploymentHandle = serve.run(Deployment.bind(downstream.bind()))
@@ -54,7 +54,7 @@ def test_get_app_and_deployment_handle(serve_instance):
             assert isinstance(handle, DeploymentHandle)
 
             ref = handle.remote()
-            assert isinstance(ref, DeploymentHandleRef)
+            assert isinstance(ref, DeploymentResponse)
             return await ref
 
     serve.run(Deployment.bind(downstream.bind()))

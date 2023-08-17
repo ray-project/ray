@@ -134,9 +134,7 @@ def test_sync_handle_in_thread(serve_instance):
     handle = serve.run(f.bind())
 
     def thread_get_handle(deploy):
-        handle = serve.get_deployment_handle(
-            deploy._name, SERVE_DEFAULT_APP_NAME
-        )
+        handle = serve.get_deployment_handle(deploy._name, SERVE_DEFAULT_APP_NAME)
         return handle
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:

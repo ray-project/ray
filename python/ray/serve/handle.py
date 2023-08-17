@@ -395,7 +395,7 @@ class RayServeDeploymentHandle(RayServeHandle):
     pass
 
 
-class _DeploymentHandleResultBase:
+class _DeploymentResponseBase:
     def __init__(
         self,
         assign_request_coro: Coroutine,
@@ -435,10 +435,10 @@ class _DeploymentHandleResultBase:
 
 
 @PublicAPI(stability="alpha")
-class DeploymentHandleRef(_DeploymentHandleResultBase):
+class DeploymentResponse(_DeploymentResponseBase):
     """A future-like object wrapping the result of a unary deployment handle call.
 
-    From inside a deployment, a `DeploymentHandleRef` can be awaited to retrieve the,
+    From inside a deployment, a `DeploymentResponse` can be awaited to retrieve the,
     output of the call without blocking the asyncio event loop.
 
     From outside a deployment, `.result()` can be used to retrieve the output in a
@@ -468,17 +468,17 @@ class DeploymentHandleRef(_DeploymentHandleResultBase):
 
         async def __call__(self, message: str) -> str:
             # Inside a deployment: `await` the result to enable concurrency.
-            ref: DeploymentHandleRef = self._downstream_handle.say_hi.remote(message)
-            return await ref
+            response = self._downstream_handle.say_hi.remote(message)
+            return await response
 
         app = Caller.bind(Downstream.bind())
         handle: DeploymentHandle = serve.run(app)
 
         # Outside a deployment: call `.result()` to get output.
-        ref: DeploymentHandleRef = handle.remote("world")
-        assert ref.result() == "Hello world!"
+        response = handle.remote("world")
+        assert response.result() == "Hello world!"
 
-    A `DeploymentHandleRef` can be passed directly to another `DeploymentHandle` call
+    A `DeploymentResponse` can be passed directly to another `DeploymentHandle` call
     without fetching the result to enable composing multiple deployments together.
 
     Example:
@@ -505,7 +505,7 @@ class DeploymentHandleRef(_DeploymentHandleResultBase):
 
         async def __call__(self, start: int) -> int:
             return await self._adder_handle.add.remote(
-                # Pass the ref directly to another handle call without awaiting.
+                # Pass the response directly to another handle call without awaiting.
                 self._adder_handle.add.remote(start)
             )
 
@@ -524,7 +524,7 @@ class DeploymentHandleRef(_DeploymentHandleResultBase):
         """Fetch the result of the handle call synchronously.
 
         This should *not* be used from within a deployment as it runs in an asyncio
-        event loop. For model composition, `await` the ref instead.
+        event loop. For model composition, `await` the response instead.
 
         If `timeout_s` is provided and the result is not available before the timeout,
         a `TimeoutError` is raised.
@@ -533,7 +533,7 @@ class DeploymentHandleRef(_DeploymentHandleResultBase):
 
     @DeveloperAPI
     async def _to_object_ref(self) -> ray.ObjectRef:
-        """Advanced API to convert the ref to a Ray `ObjectRef`.
+        """Advanced API to convert the response to a Ray `ObjectRef`.
 
         This is used to pass the output of a `DeploymentHandle` call to a Ray task or
         actor method call.
@@ -546,7 +546,7 @@ class DeploymentHandleRef(_DeploymentHandleResultBase):
 
     @DeveloperAPI
     def _to_object_ref_sync(self) -> ray.ObjectRef:
-        """Advanced API to convert the ref to a Ray `ObjectRef`.
+        """Advanced API to convert the response to a Ray `ObjectRef`.
 
         This is used to pass the output of a `DeploymentHandle` call to a Ray task or
         actor method call.
@@ -562,13 +562,13 @@ class DeploymentHandleRef(_DeploymentHandleResultBase):
 
 
 @PublicAPI(stability="alpha")
-class DeploymentHandleGenerator(_DeploymentHandleResultBase):
+class DeploymentResponseGenerator(_DeploymentResponseBase):
     """A future-like object wrapping the result of a streaming deployment handle call.
 
     This is returned when using `handle.options(stream=True)` and calling a generator
     deployment method.
 
-    `DeploymentHandleGenerator` is both a synchronous and asynchronous iterator.
+    `DeploymentResponseGenerator` is both a synchronous and asynchronous iterator.
 
     When iterating over results from inside a deployment, `async for` should be used to
     avoid blocking the asyncio event loop.
@@ -602,7 +602,7 @@ class DeploymentHandleGenerator(_DeploymentHandleResultBase):
                 self._streaming_handle = handle.options(stream=True)
 
         async def __call__(self, limit: int) -> AsyncIterator[int]:
-            gen: DeploymentHandleGenerator = (
+            gen: DeploymentResponseGenerator = (
                 self._streaming_handle.generate_numbers.remote(limit)
             )
 
@@ -614,10 +614,10 @@ class DeploymentHandleGenerator(_DeploymentHandleResultBase):
         handle: DeploymentHandle = serve.run(app)
 
         # Outside a deployment: use a standard `for` loop.
-        gen: DeploymentHandleGenerator = handle.options(stream=True).remote(10)
+        gen: DeploymentResponseGenerator = handle.options(stream=True).remote(10)
         assert [i for i in gen] == list(range(10))
 
-    A `DeploymentHandleGenerator` *cannot* currently be passed to another
+    A `DeploymentResponseGenerator` *cannot* currently be passed to another
     `DeploymentHandle` call.
     """
 
@@ -693,7 +693,7 @@ class DeploymentHandle(_DeploymentHandleBase):
 
         import ray
         from ray import serve
-        from ray.serve.handle import DeploymentHandle, DeploymentHandleRef
+        from ray.serve.handle import DeploymentHandle, DeploymentResponse
 
         @serve.deployment
         class Downstream:
@@ -707,13 +707,13 @@ class DeploymentHandle(_DeploymentHandleBase):
                 self._downstream_handle = handle
 
             async def __call__(self, name: str) -> str:
-                ref: DeploymentHandleRef = self._handle.say_hi.remote(name)
-                return await ref
+                response = self._handle.say_hi.remote(name)
+                return await response
 
         app = Ingress.bind(Downstream.bind("Hello "))
         handle: DeploymentHandle = serve.run(app)
-        ref: DeploymentHandleRef = handle.remote("world")
-        assert ref.result() == "Hello world!"
+        response = handle.remote("world")
+        assert response.result() == "Hello world!"
     """
 
     def options(
@@ -731,7 +731,7 @@ class DeploymentHandle(_DeploymentHandleBase):
 
         .. code-block:: python
 
-            ref = handle.options(
+            response = handle.options(
                 method_name="other_method",
                 multiplexed_model_id="model:v1",
             ).remote()
@@ -746,27 +746,27 @@ class DeploymentHandle(_DeploymentHandleBase):
 
     def remote(
         self, *args, **kwargs
-    ) -> Union[DeploymentHandleRef, DeploymentHandleGenerator]:
+    ) -> Union[DeploymentResponse, DeploymentResponseGenerator]:
         """Issue a call to the deployment.
 
-        By default, the result is a `DeploymentHandleRef` that can be awaited to fetch
+        By default, the result is a `DeploymentResponse` that can be awaited to fetch
         the result of the call or passed to another `.remote()` call to compose multiple
         deployments.
 
         If `handle.options(stream=True)` is set and a generator method is called, this
-        returns a `DeploymentHandleGenerator` instead.
+        returns a `DeploymentResponseGenerator` instead.
 
         Example:
 
         .. code-block:: python
 
             # Fetch the result directly.
-            ref = handle.remote()
-            result = await ref
+            response = handle.remote()
+            result = await response
 
             # Pass the result to another handle call.
-            composed_ref = handle2.remote(handle1.remote())
-            composed_result = await composed_ref
+            composed_response = handle2.remote(handle1.remote())
+            composed_result = await composed_response
 
         """
         loop = self._get_or_create_router()._event_loop
@@ -774,6 +774,6 @@ class DeploymentHandle(_DeploymentHandleBase):
             self.deployment_name, self.handle_options, args, kwargs
         )
         if self.handle_options.stream:
-            return DeploymentHandleGenerator(result_coro, loop=loop)
+            return DeploymentResponseGenerator(result_coro, loop=loop)
         else:
-            return DeploymentHandleRef(result_coro, loop=loop)
+            return DeploymentResponse(result_coro, loop=loop)
