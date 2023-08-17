@@ -223,7 +223,7 @@ def test_schemas_attach_grpc_server():
 
 
 def test_serving_request_through_grpc_proxy(ray_cluster):
-    """Test serving request through gRPC proxy
+    """Test serving request through gRPC proxy.
 
     When Serve runs with a gRPC deployment, the app should be deployed successfully,
     both routes and healthz methods returning success response, and registered gRPC
