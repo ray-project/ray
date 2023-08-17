@@ -38,77 +38,82 @@ class TestgRPCProxy:
         )
 
     def test_subclass_from_generic_proxy(self):
+        """Test gRPCProxy is a subclass from GenericProxy"""
         grpc_proxy = self.create_grpc_proxy()
         assert isinstance(grpc_proxy, GenericProxy)
 
     def test_protocol(self):
+        """Test gRPCProxy set up the correct protocol property"""
         grpc_proxy = self.create_grpc_proxy()
+        assert isinstance(grpc_proxy.protocol, RequestProtocol)
         assert grpc_proxy.protocol == "gRPC"
 
     def test_success_status_code(self):
+        """Test gRPCProxy set up the correct success status code"""
         grpc_proxy = self.create_grpc_proxy()
+        assert isinstance(grpc_proxy.success_status_code, str)
         assert grpc_proxy.success_status_code == str(grpc.StatusCode.OK)
 
     @pytest.mark.asyncio
     async def test_not_found(self):
+        """Test gRPCProxy set up the correct not found response"""
         grpc_proxy = self.create_grpc_proxy()
-        request_proto = serve_pb2.UserDefinedMessage(name="foo", num=30, foo="bar")
-        proxy_request = gRPCProxyRequest(
-            request_proto=request_proto,
-            context=MagicMock(),
-            service_method="service_method",
-            stream=False,
-        )
+        proxy_request = AsyncMock()
+        not_found_status = grpc.StatusCode.NOT_FOUND
         response = await grpc_proxy.not_found(proxy_request=proxy_request)
+
         assert isinstance(response, ProxyResponse)
-        assert response.status_code == str(grpc.StatusCode.NOT_FOUND)
+        assert response.status_code == str(not_found_status)
+        proxy_request.send_status_code.assert_called_with(status_code=not_found_status)
+        proxy_request.send_details.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_draining_response(self):
+        """Test gRPCProxy set up the correct draining response"""
         grpc_proxy = self.create_grpc_proxy()
-        request_proto = serve_pb2.UserDefinedMessage(name="foo", num=30, foo="bar")
-        proxy_request = gRPCProxyRequest(
-            request_proto=request_proto,
-            context=MagicMock(),
-            service_method="service_method",
-            stream=False,
-        )
+        proxy_request = AsyncMock()
+        draining_status = grpc.StatusCode.ABORTED
         response = await grpc_proxy.draining_response(proxy_request=proxy_request)
+
         assert isinstance(response, ProxyResponse)
-        assert response.status_code == str(grpc.StatusCode.ABORTED)
+        assert response.status_code == str(draining_status)
+        proxy_request.send_status_code.assert_called_with(status_code=draining_status)
+        proxy_request.send_details.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_timeout_response(self):
+        """Test gRPCProxy set up the correct timeout response"""
         grpc_proxy = self.create_grpc_proxy()
-        request_proto = serve_pb2.UserDefinedMessage(name="foo", num=30, foo="bar")
-        proxy_request = gRPCProxyRequest(
-            request_proto=request_proto,
-            context=MagicMock(),
-            service_method="service_method",
-            stream=False,
-        )
+        proxy_request = AsyncMock()
+        timeout_status = grpc.StatusCode.ABORTED
         response = await grpc_proxy.timeout_response(
             proxy_request=proxy_request, request_id="fake-request-id"
         )
+
         assert isinstance(response, ProxyResponse)
-        assert response.status_code == str(grpc.StatusCode.ABORTED)
+        assert response.status_code == str(timeout_status)
+        proxy_request.send_status_code.assert_called_with(status_code=timeout_status)
+        proxy_request.send_details.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_routes_response(self):
+        """Test gRPCProxy set up the correct routes response"""
         grpc_proxy = self.create_grpc_proxy()
-        request_proto = serve_pb2.UserDefinedMessage(name="foo", num=30, foo="bar")
-        proxy_request = gRPCProxyRequest(
-            request_proto=request_proto,
-            context=MagicMock(),
-            service_method="service_method",
-            stream=False,
-        )
+        route_info = {"/route": "endpoint"}
+        grpc_proxy.route_info = route_info
+        proxy_request = AsyncMock()
+        routes_status = grpc.StatusCode.OK
         response = await grpc_proxy.routes_response(proxy_request=proxy_request)
+
         assert isinstance(response, ProxyResponse)
-        assert response.status_code == str(grpc.StatusCode.OK)
+        assert response.status_code == str(routes_status)
+        response_proto = serve_pb2.ListApplicationsResponse()
+        response_proto.ParseFromString(response.response)
+        assert response_proto.application_names == list(route_info.values())
 
     @pytest.mark.asyncio
     async def test_health_response(self):
+        """Test gRPCProxy set up the correct health response"""
         grpc_proxy = self.create_grpc_proxy()
         request_proto = serve_pb2.UserDefinedMessage(name="foo", num=30, foo="bar")
         proxy_request = gRPCProxyRequest(

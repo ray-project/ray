@@ -631,7 +631,7 @@ class gRPCProxy(GenericProxy):
         status_code = grpc.StatusCode.ABORTED
         proxy_request.send_status_code(status_code=status_code)
         proxy_request.send_details(message=drained_message)
-        if proxy_request.route_path == "/-/routes":
+        if proxy_request.is_route_request:
             response_proto = ListApplicationsResponse(
                 application_names=self.route_info.values()
             )
