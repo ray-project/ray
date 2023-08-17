@@ -34,7 +34,7 @@ if TYPE_CHECKING:
     from ray.train._checkpoint import Checkpoint
 
 
-logger = logging.getLogger(__file__)
+logger = logging.getLogger(__name__)
 
 
 def _use_storage_context() -> bool:
