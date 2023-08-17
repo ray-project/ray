@@ -46,6 +46,10 @@ class MapTransformFn:
     def output_type(self) -> MapTransformDataType:
         return self._output_type
 
+    @classmethod
+    def of_blocks_to_blocks(cls, fn: TransformCallable) -> "MapTransformFn":
+        return cls(fn, MapTransformDataType.Block, MapTransformDataType.Block)
+
 
 class MapDataProcessor:
     def __init__(
