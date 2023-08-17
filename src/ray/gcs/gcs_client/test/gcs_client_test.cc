@@ -483,23 +483,24 @@ TEST_P(GcsClientTest, TestCheckAlive) {
   }
 }
 
-TEST_P(GcsClientTest, TestDefaultRetryPolicy) {
+TEST_P(GcsClientTest, TestDefaultServiceConfig) {
   // Register node.
   auto node_info = Mocker::GenNodeInfo();
   node_info->mutable_resources_total()->insert({"CPU", 1.0});
   node_info->mutable_resources_total()->insert({"GPU", 10.0});
   RAY_CHECK(RegisterNode(*node_info));
 
-  EXPECT_EQ(gcs_client_->GetGcsRpcClient().GetChannel()->GetServiceConfigJSON(),
-            "{\"methodConfig\":[{\"name\":[{\"service\":\"ray.rpc.JobInfoGcsService\"},{"
-            "\"service\":\"ray.rpc.ActorInfoGcsService\"},{\"service\":\"ray.rpc."
-            "NodeInfoGcsService\"},{\"service\":\"ray.rpc.NodeResourceInfoGcsService\"},{"
-            "\"service\":\"ray.rpc.WorkerInfoGcsService\"},{\"service\":\"ray.rpc."
-            "PlacementGroupInfoGcsService\"},{\"service\":\"ray.rpc."
-            "InternalKVGcsService\"},{\"service\":\"ray.rpc.InternalPubSubGcsService\"},{"
-            "\"service\":\"ray.rpc.TaskInfoGcsService\"}],\"retryPolicy\":{"
-            "\"backoffMultiplier\":2,\"initialBackoff\":\"0.5s\",\"maxAttempts\":5,"
-            "\"maxBackoff\":\"30s\",\"retryableStatusCodes\":[\"UNAVAILABLE\"]}}]}");
+  EXPECT_EQ(
+      gcs_client_->GetGcsRpcClient().GetChannel()->GetServiceConfigJSON(),
+      "{\n                \"methodConfig\": [\n                    {\n                   "
+      " \"name\": [\n                        {\n                        \"service\": "
+      "\"grpc.health.v1.Health\"\n                        }\n                    ],\n    "
+      "                \"retryPolicy\": {\n                        \"maxAttempts\": 5,\n "
+      "                       \"initialBackoff\": \"0.1s\",\n                        "
+      "\"maxBackoff\": \"30s\",\n                        \"backoffMultiplier\": 3,\n     "
+      "                   \"retryableStatusCodes\": [\n                        "
+      "\"UNAVAILABLE\"\n                        ]\n                    }\n               "
+      "     }\n                ]\n                }");
 }
 
 TEST_P(GcsClientTest, TestJobInfo) {

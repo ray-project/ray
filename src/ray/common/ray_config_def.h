@@ -729,21 +729,32 @@ RAY_CONFIG(int64_t, grpc_keepalive_timeout_ms, 20000)
 /// grpc keepalive timeout for client.
 RAY_CONFIG(int64_t, grpc_client_keepalive_time_ms, 300000)
 
-// Default retry policy in gRPC service config as JSON string.
+// Default service config in gRPC service config as JSON string.
 // Can be overwritten by gRPC name resolvers, but we don't use that.
-// Can be used to specify retry.
+// Can be used to specify retry for different services.
 // See https://github.com/grpc/proposal/blob/master/A6-client-retries.md
 RAY_CONFIG(std::string,
-           grpc_service_config_retry_policy_json,
+           grpc_service_config_json,
            R"({
-                "maxAttempts": 5,
-                "initialBackoff": "0.5s",
-                "maxBackoff": "30s",
-                "backoffMultiplier": 2,
-                "retryableStatusCodes": [
-                    "UNAVAILABLE"
+                "methodConfig": [
+                    {
+                    "name": [
+                        {
+                        "service": "grpc.health.v1.Health"
+                        }
+                    ],
+                    "retryPolicy": {
+                        "maxAttempts": 5,
+                        "initialBackoff": "0.1s",
+                        "maxBackoff": "30s",
+                        "backoffMultiplier": 3,
+                        "retryableStatusCodes": [
+                        "UNAVAILABLE"
+                        ]
+                    }
+                    }
                 ]
-            })")
+                })")
 
 /// grpc keepalive timeout for client.
 RAY_CONFIG(int64_t, grpc_client_keepalive_timeout_ms, 120000)

@@ -20,16 +20,12 @@
 #include <grpcpp/grpcpp.h>
 
 #include <sstream>
-#include <string_view>
 
 #include "absl/container/flat_hash_map.h"
-#include "nlohmann/json.hpp"
 #include "ray/common/ray_config.h"
 #include "ray/common/status.h"
 
 namespace ray {
-
-using json = nlohmann::json;
 
 /// Wrap a protobuf message.
 template <class Message>
@@ -154,8 +150,7 @@ inline absl::flat_hash_map<K, V> MapFromProtobuf(
   return absl::flat_hash_map<K, V>(pb_map.begin(), pb_map.end());
 }
 
-inline grpc::ChannelArguments CreateDefaultChannelArguments(
-    std::vector<std::string_view> service_full_names) {
+inline grpc::ChannelArguments CreateDefaultChannelArguments() {
   grpc::ChannelArguments arguments;
   if (::RayConfig::instance().grpc_client_keepalive_time_ms() > 0) {
     arguments.SetInt(GRPC_ARG_KEEPALIVE_TIME_MS,
@@ -163,31 +158,12 @@ inline grpc::ChannelArguments CreateDefaultChannelArguments(
     arguments.SetInt(GRPC_ARG_KEEPALIVE_TIMEOUT_MS,
                      ::RayConfig::instance().grpc_client_keepalive_timeout_ms());
   }
-  if (!(::RayConfig::instance().grpc_service_config_retry_policy_json().empty())) {
-    arguments.SetInt(GRPC_ARG_ENABLE_RETRIES, 1);
-
-    json retry_policy =
-        json::parse(::RayConfig::instance().grpc_service_config_retry_policy_json());
-    json service_config;
-    service_config["methodConfig"] = {
-        {
-            {"name", json::array()},
-            {"retryPolicy", retry_policy},
-        },
-    };
-    for (const std::string_view service_name : service_full_names) {
-      service_config["methodConfig"][0]["name"].push_back({
-          {"service", service_name},
-      });
-    }
-    arguments.SetServiceConfigJSON(service_config.dump());
+  const std::string &service_config = ::RayConfig::instance().grpc_service_config_json();
+  if (!service_config.empty()) {
+    arguments.SetServiceConfigJSON(::RayConfig::instance().grpc_service_config_json());
   }
-  return arguments;
-}
 
-inline grpc::ChannelArguments CreateDefaultChannelArguments(
-    std::string_view service_full_name) {
-  return CreateDefaultChannelArguments(std::vector{service_full_name});
+  return arguments;
 }
 
 }  // namespace ray

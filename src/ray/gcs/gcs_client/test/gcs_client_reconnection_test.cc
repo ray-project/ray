@@ -286,8 +286,7 @@ TEST_F(GcsClientReconnectionTest, QueueingAndBlocking) {
 {
   "gcs_rpc_server_reconnect_timeout_s": 60,
   "gcs_storage": "redis",
-  "gcs_grpc_max_request_queued_max_bytes": 10,
-  "gcs_server_request_timeout_seconds": 1
+  "gcs_grpc_max_request_queued_max_bytes": 10
 }
   )");
   StartGCS();
@@ -303,18 +302,9 @@ TEST_F(GcsClientReconnectionTest, QueueingAndBlocking) {
 
   ShutdownGCS();
 
-  RAY_LOG(INFO) << "gcs shutdown";
-
   // Send one request which should fail
-  RAY_UNUSED(
-      client->InternalKV().AsyncInternalKVPut("", "A", "B", false, [](auto status, auto) {
-        RAY_LOG(INFO) << "1st put result " << status;
-      }));
-
-  // Sleep 1s to make sure it's timed out and added to the pending_requests_.
-  std::this_thread::sleep_for(1s);
-
-  RAY_LOG(INFO) << "1st put submitted";
+  RAY_UNUSED(client->InternalKV().AsyncInternalKVPut(
+      "", "A", "B", false, [](auto status, auto) {}));
 
   // Make sure it's not blocking
   std::promise<void> p2;
@@ -323,31 +313,16 @@ TEST_F(GcsClientReconnectionTest, QueueingAndBlocking) {
   ASSERT_EQ(std::future_status::ready, f2.wait_for(1s));
 
   // Send the second one and it should block the thread
-  RAY_UNUSED(
-      client->InternalKV().AsyncInternalKVPut("", "A", "B", false, [](auto status, auto) {
-        RAY_LOG(INFO) << "2nd put result " << status;
-      }));
-
-  // Sleep 1s to make sure it's timed out and block the thread.
-  std::this_thread::sleep_for(1s);
-
-  RAY_LOG(INFO) << "2nd put submitted";
-
+  RAY_UNUSED(client->InternalKV().AsyncInternalKVPut(
+      "", "A", "B", false, [](auto status, auto) {}));
   std::this_thread::sleep_for(1s);
   std::promise<void> p3;
-  client_io_service_->post(
-      [&p3]() {
-        p3.set_value();
-        RAY_LOG(INFO) << "post after 2nd put finished";
-      },
-      "");
+  client_io_service_->post([&p3]() { p3.set_value(); }, "");
   auto f3 = p3.get_future();
   ASSERT_EQ(std::future_status::timeout, f3.wait_for(1s));
 
   // Resume GCS server and it should unblock
   StartGCS();
-  RAY_LOG(INFO) << "gcs started";
-
   ASSERT_EQ(std::future_status::ready, f3.wait_for(5s));
 }
 

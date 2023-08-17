@@ -42,16 +42,12 @@ class Executor {
   ///
   /// \param operation The operation to be executed.
   void Execute(std::function<void(GcsRpcClient *gcs_rpc_client)> operation) {
-    RAY_LOG(INFO) << "Executor::Execute running";
     operation_ = std::move(operation);
     operation_(gcs_rpc_client_);
   }
 
   /// This function is used to retry the given operation.
-  void Retry() {
-    RAY_LOG(INFO) << "Executor::Retry running";
-    operation_(gcs_rpc_client_);
-  }
+  void Retry() { operation_(gcs_rpc_client_); }
 
   void Abort(const ray::Status &status) { abort_callback_(status); }
 
@@ -105,9 +101,6 @@ class Executor {
     auto operation_callback = [this, request, callback, executor, timeout_ms](           \
                                   const ray::Status &status,                             \
                                   const METHOD##Reply &reply) {                          \
-      RAY_LOG(INFO) << "operation_callback "                                             \
-                    << " status " << status << "pending bytes "                          \
-                    << pending_requests_bytes_ << ", req " << request.ByteSizeLong();    \
       if (status.IsTimedOut()) {                                                         \
         callback(status, reply);                                                         \
         delete executor;                                                                 \
@@ -183,17 +176,7 @@ class GcsRpcClient {
  public:
   static std::shared_ptr<grpc::Channel> CreateGcsChannel(const std::string &address,
                                                          int port) {
-    grpc::ChannelArguments arguments = CreateDefaultChannelArguments({
-        JobInfoGcsService::service_full_name(),
-        ActorInfoGcsService::service_full_name(),
-        NodeInfoGcsService::service_full_name(),
-        NodeResourceInfoGcsService::service_full_name(),
-        WorkerInfoGcsService::service_full_name(),
-        PlacementGroupInfoGcsService::service_full_name(),
-        InternalKVGcsService::service_full_name(),
-        InternalPubSubGcsService::service_full_name(),
-        TaskInfoGcsService::service_full_name(),
-    });
+    grpc::ChannelArguments arguments = CreateDefaultChannelArguments();
     arguments.SetInt(GRPC_ARG_MAX_RECONNECT_BACKOFF_MS,
                      ::RayConfig::instance().gcs_grpc_max_reconnect_backoff_ms());
     arguments.SetInt(GRPC_ARG_MIN_RECONNECT_BACKOFF_MS,
