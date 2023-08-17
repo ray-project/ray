@@ -71,7 +71,10 @@ def function_trainable(config):
 
 @click.command()
 @click.argument("bucket", type=str)
-def main(bucket):
+@click.option("--smoke-test", is_flag=True, default=False)
+def main(bucket, smoke_test):
+    # Note: smoke_test is ignored as we just adjust the timeout.
+    # The parameter is passed by the release test pipeline.
     tuner = tune.Tuner(
         function_trainable,
         param_space={
