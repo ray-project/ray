@@ -11,7 +11,7 @@ from ray.data._internal.compute import get_compute
 from ray.data._internal.execution.interfaces import PhysicalOperator
 from ray.data._internal.execution.operators.map_data_processor import (
     create_map_data_processor_for_map_batches_op,
-    create_map_data_processor_for_map_op,
+    create_map_data_processor_for_row_based_map_op,
 )
 from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.util import make_callable_class_concurrent
@@ -177,7 +177,7 @@ def _create_map_data_processor_for_row_based_op(op: AbstractUDFMap):
     else:
         raise ValueError(f"Found unknown logical operator during planning: {op}")
 
-    return create_map_data_processor_for_map_op(op_transform_fn, init_fn)
+    return create_map_data_processor_for_row_based_map_op(op_transform_fn, init_fn)
 
 
 def _plan_udf_map_op(

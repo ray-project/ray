@@ -14,6 +14,12 @@ MapTransformFnData = Union[Block, Row, DataBatch]
 MapTransformCallable = Callable[
     [Iterable[MapTransformFnData], TaskContext], Iterable[MapTransformFnData]
 ]
+BlockTransformCallable = Callable[[Iterable[Block], TaskContext], Iterable[Block]]
+RowTransformCallable = Callable[[Iterable[Row], TaskContext], Iterable[Row]]
+BatchTransformCallable = Callable[
+    [Iterable[DataBatch], TaskContext], Iterable[DataBatch]
+]
+InitFn = Callable[[], None]
 
 
 class MapTransformFnDataType(Enum):
@@ -68,7 +74,7 @@ class MapDataProcessor:
     def __init__(
         self,
         transform_fns: List[MapTransformFn],
-        init_fn: Optional[Callable[[], None]] = None,
+        init_fn: Optional[InitFn] = None,
     ):
         """
         Args:
@@ -138,7 +144,11 @@ _input_blocks_to_rows = (
 
 
 def _input_blocks_to_batches(
-    blocks: Iterable[Block], _: TaskContext, batch_size, batch_format, zero_copy_batch
+    blocks: Iterable[Block],
+    _: TaskContext,
+    batch_size: Optional[int] = None,
+    batch_format: str = "default",
+    zero_copy_batch: bool = False,
 ) -> Iterable[DataBatch]:
     """Converts input blocks to batches."""
     block_iter = iter(blocks)
@@ -214,7 +224,8 @@ _blocks_to_output_blocks = MapTransformFn(
 
 
 def create_map_data_processor_for_row_based_map_op(
-    op_transform_fn, init_fn
+    row_fn: RowTransformCallable,
+    init_fn: Optional[InitFn] = None,
 ) -> MapDataProcessor:
     """Create a MapDataProcessor for a row-based map operator
     (e.g. map, flat_map, filter)."""
@@ -222,9 +233,7 @@ def create_map_data_processor_for_row_based_map_op(
         # Convert input blocks to rows.
         _input_blocks_to_rows,
         # Apply the UDF.
-        MapTransformFn(
-            op_transform_fn, MapTransformFnDataType.Row, MapTransformFnDataType.Row
-        ),
+        MapTransformFn(row_fn, MapTransformFnDataType.Row, MapTransformFnDataType.Row),
         # Convert output rows to blocks.
         _rows_to_output_blocks,
     ]
@@ -232,7 +241,11 @@ def create_map_data_processor_for_row_based_map_op(
 
 
 def create_map_data_processor_for_map_batches_op(
-    op_transform_fn, batch_size, batch_format, zero_copy_batch, init_fn
+    batch_fn: BatchTransformCallable,
+    batch_size: Optional[int] = None,
+    batch_format: str = "default",
+    zero_copy_batch: bool = False,
+    init_fn: Optional[InitFn] = None,
 ) -> MapDataProcessor:
     """Create a MapDataProcessor for a map_batches operator."""
     input_blocks_to_batches = (
@@ -252,7 +265,7 @@ def create_map_data_processor_for_map_batches_op(
         input_blocks_to_batches,
         # Apply the UDF.
         MapTransformFn(
-            op_transform_fn, MapTransformFnDataType.Batch, MapTransformFnDataType.Batch
+            batch_fn, MapTransformFnDataType.Batch, MapTransformFnDataType.Batch
         ),
         # Convert output batches to blocks.
         _batches_to_output_blocks,
@@ -260,7 +273,10 @@ def create_map_data_processor_for_map_batches_op(
     return MapDataProcessor(transform_fns, init_fn)
 
 
-def create_map_data_processor_for_read_op(read_fn) -> MapDataProcessor:
+def create_map_data_processor_for_read_op(
+    read_fn: BlockTransformCallable,
+    init_fn: Optional[InitFn] = None,
+) -> MapDataProcessor:
     """Create a MapDataProcessor for a read operator."""
     # TODO(hchen): Currently, we apply the BlockOuputBuffer within the read tasks.
     # We should remove that and use `_blocks_to_output_blocks` here.
@@ -269,10 +285,13 @@ def create_map_data_processor_for_read_op(read_fn) -> MapDataProcessor:
             read_fn, MapTransformFnDataType.Block, MapTransformFnDataType.Block
         ),
     ]
-    return MapDataProcessor(transform_fns)
+    return MapDataProcessor(transform_fns, init_fn=init_fn)
 
 
-def create_map_data_processor_for_write_op(write_fn) -> MapDataProcessor:
+def create_map_data_processor_for_write_op(
+    write_fn: BlockTransformCallable,
+    init_fn: Optional[InitFn] = None,
+) -> MapDataProcessor:
     """Create a MapDataProcessor for a write operator."""
     transform_fns = [
         MapTransformFn(
@@ -280,10 +299,13 @@ def create_map_data_processor_for_write_op(write_fn) -> MapDataProcessor:
         ),
         _blocks_to_output_blocks,
     ]
-    return MapDataProcessor(transform_fns)
+    return MapDataProcessor(transform_fns, init_fn=init_fn)
 
 
-def create_map_data_processor_from_block_fn(block_fn, init_fn=None):
+def create_map_data_processor_from_block_fn(
+    block_fn: BlockTransformCallable,
+    init_fn: Optional[InitFn] = None,
+):
     """Create a MapDataProcessor from a single block-based transform function.
 
     This method should only used for testing and legacy compatibility.
