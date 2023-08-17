@@ -14,12 +14,12 @@ Intel GPU is one of the XPU categories. Check official [Intel Graphics Processor
 
 ## How it works with Intel GPUs (Experimental)
 
-Users first define an environment variable `RAY_EXPERIMENTAL_ACCELERATOR` to `XPU` before `ray.init`
+Environment variable `RAY_EXPERIMENTAL_ACCELERATOR` is used to control what GPU runtime is used for Ray. Options are `cuda` or `xpu`. ”cuda“ is enabled by default and the use of ”cuda“ or ”xpu“ are exclusive for now.
+
+Users need to define `RAY_EXPERIMENTAL_ACCELERATOR` to `xpu` before `ray.init`
 to specify using Intel XPU runtime to detect Intel GPUs for Ray.
 
-Users can also switch back to use CUDA (enabled by default) `RAY_EXPERIMENTAL_ACCELERATOR=CUDA`. The support of XPU and CUDA are exclusive for now.
-
-Then users specify GPUs via the \`num_gpus\` argument, which is accepted by a variety of workloads.
+Then users specify GPUs via the `num_gpus` argument, which is accepted by a variety of workloads.
 
 ```
 @ray.remote(num_gpus=1)
