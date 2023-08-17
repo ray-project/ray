@@ -119,6 +119,7 @@ class MapDataProcessor:
             self._init_fn()
             other._init_fn()
 
+        # TODO(Scott): Add zero-copy batching between transform functions.
         fused_transform_fns = self._transform_fns + other._transform_fns
         return MapDataProcessor(fused_transform_fns, init_fn=fused_init_fn)
 
