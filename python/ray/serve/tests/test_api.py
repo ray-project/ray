@@ -459,7 +459,7 @@ class TestSetOptions:
             f.set_options(max_concurrent_queries=-4)
 
 
-def test_deploy_application(serve_instance):
+def test_deploy_application_basic(serve_instance):
     """Test deploy multiple applications"""
 
     @serve.deployment
