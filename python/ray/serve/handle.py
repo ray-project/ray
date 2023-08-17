@@ -114,7 +114,7 @@ class _DeploymentHandleBase:
 
     def _set_request_protocol(self, request_protocol: RequestProtocol):
         self.handle_options = self.handle_options.copy_and_update(
-            __request_protocol=request_protocol
+            _request_protocol=request_protocol
         )
 
     def _get_or_create_router(self) -> Router:
