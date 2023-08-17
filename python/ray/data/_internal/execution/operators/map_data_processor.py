@@ -135,12 +135,10 @@ def _input_blocks_to_rows_fn(blocks: Iterable[Block], _: TaskContext) -> Iterabl
             yield row
 
 
-_input_blocks_to_rows = (
-    MapTransformFn(
-        _input_blocks_to_rows_fn,
-        MapTransformFnDataType.Block,
-        MapTransformFnDataType.Row,
-    ),
+_input_blocks_to_rows = MapTransformFn(
+    _input_blocks_to_rows_fn,
+    MapTransformFnDataType.Block,
+    MapTransformFnDataType.Row,
 )
 
 
