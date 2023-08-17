@@ -120,12 +120,21 @@ class MapDataProcessor:
 # Below are util functions for converting input/output data.
 
 
-def _input_blocks_to_rows(blocks: Iterable[Block], _: TaskContext) -> Iterable[MapRow]:
+def _input_blocks_to_rows_fn(blocks: Iterable[Block], _: TaskContext) -> Iterable[Row]:
     """Converts input blocks to rows."""
     for block in blocks:
         block = BlockAccessor.for_block(block)
         for row in block.iter_rows(public_row_format=True):
             yield row
+
+
+_input_blocks_to_rows = (
+    MapTransformFn(
+        _input_blocks_to_rows_fn,
+        MapTransformFnDataType.Block,
+        MapTransformFnDataType.Row,
+    ),
+)
 
 
 def _input_blocks_to_batches(
@@ -182,14 +191,22 @@ def _to_output_blocks(
         yield output_buffer.next()
 
 
-_rows_to_output_blocks = functools.partial(
-    _to_output_blocks, iter_type=MapTransformFnDataType.Row
+_rows_to_output_blocks = MapTransformFn(
+    functools.partial(_to_output_blocks, iter_type=MapTransformFnDataType.Row),
+    MapTransformFnDataType.Row,
+    MapTransformFnDataType.Block,
 )
-_batches_to_output_blocks = functools.partial(
-    _to_output_blocks, iter_type=MapTransformFnDataType.Batch
+
+_batches_to_output_blocks = MapTransformFn(
+    functools.partial(_to_output_blocks, iter_type=MapTransformFnDataType.Batch),
+    MapTransformFnDataType.Batch,
+    MapTransformFnDataType.Block,
 )
-_blocks_to_output_blocks = functools.partial(
-    _to_output_blocks, iter_type=MapTransformFnDataType.Block
+
+_blocks_to_output_blocks = MapTransformFn(
+    functools.partial(_to_output_blocks, iter_type=MapTransformFnDataType.Block),
+    MapTransformFnDataType.Block,
+    MapTransformFnDataType.Block,
 )
 
 
@@ -203,21 +220,13 @@ def create_map_data_processor_for_row_based_map_op(
     (e.g. map, flat_map, filter)."""
     transform_fns = [
         # Convert input blocks to rows.
-        MapTransformFn(
-            _input_blocks_to_rows,
-            MapTransformFnDataType.Block,
-            MapTransformFnDataType.Row,
-        ),
+        _input_blocks_to_rows,
         # Apply the UDF.
         MapTransformFn(
             op_transform_fn, MapTransformFnDataType.Row, MapTransformFnDataType.Row
         ),
         # Convert output rows to blocks.
-        MapTransformFn(
-            _rows_to_output_blocks,
-            MapTransformFnDataType.Row,
-            MapTransformFnDataType.Block,
-        ),
+        _rows_to_output_blocks,
     ]
     return MapDataProcessor(transform_fns, init_fn=init_fn)
 
@@ -226,29 +235,27 @@ def create_map_data_processor_for_map_batches_op(
     op_transform_fn, batch_size, batch_format, zero_copy_batch, init_fn
 ) -> MapDataProcessor:
     """Create a MapDataProcessor for a map_batches operator."""
-    input_blocks_to_batches = functools.partial(
-        _input_blocks_to_batches,
-        batch_size=batch_size,
-        batch_format=batch_format,
-        zero_copy_batch=zero_copy_batch,
-    )
-    transform_fns = [
-        # Convert input blocks to batches.
+    input_blocks_to_batches = (
         MapTransformFn(
-            input_blocks_to_batches,
+            functools.partial(
+                _input_blocks_to_batches,
+                batch_size=batch_size,
+                batch_format=batch_format,
+                zero_copy_batch=zero_copy_batch,
+            ),
             MapTransformFnDataType.Block,
             MapTransformFnDataType.Batch,
         ),
+    )
+    transform_fns = [
+        # Convert input blocks to batches.
+        input_blocks_to_batches,
         # Apply the UDF.
         MapTransformFn(
             op_transform_fn, MapTransformFnDataType.Batch, MapTransformFnDataType.Batch
         ),
         # Convert output batches to blocks.
-        MapTransformFn(
-            _batches_to_output_blocks,
-            MapTransformFnDataType.Batch,
-            MapTransformFnDataType.Block,
-        ),
+        _batches_to_output_blocks,
     ]
     return MapDataProcessor(transform_fns, init_fn)
 
@@ -271,11 +278,7 @@ def create_map_data_processor_for_write_op(write_fn) -> MapDataProcessor:
         MapTransformFn(
             write_fn, MapTransformFnDataType.Block, MapTransformFnDataType.Block
         ),
-        MapTransformFn(
-            _blocks_to_output_blocks,
-            MapTransformFnDataType.Block,
-            MapTransformFnDataType.Block,
-        ),
+        _blocks_to_output_blocks,
     ]
     return MapDataProcessor(transform_fns)
 
