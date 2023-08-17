@@ -91,14 +91,14 @@ class LongPollClient:
         self.host_actor = host_actor
         self.key_listeners = key_listeners
         self.event_loop = call_in_event_loop
+        self.snapshot_ids: Dict[KeyType, int] = {
+            key: -1 for key in self.key_listeners.keys()
+        }
         self._reset()
 
         self.is_running = True
 
     def _reset(self):
-        self.snapshot_ids: Dict[KeyType, int] = {
-            key: -1 for key in self.key_listeners.keys()
-        }
         self.object_snapshots: Dict[KeyType, Any] = dict()
 
         self._current_ref = None
