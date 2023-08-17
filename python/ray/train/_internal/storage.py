@@ -469,9 +469,16 @@ class StorageContext:
         # This is used to construct URI's of the same format as `storage_path`.
         # However, we don't track these URI's internally, because pyarrow only
         # needs to interact with the prefix-stripped fs_path.
-        self.storage_prefix: URI = URI(self.storage_path).rstrip_subpath(
-            Path(self.storage_fs_path)
-        )
+
+        if isinstance(self.storage_filesystem, pyarrow.fs.LocalFileSystem):
+            # For local storage path, the prefix is empty
+            self.storage_prefix = Path(".")
+        else:
+            # For remote storage paths, cut the pyarrow parsed path and keep that
+            # as a prefix
+            self.storage_prefix: URI = URI(self.storage_path).rstrip_subpath(
+                Path(self.storage_fs_path)
+            )
 
         # Syncing is always needed if a custom `storage_filesystem` is provided.
         # Otherwise, syncing is only needed if storage_local_path

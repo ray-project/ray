@@ -1,4 +1,3 @@
-import sys
 from pathlib import Path
 import urllib.parse
 import os
@@ -37,7 +36,7 @@ class URI:
 
     def __init__(self, uri: str):
         self._parsed = urllib.parse.urlparse(uri)
-        if not self._parsed.scheme or _is_local_windows_path(uri):
+        if not self._parsed.scheme:
             # Just treat this as a regular path
             self._path = Path(uri)
         else:
@@ -80,16 +79,14 @@ class URI:
     def __truediv__(self, path_to_append):
         assert isinstance(path_to_append, str)
         return URI(
-            self._get_str_representation(
-                self._parsed, self._path.__truediv__(path_to_append)
-            )
+            self._get_str_representation(self._parsed, self._path / path_to_append)
         )
 
     @classmethod
     def _get_str_representation(
         cls, parsed_uri: urllib.parse.ParseResult, path: Union[str, Path]
     ) -> str:
-        if not parsed_uri.scheme or _is_local_windows_path(str(path)):
+        if not parsed_uri.scheme:
             return str(path)
         return parsed_uri._replace(netloc=str(path), path="").geturl()
 
@@ -100,26 +97,7 @@ class URI:
         return self._get_str_representation(self._parsed, self._path)
 
 
-def _is_local_windows_path(path: str) -> bool:
-    if sys.platform != "win32":
-        return False
-
-    if len(path) >= 1 and path[0] == "\\":
-        return True
-    if (
-        len(path) >= 3
-        and path[1] == ":"
-        and (path[2] == "/" or path[2] == "\\")
-        and path[0].isalpha()
-    ):
-        return True
-    return False
-
-
 def is_uri(path: str) -> bool:
-    # Windows has to be handled separately
-    if _is_local_windows_path(path):
-        return False
     return bool(urllib.parse.urlparse(path).scheme)
 
 
