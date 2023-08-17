@@ -1,7 +1,7 @@
 import functools
 import itertools
 from enum import Enum
-from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple, TypeVar, Union
+from typing import Any, Callable, Dict, Iterable, List, Optional, Union
 
 from ray.data._internal.block_batching.block_batching import batch_blocks
 from ray.data._internal.execution.interfaces.task_context import TaskContext
@@ -9,50 +9,88 @@ from ray.data._internal.output_buffer import BlockOutputBuffer
 from ray.data.block import Block, BlockAccessor, DataBatch
 from ray.data.context import DataContext
 
-RowType = Dict[str, Any]
-TransformDataType = Union[Block, RowType, DataBatch]
-TransformCallable = Callable[
-    [Iterable[TransformDataType], TaskContext], Iterable[TransformDataType]
+Row = Dict[str, Any]
+MapTransformFnData = Union[Block, Row, DataBatch]
+MapTransformCallable = Callable[
+    [Iterable[MapTransformFnData], TaskContext], Iterable[MapTransformFnData]
 ]
 
 
-class MapTransformDataType(Enum):
+class MapTransformFnDataType(Enum):
+    """An enum that represents the input/output data type of a MapTransformFn."""
+
     Block = 0
     Row = 1
     Batch = 2
 
 
 class MapTransformFn:
+    """Represents a single transform function in a MapDataProcessor."""
+
     def __init__(
         self,
-        fn: TransformCallable,
-        input_type: MapTransformDataType,
-        output_type: MapTransformDataType,
+        callable: MapTransformCallable,
+        input_type: MapTransformFnDataType,
+        output_type: MapTransformFnDataType,
     ):
-        self._fn = fn
+        """
+        Args:
+            callable: the underlying Python callable object.
+            input_type: the type of the input data.
+            output_type: the type of the output data.
+        """
+        self._callable = callable
         self._input_type = input_type
         self._output_type = output_type
 
     def __call__(
-        self, input: Iterable[TransformDataType], ctx: TaskContext
-    ) -> Iterable[TransformDataType]:
-        return self._fn(input, ctx)
+        self, input: Iterable[MapTransformFnData], ctx: TaskContext
+    ) -> Iterable[MapTransformFnData]:
+        return self._callable(input, ctx)
 
     @property
-    def input_type(self) -> MapTransformDataType:
+    def input_type(self) -> MapTransformFnDataType:
         return self._input_type
 
     @property
-    def output_type(self) -> MapTransformDataType:
+    def output_type(self) -> MapTransformFnDataType:
         return self._output_type
 
 
 class MapDataProcessor:
+    """Encapsulates the logic of processing data for a map PhysicalOperator.
+
+    MapDataProcessor may consist of one or more steps, each of which is represented
+    as a MapTransformFn. The first transform function must take blocks as input, and
+    the last transform function must output blocks.
+    """
+
     def __init__(
         self,
         transform_fns: List[MapTransformFn],
         init_fn: Optional[Callable[[], None]] = None,
     ):
+        """
+        Args:
+        transform_fns: A list of `MapTransformFn`s that will be executed sequentially
+            to process data.
+        init_fn: A function that will be called before processing data.
+            Used for the actor-based map operator.
+        """
+        assert len(transform_fns) > 0
+        assert (
+            transform_fns[0].input_type == MapTransformFnDataType.Block
+        ), "The first transform function must take blocks as input."
+        assert (
+            transform_fns[-1].output_type == MapTransformFnDataType.Block
+        ), "The last transform function must output blocks."
+
+        for i in range(len(transform_fns) - 1):
+            assert transform_fns[i].output_type == transform_fns[i + 1].input_type, (
+                "The output type of the previous transform function must match "
+                "the input type of the next transform function."
+            )
+
         self._transform_fns = transform_fns
         self._init_fn = init_fn if init_fn is not None else lambda: None
 
@@ -63,16 +101,13 @@ class MapDataProcessor:
         self, input_blocks: Iterable[Block], ctx: TaskContext
     ) -> Iterable[Block]:
         iter = input_blocks
-        cur_type = MapTransformDataType.Block
+        # Apply the transform functions sequentially to the input iterable.
         for transform_fn in self._transform_fns:
-            assert transform_fn.input_type == cur_type
             iter = transform_fn(iter, ctx)
-            cur_type = transform_fn.output_type
-        assert cur_type == MapTransformDataType.Block
         return iter
 
     def fuse(self, other: "MapDataProcessor") -> "MapDataProcessor":
-        assert self._transform_fns[-1].output_type == other._transform_fns[0].input_type
+        """Fuse two MapDataProcessors together."""
 
         def fused_init_fn():
             self._init_fn()
@@ -82,10 +117,11 @@ class MapDataProcessor:
         return MapDataProcessor(fused_transform_fns, init_fn=fused_init_fn)
 
 
-# Util functions that convert input blocks to UDF data.
+# Below are util functions for converting input/output data.
 
 
-def _input_blocks_to_rows(blocks: Iterable[Block], _: TaskContext) -> Iterable[RowType]:
+def _input_blocks_to_rows(blocks: Iterable[Block], _: TaskContext) -> Iterable[MapRow]:
+    """Converts input blocks to rows."""
     for block in blocks:
         block = BlockAccessor.for_block(block)
         for row in block.iter_rows(public_row_format=True):
@@ -95,6 +131,7 @@ def _input_blocks_to_rows(blocks: Iterable[Block], _: TaskContext) -> Iterable[R
 def _input_blocks_to_batches(
     blocks: Iterable[Block], _: TaskContext, batch_size, batch_format, zero_copy_batch
 ) -> Iterable[DataBatch]:
+    """Converts input blocks to batches."""
     block_iter = iter(blocks)
     first = next(block_iter, None)
     if first is None:
@@ -123,22 +160,20 @@ def _input_blocks_to_batches(
         return itertools.chain([first], formatted_batch_iter)
 
 
-# Util functions that convert UDF data to output blocks.
-
-
 def _to_output_blocks(
-    iter, _: TaskContext, iter_type: MapTransformDataType
+    iter, _: TaskContext, iter_type: MapTransformFnDataType
 ) -> Iterable[Block]:
+    """Convert UDF-returned data to output blocks."""
     output_buffer = BlockOutputBuffer(
         None, DataContext.get_current().target_max_block_size
     )
     for data in iter:
-        if iter_type == MapTransformDataType.Block:
+        if iter_type == MapTransformFnDataType.Block:
             output_buffer.add_block(data)
-        elif iter_type == MapTransformDataType.Batch:
+        elif iter_type == MapTransformFnDataType.Batch:
             output_buffer.add_batch(data)
         else:
-            assert iter_type == MapTransformDataType.Row
+            assert iter_type == MapTransformFnDataType.Row
             output_buffer.add(data)
         while output_buffer.has_next():
             yield output_buffer.next()
@@ -148,26 +183,40 @@ def _to_output_blocks(
 
 
 _rows_to_output_blocks = functools.partial(
-    _to_output_blocks, iter_type=MapTransformDataType.Row
+    _to_output_blocks, iter_type=MapTransformFnDataType.Row
 )
 _batches_to_output_blocks = functools.partial(
-    _to_output_blocks, iter_type=MapTransformDataType.Batch
+    _to_output_blocks, iter_type=MapTransformFnDataType.Batch
 )
 _blocks_to_output_blocks = functools.partial(
-    _to_output_blocks, iter_type=MapTransformDataType.Block
+    _to_output_blocks, iter_type=MapTransformFnDataType.Block
 )
 
 
-def create_map_data_processor_for_map_op(op_transform_fn, init_fn) -> MapDataProcessor:
+# End of util functions.
+
+
+def create_map_data_processor_for_row_based_map_op(
+    op_transform_fn, init_fn
+) -> MapDataProcessor:
+    """Create a MapDataProcessor for a row-based map operator
+    (e.g. map, flat_map, filter)."""
     transform_fns = [
+        # Convert input blocks to rows.
         MapTransformFn(
-            _input_blocks_to_rows, MapTransformDataType.Block, MapTransformDataType.Row
+            _input_blocks_to_rows,
+            MapTransformFnDataType.Block,
+            MapTransformFnDataType.Row,
         ),
+        # Apply the UDF.
         MapTransformFn(
-            op_transform_fn, MapTransformDataType.Row, MapTransformDataType.Row
+            op_transform_fn, MapTransformFnDataType.Row, MapTransformFnDataType.Row
         ),
+        # Convert output rows to blocks.
         MapTransformFn(
-            _rows_to_output_blocks, MapTransformDataType.Row, MapTransformDataType.Block
+            _rows_to_output_blocks,
+            MapTransformFnDataType.Row,
+            MapTransformFnDataType.Block,
         ),
     ]
     return MapDataProcessor(transform_fns, init_fn=init_fn)
@@ -176,6 +225,7 @@ def create_map_data_processor_for_map_op(op_transform_fn, init_fn) -> MapDataPro
 def create_map_data_processor_for_map_batches_op(
     op_transform_fn, batch_size, batch_format, zero_copy_batch, init_fn
 ) -> MapDataProcessor:
+    """Create a MapDataProcessor for a map_batches operator."""
     input_blocks_to_batches = functools.partial(
         _input_blocks_to_batches,
         batch_size=batch_size,
@@ -183,54 +233,62 @@ def create_map_data_processor_for_map_batches_op(
         zero_copy_batch=zero_copy_batch,
     )
     transform_fns = [
+        # Convert input blocks to batches.
         MapTransformFn(
             input_blocks_to_batches,
-            MapTransformDataType.Block,
-            MapTransformDataType.Batch,
+            MapTransformFnDataType.Block,
+            MapTransformFnDataType.Batch,
         ),
+        # Apply the UDF.
         MapTransformFn(
-            op_transform_fn, MapTransformDataType.Batch, MapTransformDataType.Batch
+            op_transform_fn, MapTransformFnDataType.Batch, MapTransformFnDataType.Batch
         ),
+        # Convert output batches to blocks.
         MapTransformFn(
             _batches_to_output_blocks,
-            MapTransformDataType.Batch,
-            MapTransformDataType.Block,
+            MapTransformFnDataType.Batch,
+            MapTransformFnDataType.Block,
         ),
     ]
     return MapDataProcessor(transform_fns, init_fn)
 
 
 def create_map_data_processor_for_read_op(read_fn) -> MapDataProcessor:
+    """Create a MapDataProcessor for a read operator."""
+    # TODO(hchen): Currently, we apply the BlockOuputBuffer within the read tasks.
+    # We should remove that and use `_blocks_to_output_blocks` here.
     transform_fns = [
-        MapTransformFn(read_fn, MapTransformDataType.Block, MapTransformDataType.Block),
         MapTransformFn(
-            _blocks_to_output_blocks,
-            MapTransformDataType.Block,
-            MapTransformDataType.Block,
+            read_fn, MapTransformFnDataType.Block, MapTransformFnDataType.Block
         ),
     ]
     return MapDataProcessor(transform_fns)
 
 
 def create_map_data_processor_for_write_op(write_fn) -> MapDataProcessor:
+    """Create a MapDataProcessor for a write operator."""
     transform_fns = [
         MapTransformFn(
-            write_fn, MapTransformDataType.Block, MapTransformDataType.Block
+            write_fn, MapTransformFnDataType.Block, MapTransformFnDataType.Block
         ),
         MapTransformFn(
             _blocks_to_output_blocks,
-            MapTransformDataType.Block,
-            MapTransformDataType.Block,
+            MapTransformFnDataType.Block,
+            MapTransformFnDataType.Block,
         ),
     ]
     return MapDataProcessor(transform_fns)
 
 
 def create_map_data_processor_from_block_fn(block_fn, init_fn=None):
+    """Create a MapDataProcessor from a single block-based transform function.
+
+    This method should only used for testing and legacy compatibility.
+    """
     return MapDataProcessor(
         [
             MapTransformFn(
-                block_fn, MapTransformDataType.Block, MapTransformDataType.Block
+                block_fn, MapTransformFnDataType.Block, MapTransformFnDataType.Block
             )
         ],
         init_fn,
