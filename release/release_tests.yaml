@@ -85,7 +85,7 @@
 
   frequency: nightly
   team: ml
-  new_persistence: "True"
+
   cluster:
     byod: {}
     cluster_compute: cpt_autoscaling_1-3_aws.yaml
@@ -122,7 +122,7 @@
     byod:
       type: gpu
     cluster_compute: compute_gpu_1_cpu_16_aws.yaml
-  
+
   run:
     timeout: 500
     script: python workloads/gpu_batch_inference.py --data-directory=10G-image-data-synthetic-raw --data-format raw
@@ -149,7 +149,7 @@
     byod:
       type: gpu
     cluster_compute: compute_gpu_1_cpu_16_aws.yaml
-  
+
   run:
     timeout: 500
     script: python workloads/gpu_batch_inference.py --data-directory=10G-image-data-synthetic-raw-parquet --data-format parquet
@@ -248,7 +248,7 @@
 
     wait_for_nodes:
       num_nodes: 20
-  
+
   alert: default
 
 
@@ -328,7 +328,7 @@
 
   frequency: nightly
   team: ml
-  new_persistence: "True"
+
   cluster:
     byod:
       type: gpu
@@ -583,7 +583,7 @@
 
   frequency: nightly
   team: ml
-  new_persistence: "True"
+
   cluster:
     byod:
       type: gpu
@@ -613,7 +613,7 @@
 
   frequency: nightly
   team: ml
-  new_persistence: "True"
+
   cluster:
     byod:
       type: gpu
@@ -640,7 +640,7 @@
 
   frequency: nightly
   team: ml
-  new_persistence: "True"
+
   stable: false
 
   cluster:
@@ -672,7 +672,7 @@
 
   frequency: weekly
   team: ml
-  new_persistence: "True"
+
   stable: false
 
   cluster:
@@ -844,7 +844,7 @@
 
   frequency: weekly
   team: ml
-  new_persistence: "True"
+
   cluster:
     byod:
       type: gpu
@@ -969,7 +969,7 @@
   python: "3.9"
   frequency: nightly-3x
   team: ml
-  new_persistence: "True"
+
   cluster:
     byod:
       type: gpu
@@ -1597,7 +1597,7 @@
 
   frequency: nightly-3x
   team: ml
-  new_persistence: "True"
+
   cluster:
     byod:
       type: gpu
@@ -1626,7 +1626,7 @@
 
   frequency: nightly-3x
   team: ml
-  new_persistence: "True"
+
   cluster:
     byod:
       type: gpu
@@ -1655,7 +1655,7 @@
 
   frequency: nightly-3x
   team: ml
-  new_persistence: "True"
+
   cluster:
     byod:
       runtime_env:
@@ -1685,7 +1685,7 @@
 
   frequency: nightly-3x
   team: ml
-  new_persistence: "True"
+
   cluster:
     byod:
       runtime_env:
@@ -1773,7 +1773,7 @@
 
   frequency: nightly-3x
   team: ml
-  new_persistence: "True"
+
   cluster:
     byod:
       type: gpu
@@ -2541,7 +2541,7 @@
 
   frequency: weekly
   team: ml
-  new_persistence: "True"
+
   cluster:
     byod:
       type: gpu
@@ -2837,7 +2837,7 @@
   team: serve
 
   cluster:
-    byod: 
+    byod:
       pip:
         # TODO: https://github.com/Farama-Foundation/AutoROM/issues/48
         - https://ray-ci-deps-wheels.s3.us-west-2.amazonaws.com/AutoROM.accept_rom_license-0.5.4-py3-none-any.whl
@@ -3472,7 +3472,7 @@
 
   frequency: nightly
   team: ml
-  new_persistence: "True"
+
   cluster:
     byod:
       type: gpu
