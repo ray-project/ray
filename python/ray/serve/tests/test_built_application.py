@@ -1,7 +1,6 @@
 import pytest
 import sys
 
-import ray
 from ray import serve
 from ray.serve.built_application import BuiltApplication
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
@@ -78,7 +77,7 @@ class TestServeRun:
         def check_all_deployed():
             for i in range(len(deployments)):
                 handle = serve.get_deployment_handle(deployments[i].name, f"app{i}")
-                if ray.get(handle.remote()) != responses[i]:
+                if handle.remote().result() != responses[i]:
                     return False
 
             return True
@@ -150,7 +149,7 @@ class TestServeRun:
             handle = serve.get_deployment_handle(
                 deployment.name, SERVE_DEFAULT_APP_NAME
             )
-            assert ray.get(handle.remote("hello")) == "hello"
+            assert handle.remote("hello").result() == "hello"
 
     def test_decorated_deployments(self, serve_instance):
         """
