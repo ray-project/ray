@@ -195,7 +195,7 @@ class _DeploymentHandleBase:
             call_method=self.handle_options.method_name,
             is_http_request=self._is_for_http_requests,
             route=_request_context.route,
-            app_name=_request_context.app_name,
+            app_name=self.app_name,
             multiplexed_model_id=self.handle_options.multiplexed_model_id,
             is_streaming=self.handle_options.stream,
         )
@@ -227,6 +227,7 @@ class _DeploymentHandleBase:
     def __reduce__(self):
         serialized_constructor_args = {
             "deployment_name": self.deployment_name,
+            "app_name": self.app_name,
             "handle_options": self.handle_options,
             "_is_for_http_requests": self._is_for_http_requests,
             "_is_for_sync_context": self._is_for_sync_context,
