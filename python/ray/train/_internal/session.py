@@ -30,6 +30,7 @@ from ray.train._checkpoint import Checkpoint as NewCheckpoint
 from ray.train._internal.accelerator import Accelerator
 from ray.train._internal.storage import _use_storage_context, StorageContext
 from ray.train.constants import (
+    CHECKPOINT_DIR_NAME,
     CHECKPOINT_METADATA_KEY,
     CHECKPOINT_RANK_KEY,
     DETAILED_AUTOFILLED_KEYS,
