@@ -399,9 +399,7 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
   RAY_CHECK_OK(store_client_.Connect(config.store_socket_name.c_str()));
   // Run the node manger rpc server.
   node_manager_server_.RegisterService(node_manager_service_, false /* token_auth */);
-  if (RayConfig::instance().use_ray_syncer()) {
-    node_manager_server_.RegisterService(ray_syncer_service_);
-  }
+  node_manager_server_.RegisterService(ray_syncer_service_);
   node_manager_server_.Run();
   // GCS will check the health of the service named with the node id.
   // Fail to setup this will lead to the health check failure.
@@ -441,37 +439,35 @@ ray::Status NodeManager::RegisterGcs() {
   auto on_node_change_subscribe_done = [this](Status status) {
     RAY_CHECK_OK(status);
 
-    if (RayConfig::instance().use_ray_syncer()) {
-      // Register resource manager and scheduler
-      ray_syncer_.Register(
-          /* message_type */ syncer::MessageType::RESOURCE_VIEW,
-          /* reporter */ &cluster_resource_scheduler_->GetLocalResourceManager(),
-          /* receiver */ this,
-          /* pull_from_reporter_interval_ms */
-          RayConfig::instance().raylet_report_resources_period_milliseconds());
+    // Register resource manager and scheduler
+    ray_syncer_.Register(
+        /* message_type */ syncer::MessageType::RESOURCE_VIEW,
+        /* reporter */ &cluster_resource_scheduler_->GetLocalResourceManager(),
+        /* receiver */ this,
+        /* pull_from_reporter_interval_ms */
+        RayConfig::instance().raylet_report_resources_period_milliseconds());
 
-      // Register a commands channel.
-      // It's only used for GC right now.
-      ray_syncer_.Register(
-          /* message_type */ syncer::MessageType::COMMANDS,
-          /* reporter */ this,
-          /* receiver */ this,
-          /* pull_from_reporter_interval_ms */ 0);
+    // Register a commands channel.
+    // It's only used for GC right now.
+    ray_syncer_.Register(
+        /* message_type */ syncer::MessageType::COMMANDS,
+        /* reporter */ this,
+        /* receiver */ this,
+        /* pull_from_reporter_interval_ms */ 0);
 
-      auto gcs_channel = gcs_client_->GetGcsRpcClient().GetChannel();
-      ray_syncer_.Connect(kGCSNodeID.Binary(), gcs_channel);
-      periodical_runner_.RunFnPeriodically(
-          [this] {
-            auto triggered_by_global_gc = TryLocalGC();
-            // If plasma store is under high pressure, we should try to schedule a global
-            // gc.
-            if (triggered_by_global_gc) {
-              ray_syncer_.OnDemandBroadcasting(syncer::MessageType::COMMANDS);
-            }
-          },
-          RayConfig::instance().raylet_check_gc_period_milliseconds(),
-          "NodeManager.CheckGC");
-    }
+    auto gcs_channel = gcs_client_->GetGcsRpcClient().GetChannel();
+    ray_syncer_.Connect(kGCSNodeID.Binary(), gcs_channel);
+    periodical_runner_.RunFnPeriodically(
+        [this] {
+          auto triggered_by_global_gc = TryLocalGC();
+          // If plasma store is under high pressure, we should try to schedule a global
+          // gc.
+          if (triggered_by_global_gc) {
+            ray_syncer_.OnDemandBroadcasting(syncer::MessageType::COMMANDS);
+          }
+        },
+        RayConfig::instance().raylet_check_gc_period_milliseconds(),
+        "NodeManager.CheckGC");
   };
   // Register a callback to monitor new nodes and a callback to monitor removed nodes.
   RAY_RETURN_NOT_OK(gcs_client_->Nodes().AsyncSubscribeToNodeChange(
@@ -1022,12 +1018,10 @@ void NodeManager::NodeAdded(const GcsNodeInfo &node_info) {
     cluster_task_manager_->ScheduleAndDispatchTasks();
   }
   // Update the resource view if a new message has been sent.
-  if (RayConfig::instance().use_ray_syncer()) {
-    if (auto sync_msg = ray_syncer_.GetSyncMessage(node_id.Binary(),
-                                                   syncer::MessageType::RESOURCE_VIEW)) {
-      if (sync_msg) {
-        ConsumeSyncMessage(sync_msg);
-      }
+  if (auto sync_msg = ray_syncer_.GetSyncMessage(node_id.Binary(),
+                                                 syncer::MessageType::RESOURCE_VIEW)) {
+    if (sync_msg) {
+      ConsumeSyncMessage(sync_msg);
     }
   }
 }
@@ -1760,75 +1754,6 @@ void NodeManager::ProcessPushErrorRequestMessage(const uint8_t *message_data) {
   JobID job_id = from_flatbuf<JobID>(*message->job_id());
   auto error_data_ptr = gcs::CreateErrorTableData(type, error_message, timestamp, job_id);
   RAY_CHECK_OK(gcs_client_->Errors().AsyncReportJobError(error_data_ptr, nullptr));
-}
-
-void NodeManager::HandleUpdateResourceUsage(rpc::UpdateResourceUsageRequest request,
-                                            rpc::UpdateResourceUsageReply *reply,
-                                            rpc::SendReplyCallback send_reply_callback) {
-  if (RayConfig::instance().use_ray_syncer()) {
-    RAY_LOG(WARNING)
-        << "There is a GCS outside of this cluster sending message to this raylet.";
-    send_reply_callback(Status::OK(), nullptr, nullptr);
-    return;
-  }
-
-  rpc::ResourceUsageBroadcastData resource_usage_batch;
-  resource_usage_batch.ParseFromString(request.serialized_resource_usage_batch());
-  // When next_resource_seq_no_ == 0 it means it just started.
-  // TODO: Fetch a snapshot from gcs for lightweight resource broadcasting
-  if (next_resource_seq_no_ != 0 &&
-      resource_usage_batch.seq_no() != next_resource_seq_no_) {
-    // TODO (Alex): Ideally we would be really robust, and potentially eagerly
-    // pull a full resource "snapshot" from gcs to make sure our state doesn't
-    // diverge from GCS.
-    RAY_LOG(WARNING)
-        << "Raylet may have missed a resource broadcast. This either means that GCS has "
-           "restarted, the network is heavily congested and is dropping, reordering, or "
-           "duplicating packets. Expected seq#: "
-        << next_resource_seq_no_ << ", but got: " << resource_usage_batch.seq_no() << ".";
-    if (resource_usage_batch.seq_no() < next_resource_seq_no_) {
-      RAY_LOG(WARNING) << "Discard the the resource update since local version is newer";
-      send_reply_callback(Status::OK(), nullptr, nullptr);
-      return;
-    }
-  }
-  next_resource_seq_no_ = resource_usage_batch.seq_no() + 1;
-
-  bool updated = false;
-  for (const auto &resource_change_or_data : resource_usage_batch.batch()) {
-    if (resource_change_or_data.has_data()) {
-      const auto &resource_usage = resource_change_or_data.data();
-      auto node_id = NodeID::FromBinary(resource_usage.node_id());
-      // Skip messages from self.
-      if (node_id != self_node_id_) {
-        if (UpdateResourceUsage(node_id, resource_usage)) {
-          updated = true;
-        }
-      }
-    } else if (resource_change_or_data.has_change()) {
-      const auto &resource_notification = resource_change_or_data.change();
-      auto node_id = NodeID::FromBinary(resource_notification.node_id());
-      if (resource_notification.updated_resources_size() != 0) {
-        auto resources = ResourceMapToResourceRequest(
-            MapFromProtobuf(resource_notification.updated_resources()), false);
-        if (ResourceCreateUpdated(node_id, resources)) {
-          updated = true;
-        }
-      }
-
-      if (resource_notification.deleted_resources_size() != 0) {
-        if (ResourceDeleted(
-                node_id, VectorFromProtobuf(resource_notification.deleted_resources()))) {
-          updated = true;
-        }
-      }
-    }
-  }
-
-  if (updated) {
-    cluster_task_manager_->ScheduleAndDispatchTasks();
-  }
-  send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
 void NodeManager::HandleRequestResourceReport(
