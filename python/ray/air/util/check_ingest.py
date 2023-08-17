@@ -2,7 +2,6 @@
 
 import sys
 import time
-import tempfile
 from typing import Optional
 
 import numpy as np
@@ -15,7 +14,6 @@ from ray.data.preprocessors import BatchMapper, Chain
 from ray.train._internal.dataset_spec import DataParallelIngestSpec
 from ray.train.data_parallel_trainer import DataParallelTrainer
 from ray.train import DataConfig
-from ray.train._checkpoint import Checkpoint
 from ray.util.annotations import Deprecated, DeveloperAPI
 
 
@@ -71,8 +69,6 @@ class DummyTrainer(DataParallelTrainer):
         def train_loop_per_worker():
             import pandas as pd
 
-            print("Session metadata", train.get_context().get_metadata())
-
             rank = train.get_context().get_world_rank()
             data_shard = train.get_dataset_shard("train")
             start = time.perf_counter()
@@ -104,16 +100,14 @@ class DummyTrainer(DataParallelTrainer):
                         # NOTE: This isn't recursive and will just return the size of
                         # the object pointers if list of non-primitive types.
                         bytes_read += sys.getsizeof(batch)
-                    with tempfile.TemporaryDirectory() as path:
-                        train.report(
-                            dict(
-                                bytes_read=bytes_read,
-                                batches_read=batches_read,
-                                epochs_read=epochs_read,
-                                batch_delay=batch_delay,
-                            ),
-                            checkpoint=Checkpoint.from_directory(path),
+                    train.report(
+                        dict(
+                            bytes_read=bytes_read,
+                            batches_read=batches_read,
+                            epochs_read=epochs_read,
+                            batch_delay=batch_delay,
                         )
+                    )
                     batch_start = time.perf_counter()
             delta = time.perf_counter() - start
 
@@ -209,12 +203,10 @@ if __name__ == "__main__":
         num_epochs=args.num_epochs,
         prefetch_batches=args.prefetch_batches,
         dataset_config=DataConfig(),
-        metadata={"example": 123, "meta": 45},
         batch_size=None,
     )
     print("Dataset config", trainer.get_dataset_config())
-    result = trainer.fit()
-    print("Checkpoint metadata", result.checkpoint.get_metadata())
+    trainer.fit()
 
     # Print memory stats (you can also use "ray memory --stats-only" to monitor this
     # during the middle of the run.
