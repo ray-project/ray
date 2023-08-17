@@ -128,10 +128,10 @@ def check_fruit_deployment_graph_updates():
 
 # Test behavior from this documentation example
 serve.start(detached=True)
-app = build(deployment_graph)
+app = build(deployment_graph, "default")
 for deployment in app.deployments.values():
     deployment.set_options(ray_actor_options={"num_cpus": 0.1})
-serve.run(app)
+serve.run(app, name="default")
 check_fruit_deployment_graph()
 print("Example ran successfully from the file.")
 serve.shutdown()

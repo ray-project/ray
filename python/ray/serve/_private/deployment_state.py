@@ -23,6 +23,7 @@ from ray._private.usage.usage_lib import (
 
 from ray.serve._private.autoscaling_metrics import InMemoryMetricsStore
 from ray.serve._private.common import (
+    DeploymentID,
     DeploymentInfo,
     DeploymentStatus,
     DeploymentStatusInfo,
@@ -45,6 +46,7 @@ from ray.serve._private.constants import (
     REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD,
     SERVE_LOGGER_NAME,
     SERVE_NAMESPACE,
+    DEPLOYMENT_NAME_PREFIX_SEPARATOR,
 )
 from ray.serve.generated.serve_pb2 import DeploymentLanguage
 from ray.serve._private.long_poll import LongPollHost, LongPollNamespace
@@ -1301,8 +1303,21 @@ class DeploymentState:
         ):
             return
 
+        prefix = (
+            self.app_name + DEPLOYMENT_NAME_PREFIX_SEPARATOR if self.app_name else ""
+        )
+        deployment_id = DeploymentID(self._name[len(prefix) :], self.app_name)
+
         self._long_poll_host.notify_changed(
-            (LongPollNamespace.RUNNING_REPLICAS, self._name),
+            (LongPollNamespace.RUNNING_REPLICAS, deployment_id),
+            running_replica_infos,
+        )
+        # NOTE(zcin): notify changed for Java routers. Since Java only
+        # supports 1.x API, there is no concept of applications in Java,
+        # so the key should remain a string describing the deployment
+        # name. If there are no Java routers, this is a no-op.
+        self._long_poll_host.notify_changed(
+            (LongPollNamespace.RUNNING_REPLICAS, str(deployment_id)),
             running_replica_infos,
         )
         self._last_notified_running_replica_infos = running_replica_infos
@@ -2446,22 +2461,29 @@ class DeploymentStateManager:
             for name, deployment_state in self._deployment_states.items()
         }
 
-    def get_deployment_configs(
+    def get_deployment_infos(
         self, filter_tag: Optional[str] = None, include_deleted: Optional[bool] = False
-    ) -> Dict[str, DeploymentConfig]:
-        configs: Dict[str, DeploymentConfig] = {}
+    ) -> Dict[DeploymentID, DeploymentInfo]:
+        infos: Dict[str, DeploymentInfo] = {}
         for deployment_name, deployment_state in self._deployment_states.items():
             if filter_tag is None or deployment_name == filter_tag:
-                configs[
-                    deployment_name
-                ] = deployment_state.target_info.deployment_config
+                app_name = deployment_state.target_info.app_name
+                prefix = app_name + DEPLOYMENT_NAME_PREFIX_SEPARATOR if app_name else ""
+                deployment_id = DeploymentID(deployment_name[len(prefix) :], app_name)
+                infos[deployment_id] = deployment_state.target_info
 
         if include_deleted:
             for name, info in self._deleted_deployment_metadata.items():
                 if filter_tag is None or name == filter_tag:
-                    configs[name] = info.deployment_config
+                    prefix = (
+                        info.app_name + DEPLOYMENT_NAME_PREFIX_SEPARATOR
+                        if info.app_name
+                        else ""
+                    )
+                    deployment_id = DeploymentID(name[len(prefix) :], info.app_name)
+                    infos[deployment_id] = info
 
-        return configs
+        return infos
 
     def get_deployment(
         self, deployment_name: str, include_deleted: Optional[bool] = False

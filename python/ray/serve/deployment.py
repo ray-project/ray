@@ -406,6 +406,7 @@ class Deployment:
 
         return get_global_client().get_handle(
             self._name,
+            app_name="",
             missing_ok=True,
             sync=sync,
         )

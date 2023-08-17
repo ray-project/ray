@@ -9,6 +9,7 @@ import pytest
 import ray
 from ray._private.utils import get_or_create_event_loop
 
+from ray.serve._private.common import DeploymentID
 from ray.serve._private.router import (
     PowerOfTwoChoicesReplicaScheduler,
     Query,
@@ -79,7 +80,7 @@ class FakeReplicaWrapper(ReplicaWrapper):
 def pow_2_scheduler() -> PowerOfTwoChoicesReplicaScheduler:
     s = PowerOfTwoChoicesReplicaScheduler(
         get_or_create_event_loop(),
-        "TEST_DEPLOYMENT",
+        DeploymentID("TEST_DEPLOYMENT", "TEST_APP"),
     )
 
     # Update the RAY_SERVE_MULTIPLEXED_MODEL_ID_MATCHING_TIMEOUT_S

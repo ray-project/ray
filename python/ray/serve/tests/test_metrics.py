@@ -551,12 +551,13 @@ class TestRequestContextMetrics:
             metrics_route, metrics_app_name = self._generate_metrics_summary(
                 get_metric_dictionaries(metric_name)
             )
-            assert metrics_route["app1_f"] == {"/app1"}
-            assert metrics_route["app2_g"] == {"/app2"}
-            assert metrics_route["app3_h"] == {"/app3"}
-            assert metrics_app_name["app1_f"] == "app1"
-            assert metrics_app_name["app2_g"] == "app2"
-            assert metrics_app_name["app3_h"] == "app3"
+            msg = f"Incorrect metrics for {metric_name}"
+            assert metrics_route["app1_f"] == {"/app1"}, msg
+            assert metrics_route["app2_g"] == {"/app2"}, msg
+            assert metrics_route["app3_h"] == {"/app3"}, msg
+            assert metrics_app_name["app1_f"] == "app1", msg
+            assert metrics_app_name["app2_g"] == "app2", msg
+            assert metrics_app_name["app3_h"] == "app3", msg
 
     def test_request_context_pass_for_handle_passing(self, serve_start_shutdown):
         """Test handle passing contexts between replicas"""

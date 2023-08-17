@@ -339,8 +339,11 @@ class LongPollHost:
     ) -> bytes:
         if key == LongPollNamespace.ROUTE_TABLE:
             # object_snapshot is Dict[EndpointTag, EndpointInfo]
+            # NOTE(zcin): the endpoint dictionary broadcasted to Java
+            # HTTP proxies should use string as key because Java does
+            # not yet support 2.x or applications
             xlang_endpoints = {
-                endpoint_tag: EndpointInfoProto(route=endpoint_info.route)
+                str(endpoint_tag): EndpointInfoProto(route=endpoint_info.route)
                 for endpoint_tag, endpoint_info in object_snapshot.items()
             }
             return EndpointSet(endpoints=xlang_endpoints).SerializeToString()

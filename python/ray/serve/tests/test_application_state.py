@@ -12,6 +12,7 @@ from ray.serve._private.application_state import (
     override_deployment_info,
 )
 from ray.serve._private.common import (
+    DeploymentID,
     ApplicationStatus,
     DeploymentConfig,
     DeploymentStatus,
@@ -258,6 +259,8 @@ def test_deploy_and_delete_app(mocked_application_state):
     app_state, deployment_state_manager = mocked_application_state
 
     # DEPLOY application with deployments {d1, d2}
+    d1_id = DeploymentID("d1", "test_app")
+    d2_id = DeploymentID("d2", "test_app")
     app_state.deploy(
         {
             "d1": deployment_info("d1", "/hi", "/documentation"),
@@ -273,8 +276,8 @@ def test_deploy_and_delete_app(mocked_application_state):
 
     app_state.update()
     # After one update, deployments {d1, d2} should be created
-    assert deployment_state_manager.get_deployment("d1")
-    assert deployment_state_manager.get_deployment("d2")
+    assert deployment_state_manager.get_deployment(str(d1_id))
+    assert deployment_state_manager.get_deployment(str(d2_id))
     assert app_state.status == ApplicationStatus.DEPLOYING
 
     # Until both deployments are healthy, app should be deploying
@@ -282,12 +285,12 @@ def test_deploy_and_delete_app(mocked_application_state):
     assert app_state.status == ApplicationStatus.DEPLOYING
 
     # Mark deployment d1 healthy (app should be deploying)
-    deployment_state_manager.set_deployment_healthy("d1")
+    deployment_state_manager.set_deployment_healthy(str(d1_id))
     app_state.update()
     assert app_state.status == ApplicationStatus.DEPLOYING
 
     # Mark deployment d2 healthy (app should be running)
-    deployment_state_manager.set_deployment_healthy("d2")
+    deployment_state_manager.set_deployment_healthy(str(d2_id))
     app_state.update()
     assert app_state.status == ApplicationStatus.RUNNING
 
@@ -300,13 +303,13 @@ def test_deploy_and_delete_app(mocked_application_state):
     assert app_state.status == ApplicationStatus.DELETING
 
     app_state.update()
-    deployment_state_manager.set_deployment_deleted("d1")
+    deployment_state_manager.set_deployment_deleted(str(d1_id))
     ready_to_be_deleted = app_state.update()
     assert not ready_to_be_deleted
     assert app_state.status == ApplicationStatus.DELETING
 
     # Once both deployments are deleted, the app should be ready to delete
-    deployment_state_manager.set_deployment_deleted("d2")
+    deployment_state_manager.set_deployment_deleted(str(d2_id))
     ready_to_be_deleted = app_state.update()
     assert ready_to_be_deleted
 
@@ -314,6 +317,8 @@ def test_deploy_and_delete_app(mocked_application_state):
 def test_app_deploy_failed_and_redeploy(mocked_application_state):
     """Test DEPLOYING -> DEPLOY_FAILED -> (redeploy) -> DEPLOYING -> RUNNING"""
     app_state, deployment_state_manager = mocked_application_state
+    d1_id = DeploymentID("d1", "test_app")
+    d2_id = DeploymentID("d2", "test_app")
     app_state.deploy({"d1": deployment_info("d1")})
     assert app_state.status == ApplicationStatus.DEPLOYING
 
@@ -322,7 +327,7 @@ def test_app_deploy_failed_and_redeploy(mocked_application_state):
     assert app_state.status == ApplicationStatus.DEPLOYING
 
     # Mark deployment unhealthy -> app should be DEPLOY_FAILED
-    deployment_state_manager.set_deployment_unhealthy("d1")
+    deployment_state_manager.set_deployment_unhealthy(str(d1_id))
     app_state.update()
     assert app_state.status == ApplicationStatus.DEPLOY_FAILED
 
@@ -339,12 +344,12 @@ def test_app_deploy_failed_and_redeploy(mocked_application_state):
 
     # After one update, deployments {d1, d2} should be created
     app_state.update()
-    assert deployment_state_manager.get_deployment("d1")
-    assert deployment_state_manager.get_deployment("d2")
+    assert deployment_state_manager.get_deployment(str(d1_id))
+    assert deployment_state_manager.get_deployment(str(d2_id))
     assert app_state.status == ApplicationStatus.DEPLOYING
 
-    deployment_state_manager.set_deployment_healthy("d1")
-    deployment_state_manager.set_deployment_healthy("d2")
+    deployment_state_manager.set_deployment_healthy(str(d1_id))
+    deployment_state_manager.set_deployment_healthy(str(d2_id))
     app_state.update()
     assert app_state.status == ApplicationStatus.RUNNING
 
@@ -364,6 +369,7 @@ def test_app_deploy_failed_and_recover(mocked_application_state):
     the application status should update to running.
     """
     app_state, deployment_state_manager = mocked_application_state
+    deployment_id = DeploymentID("d1", "test_app")
     app_state.deploy({"d1": deployment_info("d1")})
     assert app_state.status == ApplicationStatus.DEPLOYING
 
@@ -372,14 +378,14 @@ def test_app_deploy_failed_and_recover(mocked_application_state):
     assert app_state.status == ApplicationStatus.DEPLOYING
 
     # Mark deployment unhealthy -> app should be DEPLOY_FAILED
-    deployment_state_manager.set_deployment_unhealthy("d1")
+    deployment_state_manager.set_deployment_unhealthy(str(deployment_id))
     app_state.update()
     assert app_state.status == ApplicationStatus.DEPLOY_FAILED
     app_state.update()
     assert app_state.status == ApplicationStatus.DEPLOY_FAILED
 
     # Deployment recovers to healthy -> app should be RUNNING
-    deployment_state_manager.set_deployment_healthy("d1")
+    deployment_state_manager.set_deployment_healthy(str(deployment_id))
     app_state.update()
     assert app_state.status == ApplicationStatus.RUNNING
     app_state.update()
@@ -393,19 +399,20 @@ def test_app_unhealthy(mocked_application_state):
     updated to unhealthy.
     """
     app_state, deployment_state_manager = mocked_application_state
+    id_a, id_b = DeploymentID("a", "test_app"), DeploymentID("b", "test_app")
     app_state.deploy({"a": deployment_info("a"), "b": deployment_info("b")})
     assert app_state.status == ApplicationStatus.DEPLOYING
     app_state.update()
     assert app_state.status == ApplicationStatus.DEPLOYING
 
     # Once both deployments become healthy, app should be running
-    deployment_state_manager.set_deployment_healthy("a")
-    deployment_state_manager.set_deployment_healthy("b")
+    deployment_state_manager.set_deployment_healthy(str(id_a))
+    deployment_state_manager.set_deployment_healthy(str(id_b))
     app_state.update()
     assert app_state.status == ApplicationStatus.RUNNING
 
     # If a deployment becomes unhealthy, application should become unhealthy
-    deployment_state_manager.set_deployment_unhealthy("a")
+    deployment_state_manager.set_deployment_unhealthy(str(id_a))
     app_state.update()
     assert app_state.status == ApplicationStatus.UNHEALTHY
     # Rerunning update shouldn't make a difference
@@ -413,7 +420,7 @@ def test_app_unhealthy(mocked_application_state):
     assert app_state.status == ApplicationStatus.UNHEALTHY
 
     # If the deployment recovers, the application should also recover
-    deployment_state_manager.set_deployment_healthy("a")
+    deployment_state_manager.set_deployment_healthy(str(id_a))
     app_state.update()
     assert app_state.status == ApplicationStatus.RUNNING
 
@@ -426,6 +433,7 @@ def test_deploy_through_config_succeed(check_obj_ref_ready_nowait):
     Deploy obj ref finishes successfully, so status should transition to running.
     """
     kv_store = MockKVStore()
+    deployment_id = DeploymentID("a", "test_app")
     deployment_state_manager = MockDeploymentStateManager(kv_store)
     app_state_manager = ApplicationStateManager(
         deployment_state_manager, MockEndpointState(), kv_store
@@ -454,7 +462,7 @@ def test_deploy_through_config_succeed(check_obj_ref_ready_nowait):
     assert app_state.docs_path == "/docs"
 
     # Set healthy
-    deployment_state_manager.set_deployment_healthy("a")
+    deployment_state_manager.set_deployment_healthy(str(deployment_id))
     app_state.update()
     assert app_state.status == ApplicationStatus.RUNNING
 
@@ -498,6 +506,9 @@ def test_deploy_through_config_fail(check_obj_ref_ready_nowait):
 def test_redeploy_same_app(mocked_application_state):
     """Test redeploying same application with updated deployments."""
     app_state, deployment_state_manager = mocked_application_state
+    a_id = DeploymentID("a", "test_app")
+    b_id = DeploymentID("b", "test_app")
+    c_id = DeploymentID("c", "test_app")
     app_state.deploy({"a": deployment_info("a"), "b": deployment_info("b")})
     assert app_state.status == ApplicationStatus.DEPLOYING
 
@@ -507,10 +518,10 @@ def test_redeploy_same_app(mocked_application_state):
     assert set(app_state.target_deployments) == {"a", "b"}
 
     # Transition to running
-    deployment_state_manager.set_deployment_healthy("a")
+    deployment_state_manager.set_deployment_healthy(str(a_id))
     app_state.update()
     assert app_state.status == ApplicationStatus.DEPLOYING
-    deployment_state_manager.set_deployment_healthy("b")
+    deployment_state_manager.set_deployment_healthy(str(b_id))
     app_state.update()
     assert app_state.status == ApplicationStatus.RUNNING
 
@@ -522,15 +533,15 @@ def test_redeploy_same_app(mocked_application_state):
 
     # Remove deployment `a`
     app_state.update()
-    deployment_state_manager.set_deployment_deleted("a")
+    deployment_state_manager.set_deployment_deleted(str(a_id))
     app_state.update()
     assert app_state.status == ApplicationStatus.DEPLOYING
 
     # Move to running
-    deployment_state_manager.set_deployment_healthy("c")
+    deployment_state_manager.set_deployment_healthy(str(c_id))
     app_state.update()
     assert app_state.status == ApplicationStatus.DEPLOYING
-    deployment_state_manager.set_deployment_healthy("b")
+    deployment_state_manager.set_deployment_healthy(str(b_id))
     app_state.update()
     assert app_state.status == ApplicationStatus.RUNNING
 
@@ -550,6 +561,7 @@ def test_deploy_with_renamed_app(mocked_application_state_manager):
     conflict with an old app running on the cluster.
     """
     app_state_manager, deployment_state_manager, _ = mocked_application_state_manager
+    a_id, b_id = DeploymentID("a", "app1"), DeploymentID("b", "app2")
 
     # deploy app1
     app_state_manager.apply_deployment_args("app1", [deployment_params("a", "/url1")])
@@ -562,7 +574,7 @@ def test_deploy_with_renamed_app(mocked_application_state_manager):
     assert set(app_state.target_deployments) == {"a"}
 
     # Once its single deployment is healthy, app1 should be running
-    deployment_state_manager.set_deployment_healthy("a")
+    deployment_state_manager.set_deployment_healthy(str(a_id))
     app_state_manager.update()
     assert app_state_manager.get_app_status("app1") == ApplicationStatus.RUNNING
 
@@ -577,13 +589,13 @@ def test_deploy_with_renamed_app(mocked_application_state_manager):
     app_state_manager.update()
 
     # app2 deploys before app1 finishes deleting
-    deployment_state_manager.set_deployment_healthy("b")
+    deployment_state_manager.set_deployment_healthy(str(b_id))
     app_state_manager.update()
     assert app_state_manager.get_app_status("app2") == ApplicationStatus.RUNNING
     assert app_state_manager.get_app_status("app1") == ApplicationStatus.DELETING
 
     # app1 finally finishes deleting
-    deployment_state_manager.set_deployment_deleted("a")
+    deployment_state_manager.set_deployment_deleted(str(a_id))
     app_state_manager.update()
     assert app_state_manager.get_app_status("app1") == ApplicationStatus.NOT_STARTED
     assert app_state_manager.get_app_status("app2") == ApplicationStatus.RUNNING
@@ -596,6 +608,7 @@ def test_application_state_recovery(mocked_application_state_manager):
         deployment_state_manager,
         kv_store,
     ) = mocked_application_state_manager
+    deployment_id = DeploymentID("d1", "test_app")
     app_name = "test_app"
 
     # DEPLOY application with deployments {d1, d2}
@@ -606,15 +619,15 @@ def test_application_state_recovery(mocked_application_state_manager):
 
     # Once deployment is healthy, app should be running
     app_state_manager.update()
-    assert deployment_state_manager.get_deployment("d1")
-    deployment_state_manager.set_deployment_healthy("d1")
+    assert deployment_state_manager.get_deployment(str(deployment_id))
+    deployment_state_manager.set_deployment_healthy(str(deployment_id))
     app_state_manager.update()
     assert app_state.status == ApplicationStatus.RUNNING
 
     # Simulate controller crashed!! Create new deployment state manager,
     # which should recover target state for deployment "d1" from kv store
     new_deployment_state_manager = MockDeploymentStateManager(kv_store)
-    version1 = new_deployment_state_manager.deployment_infos["d1"].version
+    version1 = new_deployment_state_manager.deployment_infos[str(deployment_id)].version
 
     # Create new application state manager, and it should call _recover_from_checkpoint
     new_app_state_manager = ApplicationStateManager(
@@ -624,7 +637,7 @@ def test_application_state_recovery(mocked_application_state_manager):
     assert app_state.status == ApplicationStatus.DEPLOYING
     assert app_state._target_state.deployment_infos["d1"].version == version1
 
-    new_deployment_state_manager.set_deployment_healthy("d1")
+    new_deployment_state_manager.set_deployment_healthy(str(deployment_id))
     new_app_state_manager.update()
     assert app_state.status == ApplicationStatus.RUNNING
 
@@ -644,6 +657,7 @@ def test_recover_during_update(mocked_application_state_manager):
         deployment_state_manager,
         kv_store,
     ) = mocked_application_state_manager
+    deployment_id = DeploymentID("d1", "test_app")
     app_name = "test_app"
 
     # DEPLOY application with deployment "d1"
@@ -654,8 +668,8 @@ def test_recover_during_update(mocked_application_state_manager):
 
     # Once deployment is healthy, app should be running
     app_state_manager.update()
-    assert deployment_state_manager.get_deployment("d1")
-    deployment_state_manager.set_deployment_healthy("d1")
+    assert deployment_state_manager.get_deployment(str(deployment_id))
+    deployment_state_manager.set_deployment_healthy(str(deployment_id))
     app_state_manager.update()
     assert app_state.status == ApplicationStatus.RUNNING
 
@@ -669,7 +683,9 @@ def test_recover_during_update(mocked_application_state_manager):
     # Create new deployment state manager. It should recover the old
     # version of the deployment from the kv store
     new_deployment_state_manager = MockDeploymentStateManager(kv_store)
-    dr_version = new_deployment_state_manager.deployment_infos["d1"].version
+    dr_version = new_deployment_state_manager.deployment_infos[
+        str(deployment_id)
+    ].version
 
     # Create new application state manager, and it should call _recover_from_checkpoint
     new_app_state_manager = ApplicationStateManager(
@@ -681,10 +697,13 @@ def test_recover_during_update(mocked_application_state_manager):
     assert ar_version != dr_version
 
     new_app_state_manager.update()
-    assert new_deployment_state_manager.deployment_infos["d1"].version == ar_version
+    assert (
+        new_deployment_state_manager.deployment_infos[str(deployment_id)].version
+        == ar_version
+    )
     assert app_state.status == ApplicationStatus.DEPLOYING
 
-    new_deployment_state_manager.set_deployment_healthy("d1")
+    new_deployment_state_manager.set_deployment_healthy(str(deployment_id))
     new_app_state_manager.update()
     assert app_state.status == ApplicationStatus.RUNNING
 
@@ -705,6 +724,7 @@ def test_is_ready_for_shutdown(mocked_application_state_manager):
     ) = mocked_application_state_manager
     app_name = "test_app"
     deployment_name = "d1"
+    deployment_id = DeploymentID(deployment_name, app_name)
 
     # DEPLOY application with deployment "d1"
     params = deployment_params(deployment_name)
@@ -714,8 +734,8 @@ def test_is_ready_for_shutdown(mocked_application_state_manager):
 
     # Once deployment is healthy, app should be running
     app_state_manager.update()
-    assert deployment_state_manager.get_deployment(deployment_name)
-    deployment_state_manager.set_deployment_healthy(deployment_name)
+    assert deployment_state_manager.get_deployment(str(deployment_id))
+    deployment_state_manager.set_deployment_healthy(str(deployment_id))
     app_state_manager.update()
     assert app_state.status == ApplicationStatus.RUNNING
 
@@ -728,8 +748,8 @@ def test_is_ready_for_shutdown(mocked_application_state_manager):
 
     # When shutting down applications after deployments are deleted, application state
     # `is_deleted()` should return True and `is_ready_for_shutdown()` should return True
-    deployment_state_manager.delete_deployment(deployment_name)
-    deployment_state_manager.set_deployment_deleted(deployment_name)
+    deployment_state_manager.delete_deployment(str(deployment_id))
+    deployment_state_manager.set_deployment_deleted(str(deployment_id))
     app_state_manager.update()
     assert app_state.is_deleted()
     assert app_state_manager.is_ready_for_shutdown()
@@ -766,8 +786,8 @@ class TestOverrideDeploymentInfo:
             ],
         )
 
-        updated_infos = override_deployment_info("default", {"default_A": info}, config)
-        updated_info = updated_infos["default_A"]
+        updated_infos = override_deployment_info("default", {"A": info}, config)
+        updated_info = updated_infos["A"]
         assert updated_info.app_name == "default"
         assert updated_info.route_prefix == "/"
         assert updated_info.version == "123"
@@ -794,8 +814,8 @@ class TestOverrideDeploymentInfo:
             ],
         )
 
-        updated_infos = override_deployment_info("default", {"default_A": info}, config)
-        updated_info = updated_infos["default_A"]
+        updated_infos = override_deployment_info("default", {"A": info}, config)
+        updated_info = updated_infos["A"]
         assert updated_info.app_name == "default"
         assert updated_info.route_prefix == "/"
         assert updated_info.version == "123"
@@ -810,8 +830,8 @@ class TestOverrideDeploymentInfo:
             deployments=[DeploymentSchema(name="A", route_prefix="/alice")],
         )
 
-        updated_infos = override_deployment_info("default", {"default_A": info}, config)
-        updated_info = updated_infos["default_A"]
+        updated_infos = override_deployment_info("default", {"A": info}, config)
+        updated_info = updated_infos["A"]
         assert updated_info.app_name == "default"
         assert updated_info.route_prefix == "/alice"
         assert updated_info.version == "123"
@@ -828,8 +848,8 @@ class TestOverrideDeploymentInfo:
             ],
         )
 
-        updated_infos = override_deployment_info("default", {"default_A": info}, config)
-        updated_info = updated_infos["default_A"]
+        updated_infos = override_deployment_info("default", {"A": info}, config)
+        updated_info = updated_infos["A"]
         assert updated_info.app_name == "default"
         assert updated_info.route_prefix == "/bob"
         assert updated_info.version == "123"
@@ -842,8 +862,8 @@ class TestOverrideDeploymentInfo:
             deployments=[DeploymentSchema(name="A", route_prefix="/alice")],
         )
 
-        updated_infos = override_deployment_info("default", {"default_A": info}, config)
-        updated_info = updated_infos["default_A"]
+        updated_infos = override_deployment_info("default", {"A": info}, config)
+        updated_info = updated_infos["A"]
         assert updated_info.app_name == "default"
         assert updated_info.route_prefix == "/bob"
         assert updated_info.version == "123"
@@ -860,8 +880,8 @@ class TestOverrideDeploymentInfo:
             ],
         )
 
-        updated_infos = override_deployment_info("default", {"default_A": info}, config)
-        updated_info = updated_infos["default_A"]
+        updated_infos = override_deployment_info("default", {"A": info}, config)
+        updated_info = updated_infos["A"]
         assert updated_info.app_name == "default"
         assert updated_info.route_prefix == "/"
         assert updated_info.version == "123"
@@ -880,8 +900,8 @@ class TestOverrideDeploymentInfo:
             ],
         )
 
-        updated_infos = override_deployment_info("default", {"default_A": info}, config)
-        updated_info = updated_infos["default_A"]
+        updated_infos = override_deployment_info("default", {"A": info}, config)
+        updated_info = updated_infos["A"]
         assert updated_info.app_name == "default"
         assert updated_info.route_prefix == "/"
         assert updated_info.version == "123"
@@ -903,8 +923,8 @@ class TestOverrideDeploymentInfo:
             ],
         )
 
-        updated_infos = override_deployment_info("default", {"default_A": info}, config)
-        updated_info = updated_infos["default_A"]
+        updated_infos = override_deployment_info("default", {"A": info}, config)
+        updated_info = updated_infos["A"]
         assert updated_info.app_name == "default"
         assert updated_info.route_prefix == "/"
         assert updated_info.version == "123"
@@ -929,8 +949,8 @@ class TestOverrideDeploymentInfo:
             ],
         )
 
-        updated_infos = override_deployment_info("default", {"default_A": info}, config)
-        updated_info = updated_infos["default_A"]
+        updated_infos = override_deployment_info("default", {"A": info}, config)
+        updated_info = updated_infos["A"]
         assert updated_info.app_name == "default"
         assert updated_info.route_prefix == "/"
         assert updated_info.version == "123"
@@ -966,8 +986,8 @@ class TestOverrideDeploymentInfo:
             ],
         )
 
-        updated_infos = override_deployment_info("default", {"default_A": info}, config)
-        updated_info = updated_infos["default_A"]
+        updated_infos = override_deployment_info("default", {"A": info}, config)
+        updated_info = updated_infos["A"]
         assert updated_info.app_name == "default"
         assert updated_info.route_prefix == "/"
         assert updated_info.version == "123"
@@ -1007,8 +1027,8 @@ class TestOverrideDeploymentInfo:
             ],
         )
 
-        updated_infos = override_deployment_info("default", {"default_A": info}, config)
-        updated_info = updated_infos["default_A"]
+        updated_infos = override_deployment_info("default", {"A": info}, config)
+        updated_info = updated_infos["A"]
         assert updated_info.app_name == "default"
         assert updated_info.route_prefix == "/"
         assert updated_info.version == "123"
