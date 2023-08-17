@@ -196,6 +196,28 @@ class _DeploymentHandleBase:
             _is_for_sync_context=self._is_for_sync_context,
         )
 
+    def _remote(self, args: Tuple[Any], kwargs: Dict[str, Any]) -> Coroutine:
+        _request_context = ray.serve.context._serve_request_context.get()
+        request_metadata = RequestMetadata(
+            _request_context.request_id,
+            self.deployment_name,
+            call_method=self.handle_options.method_name,
+            route=_request_context.route,
+            app_name=self.app_name,
+            multiplexed_model_id=self.handle_options.multiplexed_model_id,
+            is_streaming=self.handle_options.stream,
+            _request_protocol=self.handle_options._request_protocol,
+        )
+        self.request_counter.inc(
+            tags={
+                "route": _request_context.route,
+                "application": _request_context.app_name,
+            }
+        )
+        return self._get_or_create_router().assign_request(
+            request_metadata, *args, **kwargs
+        )
+
     def __getattr__(self, name):
         return self.options(method_name=name)
 
