@@ -607,6 +607,11 @@ Transformations that you want run per-epoch, such as randomization, should go af
 
     # Pass train_ds to the Trainer
 
+.. testoutput::
+    :hide:
+
+    ...
+
 Adding CPU-only nodes to your cluster
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 If you are bottlenecked on expensive CPU preprocessing and the preprocessed Dataset is too large to fit in object store memory, then the above tip doesn't work. In this case, since Ray supports heterogeneous clusters, you can add more CPU-only nodes to your cluster.
