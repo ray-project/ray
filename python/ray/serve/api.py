@@ -3,6 +3,7 @@ import inspect
 import logging
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 from functools import wraps
+import warnings
 
 from fastapi import APIRouter, FastAPI
 from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
@@ -65,22 +66,21 @@ logger = logging.getLogger(__file__)
 @PublicAPI(stability="beta")
 def start(
     detached: bool = True,
-    proxy_location: Optional[Union[str, DeploymentMode]] = DeploymentMode.EveryNode,
+    proxy_location: Optional[Union[str, DeploymentMode]] = None,
     http_options: Optional[Union[dict, HTTPOptions]] = None,
     dedicated_cpu: bool = False,
     **kwargs,
 ):
     """Start Serve on the cluster.
 
-    Used to set cluster-scoped configurations such as HTTP options.
-    In most cases, this does not need to be called manually and Serve will be started
-    when an application is first deployed to the cluster.
+    Used to set cluster-scoped configurations such as HTTP options. In most cases, this
+    does not need to be called manually and Serve will be started when an application is
+    first deployed to the cluster.
 
-    These options cannot be updated dynamically. To update them, start a new cluster or
-    shut down Serve on this cluster and start it again.
+    These cluster-scoped options cannot be updated dynamically. To update them, start a
+    new cluster or shut down Serve on the cluster and start it again.
 
-    The same options available here can be set in relevant fields in a config file
-    deployed via the REST API.
+    These options can also be set in the config file deployed via REST API.
 
     Args:
         detached: [DEPRECATED: in the future, this will always be `True`]
@@ -88,10 +88,9 @@ def start(
           script. If set, the instance will live on the Ray cluster until it is
           explicitly stopped with serve.shutdown().
         proxy_location: Where to run proxies that handle ingress traffic to the
-          cluster. Supported options are:
+          cluster. Defaults to `EveryNode`. Supported options are:
 
-            - "EveryNode": run one proxy on every node in the cluster.
-              This is the default.
+            - "EveryNode": run one proxy on every node in the cluster (default).
             - "HeadOnly": run only one proxy on the head node of the cluster.
             - "NoServer" or None: disable the proxies entirely.
 
@@ -106,10 +105,11 @@ def start(
             - root_path: An optional root path to mount the serve application
               (for example, "/prefix"). All deployment routes will be prefixed
               with this path.
-            - middlewares: [DEPRECATED] A list of Starlette middlewares that will be
-              applied to the HTTP servers in the cluster.
+            - request_timeout_s: End-to-end timeout for HTTP requests.
+            - keep_alive_timeout_s: Duration to keep idle connections alive when no
+              requests are ongoing.
 
-          - location: [DEPRECATED: use `proxy_location` field instead] The deployment
+            - location: [DEPRECATED: use `proxy_location` field instead] The deployment
               location of HTTP servers:
 
                 - "HeadOnly": start one HTTP server on the head node. Serve
@@ -123,9 +123,21 @@ def start(
         dedicated_cpu: [DEPRECATED] Whether to reserve a CPU core for the
           Serve controller actor.
     """
-    if proxy_location is not None:
+    if not detached:
+        warnings.warn(
+            "Setting `detached=False` in `serve.start` is deprecated and will be "
+            "removed in a future version."
+        )
+
+    if proxy_location is None:
         if http_options is None:
-            http_options = HTTPOptions(location=proxy_location)
+            http_options = HTTPOptions(location=DeploymentMode.EveryNode)
+    else:
+        if http_options is None:
+            http_options = HTTPOptions(location=DeploymentMode.EveryNode)
+        else:
+            http_options.location = proxy_location
+
     _private_api.serve_start(detached, http_options, dedicated_cpu, **kwargs)
 
 
@@ -486,6 +498,13 @@ def run(
     Returns:
         RayServeSyncHandle: A handle that can be used to call the application.
     """
+    if host != DEFAULT_HTTP_HOST or port != DEFAULT_HTTP_PORT:
+        warnings.warn(
+            "Specifying host and port in `serve.run` is deprecated and will be "
+            "removed in a future version. To specify custom HTTP options, use "
+            "`serve.start`."
+        )
+
     client = _private_api.serve_start(
         detached=True,
         http_options={"host": host, "port": port, "location": "EveryNode"},

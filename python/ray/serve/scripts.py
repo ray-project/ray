@@ -159,15 +159,28 @@ def cli():
     default=DeploymentMode.HeadOnly,
     required=False,
     type=click.Choice(list(DeploymentMode)),
-    help="Location of the HTTP proxies. Defaults to HeadOnly.",
+    help="DEPRECATED: Use `--proxy-location` instead.",
 )
-def start(address, http_host, http_port, http_location):
+@click.option(
+    "--proxy-location",
+    default=DeploymentMode.HeadOnly,
+    required=False,
+    type=click.Choice(list(DeploymentMode)),
+    help="Location of the HTTP proxies. Defaults to EveryNode.",
+)
+def start(address, http_host, http_port, http_location, proxy_location):
+    if http_location is not None:
+        cli_logger.warning(
+            "The `--http-location` flag is deprecated, use `--proxy-location` instead."
+        )
+
     ray.init(
         address=address,
         namespace=SERVE_NAMESPACE,
     )
     serve.start(
         detached=True,
+        proxy_location=proxy_location,
         http_options=dict(
             host=http_host,
             port=http_port,
@@ -336,6 +349,13 @@ def run(
     blocking: bool,
     gradio: bool,
 ):
+    if host is not None or port is not None:
+        cli_logger.warning(
+            "Specifying `--host` and `--port` to `serve run` is deprecated and will be "
+            "removed in a future version. To specify custom HTTP options, use the "
+            "`serve start` command."
+        )
+
     sys.path.insert(0, app_dir)
     args_dict = convert_args_to_dict(arguments)
     final_runtime_env = parse_runtime_env_args(

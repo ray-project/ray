@@ -3,6 +3,7 @@ import json
 import logging
 from enum import Enum
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union, Set
+import warnings
 
 import pydantic
 from google.protobuf.json_format import MessageToDict
@@ -692,8 +693,32 @@ class HTTPOptions(pydantic.BaseModel):
             return DeploymentMode.NoServer
         return v
 
+    @validator("middlewares", always=True)
+    def warn_for_middlewares(cls, v, values):
+        if values["middlewares"]:
+            warnings.warn(
+                "Passing `middlewares` to HTTPOptions is deprecated and will be "
+                "removed in a future version."
+            )
+        return v
+
+    @validator("num_cpus", always=True)
+    def warn_for_num_cpus(cls, v, values):
+        if values["num_cpus"]:
+            warnings.warn(
+                "Passing `num_cpus` to HTTPOptions is deprecated and will be "
+                "removed in a future version."
+            )
+        return v
+
     @validator("fixed_number_replicas", always=True)
     def fixed_number_replicas_should_exist(cls, v, values):
+        if values["location"] == DeploymentMode.FixedNumber:
+            warnings.warn(
+                "`DeploymentMode.FixedNumber` is deprecated and will be removed in a "
+                "future version."
+            )
+
         if values["location"] == DeploymentMode.FixedNumber and v is None:
             raise ValueError(
                 "When location='FixedNumber', you must specify "
