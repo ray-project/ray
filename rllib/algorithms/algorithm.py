@@ -32,6 +32,7 @@ import ray
 from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
 from ray.actor import ActorHandle
 from ray.air.checkpoint import Checkpoint
+from ray.train._checkpoint import Checkpoint as NewCheckpoint
 import ray.cloudpickle as pickle
 
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
@@ -261,7 +262,7 @@ class Algorithm(Trainable, AlgorithmBase):
 
     @staticmethod
     def from_checkpoint(
-        checkpoint: Union[str, Checkpoint],
+        checkpoint: Union[str, Checkpoint, NewCheckpoint],
         policy_ids: Optional[Container[PolicyID]] = None,
         policy_mapping_fn: Optional[Callable[[AgentID, EpisodeID], PolicyID]] = None,
         policies_to_train: Optional[
