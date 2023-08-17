@@ -124,7 +124,7 @@ def _check_default_resources_override(
 ) -> bool:
     trainable_cls = _get_trainable(run_identifier)
     if not trainable_cls:
-        # Default to True
+        # If no trainable, assume override
         return True
 
     return hasattr(trainable_cls, "default_resource_request") and (

@@ -169,7 +169,7 @@ def _download_from_fs_path(
         else:
             _pyarrow_fs_copy_files(fs_path, local_path, source_filesystem=fs)
     except Exception as e:
-        # Clean up the directory if downloading was unsuccessful.
+        # Clean up the directory if downloading was unsuccessful
         if not exists_before:
             shutil.rmtree(local_path, ignore_errors=True)
         raise e
