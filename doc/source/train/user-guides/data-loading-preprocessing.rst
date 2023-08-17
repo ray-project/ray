@@ -3,11 +3,16 @@
 Data Loading and Preprocessing
 ==============================
 
-:ref:`Ray Train <train-docs>` integrates with :ref:`Ray Data <data>` to efficiently load and preprocess data for distributed training in a streaming fashion, which scales to very large datasets and avoids GPU starvation.
+Ray Train integrates with :ref:`Ray Data <data>` to offer an efficient, streaming solution for loading and preprocessing large datasets. 
+We recommend using Ray Data for its ability to performantly support large-scale distributed training workloads - for advantages and comparisons to alternatives, see :ref:`Ray Data Overview <data_overview>`.
 
-This guide covers how to leverage :ref:`Ray Data <data>` to load data for distributed training jobs. For advantages on using Ray Data to ingest data for training, and comparisons to alternatives, see :ref:`Ray Data Overview <data_overview>`.
+In this guide, we will cover how to incorporate Ray Data into your Ray Train script, and different ways to customize your data ingestion pipeline.
+
+.. TODO: Replace this image with a better one.
 
 .. figure:: ../images/train_ingest.png
+    :align: center
+    :width: 300px
 
 Quickstart
 ----------
@@ -17,12 +22,12 @@ Install Ray Data and Ray Train:
 
     pip install -U "ray[data,train]"
 
-Using Ray Data and Ray Train for distributed training on large datasets involves four basic steps:
+Data ingestion can be set up with four basic steps:
 
-- **Step 1:** Load your data into a Ray Dataset. Ray Data supports many different data sources and formats. For more details, see :ref:`Loading Data <loading_data>`.
-- **Step 2:** If required, create a function that defines your training logic and periodically checkpoints your model. For more information, see :ref:`Ray Train user guides <train-user-guides>`.
-- **Step 3:** Inside your training function, access the dataset shard for the training worker via :meth:`train.get_dataset_shard() <ray.train.get_dataset_shard>`. Iterate over the dataset shard to train your model. For more details on how to iterate over your data, see :ref:`Iterating over data <iterating-over-data>`.
-- **Step 4:** Create your :class:`TorchTrainer <ray.train.torch.TorchTrainer>` and pass in your Ray Dataset. This automatically shards the datasets and passes them to each training worker. For more information on configuring training, see the :ref:`Ray Train user guides <train-user-guides>`.
+1. Create a Ray Dataset.
+2. Preprocess your Ray Dataset.
+3. Input the preprocessed Dataset into the Ray Train Trainer.
+4. Consume the Ray Dataset in your training function.
 
 .. tabs::
 
@@ -31,7 +36,6 @@ Using Ray Data and Ray Train for distributed training on large datasets involves
         .. testcode::
 
             import torch
-            from torch import nn
             import ray
             from ray import train
             from ray.train import Checkpoint, ScalingConfig
@@ -44,38 +48,36 @@ Using Ray Data and Ray Train for distributed training on large datasets involves
             # Step 1: Create a Ray Dataset from in-memory Python lists.
             # You can also create a Ray Dataset from many other sources and file
             # formats.
-            train_dataset = ray.data.from_items([{"x": x, "y": 2 * x + 1} for x in range(200)])
+            train_dataset = ray.data.from_items([{"x": [x], "y": [2 * x]} for x in range(200)])
 
-            # Step 2: Define your training function. This function contains the logic
-            # for creating the model and the training loop to train the model.
-            # See the Ray Train user guides for information such as how to report
-            # metrics or periodically save model checkpoints.
+            # Step 2: Preprocess your Ray Dataset.
+            def increment(batch):
+                batch["y"] = batch["y"] + 1
+                return batch
+
+            train_dataset = train_dataset.map_batches(increment)
+
+
             def train_func(config):
-                model = nn.Sequential(nn.Linear(1, 1), nn.Sigmoid())
-                loss_fn = torch.nn.BCELoss()
-                optimizer = torch.optim.SGD(model.parameters(), lr=0.001)
+                batch_size = 16
 
-                # Step 3: Access the dataset shard for the training worker via
+                # Step 4: Access the dataset shard for the training worker via
                 # ``get_dataset_shard``.
                 train_data_shard = train.get_dataset_shard("train")
+                train_dataloader = train_data_shard.iter_torch_batches(
+                    batch_size=batch_size, dtypes=torch.float32
+                )
 
-                for epoch_idx in range(2):
-                    # In each epoch, iterate over batches of the dataset shard in torch
-                    # format to train the model.
-                    for batch in train_data_shard.iter_torch_batches(batch_size=128, dtypes=torch.float32):
-                        inputs, labels = torch.unsqueeze(batch["x"], 1), torch.unsqueeze(batch["y"], 1)
-                        predictions = model(inputs)
-                        train_loss = loss_fn(predictions, labels)
-                        train_loss.backward()
-                        optimizer.step()
+                for epoch_idx in range(1):
+                    for batch in train_dataloader:
+                        inputs, labels = batch["x"], batch["y"]
+                        assert type(inputs) == torch.Tensor
+                        assert type(labels) == torch.Tensor
+                        assert inputs.shape[0] == batch_size
+                        assert labels.shape[0] == batch_size
+                        break # Only check one batch. Last batch can be partial.
 
-                    # Checkpoint the model on each epoch.
-                    train.report(
-                        {},
-                        checkpoint=Checkpoint.from_dict({"model": model.state_dict()})
-                    )
-
-            # Step 4: Create a TorchTrainer. Specify the number of training workers and
+            # Step 3: Create a TorchTrainer. Specify the number of training workers and
             # pass in your Ray Dataset.
             # The Ray Dataset is automatically split across all training workers.
             trainer = TorchTrainer(
@@ -84,9 +86,6 @@ Using Ray Data and Ray Train for distributed training on large datasets involves
                 scaling_config=ScalingConfig(num_workers=2, use_gpu=use_gpu)
             )
             result = trainer.fit()
-
-            # Extract the model from the checkpoint.
-            result.checkpoint.to_dict()["model"]
 
         .. testoutput::
             :hide:
@@ -177,25 +176,123 @@ Using Ray Data and Ray Train for distributed training on large datasets involves
             trainer.fit()
 
 
-Migrating from PyTorch DataLoader
----------------------------------
+.. _train-datasets-load:
 
-Some deep learning frameworks provide their own dataloading utilities. For example:
+Loading data
+~~~~~~~~~~~~
 
-- PyTorch: `PyTorch Dataset & DataLoader <https://pytorch.org/tutorials/beginner/basics/data_tutorial.html>`
-- HuggingFace: `HuggingFace Dataset <https://huggingface.co/docs/datasets/index>`
-- PyTorch Lightning: `LightningDataModule <https://lightning.ai/docs/pytorch/stable/data/datamodule.html>`
+Ray Datasets can be created from many different data sources and formats. For more details, see :ref:`Loading Data <loading_data>`.
 
-You can still use the aforementioned utilities in Ray Train. However, for more performant large-scale data ingestion, you should consider migrating to Ray Data.
+.. _train-datasets-preprocess:
 
-PyTorch Datasets are replaced by the :class:`Dataset <ray.data.Dataset>` abtraction, and the PyTorch DataLoader is replaced by :meth:`Dataset.iter_torch_batches() <ray.data.Dataset.iter_torch_batches>`.
+Preprocessing data
+~~~~~~~~~~~~~~~~~~
 
-For more details, see the :ref:`Ray Data PyTorch guide <migrate_pytorch>` and :ref:`Ray Data for HuggingFace and TensorFlow <loading_datasets_from_ml_libraries>`.
+Ray Data support a wide range of preprocessing operations that can be used to transform your data prior to training.
 
-.. _train_datasets_configuration:
+- For general preprocessing, see :ref:`Transforming Data <transforming_data>`.
+- For tabular data, see :ref:`Preprocessing Structured Data <preprocessing_structured_data>`.
+- For PyTorch tensors, see :ref:`Transformations with torch tensors <transform_pytorch>`.
+- For optimizing expensive preprocessing operations, see :ref:`Caching the preprocessed dataset <dataset_cache_performance>`.
 
-Customizing how to split datasets
----------------------------------
+.. _train-datasets-input:
+
+Inputting and splitting data
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Your preprocessed datasets can be passed into a Ray Train Trainer (e.g. :class:`~ray.train.torch.TorchTrainer`) through the ``datasets`` argument.
+
+The datasets passed into the Trainer's ``datasets`` can be accessed inside of the ``train_loop_per_worker`` run on each distributed training worker by calling :meth:`ray.train.get_dataset_shard`. 
+
+The default splitting behavior is as follows:
+
+- The ``"train"`` dataset is split (i.e. sharded) across the training workers. :meth:`~ray.train.get_dataset_shard` will return ``1/n`` of the dataset, where ``n`` is the number of training workers.
+- All other dataset are not split. :meth:`~ray.train.get_dataset_shard` will return the full dataset.
+
+This behavior can be overwritten by passing in the ``dataset_config`` argument. For more information on configuring splitting logic, see :ref:`Splitting datasets <train-datasets-split>`.
+
+.. _train-datasets-consume:
+
+Consuming data
+~~~~~~~~~~~~~~
+
+Inside the ``train_loop_per_worker``, each worker can access its shard of the dataset via :meth:`ray.train.get_dataset_shard`.
+
+This data can be consumed in a variety of ways:
+
+- To create a generic Iterable of batches, you can call :meth:`~ray.data.DataIterator.iter_batches`.
+- To create a replacement for a PyTorch DataLoader, you can call :meth:`~ray.data.DataIterator.iter_torch_batches`.
+
+For more details on how to iterate over your data, see :ref:`Iterating over data <iterating-over-data>`.
+
+.. _train-datasets-pytorch:
+
+Starting with PyTorch data
+--------------------------
+
+Some frameworks provide their own dataset and data loading utilities. For example:
+
+- **PyTorch:** `Dataset & DataLoader <https://pytorch.org/tutorials/beginner/basics/data_tutorial.html>`_
+- **Hugging Face:** `Dataset <https://huggingface.co/docs/datasets/index>`_
+- **PyTorch Lightning:** `LightningDataModule <https://lightning.ai/docs/pytorch/stable/data/datamodule.html>`_
+
+These utilities can still be used directly with Ray Train. In particular, you may want to do this if you already have your data ingestion pipeline set up.
+However, for more performant large-scale data ingestion we do recommend migrating to Ray Data.
+
+At a high level, you can compare these concepts as follows:
+
+.. list-table::
+   :header-rows: 1
+
+   * - PyTorch API
+     - HuggingFace API
+     - Ray Data API
+   * - `torch.utils.data.Dataset <https://pytorch.org/docs/stable/data.html#torch.utils.data.Dataset>`_
+     - `datasets.Dataset <https://huggingface.co/docs/datasets/main/en/package_reference/main_classes#datasets.Dataset>`_
+     - :class:`ray.data.Dataset`
+   * - `torch.utils.data.DataLoader <https://pytorch.org/docs/stable/data.html#torch.utils.data.DataLoader>`_
+     - n/a
+     - :meth:`ray.data.Dataset.iter_torch_batches`
+
+
+For more details, see the following sections for each framework.
+
+.. tabs::
+
+    .. tab:: PyTorch Dataset and DataLoader
+
+        **Option 1 (with Ray Data):** Convert your PyTorch Dataset to a Ray Dataset and pass it into the Trainer via  ``datasets`` argument.
+        Inside your ``train_loop_per_worker``, you can access the dataset via :meth:`ray.train.get_dataset_shard`. 
+        You can convert this to replace the PyTorch DataLoader via :meth:`ray.data.DataIterator.iter_torch_batches`.
+         
+        For more details, see the :ref:`Migrating from PyTorch Datasets and DataLoaders <migrate_pytorch>`.
+
+        **Option 2 (without Ray Data):** Instantiate the Torch Dataset and DataLoader directly in the ``train_loop_per_worker``.
+        You can use the :meth:`ray.train.torch.prepare_data_loader` utility to set up the DataLoader for distributed training.
+    
+    .. tab:: LightningDataModule
+
+        The ``LightningDataModule`` is created with PyTorch ``Dataset``\s and ``DataLoader``\s. You can apply the same logic here.
+
+    .. tab:: Hugging Face Dataset
+
+        **Option 1 (with Ray Data):** Convert your Hugging Face Dataset to a Ray Dataset and pass it into the Trainer via the ``datasets`` argument.
+        Inside your ``train_loop_per_worker``, you can access the dataset via :meth:`ray.train.get_dataset_shard`. 
+
+        For instructions, see :ref:`Ray Data for Hugging Face <loading_datasets_from_ml_libraries>`.
+
+        **Option 2 (without Ray Data):** Instantiate the Hugging Face Dataset directly in the ``train_loop_per_worker``.
+
+    .. tip:: 
+
+        When using Torch or Hugging Face Datasets directly without Ray Data, make sure to instantiate your Dataset *inside* the ``train_loop_per_worker``. 
+        Instatiating the Dataset outside of the ``train_loop_per_worker`` and passing it in via global scope
+        can cause errors due to the Dataset not being serializable.
+
+.. _train-datasets-split:
+
+Splitting datasets
+------------------
 By default, Ray Train splits the ``"train"`` dataset across workers using :meth:`Dataset.streaming_split <ray.data.Dataset.streaming_split>`. Each worker sees a disjoint subset of the data, instead of iterating over the entire dataset. Unless randomly shuffled, the same splits are used for each iteration of the dataset. 
 
 For all other datasets, Ray Train passes the entire dataset to each worker.
@@ -306,99 +403,6 @@ The subclass must be serializable, since Ray Train copies it from the driver scr
 
 In general, you can use :class:`DataConfig <ray.train.DataConfig>` for any shared setup that has to occur ahead of time before the workers start iterating over data. The setup runs at the start of each Trainer run.
 
-Performance tips
-----------------
-
-.. _dataset_cache_performance:
-
-Caching the preprocessed Dataset
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-If you're training on GPUs and have an expensive CPU preprocessing operation, this approach may bottleneck training throughput.
-
-If your preprocessed Dataset is small enough to fit in Ray object store memory (by default this is 30% of total cluster RAM), *materialize* the preprocessed dataset in Ray's built-in object store, by calling :meth:`materialize() <ray.data.Dataset.materialize>` on the preprocessed dataset. This method tells Ray Data to compute the entire preprocessed and pin it in the Ray object store memory. As a result, when iterating over the dataset repeatedly, the preprocessing operations do not need to be re-run. However, if the preprocessed data is too large to fit into Ray object store memory, this approach will greatly decreases performance as data needs to be spilled to and read back from disk.
-
-Transformations that you want run per-epoch, such as randomization, should go after the materialize call.
-
-.. testcode::
-
-    from typing import Dict
-    import numpy as np
-    import ray
-
-    # Load the data.
-    train_ds = ray.data.read_parquet("s3://anonymous@ray-example-data/iris.parquet")
-
-    # Define a preprocessing function.
-    def normalize_length(batch: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
-        new_col = batch["sepal.length"] / np.max(batch["sepal.length"])
-        batch["normalized.sepal.length"] = new_col
-        del batch["sepal.length"]
-        return batch
-
-    # Preprocess the data. Transformations that are made before the materialize call
-    # below are only run once.
-    train_ds = train_ds.map_batches(normalize_length)
-
-    # Materialize the dataset in object store memory.
-    # Only do this if train_ds is small enough to fit in object store memory.
-    train_ds = train_ds.materialize()
-
-    # Dummy augmentation transform.
-    def augment_data(batch):
-        return batch
-
-    # Add per-epoch preprocessing. Transformations that you want to run per-epoch, such
-    # as data augmentation or randomization, should go after the materialize call.
-    train_ds = train_ds.map_batches(augment_data)
-
-    # Pass train_ds to the Trainer
-
-Adding CPU-only nodes to your cluster
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-If you are bottlenecked on expensive CPU preprocessing and the preprocessed Dataset is too large to fit in object store memory, then the above tip doesn't work. In this case, since Ray supports heterogeneous clusters, you can add more CPU-only nodes to your cluster.
-
-For cases where you're bottlenecked by object store memory, adding more CPU-only nodes to your cluster increases total cluster object store memory, allowing more data to be buffered in between preprocessing and training stages.
-
-For cases where you're bottlenecked by preprocessing compute time, adding more CPU-only nodes adds more CPU cores to your cluster, further parallelizing preprocessing. If your preprocessing is still not fast enough to saturate GPUs, then add enough CPU-only nodes to :ref:`cache the preprocessed dataset <dataset_cache_performance>`.
-
-Prefetching batches
-~~~~~~~~~~~~~~~~~~~
-While iterating over your dataset for training, you can increase ``prefetch_batches`` in :meth:`iter_batches <ray.data.DataIterator.iter_batches>` or :meth:`iter_torch_batches <ray.data.DataIterator.iter_torch_batches>` to further increase performance. While training on the current batch, this launches N background threads to fetch and process the next N batches.
-
-This approach can help if training is bottlenecked on cross-node data transfer or on last-mile preprocessing such as converting batches to tensors or executing ``collate_fn``. However, increasing ``prefetch_batches`` leads to more data that needs to be held in heap memory. By default, ``prefetch_batches`` is set to 1.
-
-For example, the following code prefetches 10 batches at a time for each training worker:
-
-.. testcode::
-
-    import ray
-    from ray import train
-    from ray.train import ScalingConfig
-    from ray.train.torch import TorchTrainer
-
-    ds = ray.data.read_text(
-        "s3://anonymous@ray-example-data/sms_spam_collection_subset.txt"
-    )
-
-    def train_loop_per_worker():
-        # Get an iterator to the dataset we passed in below.
-        it = train.get_dataset_shard("train")
-        for _ in range(2):
-            # Prefetch 10 batches at a time.
-            for batch in it.iter_batches(batch_size=128, prefetch_batches=10):
-                print("Do some training on batch", batch)
-
-    my_trainer = TorchTrainer(
-        train_loop_per_worker,
-        scaling_config=ScalingConfig(num_workers=2),
-        datasets={"train": ds},
-    )
-    my_trainer.fit()
-
-.. testoutput::
-    :hide:
-
-    ...
 
 Random shuffling
 ----------------
@@ -465,8 +469,9 @@ If your model is sensitive to shuffle quality, call :meth:`Dataset.random_shuffl
 
 For more information on how to optimize shuffling, and which approach to choose, see the :ref:`Optimize shuffling guide <optimizing_shuffles>`.
 
-Reproducibility
----------------
+
+Enabling reproducibility
+------------------------
 When developing or hyperparameter tuning models, reproducibility is important during data ingest so that data ingest does not affect model quality. Follow these three steps to enable reproducibility:
 
 **Step 1:** Enable deterministic execution in Ray Datasets by setting the `preserve_order` flag in the :class:`DataContext <ray.data.context.DataContext>`.
@@ -490,3 +495,158 @@ When developing or hyperparameter tuning models, reproducibility is important du
 * `local_shuffle_seed` argument to :meth:`iter_batches <ray.data.DataIterator.iter_batches>`
 
 **Step 3:** Follow the best practices for enabling reproducibility for your training framework of choice. For example, see the `Pytorch reproducibility guide <https://pytorch.org/docs/stable/notes/randomness.html>`_.
+
+
+
+.. _preprocessing_structured_data:
+
+Preprocessing structured data
+-----------------------------
+
+.. note::
+    This section is for tabular/structured data. The recommended way for preprocessing unstructured data is to use
+    Ray Data operations such as `map_batches`. See the :ref:`Ray Data Working with Pytorch guide <working_with_pytorch>` for more details.
+
+For tabular data, we recommend using Ray Data :ref:`preprocessors <air-preprocessors>`, which implement common data preprocessing operations.
+You can use this with Ray Train Trainers by applying them on the dataset before passing the dataset into a Trainer. For example:
+
+.. testcode::
+
+    import numpy as np
+
+    import ray
+    from ray import train
+    from ray.train import ScalingConfig
+    from ray.train.torch import TorchTrainer
+    from ray.data.preprocessors import Concatenator, Chain, StandardScaler
+
+    dataset = ray.data.read_csv("s3://anonymous@air-example-data/breast_cancer.csv")
+
+    # Create a preprocessor to scale some columns and concatenate the result.
+    preprocessor = Chain(
+        StandardScaler(columns=["mean radius", "mean texture"]),
+        Concatenator(exclude=["target"], dtype=np.float32),
+    )
+    dataset = preprocessor.fit_transform(dataset)  # this will be applied lazily
+
+    def train_loop_per_worker():
+        # Get an iterator to the dataset we passed in below.
+        it = train.get_dataset_shard("train")
+        for _ in range(2):
+            # Prefetch 10 batches at a time.
+            for batch in it.iter_batches(batch_size=128, prefetch_batches=10):
+                print("Do some training on batch", batch)
+
+    my_trainer = TorchTrainer(
+        train_loop_per_worker,
+        scaling_config=ScalingConfig(num_workers=2),
+        datasets={"train": dataset},
+    )
+    my_trainer.fit()
+
+
+.. testoutput::
+    :hide:
+
+    ...
+
+
+Performance tips
+----------------
+
+.. _dataset_cache_performance:
+
+Caching the preprocessed dataset
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+If you're training on GPUs and have an expensive CPU preprocessing operation, this approach may bottleneck training throughput.
+
+If your preprocessed Dataset is small enough to fit in Ray object store memory (by default this is 30% of total cluster RAM), *materialize* the preprocessed dataset in Ray's built-in object store, by calling :meth:`materialize() <ray.data.Dataset.materialize>` on the preprocessed dataset. This method tells Ray Data to compute the entire preprocessed and pin it in the Ray object store memory. As a result, when iterating over the dataset repeatedly, the preprocessing operations do not need to be re-run. However, if the preprocessed data is too large to fit into Ray object store memory, this approach will greatly decreases performance as data needs to be spilled to and read back from disk.
+
+Transformations that you want run per-epoch, such as randomization, should go after the materialize call.
+
+.. testcode::
+
+    from typing import Dict
+    import numpy as np
+    import ray
+
+    # Load the data.
+    train_ds = ray.data.read_parquet("s3://anonymous@ray-example-data/iris.parquet")
+
+    # Define a preprocessing function.
+    def normalize_length(batch: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
+        new_col = batch["sepal.length"] / np.max(batch["sepal.length"])
+        batch["normalized.sepal.length"] = new_col
+        del batch["sepal.length"]
+        return batch
+
+    # Preprocess the data. Transformations that are made before the materialize call
+    # below are only run once.
+    train_ds = train_ds.map_batches(normalize_length)
+
+    # Materialize the dataset in object store memory.
+    # Only do this if train_ds is small enough to fit in object store memory.
+    train_ds = train_ds.materialize()
+
+    # Dummy augmentation transform.
+    def augment_data(batch):
+        return batch
+
+    # Add per-epoch preprocessing. Transformations that you want to run per-epoch, such
+    # as data augmentation or randomization, should go after the materialize call.
+    train_ds = train_ds.map_batches(augment_data)
+
+    # Pass train_ds to the Trainer
+
+.. testoutput::
+    :hide:
+
+    ...
+
+Adding CPU-only nodes to your cluster
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+If you are bottlenecked on expensive CPU preprocessing and the preprocessed Dataset is too large to fit in object store memory, then the above tip doesn't work. In this case, since Ray supports heterogeneous clusters, you can add more CPU-only nodes to your cluster.
+
+For cases where you're bottlenecked by object store memory, adding more CPU-only nodes to your cluster increases total cluster object store memory, allowing more data to be buffered in between preprocessing and training stages.
+
+For cases where you're bottlenecked by preprocessing compute time, adding more CPU-only nodes adds more CPU cores to your cluster, further parallelizing preprocessing. If your preprocessing is still not fast enough to saturate GPUs, then add enough CPU-only nodes to :ref:`cache the preprocessed dataset <dataset_cache_performance>`.
+
+Prefetching batches
+~~~~~~~~~~~~~~~~~~~
+While iterating over your dataset for training, you can increase ``prefetch_batches`` in :meth:`iter_batches <ray.data.DataIterator.iter_batches>` or :meth:`iter_torch_batches <ray.data.DataIterator.iter_torch_batches>` to further increase performance. While training on the current batch, this launches N background threads to fetch and process the next N batches.
+
+This approach can help if training is bottlenecked on cross-node data transfer or on last-mile preprocessing such as converting batches to tensors or executing ``collate_fn``. However, increasing ``prefetch_batches`` leads to more data that needs to be held in heap memory. By default, ``prefetch_batches`` is set to 1.
+
+For example, the following code prefetches 10 batches at a time for each training worker:
+
+.. testcode::
+
+    import ray
+    from ray import train
+    from ray.train import ScalingConfig
+    from ray.train.torch import TorchTrainer
+
+    ds = ray.data.read_text(
+        "s3://anonymous@ray-example-data/sms_spam_collection_subset.txt"
+    )
+
+    def train_loop_per_worker():
+        # Get an iterator to the dataset we passed in below.
+        it = train.get_dataset_shard("train")
+        for _ in range(2):
+            # Prefetch 10 batches at a time.
+            for batch in it.iter_batches(batch_size=128, prefetch_batches=10):
+                print("Do some training on batch", batch)
+
+    my_trainer = TorchTrainer(
+        train_loop_per_worker,
+        scaling_config=ScalingConfig(num_workers=2),
+        datasets={"train": ds},
+    )
+    my_trainer.fit()
+
+.. testoutput::
+    :hide:
+
+    ...
+

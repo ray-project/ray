@@ -34,7 +34,7 @@ if TYPE_CHECKING:
     from ray.train._checkpoint import Checkpoint
 
 
-logger = logging.getLogger(__file__)
+logger = logging.getLogger(__name__)
 
 
 def _use_storage_context() -> bool:
@@ -169,7 +169,7 @@ def _download_from_fs_path(
         else:
             _pyarrow_fs_copy_files(fs_path, local_path, source_filesystem=fs)
     except Exception as e:
-        # Clean up the directory if downloading was unsuccessful.
+        # Clean up the directory if downloading was unsuccessful
         if not exists_before:
             shutil.rmtree(local_path, ignore_errors=True)
         raise e
@@ -530,9 +530,9 @@ class StorageContext:
         "Current" is defined by the `current_checkpoint_index` attribute of the
         storage context.
 
-        This method copies the checkpoint files to the storage location,
-        drops a marker at the storage path to indicate that the checkpoint
-        is completely uploaded, then deletes the original checkpoint directory.
+        This method copies the checkpoint files to the storage location.
+        It's up to the user to delete the original checkpoint files if desired.
+
         For example, the original directory is typically a local temp directory.
 
         Args:
@@ -544,7 +544,7 @@ class StorageContext:
         # TODO(justinvyu): Fix this cyclical import.
         from ray.train._checkpoint import Checkpoint
 
-        logger.debug(
+        logger.info(
             "Copying checkpoint files to storage path:\n"
             "({source_fs}, {source}) -> ({dest_fs}, {destination})".format(
                 source=checkpoint.path,
@@ -553,6 +553,13 @@ class StorageContext:
                 dest_fs=self.storage_filesystem,
             )
         )
+
+        # Raise an error if the storage path is not accessible when
+        # attempting to upload a checkpoint from a remote worker.
+        # Ex: If storage_path is a local path, then a validation marker
+        # will only exist on the head node but not the worker nodes.
+        self._check_validation_file()
+
         self.storage_filesystem.create_dir(self.checkpoint_fs_path)
         _pyarrow_fs_copy_files(
             source=checkpoint.path,
@@ -561,17 +568,12 @@ class StorageContext:
             destination_filesystem=self.storage_filesystem,
         )
 
-        # Delete local checkpoint files.
-        # TODO(justinvyu): What if checkpoint.path == self.checkpoint_fs_path?
-        # TODO(justinvyu): What if users don't want to delete the local checkpoint?
-        checkpoint.filesystem.delete_dir(checkpoint.path)
-
-        uploaded_checkpoint = Checkpoint(
+        persisted_checkpoint = Checkpoint(
             filesystem=self.storage_filesystem,
             path=self.checkpoint_fs_path,
         )
-        logger.debug(f"Checkpoint successfully created at: {uploaded_checkpoint}")
-        return uploaded_checkpoint
+        logger.info(f"Checkpoint successfully created at: {persisted_checkpoint}")
+        return persisted_checkpoint
 
     @property
     def experiment_fs_path(self) -> str:

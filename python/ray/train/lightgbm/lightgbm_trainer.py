@@ -10,7 +10,7 @@ from ray.air.checkpoint import Checkpoint
 from ray.air.constants import MODEL_KEY
 from ray.train.gbdt_trainer import GBDTTrainer
 from ray.util.annotations import PublicAPI
-from ray.train.lightgbm.lightgbm_checkpoint import LightGBMCheckpoint
+from ray.train.lightgbm.lightgbm_checkpoint import LegacyLightGBMCheckpoint
 
 import lightgbm
 import lightgbm_ray
@@ -63,7 +63,7 @@ class LightGBMTrainer(GBDTTrainer):
             ...
 
     Args:
-        datasets: Datasets to use for training and validation. Must include a
+        datasets: The Ray Datasets to use for training and validation. Must include a
             "train" key denoting the training dataset. If a ``preprocessor``
             is provided and has not already been fit, it will be fit on the training
             dataset. All datasets will be transformed by the ``preprocessor`` if
@@ -77,7 +77,7 @@ class LightGBMTrainer(GBDTTrainer):
         dmatrix_params: Dict of ``dataset name:dict of kwargs`` passed to respective
             :class:`xgboost_ray.RayDMatrix` initializations, which in turn are passed
             to ``lightgbm.Dataset`` objects created on each worker. For example, this
-            can be used to add sample weights with the ``weights`` parameter.
+            can be used to add sample weights with the ``weight`` parameter.
         num_boost_round: Target number of boosting iterations (trees in the model).
             Note that unlike in ``lightgbm.train``, this is the target number
             of trees, meaning that if you set ``num_boost_round=10`` and pass a model
@@ -119,7 +119,7 @@ class LightGBMTrainer(GBDTTrainer):
         self, checkpoint: Checkpoint
     ) -> Tuple[lightgbm.Booster, Optional["Preprocessor"]]:
         # TODO(matt): Replace this when preprocessor arg is removed.
-        checkpoint = LightGBMCheckpoint.from_checkpoint(checkpoint)
+        checkpoint = LegacyLightGBMCheckpoint.from_checkpoint(checkpoint)
         return checkpoint.get_model(), checkpoint.get_preprocessor()
 
     def _save_model(self, model: lightgbm.LGBMModel, path: str):
