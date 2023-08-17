@@ -45,6 +45,7 @@ from ray.serve._private.constants import (
     SERVE_MULTIPLEXED_MODEL_ID,
     SERVE_NAMESPACE,
     DEFAULT_LATENCY_BUCKET_MS,
+    DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_S,
     PROXY_MIN_DRAINING_PERIOD_S,
     RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING,
     RAY_SERVE_REQUEST_ID_HEADER,
@@ -54,6 +55,7 @@ from ray.serve._private.long_poll import LongPollClient, LongPollNamespace
 from ray.serve._private.logging_utils import (
     access_log_msg,
     configure_component_logger,
+    configure_component_cpu_profiler,
     configure_component_memory_profiler,
     get_component_logger_file_path,
 )
@@ -83,6 +85,9 @@ SOCKET_REUSE_PORT_ENABLED = (
     os.environ.get("SERVE_SOCKET_REUSE_PORT_ENABLED", "1") == "1"
 )
 
+RAY_SERVE_HTTP_KEEP_ALIVE_TIMEOUT_S = int(
+    os.environ.get("RAY_SERVE_HTTP_KEEP_ALIVE_TIMEOUT_S", 0)
+)
 # TODO (shrekris-anyscale): Deprecate SERVE_REQUEST_PROCESSING_TIMEOUT_S env var
 RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S = (
     float(os.environ.get("RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S", 0))
@@ -154,9 +159,10 @@ class GenericProxy(ABC):
                 extra={"log_to_stderr": False},
             )
 
-        def get_handle(name):
+        def get_handle(deployment_name, app_name):
             return serve.context.get_global_client().get_handle(
-                name,
+                deployment_name,
+                app_name,
                 sync=False,
                 missing_ok=True,
                 _is_for_http_requests=True,
@@ -249,7 +255,7 @@ class GenericProxy(ABC):
         return self._draining_start_time is not None
 
     def _update_routes(self, endpoints: Dict[EndpointTag, EndpointInfo]) -> None:
-        self.route_info: Dict[str, Tuple[EndpointTag, List[str]]] = dict()
+        self.route_info: Dict[str, EndpointTag] = dict()
         for endpoint, info in endpoints.items():
             route = info.route
             self.route_info[route] = endpoint
@@ -466,7 +472,7 @@ class GenericProxy(ABC):
                 )
                 self.deployment_request_error_counter.inc(
                     tags={
-                        "deployment": handle.deployment_name,
+                        "deployment": str(handle.deployment_id),
                         "error_code": status_code,
                         "method": method,
                         "route": route_path,
@@ -593,9 +599,9 @@ class HTTPProxy(GenericProxy):
         await response.send(scope, receive, send)
 
     async def routes_response(self, scope, receive, send):
-        return await starlette.responses.JSONResponse(self.route_info)(
-            scope, receive, send
-        )
+        return await starlette.responses.JSONResponse(
+            {route: str(endpoint) for route, endpoint in self.route_info.items()}
+        )(scope, receive, send)
 
     async def health_response(self, scope, receive, send):
         return await starlette.responses.PlainTextResponse("success")(
@@ -964,6 +970,7 @@ class HTTPProxyActor:
         node_id: NodeId,
         request_timeout_s: Optional[float] = None,
         http_middlewares: Optional[List["starlette.middleware.Middleware"]] = None,
+        keep_alive_timeout_s: int = DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_S,
     ):  # noqa: F821
         configure_component_logger(
             component_name="http_proxy", component_id=node_ip_address
@@ -974,6 +981,9 @@ class HTTPProxyActor:
         )
 
         configure_component_memory_profiler(
+            component_name="http_proxy", component_id=node_ip_address
+        )
+        self.cpu_profiler, self.cpu_profiler_log = configure_component_cpu_profiler(
             component_name="http_proxy", component_id=node_ip_address
         )
 
@@ -998,6 +1008,10 @@ class HTTPProxyActor:
         self.host = host
         self.port = port
         self.root_path = root_path
+        self.keep_alive_timeout_s = (
+            RAY_SERVE_HTTP_KEEP_ALIVE_TIMEOUT_S or keep_alive_timeout_s
+        )
+        self._uvicorn_server = None
 
         self.setup_complete = asyncio.Event()
 
@@ -1072,15 +1086,16 @@ Please make sure your http-host and http-port are specified correctly."""
             root_path=self.root_path,
             lifespan="off",
             access_log=False,
+            timeout_keep_alive=self.keep_alive_timeout_s,
         )
-        server = uvicorn.Server(config=config)
+        self._uvicorn_server = uvicorn.Server(config=config)
         # TODO(edoakes): we need to override install_signal_handlers here
         # because the existing implementation fails if it isn't running in
         # the main thread and uvicorn doesn't expose a way to configure it.
-        server.install_signal_handlers = lambda: None
+        self._uvicorn_server.install_signal_handlers = lambda: None
 
         self.setup_complete.set()
-        await server.serve(sockets=[sock])
+        await self._uvicorn_server.serve(sockets=[sock])
 
     async def update_draining(self, draining: bool, _after: Optional[Any] = None):
         """Update the draining status of the http proxy.
@@ -1114,3 +1129,33 @@ Please make sure your http-host and http-port are specified correctly."""
         this will always return immediately.
         """
         return pickle.dumps(await self.app.receive_asgi_messages(request_id))
+
+    def _save_cpu_profile_data(self) -> str:
+        """Saves CPU profiling data, if CPU profiling is enabled.
+
+        Logs a warning if CPU profiling is disabled.
+        """
+
+        if self.cpu_profiler is not None:
+            import marshal
+
+            self.cpu_profiler.snapshot_stats()
+            with open(self.cpu_profiler_log, "wb") as f:
+                marshal.dump(self.cpu_profiler.stats, f)
+            logger.info(f'Saved CPU profile data to file "{self.cpu_profiler_log}"')
+            return self.cpu_profiler_log
+        else:
+            logger.error(
+                "Attempted to save CPU profile data, but failed because no "
+                "CPU profiler was running! Enable CPU profiling by enabling "
+                "the RAY_SERVE_ENABLE_CPU_PROFILING env var."
+            )
+
+    async def _uvicorn_keep_alive(self) -> Optional[int]:
+        """Get the keep alive timeout used for the running uvicorn server.
+
+        Return the timeout_keep_alive config used on the uvicorn server if it's running.
+        If the server is not running, return None.
+        """
+        if self._uvicorn_server:
+            return self._uvicorn_server.config.timeout_keep_alive

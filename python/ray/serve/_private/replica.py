@@ -53,6 +53,7 @@ from ray.serve._private.http_util import (
 from ray.serve._private.logging_utils import (
     access_log_msg,
     configure_component_logger,
+    configure_component_cpu_profiler,
     configure_component_memory_profiler,
     get_component_logger_file_path,
 )
@@ -103,6 +104,11 @@ def create_replica_wrapper(name: str):
                 component_id=replica_tag,
             )
             configure_component_memory_profiler(
+                component_type=ServeComponentType.DEPLOYMENT,
+                component_name=deployment_name,
+                component_id=replica_tag,
+            )
+            self.cpu_profiler, self.cpu_profiler_log = configure_component_cpu_profiler(
                 component_type=ServeComponentType.DEPLOYMENT,
                 component_name=deployment_name,
                 component_id=replica_tag,
@@ -435,6 +441,27 @@ def create_replica_wrapper(name: str):
         ) -> Tuple[DeploymentConfig, DeploymentVersion]:
             return self.replica.version.deployment_config, self.replica.version
 
+        def _save_cpu_profile_data(self) -> str:
+            """Saves CPU profiling data, if CPU profiling is enabled.
+
+            Logs a warning if CPU profiling is disabled.
+            """
+
+            if self.cpu_profiler is not None:
+                import marshal
+
+                self.cpu_profiler.snapshot_stats()
+                with open(self.cpu_profiler_log, "wb") as f:
+                    marshal.dump(self.cpu_profiler.stats, f)
+                logger.info(f'Saved CPU profile data to file "{self.cpu_profiler_log}"')
+                return self.cpu_profiler_log
+            else:
+                logger.error(
+                    "Attempted to save CPU profile data, but failed because no "
+                    "CPU profiler was running! Enable CPU profiling by enabling "
+                    "the RAY_SERVE_ENABLE_CPU_PROFILING env var."
+                )
+
         async def prepare_for_shutdown(self):
             if self.replica is not None:
                 return await self.replica.prepare_for_shutdown()
@@ -538,7 +565,10 @@ class RayServeReplica:
             )
             self.metrics_pusher.register_task(
                 lambda: {self.replica_tag: self.get_num_pending_and_running_requests()},
-                RAY_SERVE_REPLICA_AUTOSCALING_METRIC_RECORD_PERIOD_S,
+                min(
+                    RAY_SERVE_REPLICA_AUTOSCALING_METRIC_RECORD_PERIOD_S,
+                    config.metrics_interval_s,
+                ),
                 self._add_autoscaling_metrics_point,
             )
 

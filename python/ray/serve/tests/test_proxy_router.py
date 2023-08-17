@@ -1,6 +1,6 @@
 import pytest
 
-from ray.serve._private.common import EndpointInfo
+from ray.serve._private.common import EndpointInfo, EndpointTag
 from ray.serve._private.proxy_router import EndpointRouter, LongestPrefixRouter
 
 
@@ -45,17 +45,24 @@ def mock_endpoint_router() -> EndpointRouter:
 )
 def test_no_match(mocked_router, request):
     router = request.getfixturevalue(mocked_router)
-    router.update_routes({"endpoint": EndpointInfo(route="/hello", app_name="")})
+    router.update_routes(
+        {EndpointTag("endpoint", "default"): EndpointInfo(route="/hello")}
+    )
     assert router.match_route("/nonexistent") is None
 
 
 @pytest.mark.parametrize(
     "mocked_router, target_route",
-    [("mock_longest_prefix_router", "/endpoint"), ("mock_endpoint_router", "endpoint")],
+    [
+        ("mock_longest_prefix_router", "/endpoint"),
+        ("mock_endpoint_router", "default_endpoint"),
+    ],
 )
 def test_default_route(mocked_router, target_route, request):
     router = request.getfixturevalue(mocked_router)
-    router.update_routes({"endpoint": EndpointInfo(route="/endpoint", app_name="")})
+    router.update_routes(
+        {EndpointTag("endpoint", "default"): EndpointInfo(route="/endpoint")}
+    )
 
     assert router.match_route("/nonexistent") is None
 
@@ -64,7 +71,7 @@ def test_default_route(mocked_router, target_route, request):
         [
             route == "/endpoint",
             handle == "endpoint",
-            app_name == "",
+            app_name == "default",
             not app_is_cross_language,
         ]
     )
@@ -74,7 +81,7 @@ def test_trailing_slash(mock_longest_prefix_router):
     router = mock_longest_prefix_router
     router.update_routes(
         {
-            "endpoint": EndpointInfo(route="/test", app_name=""),
+            EndpointTag("endpoint", "default"): EndpointInfo(route="/test"),
         }
     )
 
@@ -83,7 +90,7 @@ def test_trailing_slash(mock_longest_prefix_router):
 
     router.update_routes(
         {
-            "endpoint": EndpointInfo(route="/test/", app_name=""),
+            EndpointTag("endpoint", "default"): EndpointInfo(route="/test/"),
         }
     )
 
@@ -94,9 +101,9 @@ def test_prefix_match(mock_longest_prefix_router):
     router = mock_longest_prefix_router
     router.update_routes(
         {
-            "endpoint1": EndpointInfo(route="/test/test2", app_name=""),
-            "endpoint2": EndpointInfo(route="/test", app_name=""),
-            "endpoint3": EndpointInfo(route="/", app_name=""),
+            EndpointTag("endpoint1", "default"): EndpointInfo(route="/test/test2"),
+            EndpointTag("endpoint2", "default"): EndpointInfo(route="/test"),
+            EndpointTag("endpoint3", "default"): EndpointInfo(route="/"),
         }
     )
 
@@ -124,12 +131,14 @@ def test_prefix_match(mock_longest_prefix_router):
     "mocked_router, target_route1, target_route2",
     [
         ("mock_longest_prefix_router", "/endpoint", "/endpoint2"),
-        ("mock_endpoint_router", "endpoint", "endpoint2"),
+        ("mock_endpoint_router", "app1_endpoint", "app2_endpoint2"),
     ],
 )
 def test_update_routes(mocked_router, target_route1, target_route2, request):
     router = request.getfixturevalue(mocked_router)
-    router.update_routes({"endpoint": EndpointInfo(route="/endpoint", app_name="app1")})
+    router.update_routes(
+        {EndpointTag("endpoint", "app1"): EndpointInfo(route="/endpoint")}
+    )
 
     route, handle, app_name, app_is_cross_language = router.match_route(target_route1)
     assert all(
@@ -143,9 +152,8 @@ def test_update_routes(mocked_router, target_route1, target_route2, request):
 
     router.update_routes(
         {
-            "endpoint2": EndpointInfo(
+            EndpointTag("endpoint2", "app2"): EndpointInfo(
                 route="/endpoint2",
-                app_name="app2",
                 app_is_cross_language=True,
             )
         }
