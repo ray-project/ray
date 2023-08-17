@@ -248,17 +248,15 @@ def create_map_data_processor_for_map_batches_op(
     init_fn: Optional[InitFn] = None,
 ) -> MapDataProcessor:
     """Create a MapDataProcessor for a map_batches operator."""
-    input_blocks_to_batches = (
-        MapTransformFn(
-            functools.partial(
-                _input_blocks_to_batches,
-                batch_size=batch_size,
-                batch_format=batch_format,
-                zero_copy_batch=zero_copy_batch,
-            ),
-            MapTransformFnDataType.Block,
-            MapTransformFnDataType.Batch,
+    input_blocks_to_batches = MapTransformFn(
+        functools.partial(
+            _input_blocks_to_batches,
+            batch_size=batch_size,
+            batch_format=batch_format,
+            zero_copy_batch=zero_copy_batch,
         ),
+        MapTransformFnDataType.Block,
+        MapTransformFnDataType.Batch,
     )
     transform_fns = [
         # Convert input blocks to batches.
