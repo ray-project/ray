@@ -11,7 +11,7 @@ configure_make(
     lib_source = ":all",
     args = ["-j"],
     visibility = ["//visibility:public"],
-    env = {"CC": "", "CXX": ""},
+    configure_prefix = "$(unset CC) $(unset CXX)",
     configure_options = [
         "--disable-documentation",
         "--disable-minidebuginfo",
