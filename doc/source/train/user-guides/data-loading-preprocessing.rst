@@ -270,27 +270,27 @@ For more details, see the following sections for each framework.
 
     .. tab:: PyTorch Dataset and DataLoader
 
-        **Option 1:** Convert your PyTorch Dataset to a Ray Dataset and pass it into the Trainer via  ``datasets`` argument.
+        **Option 1 (with Ray Data):** Convert your PyTorch Dataset to a Ray Dataset and pass it into the Trainer via  ``datasets`` argument.
         Inside your ``train_loop_per_worker``, you can access the dataset via :meth:`ray.train.get_dataset_shard`. 
         You can convert this to replace the PyTorch DataLoader via :meth:`ray.data.DataIterator.iter_torch_batches`.
          
         For more details, see the :ref:`Migrating from PyTorch Datasets and DataLoaders <migrate_pytorch>`.
 
-        **Option 2:** Instantiate the Torch Dataset and DataLoader directly in the ``train_loop_per_worker``.
+        **Option 2 (without Ray Data):** Instantiate the Torch Dataset and DataLoader directly in the ``train_loop_per_worker``.
         You can use the :meth:`ray.train.torch.prepare_data_loader` utility to set up the DataLoader for distributed training.
+    
+    .. tab:: LightningDataModule
+
+        The ``LightningDataModule`` is created with PyTorch ``Dataset``\s and ``DataLoader``\s. You can apply the same logic here.
 
     .. tab:: Hugging Face Dataset
 
-        **Option 1:** Convert your Hugging Face Dataset to a Ray Dataset and pass it into the Trainer via the ``datasets`` argument.
+        **Option 1 (with Ray Data):** Convert your Hugging Face Dataset to a Ray Dataset and pass it into the Trainer via the ``datasets`` argument.
         Inside your ``train_loop_per_worker``, you can access the dataset via :meth:`ray.train.get_dataset_shard`. 
 
         For instructions, see :ref:`Ray Data for Hugging Face <loading_datasets_from_ml_libraries>`.
 
-        **Option 2:** Instantiate the Hugging Face Dataset directly in the ``train_loop_per_worker``.
-
-    .. tab:: LightningDataModule
-
-        The ``LightningDataModule`` is created with PyTorch ``Dataset``\s and ``DataLoader``\s. You can apply the same logic here.
+        **Option 2 (without Ray Data):** Instantiate the Hugging Face Dataset directly in the ``train_loop_per_worker``.
 
     .. tip:: 
 
