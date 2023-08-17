@@ -181,7 +181,6 @@ class Trainable:
             assert storage
             assert storage.trial_fs_path
             logger.debug(f"StorageContext on the TRAINABLE:\n{storage}")
-            storage._check_validation_file()
 
         self.setup(copy.deepcopy(self.config))
         setup_time = time.time() - self._start_time
