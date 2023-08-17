@@ -1655,7 +1655,7 @@
 
   frequency: nightly-3x
   team: ml
-
+  new_persistence: "True"
   cluster:
     byod:
       runtime_env:
@@ -1665,7 +1665,7 @@
 
   run:
     timeout: 36000
-    script: python train/train_tensorflow_mnist_test.py
+    script: RAY_AIR_NEW_PERSISTENCE_MODE=1 python train/train_tensorflow_mnist_test.py
     wait_for_nodes:
       num_nodes: 3
 
@@ -1685,7 +1685,7 @@
 
   frequency: nightly-3x
   team: ml
-
+  new_persistence: "True"
   cluster:
     byod:
       runtime_env:
@@ -1695,7 +1695,7 @@
 
   run:
     timeout: 36000
-    script: python train/train_torch_linear_test.py
+    script: RAY_AIR_NEW_PERSISTENCE_MODE=1 python train/train_torch_linear_test.py
     wait_for_nodes:
       num_nodes: 3
 
