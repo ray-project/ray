@@ -530,9 +530,9 @@ class StorageContext:
         "Current" is defined by the `current_checkpoint_index` attribute of the
         storage context.
 
-        This method copies the checkpoint files to the storage location,
-        drops a marker at the storage path to indicate that the checkpoint
-        is completely uploaded, then deletes the original checkpoint directory.
+        This method copies the checkpoint files to the storage location.
+        It's up to the user to delete the original checkpoint files if desired.
+
         For example, the original directory is typically a local temp directory.
 
         Args:
@@ -568,17 +568,12 @@ class StorageContext:
             destination_filesystem=self.storage_filesystem,
         )
 
-        # Delete local checkpoint files.
-        # TODO(justinvyu): What if checkpoint.path == self.checkpoint_fs_path?
-        # TODO(justinvyu): What if users don't want to delete the local checkpoint?
-        checkpoint.filesystem.delete_dir(checkpoint.path)
-
-        uploaded_checkpoint = Checkpoint(
+        persisted_checkpoint = Checkpoint(
             filesystem=self.storage_filesystem,
             path=self.checkpoint_fs_path,
         )
-        logger.debug(f"Checkpoint successfully created at: {uploaded_checkpoint}")
-        return uploaded_checkpoint
+        logger.debug(f"Checkpoint successfully created at: {persisted_checkpoint}")
+        return persisted_checkpoint
 
     @property
     def experiment_fs_path(self) -> str:
