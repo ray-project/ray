@@ -58,8 +58,8 @@ NodeResources ResourceMapToNodeResources(
     const absl::flat_hash_map<std::string, double> &resource_map_available,
     const absl::flat_hash_map<std::string, std::string> &node_labels) {
   NodeResources node_resources;
-  node_resources.total = ResourceMapToResourceRequest(resource_map_total, false);
-  node_resources.available = ResourceMapToResourceRequest(resource_map_available, false);
+  node_resources.total = ResourceSet(resource_map_total);
+  node_resources.available = ResourceSet(resource_map_available);
   node_resources.labels = node_labels;
   return node_resources;
 }
@@ -100,13 +100,13 @@ bool NodeResources::IsAvailable(const ResourceRequest &resource_request,
   if (!this->normal_task_resources.IsEmpty()) {
     auto available_resources = this->available;
     available_resources -= this->normal_task_resources;
-    return resource_request <= available_resources;
+    return resource_request.GetResourceSet() <= available_resources;
   }
-  return resource_request <= this->available;
+  return resource_request.GetResourceSet() <= this->available;
 }
 
 bool NodeResources::IsFeasible(const ResourceRequest &resource_request) const {
-  return resource_request <= this->total;
+  return resource_request.GetResourceSet() <= this->total;
 }
 
 bool NodeResources::operator==(const NodeResources &other) const {

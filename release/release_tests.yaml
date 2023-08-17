@@ -857,6 +857,24 @@
 
   # variations: A10G not available on GCE, yet.
 
+- name: air_example_dreambooth_finetuning_lora
+  group: AIR examples
+  working_dir: air_examples/dreambooth
+
+  stable: false
+
+  frequency: weekly
+  team: ml
+
+  cluster:
+    byod:
+      type: gpu
+    cluster_compute: dreambooth_compute_aws.yaml
+
+  run:
+    timeout: 1800
+    script: pip install -Ur dreambooth/requirements.txt && bash dreambooth_run.sh --lora
+    artifact_path: /tmp/artifacts/example_out.jpg
 
 - name: air_example_gptj_deepspeed_fine_tuning
   group: AIR examples
@@ -2334,6 +2352,9 @@
   team: core
   cluster:
     byod:
+      pip:
+        # TODO: https://github.com/Farama-Foundation/AutoROM/issues/48
+        - https://ray-ci-deps-wheels.s3.us-west-2.amazonaws.com/AutoROM.accept_rom_license-0.5.4-py3-none-any.whl
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
         - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
@@ -2456,6 +2477,9 @@
   team: core
   cluster:
     byod:
+      pip:
+        # TODO: https://github.com/Farama-Foundation/AutoROM/issues/48
+        - https://ray-ci-deps-wheels.s3.us-west-2.amazonaws.com/AutoROM.accept_rom_license-0.5.4-py3-none-any.whl
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
     cluster_compute: tpl_cpu_1.yaml
@@ -2494,6 +2518,9 @@
   team: core
   cluster:
     byod:
+      pip:
+        # TODO: https://github.com/Farama-Foundation/AutoROM/issues/48
+        - https://ray-ci-deps-wheels.s3.us-west-2.amazonaws.com/AutoROM.accept_rom_license-0.5.4-py3-none-any.whl
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
     cluster_compute: tpl_cpu_1.yaml
@@ -2578,6 +2605,9 @@
   team: core
   cluster:
     byod:
+      pip:
+        # TODO: https://github.com/Farama-Foundation/AutoROM/issues/48
+        - https://ray-ci-deps-wheels.s3.us-west-2.amazonaws.com/AutoROM.accept_rom_license-0.5.4-py3-none-any.whl
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
     cluster_compute: tpl_cpu_1.yaml
@@ -2616,6 +2646,9 @@
   team: core
   cluster:
     byod:
+      pip:
+        # TODO: https://github.com/Farama-Foundation/AutoROM/issues/48
+        - https://ray-ci-deps-wheels.s3.us-west-2.amazonaws.com/AutoROM.accept_rom_license-0.5.4-py3-none-any.whl
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
     cluster_compute: tpl_cpu_1.yaml
@@ -2654,6 +2687,9 @@
   team: core
   cluster:
     byod:
+      pip:
+        # TODO: https://github.com/Farama-Foundation/AutoROM/issues/48
+        - https://ray-ci-deps-wheels.s3.us-west-2.amazonaws.com/AutoROM.accept_rom_license-0.5.4-py3-none-any.whl
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
     cluster_compute: tpl_cpu_1.yaml
@@ -2733,6 +2769,9 @@
 
   cluster:
     byod:
+      pip:
+        # TODO: https://github.com/Farama-Foundation/AutoROM/issues/48
+        - https://ray-ci-deps-wheels.s3.us-west-2.amazonaws.com/AutoROM.accept_rom_license-0.5.4-py3-none-any.whl
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
     cluster_compute: tpl_cpu_1.yaml
@@ -2773,6 +2812,9 @@
 
   cluster:
     byod:
+      pip:
+        # TODO: https://github.com/Farama-Foundation/AutoROM/issues/48
+        - https://ray-ci-deps-wheels.s3.us-west-2.amazonaws.com/AutoROM.accept_rom_license-0.5.4-py3-none-any.whl
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
     cluster_compute: tpl_cpu_1_c5.yaml
@@ -2812,7 +2854,10 @@
   team: serve
 
   cluster:
-    byod:
+    byod: 
+      pip:
+        # TODO: https://github.com/Farama-Foundation/AutoROM/issues/48
+        - https://ray-ci-deps-wheels.s3.us-west-2.amazonaws.com/AutoROM.accept_rom_license-0.5.4-py3-none-any.whl
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
     cluster_compute: tpl_cpu_1.yaml
@@ -4902,6 +4947,8 @@
       frequency: manual
       cluster:
         cluster_compute: tpl_64_gce.yaml
+    - __suffix__: aws.py311
+      python: "3.11"
 
 
 - name: benchmark_worker_startup

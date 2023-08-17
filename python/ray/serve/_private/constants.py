@@ -24,6 +24,9 @@ DEFAULT_HTTP_HOST = "127.0.0.1"
 #: HTTP Port
 DEFAULT_HTTP_PORT = 8000
 
+#: Uvicorn timeout_keep_alive Config
+DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_S = 5
+
 #: gRPC Port
 DEFAULT_GRPC_PORT = 9000
 
@@ -244,4 +247,9 @@ RAY_SERVE_MULTIPLEXED_MODEL_ID_MATCHING_TIMEOUT_S = float(
 # Enable memray in all Serve actors.
 RAY_SERVE_ENABLE_MEMORY_PROFILING = (
     os.environ.get("RAY_SERVE_ENABLE_MEMORY_PROFILING", "0") == "1"
+)
+
+# Enable cProfile in all Serve actors.
+RAY_SERVE_ENABLE_CPU_PROFILING = (
+    os.environ.get("RAY_SERVE_ENABLE_CPU_PROFILING", "0") == "1"
 )
