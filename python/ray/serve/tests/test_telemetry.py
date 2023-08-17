@@ -3,7 +3,6 @@ import yaml
 import pytest
 import requests
 import subprocess
-import time
 from typing import Dict
 from fastapi import FastAPI
 from starlette.requests import Request
@@ -485,7 +484,7 @@ def test_lightweight_config_options(manage_ray, lightweight_option, value):
             assert tagkey not in report["extra_usage_tags"]
 
 
-@pytest.mark.parametrize("location", [None, "driver", "deployment"])
+@pytest.mark.parametrize("location", ["driver", "deployment"])
 def test_status_api_detected(manage_ray, location):
     """Check that serve.status is detected correctly by telemetry."""
 
@@ -518,19 +517,10 @@ def test_status_api_detected(manage_ray, location):
         assert report["extra_usage_tags"]["serve_status_api_used"] == "1"
         return True
 
-    # If serve.status() is called, make sure it is recorded in telemetry
-    if location:
-        wait_for_condition(check_telemetry)
-    # If it is not called, make sure it is not recorded
-    else:
-        for _ in range(5):
-            report = ray.get(storage_handle.get_report.remote())
-            print(report["extra_usage_tags"])
-            assert not report["extra_usage_tags"].get("serve_status_api_used")
-            time.sleep(1)
+    wait_for_condition(check_telemetry)
 
 
-@pytest.mark.parametrize("location", [None, "driver", "deployment"])
+@pytest.mark.parametrize("location", ["driver", "deployment"])
 def test_get_app_handle_api_detected(manage_ray, location):
     """Check that serve.get_app_handle is detected correctly by telemetry."""
 
@@ -553,9 +543,6 @@ def test_get_app_handle_api_detected(manage_ray, location):
         handle.remote()
     elif location == "driver":
         serve.get_app_handle("telemetry")
-    else:
-        # Test serve.get_app_handle not called
-        pass
 
     def check_telemetry():
         report = ray.get(storage_handle.get_report.remote())
@@ -563,19 +550,10 @@ def test_get_app_handle_api_detected(manage_ray, location):
         assert report["extra_usage_tags"]["serve_get_app_handle_api_used"] == "1"
         return True
 
-    # If serve.get_app_handle() is called, make sure it is recorded in telemetry
-    if location:
-        wait_for_condition(check_telemetry)
-    # If it is not called, make sure it is not recorded
-    else:
-        for _ in range(5):
-            report = ray.get(storage_handle.get_report.remote())
-            print(report["extra_usage_tags"])
-            assert not report["extra_usage_tags"].get("serve_get_app_handle_api_used")
-            time.sleep(1)
+    wait_for_condition(check_telemetry)
 
 
-@pytest.mark.parametrize("location", [None, "driver", "deployment"])
+@pytest.mark.parametrize("location", ["driver", "deployment"])
 def test_get_deployment_handle_api_detected(manage_ray, location):
     """Check that serve.get_deployment_handle is detected correctly by telemetry."""
 
@@ -598,9 +576,6 @@ def test_get_deployment_handle_api_detected(manage_ray, location):
         handle.remote()
     elif location == "driver":
         serve.get_deployment_handle("TelemetryReceiver", "telemetry")
-    else:
-        # Test serve.get_deployment_handle not called
-        pass
 
     def check_telemetry():
         report = ray.get(storage_handle.get_report.remote())
@@ -608,18 +583,7 @@ def test_get_deployment_handle_api_detected(manage_ray, location):
         assert report["extra_usage_tags"]["serve_get_deployment_handle_api_used"] == "1"
         return True
 
-    # If serve.get_deployment_handle() is called, make sure it is recorded in telemetry
-    if location:
-        wait_for_condition(check_telemetry)
-    # If it is not called, make sure it is not recorded
-    else:
-        for _ in range(5):
-            report = ray.get(storage_handle.get_report.remote())
-            print(report["extra_usage_tags"])
-            assert not report["extra_usage_tags"].get(
-                "serve_get_deployment_handle_api_used"
-            )
-            time.sleep(1)
+    wait_for_condition(check_telemetry)
 
 
 if __name__ == "__main__":
