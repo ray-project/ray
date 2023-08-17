@@ -1074,7 +1074,7 @@ class Trial:
         self.temporary_state.restoring_from = None
         self.run_metadata.invalidate_cache()
 
-    def on_checkpoint(self, checkpoint: _TrackedCheckpoint):
+    def on_checkpoint(self, checkpoint: Union[_TrackedCheckpoint, _TrainingResult]):
         """Hook for handling checkpoints taken by the Trainable.
 
         Args:
