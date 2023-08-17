@@ -1819,8 +1819,9 @@ cdef execute_task_with_cancellation_handler(
     task_name = name.decode("utf-8")
     title = f"ray::{task_name}"
 
-    # Automatically restrict the GPUs available to this task.
-    ray._private.utils.set_cuda_visible_devices(ray.get_gpu_ids())
+    # Automatically restrict the GPUs (CUDA), neuron_core accelerator
+    # runtime_ids to restrict availability to this task.
+    ray._private.utils.set_gpu_and_accelerator_runtime_ids()
 
     # Automatically configure OMP_NUM_THREADS to the assigned CPU number.
     # It will be unset after the task execution if it was overwridden here.

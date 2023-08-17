@@ -10,6 +10,9 @@ import pytest
 import ray
 import ray.cluster_utils
 from ray._private.test_utils import RayTestTimeoutException, wait_for_condition
+from ray.util.placement_group import placement_group
+from ray.util.accelerators import AWS_NEURON_CORE
+from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 logger = logging.getLogger(__name__)
 
@@ -21,6 +24,12 @@ def test_gpu_ids(shutdown_only):
     def get_gpu_ids(num_gpus_per_worker):
         gpu_ids = ray.get_gpu_ids()
         assert len(gpu_ids) == num_gpus_per_worker
+        neuron_core_ids = ray.get_runtime_context().get_resource_ids()["neuron_cores"]
+        gpu_ids_from_runtime_context = ray.get_runtime_context().get_resource_ids()[
+            "GPU"
+        ]
+        assert len(gpu_ids) == len(gpu_ids_from_runtime_context)
+        assert len(neuron_core_ids) == 0
         assert os.environ["CUDA_VISIBLE_DEVICES"] == ",".join(
             [str(i) for i in gpu_ids]  # noqa
         )
@@ -475,6 +484,229 @@ def test_many_custom_resources(shutdown_only):
         results.append(remote_function.remote())
 
     ray.get(results)
+
+
+def test_neuron_core_ids(shutdown_only):
+    num_nc = 3
+    accelerator_type = AWS_NEURON_CORE
+    ray.init(num_cpus=num_nc, resources={"neuron_cores": num_nc})
+
+    def get_neuron_core_ids(neuron_cores_per_worker):
+        neuron_core_ids = ray.get_runtime_context().get_resource_ids()["neuron_cores"]
+        gpu_ids = ray.get_gpu_ids()
+        assert len(neuron_core_ids) == neuron_cores_per_worker
+        assert len(gpu_ids) == 0
+        cores = os.environ.get("NEURON_RT_VISIBLE_CORES")
+        if cores is not None:
+            assert cores == ",".join([str(i) for i in neuron_core_ids])  # noqa
+        for neuron_core_id in neuron_core_ids:
+            assert neuron_core_id in [str(i) for i in range(num_nc)]
+        return neuron_core_ids
+
+    f0 = ray.remote(resources={"neuron_cores": 0})(lambda: get_neuron_core_ids(0))
+    f1 = ray.remote(resources={"neuron_cores": 1})(lambda: get_neuron_core_ids(1))
+    f2 = ray.remote(resources={"neuron_cores": 2})(lambda: get_neuron_core_ids(2))
+
+    # Wait for all workers to start up.
+    @ray.remote
+    def g():
+        time.sleep(0.2)
+        return os.getpid()
+
+    start_time = time.time()
+    while True:
+        num_workers_started = len(set(ray.get([g.remote() for _ in range(num_nc)])))
+        if num_workers_started == num_nc:
+            break
+        if time.time() > start_time + 10:
+            raise RayTestTimeoutException(
+                "Timed out while waiting for workers to start up."
+            )
+
+    list_of_ids = ray.get([f0.remote() for _ in range(10)])
+    assert list_of_ids == 10 * [[]]
+    ray.get([f1.remote() for _ in range(10)])
+    ray.get([f2.remote() for _ in range(10)])
+
+    # Test that actors have NEURON_RT_VISIBLE_CORES set properly.
+
+    @ray.remote
+    class Actor0:
+        def __init__(self):
+            neuron_core_ids = ray.get_runtime_context().get_resource_ids()[
+                "neuron_cores"
+            ]
+            assert len(neuron_core_ids) == 0
+            assert os.environ["NEURON_RT_VISIBLE_CORES"] == ",".join(
+                [str(i) for i in neuron_core_ids]  # noqa
+            )
+            # Set self.x to make sure that we got here.
+            self.x = 0
+
+        def test(self):
+            neuron_core_ids = ray.get_runtime_context().get_resource_ids()[
+                "neuron_cores"
+            ]
+            assert len(neuron_core_ids) == 0
+            assert os.environ["NEURON_RT_VISIBLE_CORES"] == ",".join(
+                [str(i) for i in neuron_core_ids]  # noqa
+            )
+            return self.x
+
+    @ray.remote(resources={"neuron_cores": 1})
+    class Actor1:
+        def __init__(self):
+            neuron_core_ids = ray.get_runtime_context().get_resource_ids()[
+                "neuron_cores"
+            ]
+            assert len(neuron_core_ids) == 1
+            assert os.environ["NEURON_RT_VISIBLE_CORES"] == ",".join(
+                [str(i) for i in neuron_core_ids]  # noqa
+            )
+            # Set self.x to make sure that we got here.
+            self.x = 1
+
+        def test(self):
+            neuron_core_ids = ray.get_runtime_context().get_resource_ids()[
+                "neuron_cores"
+            ]
+            assert len(neuron_core_ids) == 1
+            assert os.environ["NEURON_RT_VISIBLE_CORES"] == ",".join(
+                [str(i) for i in neuron_core_ids]
+            )
+            return self.x
+
+    @ray.remote(resources={"neuron_cores": 2}, accelerator_type=accelerator_type)
+    class Actor2:
+        def __init__(self):
+            neuron_core_ids = ray.get_runtime_context().get_resource_ids()[
+                "neuron_cores"
+            ]
+            assert len(neuron_core_ids) == 2
+            assert os.environ["NEURON_RT_VISIBLE_CORES"] == ",".join(
+                [str(i) for i in neuron_core_ids]
+            )
+            # Set self.x to make sure that we got here.
+            self.x = 2
+
+        def test(self):
+            neuron_core_ids = ray.get_runtime_context().get_resource_ids()[
+                "neuron_cores"
+            ]
+            assert len(neuron_core_ids) == 2
+            assert os.environ["NEURON_RT_VISIBLE_CORES"] == ",".join(
+                [str(i) for i in neuron_core_ids]
+            )
+            return self.x
+
+    a0 = Actor0.remote()
+    assert ray.get(a0.test.remote()) == 0
+
+    a1 = Actor1.remote()
+    assert ray.get(a1.test.remote()) == 1
+
+    a2 = Actor2.remote()
+    assert ray.get(a2.test.remote()) == 2
+
+
+def test_neuron_core_with_placement_group(shutdown_only):
+    neuron_cores = 2
+    ray.init(num_cpus=1, resources={"neuron_cores": neuron_cores})
+
+    @ray.remote(resources={"neuron_cores": neuron_cores})
+    class NeuronCoreActor:
+        def __init__(self):
+            pass
+
+        def ready(self):
+            neuron_core_ids = ray.get_runtime_context().get_resource_ids()[
+                "neuron_cores"
+            ]
+            assert len(neuron_core_ids) == neuron_cores
+            assert os.environ["NEURON_RT_VISIBLE_CORES"] == ",".join(
+                [str(i) for i in neuron_core_ids]  # noqa
+            )
+
+    # Reserve a placement group of 1 bundle that reserves 1 CPU and 2 NeuronCore.
+    pg = placement_group([{"CPU": 1, "neuron_cores": neuron_cores}])
+
+    # Wait until placement group is created.
+    ray.get(pg.ready(), timeout=10)
+
+    actor = NeuronCoreActor.options(
+        scheduling_strategy=PlacementGroupSchedulingStrategy(
+            placement_group=pg,
+        )
+    ).remote()
+
+    ray.get(actor.ready.remote(), timeout=10)
+
+
+def test_gpu_and_neuron_cores(shutdown_only):
+    num_gpus = 2
+    num_nc = 2
+    nc_accelerator_type = AWS_NEURON_CORE
+    ray.init(num_cpus=2, num_gpus=num_gpus, resources={"neuron_cores": num_nc})
+
+    def get_gpu_ids(num_gpus_per_worker):
+        gpu_ids = ray.get_gpu_ids()
+        assert len(gpu_ids) == num_gpus_per_worker
+        assert os.environ["CUDA_VISIBLE_DEVICES"] == ",".join(
+            [str(i) for i in gpu_ids]  # noqa
+        )
+        for gpu_id in gpu_ids:
+            assert gpu_id in range(num_gpus)
+        gpu_ids_from_runtime_context = ray.get_runtime_context().get_resource_ids()[
+            "GPU"
+        ]
+        for gpu_id in gpu_ids_from_runtime_context:
+            assert gpu_id in [str(i) for i in range(num_gpus)]
+        return len(gpu_ids)
+
+    def get_neuron_core_ids(neuron_cores_per_worker):
+        neuron_core_ids = ray.get_runtime_context().get_resource_ids()["neuron_cores"]
+        assert len(neuron_core_ids) == neuron_cores_per_worker
+        cores = os.environ.get("NEURON_RT_VISIBLE_CORES")
+        if cores is not None:
+            assert cores == ",".join([str(i) for i in neuron_core_ids])  # noqa
+        for neuron_core_id in neuron_core_ids:
+            assert neuron_core_id in [str(i) for i in range(num_nc)]
+        return len(neuron_core_ids)
+
+    gpu_f = ray.remote(num_gpus=2)(lambda: get_gpu_ids(2))
+    assert ray.get(gpu_f.remote()) == 2
+    nc_f = ray.remote(resources={"neuron_cores": 2})(lambda: get_neuron_core_ids(2))
+    assert ray.get(nc_f.remote()) == 2
+
+    with pytest.raises(ValueError):
+        ray.remote(resources={"neuron_cores": 2}, num_gpus=1)(
+            lambda: get_neuron_core_ids(2)
+        )
+
+    with pytest.raises(ValueError):
+        ray.remote(accelerator_type=nc_accelerator_type, num_gpus=1)(
+            lambda: get_neuron_core_ids(2)
+        )
+
+    with pytest.raises(ValueError):
+
+        @ray.remote(resources={"neuron_cores": 2}, num_gpus=2)
+        class IncorrectNeuronCoreActorWithGPU:
+            def test(self):
+                neuron_core_ids = ray.get_runtime_context().get_resource_ids()[
+                    "neuron_cores"
+                ]
+                return len(neuron_core_ids)
+
+    with pytest.raises(ValueError):
+
+        @ray.remote(accelerator_type=nc_accelerator_type, num_gpus=2)
+        class IncorrectNeuronCoreAcceleratorWithGPU:
+            def test(self):
+                neuron_core_ids = ray.get_runtime_context().get_resource_ids()[
+                    "neuron_cores"
+                ]
+                return len(neuron_core_ids)
 
 
 # TODO: 5 retry attempts may be too little for Travis and we may need to
