@@ -76,7 +76,7 @@ def test_long_poll_timeout_with_max_concurrent_queries(ray_instance):
     """
 
     @ray.remote(num_cpus=0)
-    class Counter:
+    class CounterActor:
         def __init__(self):
             self._count = 0
 
@@ -87,11 +87,11 @@ def test_long_poll_timeout_with_max_concurrent_queries(ray_instance):
             return self._count
 
     signal_actor = SignalActor.remote()
-    counter_actor = Counter.remote()
+    counter_actor = CounterActor.remote()
 
     @serve.deployment(max_concurrent_queries=1)
     async def f():
-        await counter.inc.remote()
+        await counter_actor.inc.remote()
         await signal_actor.wait.remote()
         return "hello"
 
@@ -105,7 +105,7 @@ def test_long_poll_timeout_with_max_concurrent_queries(ray_instance):
         ray.get(first_ref, timeout=1)
     assert ray.get(counter_actor.get.remote()) == 1
 
-    # Now issue 10 more requests and wait for signifcantly longer than  the long poll
+    # Now issue 10 more requests and wait for significantly longer than the long poll
     # timeout. They should all be queued in the handle due to `max_concurrent_queries`
     # enforcement (verified via the counter).
     new_refs = [handle.remote() for _ in range(10)]
@@ -113,11 +113,13 @@ def test_long_poll_timeout_with_max_concurrent_queries(ray_instance):
     assert len(ready) == 0
     assert ray.get(counter_actor.get.remote()) == 1
 
-    # Unblock the first request. Now everything should get scheduled.
-    signal_actor.send.remote()
+    # Unblock the first request. Now everything should get executed.
+    ray.get(signal_actor.send.remote())
     assert ray.get(first_ref) == "hello"
     assert ray.get(new_refs) == ["hello"] * 10
     assert ray.get(counter_actor.get.remote()) == 11
+
+    serve.shutdown()
 
 
 @pytest.mark.parametrize(
