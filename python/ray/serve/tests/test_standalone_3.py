@@ -59,58 +59,65 @@ def start_and_shutdown_ray_cli_function():
     "ray_instance",
     [
         {
-            "LISTEN_FOR_CHANGE_REQUEST_TIMEOUT_S_LOWER_BOUND": "1",
-            "LISTEN_FOR_CHANGE_REQUEST_TIMEOUT_S_UPPER_BOUND": "2",
+            "LISTEN_FOR_CHANGE_REQUEST_TIMEOUT_S_LOWER_BOUND": "0.1",
+            "LISTEN_FOR_CHANGE_REQUEST_TIMEOUT_S_UPPER_BOUND": "0.2",
         },
     ],
     indirect=True,
 )
 def test_long_poll_timeout_with_max_concurrent_queries(ray_instance):
-    """Test max_concurrent_queries can be honored with long poll timeout
+    """Test that max_concurrent_queries is respected when there are long poll timeouts.
 
-    issue: https://github.com/ray-project/ray/issues/32652
+    Previously, when a long poll update occurred (e.g., a timeout or new replicas
+    added), ongoing requests would no longer be counted against
+    `max_concurrent_queries`.
+
+    Issue: https://github.com/ray-project/ray/issues/32652
     """
 
+    @ray.remote(num_cpus=0)
+    class Counter:
+        def __init__(self):
+            self._count = 0
+
+        def inc(self):
+            self._count += 1
+
+        def get(self):
+            return self._count
+
     signal_actor = SignalActor.remote()
+    counter_actor = Counter.remote()
 
     @serve.deployment(max_concurrent_queries=1)
     async def f():
+        await counter.inc.remote()
         await signal_actor.wait.remote()
         return "hello"
 
+    # Issue a blocking request which should occupy the only slot due to
+    # `max_concurrent_queries=1`.
     handle = serve.run(f.bind())
     first_ref = handle.remote()
 
-    # Clear all the internal longpoll client objects within handle
-    # long poll client will receive new updates from long poll host,
-    # this is to simulate the longpoll timeout
-    object_snapshots1 = handle._router.long_poll_client.object_snapshots
-    handle._router.long_poll_client._reset()
-    wait_for_condition(
-        lambda: len(handle._router.long_poll_client.object_snapshots) > 0, timeout=10
-    )
-    object_snapshots2 = handle._router.long_poll_client.object_snapshots
-
-    # Check object snapshots between timeout interval
-    assert object_snapshots1.keys() == object_snapshots2.keys()
-    assert len(object_snapshots1.keys()) == 1
-    key = list(object_snapshots1.keys())[0]
-    assert (
-        object_snapshots1[key][0].actor_handle != object_snapshots2[key][0].actor_handle
-    )
-    assert (
-        object_snapshots1[key][0].actor_handle._actor_id
-        == object_snapshots2[key][0].actor_handle._actor_id
-    )
-
-    # Make sure the first request is still ongoing.
-    with pytest.raises(ray.exceptions.GetTimeoutError):
+    # The request should be hanging waiting on the `SignalActor`.
+    with pytest.raises(TimeoutError):
         ray.get(first_ref, timeout=1)
+    assert ray.get(counter_actor.get.remote()) == 1
 
-    # Unblock the first request.
+    # Now issue 10 more requests and wait for signifcantly longer than  the long poll
+    # timeout. They should all be queued in the handle due to `max_concurrent_queries`
+    # enforcement (verified via the counter).
+    new_refs = [handle.remote() for _ in range(10)]
+    ready, _ = ray.wait(new_refs, timeout=1)
+    assert len(ready) == 0
+    assert ray.get(counter_actor.get.remote()) == 1
+
+    # Unblock the first request. Now everything should get scheduled.
     signal_actor.send.remote()
     assert ray.get(first_ref) == "hello"
-    serve.shutdown()
+    assert ray.get(new_refs) == ["hello"] * 10
+    assert ray.get(counter_actor.get.remote()) == 11
 
 
 @pytest.mark.parametrize(
