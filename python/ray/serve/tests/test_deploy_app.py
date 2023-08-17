@@ -949,7 +949,7 @@ def test_update_config_health_check_period(client: ServeControllerClient):
     wait_for_condition(partial(check_running, client), timeout=15)
 
     handle = serve.get_app_handle(SERVE_DEFAULT_APP_NAME)
-    pid1 = handle.remote().result()
+    pid1 = handle.remote().result()[0]
 
     # The health check counter shouldn't increase beyond any initial health checks
     # done as part of the replica startup sequence.
