@@ -62,22 +62,23 @@ parts:
           - file: train/key-concepts
             title: Key Concepts
           - file: train/getting-started-pytorch
-            title: PyTorch
+            title: PyTorch Guide
           - file: train/getting-started-pytorch-lightning
-            title: PyTorch Lightning
+            title: PyTorch Lightning Guide
           - file: train/getting-started-transformers
-            title: Hugging Face Transformers
+            title: Hugging Face Transformers Guide
           - file: train/more-frameworks
             sections:
               - file: train/huggingface-accelerate
-                title: Hugging Face Accelerate
+                title: Hugging Face Accelerate Guide
               - file: train/deepspeed
-                title: DeepSpeed
+                title: DeepSpeed Guide
               - file: train/distributed-tensorflow-keras
-                title: TensorFlow & Keras
+                title: TensorFlow and Keras Guide
               - file: train/distributed-xgboost-lightgbm
-                title: XGBoost & LightGBM
+                title: XGBoost and LightGBM Guide
               - file: train/horovod
+                title: Horovod Guide
           - file: train/user-guides
             title: User Guides
           - file: train/examples
