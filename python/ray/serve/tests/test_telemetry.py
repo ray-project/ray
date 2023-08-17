@@ -484,5 +484,57 @@ def test_lightweight_config_options(manage_ray, lightweight_option, value):
             assert tagkey not in report["extra_usage_tags"]
 
 
+class TestProxyTelemetry:
+    def test_both_proxies_detected(manage_ray, ray_shutdown):
+        """Test that both HTTP and gRPC proxies are detected by telemetry.
+
+        When both HTTP and gRPC proxies are used, both telemetry should be detected.
+        """
+        grpc_servicer_functions = [
+            "ray.serve.generated.serve_pb2_grpc.add_UserDefinedServiceServicer_to_server",
+        ]
+        serve.start(grpc_options={"grpc_servicer_functions": grpc_servicer_functions})
+
+        result = get_extra_usage_tags_to_report(
+            ray.experimental.internal_kv.internal_kv_get_gcs_client()
+        )
+
+        # Check all telemetry relevant to the Serve apps on this cluster
+        assert int(result["serve_http_proxy_used"]) == 1
+        assert int(result["serve_grpc_proxy_used"]) == 1
+
+    def test_only_http_proxy_detected(manage_ray, ray_shutdown):
+        """Test that only HTTP proxy is detected by telemetry.
+
+        When only HTTP proxy is used, only the http proxy telemetry should be detected.
+        """
+        serve.start()
+
+        result = get_extra_usage_tags_to_report(
+            ray.experimental.internal_kv.internal_kv_get_gcs_client()
+        )
+        print(result)
+
+        # Check all telemetry relevant to the Serve apps on this cluster
+        assert int(result["serve_http_proxy_used"]) == 1
+        assert "serve_grpc_proxy_used" not in result
+
+    def test_no_proxy_detected(manage_ray, ray_shutdown):
+        """Test that no proxy is detected by telemetry.
+
+        When neither HTTP nor gRPC proxy is used, no proxy telemetry should be detected.
+        """
+        serve.start(http_options={"location": "NoServer"})
+
+        result = get_extra_usage_tags_to_report(
+            ray.experimental.internal_kv.internal_kv_get_gcs_client()
+        )
+        print(result)
+
+        # Check all telemetry relevant to the Serve apps on this cluster
+        assert "serve_http_proxy_used" not in result
+        assert "serve_grpc_proxy_used" not in result
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))

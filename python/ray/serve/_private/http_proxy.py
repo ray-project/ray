@@ -77,6 +77,7 @@ from ray.serve._private.proxy_router import (
 from ray.serve._private.utils import (
     calculate_remaining_timeout,
     call_function_from_import_path,
+    record_serve_tag,
 )
 from ray.serve.config import gRPCOptions
 from ray.serve.exceptions import RayServeTimeout
@@ -260,6 +261,8 @@ class GenericProxy(ABC):
         # The time when the node starts to drain.
         # The node is not draining if it's None.
         self._draining_start_time: Optional[float] = None
+
+        record_serve_tag(f"SERVE_{self.protocol.upper()}_PROXY_USED", "1")
 
     @property
     @abstractmethod
