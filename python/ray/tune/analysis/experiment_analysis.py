@@ -21,6 +21,7 @@ from ray.air.constants import (
     EXPR_PARAM_FILE,
     TRAINING_ITERATION,
 )
+from ray.train._internal.storage import _use_storage_context
 from ray.tune.syncer import SyncConfig
 from ray.tune.utils import flatten_dict
 from ray.tune.utils.serialization import TuneFunctionDecoder
@@ -40,7 +41,7 @@ from ray.tune.result import (
     CONFIG_PREFIX,
 )
 from ray.tune.experiment import Trial
-from ray.tune.execution.trial_runner import _find_newest_experiment_checkpoint
+from ray.tune.execution.experiment_state import _find_newest_experiment_checkpoint
 from ray.tune.trainable.util import TrainableUtil
 from ray.tune.utils.util import unflattened_lookup
 
@@ -87,7 +88,7 @@ class ExperimentAnalysis:
         default_metric: Optional[str] = None,
         default_mode: Optional[str] = None,
         remote_storage_path: Optional[str] = None,
-        # Deprecate: Raise in 2.6, remove in 2.7
+        # Deprecate: Remove in 2.7
         sync_config: Optional[SyncConfig] = None,
     ):
         self._local_experiment_path: str = None
@@ -130,8 +131,12 @@ class ExperimentAnalysis:
             self.default_metric = DEFAULT_METRIC
 
         # TODO(ml-team): Remove in 2.7 along with sync_config parameter
-        if sync_config and sync_config.upload_dir:
-            remote_storage_path = sync_config.upload_dir
+        if sync_config:
+            raise DeprecationWarning(
+                "Using `sync_config` to specify an `upload_dir` for initializing an "
+                "`ExperimentAnalysis` is deprecated. Remove this parameter and specify "
+                "`remote_storage_path` instead."
+            )
 
         if not self._local_experiment_path:
             self._local_experiment_path = str(self._checkpoints_and_paths[0][1])
@@ -207,11 +212,11 @@ class ExperimentAnalysis:
                 experiment_state = json.load(f, cls=TuneFunctionDecoder)
                 self._experiment_states.append(experiment_state)
 
-            if "checkpoints" not in experiment_state:
+            if "trial_data" not in experiment_state:
                 raise TuneError("Experiment state invalid; no checkpoints found.")
 
             self._checkpoints_and_paths += [
-                (cp, Path(path).parent) for cp in experiment_state["checkpoints"]
+                (cp, Path(path).parent) for cp in experiment_state["trial_data"]
             ]
 
     def _maybe_download_experiment_checkpoint(
@@ -230,7 +235,7 @@ class ExperimentAnalysis:
                 Will return None if the download failed.
         """
         if is_local_path(experiment_checkpoint_path):
-            return os.path.expanduser(experiment_checkpoint_path)
+            return Path(experiment_checkpoint_path).expanduser().as_posix()
 
         assert self._local_path and self._remote_path
 
@@ -376,7 +381,7 @@ class ExperimentAnalysis:
         `get_best_checkpoint(trial, metric, mode)` instead.
 
         Returns:
-            :class:`Checkpoint <ray.air.Checkpoint>` object.
+            :class:`Checkpoint <ray.train.Checkpoint>` object.
         """
         if not self.default_metric or not self.default_mode:
             raise ValueError(
@@ -560,7 +565,7 @@ class ExperimentAnalysis:
         metric = metric or self.default_metric or TRAINING_ITERATION
 
         if isinstance(trial, str):
-            trial_dir = os.path.expanduser(trial)
+            trial_dir = Path(trial).expanduser().as_posix()
             # Get checkpoints from logdir.
             chkpt_df = TrainableUtil.get_checkpoints_paths(trial_dir)
 
@@ -604,7 +609,7 @@ class ExperimentAnalysis:
                 (client) node. Can also contain a cloud URI.
 
         Returns:
-            :class:`Checkpoint <ray.air.Checkpoint>` object or string
+            :class:`Checkpoint <ray.train.Checkpoint>` object or string
             if ``return_path=True``.
         """
         metric = metric or self.default_metric or TRAINING_ITERATION
@@ -944,11 +949,11 @@ class ExperimentAnalysis:
         return True
 
     def runner_data(self) -> Dict:
-        """Returns a dictionary of the TrialRunner data.
+        """Returns a dictionary of the TuneController data.
 
         If ``experiment_checkpoint_path`` pointed to a directory of
         experiments, the dict will be in the format of
-        ``{experiment_session_id: TrialRunner_data}``."""
+        ``{experiment_session_id: TuneController_data}``."""
         if len(self._experiment_states) == 1:
             return self._experiment_states[0]["runner_data"]
         else:
@@ -973,10 +978,16 @@ class ExperimentAnalysis:
                 "since checkpointing is periodic."
             )
             self.trials = []
-            for trial_json_state, path in self._checkpoints_and_paths:
+            for (
+                trial_json_state,
+                trial_run_metadata,
+            ), path in self._checkpoints_and_paths:
                 try:
                     trial = Trial.from_json_state(trial_json_state, stub=True)
-                    trial.local_experiment_path = str(path)
+                    trial.restore_run_metadata(trial_run_metadata)
+                    # TODO(justinvyu): [handle_moved_storage_path]
+                    if not _use_storage_context():
+                        trial.local_experiment_path = str(path)
                 except Exception:
                     logger.warning(
                         f"Could not load trials from experiment checkpoint. "

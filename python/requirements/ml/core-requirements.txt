@@ -1,0 +1,24 @@
+# ML tracking integrations
+comet-ml==3.31.9
+mlflow==1.30.0; python_version <= '3.7'
+mlflow==2.4.1; python_version > '3.7'
+wandb==0.13.4
+
+# ML training frameworks
+xgboost==1.6.2; python_version <= '3.7'
+xgboost==1.7.6; python_version > '3.7'
+xgboost_ray==0.1.15
+
+lightgbm==3.3.5
+lightgbm_ray==0.1.8
+
+# Huggingface
+transformers==4.19.1
+accelerate==0.20.3
+
+# DL libraries
+-r dl-cpu-requirements.txt
+
+# Cloud storage tools
+s3fs==2023.1.0; python_version < '3.8'
+s3fs==2023.5.0; python_version >= '3.8'

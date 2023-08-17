@@ -54,7 +54,7 @@ available_node_types:
             - sg-00000000 # Replace with your Security Group ID.
 
         # Multiple network interfaces can optionally be attached to a single
-        # node. Each interface should be assigned a different subnet, but each
+        # node. Each interface can be assigned a different subnet, but each
         # subnet should be in the same availability zone.
         # For more information, see:
         # https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/using-eni.html
@@ -65,6 +65,11 @@ available_node_types:
           PrivateIpAddress: 172.31.16.10 # Replace with an IP in your subnet.
           Groups:
             - sg-11111111 # Replace with your Security Group ID.
+        - DeviceIndex: 2 # Tertiary network interface.
+          SubnetId: subnet-11111111 # (Same as deviceIndex-1)
+          PrivateIpAddress: 172.31.16.11 # Replace with an IP in your subnet.
+          Groups:
+            - sg-11111111 # (Same as deviceIndex-1)
 
       # Use any node and instance type with default network interface types.
       ImageId: latest_dlami
@@ -80,10 +85,18 @@ available_node_types:
       # multiple workers trying to use the same private IP.
       NetworkInterfaces:
         - DeviceIndex: 0 # Primary network interface.
+          NetworkCardIndex: 0 # NetworkCard index else defaults to ZERO by ec2 API
           AssociatePublicIpAddress: False # Omit to let your Subnet auto-assign a public IP (if enabled).
           SubnetId: subnet-22222222 # Replace with your actual Subnet ID
           Groups:
             - sg-22222222 # Replace with your actual Security Group ID.
+          InterfaceType: efa # Use EFA for higher throughput and lower latency.
+        - DeviceIndex: 1 # Secondary interface.
+          NetworkCardIndex: 1 # NetworkCard index else defaults to ZERO by ec2 API
+          AssociatePublicIpAddress: False # Omit to let your Subnet auto-assign a public IP (if enabled).
+          SubnetId: subnet-22222222 # (Must be same AZ, subnetId can be same)
+          Groups:
+            - sg-22222222 # (Must be self-referenced with ALL traffic)
           InterfaceType: efa # Use EFA for higher throughput and lower latency.
 
       # Use an AMI and instance type that supports Elastic Fabric Adapters (EFA).

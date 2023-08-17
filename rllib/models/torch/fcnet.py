@@ -7,6 +7,8 @@ from ray.rllib.models.torch.misc import SlimFC, AppendBiasLayer, normc_initializ
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.typing import Dict, TensorType, List, ModelConfigDict
+from ray.rllib.utils.deprecation import deprecation_warning
+from ray.util import log_once
 
 torch, nn = try_import_torch()
 
@@ -24,6 +26,10 @@ class FullyConnectedNetwork(TorchModelV2, nn.Module):
         model_config: ModelConfigDict,
         name: str,
     ):
+        if log_once("fully_connected_net_deprecation_torch_modelv2"):
+            deprecation_warning(
+                old=("ray.rllib.models.torch.fcnet." "FullyConnectedNetwork")
+            )
         TorchModelV2.__init__(
             self, obs_space, action_space, num_outputs, model_config, name
         )

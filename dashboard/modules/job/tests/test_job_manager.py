@@ -3,6 +3,7 @@ import os
 import signal
 import sys
 import tempfile
+import time
 import urllib.request
 from uuid import uuid4
 
@@ -144,7 +145,7 @@ async def test_get_all_job_info(call_ray_start, tmp_path):  # noqa: F811
     )
 
     found = False
-    for job_table_entry in (await gcs_aio_client.get_all_job_info()).job_info_list:
+    for job_table_entry in (await gcs_aio_client.get_all_job_info()).values():
         if job_table_entry.config.metadata.get(JOB_ID_METADATA_KEY) == submission_id:
             found = True
             # Check that the job info is populated correctly.
@@ -164,6 +165,88 @@ async def test_get_all_job_info(call_ray_start, tmp_path):  # noqa: F811
             assert job_info.driver_node_id != ""
 
     assert found
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "call_ray_start",
+    ["ray start --head"],
+    indirect=True,
+)
+async def test_get_all_job_info_with_is_running_tasks(call_ray_start):  # noqa: F811
+    """Test the is_running_tasks bit in the GCS get_all_job_info API."""
+
+    address_info = ray.init(address=call_ray_start)
+    gcs_aio_client = GcsAioClient(
+        address=address_info["gcs_address"], nums_reconnect_retry=0
+    )
+
+    @ray.remote
+    def sleep_forever():
+        while True:
+            time.sleep(1)
+
+    object_ref = sleep_forever.remote()
+
+    async def check_is_running_tasks(job_id, expected_is_running_tasks):
+        """Return True if the driver indicated by job_id is currently running tasks."""
+        found = False
+        for job_table_entry in (await gcs_aio_client.get_all_job_info()).values():
+            if job_table_entry.job_id.hex() == job_id:
+                found = True
+                return job_table_entry.is_running_tasks == expected_is_running_tasks
+        assert found
+
+    # Get the job id for this driver.
+    job_id = ray.get_runtime_context().get_job_id()
+
+    # Task should be running.
+    assert await check_is_running_tasks(job_id, True)
+
+    # Kill the task.
+    ray.cancel(object_ref)
+
+    # Task should not be running.
+    await async_wait_for_condition_async_predicate(
+        lambda: check_is_running_tasks(job_id, False), timeout=30
+    )
+
+    # Shutdown and start a new driver.
+    ray.shutdown()
+    ray.init(address=call_ray_start)
+
+    old_job_id = job_id
+    job_id = ray.get_runtime_context().get_job_id()
+    assert old_job_id != job_id
+
+    new_object_ref = sleep_forever.remote()
+
+    # Tasks should still not be running for the old driver.
+    assert await check_is_running_tasks(old_job_id, False)
+
+    # Task should be running for the new driver.
+    assert await check_is_running_tasks(job_id, True)
+
+    # Start an actor that will run forever.
+    @ray.remote
+    class Actor:
+        pass
+
+    actor = Actor.remote()
+
+    # Cancel the task.
+    ray.cancel(new_object_ref)
+
+    # The actor is still running, so is_running_tasks should be true.
+    assert await check_is_running_tasks(job_id, True)
+
+    # Kill the actor.
+    ray.kill(actor)
+
+    # The actor is no longer running, so is_running_tasks should be false.
+    await async_wait_for_condition_async_predicate(
+        lambda: check_is_running_tasks(job_id, False), timeout=30
+    )
 
 
 @pytest.fixture(scope="module")
@@ -1053,6 +1136,7 @@ async def test_job_runs_with_no_resources_available(job_manager):
         ray.cancel(hanging_ref)
 
 
+@pytest.mark.asyncio
 async def test_failed_job_logs_max_char(job_manager):
     """Test failed jobs does not print out too many logs"""
 
@@ -1065,7 +1149,7 @@ async def test_failed_job_logs_max_char(job_manager):
         entrypoint=print_large_logs_cmd,
     )
 
-    await async_wait_for_condition(
+    await async_wait_for_condition_async_predicate(
         check_job_failed, job_manager=job_manager, job_id=job_id
     )
 
@@ -1073,7 +1157,8 @@ async def test_failed_job_logs_max_char(job_manager):
     job_info = await job_manager.get_job_info(job_id)
     assert job_info
     assert len(job_info.message) == 20000 + len(
-        "Job failed due to an application error, " "last available logs:\n"
+        "Job entrypoint command failed with exit code 1,"
+        " last available logs (truncated to 20,000 chars):\n"
     )
 
 

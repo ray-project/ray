@@ -61,6 +61,7 @@ Grouped and Global Aggregations
    :toctree: doc/
 
    Dataset.groupby
+   Dataset.unique
    Dataset.aggregate
    Dataset.sum
    Dataset.min
@@ -143,3 +144,16 @@ Serialization
    Dataset.has_serializable_lineage
    Dataset.serialize_lineage
    Dataset.deserialize_lineage
+
+.. _block-api:
+
+Internals
+---------
+
+.. autosummary::
+   :toctree: doc/
+
+   block.Block
+   block.BlockExecStats
+   block.BlockMetadata
+   block.BlockAccessor

@@ -1,3 +1,4 @@
+import os
 from typing import Dict, Any, Optional, Tuple, Union, TYPE_CHECKING
 
 try:
@@ -6,9 +7,10 @@ except ImportError:
     from distutils.version import LooseVersion as Version
 
 from ray.air.checkpoint import Checkpoint
+from ray.air.constants import MODEL_KEY
 from ray.train.gbdt_trainer import GBDTTrainer
 from ray.util.annotations import PublicAPI
-from ray.train.lightgbm.lightgbm_checkpoint import LightGBMCheckpoint
+from ray.train.lightgbm.lightgbm_checkpoint import LegacyLightGBMCheckpoint
 
 import lightgbm
 import lightgbm_ray
@@ -38,12 +40,12 @@ class LightGBMTrainer(GBDTTrainer):
         `LightGBM documentation <https://lightgbm.readthedocs.io/>`__.
 
     Example:
-        .. code-block:: python
+        .. testcode::
 
             import ray
 
             from ray.train.lightgbm import LightGBMTrainer
-            from ray.air.config import ScalingConfig
+            from ray.train import ScalingConfig
 
             train_dataset = ray.data.from_items(
                 [{"x": x, "y": x + 1} for x in range(32)])
@@ -54,6 +56,11 @@ class LightGBMTrainer(GBDTTrainer):
                 datasets={"train": train_dataset}
             )
             result = trainer.fit()
+
+        .. testoutput::
+            :hide:
+
+            ...
 
     Args:
         datasets: Datasets to use for training and validation. Must include a
@@ -99,13 +106,20 @@ class LightGBMTrainer(GBDTTrainer):
     }
     _init_model_arg_name: str = "init_model"
 
+    @staticmethod
+    def get_model(checkpoint: Checkpoint) -> lightgbm.Booster:
+        """Retrieve the LightGBM model stored in this checkpoint."""
+        with checkpoint.as_directory() as checkpoint_path:
+            return lightgbm.Booster(model_file=os.path.join(checkpoint_path, MODEL_KEY))
+
     def _train(self, **kwargs):
         return lightgbm_ray.train(**kwargs)
 
     def _load_checkpoint(
         self, checkpoint: Checkpoint
     ) -> Tuple[lightgbm.Booster, Optional["Preprocessor"]]:
-        checkpoint = LightGBMCheckpoint.from_checkpoint(checkpoint)
+        # TODO(matt): Replace this when preprocessor arg is removed.
+        checkpoint = LegacyLightGBMCheckpoint.from_checkpoint(checkpoint)
         return checkpoint.get_model(), checkpoint.get_preprocessor()
 
     def _save_model(self, model: lightgbm.LGBMModel, path: str):

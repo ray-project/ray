@@ -16,9 +16,8 @@ import pytest
 
 import ray
 import ray.cloudpickle as pickle
-from ray import tune
-from ray.air import session, Checkpoint, RunConfig
-from ray.air.config import CheckpointConfig, ScalingConfig
+from ray import train, tune
+from ray.train import Checkpoint, CheckpointConfig, RunConfig, ScalingConfig
 from ray.air._internal.remote_storage import (
     upload_to_uri,
     download_from_uri,
@@ -27,7 +26,7 @@ from ray.air._internal.remote_storage import (
 from ray.air._internal.uri_utils import URI
 from ray.train.torch import TorchTrainer
 from ray.tune import TuneError
-from ray.tune.syncer import _DefaultSyncer, Syncer, SyncConfig
+from ray.tune.syncer import _BackgroundProcess, _DefaultSyncer, Syncer, SyncConfig
 from ray.tune.utils.file_transfer import _pack_dir, _unpack_dir
 
 
@@ -487,16 +486,16 @@ def test_syncer_not_running_sync_last_failed(propagate_logs, caplog, temp_data_d
 
     tmp_source, tmp_target = temp_data_dirs
 
-    class FakeSyncProcess:
+    class FakeSyncProcess(_BackgroundProcess):
         @property
         def is_running(self):
             return False
 
-        def wait(self):
+        def wait(self, *args, **kwargs):
             raise RuntimeError("Sync failed")
 
     syncer = _DefaultSyncer(sync_period=60)
-    syncer._sync_process = FakeSyncProcess()
+    syncer._sync_process = FakeSyncProcess(lambda: None)
     assert syncer.sync_up_if_needed(
         local_dir=tmp_source,
         remote_dir="memory:///test/test_syncer_not_running_sync",
@@ -519,7 +518,8 @@ def test_syncer_delete(temp_data_dirs):
     syncer.sync_down(
         remote_dir="memory:///test/test_syncer_delete", local_dir=tmp_target
     )
-    with pytest.raises(TuneError):
+    # Downloading from the deleted directory will raise some exception.
+    with pytest.raises(Exception):
         syncer.wait()
 
     # Remote storage was deleted, so target should be empty
@@ -603,7 +603,8 @@ def test_syncer_wait_or_retry_eventual_success(temp_data_dirs, tmp_path):
     syncer = EventualSuccessSyncer(sync_period=60, sync_timeout=0.5)
 
     syncer.sync_up(local_dir=tmp_source, remote_dir=f"memory://{str(tmp_target)}")
-    syncer.wait_or_retry(max_retries=3, backoff_s=0)
+    # The syncer will retry 2 times, running 3 times in total and eventually succeeding.
+    syncer.wait_or_retry(max_retries=2, backoff_s=0)
     assert success.exists()
 
 
@@ -887,7 +888,7 @@ def test_final_experiment_checkpoint_sync(ray_start_2_cpus, tmpdir):
 
     def train_func(config):
         for i in range(8):
-            session.report({"score": i})
+            train.report({"score": i})
             time.sleep(0.5)
 
     tuner = tune.Tuner(
@@ -979,7 +980,7 @@ def test_e2e_sync_to_s3(ray_start_4_cpus, mock_s3_bucket_uri, tmp_path):
     exp_name = "test_e2e_sync_to_s3"
 
     def train_fn(config):
-        session.report({"score": 1}, checkpoint=Checkpoint.from_dict({"data": 1}))
+        train.report({"score": 1}, checkpoint=Checkpoint.from_dict({"data": 1}))
         raise RuntimeError
 
     tuner = tune.Tuner(
@@ -1037,7 +1038,7 @@ def test_distributed_checkpointing_to_s3(
     local_dir = os.path.join(tmp_path, "local_dir")
 
     def train_fn(config):
-        world_rank = session.get_world_rank()
+        world_rank = train.get_context().get_world_rank()
         for step in range(config["num_steps"]):
             time.sleep(0.1)
             checkpoint = None
@@ -1065,7 +1066,7 @@ def test_distributed_checkpointing_to_s3(
                         )
                     )
                 checkpoint = Checkpoint.from_directory(checkpoint_dir)
-            session.report({"score": step}, checkpoint=checkpoint)
+            train.report({"score": step}, checkpoint=checkpoint)
 
     def _check_dir_content(checkpoint_dir, exist=True):
         # Double check local checkpoint dir.

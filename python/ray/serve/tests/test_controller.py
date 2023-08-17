@@ -1,7 +1,8 @@
-import pytest
 import time
+import pytest
 
 import ray
+from ray._private.test_utils import wait_for_condition
 
 from ray import serve
 from ray.serve._private.common import DeploymentInfo
@@ -10,6 +11,8 @@ from ray.serve._private.constants import (
     SERVE_DEFAULT_APP_NAME,
     DEPLOYMENT_NAME_PREFIX_SEPARATOR,
 )
+from ray.serve.schema import ServeDeploySchema
+from ray.serve._private.common import ApplicationStatus
 
 
 def get_deployment_name(name: str):
@@ -47,6 +50,32 @@ def test_redeploy_start_time(serve_instance):
     start_time_ms_2 = deployment_info_2.start_time_ms
 
     assert start_time_ms_1 == start_time_ms_2
+
+
+def test_deploy_app_custom_exception(serve_instance):
+    """Check that controller doesn't deserialize an exception from deploy_app."""
+
+    controller = serve.context.get_global_client()._controller
+
+    config = {
+        "applications": [
+            {
+                "name": "broken_app",
+                "route_prefix": "/broken",
+                "import_path": "ray.serve.tests.test_config_files.broken_app:app",
+            }
+        ]
+    }
+
+    ray.get(controller.deploy_apps.remote(config=ServeDeploySchema.parse_obj(config)))
+
+    def check_custom_exception() -> bool:
+        status = serve.status().applications["broken_app"]
+        assert status.status == ApplicationStatus.DEPLOY_FAILED
+        assert "custom exception info" in status.message
+        return True
+
+    wait_for_condition(check_custom_exception, timeout=10)
 
 
 if __name__ == "__main__":

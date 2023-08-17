@@ -13,6 +13,7 @@ import ray
 from ray.rllib.models.repeated_values import RepeatedValues
 from ray.rllib.utils.annotations import Deprecated, PublicAPI, DeveloperAPI
 from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.utils.numpy import SMALL_NUMBER
 from ray.rllib.utils.typing import (
     LocalOptimizer,
     SpaceStruct,
@@ -307,12 +308,9 @@ def explained_variance(y: TensorType, pred: TensorType) -> TensorType:
         The explained variance given a pair of labels and predictions.
     """
     y_var = torch.var(y, dim=[0])
-    if y_var == 0.0:
-        # Model case in which y does not vary with explained variance of -1
-        return torch.tensor(-1.0).to(pred.device)
     diff_var = torch.var(y - pred, dim=[0])
     min_ = torch.tensor([-1.0]).to(pred.device)
-    return torch.max(min_, 1 - (diff_var / y_var))[0]
+    return torch.max(min_, 1 - (diff_var / y_var + SMALL_NUMBER))[0]
 
 
 @PublicAPI
@@ -631,12 +629,11 @@ def sequence_mask(
     """
     # If maxlen not given, use the longest lengths in the `lengths` tensor.
     if maxlen is None:
-        maxlen = int(lengths.max())
+        maxlen = lengths.max()
 
-    mask = ~(
-        torch.ones((len(lengths), maxlen)).to(lengths.device).cumsum(dim=1).t()
-        > lengths
-    )
+    mask = torch.ones(tuple(lengths.shape) + (int(maxlen),))
+
+    mask = ~(mask.to(lengths.device).cumsum(dim=1).t() > lengths)
     # Time major transformation.
     if not time_major:
         mask = mask.t()
@@ -698,3 +695,14 @@ def softmax_cross_entropy_with_logits(
         The resulting softmax cross-entropy given predictions and labels.
     """
     return torch.sum(-labels * nn.functional.log_softmax(logits, -1), -1)
+
+
+def _dynamo_is_available():
+    # This only works if torch._dynamo is available
+    try:
+        # TODO(Artur): Remove this once torch._dynamo is available on CI
+        import torch._dynamo as dynamo  # noqa: F401
+
+        return True
+    except ImportError:
+        return False

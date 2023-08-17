@@ -5,11 +5,13 @@ from unittest.mock import MagicMock
 import pytest
 
 import ray
+from ray._private.test_utils import wait_for_condition
 from ray.data._internal.execution.interfaces import (
     ExecutionOptions,
     ExecutionResources,
     PhysicalOperator,
 )
+from ray.data._internal.execution.interfaces.physical_operator import MetadataOpTask
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.streaming_executor import (
@@ -96,28 +98,29 @@ def test_process_completed_tasks():
     assert len(topo[o1].outqueue) == 20, topo
 
     # Test processing completed work items.
-    sleep_ref = sleep.remote()
-    done_ref = ray.put("done")
-    o2.get_work_refs = MagicMock(return_value=[sleep_ref, done_ref])
-    o2.notify_work_completed = MagicMock()
+    sleep_task = MetadataOpTask(sleep.remote(), lambda: None)
+    done_task_callback = MagicMock()
+    done_task = MetadataOpTask(ray.put("done"), done_task_callback)
+    o2.get_active_tasks = MagicMock(return_value=[sleep_task, done_task])
     o2.all_inputs_done = MagicMock()
     o1.all_dependents_complete = MagicMock()
     process_completed_tasks(topo)
     update_operator_states(topo)
-    o2.notify_work_completed.assert_called_once_with(done_ref)
+    done_task_callback.assert_called_once()
     o2.all_inputs_done.assert_not_called()
     o1.all_dependents_complete.assert_not_called()
 
     # Test input finalization.
-    o2.get_work_refs = MagicMock(return_value=[done_ref])
-    o2.notify_work_completed = MagicMock()
+    done_task_callback = MagicMock()
+    done_task = MetadataOpTask(ray.put("done"), done_task_callback)
+    o2.get_active_tasks = MagicMock(return_value=[done_task])
     o2.all_inputs_done = MagicMock()
     o1.all_dependents_complete = MagicMock()
     o1.completed = MagicMock(return_value=True)
     topo[o1].outqueue.clear()
     process_completed_tasks(topo)
     update_operator_states(topo)
-    o2.notify_work_completed.assert_called_once_with(done_ref)
+    done_task_callback.assert_called_once()
     o2.all_inputs_done.assert_called_once()
     o1.all_dependents_complete.assert_not_called()
 
@@ -169,7 +172,7 @@ def test_select_operator_to_run():
     )
 
     # Test backpressure includes num active tasks as well.
-    o3.num_active_work_refs = MagicMock(return_value=2)
+    o3.num_active_tasks = MagicMock(return_value=2)
     o3.internal_queue_size = MagicMock(return_value=0)
     assert (
         select_operator_to_run(
@@ -178,7 +181,7 @@ def test_select_operator_to_run():
         == o2
     )
     # Internal queue size is added to num active tasks.
-    o3.num_active_work_refs = MagicMock(return_value=0)
+    o3.num_active_tasks = MagicMock(return_value=0)
     o3.internal_queue_size = MagicMock(return_value=2)
     assert (
         select_operator_to_run(
@@ -186,7 +189,7 @@ def test_select_operator_to_run():
         )
         == o2
     )
-    o2.num_active_work_refs = MagicMock(return_value=2)
+    o2.num_active_tasks = MagicMock(return_value=2)
     o2.internal_queue_size = MagicMock(return_value=0)
     assert (
         select_operator_to_run(
@@ -194,7 +197,7 @@ def test_select_operator_to_run():
         )
         == o3
     )
-    o2.num_active_work_refs = MagicMock(return_value=0)
+    o2.num_active_tasks = MagicMock(return_value=0)
     o2.internal_queue_size = MagicMock(return_value=2)
     assert (
         select_operator_to_run(
@@ -322,7 +325,18 @@ def test_execution_allowed():
     )
 
 
-def test_resource_constrained_triggers_autoscaling():
+def test_resource_constrained_triggers_autoscaling(monkeypatch):
+    RESOURCE_REQUEST_TIMEOUT = 5
+    monkeypatch.setattr(
+        ray.data._internal.execution.autoscaling_requester,
+        "RESOURCE_REQUEST_TIMEOUT",
+        RESOURCE_REQUEST_TIMEOUT,
+    )
+    monkeypatch.setattr(
+        ray.data._internal.execution.autoscaling_requester,
+        "PURGE_INTERVAL",
+        RESOURCE_REQUEST_TIMEOUT,
+    )
     from ray.data._internal.execution.autoscaling_requester import (
         get_or_create_autoscaling_requester_actor,
     )
@@ -342,19 +356,19 @@ def test_resource_constrained_triggers_autoscaling():
             make_transform(lambda block: [b * -1 for b in block]),
             o1,
         )
-        o2.num_active_work_refs = MagicMock(return_value=1)
+        o2.num_active_tasks = MagicMock(return_value=1)
         o3 = MapOperator.create(
             make_transform(lambda block: [b * 2 for b in block]),
             o2,
         )
-        o3.num_active_work_refs = MagicMock(return_value=1)
+        o3.num_active_tasks = MagicMock(return_value=1)
         o4 = MapOperator.create(
             make_transform(lambda block: [b * 3 for b in block]),
             o3,
             compute_strategy=ray.data.ActorPoolStrategy(min_size=1, max_size=2),
             ray_remote_args={"num_gpus": incremental_cpu},
         )
-        o4.num_active_work_refs = MagicMock(return_value=1)
+        o4.num_active_tasks = MagicMock(return_value=1)
         o4.incremental_resource_usage = MagicMock(
             return_value=ExecutionResources(gpu=1)
         )
@@ -451,6 +465,12 @@ def test_resource_constrained_triggers_autoscaling():
         {"CPU": 1},
     ]
 
+    # Test that the resource requests will be purged after the timeout.
+    wait_for_condition(
+        lambda: ray.get(ac._aggregate_requests.remote()) == [],
+        timeout=RESOURCE_REQUEST_TIMEOUT * 2,
+    )
+
 
 def test_select_ops_ensure_at_least_one_live_operator():
     opt = ExecutionOptions()
@@ -466,7 +486,7 @@ def test_select_ops_ensure_at_least_one_live_operator():
     )
     topo, _ = build_streaming_topology(o3, opt)
     topo[o2].outqueue.append("dummy1")
-    o1.num_active_work_refs = MagicMock(return_value=2)
+    o1.num_active_tasks = MagicMock(return_value=2)
     assert (
         select_operator_to_run(
             topo,
@@ -478,7 +498,7 @@ def test_select_ops_ensure_at_least_one_live_operator():
         )
         is None
     )
-    o1.num_active_work_refs = MagicMock(return_value=0)
+    o1.num_active_tasks = MagicMock(return_value=0)
     assert (
         select_operator_to_run(
             topo,
@@ -557,7 +577,7 @@ def test_calculate_topology_usage():
     )
     topo, _ = build_streaming_topology(o3, ExecutionOptions())
     inputs[0].size_bytes = MagicMock(return_value=200)
-    topo[o2].outqueue = [inputs[0]]
+    topo[o2].add_output(inputs[0])
     usage = TopologyResourceUsage.of(topo)
     assert len(usage.downstream_memory_usage) == 3, usage
     assert usage.overall == ExecutionResources(15, 0, 1700)

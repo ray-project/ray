@@ -25,7 +25,6 @@ namespace rpc {
 
 /// NOTE: See src/ray/core_worker/core_worker.h on how to add a new grpc handler.
 #define RAY_NODE_MANAGER_RPC_HANDLERS                                 \
-  RPC_SERVICE_HANDLER(NodeManagerService, UpdateResourceUsage, -1)    \
   RPC_SERVICE_HANDLER(NodeManagerService, RequestResourceReport, -1)  \
   RPC_SERVICE_HANDLER(NodeManagerService, GetResourceLoad, -1)        \
   RPC_SERVICE_HANDLER(NodeManagerService, NotifyGCSRestart, -1)       \
@@ -45,6 +44,7 @@ namespace rpc {
   RPC_SERVICE_HANDLER(NodeManagerService, ReleaseUnusedBundles, -1)   \
   RPC_SERVICE_HANDLER(NodeManagerService, GetSystemConfig, -1)        \
   RPC_SERVICE_HANDLER(NodeManagerService, ShutdownRaylet, -1)         \
+  RPC_SERVICE_HANDLER(NodeManagerService, DrainRaylet, -1)            \
   RPC_SERVICE_HANDLER(NodeManagerService, GetTasksInfo, -1)           \
   RPC_SERVICE_HANDLER(NodeManagerService, GetObjectsInfo, -1)         \
   RPC_SERVICE_HANDLER(NodeManagerService, GetTaskFailureCause, -1)
@@ -62,10 +62,6 @@ class NodeManagerServiceHandler {
   /// \param[in] request The request message.
   /// \param[out] reply The reply message.
   /// \param[in] send_reply_callback The callback to be called when the request is done.
-
-  virtual void HandleUpdateResourceUsage(rpc::UpdateResourceUsageRequest request,
-                                         rpc::UpdateResourceUsageReply *reply,
-                                         rpc::SendReplyCallback send_reply_callback) = 0;
 
   virtual void HandleRequestResourceReport(
       rpc::RequestResourceReportRequest request,
@@ -99,6 +95,10 @@ class NodeManagerServiceHandler {
   virtual void HandleShutdownRaylet(ShutdownRayletRequest request,
                                     ShutdownRayletReply *reply,
                                     SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleDrainRaylet(rpc::DrainRayletRequest request,
+                                 rpc::DrainRayletReply *reply,
+                                 SendReplyCallback send_reply_callback) = 0;
 
   virtual void HandleCancelWorkerLease(rpc::CancelWorkerLeaseRequest request,
                                        rpc::CancelWorkerLeaseReply *reply,
@@ -176,7 +176,8 @@ class NodeManagerGrpcService : public GrpcService {
 
   void InitServerCallFactories(
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
-      std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories) override {
+      std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
+      const ClusterID &cluster_id) override {
     RAY_NODE_MANAGER_RPC_HANDLERS
   }
 

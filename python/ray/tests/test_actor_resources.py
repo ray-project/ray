@@ -331,7 +331,7 @@ def test_actor_multiple_gpus_from_multiple_tasks(ray_start_cluster, ACCELERATOR_
 
 
 @pytest.mark.parametrize("ACCELERATOR_TYPE", ["CUDA", "XPU"])
-def test_actors_and_tasks_with_gpus(enable_syncer_test, ray_start_cluster, ACCELERATOR_TYPE):
+def test_actors_and_tasks_with_gpus(ray_start_cluster, ACCELERATOR_TYPE):
     os.environ["RAY_EXPERIMENTAL_ACCELERATOR_TYPE"] = ACCELERATOR_TYPE
     cluster = ray_start_cluster
     num_nodes = 3

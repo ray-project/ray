@@ -30,6 +30,8 @@ from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.spaces.space_utils import get_base_struct_from_space
 from ray.rllib.utils.torch_utils import flatten_inputs_to_1d_tensor, one_hot
 from ray.rllib.utils.typing import ModelConfigDict, TensorType, List
+from ray.rllib.utils.deprecation import deprecation_warning
+from ray.util import log_once
 
 torch, nn = try_import_torch()
 
@@ -41,7 +43,7 @@ class GTrXLNet(RecurrentNetwork, nn.Module):
     Can be used as a drop-in replacement for LSTMs in PPO and IMPALA.
     For an example script, see: `ray/rllib/examples/attention_net.py`.
 
-    To use this network as a replacement for an RNN, configure your Trainer
+    To use this network as a replacement for an RNN, configure your Algorithm
     as follows:
 
     Examples:
@@ -102,6 +104,8 @@ class GTrXLNet(RecurrentNetwork, nn.Module):
                 (two GRUs per Transformer unit, one after the MHA, one after
                 the position-wise MLP).
         """
+        if log_once("deprecate_gtrxlnet_torch"):
+            deprecation_warning(old="ray.rllib.models.torch.attention_net.GTrXLNet")
 
         super().__init__(
             observation_space, action_space, num_outputs, model_config, name
@@ -268,6 +272,10 @@ class AttentionWrapper(TorchModelV2, nn.Module):
         model_config: ModelConfigDict,
         name: str,
     ):
+        if log_once("deprecate_attention_wrapper_torch"):
+            deprecation_warning(
+                old="ray.rllib.models.torch.attention_net.AttentionWrapper"
+            )
 
         nn.Module.__init__(self)
         super().__init__(obs_space, action_space, None, model_config, name)

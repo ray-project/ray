@@ -14,12 +14,11 @@ from unittest.mock import MagicMock
 
 import ray
 from ray import tune
-from ray.air import CheckpointConfig
+from ray.train import CheckpointConfig
 from ray.air._internal.checkpoint_manager import _TrackedCheckpoint, CheckpointStorage
 from ray.air.constants import TRAINING_ITERATION
 from ray.tune import Trainable, PlacementGroupFactory
 from ray.tune.execution.checkpoint_manager import _CheckpointManager
-from ray.tune.execution.ray_trial_executor import RayTrialExecutor
 from ray.tune.schedulers import (
     FIFOScheduler,
     HyperBandScheduler,
@@ -36,6 +35,7 @@ from ray.tune.search import ConcurrencyLimiter
 from ray.tune.experiment import Trial
 
 from ray.rllib import _register_all
+from ray.tune.trainable.metadata import _TrainingRunMetadata
 
 _register_all()
 
@@ -44,10 +44,10 @@ def result(t, rew):
     return dict(time_total_s=t, episode_reward_mean=rew, training_iteration=int(t))
 
 
-def mock_trial_runner(trials=None):
-    trial_runner = MagicMock()
-    trial_runner.get_trials.return_value = trials or []
-    return trial_runner
+def mock_tune_controller(trials=None):
+    tune_controller = MagicMock()
+    tune_controller.get_trials.return_value = trials or []
+    return tune_controller
 
 
 class EarlyStoppingSuite(unittest.TestCase):
@@ -61,7 +61,7 @@ class EarlyStoppingSuite(unittest.TestCase):
     def basicSetup(self, rule):
         t1 = Trial("PPO")  # mean is 450, max 900, t_max=10
         t2 = Trial("PPO")  # mean is 450, max 450, t_max=5
-        runner = mock_trial_runner()
+        runner = mock_tune_controller()
         for i in range(10):
             r1 = result(i, i * 100)
             print("basicSetup:", i)
@@ -83,7 +83,7 @@ class EarlyStoppingSuite(unittest.TestCase):
             min_samples_required=1,
         )
         t1, t2 = self.basicSetup(rule)
-        runner = mock_trial_runner()
+        runner = mock_tune_controller()
         rule.on_trial_complete(runner, t1, result(10, 1000))
         self.assertEqual(
             rule.on_trial_result(runner, t2, result(5, 450)), TrialScheduler.CONTINUE
@@ -103,7 +103,7 @@ class EarlyStoppingSuite(unittest.TestCase):
             min_samples_required=1,
         )
         t1, t2 = self.basicSetup(rule)
-        runner = mock_trial_runner()
+        runner = mock_tune_controller()
         self.assertEqual(
             rule.on_trial_result(runner, t2, result(100, 0)), TrialScheduler.CONTINUE
         )
@@ -120,7 +120,7 @@ class EarlyStoppingSuite(unittest.TestCase):
             min_samples_required=1,
         )
         t1, t2 = self.basicSetup(rule)
-        runner = mock_trial_runner()
+        runner = mock_tune_controller()
         rule.on_trial_complete(runner, t1, result(10, 1000))
         rule.on_trial_complete(runner, t2, result(10, 1000))
         t3 = Trial("PPO")
@@ -142,7 +142,7 @@ class EarlyStoppingSuite(unittest.TestCase):
             min_samples_required=2,
         )
         t1, t2 = self.basicSetup(rule)
-        runner = mock_trial_runner()
+        runner = mock_tune_controller()
         rule.on_trial_complete(runner, t1, result(10, 1000))
         t3 = Trial("PPO")
         # Insufficient samples to evaluate t3
@@ -163,7 +163,7 @@ class EarlyStoppingSuite(unittest.TestCase):
             min_samples_required=1,
         )
         t1, t2 = self.basicSetup(rule)
-        runner = mock_trial_runner()
+        runner = mock_tune_controller()
         rule.on_trial_complete(runner, t1, result(10, 1000))
         rule.on_trial_complete(runner, t2, result(10, 1000))
         t3 = Trial("PPO")
@@ -183,7 +183,7 @@ class EarlyStoppingSuite(unittest.TestCase):
             hard_stop=False,
         )
         t1, t2 = self.basicSetup(rule)
-        runner = mock_trial_runner()
+        runner = mock_tune_controller()
         rule.on_trial_complete(runner, t1, result(10, 1000))
         rule.on_trial_complete(runner, t2, result(10, 1000))
         t3 = Trial("PPO")
@@ -204,7 +204,7 @@ class EarlyStoppingSuite(unittest.TestCase):
         )
         t1 = Trial("PPO")  # mean is 450, max 900, t_max=10
         t2 = Trial("PPO")  # mean is 450, max 450, t_max=5
-        runner = mock_trial_runner()
+        runner = mock_tune_controller()
         for i in range(10):
             self.assertEqual(
                 rule.on_trial_result(runner, t1, result_func(i, i * 100)),
@@ -237,64 +237,11 @@ class EarlyStoppingSuite(unittest.TestCase):
         self._test_metrics(result2, "mean_loss", "min")
 
 
-# Only barebone impl for start/stop_trial. No internal state maintained.
-class _MockTrialExecutor(RayTrialExecutor):
-    def start_trial(self, trial, checkpoint_obj=None, train=True):
-        trial.logger_running = True
-        trial.restored_checkpoint = checkpoint_obj.dir_or_data
-        trial.status = Trial.RUNNING
-        return True
-
-    def stop_trial(self, trial, error=False, error_msg=None):
-        trial.status = Trial.ERROR if error else Trial.TERMINATED
-
-    def restore(self, trial, checkpoint=None, block=False):
-        pass
-
-    def save(self, trial, type=CheckpointStorage.PERSISTENT, result=None):
-        if type == CheckpointStorage.MEMORY:
-            checkpoint = _TrackedCheckpoint(
-                dir_or_data={"data": trial.trainable_name},
-                storage_mode=CheckpointStorage.MEMORY,
-                metrics=result,
-            )
-            trial.on_checkpoint(checkpoint)
-            return checkpoint
-        else:
-            return _TrackedCheckpoint(
-                dir_or_data=trial.trainable_name,
-                storage_mode=CheckpointStorage.PERSISTENT,
-                metrics=result,
-            )
-
-    def reset_trial(self, trial, new_config, new_experiment_tag):
-        return False
-
-    def debug_string(self):
-        return "This is a mock TrialExecutor."
-
-    def export_trial_if_needed(self):
-        return {}
-
-    def fetch_result(self):
-        return []
-
-    def get_next_available_trial(self):
-        return None
-
-    def get_running_trials(self):
-        return []
-
-    def has_resources_for_trial(self, trial: Trial):
-        return True
-
-
 class _MockTrialRunner:
     def __init__(self, scheduler):
         self._scheduler_alg = scheduler
         self.search_alg = None
         self.trials = []
-        self.trial_executor = _MockTrialExecutor()
 
     def process_action(self, trial, action):
         if action == TrialScheduler.CONTINUE:
@@ -302,20 +249,22 @@ class _MockTrialRunner:
         elif action == TrialScheduler.PAUSE:
             self.pause_trial(trial)
         elif action == TrialScheduler.STOP:
-            self.trial_executor.stop_trial(trial)
+            self.stop_trial(trial)
 
     def pause_trial(self, trial, should_checkpoint: bool = True):
         if should_checkpoint:
-            self.trial_executor.save(trial, CheckpointStorage.MEMORY, None)
+            self._schedule_trial_save(trial, CheckpointStorage.MEMORY, None)
         trial.status = Trial.PAUSED
 
-    def stop_trial(self, trial):
+    def stop_trial(self, trial, error=False, error_msg=None):
         if trial.status in [Trial.ERROR, Trial.TERMINATED]:
             return
         elif trial.status in [Trial.PENDING, Trial.PAUSED]:
             self._scheduler_alg.on_trial_remove(self, trial)
         else:
             self._scheduler_alg.on_trial_complete(self, trial, result(100, 10))
+
+        trial.status = Trial.ERROR if error else Trial.TERMINATED
 
     def add_trial(self, trial):
         self.trials.append(trial)
@@ -332,6 +281,33 @@ class _MockTrialRunner:
 
     def _set_trial_status(self, trial, status):
         trial.status = status
+
+    def start_trial(self, trial, checkpoint_obj=None, train=True):
+        trial.logger_running = True
+        trial.restored_checkpoint = checkpoint_obj.dir_or_data
+        trial.status = Trial.RUNNING
+        return True
+
+    def _schedule_trial_restore(self, trial):
+        pass
+
+    def _schedule_trial_save(
+        self, trial, type=CheckpointStorage.PERSISTENT, result=None
+    ):
+        if type == CheckpointStorage.MEMORY:
+            checkpoint = _TrackedCheckpoint(
+                dir_or_data={"data": trial.trainable_name},
+                storage_mode=CheckpointStorage.MEMORY,
+                metrics=result,
+            )
+            trial.on_checkpoint(checkpoint)
+            return checkpoint
+        else:
+            return _TrackedCheckpoint(
+                dir_or_data=trial.trainable_name,
+                storage_mode=CheckpointStorage.PERSISTENT,
+                metrics=result,
+            )
 
 
 class HyperbandSuite(unittest.TestCase):
@@ -840,10 +816,50 @@ class BOHBSuite(unittest.TestCase):
             fail_fast="raise",
         )
         counter = Counter(
-            t.last_result.get("training_iteration") for t in analysis.trials
+            t.run_metadata.last_result.get("training_iteration")
+            for t in analysis.trials
         )
         assert 32 in counter
         assert counter[32] > 1
+
+    def testBOHBProcessing(self):
+        trials = [Trial("foo", stub=True) for i in range(5)]
+        bohb = HyperBandForBOHB(max_t=10, metric="metric", mode="max")
+
+        for trial in trials:
+            bohb.on_trial_add(None, trial)
+            trial.status = Trial.RUNNING
+
+        mock = MagicMock()
+
+        bohb.on_trial_result(mock, trials[0], {"training_iteration": 10, "metric": 40})
+        trials[0].status = Trial.PAUSED
+        bohb.on_trial_result(mock, trials[1], {"training_iteration": 10, "metric": 30})
+        trials[1].status = Trial.PAUSED
+        bohb.on_trial_result(mock, trials[2], {"training_iteration": 10, "metric": 20})
+        trials[2].status = Trial.PAUSED
+        bohb.on_trial_result(mock, trials[3], {"training_iteration": 10, "metric": 10})
+        trials[3].status = Trial.PAUSED
+        bohb.on_trial_result(mock, trials[4], {"training_iteration": 10, "metric": 0})
+        trials[4].status = Trial.PAUSED
+
+        def set_status(trial, status):
+            trial.status = status
+            return None
+
+        def stop_trial(trial):
+            # See TrialRunner.stop_trial()
+            if trial.status in [Trial.PENDING, Trial.PAUSED]:
+                bohb.on_trial_remove(mock, trial)
+                trial.status = Trial.TERMINATED
+            return None
+
+        mock._set_trial_status.side_effect = set_status
+        mock.stop_trial.side_effect = stop_trial
+
+        assert not bohb._hyperbands[0][0].is_being_processed
+        bohb.choose_trial_to_run(mock, allow_recurse=False)
+        assert bohb._hyperbands[0][0].is_being_processed
 
 
 class _MockTrial(Trial):
@@ -858,10 +874,11 @@ class _MockTrial(Trial):
         self.placement_group_factory = PlacementGroupFactory([{"CPU": 1}])
         self.custom_trial_name = None
         self.custom_dirname = None
-        self._local_experiment_path = None
+        self._legacy_local_experiment_path = None
         self.relative_logdir = None
         self._default_result_or_future = None
-        self.checkpoint_manager = _CheckpointManager(
+        self.run_metadata = _TrainingRunMetadata()
+        self.run_metadata.checkpoint_manager = _CheckpointManager(
             checkpoint_config=CheckpointConfig(
                 num_to_keep=2,
                 checkpoint_score_attribute="episode_reward_mean",
@@ -1488,7 +1505,7 @@ class PopulationBasedTestingSuite(unittest.TestCase):
         tmpdir = tempfile.mkdtemp()
         for i, trial in enumerate(trials):
             trial.local_experiment_path = tmpdir
-            trial.last_result = {TRAINING_ITERATION: i}
+            trial.run_metadata.last_result = {TRAINING_ITERATION: i}
         self.on_trial_result(pbt, runner, trials[0], result(15, -100))
         self.on_trial_result(pbt, runner, trials[0], result(20, -100))
         self.on_trial_result(pbt, runner, trials[2], result(20, 40))
@@ -1524,7 +1541,7 @@ class PopulationBasedTestingSuite(unittest.TestCase):
         tmpdir = tempfile.mkdtemp()
         for i, trial in enumerate(trials):
             trial.local_experiment_path = tmpdir
-            trial.last_result = {TRAINING_ITERATION: i}
+            trial.run_metadata.last_result = {TRAINING_ITERATION: i}
             self.on_trial_result(pbt, runner, trials[i], result(10, i))
         log_files = ["pbt_global.txt", "pbt_policy_0.txt", "pbt_policy_1.txt"]
         for log_file in log_files:
@@ -1573,7 +1590,7 @@ class PopulationBasedTestingSuite(unittest.TestCase):
         trial_state = []
         for i, trial in enumerate(trials):
             trial.local_experiment_path = tmpdir
-            trial.last_result = {TRAINING_ITERATION: 0}
+            trial.run_metadata.last_result = {TRAINING_ITERATION: 0}
             trial_state.append(_TrialState(trial.config))
 
         # Helper function to simulate stepping trial k a number of steps,
@@ -1581,7 +1598,7 @@ class PopulationBasedTestingSuite(unittest.TestCase):
         def trial_step(k, steps, score):
             res = result(trial_state[k].step + steps, score)
 
-            trials[k].last_result = res
+            trials[k].run_metadata.last_result = res
             trial_state[k].forward(res[TRAINING_ITERATION])
 
             old_config = trials[k].config
@@ -1675,7 +1692,7 @@ class PopulationBasedTestingSuite(unittest.TestCase):
                 stop={TRAINING_ITERATION: trial_state[i].step},
             )
 
-            replayed = analysis.trials[0].last_result["replayed"]
+            replayed = analysis.trials[0].run_metadata.last_result["replayed"]
             self.assertSequenceEqual(trial_state[i].history, replayed)
 
         # Trial 1 did not exploit anything and should raise an error
@@ -1730,7 +1747,7 @@ class PopulationBasedTestingSuite(unittest.TestCase):
         trial_state = []
         for i, trial in enumerate(trials):
             trial.local_experiment_path = tmpdir
-            trial.last_result = {TRAINING_ITERATION: 0}
+            trial.run_metadata.last_result = {TRAINING_ITERATION: 0}
             trial_state.append(_TrialState(trial.config))
 
         # Helper function to simulate stepping trial k a number of steps,
@@ -1738,7 +1755,7 @@ class PopulationBasedTestingSuite(unittest.TestCase):
         def trial_step(k, steps, score, synced=False):
             res = result(trial_state[k].step + steps, score)
 
-            trials[k].last_result = res
+            trials[k].run_metadata.last_result = res
             trial_state[k].forward(res[TRAINING_ITERATION])
 
             if not synced:
@@ -1847,7 +1864,7 @@ class PopulationBasedTestingSuite(unittest.TestCase):
                 stop={TRAINING_ITERATION: trial_state[i].step},
             )
 
-            replayed = analysis.trials[0].last_result["replayed"]
+            replayed = analysis.trials[0].run_metadata.last_result["replayed"]
             self.assertSequenceEqual(trial_state[i].history, replayed)
 
         # Trial 1 did not exploit anything and should raise an error
@@ -1886,7 +1903,7 @@ class PopulationBasedTestingSuite(unittest.TestCase):
         tmpdir = tempfile.mkdtemp()
         for i, trial in enumerate(trials):
             trial.local_experiment_path = tmpdir
-            trial.last_result = {}
+            trial.run_metadata.last_result = {}
         self.on_trial_result(
             pbt, runner, trials[1], result(1, 10), TrialScheduler.CONTINUE
         )
@@ -1895,11 +1912,10 @@ class PopulationBasedTestingSuite(unittest.TestCase):
         )
         self.assertEqual(pbt._num_checkpoints, 1)
 
-        pbt._exploit(runner.trial_executor, trials[1], trials[2])
+        pbt._exploit(runner, trials[1], trials[2])
         shutil.rmtree(tmpdir)
 
-    @pytest.mark.skipif(
-        os.environ.get("TUNE_NEW_EXECUTION") != "0",
+    @pytest.mark.skip(
         reason=(
             "This test is generally flaky: The print after writing `Cleanup` "
             "to the file is printed, but the data is not always written. "
@@ -1937,7 +1953,7 @@ class PopulationBasedTestingSuite(unittest.TestCase):
                     tune.report(metric=i + config["x"])
 
         class MockScheduler(FIFOScheduler):
-            def on_trial_result(self, trial_runner, trial, result):
+            def on_trial_result(self, tune_controller, trial, result):
                 return TrialScheduler.STOP
 
         scheduler = MockScheduler()

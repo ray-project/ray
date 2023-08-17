@@ -12,6 +12,7 @@ from ray_release.config import (
     parse_python_version,
     read_and_validate_release_test_collection,
 )
+from ray_release.configs.global_config import init_global_config
 from ray_release.test import DEFAULT_PYTHON_VERSION
 from ray_release.env import DEFAULT_ENVIRONMENT, load_environment, populate_os_env
 from ray_release.exception import ReleaseTestCLIError, ReleaseTestError
@@ -83,6 +84,14 @@ from ray_release.wheels import find_and_wait_for_ray_wheels_url
     help="Environment to use. Will overwrite environment used in test config.",
 )
 @click.option(
+    "--global-config",
+    default="oss_config.yaml",
+    type=click.Choice(
+        [x.name for x in (Path(__file__).parent.parent / "configs").glob("*.yaml")]
+    ),
+    help="Global config to use for test execution.",
+)
+@click.option(
     "--no-terminate",
     default=False,
     type=bool,
@@ -101,8 +110,13 @@ def main(
     cluster_id: Optional[str] = None,
     cluster_env_id: Optional[str] = None,
     env: Optional[str] = None,
+    global_config: str = "oss_config.yaml",
     no_terminate: bool = False,
 ):
+    global_config_file = os.path.join(
+        os.path.dirname(__file__), "..", "configs", global_config
+    )
+    init_global_config(global_config_file)
     test_collection_file = test_collection_file or os.path.join(
         os.path.dirname(__file__), "..", "..", "release_tests.yaml"
     )

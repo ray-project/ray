@@ -1,25 +1,43 @@
 from abc import ABC
 import asyncio
-from collections import defaultdict
+from collections import defaultdict, deque
 from dataclasses import dataclass
 import itertools
 import logging
+import math
 import pickle
 import random
-import sys
-from typing import Any, Dict, List, Optional, Union
+import time
+from typing import (
+    Any,
+    AsyncGenerator,
+    DefaultDict,
+    Deque,
+    Dict,
+    List,
+    Optional,
+    Set,
+    Tuple,
+    Union,
+)
+import warnings
+
+from starlette.requests import Request
 
 import ray
 from ray.actor import ActorHandle
 from ray.dag.py_obj_scanner import _PyObjScanner
 from ray.exceptions import RayActorError, RayTaskError
 from ray.util import metrics
+from ray._private.utils import make_asyncio_event_version_compat, load_class
 
 from ray.serve._private.common import RunningReplicaInfo, DeploymentInfo
 from ray.serve._private.constants import (
     SERVE_LOGGER_NAME,
     HANDLE_METRIC_PUSH_INTERVAL_S,
+    RAY_SERVE_MULTIPLEXED_MODEL_ID_MATCHING_TIMEOUT_S,
 )
+from ray.serve._private.http_util import make_buffered_asgi_receive
 from ray.serve._private.long_poll import LongPollClient, LongPollNamespace
 from ray.serve._private.utils import (
     compute_iterable_delta,
@@ -32,6 +50,9 @@ from ray.serve.generated.serve_pb2 import (
 )
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
+
+# Used to only print a single warning when users pass starlette requests via handle.
+WARNED_ABOUT_STARLETTE_REQUESTS_ONCE = False
 
 
 @dataclass
@@ -46,11 +67,14 @@ class RequestMetadata:
     # HTTP route path of the request.
     route: str = ""
 
-    # Application Name
+    # Application name.
     app_name: str = ""
 
-    # Multiplexed model ID
+    # Multiplexed model ID.
     multiplexed_model_id: str = ""
+
+    # If this request expects a streaming response.
+    is_streaming: bool = False
 
 
 @dataclass
@@ -62,18 +86,166 @@ class Query:
     async def resolve_async_tasks(self):
         """Find all unresolved asyncio.Task and gather them all at once."""
         scanner = _PyObjScanner(source_type=asyncio.Task)
-        tasks = scanner.find_nodes((self.args, self.kwargs))
 
-        if len(tasks) > 0:
-            resolved = await asyncio.gather(*tasks)
-            replacement_table = dict(zip(tasks, resolved))
-            self.args, self.kwargs = scanner.replace_nodes(replacement_table)
+        try:
+            tasks = scanner.find_nodes((self.args, self.kwargs))
 
-        # Make the scanner GCable to avoid memory leak
-        scanner.clear()
+            if len(tasks) > 0:
+                resolved = await asyncio.gather(*tasks)
+                replacement_table = dict(zip(tasks, resolved))
+                self.args, self.kwargs = scanner.replace_nodes(replacement_table)
+        finally:
+            # Make the scanner GC-able to avoid memory leaks.
+            scanner.clear()
+
+    async def buffer_starlette_requests_and_warn(self):
+        """Buffer any `starlette.request.Requests` objects to make them serializable.
+
+        This is an anti-pattern because the requests will not be fully functional, so
+        warn the user. We may fully disallow it in the future.
+        """
+        global WARNED_ABOUT_STARLETTE_REQUESTS_ONCE
+        scanner = _PyObjScanner(source_type=Request)
+
+        try:
+            requests = scanner.find_nodes((self.args, self.kwargs))
+            if len(requests) > 0 and not WARNED_ABOUT_STARLETTE_REQUESTS_ONCE:
+                WARNED_ABOUT_STARLETTE_REQUESTS_ONCE = True
+                # TODO(edoakes): fully disallow this in the future.
+                warnings.warn(
+                    "`starlette.Request` objects should not be directly passed via "
+                    "`ServeHandle` calls. Not all functionality is guaranteed to work "
+                    "(e.g., detecting disconnects) and this may be disallowed in a "
+                    "future release."
+                )
+
+            for request in requests:
+
+                async def empty_send():
+                    pass
+
+                request._send = empty_send
+                request._receive = make_buffered_asgi_receive(await request.body())
+        finally:
+            # Make the scanner GC-able to avoid memory leaks.
+            scanner.clear()
+
+
+class ReplicaWrapper(ABC):
+    """Defines the interface for a scheduler to talk to a replica.
+
+    This is used to abstract away details of Ray actor calls for testing.
+    """
+
+    @property
+    def replica_id(self) -> str:
+        """Replica ID of this replica."""
+        pass
+
+    @property
+    def multiplexed_model_ids(self) -> Set[str]:
+        """Set of model IDs on this replica."""
+        pass
+
+    async def get_queue_state(self) -> Tuple[int, bool]:
+        """Returns tuple of (queue_len, accepted)."""
+        pass
+
+    def send_query(
+        self, query: Query
+    ) -> Union[ray.ObjectRef, "ray._raylet.StreamingObjectRefGenerator"]:
+        """Send query to this replica."""
+        pass
+
+
+class ActorReplicaWrapper:
+    def __init__(self, replica_info: RunningReplicaInfo):
+        self._replica_info = replica_info
+        self._multiplexed_model_ids = set(replica_info.multiplexed_model_ids)
+
+        if replica_info.is_cross_language:
+            self._actor_handle = JavaActorHandleProxy(replica_info.actor_handle)
+        else:
+            self._actor_handle = replica_info.actor_handle
+
+    @property
+    def replica_id(self) -> str:
+        return self._replica_info.replica_tag
+
+    @property
+    def multiplexed_model_ids(self) -> Set[str]:
+        return self._multiplexed_model_ids
+
+    async def get_queue_state(self) -> Tuple[int, bool]:
+        # NOTE(edoakes): the `get_num_ongoing_requests` method name is shared by
+        # the Python and Java replica implementations. If you change it, you need to
+        # change both (or introduce a branch here).
+        queue_len = await self._actor_handle.get_num_ongoing_requests.remote()
+        accepted = queue_len < self._replica_info.max_concurrent_queries
+        return queue_len, accepted
+
+    def _send_query_java(self, query: Query) -> ray.ObjectRef:
+        """Send the query to a Java replica.
+
+        Does not currently support streaming.
+        """
+        if query.metadata.is_streaming:
+            raise RuntimeError("Streaming not supported for Java.")
+
+        # Java only supports a single argument.
+        arg = query.args[0]
+
+        # Convert HTTP requests to Java-accepted format (single string).
+        if query.metadata.is_http_request:
+            assert isinstance(arg, bytes)
+            loaded_http_input = pickle.loads(arg)
+            query_string = loaded_http_input.scope.get("query_string")
+            if query_string:
+                arg = query_string.decode().split("=", 1)[1]
+            elif loaded_http_input.body:
+                arg = loaded_http_input.body.decode()
+
+        # Default call method in java is "call," not "__call__" like Python.
+        call_method = query.metadata.call_method
+        if call_method == "__call__":
+            call_method = "call"
+
+        return self._actor_handle.handle_request.remote(
+            RequestMetadataProto(
+                request_id=query.metadata.request_id,
+                endpoint=query.metadata.endpoint,
+                call_method=call_method,
+            ).SerializeToString(),
+            [arg],
+        )
+
+    def _send_query_python(
+        self, query: Query
+    ) -> Union[ray.ObjectRef, "ray._raylet.StreamingObjectRefGenerator"]:
+        """Send the query to a Python replica."""
+        if query.metadata.is_streaming:
+            obj_ref = self._actor_handle.handle_request_streaming.options(
+                num_returns="streaming"
+            ).remote(pickle.dumps(query.metadata), *query.args, **query.kwargs)
+        else:
+            _, obj_ref = self._actor_handle.handle_request.remote(
+                pickle.dumps(query.metadata), *query.args, **query.kwargs
+            )
+
+        return obj_ref
+
+    def send_query(
+        self, query: Query
+    ) -> Union[ray.ObjectRef, "ray._raylet.StreamingObjectRefGenerator"]:
+        if self._replica_info.is_cross_language:
+            return self._send_query_java(query)
+        else:
+            return self._send_query_python(query)
 
 
 class ReplicaScheduler(ABC):
+    """Abstract interface for a replica scheduler (how the router calls it)."""
+
     async def assign_replica(
         self, query: Query
     ) -> Union[ray.ObjectRef, "ray._raylet.StreamingObjectRefGenerator"]:
@@ -83,62 +255,467 @@ class ReplicaScheduler(ABC):
         pass
 
 
-class RoundRobinStreamingReplicaScheduler(ReplicaScheduler):
-    """Round-robins requests across a set of actor replicas using streaming calls.
+@dataclass
+class PendingRequest:
+    future: asyncio.Future
+    metadata: RequestMetadata
 
-    This policy does *not* respect `max_concurrent_queries`.
+
+class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
+    """Chooses a replica for each request using the "power of two choices" procedure.
+
+    Requests are scheduled in FIFO order.
+
+    When a request comes in, two candidate replicas are chosen randomly. Each replica
+    is sent a control message to fetch its queue length.
+
+    The replica responds with two items: (queue_length, accepted). Only replicas that
+    accept the request are considered; between those, the one with the lower queue
+    length is chosen.
+
+    In the case when neither replica accepts the request (e.g., their queues are full),
+    the procedure is repeated with backoff. This backoff repeats indefinitely until a
+    replica is chosen, so the caller should use timeouts and cancellation to avoid
+    hangs.
+
+    Each request being scheduled may spawn an independent task that runs the scheduling
+    procedure concurrently. This task will not necessarily satisfy the request that
+    started it (in order to maintain the FIFO order). The total number of tasks is
+    capped at (2 * num_replicas).
     """
 
-    def __init__(self, deployment_name: str):
+    # The sequence of backoff timeouts to use when all replicas' queues are full.
+    # The last item in the list is the max timeout and will be used repeatedly.
+    backoff_sequence_s = [0, 0.05, 0.1, 0.15, 0.2, 0.5, 1.0]
+
+    # Deadline for replicas to respond with their queue length. If the response isn't
+    # received within this deadline, the replica will not be considered.
+    queue_len_response_deadline_s = 0.1
+
+    def __init__(
+        self,
+        event_loop: asyncio.AbstractEventLoop,
+        deployment_name: str,
+    ):
+        self._loop = event_loop
         self._deployment_name = deployment_name
-        self._replica_id_set = set()
-        self._replica_iterator = itertools.cycle([])
-        self._replicas_updated_event = asyncio.Event()
 
-    async def assign_replica(
-        self, query: Query
-    ) -> "ray._raylet.StreamingObjectRefGenerator":
-        replica = None
-        while replica is None:
-            try:
-                replica = next(self._replica_iterator)
-            except StopIteration:
-                logger.info(
-                    "Tried to assign replica for deployment "
-                    f"{self._deployment_name} but none available.",
-                    extra={"log_to_stderr": False},
-                )
-                # Clear before waiting to avoid immediately waking up if there
-                # had ever been an update before.
-                self._replicas_updated_event.clear()
-                await self._replicas_updated_event.wait()
-
-        if replica.is_cross_language:
-            raise RuntimeError(
-                "Streaming is not yet supported for cross-language actors."
-            )
-
-        return replica.actor_handle.handle_request_streaming.options(
-            num_returns="streaming"
-        ).remote(
-            pickle.dumps(query.metadata),
-            *query.args,
-            **query.kwargs,
+        # Current replicas available to be scheduled.
+        # Updated via `update_replicas`.
+        self._replica_id_set: Set[str] = set()
+        self._replicas: Dict[str, ReplicaWrapper] = {}
+        self._replicas_updated_event = make_asyncio_event_version_compat(event_loop)
+        self._multiplexed_model_id_to_replica_ids: DefaultDict[Set[str]] = defaultdict(
+            set
         )
+        # When there is no match for a multiplexed model id, we will try to fallback
+        # to all replicas immediately. This set is used to make sure we only fallback
+        # once for concurrent requests for the same model id.
+        # Whenever there is a match, we will remove the the model id from this set.
+        self._multiplexed_model_id_fallback_match: Set[str] = set()
 
-    def update_running_replicas(self, running_replicas: List[RunningReplicaInfo]):
-        new_replica_ids = {r.replica_tag for r in running_replicas}
-        if new_replica_ids != self._replica_id_set:
-            self._replica_id_set = new_replica_ids
+        # Tasks running the scheduling loop. The size of this set may vary over time
+        # as new tasks will be scheduled when a request comes in or new replicas are
+        # added, but it will not exceed self.max_num_scheduling_tasks.
+        self._scheduling_tasks: Set[asyncio.Task] = set()
+
+        # We keep two separate queues of pending requests:
+        # - self._pending_requests_to_fulfill is a queue that will be used to fulfill
+        # requests in FIFO order by scheduling tasks once they've acquired a replica.
+        # To avoid long tail latencies due to backoff, the scheduling task started by
+        # a given request may not be the one to fulfill it.
+        # - self._pending_requests_to_schedule is a queue that is used for tasks to
+        # best-effort grab the metadata of requests waiting to be fulfilled. This is
+        # currently used for scheduling tasks to know which multiplexed model IDs they
+        # should be trying to get replicas for.
+        self._pending_requests_to_fulfill: Deque[PendingRequest] = deque()
+        self._pending_requests_to_schedule: Deque[PendingRequest] = deque()
+
+    @property
+    def num_pending_requests(self) -> int:
+        """Current number of requests pending assignment."""
+        return len(self._pending_requests_to_fulfill)
+
+    @property
+    def curr_num_scheduling_tasks(self) -> int:
+        """Current number of scheduling tasks running."""
+        return len(self._scheduling_tasks)
+
+    @property
+    def max_num_scheduling_tasks(self) -> int:
+        """Max number of scheduling tasks to run at any time."""
+        return 2 * len(self._replicas)
+
+    @property
+    def target_num_scheduling_tasks(self) -> int:
+        """Target number of scheduling tasks to be running based on pending requests.
+
+        This will never exceed `self.max_num_scheduling_tasks`.
+        """
+        return min(self.num_pending_requests, self.max_num_scheduling_tasks)
+
+    @property
+    def curr_replicas(self) -> Dict[str, ReplicaWrapper]:
+        return self._replicas
+
+    def update_replicas(self, replicas: List[ReplicaWrapper]):
+        """Update the set of available replicas to be considered for scheduling.
+
+        When the set of replicas changes, we may spawn additional scheduling tasks
+        if there are pending requests.
+        """
+        new_replicas = {}
+        new_replica_id_set = set()
+        new_multiplexed_model_id_to_replica_ids = defaultdict(set)
+        for r in replicas:
+            new_replicas[r.replica_id] = r
+            new_replica_id_set.add(r.replica_id)
+            for model_id in r.multiplexed_model_ids:
+                new_multiplexed_model_id_to_replica_ids[model_id].add(r.replica_id)
+
+        if self._replica_id_set != new_replica_id_set:
             logger.info(
                 "Got updated replicas for deployment "
-                f"{self._deployment_name}: {new_replica_ids}.",
+                f"{self._deployment_name}: {new_replica_id_set}.",
                 extra={"log_to_stderr": False},
             )
 
-        random.shuffle(running_replicas)
-        self._replica_iterator = itertools.cycle(running_replicas)
+        self._replicas = new_replicas
+        self._replica_id_set = new_replica_id_set
+        self._multiplexed_model_id_to_replica_ids = (
+            new_multiplexed_model_id_to_replica_ids
+        )
         self._replicas_updated_event.set()
+        self.maybe_start_scheduling_tasks()
+
+    def update_running_replicas(self, running_replicas: List[RunningReplicaInfo]):
+        """Shim for compatibility with the existing round robin scheduler."""
+        return self.update_replicas([ActorReplicaWrapper(r) for r in running_replicas])
+
+    def _get_candidate_replica_ids_for_multiplexed_model_id(
+        self,
+        model_id: str,
+        get_from_all_replicas: bool = False,
+    ) -> Set[str]:
+        """Get multiplexed model candidates from the current replica.
+
+        By default, we will only choose from replicas that have the requested
+        multiplexed model id, if not matched, the function will return an empty set.
+
+        If get_from_all_replicas is True, we will choose from all replicas,
+        and we will choose all replicas with the least number of multiplexed model
+        ids.
+
+        """
+
+        candidates = set()
+
+        if not get_from_all_replicas:
+            if model_id in self._multiplexed_model_id_to_replica_ids:
+                candidates = self._multiplexed_model_id_to_replica_ids[model_id]
+                if len(candidates) > 0:
+                    return candidates
+            return candidates
+
+        # Sort the replicas by the number of multiplexed model ids they have.
+        # Choose all replicas with the least number of multiplexed model ids.
+        sorted_replicas = sorted(
+            self._replicas.values(), key=lambda x: len(x.multiplexed_model_ids)
+        )
+        least_num_multiplexed_model_ids = math.inf
+        for replica in sorted_replicas:
+            if len(replica.multiplexed_model_ids) <= least_num_multiplexed_model_ids:
+                candidates.add(replica.replica_id)
+                least_num_multiplexed_model_ids = len(replica.multiplexed_model_ids)
+            else:
+                break
+
+        return candidates
+
+    async def choose_two_replicas_with_backoff(
+        self,
+        request_metadata: Optional[RequestMetadata] = None,
+    ) -> AsyncGenerator[List[RunningReplicaInfo], None]:
+        """Generator that repeatedly chooses (at most) two random replicas
+        from `self._replicas`.
+
+        For multiplexing, this will choose replicas that have the requested model ID.
+        If there are no replicas with the requested model ID, it will choose from all
+        replicas.
+
+        After each iteration, there will be an increasing backoff sleep time (dictated
+        by `self.backoff_sequence_s`). The caller should exit the generator to reset the
+        backoff sleep time.
+        """
+
+        backoff_index = 0
+        multiplexed_start_matching_time = None
+        multiplexed_matching_timeout = random.uniform(
+            RAY_SERVE_MULTIPLEXED_MODEL_ID_MATCHING_TIMEOUT_S,
+            RAY_SERVE_MULTIPLEXED_MODEL_ID_MATCHING_TIMEOUT_S * 2,
+        )
+
+        while True:
+            # If no replicas are available, wait until `update_replicas` is called.
+            while len(self._replicas) == 0:
+                logger.info(
+                    "Tried to assign replica for deployment "
+                    f"{self._deployment_name} but none are available. "
+                    "Waiting for new replicas to be added.",
+                    extra={"log_to_stderr": False},
+                )
+                self._replicas_updated_event.clear()
+                await self._replicas_updated_event.wait()
+                logger.info(
+                    "Got replicas for deployment {self._deployment_name}, waking up.",
+                    extra={"log_to_stderr": False},
+                )
+
+            if multiplexed_start_matching_time is None:
+                multiplexed_start_matching_time = time.time()
+
+            candidate_replica_ids = set()
+            if request_metadata is not None and request_metadata.multiplexed_model_id:
+                # Get candidates for multiplexed model ID.
+                if (
+                    time.time() - multiplexed_start_matching_time
+                    < multiplexed_matching_timeout
+                ):
+                    candidate_replica_ids = (
+                        self._get_candidate_replica_ids_for_multiplexed_model_id(
+                            request_metadata.multiplexed_model_id
+                        )
+                    )
+                    # When there is no match for a multiplexed model id, we will try to
+                    # fallback to all replicas immediately.
+                    if (
+                        len(candidate_replica_ids) == 0
+                        and request_metadata.multiplexed_model_id
+                        not in self._multiplexed_model_id_fallback_match
+                    ):
+                        candidate_replica_ids = (
+                            self._get_candidate_replica_ids_for_multiplexed_model_id(
+                                request_metadata.multiplexed_model_id,
+                                get_from_all_replicas=True,
+                            )
+                        )
+                        self._multiplexed_model_id_fallback_match.add(
+                            request_metadata.multiplexed_model_id
+                        )
+                    elif len(candidate_replica_ids) > 0:
+                        self._multiplexed_model_id_fallback_match.discard(
+                            request_metadata.multiplexed_model_id
+                        )
+                else:
+                    candidate_replica_ids = (
+                        self._get_candidate_replica_ids_for_multiplexed_model_id(
+                            request_metadata.multiplexed_model_id,
+                            get_from_all_replicas=True,
+                        )
+                    )
+            else:
+                # non-multiplexed use case
+                candidate_replica_ids = self._replica_id_set
+
+            if candidate_replica_ids:
+                chosen_ids = random.sample(
+                    list(candidate_replica_ids), k=min(2, len(candidate_replica_ids))
+                )
+                yield [self._replicas[chosen_id] for chosen_id in chosen_ids]
+
+            await asyncio.sleep(self.backoff_sequence_s[backoff_index])
+            backoff_index = min(backoff_index + 1, len(self.backoff_sequence_s) - 1)
+
+    async def select_from_candidate_replicas(
+        self, candidates: List[ReplicaWrapper]
+    ) -> Optional[ReplicaWrapper]:
+        """Chooses the best replica from the list of candidates.
+
+        If none of the replicas can be scheduled, returns `None`.
+
+        The queue length at each replica is queried directly from it. The time waited
+        for these queries is capped by `self.queue_len_response_deadline_s`; if a
+        replica doesn't respond within the deadline it is not considered.
+
+        Among replicas that respond within the deadline and accept the request (don't
+        have full queues), the one with the lowest queue length is chosen.
+        """
+        get_queue_state_tasks = []
+        for c in candidates:
+            t = self._loop.create_task(c.get_queue_state())
+            t.replica_id = c.replica_id
+            get_queue_state_tasks.append(t)
+
+        done, pending = await asyncio.wait(
+            get_queue_state_tasks,
+            timeout=self.queue_len_response_deadline_s,
+            return_when=asyncio.ALL_COMPLETED,
+        )
+        for task in pending:
+            task.cancel()
+
+        chosen_replica_id = None
+        lowest_queue_len = math.inf
+        for t in done:
+            if t.exception() is not None:
+                msg = (
+                    "Failed to fetch queue length for "
+                    f"replica {t.replica_id}: '{t.exception()}'"
+                )
+                # If we get a RayActorError, it means the replica actor has died. This
+                # is not recoverable (the controller will start a new replica in its
+                # place), so we should no longer consider it for requests.
+                if isinstance(t.exception(), RayActorError):
+                    self._replicas.pop(t.replica_id, None)
+                    self._replica_id_set.discard(t.replica_id)
+                    msg += " This replica will no longer be considered for requests."
+
+                logger.warning(msg)
+            else:
+                queue_len, accepted = t.result()
+                if accepted and queue_len < lowest_queue_len:
+                    chosen_replica_id = t.replica_id
+                    lowest_queue_len = queue_len
+
+        if chosen_replica_id is None:
+            return None
+
+        # `self._replicas` may have been updated since the candidates were chosen.
+        # In that case, return `None` so a new one is selected.
+        return self._replicas.get(chosen_replica_id, None)
+
+    def _get_pending_request_matching_metadata(
+        self,
+        replica: ReplicaWrapper,
+        request_metadata: Optional[RequestMetadata] = None,
+    ) -> Optional[PendingRequest]:
+        if request_metadata is None or not request_metadata.multiplexed_model_id:
+            return None
+
+        for pr in self._pending_requests_to_fulfill:
+            if (
+                not pr.future.done()
+                and pr.metadata.multiplexed_model_id
+                == request_metadata.multiplexed_model_id
+            ):
+                return pr
+
+        return None
+
+    def fulfill_next_pending_request(
+        self,
+        replica: ReplicaWrapper,
+        request_metadata: Optional[RequestMetadata] = None,
+    ):
+        """Assign the replica to the next pending request in FIFO order.
+
+        If a pending request has been cancelled, it will be popped from the queue
+        and not assigned.
+        """
+        # First try to match a pending request based on the request metadata (currently
+        # this only looks at the multiplexed model ID).
+        matched_pending_request = self._get_pending_request_matching_metadata(
+            replica, request_metadata
+        )
+        if matched_pending_request is not None:
+            matched_pending_request.future.set_result(replica)
+            self._pending_requests_to_fulfill.remove(matched_pending_request)
+            return
+
+        # If no pending request matches the request metadata, fulfill the next in the
+        # queue in FIFO order, passing over futures that have been cancelled.
+        while len(self._pending_requests_to_fulfill) > 0:
+            pr = self._pending_requests_to_fulfill.popleft()
+            if not pr.future.done():
+                pr.future.set_result(replica)
+                break
+
+    def _get_next_pending_request_metadata_to_schedule(
+        self,
+    ) -> Optional[RequestMetadata]:
+        while len(self._pending_requests_to_schedule) > 0:
+            pr = self._pending_requests_to_schedule.popleft()
+            if not pr.future.done():
+                return pr.metadata
+
+        return None
+
+    async def fulfill_pending_requests(self):
+        """Repeatedly tries to fulfill a pending request with an available replica.
+
+        This is expected to be run inside a task in self._scheduling tasks.
+
+        When a replica is found, this method will exit if the number of scheduling tasks
+        has exceeded the target number. Else it will loop again to schedule another
+        replica.
+        """
+        try:
+            while len(self._scheduling_tasks) <= self.target_num_scheduling_tasks:
+                request_metadata = self._get_next_pending_request_metadata_to_schedule()
+                async for candidates in self.choose_two_replicas_with_backoff(
+                    request_metadata
+                ):
+                    replica = await self.select_from_candidate_replicas(candidates)
+                    if replica is not None:
+                        self.fulfill_next_pending_request(replica, request_metadata)
+                        break
+
+        except Exception:
+            logger.exception("Unexpected error in fulfill_pending_requests.")
+        finally:
+            self._scheduling_tasks.remove(asyncio.current_task(loop=self._loop))
+
+    def maybe_start_scheduling_tasks(self):
+        """Start scheduling tasks to fulfill pending requests if necessary.
+
+        Starts tasks so that there is at least one task per pending request
+        (respecting the max number of scheduling tasks).
+
+        In the common case, this will start a single task when a new request comes
+        in for scheduling. However, in cases where the number of available replicas
+        is updated or a task exits unexpectedly, we may need to start multiple.
+        """
+        tasks_to_start = (
+            self.target_num_scheduling_tasks - self.curr_num_scheduling_tasks
+        )
+        for _ in range(tasks_to_start):
+            self._scheduling_tasks.add(
+                self._loop.create_task(self.fulfill_pending_requests())
+            )
+
+    async def choose_replica_for_query(self, query: Query) -> ReplicaWrapper:
+        """Chooses a replica to send the provided request to.
+
+        Requests are scheduled in FIFO order, so this puts a future on the internal
+        queue that will be resolved when a replica is available and it's the front of
+        the queue.
+
+        Upon cancellation (by the caller), the future is cancelled and will be passed
+        over when a replica becomes available.
+        """
+        pending_request = PendingRequest(asyncio.Future(), query.metadata)
+        try:
+            self._pending_requests_to_fulfill.append(pending_request)
+            self._pending_requests_to_schedule.append(pending_request)
+            self.maybe_start_scheduling_tasks()
+            replica = await pending_request.future
+        except asyncio.CancelledError as e:
+            pending_request.future.cancel()
+
+            raise e from None
+
+        return replica
+
+    async def assign_replica(
+        self, query: Query
+    ) -> Union[ray.ObjectRef, "ray._raylet.StreamingObjectRefGenerator"]:
+        """Choose a replica for the request and send it.
+
+        This will block indefinitely if no replicas are available to handle the
+        request, so it's up to the caller to time out or cancel the request.
+        """
+        replica = await self.choose_replica_for_query(query)
+        return replica.send_query(query)
 
 
 class RoundRobinReplicaScheduler(ReplicaScheduler):
@@ -165,13 +742,7 @@ class RoundRobinReplicaScheduler(ReplicaScheduler):
         # Used to unblock this replica set waiting for free replicas. A newly
         # added replica or updated max_concurrent_queries value means the
         # query that waits on a free replica might be unblocked on.
-
-        # Python 3.8 has deprecated the 'loop' parameter, and Python 3.10 has
-        # removed it alltogether. Call accordingly.
-        if sys.version_info.major >= 3 and sys.version_info.minor >= 10:
-            self.config_updated_event = asyncio.Event()
-        else:
-            self.config_updated_event = asyncio.Event(loop=event_loop)
+        self.config_updated_event = make_asyncio_event_version_compat(event_loop)
 
         # A map from multiplexed model id to a list of replicas that have the
         # model loaded.
@@ -193,8 +764,8 @@ class RoundRobinReplicaScheduler(ReplicaScheduler):
         # Update the multiplexed_replicas_table
         new_multiplexed_replicas_table = defaultdict(list)
         for replica in replicas:
-            for mdoel_id in replica.multiplexed_model_ids:
-                new_multiplexed_replicas_table[mdoel_id].append(replica)
+            for model_id in replica.multiplexed_model_ids:
+                new_multiplexed_replicas_table[model_id].append(replica)
         self.multiplexed_replicas_table = new_multiplexed_replicas_table
 
     def update_running_replicas(self, running_replicas: List[RunningReplicaInfo]):
@@ -358,11 +929,13 @@ class RoundRobinReplicaScheduler(ReplicaScheduler):
         and only send a query to available replicas (determined by the
         max_concurrent_quries value.)
         """
-        await query.resolve_async_tasks()
+        if query.metadata.is_streaming:
+            raise NotImplementedError("Streaming requires new routing to be enabled.")
+
         assigned_ref = self._try_assign_replica(query)
         while assigned_ref is None:  # Can't assign a replica right now.
             logger.debug(
-                "Failed to assign a replica for " f"query {query.metadata.request_id}"
+                f"Failed to assign a replica for query {query.metadata.request_id}"
             )
             # Maybe there exists a free replica, we just need to refresh our
             # query tracker.
@@ -390,20 +963,30 @@ class Router:
         controller_handle: ActorHandle,
         deployment_name: str,
         event_loop: asyncio.BaseEventLoop = None,
-        _stream: bool = False,
+        _use_new_routing: bool = False,
+        _router_cls: Optional[str] = None,
     ):
-        """Router process incoming queries: assign a replica.
+        """Used to assign requests to downstream replicas for a deployment.
 
-        Args:
-            controller_handle: The controller handle.
+        The scheduling behavior is delegated to a ReplicaScheduler; this is a thin
+        wrapper that adds metrics and logging.
         """
         self._event_loop = event_loop
-        if _stream:
-            self._replica_scheduler = RoundRobinStreamingReplicaScheduler(
-                deployment_name
+
+        if _router_cls:
+            self._replica_scheduler = load_class(_router_cls)(
+                event_loop=event_loop, deployment_name=deployment_name
+            )
+        elif _use_new_routing:
+            self._replica_scheduler = PowerOfTwoChoicesReplicaScheduler(
+                event_loop, deployment_name
             )
         else:
             self._replica_scheduler = RoundRobinReplicaScheduler(event_loop)
+        logger.info(
+            f"Using router {self._replica_scheduler.__class__}.",
+            extra={"log_to_stderr": False},
+        )
 
         # -- Metrics Registration -- #
         self.num_router_requests = metrics.Counter(
@@ -441,12 +1024,15 @@ class Router:
             ray.get(controller_handle.get_deployment_info.remote(self.deployment_name))
         )
         deployment_info = DeploymentInfo.from_proto(deployment_route.deployment_info)
+        self.metrics_pusher = None
         if deployment_info.deployment_config.autoscaling_config:
-            self.metrics_pusher = MetricsPusher(
-                controller_handle.record_handle_metrics.remote,
-                HANDLE_METRIC_PUSH_INTERVAL_S,
+            self.metrics_pusher = MetricsPusher()
+            self.metrics_pusher.register_task(
                 self._collect_handle_queue_metrics,
+                HANDLE_METRIC_PUSH_INTERVAL_S,
+                controller_handle.record_handle_metrics.remote,
             )
+
             self.metrics_pusher.start()
 
     def _collect_handle_queue_metrics(self) -> Dict[str, int]:
@@ -458,7 +1044,7 @@ class Router:
         *request_args,
         **request_kwargs,
     ) -> Union[ray.ObjectRef, "ray._raylet.StreamingObjectRefGenerator"]:
-        """Assign a query and returns an object ref represent the result."""
+        """Assign a query to a replica and return the resulting object_ref."""
 
         self.num_router_requests.inc(
             tags={"route": request_meta.route, "application": request_meta.app_name}
@@ -471,20 +1057,34 @@ class Router:
             },
         )
 
-        query = Query(
-            args=list(request_args),
-            kwargs=request_kwargs,
-            metadata=request_meta,
-        )
-        await query.resolve_async_tasks()
-        result = await self._replica_scheduler.assign_replica(query)
+        try:
+            query = Query(
+                args=list(request_args),
+                kwargs=request_kwargs,
+                metadata=request_meta,
+            )
+            await query.resolve_async_tasks()
+            await query.buffer_starlette_requests_and_warn()
+            result = await self._replica_scheduler.assign_replica(query)
 
-        self.num_queued_queries -= 1
-        self.num_queued_queries_gauge.set(
-            self.num_queued_queries,
-            tags={
-                "application": request_meta.app_name,
-            },
-        )
+            return result
+        finally:
+            # If the query is disconnected before assignment, this coroutine
+            # gets cancelled by the caller and an asyncio.CancelledError is
+            # raised. The finally block ensures that num_queued_queries
+            # is correctly decremented in this case.
+            self.num_queued_queries -= 1
+            self.num_queued_queries_gauge.set(
+                self.num_queued_queries,
+                tags={
+                    "application": request_meta.app_name,
+                },
+            )
 
-        return result
+    def shutdown(self):
+        """Shutdown router gracefully.
+
+        The metrics_pusher needs to be shutdown separately.
+        """
+        if self.metrics_pusher:
+            self.metrics_pusher.shutdown()

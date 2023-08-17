@@ -5,6 +5,8 @@
 """
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.typing import TensorType
+from ray.rllib.utils.deprecation import deprecation_warning
+from ray.util import log_once
 
 tf1, tf, tfv = try_import_tf()
 
@@ -24,6 +26,10 @@ class MultiHeadAttention(tf.keras.layers.Layer if tf else object):
         self._linear_layer = tf.keras.layers.TimeDistributed(
             tf.keras.layers.Dense(out_dim, use_bias=False)
         )
+        if log_once("multi_head_attention"):
+            deprecation_warning(
+                old="rllib.models.tf.layers.MultiHeadAttention",
+            )
 
     def call(self, inputs: TensorType) -> TensorType:
         L = tf.shape(inputs)[1]  # length of segment

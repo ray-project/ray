@@ -43,7 +43,7 @@ If your transformation returns exactly one row for each input row, call
         return row
 
     ds = (
-        ray.data.read_images("example://image-datasets/simple", include_paths=True)
+        ray.data.read_images("s3://anonymous@ray-example-data/image-datasets/simple", include_paths=True)
         .map(parse_filename)
     )
 
@@ -111,7 +111,7 @@ uses tasks by default.
         return batch
 
     ds = (
-        ray.data.read_images("example://image-datasets/simple")
+        ray.data.read_images("s3://anonymous@ray-example-data/image-datasets/simple")
         .map_batches(increase_brightness)
     )
 
@@ -226,7 +226,7 @@ To configure the batch type, specify ``batch_format`` in
                 return batch
 
             ds = (
-                ray.data.read_images("example://image-datasets/simple")
+                ray.data.read_images("s3://anonymous@ray-example-data/image-datasets/simple")
                 .map_batches(increase_brightness, batch_format="numpy")
             )
 
@@ -321,7 +321,7 @@ To randomly shuffle all rows, call :meth:`~ray.data.Dataset.random_shuffle`.
     import ray
 
     ds = (
-        ray.data.read_images("example://image-datasets/simple")
+        ray.data.read_images("s3://anonymous@ray-example-data/image-datasets/simple")
         .random_shuffle()
     )
 
@@ -335,9 +335,9 @@ Repartitioning data
 
 A :class:`~ray.data.dataset.Dataset` operates on a sequence of distributed data
 :term:`blocks <block>`. If you want to achieve more fine-grained parallelization,
-increase the number of blocks.
+increase the number of blocks by setting a higher ``parallelism`` at read time.
 
-To change the number of blocks, call
+To change the number of blocks for an existing Dataset, call
 :meth:`Dataset.repartition() <ray.data.Dataset.repartition>`.
 
 .. testcode::

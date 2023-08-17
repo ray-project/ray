@@ -107,7 +107,7 @@ def train_tf_ray_air(
     # This function is kicked off by the main() function and runs a full training
     # run using Ray AIR.
     from ray.train.tensorflow import TensorflowTrainer
-    from ray.air.config import ScalingConfig
+    from ray.train import ScalingConfig
 
     def train_loop(config):
         train_func(use_ray=True, config=config)

@@ -1,10 +1,12 @@
 import abc
-from dataclasses import dataclass
 import datetime
-import gymnasium as gym
 import json
 import pathlib
-from typing import Any, Dict, Mapping, Optional, Type, TYPE_CHECKING, Union
+from dataclasses import dataclass
+from typing import Mapping, Any, TYPE_CHECKING, Optional, Type, Dict, Union
+
+import gymnasium as gym
+import tree
 
 if TYPE_CHECKING:
     from ray.rllib.core.rl_module.marl_module import (
@@ -18,6 +20,11 @@ from ray.rllib.utils.annotations import (
     ExperimentalAPI,
     OverrideToImplementCustomLogic_CallToSuperRecommended,
 )
+from ray.rllib.utils.typing import ViewRequirementsDict
+from ray.rllib.utils.annotations import OverrideToImplementCustomLogic
+from ray.rllib.core.models.base import STATE_IN, STATE_OUT
+from ray.rllib.policy.policy import get_gym_space_from_struct_of_tensors
+from ray.rllib.policy.view_requirement import ViewRequirement
 
 from ray.rllib.core.models.specs.typing import SpecType
 from ray.rllib.core.models.specs.checker import (
@@ -28,6 +35,7 @@ from ray.rllib.core.models.specs.checker import (
 from ray.rllib.models.distributions import Distribution
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
 from ray.rllib.utils.nested_dict import NestedDict
+from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.typing import SampleBatchType
 from ray.rllib.utils.serialization import (
     gym_space_from_dict,
@@ -224,42 +232,104 @@ class RLModule(abc.ABC):
     Subclasses should call super().__init__(config) in their __init__ method.
     Here is the pseudocode for how the forward methods are called:
 
-    During Training (acting in env from each rollout worker):
+    Example for creating a sampling loop:
 
-    .. code-block:: python
+    .. testcode::
 
-        module = RLModule(...)
+        from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import (
+            PPOTorchRLModule
+        )
+        from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
+        import gymnasium as gym
+        import torch
+
+        env = gym.make("CartPole-v1")
+
+        # Create a single agent RL module spec.
+        module_spec = SingleAgentRLModuleSpec(
+            module_class=PPOTorchRLModule,
+            observation_space=env.observation_space,
+            action_space=env.action_space,
+            model_config_dict = {"hidden": [128, 128]},
+            catalog_class = PPOCatalog,
+        )
+        module = module_spec.build()
+        action_dist_class = module.get_inference_action_dist_cls()
         obs, info = env.reset()
+        terminated = False
 
-        while not env.terminated:
-            fwd_outputs = module.forward_exploration({"obs": obs})
+        while not terminated:
+            fwd_ins = {"obs": torch.Tensor([obs])}
+            fwd_outputs = module.forward_exploration(fwd_ins)
             # this can be either deterministic or stochastic distribution
-            action = fwd_outputs["action_dist"].sample()
+            action_dist = action_dist_class.from_logits(
+                fwd_outputs["action_dist_inputs"]
+            )
+            action = action_dist.sample()[0].numpy()
             obs, reward, terminated, truncated, info = env.step(action)
 
 
+    Example for training:
 
-    During Training (learning the policy)
+    .. testcode::
 
-    .. code-block:: python
+        from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import (
+            PPOTorchRLModule
+        )
+        from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
+        import gymnasium as gym
+        import torch
 
-        module = RLModule(...)
-        fwd_ins = {"obs": obs, "action": action, "reward": reward, "next_obs": next_obs}
+        env = gym.make("CartPole-v1")
+
+        # Create a single agent RL module spec.
+        module_spec = SingleAgentRLModuleSpec(
+            module_class=PPOTorchRLModule,
+            observation_space=env.observation_space,
+            action_space=env.action_space,
+            model_config_dict = {"hidden": [128, 128]},
+            catalog_class = PPOCatalog,
+        )
+        module = module_spec.build()
+
+        fwd_ins = {"obs": torch.Tensor([obs])}
         fwd_outputs = module.forward_train(fwd_ins)
-        loss = compute_loss(fwd_outputs, fwd_ins)
-        update_params(module, loss)
+        # loss = compute_loss(fwd_outputs, fwd_ins)
+        # update_params(module, loss)
 
-    During Inference (acting in env during evaluation)
+    Example for inference:
 
-    .. code-block:: python
+    .. testcode::
 
-        module = RLModule(...)
-        obs, info = env.reset()
+        from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import (
+            PPOTorchRLModule
+        )
+        from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
+        import gymnasium as gym
+        import torch
 
-        while not env.terminated:
-            fwd_outputs = module.forward_inference({"obs": obs})
-            action = fwd_outputs["action_dist"].sample()
+        env = gym.make("CartPole-v1")
+
+        # Create a single agent RL module spec.
+        module_spec = SingleAgentRLModuleSpec(
+            module_class=PPOTorchRLModule,
+            observation_space=env.observation_space,
+            action_space=env.action_space,
+            model_config_dict = {"hidden": [128, 128]},
+            catalog_class = PPOCatalog,
+        )
+        module = module_spec.build()
+
+        while not terminated:
+            fwd_ins = {"obs": torch.Tensor([obs])}
+            fwd_outputs = module.forward_inference(fwd_ins)
+            # this can be either deterministic or stochastic distribution
+            action_dist = action_dist_class.from_logits(
+                fwd_outputs["action_dist_inputs"]
+            )
+            action = action_dist.sample()[0].numpy()
             obs, reward, terminated, truncated, info = env.step(action)
+
 
     Args:
         config: The config for the RLModule.
@@ -339,6 +409,7 @@ class RLModule(abc.ABC):
             self.output_specs_inference()
         )
 
+    @OverrideToImplementCustomLogic
     def setup(self):
         """Sets up the components of the module.
 
@@ -348,6 +419,7 @@ class RLModule(abc.ABC):
         """
         pass
 
+    @OverrideToImplementCustomLogic
     def get_train_action_dist_cls(self) -> Type[Distribution]:
         """Returns the action distribution class for this RLModule used for training.
 
@@ -362,6 +434,7 @@ class RLModule(abc.ABC):
         """
         raise NotImplementedError
 
+    @OverrideToImplementCustomLogic
     def get_exploration_action_dist_cls(self) -> Type[Distribution]:
         """Returns the action distribution class for this RLModule used for exploration.
 
@@ -376,6 +449,7 @@ class RLModule(abc.ABC):
         """
         raise NotImplementedError
 
+    @OverrideToImplementCustomLogic
     def get_inference_action_dist_cls(self) -> Type[Distribution]:
         """Returns the action distribution class for this RLModule used for inference.
 
@@ -390,12 +464,87 @@ class RLModule(abc.ABC):
         """
         raise NotImplementedError
 
-    def get_initial_state(self) -> NestedDict:
+    @OverrideToImplementCustomLogic
+    def get_initial_state(self) -> Any:
         """Returns the initial state of the module.
 
-        This is used for recurrent models.
+        This can be used for recurrent models.
         """
         return {}
+
+    @OverrideToImplementCustomLogic
+    def is_stateful(self) -> bool:
+        """Returns True if the initial state is empty.
+
+        By default, RLlib assumes that the module is not recurrent if the initial
+        state is an empty dict and recurrent otherwise.
+        This behavior can be overridden by implementing this method.
+        """
+        initial_state = self.get_initial_state()
+        assert isinstance(initial_state, dict), (
+            "The initial state of an RLModule must be a dict, but is "
+            f"{type(initial_state)} instead."
+        )
+        return bool(initial_state)
+
+    @OverrideToImplementCustomLogic
+    def update_default_view_requirements(
+        self, defaults: ViewRequirementsDict
+    ) -> Mapping[str, ViewRequirement]:
+        """Updates default view requirements with the view requirements of this module.
+
+        This method should be called with view requirements that already contain
+        information such as the given observation space, action space, etc.
+        This method may then add additional shifts or state columns to the view
+        requirements, or apply other changes.
+
+        Args:
+            defaults: The default view requirements to update.
+
+        Returns:
+            The updated view requirements.
+        """
+        if self.is_stateful():
+            # get the initial state in numpy format, infer the state from it, and create
+            # appropriate view requirements.
+            init_state = convert_to_numpy(self.get_initial_state())
+            init_state = tree.map_structure(lambda x: x[None], init_state)
+            space = get_gym_space_from_struct_of_tensors(init_state, batched_input=True)
+            max_seq_len = self.config.model_config_dict["max_seq_len"]
+            assert max_seq_len is not None
+            defaults[STATE_IN] = ViewRequirement(
+                data_col=STATE_OUT,
+                shift=-1,
+                used_for_compute_actions=True,
+                used_for_training=True,
+                batch_repeat_value=max_seq_len,
+                space=space,
+            )
+
+            if self.config.model_config_dict["lstm_use_prev_action"]:
+                defaults[SampleBatch.PREV_ACTIONS] = ViewRequirement(
+                    data_col=SampleBatch.ACTIONS,
+                    shift=-1,
+                    used_for_compute_actions=True,
+                    used_for_training=True,
+                )
+
+            if self.config.model_config_dict["lstm_use_prev_reward"]:
+                defaults[SampleBatch.PREV_REWARDS] = ViewRequirement(
+                    data_col=SampleBatch.REWARDS,
+                    shift=-1,
+                    used_for_compute_actions=True,
+                    used_for_training=True,
+                )
+
+            defaults[STATE_OUT] = ViewRequirement(
+                data_col=STATE_OUT,
+                used_for_compute_actions=False,
+                used_for_training=True,
+                space=space,
+            )
+
+        return defaults
 
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     def output_specs_inference(self) -> SpecType:

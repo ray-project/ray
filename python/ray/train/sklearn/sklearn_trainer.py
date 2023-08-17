@@ -63,7 +63,7 @@ class SklearnTrainer(BaseTrainer):
 
     Example:
 
-    .. code-block:: python
+    .. testcode::
 
         import ray
 
@@ -75,12 +75,17 @@ class SklearnTrainer(BaseTrainer):
         trainer = SklearnTrainer(
             estimator=RandomForestRegressor(),
             label_column="y",
-            scaling_config=ray.air.config.ScalingConfig(
+            scaling_config=ray.train.ScalingConfig(
                 trainer_resources={"CPU": 4}
             ),
             datasets={"train": train_dataset}
         )
         result = trainer.fit()
+
+    .. testoutput::
+        :hide:
+
+        ...
 
     Args:
         estimator: A scikit-learn compatible estimator to use.
@@ -172,6 +177,13 @@ class SklearnTrainer(BaseTrainer):
         preprocessor: Optional["Preprocessor"] = None,
         **fit_params,
     ):
+
+        warnings.warn(
+            "This SklearnTrainer will be deprecated in Ray 2.8. "
+            "It is recommended to write your own training loop instead.",
+            DeprecationWarning,
+        )
+
         if fit_params.pop("resume_from_checkpoint", None):
             raise AttributeError(
                 "SklearnTrainer does not support resuming from checkpoints. "

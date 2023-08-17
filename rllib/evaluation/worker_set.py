@@ -94,9 +94,6 @@ class WorkerSet:
         local_worker: bool = True,
         logdir: Optional[str] = None,
         _setup: bool = True,
-        # deprecated args.
-        policy_class=DEPRECATED_VALUE,
-        trainer_config=DEPRECATED_VALUE,
     ):
         """Initializes a WorkerSet instance.
 
@@ -118,19 +115,6 @@ class WorkerSet:
             logdir: Optional logging directory for workers.
             _setup: Whether to setup workers. This is only for testing.
         """
-        if policy_class != DEPRECATED_VALUE:
-            deprecation_warning(
-                old="WorkerSet(policy_class=..)",
-                new="WorkerSet(default_policy_class=..)",
-                error=True,
-            )
-        if trainer_config != DEPRECATED_VALUE:
-            deprecation_warning(
-                old="WorkerSet(trainer_config=..)",
-                new="WorkerSet(config=..)",
-                error=True,
-            )
-
         from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 
         # Make sure `config` is an AlgorithmConfig object.

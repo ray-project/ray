@@ -2,7 +2,7 @@ import requests
 
 # __serve_example_begin__
 from ray import serve
-from ray.serve.handle import RayServeDeploymentHandle
+from ray.serve.handle import RayServeHandle
 from ray.serve.drivers import DAGDriver
 from ray.serve.deployment_graph import InputNode
 from ray.serve.http_adapters import json_request
@@ -24,8 +24,8 @@ class Multiplier:
 class Router:
     def __init__(
         self,
-        adder: RayServeDeploymentHandle,
-        multiplier: RayServeDeploymentHandle,
+        adder: RayServeHandle,
+        multiplier: RayServeHandle,
     ):
         self.adder = adder
         self.multiplier = multiplier

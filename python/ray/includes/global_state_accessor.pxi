@@ -76,6 +76,7 @@ cdef class GlobalStateAccessor:
                 "RayletSocketName": c_node_info.raylet_socket_name().decode(),
                 "MetricsExportPort": c_node_info.metrics_export_port(),
                 "NodeName": c_node_info.node_name().decode(),
+                "RuntimeEnvAgentPort": c_node_info.runtime_env_agent_port(),
             }
             node_info["alive"] = node_info["Alive"]
             c_resources = PythonGetResourcesTotal(c_node_info)
@@ -88,6 +89,15 @@ cdef class GlobalStateAccessor:
             node_info["Labels"] = \
                 {key.decode(): value.decode() for key, value in c_labels}
             results.append(node_info)
+        return results
+
+    def get_draining_nodes(self):
+        cdef c_vector[CNodeID] draining_nodes
+        with nogil:
+            draining_nodes = self.inner.get().GetDrainingNodes()
+        results = set()
+        for draining_node in draining_nodes:
+            results.add(ray._private.utils.binary_to_hex(draining_node.Binary()))
         return results
 
     def get_all_available_resources(self):

@@ -35,8 +35,6 @@ SUPPORTED_PYTHONS = [(3, 7), (3, 8), (3, 9), (3, 10), (3, 11)]
 # When the bazel version is updated, make sure to update it
 # in WORKSPACE file as well.
 
-SUPPORTED_BAZEL = (5, 4, 0)
-
 ROOT_DIR = os.path.dirname(__file__)
 BUILD_JAVA = os.getenv("RAY_INSTALL_JAVA") == "1"
 SKIP_BAZEL_BUILD = os.getenv("SKIP_BAZEL_BUILD") == "1"
@@ -45,8 +43,15 @@ BAZEL_LIMIT_CPUS = os.getenv("BAZEL_LIMIT_CPUS")
 
 PICKLE5_SUBDIR = os.path.join("ray", "pickle5_files")
 THIRDPARTY_SUBDIR = os.path.join("ray", "thirdparty_files")
+RUNTIME_ENV_AGENT_THIRDPARTY_SUBDIR = os.path.join(
+    "ray", "_private", "runtime_env", "agent", "thirdparty_files"
+)
 
-CLEANABLE_SUBDIRS = [PICKLE5_SUBDIR, THIRDPARTY_SUBDIR]
+CLEANABLE_SUBDIRS = [
+    PICKLE5_SUBDIR,
+    THIRDPARTY_SUBDIR,
+    RUNTIME_ENV_AGENT_THIRDPARTY_SUBDIR,
+]
 
 # In automated builds, we do a few adjustments before building. For instance,
 # the bazel environment is set up slightly differently, and symlinks are
@@ -251,20 +256,23 @@ if setup_spec.type == SetupType.RAY:
             "py-spy >= 0.2.0",
             "requests",
             "gpustat >= 1.0.0",  # for windows
+            "grpcio >= 1.32.0; python_version < '3.10'",  # noqa:E501
+            "grpcio >= 1.42.0; python_version >= '3.10'",  # noqa:E501
             "opencensus",
-            "pydantic",
+            "pydantic < 2",  # 2.0.0 brings breaking changes
             "prometheus_client >= 0.7.1",
             "smart_open",
             "virtualenv >=20.0.24, < 20.21.1",  # For pip runtime env.
         ],
         "client": [
             # The Ray client needs a specific range of gRPC to work:
-            # Tracking issue: https://github.com/grpc/grpc/issues/31885
-            "grpcio >= 1.42.0, <= 1.50.0",
+            # Tracking issues: https://github.com/grpc/grpc/issues/33714
+            "grpcio != 1.56.0"
+            if sys.platform == "darwin"
+            else "grpcio",
         ],
         "serve": ["uvicorn", "requests", "starlette", "fastapi", "aiorwlock"],
         "tune": ["pandas", "tensorboardX>=1.9", "requests", pyarrow_dep],
-        "k8s": ["urllib3"],
         "observability": [
             "opentelemetry-api",
             "opentelemetry-sdk",
@@ -282,7 +290,7 @@ if setup_spec.type == SetupType.RAY:
 
     setup_spec.extras["rllib"] = setup_spec.extras["tune"] + [
         "dm_tree",
-        "gymnasium==0.26.3",
+        "gymnasium==0.28.1",
         "lz4",
         "scikit-image",
         "pyyaml",
@@ -318,8 +326,6 @@ if setup_spec.type == SetupType.RAY:
     setup_spec.install_requires = [
         "click >= 7.0",
         "filelock",
-        "grpcio >= 1.32.0; python_version < '3.10'",  # noqa:E501
-        "grpcio >= 1.42.0; python_version >= '3.10'",  # noqa:E501
         "jsonschema",
         "msgpack >= 1.0.0, < 2.0.0",
         "numpy >= 1.16; python_version < '3.9'",
@@ -561,6 +567,20 @@ def build(build_python, build_java, build_cpp):
             env=dict(os.environ, CC="gcc"),
         )
 
+    # runtime env agent dependenceis
+    runtime_env_agent_pip_packages = ["aiohttp"]
+    subprocess.check_call(
+        [
+            sys.executable,
+            "-m",
+            "pip",
+            "install",
+            "-q",
+            "--target=" + os.path.join(ROOT_DIR, RUNTIME_ENV_AGENT_THIRDPARTY_SUBDIR),
+        ]
+        + runtime_env_agent_pip_packages
+    )
+
     bazel_flags = ["--verbose_failures"]
     if BAZEL_ARGS:
         bazel_flags.extend(shlex.split(BAZEL_ARGS))
@@ -615,7 +635,7 @@ def build(build_python, build_java, build_cpp):
 
 def walk_directory(directory):
     file_list = []
-    for (root, dirs, filenames) in os.walk(directory):
+    for root, dirs, filenames in os.walk(directory):
         for name in filenames:
             file_list.append(os.path.join(root, name))
     return file_list
@@ -695,7 +715,7 @@ def pip_run(build_ext):
 
 def api_main(program, *args):
     parser = argparse.ArgumentParser()
-    choices = ["build", "bazel_version", "python_versions", "clean", "help"]
+    choices = ["build", "python_versions", "clean", "help"]
     parser.add_argument("command", type=str, choices=choices)
     parser.add_argument(
         "-l",
@@ -722,8 +742,6 @@ def api_main(program, *args):
             else:
                 raise ValueError("invalid language: {!r}".format(lang))
         result = build(**kwargs)
-    elif parsed_args.command == "bazel_version":
-        print(".".join(map(str, SUPPORTED_BAZEL)))
     elif parsed_args.command == "python_versions":
         for version in SUPPORTED_PYTHONS:
             # NOTE: On Windows this will print "\r\n" on the command line.

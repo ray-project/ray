@@ -7,7 +7,7 @@ import unittest
 
 import ray
 from ray import tune
-from ray.air.config import CheckpointConfig
+from ray.train import CheckpointConfig
 from ray.rllib import _register_all
 from ray.tune import Trainable
 from ray.tune.utils import validate_save_restore

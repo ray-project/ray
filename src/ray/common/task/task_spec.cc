@@ -198,7 +198,7 @@ int TaskSpecification::GetRuntimeEnvHash() const {
   WorkerCacheKey env = {SerializedRuntimeEnv(),
                         GetRequiredResources().GetResourceMap(),
                         IsActorCreationTask(),
-                        GetRequiredResources().GetResource("GPU") > 0};
+                        GetRequiredResources().Get(scheduling::ResourceID::GPU()) > 0};
   return env.IntHash();
 }
 
@@ -219,7 +219,7 @@ size_t TaskSpecification::NumStreamingGeneratorReturns() const {
   return message_->num_streaming_generator_returns();
 }
 
-ObjectID TaskSpecification::StreamingGeneratorReturnId(uint32_t generator_index) const {
+ObjectID TaskSpecification::StreamingGeneratorReturnId(size_t generator_index) const {
   // Streaming generator task has only 1 return ID.
   RAY_CHECK_EQ(NumReturns(), 1UL);
   RAY_CHECK_LT(generator_index, RayConfig::instance().max_num_generator_returns());
@@ -395,6 +395,10 @@ TaskID TaskSpecification::CallerId() const {
 
 const rpc::Address &TaskSpecification::CallerAddress() const {
   return message_->caller_address();
+}
+
+bool TaskSpecification::ShouldRetryExceptions() const {
+  return message_->retry_exceptions();
 }
 
 WorkerID TaskSpecification::CallerWorkerId() const {

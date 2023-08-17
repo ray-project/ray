@@ -317,7 +317,7 @@ def get_algorithm_class(
     alg: str,
     return_config=False,
 ) -> Union[Type["Algorithm"], Tuple[Type["Algorithm"], "AlgorithmConfig"]]:
-    """Returns the class of a known Trainer given its name."""
+    """Returns the class of a known Algorithm given its name."""
 
     try:
         return _get_algorithm_class(alg, return_config=return_config)
@@ -329,10 +329,6 @@ def get_algorithm_class(
         if return_config:
             return class_, config
         return class_
-
-
-# Backward compat alias.
-get_trainer_class = get_algorithm_class
 
 
 def _get_algorithm_class(alg: str) -> type:

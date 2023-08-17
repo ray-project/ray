@@ -386,7 +386,7 @@ class UpdateKL:
             else:
                 logger.warning("No data for {}, not updating kl".format(pi_id))
 
-        # Update KL on all trainable policies within the local (trainer)
+        # Update KL on all trainable policies within the local (training)
         # Worker.
         self.workers.local_worker().foreach_policy_to_train(update)
 
@@ -439,11 +439,10 @@ class PPO(Algorithm):
         # Train
         if self.config._enable_learner_api:
             # TODO (Kourosh) Clearly define what train_batch_size
-            # vs. sgd_minibatch_size and num_sgd_iter is in the config.
-            # TODO (Kourosh) Do this inside the RL Trainer so
-            # that we don't have to do this back and forth
-            # communication between driver and the remote
-            # trainer workers
+            #  vs. sgd_minibatch_size and num_sgd_iter is in the config.
+            # TODO (Kourosh) Do this inside the Learner so that we don't have to do
+            #  this back and forth communication between driver and the remote
+            #  learner actors.
             is_module_trainable = self.workers.local_worker().is_policy_to_train
             self.learner_group.set_is_module_trainable(is_module_trainable)
             train_results = self.learner_group.update(

@@ -1,4 +1,4 @@
-base_image: {{ env["RAY_IMAGE_NIGHTLY_GPU"] | default("anyscale/ray-ml:2.0.0-py37-gpu") }}
+base_image: {{ env["RAY_IMAGE_ML_NIGHTLY_GPU"] }}
 debian_packages: []
 env_vars: {"RAY_INTERNAL_MEM_PROFILE_COMPONENTS": "dashboard_agent"}
 debian_packages:

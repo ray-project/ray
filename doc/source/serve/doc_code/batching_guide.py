@@ -36,6 +36,24 @@ assert ray.get([handle.remote(i) for i in range(8)]) == [i * 2 for i in range(8)
 # __batch_end__
 
 
+# __batch_params_update_begin__
+@serve.deployment
+class Model:
+    @serve.batch(max_batch_size=8, batch_wait_timeout_s=0.1)
+    async def __call__(self, multiple_samples: List[int]) -> List[int]:
+        # Use numpy's vectorized computation to efficiently process a batch.
+        return np.array(multiple_samples) * 2
+
+    def adjust_batch_parameters(
+        self, new_max_batch_size: int, new_batch_wait_timeout_s: float
+    ):
+        self.__call__.set_max_batch_size(new_max_batch_size)
+        self.__call__.set_batch_wait_timeout_s(new_batch_wait_timeout_s)
+
+
+# __batch_params_update_end__
+
+
 # __single_stream_begin__
 import asyncio
 from typing import AsyncGenerator
@@ -83,8 +101,8 @@ from ray import serve
 class StreamingResponder:
     @serve.batch(max_batch_size=5, batch_wait_timeout_s=0.1)
     async def generate_numbers(
-        self, max_list: List[Union[str, StopIteration]]
-    ) -> AsyncGenerator[List[int], None]:
+        self, max_list: List[str]
+    ) -> AsyncGenerator[List[Union[int, StopIteration]], None]:
         for i in range(max(max_list)):
             next_numbers = []
             for requested_max in max_list:

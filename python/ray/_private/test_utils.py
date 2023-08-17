@@ -24,7 +24,6 @@ from dataclasses import dataclass
 import requests
 from ray._raylet import Config
 
-import grpc
 import numpy as np
 import psutil  # We must import psutil after ray because we bundle it with ray.
 from ray._private import (
@@ -32,7 +31,6 @@ from ray._private import (
 )
 from ray._private.worker import RayContext
 import yaml
-from grpc._channel import _InactiveRpcError
 
 import ray
 import ray._private.gcs_utils as gcs_utils
@@ -45,9 +43,7 @@ from ray._raylet import GcsClientOptions, GlobalStateAccessor
 from ray.core.generated import (
     gcs_pb2,
     node_manager_pb2,
-    node_manager_pb2_grpc,
     gcs_service_pb2,
-    gcs_service_pb2_grpc,
 )
 from ray.util.queue import Empty, Queue, _QueueActor
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
@@ -98,6 +94,30 @@ def redis_replicas():
     return int(os.environ.get("TEST_EXTERNAL_REDIS_REPLICAS", "1"))
 
 
+def get_redis_cli(port, enable_tls):
+    try:
+        # If there is no redis libs installed, skip the check.
+        # This could happen In minimal test, where we don't have
+        # redis.
+        import redis
+    except Exception:
+        return True
+
+    params = {}
+    if enable_tls:
+        from ray._raylet import Config
+
+        params = {"ssl": True, "ssl_cert_reqs": "required"}
+        if Config.REDIS_CA_CERT():
+            params["ssl_ca_certs"] = Config.REDIS_CA_CERT()
+        if Config.REDIS_CLIENT_CERT():
+            params["ssl_certfile"] = Config.REDIS_CLIENT_CERT()
+        if Config.REDIS_CLIENT_KEY():
+            params["ssl_keyfile"] = Config.REDIS_CLIENT_KEY()
+
+    return redis.Redis("localhost", str(port), **params)
+
+
 def start_redis_instance(
     session_dir_path: str,
     port: int,
@@ -114,6 +134,7 @@ def start_redis_instance(
     replica_of=None,
     leader_id=None,
     db_dir=None,
+    free_port=0,
 ):
     """Start a single Redis server.
 
@@ -166,11 +187,6 @@ def start_redis_instance(
     if redis_replicas() > 1:
         command += ["--cluster-enabled", "yes", "--cluster-config-file", f"node-{port}"]
     if enable_tls:
-        import socket
-
-        with socket.socket() as s:
-            s.bind(("", 0))
-            free_port = s.getsockname()[1]
         command += [
             "--tls-port",
             str(port),
@@ -193,7 +209,9 @@ def start_redis_instance(
             command += ["--tls-cert-file", Config.REDIS_CLIENT_CERT()]
         if Config.REDIS_CLIENT_KEY():
             command += ["--tls-key-file", Config.REDIS_CLIENT_KEY()]
-        command += ["--tls-replication", "yes"]
+        if replica_of is not None:
+            command += ["--tls-replication", "yes"]
+        command += ["--tls-auth-clients", "no", "--tls-cluster", "yes"]
     if sys.platform != "win32":
         command += ["--save", "", "--appendonly", "no"]
     if db_dir is not None:
@@ -212,13 +230,13 @@ def start_redis_instance(
 
         while True:
             try:
-                redis_cli = redis.Redis("localhost", str(port))
+                redis_cli = get_redis_cli(port, enable_tls)
                 if replica_of is None:
                     slots = [str(i) for i in range(16384)]
                     redis_cli.cluster("addslots", *slots)
                 else:
-                    redis_cli.cluster("meet", "127.0.0.1", str(replica_of))
-                    redis_cli.cluster("replicate", leader_id)
+                    print(redis_cli.cluster("meet", "127.0.0.1", str(replica_of)))
+                    print(redis_cli.cluster("replicate", leader_id))
                 node_id = redis_cli.cluster("myid")
                 break
             except (
@@ -227,7 +245,7 @@ def start_redis_instance(
             ) as e:
                 from time import sleep
 
-                print(f"Waiting for redis to be up {e}")
+                print(f"Waiting for redis to be up {e} ")
                 sleep(0.1)
 
     return node_id, process_info
@@ -509,7 +527,11 @@ def kill_actor_and_wait_for_failure(actor, timeout=10, retry_interval_ms=100):
 
 
 def wait_for_condition(
-    condition_predictor, timeout=10, retry_interval_ms=100, **kwargs: Any
+    condition_predictor,
+    timeout=10,
+    retry_interval_ms=100,
+    raise_exceptions=False,
+    **kwargs: Any,
 ):
     """Wait until a condition is met or time out with an exception.
 
@@ -517,6 +539,8 @@ def wait_for_condition(
         condition_predictor: A function that predicts the condition.
         timeout: Maximum timeout in seconds.
         retry_interval_ms: Retry interval in milliseconds.
+        raise_exceptions: If true, exceptions that occur while executing
+            condition_predictor won't be caught and instead will be raised.
 
     Raises:
         RuntimeError: If the condition is not met before the timeout expires.
@@ -528,6 +552,8 @@ def wait_for_condition(
             if condition_predictor(**kwargs):
                 return
         except Exception:
+            if raise_exceptions:
+                raise
             last_ex = ray._private.utils.format_error_message(traceback.format_exc())
         time.sleep(retry_interval_ms / 1000.0)
     message = "The condition wasn't met before the timeout expired."
@@ -1444,6 +1470,10 @@ def get_and_run_node_killer(
             return self.killed_nodes
 
         def _kill_raylet(self, ip, port, graceful=False):
+            import grpc
+            from grpc._channel import _InactiveRpcError
+            from ray.core.generated import node_manager_pb2_grpc
+
             raylet_address = f"{ip}:{port}"
             channel = grpc.insecure_channel(raylet_address)
             stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
@@ -1664,6 +1694,9 @@ def wandb_setup_api_key_hook():
 
 # Get node stats from node manager.
 def get_node_stats(raylet, num_retry=5, timeout=2):
+    import grpc
+    from ray.core.generated import node_manager_pb2_grpc
+
     raylet_address = f'{raylet["NodeManagerAddress"]}:{raylet["NodeManagerPort"]}'
     channel = ray._private.utils.init_grpc_channel(raylet_address)
     stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
@@ -1681,6 +1714,8 @@ def get_node_stats(raylet, num_retry=5, timeout=2):
 
 # Gets resource usage assuming gcs is local.
 def get_resource_usage(gcs_address, timeout=10):
+    from ray.core.generated import gcs_service_pb2_grpc
+
     if not gcs_address:
         gcs_address = ray.worker._global_node.gcs_address
 
@@ -1709,6 +1744,10 @@ def get_load_metrics_report(webui_url):
 
 # Send a RPC to the raylet to have it self-destruct its process.
 def kill_raylet(raylet, graceful=False):
+    import grpc
+    from grpc._channel import _InactiveRpcError
+    from ray.core.generated import node_manager_pb2_grpc
+
     raylet_address = f'{raylet["NodeManagerAddress"]}:{raylet["NodeManagerPort"]}'
     channel = grpc.insecure_channel(raylet_address)
     stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
