@@ -13,9 +13,9 @@ configure_make(
     visibility = ["//visibility:public"],
     out_static_libs = ["libtcmalloc_and_profiler.a"],
     configure_prefix = "CC=gcc CXX=g++",
-    deps = ["@libunwind//:libunwind"],
+#    deps = ["@libunwind//:libunwind"],
     configure_options = [
-        "--enable-libunwind",
+#        "--enable-libunwind",
         "--disable-shared",
     ],
 )
