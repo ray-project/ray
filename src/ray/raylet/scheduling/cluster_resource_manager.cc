@@ -84,10 +84,9 @@ bool ClusterResourceManager::UpdateNode(scheduling::NodeID node_id,
   RAY_CHECK(GetNodeResources(node_id, &local_view));
 
   local_view.total = node_resources.total;
-  if (resource_data.resources_available_changed()) {
-    local_view.available = node_resources.available;
-    local_view.object_pulls_queued = resource_data.object_pulls_queued();
-  }
+  RAY_CHECK(resource_data.resources_available_changed())
+  local_view.available = node_resources.available;
+  local_view.object_pulls_queued = resource_data.object_pulls_queued();
 
   // Update the idle duration for the node in terms of resources usage.
   local_view.idle_resource_duration_ms = resource_data.idle_duration_ms();

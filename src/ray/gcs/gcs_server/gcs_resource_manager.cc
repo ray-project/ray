@@ -273,9 +273,10 @@ void GcsResourceManager::UpdateNodeResourceUsage(const NodeID &node_id,
     if (resources.resources_total_size() > 0) {
       (*iter->second.mutable_resources_total()) = resources.resources_total();
     }
-    if (resources.resources_available_changed()) {
-      (*iter->second.mutable_resources_available()) = resources.resources_available();
-    }
+
+    RAY_CHECK(resources.resources_available_changed());
+    (*iter->second.mutable_resources_available()) = resources.resources_available();
+
     if (resources.resources_normal_task_changed()) {
       (*iter->second.mutable_resources_normal_task()) = resources.resources_normal_task();
     }
