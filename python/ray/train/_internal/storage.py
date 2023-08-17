@@ -169,7 +169,7 @@ def _download_from_fs_path(
         else:
             _pyarrow_fs_copy_files(fs_path, local_path, source_filesystem=fs)
     except Exception as e:
-        # Clean up the directory if downloading was unsuccessful.
+        # Clean up the directory if downloading was unsuccessful
         if not exists_before:
             shutil.rmtree(local_path, ignore_errors=True)
         raise e
@@ -553,6 +553,13 @@ class StorageContext:
                 dest_fs=self.storage_filesystem,
             )
         )
+
+        # Raise an error if the storage path is not accessible when
+        # attempting to upload a checkpoint from a remote worker.
+        # Ex: If storage_path is a local path, then a validation marker
+        # will only exist on the head node but not the worker nodes.
+        self._check_validation_file()
+
         self.storage_filesystem.create_dir(self.checkpoint_fs_path)
         _pyarrow_fs_copy_files(
             source=checkpoint.path,
