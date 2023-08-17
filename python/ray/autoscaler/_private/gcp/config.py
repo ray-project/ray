@@ -48,23 +48,6 @@ HAS_TPU_PROVIDER_FIELD = "_has_tpus"
 # with ServiceAccounts.
 
 
-def get_num_tpu_chips(node: dict) -> int:
-    chips = 0
-    if "acceleratorType" in node:
-        accelerator_type = node["acceleratorType"]
-        # `acceleratorType` is typically v{chip}-{cores}
-        cores = int(accelerator_type.split("-")[1])
-        chips = cores / 2
-    if "acceleratorConfig" in node:
-        topology = node["acceleratorConfig"]["topology"]
-        # `topology` is typically {chips}x{chips}x{chips}
-        # Multiply all dimensions together to get total number of chips
-        chips = 1
-        for dim in topology.split("x"):
-            chips *= int(dim)
-    return chips
-
-
 def _validate_tpu_config(node: dict):
     """Validate the provided node with TPU support.
 
@@ -104,8 +87,25 @@ def _validate_tpu_config(node: dict):
             raise ValueError("topology should be of form axbxc or axb")
 
 
-def is_single_host_tpu(node: dict) -> bool:
-    return get_num_tpu_chips(node) == 4
+def _get_num_tpu_chips(node: dict) -> int:
+    chips = 0
+    if "acceleratorType" in node:
+        accelerator_type = node["acceleratorType"]
+        # `acceleratorType` is typically v{chip}-{cores}
+        cores = int(accelerator_type.split("-")[1])
+        chips = cores / 2
+    if "acceleratorConfig" in node:
+        topology = node["acceleratorConfig"]["topology"]
+        # `topology` is typically {chips}x{chips}x{chips}
+        # Multiply all dimensions together to get total number of chips
+        chips = 1
+        for dim in topology.split("x"):
+            chips *= int(dim)
+    return chips
+
+
+def _is_single_host_tpu(node: dict) -> bool:
+    return _get_num_tpu_chips(node) == 4
 
 
 def get_node_type(node: dict) -> GCPNodeType:
@@ -134,7 +134,7 @@ def get_node_type(node: dict) -> GCPNodeType:
         "acceleratorType" in node or "acceleratorConfig" in node
     ):
         _validate_tpu_config(node)
-        if is_single_host_tpu(node):
+        if _is_single_host_tpu(node):
             # Remove once proper autoscaling support is added.
             logger.warning(
                 "TPU pod detected. Note that while the cluster launcher can create "

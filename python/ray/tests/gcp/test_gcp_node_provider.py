@@ -14,8 +14,8 @@ from ray.tests.test_autoscaler import MockProcessRunner
 from ray.autoscaler._private.gcp.node_provider import GCPNodeProvider
 from ray.autoscaler._private.gcp.config import (
     get_node_type,
-    get_num_tpu_chips,
-    is_single_host_tpu,
+    _get_num_tpu_chips,
+    _is_single_host_tpu,
     _has_tpus_in_node_configs,
 )
 from ray.autoscaler._private.gcp.tpu_command_runner import (
@@ -263,8 +263,8 @@ def test_invalid_accelerator_configs(node_config):
 )
 def test_tpu_chip_calculation_single_host_logic(test_case):
     node, expected_chips, expected_singlehost = test_case
-    assert get_num_tpu_chips(node) == expected_chips
-    assert is_single_host_tpu(node) == expected_singlehost
+    assert _get_num_tpu_chips(node) == expected_chips
+    assert _is_single_host_tpu(node) == expected_singlehost
 
 
 @pytest.mark.parametrize(
