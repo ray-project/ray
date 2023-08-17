@@ -2,9 +2,9 @@ Inspecting Training Results
 ===========================
 
 The return value of your :meth:`Trainer.fit() <ray.train.trainer.BaseTrainer.fit>`
-call is a :class:`~ray.air.result.Result` object.
+call is a :class:`~ray.train.result.Result` object.
 
-The :class:`~ray.air.result.Result` object contains, among other information:
+The :class:`~ray.train.result.Result` object contains, among other information:
 
 - The last reported metrics (e.g. the loss)
 - The last reported checkpoint (to load the model)
@@ -12,12 +12,12 @@ The :class:`~ray.air.result.Result` object contains, among other information:
 
 Viewing metrics
 ---------------
-You can retrieve metrics reported to Ray Train from the :class:`~ray.air.result.Result`
+You can retrieve metrics reported to Ray Train from the :class:`~ray.train.result.Result`
 object.
 
 Common metrics include the training or validation loss, or prediction accuracies.
 
-The metrics retrieved from the :class:`~ray.air.result.Result` object
+The metrics retrieved from the :class:`~ray.train.result.Result` object
 correspond to those you passed to :func:`train.report <ray.train.report>`
 as an argument :ref:`in your training function <train-monitoring-and-logging>`.
 
@@ -47,7 +47,7 @@ a pandas DataFrame of all reported metrics.
 
 Retrieving checkpoints
 ----------------------
-You can retrieve checkpoints reported to Ray Train from the :class:`~ray.air.result.Result`
+You can retrieve checkpoints reported to Ray Train from the :class:`~ray.train.result.Result`
 object.
 
 :ref:`Checkpoints <train-checkpointing>` contain all the information that is needed
@@ -57,7 +57,7 @@ You can use checkpoints for common downstream tasks such as
 :ref:`offline batch inference with Ray Data <batch_inference_ray_train>`,
 or :doc:`online model serving with Ray Serve </serve/index>`.
 
-The checkpoints retrieved from the :class:`~ray.air.result.Result` object
+The checkpoints retrieved from the :class:`~ray.train.result.Result` object
 correspond to those you passed to :func:`train.report <ray.train.report>`
 as an argument :ref:`in your training function <train-monitoring-and-logging>`.
 

@@ -202,7 +202,7 @@ print("Results location", result_path)
 
 
 # __result_restore_start__
-from ray.air import Result
+from ray.train import Result
 
 restored_result = Result.from_path(result_path)
 print("Restored loss", result.metrics["loss"])
