@@ -284,14 +284,14 @@ def get_gpu_and_accelerator_runtime_ids() -> Mapping[str, Optional[List[str]]]:
     Returns:
         A dictionary with keys:
             - ray_constants.GPU: The list of device IDs of GPUs.
-            - ray_constants.NUM_NEURON_CORES: The list of device IDs of
+            - ray_constants.NEURON_CORES: The list of device IDs of
                 accelerators.
         If either of the environment variables is not set, returns None for
         corresponding key.
     """
     return {
         ray_constants.GPU: get_cuda_visible_devices(),
-        ray_constants.NUM_NEURON_CORES: get_aws_neuron_core_visible_ids(),
+        ray_constants.NEURON_CORES: get_aws_neuron_core_visible_ids(),
     }
 
 
@@ -419,7 +419,7 @@ def set_gpu_and_accelerator_runtime_ids() -> None:
     """
     ids = ray.get_runtime_context().get_resource_ids()
     set_cuda_visible_devices(ids[ray_constants.GPU])
-    set_aws_neuron_core_visible_ids(ids[ray_constants.NUM_NEURON_CORES])
+    set_aws_neuron_core_visible_ids(ids[ray_constants.NEURON_CORES])
 
 
 def set_aws_neuron_core_visible_ids(neuron_core_ids: List[str]) -> None:

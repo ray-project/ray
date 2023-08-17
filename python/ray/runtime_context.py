@@ -388,12 +388,12 @@ class RuntimeContext(object):
 
         Returns:
             A dictionary keyed by the resource name. The values are list
-             of ids `{'GPU': ['0', '1'], 'num_neuron_cores': ['0', '1']}`.
+             of ids `{'GPU': ['0', '1'], 'neuron_cores': ['0', '1']}`.
         """
         worker = self.worker
         worker.check_connected()
         ids_dict: Dict[str, List[str]] = {}
-        for name in [ray_constants.GPU, ray_constants.NUM_NEURON_CORES]:
+        for name in [ray_constants.GPU, ray_constants.NEURON_CORES]:
             resource_ids = worker.get_resource_ids_for_resource(
                 name, f"^{name}_group_[0-9A-Za-z]+$"
             )

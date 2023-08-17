@@ -7,17 +7,17 @@ import ray._private.ray_constants as ray_constants
 
 
 def test_configured_aws_neuron_core():
-    resources = {"CPU": 1, "num_neuron_cores": 4}
+    resources = {"CPU": 1, "neuron_cores": 4}
     accelerator.update_resources_with_accelerator_type(resources)
     assert resources.get(utils.get_neuron_core_constraint_name()) == 4
-    assert resources.get(ray_constants.NUM_NEURON_CORES) == 4
+    assert resources.get(ray_constants.NEURON_CORES) == 4
 
 
 @mock.patch(
     "ray._private.utils.get_aws_neuron_core_visible_ids", return_value=[0, 1, 2]
 )
 def test_aws_neuron_core_with_more_user_configured(mock_get_nc_ids):
-    resources = {"CPU": 1, "num_neuron_cores": 4}
+    resources = {"CPU": 1, "neuron_cores": 4}
     with pytest.raises(ValueError):
         accelerator.update_resources_with_accelerator_type(resources)
     assert mock_get_nc_ids.called
@@ -29,7 +29,7 @@ def test_auto_detect_aws_neuron_core(mock_autodetect_aws_neuron_cores):
     accelerator.update_resources_with_accelerator_type(resources)
     assert mock_autodetect_aws_neuron_cores.called
     assert resources.get(utils.get_neuron_core_constraint_name()) == 2
-    assert resources.get(ray_constants.NUM_NEURON_CORES) == 2
+    assert resources.get(ray_constants.NEURON_CORES) == 2
 
 
 @mock.patch(
@@ -44,7 +44,7 @@ def test_auto_detect_nc_with_more_user_configured(
     assert mock_get_nc_ids.called
     assert mock_autodetect_aws_neuron_cores.called
     assert resources.get(utils.get_neuron_core_constraint_name()) == 3
-    assert resources.get(ray_constants.NUM_NEURON_CORES) == 3
+    assert resources.get(ray_constants.NEURON_CORES) == 3
 
 
 @mock.patch("subprocess.run")

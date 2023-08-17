@@ -690,9 +690,9 @@ RAY_CONFIG(uint32_t,
 RAY_CONFIG(std::string, predefined_unit_instance_resources, "GPU")
 
 /// The scheduler will treat these custom resource types as unit_instance.
-/// Default custom_unit_instance_resources is "num_neuron_cores".
-/// When set it to "num_neuron_cores,FPGA", we will also treat FPGA as unit_instance.
-RAY_CONFIG(std::string, custom_unit_instance_resources, "num_neuron_cores")
+/// Default custom_unit_instance_resources is "neuron_cores".
+/// When set it to "neuron_cores,FPGA", we will also treat FPGA as unit_instance.
+RAY_CONFIG(std::string, custom_unit_instance_resources, "neuron_cores")
 
 // Maximum size of the batches when broadcasting resources to raylet.
 RAY_CONFIG(uint64_t, resource_broadcast_batch_size, 512)

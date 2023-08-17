@@ -659,13 +659,13 @@ class AWSNodeProvider(NodeProvider):
                     in ray_constants.AWS_NEURON_INSTANCE_MAP.keys()
                     and gpus is None
                 ):
-                    num_neuron_cores = ray_constants.AWS_NEURON_INSTANCE_MAP.get(
+                    neuron_cores = ray_constants.AWS_NEURON_INSTANCE_MAP.get(
                         instance_type.lower()
                     )
                     autodetected_resources.update(
                         {
-                            ray_constants.NUM_NEURON_CORES: num_neuron_cores,
-                            get_neuron_core_constraint_name(): num_neuron_cores,
+                            ray_constants.NEURON_CORES: neuron_cores,
+                            get_neuron_core_constraint_name(): neuron_cores,
                         }
                     )
 
