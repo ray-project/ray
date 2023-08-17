@@ -25,7 +25,6 @@ namespace rpc {
 
 /// NOTE: See src/ray/core_worker/core_worker.h on how to add a new grpc handler.
 #define RAY_NODE_MANAGER_RPC_HANDLERS                                 \
-  RPC_SERVICE_HANDLER(NodeManagerService, UpdateResourceUsage, -1)    \
   RPC_SERVICE_HANDLER(NodeManagerService, RequestResourceReport, -1)  \
   RPC_SERVICE_HANDLER(NodeManagerService, GetResourceLoad, -1)        \
   RPC_SERVICE_HANDLER(NodeManagerService, NotifyGCSRestart, -1)       \
@@ -63,10 +62,6 @@ class NodeManagerServiceHandler {
   /// \param[in] request The request message.
   /// \param[out] reply The reply message.
   /// \param[in] send_reply_callback The callback to be called when the request is done.
-
-  virtual void HandleUpdateResourceUsage(rpc::UpdateResourceUsageRequest request,
-                                         rpc::UpdateResourceUsageReply *reply,
-                                         rpc::SendReplyCallback send_reply_callback) = 0;
 
   virtual void HandleRequestResourceReport(
       rpc::RequestResourceReportRequest request,

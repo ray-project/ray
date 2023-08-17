@@ -1470,6 +1470,19 @@ def check_dashboard_dependencies_installed() -> bool:
         return False
 
 
+def check_ray_client_dependencies_installed() -> bool:
+    """Returns True if Ray Client dependencies are installed.
+
+    See documents for check_dashboard_dependencies_installed.
+    """
+    try:
+        import grpc  # noqa: F401
+
+        return True
+    except ImportError:
+        return False
+
+
 connect_error = (
     "Unable to connect to GCS (ray head) at {}. "
     "Check that (1) Ray with matching version started "

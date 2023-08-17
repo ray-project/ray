@@ -1170,7 +1170,7 @@ def init(
 
     To connect to an existing remote cluster, use this as follows (substituting
     in the appropriate address). Note the addition of "ray://" at the beginning
-    of the address.
+    of the address. This requires `ray[client]`.
 
     .. testcode::
         :skipif: True
