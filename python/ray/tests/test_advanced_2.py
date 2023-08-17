@@ -20,7 +20,7 @@ def test_xpu_ids(shutdown_only):
 
     num_gpus = 3
     ray.init(num_cpus=num_gpus, num_gpus=num_gpus)
-    """
+
     def get_gpu_ids(num_gpus_per_worker):
         gpu_ids = ray.get_gpu_ids()
         assert len(gpu_ids) == num_gpus_per_worker
@@ -56,7 +56,7 @@ def test_xpu_ids(shutdown_only):
     assert list_of_ids == 10 * [[]]
     ray.get([f1.remote() for _ in range(10)])
     ray.get([f2.remote() for _ in range(10)])
-    """
+
     # Test that actors have ONEAPI_DEVICE_SELECTOR set properly.
 
     @ray.remote

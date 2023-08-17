@@ -305,6 +305,11 @@ def get_xpu_devices():
         devices IDs (List[str]): return the list of string representing
         the relative IDs filtered by
         ONEAPI_DEVICE_SELECTOR, specific backend and device_type
+        returned visible IDs start with index 0
+    Example:
+        if ONEAPI_DEVICE_SELECTOR="level_zero:2,3,4"
+        the device IDs enumerated will be [0,1,2]
+        same with CUDA_VISIBLE_DEVICES
     """
     backend = ray_constants.RAY_ONEAPI_DEVICE_BACKEND_TYPE
     device_type = ray_constants.RAY_ONEAPI_DEVICE_TYPE
