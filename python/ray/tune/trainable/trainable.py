@@ -1395,7 +1395,7 @@ class Trainable:
 
         Returns:
             A dict or string. If string, the return value is expected to be
-            prefixed by `checkpoint_dir`. If dict, the return value will
+            the `checkpoint_dir`. If dict, the return value will
             be automatically serialized by Tune. In both cases, the return value
             is exactly what will be passed to ``Trainable.load_checkpoint()``
             upon restore.

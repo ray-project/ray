@@ -27,14 +27,13 @@ class SerialTuneRelativeLocalDirTest(unittest.TestCase):
             return {"timesteps_this_iter": 1, "done": True}
 
         def save_checkpoint(self, checkpoint_dir):
-            checkpoint_path = os.path.join(
-                checkpoint_dir, "checkpoint-{}".format(self._iteration)
-            )
+            checkpoint_path = os.path.join(checkpoint_dir, "checkpoint.pkl")
             with open(checkpoint_path, "wb") as f:
                 pickle.dump(self.state, f)
             return checkpoint_path
 
-        def load_checkpoint(self, checkpoint_path):
+        def load_checkpoint(self, checkpoint_dir):
+            checkpoint_path = os.path.join(checkpoint_dir, "checkpoint.pkl")
             with open(checkpoint_path, "rb") as f:
                 extra_data = pickle.load(f)
             self.state.update(extra_data)
