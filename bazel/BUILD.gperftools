@@ -11,6 +11,7 @@ configure_make(
     lib_source = ":all",
     args = ["-j"],
     visibility = ["//visibility:public"],
+    copts = ["-fPIC"],
     out_static_libs = ["libtcmalloc_and_profiler.a"],
     out_shared_libs = ["libtcmalloc_and_profiler.so"],
     deps = ["@libunwind//:libunwind"],

@@ -10,6 +10,7 @@ configure_make(
     configure_in_place = True,
     lib_source = ":all",
     args = ["-j"],
+    copts = ["-fPIC"],
     visibility = ["//visibility:public"],
     configure_options = [
         "--disable-documentation",
