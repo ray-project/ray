@@ -110,7 +110,7 @@ def get_train_dataset(args, image_resolution=512):
     return train_dataset.random_shuffle()
 
 
-def collate(batch, device, dtype):
+def collate(batch, dtype):
     """Build Torch training batch.
 
     B = batch size
@@ -135,7 +135,7 @@ def collate(batch, device, dtype):
     """
 
     images = torch.cat([batch["instance_image"], batch["class_image"]], dim=0)
-    images = images.to(memory_format=torch.contiguous_format).float()
+    images = images.to(memory_format=torch.contiguous_format).to(dtype)
 
     batch_size = len(batch["instance_prompt_ids"])
 
@@ -144,6 +144,6 @@ def collate(batch, device, dtype):
     ).reshape(batch_size * 2, -1)
 
     return {
-        "images": images.to(device, dtype=dtype),
-        "prompt_ids": prompt_ids.to(device),  # token ids should stay int.
+        "images": images,
+        "prompt_ids": prompt_ids,  # token ids should stay int.
     }
