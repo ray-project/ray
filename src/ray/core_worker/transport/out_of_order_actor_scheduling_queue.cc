@@ -80,7 +80,7 @@ void OutOfOrderActorSchedulingQueue::Add(
                                 function_descriptor);
   {
     absl::MutexLock lock(&mu_);
-    pending_tasks_queued_or_executing.emplace(task_id, false);
+    pending_task_id_to_is_canceled.emplace(task_id, false);
   }
 
   if (dependencies.size() > 0) {
@@ -99,10 +99,10 @@ void OutOfOrderActorSchedulingQueue::Add(
 
 bool OutOfOrderActorSchedulingQueue::CancelTaskIfFound(TaskID task_id) {
   absl::MutexLock lock(&mu_);
-  if (pending_tasks_queued_or_executing.find(task_id) !=
-      pending_tasks_queued_or_executing.end()) {
+  if (pending_task_id_to_is_canceled.find(task_id) !=
+      pending_task_id_to_is_canceled.end()) {
     // Mark the task is canceled.
-    pending_tasks_queued_or_executing[task_id] = true;
+    pending_task_id_to_is_canceled[task_id] = true;
     return true;
   } else {
     return false;
@@ -143,8 +143,8 @@ void OutOfOrderActorSchedulingQueue::AcceptRequestOrRejectIfCanceled(
   bool is_canceled = false;
   {
     absl::MutexLock lock(&mu_);
-    auto it = pending_tasks_queued_or_executing.find(task_id);
-    if (it != pending_tasks_queued_or_executing.end()) {
+    auto it = pending_task_id_to_is_canceled.find(task_id);
+    if (it != pending_task_id_to_is_canceled.end()) {
       is_canceled = it->second;
     }
   }
@@ -158,7 +158,7 @@ void OutOfOrderActorSchedulingQueue::AcceptRequestOrRejectIfCanceled(
   }
 
   absl::MutexLock lock(&mu_);
-  pending_tasks_queued_or_executing.erase(task_id);
+  pending_task_id_to_is_canceled.erase(task_id);
 }
 
 }  // namespace core

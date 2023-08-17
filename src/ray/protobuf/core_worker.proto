@@ -67,9 +67,6 @@ message ActorHandle {
 
   // The max number of pending actor calls.
   int32 max_pending_calls = 13;
-
-  // Whether or not an actor is an async actor.
-  bool is_asyncio = 14;
 }
 
 message PushTaskRequest {

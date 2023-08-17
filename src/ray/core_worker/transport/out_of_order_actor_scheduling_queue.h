@@ -92,8 +92,9 @@ class OutOfOrderActorSchedulingQueue : public SchedulingQueue {
   bool is_asyncio_ = false;
   /// Mutext to protect attributes used for thread safe APIs.
   absl::Mutex mu_;
-  /// A map of actor task IDs -> is_canceled
-  absl::flat_hash_map<TaskID, bool> pending_tasks_queued_or_executing GUARDED_BY(mu_);
+  /// A map of actor task IDs -> is_canceled.
+  // Pending means tasks are queued or running.
+  absl::flat_hash_map<TaskID, bool> pending_task_id_to_is_canceled GUARDED_BY(mu_);
 
   friend class SchedulingQueueTest;
 };

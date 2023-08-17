@@ -4195,6 +4195,8 @@ cdef class CoreWorker:
             specified_cgname: The name of a concurrent group.
             task_id: The task ID to track the future. If None is provided
                 the future is not tracked with a task ID.
+                (e.g., When we deserialize the arguments, we don't want to
+                track the task_id -> future mapping).
             args: The arguments for the async function.
             kwargs: The keyword arguments for the async function.
         """

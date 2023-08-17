@@ -3695,6 +3695,11 @@ void CoreWorker::CancelActorTaskOnExecutor(WorkerID caller_worker_id,
     task_execution_service_.post([cancel = std::move(cancel)]() { cancel(); },
                                  "CoreWorker.CancelActorTaskOnExecutor");
   } else {
+    // For regular actor, we cannot post it to task_execution_service because
+    // main thread is blocked. Threaded actor can do both (dispatching to
+    // task execution service, or just directly call it in io_service).
+    // There's no special reason why we don't dispatch
+    // cancel to task_execution_service_ for threaded actors.
     cancel();
   }
 
