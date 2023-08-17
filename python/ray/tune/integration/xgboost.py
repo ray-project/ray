@@ -131,6 +131,7 @@ class TuneReportCheckpointCallback(TuneCallback):
         if epoch % frequency > 0 or (not epoch and frequency > 1):
             # Skip 0th checkpoint if frequency > 1
             yield None
+            return
 
         with tempfile.TemporaryDirectory() as checkpoint_dir:
             model.save_model(os.path.join(checkpoint_dir, filename))
@@ -157,7 +158,7 @@ class _TuneCheckpointCallback(TuneCallback):
         )
 
 
-class TuneReportCallback(TuneCallback):
+class TuneReportCallback(TuneReportCheckpointCallback):
     def __init__(self, *args, **kwargs):
         with log_once("tune_report_deprecated"):
             warnings.warn(
