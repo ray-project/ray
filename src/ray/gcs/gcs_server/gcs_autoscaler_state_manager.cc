@@ -244,12 +244,12 @@ void GcsAutoscalerStateManager::GetNodeStates(
     }
 
     // Copy resource available
-    const auto &available = node_resource_data.available.ToResourceMap();
+    const auto &available = node_resource_data.available.GetResourceMap();
     node_state_proto->mutable_available_resources()->insert(available.begin(),
                                                             available.end());
 
     // Copy total resources
-    const auto &total = node_resource_data.total.ToResourceMap();
+    const auto &total = node_resource_data.total.GetResourceMap();
     node_state_proto->mutable_total_resources()->insert(total.begin(), total.end());
 
     // Add dynamic PG labels.

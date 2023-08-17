@@ -465,6 +465,58 @@ If your model is sensitive to shuffle quality, call :meth:`Dataset.random_shuffl
 
 For more information on how to optimize shuffling, and which approach to choose, see the :ref:`Optimize shuffling guide <optimizing_shuffles>`.
 
+Preprocessing Structured Data
+-----------------------------
+
+.. note::
+    This section is for tabular/structured data. The recommended way for preprocessing unstructured data is to use
+    Ray Data operations such as `map_batches`. See the :ref:`Ray Data Working with Pytorch guide <working_with_pytorch>` for more details.
+
+For tabular data, we recommend using Ray Data :ref:`preprocessors <air-preprocessors>`, which implement common data preprocessing operations.
+You can use this with Ray Train Trainers by applying them on the dataset before passing the dataset into a Trainer. For example:
+
+.. testcode::
+
+    import numpy as np
+
+    import ray
+    from ray import train
+    from ray.train import ScalingConfig
+    from ray.train.torch import TorchTrainer
+    from ray.data.preprocessors import Concatenator, Chain, StandardScaler
+
+    dataset = ray.data.read_csv("s3://anonymous@air-example-data/breast_cancer.csv")
+
+    # Create a preprocessor to scale some columns and concatenate the result.
+    preprocessor = Chain(
+        StandardScaler(columns=["mean radius", "mean texture"]),
+        Concatenator(exclude=["target"], dtype=np.float32),
+    )
+    dataset = preprocessor.fit_transform(dataset)  # this will be applied lazily
+
+    def train_loop_per_worker():
+        # Get an iterator to the dataset we passed in below.
+        it = train.get_dataset_shard("train")
+        for _ in range(2):
+            # Prefetch 10 batches at a time.
+            for batch in it.iter_batches(batch_size=128, prefetch_batches=10):
+                print("Do some training on batch", batch)
+
+    my_trainer = TorchTrainer(
+        train_loop_per_worker,
+        scaling_config=ScalingConfig(num_workers=2),
+        datasets={"train": dataset},
+    )
+    my_trainer.fit()
+
+
+
+.. testoutput::
+    :hide:
+
+    ...
+
+
 Reproducibility
 ---------------
 When developing or hyperparameter tuning models, reproducibility is important during data ingest so that data ingest does not affect model quality. Follow these three steps to enable reproducibility:
