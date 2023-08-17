@@ -286,3 +286,17 @@ def combine_chunks(table: "pyarrow.Table") -> "pyarrow.Table":
             arr = col.combine_chunks()
         new_cols.append(arr)
     return pyarrow.Table.from_arrays(new_cols, schema=table.schema)
+
+
+def to_pylist(table: "pyarrow.Table") -> "pyarrow.Table":
+    """Convert the Table to a list of rows / dictionaries.
+
+    Required for compatibility with Arrow 6.
+    """
+    pydict = table.to_pydict()
+    names = table.schema.names
+    pylist = [
+        {column: pydict[column][row] for column in names}
+        for row in range(table.num_rows)
+    ]
+    return pylist
