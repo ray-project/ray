@@ -64,7 +64,12 @@ def get_expected_lora_num_parameters(lora_config, model):
             for module_name in lora_config.target_modules:
                 if layer_name == module_name:
                     loraified_modules += 1
-                    sum_params += (target.in_features + target.out_features) * lora_config.r
+                    if hasattr(target, "in_features"):
+                        # Target is attention weight
+                        sum_params += (target.in_features + target.out_features) * lora_config.r
+                    else:
+                        # Target is linear weight
+                        sum_params += (target.weight.shape[0] + target.weight.shape[1]) * lora_config.r
     
     print(f"Detected {num_attention_layers} attention layers, containing {loraified_modules} modules to modify according to LoRA's `target_modules`. This should yield {sum_params} trainable parameters.")
 
