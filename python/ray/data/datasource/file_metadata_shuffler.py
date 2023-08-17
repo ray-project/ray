@@ -12,17 +12,15 @@ class FileMetadataShuffler:
 
     def shuffle_files(
         self,
-        paths: List[str],
-        file_sizes: List[int],
-    ) -> Tuple[List[str], List[int]]:
+        paths_and_sizes: List[Tuple[str, int]],
+    ) -> List[Tuple[str, int]]:
         """Shuffle files in the given paths and sizes.
 
         Args:
-            paths: The file paths to shuffle.
-            file_sizes: The size of file paths, corresponding to `paths`.
+            paths_and_sizes: The file paths and file sizes to shuffle.
 
         Returns:
-            The file paths and their size after shuffling.
+            The file paths and their sizes after shuffling.
         """
         raise NotImplementedError
 
@@ -30,8 +28,7 @@ class FileMetadataShuffler:
 class SequentialFileMetadataShuffler(FileMetadataShuffler):
     def shuffle_files(
         self,
-        paths: List[str],
-        file_sizes: List[int],
-    ) -> Tuple[List[str], List[int]]:
+        paths_and_sizes: List[Tuple[str, int]],
+    ) -> List[Tuple[str, int]]:
         """Return files in the given paths and sizes sequentially."""
-        return (paths, file_sizes)
+        return paths_and_sizes
