@@ -32,6 +32,10 @@ Ray assigns a specific Intel GPU id to each workload (soft assignment but not st
 ## Advanced
 ### DPC++ Runtime Backends
 
-Similar to NVIDIA CUDA runtime, Intel XPU needs a DPC++ runtime to talk to driver and execute kernels. DPC++ can be used with different backends (e.g., OpenCL and Level Zero): https://intel.github.io/llvm-docs/design/PluginInterface.html. level_zero is device native backend talking with device directly which is recommended and enabled by default.
+Similar to NVIDIA CUDA runtime, Intel XPU needs a DPC++ runtime to talk to driver and execute kernels. DPC++ can be used with [different backends]( https://intel.github.io/llvm-docs/design/PluginInterface.html) (E.g., OpenCL and Level Zero). level_zero is device native backend talking with device directly which is recommended and enabled by default.
 
-For more about level zero: https://www.intel.com/content/www/us/en/developer/articles/technical/zero-in-on-level-zero-oneapi-open-backend-approach.html
+## References
+* [Match Every Application to Its Optimal Architecture with XPU](https://www.intel.com/content/www/us/en/architecture-and-technology/xpu.html)
+* [Intel® oneAPI Toolkits](https://www.intel.com/content/www/us/en/developer/tools/oneapi/toolkits.html)
+* [Data Parallel C++: the oneAPI Implementation of SYCL](https://www.intel.com/content/www/us/en/developer/tools/oneapi/data-parallel-c-plus-plus.html)
+* [Level Zero](https://www.intel.com/content/www/us/en/developer/articles/technical/zero-in-on-level-zero-oneapi-open-backend-approach.html)
