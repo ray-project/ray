@@ -283,13 +283,6 @@ message GetSystemConfigReply {
   string system_config = 1;
 }
 
-message RequestResourceReportRequest {
-}
-
-message RequestResourceReportReply {
-  ResourcesData resources = 1;
-}
-
 message UpdateResourceUsageRequest {
   // This is a serialized version of ResourceUsageBatchData. This extra layer of
   // serialization allows the sender to cache the expensive operation of serializing a
@@ -374,9 +367,6 @@ service NodeManagerService {
   rpc NotifyGCSRestart(NotifyGCSRestartRequest) returns (NotifyGCSRestartReply);
   // Get the resource load of the raylet.
   rpc GetResourceLoad(GetResourceLoadRequest) returns (GetResourceLoadReply);
-  // Request the current resource usage from this raylet
-  rpc RequestResourceReport(RequestResourceReportRequest)
-      returns (RequestResourceReportReply);
   // Request a worker from the raylet.
   rpc RequestWorkerLease(RequestWorkerLeaseRequest) returns (RequestWorkerLeaseReply);
   // Report task backlog information from a worker to the raylet

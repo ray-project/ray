@@ -642,22 +642,6 @@ void NodeManager::FillNormalTaskResourceUsage(rpc::ResourcesData &resources_data
   }
 }
 
-void NodeManager::FillResourceReport(rpc::ResourcesData &resources_data) {
-  resources_data.set_node_id(self_node_id_.Binary());
-  resources_data.set_node_manager_address(initial_config_.node_manager_address);
-  // Update local cache from gcs remote cache, this is needed when gcs restart.
-  // We should always keep the cache view consistent.
-  cluster_resource_scheduler_->GetLocalResourceManager().ResetLastReportResourceUsage(
-      *(gcs_client_->NodeResources().GetLastResourceUsage()));
-  cluster_resource_scheduler_->GetLocalResourceManager().FillResourceUsage(
-      resources_data);
-  if (RayConfig::instance().gcs_actor_scheduling_enabled()) {
-    FillNormalTaskResourceUsage(resources_data);
-  }
-
-  resources_data.set_should_global_gc(TryLocalGC());
-}
-
 void NodeManager::DoLocalGC(bool triggered_by_global_gc) {
   auto all_workers = worker_pool_.GetAllRegisteredWorkers();
   for (const auto &driver : worker_pool_.GetAllRegisteredDrivers()) {
@@ -1754,17 +1738,6 @@ void NodeManager::ProcessPushErrorRequestMessage(const uint8_t *message_data) {
   JobID job_id = from_flatbuf<JobID>(*message->job_id());
   auto error_data_ptr = gcs::CreateErrorTableData(type, error_message, timestamp, job_id);
   RAY_CHECK_OK(gcs_client_->Errors().AsyncReportJobError(error_data_ptr, nullptr));
-}
-
-void NodeManager::HandleRequestResourceReport(
-    rpc::RequestResourceReportRequest request,
-    rpc::RequestResourceReportReply *reply,
-    rpc::SendReplyCallback send_reply_callback) {
-  auto resources_data = reply->mutable_resources();
-  FillResourceReport(*resources_data);
-  resources_data->set_cluster_full_of_actors_detected(resource_deadlock_warned_ >= 1);
-
-  send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
 void NodeManager::HandleGetResourceLoad(rpc::GetResourceLoadRequest request,

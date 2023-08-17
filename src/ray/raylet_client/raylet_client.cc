@@ -536,12 +536,6 @@ void raylet::RayletClient::UpdateResourceUsage(
   grpc_client_->UpdateResourceUsage(request, callback);
 }
 
-void raylet::RayletClient::RequestResourceReport(
-    const rpc::ClientCallback<rpc::RequestResourceReportReply> &callback) {
-  rpc::RequestResourceReportRequest request;
-  grpc_client_->RequestResourceReport(request, callback);
-}
-
 void raylet::RayletClient::GetResourceLoad(
     const rpc::ClientCallback<rpc::GetResourceLoadReply> &callback) {
   rpc::GetResourceLoadRequest request;

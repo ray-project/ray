@@ -392,51 +392,6 @@ void LocalResourceManager::UpdateAvailableObjectStoreMemResource() {
   }
 }
 
-void LocalResourceManager::FillResourceUsage(rpc::ResourcesData &resources_data) {
-  UpdateAvailableObjectStoreMemResource();
-
-  NodeResources resources = ToNodeResources();
-
-  // Initialize if last report resources is empty.
-  if (!last_report_resources_) {
-    NodeResources node_resources = ResourceMapToNodeResources({{}}, {{}});
-    last_report_resources_.reset(new NodeResources(node_resources));
-  }
-
-  for (auto resource_id : resources.total.ResourceIds()) {
-    auto label = resource_id.Binary();
-    auto total = resources.total.Get(resource_id);
-    auto available = resources.available.Get(resource_id);
-    auto last_total = last_report_resources_->total.Get(resource_id);
-    auto last_available = last_report_resources_->available.Get(resource_id);
-
-    // Note: available may be negative, but only report positive to GCS.
-    if (available != last_available && available > 0) {
-      resources_data.set_resources_available_changed(true);
-      (*resources_data.mutable_resources_available())[label] = available.Double();
-    }
-    if (total != last_total) {
-      (*resources_data.mutable_resources_total())[label] = total.Double();
-    }
-  }
-
-  if (get_pull_manager_at_capacity_ != nullptr) {
-    resources.object_pulls_queued = get_pull_manager_at_capacity_();
-    if (last_report_resources_->object_pulls_queued != resources.object_pulls_queued) {
-      resources_data.set_object_pulls_queued(resources.object_pulls_queued);
-      resources_data.set_resources_available_changed(true);
-    }
-  }
-
-  if (resources != *last_report_resources_.get()) {
-    last_report_resources_.reset(new NodeResources(resources));
-  }
-
-  if (!RayConfig::instance().enable_light_weight_resource_report()) {
-    resources_data.set_resources_available_changed(true);
-  }
-}
-
 double LocalResourceManager::GetLocalAvailableCpus() const {
   return local_resources_.available.Sum(ResourceID::CPU()).Double();
 }
@@ -491,24 +446,6 @@ std::optional<syncer::RaySyncMessage> LocalResourceManager::CreateSyncMessage(
   RAY_CHECK(resources_data.SerializeToString(&serialized_msg));
   msg.set_sync_message(std::move(serialized_msg));
   return std::make_optional(std::move(msg));
-}
-
-ray::gcs::NodeResourceInfoAccessor::ResourceMap LocalResourceManager::GetResourceTotals(
-    const absl::flat_hash_map<std::string, double> &resource_map_filter) const {
-  ray::gcs::NodeResourceInfoAccessor::ResourceMap map;
-  for (auto &resource_id : local_resources_.total.ResourceIds()) {
-    auto resource_name = resource_id.Binary();
-    if (!resource_map_filter.contains(resource_name)) {
-      continue;
-    }
-    auto resource_total = local_resources_.total.Sum(resource_id);
-    if (resource_total > 0) {
-      auto data = std::make_shared<rpc::ResourceTableData>();
-      data->set_resource_capacity(resource_total.Double());
-      map.emplace(resource_name, std::move(data));
-    }
-  }
-  return map;
 }
 
 void LocalResourceManager::OnResourceOrStateChanged() {

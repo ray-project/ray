@@ -264,10 +264,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// Fill out the normal task resource report.
   void FillNormalTaskResourceUsage(rpc::ResourcesData &resources_data);
 
-  /// Fill out the resource report. This can be called by either method to transport the
-  /// report to GCS.
-  void FillResourceReport(rpc::ResourcesData &resources_data);
-
   /// Write out debug state to a file.
   void DumpDebugState() const;
 
@@ -484,11 +480,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// \return void.
   void ProcessSubscribePlasmaReady(const std::shared_ptr<ClientConnection> &client,
                                    const uint8_t *message_data);
-
-  /// Handle a `RequestResourceReport` request.
-  void HandleRequestResourceReport(rpc::RequestResourceReportRequest request,
-                                   rpc::RequestResourceReportReply *reply,
-                                   rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle a `GetResourceLoad` request.
   void HandleGetResourceLoad(rpc::GetResourceLoadRequest request,
