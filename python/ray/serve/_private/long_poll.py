@@ -6,7 +6,7 @@ from enum import Enum, auto
 import logging
 import os
 import random
-from typing import Any, Tuple, Callable, DefaultDict, Dict, Set, Union
+from typing import Any, Callable, DefaultDict, Dict, Optional, Set, Tuple, Union
 from ray._private.utils import get_or_create_event_loop
 
 from ray.serve._private.common import ReplicaName
@@ -197,7 +197,12 @@ class LongPollHost:
     the object is updated.
     """
 
-    def __init__(self):
+    def __init__(
+        self,
+        listen_for_change_request_timeout_s: Tuple[
+            int, int
+        ] = LISTEN_FOR_CHANGE_REQUEST_TIMEOUT_S,
+    ):
         # Map object_key -> int
         self.snapshot_ids: DefaultDict[KeyType, int] = defaultdict(
             lambda: random.randint(0, 1_000_000)
@@ -208,6 +213,15 @@ class LongPollHost:
         self.notifier_events: DefaultDict[KeyType, Set[asyncio.Event]] = defaultdict(
             set
         )
+
+        self._listen_for_change_request_timeout_s = listen_for_change_request_timeout_s
+
+    def _get_num_notifier_events(self, key: Optional[KeyType] = None):
+        """Used for testing."""
+        if key is not None:
+            return len(self.notifier_events[key])
+        else:
+            return sum(len(events) for events in self.notifier_events.values())
 
     async def listen_for_change(
         self,
@@ -233,24 +247,35 @@ class LongPollHost:
             return client_outdated_keys
 
         # Otherwise, register asyncio events to be waited.
+        async_task_to_events = {}
         async_task_to_watched_keys = {}
         for key in watched_keys:
-            # Create a new asyncio event for this key
+            # Create a new asyncio event for this key.
             event = asyncio.Event()
-            task = get_or_create_event_loop().create_task(event.wait())
-            async_task_to_watched_keys[task] = key
 
             # Make sure future caller of notify_changed will unblock this
             # asyncio Event.
             self.notifier_events[key].add(event)
 
+            task = get_or_create_event_loop().create_task(event.wait())
+            async_task_to_events[task] = event
+            async_task_to_watched_keys[task] = key
+
         done, not_done = await asyncio.wait(
             async_task_to_watched_keys.keys(),
             return_when=asyncio.FIRST_COMPLETED,
-            timeout=random.uniform(*LISTEN_FOR_CHANGE_REQUEST_TIMEOUT_S),
+            timeout=random.uniform(*self._listen_for_change_request_timeout_s),
         )
 
-        [task.cancel() for task in not_done]
+        for task in not_done:
+            task.cancel()
+            try:
+                event = async_task_to_events[task]
+                self.notifier_events[async_task_to_watched_keys[task]].remove(event)
+            except KeyError:
+                # Because we use `FIRST_COMPLETED` above, a task in `not_done` may
+                # actually have had its event removed in `notify_changed`.
+                pass
 
         if len(done) == 0:
             return LongPollState.TIME_OUT
@@ -314,8 +339,11 @@ class LongPollHost:
     ) -> bytes:
         if key == LongPollNamespace.ROUTE_TABLE:
             # object_snapshot is Dict[EndpointTag, EndpointInfo]
+            # NOTE(zcin): the endpoint dictionary broadcasted to Java
+            # HTTP proxies should use string as key because Java does
+            # not yet support 2.x or applications
             xlang_endpoints = {
-                endpoint_tag: EndpointInfoProto(route=endpoint_info.route)
+                str(endpoint_tag): EndpointInfoProto(route=endpoint_info.route)
                 for endpoint_tag, endpoint_info in object_snapshot.items()
             }
             return EndpointSet(endpoints=xlang_endpoints).SerializeToString()

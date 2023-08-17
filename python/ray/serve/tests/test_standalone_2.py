@@ -221,7 +221,7 @@ def test_controller_deserialization_deployment_def(
 
         # Import and build the graph
         graph = import_attr("test_config_files.pizza.serve_dag")
-        app = build(graph)
+        app = build(graph, SERVE_DEFAULT_APP_NAME)
 
         # Override options for each deployment
         for name in app.deployments:
@@ -342,13 +342,9 @@ def test_controller_recover_and_delete(shutdown_ray_and_serve):
         == len(actors) - num_replicas
     )
 
-    # The deployment should be deleted, meaning its state should not be stored
-    # in the DeploymentStateManager. This can be checked by attempting to
-    # retrieve the deployment's status through the controller.
-    deployment_name = f"{SERVE_DEFAULT_APP_NAME}{DEPLOYMENT_NAME_PREFIX_SEPARATOR}f"
+    # The application should be deleted.
     wait_for_condition(
-        lambda: deployment_name
-        not in serve.status().applications[SERVE_DEFAULT_APP_NAME].deployments
+        lambda: SERVE_DEFAULT_APP_NAME not in serve.status().applications
     )
 
 
