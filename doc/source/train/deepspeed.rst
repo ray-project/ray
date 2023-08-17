@@ -22,8 +22,8 @@ Below is a simple example of ZeRO-3 training with DeepSpeed only.
     keep using `deepspeed.initialize() <https://deepspeed.readthedocs.io/en/latest/initialize.html>`_ as usual to prepare everything 
     for distributed training.
 
-Run DeepSpeed with More Frameworks
-----------------------------------
+Running DeepSpeed with other frameworks
+-------------------------------------------
 
 Many deep learning frameworks have integrated with DeepSpeed, including Lightning, Transformers, Accelerate, and more. You can run all these combinations in Ray Train.
 
