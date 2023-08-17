@@ -35,7 +35,7 @@ from ray.data._internal.execution.operators.task_pool_map_operator import (
 from ray.data._internal.execution.operators.union_operator import UnionOperator
 from ray.data._internal.execution.util import make_ref_bundles
 from ray.data.block import Block
-from ray.data.tests.util import run_one_op_task, run_op_tasks_sync
+from ray.data.tests.util import create_map_data_processor_from_block_fn, run_one_op_task, run_op_tasks_sync
 from ray.tests.conftest import *  # noqa
 
 
@@ -47,6 +47,8 @@ def _get_blocks(bundle: RefBundle, output_list: List[Block]):
 def _mul2_transform(block_iter: Iterable[Block], ctx) -> Iterable[Block]:
     for block in block_iter:
         yield pd.DataFrame({"id": [b * 2 for b in block["id"]]})
+
+_mul2_map_data_prcessor = create_map_data_processor_from_block_fn(_mul2_transform)
 
 
 def _take_outputs(op: PhysicalOperator) -> List[Any]:
@@ -106,7 +108,7 @@ def test_all_to_all_operator():
 def test_num_outputs_total():
     input_op = InputDataBuffer(make_ref_bundles([[i] for i in range(100)]))
     op1 = MapOperator.create(
-        _mul2_transform,
+        _mul2_map_data_prcessor,
         input_op=input_op,
         name="TestMapper",
     )
@@ -127,7 +129,7 @@ def test_map_operator_bulk(ray_start_regular_shared, use_actors):
     )
     compute_strategy = ActorPoolStrategy(size=1) if use_actors else TaskPoolStrategy()
     op = MapOperator.create(
-        _mul2_transform,
+        _mul2_map_data_prcessor,
         input_op=input_op,
         name="TestMapper",
         compute_strategy=compute_strategy,
@@ -192,7 +194,7 @@ def test_map_operator_streamed(ray_start_regular_shared, use_actors):
     )
     compute_strategy = ActorPoolStrategy() if use_actors else TaskPoolStrategy()
     op = MapOperator.create(
-        _mul2_transform,
+        _mul2_map_data_prcessor,
         input_op=input_op,
         name="TestMapper",
         compute_strategy=compute_strategy,
@@ -350,7 +352,7 @@ def test_map_operator_actor_locality_stats(ray_start_regular_shared):
     )
     compute_strategy = ActorPoolStrategy()
     op = MapOperator.create(
-        _mul2_transform,
+        _mul2_map_data_prcessor,
         input_op=input_op,
         name="TestMapper",
         compute_strategy=compute_strategy,
@@ -398,7 +400,7 @@ def test_map_operator_min_rows_per_bundle(ray_start_regular_shared, use_actors):
     input_op = InputDataBuffer(make_ref_bundles([[i] for i in range(10)]))
     compute_strategy = ActorPoolStrategy() if use_actors else TaskPoolStrategy()
     op = MapOperator.create(
-        _check_batch,
+        create_map_data_processor_from_block_fn(_check_batch),
         input_op=input_op,
         name="TestMapper",
         compute_strategy=compute_strategy,
@@ -431,7 +433,7 @@ def test_map_operator_output_unbundling(
     input_op = InputDataBuffer(make_ref_bundles([[i] for i in range(10)]))
     compute_strategy = ActorPoolStrategy() if use_actors else TaskPoolStrategy()
     op = MapOperator.create(
-        noop,
+        create_map_data_processor_from_block_fn(noop),
         input_op=input_op,
         name="TestMapper",
         compute_strategy=compute_strategy,
@@ -467,7 +469,7 @@ def test_map_operator_ray_args(shutdown_only, use_actors):
     input_op = InputDataBuffer(make_ref_bundles([[i] for i in range(10)]))
     compute_strategy = ActorPoolStrategy(size=1) if use_actors else TaskPoolStrategy()
     op = MapOperator.create(
-        _mul2_transform,
+        _mul2_map_data_prcessor,
         input_op=input_op,
         name="TestMapper",
         compute_strategy=compute_strategy,
@@ -498,7 +500,7 @@ def test_map_operator_shutdown(shutdown_only, use_actors):
     input_op = InputDataBuffer(make_ref_bundles([[i] for i in range(10)]))
     compute_strategy = ActorPoolStrategy() if use_actors else TaskPoolStrategy()
     op = MapOperator.create(
-        _sleep,
+        create_map_data_processor_from_block_fn(_sleep),
         input_op=input_op,
         name="TestMapper",
         compute_strategy=compute_strategy,
@@ -530,9 +532,8 @@ def test_actor_pool_map_operator_init(ray_start_regular_shared):
     compute_strategy = ActorPoolStrategy(min_size=1)
 
     op = MapOperator.create(
-        _sleep,
+        create_map_data_processor_from_block_fn(_sleep, init_fn=_fail),
         input_op=input_op,
-        init_fn=_fail,
         name="TestMapper",
         compute_strategy=compute_strategy,
     )
@@ -551,9 +552,8 @@ def test_actor_pool_map_operator_should_add_input(ray_start_regular_shared):
     compute_strategy = ActorPoolStrategy(size=1)
 
     op = MapOperator.create(
-        _sleep,
+        create_map_data_processor_from_block_fn(_sleep),
         input_op=input_op,
-        init_fn=lambda: 0,
         name="TestMapper",
         compute_strategy=compute_strategy,
     )
@@ -584,7 +584,7 @@ def test_map_operator_pool_delegation(compute, expected):
     # implementation.
     input_op = InputDataBuffer(make_ref_bundles([[i] for i in range(100)]))
     op = MapOperator.create(
-        _mul2_transform,
+        _mul2_map_data_prcessor,
         input_op=input_op,
         name="TestMapper",
         compute_strategy=compute,

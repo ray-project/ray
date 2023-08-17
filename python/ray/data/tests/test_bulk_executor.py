@@ -15,17 +15,21 @@ from ray.data._internal.execution.operators.input_data_buffer import InputDataBu
 from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.util import make_ref_bundles
 from ray.data.context import DataContext
-from ray.data._internal.execution.operators.map_data_processor import MapDataProcessor, MapTransformFn
 from ray.data.tests.conftest import *  # noqa
-from ray.data.tests.util import column_udf, extract_values
+from ray.data.tests.util import (
+    column_udf,
+    create_map_data_processor_from_block_fn,
+    extract_values,
+)
 
 
 def make_map_data_processor(block_fn):
+
     def map_fn(block_iter, _):
         for block in block_iter:
             yield pd.DataFrame(block_fn(block))
 
-    return MapDataProcessor([MapTransformFn.of_blocks_to_blocks(map_fn)])
+    return create_map_data_processor_from_block_fn(map_fn)
 
 
 def ref_bundles_to_list(bundles: List[RefBundle]) -> List[List[Any]]:
