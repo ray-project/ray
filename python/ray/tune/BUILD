@@ -815,7 +815,7 @@ py_test(
     size = "small",
     srcs = ["examples/pbt_memnn_example.py"],
     deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive", "example"],
+    tags = ["team:ml", "exclusive", "example", "no_new_storage"],
     args = ["--smoke-test"]
 )
 
