@@ -84,7 +84,7 @@ class SequenceModel(tf.keras.Model):
         )
 
         # Trace self.call.
-        dl_type = tf.keras.mixed_precision.global_policy().compute_dtype
+        dl_type = tf.keras.mixed_precision.global_policy().compute_dtype or tf.float32
         self.call = tf.function(
             input_signature=[
                 tf.TensorSpec(shape=[None, action_space.n], dtype=dl_type),

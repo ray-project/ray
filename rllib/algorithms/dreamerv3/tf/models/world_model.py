@@ -108,7 +108,7 @@ class WorldModel(tf.keras.Model):
         self.symlog_obs = symlog_obs
         self.observation_space = observation_space
         self.action_space = action_space
-        self._comp_dtype = tf.keras.mixed_precision.global_policy().compute_dtype
+        self._comp_dtype = tf.keras.mixed_precision.global_policy().compute_dtype or tf.float32
 
         # Encoder (latent 1D vector generator) (xt -> lt).
         self.encoder = encoder

@@ -86,7 +86,7 @@ class ActorNetwork(tf.keras.Model):
             raise ValueError(f"Invalid action space: {action_space}")
 
         # Trace self.call.
-        dl_type = tf.keras.mixed_precision.global_policy().compute_dtype
+        dl_type = tf.keras.mixed_precision.global_policy().compute_dtype or tf.float32
         self.call = tf.function(
             input_signature=[
                 tf.TensorSpec(shape=[None, get_gru_units(model_size)], dtype=dl_type),

@@ -125,6 +125,6 @@ class RepresentationLayer(tf.keras.layers.Layer):
         # [2] Algorithm 1.
         differentiable_sample = tf.cast(
             (tf.stop_gradient(sample) + probs - tf.stop_gradient(probs)),
-            tf.keras.mixed_precision.global_policy().compute_dtype,
+            tf.keras.mixed_precision.global_policy().compute_dtype or tf.float32,
         )
         return differentiable_sample, probs

@@ -71,7 +71,7 @@ class DreamerModel(tf.keras.Model):
 
         self.horizon = horizon
         self.gamma = gamma
-        self._comp_dtype = tf.keras.mixed_precision.global_policy().compute_dtype
+        self._comp_dtype = tf.keras.mixed_precision.global_policy().compute_dtype or tf.float32
 
         self.disagree_nets = None
         if self.use_curiosity:
@@ -266,7 +266,7 @@ class DreamerModel(tf.keras.Model):
                 1,
                 action_dim,
             ),
-            dtype=tf.keras.mixed_precision.global_policy().compute_dtype,
+            dtype=tf.keras.mixed_precision.global_policy().compute_dtype or tf.float32,
         )
         return states
 
@@ -522,7 +522,7 @@ class DreamerModel(tf.keras.Model):
                     a = tf.one_hot(
                         a,
                         depth=self.action_space.n,
-                        dtype=tf.keras.mixed_precision.global_policy().compute_dtype,
+                        dtype=tf.keras.mixed_precision.global_policy().compute_dtype or tf.float32,
                     )
                 # TODO: Support cont. action spaces with bound other than 0.0 and 1.0.
                 else:

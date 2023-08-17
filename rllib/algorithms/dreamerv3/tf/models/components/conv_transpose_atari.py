@@ -118,7 +118,7 @@ class ConvTransposeAtari(tf.keras.Model):
         # .. until output is 64 x 64 x 3 (or 1 for self.gray_scaled=True).
 
         # Trace self.call.
-        dl_type = tf.keras.mixed_precision.global_policy().compute_dtype
+        dl_type = tf.keras.mixed_precision.global_policy().compute_dtype or tf.float32
         self.call = tf.function(
             input_signature=[
                 tf.TensorSpec(shape=[None, get_gru_units(model_size)], dtype=dl_type),
