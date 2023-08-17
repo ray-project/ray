@@ -70,13 +70,13 @@ You may find these user guides helpful:
 -----------------------------------
 
 Before Ray 2.7, Ray Train's :class:`AccelerateTrainer <ray.train.huggingface.AccelerateTrainer>` API was the 
-recommended way to run Accelerate code. As a subclass of :class:`TorchTrainer <ray.train.torch.TorchTrainer>`, 
-``AccelerateTrainer`` helps users apply the configuration file generated with ``accelerate config`` to all workers. 
-Aside from that, the functionality of ``AccelerateTrainer`` is identical to :class:`TorchTrainer <ray.train.torch.TorchTrainer>`.
+recommended way to run Accelerate code. As a subclass of :class:`TorchTrainer <ray.train.torch.TorchTrainer>`,  
+AccelerateTrainer helps users apply the configuration file generated with ``accelerate config`` to all workers. 
+Aside from that, the functionality of ``AccelerateTrainer`` is identical to ``TorchTrainer``.
 
 However, users can easily configure Accelerate within their training function, so there is no need to maintain a separate Ray Trainer API.
 To provide a more simplified and flexible interface, we will deprecate ``AccelerateTrainer`` in Ray 2.8, and recommend running your 
-Accelerate code with :class:`TorchTrainer <ray.train.torch.TorchTrainer>`. 
+Accelerate code with ``TorchTrainer``. 
 
 How to setup Accelerate config
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
