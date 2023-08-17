@@ -305,7 +305,7 @@ last_set_gpu_ids = None
 
 
 def get_xpu_devices():
-    """ Get xpu device IDs by calling `dpctl` api
+    """Get xpu device IDs by calling `dpctl` api
         device with specific backend and device_type
     Returns:
         devices IDs (List[str]): return the list of string representing
@@ -322,16 +322,17 @@ def get_xpu_devices():
     xpu_ids = []
     try:
         import dpctl
+
         for dev in dpctl.get_devices(backend=backend, device_type=device_type):
             # device filter_string with format: "backend:device_type:relative_id"
-            xpu_ids.append(int(dev.filter_string.split(':')[-1]))
+            xpu_ids.append(int(dev.filter_string.split(":")[-1]))
     except ImportError:
         ValueError("Import dpctl error, maybe dpctl not installed.")
     return xpu_ids
 
 
 def get_xpu_visible_devices():
-    """ Get xpu devices IDs filtered by ONEAPI_DEVICE_SELECTOR environment variable.
+    """Get xpu devices IDs filtered by ONEAPI_DEVICE_SELECTOR environment variable.
     Returns:
         devices (List[str]): return the list of string representing the relative IDS
         filtered by ONEAPI_DEVICE_SELECTOR.
@@ -345,7 +346,7 @@ def get_xpu_visible_devices():
 
 
 def get_xpu_all_devices():
-    """ Get all xpu device IDS without ONEAPI_DEVICE_SELECTOR filter,
+    """Get all xpu device IDS without ONEAPI_DEVICE_SELECTOR filter,
         But all xpu device still filtered by specific backend and device_type
     Returns:
         devices (List[str]): list of strings representing the numeric index (zero-based),
@@ -365,7 +366,9 @@ def get_xpu_all_devices():
 
 
 def get_current_accelerator():
-    return os.environ.get("RAY_EXPERIMENTAL_ACCELERATOR_TYPE", ray_constants.RAY_ACCELERATOR_DEFAULT)
+    return os.environ.get(
+        "RAY_EXPERIMENTAL_ACCELERATOR_TYPE", ray_constants.RAY_ACCELERATOR_DEFAULT
+    )
 
 
 def get_gpu_visible_devices():

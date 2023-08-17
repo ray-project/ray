@@ -556,7 +556,8 @@ print("remote", ray.get(check.remote()))
 """
 
     run_string_as_driver(
-        script, dict(os.environ, **{"RAY_EXPERIMENTAL_NOSET_ONEAPI_DEVICE_SELECTOR": "1"})
+        script,
+        dict(os.environ, **{"RAY_EXPERIMENTAL_NOSET_ONEAPI_DEVICE_SELECTOR": "1"}),
     )
 
 

@@ -107,10 +107,13 @@ def test_local_mode_cudas(save_gpu_ids_shutdown_only):
 def test_local_mode_xpus(save_xpu_ids_shutdown_only):
     os.environ["RAY_EXPERIMENTAL_ACCELERATOR_TYPE"] = "XPU"
     allowed_xpu_ids = [0, 1, 2, 3, 4, 5]
-    os.environ["ONEAPI_DEVICE_SELECTOR"] = XPU_BACKEND + ":" + ",".join([str(i) for i in allowed_xpu_ids])
+    os.environ["ONEAPI_DEVICE_SELECTOR"] = (
+        XPU_BACKEND + ":" + ",".join([str(i) for i in allowed_xpu_ids])
+    )
 
     ray._private.utils.get_xpu_devices = Mock(return_value=allowed_xpu_ids)
     from importlib import reload
+
     reload(ray._private.worker)
 
     ray.init(num_gpus=3, local_mode=True)

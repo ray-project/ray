@@ -175,10 +175,10 @@ class ResourceSpec(
 
         # Get accelerate device info
         accelerator = ray._private.utils.get_current_accelerator()
-        if accelerator == "CUDA": # get cuda device num
+        if accelerator == "CUDA":  # get cuda device num
             num_gpus, gpu_types = _get_cuda_info(self.num_gpus)
             resources.update(gpu_types)
-        elif accelerator == "XPU": # get xpu device num
+        elif accelerator == "XPU":  # get xpu device num
             # here we take xpu as gpu, so no need to develop core's scheduling policy
             # If we don't want to take xpu as gpu, ray core need to develop new scheduling policy
             num_gpus, gpu_types = _get_xpu_info(self.num_gpus)
@@ -263,7 +263,7 @@ class ResourceSpec(
 
 
 def _get_cuda_info(num_gpus):
-    """ Attemp to process the number and type of GPUs
+    """Attemp to process the number and type of GPUs
         Notice:
             If gpu id not specified in CUDA_VISIBLE_DEVICES,
             and num_gpus is defined in task or actor,
@@ -277,9 +277,9 @@ def _get_cuda_info(num_gpus):
     # exceed the amount allowed by CUDA_VISIBLE_DEVICES.
     if num_gpus is not None and gpu_ids is not None and num_gpus > len(gpu_ids):
         raise ValueError(
-                "Attempting to start raylet with {} GPUs, "
-                "but CUDA_VISIBLE_DEVICES contains {}.".format(num_gpus, gpu_ids)
-                )
+            "Attempting to start raylet with {} GPUs, "
+            "but CUDA_VISIBLE_DEVICES contains {}.".format(num_gpus, gpu_ids)
+        )
     if num_gpus is None:
         # Try to automatically detect the number of GPUs.
         num_gpus = _autodetect_num_gpus()
@@ -301,7 +301,7 @@ def _get_cuda_info(num_gpus):
 
 
 def _get_xpu_info(num_xpus):
-    """ Attempt to process the number of XPUs
+    """Attempt to process the number of XPUs
         Notice:
             If xpu id not specified in ONEAPI_DEVICE_SELECTOR,
             and num_gpus is defined in task or actor,
@@ -314,9 +314,9 @@ def _get_xpu_info(num_xpus):
     xpu_ids = ray._private.utils.get_xpu_visible_devices()
     if num_xpus is not None and xpu_ids is not None and num_xpus > len(xpu_ids):
         raise ValueError(
-                "Attempting to start raylet with {} XPUs, "
-                "but ONEAPI_DEVICE_SELECTOR contains {}.".format(num_xpus, xpu_ids)
-                )
+            "Attempting to start raylet with {} XPUs, "
+            "but ONEAPI_DEVICE_SELECTOR contains {}.".format(num_xpus, xpu_ids)
+        )
     if num_xpus is None:
         # Try to detect all number of XPUs.
         num_xpus = len(ray._private.utils.get_xpu_all_devices())

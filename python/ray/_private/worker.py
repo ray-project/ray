@@ -886,7 +886,7 @@ def get_cuda_ids():
 
 
 def get_xpu_ids():
-    """ Get the IDs of the XPUs that are available to the worker.
+    """Get the IDs of the XPUs that are available to the worker.
 
     If the ONEAPI_DEVICE_SELECTOR environment variable was set before the worker
     started up, then the IDs returned by this method will be a subset of the
