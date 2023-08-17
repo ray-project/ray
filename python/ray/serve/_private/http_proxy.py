@@ -56,6 +56,7 @@ from ray.serve._private.long_poll import LongPollClient, LongPollNamespace
 from ray.serve._private.logging_utils import (
     access_log_msg,
     configure_component_logger,
+    configure_component_cpu_profiler,
     configure_component_memory_profiler,
     get_component_logger_file_path,
 )
@@ -1074,6 +1075,9 @@ class HTTPProxyActor:
         configure_component_memory_profiler(
             component_name="http_proxy", component_id=node_ip_address
         )
+        self.cpu_profiler, self.cpu_profiler_log = configure_component_cpu_profiler(
+            component_name="http_proxy", component_id=node_ip_address
+        )
 
         if http_middlewares is None:
             http_middlewares = [Middleware(RequestIdMiddleware)]
@@ -1216,6 +1220,27 @@ Please make sure your http-host and http-port are specified correctly."""
         this will always return immediately.
         """
         return pickle.dumps(await self.app.receive_asgi_messages(request_id))
+
+    def _save_cpu_profile_data(self) -> str:
+        """Saves CPU profiling data, if CPU profiling is enabled.
+
+        Logs a warning if CPU profiling is disabled.
+        """
+
+        if self.cpu_profiler is not None:
+            import marshal
+
+            self.cpu_profiler.snapshot_stats()
+            with open(self.cpu_profiler_log, "wb") as f:
+                marshal.dump(self.cpu_profiler.stats, f)
+            logger.info(f'Saved CPU profile data to file "{self.cpu_profiler_log}"')
+            return self.cpu_profiler_log
+        else:
+            logger.error(
+                "Attempted to save CPU profile data, but failed because no "
+                "CPU profiler was running! Enable CPU profiling by enabling "
+                "the RAY_SERVE_ENABLE_CPU_PROFILING env var."
+            )
 
     async def _uvicorn_keep_alive(self) -> Optional[int]:
         """Get the keep alive timeout used for the running uvicorn server.
