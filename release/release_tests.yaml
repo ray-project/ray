@@ -583,7 +583,7 @@
 
   frequency: nightly
   team: ml
-
+  new_persistence: "True"
   cluster:
     byod:
       type: gpu
@@ -591,7 +591,7 @@
 
   run:
     timeout: 5400
-    script: python workloads/tensorflow_benchmark.py run --num-runs 3 --num-epochs 20 --num-workers 4 --cpus-per-worker 8
+    script: RAY_AIR_NEW_PERSISTENCE_MODE=1 python workloads/tensorflow_benchmark.py run --num-runs 3 --num-epochs 20 --num-workers 4 --cpus-per-worker 8
 
     wait_for_nodes:
       num_nodes: 4
@@ -613,7 +613,7 @@
 
   frequency: nightly
   team: ml
-
+  new_persistence: "True"
   cluster:
     byod:
       type: gpu
@@ -621,7 +621,7 @@
 
   run:
     timeout: 5400
-    script: python workloads/tensorflow_benchmark.py run --num-runs 3 --num-epochs 20 --num-workers 4 --cpus-per-worker 2
+    script: RAY_AIR_NEW_PERSISTENCE_MODE=1 python workloads/tensorflow_benchmark.py run --num-runs 3 --num-epochs 20 --num-workers 4 --cpus-per-worker 2
 
   variations:
     - __suffix__: aws
@@ -640,7 +640,7 @@
 
   frequency: nightly
   team: ml
-
+  new_persistence: "True"
   stable: false
 
   cluster:
@@ -650,7 +650,7 @@
 
   run:
     timeout: 5400
-    script: python workloads/tensorflow_benchmark.py run --num-runs 3 --num-epochs 20 --num-workers 16 --cpus-per-worker 2
+    script: RAY_AIR_NEW_PERSISTENCE_MODE=1 python workloads/tensorflow_benchmark.py run --num-runs 3 --num-epochs 20 --num-workers 16 --cpus-per-worker 2
 
     wait_for_nodes:
       num_nodes: 4
@@ -672,7 +672,7 @@
 
   frequency: weekly
   team: ml
-
+  new_persistence: "True"
   stable: false
 
   cluster:
@@ -682,7 +682,7 @@
 
   run:
     timeout: 5400
-    script: python workloads/tensorflow_benchmark.py run --num-runs 3 --num-epochs 200 --num-workers 16 --cpus-per-worker 4 --batch-size 1024 --use-gpu
+    script: RAY_AIR_NEW_PERSISTENCE_MODE=1 python workloads/tensorflow_benchmark.py run --num-runs 3 --num-epochs 200 --num-workers 16 --cpus-per-worker 4 --batch-size 1024 --use-gpu
 
     wait_for_nodes:
       num_nodes: 4
@@ -694,7 +694,7 @@
       cluster_compute: compute_gpu_2x2_aws.yaml
 
     run:
-      script: python workloads/tensorflow_benchmark.py run --num-runs 3 --num-epochs 60 --num-workers 4 --cpus-per-worker 4 --batch-size 512 --use-gpu
+      script: RAY_AIR_NEW_PERSISTENCE_MODE=1 python workloads/tensorflow_benchmark.py run --num-runs 3 --num-epochs 60 --num-workers 4 --cpus-per-worker 4 --batch-size 512 --use-gpu
 
       wait_for_nodes:
         num_nodes: 2
