@@ -19,6 +19,7 @@ from ray.dag.function_node import FunctionNode
 from ray.serve.config import (
     AutoscalingConfig,
     DeploymentConfig,
+    ReplicaConfig,
 )
 from ray.serve._private.constants import SERVE_LOGGER_NAME, MIGRATION_MESSAGE
 from ray.serve.handle import RayServeHandle, RayServeSyncHandle
@@ -124,16 +125,11 @@ class Deployment:
 
     def __init__(
         self,
-        func_or_class: Union[Callable, str],
         name: str,
-        config: DeploymentConfig,
+        deployment_config: DeploymentConfig,
+        replica_config: ReplicaConfig,
         version: Optional[str] = None,
-        init_args: Optional[Tuple[Any]] = None,
-        init_kwargs: Optional[Tuple[Any]] = None,
         route_prefix: Union[str, None, DEFAULT] = DEFAULT.VALUE,
-        ray_actor_options: Optional[Dict] = None,
-        placement_group_bundles: Optional[List[Dict[str, float]]] = None,
-        placement_group_strategy: Optional[str] = None,
         is_driver_deployment: Optional[bool] = False,
         _internal=False,
     ) -> None:
@@ -142,16 +138,10 @@ class Deployment:
                 "The Deployment constructor should not be called "
                 "directly. Use `@serve.deployment` instead."
             )
-        if not callable(func_or_class) and not isinstance(func_or_class, str):
-            raise TypeError("@serve.deployment must be called on a class or function.")
         if not isinstance(name, str):
             raise TypeError("name must be a string.")
         if not (version is None or isinstance(version, str)):
             raise TypeError("version must be a string.")
-        if not (init_args is None or isinstance(init_args, (tuple, list))):
-            raise TypeError("init_args must be a tuple.")
-        if not (init_kwargs is None or isinstance(init_kwargs, dict)):
-            raise TypeError("init_kwargs must be a dict.")
         if route_prefix is not DEFAULT.VALUE and route_prefix is not None:
             if not isinstance(route_prefix, str):
                 raise TypeError("route_prefix must be a string.")
@@ -163,54 +153,27 @@ class Deployment:
                 )
             if "{" in route_prefix or "}" in route_prefix:
                 raise ValueError("route_prefix may not contain wildcards.")
-        if not (ray_actor_options is None or isinstance(ray_actor_options, dict)):
-            raise TypeError("ray_actor_options must be a dict.")
-        if placement_group_bundles is not None:
-            if not isinstance(placement_group_bundles, list):
-                raise TypeError("placement_group_bundles must be a list.")
-
-            for bundle in placement_group_bundles:
-                if not isinstance(bundle, dict):
-                    raise TypeError(
-                        "placement_group_bundles entries must be "
-                        f"dicts, got {type(bundle)}."
-                    )
-        if not (
-            placement_group_strategy is None
-            or isinstance(placement_group_strategy, str)
-        ):
-            raise TypeError("placement_group_strategy must be a string.")
 
         if is_driver_deployment is True:
-            if config.num_replicas != 1:
+            if deployment_config.num_replicas != 1:
                 raise ValueError("num_replicas should not be set for driver deployment")
-            if config.autoscaling_config:
+            if deployment_config.autoscaling_config:
                 raise ValueError("autoscaling should not be set for driver deployment")
-
-        if init_args is None:
-            init_args = ()
-        if init_kwargs is None:
-            init_kwargs = {}
 
         docs_path = None
         if (
-            inspect.isclass(func_or_class)
-            and hasattr(func_or_class, "__module__")
-            and func_or_class.__module__ == "ray.serve.api"
-            and hasattr(func_or_class, "__fastapi_docs_path__")
+            inspect.isclass(replica_config.deployment_def)
+            and hasattr(replica_config.deployment_def, "__module__")
+            and replica_config.deployment_def.__module__ == "ray.serve.api"
+            and hasattr(replica_config.deployment_def, "__fastapi_docs_path__")
         ):
-            docs_path = func_or_class.__fastapi_docs_path__
+            docs_path = replica_config.deployment_def.__fastapi_docs_path__
 
-        self._func_or_class = func_or_class
         self._name = name
         self._version = version
-        self._config = config
-        self._init_args = init_args
-        self._init_kwargs = init_kwargs
+        self._deployment_config = deployment_config
+        self._replica_config = replica_config
         self._route_prefix = route_prefix
-        self._ray_actor_options = ray_actor_options
-        self._placement_group_bundles = placement_group_bundles
-        self._placement_group_strategy = placement_group_strategy
         self._is_driver_deployment = is_driver_deployment
         self._docs_path = docs_path
 
@@ -226,22 +189,22 @@ class Deployment:
     @property
     def func_or_class(self) -> Union[Callable, str]:
         """Underlying class or function that this deployment wraps."""
-        return self._func_or_class
+        return self._replica_config.deployment_def
 
     @property
     def num_replicas(self) -> int:
         """Current target number of replicas."""
-        return self._config.num_replicas
+        return self._deployment_config.num_replicas
 
     @property
     def user_config(self) -> Any:
         """Current dynamic user-provided config options."""
-        return self._config.user_config
+        return self._deployment_config.user_config
 
     @property
     def max_concurrent_queries(self) -> int:
         """Current max outstanding queries from each handle."""
-        return self._config.max_concurrent_queries
+        return self._deployment_config.max_concurrent_queries
 
     @property
     def route_prefix(self) -> Optional[str]:
@@ -253,15 +216,15 @@ class Deployment:
     @property
     def ray_actor_options(self) -> Optional[Dict]:
         """Actor options such as resources required for each replica."""
-        return self._ray_actor_options
+        return self._replica_config.ray_actor_options
 
     @property
     def init_args(self) -> Tuple[Any]:
-        return self._init_args
+        return self._replica_config.init_args
 
     @property
     def init_kwargs(self) -> Tuple[Any]:
-        return self._init_kwargs
+        return self._replica_config.init_kwargs
 
     @property
     def url(self) -> Optional[str]:
@@ -349,7 +312,7 @@ class Deployment:
             init_args,
             init_kwargs,
             ray_actor_options=self._ray_actor_options,
-            config=self._config,
+            config=self._deployment_config,
             version=self._version,
             route_prefix=self.route_prefix,
             url=self.url,
@@ -455,9 +418,11 @@ class Deployment:
             and value is not DEFAULT.VALUE
         ]
 
-        new_config = deepcopy(self._config)
+        new_deployment_config = deepcopy(self._deployment_config)
         if not _internal:
-            new_config.user_configured_option_names.update(user_configured_option_names)
+            new_deployment_config.user_configured_option_names.update(
+                user_configured_option_names
+            )
 
         if num_replicas not in [DEFAULT.VALUE, None] and autoscaling_config not in [
             DEFAULT.VALUE,
@@ -479,11 +444,11 @@ class Deployment:
             )
 
         if num_replicas not in [DEFAULT.VALUE, None]:
-            new_config.num_replicas = num_replicas
+            new_deployment_config.num_replicas = num_replicas
         if user_config is not DEFAULT.VALUE:
-            new_config.user_config = user_config
+            new_deployment_config.user_config = user_config
         if max_concurrent_queries is not DEFAULT.VALUE:
-            new_config.max_concurrent_queries = max_concurrent_queries
+            new_deployment_config.max_concurrent_queries = max_concurrent_queries
 
         if func_or_class is None:
             func_or_class = self._func_or_class
@@ -514,19 +479,23 @@ class Deployment:
             placement_group_strategy = self._placement_group_strategy
 
         if autoscaling_config is not DEFAULT.VALUE:
-            new_config.autoscaling_config = autoscaling_config
+            new_deployment_config.autoscaling_config = autoscaling_config
 
         if graceful_shutdown_wait_loop_s is not DEFAULT.VALUE:
-            new_config.graceful_shutdown_wait_loop_s = graceful_shutdown_wait_loop_s
+            new_deployment_config.graceful_shutdown_wait_loop_s = (
+                graceful_shutdown_wait_loop_s
+            )
 
         if graceful_shutdown_timeout_s is not DEFAULT.VALUE:
-            new_config.graceful_shutdown_timeout_s = graceful_shutdown_timeout_s
+            new_deployment_config.graceful_shutdown_timeout_s = (
+                graceful_shutdown_timeout_s
+            )
 
         if health_check_period_s is not DEFAULT.VALUE:
-            new_config.health_check_period_s = health_check_period_s
+            new_deployment_config.health_check_period_s = health_check_period_s
 
         if health_check_timeout_s is not DEFAULT.VALUE:
-            new_config.health_check_timeout_s = health_check_timeout_s
+            new_deployment_config.health_check_timeout_s = health_check_timeout_s
 
         if is_driver_deployment is DEFAULT.VALUE:
             is_driver_deployment = self._is_driver_deployment
@@ -534,7 +503,7 @@ class Deployment:
         return Deployment(
             func_or_class,
             name,
-            new_config,
+            new_deployment_config,
             version=version,
             init_args=init_args,
             init_kwargs=init_kwargs,
@@ -605,14 +574,14 @@ class Deployment:
         self._init_kwargs = validated._init_kwargs
         self._route_prefix = validated._route_prefix
         self._ray_actor_options = validated._ray_actor_options
-        self._config = validated._config
+        self._deployment_config = validated._deployment_config
 
     def __eq__(self, other):
         return all(
             [
                 self._name == other._name,
                 self._version == other._version,
-                self._config == other._config,
+                self._deployment_config == other._deployment_config,
                 self._init_args == other._init_args,
                 self._init_kwargs == other._init_kwargs,
                 # compare route prefix with default value resolved
@@ -652,17 +621,19 @@ def deployment_to_schema(
 
     deployment_options = {
         "name": d.name,
-        "num_replicas": None if d._config.autoscaling_config else d.num_replicas,
+        "num_replicas": None
+        if d._deployment_config.autoscaling_config
+        else d.num_replicas,
         "max_concurrent_queries": d.max_concurrent_queries,
         "user_config": d.user_config,
-        "autoscaling_config": d._config.autoscaling_config,
-        "graceful_shutdown_wait_loop_s": d._config.graceful_shutdown_wait_loop_s,
-        "graceful_shutdown_timeout_s": d._config.graceful_shutdown_timeout_s,
-        "health_check_period_s": d._config.health_check_period_s,
-        "health_check_timeout_s": d._config.health_check_timeout_s,
+        "autoscaling_config": d._deployment_config.autoscaling_config,
+        "graceful_shutdown_wait_loop_s": d._deployment_config.graceful_shutdown_wait_loop_s,
+        "graceful_shutdown_timeout_s": d._deployment_config.graceful_shutdown_timeout_s,
+        "health_check_period_s": d._deployment_config.health_check_period_s,
+        "health_check_timeout_s": d._deployment_config.health_check_timeout_s,
         "ray_actor_options": ray_actor_options_schema,
-        "placement_group_strategy": d._placement_group_strategy,
-        "placement_group_bundles": d._placement_group_bundles,
+        "placement_group_strategy": d._replica_config._placement_group_strategy,
+        "placement_group_bundles": d._replica_config._placement_group_bundles,
         "is_driver_deployment": d._is_driver_deployment,
     }
 
@@ -674,7 +645,10 @@ def deployment_to_schema(
     # which options were set by the user. Name is a required field in the
     # schema, so it should be passed in explicitly.
     for option in list(deployment_options.keys()):
-        if option != "name" and option not in d._config.user_configured_option_names:
+        if (
+            option != "name"
+            and option not in d._deployment_config.user_configured_option_names
+        ):
             del deployment_options[option]
 
     # TODO(Sihan) DeploymentConfig num_replicas and auto_config can be set together
@@ -728,7 +702,7 @@ def schema_to_deployment(s: DeploymentSchema) -> Deployment:
     return Deployment(
         func_or_class="",
         name=s.name,
-        config=config,
+        deployment_config=config,
         init_args=(),
         init_kwargs={},
         route_prefix=s.route_prefix,

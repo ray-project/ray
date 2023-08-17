@@ -140,11 +140,17 @@ class TestDeploymentOptions:
         # Don't track name in the deschematized deployment since it's optional
         # in deployment decorator but required in schema, leading to
         # inconsistent behavior.
-        if "name" in deschematized_deployment._config.user_configured_option_names:
-            deschematized_deployment._config.user_configured_option_names.remove("name")
+        if (
+            "name"
+            in deschematized_deployment._deployment_config.user_configured_option_names
+        ):
+            deschematized_deployment._deployment_config.user_configured_option_names.remove(
+                "name"
+            )
 
-        assert deschematized_deployment._config.user_configured_option_names == set(
-            options.keys()
+        assert (
+            deschematized_deployment._deployment_config.user_configured_option_names
+            == set(options.keys())
         )
 
     @pytest.mark.parametrize("options", deployment_option_combos)
