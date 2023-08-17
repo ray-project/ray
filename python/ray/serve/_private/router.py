@@ -32,6 +32,7 @@ from ray.util import metrics
 from ray._private.utils import make_asyncio_event_version_compat, load_class
 
 from ray.serve._private.common import (
+    DeploymentID,
     DeploymentInfo,
     RequestProtocol,
     RunningReplicaInfo,
@@ -307,10 +308,10 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
     def __init__(
         self,
         event_loop: asyncio.AbstractEventLoop,
-        deployment_name: str,
+        deployment_id: DeploymentID,
     ):
         self._loop = event_loop
-        self._deployment_name = deployment_name
+        self._deployment_id = deployment_id
 
         # Current replicas available to be scheduled.
         # Updated via `update_replicas`.
@@ -387,8 +388,8 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
 
         if self._replica_id_set != new_replica_id_set:
             logger.info(
-                "Got updated replicas for deployment "
-                f"{self._deployment_name}: {new_replica_id_set}.",
+                f"Got updated replicas for deployment '{self._deployment_id.name}' "
+                f"in application '{self._deployment_id.app}': {new_replica_id_set}.",
                 extra={"log_to_stderr": False},
             )
 
@@ -472,14 +473,16 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
             while len(self._replicas) == 0:
                 logger.info(
                     "Tried to assign replica for deployment "
-                    f"{self._deployment_name} but none are available. "
-                    "Waiting for new replicas to be added.",
+                    f"'{self._deployment_id.name}' in application "
+                    f"'{self._deployment_id.app}' but none are available. Waiting for "
+                    "new replicas to be added.",
                     extra={"log_to_stderr": False},
                 )
                 self._replicas_updated_event.clear()
                 await self._replicas_updated_event.wait()
                 logger.info(
-                    "Got replicas for deployment {self._deployment_name}, waking up.",
+                    f"Got replicas for deployment '{self._deployment_id.name}' in "
+                    f"application '{self._deployment_id.app}', waking up.",
                     extra={"log_to_stderr": False},
                 )
 
@@ -973,7 +976,7 @@ class Router:
     def __init__(
         self,
         controller_handle: ActorHandle,
-        deployment_name: str,
+        deployment_id: DeploymentID,
         event_loop: asyncio.BaseEventLoop = None,
         _use_new_routing: bool = False,
         _router_cls: Optional[str] = None,
@@ -987,11 +990,11 @@ class Router:
 
         if _router_cls:
             self._replica_scheduler = load_class(_router_cls)(
-                event_loop=event_loop, deployment_name=deployment_name
+                event_loop=event_loop, deployment_id=deployment_id
             )
         elif _use_new_routing:
             self._replica_scheduler = PowerOfTwoChoicesReplicaScheduler(
-                event_loop, deployment_name
+                event_loop, deployment_id
             )
         else:
             self._replica_scheduler = RoundRobinReplicaScheduler(event_loop)
@@ -1006,7 +1009,8 @@ class Router:
             description="The number of requests processed by the router.",
             tag_keys=("deployment", "route", "application"),
         )
-        self.num_router_requests.set_default_tags({"deployment": deployment_name})
+        # TODO(zcin): use deployment name and application name instead of deployment id
+        self.num_router_requests.set_default_tags({"deployment": str(deployment_id)})
 
         self.num_queued_queries = 0
         self.num_queued_queries_gauge = metrics.Gauge(
@@ -1017,23 +1021,26 @@ class Router:
             ),
             tag_keys=("deployment", "application"),
         )
-        self.num_queued_queries_gauge.set_default_tags({"deployment": deployment_name})
+        # TODO(zcin): use deployment name and application name instead of deployment id
+        self.num_queued_queries_gauge.set_default_tags(
+            {"deployment": str(deployment_id)}
+        )
 
         self.long_poll_client = LongPollClient(
             controller_handle,
             {
                 (
                     LongPollNamespace.RUNNING_REPLICAS,
-                    deployment_name,
+                    deployment_id,
                 ): self._replica_scheduler.update_running_replicas,
             },
             call_in_event_loop=event_loop,
         )
 
         # Start the metrics pusher if autoscaling is enabled.
-        self.deployment_name = deployment_name
+        self.deployment_id = deployment_id
         deployment_route = DeploymentRoute.FromString(
-            ray.get(controller_handle.get_deployment_info.remote(self.deployment_name))
+            ray.get(controller_handle.get_deployment_info.remote(*deployment_id))
         )
         deployment_info = DeploymentInfo.from_proto(deployment_route.deployment_info)
         self.metrics_pusher = None
@@ -1048,7 +1055,7 @@ class Router:
             self.metrics_pusher.start()
 
     def _collect_handle_queue_metrics(self) -> Dict[str, int]:
-        return {self.deployment_name: self.num_queued_queries}
+        return {str(self.deployment_id): self.num_queued_queries}
 
     async def assign_request(
         self,

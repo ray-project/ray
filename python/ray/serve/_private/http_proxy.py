@@ -57,6 +57,7 @@ from ray.serve._private.long_poll import LongPollClient, LongPollNamespace
 from ray.serve._private.logging_utils import (
     access_log_msg,
     configure_component_logger,
+    configure_component_cpu_profiler,
     configure_component_memory_profiler,
     get_component_logger_file_path,
 )
@@ -117,9 +118,9 @@ class LongestPrefixRouter:
         # Routes sorted in order of decreasing length.
         self.sorted_routes: List[str] = list()
         # Endpoints associated with the routes.
-        self.route_info: Dict[str, Tuple[EndpointTag, ApplicationName]] = dict()
+        self.route_info: Dict[str, EndpointTag] = dict()
         # Contains a ServeHandle for each endpoint.
-        self.handles: Dict[str, RayServeHandle] = dict()
+        self.handles: Dict[EndpointTag, RayServeHandle] = dict()
         # Map of application name to is_cross_language.
         self.app_to_is_cross_language: Dict[ApplicationName, bool] = dict()
 
@@ -137,12 +138,14 @@ class LongestPrefixRouter:
         app_to_is_cross_language = {}
         for endpoint, info in endpoints.items():
             routes.append(info.route)
-            route_info[info.route] = (endpoint, info.app_name)
-            app_to_is_cross_language[info.app_name] = info.app_is_cross_language
+            route_info[info.route] = endpoint
+            app_to_is_cross_language[endpoint.app] = info.app_is_cross_language
             if endpoint in self.handles:
                 existing_handles.remove(endpoint)
             else:
-                self.handles[endpoint] = self._get_handle(endpoint).options(
+                self.handles[endpoint] = self._get_handle(
+                    endpoint.name, endpoint.app
+                ).options(
                     # Streaming codepath isn't supported for Java.
                     stream=(
                         RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING
@@ -194,12 +197,12 @@ class LongestPrefixRouter:
                     matched = True
 
                 if matched:
-                    endpoint, app_name = self.route_info[route]
+                    endpoint = self.route_info[route]
                     return (
                         route,
                         self.handles[endpoint],
-                        app_name,
-                        self.app_to_is_cross_language[app_name],
+                        endpoint.app,
+                        self.app_to_is_cross_language[endpoint.app],
                     )
 
         return None
@@ -252,9 +255,10 @@ class GenericProxy(ABC):
                 extra={"log_to_stderr": False},
             )
 
-        def get_handle(name):
+        def get_handle(deployment_name, app_name):
             return serve.context.get_global_client().get_handle(
-                name,
+                deployment_name,
+                app_name,
                 sync=False,
                 missing_ok=True,
             )
@@ -346,7 +350,7 @@ class GenericProxy(ABC):
         return self._draining_start_time is not None
 
     def _update_routes(self, endpoints: Dict[EndpointTag, EndpointInfo]) -> None:
-        self.route_info: Dict[str, Tuple[EndpointTag, List[str]]] = dict()
+        self.route_info: Dict[str, EndpointTag] = dict()
         for endpoint, info in endpoints.items():
             route = info.route
             self.route_info[route] = endpoint
@@ -563,7 +567,7 @@ class GenericProxy(ABC):
                 )
                 self.deployment_request_error_counter.inc(
                     tags={
-                        "deployment": handle.deployment_name,
+                        "deployment": str(handle.deployment_id),
                         "error_code": status_code,
                         "method": method,
                         "route": route_path,
@@ -690,9 +694,9 @@ class HTTPProxy(GenericProxy):
         await response.send(scope, receive, send)
 
     async def routes_response(self, scope, receive, send):
-        return await starlette.responses.JSONResponse(self.route_info)(
-            scope, receive, send
-        )
+        return await starlette.responses.JSONResponse(
+            {route: str(endpoint) for route, endpoint in self.route_info.items()}
+        )(scope, receive, send)
 
     async def health_response(self, scope, receive, send):
         return await starlette.responses.PlainTextResponse("success")(
@@ -1075,6 +1079,9 @@ class HTTPProxyActor:
         configure_component_memory_profiler(
             component_name="http_proxy", component_id=node_ip_address
         )
+        self.cpu_profiler, self.cpu_profiler_log = configure_component_cpu_profiler(
+            component_name="http_proxy", component_id=node_ip_address
+        )
 
         if http_middlewares is None:
             http_middlewares = [Middleware(RequestIdMiddleware)]
@@ -1217,6 +1224,27 @@ Please make sure your http-host and http-port are specified correctly."""
         this will always return immediately.
         """
         return pickle.dumps(await self.app.receive_asgi_messages(request_id))
+
+    def _save_cpu_profile_data(self) -> str:
+        """Saves CPU profiling data, if CPU profiling is enabled.
+
+        Logs a warning if CPU profiling is disabled.
+        """
+
+        if self.cpu_profiler is not None:
+            import marshal
+
+            self.cpu_profiler.snapshot_stats()
+            with open(self.cpu_profiler_log, "wb") as f:
+                marshal.dump(self.cpu_profiler.stats, f)
+            logger.info(f'Saved CPU profile data to file "{self.cpu_profiler_log}"')
+            return self.cpu_profiler_log
+        else:
+            logger.error(
+                "Attempted to save CPU profile data, but failed because no "
+                "CPU profiler was running! Enable CPU profiling by enabling "
+                "the RAY_SERVE_ENABLE_CPU_PROFILING env var."
+            )
 
     async def _uvicorn_keep_alive(self) -> Optional[int]:
         """Get the keep alive timeout used for the running uvicorn server.

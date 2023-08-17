@@ -131,13 +131,14 @@ class RayServeHandle:
 
     def __init__(
         self,
-        deployment_name: EndpointTag,
+        deployment_name: str,
+        app_name: str,
         *,
         handle_options: Optional[_HandleOptions] = None,
         _router: Optional[Router] = None,
         _request_counter: Optional[metrics.Counter] = None,
     ):
-        self.deployment_name = deployment_name
+        self.deployment_id = EndpointTag(deployment_name, app_name)
         self.handle_options = handle_options or _HandleOptions()
 
         self.request_counter = _request_counter or metrics.Counter(
@@ -148,9 +149,14 @@ class RayServeHandle:
             ),
             tag_keys=("handle", "deployment", "route", "application"),
         )
-        handle_tag = f"{self.deployment_name}#{get_random_letters()}"
+        if app_name:
+            handle_tag = f"{app_name}#{deployment_name}#{get_random_letters()}"
+        else:
+            handle_tag = f"{deployment_name}#{get_random_letters()}"
+
+        # TODO(zcin): Separate deployment_id into deployment and application tags
         self.request_counter.set_default_tags(
-            {"handle": handle_tag, "deployment": self.deployment_name}
+            {"handle": handle_tag, "deployment": str(self.deployment_id)}
         )
 
         self._router: Optional[Router] = _router
@@ -164,13 +170,21 @@ class RayServeHandle:
         if self._router is None:
             self._router = Router(
                 serve.context.get_global_client()._controller,
-                self.deployment_name,
+                self.deployment_id,
                 event_loop=get_or_create_event_loop(),
                 _use_new_routing=RAY_SERVE_ENABLE_NEW_ROUTING,
                 _router_cls=self.handle_options._router_cls,
             )
 
         return self._router
+
+    @property
+    def deployment_name(self) -> str:
+        return self.deployment_id.name
+
+    @property
+    def app_name(self) -> str:
+        return self.deployment_id.app
 
     @property
     def _is_same_loop(self) -> bool:
@@ -200,6 +214,7 @@ class RayServeHandle:
 
         return self.__class__(
             self.deployment_name,
+            self.app_name,
             handle_options=new_handle_options,
             _router=None if _router_cls != DEFAULT.VALUE else self._router,
             _request_counter=self.request_counter,
@@ -232,11 +247,11 @@ class RayServeHandle:
             _router_cls=_router_cls,
         )
 
-    def _remote(self, deployment_name, handle_options, args, kwargs) -> Coroutine:
+    def _remote(self, deployment_id, handle_options, args, kwargs) -> Coroutine:
         _request_context = ray.serve.context._serve_request_context.get()
         request_metadata = RequestMetadata(
             _request_context.request_id,
-            deployment_name,
+            deployment_id.name,
             call_method=handle_options.method_name,
             route=_request_context.route,
             app_name=_request_context.app_name,
@@ -271,12 +286,10 @@ class RayServeHandle:
             result = await obj_ref
 
         """
-        return await self._remote(
-            self.deployment_name, self.handle_options, args, kwargs
-        )
+        return await self._remote(self.deployment_id, self.handle_options, args, kwargs)
 
     def __repr__(self):
-        return f"{self.__class__.__name__}" f"(deployment='{self.deployment_name}')"
+        return f"{self.__class__.__name__}" f"(deployment='{self.deployment_id}')"
 
     @classmethod
     def _deserialize(cls, kwargs):
@@ -286,6 +299,7 @@ class RayServeHandle:
     def __reduce__(self):
         serialized_data = {
             "deployment_name": self.deployment_name,
+            "app_name": self.app_name,
             "handle_options": self.handle_options,
         }
         return RayServeHandle._deserialize, (serialized_data,)
@@ -334,7 +348,7 @@ class RayServeSyncHandle(RayServeHandle):
         if self._router is None:
             self._router = Router(
                 serve.context.get_global_client()._controller,
-                self.deployment_name,
+                self.deployment_id,
                 event_loop=_create_or_get_async_loop_in_thread(),
                 _use_new_routing=RAY_SERVE_ENABLE_NEW_ROUTING,
                 _router_cls=self.handle_options._router_cls,
@@ -381,7 +395,7 @@ class RayServeSyncHandle(RayServeHandle):
             result = ray.get(obj_ref)
 
         """
-        coro = self._remote(self.deployment_name, self.handle_options, args, kwargs)
+        coro = self._remote(self.deployment_id, self.handle_options, args, kwargs)
         future: concurrent.futures.Future = asyncio.run_coroutine_threadsafe(
             coro, self._get_or_create_router()._event_loop
         )
@@ -390,6 +404,7 @@ class RayServeSyncHandle(RayServeHandle):
     def __reduce__(self):
         serialized_data = {
             "deployment_name": self.deployment_name,
+            "app_name": self.app_name,
             "handle_options": self.handle_options,
         }
         return RayServeSyncHandle._deserialize, (serialized_data,)
