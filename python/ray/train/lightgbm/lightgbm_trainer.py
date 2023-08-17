@@ -95,7 +95,6 @@ class LightGBMTrainer(GBDTTrainer):
     # but it is explicitly set here for forward compatibility
     _dmatrix_cls: type = lightgbm_ray.RayDMatrix
     _ray_params_cls: type = lightgbm_ray.RayParams
-    _tune_callback_report_cls: type = TuneReportCallback
     _tune_callback_checkpoint_cls: type = TuneReportCheckpointCallback
     _default_ray_params: Dict[str, Any] = {
         "checkpoint_frequency": 1,

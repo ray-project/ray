@@ -143,7 +143,6 @@ class GBDTTrainer(BaseTrainer):
 
     _dmatrix_cls: type
     _ray_params_cls: type
-    _tune_callback_report_cls: type
     _tune_callback_checkpoint_cls: type
     _default_ray_params: Dict[str, Any] = {"checkpoint_frequency": 1}
     _init_model_arg_name: str
@@ -287,21 +286,16 @@ class GBDTTrainer(BaseTrainer):
         config.setdefault("callbacks", [])
 
         if not any(
-            isinstance(
-                cb, (self._tune_callback_report_cls, self._tune_callback_checkpoint_cls)
-            )
+            isinstance(cb, self._tune_callback_checkpoint_cls)
             for cb in config["callbacks"]
         ):
             # Only add our own callback if it hasn't been added before
             checkpoint_frequency = (
                 self.run_config.checkpoint_config.checkpoint_frequency
             )
-            if checkpoint_frequency > 0:
-                callback = self._tune_callback_checkpoint_cls(
-                    filename=MODEL_KEY, frequency=checkpoint_frequency
-                )
-            else:
-                callback = self._tune_callback_report_cls()
+            callback = self._tune_callback_checkpoint_cls(
+                filename=MODEL_KEY, frequency=checkpoint_frequency
+            )
 
             config["callbacks"] += [callback]
 
