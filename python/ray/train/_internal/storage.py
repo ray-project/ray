@@ -553,6 +553,13 @@ class StorageContext:
                 dest_fs=self.storage_filesystem,
             )
         )
+
+        # Raise an error if the storage path is not accessible when
+        # attempting to upload a checkpoint from a remote worker.
+        # Ex: If storage_path is a local path, then a validation marker
+        # will only exist on the head node but not the worker nodes.
+        self._check_validation_file()
+
         self.storage_filesystem.create_dir(self.checkpoint_fs_path)
         _pyarrow_fs_copy_files(
             source=checkpoint.path,
