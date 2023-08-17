@@ -92,7 +92,7 @@
 
   run:
     timeout: 3600
-    script: python workloads/tune_scale_up_down.py
+    script: RAY_AIR_NEW_PERSISTENCE_MODE=1 python workloads/tune_scale_up_down.py
     wait_for_nodes:
       num_nodes: 0
 
@@ -122,7 +122,7 @@
     byod:
       type: gpu
     cluster_compute: compute_gpu_1_cpu_16_aws.yaml
-  
+
   run:
     timeout: 500
     script: python workloads/gpu_batch_inference.py --data-directory=10G-image-data-synthetic-raw --data-format raw
@@ -149,7 +149,7 @@
     byod:
       type: gpu
     cluster_compute: compute_gpu_1_cpu_16_aws.yaml
-  
+
   run:
     timeout: 500
     script: python workloads/gpu_batch_inference.py --data-directory=10G-image-data-synthetic-raw-parquet --data-format parquet
@@ -248,7 +248,7 @@
 
     wait_for_nodes:
       num_nodes: 20
-  
+
   alert: default
 
 
@@ -336,7 +336,7 @@
 
   run:
     timeout: 3600
-    script: python workloads/data_benchmark.py --dataset-size-gb=200 --num-workers=20
+    script: RAY_AIR_NEW_PERSISTENCE_MODE=1 python workloads/data_benchmark.py --dataset-size-gb=200 --num-workers=20
 
     wait_for_nodes:
       num_nodes: 20
@@ -591,7 +591,7 @@
 
   run:
     timeout: 5400
-    script: python workloads/tensorflow_benchmark.py run --num-runs 3 --num-epochs 20 --num-workers 4 --cpus-per-worker 8
+    script: RAY_AIR_NEW_PERSISTENCE_MODE=1 python workloads/tensorflow_benchmark.py run --num-runs 3 --num-epochs 20 --num-workers 4 --cpus-per-worker 8
 
     wait_for_nodes:
       num_nodes: 4
@@ -621,7 +621,7 @@
 
   run:
     timeout: 5400
-    script: python workloads/tensorflow_benchmark.py run --num-runs 3 --num-epochs 20 --num-workers 4 --cpus-per-worker 2
+    script: RAY_AIR_NEW_PERSISTENCE_MODE=1 python workloads/tensorflow_benchmark.py run --num-runs 3 --num-epochs 20 --num-workers 4 --cpus-per-worker 2
 
   variations:
     - __suffix__: aws
@@ -650,7 +650,7 @@
 
   run:
     timeout: 5400
-    script: python workloads/tensorflow_benchmark.py run --num-runs 3 --num-epochs 20 --num-workers 16 --cpus-per-worker 2
+    script: RAY_AIR_NEW_PERSISTENCE_MODE=1 python workloads/tensorflow_benchmark.py run --num-runs 3 --num-epochs 20 --num-workers 16 --cpus-per-worker 2
 
     wait_for_nodes:
       num_nodes: 4
@@ -682,7 +682,7 @@
 
   run:
     timeout: 5400
-    script: python workloads/tensorflow_benchmark.py run --num-runs 3 --num-epochs 200 --num-workers 16 --cpus-per-worker 4 --batch-size 1024 --use-gpu
+    script: RAY_AIR_NEW_PERSISTENCE_MODE=1 python workloads/tensorflow_benchmark.py run --num-runs 3 --num-epochs 200 --num-workers 16 --cpus-per-worker 4 --batch-size 1024 --use-gpu
 
     wait_for_nodes:
       num_nodes: 4
@@ -694,7 +694,7 @@
       cluster_compute: compute_gpu_2x2_aws.yaml
 
     run:
-      script: python workloads/tensorflow_benchmark.py run --num-runs 3 --num-epochs 60 --num-workers 4 --cpus-per-worker 4 --batch-size 512 --use-gpu
+      script: RAY_AIR_NEW_PERSISTENCE_MODE=1 python workloads/tensorflow_benchmark.py run --num-runs 3 --num-epochs 60 --num-workers 4 --cpus-per-worker 4 --batch-size 512 --use-gpu
 
       wait_for_nodes:
         num_nodes: 2
@@ -852,11 +852,29 @@
 
   run:
     timeout: 1800
-    script: pip install -Ur dreambooth/requirements.txt && bash dreambooth_run.sh
+    script: pip install -Ur dreambooth/requirements.txt && RAY_AIR_NEW_PERSISTENCE_MODE=1 bash dreambooth_run.sh
     artifact_path: /tmp/artifacts/example_out.jpg
 
   # variations: A10G not available on GCE, yet.
 
+- name: air_example_dreambooth_finetuning_lora
+  group: AIR examples
+  working_dir: air_examples/dreambooth
+
+  stable: false
+
+  frequency: weekly
+  team: ml
+
+  cluster:
+    byod:
+      type: gpu
+    cluster_compute: dreambooth_compute_aws.yaml
+
+  run:
+    timeout: 1800
+    script: pip install -Ur dreambooth/requirements.txt && bash dreambooth_run.sh --lora
+    artifact_path: /tmp/artifacts/example_out.jpg
 
 - name: air_example_gptj_deepspeed_fine_tuning
   group: AIR examples
@@ -969,6 +987,7 @@
   python: "3.9"
   frequency: nightly-3x
   team: ml
+
   cluster:
     byod:
       type: gpu
@@ -976,7 +995,7 @@
 
   run:
     timeout: 600
-    script: jupyter nbconvert --to script --output _test start.ipynb && ipython _test.py
+    script: jupyter nbconvert --to script --output _test start.ipynb && RAY_AIR_NEW_PERSISTENCE_MODE=1 ipython _test.py
 
   variations:
       - __suffix__: aws
@@ -1605,7 +1624,7 @@
 
   run:
     timeout: 1200
-    script: python horovod/horovod_user_test.py
+    script: RAY_AIR_NEW_PERSISTENCE_MODE=1 python horovod/horovod_user_test.py
     wait_for_nodes:
       num_nodes: 4
 
@@ -1634,7 +1653,7 @@
 
   run:
     timeout: 1200
-    script: python horovod/horovod_user_test.py
+    script: RAY_AIR_NEW_PERSISTENCE_MODE=1 python horovod/horovod_user_test.py
     wait_for_nodes:
       num_nodes: 4
 
@@ -1664,7 +1683,7 @@
 
   run:
     timeout: 36000
-    script: python train/train_tensorflow_mnist_test.py
+    script: RAY_AIR_NEW_PERSISTENCE_MODE=1 python train/train_tensorflow_mnist_test.py
     wait_for_nodes:
       num_nodes: 3
 
@@ -1694,7 +1713,7 @@
 
   run:
     timeout: 36000
-    script: python train/train_torch_linear_test.py
+    script: RAY_AIR_NEW_PERSISTENCE_MODE=1 python train/train_torch_linear_test.py
     wait_for_nodes:
       num_nodes: 3
 
@@ -1784,7 +1803,7 @@
 
   run:
     timeout: 2000
-    script: python tune_rllib/run_connect_tests.py
+    script: RAY_AIR_NEW_PERSISTENCE_MODE=1 python tune_rllib/run_connect_tests.py
     wait_for_nodes:
       num_nodes: 9
 
@@ -2334,6 +2353,9 @@
   team: core
   cluster:
     byod:
+      pip:
+        # TODO: https://github.com/Farama-Foundation/AutoROM/issues/48
+        - https://ray-ci-deps-wheels.s3.us-west-2.amazonaws.com/AutoROM.accept_rom_license-0.5.4-py3-none-any.whl
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
         - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
@@ -2456,6 +2478,9 @@
   team: core
   cluster:
     byod:
+      pip:
+        # TODO: https://github.com/Farama-Foundation/AutoROM/issues/48
+        - https://ray-ci-deps-wheels.s3.us-west-2.amazonaws.com/AutoROM.accept_rom_license-0.5.4-py3-none-any.whl
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
     cluster_compute: tpl_cpu_1.yaml
@@ -2494,6 +2519,9 @@
   team: core
   cluster:
     byod:
+      pip:
+        # TODO: https://github.com/Farama-Foundation/AutoROM/issues/48
+        - https://ray-ci-deps-wheels.s3.us-west-2.amazonaws.com/AutoROM.accept_rom_license-0.5.4-py3-none-any.whl
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
     cluster_compute: tpl_cpu_1.yaml
@@ -2543,7 +2571,7 @@
 
   run:
     timeout: 86400
-    script: python workloads/many_ppo.py
+    script: RAY_AIR_NEW_PERSISTENCE_MODE=1 python workloads/many_ppo.py
     long_running: true
     wait_for_nodes:
       num_nodes: 1
@@ -2578,6 +2606,9 @@
   team: core
   cluster:
     byod:
+      pip:
+        # TODO: https://github.com/Farama-Foundation/AutoROM/issues/48
+        - https://ray-ci-deps-wheels.s3.us-west-2.amazonaws.com/AutoROM.accept_rom_license-0.5.4-py3-none-any.whl
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
     cluster_compute: tpl_cpu_1.yaml
@@ -2616,6 +2647,9 @@
   team: core
   cluster:
     byod:
+      pip:
+        # TODO: https://github.com/Farama-Foundation/AutoROM/issues/48
+        - https://ray-ci-deps-wheels.s3.us-west-2.amazonaws.com/AutoROM.accept_rom_license-0.5.4-py3-none-any.whl
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
     cluster_compute: tpl_cpu_1.yaml
@@ -2654,6 +2688,9 @@
   team: core
   cluster:
     byod:
+      pip:
+        # TODO: https://github.com/Farama-Foundation/AutoROM/issues/48
+        - https://ray-ci-deps-wheels.s3.us-west-2.amazonaws.com/AutoROM.accept_rom_license-0.5.4-py3-none-any.whl
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
     cluster_compute: tpl_cpu_1.yaml
@@ -2733,6 +2770,9 @@
 
   cluster:
     byod:
+      pip:
+        # TODO: https://github.com/Farama-Foundation/AutoROM/issues/48
+        - https://ray-ci-deps-wheels.s3.us-west-2.amazonaws.com/AutoROM.accept_rom_license-0.5.4-py3-none-any.whl
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
     cluster_compute: tpl_cpu_1.yaml
@@ -2773,6 +2813,9 @@
 
   cluster:
     byod:
+      pip:
+        # TODO: https://github.com/Farama-Foundation/AutoROM/issues/48
+        - https://ray-ci-deps-wheels.s3.us-west-2.amazonaws.com/AutoROM.accept_rom_license-0.5.4-py3-none-any.whl
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
     cluster_compute: tpl_cpu_1_c5.yaml
@@ -2813,6 +2856,9 @@
 
   cluster:
     byod:
+      pip:
+        # TODO: https://github.com/Farama-Foundation/AutoROM/issues/48
+        - https://ray-ci-deps-wheels.s3.us-west-2.amazonaws.com/AutoROM.accept_rom_license-0.5.4-py3-none-any.whl
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
     cluster_compute: tpl_cpu_1.yaml
@@ -3453,7 +3499,7 @@
 
   run:
     timeout: 3000
-    script: python train_horovod_multi_node_test.py
+    script: RAY_AIR_NEW_PERSISTENCE_MODE=1 python train_horovod_multi_node_test.py
 
     wait_for_nodes:
       num_nodes: 2
@@ -3501,7 +3547,7 @@
         cluster_compute: gpu_2x4_t4_gce.yaml
       run:
         timeout: 3600
-        script: bash run_train_opt_2_7b.sh --storage gcs
+        script: RAY_AIR_NEW_PERSISTENCE_MODE=1 bash run_train_opt_2_7b.sh --storage gcs
 
         wait_for_nodes:
           num_nodes: 2
@@ -3523,7 +3569,7 @@
 
   run:
     timeout: 3600
-    script: bash run_inference_opt_30b.sh --storage aws
+    script: RAY_AIR_NEW_PERSISTENCE_MODE=1 bash run_inference_opt_30b.sh --storage aws
 
     wait_for_nodes:
       num_nodes: 1
@@ -4902,6 +4948,8 @@
       frequency: manual
       cluster:
         cluster_compute: tpl_64_gce.yaml
+    - __suffix__: aws.py311
+      python: "3.11"
 
 
 - name: benchmark_worker_startup

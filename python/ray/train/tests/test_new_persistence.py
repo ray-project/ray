@@ -3,9 +3,10 @@ import os
 from pathlib import Path
 import pickle
 import pytest
+import re
 import tempfile
 import time
-from typing import Optional, Tuple
+from typing import List, Optional, Tuple
 
 import pyarrow.fs
 
@@ -26,7 +27,7 @@ from ray.air.tests.test_checkpoints import mock_s3_bucket_uri
 _SCORE_KEY = "score"
 NUM_ITERATIONS = 6  # == num_checkpoints == num_artifacts
 NUM_TRIALS = 2
-NUM_WORKERS = 2
+NUM_WORKERS = 3
 
 
 @contextmanager
@@ -137,6 +138,18 @@ def _get_checkpoint_index(checkpoint_dir_name: str) -> int:
     return int(checkpoint_dir_name.split("_")[-1])
 
 
+def _create_checkpoint_shard_filename(rank_str: str) -> str:
+    return f"checkpoint_shard-rank={rank_str}.pkl"
+
+
+def _get_checkpoint_shard_rank(checkpoint_shard_filename: str) -> int:
+    """Get the checkpoint shard rank from the filename."""
+    pattern = _create_checkpoint_shard_filename(r"(\d+)")
+    match = re.search(pattern, checkpoint_shard_filename)
+    assert match
+    return int(match.group(1))
+
+
 def train_fn(config):
     in_trainer = config.get("in_trainer", False)
     if in_trainer:
@@ -165,26 +178,33 @@ def train_fn(config):
     for i in range(start, config.get("num_iterations", 5)):
         time.sleep(0.25)
 
-        temp_dir = tempfile.mkdtemp()
-        with open(os.path.join(temp_dir, "checkpoint.pkl"), "wb") as f:
-            pickle.dump({"iter": i}, f)
+        metrics = {"iter": i, _SCORE_KEY: i}
 
-        artifact_file_name = f"artifact-iter={i}.txt"
-        if in_trainer:
-            rank = train.get_context().get_world_rank()
-            artifact_file_name = f"artifact-rank={rank}-iter={i}.txt"
+        if in_trainer and train.get_context().get_world_rank() in config.get(
+            "no_checkpoint_ranks", []
+        ):
+            train.report(metrics)
+        else:
+            with tempfile.TemporaryDirectory() as temp_dir:
+                with open(os.path.join(temp_dir, "checkpoint.pkl"), "wb") as f:
+                    pickle.dump({"iter": i}, f)
 
-            checkpoint_file_name = f"checkpoint_shard-rank={rank}.pkl"
-            with open(os.path.join(temp_dir, checkpoint_file_name), "wb") as f:
-                pickle.dump({"iter": i}, f)
+                # artifact_file_name = f"artifact-iter={i}.txt"
+                if in_trainer:
+                    rank = train.get_context().get_world_rank()
+                    # artifact_file_name = f"artifact-rank={rank}-iter={i}.txt"
 
-        with open(artifact_file_name, "w") as f:
-            f.write(f"{i}")
+                    checkpoint_file_name = _create_checkpoint_shard_filename(str(rank))
+                    with open(os.path.join(temp_dir, checkpoint_file_name), "wb") as f:
+                        pickle.dump({"iter": i}, f)
 
-        train.report(
-            {"iter": i, _SCORE_KEY: i},
-            checkpoint=NewCheckpoint.from_directory(temp_dir),
-        )
+                # with open(artifact_file_name, "w") as f:
+                #     f.write(f"{i}")
+
+                train.report(metrics, checkpoint=NewCheckpoint.from_directory(temp_dir))
+                # `train.report` should not have deleted this!
+                assert os.path.exists(temp_dir)
+
         if i in config.get("fail_iters", []):
             raise RuntimeError(f"Failing on iter={i}!!")
 
@@ -274,6 +294,7 @@ def _assert_storage_contents(
     checkpoint_config: train.CheckpointConfig,
     trainable_name: str,
     test_trainer: bool,
+    no_checkpoint_ranks: List[int] = None,
 ):
     # Second, inspect the contents of the storage path
     storage_path_ls = list(local_inspect_dir.glob("*"))
@@ -322,10 +343,13 @@ def _assert_storage_contents(
             )
             if test_trainer:
                 # 1 checkpoint shard per worker.
-                assert (
-                    len(list(checkpoint_dir.glob("checkpoint_shard-*.pkl")))
-                    == NUM_WORKERS
-                )
+                # Unless the worker did not report a checkpoint (no_checkpoint_ranks).
+                assert {
+                    _get_checkpoint_shard_rank(checkpoint_shard.name)
+                    for checkpoint_shard in checkpoint_dir.glob(
+                        "checkpoint_shard-*.pkl"
+                    )
+                } == {i for i in range(NUM_WORKERS) if i not in no_checkpoint_ranks}
 
         # NOTE: These next 2 are technically synced by the driver.
         assert len(list(trial_dir.glob(EXPR_RESULT_FILE))) == 1
@@ -493,6 +517,8 @@ def test_trainer(
     monkeypatch.setenv("RAY_AIR_LOCAL_CACHE_DIR", str(LOCAL_CACHE_DIR))
     exp_name = "trainer_new_persistence"
 
+    no_checkpoint_ranks = [0]
+
     with _resolve_storage_type(storage_path_type, tmp_path) as (
         storage_path,
         storage_filesystem,
@@ -503,8 +529,12 @@ def test_trainer(
                 "in_trainer": True,
                 "num_iterations": NUM_ITERATIONS,
                 "fail_iters": [2, 4],
+                # TODO(justinvyu): This should be separated into its own test once
+                # CI has been fully migrated.
+                # Test that global rank 0 is not required to checkpoint.
+                "no_checkpoint_ranks": no_checkpoint_ranks,
             },
-            scaling_config=train.ScalingConfig(num_workers=2),
+            scaling_config=train.ScalingConfig(num_workers=NUM_WORKERS),
             run_config=train.RunConfig(
                 storage_path=storage_path,
                 storage_filesystem=storage_filesystem,
@@ -554,6 +584,7 @@ def test_trainer(
         checkpoint_config,
         trainable_name="DataParallelTrainer",
         test_trainer=True,
+        no_checkpoint_ranks=no_checkpoint_ranks,
     )
 
 
