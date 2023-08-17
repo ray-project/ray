@@ -7,7 +7,7 @@ import time
 from ray.serve.config import ReplicaConfig, DeploymentConfig
 from ray.serve.schema import ServeApplicationSchema
 from ray.serve._private.constants import SERVE_LOGGER_NAME
-from ray.serve._private.common import DeploymentInfo
+from ray.serve._private.common import DeploymentInfo, DeploymentID
 
 import ray
 import ray.util.serialization_addons
@@ -111,7 +111,7 @@ def deploy_args_to_deployment_info(
         ).hex()
 
     return DeploymentInfo(
-        actor_name=deployment_name,
+        actor_name=str(DeploymentID(deployment_name, app_name)),
         version=version,
         deployment_config=deployment_config,
         replica_config=replica_config,

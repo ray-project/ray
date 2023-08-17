@@ -17,6 +17,7 @@ class DeploymentNode(DAGNode):
         # For serve structured deployment, deployment body can be import path
         # to the class or function instead.
         deployment: Deployment,
+        app_name: str,
         deployment_init_args: Tuple[Any],
         deployment_init_kwargs: Dict[str, Any],
         ray_actor_options: Dict[str, Any],
@@ -30,7 +31,8 @@ class DeploymentNode(DAGNode):
             other_args_to_resolve=other_args_to_resolve,
         )
         self._deployment = deployment
-        self._deployment_handle = RayServeHandle(self._deployment.name)
+        self._app_name = app_name
+        self._deployment_handle = RayServeHandle(self._deployment.name, app_name)
 
     def _copy_impl(
         self,
@@ -41,6 +43,7 @@ class DeploymentNode(DAGNode):
     ):
         return DeploymentNode(
             self._deployment,
+            self._app_name,
             new_args,
             new_kwargs,
             new_options,
@@ -53,6 +56,7 @@ class DeploymentNode(DAGNode):
         call_node = DeploymentMethodNode(
             self._deployment,
             method_name,
+            self._app_name,
             (),
             {},
             {},

@@ -14,6 +14,7 @@ from ray.actor import ActorHandle
 from ray._private.resource_spec import HEAD_NODE_RESOURCE_NAME
 from ray._raylet import GcsClient
 from ray.serve._private.common import (
+    DeploymentID,
     DeploymentInfo,
     EndpointInfo,
     EndpointTag,
@@ -283,7 +284,7 @@ class ServeController:
 
         endpoints = self.get_all_endpoints()
         data = {
-            endpoint_tag: EndpointInfoProto(route=endppint_dict["route"])
+            str(endpoint_tag): EndpointInfoProto(route=endppint_dict["route"])
             for endpoint_tag, endppint_dict in endpoints.items()
         }
         return EndpointSet(endpoints=data).SerializeToString()
@@ -642,21 +643,15 @@ class ServeController:
         deployer_job_id: Union[str, bytes],
         docs_path: Optional[str] = None,
         is_driver_deployment: Optional[bool] = False,
-        app_name: str = None,
         # TODO(edoakes): this is a hack because the deployment_language doesn't seem
         # to get set properly from Java.
         is_deployed_from_python: bool = False,
     ) -> bool:
-        """Deploys a deployment."""
+        """Deploys a deployment. This should only be used for 1.x deployments."""
         if route_prefix is not None:
             assert route_prefix.startswith("/")
         if docs_path is not None:
             assert docs_path.startswith("/")
-
-        # app_name is None for V1 API, reset it to empty string to avoid
-        # breaking metrics.
-        if app_name is None:
-            app_name = ""
 
         deployment_info = deploy_args_to_deployment_info(
             deployment_name=name,
@@ -666,7 +661,7 @@ class ServeController:
             route_prefix=route_prefix,
             docs_path=docs_path,
             is_driver_deployment=is_driver_deployment,
-            app_name=app_name,
+            app_name="",
         )
 
         # TODO(architkulkarni): When a deployment is redeployed, even if
@@ -677,12 +672,11 @@ class ServeController:
         if route_prefix is not None:
             endpoint_info = EndpointInfo(
                 route=route_prefix,
-                app_name=app_name,
                 app_is_cross_language=not is_deployed_from_python,
             )
-            self.endpoint_state.update_endpoint(name, endpoint_info)
+            self.endpoint_state.update_endpoint(EndpointTag(name, ""), endpoint_info)
         else:
-            self.endpoint_state.delete_endpoint(name)
+            self.endpoint_state.delete_endpoint(EndpointTag(name, ""))
 
         return updating
 
@@ -793,14 +787,18 @@ class ServeController:
         self.delete_apps(existing_applications.difference(new_applications))
 
     def delete_deployment(self, name: str):
-        self.endpoint_state.delete_endpoint(name)
+        """Should only be used for 1.x deployments."""
+
+        self.endpoint_state.delete_endpoint(EndpointTag(name, ""))
         return self.deployment_state_manager.delete_deployment(name)
 
     def delete_deployments(self, names: Iterable[str]) -> None:
+        """Should only be used for 1.x deployments."""
+
         for name in names:
             self.delete_deployment(name)
 
-    def get_deployment_info(self, name: str) -> bytes:
+    def get_deployment_info(self, name: str, app_name: str = "") -> bytes:
         """Get the current information about a deployment.
 
         Args:
@@ -812,11 +810,14 @@ class ServeController:
         Raises:
             KeyError if the deployment doesn't exist.
         """
-        deployment_info = self.deployment_state_manager.get_deployment(name)
+        id = DeploymentID(name, app_name)
+        deployment_info = self.deployment_state_manager.get_deployment(str(id))
         if deployment_info is None:
-            raise KeyError(f"Deployment {name} does not exist.")
+            raise KeyError(
+                f"Deployment '{name}' does not exist in application '{app_name}'."
+            )
 
-        route = self.endpoint_state.get_endpoint_route(name)
+        route = self.endpoint_state.get_endpoint_route(id)
 
         from ray.serve.generated.serve_pb2 import DeploymentRoute
 
@@ -841,15 +842,10 @@ class ServeController:
             KeyError if the deployment doesn't exist.
         """
         return {
-            name: (
-                self.deployment_state_manager.get_deployment(
-                    name, include_deleted=include_deleted
-                ),
-                self.endpoint_state.get_endpoint_route(name),
-            )
-            for name in self.deployment_state_manager.get_deployment_configs(
+            str(id): (info, self.endpoint_state.get_endpoint_route(id))
+            for id, info in self.deployment_state_manager.get_deployment_infos(
                 include_deleted=include_deleted
-            )
+            ).items()
         }
 
     def list_deployments(self, include_deleted: Optional[bool] = False) -> bytes:

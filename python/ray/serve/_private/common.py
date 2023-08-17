@@ -1,7 +1,7 @@
 from enum import Enum
 from dataclasses import dataclass, field, asdict
 import json
-from typing import Any, List, Dict, Optional
+from typing import Any, List, Dict, Optional, NamedTuple
 
 import ray
 from ray.actor import ActorHandle
@@ -16,8 +16,21 @@ from ray.serve.generated.serve_pb2 import (
     StatusOverview as StatusOverviewProto,
 )
 from ray.serve._private.autoscaling_policy import BasicAutoscalingPolicy
+from ray.serve._private.constants import DEPLOYMENT_NAME_PREFIX_SEPARATOR
 
-EndpointTag = str
+
+class DeploymentID(NamedTuple):
+    name: str
+    app: str
+
+    def __str__(self):
+        if self.app:
+            return f"{self.app}{DEPLOYMENT_NAME_PREFIX_SEPARATOR}{self.name}"
+        else:
+            return self.name
+
+
+EndpointTag = DeploymentID
 ReplicaTag = str
 NodeId = str
 Duration = float
@@ -27,7 +40,6 @@ ApplicationName = str
 @dataclass
 class EndpointInfo:
     route: str
-    app_name: str
     app_is_cross_language: bool = False
 
 
