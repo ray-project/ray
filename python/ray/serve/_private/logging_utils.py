@@ -246,9 +246,22 @@ def configure_component_memory_profiler(
                 component_name=component_name,
                 component_id=component_id,
                 component_type=component_type,
-                suffix="_memray.bin",
+                suffix="_memray_0.bin",
             )
             memray_file_path = os.path.join(logs_dir, memray_file_name)
+
+            # If the actor restarted, memray requires a new file to start
+            # tracking memory.
+            restart_counter = 1
+            while os.path.exists(memray_file_path):
+                memray_file_name = get_component_log_file_name(
+                    component_name=component_name,
+                    component_id=component_id,
+                    component_type=component_type,
+                    suffix=f"_memray_{restart_counter}.bin",
+                )
+                memray_file_path = os.path.join(logs_dir, memray_file_name)
+                restart_counter += 1
 
             # Memray usually tracks the memory usage of only a block of code
             # within a context manager. We explicitly call __enter__ here
