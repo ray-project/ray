@@ -540,8 +540,10 @@ def load_experiment_checkpoint_from_state_file(
         runner_state = json.load(f, cls=TuneFunctionDecoder)
 
     trials = []
-    for _, trial_state_str in runner_state["trial_data"]:
-        trial_state = json.loads(trial_state_str, cls=TuneFunctionDecoder)
+    for trial_cp_str, trial_runtime_str in runner_state["trial_data"]:
+        trial_state = json.loads(trial_cp_str, cls=TuneFunctionDecoder)
+        runtime = json.loads(trial_runtime_str, cls=TuneFunctionDecoder)
+        trial_state.update(runtime)
         trial = TrialStub(**trial_state)
         trials.append(trial)
 
