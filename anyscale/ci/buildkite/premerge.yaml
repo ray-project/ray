@@ -52,6 +52,38 @@ steps:
           limit: 1
 
     - name: "{{matrix.py}} {{matrix.type}} base image"
+      if: build.env("RUNTIME_BUILD_ALL") != null
+      command:
+        - source anyscale/ci/setup-env.sh
+        - /bin/bash anyscale/ci/build-ray-base-image.sh {{matrix.py}} {{matrix.type}}
+      agents:
+        queue: "large"
+      artifact_paths:
+        - "/artifacts/**/*"
+      env:
+        BUILDKITE_ARTIFACT_DESTINATION: "s3://bk-premerge-first-jawfish-artifacts/runtime"
+      matrix:
+        setup:
+          py:
+            - py37
+            - py38
+            - py39
+            - py310
+            - py311
+          type:
+            - cpu
+            - gpu
+            - cu115
+            - cu116
+            - cu117
+            - cu118
+            - cu121
+      retry:
+        automatic:
+          limit: 1
+
+    - name: "{{matrix.py}} {{matrix.type}} base image"
+      if: build.env("RUNTIME_BUILD_ALL") == null
       command:
         - source anyscale/ci/setup-env.sh
         - /bin/bash anyscale/ci/build-ray-base-image.sh {{matrix.py}} {{matrix.type}}
@@ -71,11 +103,43 @@ steps:
             - gpu
       retry:
         automatic:
-          limit: 3
+          limit: 1
 
     - wait: ~
 
     - name: "{{matrix.py}} {{matrix.type}} image"
+      if: build.env("RUNTIME_BUILD_ALL") != null
+      command:
+        - source anyscale/ci/setup-env.sh
+        - /bin/bash anyscale/ci/build-ray-image.sh {{matrix.py}} {{matrix.type}}
+      agents:
+        queue: "large"
+      artifact_paths:
+        - "/artifacts/**/*"
+      env:
+        BUILDKITE_ARTIFACT_DESTINATION: "s3://bk-premerge-first-jawfish-artifacts/runtime"
+      matrix:
+        setup:
+          py:
+            - py37
+            - py38
+            - py39
+            - py310
+            - py311
+          type:
+            - cpu
+            - gpu
+            - cu115
+            - cu116
+            - cu117
+            - cu118
+            - cu121
+      retry:
+        automatic:
+          limit: 1
+
+    - name: "{{matrix.py}} {{matrix.type}} image"
+      if: build.env("RUNTIME_BUILD_ALL") == null
       command:
         - source anyscale/ci/setup-env.sh
         - /bin/bash anyscale/ci/build-ray-image.sh {{matrix.py}} {{matrix.type}}

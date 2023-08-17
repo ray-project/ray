@@ -21,11 +21,22 @@ else
     exit 1
 fi
 
+# Needs to sync with ci/build/build-docker-images.py
 if [[ "${IMAGE_TYPE}" == "cpu" ]]; then
     BASE_IMAGE="ubuntu:focal"
 elif [[ "${IMAGE_TYPE}" == "gpu" ]]; then
-    # Needs to sync with ci/build/build-docker-images.py
+    # TODO(can): de-duplicate with cu118
     BASE_IMAGE="nvidia/cuda:11.8.0-cudnn8-devel-ubuntu20.04"
+elif [[ "${IMAGE_TYPE}" == "cu115" ]]; then
+    BASE_IMAGE="nvidia/cuda:11.5.2-cudnn8-devel-ubuntu20.04"
+elif [[ "${IMAGE_TYPE}" == "cu116" ]]; then
+    BASE_IMAGE="nvidia/cuda:11.6.2-cudnn8-devel-ubuntu20.04"
+elif [[ "${IMAGE_TYPE}" == "cu117" ]]; then
+    BASE_IMAGE="nvidia/cuda:11.7.1-cudnn8-devel-ubuntu20.04"
+elif [[ "${IMAGE_TYPE}" == "cu118" ]]; then
+    BASE_IMAGE="nvidia/cuda:11.8.0-cudnn8-devel-ubuntu20.04"
+elif [[ "${IMAGE_TYPE}" == "cu121" ]]; then
+    BASE_IMAGE="nvidia/cuda:12.1.1-cudnn8-devel-ubuntu20.04"
 else
     echo "Unknown image type: ${IMAGE_TYPE}" >/dev/stderr
     exit 1

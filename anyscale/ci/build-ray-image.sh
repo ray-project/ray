@@ -56,12 +56,19 @@ cp docker/ray/Dockerfile "${CPU_TMP}/Dockerfile"
 cp python/requirements_compiled.txt "${CPU_TMP}/."
 cp python/requirements_compiled_py37.txt "${CPU_TMP}/."
 
+if [[ "${PYTHON_VERSION_CODE}" == "py37" ]]; then
+    CONSTRAINTS_FILE="requirements_compiled_py37.txt"
+else
+    CONSTRAINTS_FILE="requirements_compiled.txt"
+fi
+
 (
     cd "${CPU_TMP}"
     tar --mtime="UTC 2020-01-01" -c -f - . \
         | docker build --progress=plain \
             --build-arg BASE_IMAGE="-${PYTHON_VERSION_CODE}-${IMAGE_TYPE}" \
             --build-arg WHEEL_PATH=".whl/${WHEEL_FILE}" \
+            --build-arg CONSTRAINTS_FILE="${CONSTRAINTS_FILE}" \
             -t "${DEST_IMAGE}" -f Dockerfile -
 )
 
@@ -73,6 +80,25 @@ if [[ "${PUSH_COMMIT_TAGS}" == "true" ]]; then
     docker push "${DEST_COMMIT_IMAGE}"
 fi
 
+# This retagging is required because the Dockerfile hardcodes the base image.
+docker tag "${DEST_IMAGE}" "rayproject/ray:nightly-${PYTHON_VERSION_CODE}-${IMAGE_TYPE}"
+
+buildkite-agent annotate --style=info \
+    --context="${PYTHON_VERSION_CODE}-images" \
+    --append "Image: ${DEST_IMAGE}<br/>"
+
+if [[ "${PUSH_COMMIT_TAGS}" == "true" ]]; then
+    buildkite-agent annotate --style=info \
+        --context="${PYTHON_VERSION_CODE}-images" \
+        --append "Image (commit tagged): ${DEST_COMMIT_IMAGE}<br/>"
+fi
+
+if [[ "${PYTHON_VERSION_CODE}" == "py37" || "${PYTHON_VERSION_CODE}" == "py311" ]]; then
+    echo "Skipping ML image for ${PYTHON_VERSION_CODE}"
+    exit 0
+fi
+
+# Build and push the ML image.
 DEST_ML_IMAGE="${RUNTIME_ML_REPO}:${IMAGE_PREFIX}-${PYTHON_VERSION_CODE}-${IMAGE_TYPE}"
 echo "--- Build ${DEST_ML_IMAGE}"
 
@@ -84,8 +110,6 @@ cp python/requirements.txt "${ML_TMP}/."
 cp python/requirements_compiled.txt "${ML_TMP}/."
 cp python/requirements/docker/ray-docker-requirements.txt "${ML_TMP}/."
 cp python/requirements/ml/*-requirements.txt "${ML_TMP}/."
-# This retagging is required because the Dockerfile hardcodes the base image.
-docker tag "${DEST_IMAGE}" "rayproject/ray:nightly-${PYTHON_VERSION_CODE}-${IMAGE_TYPE}"
 
 (
     cd "${ML_TMP}"
@@ -105,15 +129,9 @@ fi
 
 buildkite-agent annotate --style=info \
     --context="${PYTHON_VERSION_CODE}-images" \
-    --append "Image: ${DEST_IMAGE}<br/>"
-buildkite-agent annotate --style=info \
-    --context="${PYTHON_VERSION_CODE}-images" \
     --append "ML image: ${DEST_ML_IMAGE}<br/>"
 
 if [[ "${PUSH_COMMIT_TAGS}" == "true" ]]; then
-    buildkite-agent annotate --style=info \
-        --context="${PYTHON_VERSION_CODE}-images" \
-        --append "Image (commit tagged): ${DEST_COMMIT_IMAGE}<br/>"
     buildkite-agent annotate --style=info \
         --context="${PYTHON_VERSION_CODE}-images" \
         --append "ML image (commit tagged): ${DEST_COMMIT_ML_IMAGE}<br/>"
