@@ -333,7 +333,7 @@ ppo_algo.evaluate()
   <div class="info-box-2">
         <div class="image-header" style="padding:0px;">
             <img src="_static/img/AIR.png" width="32px" height="32px" />
-            <h3 style="font-size:20px; font-weight:600;">Ray AI Runtime Libraries</h3>
+            <h3 style="font-size:20px; font-weight:600;">Ray Libraries</h3>
         </div>
         <p>Scale the entire ML pipeline from data ingest to model serving with high-level Python APIs that integrate with popular ecosystem frameworks.</p>      
         <a class="bold-link" style="letter-spacing:0.05em; text-transform:uppercase; font-weight:500;" href="./ray-overview/getting-started.html#ray-ai-runtime-libraries-quickstart" target="_blank">Learn more about Ray Libraries></a>
