@@ -844,7 +844,7 @@
 
   frequency: weekly
   team: ml
-
+  new_persistence: "True"
   cluster:
     byod:
       type: gpu
@@ -852,7 +852,7 @@
 
   run:
     timeout: 1800
-    script: pip install -Ur dreambooth/requirements.txt && bash dreambooth_run.sh
+    script: pip install -Ur dreambooth/requirements.txt && RAY_AIR_NEW_PERSISTENCE_MODE=1 bash dreambooth_run.sh
     artifact_path: /tmp/artifacts/example_out.jpg
 
   # variations: A10G not available on GCE, yet.
