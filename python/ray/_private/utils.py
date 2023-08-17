@@ -298,31 +298,71 @@ def get_cuda_visible_devices():
 last_set_gpu_ids = None
 
 
-def get_xpu_visible_devices():
-    """Get the devices IDs in the XPU_VISIBLE_DEVICES environment variable.
+def get_xpu_devices():
+    """ Get xpu device IDs by calling `dpctl` api
+        device with specific backend and device_type
     Returns:
-        devices (List[str]): If XPU_VISIBLE_DEVICES is set, return a
-            list of strings representing the IDs of the visible XPUs.
-            If it is not set, returns empty list.
+        devices IDs (List[str]): return the list of string representing
+        the relative IDs filtered by
+        ONEAPI_DEVICE_SELECTOR, specific backend and device_type
     """
-    xpu_ids_str = os.environ.get("XPU_VISIBLE_DEVICES", None)
-    if xpu_ids_str is None:
+    backend = ray_constants.RAY_ONEAPI_DEVICE_BACKEND_TYPE
+    device_type = ray_constants.RAY_ONEAPI_DEVICE_TYPE
+    xpu_ids = []
+    try:
+        import dpctl
+        for dev in dpctl.get_devices(backend=backend, device_type=device_type):
+            # device filter_string with format: "backend:device_type:relative_id"
+            xpu_ids.append(int(dev.filter_string.split(':')[-1]))
+    except ImportError:
+        ValueError("Import dpctl error, maybe dpctl not installed.")
+    return xpu_ids
+
+
+def get_xpu_visible_devices():
+    """ Get xpu devices IDs filtered by ONEAPI_DEVICE_SELECTOR environment variable.
+    Returns:
+        devices (List[str]): return the list of string representing the relative IDS
+        filtered by ONEAPI_DEVICE_SELECTOR.
+    """
+    if os.environ.get("ONEAPI_DEVICE_SELECTOR", None) is None:
         return None
 
-    if xpu_ids_str == "":
-        return []
+    xpu_ids = get_xpu_devices()
 
-    return list(xpu_ids_str.split(","))
+    return xpu_ids
+
+
+def get_xpu_all_devices():
+    """ Get all xpu device IDS without ONEAPI_DEVICE_SELECTOR filter,
+        But all xpu device still filtered by specific backend and device_type
+    Returns:
+        devices (List[str]): list of strings representing the numeric index (zero-based),
+        with sepcific backend and device_type
+    """
+    selector = os.environ.get("ONEAPI_DEVICE_SELECTOR", None)
+    # unset "ONEAPI_DEVICE_SELECTOR"
+    os.unsetenv("ONEAPI_DEVICE_SELECTOR")
+
+    xpu_ids = get_xpu_devices()
+
+    # set "ONEAPI_DEVICE_SELECTOR" value back
+    if selector is not None:
+        os.environ["ONEAPI_DEVICE_SELECTOR"] = selector
+
+    return xpu_ids
 
 
 def get_current_accelerator():
-    return os.environ.get("RAY_ACCELERATOR", ray_constants.RAY_ACCELERATOR_DEFAULT)
+    return os.environ.get("RAY_EXPERIMENTAL_ACCELERATOR_TYPE", ray_constants.RAY_ACCELERATOR_DEFAULT)
 
 
 def get_gpu_visible_devices():
+    accelerator = get_current_accelerator()
     if get_current_accelerator() == "XPU":
         return get_xpu_visible_devices()
-    return get_cuda_visible_devices()
+    elif accelerator == "CUDA":
+        return get_cuda_visible_devices()
 
 
 def set_omp_num_threads_if_unset() -> bool:
@@ -389,12 +429,12 @@ def set_xpu_visible_devices(dev_ids):
         dev_ids (List[str]): List of strings representing GPU IDs
     """
 
-    if os.environ.get(ray_constants.NOSET_XPU_VISIBLE_DEVICES_ENV_VAR):
+    if os.environ.get(ray_constants.NOSET_ONEAPI_DEVICE_SELECTOR_ENV_VAR):
         return
 
-    ids_str = ",".join([str(i) for i in dev_ids])
-    os.environ["XPU_VISIBLE_DEVICES"] = ids_str
-    os.environ["ONEAPI_DEVICE_SELECTOR"] = ray_constants.RAY_DEVICE_XPU_BACKEND_TYPE + ":" + ids_str
+    backend = ray_constants.RAY_ONEAPI_DEVICE_BACKEND_TYPE
+    dev_str = ",".join([str(i) for i in dev_ids])
+    os.environ["ONEAPI_DEVICE_SELECTOR"] = backend + ":" + dev_str
 
 
 def set_gpu_visible_devices(device_ids):

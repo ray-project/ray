@@ -9,12 +9,102 @@ import pytest
 
 import ray
 import ray.cluster_utils
+from ray._private.ray_constants import RAY_ONEAPI_DEVICE_BACKEND_TYPE as XPU_BACKEND
 from ray._private.test_utils import RayTestTimeoutException, wait_for_condition
 
 logger = logging.getLogger(__name__)
 
 
-def test_gpu_ids(shutdown_only):
+def test_xpu_ids(shutdown_only):
+    os.environ["RAY_EXPERIMENTAL_ACCELERATOR_TYPE"] = "XPU"
+
+    num_gpus = 3
+    ray.init(num_cpus=num_gpus, num_gpus=num_gpus)
+    """
+    def get_gpu_ids(num_gpus_per_worker):
+        gpu_ids = ray.get_gpu_ids()
+        assert len(gpu_ids) == num_gpus_per_worker
+        assert os.environ["ONEAPI_DEVICE_SELECTOR"] == XPU_BACKEND + ":" + ",".join(
+            [str(i) for i in gpu_ids]  # noqa
+        )
+        for gpu_id in gpu_ids:
+            assert gpu_id in range(num_gpus)
+        return gpu_ids
+
+    f0 = ray.remote(num_gpus=0)(lambda: get_gpu_ids(0))
+    f1 = ray.remote(num_gpus=1)(lambda: get_gpu_ids(1))
+    f2 = ray.remote(num_gpus=2)(lambda: get_gpu_ids(2))
+    f3 = ray.remote(num_gpus=3)(lambda: get_gpu_ids(3))
+
+    # Wait for all workers to start up.
+    @ray.remote
+    def f():
+        time.sleep(0.2)
+        return os.getpid()
+
+    start_time = time.time()
+    while True:
+        num_workers_started = len(set(ray.get([f.remote() for _ in range(num_gpus)])))
+        if num_workers_started == num_gpus:
+            break
+        if time.time() > start_time + 10:
+            raise RayTestTimeoutException(
+                "Timed out while waiting for workers to start up."
+            )
+
+    list_of_ids = ray.get([f0.remote() for _ in range(10)])
+    assert list_of_ids == 10 * [[]]
+    ray.get([f1.remote() for _ in range(10)])
+    ray.get([f2.remote() for _ in range(10)])
+    """
+    # Test that actors have ONEAPI_DEVICE_SELECTOR set properly.
+
+    @ray.remote
+    class Actor0:
+        def __init__(self):
+            gpu_ids = ray.get_gpu_ids()
+            assert len(gpu_ids) == 0
+            assert os.environ["ONEAPI_DEVICE_SELECTOR"] == XPU_BACKEND + ":" + ",".join(
+                [str(i) for i in gpu_ids]  # noqa
+            )
+            # Set self.x to make sure that we got here.
+            self.x = 1
+
+        def test(self):
+            gpu_ids = ray.get_gpu_ids()
+            assert len(gpu_ids) == 0
+            assert os.environ["ONEAPI_DEVICE_SELECTOR"] == XPU_BACKEND + ":" + ",".join(
+                [str(i) for i in gpu_ids]
+            )
+            return self.x
+
+    @ray.remote(num_gpus=1)
+    class Actor1:
+        def __init__(self):
+            gpu_ids = ray.get_gpu_ids()
+            assert len(gpu_ids) == 1
+            assert os.environ["ONEAPI_DEVICE_SELECTOR"] == XPU_BACKEND + ":" + ",".join(
+                [str(i) for i in gpu_ids]
+            )
+            # Set self.x to make sure that we got here.
+            self.x = 1
+
+        def test(self):
+            gpu_ids = ray.get_gpu_ids()
+            assert len(gpu_ids) == 1
+            assert os.environ["ONEAPI_DEVICE_SELECTOR"] == XPU_BACKEND + ":" + ",".join(
+                [str(i) for i in gpu_ids]
+            )
+            return self.x
+
+    a0 = Actor0.remote()
+    ray.get(a0.test.remote())
+
+    a1 = Actor1.remote()
+    ray.get(a1.test.remote())
+
+
+def test_cuda_ids(shutdown_only):
     num_gpus = 3
     ray.init(num_cpus=num_gpus, num_gpus=num_gpus)
 
@@ -139,7 +229,7 @@ def test_zero_cpus_actor(ray_start_cluster):
 
 @pytest.mark.parametrize("ACCELERATOR_TYPE", ["CUDA", "XPU"])
 def test_fractional_resources(shutdown_only, ACCELERATOR_TYPE):
-    os.environ["RAY_ACCELERATOR"] = ACCELERATOR_TYPE
+    os.environ["RAY_EXPERIMENTAL_ACCELERATOR_TYPE"] = ACCELERATOR_TYPE
     ray.init(num_cpus=6, num_gpus=3, resources={"Custom": 1})
 
     @ray.remote(num_gpus=0.5)

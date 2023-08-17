@@ -11,11 +11,16 @@ import pytest
 
 import ray
 import ray.cluster_utils
+
 from ray._private.test_utils import (
     run_string_as_driver_nonblocking,
     wait_for_condition,
     wait_for_pid_to_exit,
 )
+
+from ray._private.ray_constants import RAY_ONEAPI_DEVICE_BACKEND_TYPE as XPU_BACKEND
+
+from unittest.mock import Mock, MagicMock
 
 logger = logging.getLogger(__name__)
 
@@ -41,24 +46,25 @@ def save_gpu_ids_shutdown_only():
 def save_xpu_ids_shutdown_only():
     # Record the curent value of this environment variable so that we can
     # reset it after the test.
-    original_xpu_ids = os.environ.get("XPU_VISIBLE_DEVICES", None)
+    selector = os.environ.get("ONEAPI_DEVICE_SELECTOR", None)
 
     yield None
 
     # The code after the yield will run as teardown code.
     ray.shutdown()
     # Reset the environment variable.
-    if original_xpu_ids is not None:
-        os.environ["XPU_VISIBLE_DEVICES"] = original_xpu_ids
+    if selector is not None:
+        os.environ["ONEAPI_DEVICE_SELECTOR"] = selector
     else:
-        del os.environ["XPU_VISIBLE_DEVICES"]
+        del os.environ["ONEAPI_DEVICE_SELECTOR"]
 
 
 @pytest.mark.skipif(platform.system() == "Windows", reason="Hangs on Windows")
-def test_specific_gpus(save_gpu_ids_shutdown_only):
-    os.environ["RAY_ACCELERATOR"] = "CUDA"
+def test_specific_cudas(save_gpu_ids_shutdown_only):
+    os.environ["RAY_EXPERIMENTAL_ACCELERATOR_TYPE"] = "CUDA"
     allowed_gpu_ids = [4, 5, 6]
     os.environ["CUDA_VISIBLE_DEVICES"] = ",".join([str(i) for i in allowed_gpu_ids])
+
     ray.init(num_gpus=3)
 
     @ray.remote(num_gpus=1)
@@ -78,31 +84,7 @@ def test_specific_gpus(save_gpu_ids_shutdown_only):
     ray.get([g.remote() for _ in range(100)])
 
 
-@pytest.mark.skipif(platform.system() == "Windows", reason="Hangs on Windows")
-def test_specific_xpus(save_xpu_ids_shutdown_only):
-    os.environ["RAY_ACCELERATOR"] = "XPU"
-    allowed_xpu_ids = [1, 3, 5]
-    os.environ["XPU_VISIBLE_DEVICES"] = ",".join([str(i) for i in allowed_xpu_ids])
-    ray.init(num_gpus=3)
-
-    @ray.remote(num_gpus=1)
-    def f():
-        xpu_ids = ray.get_gpu_ids()
-        assert len(xpu_ids) == 1
-        assert int(xpu_ids[0]) in allowed_xpu_ids
-
-    @ray.remote(num_gpus=2)
-    def g():
-        xpu_ids = ray.get_gpu_ids()
-        assert len(xpu_ids) == 2
-        assert int(xpu_ids[0]) in allowed_xpu_ids
-        assert int(xpu_ids[1]) in allowed_xpu_ids
-
-    ray.get([f.remote() for _ in range(100)])
-    ray.get([g.remote() for _ in range(100)])
-
-
-def test_local_mode_gpus(save_gpu_ids_shutdown_only):
+def test_local_mode_cudas(save_gpu_ids_shutdown_only):
     allowed_gpu_ids = [4, 5, 6, 7, 8]
     os.environ["CUDA_VISIBLE_DEVICES"] = ",".join([str(i) for i in allowed_gpu_ids])
 
@@ -118,6 +100,27 @@ def test_local_mode_gpus(save_gpu_ids_shutdown_only):
         assert len(gpu_ids) == 3
         for gpu in gpu_ids:
             assert int(gpu) in allowed_gpu_ids
+
+    ray.get([f.remote() for _ in range(100)])
+
+
+def test_local_mode_xpus(save_xpu_ids_shutdown_only):
+    os.environ["RAY_EXPERIMENTAL_ACCELERATOR_TYPE"] = "XPU"
+    allowed_xpu_ids = [0, 1, 2, 3, 4, 5]
+    os.environ["ONEAPI_DEVICE_SELECTOR"] = XPU_BACKEND + ":" + ",".join([str(i) for i in allowed_xpu_ids])
+
+    ray._private.utils.get_xpu_devices = Mock(return_value=allowed_xpu_ids)
+    from importlib import reload
+    reload(ray._private.worker)
+
+    ray.init(num_gpus=3, local_mode=True)
+
+    @ray.remote
+    def f():
+        gpu_ids = ray.get_gpu_ids()
+        assert len(gpu_ids) == 3
+        for gpu in gpu_ids:
+            assert int(gpu) in allowed_xpu_ids
 
     ray.get([f.remote() for _ in range(100)])
 
