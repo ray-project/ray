@@ -33,8 +33,8 @@ logger = logging.getLogger(SERVE_LOGGER_NAME)
 # We randomly select a timeout within this range to avoid a "thundering herd"
 # when there are many clients subscribing at the same time.
 LISTEN_FOR_CHANGE_REQUEST_TIMEOUT_S = (
-    int(os.environ.get("LISTEN_FOR_CHANGE_REQUEST_TIMEOUT_S_LOWER_BOUND", "30")),
-    int(os.environ.get("LISTEN_FOR_CHANGE_REQUEST_TIMEOUT_S_UPPER_BOUND", "60")),
+    float(os.environ.get("LISTEN_FOR_CHANGE_REQUEST_TIMEOUT_S_LOWER_BOUND", "30")),
+    float(os.environ.get("LISTEN_FOR_CHANGE_REQUEST_TIMEOUT_S_UPPER_BOUND", "60")),
 )
 
 
@@ -94,15 +94,8 @@ class LongPollClient:
         self.snapshot_ids: Dict[KeyType, int] = {
             key: -1 for key in self.key_listeners.keys()
         }
-        self._reset()
-
         self.is_running = True
 
-    def _reset(self):
-        self.object_snapshots: Dict[KeyType, Any] = dict()
-
-        self._current_ref = None
-        self._callbacks_processed_count = 0
         self._poll_next()
 
     def _on_callback_completed(self, trigger_at: int):
@@ -114,15 +107,14 @@ class LongPollClient:
         way to serialize the callback invocations between object versions.
         """
         self._callbacks_processed_count += 1
-
         if self._callbacks_processed_count == trigger_at:
-            self._callbacks_processed_count = 0
             self._poll_next()
 
     def _poll_next(self):
         """Poll the update. The callback is expected to scheduler another
         _poll_next call.
         """
+        self._callbacks_processed_count = 0
         self._current_ref = self.host_actor.listen_for_change.remote(self.snapshot_ids)
         self._current_ref._on_completed(lambda update: self._process_update(update))
 
@@ -161,7 +153,7 @@ class LongPollClient:
 
         if updates == LongPollState.TIME_OUT:
             logger.debug("LongPollClient polling timed out. Retrying.")
-            self._schedule_to_event_loop(self._reset)
+            self._schedule_to_event_loop(self._poll_next)
             return
 
         logger.debug(
@@ -170,7 +162,6 @@ class LongPollClient:
             extra={"log_to_stderr": False},
         )
         for key, update in updates.items():
-            self.object_snapshots[key] = update.object_snapshot
             self.snapshot_ids[key] = update.snapshot_id
             callback = self.key_listeners[key]
 

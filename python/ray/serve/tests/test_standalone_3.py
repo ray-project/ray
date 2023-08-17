@@ -97,10 +97,14 @@ def test_long_poll_timeout_with_max_concurrent_queries(ray_instance):
 
     # Issue a blocking request which should occupy the only slot due to
     # `max_concurrent_queries=1`.
-    handle = serve.run(f.bind())
-    first_ref = handle.remote()
+    serve.run(f.bind())
+
+    @ray.remote
+    def do_req():
+        return requests.get("http://localhost:8000").text
 
     # The request should be hanging waiting on the `SignalActor`.
+    first_ref = do_req.remote()
     with pytest.raises(TimeoutError):
         ray.get(first_ref, timeout=1)
     assert ray.get(counter_actor.get.remote()) == 1
@@ -108,7 +112,7 @@ def test_long_poll_timeout_with_max_concurrent_queries(ray_instance):
     # Now issue 10 more requests and wait for significantly longer than the long poll
     # timeout. They should all be queued in the handle due to `max_concurrent_queries`
     # enforcement (verified via the counter).
-    new_refs = [handle.remote() for _ in range(10)]
+    new_refs = [do_req.remote() for _ in range(10)]
     ready, _ = ray.wait(new_refs, timeout=1)
     assert len(ready) == 0
     assert ray.get(counter_actor.get.remote()) == 1
