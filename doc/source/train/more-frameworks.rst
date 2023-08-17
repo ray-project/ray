@@ -8,7 +8,7 @@ More Frameworks
     :class-container: container pb-3
 
     .. grid-item-card::
-        :img-top: /images/hugging.png
+        :img-top: /images/accelerate_logo.png
         :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
 
         .. button-ref:: train-hf-accelerate
