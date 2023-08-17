@@ -6,7 +6,7 @@ import os
 import tempfile
 import warnings
 
-from ray import train
+from ray import train, tune
 
 from ray.air.checkpoint import Checkpoint as LegacyCheckpoint
 from ray.train._checkpoint import Checkpoint
@@ -123,6 +123,22 @@ class TuneReportCheckpointCallback(TuneCallback):
             report_dict = self._results_postprocessing_fn(report_dict)
 
         return report_dict
+
+    @staticmethod
+    def _create_checkpoint(model: Booster, epoch: int, filename: str, frequency: int):
+        # Deprecate: Raise error in Ray 2.8
+        if log_once("xgboost_ray_legacy"):
+            warnings.warn(
+                "You are using an outdated version of XGBoost-Ray that won't be "
+                "compatible with future releases of Ray. Please update XGBoost-Ray "
+                "with `pip install -U xgboost_ray`."
+            )
+
+        if epoch % frequency > 0 or (not epoch and frequency > 1):
+            # Skip 0th checkpoint if frequency > 1
+            return
+        with tune.checkpoint_dir(step=epoch) as checkpoint_dir:
+            model.save_model(os.path.join(checkpoint_dir, filename))
 
     @contextmanager
     def _get_checkpoint(

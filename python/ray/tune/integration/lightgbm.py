@@ -5,7 +5,7 @@ import os
 import tempfile
 import warnings
 
-from ray import train
+from ray import train, tune
 
 from ray.air.checkpoint import Checkpoint as LegacyCheckpoint
 from ray.train._checkpoint import Checkpoint
@@ -122,6 +122,22 @@ class TuneReportCheckpointCallback(TuneCallback):
             if stdv is not None:
                 eval_result[data_name][eval_name + "-stdv"] = stdv
         return eval_result
+
+    @staticmethod
+    def _create_checkpoint(model: Booster, epoch: int, filename: str, frequency: int):
+        # Deprecate: Raise error in Ray 2.8
+        if log_once("lightgbm_ray_legacy"):
+            warnings.warn(
+                "You are using an outdated version of LightGBM-Ray that won't be "
+                "compatible with future releases of Ray. Please update LightGBM-Ray "
+                "with `pip install -U lightgbm_ray`."
+            )
+
+        if epoch % frequency > 0 or (not epoch and frequency > 1):
+            # Skip 0th checkpoint if frequency > 1
+            return
+        with tune.checkpoint_dir(step=epoch) as checkpoint_dir:
+            model.save_model(os.path.join(checkpoint_dir, filename))
 
     @contextmanager
     def _get_checkpoint(
