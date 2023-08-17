@@ -4,13 +4,16 @@ from enum import Enum
 from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple, TypeVar, Union
 
 from ray.data._internal.block_batching.block_batching import batch_blocks
+from ray.data._internal.execution.interfaces.task_context import TaskContext
 from ray.data._internal.output_buffer import BlockOutputBuffer
 from ray.data.block import Block, BlockAccessor, DataBatch
 from ray.data.context import DataContext
 
 RowType = Dict[str, Any]
 TransformDataType = Union[Block, RowType, DataBatch]
-TransformCallable = Callable[[Iterable[TransformDataType]], Iterable[TransformDataType]]
+TransformCallable = Callable[
+    [Iterable[TransformDataType], TaskContext], Iterable[TransformDataType]
+]
 
 
 class MapTransformDataType(Enum):
@@ -31,9 +34,9 @@ class MapTransformFn:
         self._output_type = output_type
 
     def __call__(
-        self, input: Iterable[TransformDataType]
+        self, input: Iterable[TransformDataType], ctx: TaskContext
     ) -> Iterable[TransformDataType]:
-        return self._fn(input)
+        return self._fn(input, ctx)
 
     @property
     def input_type(self) -> MapTransformDataType:
@@ -56,12 +59,12 @@ class MapDataProcessor:
     def init(self) -> None:
         self._init_fn()
 
-    def process(self, input_blocks: Iterable[Block]) -> Iterable[Block]:
+    def process(self, input_blocks: Iterable[Block], ctx: TaskContext) -> Iterable[Block]:
         iter = input_blocks
         cur_type = MapTransformDataType.Block
         for transform_fn in self._transform_fns:
             assert transform_fn.input_type == cur_type
-            iter = transform_fn(iter)
+            iter = transform_fn(iter, ctx)
             cur_type = transform_fn.output_type
         assert cur_type == MapTransformDataType.Block
         return iter
@@ -80,7 +83,7 @@ class MapDataProcessor:
 # Util functions that convert input blocks to UDF data.
 
 
-def _input_blocks_to_rows(blocks: Iterable[Block]) -> Iterable[RowType]:
+def _input_blocks_to_rows(blocks: Iterable[Block], _: TaskContext) -> Iterable[RowType]:
     for block in blocks:
         block = BlockAccessor.for_block(block)
         for row in block.iter_rows(public_row_format=True):
@@ -88,7 +91,7 @@ def _input_blocks_to_rows(blocks: Iterable[Block]) -> Iterable[RowType]:
 
 
 def _input_blocks_to_batches(
-    blocks: Iterable[Block], batch_size, batch_format, zero_copy_batch
+    blocks: Iterable[Block], _: TaskContext, batch_size, batch_format, zero_copy_batch
 ) -> Iterable[DataBatch]:
     block_iter = iter(blocks)
     first = next(block_iter, None)
@@ -121,7 +124,7 @@ def _input_blocks_to_batches(
 # Util functions that convert UDF data to output blocks.
 
 
-def _to_output_blocks(iter, iter_type: MapTransformDataType) -> Iterable[Block]:
+def _to_output_blocks(iter, _: TaskContext, iter_type: MapTransformDataType) -> Iterable[Block]:
     output_buffer = BlockOutputBuffer(
         None, DataContext.get_current().target_max_block_size
     )
@@ -193,10 +196,24 @@ def create_map_data_processor_for_map_batches_op(
     return MapDataProcessor(transform_fns, init_fn)
 
 
-def create_map_data_processor_for_read_op(op_transform_fn) -> MapDataProcessor:
+def create_map_data_processor_for_read_op(read_fn) -> MapDataProcessor:
     transform_fns = [
         MapTransformFn(
-            op_transform_fn, MapTransformDataType.Block, MapTransformDataType.Block
+            read_fn, MapTransformDataType.Block, MapTransformDataType.Block
+        ),
+        MapTransformFn(
+            _blocks_to_output_blocks,
+            MapTransformDataType.Block,
+            MapTransformDataType.Block,
+        ),
+    ]
+    return MapDataProcessor(transform_fns)
+
+
+def create_map_data_processor_for_write_op(write_fn) -> MapDataProcessor:
+    transform_fns = [
+        MapTransformFn(
+            write_fn, MapTransformDataType.Block, MapTransformDataType.Block
         ),
         MapTransformFn(
             _blocks_to_output_blocks,

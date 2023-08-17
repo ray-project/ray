@@ -100,7 +100,7 @@ def _validate_batch(batch: Block) -> None:
 def _create_map_data_processor_for_map_batches_op(op: MapBatches):
     fn, fn_args, fn_kwargs, init_fn = _handle_op_compute_and_fn(op)
 
-    def op_transform_fn(batches):
+    def op_transform_fn(batches, _):
         for batch in batches:
             try:
                 res = fn(batch, *fn_args, **fn_kwargs)
@@ -153,7 +153,7 @@ def _create_map_data_processor_for_row_based_op(op: AbstractUDFMap):
 
     if isinstance(op, MapRows):
 
-        def op_transform_fn(rows):
+        def op_transform_fn(rows, _):
             for row in rows:
                 item = fn(row, *fn_args, **fn_kwargs)
                 validate_row_output(item)
@@ -161,7 +161,7 @@ def _create_map_data_processor_for_row_based_op(op: AbstractUDFMap):
 
     elif isinstance(op, FlatMap):
 
-        def op_transform_fn(rows):
+        def op_transform_fn(rows, _):
             for row in rows:
                 for out_row in fn(row, *fn_args, **fn_kwargs):
                     validate_row_output(out_row)
@@ -169,7 +169,7 @@ def _create_map_data_processor_for_row_based_op(op: AbstractUDFMap):
 
     elif isinstance(op, Filter):
 
-        def op_transform_fn(rows):
+        def op_transform_fn(rows, _):
             for row in rows:
                 if fn(row, *fn_args, **fn_kwargs):
                     yield row
