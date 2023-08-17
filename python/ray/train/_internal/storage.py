@@ -544,7 +544,7 @@ class StorageContext:
         # TODO(justinvyu): Fix this cyclical import.
         from ray.train._checkpoint import Checkpoint
 
-        logger.debug(
+        logger.info(
             "Copying checkpoint files to storage path:\n"
             "({source_fs}, {source}) -> ({dest_fs}, {destination})".format(
                 source=checkpoint.path,
@@ -572,7 +572,7 @@ class StorageContext:
             filesystem=self.storage_filesystem,
             path=self.checkpoint_fs_path,
         )
-        logger.debug(f"Checkpoint successfully created at: {persisted_checkpoint}")
+        logger.info(f"Checkpoint successfully created at: {persisted_checkpoint}")
         return persisted_checkpoint
 
     @property
