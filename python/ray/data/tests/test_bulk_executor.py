@@ -12,19 +12,17 @@ from ray.data._internal.execution.operators.base_physical_operator import (
     AllToAllOperator,
 )
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
+from ray.data._internal.execution.operators.map_data_processor import (
+    create_map_data_processor_from_block_fn,
+)
 from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.util import make_ref_bundles
 from ray.data.context import DataContext
-from ray.data._internal.execution.operators.map_data_processor import create_map_data_processor_from_block_fn
 from ray.data.tests.conftest import *  # noqa
-from ray.data.tests.util import (
-    column_udf,
-    extract_values,
-)
+from ray.data.tests.util import column_udf, extract_values
 
 
 def make_map_data_processor(block_fn):
-
     def map_fn(block_iter, _):
         for block in block_iter:
             yield pd.DataFrame(block_fn(block))

@@ -7,11 +7,10 @@ from ray.data._internal.execution.interfaces import (
     RefBundle,
     TaskContext,
 )
+from ray.data._internal.execution.operators.map_data_processor import MapDataProcessor
 from ray.data._internal.execution.operators.map_operator import MapOperator, _map_task
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data.block import Block
-
-from ray.data._internal.execution.operators.map_data_processor import MapDataProcessor
 
 
 class TaskPoolMapOperator(MapOperator):

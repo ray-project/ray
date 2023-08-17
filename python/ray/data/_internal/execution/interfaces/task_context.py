@@ -4,7 +4,9 @@ from typing import TYPE_CHECKING, Any, Dict, Optional
 from ray.data._internal.progress_bar import ProgressBar
 
 if TYPE_CHECKING:
-    from ray.data._internal.execution.operators.map_data_processor import MapDataProcessor
+    from ray.data._internal.execution.operators.map_data_processor import (
+        MapDataProcessor,
+    )
 
 
 @dataclass

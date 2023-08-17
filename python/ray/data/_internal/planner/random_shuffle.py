@@ -5,6 +5,7 @@ from ray.data._internal.execution.interfaces import (
     RefBundle,
     TaskContext,
 )
+from ray.data._internal.execution.operators.map_data_processor import MapDataProcessor
 from ray.data._internal.planner.exchange.pull_based_shuffle_task_scheduler import (
     PullBasedShuffleTaskScheduler,
 )
@@ -14,8 +15,6 @@ from ray.data._internal.planner.exchange.push_based_shuffle_task_scheduler impor
 from ray.data._internal.planner.exchange.shuffle_task_spec import ShuffleTaskSpec
 from ray.data._internal.stats import StatsDict
 from ray.data.context import DataContext
-
-from ray.data._internal.execution.operators.map_data_processor import MapDataProcessor
 
 
 def generate_random_shuffle_fn(
@@ -38,7 +37,9 @@ def generate_random_shuffle_fn(
         upstream_map_fn = None
         nonlocal ray_remote_args
         if map_data_processor:
-            upstream_map_fn = lambda block: map_data_processor.process(block, ctx)  # noqa: E731
+            upstream_map_fn = lambda block: map_data_processor.process(
+                block, ctx
+            )  # noqa: E731
             # If there is a fused upstream operator,
             # also use the ray_remote_args from the fused upstream operator.
             ray_remote_args = ctx.upstream_map_ray_remote_args

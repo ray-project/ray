@@ -2,10 +2,7 @@ from typing import Iterable, Iterator, List
 
 import ray
 import ray.cloudpickle as cloudpickle
-from ray.data._internal.execution.interfaces import (
-    PhysicalOperator,
-    RefBundle,
-)
+from ray.data._internal.execution.interfaces import PhysicalOperator, RefBundle
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.operators.map_data_processor import (
     create_map_data_processor_for_read_op,

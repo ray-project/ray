@@ -28,13 +28,12 @@ from ray.data._internal.execution.interfaces.physical_operator import (
 from ray.data._internal.execution.operators.base_physical_operator import (
     OneToOneOperator,
 )
+from ray.data._internal.execution.operators.map_data_processor import MapDataProcessor
 from ray.data._internal.memory_tracing import trace_allocation
 from ray.data._internal.stats import StatsDict
 from ray.data.block import Block, BlockAccessor, BlockExecStats, BlockMetadata
 from ray.data.context import DataContext
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
-
-from ray.data._internal.execution.operators.map_data_processor import MapDataProcessor
 
 
 class MapOperator(OneToOneOperator, ABC):

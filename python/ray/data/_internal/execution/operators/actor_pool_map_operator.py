@@ -13,13 +13,12 @@ from ray.data._internal.execution.interfaces import (
     RefBundle,
     TaskContext,
 )
+from ray.data._internal.execution.operators.map_data_processor import MapDataProcessor
 from ray.data._internal.execution.operators.map_operator import MapOperator, _map_task
 from ray.data._internal.execution.util import locality_string
 from ray.data.block import Block, BlockMetadata, _CallableClassProtocol
 from ray.data.context import DataContext
 from ray.types import ObjectRef
-
-from ray.data._internal.execution.operators.map_data_processor import MapDataProcessor
 
 logger = DatasetLogger(__name__)
 
@@ -128,7 +127,9 @@ class ActorPoolMapOperator(MapOperator):
         """Start a new actor and add it to the actor pool as a pending actor."""
         assert self._cls is not None
         ctx = DataContext.get_current()
-        actor = self._cls.remote(ctx, src_fn_name=self.name, map_data_processor=self._map_data_processor)
+        actor = self._cls.remote(
+            ctx, src_fn_name=self.name, map_data_processor=self._map_data_processor
+        )
         res_ref = actor.get_location.remote()
 
         def _task_done_callback(res_ref):

@@ -59,7 +59,9 @@ class MapDataProcessor:
     def init(self) -> None:
         self._init_fn()
 
-    def process(self, input_blocks: Iterable[Block], ctx: TaskContext) -> Iterable[Block]:
+    def process(
+        self, input_blocks: Iterable[Block], ctx: TaskContext
+    ) -> Iterable[Block]:
         iter = input_blocks
         cur_type = MapTransformDataType.Block
         for transform_fn in self._transform_fns:
@@ -124,7 +126,9 @@ def _input_blocks_to_batches(
 # Util functions that convert UDF data to output blocks.
 
 
-def _to_output_blocks(iter, _: TaskContext, iter_type: MapTransformDataType) -> Iterable[Block]:
+def _to_output_blocks(
+    iter, _: TaskContext, iter_type: MapTransformDataType
+) -> Iterable[Block]:
     output_buffer = BlockOutputBuffer(
         None, DataContext.get_current().target_max_block_size
     )
@@ -198,9 +202,7 @@ def create_map_data_processor_for_map_batches_op(
 
 def create_map_data_processor_for_read_op(read_fn) -> MapDataProcessor:
     transform_fns = [
-        MapTransformFn(
-            read_fn, MapTransformDataType.Block, MapTransformDataType.Block
-        ),
+        MapTransformFn(read_fn, MapTransformDataType.Block, MapTransformDataType.Block),
         MapTransformFn(
             _blocks_to_output_blocks,
             MapTransformDataType.Block,

@@ -5,6 +5,7 @@ from ray.data._internal.execution.interfaces import (
     RefBundle,
     TaskContext,
 )
+from ray.data._internal.execution.operators.map_data_processor import MapDataProcessor
 from ray.data._internal.planner.exchange.pull_based_shuffle_task_scheduler import (
     PullBasedShuffleTaskScheduler,
 )
@@ -17,8 +18,6 @@ from ray.data._internal.planner.exchange.split_repartition_task_scheduler import
 )
 from ray.data._internal.stats import StatsDict
 from ray.data.context import DataContext
-
-from ray.data._internal.execution.operators.map_data_processor import MapDataProcessor
 
 
 def generate_repartition_fn(
@@ -34,10 +33,14 @@ def generate_repartition_fn(
         # If map_data_processor is specified (e.g. from fusing
         # MapOperator->AllToAllOperator), we pass a map function which
         # is applied to each block before shuffling.
-        map_data_processor: Optional["MapDataProcessor"] = ctx.upstream_map_data_processor
+        map_data_processor: Optional[
+            "MapDataProcessor"
+        ] = ctx.upstream_map_data_processor
         upstream_map_fn = None
         if map_data_processor:
-            upstream_map_fn = lambda block: map_data_processor.process(block, ctx)  # noqa: E731
+            upstream_map_fn = lambda block: map_data_processor.process(
+                block, ctx
+            )  # noqa: E731
 
         shuffle_spec = ShuffleTaskSpec(
             random_shuffle=False,
