@@ -12,14 +12,16 @@ from ray.train._checkpoint import Checkpoint
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.algorithms.ppo import PPO
 
-from run_cloud_test import ARTIFACT_FILENAME
+from run_cloud_test import ARTIFACT_FILENAME, CHECKPOINT_DATA_FILENAME
 
 
 def fn_trainable(config):
     checkpoint = train.get_checkpoint()
     if checkpoint:
         with checkpoint.as_directory() as checkpoint_dir:
-            with open(os.path.join(checkpoint_dir, "dict_checkpoint.pkl"), "rb") as f:
+            with open(
+                os.path.join(checkpoint_dir, CHECKPOINT_DATA_FILENAME), "rb"
+            ) as f:
                 checkpoint_dict = pickle.load(f)
         state = {"internal_iter": checkpoint_dict["internal_iter"] + 1}
     else:
@@ -40,7 +42,7 @@ def fn_trainable(config):
         )
         if i % config["checkpoint_freq"] == 0:
             with tempfile.TemporaryDirectory() as tmpdir:
-                with open(os.path.join(tmpdir, "dict_checkpoint.pkl"), "wb") as f:
+                with open(os.path.join(tmpdir, CHECKPOINT_DATA_FILENAME), "wb") as f:
                     pickle.dump({"internal_iter": i}, f)
                 train.report(metrics, checkpoint=Checkpoint.from_directory(tmpdir))
         else:
