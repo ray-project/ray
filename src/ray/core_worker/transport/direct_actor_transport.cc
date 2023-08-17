@@ -292,7 +292,12 @@ void CoreWorkerDirectTaskReceiver::RunNormalTasksFromQueue() {
 bool CoreWorkerDirectTaskReceiver::CancelQueuedActorTask(const WorkerID &caller_worker_id,
                                                          const TaskID &task_id) {
   auto it = actor_scheduling_queues_.find(caller_worker_id);
-  return it->second->CancelTaskIfFound(task_id);
+  if (it != actor_scheduling_queues_.end()) {
+    return it->second->CancelTaskIfFound(task_id);
+  } else {
+    // Queue doesn't exist. It can happen if a task hasn't been received yet.
+    return false;
+  }
 }
 
 bool CoreWorkerDirectTaskReceiver::CancelQueuedNormalTask(TaskID task_id) {

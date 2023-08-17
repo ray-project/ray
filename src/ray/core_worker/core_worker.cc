@@ -1013,6 +1013,10 @@ CoreWorker::GetAllReferenceCounts() const {
   return counts;
 }
 
+std::vector<TaskID> CoreWorker::GetPendingChildrenTasks(const TaskID &task_id) const {
+  return task_manager_->GetPendingChildrenTasks(task_id);
+}
+
 const rpc::Address &CoreWorker::GetRpcAddress() const { return rpc_address_; }
 
 bool CoreWorker::HasOwner(const ObjectID &object_id) const {
@@ -1869,7 +1873,8 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
     bool retry_exceptions,
     const rpc::SchedulingStrategy &scheduling_strategy,
     const std::string &debugger_breakpoint,
-    const std::string &serialized_retry_exception_allowlist) {
+    const std::string &serialized_retry_exception_allowlist,
+    const TaskID current_task_id) {
   RAY_CHECK(scheduling_strategy.scheduling_strategy_case() !=
             rpc::SchedulingStrategy::SchedulingStrategyCase::SCHEDULING_STRATEGY_NOT_SET);
 
@@ -1891,7 +1896,9 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
                       worker_context_.GetCurrentJobID(),
                       task_id,
                       task_name,
-                      worker_context_.GetCurrentTaskID(),
+                      current_task_id != TaskID::Nil()
+                          ? current_task_id
+                          : worker_context_.GetCurrentTaskID(),
                       next_task_index,
                       GetCallerId(),
                       rpc_address_,
@@ -2166,7 +2173,8 @@ Status CoreWorker::SubmitActorTask(const ActorID &actor_id,
                                    const RayFunction &function,
                                    const std::vector<std::unique_ptr<TaskArg>> &args,
                                    const TaskOptions &task_options,
-                                   std::vector<rpc::ObjectReference> &task_returns) {
+                                   std::vector<rpc::ObjectReference> &task_returns,
+                                   const TaskID current_task_id) {
   absl::ReleasableMutexLock lock(&actor_task_mutex_);
   task_returns.clear();
   if (!direct_actor_submitter_->CheckActorExists(actor_id)) {
@@ -2210,7 +2218,9 @@ Status CoreWorker::SubmitActorTask(const ActorID &actor_id,
                       actor_handle->CreationJobID(),
                       actor_task_id,
                       task_name,
-                      worker_context_.GetCurrentTaskID(),
+                      current_task_id != TaskID::Nil()
+                          ? current_task_id
+                          : worker_context_.GetCurrentTaskID(),
                       next_task_index,
                       GetCallerId(),
                       rpc_address_,
@@ -2303,11 +2313,8 @@ Status CoreWorker::CancelChildren(const TaskID &task_id, bool force_kill) {
                          Status::UnknownError(
                              "Recursive task cancellation failed--check warning logs.")));
     } else if (child_spec->IsActorTask()) {
-      recursive_success = false;
-      recursive_cancellation_status.push_back(std::make_pair(
-          child_id,
-          Status::Invalid(
-              "Actor task cancellation is not supported. The task won't be cancelled.")));
+      auto result = direct_actor_submitter_->CancelTask(child_spec.value(), true);
+      recursive_cancellation_status.push_back(std::make_pair(child_id, result));
     } else {
       auto result =
           direct_task_submitter_->CancelTask(child_spec.value(), force_kill, true);
@@ -3689,6 +3696,13 @@ void CoreWorker::CancelActorTaskOnExecutor(WorkerID caller_worker_id,
                                  "CoreWorker.CancelActorTaskOnExecutor");
   } else {
     cancel();
+  }
+
+  if (recursive) {
+    auto recursive_cancel = CancelChildren(task_id, force_kill);
+    if (!recursive_cancel.ok()) {
+      RAY_LOG(ERROR) << recursive_cancel.ToString();
+    }
   }
 }
 

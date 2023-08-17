@@ -4,6 +4,7 @@ from typing import Any, Dict, Optional
 import ray._private.worker
 from ray._private.client_mode_hook import client_mode_hook
 from ray._private.utils import pasre_pg_formatted_resources_to_original
+from ray._raylet import TaskID
 from ray.runtime_env import RuntimeEnv
 from ray.util.annotations import Deprecated, PublicAPI
 
@@ -159,7 +160,8 @@ class RuntimeContext(object):
             self.worker.mode == ray._private.worker.WORKER_MODE
         ), f"This method is only available when the process is a\
                  worker. Current mode: {self.worker.mode}"
-        task_id = self.worker.current_task_id
+
+        task_id = self._get_current_task_id()
         return task_id if not task_id.is_nil() else None
 
     def get_task_id(self) -> Optional[str]:
@@ -206,8 +208,16 @@ class RuntimeContext(object):
                 f"worker. Current mode: {self.worker.mode}"
             )
             return None
-        task_id = self.worker.current_task_id
+        task_id = self._get_current_task_id()
         return task_id.hex() if not task_id.is_nil() else None
+
+    def _get_current_task_id(self) -> TaskID:
+        async_task_id = ray._raylet.async_task_id.get()
+        if async_task_id is None:
+            task_id = self.worker.current_task_id
+        else:
+            task_id = async_task_id
+        return task_id
 
     @property
     @Deprecated(message="Use get_actor_id() instead", warning=True)

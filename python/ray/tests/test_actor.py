@@ -17,6 +17,7 @@ from ray._private.test_utils import (
 )
 from ray.actor import ActorClassInheritanceException
 from ray.tests.client_test_utils import create_remote_signal_actor
+from ray._private.test_utils import SignalActor
 
 # NOTE: We have to import setproctitle after ray because we bundle setproctitle
 # with ray.
@@ -1220,6 +1221,123 @@ def test_keep_calling_get_actor(ray_start_regular_shared):
             return True
 
     wait_for_condition(actor_removed)
+
+
+@pytest.mark.parametrize(
+    "actor_type",
+    [
+        # "actor",
+        "threaded_actor",
+        # "async_actor",
+    ],
+)
+def test_actor_parent_task_correct(shutdown_only, actor_type):
+    """Verify the parent task id is correct for all actors."""
+
+    @ray.remote
+    def child():
+        pass
+
+    @ray.remote
+    class ChildActor:
+        def child(self):
+            pass
+
+    def parent_func(child_actor):
+        core_worker = ray._private.worker.global_worker.core_worker
+        refs = [child_actor.child.remote(), child.remote()]
+        expected = set([ref.task_id().hex() for ref in refs])
+        task_id = ray.get_runtime_context().task_id
+        children_task_ids = core_worker.get_pending_children_task_ids(task_id)
+        actual = set([task_id.hex() for task_id in children_task_ids])
+        ray.get(refs)
+        return expected, actual
+
+    if actor_type == "actor":
+
+        @ray.remote
+        class Actor:
+            def parent(self, child_actor):
+                return parent_func(child_actor)
+
+        @ray.remote
+        class GeneratorActor:
+            def parent(self, child_actor):
+                yield parent_func(child_actor)
+
+    if actor_type == "threaded_actor":
+
+        @ray.remote(max_concurrency=5)
+        class Actor:  # noqa
+            def parent(self, child_actor):
+                return parent_func(child_actor)
+
+        @ray.remote(max_concurrency=5)
+        class GeneratorActor:  # noqa
+            def parent(self, child_actor):
+                yield parent_func(child_actor)
+
+    if actor_type == "async_actor":
+
+        @ray.remote
+        class Actor:  # noqa
+            async def parent(self, child_actor):
+                return parent_func(child_actor)
+
+        @ray.remote
+        class GeneratorActor:  # noqa
+            async def parent(self, child_actor):
+                yield parent_func(child_actor)
+
+    # Verify a regular actor.
+    actor = Actor.remote()
+    child_actor = ChildActor.remote()
+    actual, expected = ray.get(actor.parent.remote(child_actor))
+    assert actual == expected
+    # return True
+
+    # Verify a generator actor
+    actor = GeneratorActor.remote()
+    child_actor = ChildActor.remote()
+    gen = actor.parent.options(num_returns="streaming").remote(child_actor)
+    for ref in gen:
+        result = ray.get(ref)
+    actual, expected = result
+    assert actual == expected
+
+
+def test_parent_task_correct_concurrent_async_actor(shutdown_only):
+    """Make sure when there are concurrent async tasks
+    the parent -> children task ids are properly mapped.
+    """
+    sig = SignalActor.remote()
+
+    @ray.remote
+    def child(sig):
+        ray.get(sig.wait.remote())
+
+    @ray.remote
+    class AsyncActor:
+        async def f(self, sig):
+            refs = [child.remote(sig) for _ in range(2)]
+            core_worker = ray._private.worker.global_worker.core_worker
+            expected = set([ref.task_id().hex() for ref in refs])
+            task_id = ray.get_runtime_context().task_id
+            children_task_ids = core_worker.get_pending_children_task_ids(task_id)
+            actual = set([task_id.hex() for task_id in children_task_ids])
+            await sig.wait.remote()
+            ray.get(refs)
+            return actual, expected
+
+    a = AsyncActor.remote()
+    # Run 3 concurrent tasks.
+    refs = [a.f.remote(sig) for _ in range(20)]
+    # 3 concurrent task will finish.
+    ray.get(sig.send.remote())
+    # Verify children task mapping is correct.
+    result = ray.get(refs)
+    for actual, expected in result:
+        assert actual, expected
 
 
 if __name__ == "__main__":
