@@ -51,12 +51,13 @@ public class Application {
         };
         parameter_group.add(deployment_parameters);
     }
-//    Serve.getGlobalClient()
-//      .deployApplication(
-//        parameter_group,
-//        true);
-    Deployment deployment = deployments.get(0);
-    deployment.deploy(true);
+    Serve.getGlobalClient()
+      .deployApplication(
+        parameter_group,
+        true);
+    System.out.println("111");
+//    Deployment deployment = deployments.get(0);
+//    deployment.deploy(true);
   }
 
   public RayServeHandle getHandle() {
