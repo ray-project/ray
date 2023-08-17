@@ -10,6 +10,7 @@ import io.ray.serve.common.Constants;
 import io.ray.serve.config.DeploymentConfig;
 import io.ray.serve.config.ReplicaConfig;
 import io.ray.serve.controller.ServeController;
+import io.ray.serve.deployment.Deployment;
 import io.ray.serve.deployment.DeploymentRoute;
 import io.ray.serve.exception.RayServeException;
 import io.ray.serve.generated.DeploymentRouteList;
@@ -173,6 +174,60 @@ public class ServeControllerClient {
     }
   }
 
+
+//  public void deployApplication(
+//    List< HashMap<String,Object> > deployments,
+//    Boolean blocking) {
+//
+//        List<HashMap<String,Object>> deployment_args_list = new ArrayList<>();
+//        for (HashMap<String,Object> deployment : deployments) {
+//            String name = (String) deployment.get("name");
+//            String deploymentDef = (String) deployment.get("deploymentDef");
+//            DeploymentConfig deploymentConfig = (DeploymentConfig) deployment.get("config");
+//            String version = (String) deployment.get("version");
+//            String prevVersion = (String) deployment.get("prevVersion");
+//            Object[] initArgs = (Object[]) deployment.get("initArgs");
+//            String routePrefix = (String) deployment.get("routePrefix");
+//            Map<String, Object> rayActorOptions = (Map<String, Object>) deployment.get("rayActorOptions");
+//
+//            if (deploymentConfig == null) {
+//                deploymentConfig = new DeploymentConfig();
+//            }
+//            if (rayActorOptions == null) {
+//                rayActorOptions = new HashMap<>();
+//            }
+//            // TODO set runtime_env to rayActorOptions is not supported now.
+//            ReplicaConfig replicaConfig = new ReplicaConfig(deploymentDef, initArgs, rayActorOptions);
+//
+//            deploymentConfig.setVersion(version);
+//            deploymentConfig.setPrevVersion(prevVersion);
+//
+//            if (deploymentConfig.getAutoscalingConfig() != null
+//                && deploymentConfig.getMaxConcurrentQueries()
+//                < deploymentConfig.getAutoscalingConfig().getTargetNumOngoingRequestsPerReplica()) {
+//                LOGGER.warn(
+//                  "Autoscaling will never happen, because 'max_concurrent_queries' is less than 'target_num_ongoing_requests_per_replica'.");
+//            }
+//
+//            deployment_args_list.add(
+//                new HashMap<String, Object>() {
+//                  {
+//                      put("name", name);
+//                      put("deploymentDef", deploymentDef);
+//                      put("config", deploymentConfig);
+//                      put("version", version);
+//                      put("prevVersion", prevVersion);
+//                      put("initArgs", initArgs);
+//                      put("routePrefix", routePrefix);
+//                      put("rayActorOptions", rayActorOptions);
+//                  }
+//                }
+//                );
+//        }
+//
+//
+//
+//  }
   /**
    * Waits for the named deployment to enter "HEALTHY" status.
    *

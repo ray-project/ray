@@ -10,25 +10,35 @@ import io.ray.api.function.PyActorClass;
 import io.ray.api.function.PyActorMethod;
 import io.ray.api.options.ActorLifetime;
 import io.ray.serve.common.Constants;
+import io.ray.serve.config.DeploymentConfig;
 import io.ray.serve.config.RayServeConfig;
+import io.ray.serve.deployment.Application;
 import io.ray.serve.deployment.Deployment;
 import io.ray.serve.deployment.DeploymentCreator;
 import io.ray.serve.deployment.DeploymentRoute;
 import io.ray.serve.exception.RayServeException;
 import io.ray.serve.generated.ActorNameList;
+import io.ray.serve.handle.RayServeHandle;
 import io.ray.serve.poll.LongPollClientFactory;
 import io.ray.serve.replica.ReplicaContext;
 import io.ray.serve.util.CollectionUtil;
 import io.ray.serve.util.CommonUtil;
 import io.ray.serve.util.LogUtil;
 import io.ray.serve.util.ServeProtoUtil;
+
+import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.Iterator;
+import java.util.List;
+import java.util.ListIterator;
 import java.util.Map;
 import java.util.Optional;
 import org.apache.commons.lang3.RandomStringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.testng.collections.Maps;
 
 /** Ray Serve global API. TODO: will be riched in the Java SDK/API PR. */
 public class Serve {
@@ -333,5 +343,16 @@ public class Serve {
               entry.getValue().getDeploymentInfo().getReplicaConfig().getRayActorOptions()));
     }
     return deployments;
+  }
+  public static RayServeHandle run(Application app) {
+    Map<String, String> config = Maps.newHashMap();
+    config.put(RayServeConfig.PROXY_HTTP_PORT, "8341"); // TODO(liuyang-my) Get an available port.
+    ServeControllerClient client = Serve.start(true, false, config);
+
+    //Deployment deployment = app.getDeployment();
+    //System.out.println(deployment.getName());
+    //deployment.deploy(true);
+    app.deployApplication();
+    return app.getHandle();
   }
 }

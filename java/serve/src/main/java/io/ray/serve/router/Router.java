@@ -29,8 +29,8 @@ public class Router {
     RayServeMetrics.execute(
         () ->
             this.numRouterRequests =
-                Metrics.count()
-                    .name(RayServeMetrics.SERVE_NUM_ROUTER_REQUESTS.getName())
+                      Metrics.count()
+                        .name(RayServeMetrics.SERVE_NUM_ROUTER_REQUESTS.getName())
                     .description(RayServeMetrics.SERVE_NUM_ROUTER_REQUESTS.getDescription())
                     .unit("")
                     .tags(ImmutableMap.of(RayServeMetrics.TAG_DEPLOYMENT, deploymentName))

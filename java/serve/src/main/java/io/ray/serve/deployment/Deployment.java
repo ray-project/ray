@@ -2,8 +2,11 @@ package io.ray.serve.deployment;
 
 import com.google.common.base.Preconditions;
 import io.ray.serve.api.Serve;
+import io.ray.serve.api.ServeControllerClient;
 import io.ray.serve.config.DeploymentConfig;
 import io.ray.serve.handle.RayServeHandle;
+import io.ray.serve.router.Router;
+
 import java.util.Map;
 
 /**
@@ -64,7 +67,8 @@ public class Deployment {
     this.initArgs = initArgs != null ? initArgs : new Object[0];
     this.routePrefix = routePrefix;
     this.rayActorOptions = rayActorOptions;
-    this.url = routePrefix != null ? Serve.getGlobalClient().getRootUrl() + routePrefix : null;
+//    this.url = routePrefix != null ? Serve.getGlobalClient().getRootUrl() + routePrefix : null;
+    this.url = null;
   }
 
   /**
@@ -85,6 +89,10 @@ public class Deployment {
             routePrefix,
             url,
             blocking);
+  }
+
+  public Application bind() {
+    return new Application(this);
   }
 
   /** Delete this deployment. */
