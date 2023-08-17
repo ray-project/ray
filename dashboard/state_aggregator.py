@@ -745,6 +745,7 @@ class StateAPIManager:
 
     async def summarize_tasks(self, option: SummaryApiOptions) -> SummaryApiResponse:
         summary_by = option.summary_by or "func_name"
+        logger.info(f'option {type(option)}: {option}')
         if summary_by not in ["func_name", "lineage"]:
             raise ValueError('summary_by must be one of "func_name" or "lineage".')
 
