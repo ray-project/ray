@@ -894,7 +894,6 @@
 
   frequency: weekly
   team: ml
-  new_persistence: "True"
   cluster:
     byod:
       type: gpu
@@ -911,7 +910,7 @@
 
   run:
     timeout: 4700
-    script: RAY_AIR_NEW_PERSISTENCE_MODE=1 python test_myst_doc.py --path lightning-llm-finetuning-7b.ipynb
+    script: python test_myst_doc.py --path lightning-llm-finetuning-7b.ipynb
 
   # variations: TODO(jungong): add GCP variation.
 
