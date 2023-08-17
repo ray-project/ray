@@ -1,17 +1,8 @@
 import sys
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch, MagicMock, Mock
 
+import grpc
 import pytest
-from ray.serve._private.http_proxy import GenericProxy, gRPCProxy, HTTPProxy
-from ray.serve._private.proxy_request_response import (
-    ASGIProxyRequest,
-    ProxyResponse,
-)
-
-if sys.version_info >= (3, 8, 0):
-    from unittest.mock import AsyncMock
-else:
-    from asyncmock import AsyncMock
 import ray
 from ray import serve
 from ray.actor import ActorHandle
@@ -19,10 +10,21 @@ from ray.serve._private.constants import (
     DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_S,
     SERVE_NAMESPACE,
 )
+from ray.serve._private.http_proxy import GenericProxy, gRPCProxy, HTTPProxy
+from ray.serve._private.proxy_request_response import (
+    ASGIProxyRequest,
+    ProxyResponse,
+)
+from ray.serve._private.common import RequestProtocol
+
+if sys.version_info >= (3, 8, 0):
+    from unittest.mock import AsyncMock
+else:
+    from asyncmock import AsyncMock
 
 
-@patch("ray.get_runtime_context", MagicMock())
-@patch("ray.get_actor", MagicMock())
+@patch("ray.serve._private.http_proxy.ray.get_runtime_context", MagicMock())
+@patch("ray.serve._private.http_proxy.ray.get_actor", MagicMock())
 class TestGenericProxy:
     def create_generic_proxy(self):
         controller_name = "fake-controller_name"
@@ -36,8 +38,8 @@ class TestGenericProxy:
         )
 
 
-@patch("ray.get_runtime_context", MagicMock())
-@patch("ray.get_actor", MagicMock())
+@patch("ray.serve._private.http_proxy.ray.get_runtime_context", MagicMock())
+@patch("ray.serve._private.http_proxy.ray.get_actor", MagicMock())
 class TestgRPCProxy:
     def create_grpc_proxy(self):
         controller_name = "fake-controller_name"
@@ -50,9 +52,21 @@ class TestgRPCProxy:
             proxy_router_class=MagicMock(),
         )
 
+    def test_subclass_from_generic_proxy(self):
+        grpc_proxy = self.create_grpc_proxy()
+        assert isinstance(grpc_proxy, GenericProxy)
 
-@patch("ray.get_runtime_context", MagicMock())
-@patch("ray.get_actor", MagicMock())
+    def test_protocol(self):
+        grpc_proxy = self.create_grpc_proxy()
+        assert grpc_proxy.protocol == "gRPC"
+
+    def test_success_status_code(self):
+        grpc_proxy = self.create_grpc_proxy()
+        assert grpc_proxy.success_status_code == str(grpc.StatusCode.OK)
+
+
+@patch("ray.serve._private.http_proxy.ray.get_runtime_context", MagicMock())
+@patch("ray.serve._private.http_proxy.ray.get_actor", MagicMock())
 class TestHTTPProxy:
     def create_http_proxy(self):
         controller_name = "fake-controller_name"
@@ -166,23 +180,72 @@ class TestHTTPProxy:
             )
         mocked_proxy_request.assert_called_once()
 
-    # @pytest.mark.asyncio
-    # @patch("ray.serve._private.http_util.receive_http_body", MagicMock())
-    # async def test_send_request_to_replica_unary(self):
-    #     http_proxy = self.create_http_proxy()
-    #     proxy_request = ASGIProxyRequest(
-    #         scope=AsyncMock(),
-    #         receive=AsyncMock(),
-    #         send=AsyncMock(),
-    #     )
-    #     response = await http_proxy.send_request_to_replica_unary(
-    #         handle=MagicMock(),
-    #         proxy_request=proxy_request,
-    #     )
-    #     assert isinstance(response, ProxyResponse)
-    #     # with patch.object(http_proxy, 'proxy_request', mocked_proxy_request):
-    #     #     pass
-    #     # mocked_proxy_request.assert_called_once()
+    @pytest.mark.asyncio
+    async def test_proxy_asgi_receive(self):
+        http_proxy = self.create_http_proxy()
+        receive = AsyncMock()
+        receive.side_effect = [
+            {"type": "http.request"},
+            {"type": "http.request"},
+            {"type": "http.disconnect"},
+        ]
+        queue = AsyncMock()
+        await http_proxy.proxy_asgi_receive(
+            receive=receive,
+            queue=queue,
+        )
+        queue.close.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_consume_and_send_asgi_message_generator(self):
+        http_proxy = self.create_http_proxy()
+        obj_ref_generator = AsyncMock()
+        obj_ref_generator._next_async.side_effect = [
+            StopAsyncIteration(),
+        ]
+        await http_proxy._consume_and_send_asgi_message_generator(
+            obj_ref_generator=obj_ref_generator,
+            send=AsyncMock(),
+        )
+
+    @pytest.mark.asyncio
+    async def test_setup_request_context_and_handle(self):
+        http_proxy = self.create_http_proxy()
+        handle = MagicMock()
+        request_id = "fake-request-id"
+        scope = {"headers": [(b"x-request-id", request_id.encode())]}
+        proxy_request = ASGIProxyRequest(
+            scope=scope,
+            receive=AsyncMock(),
+            send=AsyncMock(),
+        )
+        handle, returned_request_id = http_proxy.setup_request_context_and_handle(
+            app_name="fake-app-name",
+            handle=handle,
+            route_path="/fake-route-path",
+            proxy_request=proxy_request,
+        )
+        handle._set_request_protocol.assert_called_with(RequestProtocol.HTTP)
+        assert returned_request_id == request_id
+
+    @pytest.mark.asyncio
+    async def test_send_request_to_replica_streaming(self):
+        http_proxy = self.create_http_proxy()
+        request_id = "fake-request-id"
+        handle = MagicMock()
+        scope = {"headers": [(b"x-request-id", request_id.encode())]}
+        proxy_request = ASGIProxyRequest(
+            scope=scope,
+            receive=AsyncMock(),
+            send=AsyncMock(),
+        )
+        response = await http_proxy.send_request_to_replica_streaming(
+            request_id=request_id,
+            handle=handle,
+            proxy_request=proxy_request,
+        )
+        assert isinstance(response, ProxyResponse)
+        assert response.status_code == "500"
 
 
 class TestTimeoutKeepAliveConfig:
