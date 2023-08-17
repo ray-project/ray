@@ -127,9 +127,11 @@ RAY_REMOTE(RAY_FUNC(Counter::FactoryCreate),
            &Counter::GetCount,
            &Counter::CreateNestedChildActor,
            &Counter::GetBytes,
-           &Counter::echoBytes,
-           &Counter::echoString,
-           &Counter::GetIntByObjectRef);
+           &Counter::EchoBytes,
+           &Counter::EchoString,
+           &Counter::GetIntByObjectRef,
+           &Counter::EchoStrings,
+           &Counter::EchoAnyArray);
 
 RAY_REMOTE(ActorConcurrentCall::FactoryCreate, &ActorConcurrentCall::CountDown);
 
