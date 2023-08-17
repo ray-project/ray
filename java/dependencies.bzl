@@ -7,7 +7,7 @@ def gen_java_deps():
             "com.fasterxml.jackson.core:jackson-databind:2.15.2",
             "com.github.java-json-tools:json-schema-validator:2.2.14",
             "com.google.code.gson:gson:2.9.1",
-            "com.google.guava:guava:30.0-jre",
+            "com.google.guava:guava:32.0.1-jre",
             "com.google.protobuf:protobuf-java:3.19.6",
             "com.google.protobuf:protobuf-java-util:3.19.6",
             "com.puppycrawl.tools:checkstyle:8.15",
