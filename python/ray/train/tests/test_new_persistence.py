@@ -165,26 +165,29 @@ def train_fn(config):
     for i in range(start, config.get("num_iterations", 5)):
         time.sleep(0.25)
 
-        temp_dir = tempfile.mkdtemp()
-        with open(os.path.join(temp_dir, "checkpoint.pkl"), "wb") as f:
-            pickle.dump({"iter": i}, f)
-
-        artifact_file_name = f"artifact-iter={i}.txt"
-        if in_trainer:
-            rank = train.get_context().get_world_rank()
-            artifact_file_name = f"artifact-rank={rank}-iter={i}.txt"
-
-            checkpoint_file_name = f"checkpoint_shard-rank={rank}.pkl"
-            with open(os.path.join(temp_dir, checkpoint_file_name), "wb") as f:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            with open(os.path.join(temp_dir, "checkpoint.pkl"), "wb") as f:
                 pickle.dump({"iter": i}, f)
 
-        with open(artifact_file_name, "w") as f:
-            f.write(f"{i}")
+            artifact_file_name = f"artifact-iter={i}.txt"
+            if in_trainer:
+                rank = train.get_context().get_world_rank()
+                artifact_file_name = f"artifact-rank={rank}-iter={i}.txt"
 
-        train.report(
-            {"iter": i, _SCORE_KEY: i},
-            checkpoint=NewCheckpoint.from_directory(temp_dir),
-        )
+                checkpoint_file_name = f"checkpoint_shard-rank={rank}.pkl"
+                with open(os.path.join(temp_dir, checkpoint_file_name), "wb") as f:
+                    pickle.dump({"iter": i}, f)
+
+            with open(artifact_file_name, "w") as f:
+                f.write(f"{i}")
+
+            train.report(
+                {"iter": i, _SCORE_KEY: i},
+                checkpoint=NewCheckpoint.from_directory(temp_dir),
+            )
+            # `train.report` should not have deleted this!
+            assert os.path.exists(temp_dir)
+
         if i in config.get("fail_iters", []):
             raise RuntimeError(f"Failing on iter={i}!!")
 
