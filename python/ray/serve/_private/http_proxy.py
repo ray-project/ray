@@ -169,14 +169,14 @@ class LongestPrefixRouter:
 
     def match_route(
         self, target_route: str
-    ) -> Optional[Tuple[str, RayServeHandle, str, bool]]:
+    ) -> Optional[Tuple[str, RayServeHandle, bool]]:
         """Return the longest prefix match among existing routes for the route.
 
         Args:
             target_route: route to match against.
 
         Returns:
-            (route, handle, app_name, is_cross_language) if found, else None.
+            (route, handle, is_cross_language) if found, else None.
         """
 
         for route in self.sorted_routes:
@@ -200,7 +200,6 @@ class LongestPrefixRouter:
                     return (
                         route,
                         self.handles[endpoint],
-                        endpoint.app,
                         self.app_to_is_cross_language[endpoint.app],
                     )
 
@@ -496,7 +495,7 @@ class GenericProxy(ABC):
                 )
                 return await self.not_found(scope, receive, send)
 
-            route_prefix, handle, app_name, app_is_cross_language = matched_route
+            route_prefix, handle, app_is_cross_language = matched_route
 
             # Modify the path and root path so that reverse lookups and redirection
             # work as expected. We do this here instead of in replicas so it can be
@@ -508,7 +507,7 @@ class GenericProxy(ABC):
 
             start_time = time.time()
             handle, request_id = self.setup_request_context_and_handle(
-                app_name=app_name,
+                app_name=handle.deployment_id.app,
                 handle=handle,
                 route_path=route_path,
                 scope=scope,
@@ -535,7 +534,7 @@ class GenericProxy(ABC):
                 tags={
                     "route": route_path,
                     "method": method,
-                    "application": app_name,
+                    "application": handle.deployment_id.app,
                     "status_code": status_code,
                 }
             )
@@ -545,7 +544,7 @@ class GenericProxy(ABC):
                 latency_ms,
                 tags={
                     "route": route_path,
-                    "application": app_name,
+                    "application": handle.deployment_id.app,
                     "status_code": status_code,
                 },
             )
@@ -567,11 +566,11 @@ class GenericProxy(ABC):
                 )
                 self.deployment_request_error_counter.inc(
                     tags={
-                        "deployment": str(handle.deployment_id),
+                        "deployment": handle.deployment_id.name,
                         "error_code": status_code,
                         "method": method,
                         "route": route_path,
-                        "application": app_name,
+                        "application": handle.deployment_id.app,
                     }
                 )
         finally:

@@ -358,6 +358,10 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
     def curr_replicas(self) -> Dict[str, ReplicaWrapper]:
         return self._replicas
 
+    @property
+    def app_name(self) -> str:
+        return self._deployment_id.app
+
     def update_replicas(self, replicas: List[ReplicaWrapper]):
         """Update the set of available replicas to be considered for scheduling.
 
@@ -374,9 +378,10 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
                 new_multiplexed_model_id_to_replica_ids[model_id].add(r.replica_id)
 
         if self._replica_id_set != new_replica_id_set:
+            app_msg = f" in application '{self.app_name}'" if self.app_name else ""
             logger.info(
-                f"Got updated replicas for deployment '{self._deployment_id.name}' "
-                f"in application '{self._deployment_id.app}': {new_replica_id_set}.",
+                f"Got updated replicas for deployment '{self._deployment_id.name}'"
+                f"{app_msg}: {new_replica_id_set}.",
                 extra={"log_to_stderr": False},
             )
 
@@ -458,18 +463,18 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         while True:
             # If no replicas are available, wait until `update_replicas` is called.
             while len(self._replicas) == 0:
+                app_msg = f" in application '{self.app_name}'" if self.app_name else ""
                 logger.info(
                     "Tried to assign replica for deployment "
-                    f"'{self._deployment_id.name}' in application "
-                    f"'{self._deployment_id.app}' but none are available. Waiting for "
-                    "new replicas to be added.",
+                    f"'{self._deployment_id.name}'{app_msg} but none are available. "
+                    "Waiting for new replicas to be added.",
                     extra={"log_to_stderr": False},
                 )
                 self._replicas_updated_event.clear()
                 await self._replicas_updated_event.wait()
                 logger.info(
-                    f"Got replicas for deployment '{self._deployment_id.name}' in "
-                    f"application '{self._deployment_id.app}', waking up.",
+                    f"Got replicas for deployment '{self._deployment_id.name}'"
+                    f"{app_msg}, waking up.",
                     extra={"log_to_stderr": False},
                 )
 
@@ -997,7 +1002,9 @@ class Router:
             tag_keys=("deployment", "route", "application"),
         )
         # TODO(zcin): use deployment name and application name instead of deployment id
-        self.num_router_requests.set_default_tags({"deployment": str(deployment_id)})
+        self.num_router_requests.set_default_tags(
+            {"deployment": deployment_id.name, "application": deployment_id.app}
+        )
 
         self.num_queued_queries = 0
         self.num_queued_queries_gauge = metrics.Gauge(
@@ -1010,7 +1017,7 @@ class Router:
         )
         # TODO(zcin): use deployment name and application name instead of deployment id
         self.num_queued_queries_gauge.set_default_tags(
-            {"deployment": str(deployment_id)}
+            {"deployment": deployment_id.name, "application": deployment_id.app}
         )
 
         self.long_poll_client = LongPollClient(
@@ -1042,7 +1049,7 @@ class Router:
             self.metrics_pusher.start()
 
     def _collect_handle_queue_metrics(self) -> Dict[str, int]:
-        return {str(self.deployment_id): self.num_queued_queries}
+        return {self.deployment_id: self.num_queued_queries}
 
     async def assign_request(
         self,
@@ -1052,16 +1059,9 @@ class Router:
     ) -> Union[ray.ObjectRef, "ray._raylet.StreamingObjectRefGenerator"]:
         """Assign a query to a replica and return the resulting object_ref."""
 
-        self.num_router_requests.inc(
-            tags={"route": request_meta.route, "application": request_meta.app_name}
-        )
+        self.num_router_requests.inc(tags={"route": request_meta.route})
         self.num_queued_queries += 1
-        self.num_queued_queries_gauge.set(
-            self.num_queued_queries,
-            tags={
-                "application": request_meta.app_name,
-            },
-        )
+        self.num_queued_queries_gauge.set(self.num_queued_queries)
 
         try:
             query = Query(
@@ -1080,12 +1080,7 @@ class Router:
             # raised. The finally block ensures that num_queued_queries
             # is correctly decremented in this case.
             self.num_queued_queries -= 1
-            self.num_queued_queries_gauge.set(
-                self.num_queued_queries,
-                tags={
-                    "application": request_meta.app_name,
-                },
-            )
+            self.num_queued_queries_gauge.set(self.num_queued_queries)
 
     def shutdown(self):
         """Shutdown router gracefully.

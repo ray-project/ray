@@ -763,7 +763,7 @@ def test_snapshot_always_written_to_internal_kv(
     snapshot = get_deployment_snapshot()
     assert len(snapshot) == 1
     hello_deployment = list(snapshot.values())[0]
-    assert hello_deployment["name"] == "app_hello"
+    assert hello_deployment["name"] == "hello"
     assert hello_deployment["status"] == "RUNNING"
 
 
@@ -844,7 +844,7 @@ def test_updating_status_message(lower_slow_startup_threshold_and_reset):
 
     def updating_message():
         deployment_status = (
-            serve.status().applications[SERVE_DEFAULT_APP_NAME].deployments["default_f"]
+            serve.status().applications[SERVE_DEFAULT_APP_NAME].deployments["f"]
         )
         message_substring = "more than 1s to be scheduled."
         return (deployment_status.status == "UPDATING") and (
@@ -874,7 +874,7 @@ def test_unhealthy_override_updating_status(lower_slow_startup_threshold_and_res
     wait_for_condition(
         lambda: serve.status()
         .applications[SERVE_DEFAULT_APP_NAME]
-        .deployments["default_f"]
+        .deployments["f"]
         .status
         == "UNHEALTHY",
         timeout=20,
@@ -884,7 +884,7 @@ def test_unhealthy_override_updating_status(lower_slow_startup_threshold_and_res
         wait_for_condition(
             lambda: serve.status()
             .applications[SERVE_DEFAULT_APP_NAME]
-            .deployments["default_f"]
+            .deployments["f"]
             .status
             == "UPDATING",
             timeout=10,

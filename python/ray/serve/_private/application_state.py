@@ -24,10 +24,7 @@ from ray.serve._private.common import (
     EndpointTag,
     DeploymentInfo,
 )
-from ray.serve._private.constants import (
-    SERVE_LOGGER_NAME,
-    DEPLOYMENT_NAME_PREFIX_SEPARATOR,
-)
+from ray.serve._private.constants import SERVE_LOGGER_NAME
 from ray.serve._private.deploy_utils import (
     deploy_args_to_deployment_info,
     get_app_code_version,
@@ -261,7 +258,7 @@ class ApplicationState:
     def _delete_deployment(self, name):
         id = EndpointTag(name, self._name)
         self._endpoint_state.delete_endpoint(id)
-        self._deployment_state_manager.delete_deployment(str(id))
+        self._deployment_state_manager.delete_deployment(id)
 
     def delete(self):
         """Delete the application"""
@@ -290,7 +287,7 @@ class ApplicationState:
             )
 
         deployment_id = DeploymentID(deployment_name, self._name)
-        self._deployment_state_manager.deploy(str(deployment_id), deployment_info)
+        self._deployment_state_manager.deploy(deployment_id, deployment_info)
 
         if deployment_info.route_prefix is not None:
             config = deployment_info.deployment_config
@@ -365,7 +362,7 @@ class ApplicationState:
             # If there is an in progress build task, cancel it.
             if self._build_app_task_info and not self._build_app_task_info.finished:
                 logger.info(
-                    f'Received new config for application "{self._name}". '
+                    f"Received new config for application '{self._name}'. "
                     "Cancelling previous request."
                 )
                 ray.cancel(self._build_app_task_info.obj_ref)
@@ -375,7 +372,7 @@ class ApplicationState:
 
             # Kick off new build app task
             logger.info(
-                f"Starting build_serve_application task for application {self._name}."
+                f"Starting build_serve_application task for application '{self._name}'."
             )
             build_app_obj_ref = build_serve_application.options(
                 runtime_env=self._target_state.config.runtime_env
@@ -391,9 +388,7 @@ class ApplicationState:
             )
 
     def _get_live_deployments(self) -> List[str]:
-        deps = self._deployment_state_manager.get_deployments_in_application(self._name)
-        prefix = self._name + DEPLOYMENT_NAME_PREFIX_SEPARATOR
-        return [deployment[len(prefix) :] for deployment in deps]
+        return self._deployment_state_manager.get_deployments_in_application(self._name)
 
     def _determine_app_status(self) -> Tuple[ApplicationStatus, str]:
         """Check deployment statuses and target state, and determine the
@@ -623,12 +618,12 @@ class ApplicationState:
     def get_deployment(self, name: str) -> DeploymentInfo:
         """Get deployment info for deployment by name."""
         deployment_id = DeploymentID(name, self._name)
-        return self._deployment_state_manager.get_deployment(str(deployment_id))
+        return self._deployment_state_manager.get_deployment(deployment_id)
 
     def get_deployments_statuses(self) -> List[DeploymentStatusInfo]:
         """Return all deployment status information"""
         deployments = [
-            str(DeploymentID(deployment, self._name))
+            DeploymentID(deployment, self._name)
             for deployment in self.target_deployments
         ]
         return self._deployment_state_manager.get_deployment_statuses(deployments)
@@ -652,13 +647,11 @@ class ApplicationState:
             deployments, or when the application is deleting and some deployments have
             been deleted.
         """
-        deployments = [
-            str(DeploymentID(deployment, self._name))
-            for deployment in self.target_deployments
-        ]
         details = {
-            name: self._deployment_state_manager.get_deployment_details(name)
-            for name in deployments
+            deployment_name: self._deployment_state_manager.get_deployment_details(
+                DeploymentID(deployment_name, self._name)
+            )
+            for deployment_name in self.target_deployments
         }
         return {k: v for k, v in details.items() if v is not None}
 
@@ -846,6 +839,7 @@ class ApplicationStateManager:
             ready_to_be_deleted = app.update()
             if ready_to_be_deleted:
                 apps_to_be_deleted.append(name)
+                logger.debug(f"Application '{name}' deleted successfully.")
 
         if len(apps_to_be_deleted) > 0:
             for app_name in apps_to_be_deleted:

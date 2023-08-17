@@ -111,14 +111,13 @@ def deploy_args_to_deployment_info(
         ).hex()
 
     return DeploymentInfo(
-        actor_name=str(DeploymentID(deployment_name, app_name)),
+        actor_name=DeploymentID(deployment_name, app_name).to_replica_actor_name(),
         version=version,
         deployment_config=deployment_config,
         replica_config=replica_config,
         deployer_job_id=deployer_job_id,
         start_time_ms=int(time.time() * 1000),
         is_driver_deployment=is_driver_deployment,
-        app_name=app_name,
         route_prefix=route_prefix,
         docs_path=docs_path,
         ingress=ingress,

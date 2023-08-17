@@ -815,10 +815,10 @@ def test_status_schema_helpers():
     ).deployment_statuses
     assert len(f1_statuses) == 1
     assert f1_statuses[0].status in {"UPDATING", "HEALTHY"}
-    assert f1_statuses[0].name == "app1_f1"
+    assert f1_statuses[0].name == "f1"
     assert len(f2_statuses) == 1
     assert f2_statuses[0].status in {"UPDATING", "HEALTHY"}
-    assert f2_statuses[0].name == "app2_f2"
+    assert f2_statuses[0].name == "f2"
 
     serve.shutdown()
 

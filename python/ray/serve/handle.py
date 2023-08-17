@@ -155,7 +155,11 @@ class RayServeHandle:
 
         # TODO(zcin): Separate deployment_id into deployment and application tags
         self.request_counter.set_default_tags(
-            {"handle": handle_tag, "deployment": str(self.deployment_id)}
+            {
+                "handle": handle_tag,
+                "deployment": self.deployment_id.name,
+                "application": self.deployment_id.app,
+            }
         )
 
         self._router: Optional[Router] = _router
@@ -253,12 +257,7 @@ class RayServeHandle:
             multiplexed_model_id=handle_options.multiplexed_model_id,
             is_streaming=handle_options.stream,
         )
-        self.request_counter.inc(
-            tags={
-                "route": _request_context.route,
-                "application": _request_context.app_name,
-            }
-        )
+        self.request_counter.inc(tags={"route": _request_context.route})
         return self._get_or_create_router().assign_request(
             request_metadata, *args, **kwargs
         )

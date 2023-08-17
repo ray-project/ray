@@ -436,7 +436,7 @@ def test_deploy_bad_pip_package_deployment(serve_instance):
     def check_fail():
         app_status = serve.status().applications["default"]
         assert app_status.status == ApplicationStatus.DEPLOY_FAILED
-        deployment_message = app_status.deployments["default_Model"].message
+        deployment_message = app_status.deployments["Model"].message
         assert "No matching distribution found for does_not_exist" in deployment_message
         return True
 
