@@ -452,3 +452,9 @@ class StreamingHTTPRequest:
 
     pickled_asgi_scope: bytes
     http_proxy_handle: ActorHandle
+
+
+class RequestProtocol(str, Enum):
+    UNDEFINED = "UNDEFINED"
+    HTTP = "HTTP"
+    GRPC = "gRPC"
