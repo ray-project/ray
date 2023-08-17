@@ -5,7 +5,6 @@ from ray.data._internal.execution.operators.map_data_processor import (
 from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.logical.operators.write_operator import Write
 from ray.data._internal.planner.write import generate_write_fn
-from ray.data.block import Block
 
 
 def _plan_write_op(op: Write, input_physical_dag: PhysicalOperator) -> PhysicalOperator:

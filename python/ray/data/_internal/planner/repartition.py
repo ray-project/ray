@@ -38,9 +38,9 @@ def generate_repartition_fn(
         ] = ctx.upstream_map_data_processor
         upstream_map_fn = None
         if map_data_processor:
-            upstream_map_fn = lambda blocks: map_data_processor.process(  # noqa: E731
-                blocks, ctx
-            )
+
+            def upstream_map_fn(blocks):
+                return map_data_processor.process(blocks, ctx)
 
         shuffle_spec = ShuffleTaskSpec(
             random_shuffle=False,

@@ -52,7 +52,9 @@ def _parse_op_fn(op: AbstractUDFMap):
         def fn(item: Any) -> Any:
             return op._fn(item, *fn_args, **fn_kwargs)
 
-        init_fn = lambda: None
+        def init_fn():
+            pass
+
     return fn, init_fn
 
 

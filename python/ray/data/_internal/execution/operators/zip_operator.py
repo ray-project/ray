@@ -1,5 +1,5 @@
 import itertools
-from typing import Callable, List, Optional, Tuple
+from typing import List, Optional, Tuple
 
 import ray
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
