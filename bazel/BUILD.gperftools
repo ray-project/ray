@@ -15,6 +15,5 @@ configure_make(
     deps = ["@libunwind//:libunwind"],
     configure_options = [
         "--enable-libunwind",
-        "--disable-shared",
     ],
 )
