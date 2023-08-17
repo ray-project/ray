@@ -857,6 +857,24 @@
 
   # variations: A10G not available on GCE, yet.
 
+- name: air_example_dreambooth_finetuning_lora
+  group: AIR examples
+  working_dir: air_examples/dreambooth
+
+  stable: false
+
+  frequency: weekly
+  team: ml
+
+  cluster:
+    byod:
+      type: gpu
+    cluster_compute: dreambooth_compute_aws.yaml
+
+  run:
+    timeout: 1800
+    script: pip install -Ur dreambooth/requirements.txt && bash dreambooth_run.sh --lora
+    artifact_path: /tmp/artifacts/example_out.jpg
 
 - name: air_example_gptj_deepspeed_fine_tuning
   group: AIR examples
