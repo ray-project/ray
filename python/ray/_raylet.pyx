@@ -217,6 +217,7 @@ GRPC_STATUS_CODE_UNAVAILABLE = CGrpcStatusCode.UNAVAILABLE
 GRPC_STATUS_CODE_UNKNOWN = CGrpcStatusCode.UNKNOWN
 GRPC_STATUS_CODE_DEADLINE_EXCEEDED = CGrpcStatusCode.DEADLINE_EXCEEDED
 GRPC_STATUS_CODE_RESOURCE_EXHAUSTED = CGrpcStatusCode.RESOURCE_EXHAUSTED
+GRPC_STATUS_CODE_UNIMPLEMENTED = CGrpcStatusCode.UNIMPLEMENTED
 
 logger = logging.getLogger(__name__)
 
@@ -2545,10 +2546,11 @@ cdef class GcsClient:
         cdef:
             int64_t timeout_ms = round(1000 * timeout) if timeout else -1
             c_string serialized_reply
-            
+
         with nogil:
-            check_status(self.inner.get().GetAllResourceUsage(timeout_ms, serialized_reply))
-        
+            check_status(self.inner.get().GetAllResourceUsage(
+                timeout_ms, serialized_reply))
+
         reply = GetAllResourceUsageReply()
         reply.ParseFromString(serialized_reply)
         return reply

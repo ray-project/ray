@@ -1011,8 +1011,8 @@ bool LocalTaskManager::ReturnCpuResourcesToBlockedWorker(
   return false;
 }
 
-ResourceRequest LocalTaskManager::CalcNormalTaskResources() const {
-  ResourceRequest total_normal_task_resources;
+ResourceSet LocalTaskManager::CalcNormalTaskResources() const {
+  ResourceSet total_normal_task_resources;
   for (auto &entry : leased_workers_) {
     std::shared_ptr<WorkerInterface> worker = entry.second;
     auto &task_spec = worker->GetAssignedTask().GetTaskSpecification();
@@ -1028,12 +1028,12 @@ ResourceRequest LocalTaskManager::CalcNormalTaskResources() const {
     }
 
     if (auto allocated_instances = worker->GetAllocatedInstances()) {
-      auto resource_request = allocated_instances->ToResourceRequest();
+      auto resource_set = allocated_instances->ToResourceSet();
       // Blocked normal task workers have temporarily released its allocated CPU.
       if (worker->IsBlocked()) {
-        resource_request.Set(ResourceID::CPU(), 0);
+        resource_set.Set(ResourceID::CPU(), 0);
       }
-      total_normal_task_resources += resource_request;
+      total_normal_task_resources += resource_set;
     }
   }
   return total_normal_task_resources;
@@ -1042,7 +1042,7 @@ ResourceRequest LocalTaskManager::CalcNormalTaskResources() const {
 uint64_t LocalTaskManager::MaxRunningTasksPerSchedulingClass(
     SchedulingClass sched_cls_id) const {
   auto sched_cls = TaskSpecification::GetSchedulingClassDescriptor(sched_cls_id);
-  double cpu_req = sched_cls.resource_set.GetNumCpusAsDouble();
+  double cpu_req = sched_cls.resource_set.Get(ResourceID::CPU()).Double();
   uint64_t total_cpus =
       cluster_resource_scheduler_->GetLocalResourceManager().GetNumCpus();
 
@@ -1097,7 +1097,7 @@ void LocalTaskManager::DebugStr(std::stringstream &buffer) const {
            << worker->GetAssignedTask()
                   .GetTaskSpecification()
                   .GetRequiredResources()
-                  .ToString()
+                  .DebugString()
            << "\n";
   }
   buffer << "}\n";
