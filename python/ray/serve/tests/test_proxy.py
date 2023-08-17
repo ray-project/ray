@@ -17,6 +17,7 @@ from ray.serve._private.proxy_request_response import (
     ProxyResponse,
 )
 from ray.serve._private.common import RequestProtocol
+from ray.serve._private.constants import RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING
 from ray.serve.generated import serve_pb2
 
 from unittest.mock import AsyncMock
@@ -208,6 +209,10 @@ class TestgRPCProxy:
         response = await grpc_proxy._consume_generator_unary(obj_ref=obj_ref)
         assert response.response == response_bytes
 
+    @pytest.mark.skipif(
+        not RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING,
+        reason="Not supported w/o streaming."
+    )
     @pytest.mark.asyncio
     async def test_send_request_to_replica_streaming(self):
         grpc_proxy = self.create_grpc_proxy()
@@ -394,6 +399,10 @@ class TestHTTPProxy:
         handle._set_request_protocol.assert_called_with(RequestProtocol.HTTP)
         assert returned_request_id == request_id
 
+    @pytest.mark.skipif(
+        not RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING,
+        reason="Not supported w/ streaming."
+    )
     @pytest.mark.asyncio
     async def test_send_request_to_replica_streaming(self):
         http_proxy = self.create_http_proxy()
