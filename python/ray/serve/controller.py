@@ -356,7 +356,8 @@ class ServeController:
                     self.done_recovering_event.set()
                     logger.info(
                         "Finished recovering deployments after "
-                        f"{time.time() - start_time}s."
+                        f"{(time.time() - start_time):.2f}s.",
+                        extra={"log_to_stderr": False},
                     )
             except Exception:
                 logger.exception("Exception updating deployment state.")
@@ -403,7 +404,8 @@ class ServeController:
                     f"The last control loop was slow (took {loop_duration}s). "
                     "This is likely caused by running a large number of "
                     "replicas in a single Ray cluster. Consider using "
-                    "multiple Ray clusters."
+                    "multiple Ray clusters.",
+                    extra={"log_to_stderr": False},
                 )
                 self.dsm_update_duration_gauge_s2.set(dsm_update_time)
                 self.asm_update_duration_gauge_s2.set(asm_update_time)
@@ -550,7 +552,9 @@ class ServeController:
     def _recover_config_from_checkpoint(self):
         checkpoint = self.kv_store.get(CONFIG_CHECKPOINT_KEY)
         if checkpoint is not None:
-            logger.info("Recovering config from checkpoint.")
+            logger.info(
+                "Recovering config from checkpoint.", extra={"log_to_stderr": False}
+            )
             deployment_time, deploy_mode, config_checkpoints_dict = pickle.loads(
                 checkpoint
             )

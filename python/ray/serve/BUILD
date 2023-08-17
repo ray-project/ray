@@ -115,7 +115,7 @@ py_test(
 
 py_test(
     name = "test_http_state",
-    size = "small",
+    size = "medium",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],
     deps = [":serve_lib"],
@@ -123,6 +123,14 @@ py_test(
 
 py_test(
     name = "test_http_util",
+    size = "small",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive", "team:serve"],
+    deps = [":serve_lib"],
+)
+
+py_test(
+    name = "test_grpc_util",
     size = "small",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],
@@ -585,7 +593,7 @@ py_test(
 
 py_test(
     name = "tutorial_rllib",
-    size = "small",
+    size = "medium",
     srcs = serve_tests_srcs,
     main = "test_myst_doc.py",
     args = ["--path", "doc/source/serve/tutorials/rllib.md"],
@@ -708,6 +716,14 @@ py_test(
 py_test(
     name = "test_deploy_app",
     size = "large",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive", "team:serve"],
+    deps = [":serve_lib"],
+)
+
+py_test(
+    name = "test_proxy",
+    size = "small",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],
     deps = [":serve_lib"],

@@ -342,16 +342,9 @@ def test_controller_recover_and_delete(shutdown_ray_and_serve):
         == len(actors) - num_replicas
     )
 
-    # The deployment should be deleted, meaning its state should not be stored
-    # in the DeploymentStateManager. This can be checked by attempting to
-    # retrieve the deployment's status through the controller.
+    # The application should be deleted.
     wait_for_condition(
-        lambda: (
-            client.get_serve_status().get_deployment_status(
-                f"{SERVE_DEFAULT_APP_NAME}{DEPLOYMENT_NAME_PREFIX_SEPARATOR}f"
-            )
-            is None
-        )
+        lambda: SERVE_DEFAULT_APP_NAME not in serve.status().applications
     )
 
 

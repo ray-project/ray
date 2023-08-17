@@ -17,8 +17,8 @@ Function API Checkpointing
 --------------------------
 
 If using Ray Tune's Function API, one can save and load checkpoints in the following manner.
-To create a checkpoint, one can either use :meth:`~ray.air.checkpoint.Checkpoint.from_dict`
-(Checkpoint a dictionary) or :meth:`~ray.air.checkpoint.Checkpoint.from_directory` APIs
+To create a checkpoint, one can either use :meth:`~ray.train.Checkpoint.from_dict`
+(Checkpoint a dictionary) or :meth:`~ray.train.Checkpoint.from_directory` APIs
 (Checkpoint a directory).
 
 .. TODO(ml-team): https://github.com/ray-project/ray/issues/33251
@@ -45,9 +45,9 @@ To create a checkpoint, one can either use :meth:`~ray.air.checkpoint.Checkpoint
 
 In the above code snippet:
 
-- We implement *checkpoint saving* with :meth:`session.report(..., checkpoint=checkpoint) <ray.air.session.report>`. Note that every checkpoint must be reported alongside a set of metrics -- this way, checkpoints can be ordered with respect to a specified metric.
+- We implement *checkpoint saving* with :meth:`train.report(..., checkpoint=checkpoint) <ray.train.report>`. Note that every checkpoint must be reported alongside a set of metrics -- this way, checkpoints can be ordered with respect to a specified metric.
 - The saved checkpoint during training iteration `epoch` is saved to the path ``<storage_path>/<exp_name>/<trial_name>/checkpoint_<epoch>`` on the node on which training happens and can be further synced to a consolidated storage location depending on the :ref:`storage configuration <tune-storage-options>`.
-- We implement *checkpoint loading* with :meth:`session.get_checkpoint() <ray.air.session.get_checkpoint>`. This will be populated with a trial's latest checkpoint whenever Tune restores a trial. This happens when (1) a trial is configured to retry after encountering a failure, (2) the experiment is being restored, and (3) the trial is being resumed after a pause (ex: :doc:`PBT </tune/examples/pbt_guide>`).
+- We implement *checkpoint loading* with :meth:`train.get_checkpoint() <ray.train.get_checkpoint>`. This will be populated with a trial's latest checkpoint whenever Tune restores a trial. This happens when (1) a trial is configured to retry after encountering a failure, (2) the experiment is being restored, and (3) the trial is being resumed after a pause (ex: :doc:`PBT </tune/examples/pbt_guide>`).
 
   .. TODO: for (1), link to tune fault tolerance guide. For (2), link to tune restore guide.
 
@@ -121,7 +121,7 @@ If you want a checkpoint to be created at the end of a trial, you can additional
 
 Configurations
 --------------
-Checkpointing can be configured through :class:`CheckpointConfig <ray.air.config.CheckpointConfig>`.
+Checkpointing can be configured through :class:`CheckpointConfig <ray.train.CheckpointConfig>`.
 Some of the configurations do not apply to Function Trainable API, since checkpointing frequency
 is determined manually within the user-defined training loop. See the compatibility matrix below.
 
@@ -153,9 +153,9 @@ Summary
 =======
 
 In this user guide, we covered how to save and load trial checkpoints in Tune. Once checkpointing is enabled,
-move onto one of the following guides to  find out how to:
+move onto one of the following guides to find out how to:
 
-- :doc:`Extract checkpoints from Tune experiment results </tune/examples/tune_analyze_results>`
+- :ref:`Extract checkpoints from Tune experiment results <tune-analysis-guide>`
 - :ref:`Configure persistent storage options <tune-storage-options>` for a :ref:`distributed Tune experiment <tune-distributed-ref>`
 
 .. _tune-persisted-experiment-data:
