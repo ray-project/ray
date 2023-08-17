@@ -2,9 +2,9 @@ Inspecting Training Results
 ===========================
 
 The return value of your :meth:`Trainer.fit() <ray.train.trainer.BaseTrainer.fit>`
-call is a :class:`~ray.air.result.Result` object.
+call is a :class:`~ray.train.Result` object.
 
-The :class:`~ray.air.result.Result` object contains, among other information:
+The :class:`~ray.train.Result` object contains, among other information:
 
 - The last reported metrics (e.g. the loss)
 - The last reported checkpoint (to load the model)
@@ -12,12 +12,12 @@ The :class:`~ray.air.result.Result` object contains, among other information:
 
 Viewing metrics
 ---------------
-You can retrieve metrics reported to Ray Train from the :class:`~ray.air.result.Result`
+You can retrieve metrics reported to Ray Train from the :class:`~ray.train.Result`
 object.
 
 Common metrics include the training or validation loss, or prediction accuracies.
 
-The metrics retrieved from the :class:`~ray.air.result.Result` object
+The metrics retrieved from the :class:`~ray.train.Result` object
 correspond to those you passed to :func:`train.report <ray.train.report>`
 as an argument :ref:`in your training function <train-monitoring-and-logging>`.
 
@@ -25,7 +25,7 @@ as an argument :ref:`in your training function <train-monitoring-and-logging>`.
 Last reported metrics
 ~~~~~~~~~~~~~~~~~~~~~
 
-Use :attr:`Result.metrics <ray.air.Result.metrics>` to retrieve the
+Use :attr:`Result.metrics <ray.train.Result.metrics>` to retrieve the
 latest reported metrics.
 
 .. literalinclude:: ../doc_code/key_concepts.py
@@ -36,7 +36,7 @@ latest reported metrics.
 Dataframe of all reported metrics
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Use :attr:`Result.metrics_dataframe <ray.air.Result.metrics_dataframe>` to retrieve
+Use :attr:`Result.metrics_dataframe <ray.train.Result.metrics_dataframe>` to retrieve
 a pandas DataFrame of all reported metrics.
 
 .. literalinclude:: ../doc_code/key_concepts.py
@@ -47,7 +47,7 @@ a pandas DataFrame of all reported metrics.
 
 Retrieving checkpoints
 ----------------------
-You can retrieve checkpoints reported to Ray Train from the :class:`~ray.air.result.Result`
+You can retrieve checkpoints reported to Ray Train from the :class:`~ray.train.Result`
 object.
 
 :ref:`Checkpoints <train-checkpointing>` contain all the information that is needed
@@ -57,13 +57,13 @@ You can use checkpoints for common downstream tasks such as
 :ref:`offline batch inference with Ray Data <batch_inference_ray_train>`,
 or :doc:`online model serving with Ray Serve </serve/index>`.
 
-The checkpoints retrieved from the :class:`~ray.air.result.Result` object
+The checkpoints retrieved from the :class:`~ray.train.Result` object
 correspond to those you passed to :func:`train.report <ray.train.report>`
 as an argument :ref:`in your training function <train-monitoring-and-logging>`.
 
 Last saved checkpoint
 ~~~~~~~~~~~~~~~~~~~~~
-Use :attr:`Result.checkpoint <ray.air.Result.checkpoint>` to retrieve the
+Use :attr:`Result.checkpoint <ray.train.Result.checkpoint>` to retrieve the
 last checkpoint.
 
 .. literalinclude:: ../doc_code/key_concepts.py
@@ -79,7 +79,7 @@ after more training due to overfitting, you may want to retrieve the checkpoint 
 the lowest loss.
 
 You can retrieve a list of all available checkpoints and their metrics with
-:attr:`Result.best_checkpoints <ray.air.Result.best_checkpoints>`
+:attr:`Result.best_checkpoints <ray.train.Result.best_checkpoints>`
 
 .. literalinclude:: ../doc_code/key_concepts.py
     :language: python
@@ -89,10 +89,10 @@ You can retrieve a list of all available checkpoints and their metrics with
 Accessing storage location
 ---------------------------
 If you need to retrieve the results later, you can get the storage location
-of the training run with :attr:`Result.path <ray.air.Result.path>`.
+of the training run with :attr:`Result.path <ray.train.Result.path>`.
 
 This path will correspond to the :ref:`storage_path <train-log-dir>` you configured
-in the :class:`~ray.air.RunConfig`. It will be a
+in the :class:`~ray.train.RunConfig`. It will be a
 (nested) subdirectory within that path, usually
 of the form `TrainerName_date-string/TrainerName_id_00000_0_...`.
 
@@ -103,7 +103,7 @@ of the form `TrainerName_date-string/TrainerName_id_00000_0_...`.
     :end-before: __result_path_end__
 
 
-You can restore a result with :meth:`Result.from_path <ray.air.Result.from_path>`:
+You can restore a result with :meth:`Result.from_path <ray.train.Result.from_path>`:
 
 .. literalinclude:: ../doc_code/key_concepts.py
     :language: python
@@ -115,7 +115,7 @@ You can restore a result with :meth:`Result.from_path <ray.air.Result.from_path>
 Viewing Errors
 --------------
 If an error occurred during training,
-:attr:`Result.error <ray.air.Result.error>` will be set and contain the exception
+:attr:`Result.error <ray.train.Result.error>` will be set and contain the exception
 that was raised.
 
 .. literalinclude:: ../doc_code/key_concepts.py
