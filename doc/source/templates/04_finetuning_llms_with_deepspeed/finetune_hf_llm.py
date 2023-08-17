@@ -576,7 +576,7 @@ def main():
         runtime_env={
             "env_vars": {
                 "HF_HOME": "/mnt/local_storage/.cache/huggingface",
-                "TUNE_RESULT_DIR": os.environ["TUNE_RESULT_DIR"],
+                "RAY_AIR_LOCAL_CACHE_DIR": os.environ["RAY_AIR_LOCAL_CACHE_DIR"],
             },
             "working_dir": ".",
         }
