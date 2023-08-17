@@ -36,7 +36,6 @@ Data ingestion can be set up with four basic steps:
         .. testcode::
 
             import torch
-            from torch import nn
             import ray
             from ray import train
             from ray.train import Checkpoint, ScalingConfig
@@ -49,7 +48,7 @@ Data ingestion can be set up with four basic steps:
             # Step 1: Create a Ray Dataset from in-memory Python lists.
             # You can also create a Ray Dataset from many other sources and file
             # formats.
-            train_dataset = ray.data.from_items([{"x": x, "y": 2 * x} for x in range(200)])
+            train_dataset = ray.data.from_items([{"x": [x], "y": [2 * x]} for x in range(200)])
 
             # Step 2: Preprocess your Ray Dataset.
             def increment(batch):
@@ -58,30 +57,25 @@ Data ingestion can be set up with four basic steps:
 
             train_dataset = train_dataset.map_batches(increment)
 
+
             def train_func(config):
-                model = nn.Sequential(nn.Linear(1, 1), nn.Sigmoid())
-                loss_fn = torch.nn.BCELoss()
-                optimizer = torch.optim.SGD(model.parameters(), lr=0.001)
+                batch_size = 16
 
                 # Step 4: Access the dataset shard for the training worker via
                 # ``get_dataset_shard``.
                 train_data_shard = train.get_dataset_shard("train")
+                train_dataloader = train_data_shard.iter_torch_batches(
+                    batch_size=batch_size, dtypes=torch.float32
+                )
 
-                for epoch_idx in range(2):
-                    # In each epoch, iterate over batches of the dataset shard in torch
-                    # format to train the model.
-                    for batch in train_data_shard.iter_torch_batches(batch_size=128, dtypes=torch.float32):
-                        inputs, labels = torch.unsqueeze(batch["x"], 1), torch.unsqueeze(batch["y"], 1)
-                        predictions = model(inputs)
-                        train_loss = loss_fn(predictions, labels)
-                        train_loss.backward()
-                        optimizer.step()
-
-                    # Checkpoint the model on each epoch.
-                    train.report(
-                        {},
-                        checkpoint=Checkpoint.from_dict({"model": model.state_dict()})
-                    )
+                for epoch_idx in range(1):
+                    for batch in train_dataloader:
+                        inputs, labels = batch["x"], batch["y"]
+                        assert type(inputs) == torch.Tensor
+                        assert type(labels) == torch.Tensor
+                        assert inputs.shape[0] == batch_size
+                        assert labels.shape[0] == batch_size
+                        break # Only check one batch. Last batch can be partial.
 
             # Step 3: Create a TorchTrainer. Specify the number of training workers and
             # pass in your Ray Dataset.
@@ -92,9 +86,6 @@ Data ingestion can be set up with four basic steps:
                 scaling_config=ScalingConfig(num_workers=2, use_gpu=use_gpu)
             )
             result = trainer.fit()
-
-            # Extract the model from the checkpoint.
-            result.checkpoint.to_dict()["model"]
 
         .. testoutput::
             :hide:
