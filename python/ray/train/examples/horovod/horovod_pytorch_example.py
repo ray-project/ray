@@ -11,7 +11,7 @@ from torchvision import datasets, transforms
 from ray import train
 from ray.train import ScalingConfig
 from ray.train.horovod import HorovodTrainer
-from ray.train.torch.torch_checkpoint import TorchCheckpoint
+from ray.train.torch.torch_checkpoint import LegacyTorchCheckpoint
 import ray.train.torch
 
 
@@ -152,9 +152,9 @@ def train_func(config):
             model, optimizer, train_sampler, train_loader, epoch, log_interval, use_cuda
         )
         if save_model_as_dict:
-            checkpoint = TorchCheckpoint.from_state_dict(model.state_dict())
+            checkpoint = LegacyTorchCheckpoint.from_state_dict(model.state_dict())
         else:
-            checkpoint = TorchCheckpoint.from_model(model)
+            checkpoint = LegacyTorchCheckpoint.from_model(model)
         results.append(loss)
         train.report(dict(loss=loss), checkpoint=checkpoint)
 
