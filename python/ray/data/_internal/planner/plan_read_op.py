@@ -1,4 +1,4 @@
-from typing import Iterable, Iterator, List
+from typing import Iterable, List
 
 import ray
 import ray.cloudpickle as cloudpickle

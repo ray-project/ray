@@ -1,6 +1,4 @@
-from typing import Iterator
-
-from ray.data._internal.execution.interfaces import PhysicalOperator, TaskContext
+from ray.data._internal.execution.interfaces import PhysicalOperator
 from ray.data._internal.execution.operators.map_data_processor import (
     create_map_data_processor_for_write_op,
 )

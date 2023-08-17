@@ -1,6 +1,6 @@
 import collections
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, Iterator, List, Optional, Union
+from typing import Any, Dict, Iterator, List, Optional, Union
 
 import ray
 from ray.data._internal.compute import ActorPoolStrategy
@@ -16,7 +16,7 @@ from ray.data._internal.execution.interfaces import (
 from ray.data._internal.execution.operators.map_data_processor import MapDataProcessor
 from ray.data._internal.execution.operators.map_operator import MapOperator, _map_task
 from ray.data._internal.execution.util import locality_string
-from ray.data.block import Block, BlockMetadata, _CallableClassProtocol
+from ray.data.block import Block, BlockMetadata
 from ray.data.context import DataContext
 from ray.types import ObjectRef
 
@@ -128,7 +128,9 @@ class ActorPoolMapOperator(MapOperator):
         assert self._cls is not None
         ctx = DataContext.get_current()
         actor = self._cls.remote(
-            ctx, src_fn_name=self.name, map_data_processor=self._map_data_processor
+            ctx,
+            src_fn_name=self.name,
+            map_data_processor=self._map_data_processor,
         )
         res_ref = actor.get_location.remote()
 

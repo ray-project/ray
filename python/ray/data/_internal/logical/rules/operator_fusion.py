@@ -1,4 +1,4 @@
-from typing import Iterator, List, Tuple
+from typing import List, Tuple
 
 # TODO(Clark): Remove compute dependency once we delete the legacy compute.
 from ray.data._internal.compute import get_compute, is_task_compute
@@ -26,7 +26,6 @@ from ray.data._internal.logical.operators.all_to_all_operator import (
 from ray.data._internal.logical.operators.map_operator import AbstractUDFMap
 from ray.data._internal.logical.operators.read_operator import Read
 from ray.data._internal.stats import StatsDict
-from ray.data.block import Block
 
 # Scheduling strategy can be inherited from upstream operator if not specified.
 INHERITABLE_REMOTE_ARGS = ["scheduling_strategy"]

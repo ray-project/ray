@@ -1,6 +1,6 @@
 import collections
 from types import GeneratorType
-from typing import Any, Iterator
+from typing import Any
 
 import numpy as np
 import pandas as pd

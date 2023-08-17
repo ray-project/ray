@@ -37,9 +37,9 @@ def generate_random_shuffle_fn(
         upstream_map_fn = None
         nonlocal ray_remote_args
         if map_data_processor:
-            upstream_map_fn = lambda block: map_data_processor.process(
-                block, ctx
-            )  # noqa: E731
+            upstream_map_fn = lambda blocks: map_data_processor.process(  # noqa: E731
+                blocks, ctx
+            )
             # If there is a fused upstream operator,
             # also use the ray_remote_args from the fused upstream operator.
             ray_remote_args = ctx.upstream_map_ray_remote_args
