@@ -235,22 +235,6 @@ class OperatorFusionRule(Rule):
         else:
             target_block_size = down_target_block_size
 
-        # Fuse transformation functions.
-        down_transform_fn = down_op.get_transformation_fn()
-        up_transform_fn = up_op.get_transformation_fn()
-
-        def fused_map_transform_fn(
-            blocks: Iterator[Block], ctx: TaskContext
-        ) -> Iterator[Block]:
-            blocks = up_transform_fn(blocks, ctx)
-            # TODO(Scott): Add zero-copy batching between transform functions.
-            return down_transform_fn(blocks, ctx)
-
-        # Fuse init funcitons.
-        fused_init_fn = (
-            down_op.get_init_fn() if isinstance(down_op, ActorPoolMapOperator) else None
-        )
-
         # We take the downstream op's compute in case we're fusing upstream tasks with a
         # downstream actor pool (e.g. read->map).
         compute = None
@@ -264,10 +248,9 @@ class OperatorFusionRule(Rule):
 
         # Fused physical map operator.
         op = MapOperator.create(
-            fused_map_transform_fn,
+            up_op.get_map_data_processor().fuse(down_op.get_map_data_processor()),
             input_op,
             name=name,
-            init_fn=fused_init_fn,
             compute_strategy=compute,
             min_rows_per_bundle=target_block_size,
             ray_remote_args=ray_remote_args,

@@ -167,7 +167,7 @@ def create_map_data_processor_for_map_op(op_transform_fn, init_fn) -> MapDataPro
 
 
 def create_map_data_processor_for_map_batches_op(
-    op_transorm_fn, batch_size, batch_format, zero_copy_batch, init_fn
+    op_transform_fn, batch_size, batch_format, zero_copy_batch, init_fn
 ) -> MapDataProcessor:
     input_blocks_to_batches = functools.partial(
         _input_blocks_to_batches,
@@ -182,7 +182,7 @@ def create_map_data_processor_for_map_batches_op(
             MapTransformDataType.Batch,
         ),
         MapTransformFn(
-            op_transorm_fn, MapTransformDataType.Batch, MapTransformDataType.Batch
+            op_transform_fn, MapTransformDataType.Batch, MapTransformDataType.Batch
         ),
         MapTransformFn(
             _batches_to_output_blocks,

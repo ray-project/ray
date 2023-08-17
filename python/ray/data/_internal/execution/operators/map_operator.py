@@ -340,8 +340,8 @@ class MapOperator(OneToOneOperator, ABC):
     def get_stats(self) -> StatsDict:
         return {self._name: self._output_metadata}
 
-    # def get_transformation_fn(self) -> MapTransformFn:
-    #     return self._transform_fn
+    def get_map_data_processor(self) -> MapDataProcessor:
+        return self._map_data_processor
 
     @abstractmethod
     def shutdown(self):

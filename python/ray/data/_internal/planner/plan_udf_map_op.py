@@ -123,7 +123,7 @@ def _create_map_data_processor_for_map_batches_op(op: MapBatches):
                     raise e from None
             else:
                 if not isinstance(res, GeneratorType):
-                    res = [batch]
+                    res = [res]
                 for out_batch in res:
                     _validate_batch(out_batch)
                     yield out_batch
