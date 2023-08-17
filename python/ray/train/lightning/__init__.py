@@ -30,6 +30,7 @@ if LIGHTNIN_VERSION < "1.6.0":
     raise ImportError(
         "Ray Train requires pytorch_lightning >= 1.6.0,"
         f"but {LIGHTNIN_VERSION} is installed."
+        "Please update by `pip install -U pytorch_lightning`."
     )
 
 __all__ = [
