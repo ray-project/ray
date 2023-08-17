@@ -12,8 +12,6 @@ from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.numpy import SMALL_NUMBER, MIN_LOG_NN_OUTPUT, MAX_LOG_NN_OUTPUT
 from ray.rllib.utils.spaces.space_utils import get_base_struct_from_space
 from ray.rllib.utils.typing import TensorType, List, Union, Tuple, ModelConfigDict
-from ray.rllib.utils.deprecation import deprecation_warning, Deprecated
-from ray.util.debug import log_once
 
 torch, nn = try_import_torch()
 
@@ -26,14 +24,6 @@ class TorchDistributionWrapper(ActionDistribution):
     def __init__(self, inputs: List[TensorType], model: TorchModelV2):
         # If inputs are not a torch Tensor, make them one and make sure they
         # are on the correct device.
-        if log_once("torch_distribution_wrapper_deprecation"):
-            deprecation_warning(
-                old=(
-                    "ray.rllib.models.torch.torch_action_dist.Torch"
-                    "DistributionWrapper"
-                ),
-                new="ray.rllib.models.torch.torch_distributions.",
-            )
         if not isinstance(inputs, torch.Tensor):
             inputs = torch.from_numpy(inputs)
             if isinstance(model, TorchModelV2):
@@ -76,14 +66,6 @@ class TorchCategorical(TorchDistributionWrapper):
         model: TorchModelV2 = None,
         temperature: float = 1.0,
     ):
-        if log_once("torch_distribution_wrapper_deprecation"):
-            deprecation_warning(
-                old=(
-                    "ray.rllib.models.torch.torch_action_dist.Torch"
-                    "DistributionWrapper"
-                ),
-                new=("ray.rllib.models.torch.torch_distributions." "TorchCategorical"),
-            )
         if temperature != 1.0:
             assert temperature > 0.0, "Categorical `temperature` must be > 0.0!"
             inputs /= temperature
@@ -106,12 +88,6 @@ class TorchCategorical(TorchDistributionWrapper):
 @DeveloperAPI
 def get_torch_categorical_class_with_temperature(t: float):
     """TorchCategorical distribution class that has customized default temperature."""
-    if log_once("torch_distribution_categorial_temp_deprecation"):
-        deprecation_warning(
-            old="ray.rllib.models.torch.torch_action_dist."
-            "get_torch_categorical_class_with_temperature",
-            new=("ray.rllib.models.torch.torch_distributions." "TorchCategorical"),
-        )
 
     class TorchCategoricalWithTemperature(TorchCategorical):
         def __init__(self, inputs, model=None, temperature=t):
@@ -132,12 +108,6 @@ class TorchMultiCategorical(TorchDistributionWrapper):
         input_lens: Union[List[int], np.ndarray, Tuple[int, ...]],
         action_space=None,
     ):
-        if log_once("torch_distribution_multi_categorical_deprecation"):
-            deprecation_warning(
-                old=(
-                    "ray.rllib.models.torch.torch_action_dist." "TorchMultiCategorical"
-                )
-            )
         super().__init__(inputs, model)
         # If input_lens is np.ndarray or list, force-make it a tuple.
         inputs_split = self.inputs.split(tuple(input_lens), dim=1)
@@ -237,13 +207,6 @@ class TorchSlateMultiCategorical(TorchCategorical):
         action_space: Optional[gym.spaces.MultiDiscrete] = None,
         all_slates=None,
     ):
-        if log_once("torch_distribution_multi_categorical_slate_deprecation"):
-            deprecation_warning(
-                old=(
-                    "ray.rllib.models.torch.torch_action_dist."
-                    "TorchSlateMultiCategorical"
-                )
-            )
         assert temperature > 0.0, "Categorical `temperature` must be > 0.0!"
         # Allow softmax formula w/ temperature != 1.0:
         # Divide inputs by temperature.
@@ -281,11 +244,6 @@ class TorchDiagGaussian(TorchDistributionWrapper):
         *,
         action_space: Optional[gym.spaces.Space] = None
     ):
-        if log_once("torch_action_dist_diag_gaussian_deprecation"):
-            deprecation_warning(
-                old="ray.rllib.models.torch.torch_action_dist.TorchDiagGaussian",
-                new="ray.rllib.models.torch.torch_distributions.TorchDiagGaussian",
-            )
         super().__init__(inputs, model)
         mean, log_std = torch.chunk(self.inputs, 2, dim=1)
         self.log_std = log_std
@@ -348,10 +306,6 @@ class TorchSquashedGaussian(TorchDistributionWrapper):
             high: The highest possible sampling value
                 (excluding this value).
         """
-        if log_once("torch_action_dist_squashed_gaussian_deprecation"):
-            deprecation_warning(
-                old="ray.rllib.models.torch.torch_action_dist.TorchSquashedGaussian"
-            )
         super().__init__(inputs, model)
         # Split inputs into mean and log(std).
         mean, log_std = torch.chunk(self.inputs, 2, dim=-1)
@@ -453,10 +407,6 @@ class TorchBeta(TorchDistributionWrapper):
         low: float = 0.0,
         high: float = 1.0,
     ):
-        if log_once("torch_action_dist_beta_deprecation"):
-            deprecation_warning(
-                old="ray.rllib.models.torch.torch_action_dist.TorchBeta"
-            )
         super().__init__(inputs, model)
         # Stabilize input parameters (possibly coming from a linear layer).
         self.inputs = torch.clamp(self.inputs, log(SMALL_NUMBER), -log(SMALL_NUMBER))
@@ -499,11 +449,6 @@ class TorchBeta(TorchDistributionWrapper):
         return np.prod(action_space.shape, dtype=np.int32) * 2
 
 
-@Deprecated(
-    old="ray.rllib.models.torch.torch_action_dist.TorchDeterministic",
-    new="ray.rllib.models.torch.torch_distributions.TorchDeterminstic",
-    error=False,
-)
 class TorchDeterministic(TorchDistributionWrapper):
     """Action distribution that returns the input values directly.
 
@@ -552,14 +497,6 @@ class TorchMultiActionDistribution(TorchDistributionWrapper):
             action_space (Union[gym.spaces.Dict,gym.spaces.Tuple]): The complex
                 and possibly nested action space.
         """
-        if log_once("torch_multi_action_dist_deprecation"):
-            deprecation_warning(
-                old=(
-                    "ray.rllib.models.torch.torch_action_dist."
-                    "TorchMultiActionDistribution"
-                ),
-                new="ray.rllib.models.torch.torch_distributions.TorchMultiDistribution",
-            )
         if not isinstance(inputs, torch.Tensor):
             inputs = torch.from_numpy(inputs)
             if isinstance(model, TorchModelV2):
@@ -674,10 +611,6 @@ class TorchDirichlet(TorchDistributionWrapper):
 
         See issue #4440 for more details.
         """
-        if log_once("torch_dirichlet_action_dist_deprecation"):
-            deprecation_warning(
-                old="ray.rllib.models.torch.torch_action_dist.TorchDirichlet",
-            )
         self.epsilon = torch.tensor(1e-7).to(inputs.device)
         concentration = torch.exp(inputs) + self.epsilon
         self.dist = torch.distributions.dirichlet.Dirichlet(

@@ -43,7 +43,6 @@ logger = logging.getLogger(__name__)
 TOWER_SCOPE_NAME = "tower"
 
 
-@Deprecated(error=False)
 class DynamicTFPolicy(TFPolicy):
     """A TFPolicy that auto-defines placeholders dynamically at runtime.
 
@@ -923,7 +922,6 @@ class DynamicTFPolicy(TFPolicy):
         return losses
 
 
-@Deprecated(error=False)
 class TFMultiGPUTowerStack:
     """Optimizer that runs in parallel across multiple local devices.
 

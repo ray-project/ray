@@ -30,7 +30,6 @@ if TYPE_CHECKING:
 tf1, tf, tfv = try_import_tf()
 
 
-@Deprecated(error=False)
 def build_tf_policy(
     name: str,
     *,

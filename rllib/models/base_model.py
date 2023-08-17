@@ -207,7 +207,6 @@ class RecurrentModel(abc.ABC):
         return outputs, next_state
 
 
-@Deprecated(error=False)
 class Model(RecurrentModel):
     """A RecurrentModel made non-recurrent by ignoring
     the input/output states.

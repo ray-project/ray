@@ -257,7 +257,6 @@ class WarpFrame(gym.ObservationWrapper):
         return frame[:, :, None]
 
 
-@Deprecated(error=False)
 class FrameStack(gym.Wrapper):
     def __init__(self, env, k):
         """Stack k last frames."""

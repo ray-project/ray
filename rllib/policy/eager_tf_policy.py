@@ -145,7 +145,6 @@ def _check_too_many_retraces(obj):
     return _func
 
 
-@Deprecated(error=False)
 class EagerTFPolicy(Policy):
     """Dummy class to recognize any eagerized TFPolicy by its inheritance."""
 
@@ -302,7 +301,6 @@ class _OptimizerWrapper:
         return list(zip(self.tape.gradient(loss, var_list), var_list))
 
 
-@Deprecated(error=False)
 def _build_eager_tf_policy(
     name,
     loss_fn,

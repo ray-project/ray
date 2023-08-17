@@ -3697,18 +3697,13 @@ class AlgorithmConfig(_Config):
             )
 
     @property
-    @Deprecated(error=False)
+    @Deprecated(
+        old="AlgorithmConfig.multiagent['[some key]']",
+        new="AlgorithmConfig.[some key]",
+        error=True,
+    )
     def multiagent(self):
-        """Shim method to help pretend we are a dict with 'multiagent' key."""
-        return {
-            "policies": self.policies,
-            "policy_mapping_fn": self.policy_mapping_fn,
-            "policies_to_train": self.policies_to_train,
-            "policy_map_capacity": self.policy_map_capacity,
-            "policy_map_cache": self.policy_map_cache,
-            "count_steps_by": self.count_steps_by,
-            "observation_fn": self.observation_fn,
-        }
+        pass
 
     @property
     @Deprecated(new="AlgorithmConfig.rollouts(num_rollout_workers=..)", error=False)

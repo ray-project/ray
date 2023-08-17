@@ -35,8 +35,6 @@ jax, _ = try_import_jax()
 torch, _ = try_import_torch()
 
 
-# TODO: Deprecate in favor of directly sub-classing from TorchPolicy.
-@Deprecated(error=False)
 def build_policy_class(
     name: str,
     framework: str,

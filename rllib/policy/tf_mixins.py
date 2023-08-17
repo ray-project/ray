@@ -27,7 +27,6 @@ logger = logging.getLogger(__name__)
 tf1, tf, tfv = try_import_tf()
 
 
-@Deprecated(error=False)
 class LearningRateSchedule:
     """Mixin for TFPolicy that adds a learning rate schedule."""
 
@@ -74,7 +73,6 @@ class LearningRateSchedule:
             return tf.keras.optimizers.Adam(self.cur_lr)
 
 
-@Deprecated(error=False)
 class EntropyCoeffSchedule:
     """Mixin for TFPolicy that adds entropy coeff decay."""
 
@@ -133,7 +131,6 @@ class EntropyCoeffSchedule:
                 self.entropy_coeff.assign(new_val, read_value=False)
 
 
-@Deprecated(error=False)
 class KLCoeffMixin:
     """Assigns the `update_kl()` and other KL-related methods to a TFPolicy.
 
@@ -208,7 +205,6 @@ class KLCoeffMixin:
         super().set_state(state)
 
 
-@Deprecated(error=False)
 class TargetNetworkMixin:
     """Assign the `update_target` method to the policy.
 
@@ -284,7 +280,6 @@ class TargetNetworkMixin:
             self.update_target(self.config.get("tau", 1.0))
 
 
-@Deprecated(error=False)
 class ValueNetworkMixin:
     """Assigns the `_value()` method to a TFPolicy.
 
@@ -366,7 +361,6 @@ class ValueNetworkMixin:
         return self._cached_extra_action_fetches
 
 
-@Deprecated(error=False)
 class GradStatsMixin:
     def __init__(self):
         pass
@@ -387,8 +381,6 @@ class GradStatsMixin:
         }
 
 
-# TODO: find a better place for this util, since it's not technically MixIns.
-@Deprecated(error=False)
 def compute_gradients(
     policy, optimizer: LocalOptimizer, loss: TensorType
 ) -> ModelGradients:

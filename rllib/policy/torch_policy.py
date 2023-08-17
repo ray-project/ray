@@ -62,7 +62,6 @@ torch, nn = try_import_torch()
 logger = logging.getLogger(__name__)
 
 
-@Deprecated(error=False)
 class TorchPolicy(Policy):
     """PyTorch specific Policy class to use with RLlib."""
 
@@ -1209,7 +1208,6 @@ class TorchPolicy(Policy):
         return outputs
 
 
-@Deprecated(error=False)
 class DirectStepOptimizer:
     """Typesafe method for indicating `apply_gradients` can directly step the
     optimizers with in-place gradients.

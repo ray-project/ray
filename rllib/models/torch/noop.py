@@ -4,7 +4,6 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import Deprecated
 
 
-@Deprecated(error=False)
 class TorchNoopModel(TorchModelV2):
     """Trivial model that just returns the obs flattened.
 

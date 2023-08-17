@@ -7,7 +7,6 @@ from ray.rllib.utils.deprecation import Deprecated
 _, tf, _ = try_import_tf()
 
 
-@Deprecated(error=False)
 class NoopModel(TFModelV2):
     """Trivial model that just returns the obs flattened.
 
