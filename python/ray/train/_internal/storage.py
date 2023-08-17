@@ -474,8 +474,8 @@ class StorageContext:
             # For local storage path, the prefix is empty
             self.storage_prefix = Path(".")
         else:
-            # For remote storage paths, cut the pyarrow parsed path and keep that
-            # as a prefix
+            # For remote storage paths, cut the pyarrow parsed path and keep the
+            # rest as a prefix
             self.storage_prefix: URI = URI(self.storage_path).rstrip_subpath(
                 Path(self.storage_fs_path)
             )

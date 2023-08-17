@@ -511,6 +511,14 @@ py_test(
 )
 
 py_test(
+    name = "test_storage_context",
+    size = "small",
+    srcs = ["tests/test_storage_context.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":train_lib"]
+)
+
+py_test(
     name = "test_tensorflow_checkpoint",
     size = "small",
     srcs = ["tests/test_tensorflow_checkpoint.py"],
