@@ -193,14 +193,14 @@ Grafana is a tool that supports advanced visualizations of Prometheus metrics an
 ### Embedding Grafana visualizations into Ray Dashboard
 To view embedded time-series visualizations in Ray Dashboard, the following must be set up:
 
-1. The head node of the cluster is able to access Prometheus and Grafana
+1. The head node of the cluster is able to access Prometheus and Grafana.
 2. The browser of the dashboard user is able to access Grafana. 
 
 Configure these settings using the `RAY_GRAFANA_HOST`, `RAY_PROMETHEUS_HOST`, `RAY_PROMETHEUS_NAME`, and `RAY_GRAFANA_IFRAME_HOST` environment variables when you start the Ray Clusters.
 
 * Set `RAY_GRAFANA_HOST` to an address that the head node can use to access Grafana. Head node does health checks on Grafana on the backend.
 * Set `RAY_PROMETHEUS_HOST` to an address the head node can use to access Prometheus.
-* Set `RAY_PROMETHEUS_NAME` is used when you select a different data source to use for the Grafana dashboard panles. Default is "Prometheus".
+* Set `RAY_PROMETHEUS_NAME` to select a different data source to use for the Grafana dashboard panles to use. Default is "Prometheus".
 * Set `RAY_GRAFANA_IFRAME_HOST` to an address that the user's browsers can use to access Grafana and embed visualizations. If `RAY_GRAFANA_IFRAME_HOST` is not set, Ray Dashboard uses the value of `RAY_GRAFANA_HOST`.
 
 For example, if the IP of the head node is 55.66.77.88 and Grafana is hosted on port 3000. Set the value to `RAY_GRAFANA_HOST=http://55.66.77.88:3000`.

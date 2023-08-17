@@ -28,7 +28,7 @@
         "current": {
           "selected": false
         },
-        "description": "Filter queries to specific prometheus type.",
+        "description": "Filter queries of a specific Prometheus type.",
         "hide": 2,
         "includeAll": false,
         "multi": false,
