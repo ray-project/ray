@@ -2,21 +2,26 @@ from typing import Optional
 
 import argparse
 import os
+import pickle
+import tempfile
 import time
 
 import ray
 from ray import train, tune
+from ray.train._checkpoint import Checkpoint
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.algorithms.ppo import PPO
 
-from ray.train.tests.util import create_dict_checkpoint, load_dict_checkpoint
 from run_cloud_test import ARTIFACT_FILENAME
 
 
 def fn_trainable(config):
     checkpoint = train.get_checkpoint()
     if checkpoint:
-        state = {"internal_iter": load_dict_checkpoint(checkpoint)["internal_iter"] + 1}
+        with checkpoint.as_directory() as checkpoint_dir:
+            with open(os.path.join(checkpoint_dir, "dict_checkpoint.pkl"), "rb") as f:
+                checkpoint_dict = pickle.load(f)
+        state = {"internal_iter": checkpoint_dict["internal_iter"] + 1}
     else:
         state = {"internal_iter": 1}
 
@@ -34,8 +39,10 @@ def fn_trainable(config):
             internal_iter=state["internal_iter"],
         )
         if i % config["checkpoint_freq"] == 0:
-            with create_dict_checkpoint({"internal_iter": i}) as checkpoint:
-                train.report(metrics, checkpoint=checkpoint)
+            with tempfile.TemporaryDirectory() as tmpdir:
+                with open(os.path.join(tmpdir, "dict_checkpoint.pkl"), "wb") as f:
+                    pickle.dump({"internal_iter": i}, f)
+                train.report(metrics, checkpoint=Checkpoint.from_directory(tmpdir))
         else:
             train.report(metrics)
 
