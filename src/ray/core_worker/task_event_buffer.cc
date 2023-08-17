@@ -231,6 +231,11 @@ void TaskEventBufferImpl::AddTaskEvent(std::unique_ptr<TaskEvent> task_event) {
   absl::MutexLock lock(&mutex_);
   size_t prev_size = buffer_.size();
   size_t num_profile_events_dropped = 0;
+
+  if (task_event->IsProfileEvent()) {
+    return;
+  }
+
   {
     if (task_attempts_dropped_.count(task_event->GetTaskAttempt())) {
       // We are already dropping events for this task attempt.
