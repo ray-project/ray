@@ -2541,7 +2541,7 @@
 
   frequency: weekly
   team: ml
-
+  new_persistence: "True"
   cluster:
     byod:
       type: gpu
@@ -2553,7 +2553,7 @@
 
   run:
     timeout: 86400
-    script: python workloads/many_ppo.py
+    script: RAY_AIR_NEW_PERSISTENCE_MODE=1 python workloads/many_ppo.py
     long_running: true
     wait_for_nodes:
       num_nodes: 1
