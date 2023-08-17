@@ -27,18 +27,20 @@ from ray.data._internal.util import _truncated_repr, validate_compute
 from ray.data.block import Block, CallableClass
 
 
-def _handle_op_compute_and_fn(op: AbstractUDFMap):
-    if isinstance(op._fn, CallableClass):
+def _parse_op_fn(op: AbstractUDFMap):
+    fn_args = op._fn_args or ()
+    fn_kwargs = op._fn_kwargs or {}
 
+    if isinstance(op._fn, CallableClass):
         fn_constructor_args = op._fn_constructor_args or ()
         fn_constructor_kwargs = op._fn_constructor_kwargs or {}
 
         fn_ = make_callable_class_concurrent(op._fn)
 
-        def fn(item: Any, *args, **kwargs) -> Any:
+        def fn(item: Any) -> Any:
             assert ray.data._cached_fn is not None
             assert ray.data._cached_cls == fn_
-            return ray.data._cached_fn(item, *args, **kwargs)
+            return ray.data._cached_fn(item, *fn_args, **fn_kwargs)
 
         def init_fn():
             if ray.data._cached_fn is None:
@@ -46,17 +48,15 @@ def _handle_op_compute_and_fn(op: AbstractUDFMap):
                 ray.data._cached_fn = fn_(*fn_constructor_args, **fn_constructor_kwargs)
 
     else:
-        fn = op._fn
+
+        def fn(item: Any) -> Any:
+            return op._fn(item, *fn_args, **fn_kwargs)
+
         init_fn = lambda: None
-    fn_args = tuple()
-    if op._fn_args:
-        fn_args += op._fn_args
-    fn_kwargs = op._fn_kwargs or {}
-
-    return fn, fn_args, fn_kwargs, init_fn
+    return fn, init_fn
 
 
-def _validate_batch(batch: Block) -> None:
+def validate_batch(batch: Block) -> None:
     if not isinstance(
         batch,
         (
@@ -98,12 +98,12 @@ def _validate_batch(batch: Block) -> None:
 
 
 def _create_map_data_processor_for_map_batches_op(op: MapBatches):
-    fn, fn_args, fn_kwargs, init_fn = _handle_op_compute_and_fn(op)
+    fn, init_fn = _parse_op_fn(op)
 
     def op_transform_fn(batches, _):
         for batch in batches:
             try:
-                res = fn(batch, *fn_args, **fn_kwargs)
+                res = fn(batch)
             except ValueError as e:
                 read_only_msgs = [
                     "assignment destination is read-only",
@@ -125,7 +125,7 @@ def _create_map_data_processor_for_map_batches_op(op: MapBatches):
                 if not isinstance(res, GeneratorType):
                     res = [res]
                 for out_batch in res:
-                    _validate_batch(out_batch)
+                    validate_batch(out_batch)
                     yield out_batch
 
     return create_map_data_processor_for_map_batches_op(
@@ -149,13 +149,13 @@ def validate_row_output(item):
 
 
 def _create_map_data_processor_for_row_based_op(op: AbstractUDFMap):
-    fn, fn_args, fn_kwargs, init_fn = _handle_op_compute_and_fn(op)
+    fn, init_fn = _parse_op_fn(op)
 
     if isinstance(op, MapRows):
 
         def op_transform_fn(rows, _):
             for row in rows:
-                item = fn(row, *fn_args, **fn_kwargs)
+                item = fn(row)
                 validate_row_output(item)
                 yield item
 
@@ -163,7 +163,7 @@ def _create_map_data_processor_for_row_based_op(op: AbstractUDFMap):
 
         def op_transform_fn(rows, _):
             for row in rows:
-                for out_row in fn(row, *fn_args, **fn_kwargs):
+                for out_row in fn(row):
                     validate_row_output(out_row)
                     yield out_row
 
@@ -171,7 +171,7 @@ def _create_map_data_processor_for_row_based_op(op: AbstractUDFMap):
 
         def op_transform_fn(rows, _):
             for row in rows:
-                if fn(row, *fn_args, **fn_kwargs):
+                if fn(row):
                     yield row
 
     else:

@@ -1,9 +1,8 @@
-import collections
 from typing import Callable, Iterator
 
 from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.output_buffer import BlockOutputBuffer
-from ray.data._internal.util import _truncated_repr
+from ray.data._internal.planner.plan_udf_map_op import validate_row_output
 from ray.data.block import Block, BlockAccessor, UserDefinedFunction
 from ray.data.context import DataContext
 
@@ -24,14 +23,7 @@ def generate_map_rows_fn() -> (
             block = BlockAccessor.for_block(block)
             for row in block.iter_rows(public_row_format=True):
                 item = row_fn(row)
-                if not isinstance(item, collections.abc.Mapping):
-                    raise ValueError(
-                        f"Error validating {_truncated_repr(item)}: "
-                        "Standalone Python objects are not "
-                        "allowed in Ray 2.5. To return Python objects from map(), "
-                        "wrap them in a dict, e.g., "
-                        "return `{'item': item}` instead of just `item`."
-                    )
+                validate_row_output(item)
                 output_buffer.add(item)
                 if output_buffer.has_next():
                     yield output_buffer.next()

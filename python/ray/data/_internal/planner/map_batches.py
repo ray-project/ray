@@ -1,13 +1,11 @@
-import collections
 import itertools
 from types import GeneratorType
 from typing import Callable, Iterable, Iterator, Optional
 
 from ray.data._internal.block_batching import batch_blocks
 from ray.data._internal.execution.interfaces import TaskContext
-from ray.data._internal.numpy_support import is_valid_udf_return
 from ray.data._internal.output_buffer import BlockOutputBuffer
-from ray.data._internal.util import _truncated_repr
+from ray.data._internal.planner.plan_udf_map_op import validate_batch
 from ray.data.block import Block, BlockAccessor, DataBatch, UserDefinedFunction
 from ray.data.context import DEFAULT_BATCH_SIZE, DataContext
 
@@ -18,10 +16,6 @@ def generate_map_batches_fn(
     zero_copy_batch: bool = False,
 ) -> Callable[[Iterator[Block], TaskContext, UserDefinedFunction], Iterator[Block]]:
     """Generate function to apply the batch UDF to blocks."""
-    import numpy as np
-    import pandas as pd
-    import pyarrow as pa
-
     context = DataContext.get_current()
 
     def fn(
@@ -33,46 +27,6 @@ def generate_map_batches_fn(
     ) -> Iterator[Block]:
         DataContext._set_current(context)
         output_buffer = BlockOutputBuffer(None, context.target_max_block_size)
-
-        def validate_batch(batch: Block) -> None:
-            if not isinstance(
-                batch,
-                (
-                    list,
-                    pa.Table,
-                    np.ndarray,
-                    collections.abc.Mapping,
-                    pd.core.frame.DataFrame,
-                ),
-            ):
-                raise ValueError(
-                    "The `fn` you passed to `map_batches` returned a value of type "
-                    f"{type(batch)}. This isn't allowed -- `map_batches` expects "
-                    "`fn` to return a `pandas.DataFrame`, `pyarrow.Table`, "
-                    "`numpy.ndarray`, `list`, or `dict[str, numpy.ndarray]`."
-                )
-
-            if isinstance(batch, list):
-                raise ValueError(
-                    f"Error validating {_truncated_repr(batch)}: "
-                    "Returning a list of objects from `map_batches` is not "
-                    "allowed in Ray 2.5. To return Python objects, "
-                    "wrap them in a named dict field, e.g., "
-                    "return `{'results': objects}` instead of just `objects`."
-                )
-
-            if isinstance(batch, collections.abc.Mapping):
-                for key, value in list(batch.items()):
-                    if not is_valid_udf_return(value):
-                        raise ValueError(
-                            f"Error validating {_truncated_repr(batch)}: "
-                            "The `fn` you passed to `map_batches` returned a "
-                            f"`dict`. `map_batches` expects all `dict` values "
-                            f"to be `list` or `np.ndarray` type, but the value "
-                            f"corresponding to key {key!r} is of type "
-                            f"{type(value)}. To fix this issue, convert "
-                            f"the {type(value)} to a `np.ndarray`."
-                        )
 
         def process_next_batch(batch: DataBatch) -> Iterator[Block]:
             # Apply UDF.
