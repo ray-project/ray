@@ -6,11 +6,6 @@ Training with DeepSpeed
 Ray :class:`~ray.train.torch.TorchTrainer` can help you easily distribute your DeepSpeed training over a Ray Cluster.
 Simply put all your existing training logics into a training function, then launch a TorchTrainer.
 
-To run DeepSpeed with pure PyTorch, you **don't need to** provide any additional Ray Train utilities 
-like :meth:`~ray.train.torch.prepare_model` or :meth:`~ray.train.torch.prepare_data_loader` in your training funciton. Instead, 
-keep using `deepspeed.initialize() <https://deepspeed.readthedocs.io/en/latest/initialize.html>`_ as usual to prepare everything 
-for distributed training.
-
 Below is a simple example of ZeRO-3 training with DeepSpeed only. 
 
 .. dropdown:: Code example
@@ -20,6 +15,12 @@ Below is a simple example of ZeRO-3 training with DeepSpeed only.
         :start-after: __deepspeed_torch_basic_example_start__
         :end-before: __deepspeed_torch_basic_example_end__
 
+.. tip::
+
+    To run DeepSpeed with pure PyTorch, you **don't need to** provide any additional Ray Train utilities 
+    like :meth:`~ray.train.torch.prepare_model` or :meth:`~ray.train.torch.prepare_data_loader` in your training funciton. Instead, 
+    keep using `deepspeed.initialize() <https://deepspeed.readthedocs.io/en/latest/initialize.html>`_ as usual to prepare everything 
+    for distributed training.
 
 Run DeepSpeed with More Frameworks
 ----------------------------------

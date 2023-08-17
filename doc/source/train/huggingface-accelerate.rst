@@ -52,34 +52,8 @@ You can expect the final code to look like this:
     )
     trainer.fit()
 
-
-Next, check these end-to-end examples below for more details:
-
-- Basic: :ref:`Accelerate Distributed Data Parallel Training with Ray Train <accelerate_example>`
-- Advanced: `Fine-tuning Llama-2 series models with Deepspeed, Accelerate, and Ray Train. <https://github.com/ray-project/ray/tree/master/doc/source/templates/04_finetuning_llms_with_deepspeed>`_
-
-You may find these user guides helpful:
-
-- :ref:`Configuring Scale and GPUs <train_scaling_config>`
-- :ref:`Configuration and Persistent Storage <train-run-config>`
-- :ref:`Saving and Loading Checkpoints <train-checkpointing>`
-- :ref:`How to use Ray Data with Ray Train <data-ingest-torch>`
-
-
-`AccelerateTrainer` Migration Guide 
------------------------------------
-
-Before Ray 2.7, Ray Train's :class:`AccelerateTrainer <ray.train.huggingface.AccelerateTrainer>` API was the 
-recommended way to run Accelerate code. As a subclass of :class:`TorchTrainer <ray.train.torch.TorchTrainer>`,  
-AccelerateTrainer helps users apply the configuration file generated with ``accelerate config`` to all workers. 
-Aside from that, the functionality of ``AccelerateTrainer`` is identical to ``TorchTrainer``.
-
-However, users can easily configure Accelerate within their training function, so there is no need to maintain a separate Ray Trainer API.
-To provide a more simplified and flexible interface, we will deprecate ``AccelerateTrainer`` in Ray 2.8, and recommend running your 
-Accelerate code with ``TorchTrainer``. 
-
 How to setup Accelerate config
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+------------------------------
 
 Hugging Face Accelerate provides two approaches to configure your run:
 
@@ -192,3 +166,36 @@ the Torch distributed environment and run thr training function on all workers.
                 ...
             )
             trainer.fit()
+
+Next, check these end-to-end examples below for more details:
+
+.. dropdown:: Code example
+
+    .. literalinclude:: /../../python/ray/train/examples/accelerate/accelerate_torch_trainer.py
+        :language: python
+
+.. seealso::
+
+    Also check out this advanced example: `Fine-tuning Llama-2 series models with Deepspeed, Accelerate, and Ray Train. <https://github.com/ray-project/ray/tree/master/doc/source/templates/04_finetuning_llms_with_deepspeed>`_
+
+You may also find these user guides helpful:
+
+- :ref:`Configuring Scale and GPUs <train_scaling_config>`
+- :ref:`Configuration and Persistent Storage <train-run-config>`
+- :ref:`Saving and Loading Checkpoints <train-checkpointing>`
+- :ref:`How to use Ray Data with Ray Train <data-ingest-torch>`
+
+
+`AccelerateTrainer` Migration Guide 
+-----------------------------------
+
+Before Ray 2.7, Ray Train's :class:`AccelerateTrainer <ray.train.huggingface.AccelerateTrainer>` API was the 
+recommended way to run Accelerate code. As a subclass of :class:`TorchTrainer <ray.train.torch.TorchTrainer>`,  
+AccelerateTrainer helps users apply the configuration file generated with ``accelerate config`` to all workers. 
+Aside from that, the functionality of ``AccelerateTrainer`` is identical to ``TorchTrainer``.
+
+However, users can easily configure Accelerate within their training function, so there is no need to maintain a separate Ray Trainer API.
+To provide a more simplified and flexible interface, we will deprecate ``AccelerateTrainer`` in Ray 2.8, and recommend running your 
+Accelerate code with ``TorchTrainer``. 
+
+
