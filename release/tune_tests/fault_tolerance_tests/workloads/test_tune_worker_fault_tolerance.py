@@ -92,11 +92,13 @@ def main(bucket_uri: str):
     print("Collected garbage")
 
     for result in results:
-        checkpoint_dict = result.checkpoint.to_dict()
-        assert checkpoint_dict["iteration"] == MAX_ITERS, result.checkpoint
-        assert (
-            checkpoint_dict["iteration"] == result.metrics["iteration"]
-        ), result.checkpoint
+        checkpoint = result.checkpoint
+        with checkpoint.as_directory() as checkpoint_dir:
+            with open(os.path.join(checkpoint_dir, "ckpt.pkl"), "rb") as f:
+                checkpoint_dict = pickle.load(f)
+
+        assert checkpoint_dict["iteration"] == MAX_ITERS, (checkpoint_dict, MAX_ITERS)
+        assert checkpoint_dict["iteration"] == result.metrics["iteration"], result
 
 
 if __name__ == "__main__":
