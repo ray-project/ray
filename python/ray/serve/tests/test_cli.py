@@ -463,7 +463,9 @@ def test_cli_without_config_deploy(ray_start_stop):
     def check_cli():
         info_response = subprocess.check_output(["serve", "config"])
         status_response = subprocess.check_output(["serve", "status"])
-        fetched_status = yaml.safe_load(status_response)["applications"]["default"]
+        fetched_status = yaml.safe_load(status_response)["applications"][
+            SERVE_DEFAULT_APP_NAME
+        ]
 
         return (
             "No config has been deployed" in info_response.decode("utf-8")
@@ -556,12 +558,14 @@ def test_status_basic(ray_start_stop):
         serve_status = yaml.safe_load(status_response)
         return len(serve_status["applications"][app_name]["deployments"])
 
-    wait_for_condition(lambda: num_live_deployments("default") == 5, timeout=15)
+    wait_for_condition(
+        lambda: num_live_deployments(SERVE_DEFAULT_APP_NAME) == 5, timeout=15
+    )
     status_response = subprocess.check_output(
         ["serve", "status", "-a", "http://localhost:52365/"]
     )
     serve_status = yaml.safe_load(status_response)
-    default_app = serve_status["applications"]["default"]
+    default_app = serve_status["applications"][SERVE_DEFAULT_APP_NAME]
 
     expected_deployments = {
         f"{SERVE_DEFAULT_APP_NAME}{DEPLOYMENT_NAME_PREFIX_SEPARATOR}DAGDriver",
@@ -573,6 +577,7 @@ def test_status_basic(ray_start_stop):
     for name, status in default_app["deployments"].items():
         expected_deployments.remove(name)
         assert status["status"] in {"HEALTHY", "UPDATING"}
+        assert status["replica_states"]["RUNNING"] in {0, 1}
         assert "message" in status
     assert len(expected_deployments) == 0
 
@@ -606,13 +611,11 @@ def test_status_error_msg_format(ray_start_stop):
         cli_output = subprocess.check_output(
             ["serve", "status", "-a", "http://localhost:52365/"]
         )
-        cli_status = yaml.safe_load(cli_output)["applications"]["default"]
-        api_status = serve.status().applications["default"]
-        return (
-            cli_status["status"] == "DEPLOY_FAILED"
-            and remove_ansi_escape_sequences(cli_status["message"])
-            in api_status.message
-        )
+        cli_status = yaml.safe_load(cli_output)["applications"][SERVE_DEFAULT_APP_NAME]
+        api_status = serve.status().applications[SERVE_DEFAULT_APP_NAME]
+        assert cli_status["status"] == "DEPLOY_FAILED"
+        assert remove_ansi_escape_sequences(cli_status["message"]) in api_status.message
+        return True
 
     wait_for_condition(check_for_failed_deployment)
 
@@ -634,18 +637,17 @@ def test_status_invalid_runtime_env(ray_start_stop):
         cli_output = subprocess.check_output(
             ["serve", "status", "-a", "http://localhost:52365/"]
         )
-        cli_status = yaml.safe_load(cli_output)["applications"]["default"]
-        return (
-            cli_status["status"] == "DEPLOY_FAILED"
-            and "Failed to set up runtime environment" in cli_status["message"]
-        )
+        cli_status = yaml.safe_load(cli_output)["applications"][SERVE_DEFAULT_APP_NAME]
+        assert cli_status["status"] == "DEPLOY_FAILED"
+        assert "Failed to set up runtime environment" in cli_status["message"]
+        return True
 
     wait_for_condition(check_for_failed_deployment, timeout=15)
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
 def test_status_syntax_error(ray_start_stop):
-    """Deploys Serve app with syntax error, checks the error message is descriptive."""
+    """Deploys Serve app with syntax error, checks error message has traceback."""
 
     config_file_name = os.path.join(
         os.path.dirname(__file__), "test_config_files", "syntax_error.yaml"
@@ -657,8 +659,11 @@ def test_status_syntax_error(ray_start_stop):
         cli_output = subprocess.check_output(
             ["serve", "status", "-a", "http://localhost:52365/"]
         )
-        status = yaml.safe_load(cli_output)["applications"]["default"]
-        return status["status"] == "DEPLOY_FAILED" and "x = (1 + 2" in status["message"]
+        status = yaml.safe_load(cli_output)["applications"][SERVE_DEFAULT_APP_NAME]
+        assert status["status"] == "DEPLOY_FAILED"
+        assert "Traceback (most recent call last)" in status["message"]
+        assert "x = (1 + 2" in status["message"]
+        return True
 
     wait_for_condition(check_for_failed_deployment)
 
@@ -679,11 +684,10 @@ def test_status_constructor_error(ray_start_stop):
         cli_output = subprocess.check_output(
             ["serve", "status", "-a", "http://localhost:52365/"]
         )
-        status = yaml.safe_load(cli_output)["applications"]["default"]
-        return (
-            status["status"] == "DEPLOY_FAILED"
-            and "ZeroDivisionError" in status["deployments"]["default_A"]["message"]
-        )
+        status = yaml.safe_load(cli_output)["applications"][SERVE_DEFAULT_APP_NAME]
+        assert status["status"] == "DEPLOY_FAILED"
+        assert "ZeroDivisionError" in status["deployments"]["default_A"]["message"]
+        return True
 
     wait_for_condition(check_for_failed_deployment)
 
@@ -704,14 +708,40 @@ def test_status_package_unavailable_in_controller(ray_start_stop):
         cli_output = subprocess.check_output(
             ["serve", "status", "-a", "http://localhost:52365/"]
         )
-        status = yaml.safe_load(cli_output)["applications"]["default"]
-        return (
-            status["status"] == "DEPLOY_FAILED"
-            and "some_wrong_url"
+        status = yaml.safe_load(cli_output)["applications"][SERVE_DEFAULT_APP_NAME]
+        assert status["status"] == "DEPLOY_FAILED"
+        assert (
+            "some_wrong_url"
             in status["deployments"]["default_TestDeployment"]["message"]
         )
+        return True
 
     wait_for_condition(check_for_failed_deployment, timeout=15)
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
+def test_replica_placement_group_options(ray_start_stop):
+    """Test that placement group options can be set via config file."""
+
+    config_file_name = os.path.join(
+        os.path.dirname(__file__), "test_config_files", "replica_placement_groups.yaml"
+    )
+
+    subprocess.check_output(["serve", "deploy", config_file_name])
+
+    def check_application_status():
+        cli_output = subprocess.check_output(
+            ["serve", "status", "-a", "http://localhost:52365/"]
+        )
+        status = yaml.safe_load(cli_output)["applications"]
+        assert (
+            status["valid"]["status"] == "RUNNING"
+            and status["invalid_bundles"]["status"] == "DEPLOY_FAILED"
+            and status["invalid_strategy"]["status"] == "DEPLOY_FAILED"
+        )
+        return True
+
+    wait_for_condition(check_application_status, timeout=15)
 
 
 if __name__ == "__main__":

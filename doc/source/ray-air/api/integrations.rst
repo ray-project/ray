@@ -1,7 +1,7 @@
 .. _air-ml-integrations:
 
-Ray AIR Integrations with ML Libraries
-======================================
+Integrations with ML Libraries
+==============================
 
 .. currentmodule:: ray
 
@@ -121,11 +121,6 @@ Use vanilla Tensorflow/Keras with Ray Tune to parallelize model training.
 
     ~train.tensorflow.TensorflowTrainer
     ~air.integrations.keras.ReportCheckpointCallback
-
-.. seealso::
-
-    :ref:`See here for an example. <air-convert-tf-to-air>`
-
 
 XGBoost
 -------

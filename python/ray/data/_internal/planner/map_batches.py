@@ -1,13 +1,14 @@
 import collections
+import itertools
 from types import GeneratorType
-from typing import Callable, Iterator, Optional
+from typing import Callable, Iterable, Iterator, Optional
 
 from ray.data._internal.block_batching import batch_blocks
 from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.numpy_support import is_valid_udf_return
 from ray.data._internal.output_buffer import BlockOutputBuffer
 from ray.data._internal.util import _truncated_repr
-from ray.data.block import Block, DataBatch, UserDefinedFunction
+from ray.data.block import Block, BlockAccessor, DataBatch, UserDefinedFunction
 from ray.data.context import DEFAULT_BATCH_SIZE, DataContext
 
 
@@ -24,7 +25,7 @@ def generate_map_batches_fn(
     context = DataContext.get_current()
 
     def fn(
-        blocks: Iterator[Block],
+        blocks: Iterable[Block],
         task_context: TaskContext,
         batch_fn: UserDefinedFunction,
         *fn_args,
@@ -105,6 +106,16 @@ def generate_map_batches_fn(
                 else:
                     raise e from None
 
+        try:
+            block_iter = iter(blocks)
+            first_block = next(block_iter)
+            blocks = itertools.chain([first_block], block_iter)
+            empty_block = BlockAccessor.for_block(first_block).builder().build()
+            # Don't hold the first block in memory, so we reset the reference.
+            first_block = None
+        except StopIteration:
+            first_block = None
+
         # Ensure that zero-copy batch views are copied so mutating UDFs don't error.
         formatted_batch_iter = batch_blocks(
             blocks=blocks,
@@ -114,12 +125,19 @@ def generate_map_batches_fn(
             ensure_copy=not zero_copy_batch and batch_size is not None,
         )
 
+        has_batches = False
         for batch in formatted_batch_iter:
+            has_batches = True
             yield from process_next_batch(batch)
 
-        # Yield remainder block from output buffer.
-        output_buffer.finalize()
-        if output_buffer.has_next():
-            yield output_buffer.next()
+        if not has_batches:
+            # If the input blocks are all empty, then yield an empty block with same
+            # format as the input blocks.
+            yield empty_block
+        else:
+            # Yield remainder block from output buffer.
+            output_buffer.finalize()
+            if output_buffer.has_next():
+                yield output_buffer.next()
 
     return fn

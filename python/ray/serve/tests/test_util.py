@@ -4,6 +4,7 @@ import subprocess
 import sys
 import tempfile
 from copy import deepcopy
+import time
 from unittest.mock import patch
 
 import numpy as np
@@ -22,8 +23,11 @@ from ray.serve._private.utils import (
     serve_encoders,
     snake_to_camel_case,
     dict_keys_snake_to_camel_case,
+    get_all_live_placement_group_names,
     get_head_node_id,
+    MetricsPusher,
 )
+from ray.serve.tests.utils import MockTimer
 from ray._private.resource_spec import HEAD_NODE_RESOURCE_NAME
 
 
@@ -616,6 +620,133 @@ def test_calculate_remaining_timeout():
         )
         == 0
     )
+
+
+def test_get_all_live_placement_group_names(ray_instance):
+    """Test the logic to parse the Ray placement group table.
+
+    The test contains three cases:
+    - A named placement group that was created and is still alive ("pg2").
+    - A named placement group that's still being scheduled ("pg3").
+    - An unnamed placement group.
+
+    Only "pg2" and "pg3" should be returned as live placement group names.
+    """
+
+    # Named placement group that's been removed (should not be returned).
+    pg1 = ray.util.placement_group([{"CPU": 0.1}], name="pg1")
+    ray.util.remove_placement_group(pg1)
+
+    # Named, detached placement group that's been removed (should not be returned).
+    pg2 = ray.util.placement_group([{"CPU": 0.1}], name="pg2", lifetime="detached")
+    ray.util.remove_placement_group(pg2)
+
+    # Named placement group that's still alive (should be returned).
+    pg3 = ray.util.placement_group([{"CPU": 0.1}], name="pg3")
+    assert pg3.wait()
+
+    # Named, detached placement group that's still alive (should be returned).
+    pg4 = ray.util.placement_group([{"CPU": 0.1}], name="pg4", lifetime="detached")
+    assert pg4.wait()
+
+    # Named placement group that's being scheduled (should be returned).
+    pg5 = ray.util.placement_group([{"CPU": 1000}], name="pg5")
+    assert not pg5.wait(timeout_seconds=0.001)
+
+    # Named, detached placement group that's being scheduled (should be returned).
+    pg6 = ray.util.placement_group([{"CPU": 1000}], name="pg6", lifetime="detached")
+    assert not pg6.wait(timeout_seconds=0.001)
+
+    # Unnamed placement group (should not be returned).
+    pg7 = ray.util.placement_group([{"CPU": 0.1}])
+    assert pg7.wait()
+
+    # Unnamed, detached placement group (should not be returned).
+    pg8 = ray.util.placement_group([{"CPU": 0.1}], lifetime="detached")
+    assert pg8.wait()
+
+    assert set(get_all_live_placement_group_names()) == {"pg3", "pg4", "pg5", "pg6"}
+
+
+def test_metrics_pusher_no_tasks():
+    """Test that a metrics pusher can't be started with zero tasks."""
+    metrics_pusher = MetricsPusher()
+    with pytest.raises(ValueError):
+        metrics_pusher.start()
+
+
+def test_metrics_pusher_basic():
+    start = 0
+    timer = MockTimer(start)
+
+    with patch("time.time", new=timer.time), patch(
+        "time.sleep", new=timer.realistic_sleep
+    ):
+        counter = {"val": 0}
+        result = {}
+        expected_result = 20
+
+        def task(c, res):
+            timer.realistic_sleep(0.001)
+            c["val"] += 1
+            # At 10 seconds, this task should have been called 20 times
+            if timer.time() >= 10 and "val" not in res:
+                res["val"] = c["val"]
+
+        metrics_pusher = MetricsPusher()
+        metrics_pusher.register_task(lambda: task(counter, result), 0.5)
+
+        metrics_pusher.start()
+        # This busy wait loop should run for at most a few hundred milliseconds
+        # The test should finish by then, and if the test fails this prevents
+        # an infinite loop
+        for _ in range(10000000):
+            if "val" in result:
+                assert result["val"] == expected_result
+                break
+
+        assert result["val"] == expected_result
+
+
+def test_metrics_pusher_multiple_tasks():
+    start = 0
+    timer = MockTimer(start)
+
+    with patch("time.time", new=timer.time), patch(
+        "time.sleep", new=timer.realistic_sleep
+    ):
+        counter = {"A": 0, "B": 0, "C": 0}
+        result = {}
+        expected_results = {"A": 35, "B": 14, "C": 10}
+
+        def task(key, c, res):
+            time.sleep(0.001)
+            c[key] += 1
+            # Check for how many times this task has been called
+            # At 7 seconds, tasks A, B, C should have executed 35, 14, and 10
+            # times respectively.
+            if timer.time() >= 7 and key not in res:
+                res[key] = c[key]
+
+        metrics_pusher = MetricsPusher()
+        # Each task interval is different, and they don't divide each other.
+        metrics_pusher.register_task(lambda: task("A", counter, result), 0.2)
+        metrics_pusher.register_task(lambda: task("B", counter, result), 0.5)
+        metrics_pusher.register_task(lambda: task("C", counter, result), 0.7)
+        metrics_pusher.start()
+
+        # This busy wait loop should run for at most a few hundred milliseconds
+        # The test should finish by then, and if the test fails this prevents
+        # an infinite loop
+        for _ in range(10000000):
+            for key in result.keys():
+                assert result[key] == expected_results[key]
+            if len(result) == 3:
+                break
+
+        # Check there are three results set and all are expected.
+        for key in expected_results.keys():
+            assert result[key] == expected_results[key]
 
 
 if __name__ == "__main__":

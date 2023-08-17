@@ -37,7 +37,6 @@ from ray.data._internal.logical.operators.map_operator import (
     MapRows,
 )
 from ray.data._internal.logical.operators.n_ary_operator import Union, Zip
-from ray.data._internal.logical.operators.read_operator import Read
 from ray.data._internal.logical.operators.write_operator import Write
 from ray.data._internal.logical.optimizers import PhysicalOptimizer
 from ray.data._internal.logical.util import (
@@ -49,10 +48,9 @@ from ray.data._internal.planner.planner import Planner
 from ray.data._internal.sort import SortKey
 from ray.data._internal.stats import DatasetStats
 from ray.data.aggregate import Count
-from ray.data.datasource.datasource import RangeDatasource
-from ray.data.datasource.json_datasource import JSONDatasource
 from ray.data.datasource.parquet_datasource import ParquetDatasource
 from ray.data.tests.conftest import *  # noqa
+from ray.data.tests.test_util import get_parquet_read_logical_op
 from ray.data.tests.util import column_udf, extract_values, named_values
 from ray.tests.conftest import *  # noqa
 
@@ -73,9 +71,23 @@ def _check_usage_record(op_names: List[str], clear_after_check: Optional[bool] =
             _recorded_operators.clear()
 
 
+def _check_valid_plan_and_result(
+    ds,
+    expected_plan,
+    expected_result,
+    expected_physical_plan_stages=None,
+):
+    assert ds.take_all() == expected_result
+    assert str(ds._plan._logical_plan.dag) == expected_plan
+
+    expected_physical_plan_stages = expected_physical_plan_stages or []
+    for stage in expected_physical_plan_stages:
+        assert stage in ds.stats(), f"Stage {stage} not found: {ds.stats()}"
+
+
 def test_read_operator(ray_start_regular_shared, enable_optimizer):
     planner = Planner()
-    op = Read(ParquetDatasource(), [], 0)
+    op = get_parquet_read_logical_op()
     plan = LogicalPlan(op)
     physical_op = planner.plan(plan).dag
 
@@ -152,7 +164,7 @@ def test_map_operator_udf_name(ray_start_regular_shared, enable_optimizer):
 
     for udf, expected_name in zip(udf_list, expected_names):
         op = MapRows(
-            Read(ParquetDatasource(), [], 0),
+            get_parquet_read_logical_op(),
             udf,
         )
         assert op.name == f"Map({expected_name})"
@@ -160,7 +172,7 @@ def test_map_operator_udf_name(ray_start_regular_shared, enable_optimizer):
 
 def test_map_batches_operator(ray_start_regular_shared, enable_optimizer):
     planner = Planner()
-    read_op = Read(ParquetDatasource(), [], 0)
+    read_op = get_parquet_read_logical_op()
     op = MapBatches(
         read_op,
         lambda x: x,
@@ -183,7 +195,7 @@ def test_map_batches_e2e(ray_start_regular_shared, enable_optimizer):
 
 def test_map_rows_operator(ray_start_regular_shared, enable_optimizer):
     planner = Planner()
-    read_op = Read(ParquetDatasource(), [], 0)
+    read_op = get_parquet_read_logical_op()
     op = MapRows(
         read_op,
         lambda x: x,
@@ -206,7 +218,7 @@ def test_map_rows_e2e(ray_start_regular_shared, enable_optimizer):
 
 def test_filter_operator(ray_start_regular_shared, enable_optimizer):
     planner = Planner()
-    read_op = Read(ParquetDatasource(), [], 0)
+    read_op = get_parquet_read_logical_op()
     op = Filter(
         read_op,
         lambda x: x,
@@ -229,7 +241,7 @@ def test_filter_e2e(ray_start_regular_shared, enable_optimizer):
 
 def test_flat_map(ray_start_regular_shared, enable_optimizer):
     planner = Planner()
-    read_op = Read(ParquetDatasource(), [], 0)
+    read_op = get_parquet_read_logical_op()
     op = FlatMap(
         read_op,
         lambda x: x,
@@ -288,7 +300,7 @@ def test_random_sample_e2e(ray_start_regular_shared, enable_optimizer):
 
 def test_random_shuffle_operator(ray_start_regular_shared, enable_optimizer):
     planner = Planner()
-    read_op = Read(ParquetDatasource(), [], 0)
+    read_op = get_parquet_read_logical_op()
     op = RandomShuffle(
         read_op,
         seed=0,
@@ -320,7 +332,7 @@ def test_random_shuffle_e2e(
 )
 def test_repartition_operator(ray_start_regular_shared, enable_optimizer, shuffle):
     planner = Planner()
-    read_op = Read(ParquetDatasource(), [], 0)
+    read_op = get_parquet_read_logical_op()
     op = Repartition(read_op, num_outputs=5, shuffle=shuffle)
     plan = LogicalPlan(op)
     physical_op = planner.plan(plan).dag
@@ -386,13 +398,13 @@ def test_repartition_e2e(
 @pytest.mark.parametrize("preserve_order", (True, False))
 def test_union_operator(ray_start_regular_shared, enable_optimizer, preserve_order):
     planner = Planner()
-    read_parquet_op = Read(ParquetDatasource(), [], 0)
-    read_range_op = Read(RangeDatasource(), [], 0)
-    read_json_op = Read(JSONDatasource(), [], 0)
+    read_parquet_op1 = get_parquet_read_logical_op()
+    read_parquet_op2 = get_parquet_read_logical_op()
+    read_parquet_op3 = get_parquet_read_logical_op()
     union_op = Union(
-        read_parquet_op,
-        read_range_op,
-        read_json_op,
+        read_parquet_op1,
+        read_parquet_op2,
+        read_parquet_op3,
     )
     plan = LogicalPlan(union_op)
     physical_op = planner.plan(plan).dag
@@ -454,7 +466,7 @@ def test_union_e2e(ray_start_regular_shared, enable_optimizer, preserve_order):
 def test_read_map_batches_operator_fusion(ray_start_regular_shared, enable_optimizer):
     # Test that Read is fused with MapBatches.
     planner = Planner()
-    read_op = Read(ParquetDatasource(), [], 0)
+    read_op = get_parquet_read_logical_op()
     op = MapBatches(
         read_op,
         lambda x: x,
@@ -476,7 +488,7 @@ def test_read_map_batches_operator_fusion(ray_start_regular_shared, enable_optim
 def test_read_map_chain_operator_fusion(ray_start_regular_shared, enable_optimizer):
     # Test that a chain of different map operators are fused.
     planner = Planner()
-    read_op = Read(ParquetDatasource(), [], 0)
+    read_op = get_parquet_read_logical_op()
     op = MapRows(read_op, lambda x: x)
     op = MapBatches(op, lambda x: x)
     op = FlatMap(op, lambda x: x)
@@ -519,14 +531,8 @@ def test_read_map_batches_operator_fusion_compatible_remote_args(
     ]
     for up_remote_args, down_remote_args in compatiple_remote_args_pairs:
         planner = Planner()
-        read_op = Read(
-            ParquetDatasource(),
-            [],
-            0,
-            # This case is testing fusing the following 2 map_batches operators.
-            # So we add incompatible remote args to the read op to make sure
-            # it doesn't get fused.
-            ray_remote_args={"resources": {"non-existent": 1}},
+        read_op = get_parquet_read_logical_op(
+            ray_remote_args={"resources": {"non-existent": 1}}
         )
         op = MapBatches(read_op, lambda x: x, ray_remote_args=up_remote_args)
         op = MapBatches(op, lambda x: x, ray_remote_args=down_remote_args)
@@ -568,14 +574,8 @@ def test_read_map_batches_operator_fusion_incompatible_remote_args(
     ]
     for up_remote_args, down_remote_args in incompatiple_remote_args_pairs:
         planner = Planner()
-        read_op = Read(
-            ParquetDatasource(),
-            [],
-            0,
-            # This case is testing fusing the following 2 map_batches operators.
-            # So we add incompatible remote args to the read op to make sure
-            # it doesn't get fused.
-            ray_remote_args={"resources": {"non-existent": 1}},
+        read_op = get_parquet_read_logical_op(
+            ray_remote_args={"resources": {"non-existent": 1}}
         )
         op = MapBatches(read_op, lambda x: x, ray_remote_args=up_remote_args)
         op = MapBatches(op, lambda x: x, ray_remote_args=down_remote_args)
@@ -606,7 +606,7 @@ def test_read_map_batches_operator_fusion_compute_tasks_to_actors(
     # Test that a task-based map operator is fused into an actor-based map operator when
     # the former comes before the latter.
     planner = Planner()
-    read_op = Read(ParquetDatasource(), [], 0)
+    read_op = get_parquet_read_logical_op()
     op = MapBatches(read_op, lambda x: x)
     op = MapBatches(op, lambda x: x, compute=ray.data.ActorPoolStrategy())
     logical_plan = LogicalPlan(op)
@@ -626,7 +626,7 @@ def test_read_map_batches_operator_fusion_compute_read_to_actors(
 ):
     # Test that reads fuse into an actor-based map operator.
     planner = Planner()
-    read_op = Read(ParquetDatasource(), [], 0)
+    read_op = get_parquet_read_logical_op()
     op = MapBatches(read_op, lambda x: x, compute=ray.data.ActorPoolStrategy())
     logical_plan = LogicalPlan(op)
     physical_plan = planner.plan(logical_plan)
@@ -645,7 +645,7 @@ def test_read_map_batches_operator_fusion_incompatible_compute(
 ):
     # Test that map operators are not fused when compute strategies are incompatible.
     planner = Planner()
-    read_op = Read(ParquetDatasource(), [], 0)
+    read_op = get_parquet_read_logical_op()
     op = MapBatches(read_op, lambda x: x, compute=ray.data.ActorPoolStrategy())
     op = MapBatches(op, lambda x: x)
     logical_plan = LogicalPlan(op)
@@ -669,7 +669,7 @@ def test_read_map_batches_operator_fusion_target_block_size(
     # Test that fusion of map operators merges their block sizes in the expected way
     # (taking the max).
     planner = Planner()
-    read_op = Read(ParquetDatasource(), [], 0)
+    read_op = get_parquet_read_logical_op()
     op = MapBatches(read_op, lambda x: x, target_block_size=2)
     op = MapBatches(op, lambda x: x, target_block_size=5)
     op = MapBatches(op, lambda x: x, target_block_size=3)
@@ -888,7 +888,7 @@ def test_write_fusion(ray_start_regular_shared, enable_optimizer, tmp_path):
 def test_write_operator(ray_start_regular_shared, enable_optimizer):
     planner = Planner()
     datasource = ParquetDatasource()
-    read_op = Read(datasource, [], 0)
+    read_op = get_parquet_read_logical_op()
     op = Write(
         read_op,
         datasource,
@@ -904,7 +904,7 @@ def test_write_operator(ray_start_regular_shared, enable_optimizer):
 
 def test_sort_operator(ray_start_regular_shared, enable_optimizer):
     planner = Planner()
-    read_op = Read(ParquetDatasource(), [], 0)
+    read_op = get_parquet_read_logical_op()
     op = Sort(
         read_op,
         sort_key=SortKey("col1"),
@@ -978,7 +978,7 @@ def test_sort_validate_keys(
 
 def test_aggregate_operator(ray_start_regular_shared, enable_optimizer):
     planner = Planner()
-    read_op = Read(ParquetDatasource(), [], 0)
+    read_op = get_parquet_read_logical_op()
     op = Aggregate(
         read_op,
         key="col1",
@@ -1048,8 +1048,8 @@ def test_aggregate_validate_keys(
 
 def test_zip_operator(ray_start_regular_shared, enable_optimizer):
     planner = Planner()
-    read_op1 = Read(ParquetDatasource(), [], 0)
-    read_op2 = Read(ParquetDatasource(), [], 0)
+    read_op1 = get_parquet_read_logical_op()
+    read_op2 = get_parquet_read_logical_op()
     op = Zip(read_op1, read_op2)
     plan = LogicalPlan(op)
     physical_op = planner.plan(plan).dag
@@ -1307,43 +1307,38 @@ def test_limit_pushdown(ray_start_regular_shared, enable_optimizer):
     def f2(x):
         return x
 
-    def check_valid_plan_and_result(ds, expected_plan, expected_result):
-        ds.take_all()
-        assert str(ds._plan._logical_plan.dag) == expected_plan
-        assert ds.take_all() == expected_result
-
     # Test basic limit pushdown past Map.
     ds = ray.data.range(100, parallelism=100).map(f1).limit(1)
-    check_valid_plan_and_result(
+    _check_valid_plan_and_result(
         ds, "Read[ReadRange] -> Limit[limit=1] -> MapRows[Map(f1)]", [{"id": 0}]
     )
 
     # Test basic Limit -> Limit fusion.
     ds2 = ray.data.range(100).limit(5).limit(100)
-    check_valid_plan_and_result(
+    _check_valid_plan_and_result(
         ds2, "Read[ReadRange] -> Limit[limit=5]", [{"id": i} for i in range(5)]
     )
 
     ds2 = ray.data.range(100).limit(100).limit(5)
-    check_valid_plan_and_result(
+    _check_valid_plan_and_result(
         ds2, "Read[ReadRange] -> Limit[limit=5]", [{"id": i} for i in range(5)]
     )
 
     ds2 = ray.data.range(100).limit(50).limit(80).limit(5).limit(20)
-    check_valid_plan_and_result(
+    _check_valid_plan_and_result(
         ds2, "Read[ReadRange] -> Limit[limit=5]", [{"id": i} for i in range(5)]
     )
 
     # Test limit pushdown and Limit -> Limit fusion together.
     ds3 = ray.data.range(100).limit(5).map(f1).limit(100)
-    check_valid_plan_and_result(
+    _check_valid_plan_and_result(
         ds3,
         "Read[ReadRange] -> Limit[limit=5] -> MapRows[Map(f1)]",
         [{"id": i} for i in range(5)],
     )
 
     ds3 = ray.data.range(100).limit(100).map(f1).limit(5)
-    check_valid_plan_and_result(
+    _check_valid_plan_and_result(
         ds3,
         "Read[ReadRange] -> Limit[limit=5] -> MapRows[Map(f1)]",
         [{"id": i} for i in range(5)],
@@ -1351,14 +1346,14 @@ def test_limit_pushdown(ray_start_regular_shared, enable_optimizer):
 
     # Test basic limit pushdown up to Sort.
     ds4 = ray.data.range(100).sort("id").limit(5)
-    check_valid_plan_and_result(
+    _check_valid_plan_and_result(
         ds4,
         "Read[ReadRange] -> Sort[Sort] -> Limit[limit=5]",
         [{"id": i} for i in range(5)],
     )
 
     ds4 = ray.data.range(100).sort("id").map(f1).limit(5)
-    check_valid_plan_and_result(
+    _check_valid_plan_and_result(
         ds4,
         "Read[ReadRange] -> Sort[Sort] -> Limit[limit=5] -> MapRows[Map(f1)]",
         [{"id": i} for i in range(5)],
@@ -1367,7 +1362,7 @@ def test_limit_pushdown(ray_start_regular_shared, enable_optimizer):
     ds5 = ray.data.range(100, parallelism=100).map(f1).limit(1).map(f2)
     # Limit operators get pushed down in the logical plan optimization,
     # then fused together.
-    check_valid_plan_and_result(
+    _check_valid_plan_and_result(
         ds5,
         "Read[ReadRange] -> Limit[limit=1] -> MapRows[Map(f1)] -> MapRows[Map(f2)]",
         [{"id": 0}],
@@ -1377,7 +1372,7 @@ def test_limit_pushdown(ray_start_regular_shared, enable_optimizer):
 
     # More complex interweaved case.
     ds6 = ray.data.range(100).sort("id").map(f1).limit(20).sort("id").map(f2).limit(5)
-    check_valid_plan_and_result(
+    _check_valid_plan_and_result(
         ds6,
         "Read[ReadRange] -> Sort[Sort] -> Limit[limit=20] -> MapRows[Map(f1)] -> "
         "Sort[Sort] -> Limit[limit=5] -> MapRows[Map(f2)]",

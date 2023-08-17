@@ -49,6 +49,7 @@ PY_MATRIX = {
 ML_IMAGES_PY_VERSIONS = {"py38", "py39", "py310"}
 
 BASE_IMAGES = {
+    "cu121": "nvidia/cuda:12.1.1-cudnn8-devel-ubuntu20.04",
     "cu118": "nvidia/cuda:11.8.0-cudnn8-devel-ubuntu20.04",
     "cu117": "nvidia/cuda:11.7.1-cudnn8-devel-ubuntu20.04",
     "cu116": "nvidia/cuda:11.6.2-cudnn8-devel-ubuntu20.04",
@@ -57,6 +58,7 @@ BASE_IMAGES = {
 }
 
 CUDA_FULL = {
+    "cu121": "CUDA 12.1",
     "cu118": "CUDA 11.8",
     "cu117": "CUDA 11.7",
     "cu116": "CUDA 11.6",
@@ -217,6 +219,13 @@ def _build_docker_image(
     # I.e. "py310"[3:] == 10
     assert py_version[:3] == "py3"
     python_minor_version = py_version[3:]
+
+    if py_version == "py37":
+        constraints_file = "requirements_compiled_py37.txt"
+    else:
+        constraints_file = "requirements_compiled.txt"
+
+    build_args["CONSTRAINTS_FILE"] = constraints_file
 
     if platform.processor() in ADDITIONAL_PLATFORMS:
         build_args["HOSTTYPE"] = platform.processor()
@@ -428,6 +437,19 @@ def build_or_pull_base_images(
         return False
 
 
+def prep_ray_base():
+    root_dir = _get_root_dir()
+    requirements_files = [
+        "python/requirements_compiled.txt",
+        "python/requirements_compiled_py37.txt",
+    ]
+    for requirement_file in requirements_files:
+        shutil.copy(
+            os.path.join(root_dir, requirement_file),
+            os.path.join(root_dir, "docker/ray/"),
+        )
+
+
 def prep_ray_ml():
     root_dir = _get_root_dir()
 
@@ -498,11 +520,11 @@ def _docker_push(image, tag):
 
 
 def _tag_and_push(
-    full_image_name,
-    old_tag,
-    new_tag,
-    merge_build=False,
-    release_pr_build=False,
+    full_image_name: str,
+    old_tag: str,
+    new_tag: str,
+    merge_build: bool = False,
+    release_pr_build: bool = False,
 ):
     # Do not tag release builds because they are no longer up to
     # date after the branch cut.
@@ -909,6 +931,8 @@ def main(
             # TODO Currently don't push ray_worker_container
         else:
             # Build Ray Docker images.
+            prep_ray_base()
+
             all_tagged_images = []
 
             all_tagged_images += build_for_all_versions(
@@ -975,7 +999,7 @@ def main(
         # push_readmes(build_type is MERGE)
 
 
-def fix_docker_images(
+def _fix_docker_images(
     image: str = "ray-ml",
     version: str = "nightly",
     repo: str = DOCKER_HUB_REPO,
@@ -1043,4 +1067,4 @@ if __name__ == "__main__":
     if not fix_image:
         main()
     else:
-        fix_docker_images(fix_image, os.environ.get("FIX_VERSION"))
+        _fix_docker_images(fix_image, os.environ.get("FIX_VERSION"))
