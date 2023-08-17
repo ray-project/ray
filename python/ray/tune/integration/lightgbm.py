@@ -72,6 +72,8 @@ class TuneReportCheckpointCallback(TuneCallback):
 
     """
 
+    _checkpoint_callback_cls = None
+    _report_callbacks_cls = None
     order = 20
 
     def __init__(
@@ -159,6 +161,20 @@ class TuneReportCheckpointCallback(TuneCallback):
             yield checkpoint
 
     def __call__(self, env: CallbackEnv) -> None:
+        if self._frequency > 0 and self._checkpoint_callback_cls:
+            self._checkpoint_callback_cls.__call__(self, env)
+        if self._report_callbacks_cls:
+            # Deprecate: Raise error in Ray 2.8
+            if log_once("xgboost_ray_legacy"):
+                warnings.warn(
+                    "You are using an outdated version of LightGBM-Ray that won't be "
+                    "compatible with future releases of Ray. Please update LightGBM-Ray"
+                    " with `pip install -U lightgbm_ray`."
+                )
+
+            self._report_callbacks_cls.__call__(self, env)
+            return
+
         with self._get_checkpoint(
             model=env.model,
             epoch=env.iteration,

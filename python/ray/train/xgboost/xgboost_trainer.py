@@ -14,7 +14,7 @@ from ray.util.annotations import PublicAPI
 
 import xgboost
 import xgboost_ray
-from xgboost_ray.tune import TuneReportCheckpointCallback, TuneReportCallback
+from xgboost_ray.tune import TuneReportCheckpointCallback
 
 if TYPE_CHECKING:
     from ray.data.preprocessor import Preprocessor

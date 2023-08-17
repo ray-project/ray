@@ -83,6 +83,9 @@ class TuneReportCheckpointCallback(TuneCallback):
 
     """
 
+    _checkpoint_callback_cls = None
+    _report_callbacks_cls = None
+
     def __init__(
         self,
         metrics: Optional[Union[str, List[str], Dict[str, str]]] = None,
@@ -126,14 +129,7 @@ class TuneReportCheckpointCallback(TuneCallback):
 
     @staticmethod
     def _create_checkpoint(model: Booster, epoch: int, filename: str, frequency: int):
-        # Deprecate: Raise error in Ray 2.8
-        if log_once("xgboost_ray_legacy"):
-            warnings.warn(
-                "You are using an outdated version of XGBoost-Ray that won't be "
-                "compatible with future releases of Ray. Please update XGBoost-Ray "
-                "with `pip install -U xgboost_ray`."
-            )
-
+        # Deprecate: Remove in Ray 2.8
         if epoch % frequency > 0 or (not epoch and frequency > 1):
             # Skip 0th checkpoint if frequency > 1
             return
@@ -160,6 +156,20 @@ class TuneReportCheckpointCallback(TuneCallback):
             yield checkpoint
 
     def after_iteration(self, model: Booster, epoch: int, evals_log: Dict):
+        if self._frequency > 0 and self._checkpoint_callback_cls:
+            self._checkpoint_callback_cls.after_iteration(self, model, epoch, evals_log)
+        if self._report_callbacks_cls:
+            # Deprecate: Raise error in Ray 2.8
+            if log_once("xgboost_ray_legacy"):
+                warnings.warn(
+                    "You are using an outdated version of XGBoost-Ray that won't be "
+                    "compatible with future releases of Ray. Please update XGBoost-Ray "
+                    "with `pip install -U xgboost_ray`."
+                )
+
+            self._report_callbacks_cls.after_iteration(self, model, epoch, evals_log)
+            return
+
         with self._get_checkpoint(
             model=model, epoch=epoch, filename=self._filename, frequency=self._frequency
         ) as checkpoint:

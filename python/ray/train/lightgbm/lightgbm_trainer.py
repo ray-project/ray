@@ -15,7 +15,7 @@ from ray.train.lightgbm.lightgbm_checkpoint import LegacyLightGBMCheckpoint
 import lightgbm
 import lightgbm_ray
 import xgboost_ray
-from lightgbm_ray.tune import TuneReportCheckpointCallback, TuneReportCallback
+from lightgbm_ray.tune import TuneReportCheckpointCallback
 
 if TYPE_CHECKING:
     from ray.data.preprocessor import Preprocessor
