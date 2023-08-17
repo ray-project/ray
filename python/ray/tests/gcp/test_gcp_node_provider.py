@@ -231,6 +231,22 @@ def test_tpu_config_cannot_have_accelerator_type_and_config():
 
 
 @pytest.mark.parametrize(
+    "node_config",
+    [
+        {"acceleratorType": "vabc-12345"},
+        {"acceleratorType": "v3-abc"},
+        {"acceleratorType": "v3-8a"},
+        {"acceleratorType": "this should fail"},
+        {"acceleratorConfig": {"type": "asdf", "topology": "2x2x1"}},
+        {"acceleratorConfig": {"type": "V4", "topology": "asdf"}},
+    ],
+)
+def test_invalid_accelerator_configs(node_config):
+    with pytest.raises(ValueError):
+        get_node_type(node_config)
+
+
+@pytest.mark.parametrize(
     "test_case",
     [
         ({"acceleratorType": "v2-8"}, 4, True),

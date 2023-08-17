@@ -2,6 +2,7 @@ import copy
 import json
 import logging
 import os
+import re
 import time
 from functools import partial
 
@@ -64,6 +65,45 @@ def get_num_tpu_chips(node: dict) -> int:
     return chips
 
 
+def _validate_tpu_config(node: dict):
+    """Validate the provided node with TPU support.
+
+    If the config is malformed, users will run into an error but this function
+    will raise the error at config parsing time. This only tests very simple assertions.
+
+    Raises: `ValueError` in case the input is malformed.
+
+    """
+    if "acceleratorType" in node and "acceleratorConfig" in node:
+        raise ValueError(
+            "For TPU usage, acceleratorType and acceleratorConfig "
+            "cannot both be set."
+        )
+    if "acceleratorType" in node:
+        accelerator_type = node["acceleratorType"]
+        expected_pattern = re.compile(r"^v\d+[a-zA-Z]*-\d+$")
+        if not expected_pattern.match(accelerator_type):
+            raise ValueError(
+                "`acceleratorType` should match v(generation)-(cores/chips)"
+            )
+    else:  # "acceleratorConfig" in node
+        if (
+            "type" not in node["acceleratorConfig"]
+            or "topology" not in node["acceleratorConfig"]
+        ):
+            raise ValueError("acceleratorConfig expects 'type' and 'topology'")
+        generation = node["acceleratorConfig"]["type"]
+        topology = node["acceleratorConfig"]["topology"]
+
+        generation_pattern = re.compile(r"^V\d+[a-zA-Z]*$")
+        topology_pattern = re.compile(r"^\d+x\d+(x\d+)?$")
+
+        if not generation_pattern.match(generation):
+            raise ValueError("type should match V(generation)")
+        if not topology_pattern.match(topology):
+            raise ValueError("topology should be of form axbxc or axb")
+
+
 def is_single_host_tpu(node: dict) -> bool:
     return get_num_tpu_chips(node) == 4
 
@@ -93,11 +133,7 @@ def get_node_type(node: dict) -> GCPNodeType:
     if "machineType" not in node and (
         "acceleratorType" in node or "acceleratorConfig" in node
     ):
-        if "acceleratorType" in node and "acceleratorConfig" in node:
-            raise ValueError(
-                "For TPU usage, acceleratorType and acceleratorConfig "
-                "cannot both be set."
-            )
+        _validate_tpu_config(node)
         if is_single_host_tpu(node):
             # Remove once proper autoscaling support is added.
             logger.warning(
