@@ -8,7 +8,7 @@
 
 load("@rules_proto//proto:defs.bzl", "proto_library")
 load("@rules_python//python:defs.bzl", "py_library", "py_runtime", "py_runtime_pair")
-load("@rules_cc//cc:defs.bzl", "cc_library", "cc_binary", "cc_proto_library", "cc_test")
+load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library", "cc_proto_library", "cc_test")
 load("@com_github_grpc_grpc//bazel:cc_grpc_library.bzl", "cc_grpc_library")
 load("@com_github_grpc_grpc//bazel:cython_library.bzl", "pyx_library")
 load("@com_github_google_flatbuffers//:build_defs.bzl", "flatbuffer_cc_library")
@@ -72,6 +72,13 @@ config_setting(
 config_setting(
     name = "opt",
     values = {"compilation_mode": "opt"},
+)
+
+malloc_deps = select(
+    {
+        "@platforms//os:linux": ["@gperftools//:tcmalloc_and_profiler"],
+        "//conditions:default": [],
+    },
 )
 
 # === Begin of rpc definitions ===
@@ -488,8 +495,7 @@ cc_binary(
         ":raylet_lib",
         "//src/ray/util",
         "@com_github_gflags_gflags//:gflags",
-        "@gperftools//:tcmalloc_and_profiler",
-    ],
+    ] + malloc_deps,
 )
 
 cc_library(
@@ -547,10 +553,7 @@ cc_library(
         "@boost//:bimap",
         "@com_github_grpc_grpc//src/proto/grpc/health/v1:health_proto",
         "@com_google_absl//absl/container:btree",
-    ] + select({
-        "@platforms//os:linux": ["@gperftools//:tcmalloc_and_profiler"],
-        "//conditions:default": []
-    }),
+    ] + malloc_deps,
 )
 
 cc_binary(
@@ -564,7 +567,7 @@ cc_binary(
         ":gcs_server_lib",
         ":stats_lib",
         "@com_github_gflags_gflags//:gflags",
-    ],
+    ] + malloc_deps,
 )
 
 # Ray native pubsub module.
@@ -2532,7 +2535,6 @@ pyx_library(
         "//:stats_lib",
         "//src/ray/protobuf:serialization_cc_proto",
         "//src/ray/util",
-        "@gperftools//:tcmalloc_and_profiler",
     ],
 )
 
