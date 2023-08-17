@@ -970,6 +970,7 @@
   python: "3.9"
   frequency: nightly-3x
   team: ml
+  new_persistence: "True"
   cluster:
     byod:
       type: gpu
@@ -977,7 +978,7 @@
 
   run:
     timeout: 600
-    script: jupyter nbconvert --to script --output _test start.ipynb && ipython _test.py
+    script: jupyter nbconvert --to script --output _test start.ipynb && RAY_AIR_NEW_PERSISTENCE_MODE=1 ipython _test.py
 
   variations:
       - __suffix__: aws
