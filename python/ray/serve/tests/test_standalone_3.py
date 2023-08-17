@@ -105,9 +105,14 @@ def test_long_poll_timeout_with_max_concurrent_queries(ray_instance):
 
     # The request should be hanging waiting on the `SignalActor`.
     first_ref = do_req.remote()
-    with pytest.raises(TimeoutError):
-        ray.get(first_ref, timeout=1)
-    assert ray.get(counter_actor.get.remote()) == 1
+
+    def check_request_started(num_expected_requests: int) -> bool:
+        with pytest.raises(TimeoutError):
+            ray.get(first_ref, timeout=0.1)
+        assert ray.get(counter_actor.get.remote()) == num_expected_requests
+        return True
+
+    wait_for_condition(check_request_started, timeout=5, num_expected_requests=1)
 
     # Now issue 10 more requests and wait for significantly longer than the long poll
     # timeout. They should all be queued in the handle due to `max_concurrent_queries`
