@@ -196,7 +196,7 @@ const useEventTable = (props: EventTableProps) => {
     const getEvent = async () => {
       try {
         const params = transformFiltersToParams(filters);
-        const rsp = await getNewEvents(params);
+        const rsp = await getNewEvents(params); // We don't useSWR since we need to get real time events data once filters changed
         console.info("rsp: ", rsp);
         const events = rsp?.data?.data?.result?.result;
         if (events) {

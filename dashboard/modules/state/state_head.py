@@ -151,10 +151,15 @@ MOCK_DATA = {
             "message": "Message 10",
             "timestamp": 1691979376.490715,
             "severity": "INFO",
-            "customFields": {"jobId": "64000000", "nodeId": "node10", "taskId": "task10"},
+            "customFields": {
+                "jobId": "64000000",
+                "nodeId": "node10",
+                "taskId": "task10",
+            },
         },
     }
 }
+
 
 class RateLimitedModule(ABC):
     """Simple rate limiter
@@ -386,7 +391,7 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
         self, list_api_fn: Callable[[ListApiOptions], dict], req: aiohttp.web.Request
     ):
         try:
-            result = await list_api_fn(option=self._options_from_req(req))
+            result = await list_api_fn(option=self._options_from_req(req), req=req)
             return self._reply(
                 success=True,
                 error_message="",
@@ -459,7 +464,23 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
         self, req: aiohttp.web.Request
     ) -> aiohttp.web.Response:
         record_extra_usage_tag(TagKey.CORE_STATE_API_LIST_CLUSTER_EVENTS, "1")
-        return await self._handle_list_api(self._state_api.list_cluster_events, req)
+        job_id = req.query.get("job_id", None)
+        source_types = req.query.getall("sourceType")
+        severity_levels = req.query.getall("severity_level")
+
+        # Filtering out specified keys from the query parameters
+        excluded_keys = ["job_id", "sourceType", "severity_level"]
+        rest_of_query = {
+            key: value for key, value in req.query.items() if key not in excluded_keys
+        }
+        assert len(rest_of_query) <= 1, "At most 1 filter key is allowed"
+
+        for key, value in req.query.items():
+            logger.info(f"Query Param: {key} = {value}")
+
+        return await self._handle_list_api(
+            self._state_api.list_cluster_events(req=req), req
+        )
 
     @routes.get("/api/v0/logs")
     @RateLimitedModule.enforce_max_concurrent_calls

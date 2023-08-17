@@ -710,8 +710,8 @@ class StateAPIManager:
     async def list_cluster_events(
         self, *, option: ListApiOptions, req: aiohttp.web.Request
     ) -> ListApiResponse:
-        logger.info(f"req {type(req)}: {req}")
-        logger.info(f"option {type(option)}: {option}")
+        logger.info(f"option 111 {type(option)}: {option}")
+        logger.info()
 
         """List all cluster events from the cluster.
 
@@ -721,8 +721,8 @@ class StateAPIManager:
             `ClusterEventState` protobuf message.
         """
         result = []
-        # all_events = await self._client.get_all_cluster_events() ##TODO, pass job_id and return events related to a job_id
-        all_events = MOCK_DATA
+        all_events = await self._client.get_all_cluster_events()
+        # all_events = MOCK_DATA
         for _, events in all_events.items():
             for _, event in events.items():
                 event["time"] = str(datetime.fromtimestamp(int(event["timestamp"])))
