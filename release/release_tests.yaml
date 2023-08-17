@@ -1597,7 +1597,7 @@
 
   frequency: nightly-3x
   team: ml
-
+  new_persistence: "True"
   cluster:
     byod:
       type: gpu
@@ -1606,7 +1606,7 @@
 
   run:
     timeout: 1200
-    script: python horovod/horovod_user_test.py
+    script: RAY_AIR_NEW_PERSISTENCE_MODE=1 python horovod/horovod_user_test.py
     wait_for_nodes:
       num_nodes: 4
 
@@ -1626,7 +1626,7 @@
 
   frequency: nightly-3x
   team: ml
-
+  new_persistence: "True"
   cluster:
     byod:
       type: gpu
@@ -1635,7 +1635,7 @@
 
   run:
     timeout: 1200
-    script: python horovod/horovod_user_test.py
+    script: RAY_AIR_NEW_PERSISTENCE_MODE=1 python horovod/horovod_user_test.py
     wait_for_nodes:
       num_nodes: 4
 
