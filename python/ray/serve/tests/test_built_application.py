@@ -123,7 +123,7 @@ class TestServeRun:
                 self.handle = serve.get_deployment_handle(handle_name)
 
             async def __call__(self, echo: str):
-                return await (await self.handle.request_echo.remote(echo))
+                return await self.handle.request_echo.remote(echo)
 
             async def request_echo(self, echo: str):
                 return echo
