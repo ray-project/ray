@@ -20,7 +20,9 @@ Test owner: Yard1 (Antoni)
 """
 
 import os
+import pickle
 import argparse
+import tempfile
 import time
 import random
 import gc
@@ -28,10 +30,10 @@ import gc
 import ray
 from ray import train
 from ray.train import RunConfig, FailureConfig, CheckpointConfig
+from ray.train._checkpoint import Checkpoint
 from ray.tune.tune_config import TuneConfig
 from ray.tune.tuner import Tuner
 
-from ray.train.tests.util import create_dict_checkpoint, load_dict_checkpoint
 from terminate_node_aws import create_instance_killer
 
 
@@ -47,14 +49,20 @@ def objective(config):
     # a checkpoint to restore from.
     if (time.monotonic() - config["start_time"]) >= config["warmup_time_s"]:
         assert checkpoint
+    checkpoint = train.get_checkpoint()
     if checkpoint:
-        start_iteration = load_dict_checkpoint(checkpoint)["iteration"] + 1
+        with checkpoint.as_directory() as checkpoint_dir:
+            with open(os.path.join(checkpoint_dir, "ckpt.pkl"), "rb") as f:
+                checkpoint_dict = pickle.load(f)
+            start_iteration = checkpoint_dict["iteration"] + 1
 
     for iteration in range(start_iteration, MAX_ITERS + 1):
         time.sleep(random.uniform(*ITER_TIME_BOUNDS))
         dct = {"iteration": iteration}
-        with create_dict_checkpoint(dct) as checkpoint:
-            train.report(dct, checkpoint=checkpoint)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with open(os.path.join(tmpdir, "ckpt.pkl"), "wb") as f:
+                pickle.dump(dct, f)
+            train.report(dct, checkpoint=Checkpoint.from_directory(tmpdir))
 
 
 def main(bucket_uri: str):
