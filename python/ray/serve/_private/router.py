@@ -1100,7 +1100,7 @@ class Router:
             and len(self._replica_scheduler.curr_replicas) == 0
             and self.num_queued_queries == 1
         ):
-            self.push_metrics_to_controller({self.deployment_name: 1}, time.time())
+            self.push_metrics_to_controller({str(self.deployment_id): 1}, time.time())
 
         try:
             query = Query(
