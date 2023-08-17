@@ -491,7 +491,8 @@ class TestProxyTelemetry:
         When both HTTP and gRPC proxies are used, both telemetry should be detected.
         """
         grpc_servicer_functions = [
-            "ray.serve.generated.serve_pb2_grpc.add_UserDefinedServiceServicer_to_server",
+            "ray.serve.generated.serve_pb2_grpc."
+            "add_UserDefinedServiceServicer_to_server",
         ]
         serve.start(grpc_options={"grpc_servicer_functions": grpc_servicer_functions})
 
