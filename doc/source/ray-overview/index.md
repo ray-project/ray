@@ -44,9 +44,9 @@ These are some common ML workloads that individuals, organizations, and companie
 
 Ray's unified compute framework consists of three layers:
 
-1. **Ray AI Runtime (AIR) Libraries**--An open-source, Python, domain-specific set of libraries that equip ML engineers, data scientists, and researchers with a scalable and unified toolkit for ML applications.
+1. **Ray AI Libraries**--An open-source, Python, domain-specific set of libraries that equip ML engineers, data scientists, and researchers with a scalable and unified toolkit for ML applications.
 2. **Ray Core**--An open-source, Python, general purpose, distributed computing library that enables ML engineers and Python developers to scale Python applications and accelerate machine learning workloads.
-3. **Ray cluster**--A set of worker nodes connected to a common Ray head node. Ray clusters can be fixed-size, or they can autoscale up and down according to the resources requested by applications running on the cluster.
+3. **Ray Clusters**--A set of worker nodes connected to a common Ray head node. Ray clusters can be fixed-size, or they can autoscale up and down according to the resources requested by applications running on the cluster.
 
 ```{eval-rst}
 .. grid:: 1 2 3 3
@@ -117,7 +117,7 @@ Each of [Ray's](../ray-air/getting-started) five native libraries distributes a 
 
 Ray's libraries are for both data scientists and ML engineers alike. For data scientists, these libraries can be used to scale individual workloads, and also end-to-end ML applications. For ML Engineers, these libraries provides scalable platform abstractions that can be used to easily onboard and integrate tooling from the broader ML ecosystem.
 
-For custom applications, the [Ray Core](../ray-core/walkthrough) library enables Python developers to easily build scalable, distributed systems that can run on a laptop, cluster, cloud, or Kubernetes. It's the foundation that Ray AI Runtime libraries and third-party integrations (Ray ecosystem) are built on.
+For custom applications, the [Ray Core](../ray-core/walkthrough) library enables Python developers to easily build scalable, distributed systems that can run on a laptop, cluster, cloud, or Kubernetes. It's the foundation that Ray AI libraries and third-party integrations (Ray ecosystem) are built on.
 
 Ray runs on any machine, cluster, cloud provider, and Kubernetes, and features a growing
 [ecosystem of community integrations](ray-libraries).
