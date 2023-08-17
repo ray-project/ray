@@ -43,9 +43,6 @@
 				"team": {
 					"type": "string"
 				},
-				"new_persistence": {
-					"type": "string"
-				},
 				"cluster": {
 					"$ref": "#/definitions/Cluster"
 				},
@@ -108,7 +105,7 @@
 						"cu118"
 					]
 				},
-				"post_build_script": {
+				"post_build_script":{
 					"type": "string"
 				},
 				"pip": {
@@ -118,7 +115,8 @@
 					"type": "array"
 				}
 			},
-			"required": [],
+			"required": [
+			],
 			"title": "Byod"
 		},
 		"Run": {
