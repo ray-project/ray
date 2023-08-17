@@ -1981,7 +1981,6 @@ class TuneController:
 
         try:
             if _use_storage_context() and isinstance(checkpoint_value, _TrainingResult):
-                assert isinstance(checkpoint_value, _TrainingResult), checkpoint_value
                 try:
                     self._callbacks.on_checkpoint(
                         iteration=self._iteration,
