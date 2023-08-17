@@ -243,7 +243,7 @@ def test_prometheus_export_worker_and_memory_stats(enable_test_module, shutdown_
     wait_for_condition(test_worker_stats, retry_interval_ms=1000)
 
 
-def test_report_stats():
+def test_report_stats(shutdown_only):
     dashboard_agent = MagicMock()
     agent = ReporterAgent(dashboard_agent)
     # Assume it is a head node.
@@ -283,7 +283,7 @@ def test_report_stats():
     assert len(records) == 32
 
 
-def test_report_stats_gpu():
+def test_report_stats_gpu(shutdown_only):
     dashboard_agent = MagicMock()
     agent = ReporterAgent(dashboard_agent)
     # Assume it is a head node.
@@ -432,7 +432,7 @@ def test_report_stats_gpu():
     assert gpu_metrics_aggregatd["node_gram_available"] == GPU_MEMORY * 4 - 6
 
 
-def test_report_per_component_stats():
+def test_report_per_component_stats(shutdown_only):
     dashboard_agent = MagicMock()
     agent = ReporterAgent(dashboard_agent)
     # Assume it is a head node.
@@ -610,7 +610,7 @@ def test_report_per_component_stats():
 
 
 @pytest.mark.parametrize("enable_k8s_disk_usage", [True, False])
-def test_enable_k8s_disk_usage(enable_k8s_disk_usage: bool):
+def test_enable_k8s_disk_usage(enable_k8s_disk_usage: bool, shutdown_only):
     """Test enabling display of K8s node disk usage when in a K8s pod."""
     with patch.multiple(
         "ray.dashboard.modules.reporter.reporter_agent",
@@ -628,7 +628,7 @@ def test_enable_k8s_disk_usage(enable_k8s_disk_usage: bool):
             assert root_usage.free == 1
 
 
-def test_reporter_worker_cpu_percent():
+def test_reporter_worker_cpu_percent(shutdown_only):
     raylet_dummy_proc_f = psutil.Process
     agent_mock = Process(target=random_work)
     children = [Process(target=random_work) for _ in range(2)]
@@ -786,7 +786,7 @@ def test_get_cpu_profile_non_running_task(shutdown_only):
     """
     Verify that we throw an error for a non-running task.
     """
-    
+
     # The sleep is needed since it seems a previous shutdown could be not yet
     # done when the next test starts. This prevents a previous cluster to be
     # connected the current test session.
