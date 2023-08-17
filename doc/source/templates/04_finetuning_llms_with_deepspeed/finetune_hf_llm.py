@@ -1,20 +1,15 @@
-import torch
 import argparse
+from filelock import FileLock
+import functools
 import json
 import math
 import os
+from pathlib import Path
 import re
-import functools
+import tempfile
 import time
 import tree
-from pathlib import Path
-import torch.nn as nn
-import tqdm
 from typing import Tuple
-import tempfile
-from filelock import FileLock
-
-from ray.train._checkpoint import Checkpoint
 
 try:
     import deepspeed  # noqa: F401
@@ -25,17 +20,20 @@ except ImportError as e:
 
 from accelerate import Accelerator, DeepSpeedPlugin
 from accelerate.utils import DummyOptim, DummyScheduler, set_seed
+import torch
+import torch.nn as nn
+import tqdm
 from transformers import (
     AutoModelForCausalLM,
     AutoTokenizer,
     get_linear_schedule_with_warmup,
 )
 
-
 import ray
 from ray import train
-from ray.train.torch import TorchTrainer
 import ray.util.scheduling_strategies
+from ray.train.torch import TorchTrainer
+from ray.train._checkpoint import Checkpoint
 
 from utils import (
     get_checkpoint_and_refs_dir,
@@ -43,6 +41,7 @@ from utils import (
     download_model,
     get_download_path,
 )
+
 
 OPTIM_BETAS = (0.9, 0.999)
 OPTIM_EPS = 1e-8
