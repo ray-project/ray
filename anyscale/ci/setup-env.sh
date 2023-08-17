@@ -21,6 +21,8 @@ export RUNTIME_REPO="830883877497.dkr.ecr.us-west-2.amazonaws.com/anyscale/runti
 export RUNTIME_ML_REPO="830883877497.dkr.ecr.us-west-2.amazonaws.com/anyscale/runtime-ml"
 export BAZEL_REMOTE_CACHE_URL="https://bk-premerge-first-jawfish-artifacts.s3.us-west-2.amazonaws.com/bazel/cache/runtime"
 export IMAGE_PREFIX="${RUNTIME_BUILD_ID}"
+IMAGE_SUFFIX="$(uname -m)"
+export IMAGE_SUFFIX
 
 # Fixes the issue where BUILDKITE_COMMIT can be just "HEAD"
 if [[ "${BUILDKITE_COMMIT}" == "HEAD" ]]; then

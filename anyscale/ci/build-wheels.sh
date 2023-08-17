@@ -18,7 +18,7 @@ DOCKER_RUN_ARGS=(
 
 RAY="$(pwd)"
 
-FORGE_IMAGE="${CI_TMP_REPO}:${IMAGE_PREFIX}-forge"
+FORGE_IMAGE="${CI_TMP_REPO}:${IMAGE_PREFIX}-forge-${IMAGE_SUFFIX}"
 docker pull "${FORGE_IMAGE}"
 
 docker run --rm -w /ray -v "${RAY}":/ray -v "${ARTIFACTS_DIR}:/artifacts" \

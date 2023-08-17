@@ -17,10 +17,44 @@ steps:
       automatic:
         limit: 1
 
-  - group: "wheels and container images"
+  - group: "wheels and container images (aarch64)"
     steps:
-    - name: "runtime-wheel-forge"
-      key: "runtime-wheel-forge"
+    - name: "forge (aarch64)"
+      key: "forge-aarch64"
+      command:
+        - source anyscale/ci/setup-env.sh
+        - /bin/bash anyscale/ci/build-forge.sh
+      agents:
+        queue: "largeg"
+      retry:
+        automatic:
+          limit: 1
+
+    - name: "{{matrix}} wheel (aarch64)"
+      depends_on: "forge-aarch64"
+      command:
+        - source anyscale/ci/setup-env.sh
+        - BUILD_ONE_PYTHON_ONLY={{matrix}} /bin/bash anyscale/ci/build-wheels.sh
+      agents:
+        queue: "largeg"
+      artifact_paths:
+        - "/artifacts/**/*"
+      env:
+        BUILDKITE_ARTIFACT_DESTINATION: "s3://bk-premerge-first-jawfish-artifacts/runtime"
+      matrix:
+        - py37
+        - py38
+        - py39
+        - py310
+        - py311
+      retry:
+        automatic:
+          limit: 1
+
+  - group: "wheels and container images (x86_64)"
+    steps:
+    - name: "forge (x86_64)"
+      key: "forge-x86_64"
       command:
         - source anyscale/ci/setup-env.sh
         - /bin/bash anyscale/ci/build-forge.sh
@@ -30,13 +64,13 @@ steps:
         automatic:
           limit: 1
 
-    - name: "{{matrix}} wheel"
-      depends_on: "runtime-wheel-forge"
+    - name: "{{matrix}} wheel (x86_64)"
+      depends_on: "forge-x86_64"
       command:
         - source anyscale/ci/setup-env.sh
         - BUILD_ONE_PYTHON_ONLY={{matrix}} /bin/bash anyscale/ci/build-wheels.sh
       agents:
-        queue: "large"
+        queue: large
       artifact_paths:
         - "/artifacts/**/*"
       env:
