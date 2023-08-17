@@ -269,9 +269,9 @@ class GenericProxy(ABC):
     @property
     @abstractmethod
     def protocol(self) -> RequestProtocol:
-        """Proxy name used for metrics.
+        """Protocol used in the proxy.
 
-        Each proxy needs to implement its own logic for setting up the proxy name.
+        Each proxy needs to implement its own logic for setting up the protocol.
         """
         raise NotImplementedError
 
