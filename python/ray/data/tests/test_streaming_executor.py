@@ -30,12 +30,9 @@ from ray.data._internal.execution.streaming_executor_state import (
     update_operator_states,
 )
 from ray.data._internal.execution.util import make_ref_bundles
-from ray.data._internal.execution.operators.map_data_processor import MapDataProcessor
-from ray.data._internal.execution.interfaces.transform_fn import MapTransformFn
+from ray.data._internal.execution.operators.map_data_processor import create_map_data_processor_from_block_fn
 from ray.data.tests.conftest import *  # noqa
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
-
-from ray.data.tests.util import create_map_data_processor_from_block_fn
 
 EMPTY_DOWNSTREAM_USAGE = collections.defaultdict(lambda: DownstreamMemoryInfo(0, 0))
 NO_USAGE = TopologyResourceUsage(ExecutionResources(), EMPTY_DOWNSTREAM_USAGE)

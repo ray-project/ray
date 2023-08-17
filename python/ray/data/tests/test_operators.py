@@ -35,7 +35,8 @@ from ray.data._internal.execution.operators.task_pool_map_operator import (
 from ray.data._internal.execution.operators.union_operator import UnionOperator
 from ray.data._internal.execution.util import make_ref_bundles
 from ray.data.block import Block
-from ray.data.tests.util import create_map_data_processor_from_block_fn, run_one_op_task, run_op_tasks_sync
+from ray.data._internal.execution.operators.map_data_processor import create_map_data_processor_from_block_fn
+from ray.data.tests.util import run_one_op_task, run_op_tasks_sync
 from ray.tests.conftest import *  # noqa
 
 

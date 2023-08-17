@@ -222,3 +222,14 @@ def create_map_data_processor_for_write_op(write_fn) -> MapDataProcessor:
         ),
     ]
     return MapDataProcessor(transform_fns)
+
+
+def create_map_data_processor_from_block_fn(block_fn, init_fn=None):
+    return MapDataProcessor(
+        [
+            MapTransformFn(
+                block_fn, MapTransformDataType.Block, MapTransformDataType.Block
+            )
+        ],
+        init_fn,
+    )

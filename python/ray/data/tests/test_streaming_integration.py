@@ -24,10 +24,9 @@ from ray.data._internal.execution.operators.output_splitter import OutputSplitte
 from ray.data._internal.execution.streaming_executor import StreamingExecutor
 from ray.data._internal.execution.util import make_ref_bundles
 from ray.data.context import DataContext
-from ray.data._internal.execution.operators.map_data_processor import MapDataProcessor
-from ray.data._internal.execution.interfaces.transform_fn import MapTransformFn
+from ray.data._internal.execution.operators.map_data_processor import create_map_data_processor_from_block_fn
 from ray.data.tests.conftest import *  # noqa
-from ray.data.tests.util import create_map_data_processor_from_block_fn, extract_values
+from ray.data.tests.util import extract_values
 
 
 def make_map_data_processor(block_fn):

@@ -93,14 +93,3 @@ def run_one_op_task(op):
         list(waitable_to_tasks.keys()), num_returns=1, fetch_local=False
     )
     waitable_to_tasks[ready[0]].on_waitable_ready()
-
-
-def create_map_data_processor_from_block_fn(block_fn, init_fn=None):
-    return MapDataProcessor(
-        [
-            MapTransformFn(
-                block_fn, MapTransformDataType.Block, MapTransformDataType.Block
-            )
-        ],
-        init_fn,
-    )

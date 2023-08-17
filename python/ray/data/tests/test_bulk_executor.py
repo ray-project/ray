@@ -15,10 +15,10 @@ from ray.data._internal.execution.operators.input_data_buffer import InputDataBu
 from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.util import make_ref_bundles
 from ray.data.context import DataContext
+from ray.data._internal.execution.operators.map_data_processor import create_map_data_processor_from_block_fn
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.util import (
     column_udf,
-    create_map_data_processor_from_block_fn,
     extract_values,
 )
 
