@@ -95,7 +95,6 @@ class BackendExecutor:
 
         self.worker_group = InactiveWorkerGroup()
         self.dataset_shards = None
-        self.metadata = None
 
         self._checkpoint_keep_all_ranks = (
             checkpoint_config and checkpoint_config._checkpoint_keep_all_ranks
@@ -413,8 +412,6 @@ class BackendExecutor:
                     "calling `start_training` again."
                 )
 
-        self.metadata = metadata
-
         if self.dataset_shards is None:
             actors = [worker.actor for worker in self.worker_group.workers]
             node_ids = [worker.metadata.node_id for worker in self.worker_group.workers]
@@ -451,7 +448,7 @@ class BackendExecutor:
                     trial_info=self._trial_info,
                     train_func=train_func,
                     dataset_shard=self.dataset_shards[index],
-                    metadata=self.metadata,
+                    metadata=metadata,
                     checkpoint=checkpoint,
                     encode_data_fn=self._backend._encode_data,
                     checkpoint_keep_all_ranks=self._checkpoint_keep_all_ranks,

@@ -231,9 +231,9 @@ class DataParallelTrainer(BaseTrainer):
             dataset. If a ``preprocessor`` is provided and has not already been fit,
             it will be fit on the training dataset. All datasets will be transformed
             by the ``preprocessor`` if one is provided.
-        metadata: Dict that will be made available via `train.session.get_metadata()`
-            and in `checkpoint.get_metadata()` for checkpoints saved from this Trainer.
-            Must be JSON-serializable.
+        metadata: Dict that should be made available via
+            `train.get_context().get_metadata()` and in `checkpoint.get_metadata()`
+            for checkpoints saved from this Trainer. Must be JSON-serializable.
         preprocessor: A ray.data.Preprocessor to preprocess the
             provided datasets.
         resume_from_checkpoint: A checkpoint to resume training from.

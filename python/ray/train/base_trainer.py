@@ -171,9 +171,9 @@ class BaseTrainer(abc.ABC):
         run_config: Configuration for the execution of the training run.
         datasets: Any Datasets to use for training. Use the key "train"
             to denote which dataset is the training dataset.
-        metadata: Dict that should be made available via `train.session.get_metadata()`
-            and in `checkpoint.get_metadata()` for checkpoints saved from this Trainer.
-            Must be JSON-serializable.
+        metadata: Dict that should be made available via
+            `train.get_context().get_metadata()` and in `checkpoint.get_metadata()`
+            for checkpoints saved from this Trainer. Must be JSON-serializable.
         resume_from_checkpoint: A checkpoint to resume training from.
     """
 
@@ -475,20 +475,18 @@ class BaseTrainer(abc.ABC):
                         f"Received {dataset} instead."
                     )
         # Metadata.
-        if not self.metadata:
-            self.metadata = {}
-        elif not isinstance(self.metadata, dict):
+        self.metadata = self.metadata or {}
+        if not isinstance(self.metadata, dict):
             raise TypeError(
                 f"The provided metadata must be a dict, was {type(self.metadata)}."
             )
-        else:
-            try:
-                self.metadata = json.loads(json.dumps(self.metadata))
-            except Exception as e:
-                raise ValueError(
-                    "The provided metadata must be JSON-serializable: "
-                    f"{self.metadata}: {e}"
-                )
+        try:
+            self.metadata = json.loads(json.dumps(self.metadata))
+        except Exception as e:
+            raise ValueError(
+                "The provided metadata must be JSON-serializable: "
+                f"{self.metadata}: {e}"
+            )
 
         # Preprocessor
         if self.preprocessor is not None and not isinstance(
@@ -748,7 +746,7 @@ class BaseTrainer(abc.ABC):
         metadata = self.metadata
 
         def train_func(config):
-            assert metadata, metadata
+            assert metadata is not None, metadata
             # Propagate user metadata from the Trainer constructor.
             session._get_session().metadata = metadata
 

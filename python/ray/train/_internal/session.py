@@ -853,7 +853,7 @@ def get_checkpoint() -> Optional[Checkpoint]:
 
 @PublicAPI(stability="beta")
 @_warn_session_misuse()
-def get_metadata() -> str:
+def get_metadata() -> Dict[str, Any]:
     """User metadata dict passed to the Trainer constructor."""
     return _get_session().metadata
 
