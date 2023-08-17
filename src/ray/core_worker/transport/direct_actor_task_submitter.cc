@@ -641,7 +641,7 @@ std::string CoreWorkerDirectActorTaskSubmitter::DebugString(
 void CoreWorkerDirectActorTaskSubmitter::RetryCancelTask(TaskSpecification task_spec,
                                                          bool recursive,
                                                          int64_t milliseconds) {
-  RAY_LOG(DEBUG) << "Task " << task_spec.TaskId() << " cancelation is retried in "
+  RAY_LOG(DEBUG) << "Task " << task_spec.TaskId() << " cancelation will be retried in "
                  << milliseconds << " ms";
   execute_after(
       io_service_,
