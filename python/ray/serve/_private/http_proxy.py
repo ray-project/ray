@@ -382,7 +382,9 @@ class GenericProxy(ABC):
         try:
             self._ongoing_requests_start()
 
-            matched_route = self.proxy_router.match_route(route_path)
+            matched_route = None
+            if self.protocol == RequestProtocol.HTTP:
+                matched_route = self.proxy_router.match_route(route_path)
             if matched_route is None:
                 self.request_error_counter.inc(
                     tags={

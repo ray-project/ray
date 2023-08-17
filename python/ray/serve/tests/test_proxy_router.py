@@ -1,7 +1,19 @@
 import pytest
+from typing import Callable
 
 from ray.serve._private.common import EndpointInfo, EndpointTag
-from ray.serve._private.proxy_router import EndpointRouter, LongestPrefixRouter
+from ray.serve._private.proxy_router import (
+    ProxyRouter,
+    EndpointRouter,
+    LongestPrefixRouter,
+)
+
+
+def get_handle_function(router: ProxyRouter) -> Callable:
+    if isinstance(router, LongestPrefixRouter):
+        return router.match_route
+    else:
+        return router.get_handle_for_endpoint
 
 
 @pytest.fixture
@@ -48,7 +60,7 @@ def test_no_match(mocked_router, request):
     router.update_routes(
         {EndpointTag("endpoint", "default"): EndpointInfo(route="/hello")}
     )
-    assert router.match_route("/nonexistent") is None
+    assert get_handle_function(router)("/nonexistent") is None
 
 
 @pytest.mark.parametrize(
@@ -64,9 +76,11 @@ def test_default_route(mocked_router, target_route, request):
         {EndpointTag("endpoint", "default"): EndpointInfo(route="/endpoint")}
     )
 
-    assert router.match_route("/nonexistent") is None
+    assert get_handle_function(router)("/nonexistent") is None
 
-    route, handle, app_name, app_is_cross_language = router.match_route(target_route)
+    route, handle, app_name, app_is_cross_language = get_handle_function(router)(
+        target_route
+    )
     assert all(
         [
             route == "/endpoint",
@@ -85,7 +99,7 @@ def test_trailing_slash(mock_longest_prefix_router):
         }
     )
 
-    route, handle, _, _ = router.match_route("/test/")
+    route, handle, _, _ = get_handle_function(router)("/test/")
     assert route == "/test" and handle == "endpoint"
 
     router.update_routes(
@@ -94,7 +108,7 @@ def test_trailing_slash(mock_longest_prefix_router):
         }
     )
 
-    assert router.match_route("/test") is None
+    assert get_handle_function(router)("/test") is None
 
 
 def test_prefix_match(mock_longest_prefix_router):
@@ -107,23 +121,23 @@ def test_prefix_match(mock_longest_prefix_router):
         }
     )
 
-    route, handle, _, _ = router.match_route("/test/test2/subpath")
+    route, handle, _, _ = get_handle_function(router)("/test/test2/subpath")
     assert route == "/test/test2" and handle == "endpoint1"
-    route, handle, _, _ = router.match_route("/test/test2/")
+    route, handle, _, _ = get_handle_function(router)("/test/test2/")
     assert route == "/test/test2" and handle == "endpoint1"
-    route, handle, _, _ = router.match_route("/test/test2")
+    route, handle, _, _ = get_handle_function(router)("/test/test2")
     assert route == "/test/test2" and handle == "endpoint1"
 
-    route, handle, _, _ = router.match_route("/test/subpath")
+    route, handle, _, _ = get_handle_function(router)("/test/subpath")
     assert route == "/test" and handle == "endpoint2"
-    route, handle, _, _ = router.match_route("/test/")
+    route, handle, _, _ = get_handle_function(router)("/test/")
     assert route == "/test" and handle == "endpoint2"
-    route, handle, _, _ = router.match_route("/test")
+    route, handle, _, _ = get_handle_function(router)("/test")
     assert route == "/test" and handle == "endpoint2"
 
-    route, handle, _, _ = router.match_route("/test2")
+    route, handle, _, _ = get_handle_function(router)("/test2")
     assert route == "/" and handle == "endpoint3"
-    route, handle, _, _ = router.match_route("/")
+    route, handle, _, _ = get_handle_function(router)("/")
     assert route == "/" and handle == "endpoint3"
 
 
@@ -140,7 +154,9 @@ def test_update_routes(mocked_router, target_route1, target_route2, request):
         {EndpointTag("endpoint", "app1"): EndpointInfo(route="/endpoint")}
     )
 
-    route, handle, app_name, app_is_cross_language = router.match_route(target_route1)
+    route, handle, app_name, app_is_cross_language = get_handle_function(router)(
+        target_route1
+    )
     assert all(
         [
             route == "/endpoint",
@@ -159,9 +175,11 @@ def test_update_routes(mocked_router, target_route1, target_route2, request):
         }
     )
 
-    assert router.match_route(target_route1) is None
+    assert get_handle_function(router)(target_route1) is None
 
-    route, handle, app_name, app_is_cross_language = router.match_route(target_route2)
+    route, handle, app_name, app_is_cross_language = get_handle_function(router)(
+        target_route2
+    )
     assert route == "/endpoint2" and handle == "endpoint2" and app_name == "app2"
     assert all(
         [

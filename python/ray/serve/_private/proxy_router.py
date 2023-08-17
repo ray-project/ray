@@ -23,12 +23,6 @@ class ProxyRouter(ABC):
     def update_routes(self, endpoints: Dict[EndpointTag, EndpointInfo]):
         raise NotImplementedError
 
-    @abstractmethod
-    def match_route(
-        self, target_route: str
-    ) -> Optional[Tuple[str, RayServeHandle, str, bool]]:
-        raise NotImplementedError
-
 
 class LongestPrefixRouter(ProxyRouter):
     """Router that performs longest prefix matches on incoming routes."""
@@ -125,7 +119,7 @@ class LongestPrefixRouter(ProxyRouter):
 
 
 class EndpointRouter(ProxyRouter):
-    """Router that matches Endpoint on incoming routes."""
+    """Router that matches endpoint to return the handle."""
 
     def __init__(self, get_handle: Callable):
         # Function to get a handle given a name. Used to mock for testing.
@@ -164,17 +158,18 @@ class EndpointRouter(ProxyRouter):
         for endpoint in existing_handles:
             del self.handles[endpoint]
 
-    def match_route(
-        self, target_route: str
+    def get_handle_for_endpoint(
+        self, target_endpoint: str
     ) -> Optional[Tuple[str, RayServeHandle, str, bool]]:
-        """Return the endpoint match among existing routes for the route.
+        """Return the handle that matches with endpoint.
+
         Args:
-            target_route: endpoint to match against.
+            target_endpoint: endpoint to match against.
         Returns:
             (route, handle, app_name, is_cross_language) if found, else None.
         """
         for endpoint_tag, handle in self.handles.items():
-            if target_route == str(endpoint_tag):
+            if target_endpoint == str(endpoint_tag):
                 endpoint_info = self.endpoints[endpoint_tag]
                 return (
                     endpoint_info.route,
