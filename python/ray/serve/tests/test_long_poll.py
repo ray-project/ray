@@ -12,6 +12,7 @@ from ray.serve._private.common import EndpointTag, EndpointInfo, RunningReplicaI
 from ray.serve._private.long_poll import (
     LongPollClient,
     LongPollHost,
+    LongPollState,
     UpdatedObject,
     LongPollNamespace,
 )
@@ -21,6 +22,32 @@ from ray.serve.generated.serve_pb2 import (
     EndpointSet,
     ActorNameList,
 )
+
+
+def test_notifier_events_cleared_without_update(serve_instance):
+    """Verify that notifier events are not leaked.
+
+    Previously, events were leaked if there were timeouts and no updates on the key.
+    """
+    host = ray.remote(LongPollHost).remote(
+        listen_for_change_request_timeout_s=(0.1, 0.1)
+    )
+    ray.get(host.notify_changed.remote("key_1", 999))
+
+    # Get an initial object snapshot for the key.
+    object_ref = host.listen_for_change.remote({"key_1": -1})
+    result: Dict[str, UpdatedObject] = ray.get(object_ref)
+    assert set(result.keys()) == {"key_1"}
+    assert {v.object_snapshot for v in result.values()} == {999}
+    new_snapshot_ids = {k: v.snapshot_id for k, v in result.items()}
+
+    # Listen for changes -- this should time out without an update.
+    object_ref = host.listen_for_change.remote(new_snapshot_ids)
+    assert ray.get(object_ref) == LongPollState.TIME_OUT
+
+    # Verify that the `asyncio.Event` used for the `listen_for_change` task
+    # is removed.
+    assert ray.get(host._get_num_notifier_events.remote()) == 0
 
 
 def test_host_standalone(serve_instance):
