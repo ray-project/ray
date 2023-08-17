@@ -13,6 +13,7 @@ from ray.air.config import DatasetConfig, RunConfig, ScalingConfig, CheckpointCo
 from ray.air.constants import MODEL_KEY, PREPROCESSOR_KEY, LAZY_CHECKPOINT_MARKER_FILE
 from ray.air._internal.checkpoint_manager import _TrackedCheckpoint
 from ray.train import BackendConfig, TrainingIterator
+from ray.train._checkpoint import Checkpoint as NewCheckpoint
 from ray.train._internal import session
 from ray.train._internal.session import _TrainingResult, get_session
 from ray.train._internal.backend_executor import BackendExecutor, TrialInfo
@@ -428,15 +429,53 @@ class DataParallelTrainer(BaseTrainer):
             # TODO(ml-team): add ability to report results from multiple workers.
             first_worker_result = results[0]
             if _use_storage_context():
-                assert isinstance(first_worker_result, _TrainingResult)
+                assert all(isinstance(result, _TrainingResult) for result in results)
+
+                tune_session = get_session()
+
+                # Check if any workers reported a checkpoint.
+                # If so, report a checkpoint pointing to the persisted location
+                # to Tune for book-keeping.
+                # NOTE: This removes the restriction for any individual worker
+                # (ex: global rank 0 worker) from needing to report a checkpoint.
+                # All workers reported a checkpoint to the same fs path, so there's
+                # no need to report multiple checkpoints to Tune.
+                worker_checkpoints = [
+                    result.checkpoint
+                    for result in results
+                    if result.checkpoint is not None
+                ]
+                at_least_one_reported_checkpoint = len(worker_checkpoints) > 0
+                # Make sure that all workers uploaded to the same location.
+                assert all(
+                    checkpoint.path == tune_session.storage.checkpoint_fs_path
+                    for checkpoint in worker_checkpoints
+                )
+
+                checkpoint = (
+                    NewCheckpoint(
+                        filesystem=tune_session.storage.storage_filesystem,
+                        # NOTE: The checkpoint index has not been incremented yet
+                        # at this point, which is why `checkpoint_fs_path` points
+                        # to the most recent checkpoint.
+                        path=tune_session.storage.checkpoint_fs_path,
+                    )
+                    if at_least_one_reported_checkpoint
+                    else None
+                )
+                tracked_training_result = _TrainingResult(
+                    checkpoint=checkpoint,
+                    metrics=first_worker_result.metrics,
+                )
+
                 logger.debug(
                     "Report (metrics, checkpoint) to the Tune session:\n"
-                    f"  metrics={first_worker_result.metrics}\n"
-                    f"  checkpoint={first_worker_result.checkpoint}"
+                    f"  metrics={tracked_training_result.metrics}\n"
+                    f"  checkpoint={tracked_training_result.checkpoint}"
                 )
+
                 # Report the metrics and checkpoint to Tune.
-                tune_session = get_session()
-                tune_session._report_training_result(first_worker_result)
+                tune_session._report_training_result(tracked_training_result)
             else:
                 tune.report(**first_worker_result)
 
