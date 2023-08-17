@@ -46,7 +46,7 @@ class ObjectBufferPool {
           data(data),
           buffer_length(buffer_length),
           buffer_ref(buffer_ref){};
-    /// A pointer to the start position of this object chunk.
+    /// The index of this object chunk within the object, starting with 0.
     uint64_t chunk_index;
     /// A pointer to the start position of this object chunk.
     uint8_t *data;
