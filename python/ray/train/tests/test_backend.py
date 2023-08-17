@@ -204,7 +204,9 @@ def test_train_single_worker_failure(ray_start_2_cpus):
         else:
             time.sleep(1000000)
 
-    e.start_training(single_worker_fail, datasets={}, data_config=DataConfig(), metadata={})
+    e.start_training(
+        single_worker_fail, datasets={}, data_config=DataConfig(), metadata={}
+    )
 
     with pytest.raises(StartTraceback) as exc:
         e.get_next_results()
@@ -222,7 +224,9 @@ def test_worker_failure(ray_start_2_cpus):
     new_execute_func = gen_execute_special(train_fail)
     with patch.object(WorkerGroup, "execute_async", new_execute_func):
         with pytest.raises(TrainingWorkerError):
-            e.start_training(lambda: 1, datasets={}, data_config=DataConfig(), metadata={})
+            e.start_training(
+                lambda: 1, datasets={}, data_config=DataConfig(), metadata={}
+            )
             e.finish_training()
 
 
@@ -263,12 +267,16 @@ def test_torch_start_shutdown(ray_start_2_cpus, init_method):
             and torch.distributed.get_world_size() == 2
         )
 
-    e.start_training(check_process_group, datasets={}, data_config=DataConfig(), metadata={})
+    e.start_training(
+        check_process_group, datasets={}, data_config=DataConfig(), metadata={}
+    )
     assert all(e.finish_training())
 
     e._backend.on_shutdown(e.worker_group, e._backend_config)
 
-    e.start_training(check_process_group, datasets={}, data_config=DataConfig(), metadata={})
+    e.start_training(
+        check_process_group, datasets={}, data_config=DataConfig(), metadata={}
+    )
     assert not any(e.finish_training())
 
 
