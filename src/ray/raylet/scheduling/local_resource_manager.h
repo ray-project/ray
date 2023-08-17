@@ -109,24 +109,6 @@ class LocalResourceManager : public syncer::ReporterInterface {
 
   void ReleaseWorkerResources(std::shared_ptr<TaskResourceInstances> task_allocation);
 
-  /// Populate the relevant parts of the heartbeat table. This is intended for
-  /// sending resource usage of raylet to gcs. In particular, this should fill in
-  /// resources_available and resources_total.
-  ///
-  /// \param Output parameter. `resources_available` and `resources_total` are the only
-  /// fields used.
-  void FillResourceUsage(rpc::ResourcesData &resources_data);
-
-  /// Populate a UpdateResourcesRequest. This is inteneded to update the
-  /// resource totals on a node when a custom resource is created or deleted
-  /// (e.g. during the placement group lifecycle).
-  ///
-  /// \param resource_map_filter When returning the resource map, the returned result will
-  /// only contain the keys in the filter. Note that only the key of the map is used.
-  /// \return The total resource capacity of the node.
-  ray::gcs::NodeResourceInfoAccessor::ResourceMap GetResourceTotals(
-      const absl::flat_hash_map<std::string, double> &resource_map_filter) const;
-
   double GetLocalAvailableCpus() const;
 
   /// Return human-readable string for this scheduler state.
@@ -305,6 +287,7 @@ class LocalResourceManager : public syncer::ReporterInterface {
   FRIEND_TEST(ClusterResourceSchedulerTest, TaskResourceInstanceWithoutCpuUnitTest);
   FRIEND_TEST(ClusterResourceSchedulerTest, CustomResourceInstanceTest);
   FRIEND_TEST(ClusterResourceSchedulerTest, TaskGPUResourceInstancesTest);
+  FRIEND_TEST(ClusterResourceSchedulerTest, ObjectStoreMemoryUsageTest);
 
   friend class LocalResourceManagerTest;
   FRIEND_TEST(LocalResourceManagerTest, BasicGetResourceUsageMapTest);

@@ -34,12 +34,6 @@ class MockNodeManager : public NodeManager {
                rpc::SendReplyCallback send_reply_callback),
               (override));
   MOCK_METHOD(void,
-              HandleRequestResourceReport,
-              (rpc::RequestResourceReportRequest request,
-               rpc::RequestResourceReportReply *reply,
-               rpc::SendReplyCallback send_reply_callback),
-              (override));
-  MOCK_METHOD(void,
               HandleGetResourceLoad,
               (rpc::GetResourceLoadRequest request,
                rpc::GetResourceLoadReply *reply,
