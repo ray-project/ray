@@ -240,8 +240,8 @@ class RayServeHandle(_DeploymentHandleBase):
             def __init__(self, message: str):
                 self._message = message
 
-        def __call__(self, name: str) -> str:
-            return self._message + name
+            def __call__(self, name: str) -> str:
+                return self._message + name
 
         @serve.deployment
         class Ingress:
@@ -438,7 +438,7 @@ class _DeploymentResponseBase:
 class DeploymentResponse(_DeploymentResponseBase):
     """A future-like object wrapping the result of a unary deployment handle call.
 
-    From inside a deployment, a `DeploymentResponse` can be awaited to retrieve the,
+    From inside a deployment, a `DeploymentResponse` can be awaited to retrieve the
     output of the call without blocking the asyncio event loop.
 
     From outside a deployment, `.result()` can be used to retrieve the output in a
@@ -495,8 +495,8 @@ class DeploymentResponse(_DeploymentResponseBase):
 
         @serve.deployment
         class Adder:
-            def add(self, int: str) -> int:
-                return int + 1
+            def add(self, val: int) -> int:
+                return val + 1
 
         @serve.deployment
         class Caller:
@@ -710,7 +710,7 @@ class DeploymentHandle(_DeploymentHandleBase):
                 response = self._handle.say_hi.remote(name)
                 return await response
 
-        app = Ingress.bind(Downstream.bind("Hello "))
+        app = Ingress.bind(Downstream.bind())
         handle: DeploymentHandle = serve.run(app)
         response = handle.remote("world")
         assert response.result() == "Hello world!"
