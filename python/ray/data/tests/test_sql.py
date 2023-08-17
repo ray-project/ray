@@ -33,3 +33,18 @@ def test_read_sql(temp_database: str, parallelism: int):
     actual_values = [tuple(record.values()) for record in dataset.take_all()]
 
     assert sorted(actual_values) == sorted(expected_values)
+
+
+def test_write_sql(temp_database: str):
+    connection = sqlite3.connect(temp_database)
+    connection.cursor().execute("CREATE TABLE test(string, number)")
+    dataset = ray.data.from_items(
+        [{"string": "spam", "number": 0}, {"string": "ham", "number": 1}]
+    )
+
+    dataset.write_sql(
+        "INSERT INTO test VALUES(?, ?)", lambda: sqlite3.connect(temp_database)
+    )
+
+    result = connection.cursor().execute("SELECT * FROM test ORDER BY number")
+    result.fetchall() == [("spam", 0), ("ham", 1)]

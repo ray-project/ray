@@ -2,8 +2,9 @@ import math
 from contextlib import contextmanager
 from typing import Any, Callable, Iterable, Iterator, List, Optional
 
+from ray.data._internal.execution.interfaces import TaskContext
 from ray.data.block import Block, BlockAccessor, BlockMetadata
-from ray.data.datasource.datasource import Datasource, Reader, ReadTask
+from ray.data.datasource.datasource import Datasource, Reader, ReadTask, WriteResult
 from ray.util.annotations import PublicAPI
 
 Connection = Any  # A Python DB API2-compliant `Connection` object.
@@ -29,6 +30,21 @@ class SQLDatasource(Datasource):
     def create_reader(self, sql: str) -> "Reader":
         return _SQLReader(sql, self.connection_factory)
 
+    def write(
+        self,
+        blocks: Iterable[Block],
+        ctx: TaskContext,
+        sql: str,
+    ) -> WriteResult:
+        with _connect(self.connection_factory) as cursor:
+            for block in blocks:
+                block_accessor = BlockAccessor.for_block(block)
+                rows = list(block_accessor.iter_rows(public_row_format=True))
+                values = [tuple(row.values()) for row in rows]
+                cursor.executemany(sql, values)
+
+        return "ok"
+
 
 def _check_connection_is_dbapi2_compliant(connection) -> None:
     for attr in "close", "commit", "cursor":
@@ -44,7 +60,7 @@ def _check_connection_is_dbapi2_compliant(connection) -> None:
 def _check_cursor_is_dbapi2_compliant(cursor) -> None:
     # These aren't all the methods required by the specification, but it's all the ones
     # we care about.
-    for attr in "execute", "fetchone", "fetchall", "description":
+    for attr in "execute", "executemany", "fetchone", "fetchall", "description":
         if not hasattr(cursor, attr):
             raise ValueError(
                 "Your database connector created a `Cursor` object without a "
@@ -82,7 +98,6 @@ def _connect(connection_factory: Callable[[], Connection]) -> Iterator[Cursor]:
 
 
 class _SQLReader(Reader):
-
     NUM_SAMPLE_ROWS = 100
     MIN_ROWS_PER_READ_TASK = 50
 

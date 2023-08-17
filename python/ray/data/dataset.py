@@ -113,6 +113,7 @@ from ray.data.context import (
 )
 from ray.data.datasource import (
     BlockWritePathProvider,
+    Connection,
     CSVDatasource,
     Datasource,
     DefaultBlockWritePathProvider,
@@ -121,6 +122,7 @@ from ray.data.datasource import (
     NumpyDatasource,
     ParquetDatasource,
     ReadTask,
+    SQLDatasource,
     TFRecordDatasource,
     WriteResult,
 )
@@ -3185,6 +3187,19 @@ class Dataset:
             try_create_dir=try_create_dir,
             open_stream_args=arrow_open_stream_args,
             block_path_provider=block_path_provider,
+        )
+
+    # @ConsumptionAPI
+    def write_sql(
+        self,
+        sql: str,
+        connection_factory: Callable[[], Connection],
+        ray_remote_args: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        self.write_datasource(
+            SQLDatasource(connection_factory),
+            ray_remote_args=ray_remote_args,
+            sql=sql,
         )
 
     @ConsumptionAPI
