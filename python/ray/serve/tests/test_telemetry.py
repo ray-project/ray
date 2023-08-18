@@ -514,7 +514,6 @@ class TestProxyTelemetry:
         result = get_extra_usage_tags_to_report(
             ray.experimental.internal_kv.internal_kv_get_gcs_client()
         )
-        print(result)
 
         # Check all telemetry relevant to the Serve apps on this cluster
         assert int(result["serve_http_proxy_used"]) == 1
@@ -530,7 +529,6 @@ class TestProxyTelemetry:
         result = get_extra_usage_tags_to_report(
             ray.experimental.internal_kv.internal_kv_get_gcs_client()
         )
-        print(result)
 
         # Check all telemetry relevant to the Serve apps on this cluster
         assert "serve_http_proxy_used" not in result

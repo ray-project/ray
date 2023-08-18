@@ -22,8 +22,76 @@ from ray._private.test_utils import (
     teardown_tls,
 )
 from ray.serve.generated import serve_pb2, serve_pb2_grpc
-from ray.serve.tests.test_config_files.grpc_deployment import g
+from ray.serve.tests.test_config_files.grpc_deployment import g, g2
 import grpc
+
+
+def ping_grpc_list_applications(channel, app_names):
+    stub = serve_pb2_grpc.RayServeAPIServiceStub(channel)
+    request = serve_pb2.ListApplicationsRequest()
+    response, call = stub.ListApplications.with_call(request=request)
+    assert call.code() == grpc.StatusCode.OK
+    assert response.application_names == app_names
+
+
+def ping_grpc_healthz(channel):
+    stub = serve_pb2_grpc.RayServeAPIServiceStub(channel)
+    request = serve_pb2.HealthzRequest()
+    response, call = stub.Healthz.with_call(request=request)
+    assert call.code() == grpc.StatusCode.OK
+    assert response.message == "success"
+
+
+def ping_grpc_call_method(channel, app_name):
+    stub = serve_pb2_grpc.UserDefinedServiceStub(channel)
+    request = serve_pb2.UserDefinedMessage(name="foo", num=30, foo="bar")
+    metadata = (("application", app_name),)
+    response, call = stub.__call__.with_call(request=request, metadata=metadata)
+    assert call.code() == grpc.StatusCode.OK
+    assert response.greeting == "Hello foo from bar"
+
+
+def ping_grpc_another_method(channel, app_name):
+    stub = serve_pb2_grpc.UserDefinedServiceStub(channel)
+    request = serve_pb2.UserDefinedMessage(name="foo", num=30, foo="bar")
+    metadata = (("application", app_name),)
+    response = stub.Method1(request=request, metadata=metadata)
+    assert response.greeting == "Hello foo from method1"
+
+
+def ping_grpc_model_multiplexing(channel, app_name):
+    stub = serve_pb2_grpc.UserDefinedServiceStub(channel)
+    request = serve_pb2.UserDefinedMessage(name="foo", num=30, foo="bar")
+    multiplexed_model_id = "999"
+    metadata = (
+        ("application", app_name),
+        ("multiplexed_model_id", multiplexed_model_id),
+    )
+    response = stub.Method2(request=request, metadata=metadata)
+    assert (
+        response.greeting
+        == f"Method2 called model, loading model: {multiplexed_model_id}"
+    )
+
+
+def ping_grpc_streaming(channel, app_name):
+    if not RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING:
+        return
+
+    stub = serve_pb2_grpc.UserDefinedServiceStub(channel)
+    request = serve_pb2.UserDefinedMessage(name="foo", num=30, foo="bar")
+    metadata = (("application", app_name),)
+    responses = stub.Streaming(request=request, metadata=metadata)
+    for idx, response in enumerate(responses):
+        assert response.greeting == f"{idx}: Hello foo from bar"
+
+
+def ping_fruit_stand(channel, app_name):
+    stub = serve_pb2_grpc.FruitServiceStub(channel)
+    request = serve_pb2.FruitAmounts(orange=4, apple=8)
+    metadata = (("application", app_name),)
+    response = stub.FruitStand(request=request, metadata=metadata)
+    assert response.costs == 32
 
 
 @pytest.fixture
@@ -236,6 +304,7 @@ def test_serving_request_through_grpc_proxy(ray_cluster):
     grpc_port = 9000
     grpc_servicer_functions = [
         "ray.serve.generated.serve_pb2_grpc.add_UserDefinedServiceServicer_to_server",
+        "ray.serve.generated.serve_pb2_grpc.add_FruitServiceServicer_to_server",
     ]
 
     serve.run(
@@ -251,36 +320,37 @@ def test_serving_request_through_grpc_proxy(ray_cluster):
     app_name = "default_grpc-deployment"
     assert len(replicas[app_name]) == 1
 
-    # Ensures ListApplications method succeeding.
     channel = grpc.insecure_channel("localhost:9000")
-    stub = serve_pb2_grpc.RayServeAPIServiceStub(channel)
-    request = serve_pb2.ListApplicationsRequest()
-    response, call = stub.ListApplications.with_call(request=request)
-    assert call.code() == grpc.StatusCode.OK
-    assert response.application_names == [app_name]
 
-    # Ensures Healthz path succeeding.
-    request = serve_pb2.HealthzRequest()
-    response, call = stub.Healthz.with_call(request=request)
-    assert call.code() == grpc.StatusCode.OK
-    assert response.message == "success"
+    # Ensures ListApplications method succeeding.
+    ping_grpc_list_applications(channel, [app_name])
 
-    # Ensures __call__ method is responding correctly.
-    stub = serve_pb2_grpc.UserDefinedServiceStub(channel)
-    request = serve_pb2.UserDefinedMessage(name="foo", num=30, foo="bar")
-    metadata = (("application", app_name),)
-    response = stub.__call__(request=request, metadata=metadata)
-    assert response.greeting == "Hello foo from bar"
+    # Ensures Healthz method succeeding.
+    ping_grpc_healthz(channel)
 
-    # Ensures Method1 method is responding correctly.
-    response = stub.Method1(request=request, metadata=metadata)
-    assert response.greeting == "Hello foo from method1"
+    # Ensures a custom defined method is responding correctly.
+    ping_grpc_call_method(channel, app_name)
 
-    if RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING:
-        # Ensure Streaming method is responding correctly.
-        responses = stub.Streaming(request=request, metadata=metadata)
-        for idx, response in enumerate(responses):
-            assert response.greeting == f"{idx}: Hello foo from bar"
+    # Ensures another custom defined method is responding correctly.
+    ping_grpc_another_method(channel, app_name)
+
+    # Ensures model multiplexing is responding correctly.
+    ping_grpc_model_multiplexing(channel, app_name)
+
+    # Ensure Streaming method is responding correctly.
+    ping_grpc_streaming(channel, app_name)
+
+    serve.run(target=g2)
+    replicas = ray.get(
+        serve.context._global_client._controller._all_running_replicas.remote()
+    )
+
+    # Ensures the app is deployed.
+    app_name = "default_grpc-deployment-model-composition"
+    assert len(replicas[app_name]) == 1
+
+    # Ensure model composition is responding correctly.
+    ping_fruit_stand(channel, app_name)
 
 
 if __name__ == "__main__":
