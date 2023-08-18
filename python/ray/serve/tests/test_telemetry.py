@@ -3,12 +3,13 @@ import yaml
 import pytest
 import requests
 import subprocess
+import time
 from typing import Dict
 from fastapi import FastAPI
 from starlette.requests import Request
 
 import ray
-from ray._private.test_utils import wait_for_condition
+from ray._private.test_utils import wait_for_condition, run_string_as_driver
 
 from ray import serve
 from ray.dag.input_node import InputNode
@@ -484,7 +485,7 @@ def test_lightweight_config_options(manage_ray, lightweight_option, value):
             assert tagkey not in report["extra_usage_tags"]
 
 
-@pytest.mark.parametrize("location", ["driver", "deployment"])
+@pytest.mark.parametrize("location", ["driver", "deployment", None])
 def test_status_api_detected(manage_ray, location):
     """Check that serve.status is detected correctly by telemetry."""
 
@@ -496,29 +497,33 @@ def test_status_api_detected(manage_ray, location):
         lambda: ray.get(storage_handle.get_reports_received.remote()) > 0, timeout=5
     )
 
-    if location == "deployment":
-
-        @serve.deployment
-        class Model:
-            async def __call__(self):
-                return serve.status()
-
-        handle = serve.run(Model.bind(), route_prefix="/model")
-        handle.remote()
-    elif location == "driver":
-        serve.status()
+    @serve.deployment
+    class Model:
+        async def __call__(self):
+            return serve.status()
 
     def check_telemetry():
         report = ray.get(storage_handle.get_report.remote())
-        print(report["extra_usage_tags"])
         assert report["extra_usage_tags"]["serve_status_api_used"] == "1"
         return True
 
-    wait_for_condition(check_telemetry)
+    if location:
+        if location == "deployment":
+            handle = serve.run(Model.bind(), route_prefix="/model")
+            handle.remote()
+        elif location == "driver":
+            run_string_as_driver("from ray import serve; serve.status()")
+
+        wait_for_condition(check_telemetry)
+    else:
+        for _ in range(3):
+            report = ray.get(storage_handle.get_report.remote())
+            assert report["extra_usage_tags"].get("serve_status_api_used") != "1"
+            time.sleep(1)
 
 
-@pytest.mark.parametrize("location", ["driver", "deployment"])
-def test_get_app_handle_api_detected(manage_ray, location):
+@pytest.mark.parametrize("location", ["driver", "deployment", None])
+def test_get_app_handle_api_detected_1(manage_ray, location):
     """Check that serve.get_app_handle is detected correctly by telemetry."""
 
     subprocess.check_output(["ray", "start", "--head"])
@@ -529,28 +534,36 @@ def test_get_app_handle_api_detected(manage_ray, location):
         lambda: ray.get(storage_handle.get_reports_received.remote()) > 0, timeout=5
     )
 
-    if location == "deployment":
-
-        @serve.deployment
-        class Model:
-            async def __call__(self):
-                serve.get_app_handle("telemetry")
-
-        handle = serve.run(Model.bind(), route_prefix="/model")
-        handle.remote()
-    elif location == "driver":
-        serve.get_app_handle("telemetry")
+    @serve.deployment
+    class Model:
+        async def __call__(self):
+            serve.get_app_handle("telemetry")
 
     def check_telemetry():
         report = ray.get(storage_handle.get_report.remote())
-        print(report["extra_usage_tags"])
         assert report["extra_usage_tags"]["serve_get_app_handle_api_used"] == "1"
         return True
 
-    wait_for_condition(check_telemetry)
+    if location:
+        if location == "deployment":
+            handle = serve.run(Model.bind(), route_prefix="/model")
+            handle.remote()
+        elif location == "driver":
+            run_string_as_driver(
+                "from ray import serve; serve.get_app_handle('telemetry')"
+            )
+
+        wait_for_condition(check_telemetry)
+    else:
+        for _ in range(3):
+            report = ray.get(storage_handle.get_report.remote())
+            assert (
+                report["extra_usage_tags"].get("serve_get_app_handle_api_used") != "1"
+            )
+            time.sleep(1)
 
 
-@pytest.mark.parametrize("location", ["driver", "deployment"])
+@pytest.mark.parametrize("location", ["driver", "deployment", None])
 def test_get_deployment_handle_api_detected(manage_ray, location):
     """Check that serve.get_deployment_handle is detected correctly by telemetry."""
 
@@ -562,25 +575,35 @@ def test_get_deployment_handle_api_detected(manage_ray, location):
         lambda: ray.get(storage_handle.get_reports_received.remote()) > 0, timeout=5
     )
 
-    if location == "deployment":
-
-        @serve.deployment
-        class Model:
-            async def __call__(self):
-                serve.get_deployment_handle("TelemetryReceiver", "telemetry")
-
-        handle = serve.run(Model.bind(), route_prefix="/model")
-        handle.remote()
-    elif location == "driver":
-        serve.get_deployment_handle("TelemetryReceiver", "telemetry")
+    @serve.deployment
+    class Model:
+        async def __call__(self):
+            serve.get_deployment_handle("TelemetryReceiver", "telemetry")
 
     def check_telemetry():
         report = ray.get(storage_handle.get_report.remote())
-        print(report["extra_usage_tags"])
         assert report["extra_usage_tags"]["serve_get_deployment_handle_api_used"] == "1"
         return True
 
-    wait_for_condition(check_telemetry)
+    if location:
+        if location == "deployment":
+            handle = serve.run(Model.bind(), route_prefix="/model")
+            handle.remote()
+        elif location == "driver":
+            run_string_as_driver(
+                "from ray import serve\n"
+                "serve.get_deployment_handle('TelemetryReceiver', 'telemetry')"
+            )
+
+        wait_for_condition(check_telemetry)
+    else:
+        for _ in range(3):
+            report = ray.get(storage_handle.get_report.remote())
+            assert (
+                report["extra_usage_tags"].get("serve_get_deployment_handle_api_used")
+                != "1"
+            )
+            time.sleep(1)
 
 
 if __name__ == "__main__":

@@ -839,6 +839,9 @@ def get_deployment_handle(
     When called from within a deployment `sync` will default to `False`.
     When called from outside a deployment `sync` will default to `True`.
 
+    This is a developer API, meaning it is meant to be for advanced Ray
+    users and library developers.
+
     Args:
         deployment_name: Name of deployment to get a handle to.
         app_name: Application in which deployment resides. If calling
