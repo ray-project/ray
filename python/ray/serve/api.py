@@ -515,10 +515,10 @@ def run(
             deployment._route_prefix = route_prefix
         deployment_parameters = {
             "name": deployment._name,
-            "func_or_class": deployment._func_or_class,
+            "func_or_class": deployment.func_or_class,
             "init_args": deployment.init_args,
             "init_kwargs": deployment.init_kwargs,
-            "ray_actor_options": deployment._ray_actor_options,
+            "ray_actor_options": deployment.ray_actor_options,
             "placement_group_bundles": deployment._placement_group_bundles,
             "placement_group_strategy": deployment._placement_group_strategy,
             "config": deployment._deployment_config,
