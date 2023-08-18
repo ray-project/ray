@@ -272,7 +272,7 @@ if setup_spec.type == SetupType.RAY:
             else "grpcio",
         ],
         "serve": ["uvicorn", "requests", "starlette", "fastapi", "aiorwlock"],
-        "tune": ["pandas", "tensorboardX>=1.9", "requests", pyarrow_dep],
+        "tune": ["pandas", "tensorboardX>=1.9", "requests", pyarrow_dep, "fsspec"],
         "observability": [
             "opentelemetry-api",
             "opentelemetry-sdk",
