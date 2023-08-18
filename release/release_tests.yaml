@@ -1042,7 +1042,7 @@
 
   run:
     timeout: 600
-    script: chmod +x ./run_llama_ft.sh && ./run_llama_ft.sh --size=7b --as-test
+    script: chmod +x ./run_llama_ft.sh && RAY_AIR_NEW_PERSISTENCE_MODE=1 ./run_llama_ft.sh --size=7b --as-test
 
   variations:
       - __suffix__: aws
@@ -1068,7 +1068,7 @@
 
   run:
     timeout: 1200
-    script: chmod +x ./run_llama_ft.sh && ./run_llama_ft.sh --size=13b --as-test
+    script: chmod +x ./run_llama_ft.sh && RAY_AIR_NEW_PERSISTENCE_MODE=1 ./run_llama_ft.sh --size=13b --as-test
 
   variations:
       - __suffix__: aws
