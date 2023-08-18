@@ -4,5 +4,5 @@
 pickle5; python_version < '3.8'
 python-snappy
 tensorflow-datasets
-datasets==2.8.0
+datasets==2.14.0
 pytest-repeat

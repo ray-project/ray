@@ -1,2 +1,2 @@
 deepspeed==0.8.3
-datasets==2.8.0
+datasets==2.14.0
