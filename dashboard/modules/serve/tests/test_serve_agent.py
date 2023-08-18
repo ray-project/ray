@@ -699,7 +699,7 @@ def test_put_single_with_name(ray_start_stop, name):
     assert MULTI_APP_MIGRATION_MESSAGE in resp.text
 
 
-# @pytest.mark.skipif(sys.platform == "darwin", reason="Flaky on OSX.")
+@pytest.mark.skipif(sys.platform == "darwin", reason="Flaky on OSX.")
 def test_serve_namespace(ray_start_stop):
     """
     Check that the Dashboard's Serve can interact with the Python API

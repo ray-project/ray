@@ -319,7 +319,7 @@ def test_initial_num_replicas(mock, serve_instance):
 
 
 def test_cold_start_time(serve_instance):
-    """Send 100 requests and check that we autoscale up, and then back down."""
+    """Test a request is served quickly by a deployment that's scaled to zero"""
 
     @serve.deployment(
         autoscaling_config={
