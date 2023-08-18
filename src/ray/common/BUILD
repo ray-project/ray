@@ -221,6 +221,7 @@ ray_cc_library(
         "//src/ray/util",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/synchronization",
+        "@boost//:stacktrace",
     ],
 )
 

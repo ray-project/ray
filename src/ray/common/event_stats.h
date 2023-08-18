@@ -15,7 +15,7 @@
 #pragma once
 
 #include <limits>
-
+#include <boost/stacktrace.hpp>
 #include "absl/container/flat_hash_map.h"
 #include "absl/synchronization/mutex.h"
 #include "ray/common/ray_config.h"
@@ -69,7 +69,7 @@ struct StatsHandle {
   std::shared_ptr<GuardedEventStats> handler_stats;
   std::shared_ptr<GuardedGlobalStats> global_stats;
   std::atomic<bool> execution_recorded;
-
+  std::string stack_trace;
   StatsHandle(std::string event_name_,
               int64_t start_time_,
               std::shared_ptr<GuardedEventStats> handler_stats_,
@@ -78,7 +78,11 @@ struct StatsHandle {
         start_time(start_time_),
         handler_stats(std::move(handler_stats_)),
         global_stats(std::move(global_stats_)),
-        execution_recorded(false) {}
+        execution_recorded(false) {
+    std::stringstream ss;
+    ss << boost::stacktrace::stacktrace();
+    stack_trace = ss.str();
+  }
 
   void ZeroAccumulatedQueuingDelay() { start_time = absl::GetCurrentTimeNanos(); }
 

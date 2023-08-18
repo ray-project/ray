@@ -91,7 +91,11 @@ void EventTracker::RecordExecution(const std::function<void()> &fn,
     stats->stats.running_count++;
   }
   // Execute actual function.
-  fn();
+  if(fn == nullptr) {
+    RAY_LOG(ERROR) << handle->event_name << "\n--curr stacktrace--\n" << boost::stacktrace::stacktrace() << "\n--creation stacktrace--\n" << handle->stack_trace;
+  } else {
+    fn();
+  }
   int64_t end_execution = absl::GetCurrentTimeNanos();
   // Update execution time stats.
   const auto execution_time_ns = end_execution - start_execution;
