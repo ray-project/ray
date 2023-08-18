@@ -1,3 +1,6 @@
+# This example demonstrates how to schedule TPU pods using `acceleratorConfig`, i.e.
+# a combination of the chip and underlying topology.
+# See https://cloud.google.com/tpu/docs/supported-tpu-configurations for more details.
 # A unique identifier for the head node and workers of this cluster.
 cluster_name: tputopology 
 
@@ -30,7 +33,6 @@ available_node_types:
             # Defining the accelerator configuration, including the:
             # - type (in this case a V4) and
             # - topology 2x2x1 will create a v4-8.
-            # See https://cloud.google.com/tpu/docs/supported-tpu-configurations for more details.
             acceleratorConfig:
               type: V4
               topology: 2x2x1

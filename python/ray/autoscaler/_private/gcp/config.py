@@ -13,6 +13,7 @@ from google.oauth2 import service_account
 from google.oauth2.credentials import Credentials as OAuthCredentials
 from googleapiclient import discovery, errors
 
+from ray._private import ray_constants
 from ray.autoscaler._private.gcp.node import MAX_POLLS, POLL_INTERVAL, GCPNodeType
 from ray.autoscaler._private.util import check_legacy_fields
 
@@ -68,13 +69,15 @@ def _validate_tpu_config(node: dict):
         if not expected_pattern.match(accelerator_type):
             raise ValueError(
                 "`acceleratorType` should match v(generation)-(cores/chips)"
+                f"Got {accelerator_type}."
             )
     else:  # "acceleratorConfig" in node
-        if (
-            "type" not in node["acceleratorConfig"]
-            or "topology" not in node["acceleratorConfig"]
-        ):
-            raise ValueError("acceleratorConfig expects 'type' and 'topology'")
+        accelerator_config = node["acceleratorConfig"]
+        if "type" not in accelerator_config or "topology" not in accelerator_config:
+            raise ValueError(
+                "acceleratorConfig expects 'type' and 'topology'. "
+                f"Got {accelerator_config}"
+            )
         generation = node["acceleratorConfig"]["type"]
         topology = node["acceleratorConfig"]["topology"]
 
@@ -82,18 +85,18 @@ def _validate_tpu_config(node: dict):
         topology_pattern = re.compile(r"^\d+x\d+(x\d+)?$")
 
         if not generation_pattern.match(generation):
-            raise ValueError("type should match V(generation)")
+            raise ValueError(f"type should match V(generation). Got {generation}")
         if not topology_pattern.match(topology):
-            raise ValueError("topology should be of form axbxc or axb")
+            raise ValueError(f"topology should be of form axbxc or axb. Got {topology}")
 
 
 def _get_num_tpu_chips(node: dict) -> int:
     chips = 0
     if "acceleratorType" in node:
         accelerator_type = node["acceleratorType"]
-        # `acceleratorType` is typically v{chip}-{cores}
+        # `acceleratorType` is typically v{generation}-{cores}
         cores = int(accelerator_type.split("-")[1])
-        chips = cores / 2
+        chips = cores / ray_constants.RAY_TPU_CORES_PER_CHIP
     if "acceleratorConfig" in node:
         topology = node["acceleratorConfig"]["topology"]
         # `topology` is typically {chips}x{chips}x{chips}
@@ -105,7 +108,7 @@ def _get_num_tpu_chips(node: dict) -> int:
 
 
 def _is_single_host_tpu(node: dict) -> bool:
-    return _get_num_tpu_chips(node) == 4
+    return _get_num_tpu_chips(node) == ray_constants.RAY_TPU_NUM_CHIPS_PER_HOST
 
 
 def get_node_type(node: dict) -> GCPNodeType:
