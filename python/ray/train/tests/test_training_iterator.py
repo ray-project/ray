@@ -92,6 +92,7 @@ def create_iterator(
         train_func=train_func,
         run_dir=None,
         datasets={},
+        metadata={},
         data_config=DataConfig(),
         checkpoint_manager=CheckpointManager(checkpoint_strategy=checkpoint_strategy),
         checkpoint=None,

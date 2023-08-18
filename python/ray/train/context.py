@@ -1,5 +1,5 @@
 import threading
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Optional, Dict, Any
 
 from ray.train._internal import session
 from ray.util.annotations import PublicAPI
@@ -25,6 +25,10 @@ def _copy_doc(copy_func):
 @PublicAPI(stability="beta")
 class TrainContext:
     """Context for Ray training executions."""
+
+    @_copy_doc(session.get_metadata)
+    def get_metadata(self) -> Dict[str, Any]:
+        return session.get_metadata()
 
     @_copy_doc(session.get_experiment_name)
     def get_experiment_name(self) -> str:
