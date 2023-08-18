@@ -34,7 +34,6 @@ class ReplicaContext:
     app_name: str
 
 
-@PublicAPI(stability="alpha")
 def get_global_client(
     _health_check_controller: bool = False, raise_if_no_controller_running: bool = True
 ) -> Optional[ServeControllerClient]:
