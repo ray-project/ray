@@ -2,7 +2,11 @@
 
 #include <sstream>
 
+
+#if defined(__linux__)
+#include <stdlib.h>
 #include "gperftools/heap-profiler.h"
+#endif
 
 namespace ray {
 namespace gcs {
@@ -21,34 +25,54 @@ grpc::ServerUnaryReactor *GcsDebugService::CollectMemoryStats(
   return reactor;
 }
 
+grpc::ServerUnaryReactor *GcsDebugService::StopMemoryProfile(
+      grpc::CallbackServerContext *context,
+      const ray::rpc::StopMemoryProfileRequest *request,
+      ray::rpc::StopMemoryProfileReply *reply) {
+  auto reactor = context->DefaultReactor();
+#if defined(__linux__)
+  if (!IsHeapProfilerRunning()) {
+    reactor->Finish(grpc::Status(grpc::StatusCode::FAILED_PRECONDITION,
+                                 "There is no request running profiling."));
+    return reactor;
+  }
+  HeapProfilerDump("Last dump");
+  HeapProfilerStop();
+  reactor->Finish(grpc::Status::OK);
+#else
+  reactor->Finish(grpc::Status(grpc::StatusCode::UNIMPLEMENTED,
+                               "Memory profiling is not supported on this platform."));
+#endif
+  return reactor;
+}
+
 grpc::ServerUnaryReactor *GcsDebugService::StartMemoryProfile(
     grpc::CallbackServerContext *context,
     const ray::rpc::StartMemoryProfileRequest *request,
     ray::rpc::StartMemoryProfileReply *reply) {
   auto reactor = context->DefaultReactor();
 #if defined(__linux__)
-  if (is_memory_profiling_.exchange(true)) {
+  if (IsHeapProfilerRunning()) {
     reactor->Finish(grpc::Status(grpc::StatusCode::RESOURCE_EXHAUSTED,
                                  "There is a request running profiling."));
     return reactor;
   }
-  if (request->duration() <= 0 || request->dump_prefix().size() == 0) {
+
+  if (request->duration() <= 0) {
     reactor->Finish(grpc::Status(grpc::StatusCode::INVALID_ARGUMENT,
-                                 "duration and dump_prefix must be set."));
+                                 " duration must be greater or equal than 0."));
     return reactor;
   }
-
-  HeapProfilerStart(request->dump_prefix().c_str());
-
-  auto timer = std::make_shared<boost::asio::deadline_timer>(io_service_);
-
-  timer->expires_from_now(boost::posix_time::seconds(request->duration()));
-  timer->async_wait([this, timer, reactor](const boost::system::error_code &) {
-    HeapProfilerDump("Request End");
-    HeapProfilerStop();
-    is_memory_profiling_ = false;
-    reactor->Finish(grpc::Status::OK);
-  });
+  HeapProfilerStart("gcs_server");
+  if(request->duration() != 0) {
+    auto timer = std::make_shared<boost::asio::deadline_timer>(io_service_);
+    timer->expires_from_now(boost::posix_time::seconds(request->duration()));
+    timer->async_wait([this, timer, reactor](const boost::system::error_code &) {
+      HeapProfilerDump("Last dump");
+      HeapProfilerStop();
+      reactor->Finish(grpc::Status::OK);
+    });
+  }
 #else
   reactor->Finish(grpc::Status(grpc::StatusCode::UNIMPLEMENTED,
                                "Memory profiling is not supported on this platform."));

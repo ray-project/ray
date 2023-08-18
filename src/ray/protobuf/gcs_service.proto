@@ -713,16 +713,21 @@ message CollectMemoryStatsReply{
 }
 
 message StartMemoryProfileRequest{
-  string dump_prefix = 1;
-  map<string, string> opts = 2;
-  int64 duration = 3;
+  int64 duration = 1;
 }
 
 message StartMemoryProfileReply{}
 
+message StopMemoryProfileRequest{}
+
+message StopMemoryProfileReply{}
+
+
 service DebugService {
   // Use jemalloc to profile the memory
   rpc StartMemoryProfile(StartMemoryProfileRequest) returns (StartMemoryProfileReply);
+  // Stop profiling
+  rpc StopMemoryProfile(StopMemoryProfileRequest) returns (StopMemoryProfileReply);
   // Collect memory stats
   rpc CollectMemoryStats(CollectMemoryStatsRequest) returns (CollectMemoryStatsReply);
 }

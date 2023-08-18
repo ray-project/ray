@@ -15,6 +15,7 @@ configure_make(
     configure_options = [
         "--disable-documentation",
         "--disable-minidebuginfo",
+        "--disable-shared",
     ],
     deps = [
         "@zlib//:zlib",

@@ -13,9 +13,10 @@ configure_make(
     visibility = ["//visibility:public"],
     copts = ["-fPIC"],
     out_static_libs = ["libtcmalloc_and_profiler.a"],
-    out_shared_libs = ["libtcmalloc_and_profiler.so"],
+    out_binaries = ["pprof"],
     deps = ["@libunwind//:libunwind"],
     configure_options = [
+        "--disable-shared",
         "--enable-libunwind",
     ],
 )

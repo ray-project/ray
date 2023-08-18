@@ -36,8 +36,12 @@ class GcsDebugService : public ray::rpc::DebugService::CallbackService {
       const ray::rpc::StartMemoryProfileRequest *request,
       ray::rpc::StartMemoryProfileReply *reply) override;
 
+  grpc::ServerUnaryReactor *StopMemoryProfile(
+      grpc::CallbackServerContext *context,
+      const ray::rpc::StopMemoryProfileRequest *request,
+      ray::rpc::StopMemoryProfileReply *reply) override;
+
  private:
-  std::atomic<bool> is_memory_profiling_{false};
   instrumented_io_context &io_service_;
 };
 
