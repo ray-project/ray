@@ -32,6 +32,7 @@ import ray
 from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
 from ray.actor import ActorHandle
 from ray.air.checkpoint import Checkpoint
+from ray.train._checkpoint import Checkpoint as NewCheckpoint
 import ray.cloudpickle as pickle
 
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
@@ -261,7 +262,7 @@ class Algorithm(Trainable, AlgorithmBase):
 
     @staticmethod
     def from_checkpoint(
-        checkpoint: Union[str, Checkpoint],
+        checkpoint: Union[str, Checkpoint, NewCheckpoint],
         policy_ids: Optional[Container[PolicyID]] = None,
         policy_mapping_fn: Optional[Callable[[AgentID, EpisodeID], PolicyID]] = None,
         policies_to_train: Optional[
@@ -2066,8 +2067,8 @@ class Algorithm(Trainable, AlgorithmBase):
         self._sync_weights_to_workers(worker_set=self.workers)
 
     @override(Trainable)
-    def save_checkpoint(self, checkpoint_dir: str) -> str:
-        """Exports AIR Checkpoint to a local directory and returns its directory path.
+    def save_checkpoint(self, checkpoint_dir: str) -> None:
+        """Exports checkpoint to a local directory.
 
         The structure of an Algorithm checkpoint dir will be as follows::
 
@@ -2093,9 +2094,6 @@ class Algorithm(Trainable, AlgorithmBase):
 
         Args:
             checkpoint_dir: The directory where the checkpoint files will be stored.
-
-        Returns:
-            The path to the created AIR Checkpoint directory.
         """
         state = self.__getstate__()
 
@@ -2145,18 +2143,16 @@ class Algorithm(Trainable, AlgorithmBase):
             learner_state_dir = os.path.join(checkpoint_dir, "learner")
             self.learner_group.save_state(learner_state_dir)
 
-        return checkpoint_dir
-
     @override(Trainable)
-    def load_checkpoint(self, checkpoint: str) -> None:
-        # Checkpoint is provided as a directory name.
+    def load_checkpoint(self, checkpoint_dir: str) -> None:
+        # Checkpoint is provided as a local directory.
         # Restore from the checkpoint file or dir.
 
-        checkpoint_info = get_checkpoint_info(checkpoint)
+        checkpoint_info = get_checkpoint_info(checkpoint_dir)
         checkpoint_data = Algorithm._checkpoint_info_to_algorithm_state(checkpoint_info)
         self.__setstate__(checkpoint_data)
         if self.config._enable_learner_api:
-            learner_state_dir = os.path.join(checkpoint, "learner")
+            learner_state_dir = os.path.join(checkpoint_dir, "learner")
             self.learner_group.load_state(learner_state_dir)
 
     @override(Trainable)
