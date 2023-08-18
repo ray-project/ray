@@ -167,9 +167,7 @@ class EndpointRouter(ProxyRouter):
         Returns:
             (route, handle, is_cross_language) if found, else None.
         """
-        print("target_endpoint", target_endpoint)
         for endpoint_tag, handle in self.handles.items():
-            print("endpoint_tag", endpoint_tag)
             if target_endpoint == endpoint_tag:
                 endpoint_info = self.endpoints[endpoint_tag]
                 return (
