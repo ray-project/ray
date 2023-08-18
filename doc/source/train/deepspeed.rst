@@ -3,7 +3,7 @@
 Training with DeepSpeed
 =======================
 
-The :class:`~ray.train.torch.TorchTrainer` can help you easily launch your :ref:`DeepSpeed  <https://www.deepspeed.ai/>`_  training across a distributed Ray cluster.
+The :class:`~ray.train.torch.TorchTrainer` can help you easily launch your `DeepSpeed <https://www.deepspeed.ai/>`_  training across a distributed Ray cluster.
 
 All you need to do is run your existing training code with a TorchTrainer. You can expect the final code to look like this:
 
