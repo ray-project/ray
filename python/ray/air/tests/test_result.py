@@ -25,6 +25,9 @@ def ray_start_4_cpus():
 def build_dummy_trainer(configs):
     def worker_loop():
         for i in range(configs["NUM_ITERATIONS"]):
+            # Do some random reports in between checkpoints.
+            train.report({"metric_a": -100, "metric_b": -100})
+
             with create_dict_checkpoint({"iter": i}) as checkpoint:
                 train.report(
                     metrics={"metric_a": i, "metric_b": -i},
