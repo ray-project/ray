@@ -216,7 +216,7 @@ def test_http_proxy_return_aribitary_objects(ray_instance):
     indirect=True,
 )
 def test_http_proxy_calllback_failures(ray_instance, capsys):
-    """Test http proxy into unhealthy state when callback function fails"""
+    """Test http proxy keeps restarting when callback function fails"""
 
     try:
         serve.start(detached=True)
