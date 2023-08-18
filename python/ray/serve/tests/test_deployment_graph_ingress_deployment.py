@@ -17,9 +17,11 @@ class Model:
     def forward(self, input):
         return self.val + input
 
+
 @serve.deployment
 def func_deployment():
     return "hello"
+
 
 @serve.deployment
 def combine(input_1, input_2):
