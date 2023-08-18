@@ -467,6 +467,9 @@ def run(
     Returns:
         RayServeSyncHandle: A handle that can be used to call the application.
     """
+    if len(name) == 0:
+        raise RayServeException("Application name must a non-empty string.")
+
     client = _private_api.serve_start(
         detached=True,
         http_options={"host": host, "port": port, "location": "EveryNode"},

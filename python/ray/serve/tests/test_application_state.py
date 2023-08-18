@@ -744,7 +744,6 @@ class TestOverrideDeploymentInfo:
     @pytest.fixture
     def info(self):
         return DeploymentInfo(
-            app_name="default",
             route_prefix="/",
             version="123",
             deployment_config=DeploymentConfig(num_replicas=1),
@@ -940,7 +939,6 @@ class TestOverrideDeploymentInfo:
         the application-level runtime env.
         """
         info = DeploymentInfo(
-            app_name="default",
             route_prefix="/",
             version="123",
             deployment_config=DeploymentConfig(num_replicas=1),
@@ -979,7 +977,6 @@ class TestOverrideDeploymentInfo:
         The one specified in the config at the deployment level should take precedence.
         """
         info = DeploymentInfo(
-            app_name="default",
             route_prefix="/",
             version="123",
             deployment_config=DeploymentConfig(num_replicas=1),

@@ -38,12 +38,11 @@ def test_default_route(mock_longest_prefix_router):
 
     assert router.match_route("/nonexistent") is None
 
-    route, handle, app_name, app_is_cross_language = router.match_route("/endpoint")
+    route, handle, app_is_cross_language = router.match_route("/endpoint")
     assert all(
         [
             route == "/endpoint",
             handle == "endpoint",
-            app_name == "default",
             not app_is_cross_language,
         ]
     )
@@ -57,7 +56,7 @@ def test_trailing_slash(mock_longest_prefix_router):
         }
     )
 
-    route, handle, _, _ = router.match_route("/test/")
+    route, handle, _ = router.match_route("/test/")
     assert route == "/test" and handle == "endpoint"
 
     router.update_routes(
@@ -79,23 +78,23 @@ def test_prefix_match(mock_longest_prefix_router):
         }
     )
 
-    route, handle, _, _ = router.match_route("/test/test2/subpath")
+    route, handle, _ = router.match_route("/test/test2/subpath")
     assert route == "/test/test2" and handle == "endpoint1"
-    route, handle, _, _ = router.match_route("/test/test2/")
+    route, handle, _ = router.match_route("/test/test2/")
     assert route == "/test/test2" and handle == "endpoint1"
-    route, handle, _, _ = router.match_route("/test/test2")
+    route, handle, _ = router.match_route("/test/test2")
     assert route == "/test/test2" and handle == "endpoint1"
 
-    route, handle, _, _ = router.match_route("/test/subpath")
+    route, handle, _ = router.match_route("/test/subpath")
     assert route == "/test" and handle == "endpoint2"
-    route, handle, _, _ = router.match_route("/test/")
+    route, handle, _ = router.match_route("/test/")
     assert route == "/test" and handle == "endpoint2"
-    route, handle, _, _ = router.match_route("/test")
+    route, handle, _ = router.match_route("/test")
     assert route == "/test" and handle == "endpoint2"
 
-    route, handle, _, _ = router.match_route("/test2")
+    route, handle, _ = router.match_route("/test2")
     assert route == "/" and handle == "endpoint3"
-    route, handle, _, _ = router.match_route("/")
+    route, handle, _ = router.match_route("/")
     assert route == "/" and handle == "endpoint3"
 
 
@@ -105,12 +104,11 @@ def test_update_routes(mock_longest_prefix_router):
         {EndpointTag("endpoint", "app1"): EndpointInfo(route="/endpoint")}
     )
 
-    route, handle, app_name, app_is_cross_language = router.match_route("/endpoint")
+    route, handle, app_is_cross_language = router.match_route("/endpoint")
     assert all(
         [
             route == "/endpoint",
             handle == "endpoint",
-            app_name == "app1",
             not app_is_cross_language,
         ]
     )
@@ -126,13 +124,11 @@ def test_update_routes(mock_longest_prefix_router):
 
     assert router.match_route("/endpoint") is None
 
-    route, handle, app_name, app_is_cross_language = router.match_route("/endpoint2")
-    assert route == "/endpoint2" and handle == "endpoint2" and app_name == "app2"
+    route, handle, app_is_cross_language = router.match_route("/endpoint2")
     assert all(
         [
             route == "/endpoint2",
             handle == "endpoint2",
-            app_name == "app2",
             app_is_cross_language,
         ]
     )
