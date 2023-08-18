@@ -9,6 +9,7 @@ build:windows --action_env=PATH
 build --compilation_mode=opt
 # Using C++ 17 on all platforms.
 build:linux --cxxopt="-std=c++17"
+build:linux --cxxopt="-g1"
 build:macos --cxxopt="-std=c++17"
 build:clang-cl --cxxopt="-std=c++17"
 build:msvc-cl --cxxopt="/std:c++17"
