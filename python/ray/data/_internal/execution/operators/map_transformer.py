@@ -178,8 +178,8 @@ def _input_blocks_to_batches(
 
 def _to_output_blocks(
     iter: Iterable[MapTransformFnData],
-    iter_type: MapTransformFnDataType,
     _: TaskContext,
+    iter_type: MapTransformFnDataType,
 ) -> Iterable[Block]:
     """Convert UDF-returned data to output blocks.
 

@@ -393,7 +393,7 @@ def _map_task(
         as the last generator return.
     """
     stats = BlockExecStats.builder()
-    for b_out in map_transformer.process(iter(blocks), ctx):
+    for b_out in map_transformer.apply_transform(iter(blocks), ctx):
         # TODO(Clark): Add input file propagation from input blocks.
         m_out = BlockAccessor.for_block(b_out).get_metadata([], None)
         m_out.exec_stats = stats.build()
