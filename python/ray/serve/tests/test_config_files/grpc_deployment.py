@@ -18,7 +18,7 @@ class GrpcDeployment:
         )
         return user_response
 
-    def method1(self, user_message):
+    def Method1(self, user_message):
         greeting = f"Hello {user_message.name} from method1"
         num_x2 = user_message.num * 3
         user_response = serve_pb2.UserDefinedResponse(
@@ -31,7 +31,7 @@ class GrpcDeployment:
     async def get_model(self, model_id: str) -> str:
         return f"loading model: {model_id}"
 
-    async def method2(self, user_message):
+    async def Method2(self, user_message):
         model_id = serve.get_multiplexed_model_id()
         model = await self.get_model(model_id)
         user_response = serve_pb2.UserDefinedResponse(
@@ -39,7 +39,7 @@ class GrpcDeployment:
         )
         return user_response
 
-    def streaming(self, user_message):
+    def Streaming(self, user_message):
         for i in range(10):
             greeting = f"{i}: Hello {user_message.name} from {user_message.foo}"
             num_x2 = user_message.num * 2 + i
@@ -65,7 +65,7 @@ class FruitMarket:
             "APPLE": _apple_stand,
         }
 
-    async def fruitstand(self, fruit_amounts_proto):
+    async def FruitStand(self, fruit_amounts_proto):
         fruit_amounts = {}
         if fruit_amounts_proto.orange:
             fruit_amounts["ORANGE"] = fruit_amounts_proto.orange

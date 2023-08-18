@@ -246,7 +246,8 @@ class GenericProxy(ABC):
 
         self.num_ongoing_requests_gauge = metrics.Gauge(
             name=f"serve_num_ongoing_{self.protocol.lower()}_requests",
-            description=f"The number of ongoing requests in this {self.protocol} Proxy.",
+            description=f"The number of ongoing requests in this {self.protocol} "
+            "Proxy.",
             tag_keys=("node_id", "node_ip_address"),
         ).set_default_tags(
             {
