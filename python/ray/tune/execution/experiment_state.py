@@ -383,12 +383,12 @@ class _ExperimentCheckpointManager:
 
     def sync_down_experiment_state(self) -> None:
         fs = self._storage.storage_filesystem
-
-        # Restore the latest variants file.
         file_infos = fs.get_file_info(
             pyarrow.fs.FileSelector(self._storage.experiment_fs_path)
         )
 
+        # Find the latest remote file matching the given pre/suffix in the expdir,
+        # and then copy it down locally for restore.
         def restore_latest_match(match_prefix: str, match_suffix: str) -> None:
             matches = []
             for file_info in file_infos:
