@@ -133,8 +133,6 @@ def test_starlette_response(serve_instance):
 
 @pytest.mark.parametrize("use_async", [False, True])
 def test_deploy_function_no_params(serve_instance, use_async):
-    serve.start()
-
     if use_async:
         expected_output = "async!"
         deployment_cls = async_d
@@ -152,8 +150,6 @@ def test_deploy_function_no_params(serve_instance, use_async):
 
 @pytest.mark.parametrize("use_async", [False, True])
 def test_deploy_function_no_params_call_with_param(serve_instance, use_async):
-    serve.start()
-
     if use_async:
         expected_output = "async!"
         deployment_cls = async_d
@@ -177,11 +173,11 @@ def test_deploy_function_no_params_call_with_param(serve_instance, use_async):
 
 @pytest.mark.parametrize("use_async", [False, True])
 def test_deploy_class_no_params(serve_instance, use_async):
-    serve.start()
     if use_async:
         deployment_cls = AsyncCounter
     else:
         deployment_cls = Counter
+
     handle = serve.run(deployment_cls.bind())
 
     assert requests.get(f"http://127.0.0.1:8000/{deployment_cls.name}").json() == {

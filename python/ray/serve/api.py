@@ -140,9 +140,14 @@ def start(
             http_options = HTTPOptions(location=DeploymentMode.EveryNode)
     else:
         if http_options is None:
-            http_options = HTTPOptions(location=DeploymentMode.EveryNode)
-        else:
-            http_options.location = proxy_location
+            http_options = HTTPOptions()
+        elif isinstance(http_options, dict):
+            http_options = HTTPOptions(**http_options)
+
+        if isinstance(proxy_location, str):
+            proxy_location = DeploymentMode(proxy_location)
+
+        http_options.location = proxy_location
 
     _private_api.serve_start(detached, http_options, dedicated_cpu, **kwargs)
 

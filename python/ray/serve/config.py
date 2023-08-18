@@ -675,7 +675,7 @@ class DeploymentMode(str, Enum):
 @PublicAPI(stability="beta")
 class HTTPOptions(pydantic.BaseModel):
     # Documentation inside serve.start for user's convenience.
-    host: Optional[str] = DEFAULT_HTTP_HOST
+    host: str = DEFAULT_HTTP_HOST
     port: int = DEFAULT_HTTP_PORT
     middlewares: List[Any] = []
     location: Optional[DeploymentMode] = DeploymentMode.HeadOnly
@@ -691,6 +691,13 @@ class HTTPOptions(pydantic.BaseModel):
     def location_backfill_no_server(cls, v, values):
         if values["host"] is None or v is None:
             return DeploymentMode.NoServer
+
+        if v == DeploymentMode.FixedNumber:
+            warnings.warn(
+                "`DeploymentMode.FixedNumber` is deprecated and will be removed in a "
+                "future version."
+            )
+
         return v
 
     @validator("middlewares", always=True)
@@ -715,13 +722,7 @@ class HTTPOptions(pydantic.BaseModel):
 
     @validator("fixed_number_replicas", always=True)
     def fixed_number_replicas_should_exist(cls, v, values):
-        if v is not None or values["location"] == DeploymentMode.FixedNumber:
-            warnings.warn(
-                "`DeploymentMode.FixedNumber` is deprecated and will be removed in a "
-                "future version."
-            )
-
-        if values["location"] == DeploymentMode.FixedNumber and v is None:
+        if values.get("location") == DeploymentMode.FixedNumber and v is None:
             raise ValueError(
                 "When location='FixedNumber', you must specify "
                 "the `fixed_number_replicas` parameter."

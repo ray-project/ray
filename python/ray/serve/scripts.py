@@ -163,17 +163,19 @@ def cli():
 )
 @click.option(
     "--proxy-location",
-    default=DeploymentMode.HeadOnly,
+    default=DeploymentMode.EveryNode,
     required=False,
     type=click.Choice(list(DeploymentMode)),
     help="Location of the HTTP proxies. Defaults to EveryNode.",
 )
 def start(address, http_host, http_port, http_location, proxy_location):
-    if http_location is not None:
+    if http_location != DeploymentMode.HeadOnly:
         cli_logger.warning(
             "The `--http-location` flag to `serve start` is deprecated, "
             "use `--proxy-location` instead."
         )
+
+        proxy_location = http_location
 
     ray.init(
         address=address,
@@ -185,7 +187,6 @@ def start(address, http_host, http_port, http_location, proxy_location):
         http_options=dict(
             host=http_host,
             port=http_port,
-            location=http_location,
         ),
     )
 
