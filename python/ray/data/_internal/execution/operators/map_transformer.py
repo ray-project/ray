@@ -61,9 +61,9 @@ class MapTransformFn:
 
 
 class MapTransformer:
-    """Encapsulates the data transformation logic of a map PhysicalOperator.
+    """Encapsulates the data transformation logic of a physical MapOperator.
 
-    MapTransformer may consist of one or more steps, each of which is represented
+    A MapTransformer may consist of one or more steps, each of which is represented
     as a MapTransformFn. The first MapTransformFn must take blocks as input, and
     the last MapTransformFn must output blocks. The intermediate data types can
     be blocks, rows, or batches.
@@ -99,11 +99,13 @@ class MapTransformer:
         self._init_fn = init_fn if init_fn is not None else lambda: None
 
     def init(self) -> None:
+        """Initialize the transformer. Should be called before applying the transform."""
         self._init_fn()
 
     def apply_transform(
         self, input_blocks: Iterable[Block], ctx: TaskContext
     ) -> Iterable[Block]:
+        """Apply the transform functions to the input blocks."""
         iter = input_blocks
         # Apply the transform functions sequentially to the input iterable.
         for transform_fn in self._transform_fns:
@@ -111,7 +113,7 @@ class MapTransformer:
         return iter
 
     def fuse(self, other: "MapTransformer") -> "MapTransformer":
-        """Fuse two MapTransformers together."""
+        """Fuse two `MapTransformer`s together."""
 
         def fused_init_fn():
             self._init_fn()
@@ -127,12 +129,14 @@ def create_map_transformer_from_block_fn(
 ):
     """Create a MapTransformer from a single block-based transform function.
 
-    This method should only used for testing and legacy compatibility.
+    This method should only be used for testing and legacy compatibility.
     """
     return MapTransformer(
         [
             MapTransformFn(
-                block_fn, MapTransformFnDataType.Block, MapTransformFnDataType.Block
+                block_fn,
+                MapTransformFnDataType.Block,
+                MapTransformFnDataType.Block,
             )
         ],
         init_fn,
