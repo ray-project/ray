@@ -732,17 +732,6 @@ Status NodeResourceInfoAccessor::AsyncReportResourceUsage(
   return Status::OK();
 }
 
-void NodeResourceInfoAccessor::AsyncReReportResourceUsage() {
-  absl::MutexLock lock(&mutex_);
-  if (cached_resource_usage_.has_resources()) {
-    RAY_LOG(INFO) << "Rereport resource usage.";
-    FillResourceUsageRequest(cached_resource_usage_);
-    client_impl_->GetGcsRpcClient().ReportResourceUsage(
-        cached_resource_usage_,
-        [](const Status &status, const rpc::ReportResourceUsageReply &reply) {});
-  }
-}
-
 void NodeResourceInfoAccessor::FillResourceUsageRequest(
     rpc::ReportResourceUsageRequest &resources) {
   NodeResources cached_resources = *GetLastResourceUsage();
@@ -755,7 +744,6 @@ void NodeResourceInfoAccessor::FillResourceUsageRequest(
   }
 
   resources_data->clear_resources_available();
-  resources_data->set_resources_available_changed(true);
   for (const auto &resource_pair : cached_resources.available.GetResourceMap()) {
     (*resources_data->mutable_resources_available())[resource_pair.first] =
         resource_pair.second;
