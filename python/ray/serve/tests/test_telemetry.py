@@ -484,5 +484,124 @@ def test_lightweight_config_options(manage_ray, lightweight_option, value):
             assert tagkey not in report["extra_usage_tags"]
 
 
+@pytest.mark.parametrize("use_new_handle_api", [False, True])
+@pytest.mark.parametrize("call_in_deployment", [False, True])
+def test_handle_apis_detected(manage_ray, use_new_handle_api, call_in_deployment):
+    """Check that the various handles are detected correctly by telemetry."""
+
+    subprocess.check_output(["ray", "start", "--head"])
+    wait_for_condition(check_ray_started, timeout=5)
+
+    storage_handle = start_telemetry_app()
+    wait_for_condition(
+        lambda: ray.get(storage_handle.get_reports_received.remote()) > 0, timeout=5
+    )
+
+    @serve.deployment
+    class Downstream:
+        def __call__(self):
+            return "hi"
+
+    @serve.deployment
+    class Caller:
+        def __init__(self, h):
+            self._h = h.options(use_new_handle_api=use_new_handle_api)
+
+        async def __call__(self, call_downstream=True):
+            if call_downstream:
+                await self._h.remote()
+            return "ok"
+
+    handle = serve.run(Caller.bind(Downstream.bind()))
+
+    if call_in_deployment:
+        result = requests.get("http://localhost:8000").text
+    elif use_new_handle_api:
+        result = (
+            handle.options(use_new_handle_api=True)
+            .remote(call_downstream=False)
+            .result()
+        )
+    else:
+        result = ray.get(handle.remote(call_downstream=False))
+
+    assert result == "ok"
+
+    def check_telemetry():
+        report = ray.get(storage_handle.get_report.remote())
+        print(report["extra_usage_tags"])
+        if use_new_handle_api:
+            assert report["extra_usage_tags"]["serve_deployment_handle_api_used"] == "1"
+        elif call_in_deployment:
+            assert report["extra_usage_tags"]["serve_ray_serve_handle_api_used"] == "1"
+        else:
+            assert (
+                report["extra_usage_tags"]["serve_ray_serve_sync_handle_api_used"]
+                == "1"
+            )
+
+        assert (
+            report["extra_usage_tags"].get(
+                "serve_deployment_handle_to_object_ref_api_used", "0"
+            )
+            == "1"
+        )
+        return True
+
+    wait_for_condition(check_telemetry)
+
+
+@pytest.mark.parametrize("call_in_deployment", [False, True])
+def test_deployment_handle_to_obj_ref_detected(manage_ray, call_in_deployment):
+    """Check that the handle to_object_ref API is detected correctly by telemetry."""
+
+    subprocess.check_output(["ray", "start", "--head"])
+    wait_for_condition(check_ray_started, timeout=5)
+
+    storage_handle = start_telemetry_app()
+    wait_for_condition(
+        lambda: ray.get(storage_handle.get_reports_received.remote()) > 0, timeout=5
+    )
+
+    @serve.deployment
+    class Downstream:
+        def __call__(self):
+            return "hi"
+
+    @serve.deployment
+    class Caller:
+        def __init__(self, h):
+            self._h = h.options(use_new_handle_api=True)
+
+        async def __call__(self, call_downstream=True):
+            if call_downstream:
+                await self._h.remote()._to_object_ref()
+            return "ok"
+
+    handle = serve.run(Caller.bind(Downstream.bind()))
+
+    if call_in_deployment:
+        result = requests.get("http://localhost:8000").text
+    else:
+        result = ray.get(
+            handle.options(use_new_handle_api=True)
+            .remote(call_downstream=False)
+            ._to_object_ref_sync()
+        )
+
+    assert result == "ok"
+
+    def check_telemetry():
+        report = ray.get(storage_handle.get_report.remote())
+        print(report["extra_usage_tags"])
+        assert (
+            report["extra_usage_tags"]["serve_deployment_handle_to_object_ref_api_used"]
+            == "1"
+        )
+        return True
+
+    wait_for_condition(check_telemetry)
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))

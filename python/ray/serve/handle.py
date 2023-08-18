@@ -428,17 +428,20 @@ class _DeploymentResponseBase:
 
     async def _to_object_ref_or_gen(
         self,
+        _record_telemetry: bool = True,
     ) -> Union[ray.ObjectRef, StreamingObjectRefGenerator]:
         # Record telemetry for using the developer API to convert to an object
         # ref. Recorded here because all of the other codepaths go through this.
-        record_serve_tag("SERVE_DEPLOYMENT_HANDLE_TO_OBJECT_REF_API_USED", "1")
+        if _record_telemetry:
+            record_serve_tag("SERVE_DEPLOYMENT_HANDLE_TO_OBJECT_REF_API_USED", "1")
         return await self._assign_request_task
 
     def _to_object_ref_or_gen_sync(
         self,
+        _record_telemetry: bool = True,
     ) -> Union[ray.ObjectRef, StreamingObjectRefGenerator]:
         future: concurrent.futures.Future = asyncio.run_coroutine_threadsafe(
-            self._to_object_ref_or_gen(), self._loop
+            self._to_object_ref_or_gen(_record_telemetry=_record_telemetry), self._loop
         )
         return future.result()
 
@@ -541,7 +544,9 @@ class DeploymentResponse(_DeploymentResponseBase):
         If `timeout_s` is provided and the result is not available before the timeout,
         a `TimeoutError` is raised.
         """
-        return ray.get(self._to_object_ref_sync(), timeout=timeout_s)
+        return ray.get(
+            self._to_object_ref_sync(_record_telemetry=False), timeout=timeout_s
+        )
 
     @DeveloperAPI
     async def _to_object_ref(self) -> ray.ObjectRef:
@@ -557,7 +562,7 @@ class DeploymentResponse(_DeploymentResponseBase):
         return await self._to_object_ref_or_gen()
 
     @DeveloperAPI
-    def _to_object_ref_sync(self) -> ray.ObjectRef:
+    def _to_object_ref_sync(self, _record_telemetry: bool = True) -> ray.ObjectRef:
         """Advanced API to convert the response to a Ray `ObjectRef`.
 
         This is used to pass the output of a `DeploymentHandle` call to a Ray task or
@@ -570,7 +575,7 @@ class DeploymentResponse(_DeploymentResponseBase):
         From inside a deployment, `_to_object_ref` should be used instead to avoid
         blocking the asyncio event loop.
         """
-        return self._to_object_ref_or_gen_sync()
+        return self._to_object_ref_or_gen_sync(_record_telemetry=_record_telemetry)
 
 
 @PublicAPI(stability="alpha")

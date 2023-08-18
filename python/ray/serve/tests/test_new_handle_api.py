@@ -69,7 +69,7 @@ def test_result_timeout(serve_instance):
 # is supported.
 @pytest.mark.skipif(
     not RAY_SERVE_ENABLE_NEW_ROUTING,
-    reason="`max_concurrent_queries` not properly enforced in old codepath."
+    reason="`max_concurrent_queries` not properly enforced in old codepath.",
 )
 def test_cancel(serve_instance):
     """Test `.cancel()` from inside and outside a deployment."""
