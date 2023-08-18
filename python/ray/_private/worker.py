@@ -1437,7 +1437,7 @@ def init(
 
         job_config.set_runtime_env(runtime_env)
         # Similarly, we prefer metadata provided via job submission API
-        for key, value in injected_job_config.metadata:
+        for key, value in injected_job_config.metadata.items():
             job_config.set_metadata(key, value)
 
     # RAY_JOB_CONFIG_JSON_ENV_VAR is only set at ray job manager level and has
