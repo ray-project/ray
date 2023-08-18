@@ -243,7 +243,7 @@ def test_prometheus_export_worker_and_memory_stats(enable_test_module, shutdown_
     wait_for_condition(test_worker_stats, retry_interval_ms=1000)
 
 
-def test_report_stats(shutdown_only):
+def test_report_stats():
     dashboard_agent = MagicMock()
     agent = ReporterAgent(dashboard_agent)
     # Assume it is a head node.
@@ -283,7 +283,7 @@ def test_report_stats(shutdown_only):
     assert len(records) == 32
 
 
-def test_report_stats_gpu(shutdown_only):
+def test_report_stats_gpu():
     dashboard_agent = MagicMock()
     agent = ReporterAgent(dashboard_agent)
     # Assume it is a head node.
@@ -432,7 +432,7 @@ def test_report_stats_gpu(shutdown_only):
     assert gpu_metrics_aggregatd["node_gram_available"] == GPU_MEMORY * 4 - 6
 
 
-def test_report_per_component_stats(shutdown_only):
+def test_report_per_component_stats():
     dashboard_agent = MagicMock()
     agent = ReporterAgent(dashboard_agent)
     # Assume it is a head node.
@@ -610,7 +610,7 @@ def test_report_per_component_stats(shutdown_only):
 
 
 @pytest.mark.parametrize("enable_k8s_disk_usage", [True, False])
-def test_enable_k8s_disk_usage(enable_k8s_disk_usage: bool, shutdown_only):
+def test_enable_k8s_disk_usage(enable_k8s_disk_usage: bool):
     """Test enabling display of K8s node disk usage when in a K8s pod."""
     with patch.multiple(
         "ray.dashboard.modules.reporter.reporter_agent",
@@ -712,7 +712,6 @@ def test_get_task_traceback_running_task(shutdown_only):
     # done when the next test starts. This prevents a previous cluster to be
     # connected the current test session.
 
-    time.sleep(5)
     address_info = ray.init()
     webui_url = format_web_url(address_info["webui_url"])
 
@@ -755,7 +754,6 @@ def test_get_task_traceback_non_running_task(shutdown_only):
     # done when the next test starts. This prevents a previous cluster to be
     # connected the current test session.
 
-    time.sleep(5)
     address_info = ray.init()
     webui_url = format_web_url(address_info["webui_url"])
 
@@ -791,7 +789,6 @@ def test_get_cpu_profile_non_running_task(shutdown_only):
     # done when the next test starts. This prevents a previous cluster to be
     # connected the current test session.
 
-    time.sleep(5)
     address_info = ray.init()
     webui_url = format_web_url(address_info["webui_url"])
 
