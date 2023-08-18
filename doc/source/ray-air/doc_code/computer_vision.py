@@ -23,12 +23,10 @@ def test(*, framework: str, datasource: str):
         preprocessor, per_epoch_preprocessor = create_torch_preprocessors()
         train_torch_model(dataset, preprocessor, per_epoch_preprocessor)
         checkpoint = create_torch_checkpoint(preprocessor)
-        online_predict_torch(checkpoint)
     if framework == "tensorflow":
         preprocessor, per_epoch_preprocessor = create_tensorflow_preprocessors()
         train_tensorflow_model(dataset, preprocessor, per_epoch_preprocessor)
         checkpoint = create_tensorflow_checkpoint(preprocessor)
-        online_predict_tensorflow(checkpoint)
 
 
 def read_tfrecords():
@@ -323,71 +321,6 @@ def create_tensorflow_checkpoint(preprocessor):
     checkpoint = LegacyTensorflowCheckpoint.from_model(model, preprocessor=preprocessor)
     # __tensorflow_checkpoint_stop__
     return checkpoint
-
-
-def online_predict_torch(checkpoint):
-    # __torch_serve_start__
-    from io import BytesIO
-    import numpy as np
-    from PIL import Image
-    from ray import serve
-    from ray.train.torch import TorchPredictor
-
-    @serve.deployment
-    class TorchDeployment:
-        def __init__(self, checkpoint):
-            self.predictor = TorchPredictor.from_checkpoint(checkpoint)
-
-        async def __call__(self, request):
-            image = Image.open(BytesIO(await request.body()))
-            return self.predictor.predict(np.array(image)[np.newaxis])
-
-    serve.run(TorchDeployment.bind(checkpoint))
-    # __torch_serve_stop__
-
-    # __torch_online_predict_start__
-    import requests
-
-    response = requests.get("http://placekitten.com/200/300")
-    response = requests.post("http://localhost:8000/", data=response.content)
-    predictions = response.json()
-    # __torch_online_predict_stop__
-    predictions
-
-
-def online_predict_tensorflow(checkpoint):
-    # __tensorflow_serve_start__
-    from io import BytesIO
-    import numpy as np
-    from PIL import Image
-    import tensorflow as tf
-
-    from ray import serve
-    from ray.train.tensorflow import TensorflowPredictor
-
-    @serve.deployment
-    class TensorflowDeployment:
-        def __init__(self, checkpoint):
-            self.predictor = TensorflowPredictor.from_checkpoint(
-                checkpoint,
-                model_definition=tf.keras.applications.resnet50.ResNet50,
-            )
-
-        async def __call__(self, request):
-            image = Image.open(BytesIO(await request.body()))
-            return self.predictor.predict({"image": np.array(image)[np.newaxis]})
-
-    serve.run(TensorflowDeployment.bind(checkpoint))
-    # __tensorflow_serve_stop__
-
-    # __tensorflow_online_predict_start__
-    import requests
-
-    response = requests.get("http://placekitten.com/200/300")
-    response = requests.post("http://localhost:8000/", data=response.content)
-    predictions = response.json()
-    # __tensorflow_online_predict_stop__
-    predictions
 
 
 if __name__ == "__main__":
