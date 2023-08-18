@@ -6,7 +6,7 @@ from typing import Any
 import pytest
 
 import ray
-from ray._private.test_utils import SignalActor
+from ray._private.test_utils import SignalActor, wait_for_condition
 
 from ray import serve
 from ray.serve.handle import (
@@ -15,6 +15,9 @@ from ray.serve.handle import (
     DeploymentResponseGenerator,
     RayServeHandle,
     RayServeSyncHandle,
+)
+from ray.serve._private.constants import (
+    RAY_SERVE_ENABLE_NEW_ROUTING,
 )
 
 
@@ -64,6 +67,10 @@ def test_result_timeout(serve_instance):
 
 # TODO(edoakes): expand this test to cancel ongoing requests once actor cancellation
 # is supported.
+@pytest.mark.skipif(
+    not RAY_SERVE_ENABLE_NEW_ROUTING,
+    reason="`max_concurrent_queries` not properly enforced in old codepath."
+)
 def test_cancel(serve_instance):
     """Test `.cancel()` from inside and outside a deployment."""
 
@@ -99,8 +106,9 @@ def test_cancel(serve_instance):
     # assignment.
     deployment_handle = serve.get_deployment_handle("downstream", app_name="default")
     blocking_ref = deployment_handle.remote()
+    wait_for_condition(lambda: ray.get(signal_actor.cur_num_waiters.remote()) == 1)
     with pytest.raises(TimeoutError):
-        blocking_ref.result(timeout_s=1)
+        blocking_ref.result(timeout_s=0.001)
 
     # Check cancellation behavior from outside deployment.
     cancelled_ref = deployment_handle.remote()
