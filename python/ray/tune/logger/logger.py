@@ -183,7 +183,7 @@ class LoggerCallback(Callback):
                     local_file,
                     source_filesystem=trial.storage.storage_filesystem,
                 )
-                logger.info(f"Copied {remote_file} to {local_file}")
+                logger.debug(f"Copied {remote_file} to {local_file}")
             except FileNotFoundError:
                 logger.debug(f"Remote file not found: {remote_file}")
 
