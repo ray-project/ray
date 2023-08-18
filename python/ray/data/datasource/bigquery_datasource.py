@@ -40,7 +40,7 @@ class _BigQueryDatasourceReader(Reader):
 
     def get_read_tasks(self, parallelism: int) -> List[ReadTask]:
         # Executed by a worker node
-        def _read_single_partition(stream, kwargs) -> Block:
+        def _read_single_partition(stream) -> Block:
             client = bigquery_storage.BigQueryReadClient()
             reader = client.read_rows(stream.name)
             return reader.to_arrow()
@@ -92,8 +92,8 @@ class _BigQueryDatasourceReader(Reader):
             )
 
             # Create a no-arg wrapper read function which returns a block
-            read_single_partition = lambda stream=stream, kwargs=self._kwargs: [
-                _read_single_partition(stream, kwargs)
+            read_single_partition = lambda stream=stream: [
+                _read_single_partition(stream)
             ]
 
             # Create the read task and pass the wrapper and metadata in

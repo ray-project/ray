@@ -64,7 +64,6 @@ def bq_client_full_mock(monkeypatch):
     client_mock.query = bq_query_mock
 
     monkeypatch.setattr(bigquery, "Client", client_mock)
-    client_mock.reset_mock()
     return client_mock
 
 

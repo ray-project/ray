@@ -6,3 +6,5 @@ python-snappy
 tensorflow-datasets
 datasets
 pytest-repeat
+google-cloud-bigquery=3.11.0
+google-cloud-bigquery-storage=2.20.0
