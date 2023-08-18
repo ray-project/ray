@@ -62,7 +62,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 # Syncing period for syncing checkpoints between nodes or to cloud.
-DEFAULT_SYNC_PERIOD = 300
+DEFAULT_SYNC_PERIOD = 3
 
 # Default sync timeout after which syncing processes are aborted
 DEFAULT_SYNC_TIMEOUT = 1800

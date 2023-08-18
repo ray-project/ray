@@ -1,7 +1,9 @@
 from collections import Counter
 from dataclasses import dataclass
+import json
 from typing import Callable, Dict, Optional, Tuple, Union
 
+import pyarrow
 import click
 import logging
 import os
@@ -380,29 +382,70 @@ class _ExperimentCheckpointManager:
         self._last_sync_time = now
         return True
 
-    def sync_down(self, force: bool = False, wait: bool = False) -> bool:
-        if _use_storage_context():
-            if not self._storage.syncer:
-                return False
-            # TODO(justinvyu): sync_down doesn't actually implement exclude right now
-            exclude = ["*/checkpoint_*"]
-            syncer = self._storage.syncer
-            experiment_local_path = self._storage.experiment_local_path
-            experiment_fs_path = self._storage.experiment_fs_path
+    def sync_down_experiment_state(self) -> None:
+        fs = self._storage.storage_filesystem
+        file_infos = fs.get_file_info(pyarrow.fs.FileSelector(self._storage.experiment_fs_path))
+        variants = []
+        for file_info in file_infos:
+            name = os.path.basename(file_info.path)
+            if name.startswith("basic-variant-state") and name.endswith(".json"):
+                variants.append(name)
+        if variants:
+            name = max(variants)
+            with fs.open_input_file(os.path.join(self._storage.experiment_fs_path, name)) as f:
+                variant_data = f.readall()
+            local_variants = os.path.join(self._storage.experiment_local_path, name)
+            with open(local_variants, "wb") as f:
+                f.write(variant_data)
+        candidates = []
+        for file_info in file_infos:
+            name = os.path.basename(file_info.path)
+            if name.startswith("experiment_state") and name.endswith(".json"):
+                candidates.append(name)
+        if candidates:
+            name = max(candidates)
+            with fs.open_input_file(os.path.join(self._storage.experiment_fs_path, name)) as f:
+                experiment_data = f.readall()
+                experiment_state = json.loads(experiment_data)
+            local_state = os.path.join(self._storage.experiment_local_path, name)
+            with open(local_state, "wb") as f:
+                f.write(experiment_data)
+            print("num trials", len(experiment_state["trial_data"]))
+            assert len(experiment_state["trial_data"]) > 100
+            for tup in experiment_state["trial_data"]:
+                trial = Trial.from_json_state(tup[0])
+                # TODO check trial status for result.jsons to sync?
+                src = trial.path + "/result.json"
+                dst = self._storage.experiment_local_path + "/" + os.path.basename(trial.path) + "/result.json"
+                print("copy", src, dst)
+                os.makedirs(os.path.dirname(dst), exist_ok=True)
+                try:
+                    pyarrow.fs.copy_files(src, dst, source_filesystem=fs)
+                except FileNotFoundError:
+                    print("Not found", src)
         else:
-            if not self._legacy_syncer or not self._legacy_remote_checkpoint_dir:
-                return False
+            experiment_state = None
 
-            if bool(self._legacy_remote_checkpoint_dir):
-                # If an upload dir is given, trainable actors upload checkpoints
-                # themselves. Then the driver does not need to sync checkpoints.
-                exclude = ["*/checkpoint_*"]
-            else:
-                # Otherwise, we sync the full trial dir.
-                exclude = None
-            syncer = self._legacy_syncer
-            experiment_local_path = self._legacy_local_checkpoint_dir
-            experiment_fs_path = self._legacy_remote_checkpoint_dir
+#        # TODO 1. Change this to read the remote state directly
+#        # TODO 2. Find all active trials and copy their metric files locally
+#        #         [respect resume config?]
+#        raise NotImplementedError()
+
+    def sync_down(self, force: bool = False, wait: bool = False) -> bool:
+        assert not _use_storage_context()
+        if not self._legacy_syncer or not self._legacy_remote_checkpoint_dir:
+            return False
+
+        if bool(self._legacy_remote_checkpoint_dir):
+            # If an upload dir is given, trainable actors upload checkpoints
+            # themselves. Then the driver does not need to sync checkpoints.
+            exclude = ["*/checkpoint_*"]
+        else:
+            # Otherwise, we sync the full trial dir.
+            exclude = None
+        syncer = self._legacy_syncer
+        experiment_local_path = self._legacy_local_checkpoint_dir
+        experiment_fs_path = self._legacy_remote_checkpoint_dir
 
         if force:
             # Wait until previous sync command finished
@@ -465,15 +508,19 @@ class _ExperimentCheckpointManager:
             # Todo: This syncs the entire experiment including trial
             # checkpoints. We should exclude these in the future.
             try:
-                syncer.sync_down_if_needed(
-                    remote_dir=experiment_fs_path,
-                    local_dir=experiment_local_path,
-                )
+                if _use_storage_context():
+                    self.sync_down_experiment_state()
+                else:
+                    syncer.sync_down_if_needed(
+                        remote_dir=experiment_fs_path,
+                        local_dir=experiment_local_path,
+                    )
                 syncer.wait()
             except Exception as e:
-                logger.warning(
-                    f"Got error when trying to sync down: {e} "
-                    f"\nPlease check this error message for potential "
+                raise  # TODO remove this XXX DO NOT MERGE
+                logger.exception(
+                    f"Got error when trying to sync down.\n"
+                    f"Please check this error message for potential "
                     f"access problems - if a directory was not found, "
                     f"that is expected at this stage when you're starting "
                     f"a new experiment."
@@ -582,7 +629,10 @@ class _ExperimentCheckpointManager:
             logger.info(
                 f"Downloading experiment checkpoint from " f"{experiment_fs_path}"
             )
-            self.sync_down(force=True, wait=True)
+            if _use_storage_context():
+                self.sync_down_experiment_state()
+            else:
+                self.sync_down(force=True, wait=True)
 
             if not _experiment_checkpoint_exists(experiment_local_path):
                 raise ValueError(
