@@ -695,16 +695,18 @@ class HTTPOptions(pydantic.BaseModel):
 
     @validator("middlewares", always=True)
     def warn_for_middlewares(cls, v, values):
-        if values["middlewares"]:
+        if v:
             warnings.warn(
                 "Passing `middlewares` to HTTPOptions is deprecated and will be "
-                "removed in a future version."
+                "removed in a future version. Consider using the FastAPI integration "
+                "to configure middlewares on your deployments: "
+                "https://docs.ray.io/en/latest/serve/http-guide.html#fastapi-http-deployments"  # noqa 501
             )
         return v
 
     @validator("num_cpus", always=True)
     def warn_for_num_cpus(cls, v, values):
-        if values["num_cpus"]:
+        if v:
             warnings.warn(
                 "Passing `num_cpus` to HTTPOptions is deprecated and will be "
                 "removed in a future version."
@@ -713,7 +715,7 @@ class HTTPOptions(pydantic.BaseModel):
 
     @validator("fixed_number_replicas", always=True)
     def fixed_number_replicas_should_exist(cls, v, values):
-        if values["location"] == DeploymentMode.FixedNumber:
+        if v is not None or values["location"] == DeploymentMode.FixedNumber:
             warnings.warn(
                 "`DeploymentMode.FixedNumber` is deprecated and will be removed in a "
                 "future version."

@@ -171,7 +171,8 @@ def cli():
 def start(address, http_host, http_port, http_location, proxy_location):
     if http_location is not None:
         cli_logger.warning(
-            "The `--http-location` flag is deprecated, use `--proxy-location` instead."
+            "The `--http-location` flag to `serve start` is deprecated, "
+            "use `--proxy-location` instead."
         )
 
     ray.init(

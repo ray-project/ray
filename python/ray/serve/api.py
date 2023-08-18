@@ -129,6 +129,12 @@ def start(
             "removed in a future version."
         )
 
+    if dedicated_cpu:
+        warnings.warn(
+            "Setting `dedicated_cpu=True` in `serve.start` is deprecated and will be "
+            "removed in a future version."
+        )
+
     if proxy_location is None:
         if http_options is None:
             http_options = HTTPOptions(location=DeploymentMode.EveryNode)
