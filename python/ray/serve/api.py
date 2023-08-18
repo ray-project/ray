@@ -21,7 +21,6 @@ from ray.serve.config import (
     HTTPOptions,
 )
 from ray.serve._private.constants import (
-    DEFAULT_GRPC_PORT,
     DEFAULT_HTTP_HOST,
     DEFAULT_HTTP_PORT,
     SERVE_DEFAULT_APP_NAME,
@@ -70,7 +69,7 @@ def start(
     detached: bool = False,
     http_options: Optional[Union[dict, HTTPOptions]] = None,
     dedicated_cpu: bool = False,
-    grpc_options: Optional[gRPCOptions] = None,
+    grpc_options: Optional[Union[dict, gRPCOptions]] = None,
     **kwargs,
 ) -> ServeControllerClient:
     """Start Serve on the cluster.
@@ -110,6 +109,13 @@ def start(
               internal Serve HTTP proxy actor.  Defaults to 0.
         dedicated_cpu: Whether to reserve a CPU core for the internal
           Serve controller actor.  Defaults to False.
+        grpc_options: Configuration options for gRPC proxy. You can pass in a dictionary
+          or gRPCOptions object with fields:
+
+            - grpc_servicer_functions: List of gRPC `add_servicer_to_server`
+              functions to add to Serve's gRPC proxy. Default empty, meaning not to
+              start the gRPC server.
+            - port: Port for gRPC server. Defaults to 9000.
     """
     client = _private_api.serve_start(
         detached=detached,
@@ -454,8 +460,6 @@ def run(
     port: int = DEFAULT_HTTP_PORT,
     name: str = SERVE_DEFAULT_APP_NAME,
     route_prefix: str = DEFAULT.VALUE,
-    grpc_port: int = DEFAULT_GRPC_PORT,
-    grpc_servicer_functions: List[str] = (),
 ) -> Optional[RayServeSyncHandle]:
     """Run an application and return a handle to its ingress deployment.
 
@@ -478,9 +482,6 @@ def run(
         route_prefix: Route prefix for HTTP requests. If not provided, it will use
             route_prefix of the ingress deployment. If specified neither as an argument
             nor in the ingress deployment, the route prefix will default to '/'.
-        port: Port for gRPC server. Defaults to 9000.
-        grpc_servicer_functions: List of gRPC add_servicer_to_server functions to add
-            to Serve's gRPC proxy. Default empty, meaning not to start the gRPC server.
 
     Returns:
         RayServeSyncHandle: A handle that can be used to call the application.
@@ -488,10 +489,6 @@ def run(
     client = _private_api.serve_start(
         detached=True,
         http_options={"host": host, "port": port, "location": "EveryNode"},
-        grpc_options=gRPCOptions(
-            port=grpc_port,
-            grpc_servicer_functions=grpc_servicer_functions,
-        ),
     )
 
     # Record after Ray has been started.

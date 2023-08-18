@@ -307,11 +307,13 @@ def test_serving_request_through_grpc_proxy(ray_cluster):
         "ray.serve.generated.serve_pb2_grpc.add_FruitServiceServicer_to_server",
     ]
 
-    serve.run(
-        target=g,
-        grpc_port=grpc_port,
-        grpc_servicer_functions=grpc_servicer_functions,
+    serve.start(
+        grpc_options={
+            "port": grpc_port,
+            "grpc_servicer_functions": grpc_servicer_functions,
+        },
     )
+    serve.run(target=g)
     replicas = ray.get(
         serve.context._global_client._controller._all_running_replicas.remote()
     )
