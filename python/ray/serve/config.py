@@ -675,7 +675,7 @@ class DeploymentMode(str, Enum):
 @PublicAPI(stability="beta")
 class HTTPOptions(pydantic.BaseModel):
     # Documentation inside serve.start for user's convenience.
-    host: str = DEFAULT_HTTP_HOST
+    host: Optional[str] = DEFAULT_HTTP_HOST
     port: int = DEFAULT_HTTP_PORT
     middlewares: List[Any] = []
     location: Optional[DeploymentMode] = DeploymentMode.HeadOnly
