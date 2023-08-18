@@ -386,33 +386,23 @@ class _ExperimentCheckpointManager:
         file_infos = fs.get_file_info(
             pyarrow.fs.FileSelector(self._storage.experiment_fs_path)
         )
-
-        # Find the latest remote file matching the given pre/suffix in the expdir,
-        # and then copy it down locally for restore.
-        def restore_latest_match(match_prefix: str, match_suffix: str) -> None:
-            matches = []
-            for file_info in file_infos:
-                name = os.path.basename(file_info.path)
-                if name.startswith("basic-variant-state") and name.endswith(".json"):
-                    matches.append(name)
-            if matches:
-                name = max(matches)
-                remote_path = os.path.join(self._storage.experiment_fs_path, name)
-                local_path = os.path.join(self._storage.experiment_local_path, name)
-                logger.info(f"Copying {remote_path} to {local_path}")
-                pyarrow.fs.copy_files(
-                    remote_path,
-                    local_path,
-                    source_filesystem=self._storage.storage_filesystem,
-                )
-            else:
-                logger.info(
-                    "No remote files to restore "
-                    f"matching {match_prefix}.*{match_suffix}"
-                )
-
-        restore_latest_match("basic-variant-state", ".json")
-        restore_latest_match("experiment_state", ".json")
+        # TODO(ekl) we should refactor our restore code to read the necessary data
+        # directly from the storage context. As a temporary hack, restore all the
+        # serialized files from the root dir where other modules expect them to be.
+        matches = []
+        for file_info in file_infos:
+            name = os.path.basename(file_info.path)
+            if name.endswith(".json") or name.endswith(".pkl"):
+                matches.append(name)
+        for name in matches:
+            remote_path = os.path.join(self._storage.experiment_fs_path, name)
+            local_path = os.path.join(self._storage.experiment_local_path, name)
+            logger.info(f"Copying {remote_path} to {local_path}")
+            pyarrow.fs.copy_files(
+                remote_path,
+                local_path,
+                source_filesystem=self._storage.storage_filesystem,
+            )
 
     def sync_down(self, force: bool = False, wait: bool = False) -> bool:
         assert not _use_storage_context()

@@ -174,13 +174,16 @@ class LoggerCallback(Callback):
         remote_file = os.path.join(trial.storage.trial_fs_path, file_name)
 
         if not os.path.exists(local_file):
-            logger.info(f"Copying {remote_file} to {local_file}")
+            # TODO(ekl) avoid the remote IO call below by checking if the trial
+            # has any existing checkpoints loaded. If no checkpoints are loaded,
+            # we can ignore any previous metric files written.
             try:
                 pyarrow.fs.copy_files(
                     remote_file,
                     local_file,
                     source_filesystem=trial.storage.storage_filesystem,
                 )
+                logger.info(f"Copied {remote_file} to {local_file}")
             except FileNotFoundError:
                 logger.debug(f"Remote file not found: {remote_file}")
 
