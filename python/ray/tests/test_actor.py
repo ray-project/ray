@@ -1223,6 +1223,7 @@ def test_keep_calling_get_actor(ray_start_regular_shared):
     wait_for_condition(actor_removed)
 
 
+@pytest.mark.skipif(client_test_enabled(), reason="internal api")
 @pytest.mark.parametrize(
     "actor_type",
     [
@@ -1306,6 +1307,7 @@ def test_actor_parent_task_correct(shutdown_only, actor_type):
     assert actual == expected
 
 
+@pytest.mark.skipif(client_test_enabled(), reason="internal api")
 def test_parent_task_correct_concurrent_async_actor(shutdown_only):
     """Make sure when there are concurrent async tasks
     the parent -> children task ids are properly mapped.
