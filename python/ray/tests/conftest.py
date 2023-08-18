@@ -381,14 +381,14 @@ def ray_start_dashboard_bad_import():
     import sys
 
     # Replace a known optional module with something that does not exist
-    sys.modules["aiohttp"] = None
+    mod = sys.modules.pop("aiohttp")
     yield
 
     # The code after the yield will run as teardown code.
     ray.shutdown()
     # Delete the cluster address just in case.
     ray._private.utils.reset_ray_address()
-    sys.modules["aiohttp"] == __import__("aiohttp")
+    sys.modules["aiohttp"] = mod
 
 
 @pytest.fixture

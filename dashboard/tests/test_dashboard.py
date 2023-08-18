@@ -170,7 +170,7 @@ def test_missing_imports(ray_start_dashboard_bad_import):
 def test_raylet_and_agent_share_fate(shutdown_only):
     """Test raylet and agent share fate."""
 
-    ray.init(include_dashboard=True)
+    ray.init()
     p = init_error_pubsub()
 
     node = ray._private.worker._global_node
@@ -214,7 +214,7 @@ def test_raylet_and_agent_share_fate(shutdown_only):
 def test_agent_report_unexpected_raylet_death(shutdown_only):
     """Test agent reports Raylet death if it is not SIGTERM."""
 
-    ray.init(include_dashboard=True)
+    ray.init()
     p = init_error_pubsub()
 
     node = ray._private.worker._global_node
@@ -282,6 +282,10 @@ def test_agent_report_unexpected_raylet_death_large_file(shutdown_only):
     assert "Raylet logs:" in err["error_message"], err["error_message"]
 
 
+@pytest.mark.skipif(
+    os.environ.get("RAY_MINIMAL") == "1",
+    reason="This test is not supposed to work for minimal installation.",
+)
 @pytest.mark.parametrize(
     "ray_start_with_dashboard",
     [
@@ -292,15 +296,15 @@ def test_agent_report_unexpected_raylet_death_large_file(shutdown_only):
 )
 def test_dashboard_address_local(ray_start_with_dashboard):
     webui_url = ray_start_with_dashboard["webui_url"]
-    if os.environ.get("RAY_MINIMAL") == "1":
-        # In the minimal installation, webui url shouldn't be configured.
-        assert webui_url == ""
-    else:
-        webui_ip = webui_url.split(":")[0]
-        assert not ipaddress.ip_address(webui_ip).is_unspecified
-        assert webui_ip == "127.0.0.1"
+    webui_ip = webui_url.split(":")[0]
+    assert not ipaddress.ip_address(webui_ip).is_unspecified
+    assert webui_ip == "127.0.0.1"
 
 
+@pytest.mark.skipif(
+    os.environ.get("RAY_MINIMAL") == "1",
+    reason="This test is not supposed to work for minimal installation.",
+)
 @pytest.mark.parametrize(
     "ray_start_with_dashboard",
     [
@@ -311,13 +315,9 @@ def test_dashboard_address_local(ray_start_with_dashboard):
 )
 def test_dashboard_address_global(ray_start_with_dashboard):
     webui_url = ray_start_with_dashboard["webui_url"]
-    if os.environ.get("RAY_MINIMAL") == "1":
-        # In the minimal installation, webui url shouldn't be configured.
-        assert webui_url == ""
-    else:
-        webui_ip = webui_url.split(":")[0]
-        assert not ipaddress.ip_address(webui_ip).is_unspecified
-        assert webui_ip == ray_start_with_dashboard["node_ip_address"]
+    webui_ip = webui_url.split(":")[0]
+    assert not ipaddress.ip_address(webui_ip).is_unspecified
+    assert webui_ip == ray_start_with_dashboard["node_ip_address"]
 
 
 @pytest.mark.skipif(

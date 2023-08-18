@@ -1126,7 +1126,7 @@ def start_api_server(
             logger.error(
                 "--include-dashboard was explicitly specified, but not all packages are installed."
             )
-            raise
+            raise Exception("Cannot include dashboard with missing packages.")
 
         include_dash: bool = True if include_dashboard is None else include_dashboard
 
