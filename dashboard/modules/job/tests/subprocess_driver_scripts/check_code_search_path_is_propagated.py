@@ -4,11 +4,11 @@ Prints global worker's `load_code_from_local` property that ought to be set when
 is specified
 """
 
-import ray
-from ray.job_config import JobConfig
-
 
 def run():
+    import ray
+    from ray.job_config import JobConfig
+
     ray.init(job_config=JobConfig(code_search_path=["/home/code/"]))
 
     @ray.remote
