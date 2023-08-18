@@ -1,7 +1,7 @@
 import functools
 import itertools
 from enum import Enum
-from typing import Any, Callable, Dict, Iterable, List, Optional, Union
+from typing import Any, Callable, Dict, Iterable, List, Optional, TypeVar, Union
 
 from ray.data._internal.block_batching.block_batching import batch_blocks
 from ray.data._internal.execution.interfaces.task_context import TaskContext
@@ -11,14 +11,8 @@ from ray.data.context import DataContext
 
 Row = Dict[str, Any]
 MapTransformFnData = Union[Block, Row, DataBatch]
-MapTransformCallable = Callable[
-    [Iterable[MapTransformFnData], TaskContext], Iterable[MapTransformFnData]
-]
-BlockTransformCallable = Callable[[Iterable[Block], TaskContext], Iterable[Block]]
-RowTransformCallable = Callable[[Iterable[Row], TaskContext], Iterable[Row]]
-BatchTransformCallable = Callable[
-    [Iterable[DataBatch], TaskContext], Iterable[DataBatch]
-]
+T = TypeVar("T")
+MapTransformCallable = Callable[[Iterable[T], TaskContext], Iterable[T]]
 InitFn = Callable[[], None]
 
 
@@ -35,7 +29,7 @@ class MapTransformFn:
 
     def __init__(
         self,
-        callable: MapTransformCallable,
+        callable: MapTransformCallable[MapTransformFnData],
         input_type: MapTransformFnDataType,
         output_type: MapTransformFnDataType,
     ):
@@ -224,7 +218,7 @@ _blocks_to_output_blocks = MapTransformFn(
 
 
 def create_map_transformer_for_row_based_map_op(
-    row_fn: RowTransformCallable,
+    row_fn: MapTransformCallable[Row],
     init_fn: Optional[InitFn] = None,
 ) -> MapTransformer:
     """Create a MapTransformer for a row-based map operator
@@ -241,7 +235,7 @@ def create_map_transformer_for_row_based_map_op(
 
 
 def create_map_transformer_for_map_batches_op(
-    batch_fn: BatchTransformCallable,
+    batch_fn: MapTransformCallable[DataBatch],
     batch_size: Optional[int] = None,
     batch_format: str = "default",
     zero_copy_batch: bool = False,
@@ -272,7 +266,7 @@ def create_map_transformer_for_map_batches_op(
 
 
 def create_map_transformer_for_read_op(
-    read_fn: BlockTransformCallable,
+    read_fn: MapTransformCallable[Block],
     init_fn: Optional[InitFn] = None,
 ) -> MapTransformer:
     """Create a MapTransformer for a read operator."""
@@ -287,7 +281,7 @@ def create_map_transformer_for_read_op(
 
 
 def create_map_transformer_for_write_op(
-    write_fn: BlockTransformCallable,
+    write_fn: MapTransformCallable[Block],
     init_fn: Optional[InitFn] = None,
 ) -> MapTransformer:
     """Create a MapTransformer for a write operator."""
@@ -301,7 +295,7 @@ def create_map_transformer_for_write_op(
 
 
 def create_map_transformer_from_block_fn(
-    block_fn: BlockTransformCallable,
+    block_fn: MapTransformCallable[Block],
     init_fn: Optional[InitFn] = None,
 ):
     """Create a MapTransformer from a single block-based transform function.
