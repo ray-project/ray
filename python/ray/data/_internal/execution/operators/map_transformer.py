@@ -11,9 +11,9 @@ from ray.data.context import DataContext
 
 Row = Dict[str, Any]
 MapTransformFnData = Union[Block, Row, DataBatch]
+
 T = TypeVar("T")
 MapTransformCallable = Callable[[Iterable[T], TaskContext], Iterable[T]]
-InitFn = Callable[[], None]
 
 
 class MapTransformFnDataType(Enum):
@@ -69,7 +69,7 @@ class MapTransformer:
     def __init__(
         self,
         transform_fns: List[MapTransformFn],
-        init_fn: Optional[InitFn] = None,
+        init_fn: Optional[Callable[[], None]] = None,
     ):
         """
         Args:
@@ -174,9 +174,16 @@ def _input_blocks_to_batches(
 
 
 def _to_output_blocks(
-    iter, _: TaskContext, iter_type: MapTransformFnDataType
+    iter: Iterable[MapTransformFnData],
+    iter_type: MapTransformFnDataType,
+    _: TaskContext,
 ) -> Iterable[Block]:
-    """Convert UDF-returned data to output blocks."""
+    """Convert UDF-returned data to output blocks.
+
+    Args:
+        iter: the iterable of UDF-returned data, type must be one of MapTransformFnDataType.
+        iter_type: the type of the iterable, must match the type of iter.
+    """
     output_buffer = BlockOutputBuffer(
         None, DataContext.get_current().target_max_block_size
     )
@@ -219,7 +226,7 @@ _blocks_to_output_blocks = MapTransformFn(
 
 def create_map_transformer_for_row_based_map_op(
     row_fn: MapTransformCallable[Row],
-    init_fn: Optional[InitFn] = None,
+    init_fn: Optional[Callable[[], None]] = None,
 ) -> MapTransformer:
     """Create a MapTransformer for a row-based map operator
     (e.g. map, flat_map, filter)."""
@@ -239,7 +246,7 @@ def create_map_transformer_for_map_batches_op(
     batch_size: Optional[int] = None,
     batch_format: str = "default",
     zero_copy_batch: bool = False,
-    init_fn: Optional[InitFn] = None,
+    init_fn: Optional[Callable[[], None]] = None,
 ) -> MapTransformer:
     """Create a MapTransformer for a map_batches operator."""
     input_blocks_to_batches = MapTransformFn(
@@ -267,7 +274,7 @@ def create_map_transformer_for_map_batches_op(
 
 def create_map_transformer_for_read_op(
     read_fn: MapTransformCallable[Block],
-    init_fn: Optional[InitFn] = None,
+    init_fn: Optional[Callable[[], None]] = None,
 ) -> MapTransformer:
     """Create a MapTransformer for a read operator."""
     # TODO(hchen): Currently, we apply the BlockOuputBuffer within the read tasks.
@@ -282,7 +289,7 @@ def create_map_transformer_for_read_op(
 
 def create_map_transformer_for_write_op(
     write_fn: MapTransformCallable[Block],
-    init_fn: Optional[InitFn] = None,
+    init_fn: Optional[Callable[[], None]] = None,
 ) -> MapTransformer:
     """Create a MapTransformer for a write operator."""
     transform_fns = [
@@ -296,7 +303,7 @@ def create_map_transformer_for_write_op(
 
 def create_map_transformer_from_block_fn(
     block_fn: MapTransformCallable[Block],
-    init_fn: Optional[InitFn] = None,
+    init_fn: Optional[Callable[[], None]] = None,
 ):
     """Create a MapTransformer from a single block-based transform function.
 
