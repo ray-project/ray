@@ -28,7 +28,10 @@ from ray.serve._private.common import EndpointTag, RequestProtocol
 from ray.serve._private.constants import RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING
 from ray.serve.generated import serve_pb2
 
-from unittest.mock import AsyncMock
+if sys.version_info >= (3, 8, 0):
+    from unittest.mock import AsyncMock
+else:
+    from asyncmock import AsyncMock
 
 
 @pytest.mark.skipif(sys.version_info < (3, 8), reason="requires python3.8 or higher")

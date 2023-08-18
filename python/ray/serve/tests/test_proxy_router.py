@@ -87,7 +87,7 @@ def test_default_route(mocked_router, target_route, request):
             handle == "endpoint",
             app_name == "default",
             not app_is_cross_language,
-            ]
+        ]
     )
 
 
@@ -163,7 +163,7 @@ def test_update_routes(mocked_router, target_route1, target_route2, request):
             handle == "endpoint",
             app_name == "app1",
             not app_is_cross_language,
-            ]
+        ]
     )
 
     router.update_routes(
@@ -187,7 +187,7 @@ def test_update_routes(mocked_router, target_route1, target_route2, request):
             handle == "endpoint2",
             app_name == "app2",
             app_is_cross_language,
-            ]
+        ]
     )
 
 
