@@ -2,9 +2,9 @@
 
 #include <sstream>
 
-
 #if defined(__linux__)
 #include <stdlib.h>
+
 #include "gperftools/heap-profiler.h"
 #endif
 
@@ -26,9 +26,9 @@ grpc::ServerUnaryReactor *GcsDebugService::CollectMemoryStats(
 }
 
 grpc::ServerUnaryReactor *GcsDebugService::StopMemoryProfile(
-      grpc::CallbackServerContext *context,
-      const ray::rpc::StopMemoryProfileRequest *request,
-      ray::rpc::StopMemoryProfileReply *reply) {
+    grpc::CallbackServerContext *context,
+    const ray::rpc::StopMemoryProfileRequest *request,
+    ray::rpc::StopMemoryProfileReply *reply) {
   auto reactor = context->DefaultReactor();
 #if defined(__linux__)
   if (!IsHeapProfilerRunning()) {
@@ -64,7 +64,7 @@ grpc::ServerUnaryReactor *GcsDebugService::StartMemoryProfile(
     return reactor;
   }
   HeapProfilerStart("gcs_server");
-  if(request->duration() != 0) {
+  if (request->duration() != 0) {
     auto timer = std::make_shared<boost::asio::deadline_timer>(io_service_);
     timer->expires_from_now(boost::posix_time::seconds(request->duration()));
     timer->async_wait([this, timer, reactor](const boost::system::error_code &) {
