@@ -429,8 +429,6 @@ std::optional<syncer::RaySyncMessage> LocalResourceManager::CreateSyncMessage(
     resources_data.set_object_pulls_queued(resources.object_pulls_queued);
   }
 
-  resources_data.set_resources_available_changed(true);
-
   const auto now = absl::Now();
   resources_data.set_idle_duration_ms(
       absl::ToInt64Milliseconds(now - GetResourceIdleTime().value_or(now)));
