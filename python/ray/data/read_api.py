@@ -558,9 +558,9 @@ def read_bigquery(
     ``dataset`` is read.
 
     For more information about BigQuery, see the following concepts:
-    - Project id: `Creating and Managing Projects <https://cloud.google.com/resource-manager/docs/creating-managing-projects>`
-    - Dataset: `Datasets Intro <https://cloud.google.com/bigquery/docs/datasets-intro>`
-    - Query: `Query Syntax <https://cloud.google.com/bigquery/docs/reference/standard-sql/query-syntax>`
+    - Project id: `Creating and Managing Projects <https://cloud.google.com/resource-manager/docs/creating-managing-projects>` # noqa: E501
+    - Dataset: `Datasets Intro <https://cloud.google.com/bigquery/docs/datasets-intro>` # noqa: E501
+    - Query: `Query Syntax <https://cloud.google.com/bigquery/docs/reference/standard-sql/query-syntax>` # noqa: E501
 
     This method uses the BigQuery Storage Read API which reads in parallel,
     with a Ray read task to handle each stream. The number of streams is
@@ -580,7 +580,7 @@ def read_bigquery(
 
     Args:
         project_id: The name of the associated Google Cloud Project that hosts the dataset to read.
-            For more information, see `Creating and Managing Projects <https://cloud.google.com/resource-manager/docs/creating-managing-projects>`.
+            For more information, see `Creating and Managing Projects <https://cloud.google.com/resource-manager/docs/creating-managing-projects>`. # noqa: E501
         dataset: The name of the dataset hosted in BigQuery in the format of ``dataset_id.table_id``.
             Both the dataset_id and table_id must exist otherwise an exception will be raised.
         parallelism: The requested parallelism of the read. If -1, it will be
