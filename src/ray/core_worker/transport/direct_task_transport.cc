@@ -33,7 +33,7 @@ Status CoreWorkerDirectTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
     if (!status.ok()) {
       RAY_LOG(WARNING) << "Resolving task dependencies failed " << status.ToString();
       RAY_UNUSED(task_finisher_->FailOrRetryPendingTask(
-          task_spec.TaskId(), rpc::ErrorType::DEPENDENCY_RESOLUTION_FAILED, &status));
+          task_spec.TaskId(), rpc::ErrorType::DEPENDENCY_RESOLUTION_FAILED, status));
       return;
     }
     RAY_LOG(DEBUG) << "Task dependencies resolved " << task_spec.TaskId();
@@ -84,7 +84,7 @@ Status CoreWorkerDirectTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
               RAY_UNUSED(task_finisher_->FailOrRetryPendingTask(
                   task_id,
                   rpc::ErrorType::ACTOR_CREATION_FAILED,
-                  &status,
+                  status,
                   ray_error_info.has_actor_died_error() ? &ray_error_info : nullptr));
             }
           }));
@@ -136,7 +136,9 @@ Status CoreWorkerDirectTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
     }
     if (!keep_executing) {
       RAY_UNUSED(task_finisher_->FailOrRetryPendingTask(
-          task_spec.TaskId(), rpc::ErrorType::TASK_CANCELLED, nullptr));
+          task_spec.TaskId(),
+          rpc::ErrorType::TASK_CANCELLED,
+          Status::SchedulingCancelled("Task cancelled while resolving dependencies.")));
     }
   });
   return Status::OK();
@@ -561,11 +563,11 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
             RAY_UNUSED(task_finisher_->FailPendingTask(
                 task_spec.TaskId(),
                 rpc::ErrorType::ACTOR_PLACEMENT_GROUP_REMOVED,
-                &error_status,
+                error_status,
                 &error_info));
           } else {
             RAY_UNUSED(task_finisher_->FailPendingTask(
-                task_spec.TaskId(), error_type, &error_status, &error_info));
+                task_spec.TaskId(), error_type, error_status, &error_info));
           }
           tasks_to_fail.pop_front();
         }
@@ -664,8 +666,10 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(
           if (reply.was_cancelled_before_running()) {
             RAY_LOG(DEBUG) << "Task " << task_id
                            << " was cancelled before it started running.";
-            RAY_UNUSED(
-                task_finisher_->FailPendingTask(task_id, rpc::ErrorType::TASK_CANCELLED));
+            RAY_UNUSED(task_finisher_->FailPendingTask(
+                task_id,
+                rpc::ErrorType::TASK_CANCELLED,
+                Status::SchedulingCancelled("Task was cancelled before running")));
           } else if (!task_spec.GetMessage().retry_exceptions() ||
                      !reply.is_retryable_error() ||
                      !task_finisher_->RetryTaskIfPossible(
@@ -722,7 +726,7 @@ void CoreWorkerDirectTaskSubmitter::HandleGetTaskFailureCause(
   RAY_UNUSED(task_finisher_->FailOrRetryPendingTask(
       task_id,
       is_actor ? rpc::ErrorType::ACTOR_DIED : task_error_type,
-      &task_execution_status,
+      task_execution_status,
       error_info.get(),
       /*mark_task_object_failed*/ true,
       fail_immediately));
@@ -758,8 +762,10 @@ Status CoreWorkerDirectTaskSubmitter::CancelTask(TaskSpecification task_spec,
           if (scheduling_tasks.empty()) {
             CancelWorkerLeaseIfNeeded(scheduling_key);
           }
-          RAY_UNUSED(task_finisher_->FailPendingTask(task_spec.TaskId(),
-                                                     rpc::ErrorType::TASK_CANCELLED));
+          RAY_UNUSED(task_finisher_->FailPendingTask(
+              task_spec.TaskId(),
+              rpc::ErrorType::TASK_CANCELLED,
+              Status::SchedulingCancelled("Cancelling a task.")));
           return Status::OK();
         }
       }

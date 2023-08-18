@@ -42,12 +42,12 @@ class TaskFinisherInterface {
 
   virtual void FailPendingTask(const TaskID &task_id,
                                rpc::ErrorType error_type,
-                               const Status *status = nullptr,
+                               const Status &status,
                                const rpc::RayErrorInfo *ray_error_info = nullptr) = 0;
 
   virtual bool FailOrRetryPendingTask(const TaskID &task_id,
                                       rpc::ErrorType error_type,
-                                      const Status *status,
+                                      const Status &status,
                                       const rpc::RayErrorInfo *ray_error_info = nullptr,
                                       bool mark_task_object_failed = true,
                                       bool fail_immediately = false) = 0;
@@ -374,7 +374,7 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   ///
   /// \param[in] task_id ID of the pending task.
   /// \param[in] error_type The type of the specific error.
-  /// \param[in] status Optional status message.
+  /// \param[in] status Status message.
   /// \param[in] ray_error_info The error information of a given error type.
   /// Nullptr means that there's no error information.
   /// TODO(sang): Remove nullptr case. Every error message should have metadata.
@@ -386,7 +386,7 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// \return Whether the task will be retried or not.
   bool FailOrRetryPendingTask(const TaskID &task_id,
                               rpc::ErrorType error_type,
-                              const Status *status = nullptr,
+                              const Status &status,
                               const rpc::RayErrorInfo *ray_error_info = nullptr,
                               bool mark_task_object_failed = true,
                               bool fail_immediately = false) override;
@@ -397,13 +397,13 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   ///
   /// \param[in] task_id ID of the pending task.
   /// \param[in] error_type The type of the specific error.
-  /// \param[in] status Optional status message.
+  /// \param[in] status Status message.
   /// \param[in] ray_error_info The error information of a given error type.
   /// \param[in] mark_task_object_failed whether or not it marks the task
   /// return object as failed.
   void FailPendingTask(const TaskID &task_id,
                        rpc::ErrorType error_type,
-                       const Status *status = nullptr,
+                       const Status &status,
                        const rpc::RayErrorInfo *ray_error_info = nullptr) override;
 
   /// Treat a pending task's returned Ray object as failed. The lock should not be held

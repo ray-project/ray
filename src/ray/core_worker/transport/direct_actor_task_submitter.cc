@@ -126,7 +126,7 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(TaskSpecification task_spe
 
                 if (!fail_or_retry_task.IsNil()) {
                   GetTaskFinisherWithoutMu().FailOrRetryPendingTask(
-                      task_id, rpc::ErrorType::DEPENDENCY_RESOLUTION_FAILED, &status);
+                      task_id, rpc::ErrorType::DEPENDENCY_RESOLUTION_FAILED, status);
                 }
               });
         },
@@ -152,7 +152,7 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(TaskSpecification task_spe
         error_info.actor_died_error().oom_context().fail_immediately();
     GetTaskFinisherWithoutMu().FailOrRetryPendingTask(task_id,
                                                       error_type,
-                                                      &status,
+                                                      status,
                                                       &error_info,
                                                       /*mark_task_object_failed*/ true,
                                                       fail_immediatedly);
@@ -321,7 +321,7 @@ void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(
           error_info.actor_died_error().oom_context().fail_immediately();
       GetTaskFinisherWithoutMu().FailOrRetryPendingTask(task_id,
                                                         error_type,
-                                                        &status,
+                                                        status,
                                                         &error_info,
                                                         /*mark_task_object_failed*/ true,
                                                         fail_immediatedly);
@@ -333,7 +333,7 @@ void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(
         RAY_UNUSED(
             GetTaskFinisherWithoutMu().FailPendingTask(net_err_task.second.first.TaskId(),
                                                        error_type,
-                                                       &net_err_task.second.second,
+                                                       net_err_task.second.second,
                                                        &error_info));
       }
     }
@@ -343,7 +343,7 @@ void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(
 }
 
 void CoreWorkerDirectActorTaskSubmitter::CheckTimeoutTasks() {
-  std::vector<TaskSpecification> task_specs;
+  std::vector<std::pair<TaskSpecification, Status>> task_specs_and_status;
   {
     absl::MutexLock lock(&mu_);
     for (auto &queue_pair : client_queues_) {
@@ -351,8 +351,8 @@ void CoreWorkerDirectActorTaskSubmitter::CheckTimeoutTasks() {
       auto deque_itr = queue.wait_for_death_info_tasks.begin();
       while (deque_itr != queue.wait_for_death_info_tasks.end() &&
              /*timeout timestamp*/ deque_itr->first < current_time_ms()) {
-        auto &task_spec = deque_itr->second.first;
-        task_specs.push_back(task_spec);
+        auto &task_spec_pair = deque_itr->second;
+        task_specs_and_status.push_back(task_spec_pair);
         deque_itr = queue.wait_for_death_info_tasks.erase(deque_itr);
       }
     }
@@ -360,9 +360,9 @@ void CoreWorkerDirectActorTaskSubmitter::CheckTimeoutTasks() {
 
   // Do not hold mu_, because FailPendingTask may call python from cpp,
   // and may cause deadlock with SubmitActorTask thread when aquire GIL.
-  for (auto &task_spec : task_specs) {
-    GetTaskFinisherWithoutMu().FailPendingTask(task_spec.TaskId(),
-                                               rpc::ErrorType::ACTOR_DIED);
+  for (auto &task_spec_pair : task_specs_and_status) {
+    GetTaskFinisherWithoutMu().FailPendingTask(
+        task_spec_pair.first.TaskId(), rpc::ErrorType::ACTOR_DIED, task_spec_pair.second);
   }
 }
 
@@ -547,7 +547,7 @@ void CoreWorkerDirectActorTaskSubmitter::HandlePushTaskReply(
     will_retry = GetTaskFinisherWithoutMu().FailOrRetryPendingTask(
         task_id,
         error_type,
-        &status,
+        status,
         &error_info,
         /*mark_task_object_failed*/ is_actor_dead,
         fail_immediatedly);
@@ -573,8 +573,8 @@ void CoreWorkerDirectActorTaskSubmitter::HandlePushTaskReply(
             << ", wait_queue_size=" << queue.wait_for_death_info_tasks.size();
       } else {
         // If we don't need death info, just fail the request.
-        GetTaskFinisherWithoutMu().FailPendingTask(task_spec.TaskId(),
-                                                   rpc::ErrorType::ACTOR_DIED);
+        GetTaskFinisherWithoutMu().FailPendingTask(
+            task_spec.TaskId(), rpc::ErrorType::ACTOR_DIED, status);
       }
     }
   }
