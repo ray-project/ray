@@ -963,6 +963,9 @@ class ServeController:
             route_prefix in the deployment_config for each deployment.
         """
 
+        logger.info(
+            f"API get serve instance details called (unix timestamp: {time.time()})"
+        )
         http_config = self.get_http_config()
         applications = {}
 
@@ -990,7 +993,7 @@ class ServeController:
         # except for the route_prefix in the deployment_config of each deployment, since
         # route_prefix is set instead in each application.
         # Eventually we want to remove route_prefix from DeploymentSchema.
-        return ServeInstanceDetails(
+        details = ServeInstanceDetails(
             controller_info=self._actor_details,
             proxy_location=http_config.location,
             http_options=HTTPOptionsSchema(
@@ -1004,6 +1007,11 @@ class ServeController:
             deploy_mode=self.deploy_mode,
             applications=applications,
         ).dict(exclude_unset=True)
+
+        logger.info(
+            f"API get serve instance details finished (unix timestamp: {time.time()})"
+        )
+        return details
 
     def get_serve_status(self, name: str = SERVE_DEFAULT_APP_NAME) -> bytes:
         """Return application status
