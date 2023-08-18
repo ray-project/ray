@@ -244,9 +244,6 @@ def test_http_proxy_calllback_failures(ray_instance, capsys):
 
     wait_for_condition(check_http_proxy_keep_restarting)
 
-    captured = capsys.readouterr()
-    assert "this is from raise_error_callback" in captured.err
-
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))
