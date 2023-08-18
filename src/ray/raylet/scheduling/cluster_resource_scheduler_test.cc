@@ -39,6 +39,13 @@ using namespace std;
     ASSERT_EQ(total[kCPU_ResourceLabel], expected_total);             \
   }
 
+#define ASSERT_RESOURCES_EMPTY(data)                   \
+  {                                                    \
+    ASSERT_FALSE(data->resources_available_changed()); \
+    ASSERT_TRUE(data->resources_available().empty());  \
+    ASSERT_TRUE(data->resources_total().empty());      \
+  }
+
 namespace ray {
 
 namespace scheduling {

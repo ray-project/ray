@@ -206,7 +206,7 @@ TEST_P(GlobalStateAccessorTest, TestGetAllResourceUsage) {
   heartbeat2->set_node_id(node_table_data->node_id());
   (*heartbeat2->mutable_resources_total())["CPU"] = 1;
   (*heartbeat2->mutable_resources_total())["GPU"] = 10;
-  (*heartbeat2->mutable_resources_available())["CPU"] = 1;
+  heartbeat2->set_resources_available_changed(true);
   (*heartbeat2->mutable_resources_available())["GPU"] = 5;
   RAY_CHECK_OK(gcs_client_->NodeResources().AsyncReportResourceUsage(
       heartbeat2, [&promise2](Status status) { promise2.set_value(status.ok()); }));
@@ -219,8 +219,28 @@ TEST_P(GlobalStateAccessorTest, TestGetAllResourceUsage) {
   ASSERT_EQ(resources_data.resources_total_size(), 2);
   ASSERT_EQ((*resources_data.mutable_resources_total())["CPU"], 1.0);
   ASSERT_EQ((*resources_data.mutable_resources_total())["GPU"], 10.0);
-  ASSERT_EQ(resources_data.resources_available_size(), 2);
-  ASSERT_EQ((*resources_data.mutable_resources_available())["CPU"], 1.0);
+  ASSERT_EQ(resources_data.resources_available_size(), 1);
+  ASSERT_EQ((*resources_data.mutable_resources_available())["GPU"], 5.0);
+
+  // Report unchanged resource usage. (Only works with light resource usage report
+  // enabled)
+  std::promise<bool> promise3;
+  auto heartbeat3 = std::make_shared<rpc::ResourcesData>();
+  heartbeat3->set_node_id(node_table_data->node_id());
+  (*heartbeat3->mutable_resources_available())["CPU"] = 1;
+  (*heartbeat3->mutable_resources_available())["GPU"] = 6;
+  RAY_CHECK_OK(gcs_client_->NodeResources().AsyncReportResourceUsage(
+      heartbeat3, [&promise3](Status status) { promise3.set_value(status.ok()); }));
+  WaitReady(promise3.get_future(), timeout_ms_);
+
+  resources = global_state_->GetAllResourceUsage();
+  resource_usage_batch_data.ParseFromString(*resources.get());
+  ASSERT_EQ(resource_usage_batch_data.batch_size(), 1);
+  resources_data = resource_usage_batch_data.mutable_batch()->at(0);
+  ASSERT_EQ(resources_data.resources_total_size(), 2);
+  ASSERT_EQ((*resources_data.mutable_resources_total())["CPU"], 1.0);
+  ASSERT_EQ((*resources_data.mutable_resources_total())["GPU"], 10.0);
+  ASSERT_EQ(resources_data.resources_available_size(), 1);
   ASSERT_EQ((*resources_data.mutable_resources_available())["GPU"], 5.0);
 }
 

@@ -280,8 +280,8 @@ class TestOPE(unittest.TestCase):
     def test_algo_with_ope_from_checkpoint(self):
         algo = self.config_dqn_on_cartpole.build()
         tmpdir = tempfile.mkdtemp()
-        algo.save_checkpoint(tmpdir)
-        algo = Algorithm.from_checkpoint(tmpdir)
+        checkpoint = algo.save_checkpoint(tmpdir)
+        algo = Algorithm.from_checkpoint(checkpoint)
         shutil.rmtree(tmpdir)
 
 

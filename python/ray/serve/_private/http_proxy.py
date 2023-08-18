@@ -7,7 +7,7 @@ import logging
 import pickle
 import socket
 import time
-from typing import Dict, List, Optional, Tuple, Any, Type
+from typing import Callable, Dict, List, Optional, Tuple, Any
 import uuid
 
 import uvicorn
@@ -35,6 +35,7 @@ from ray.serve._private.http_util import (
     validate_http_proxy_callback_return,
 )
 from ray.serve._private.common import (
+    ApplicationName,
     EndpointInfo,
     EndpointTag,
     NodeId,
@@ -59,10 +60,6 @@ from ray.serve._private.logging_utils import (
     configure_component_cpu_profiler,
     configure_component_memory_profiler,
     get_component_logger_file_path,
-)
-from ray.serve._private.proxy_router import (
-    LongestPrefixRouter,
-    ProxyRouter,
 )
 from ray.serve._private.utils import (
     calculate_remaining_timeout,
@@ -112,6 +109,105 @@ MAX_BACKOFF_PERIOD_SEC = 5
 BACKOFF_FACTOR = 2
 
 
+class LongestPrefixRouter:
+    """Router that performs longest prefix matches on incoming routes."""
+
+    def __init__(self, get_handle: Callable):
+        # Function to get a handle given a name. Used to mock for testing.
+        self._get_handle = get_handle
+        # Routes sorted in order of decreasing length.
+        self.sorted_routes: List[str] = list()
+        # Endpoints associated with the routes.
+        self.route_info: Dict[str, EndpointTag] = dict()
+        # Contains a ServeHandle for each endpoint.
+        self.handles: Dict[EndpointTag, RayServeHandle] = dict()
+        # Map of application name to is_cross_language.
+        self.app_to_is_cross_language: Dict[ApplicationName, bool] = dict()
+
+    def endpoint_exists(self, endpoint: EndpointTag) -> bool:
+        return endpoint in self.handles
+
+    def update_routes(self, endpoints: Dict[EndpointTag, EndpointInfo]) -> None:
+        logger.info(
+            f"Got updated endpoints: {endpoints}.", extra={"log_to_stderr": False}
+        )
+
+        existing_handles = set(self.handles.keys())
+        routes = []
+        route_info = {}
+        app_to_is_cross_language = {}
+        for endpoint, info in endpoints.items():
+            routes.append(info.route)
+            route_info[info.route] = endpoint
+            app_to_is_cross_language[endpoint.app] = info.app_is_cross_language
+            if endpoint in self.handles:
+                existing_handles.remove(endpoint)
+            else:
+                self.handles[endpoint] = self._get_handle(
+                    endpoint.name, endpoint.app
+                ).options(
+                    # Streaming codepath isn't supported for Java.
+                    stream=(
+                        RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING
+                        and not info.app_is_cross_language
+                    ),
+                )
+
+        # Clean up any handles that are no longer used.
+        if len(existing_handles) > 0:
+            logger.info(
+                f"Deleting {len(existing_handles)} unused handles.",
+                extra={"log_to_stderr": False},
+            )
+        for endpoint in existing_handles:
+            del self.handles[endpoint]
+
+        # Routes are sorted in order of decreasing length to enable longest
+        # prefix matching.
+        self.sorted_routes = sorted(routes, key=lambda x: len(x), reverse=True)
+        self.route_info = route_info
+        self.app_to_is_cross_language = app_to_is_cross_language
+
+    def match_route(
+        self, target_route: str
+    ) -> Optional[Tuple[str, RayServeHandle, str, bool]]:
+        """Return the longest prefix match among existing routes for the route.
+
+        Args:
+            target_route: route to match against.
+
+        Returns:
+            (route, handle, app_name, is_cross_language) if found, else None.
+        """
+
+        for route in self.sorted_routes:
+            if target_route.startswith(route):
+                matched = False
+                # If the route we matched on ends in a '/', then so does the
+                # target route and this must be a match.
+                if route.endswith("/"):
+                    matched = True
+                # If the route we matched on doesn't end in a '/', we need to
+                # do another check to ensure that either this is an exact match
+                # or the next character in the target route is a '/'. This is
+                # to guard against the scenario where we have '/route' as a
+                # prefix and there's a request to '/routesuffix'. In this case,
+                # it should *not* be a match.
+                elif len(target_route) == len(route) or target_route[len(route)] == "/":
+                    matched = True
+
+                if matched:
+                    endpoint = self.route_info[route]
+                    return (
+                        route,
+                        self.handles[endpoint],
+                        endpoint.app,
+                        self.app_to_is_cross_language[endpoint.app],
+                    )
+
+        return None
+
+
 class GenericProxy(ABC):
     """This class is served as the base class for different types of proxies.
     It contains all the common setup and methods required for running a proxy.
@@ -133,7 +229,6 @@ class GenericProxy(ABC):
         controller_name: str,
         node_id: NodeId,
         node_ip_address: str,
-        proxy_router_class: Type[ProxyRouter],
         request_timeout_s: Optional[float] = None,
     ):
         self.request_timeout_s = request_timeout_s
@@ -168,7 +263,7 @@ class GenericProxy(ABC):
                 missing_ok=True,
             )
 
-        self.proxy_router = proxy_router_class(get_handle)
+        self.prefix_router = LongestPrefixRouter(get_handle)
         self.long_poll_client = LongPollClient(
             ray.get_actor(controller_name, namespace=SERVE_NAMESPACE),
             {
@@ -260,7 +355,7 @@ class GenericProxy(ABC):
             route = info.route
             self.route_info[route] = endpoint
 
-        self.proxy_router.update_routes(endpoints)
+        self.prefix_router.update_routes(endpoints)
 
     def is_drained(self):
         """Check whether the proxy actor is drained or not.
@@ -382,9 +477,7 @@ class GenericProxy(ABC):
         try:
             self._ongoing_requests_start()
 
-            matched_route = None
-            if self.protocol == RequestProtocol.HTTP:
-                matched_route = self.proxy_router.match_route(route_path)
+            matched_route = self.prefix_router.match_route(route_path)
             if matched_route is None:
                 self.request_error_counter.inc(
                     tags={
@@ -1022,7 +1115,6 @@ class HTTPProxyActor:
             controller_name=controller_name,
             node_id=node_id,
             node_ip_address=node_ip_address,
-            proxy_router_class=LongestPrefixRouter,
             request_timeout_s=(
                 request_timeout_s or RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S
             ),

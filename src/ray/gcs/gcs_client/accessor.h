@@ -462,6 +462,9 @@ class NodeResourceInfoAccessor {
       const std::shared_ptr<rpc::ResourcesData> &data_ptr,
       const StatusCallback &callback);
 
+  /// Resend resource usage when GCS restarts from a failure.
+  virtual void AsyncReReportResourceUsage();
+
   /// Return resources in last report. Used by light heartbeat.
   virtual const std::shared_ptr<NodeResources> &GetLastResourceUsage() {
     return last_resource_usage_;

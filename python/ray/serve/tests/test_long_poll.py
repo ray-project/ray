@@ -7,15 +7,7 @@ from typing import Dict
 import pytest
 
 import ray
-from ray._private.test_utils import async_wait_for_condition
 from ray._private.utils import get_or_create_event_loop
-
-from ray.serve.generated.serve_pb2 import (
-    LongPollRequest,
-    LongPollResult,
-    EndpointSet,
-    ActorNameList,
-)
 from ray.serve._private.common import EndpointTag, EndpointInfo, RunningReplicaInfo
 from ray.serve._private.long_poll import (
     LongPollClient,
@@ -23,6 +15,12 @@ from ray.serve._private.long_poll import (
     LongPollState,
     UpdatedObject,
     LongPollNamespace,
+)
+from ray.serve.generated.serve_pb2 import (
+    LongPollRequest,
+    LongPollResult,
+    EndpointSet,
+    ActorNameList,
 )
 
 
@@ -134,7 +132,7 @@ def test_long_poll_restarts(serve_instance):
 
 
 @pytest.mark.asyncio
-async def test_client_callbacks(serve_instance):
+async def test_client(serve_instance):
     host = ray.remote(LongPollHost).remote()
 
     # Write two values
@@ -149,7 +147,7 @@ async def test_client_callbacks(serve_instance):
     def key_2_callback(result):
         callback_results["key_2"] = result
 
-    _ = LongPollClient(
+    client = LongPollClient(
         host,
         {
             "key_1": key_1_callback,
@@ -158,17 +156,23 @@ async def test_client_callbacks(serve_instance):
         call_in_event_loop=get_or_create_event_loop(),
     )
 
-    await async_wait_for_condition(
-        lambda: callback_results == {"key_1": 100, "key_2": 999},
-        timeout=1,
-    )
+    while len(client.object_snapshots) == 0:
+        time.sleep(0.1)
+
+    assert client.object_snapshots["key_1"] == 100
+    assert client.object_snapshots["key_2"] == 999
 
     ray.get(host.notify_changed.remote("key_2", 1999))
 
-    await async_wait_for_condition(
-        lambda: callback_results == {"key_1": 100, "key_2": 999},
-        timeout=1,
-    )
+    values = set()
+    for _ in range(3):
+        values.add(client.object_snapshots["key_2"])
+        if 1999 in values:
+            break
+        await asyncio.sleep(1)
+    assert 1999 in values
+
+    assert callback_results == {"key_1": 100, "key_2": 1999}
 
 
 @pytest.mark.asyncio

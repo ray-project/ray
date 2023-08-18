@@ -5,6 +5,6 @@ srcs:
   - ci/env/install-bazel.sh
   - .bazeliskrc
 build_args:
-  - BUILDKITE_BAZEL_CACHE_URL
+  - REMOTE_CACHE_URL
 tags:
   - cr.ray.io/rayproject/oss-ci-base_test

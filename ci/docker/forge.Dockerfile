@@ -2,11 +2,8 @@
 
 FROM ubuntu:20.04
 
-ARG BUILDKITE_BAZEL_CACHE_URL
-
 ENV DEBIAN_FRONTEND=noninteractive
 ENV PATH="/home/forge/.local/bin:${PATH}"
-ENV BUILDKITE_BAZEL_CACHE_URL=${BUILDKITE_BAZEL_CACHE_URL}
 
 RUN <<EOF
 #!/bin/bash
@@ -61,11 +58,8 @@ RUN <<EOF
 
 set -euo pipefail
 
-{
-  echo "build --config=ci"
-  echo "build --announce_rc"
-  echo "build --remote_cache=${BUILDKITE_BAZEL_CACHE_URL}"
-} > ~/.bazelrc
+echo "build --config=ci" > ~/.bazelrc
+echo "build --announce_rc" >> ~/.bazelrc
 
 EOF
 

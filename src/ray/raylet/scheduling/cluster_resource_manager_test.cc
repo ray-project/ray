@@ -118,6 +118,22 @@ TEST_F(ClusterResourceManagerTest, SubtractAndAddNodeAvailableResources) {
   ASSERT_TRUE(node_resources.available.Get(ResourceID::CPU()) == 1);
 }
 
+TEST_F(ClusterResourceManagerTest, UpdateNodeAvailableResourcesIfExist) {
+  const auto &node_resources = manager->GetNodeResources(node0);
+  ASSERT_TRUE(node_resources.available.Get(ResourceID::CPU()) == 1);
+
+  rpc::ResourcesData resources_data;
+  resources_data.set_resources_available_changed(true);
+  (*resources_data.mutable_resources_available())["CPU"] = 0;
+
+  manager->UpdateNodeAvailableResourcesIfExist(node0, resources_data);
+  ASSERT_TRUE(node_resources.available.Get(ResourceID::CPU()) == 0);
+
+  (*resources_data.mutable_resources_available())["CUSTOM_RESOURCE"] = 1;
+  manager->UpdateNodeAvailableResourcesIfExist(node0, resources_data);
+  ASSERT_FALSE(node_resources.total.Has(ResourceID("CUSTOM_RESOURCE")));
+}
+
 TEST_F(ClusterResourceManagerTest, UpdateNodeNormalTaskResources) {
   const auto &node_resources = manager->GetNodeResources(node0);
   ASSERT_TRUE(node_resources.normal_task_resources.IsEmpty());

@@ -107,7 +107,6 @@ class _TrainSession:
         # TODO(xwjiang): Legacy Ray Train trainer clean up!
         trial_info: Optional[TrialInfo] = None,
         dataset_shard: Optional[Union[Dataset, DatasetPipeline]] = None,
-        metadata: Dict[str, Any] = None,
         # TODO(xwjiang): Legacy Ray Train trainer clean up!
         checkpoint: Optional[Checkpoint] = None,
         # Deprecated
@@ -137,8 +136,6 @@ class _TrainSession:
 
         # Ray Train worker properties
         self.dataset_shard = dataset_shard
-        self.metadata = metadata
-
         self.world_rank = world_rank
         self.local_rank = local_rank
         self.node_rank = node_rank
@@ -558,16 +555,6 @@ class _TrainSession:
 
         metrics = self._auto_fill_metrics(metrics)
 
-        # Set additional user metadata from the Trainer.
-        if persisted_checkpoint and self.metadata:
-            user_metadata = persisted_checkpoint.get_metadata()
-            for k, v in self.metadata.items():
-                # Update keys not already set by the user. This gives user-set keys
-                # precedence over keys set at the Trainer level.
-                if k not in user_metadata:
-                    user_metadata[k] = v
-            persisted_checkpoint.set_metadata(user_metadata)
-
         result = _TrainingResult(
             checkpoint=persisted_checkpoint,
             metrics=metrics,
@@ -848,13 +835,6 @@ def get_checkpoint() -> Optional[Checkpoint]:
     """
 
     return _get_session().loaded_checkpoint
-
-
-@PublicAPI(stability="beta")
-@_warn_session_misuse()
-def get_metadata() -> Dict[str, Any]:
-    """User metadata dict passed to the Trainer constructor."""
-    return _get_session().metadata
 
 
 @PublicAPI(stability="beta")
