@@ -1127,6 +1127,7 @@ def init(
     *,
     num_cpus: Optional[int] = None,
     num_gpus: Optional[int] = None,
+    num_tpus: Optional[int] = None,
     resources: Optional[Dict[str, float]] = None,
     labels: Optional[Dict[str, str]] = None,
     object_store_memory: Optional[int] = None,
@@ -1208,6 +1209,9 @@ def init(
             raylet. By default, this is set based on virtual cores.
         num_gpus: Number of GPUs the user wishes to assign to each
             raylet. By default, this is set based on detected GPUs.
+        num_tpus: Number of TPUs the user wishes to assign to each
+            raylet. Currently, this should only be equal to the number of
+            TPU chips available on a TPU VM host.
         resources: A dictionary mapping the names of custom resources to the
             quantities for them available.
         labels: [Experimental] The key-value labels of the node.
@@ -1502,6 +1506,7 @@ def init(
             redirect_output=None,
             num_cpus=num_cpus,
             num_gpus=num_gpus,
+            num_tpus=num_tpus,
             resources=resources,
             labels=labels,
             num_redis_shards=None,
@@ -1536,10 +1541,10 @@ def init(
         )
     else:
         # In this case, we are connecting to an existing cluster.
-        if num_cpus is not None or num_gpus is not None:
+        if num_cpus is not None or num_gpus is not None or num_tpus is not None:
             raise ValueError(
-                "When connecting to an existing cluster, num_cpus "
-                "and num_gpus must not be provided."
+                "When connecting to an existing cluster, num_cpus, "
+                "num_gpus and num_tpus must not be provided."
             )
         if resources is not None:
             raise ValueError(
@@ -3054,6 +3059,7 @@ def remote(
     num_returns: Union[int, float] = Undefined,
     num_cpus: Union[int, float] = Undefined,
     num_gpus: Union[int, float] = Undefined,
+    num_tpus: Union[int, float] = Undefined,
     resources: Dict[str, float] = Undefined,
     accelerator_type: str = Undefined,
     memory: Union[int, float] = Undefined,

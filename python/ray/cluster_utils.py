@@ -78,6 +78,8 @@ class AutoscalingCluster:
             cmd.append("--num-cpus={}".format(self._head_resources.pop("CPU")))
         if "GPU" in self._head_resources:
             cmd.append("--num-gpus={}".format(self._head_resources.pop("GPU")))
+        if "TPU" in self._head_resources:
+            cmd.append("--num-tpus={}".format(self._head_resources.pop("TPU")))
         if self._head_resources:
             cmd.append("--resources='{}'".format(json.dumps(self._head_resources)))
         if _system_config is not None:
@@ -181,6 +183,7 @@ class Cluster:
         default_kwargs = {
             "num_cpus": 1,
             "num_gpus": 0,
+            "num_tpus": 0,
             "object_store_memory": 150 * 1024 * 1024,  # 150 MiB
             "min_worker_port": 0,
             "max_worker_port": 0,

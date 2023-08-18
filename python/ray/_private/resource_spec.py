@@ -1,6 +1,7 @@
 import importlib.util
 import logging
 import os
+import glob
 import re
 import subprocess
 import sys
@@ -33,6 +34,7 @@ class ResourceSpec(
         [
             "num_cpus",
             "num_gpus",
+            "num_tpus",
             "memory",
             "object_store_memory",
             "resources",
@@ -49,6 +51,7 @@ class ResourceSpec(
     Attributes:
         num_cpus: The CPUs allocated for this raylet.
         num_gpus: The GPUs allocated for this raylet.
+        num_tpus: The TPUs allocated for this raylet.
         memory: The memory allocated for this raylet.
         object_store_memory: The object store memory allocated for this raylet.
             Note that when calling to_resource_dict(), this will be scaled down
@@ -65,6 +68,7 @@ class ResourceSpec(
         cls,
         num_cpus=None,
         num_gpus=None,
+        num_tpus=None,
         memory=None,
         object_store_memory=None,
         resources=None,
@@ -74,6 +78,7 @@ class ResourceSpec(
             cls,
             num_cpus,
             num_gpus,
+            num_tpus,
             memory,
             object_store_memory,
             resources,
@@ -90,8 +95,8 @@ class ResourceSpec(
     def to_resource_dict(self):
         """Returns a dict suitable to pass to raylet initialization.
 
-        This renames num_cpus / num_gpus to "CPU" / "GPU", translates memory
-        from bytes into 100MB memory units, and checks types.
+        This renames num_cpus / num_gpus / num_tpus to "CPU" / "GPU" / "TPU",
+        translates memory from bytes into 100MB memory units, and checks types.
         """
         assert self.resolved()
 
@@ -99,6 +104,7 @@ class ResourceSpec(
             self.resources,
             CPU=self.num_cpus,
             GPU=self.num_gpus,
+            TPU=self.num_tpus,
             memory=int(self.memory),
             object_store_memory=int(self.object_store_memory),
         )
@@ -151,6 +157,7 @@ class ResourceSpec(
         resources = (self.resources or {}).copy()
         assert "CPU" not in resources, resources
         assert "GPU" not in resources, resources
+        assert "TPU" not in resources, resources
         assert "memory" not in resources, resources
         assert "object_store_memory" not in resources, resources
 
@@ -200,6 +207,19 @@ class ResourceSpec(
             resources.update(gpu_types)
         except Exception:
             logger.exception("Could not parse gpu information.")
+
+        num_tpus = self.num_tpus
+        detected_tpus = accelerator.autodetect_num_tpus()
+        # Note, it is currently not possible to access a subset of the chips
+        # available within a TPU VM host. Therefore we must check that
+        # the number of TPUs requested by the raylet exactly matches
+        # the number of TPUs owned by the machine.
+        if num_tpus:
+            if num_tpus != detected_tpus:
+                raise ValueError("Attempting to start raylet with {} TPUs, "
+                                "but machine contains {}.".format(num_tpus, detected_tpus))
+        else:
+            num_tpus = detected_tpus
 
         accelerator.update_resources_with_accelerator_type(resources)
 
@@ -275,7 +295,7 @@ class ResourceSpec(
                 )
 
         spec = ResourceSpec(
-            num_cpus, num_gpus, memory, object_store_memory, resources, redis_max_memory
+            num_cpus, num_gpus, num_tpus, memory, object_store_memory, resources, redis_max_memory
         )
         assert spec.resolved()
         return spec

@@ -94,10 +94,10 @@ def _validate_resources(resources: Optional[Dict[str, float]]) -> Optional[str]:
     if resources is None:
         return None
 
-    if "CPU" in resources or "GPU" in resources:
+    if "CPU" in resources or "GPU" in resources or "TPU" in resources:
         return (
-            "Use the 'num_cpus' and 'num_gpus' keyword instead of 'CPU' and 'GPU' "
-            "in 'resources' keyword"
+            "Use the 'num_cpus', 'num_gpus' and 'num_tpus' keyword instead "
+            "of 'CPU', 'GPU' and 'TPU' in 'resources' keyword"
         )
 
     for name, quantity in resources.items():
@@ -136,12 +136,50 @@ def _validate_neuron_core_accelerator(options: Dict[str, Any]):
             )
 
 
+def _validate_tpu_options(options: Dict[str, Any]):
+    """Validate the options for a TPU.
+
+    Ray in TPUs currently represents each raylet as a TPU VM, each
+    having 4 chips.
+
+    This function guards against two expected pitfalls:
+    1) A user tries to access a subset of TPU chips in a host like they
+       can with CPU or GPU.
+    2) A user tries to access a superset of TPU chips, probably if they
+       intend a function to target a TPU pod slice with >1 worker.
+
+    Reasoning for these checks:
+    1) TPU chips are only accessible through the XLA compiler. It is possible
+       to access a subset of chips, but this should only be reserved for really
+       advanced users. This is why we warn rather than crash.
+    2) In case a user tries to access more than the number of chips in a
+       host, Ray will make the request but it will never schedule. It's better
+       to explicitly crash here so the user does not waste cycles.
+
+    Raises:
+        ValueError if user tries to specify more than the number of chips
+        in a TPU VM host.
+
+    """
+    num_tpus = options.get("num_tpus", None)
+    if num_tpus is not None and num_tpus != 4:
+        if num_tpus < num_chips:
+            logger.warning(
+                "Accessing a subset of TPU chips in a host (e.g. 4) is currently not well supported."
+            )
+        else: # num_tpus > num_chips
+            raise ValueError(
+                "A raylet cannot access more than the number of chips present in a TPU VM host."
+            )
+
+
 _common_options = {
     "accelerator_type": Option((str, type(None))),
     "memory": _resource_option("memory"),
     "name": Option((str, type(None))),
     "num_cpus": _resource_option("num_cpus"),
     "num_gpus": _resource_option("num_gpus"),
+    "num_tpus": _resource_option("num_tpus"),
     "object_store_memory": _counting_option("object_store_memory", False),
     # TODO(suquark): "placement_group", "placement_group_bundle_index"
     # and "placement_group_capture_child_tasks" are deprecated,

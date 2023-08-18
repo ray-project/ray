@@ -89,6 +89,18 @@ def test_get_neuron_core_count_failure_with_empty_results(mock_subprocess):
     assert mock_subprocess.called
 
 
+@mock.patch("glob.glob")
+def test_autodetect_num_tpus_accel(mock_glob):
+    mock_glob.return_value = ["/dev/accel0", "/dev/accel1", "/dev/accel2", "/dev/accel3"]
+    assert accelerator.autodetect_num_tpus() == 4
+
+
+@mock.patch("glob.glob")
+def test_autodetect_num_tpus_accel(mock_glob):
+    mock_glob.return_value = [f"/dev/vfio/{i}" for i in range(4)]
+    assert accelerator.autodetect_num_tpus() == 4
+
+
 if __name__ == "__main__":
     import sys
     import os

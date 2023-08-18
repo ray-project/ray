@@ -1,5 +1,6 @@
 import json
 import os
+import glob
 import subprocess
 import sys
 from typing import Optional
@@ -109,3 +110,21 @@ def _get_neuron_core_count() -> int:
         for neuron_device in json_out:
             nc_count += neuron_device.get("nc_count", 0)
     return nc_count
+
+
+def autodetect_num_tpus() -> int:
+    """Attempt to detect the number of TPUs on this machine.
+
+    TPU chips are represented as devices within `/dev/`, either as
+    `/dev/accel*` or `/dev/vfio/*`.
+
+    Returns:
+        The number of TPUs if any were detected, otherwise 0.
+    """
+    accel_files = glob.glob("/dev/accel*")
+    if accel_files:
+        return len(accel_files)
+
+    vfio_entries = os.listdir("/dev/vfio")
+    numeric_entries = [int(entry) for entry in vfio_entries if entry.isdigit()]
+    return max(numeric_entries, default=0)
