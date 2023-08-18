@@ -2304,11 +2304,9 @@ class Dataset:
             ``ValueError``: if the dataset is empty.
         """
         batch_format = _apply_strict_mode_batch_format(batch_format)
-        try:
-            from ray.data.dataset_pipeline import DatasetPipeline
+        limited_ds = self.limit(batch_size)
 
-            is_not_pipeline = not isinstance(self, DatasetPipeline)
-            limited_ds = self.limit(batch_size) if is_not_pipeline else self
+        try:
             res = next(
                 iter(
                     limited_ds.iter_batches(
@@ -2318,13 +2316,13 @@ class Dataset:
                     )
                 )
             )
-            if is_not_pipeline:
-                # Save the computed stats and blocks to the original dataset.
-                self._plan._snapshot_stats = limited_ds._plan.stats()
-                self._plan._snapshot_blocks = limited_ds._plan._snapshot_blocks
         except StopIteration:
             raise ValueError("The dataset is empty.")
         self._synchronize_progress_bar()
+
+        # Save the computed stats and blocks to the original dataset.
+        self._plan._snapshot_stats = limited_ds._plan.stats()
+        self._plan._snapshot_blocks = limited_ds._plan._snapshot_blocks
         return res
 
     @ConsumptionAPI
@@ -2365,19 +2363,17 @@ class Dataset:
                 "records in pandas or numpy batch format."
             )
         output = []
-        from ray.data.dataset_pipeline import DatasetPipeline
 
-        is_not_pipeline = not isinstance(self, DatasetPipeline)
-        limited_ds = self.limit(limit) if is_not_pipeline else self
+        limited_ds = self.limit(limit)
         for row in limited_ds.iter_rows():
             output.append(row)
             if len(output) >= limit:
                 break
         self._synchronize_progress_bar()
-        if is_not_pipeline:
-            # Save the computed stats and blocks to the original dataset.
-            self._plan._snapshot_stats = limited_ds._plan.stats()
-            self._plan._snapshot_blocks = limited_ds._plan._snapshot_blocks
+
+        # Save the computed stats and blocks to the original dataset.
+        self._plan._snapshot_stats = limited_ds._plan.stats()
+        self._plan._snapshot_blocks = limited_ds._plan._snapshot_blocks
         return output
 
     @ConsumptionAPI
@@ -2446,16 +2442,12 @@ class Dataset:
             :meth:`~Dataset.take`
                 Call this method to get (not print) a given number of rows.
         """
-        from ray.data.dataset_pipeline import DatasetPipeline
-
-        is_not_pipeline = not isinstance(self, DatasetPipeline)
-        limited_ds = self.limit(limit) if is_not_pipeline else self
+        limited_ds = self.limit(limit)
         for row in limited_ds.take(limit):
             print(row)
-        if is_not_pipeline:
-            # Save the computed stats and blocks to the original dataset.
-            self._plan._snapshot_stats = limited_ds._plan.stats()
-            self._plan._snapshot_blocks = limited_ds._plan._snapshot_blocks
+        # Save the computed stats and blocks to the original dataset.
+        self._plan._snapshot_stats = limited_ds._plan.stats()
+        self._plan._snapshot_blocks = limited_ds._plan._snapshot_blocks
 
     @ConsumptionAPI(
         if_more_than_read=True,
