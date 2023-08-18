@@ -113,7 +113,7 @@ class _DeploymentHandleBase:
 
         self._router: Optional[Router] = _router
 
-    def _record_telemetry_if_needed(self, tag: str):
+    def _record_telemetry_if_needed(self):
         # Record telemetry once per handle and not when used from the proxy
         # (detected via request protocol).
         if (
