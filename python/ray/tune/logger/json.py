@@ -85,7 +85,6 @@ class JsonLoggerCallback(LoggerCallback):
         self._trial_files: Dict["Trial", TextIO] = {}
 
     def log_trial_start(self, trial: "Trial"):
-
         if trial in self._trial_files:
             self._trial_files[trial].close()
 
