@@ -443,5 +443,31 @@ def test_deploy_bad_pip_package_deployment(serve_instance):
     wait_for_condition(check_fail, timeout=15)
 
 
+def test_deploy_same_deployment_name_different_app(serve_instance):
+    @serve.deployment
+    class Model:
+        def __init__(self, name):
+            self.name = name
+
+        def __call__(self):
+            return f"hello {self.name}"
+
+    serve.run(Model.bind("alice"), name="app1", route_prefix="/app1")
+    serve.run(Model.bind("bob"), name="app2", route_prefix="/app2")
+
+    assert requests.get("http://localhost:8000/app1").text == "hello alice"
+    assert requests.get("http://localhost:8000/app2").text == "hello bob"
+    routes = requests.get("http://localhost:8000/-/routes").json()
+    assert routes["/app1"] == "app1"
+    assert routes["/app2"] == "app2"
+
+    app1_status = serve.status().applications["app1"]
+    app2_status = serve.status().applications["app2"]
+    assert app1_status.status == "RUNNING"
+    assert app1_status.deployments["Model"].status == "HEALTHY"
+    assert app2_status.status == "RUNNING"
+    assert app2_status.deployments["Model"].status == "HEALTHY"
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))
