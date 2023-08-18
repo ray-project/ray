@@ -232,6 +232,9 @@ class DataParallelTrainer(BaseTrainer):
             dataset. If a ``preprocessor`` is provided and has not already been fit,
             it will be fit on the training dataset. All datasets will be transformed
             by the ``preprocessor`` if one is provided.
+        metadata: Dict that should be made available via
+            `train.get_context().get_metadata()` and in `checkpoint.get_metadata()`
+            for checkpoints saved from this Trainer. Must be JSON-serializable.
         preprocessor: A ray.data.Preprocessor to preprocess the
             provided datasets.
         resume_from_checkpoint: A checkpoint to resume training from.
@@ -270,6 +273,7 @@ class DataParallelTrainer(BaseTrainer):
         dataset_config: Optional[DataConfig] = None,
         run_config: Optional[RunConfig] = None,
         datasets: Optional[Dict[str, GenDataset]] = None,
+        metadata: Optional[Dict[str, Any]] = None,
         resume_from_checkpoint: Optional[Checkpoint] = None,
         # Deprecated.
         preprocessor: Optional["Preprocessor"] = None,
@@ -328,6 +332,7 @@ class DataParallelTrainer(BaseTrainer):
             scaling_config=scaling_config,
             run_config=run_config,
             datasets=datasets,
+            metadata=metadata,
             preprocessor=preprocessor,
             resume_from_checkpoint=resume_from_checkpoint,
         )
@@ -560,6 +565,7 @@ class DataParallelTrainer(BaseTrainer):
             backend_config=self._backend_config,
             train_func=train_loop_per_worker,
             datasets=self.datasets,
+            metadata=self.metadata,
             data_config=self._data_config,
             checkpoint_manager=checkpoint_manager,
             checkpoint=self.starting_checkpoint,
