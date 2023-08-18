@@ -864,7 +864,7 @@ def test_serving_request_through_grpc_proxy(ray_start_stop):
 
     subprocess.check_output(["serve", "deploy", config_file], stderr=subprocess.STDOUT)
 
-    app1 = "app1_grpc-deployment"
+    app1 = "app1"
     app_names = [app1]
 
     channel = grpc.insecure_channel("localhost:9000")
@@ -904,7 +904,7 @@ def test_grpc_proxy_model_composition(ray_start_stop):
 
     subprocess.check_output(["serve", "deploy", config_file], stderr=subprocess.STDOUT)
 
-    app = "app1_grpc-deployment-model-composition"
+    app = "app1"
     app_names = [app]
 
     channel = grpc.insecure_channel("localhost:9000")

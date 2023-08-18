@@ -159,20 +159,20 @@ class EndpointRouter(ProxyRouter):
             del self.handles[endpoint]
 
     def get_handle_for_endpoint(
-        self, target_endpoint: str
+        self, target_app_name: str
     ) -> Optional[Tuple[str, RayServeHandle, str, bool]]:
         """Return the handle that matches with endpoint.
 
         Args:
-            target_endpoint: endpoint to match against.
+            target_app_name: app_name to match against.
         Returns:
             (route, handle, app_name, is_cross_language) for the single app if there
             is only one, else find the app and handle for exact match. Else return None.
         """
         for endpoint_tag, handle in self.handles.items():
-            # If the target_endpoint matches with the endpoint or if
+            # If the target_app_name matches with the endpoint or if
             # there is only one endpoint.
-            if target_endpoint == str(endpoint_tag) or len(self.handles) == 1:
+            if target_app_name == endpoint_tag.app or len(self.handles) == 1:
                 endpoint_info = self.endpoints[endpoint_tag]
                 return (
                     endpoint_info.route,

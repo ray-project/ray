@@ -70,7 +70,7 @@ def test_no_match(mocked_router, request):
     "mocked_router, target_route",
     [
         ("mock_longest_prefix_router", "/endpoint"),
-        ("mock_endpoint_router", "default_endpoint"),
+        ("mock_endpoint_router", "default"),
     ],
 )
 def test_default_route(mocked_router, target_route, request):
@@ -151,7 +151,7 @@ def test_prefix_match(mock_longest_prefix_router):
     "mocked_router, target_route1, target_route2",
     [
         ("mock_longest_prefix_router", "/endpoint", "/endpoint2"),
-        ("mock_endpoint_router", "app1_endpoint", "app2_endpoint2"),
+        ("mock_endpoint_router", "app1_endpoint", "app2"),
     ],
 )
 def test_update_routes(mocked_router, target_route1, target_route2, request):

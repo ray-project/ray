@@ -317,8 +317,9 @@ def test_serving_request_through_grpc_proxy(ray_cluster):
     )
 
     # Ensures the app is deployed.
-    app_name = "default_grpc-deployment"
-    assert len(replicas[app_name]) == 1
+    app_name = "default"
+    deployment_name = "grpc-deployment"
+    assert len(replicas[f"{app_name}_{deployment_name}"]) == 1
 
     channel = grpc.insecure_channel("localhost:9000")
 
@@ -346,8 +347,9 @@ def test_serving_request_through_grpc_proxy(ray_cluster):
     )
 
     # Ensures the app is deployed.
-    app_name = "default_grpc-deployment-model-composition"
-    assert len(replicas[app_name]) == 1
+    app_name = "default"
+    deployment_name = "grpc-deployment-model-composition"
+    assert len(replicas[f"{app_name}_{deployment_name}"]) == 1
 
     # Ensure model composition is responding correctly.
     ping_fruit_stand(channel, app_name)

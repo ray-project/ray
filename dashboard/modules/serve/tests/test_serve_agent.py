@@ -865,7 +865,7 @@ def test_put_with_grpc_options(ray_start_stop):
     channel = grpc.insecure_channel("localhost:9000")
     stub = serve_pb2_grpc.UserDefinedServiceStub(channel)
     test_in = serve_pb2.UserDefinedMessage(name="foo", num=30)
-    metadata = (("application", "app1_grpc-deployment"),)
+    metadata = (("application", "app1"),)
     response = stub.Method1(request=test_in, metadata=metadata)
     assert response.greeting == "Hello foo from method1"
 
