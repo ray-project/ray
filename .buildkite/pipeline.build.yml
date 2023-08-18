@@ -217,7 +217,9 @@
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     # Todo (krfricke): Move mosaicml to train-test-requirements.txt
-    - pip install "mosaicml==0.12.1"
+    # TODO(scottjlee): Move datasets to train/data-test-requirements.txt 
+    # (see https://github.com/ray-project/ray/pull/38432/)
+    - pip install "mosaicml==0.12.1" "datasets==2.14.0"
     - DOC_TESTING=1 ./ci/env/install-dependencies.sh
     - ./ci/env/install-horovod.sh
     - ./ci/env/env_info.sh
