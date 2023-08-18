@@ -417,7 +417,12 @@ class GenericProxy(ABC):
         try:
             self._ongoing_requests_start()
 
-            matched_route = self.proxy_router.match_route(route_path)
+            matched_route = None
+            if self.protocol == RequestProtocol.HTTP:
+                matched_route = self.proxy_router.match_route(route_path)
+            elif self.protocol == RequestProtocol.GRPC:
+                matched_route = self.proxy_router.get_handle_for_endpoint(route_path)
+
             if matched_route is None:
                 proxy_response = await self.not_found(proxy_request=proxy_request)
                 self.request_error_counter.inc(
