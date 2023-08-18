@@ -3,5 +3,9 @@
 
 set -exo pipefail
 
-DL=1 ./ci/env/install-dependencies.sh
+pip install -U --ignore-installed \
+  -c python/requirements_compiled.txt \
+  -r python/requirements.txt \
+  -r python/requirements/test-requirements.txt \
+  -r python/requirements/ml/dl-cpu-requirements.txt
 pip install ray[client]

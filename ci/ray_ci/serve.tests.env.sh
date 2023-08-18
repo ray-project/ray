@@ -3,7 +3,13 @@
 
 set -exo pipefail
 
-TORCH_VERSION=1.9.0 ./ci/env/install-dependencies.sh
+pip install -U torch==1.9.0 torchvision==0.10.0
+pip install -U -c python/requirements_compiled.txt \
+	tensorflow tensorflow-probability
+pip install -U --ignore-installed \
+  -c python/requirements_compiled.txt \
+  -r python/requirements.txt \
+  -r python/requirements/test-requirements.txt \
 
 # The docker is only used in the ha test and it uses nightly. We will
 # skip that test because it is not hermetic.

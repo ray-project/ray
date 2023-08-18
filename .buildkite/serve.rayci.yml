@@ -1,0 +1,15 @@
+group: serve tests
+steps:
+  - label: ":ray-serve: serve: core tests"
+    instance_type: medium
+    commands:
+      - bazel run //ci/ray_ci -- //python/ray/tests/... serve --except-tags worker-container
+    depends_on: forge
+
+  - label: ":ray-serve: serve: serve tests"
+    parallelism: 3
+    instance_type: large
+    commands:
+      - bazel run //ci/ray_ci -- //python/ray/serve/... serve --except-tags post_wheel_build,gpu,xcommit
+        --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
+    depends_on: forge

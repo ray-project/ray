@@ -1,0 +1,17 @@
+group: serverless tests
+steps:
+  - label: ":serverless: serverless: python tests"
+    instance_type: medium
+    parallelism: 2
+    commands:
+      - bazel run //ci/ray_ci -- //python/ray/tests/... serverless 
+        --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
+        --except-tags manual,kuberay_operator,spark_plugin_tests
+    depends_on: forge
+
+  - label: ":serverless: serverless: flaky tests"
+    instance_type: medium
+    soft_fail: true
+    commands:
+      - bazel run //ci/ray_ci -- //... serverless --run-flaky-tests  --parallelism-per-worker 3
+    depends_on: forge

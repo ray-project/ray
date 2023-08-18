@@ -9,7 +9,7 @@ import click
 from ci.ray_ci.container import (
     run_tests,
     run_script_in_docker,
-    docker_login,
+    setup_test_environment,
     shard_tests,
 )
 from ci.ray_ci.utils import logger
@@ -65,7 +65,7 @@ def main(
         raise Exception("Please use `bazelisk run //ci/ray_ci`")
     os.chdir(bazel_workspace_dir)
 
-    docker_login()
+    setup_test_environment(team)
     if run_flaky_tests:
         test_targets = _get_flaky_test_targets(team)
     else:
@@ -74,7 +74,7 @@ def main(
         logging.info("No tests to run")
         return
     logger.info(f"Running tests: {test_targets}")
-    success = run_tests(team, test_targets, parallelism_per_worker)
+    success = run_tests(test_targets, parallelism_per_worker)
     sys.exit(0 if success else 1)
 
 

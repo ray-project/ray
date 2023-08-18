@@ -1,20 +1,21 @@
 import os
 import subprocess
 import sys
-import tempfile
 
 from typing import List
 
 import ci.ray_ci.bazel_sharding as bazel_sharding
 
 DOCKER_ECR = "029272617770.dkr.ecr.us-west-2.amazonaws.com"
-DOCKER_REPO = "ci_base_images"
-DOCKER_TAG = f"oss-ci-build_{os.environ.get('BUILDKITE_COMMIT')}"
-ROOT_DIR = "/ray/ci/ray_ci"
+DOCKER_REPO = (
+    "rayci_temp_pr"
+    if os.environ.get("BUILDKITE_PIPELINE_SLUG") == "premerge"
+    else "rayci_temp_branch"
+)
+DOCKER_TAG = f"{os.environ.get('RAYCI_BUILD_ID')}-forge"
 
 
 def run_tests(
-    team: str,
     test_targets: List[str],
     parallelism,
 ) -> bool:
@@ -22,13 +23,12 @@ def run_tests(
     Run tests parallelly in docker.  Return whether all tests pass.
     """
     chunks = [shard_tests(test_targets, parallelism, i) for i in range(parallelism)]
-    _setup_test_environment(team)
     runs = [_run_tests_in_docker(chunk) for chunk in chunks]
     exits = [run.wait() for run in runs]
     return all(exit == 0 for exit in exits)
 
 
-def _setup_test_environment(team: str) -> None:
+def setup_test_environment(team: str) -> None:
     env = os.environ.copy()
     env["DOCKER_BUILDKIT"] = "1"
     subprocess.check_call(
@@ -38,12 +38,12 @@ def _setup_test_environment(team: str) -> None:
             "--build-arg",
             f"BASE_IMAGE={_get_docker_image()}",
             "--build-arg",
-            f"TEST_ENVIRONMENT_SCRIPT={team}.tests.env.sh",
+            f"TEST_ENVIRONMENT_SCRIPT=ci/ray_ci/{team}.tests.env.sh",
             "-t",
             _get_docker_image(),
             "-f",
-            f"{ROOT_DIR}/tests.env.Dockerfile",
-            ROOT_DIR,
+            "/ray/ci/ray_ci/tests.env.Dockerfile",
+            "/ray",
         ],
         env=env,
         stdout=sys.stdout,
@@ -85,35 +85,6 @@ def shard_tests(test_targets: List[str], shard_count: int, shard_id: int) -> Lis
     return bazel_sharding.main(test_targets, index=shard_id, count=shard_count)
 
 
-def docker_login() -> None:
-    """
-    Login to docker with AWS credentials
-    """
-    subprocess.run(["pip", "install", "awscli"])
-    password = subprocess.check_output(
-        ["aws", "ecr", "get-login-password", "--region", "us-west-2"],
-        stderr=sys.stderr,
-    )
-    with tempfile.TemporaryFile() as f:
-        f.write(password)
-        f.flush()
-        f.seek(0)
-
-        subprocess.run(
-            [
-                "docker",
-                "login",
-                "--username",
-                "AWS",
-                "--password-stdin",
-                DOCKER_ECR,
-            ],
-            stdin=f,
-            stdout=sys.stdout,
-            stderr=sys.stderr,
-        )
-
-
 def _get_docker_run_command() -> List[str]:
     return [
         "docker",
@@ -132,9 +103,15 @@ def _get_docker_run_command() -> List[str]:
         "BUILDKITE_JOB_ID",
         "--env",
         "BUILDKITE_LABEL",
+        "--cap-add",
+        "SYS_PTRACE",
+        "--cap-add",
+        "SYS_ADMIN",
+        "--cap-add",
+        "NET_ADMIN",
         "--workdir",
         "/ray",
-        "--shm-size=2.5gb",
+        "--shm-size=9.69gb",
         _get_docker_image(),
     ]
 

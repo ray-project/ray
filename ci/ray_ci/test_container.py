@@ -40,16 +40,11 @@ def test_run_tests() -> None:
     with mock.patch(
         "ci.ray_ci.container._run_tests_in_docker",
         side_effect=_mock_run_tests_in_docker,
-    ), mock.patch(
-        "ci.ray_ci.container._setup_test_environment",
-        return_value=None,
-    ), mock.patch(
-        "ci.ray_ci.container.shard_tests", side_effect=_mock_shard_tests
-    ):
+    ), mock.patch("ci.ray_ci.container.shard_tests", side_effect=_mock_shard_tests):
         # test_targets are not empty
-        assert run_tests("team", ["t1", "t2"], 2)
+        assert run_tests(["t1", "t2"], 2)
         # test_targets is empty after chunking
-        assert not run_tests("team", ["t1"], 2)
+        assert not run_tests(["t1"], 2)
 
 
 if __name__ == "__main__":
