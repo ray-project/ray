@@ -80,9 +80,9 @@ def _get_deploy_args_from_built_app(app: BuiltApplication):
         deploy_args_list.append(
             get_deploy_args(
                 name=deployment._name,
-                replica_config=deployment.replica_config,
+                replica_config=deployment._replica_config,
                 ingress=is_ingress,
-                deployment_config=deployment.deployment_config,
+                deployment_config=deployment._deployment_config,
                 version=deployment.version,
                 route_prefix=deployment.route_prefix,
                 is_driver_deployment=deployment._is_driver_deployment,

@@ -448,7 +448,7 @@ class TestSetOptions:
         assert f.max_concurrent_queries == 3
         assert f.version == "efgh"
         assert f.ray_actor_options == {"num_cpus": 1, "num_gpus": 3}
-        assert f.deployment_config.health_check_timeout_s == 17
+        assert f._deployment_config.health_check_timeout_s == 17
 
     def test_set_options_validation(self):
         @serve.deployment

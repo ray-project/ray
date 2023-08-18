@@ -110,7 +110,7 @@ class TestDeploymentOptions:
         def f():
             pass
 
-        assert f.deployment_config.user_configured_option_names == set(options.keys())
+        assert f._deployment_config.user_configured_option_names == set(options.keys())
 
     @pytest.mark.parametrize("options", deployment_option_combos)
     def test_user_configured_option_names_schematized(self, options: Dict):
@@ -171,7 +171,7 @@ class TestDeploymentOptions:
         def f():
             pass
 
-        serialized_config = f.deployment_config.to_proto_bytes()
+        serialized_config = f._deployment_config.to_proto_bytes()
         deserialized_config = DeploymentConfig.from_proto_bytes(serialized_config)
 
         assert deserialized_config.user_configured_option_names == set(options.keys())
@@ -214,14 +214,14 @@ class TestDeploymentOptions:
             pass
 
         f = f.options(**options)
-        assert f.deployment_config.user_configured_option_names == set(options.keys())
+        assert f._deployment_config.user_configured_option_names == set(options.keys())
 
         @serve.deployment
         def g():
             pass
 
         g.set_options(**options)
-        assert g.deployment_config.user_configured_option_names == set(options.keys())
+        assert g._deployment_config.user_configured_option_names == set(options.keys())
 
 
 if __name__ == "__main__":
