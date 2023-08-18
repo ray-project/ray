@@ -167,10 +167,25 @@ distributed environment and launches the training function on all workers.
 
 Next, check these end-to-end examples below for more details:
 
-.. dropdown:: End-to-end Code Example
+.. tabs::
 
-    .. literalinclude:: /../../python/ray/train/examples/accelerate/accelerate_torch_trainer.py
-        :language: python
+    .. group-tab:: End-to-end Example with Ray Data
+
+        .. dropdown:: Show Code
+
+            .. literalinclude:: /../../python/ray/train/examples/accelerate/accelerate_torch_trainer.py
+                :language: python
+                :start-after: __deepspeed_torch_basic_example_start__
+                :end-before: __deepspeed_torch_basic_example_end__
+
+    .. group-tab:: End-to-end Example with PyTorch DataLoader
+
+        .. dropdown:: Show Code
+
+            .. literalinclude:: /../../python/ray/train/examples/accelerate/accelerate_torch_trainer_no_raydata.py
+                :language: python
+                :start-after: __deepspeed_torch_basic_example_no_raydata_start__
+                :end-before: __deepspeed_torch_basic_example_no_raydata_end__
 
 .. seealso::
 

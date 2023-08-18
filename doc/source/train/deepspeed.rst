@@ -47,12 +47,25 @@ All you need to do is run your existing training code with a TorchTrainer. You c
 
 Below is a simple example of ZeRO-3 training with DeepSpeed only. 
 
-.. dropdown:: Code example
+.. tabs::
 
-    .. literalinclude:: /../../python/ray/train/examples/deepspeed/deepspeed_torch_trainer.py
-        :language: python
-        :start-after: __deepspeed_torch_basic_example_start__
-        :end-before: __deepspeed_torch_basic_example_end__
+    .. group-tab:: Example with Ray Data
+
+        .. dropdown:: Show Code
+
+            .. literalinclude:: /../../python/ray/train/examples/deepspeed/deepspeed_torch_trainer.py
+                :language: python
+                :start-after: __deepspeed_torch_basic_example_start__
+                :end-before: __deepspeed_torch_basic_example_end__
+
+    .. group-tab:: Example with PyTorch DataLoader
+
+        .. dropdown:: Show Code
+
+            .. literalinclude:: /../../python/ray/train/examples/deepspeed/deepspeed_torch_trainer_no_raydata.py
+                :language: python
+                :start-after: __deepspeed_torch_basic_example_no_raydata_start__
+                :end-before: __deepspeed_torch_basic_example_no_raydata_end__
 
 .. tip::
 

@@ -1,9 +1,9 @@
-# __accelerate_torch_basic_example_start__
+# __accelerate_torch_basic_example_no_raydata_start__
 """
 Minimal Ray Train + Accelerate example adapted from
 https://github.com/huggingface/accelerate/blob/main/examples/nlp_example.py
 
-Fine-tune a BERT model with Hugging Face Accelerate and Ray Train and Ray Data
+Fine-tune a BERT model with Hugging Face Accelerate and Ray Train
 """
 
 import evaluate
@@ -12,6 +12,7 @@ from accelerate import Accelerator
 from datasets import load_dataset
 from tempfile import TemporaryDirectory
 from torch.optim import AdamW
+from torch.utils.data import DataLoader
 from transformers import (
     AutoModelForSequenceClassification,
     AutoTokenizer,
@@ -20,7 +21,7 @@ from transformers import (
 )
 
 import ray.train
-from ray.train import DataConfig, ScalingConfig, Checkpoint
+from ray.train import ScalingConfig, Checkpoint
 from ray.train.torch import TorchTrainer
 
 
@@ -33,7 +34,6 @@ def train_func(config):
     num_epochs = config["num_epochs"]
     train_batch_size = config["train_batch_size"]
     eval_batch_size = config["eval_batch_size"]
-    train_ds_size = config["train_dataset_size"]
 
     set_seed(seed)
 
@@ -43,30 +43,38 @@ def train_func(config):
     # Load datasets and metrics
     metric = evaluate.load("glue", "mrpc")
 
-    # Prepare Ray Data loaders
+    # Prepare PyTorch DataLoaders
     # ====================================================
-    train_ds = ray.train.get_dataset_shard("train")
-    eval_ds = ray.train.get_dataset_shard("validation")
+    hf_datasets = load_dataset("glue", "mrpc")
 
     tokenizer = AutoTokenizer.from_pretrained("bert-base-cased")
 
     def collate_fn(batch):
         outputs = tokenizer(
-            list(batch["sentence1"]),
-            list(batch["sentence2"]),
+            [sample["sentence1"] for sample in batch],
+            [sample["sentence2"] for sample in batch],
             truncation=True,
             padding="longest",
             return_tensors="pt",
         )
-        outputs["labels"] = torch.LongTensor(batch["label"])
+        outputs["labels"] = torch.LongTensor([sample["label"] for sample in batch])
         outputs = {k: v.to(accelerator.device) for k, v in outputs.items()}
         return outputs
 
-    train_dataloader = train_ds.iter_torch_batches(
-        batch_size=train_batch_size, collate_fn=collate_fn
+    # Instantiate dataloaders.
+    train_dataloader = DataLoader(
+        hf_datasets["train"],
+        shuffle=True,
+        collate_fn=collate_fn,
+        batch_size=train_batch_size,
+        drop_last=True,
     )
-    eval_dataloader = eval_ds.iter_torch_batches(
-        batch_size=eval_batch_size, collate_fn=collate_fn
+    eval_dataloader = DataLoader(
+        hf_datasets["validation"],
+        shuffle=False,
+        collate_fn=collate_fn,
+        batch_size=eval_batch_size,
+        drop_last=True,
     )
     # ====================================================
 
@@ -77,7 +85,7 @@ def train_func(config):
 
     optimizer = AdamW(params=model.parameters(), lr=lr)
 
-    steps_per_epoch = train_ds_size // (accelerator.num_processes * train_batch_size)
+    steps_per_epoch = len(train_dataloader)
     lr_scheduler = get_linear_schedule_with_warmup(
         optimizer=optimizer,
         num_warmup_steps=100,
@@ -85,7 +93,15 @@ def train_func(config):
     )
 
     # Prepare everything with accelerator
-    model, optimizer, lr_scheduler = accelerator.prepare(model, optimizer, lr_scheduler)
+    (
+        model,
+        optimizer,
+        train_dataloader,
+        eval_dataloader,
+        lr_scheduler,
+    ) = accelerator.prepare(
+        model, optimizer, train_dataloader, eval_dataloader, lr_scheduler
+    )
 
     for epoch in range(num_epochs):
         # Training
@@ -134,22 +150,12 @@ if __name__ == "__main__":
         "eval_batch_size": 32,
     }
 
-    # Prepare Ray Datasets
-    hf_datasets = load_dataset("glue", "mrpc")
-    ray_datasets = {
-        "train": ray.data.from_huggingface(hf_datasets["train"]),
-        "validation": ray.data.from_huggingface(hf_datasets["validation"]),
-    }
-    config["train_dataset_size"] = ray_datasets["train"].count()
-
     trainer = TorchTrainer(
         train_func,
         train_loop_config=config,
-        datasets=ray_datasets,
-        dataset_config=DataConfig(datasets_to_split=["train", "validation"]),
         scaling_config=ScalingConfig(num_workers=4, use_gpu=True),
     )
 
     result = trainer.fit()
 
-# __accelerate_torch_basic_example_start__
+# __accelerate_torch_basic_example_no_raydata_end__
