@@ -6,6 +6,7 @@ import ray
 from ray.air.constants import EXPR_RESULT_FILE
 from ray import train
 from ray.train import Result, CheckpointConfig, RunConfig, ScalingConfig
+from ray.train._internal.storage import _use_storage_context
 from ray.train.torch import TorchTrainer
 from ray.train.base_trainer import TrainingFailedError
 from ray.tune import TuneConfig, Tuner
@@ -55,6 +56,8 @@ def build_dummy_tuner(configs):
 
 @pytest.mark.parametrize("mode", ["trainer", "tuner"])
 def test_result_restore(ray_start_4_cpus, monkeypatch, tmpdir, mode):
+    if not _use_storage_context():
+        pytest.skip("This test only works with the new persistence mode enabled.")
     monkeypatch.setenv("RAY_AIR_LOCAL_CACHE_DIR", str(tmpdir / "ray_results"))
 
     NUM_ITERATIONS = 5
