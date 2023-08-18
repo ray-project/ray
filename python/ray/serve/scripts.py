@@ -710,7 +710,7 @@ def shutdown(address: str, yes: bool):
     required=False,
     multiple=True,
     help="Servicer function for adding the method handler to the gRPC server."
-         "Defaults to empty list and no gRPC server will be started.",
+    "Defaults to empty list and no gRPC server will be started.",
 )
 def build(
     import_paths: Tuple[str],

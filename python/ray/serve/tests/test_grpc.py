@@ -226,8 +226,8 @@ def test_serving_request_through_grpc_proxy(ray_cluster):
     """Test serving request through gRPC proxy.
 
     When Serve runs with a gRPC deployment, the app should be deployed successfully,
-    both routes and healthz methods returning success response, and registered gRPC
-    methods are routing to the correct replica and return the correct response.
+    both ListApplications and Healthz methods returning success response, and registered
+    gRPC methods are routing to the correct replica and return the correct response.
     """
     cluster = ray_cluster
     cluster.add_node(num_cpus=2)
@@ -251,7 +251,7 @@ def test_serving_request_through_grpc_proxy(ray_cluster):
     app_name = "default_grpc-deployment"
     assert len(replicas[app_name]) == 1
 
-    # Ensures routes path succeeding.
+    # Ensures ListApplications method succeeding.
     channel = grpc.insecure_channel("localhost:9000")
     stub = serve_pb2_grpc.RayServeAPIServiceStub(channel)
     request = serve_pb2.ListApplicationsRequest()
@@ -259,7 +259,7 @@ def test_serving_request_through_grpc_proxy(ray_cluster):
     assert call.code() == grpc.StatusCode.OK
     assert response.application_names == [app_name]
 
-    # Ensures healthz path succeeding.
+    # Ensures Healthz path succeeding.
     request = serve_pb2.HealthzRequest()
     response, call = stub.Healthz.with_call(request=request)
     assert call.code() == grpc.StatusCode.OK
