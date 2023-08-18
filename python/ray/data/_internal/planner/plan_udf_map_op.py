@@ -120,7 +120,7 @@ def _parse_op_fn(op: AbstractUDFMap):
     return fn, init_fn
 
 
-# Following are util functions for converting UDFs to `MapTransformFn`s.
+# Following are util functions for converting UDFs to `MapTransformCallable`s.
 
 
 def _validate_batch_output(batch: Block) -> None:
@@ -164,8 +164,8 @@ def _validate_batch_output(batch: Block) -> None:
                 )
 
 
-def _generate_transform_fn_for_map_batches(fn):
-    def transform_fn(batches, _):
+def _generate_transform_fn_for_map_batches(fn: UserDefinedFunction) -> MapTransformCallable[DataBatch, DataBatch]:
+    def transform_fn(batches: Iterable[DataBatch], _: TaskContext) -> Iterable[DataBatch]:
         for batch in batches:
             try:
                 if (
@@ -217,18 +217,18 @@ def _validate_row_output(item):
         )
 
 
-def _generate_transform_fn_for_map_rows(fn):
-    def transform_fn(rows, _):
+def _generate_transform_fn_for_map_rows(fn: UserDefinedFunction) -> MapTransformCallable[Row, Row]:
+    def transform_fn(rows: Iterable[Row], _: TaskContext) -> Iterable[Row]:
         for row in rows:
-            item = fn(row)
-            _validate_row_output(item)
-            yield item
+            out_row = fn(row)
+            _validate_row_output(out_row)
+            yield out_row
 
     return transform_fn
 
 
-def _generate_transform_fn_for_flat_map(fn):
-    def transform_fn(rows, _):
+def _generate_transform_fn_for_flat_map(fn: UserDefinedFunction) -> MapTransformCallable[Row, Row]:
+    def transform_fn(rows: Iterable[Row], _: TaskContext) -> Iterable[Row]:
         for row in rows:
             for out_row in fn(row):
                 _validate_row_output(out_row)
@@ -237,8 +237,8 @@ def _generate_transform_fn_for_flat_map(fn):
     return transform_fn
 
 
-def _generate_transform_fn_for_filter(fn):
-    def transform_fn(rows, _):
+def _generate_transform_fn_for_filter(fn: UserDefinedFunction) -> MapTransformCallable[Row, Row]:
+    def transform_fn(rows: Iterable[Row], _: TaskContext) -> Iterable[Row]:
         for row in rows:
             if fn(row):
                 yield row
@@ -297,7 +297,7 @@ def _create_map_transformer_for_row_based_map_op(
     return MapTransformer(transform_fns, init_fn=init_fn)
 
 
-# Following are util functions for generating map functions for the legacy code path.
+# Following are util functions for the legacy code path.
 
 
 def generate_map_rows_fn() -> (
