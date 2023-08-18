@@ -110,6 +110,45 @@ def start_telemetry_app():
     return storage
 
 
+# NOTE(zcin): This test needs to be run first because calls to serve.status()
+# in this file will affect the telemetry collected.
+@pytest.mark.parametrize("location", ["driver", "deployment", None])
+def test_status_api_detected(manage_ray, location):
+    """Check that serve.status is detected correctly by telemetry."""
+
+    subprocess.check_output(["ray", "start", "--head"])
+    wait_for_condition(check_ray_started, timeout=5)
+
+    storage_handle = start_telemetry_app()
+    wait_for_condition(
+        lambda: ray.get(storage_handle.get_reports_received.remote()) > 0, timeout=5
+    )
+
+    @serve.deployment
+    class Model:
+        async def __call__(self):
+            return serve.status()
+
+    def check_telemetry():
+        report = ray.get(storage_handle.get_report.remote())
+        assert report["extra_usage_tags"]["serve_status_api_used"] == "1"
+        return True
+
+    if location:
+        if location == "deployment":
+            handle = serve.run(Model.bind(), route_prefix="/model")
+            handle.remote()
+        elif location == "driver":
+            run_string_as_driver("from ray import serve; serve.status()")
+
+        wait_for_condition(check_telemetry)
+    else:
+        for _ in range(3):
+            report = ray.get(storage_handle.get_report.remote())
+            assert report["extra_usage_tags"].get("serve_status_api_used") != "1"
+            time.sleep(1)
+
+
 def test_fastapi_detected(manage_ray):
     """
     Check that FastAPI is detected by telemetry.
@@ -483,43 +522,6 @@ def test_lightweight_config_options(manage_ray, lightweight_option, value):
     for tagkey in lightweight_tagkeys:
         if not tagkey == f"serve_{lightweight_option}_lightweight_updated":
             assert tagkey not in report["extra_usage_tags"]
-
-
-@pytest.mark.parametrize("location", ["driver", "deployment", None])
-def test_status_api_detected(manage_ray, location):
-    """Check that serve.status is detected correctly by telemetry."""
-
-    subprocess.check_output(["ray", "start", "--head"])
-    wait_for_condition(check_ray_started, timeout=5)
-
-    storage_handle = start_telemetry_app()
-    wait_for_condition(
-        lambda: ray.get(storage_handle.get_reports_received.remote()) > 0, timeout=5
-    )
-
-    @serve.deployment
-    class Model:
-        async def __call__(self):
-            return serve.status()
-
-    def check_telemetry():
-        report = ray.get(storage_handle.get_report.remote())
-        assert report["extra_usage_tags"]["serve_status_api_used"] == "1"
-        return True
-
-    if location:
-        if location == "deployment":
-            handle = serve.run(Model.bind(), route_prefix="/model")
-            handle.remote()
-        elif location == "driver":
-            run_string_as_driver("from ray import serve; serve.status()")
-
-        wait_for_condition(check_telemetry)
-    else:
-        for _ in range(3):
-            report = ray.get(storage_handle.get_report.remote())
-            assert report["extra_usage_tags"].get("serve_status_api_used") != "1"
-            time.sleep(1)
 
 
 @pytest.mark.parametrize("location", ["driver", "deployment", None])
