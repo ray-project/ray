@@ -3,7 +3,7 @@
 Minimal Ray Train + DeepSpeed example adapted from
 https://github.com/huggingface/accelerate/blob/main/examples/nlp_example.py
 
-Fine-tune a BERT model with DeepSpeed ZeRO-3 and Ray Train
+Fine-tune a BERT model with DeepSpeed ZeRO-3 and Ray Train and Ray Data
 """
 
 import os
