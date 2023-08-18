@@ -486,9 +486,9 @@ def test_core_events(shutdown_only):
             "A worker died or was killed while executing "
             "a task by an unexpected system error" in event["message"]
         )
-        return True
+        return False
 
-    wait_for_condition(verify)
+    wait_for_condition(verify, 10)
     pprint(list_cluster_events())
 
 

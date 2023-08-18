@@ -464,15 +464,25 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
         self, req: aiohttp.web.Request
     ) -> aiohttp.web.Response:
         record_extra_usage_tag(TagKey.CORE_STATE_API_LIST_CLUSTER_EVENTS, "1")
+        return await self._handle_list_api(self._state_api.list_cluster_events, req)
+
+    @routes.get("/api/v1/cluster_events")
+    @RateLimitedModule.enforce_max_concurrent_calls
+    async def list_cluster_events(
+        self, req: aiohttp.web.Request
+    ) -> aiohttp.web.Response:
+        record_extra_usage_tag(TagKey.CORE_STATE_API_LIST_CLUSTER_EVENTS, "1")
         job_id = req.query.get("job_id", None)
-        source_types = req.query.getall("sourceType")
-        severity_levels = req.query.getall("severity_level")
+        source_types = req.query.getall("sourceType", [])
+        severity_levels = req.query.getall("severityLevel", [])
 
         # Filtering out specified keys from the query parameters
         excluded_keys = ["job_id", "sourceType", "severity_level"]
         rest_of_query = {
             key: value for key, value in req.query.items() if key not in excluded_keys
         }
+        logger.info(f"rest_of_query {type(rest_of_query)}: {rest_of_query}")
+
         assert len(rest_of_query) <= 1, "At most 1 filter key is allowed"
 
         for key, value in req.query.items():

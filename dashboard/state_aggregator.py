@@ -710,9 +710,6 @@ class StateAPIManager:
     async def list_cluster_events(
         self, *, option: ListApiOptions, req: aiohttp.web.Request
     ) -> ListApiResponse:
-        logger.info(f"option 111 {type(option)}: {option}")
-        logger.info()
-
         """List all cluster events from the cluster.
 
         Returns:
