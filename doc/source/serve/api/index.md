@@ -43,8 +43,8 @@ This is fixed by added custom filename mappings in `source/conf.py` (look for "a
    serve.handle.RayServeHandle
    serve.handle.RayServeSyncHandle
    serve.handle.DeploymentHandle
-   serve.handle.DeploymentHandleResponse
-   serve.handle.DeploymentHandleResponseGenerator
+   serve.handle.DeploymentResponse
+   serve.handle.DeploymentResponseGenerator
 ```
 
 #### Advanced APIs
