@@ -17,7 +17,7 @@ from ray.serve._private.http_proxy import (
     GenericProxy,
     gRPCProxy,
     HTTPProxy,
-    success_message,
+    HEALTH_CHECK_SUCCESS_MESSAGE,
 )
 from ray.serve._private.proxy_request_response import (
     ASGIProxyRequest,
@@ -143,7 +143,7 @@ class TestgRPCProxy:
         assert response.status_code == str(grpc.StatusCode.OK)
         response_proto = serve_pb2.HealthzResponse()
         response_proto.ParseFromString(response.response)
-        assert response_proto.message == success_message
+        assert response_proto.message == HEALTH_CHECK_SUCCESS_MESSAGE
         proxy_request.send_status_code.assert_called_with(status_code=health_status)
         proxy_request.send_details.assert_called_once()
 

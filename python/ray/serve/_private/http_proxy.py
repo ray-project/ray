@@ -119,8 +119,8 @@ if os.environ.get("SERVE_REQUEST_PROCESSING_TIMEOUT_S") is not None:
 INITIAL_BACKOFF_PERIOD_SEC = 0.05
 MAX_BACKOFF_PERIOD_SEC = 5
 BACKOFF_FACTOR = 2
-drained_message = "This node is being drained."
-success_message = "success"
+DRAINED_MESSAGE = "This node is being drained."
+HEALTH_CHECK_SUCCESS_MESSAGE = "success"
 
 
 def generate_request_id() -> str:
@@ -239,8 +239,8 @@ class GenericProxy(ABC):
         )
 
         self.num_ongoing_requests_gauge = metrics.Gauge(
-            name="serve_num_ongoing_http_requests",
-            description="The number of ongoing requests in this HTTP Proxy.",
+            name=f"serve_num_ongoing_{self.protocol}_requests",
+            description=f"The number of ongoing requests in this {self.protocol} Proxy.",
             tag_keys=("node_id", "node_ip_address"),
         ).set_default_tags(
             {
@@ -303,9 +303,9 @@ class GenericProxy(ABC):
         )
 
     def update_draining(self, draining: bool):
-        """Update the draining status of the http proxy.
+        """Update the draining status of the proxy.
 
-        This is called by the http proxy state manager
+        This is called by the proxy state manager
         to drain or un-drain the proxy actor.
         """
 
@@ -629,13 +629,13 @@ class gRPCProxy(GenericProxy):
     async def draining_response(self, proxy_request: ProxyRequest) -> ProxyResponse:
         status_code = grpc.StatusCode.ABORTED
         proxy_request.send_status_code(status_code=status_code)
-        proxy_request.send_details(message=drained_message)
+        proxy_request.send_details(message=DRAINED_MESSAGE)
         if proxy_request.is_route_request:
             response_proto = ListApplicationsResponse(
                 application_names=self.route_info.values()
             )
         else:
-            response_proto = HealthzResponse(message=drained_message)
+            response_proto = HealthzResponse(message=DRAINED_MESSAGE)
         return ProxyResponse(
             status_code=str(status_code),
             response=response_proto.SerializeToString(),
@@ -655,7 +655,7 @@ class gRPCProxy(GenericProxy):
     async def routes_response(self, proxy_request: ProxyRequest) -> ProxyResponse:
         status_code = grpc.StatusCode.OK
         proxy_request.send_status_code(status_code=status_code)
-        proxy_request.send_details(message=success_message)
+        proxy_request.send_details(message=HEALTH_CHECK_SUCCESS_MESSAGE)
         application_names = [str(endpoint) for endpoint in self.route_info.values()]
         response_proto = ListApplicationsResponse(
             application_names=application_names,
@@ -668,8 +668,8 @@ class gRPCProxy(GenericProxy):
     async def health_response(self, proxy_request: ProxyRequest) -> ProxyResponse:
         status_code = grpc.StatusCode.OK
         proxy_request.send_status_code(status_code=status_code)
-        proxy_request.send_details(message=success_message)
-        response_proto = HealthzResponse(message=success_message)
+        proxy_request.send_details(message=HEALTH_CHECK_SUCCESS_MESSAGE)
+        response_proto = HealthzResponse(message=HEALTH_CHECK_SUCCESS_MESSAGE)
         return ProxyResponse(
             status_code=str(status_code),
             response=response_proto.SerializeToString(),
@@ -867,7 +867,7 @@ class HTTPProxy(GenericProxy):
 
     async def draining_response(self, proxy_request: ProxyRequest) -> ProxyResponse:
         status_code = 503
-        response = Response(drained_message, status_code=status_code)
+        response = Response(DRAINED_MESSAGE, status_code=status_code)
         await response.send(
             proxy_request.scope, proxy_request.receive, proxy_request.send
         )
@@ -893,7 +893,7 @@ class HTTPProxy(GenericProxy):
         return ProxyResponse(status_code=self.success_status_code)
 
     async def health_response(self, proxy_request: ProxyRequest) -> ProxyResponse:
-        await starlette.responses.PlainTextResponse(success_message)(
+        await starlette.responses.PlainTextResponse(HEALTH_CHECK_SUCCESS_MESSAGE)(
             proxy_request.scope, proxy_request.receive, proxy_request.send
         )
         return ProxyResponse(status_code=self.success_status_code)
