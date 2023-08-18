@@ -555,7 +555,7 @@ def find_partition_index(
         else:
             left = prevleft + np.searchsorted(col_vals, desired_val, side="left")
             right = prevleft + np.searchsorted(col_vals, desired_val, side="right")
-    return right
+    return right if descending is True else left
 
 
 def find_partitions(table, boundaries, sort_key):

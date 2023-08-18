@@ -2,6 +2,7 @@ import logging
 import os
 from typing import Collection, List, Optional, Type, Union, TYPE_CHECKING
 
+from ray.train._internal.storage import _use_storage_context
 from ray.tune.callback import Callback, CallbackList
 
 from ray.tune.syncer import SyncConfig
@@ -164,6 +165,7 @@ def _create_default_callbacks(
     if (
         not has_syncer_callback
         and os.environ.get("TUNE_DISABLE_AUTO_CALLBACK_SYNCER", "0") != "1"
+        and not _use_storage_context()
     ):
         syncer_callback = SyncerCallback(
             enabled=bool(sync_config.syncer), sync_period=sync_config.sync_period

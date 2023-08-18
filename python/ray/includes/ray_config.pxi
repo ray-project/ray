@@ -102,10 +102,6 @@ cdef class Config:
         return RayConfig.instance().start_python_importer_thread()
 
     @staticmethod
-    def use_ray_syncer():
-        return RayConfig.instance().use_ray_syncer()
-
-    @staticmethod
     def REDIS_CA_CERT():
         return RayConfig.instance().REDIS_CA_CERT()
 

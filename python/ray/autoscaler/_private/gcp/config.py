@@ -2,6 +2,7 @@ import copy
 import json
 import logging
 import os
+import re
 import time
 from functools import partial
 
@@ -12,6 +13,7 @@ from google.oauth2 import service_account
 from google.oauth2.credentials import Credentials as OAuthCredentials
 from googleapiclient import discovery, errors
 
+from ray._private import ray_constants
 from ray.autoscaler._private.gcp.node import MAX_POLLS, POLL_INTERVAL, GCPNodeType
 from ray.autoscaler._private.util import check_legacy_fields
 
@@ -47,6 +49,74 @@ HAS_TPU_PROVIDER_FIELD = "_has_tpus"
 # with ServiceAccounts.
 
 
+def _validate_tpu_config(node: dict):
+    """Validate the provided node with TPU support.
+
+    If the config is malformed, users will run into an error but this function
+    will raise the error at config parsing time. This only tests very simple assertions.
+
+    Raises: `ValueError` in case the input is malformed.
+
+    """
+    if "acceleratorType" in node and "acceleratorConfig" in node:
+        raise ValueError(
+            "For TPU usage, acceleratorType and acceleratorConfig "
+            "cannot both be set."
+        )
+    if "acceleratorType" in node:
+        accelerator_type = node["acceleratorType"]
+        expected_pattern = re.compile(r"^v\d+[a-zA-Z]*-\d+$")
+        if not expected_pattern.match(accelerator_type):
+            raise ValueError(
+                "`acceleratorType` should match v(generation)-(cores/chips)"
+                f"Got {accelerator_type}."
+            )
+    else:  # "acceleratorConfig" in node
+        accelerator_config = node["acceleratorConfig"]
+        if "type" not in accelerator_config or "topology" not in accelerator_config:
+            raise ValueError(
+                "acceleratorConfig expects 'type' and 'topology'. "
+                f"Got {accelerator_config}"
+            )
+        generation = node["acceleratorConfig"]["type"]
+        topology = node["acceleratorConfig"]["topology"]
+
+        generation_pattern = re.compile(r"^V\d+[a-zA-Z]*$")
+        topology_pattern = re.compile(r"^\d+x\d+(x\d+)?$")
+
+        if not generation_pattern.match(generation):
+            raise ValueError(f"type should match V(generation). Got {generation}.")
+        if generation == "V2" or generation == "V3":
+            raise ValueError(
+                f"acceleratorConfig is not supported on V2/V3 TPUs. Got {generation}."
+            )
+        if not topology_pattern.match(topology):
+            raise ValueError(
+                f"topology should be of form axbxc or axb. Got {topology}."
+            )
+
+
+def _get_num_tpu_chips(node: dict) -> int:
+    chips = 0
+    if "acceleratorType" in node:
+        accelerator_type = node["acceleratorType"]
+        # `acceleratorType` is typically v{generation}-{cores}
+        cores = int(accelerator_type.split("-")[1])
+        chips = cores / ray_constants.RAY_TPU_CORES_PER_CHIP
+    if "acceleratorConfig" in node:
+        topology = node["acceleratorConfig"]["topology"]
+        # `topology` is typically {chips}x{chips}x{chips}
+        # Multiply all dimensions together to get total number of chips
+        chips = 1
+        for dim in topology.split("x"):
+            chips *= int(dim)
+    return chips
+
+
+def _is_single_host_tpu(node: dict) -> bool:
+    return _get_num_tpu_chips(node) == ray_constants.RAY_TPU_NUM_CHIPS_PER_HOST
+
+
 def get_node_type(node: dict) -> GCPNodeType:
     """Returns node type based on the keys in ``node``.
 
@@ -58,23 +128,29 @@ def get_node_type(node: dict) -> GCPNodeType:
     This works for both node configs and API returned nodes.
     """
 
-    if "machineType" not in node and "acceleratorType" not in node:
+    if (
+        "machineType" not in node
+        and "acceleratorType" not in node
+        and "acceleratorConfig" not in node
+    ):
         raise ValueError(
-            "Invalid node. For a Compute instance, 'machineType' is "
-            "required. "
-            "For a TPU instance, 'acceleratorType' and no 'machineType' "
-            "is required. "
-            f"Got {list(node)}"
+            "Invalid node. For a Compute instance, 'machineType' is required."
+            "For a TPU instance, 'acceleratorType' OR 'acceleratorConfig' and "
+            f"no 'machineType' is required. Got {list(node)}."
         )
 
-    if "machineType" not in node and "acceleratorType" in node:
-        # remove after TPU pod support is added!
-        if node["acceleratorType"] not in ("v2-8", "v3-8", "v4-8"):
-            raise ValueError(
-                "For now, only 'v2-8', 'v3-8' and 'v4-8' accelerator types are "
-                "supported. Support for TPU pods will be added in the future."
+    if "machineType" not in node and (
+        "acceleratorType" in node or "acceleratorConfig" in node
+    ):
+        _validate_tpu_config(node)
+        if _is_single_host_tpu(node):
+            # Remove once proper autoscaling support is added.
+            logger.warning(
+                "TPU pod detected. Note that while the cluster launcher can create "
+                "multiple TPU pods, proper autoscaling will not work as expected, "
+                "as all hosts in a TPU pod need to execute the same program. "
+                "Proceed with caution."
             )
-
         return GCPNodeType.TPU
     return GCPNodeType.COMPUTE
 
