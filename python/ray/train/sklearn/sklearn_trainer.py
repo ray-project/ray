@@ -174,8 +174,9 @@ class SklearnTrainer(BaseTrainer):
         set_estimator_cpus: bool = True,
         scaling_config: Optional[ScalingConfig] = None,
         run_config: Optional[RunConfig] = None,
-        preprocessor: Optional["Preprocessor"] = None,
         metadata: Optional[Dict[str, Any]] = None,
+        # Deprecated.
+        preprocessor: Optional["Preprocessor"] = None,
         **fit_params,
     ):
 
