@@ -14,13 +14,9 @@ from ray.autoscaler._private.node_provider_availability_tracker import (
 from ray.autoscaler.node_launch_exception import NodeLaunchException
 from ray.autoscaler.v2.instance_manager.config import NodeProviderConfig
 from ray.autoscaler.v2.instance_manager.node_provider import NodeProviderAdapter
+from ray.autoscaler.v2.tests.util import FakeCounter
 from ray.core.generated.instance_manager_pb2 import Instance
 from ray.tests.autoscaler_test_utils import MockProvider
-
-
-class FakeCounter:
-    def dec(self, *args, **kwargs):
-        pass
 
 
 class NodeProviderTest(unittest.TestCase):
@@ -48,7 +44,7 @@ class NodeProviderTest(unittest.TestCase):
             cloud_instance_id="0",
             internal_ip="172.0.0.0",
             external_ip="1.2.3.4",
-            status=Instance.INSTANCE_STATUS_UNSPECIFIED,
+            status=Instance.UNKNOWN,
         )
         self.assertEqual(len(self.base_provider.mock_nodes), 1)
         self.assertEqual(self.node_provider.get_non_terminated_nodes(), {"0": nodes[0]})
@@ -59,14 +55,14 @@ class NodeProviderTest(unittest.TestCase):
             cloud_instance_id="1",
             internal_ip="172.0.0.1",
             external_ip="1.2.3.4",
-            status=Instance.INSTANCE_STATUS_UNSPECIFIED,
+            status=Instance.UNKNOWN,
         )
         assert nodes1[1] == Instance(
             instance_type="worker_nodes",
             cloud_instance_id="2",
             internal_ip="172.0.0.2",
             external_ip="1.2.3.4",
-            status=Instance.INSTANCE_STATUS_UNSPECIFIED,
+            status=Instance.UNKNOWN,
         )
         self.assertEqual(
             self.node_provider.get_non_terminated_nodes(),

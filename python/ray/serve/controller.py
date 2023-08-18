@@ -8,11 +8,13 @@ from collections import defaultdict
 from typing import Any, Dict, Iterable, List, Optional, Tuple, Union
 
 import ray
+from ray.util import metrics
 from ray._private.utils import run_background_task
 from ray.actor import ActorHandle
 from ray._private.resource_spec import HEAD_NODE_RESOURCE_NAME
 from ray._raylet import GcsClient
 from ray.serve._private.common import (
+    DeploymentID,
     DeploymentInfo,
     EndpointInfo,
     EndpointTag,
@@ -40,9 +42,11 @@ from ray.serve._private.endpoint_state import EndpointState
 from ray.serve._private.http_state import HTTPProxyStateManager
 from ray.serve._private.logging_utils import (
     configure_component_logger,
+    configure_component_memory_profiler,
+    configure_component_cpu_profiler,
     get_component_logger_file_path,
 )
-from ray.serve._private.long_poll import LongPollHost, LongPollNamespace
+from ray.serve._private.long_poll import LongPollHost
 from ray.serve.exceptions import RayServeException
 from ray.serve.schema import (
     ServeApplicationSchema,
@@ -55,10 +59,14 @@ from ray.serve.schema import (
 from ray.serve._private.storage.kv_store import RayInternalKVStore
 from ray.serve._private.utils import (
     call_function_from_import_path,
+    get_all_live_placement_group_names,
     get_head_node_id,
     record_serve_tag,
 )
 from ray.serve._private.application_state import ApplicationStateManager
+from ray.serve._private.default_impl import (
+    create_cluster_node_info_cache,
+)
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -112,6 +120,12 @@ class ServeController:
         configure_component_logger(
             component_name="controller", component_id=str(os.getpid())
         )
+        configure_component_memory_profiler(
+            component_name="controller", component_id=str(os.getpid())
+        )
+        self.cpu_profiler, self.cpu_profiler_log = configure_component_cpu_profiler(
+            component_name="controller", component_id=str(os.getpid())
+        )
         if RAY_SERVE_CONTROLLER_CALLBACK_IMPORT_PATH:
             logger.info(
                 "Calling user-provided callback from import path "
@@ -122,10 +136,12 @@ class ServeController:
         # Used to read/write checkpoints.
         self.ray_worker_namespace = ray.get_runtime_context().namespace
         self.controller_name = controller_name
-        gcs_client = GcsClient(address=ray.get_runtime_context().gcs_address)
+        self.gcs_client = GcsClient(address=ray.get_runtime_context().gcs_address)
         kv_store_namespace = f"{self.controller_name}-{self.ray_worker_namespace}"
-        self.kv_store = RayInternalKVStore(kv_store_namespace, gcs_client)
-        self.snapshot_store = RayInternalKVStore(kv_store_namespace, gcs_client)
+        self.kv_store = RayInternalKVStore(kv_store_namespace, self.gcs_client)
+        self.snapshot_store = RayInternalKVStore(kv_store_namespace, self.gcs_client)
+        self.cluster_node_info_cache = create_cluster_node_info_cache(self.gcs_client)
+        self.cluster_node_info_cache.update()
 
         # Dictionary of deployment_name -> proxy_name -> queue length.
         self.deployment_stats = defaultdict(lambda: defaultdict(dict))
@@ -141,7 +157,7 @@ class ServeController:
                 detached,
                 http_config,
                 self._controller_node_id,
-                gcs_client,
+                self.cluster_node_info_cache,
             )
 
         self.endpoint_state = EndpointState(self.kv_store, self.long_poll_host)
@@ -161,6 +177,8 @@ class ServeController:
             self.kv_store,
             self.long_poll_host,
             all_serve_actor_names,
+            get_all_live_placement_group_names(),
+            self.cluster_node_info_cache,
         )
 
         # Manage all applications' state
@@ -183,11 +201,19 @@ class ServeController:
         self._shutdown = asyncio.Event()
         self._shutdown_start_time = None
 
+        self._create_control_loop_metrics()
         run_background_task(self.run_control_loop())
 
         self._recover_config_from_checkpoint()
-        self._active_nodes = set()
-        self._update_active_nodes()
+        # Nodes where http proxy actors should run.
+        self._http_proxy_nodes = set()
+        self._update_http_proxy_nodes()
+
+        # Track the number of times the controller has started
+        metrics.Counter(
+            "serve_controller_num_starts",
+            description="The number of times that controller has started.",
+        ).inc()
 
     def check_alive(self) -> None:
         """No-op to check if this controller is alive."""
@@ -258,7 +284,7 @@ class ServeController:
 
         endpoints = self.get_all_endpoints()
         data = {
-            endpoint_tag: EndpointInfoProto(route=endppint_dict["route"])
+            str(endpoint_tag): EndpointInfoProto(route=endppint_dict["route"])
             for endpoint_tag, endppint_dict in endpoints.items()
         }
         return EndpointSet(endpoints=data).SerializeToString()
@@ -281,27 +307,34 @@ class ServeController:
         )
         return actor_name_list.SerializeToString()
 
-    def _update_active_nodes(self):
-        """Update the active nodes set.
+    def _update_http_proxy_nodes(self):
+        """Update the nodes set where http proxy actors should run.
 
-        Controller keeps the state of active nodes (head node and nodes with deployment
-        replicas). If the active nodes set changes, it will notify the long poll client.
+        Controller decides where http proxy actors should run
+        (head node and nodes with deployment replicas).
         """
-        new_active_nodes = self.deployment_state_manager.get_active_node_ids()
-        new_active_nodes.add(self._controller_node_id)
-        if self._active_nodes != new_active_nodes:
-            self._active_nodes = new_active_nodes
-            self.long_poll_host.notify_changed(
-                LongPollNamespace.ACTIVE_NODES, self._active_nodes
-            )
+        new_http_proxy_nodes = self.deployment_state_manager.get_active_node_ids()
+        new_http_proxy_nodes = (
+            new_http_proxy_nodes - self.cluster_node_info_cache.get_draining_node_ids()
+        )
+        new_http_proxy_nodes.add(self._controller_node_id)
+        self._http_proxy_nodes = new_http_proxy_nodes
 
     async def run_control_loop(self) -> None:
         # NOTE(edoakes): we catch all exceptions here and simply log them,
         # because an unhandled exception would cause the main control loop to
         # halt, which should *never* happen.
         recovering_timeout = RECOVERING_LONG_POLL_BROADCAST_TIMEOUT_S
+        num_loops = 0
         start_time = time.time()
         while True:
+            loop_start_time = time.time()
+
+            try:
+                self.cluster_node_info_cache.update()
+            except Exception:
+                logger.exception("Exception updating cluster node info cache.")
+
             if self._shutting_down:
                 try:
                     self.shutdown()
@@ -318,38 +351,116 @@ class ServeController:
                 )
                 self.done_recovering_event.set()
 
-            # Update the active nodes set before updating the HTTP states, so they
-            # are more consistent.
-            self._update_active_nodes()
+            try:
+                dsm_update_start_time = time.time()
+                any_recovering = self.deployment_state_manager.update()
+                self.dsm_update_duration_gauge_s.set(
+                    time.time() - dsm_update_start_time
+                )
+                if not self.done_recovering_event.is_set() and not any_recovering:
+                    self.done_recovering_event.set()
+                    logger.info(
+                        "Finished recovering deployments after "
+                        f"{(time.time() - start_time):.2f}s.",
+                        extra={"log_to_stderr": False},
+                    )
+            except Exception:
+                logger.exception("Exception updating deployment state.")
+
+            try:
+                asm_update_start_time = time.time()
+                self.application_state_manager.update()
+                self.asm_update_duration_gauge_s.set(
+                    time.time() - asm_update_start_time
+                )
+            except Exception:
+                logger.exception("Exception updating application state.")
+
+            # Update the http proxy nodes set before updating the HTTP proxy states,
+            # so they are more consistent.
+            node_update_start_time = time.time()
+            self._update_http_proxy_nodes()
+            self.node_update_duration_gauge_s.set(time.time() - node_update_start_time)
 
             # Don't update http_state until after the done recovering event is set,
             # otherwise we may start a new HTTP proxy but not broadcast it any
             # info about available deployments & their replicas.
             if self.http_proxy_state_manager and self.done_recovering_event.is_set():
                 try:
+                    proxy_update_start_time = time.time()
                     self.http_proxy_state_manager.update(
-                        active_nodes=self._active_nodes
+                        http_proxy_nodes=self._http_proxy_nodes
+                    )
+                    self.proxy_update_duration_gauge_s.set(
+                        time.time() - proxy_update_start_time
                     )
                 except Exception:
                     logger.exception("Exception updating HTTP state.")
 
             try:
-                any_recovering = self.deployment_state_manager.update()
-                if not self.done_recovering_event.is_set() and not any_recovering:
-                    self.done_recovering_event.set()
-            except Exception:
-                logger.exception("Exception updating deployment state.")
-
-            try:
-                self.application_state_manager.update()
-            except Exception:
-                logger.exception("Exception updating application state.")
-
-            try:
+                snapshot_start_time = time.time()
                 self._put_serve_snapshot()
+                self.snapshot_duration_gauge_s.set(time.time() - snapshot_start_time)
             except Exception:
                 logger.exception("Exception putting serve snapshot.")
+            loop_duration = time.time() - loop_start_time
+            if loop_duration > 10:
+                logger.warning(
+                    f"The last control loop was slow (took {loop_duration}s). "
+                    "This is likely caused by running a large number of "
+                    "replicas in a single Ray cluster. Consider using "
+                    "multiple Ray clusters.",
+                    extra={"log_to_stderr": False},
+                )
+            self.control_loop_duration_gauge_s.set(loop_duration)
+
+            num_loops += 1
+            self.num_control_loops_gauge.set(num_loops)
+
+            sleep_start_time = time.time()
             await asyncio.sleep(CONTROL_LOOP_PERIOD_S)
+            self.sleep_duration_gauge_s.set(time.time() - sleep_start_time)
+
+    def _create_control_loop_metrics(self):
+        self.node_update_duration_gauge_s = metrics.Gauge(
+            "serve_controller_node_update_duration_s",
+            description="The control loop time spent on collecting proxy node info.",
+        )
+        self.proxy_update_duration_gauge_s = metrics.Gauge(
+            "serve_controller_proxy_state_update_duration_s",
+            description="The control loop time spent on updating proxy state.",
+        )
+        self.dsm_update_duration_gauge_s = metrics.Gauge(
+            "serve_controller_deployment_state_update_duration_s",
+            description="The control loop time spent on updating deployment state.",
+        )
+        self.asm_update_duration_gauge_s = metrics.Gauge(
+            "serve_controller_application_state_update_duration_s",
+            description="The control loop time spent on updating application state.",
+        )
+        self.snapshot_duration_gauge_s = metrics.Gauge(
+            "serve_controller_application_state_update_duration_s",
+            description="The control loop time spent on putting the Serve snapshot.",
+        )
+        self.sleep_duration_gauge_s = metrics.Gauge(
+            "serve_controller_sleep_duration_s",
+            description="The duration of the last control loop's sleep.",
+        )
+        self.control_loop_duration_gauge_s = metrics.Gauge(
+            "serve_controller_control_loop_duration_s",
+            description="The duration of the last control loop.",
+        )
+        self.num_control_loops_gauge = metrics.Gauge(
+            "serve_controller_num_control_loops",
+            description=(
+                "The number of control loops performed by the controller. "
+                "Increases monotonically over the controller's lifetime."
+            ),
+            tag_keys=("actor_id",),
+        )
+        self.num_control_loops_gauge.set_default_tags(
+            {"actor_id": ray.get_runtime_context().get_actor_id()}
+        )
 
     def _put_serve_snapshot(self) -> None:
         val = dict()
@@ -397,7 +508,9 @@ class ServeController:
     def _recover_config_from_checkpoint(self):
         checkpoint = self.kv_store.get(CONFIG_CHECKPOINT_KEY)
         if checkpoint is not None:
-            logger.info("Recovering config from checkpoint.")
+            logger.info(
+                "Recovering config from checkpoint.", extra={"log_to_stderr": False}
+            )
             deployment_time, deploy_mode, config_checkpoints_dict = pickle.loads(
                 checkpoint
             )
@@ -530,21 +643,15 @@ class ServeController:
         deployer_job_id: Union[str, bytes],
         docs_path: Optional[str] = None,
         is_driver_deployment: Optional[bool] = False,
-        app_name: str = None,
         # TODO(edoakes): this is a hack because the deployment_language doesn't seem
         # to get set properly from Java.
         is_deployed_from_python: bool = False,
     ) -> bool:
-        """Deploys a deployment."""
+        """Deploys a deployment. This should only be used for 1.x deployments."""
         if route_prefix is not None:
             assert route_prefix.startswith("/")
         if docs_path is not None:
             assert docs_path.startswith("/")
-
-        # app_name is None for V1 API, reset it to empty string to avoid
-        # breaking metrics.
-        if app_name is None:
-            app_name = ""
 
         deployment_info = deploy_args_to_deployment_info(
             deployment_name=name,
@@ -554,7 +661,7 @@ class ServeController:
             route_prefix=route_prefix,
             docs_path=docs_path,
             is_driver_deployment=is_driver_deployment,
-            app_name=app_name,
+            app_name="",
         )
 
         # TODO(architkulkarni): When a deployment is redeployed, even if
@@ -565,12 +672,11 @@ class ServeController:
         if route_prefix is not None:
             endpoint_info = EndpointInfo(
                 route=route_prefix,
-                app_name=app_name,
                 app_is_cross_language=not is_deployed_from_python,
             )
-            self.endpoint_state.update_endpoint(name, endpoint_info)
+            self.endpoint_state.update_endpoint(EndpointTag(name, ""), endpoint_info)
         else:
-            self.endpoint_state.delete_endpoint(name)
+            self.endpoint_state.delete_endpoint(EndpointTag(name, ""))
 
         return updating
 
@@ -681,14 +787,18 @@ class ServeController:
         self.delete_apps(existing_applications.difference(new_applications))
 
     def delete_deployment(self, name: str):
-        self.endpoint_state.delete_endpoint(name)
+        """Should only be used for 1.x deployments."""
+
+        self.endpoint_state.delete_endpoint(EndpointTag(name, ""))
         return self.deployment_state_manager.delete_deployment(name)
 
     def delete_deployments(self, names: Iterable[str]) -> None:
+        """Should only be used for 1.x deployments."""
+
         for name in names:
             self.delete_deployment(name)
 
-    def get_deployment_info(self, name: str) -> bytes:
+    def get_deployment_info(self, name: str, app_name: str = "") -> bytes:
         """Get the current information about a deployment.
 
         Args:
@@ -700,11 +810,14 @@ class ServeController:
         Raises:
             KeyError if the deployment doesn't exist.
         """
-        deployment_info = self.deployment_state_manager.get_deployment(name)
+        id = DeploymentID(name, app_name)
+        deployment_info = self.deployment_state_manager.get_deployment(str(id))
         if deployment_info is None:
-            raise KeyError(f"Deployment {name} does not exist.")
+            raise KeyError(
+                f"Deployment '{name}' does not exist in application '{app_name}'."
+            )
 
-        route = self.endpoint_state.get_endpoint_route(name)
+        route = self.endpoint_state.get_endpoint_route(id)
 
         from ray.serve.generated.serve_pb2 import DeploymentRoute
 
@@ -729,15 +842,10 @@ class ServeController:
             KeyError if the deployment doesn't exist.
         """
         return {
-            name: (
-                self.deployment_state_manager.get_deployment(
-                    name, include_deleted=include_deleted
-                ),
-                self.endpoint_state.get_endpoint_route(name),
-            )
-            for name in self.deployment_state_manager.get_deployment_configs(
+            str(id): (info, self.endpoint_state.get_endpoint_route(id))
+            for id, info in self.deployment_state_manager.get_deployment_infos(
                 include_deleted=include_deleted
-            )
+            ).items()
         }
 
     def list_deployments(self, include_deleted: Optional[bool] = False) -> bytes:
@@ -765,6 +873,13 @@ class ServeController:
                 )
             )
         return deployment_route_list.SerializeToString()
+
+    def list_deployment_names(self) -> List[str]:
+        """Gets the current list of all deployments' names.
+
+        Returns: deployment names, in the format {app-name}_{deployment-name}.
+        """
+        return self.deployment_state_manager._deployment_states.keys()
 
     def get_serve_instance_details(self) -> Dict:
         """Gets details on all applications on the cluster and system-level info.
@@ -876,6 +991,15 @@ class ServeController:
         Currently, this is the OpenAPI docs path for FastAPI-integrated applications."""
         return self.application_state_manager.get_docs_path(name)
 
+    def get_ingress_deployment_name(self, app_name: str) -> Optional[str]:
+        """Name of the ingress deployment in an application.
+
+        Returns:
+            Ingress deployment name (str): if the application exists.
+            None: if the application does not exist.
+        """
+        return self.application_state_manager.get_ingress_deployment_name(app_name)
+
     def delete_apps(self, names: Iterable[str]):
         """Delete applications based on names
 
@@ -905,6 +1029,27 @@ class ServeController:
             return
 
         await self._shutdown.wait()
+
+    def _save_cpu_profile_data(self) -> str:
+        """Saves CPU profiling data, if CPU profiling is enabled.
+
+        Logs a warning if CPU profiling is disabled.
+        """
+
+        if self.cpu_profiler is not None:
+            import marshal
+
+            self.cpu_profiler.snapshot_stats()
+            with open(self.cpu_profiler_log, "wb") as f:
+                marshal.dump(self.cpu_profiler.stats, f)
+            logger.info(f'Saved CPU profile data to file "{self.cpu_profiler_log}"')
+            return self.cpu_profiler_log
+        else:
+            logger.error(
+                "Attempted to save CPU profile data, but failed because no "
+                "CPU profiler was running! Enable CPU profiling by enabling "
+                "the RAY_SERVE_ENABLE_CPU_PROFILING env var."
+            )
 
 
 @ray.remote(num_cpus=0)

@@ -26,6 +26,7 @@ import textwrap
 import time
 
 from ray.air._internal.usage import AirEntrypoint
+from ray.train._checkpoint import Checkpoint
 from ray.tune.search.sample import Domain
 from ray.tune.utils.log import Verbosity
 
@@ -44,7 +45,7 @@ from ray._private.thirdparty.tabulate.tabulate import (
     Line,
     DataRow,
 )
-from ray.air._internal.checkpoint_manager import _TrackedCheckpoint
+from ray.air._internal.checkpoint_manager import _TrackedCheckpoint, CheckpointStorage
 from ray.air.constants import TRAINING_ITERATION
 from ray.tune.callback import Callback
 from ray.tune.result import (
@@ -739,26 +740,56 @@ class ProgressReporter(Callback):
         )
         self._print_result(trial)
 
+    def on_trial_error(
+        self, iteration: int, trials: List["Trial"], trial: "Trial", **info
+    ):
+        curr_time_str, running_time_str = _get_time_str(self._start_time, time.time())
+        finished_iter = 0
+        if trial.last_result and TRAINING_ITERATION in trial.last_result:
+            finished_iter = trial.last_result[TRAINING_ITERATION]
+
+        self._start_block(f"trial_{trial}_error")
+        print(
+            f"{self._addressing_tmpl.format(trial)} "
+            f"errored after {finished_iter} iterations "
+            f"at {curr_time_str}. Total running time: {running_time_str}\n"
+            f"Error file: {trial.error_file}"
+        )
+        self._print_result(trial)
+
+    def on_trial_recover(
+        self, iteration: int, trials: List["Trial"], trial: "Trial", **info
+    ):
+        self.on_trial_error(iteration=iteration, trials=trials, trial=trial, **info)
+
     def on_checkpoint(
         self,
         iteration: int,
         trials: List[Trial],
         trial: Trial,
-        checkpoint: "_TrackedCheckpoint",
+        checkpoint: Union["_TrackedCheckpoint", "Checkpoint"],
         **info,
     ):
         if self._verbosity < self._intermediate_result_verbosity:
             return
-        # don't think this is supposed to happen but just to be save.
+        # don't think this is supposed to happen but just to be safe.
         saved_iter = "?"
         if trial.last_result and TRAINING_ITERATION in trial.last_result:
             saved_iter = trial.last_result[TRAINING_ITERATION]
 
         self._start_block(f"trial_{trial}_result_{saved_iter}")
+
+        if isinstance(checkpoint, Checkpoint):
+            loc = f"({checkpoint.filesystem.type_name}){checkpoint.path}"
+        elif checkpoint.storage_mode == CheckpointStorage.MEMORY:
+            loc = "(memory)"
+        else:
+            loc = checkpoint.dir_or_data
+
         print(
             f"{self._addressing_tmpl.format(trial)} "
             f"saved a checkpoint for iteration {saved_iter} "
-            f"at: {checkpoint.dir_or_data}"
+            f"at: {loc}"
         )
 
     def on_trial_start(self, iteration: int, trials: List[Trial], trial: Trial, **info):
@@ -970,6 +1001,10 @@ class TuneTerminalReporter(TuneReporterBase):
         if more_infos:
             print(", ".join(more_infos))
 
+        if not force:
+            # Only print error table at end of training
+            return
+
         trials_with_error = _get_trials_with_error(trials)
         if not trials_with_error:
             return
@@ -980,7 +1015,8 @@ class TuneTerminalReporter(TuneReporterBase):
         fail_table_data = [
             [
                 str(trial),
-                str(trial.num_failures) + ("" if trial.status == Trial.ERROR else "*"),
+                str(trial.run_metadata.num_failures)
+                + ("" if trial.status == Trial.ERROR else "*"),
                 trial.error_file,
             ]
             for trial in trials_with_error

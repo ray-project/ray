@@ -167,9 +167,6 @@ class ResourceTrackingInterface {
       std::string &serialized_resource_usage_batch,
       const rpc::ClientCallback<rpc::UpdateResourceUsageReply> &callback) = 0;
 
-  virtual void RequestResourceReport(
-      const rpc::ClientCallback<rpc::RequestResourceReportReply> &callback) = 0;
-
   virtual void GetResourceLoad(
       const rpc::ClientCallback<rpc::GetResourceLoadReply> &callback) = 0;
 
@@ -196,6 +193,11 @@ class RayletClientInterface : public PinObjectsInterface,
       const NodeID &node_id,
       bool graceful,
       const rpc::ClientCallback<rpc::ShutdownRayletReply> &callback) = 0;
+
+  virtual void DrainRaylet(
+      const rpc::autoscaler::DrainNodeReason &reason,
+      const std::string &reason_message,
+      const rpc::ClientCallback<rpc::DrainRayletReply> &callback) = 0;
 
   virtual std::shared_ptr<grpc::Channel> GetChannel() const = 0;
 };
@@ -466,6 +468,10 @@ class RayletClient : public RayletClientInterface {
       bool graceful,
       const rpc::ClientCallback<rpc::ShutdownRayletReply> &callback) override;
 
+  void DrainRaylet(const rpc::autoscaler::DrainNodeReason &reason,
+                   const std::string &reason_message,
+                   const rpc::ClientCallback<rpc::DrainRayletReply> &callback) override;
+
   void GetSystemConfig(
       const rpc::ClientCallback<rpc::GetSystemConfigReply> &callback) override;
 
@@ -474,9 +480,6 @@ class RayletClient : public RayletClientInterface {
   void UpdateResourceUsage(
       std::string &serialized_resource_usage_batch,
       const rpc::ClientCallback<rpc::UpdateResourceUsageReply> &callback) override;
-
-  void RequestResourceReport(
-      const rpc::ClientCallback<rpc::RequestResourceReportReply> &callback) override;
 
   void GetResourceLoad(
       const rpc::ClientCallback<rpc::GetResourceLoadReply> &callback) override;

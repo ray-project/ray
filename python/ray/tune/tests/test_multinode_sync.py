@@ -7,7 +7,7 @@ from typing import List
 
 import ray
 from ray import tune
-from ray.air.config import CheckpointConfig
+from ray.train import CheckpointConfig
 from ray.air.constants import REENABLE_DEPRECATED_SYNC_TO_HEAD_NODE
 from ray.air.util.node import _force_on_node
 from ray.autoscaler._private.fake_multi_node.node_provider import FAKE_HEAD_NODE_ID

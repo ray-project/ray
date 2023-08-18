@@ -2,12 +2,39 @@ rules:
   - id: code-block-python
     paths:
       include:
+        # Ray Core
+        - "python/ray/util/**/*.py"
+        - "python/ray/_private/**/*.py"
+        - "python/ray/core/**/*.py"
+        - "doc/source/ray-core/**/*.rst"
+        - "doc/source/ray-overview/**/*.rst"
+        - "doc/source/ray-observability/**/*.rst"
+        # Ray Data
         - "python/ray/data/**/*.py"
         - "doc/source/data/**/*.rst"
+        # Ray Train
+        - "python/ray/train/**/*.py"
+        - "doc/source/train/**/*.rst"
+      exclude:
+        # FIXME(@matthewdeng): We're ignoring the examples for now since they'll likely
+        # get re-written.
+        - "doc/source/train/examples/pytorch/torch_data_prefetch_benchmark/benchmark_example.rst"
+        - "doc/source/train/dl_guide.rst"
+        # FIXME(@ml-team): These are byproduct from train doc rewritten. Will fix them as a team.
+        - "doc/source/train/getting-started-pytorch-lightning.rst"
+        - "doc/source/train/getting-started-pytorch.rst"
+        - "doc/source/train/getting-started-transformers.rst"
+        - "doc/source/train/user-guides/checkpoints.rst"
+        - "doc/source/train/user-guides/data-loading-preprocessing.rst"
+        - "doc/source/train/user-guides/experiment-tracking.rst"
+        - "doc/source/train/user-guides/monitoring-logging.rst"
+        - "doc/source/train/user-guides/persistent-storage.rst"
+        - "doc/source/train/user-guides/using-gpus.rst"
+        - "doc/source/train/distributed-tensorflow-keras.rst"
+        - "doc/source/train/horovod.rst"
+
     languages:
       - generic
-    message: > 
-      Don't use 'code-block:: python', it's not tested! Use 'testcode' instead! For more 
-      information, see https://docs.ray.io/en/master/ray-contribute/writing-code-snippets.html.
+    message: "Don't use 'code-block:: python', it's not tested! Use 'testcode' instead! For more information, see https://docs.ray.io/en/master/ray-contribute/writing-code-snippets.html."
     pattern: "code-block:: python"
     severity: ERROR

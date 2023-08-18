@@ -3,11 +3,11 @@ import pandas as pd
 
 import ray
 from ray import tune
-from ray.air.checkpoint import Checkpoint
+from ray.train import Checkpoint
 from ray.train.constants import TRAIN_DATASET_KEY
 
-from ray.train.sklearn import SklearnCheckpoint, SklearnTrainer
-from ray.air.config import ScalingConfig
+from ray.train.sklearn import LegacySklearnCheckpoint, SklearnTrainer
+from ray.train import ScalingConfig
 from ray.data.preprocessor import Preprocessor
 
 from sklearn.datasets import load_breast_cancer
@@ -92,7 +92,7 @@ def test_no_auto_cpu_params(ray_start_4_cpus, tmpdir):
     )
     result = trainer.fit()
 
-    checkpoint = SklearnCheckpoint.from_checkpoint(result.checkpoint)
+    checkpoint = LegacySklearnCheckpoint.from_checkpoint(result.checkpoint)
     model = checkpoint.get_estimator()
     assert model.n_jobs == 1
 
@@ -127,7 +127,7 @@ def test_preprocessor_in_checkpoint(ray_start_4_cpus, tmpdir):
     checkpoint_path = checkpoint.to_directory(tmpdir)
     resume_from = Checkpoint.from_directory(checkpoint_path)
 
-    checkpoint = SklearnCheckpoint.from_checkpoint(resume_from)
+    checkpoint = LegacySklearnCheckpoint.from_checkpoint(resume_from)
 
     model = checkpoint.get_estimator()
     preprocessor = checkpoint.get_preprocessor()

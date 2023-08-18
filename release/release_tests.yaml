@@ -24,8 +24,6 @@
 #
 #  # Cluster information
 #  cluster:
-#    # Location of cluster env, relative to working_dir
-#    cluster_env: cluster_env.yaml
 #    # Location of cluster compute, relative to working_dir
 #    cluster_compute: cluster_compute.yaml
 #    # Autosuspend parameter passed to the cluster.
@@ -90,12 +88,11 @@
 
   cluster:
     byod: {}
-    cluster_env: app_config.yaml
     cluster_compute: cpt_autoscaling_1-3_aws.yaml
 
   run:
     timeout: 3600
-    script: python workloads/tune_scale_up_down.py
+    script: RAY_AIR_NEW_PERSISTENCE_MODE=1 python workloads/tune_scale_up_down.py
     wait_for_nodes:
       num_nodes: 0
 
@@ -105,7 +102,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: cpt_autoscaling_1-3_gce.yaml
 
   alert: default
@@ -125,9 +121,8 @@
   cluster:
     byod:
       type: gpu
-    cluster_env: app_config.yaml
     cluster_compute: compute_gpu_1_cpu_16_aws.yaml
-  
+
   run:
     timeout: 500
     script: python workloads/gpu_batch_inference.py --data-directory=10G-image-data-synthetic-raw --data-format raw
@@ -140,7 +135,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: compute_gpu_1_cpu_16_gce.yaml
 
 # 10 GB image classification parquet with 1 GPU.
@@ -154,9 +148,8 @@
   cluster:
     byod:
       type: gpu
-    cluster_env: app_config.yaml
     cluster_compute: compute_gpu_1_cpu_16_aws.yaml
-  
+
   run:
     timeout: 500
     script: python workloads/gpu_batch_inference.py --data-directory=10G-image-data-synthetic-raw-parquet --data-format parquet
@@ -169,7 +162,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: compute_gpu_1_cpu_16_gce.yaml
 
 
@@ -185,7 +177,6 @@
   cluster:
     byod:
       type: gpu
-    cluster_env: app_config.yaml
     cluster_compute: compute_gpu_4x4_aws.yaml
 
   run:
@@ -203,7 +194,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: compute_gpu_4x4_gce.yaml
 
 
@@ -219,7 +209,6 @@
   cluster:
     byod:
       type: gpu
-    cluster_env: app_config.yaml
     cluster_compute: compute_gpu_4x4_aws.yaml
 
   run:
@@ -237,7 +226,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: compute_gpu_4x4_gce.yaml
 
 # 10 TB image classification parquet data with heterogenous cluster
@@ -252,7 +240,6 @@
   cluster:
     byod:
       type: gpu
-    cluster_env: app_config.yaml
     cluster_compute: compute_hetero_10x10_aws.yaml
 
   run:
@@ -261,7 +248,7 @@
 
     wait_for_nodes:
       num_nodes: 20
-  
+
   alert: default
 
 # Chaos equivalent of the above test.
@@ -306,13 +293,12 @@
       runtime_env:
         - RAY_memory_usage_threshold=0.5
         - automatic_object_spilling_enabled=0
-    cluster_env: frequent_pausing/app_config.yaml
     cluster_compute: frequent_pausing/compute_config_aws.yaml
 
   run:
     timeout: 600  # 10min
     long_running: true
-    script: python frequent_pausing/script.py
+    script: RAY_AIR_NEW_PERSISTENCE_MODE=1 python frequent_pausing/script.py
 
   variations:
     - __suffix__: aws
@@ -320,7 +306,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: frequent_pausing/app_config.yaml
         cluster_compute: frequent_pausing/compute_config_gce.yaml
 
   alert: default
@@ -337,7 +322,6 @@
     byod:
       type: gpu
       post_build_script: byod_horovod_master_test.sh
-    cluster_env: horovod/app_config_master.yaml
     cluster_compute: horovod/compute_tpl_aws.yaml
 
   variations:
@@ -346,12 +330,11 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: horovod/app_config_master.yaml
         cluster_compute: horovod/compute_tpl_gce.yaml
 
   run:
     timeout: 36000
-    script: python horovod/workloads/horovod_tune_test.py
+    script: RAY_AIR_NEW_PERSISTENCE_MODE=1 python horovod/workloads/horovod_tune_test.py
     long_running: true
     wait_for_nodes:
       num_nodes: 2
@@ -375,12 +358,11 @@
   cluster:
     byod:
       type: gpu
-    cluster_env: app_config.yaml
     cluster_compute: compute_data_20_nodes_aws.yaml
 
   run:
     timeout: 3600
-    script: python workloads/data_benchmark.py --dataset-size-gb=200 --num-workers=20
+    script: RAY_AIR_NEW_PERSISTENCE_MODE=1 python workloads/data_benchmark.py --dataset-size-gb=200 --num-workers=20
 
     wait_for_nodes:
       num_nodes: 20
@@ -391,7 +373,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: compute_data_20_nodes_gce.yaml
 
   alert: default
@@ -407,7 +388,6 @@
     byod:
       type: gpu
       post_build_script: byod_xgboost_cuj_test.sh
-    cluster_env: xgboost_app_config.yaml
     cluster_compute: compute_xgboost_aws.yaml
 
   run:
@@ -423,7 +403,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: xgboost_app_config.yaml
         cluster_compute: compute_xgboost_gce.yaml
 
   smoke_test:
@@ -445,12 +424,11 @@
   cluster:
     byod:
       type: gpu
-    cluster_env: app_config.yaml
     cluster_compute: compute_cpu_4_aws.yaml
 
   run:
     timeout: 3600
-    script: python workloads/torch_benchmark.py run --num-runs 3 --num-epochs 20 --num-workers 4 --cpus-per-worker 8
+    script: RAY_AIR_NEW_PERSISTENCE_MODE=1 python workloads/torch_benchmark.py run --num-runs 3 --num-epochs 20 --num-workers 4 --cpus-per-worker 8
 
     wait_for_nodes:
       num_nodes: 4
@@ -461,7 +439,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: compute_cpu_4_gce.yaml
 
   alert: default
@@ -476,12 +453,11 @@
   cluster:
     byod:
       type: gpu
-    cluster_env: app_config.yaml
     cluster_compute: compute_gpu_4x4_aws.yaml
 
   run:
     timeout: 4800
-    script: python workloads/torch_benchmark.py run --num-runs 3 --num-epochs 120 --num-workers 16 --cpus-per-worker 4 --batch-size 1024 --use-gpu
+    script: RAY_AIR_NEW_PERSISTENCE_MODE=1 python workloads/torch_benchmark.py run --num-runs 3 --num-epochs 120 --num-workers 16 --cpus-per-worker 4 --batch-size 1024 --use-gpu
 
     wait_for_nodes:
       num_nodes: 4
@@ -494,7 +470,7 @@
 
     run:
       timeout: 3600
-      script: python workloads/torch_benchmark.py run --num-runs 3 --num-epochs 60 --num-workers 4 --cpus-per-worker 4 --batch-size 512 --use-gpu
+      script: RAY_AIR_NEW_PERSISTENCE_MODE=1 python workloads/torch_benchmark.py run --num-runs 3 --num-epochs 60 --num-workers 4 --cpus-per-worker 4 --batch-size 512 --use-gpu
 
       wait_for_nodes:
         num_nodes: 2
@@ -505,7 +481,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: compute_gpu_4x4_gce.yaml
       smoke_test:
         frequency: manual
@@ -523,12 +498,11 @@
   cluster:
     byod:
       type: gpu
-    cluster_env: app_config.yaml
     cluster_compute: compute_cpu_1_aws.yaml
 
   run:
     timeout: 3600
-    script: python workloads/torch_benchmark.py run --num-runs 3 --num-epochs 20 --num-workers 4 --cpus-per-worker 2
+    script: RAY_AIR_NEW_PERSISTENCE_MODE=1 python workloads/torch_benchmark.py run --num-runs 3 --num-epochs 20 --num-workers 4 --cpus-per-worker 2
 
   variations:
     - __suffix__: aws
@@ -536,7 +510,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: compute_cpu_1_gce.yaml
 
   alert: default
@@ -552,12 +525,11 @@
   cluster:
     byod:
       type: gpu
-    cluster_env: app_config.yaml
     cluster_compute: compute_cpu_4_aws.yaml
 
   run:
     timeout: 5400
-    script: python workloads/torch_benchmark.py run --num-runs 3 --num-epochs 20 --num-workers 16 --cpus-per-worker 2
+    script: RAY_AIR_NEW_PERSISTENCE_MODE=1 python workloads/torch_benchmark.py run --num-runs 3 --num-epochs 20 --num-workers 16 --cpus-per-worker 2
 
     wait_for_nodes:
       num_nodes: 4
@@ -568,7 +540,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: compute_cpu_4_gce.yaml
 
   alert: default
@@ -583,12 +554,11 @@
   cluster:
     byod:
       type: gpu
-    cluster_env: app_config.yaml
     cluster_compute: compute_cpu_8_aws.yaml
 
   run:
     timeout: 3600
-    script: python workloads/tune_torch_benchmark.py --num-runs 3 --num-trials 8 --num-workers 4
+    script: RAY_AIR_NEW_PERSISTENCE_MODE=1 python workloads/tune_torch_benchmark.py --num-runs 3 --num-trials 8 --num-workers 4
 
     wait_for_nodes:
       num_nodes: 8
@@ -599,7 +569,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: compute_cpu_8_gce.yaml
 
   alert: default
@@ -614,12 +583,11 @@
   cluster:
     byod:
       type: gpu
-    cluster_env: app_config.yaml
     cluster_compute: compute_gpu_4x4_aws.yaml
 
   run:
     timeout: 3600
-    script: python workloads/tune_torch_benchmark.py --num-runs 2 --num-trials 4 --num-workers 4 --use-gpu
+    script: RAY_AIR_NEW_PERSISTENCE_MODE=1 python workloads/tune_torch_benchmark.py --num-runs 2 --num-trials 4 --num-workers 4 --use-gpu
 
     wait_for_nodes:
       num_nodes: 4
@@ -630,7 +598,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: compute_gpu_4x4_gce.yaml
 
   alert: default
@@ -646,12 +613,11 @@
   cluster:
     byod:
       type: gpu
-    cluster_env: app_config.yaml
     cluster_compute: compute_cpu_4_aws.yaml
 
   run:
     timeout: 5400
-    script: python workloads/tensorflow_benchmark.py run --num-runs 3 --num-epochs 20 --num-workers 4 --cpus-per-worker 8
+    script: RAY_AIR_NEW_PERSISTENCE_MODE=1 python workloads/tensorflow_benchmark.py run --num-runs 3 --num-epochs 20 --num-workers 4 --cpus-per-worker 8
 
     wait_for_nodes:
       num_nodes: 4
@@ -662,7 +628,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: compute_cpu_4_gce.yaml
 
   alert: default
@@ -678,12 +643,11 @@
   cluster:
     byod:
       type: gpu
-    cluster_env: app_config.yaml
     cluster_compute: compute_cpu_1_aws.yaml
 
   run:
     timeout: 5400
-    script: python workloads/tensorflow_benchmark.py run --num-runs 3 --num-epochs 20 --num-workers 4 --cpus-per-worker 2
+    script: RAY_AIR_NEW_PERSISTENCE_MODE=1 python workloads/tensorflow_benchmark.py run --num-runs 3 --num-epochs 20 --num-workers 4 --cpus-per-worker 2
 
   variations:
     - __suffix__: aws
@@ -691,7 +655,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: compute_cpu_1_gce.yaml
 
   alert: default
@@ -709,12 +672,11 @@
   cluster:
     byod:
       type: gpu
-    cluster_env: app_config.yaml
     cluster_compute: compute_cpu_4_aws.yaml
 
   run:
     timeout: 5400
-    script: python workloads/tensorflow_benchmark.py run --num-runs 3 --num-epochs 20 --num-workers 16 --cpus-per-worker 2
+    script: RAY_AIR_NEW_PERSISTENCE_MODE=1 python workloads/tensorflow_benchmark.py run --num-runs 3 --num-epochs 20 --num-workers 16 --cpus-per-worker 2
 
     wait_for_nodes:
       num_nodes: 4
@@ -725,7 +687,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: compute_cpu_4_gce.yaml
 
   alert: default
@@ -743,12 +704,11 @@
   cluster:
     byod:
       type: gpu
-    cluster_env: app_config.yaml
     cluster_compute: compute_gpu_4x4_aws.yaml
 
   run:
     timeout: 5400
-    script: python workloads/tensorflow_benchmark.py run --num-runs 3 --num-epochs 200 --num-workers 16 --cpus-per-worker 4 --batch-size 1024 --use-gpu
+    script: RAY_AIR_NEW_PERSISTENCE_MODE=1 python workloads/tensorflow_benchmark.py run --num-runs 3 --num-epochs 200 --num-workers 16 --cpus-per-worker 4 --batch-size 1024 --use-gpu
 
     wait_for_nodes:
       num_nodes: 4
@@ -760,7 +720,7 @@
       cluster_compute: compute_gpu_2x2_aws.yaml
 
     run:
-      script: python workloads/tensorflow_benchmark.py run --num-runs 3 --num-epochs 60 --num-workers 4 --cpus-per-worker 4 --batch-size 512 --use-gpu
+      script: RAY_AIR_NEW_PERSISTENCE_MODE=1 python workloads/tensorflow_benchmark.py run --num-runs 3 --num-epochs 60 --num-workers 4 --cpus-per-worker 4 --batch-size 512 --use-gpu
 
       wait_for_nodes:
         num_nodes: 2
@@ -771,7 +731,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: compute_gpu_4x4_gce.yaml
       smoke_test:
         frequency: manual
@@ -788,12 +747,11 @@
   cluster:
     byod:
       type: gpu
-    cluster_env: app_config.yaml
     cluster_compute: compute_gpu_1_aws.yaml
 
   run:
     timeout: 3600
-    script: python workloads/pytorch_training_e2e.py --data-size-gb 20
+    script: RAY_AIR_NEW_PERSISTENCE_MODE=1 python workloads/pytorch_training_e2e.py --data-size-gb 20
 
   alert: default
 
@@ -803,7 +761,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: compute_gpu_1_gce.yaml
 
 
@@ -819,12 +776,11 @@
   cluster:
     byod:
       type: gpu
-    cluster_env: app_config.yaml
     cluster_compute: compute_gpu_4x4_aws.yaml
 
   run:
     timeout: 10800
-    script: python workloads/pytorch_training_e2e.py --data-size-gb=100 --num-workers=16
+    script: RAY_AIR_NEW_PERSISTENCE_MODE=1 python workloads/pytorch_training_e2e.py --data-size-gb=100 --num-workers=16
 
     wait_for_nodes:
       num_nodes: 4
@@ -837,7 +793,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: compute_gpu_4x4_gce.yaml
 
 # Test tiny, and medium input files to check that performance stays about
@@ -857,7 +812,6 @@
       runtime_env:
         - RAY_task_oom_retries=50
         - RAY_min_memory_free_bytes=1000000000
-    cluster_env: app_config_oom.yaml
     cluster_compute: compute_cpu_16.yaml
 
   run:
@@ -870,7 +824,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config_oom.yaml
         cluster_compute: compute_gce_cpu_16.yaml
 
 # Test huge files to check that we do not OOM.
@@ -889,7 +842,6 @@
       runtime_env:
         - RAY_task_oom_retries=50
         - RAY_min_memory_free_bytes=1000000000
-    cluster_env: app_config_oom.yaml
     cluster_compute: compute_cpu_16.yaml
 
   run:
@@ -902,7 +854,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config_oom.yaml
         cluster_compute: compute_gce_cpu_16.yaml
 
 #######################
@@ -923,16 +874,33 @@
   cluster:
     byod:
       type: gpu
-    cluster_env: dreambooth_env.yaml
     cluster_compute: dreambooth_compute_aws.yaml
 
   run:
     timeout: 1800
-    script: bash dreambooth_run.sh
+    script: pip install -Ur dreambooth/requirements.txt && RAY_AIR_NEW_PERSISTENCE_MODE=1 bash dreambooth_run.sh
     artifact_path: /tmp/artifacts/example_out.jpg
 
   # variations: A10G not available on GCE, yet.
 
+- name: air_example_dreambooth_finetuning_lora
+  group: AIR examples
+  working_dir: air_examples/dreambooth
+
+  stable: false
+
+  frequency: weekly
+  team: ml
+
+  cluster:
+    byod:
+      type: gpu
+    cluster_compute: dreambooth_compute_aws.yaml
+
+  run:
+    timeout: 1800
+    script: pip install -Ur dreambooth/requirements.txt && bash dreambooth_run.sh --lora
+    artifact_path: /tmp/artifacts/example_out.jpg
 
 - name: air_example_gptj_deepspeed_fine_tuning
   group: AIR examples
@@ -949,7 +917,6 @@
         - myst-parser==0.15.2
         - myst-nb==0.13.1
         - jupytext==1.13.6
-    cluster_env: gptj_deepspeed_env.yaml
     cluster_compute: gptj_deepspeed_compute_aws.yaml
 
   run:
@@ -962,7 +929,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: gptj_deepspeed_env.yaml
         cluster_compute: gptj_deepspeed_compute_gce.yaml
 
 
@@ -984,7 +950,6 @@
         - myst-nb==0.13.1
         - jupytext==1.13.6
       post_build_script: byod_dolly_test.sh
-    cluster_env: dolly_v2_fsdp_env.yaml
     cluster_compute: dolly_v2_fsdp_compute_aws.yaml
 
   run:
@@ -993,6 +958,26 @@
 
   # variations: TODO(jungong): add GCP variation.
 
+- name: air_example_vicuna_13b_lightning_deepspeed_finetuning
+  group: AIR examples
+  working_dir: air_examples/vicuna_13b_lightning_deepspeed_finetuning
+
+  python: "3.8"
+
+  frequency: weekly
+  team: ml
+  cluster:
+    byod:
+      type: cu118
+      pip:
+        - myst-parser==0.15.2
+        - myst-nb==0.13.1
+      post_build_script: byod_vicuna_test.sh
+    cluster_compute: vicuna_13b_deepspeed_compute_aws.yaml
+
+  run:
+    timeout: 4700
+    script: python test_myst_doc.py --path vicuna_13b_lightning_deepspeed_finetune.ipynb
 
 #####################################
 # Workspace templates release tests #
@@ -1007,7 +992,6 @@
   cluster:
     byod:
       type: gpu
-    cluster_env: ../testing/cluster_envs/default_cluster_env_nightly_ml_py39.yaml
     cluster_compute: ../testing/compute_configs/gpu/aws.yaml
 
   run:
@@ -1020,7 +1004,6 @@
         env: gce
         frequency: manual
         cluster:
-          cluster_env: ../testing/cluster_envs/default_cluster_env_nightly_ml_py39.yaml
           cluster_compute: ../testing/compute_configs/gpu/gce.yaml
 
 
@@ -1030,15 +1013,15 @@
   python: "3.9"
   frequency: nightly-3x
   team: ml
+
   cluster:
     byod:
       type: gpu
-    cluster_env: ../testing/cluster_envs/02_many_model_training.yaml
     cluster_compute: ../testing/compute_configs/cpu/aws.yaml
 
   run:
     timeout: 600
-    script: jupyter nbconvert --to script --output _test start.ipynb && ipython _test.py
+    script: jupyter nbconvert --to script --output _test start.ipynb && RAY_AIR_NEW_PERSISTENCE_MODE=1 ipython _test.py
 
   variations:
       - __suffix__: aws
@@ -1046,7 +1029,6 @@
         env: gce
         frequency: manual
         cluster:
-          cluster_env: ../testing/cluster_envs/02_many_model_training.yaml
           cluster_compute: ../testing/compute_configs/cpu/gce.yaml
 
 
@@ -1059,7 +1041,6 @@
   cluster:
     byod:
       type: cu118
-    cluster_env: ../testing/cluster_envs/03_serving_stable_diffusion.yaml
     cluster_compute: ../testing/compute_configs/gpu/aws.yaml
 
   run:
@@ -1072,9 +1053,57 @@
         env: gce
         frequency: manual
         cluster:
-          cluster_env: ../testing/cluster_envs/03_serving_stable_diffusion.yaml
           cluster_compute: ../testing/compute_configs/gpu/gce.yaml
 
+- name: workspace_template_finetuning_llms_with_deepspeed_llama_2_7b
+  group: Workspace templates
+  working_dir: workspace_templates/04_finetuning_llms_with_deepspeed
+  python: "3.9"
+  frequency: nightly-3x
+  team: ml
+  cluster:
+    byod:
+      type: cu118
+    cluster_compute: ../testing/compute_configs/04_finetuning_llms_with_deepspeed/aws_7b_or_13b.yaml
+
+  run:
+    timeout: 600
+    script: chmod +x ./run_llama_ft.sh && ./run_llama_ft.sh --size=7b --as-test
+
+  variations:
+      - __suffix__: aws
+      # TODO (Kourosh): Enable once GCE is ready
+      # - __suffix__: gce
+      #   env: gce
+      #   frequency: manual
+      #   cluster:
+      #     cluster_compute: ../testing/compute_configs/04_finetuning_llms_with_deepspeed/gce_7b_or_13b.yaml
+
+
+
+- name: workspace_template_finetuning_llms_with_deepspeed_llama_2_13b
+  group: Workspace templates
+  working_dir: workspace_templates/04_finetuning_llms_with_deepspeed
+  python: "3.9"
+  frequency: nightly-3x
+  team: ml
+  cluster:
+    byod:
+      type: cu118
+    cluster_compute: ../testing/compute_configs/04_finetuning_llms_with_deepspeed/aws_7b_or_13b.yaml
+
+  run:
+    timeout: 1200
+    script: chmod +x ./run_llama_ft.sh && ./run_llama_ft.sh --size=13b --as-test
+
+  variations:
+      - __suffix__: aws
+      # TODO (Kourosh): Enable once GCE is ready
+      # - __suffix__: gce
+      #   env: gce
+      #   frequency: manual
+      #   cluster:
+      #     cluster_compute: ../testing/compute_configs/04_finetuning_llms_with_deepspeed/gce_7b_or_13b.yaml
 
 #######################
 # XGBoost release tests
@@ -1091,7 +1120,6 @@
 #   env: staging_v2
 
 #   cluster:
-#     cluster_env: app_config.yaml
 #     cluster_compute: tpl_cpu_small.yaml
 
 #   run:
@@ -1113,7 +1141,6 @@
   cluster:
     byod:
       post_build_script: byod_xgboost_test.sh
-    cluster_env: app_config.yaml
     cluster_compute: tpl_cpu_moderate_aws.yaml
 
   run:
@@ -1129,7 +1156,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: tpl_cpu_moderate_gce.yaml
 
   alert: xgboost_tests
@@ -1147,7 +1173,6 @@
       runtime_env:
         - NCCL_SOCKET_IFNAME=ens
       post_build_script: byod_xgboost_test.sh
-    cluster_env: app_config_gpu.yaml
     cluster_compute: tpl_gpu_small_aws.yaml
 
   run:
@@ -1163,7 +1188,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config_gpu.yaml
         cluster_compute: tpl_gpu_small_gce.yaml
 
   alert: xgboost_tests
@@ -1178,7 +1202,6 @@
   cluster:
     byod:
       post_build_script: byod_xgboost_test.sh
-    cluster_env: app_config.yaml
     cluster_compute: tpl_cpu_small_aws.yaml
 
   run:
@@ -1193,7 +1216,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: tpl_cpu_small_gce.yaml
 
 
@@ -1209,7 +1231,6 @@
   cluster:
     byod:
       post_build_script: byod_xgboost_test.sh
-    cluster_env: app_config.yaml
     cluster_compute: tpl_cpu_small_aws.yaml
 
   run:
@@ -1225,7 +1246,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: tpl_cpu_small_gce.yaml
 
   alert: default
@@ -1240,7 +1260,6 @@
   cluster:
     byod:
       post_build_script: byod_xgboost_test.sh
-    cluster_env: app_config.yaml
     cluster_compute: tpl_cpu_small_aws.yaml
 
   run:
@@ -1256,7 +1275,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: tpl_cpu_small_gce.yaml
 
   alert: default
@@ -1271,7 +1289,6 @@
   cluster:
     byod:
       post_build_script: byod_xgboost_test.sh
-    cluster_env: app_config.yaml
     cluster_compute: tpl_cpu_small_aws.yaml
 
   run:
@@ -1287,7 +1304,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: tpl_cpu_small_gce.yaml
 
 
@@ -1303,7 +1319,6 @@
   cluster:
     byod:
       post_build_script: byod_xgboost_test.sh
-    cluster_env: app_config.yaml
     cluster_compute: tpl_cpu_moderate_aws.yaml
 
   run:
@@ -1319,7 +1334,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: tpl_cpu_moderate_gce.yaml
 
 
@@ -1335,7 +1349,6 @@
   cluster:
     byod:
       post_build_script: byod_xgboost_test.sh
-    cluster_env: app_config.yaml
     cluster_compute: tpl_cpu_moderate_aws.yaml
 
   run:
@@ -1351,7 +1364,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: tpl_cpu_moderate_gce.yaml
 
   alert: xgboost_tests
@@ -1371,7 +1383,6 @@
 #   env: staging_v2
 
 #   cluster:
-#     cluster_env: app_config.yaml
 #     cluster_compute: tpl_cpu_small.yaml
 
 #   run:
@@ -1394,7 +1405,6 @@
       post_build_script: byod_xgboost_test.sh
       pip:
         - lightgbm_ray
-    cluster_env: app_config.yaml
     cluster_compute: tpl_cpu_moderate_aws.yaml
 
   run:
@@ -1409,7 +1419,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: tpl_cpu_moderate_gce.yaml
 
 
@@ -1427,7 +1436,6 @@
       post_build_script: byod_xgboost_test.sh
       pip:
         - lightgbm_ray
-    cluster_env: app_config.yaml
     cluster_compute: tpl_cpu_small_aws.yaml
 
   run:
@@ -1443,7 +1451,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: tpl_cpu_small_gce.yaml
 
   alert: default
@@ -1460,7 +1467,6 @@
       post_build_script: byod_xgboost_test.sh
       pip:
         - lightgbm_ray
-    cluster_env: app_config.yaml
     cluster_compute: tpl_cpu_small_aws.yaml
 
   run:
@@ -1476,7 +1482,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: tpl_cpu_small_gce.yaml
 
   alert: default
@@ -1491,7 +1496,6 @@
   cluster:
     byod:
       post_build_script: byod_xgboost_test.sh
-    cluster_env: app_config.yaml
     cluster_compute: tpl_cpu_small_aws.yaml
 
   run:
@@ -1506,7 +1510,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: tpl_cpu_small_gce.yaml
 
   alert: default
@@ -1521,7 +1524,6 @@
   cluster:
     byod:
       post_build_script: byod_xgboost_test.sh
-    cluster_env: app_config.yaml
     cluster_compute: tpl_cpu_moderate_aws.yaml
 
   run:
@@ -1536,7 +1538,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: tpl_cpu_moderate_gce.yaml
 
   alert: default
@@ -1551,7 +1552,6 @@
   cluster:
     byod:
       post_build_script: byod_xgboost_test.sh
-    cluster_env: app_config.yaml
     cluster_compute: tpl_cpu_moderate_aws.yaml
 
   run:
@@ -1566,7 +1566,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: tpl_cpu_moderate_gce.yaml
 
   alert: default
@@ -1587,7 +1586,6 @@
   cluster:
     byod:
       type: gpu
-    cluster_env: app_config.yaml
     cluster_compute: compute_tpl_aws.yaml
 
   run:
@@ -1602,7 +1600,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: compute_tpl_gce.yaml
 
   alert: default
@@ -1617,7 +1614,6 @@
   cluster:
     byod:
       type: gpu
-    cluster_env: app_config.yaml
     cluster_compute: compute_tpl_aws.yaml
 
   run:
@@ -1632,7 +1628,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: compute_tpl_gce.yaml
 
   alert: default
@@ -1651,12 +1646,11 @@
     byod:
       type: gpu
       post_build_script: byod_horovod_test.sh
-    cluster_env: horovod/app_config.yaml
     cluster_compute: horovod/compute_tpl_aws.yaml
 
   run:
     timeout: 1200
-    script: python horovod/horovod_user_test.py
+    script: RAY_AIR_NEW_PERSISTENCE_MODE=1 python horovod/horovod_user_test.py
     wait_for_nodes:
       num_nodes: 4
 
@@ -1666,7 +1660,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: horovod/app_config.yaml
         cluster_compute: horovod/compute_tpl_gce.yaml
 
   alert: default
@@ -1682,12 +1675,11 @@
     byod:
       type: gpu
       post_build_script: byod_horovod_master_test.sh
-    cluster_env: horovod/app_config_master.yaml
     cluster_compute: horovod/compute_tpl_aws.yaml
 
   run:
     timeout: 1200
-    script: python horovod/horovod_user_test.py
+    script: RAY_AIR_NEW_PERSISTENCE_MODE=1 python horovod/horovod_user_test.py
     wait_for_nodes:
       num_nodes: 4
 
@@ -1697,7 +1689,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: horovod/app_config_master.yaml
         cluster_compute: horovod/compute_tpl_gce.yaml
 
   alert: default
@@ -1714,12 +1705,11 @@
       runtime_env:
         - TRAIN_PLACEMENT_GROUP_TIMEOUT_S=2000
       type: gpu
-    cluster_env: train/app_config.yaml
     cluster_compute: train/compute_tpl_aws.yaml
 
   run:
     timeout: 36000
-    script: python train/train_tensorflow_mnist_test.py
+    script: RAY_AIR_NEW_PERSISTENCE_MODE=1 python train/train_tensorflow_mnist_test.py
     wait_for_nodes:
       num_nodes: 3
 
@@ -1729,7 +1719,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: train/app_config.yaml
         cluster_compute: train/compute_tpl_gce.yaml
 
   alert: default
@@ -1746,12 +1735,11 @@
       runtime_env:
         - TRAIN_PLACEMENT_GROUP_TIMEOUT_S=2000
       type: gpu
-    cluster_env: train/app_config.yaml
     cluster_compute: train/compute_tpl_aws.yaml
 
   run:
     timeout: 36000
-    script: python train/train_torch_linear_test.py
+    script: RAY_AIR_NEW_PERSISTENCE_MODE=1 python train/train_torch_linear_test.py
     wait_for_nodes:
       num_nodes: 3
 
@@ -1761,7 +1749,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: train/app_config.yaml
         cluster_compute: train/compute_tpl_gce.yaml
 
   alert: default
@@ -1777,7 +1764,6 @@
     byod:
       type: gpu
       post_build_script: byod_xgboost_test.sh
-    cluster_env: xgboost/app_config_gpu.yaml
     cluster_compute: xgboost/tpl_gpu_small_scaling_aws.yaml
 
   run:
@@ -1792,7 +1778,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: xgboost/app_config_gpu.yaml
         cluster_compute: xgboost/tpl_gpu_small_scaling_gce.yaml
 
   alert: default
@@ -1808,7 +1793,6 @@
     byod:
       type: gpu
       post_build_script: byod_xgboost_master_test.sh
-    cluster_env: xgboost/app_config_gpu_master.yaml
     cluster_compute: xgboost/tpl_gpu_small_scaling_aws.yaml
 
   run:
@@ -1823,7 +1807,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: xgboost/app_config_gpu_master.yaml
         cluster_compute: xgboost/tpl_gpu_small_scaling_gce.yaml
 
   alert: default
@@ -1842,12 +1825,11 @@
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
         - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
-    cluster_env: ../rllib_tests/app_config.yaml
     cluster_compute: tune_rllib/compute_tpl_aws.yaml
 
   run:
     timeout: 2000
-    script: python tune_rllib/run_connect_tests.py
+    script: RAY_AIR_NEW_PERSISTENCE_MODE=1 python tune_rllib/run_connect_tests.py
     wait_for_nodes:
       num_nodes: 9
 
@@ -1857,7 +1839,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: ../rllib_tests/app_config.yaml
         cluster_compute: tune_rllib/compute_tpl_gce.yaml
 
   alert: default
@@ -1865,62 +1846,6 @@
 #######################
 # Tune cloud  tests
 #######################
-- name: tune_cloud_no_sync_down
-  group: Tune cloud tests
-  working_dir: tune_tests/cloud_tests
-  frequency: nightly
-  team: ml
-
-  cluster:
-    byod: {}
-    cluster_env: app_config.yaml
-    cluster_compute: tpl_aws_4x2.yaml
-
-  run:
-    timeout: 600
-    script: python workloads/run_cloud_test.py no_sync_down
-
-    wait_for_nodes:
-      num_nodes: 4
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_compute: tpl_gce_4x8.yaml
-
-  alert: tune_tests
-
-- name: tune_cloud_ssh_sync
-  group: Tune cloud tests
-  working_dir: tune_tests/cloud_tests
-  frequency: nightly
-  team: ml
-
-  cluster:
-    byod: {}
-    cluster_env: app_config.yaml
-    cluster_compute: tpl_aws_4x2.yaml
-
-  run:
-    timeout: 600
-    script: python workloads/run_cloud_test.py ssh_sync
-    wait_for_nodes:
-      num_nodes: 4
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_env: app_config.yaml
-        cluster_compute: tpl_gce_4x8.yaml
-
-  alert: tune_tests
-
 - name: tune_cloud_durable_upload
   group: Tune cloud tests
   working_dir: tune_tests/cloud_tests
@@ -1929,12 +1854,11 @@
 
   cluster:
     byod: {}
-    cluster_env: app_config.yaml
     cluster_compute: tpl_aws_4x2.yaml
 
   run:
     timeout: 600
-    script: python workloads/run_cloud_test.py durable_upload --bucket s3://tune-cloud-tests/durable_upload
+    script: RAY_AIR_NEW_PERSISTENCE_MODE=1 python workloads/run_cloud_test.py durable_upload --bucket s3://tune-cloud-tests/durable_upload
 
     wait_for_nodes:
       num_nodes: 4
@@ -1945,98 +1869,14 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: tpl_gce_4x8.yaml
       run:
         timeout: 600
-        script: python workloads/run_cloud_test.py durable_upload --bucket gs://tune-cloud-tests/durable_upload
+        script: RAY_AIR_NEW_PERSISTENCE_MODE=1 python workloads/run_cloud_test.py durable_upload --bucket gs://tune-cloud-tests/durable_upload
         wait_for_nodes:
           num_nodes: 4
 
   alert: tune_tests
-
-- name: tune_cloud_durable_upload_rllib_str
-  group: Tune cloud tests
-  working_dir: tune_tests/cloud_tests
-
-  stable: false
-
-  frequency: nightly
-  team: ml
-
-  cluster:
-    byod:
-      type: gpu
-    cluster_env: app_config_ml.yaml
-    cluster_compute: tpl_aws_4x2.yaml
-
-  run:
-    timeout: 600
-
-    script: python workloads/run_cloud_test.py durable_upload --trainable rllib_str
-      --bucket s3://tune-cloud-tests/durable_upload_rllib_str
-
-    wait_for_nodes:
-      num_nodes: 4
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_env: app_config_ml.yaml
-        cluster_compute: tpl_gce_4x2.yaml
-      run:
-        timeout: 600
-        script: python workloads/run_cloud_test.py durable_upload --trainable rllib_str
-          --bucket gs://tune-cloud-tests/durable_upload_rllib_str
-        wait_for_nodes:
-          num_nodes: 4
-
-
-  alert: tune_tests
-
-- name: tune_cloud_durable_upload_rllib_trainer
-  group: Tune cloud tests
-  working_dir: tune_tests/cloud_tests
-
-  stable: false
-
-  frequency: nightly
-  team: ml
-
-  cluster:
-    byod:
-      type: gpu
-    cluster_env: app_config_ml.yaml
-    cluster_compute: tpl_aws_4x2.yaml
-
-  run:
-    timeout: 600
-    script: python workloads/run_cloud_test.py durable_upload --trainable rllib_trainer
-      --bucket s3://tune-cloud-tests/durable_upload_rllib_trainer
-
-    wait_for_nodes:
-      num_nodes: 4
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_env: app_config_ml.yaml
-        cluster_compute: tpl_gce_4x2.yaml
-      run:
-        timeout: 600
-        script: python workloads/run_cloud_test.py durable_upload --trainable rllib_str
-          --bucket gs://tune-cloud-tests/durable_upload_rllib_trainer
-        wait_for_nodes:
-          num_nodes: 4
-
-  alert: tune_tests
-
 
 - name: tune_cloud_long_running_cloud_storage
   group: Tune cloud tests
@@ -2046,14 +1886,20 @@
 
   cluster:
     byod: {}
-    cluster_env: app_config.yaml
     cluster_compute: tpl_aws_1x4.yaml
 
   run:
     # 14 hours
     timeout: 50400
     long_running: true
-    script: python workloads/long_running_cloud_storage.py s3://tune-cloud-tests/long_running_cloud_storage
+    script: RAY_AIR_NEW_PERSISTENCE_MODE=1 python workloads/long_running_cloud_storage.py s3://tune-cloud-tests/long_running_cloud_storage
+
+  # NOTE: This smoke test is not useful to run because the point of the test
+  # is to be long running. This is just for debugging updates to the test quickly.
+  smoke_test:
+    frequency: manual
+    run:
+      timeout: 600
 
   variations:
     - __suffix__: aws
@@ -2066,7 +1912,7 @@
         # 14 hours
         timeout: 50400
         long_running: true
-        script: python workloads/long_running_cloud_storage.py gs://tune-cloud-tests/long_running_cloud_storage
+        script: RAY_AIR_NEW_PERSISTENCE_MODE=1 python workloads/long_running_cloud_storage.py gs://tune-cloud-tests/long_running_cloud_storage
         wait_for_nodes:
           num_nodes: 1
 
@@ -2085,12 +1931,11 @@
 
   cluster:
     byod: {}
-    cluster_env: app_config.yaml
     cluster_compute: tpl_1x16.yaml
 
   run:
     timeout: 1200
-    script: python workloads/test_bookkeeping_overhead.py
+    script: RAY_AIR_NEW_PERSISTENCE_MODE=1 python workloads/test_bookkeeping_overhead.py
 
   alert: tune_tests
 
@@ -2100,7 +1945,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: tpl_gce_1x16.yaml
 
 - name: tune_scalability_durable_trainable
@@ -2112,12 +1956,11 @@
 
   cluster:
     byod: {}
-    cluster_env: app_config.yaml
     cluster_compute: tpl_16x2.yaml
 
   run:
     timeout: 900
-    script: python workloads/test_durable_trainable.py --bucket s3://tune-cloud-tests/scalability_durable_trainable
+    script: RAY_AIR_NEW_PERSISTENCE_MODE=1 python workloads/test_durable_trainable.py --bucket s3://tune-cloud-tests/scalability_durable_trainable
     wait_for_nodes:
       num_nodes: 16
 
@@ -2128,11 +1971,10 @@
       frequency: manual
       run:
         timeout: 900
-        script: python workloads/test_durable_trainable.py --bucket gs://tune-cloud-tests/scalability_durable_trainable
+        script: RAY_AIR_NEW_PERSISTENCE_MODE=1 python workloads/test_durable_trainable.py --bucket gs://tune-cloud-tests/scalability_durable_trainable
         wait_for_nodes:
           num_nodes: 16
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: tpl_gce_16x2.yaml
 
   alert: tune_tests
@@ -2147,12 +1989,11 @@
 
   cluster:
     byod: {}
-    cluster_env: app_config.yaml
     cluster_compute: tpl_16x2.yaml
 
   run:
     timeout: 900
-    script: python workloads/test_durable_multifile_checkpoints.py --bucket s3://tune-cloud-tests/scalability_durable_multifile_checkpoints
+    script: RAY_AIR_NEW_PERSISTENCE_MODE=1 python workloads/test_durable_multifile_checkpoints.py --bucket s3://tune-cloud-tests/scalability_durable_multifile_checkpoints
     wait_for_nodes:
       num_nodes: 16
 
@@ -2163,11 +2004,10 @@
       frequency: manual
       run:
         timeout: 900
-        script: python workloads/test_durable_multifile_checkpoints.py --bucket gs://tune-cloud-tests/scalability_durable_multifile_checkpoints
+        script: RAY_AIR_NEW_PERSISTENCE_MODE=1 python workloads/test_durable_multifile_checkpoints.py --bucket gs://tune-cloud-tests/scalability_durable_multifile_checkpoints
         wait_for_nodes:
           num_nodes: 16
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: tpl_gce_16x2.yaml
 
   alert: tune_tests
@@ -2181,12 +2021,11 @@
 
   cluster:
     byod: {}
-    cluster_env: app_config.yaml
     cluster_compute: tpl_1x32_hd.yaml
 
   run:
     timeout: 86400
-    script: python workloads/test_long_running_large_checkpoints.py
+    script: RAY_AIR_NEW_PERSISTENCE_MODE=1 python workloads/test_long_running_large_checkpoints.py
     long_running: true
 
   smoke_test:
@@ -2205,7 +2044,6 @@
       smoke_test:
         frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: tpl_gce_1x32_hd.yaml
 
 - name: tune_scalability_network_overhead
@@ -2217,13 +2055,12 @@
 
   cluster:
     byod: {}
-    cluster_env: app_config.yaml
     cluster_compute: tpl_100x2.yaml
 
   run:
     timeout: 750
     prepare_timeout: 1200
-    script: python workloads/test_network_overhead.py
+    script: RAY_AIR_NEW_PERSISTENCE_MODE=1 python workloads/test_network_overhead.py
     wait_for_nodes:
       num_nodes: 100
 
@@ -2234,19 +2071,17 @@
     - __suffix__: smoke-test
       frequency: nightly
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: tpl_20x2.yaml
       run:
         timeout: 750
         prepare_timeout: 600
-        script: python workloads/test_network_overhead.py --smoke-test
+        script: RAY_AIR_NEW_PERSISTENCE_MODE=1 python workloads/test_network_overhead.py --smoke-test
         wait_for_nodes:
           num_nodes: 20
     - __suffix__: gce
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: tpl_gce_100x2.yaml
 
 - name: tune_scalability_result_throughput_cluster
@@ -2258,12 +2093,11 @@
 
   cluster:
     byod: {}
-    cluster_env: app_config.yaml
     cluster_compute: tpl_16x64.yaml
 
   run:
     timeout: 600
-    script: python workloads/test_result_throughput_cluster.py
+    script: RAY_AIR_NEW_PERSISTENCE_MODE=1 python workloads/test_result_throughput_cluster.py
 
     wait_for_nodes:
       num_nodes: 16
@@ -2276,7 +2110,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: tpl_gce_16x64.yaml
 
 - name: tune_scalability_result_throughput_single_node
@@ -2288,12 +2121,11 @@
 
   cluster:
     byod: {}
-    cluster_env: app_config.yaml
     cluster_compute: tpl_1x96.yaml
 
   run:
     timeout: 600
-    script: python workloads/test_result_throughput_single_node.py
+    script: RAY_AIR_NEW_PERSISTENCE_MODE=1 python workloads/test_result_throughput_single_node.py
 
   alert: tune_tests
 
@@ -2303,11 +2135,7 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: tpl_gce_1x96.yaml
-      run:
-        timeout: 600
-        script: python workloads/test_result_throughput_single_node.py
 
 - name: tune_scalability_xgboost_sweep
   group: Tune scalability tests
@@ -2319,12 +2147,11 @@
   cluster:
     byod:
       post_build_script: byod_xgboost_tune_test.sh
-    cluster_env: app_config_data.yaml
     cluster_compute: tpl_16x64.yaml
 
   run:
     timeout: 3600
-    script: python workloads/test_xgboost_sweep.py
+    script: RAY_AIR_NEW_PERSISTENCE_MODE=1 python workloads/test_xgboost_sweep.py
 
     wait_for_nodes:
       num_nodes: 16
@@ -2338,7 +2165,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config_data.yaml
         cluster_compute: tpl_gce_16x64.yaml
 
 
@@ -2356,12 +2182,11 @@
 
   cluster:
     byod: {}
-    cluster_env: app_config.yaml
     cluster_compute: tpl_aws_16x1.yaml
 
   run:
     timeout: 5400
-    script: python workloads/test_tune_worker_fault_tolerance.py --bucket s3://tune-cloud-tests/worker_fault_tolerance
+    script: RAY_AIR_NEW_PERSISTENCE_MODE=1 python workloads/test_tune_worker_fault_tolerance.py --bucket s3://tune-cloud-tests/worker_fault_tolerance
 
     wait_for_nodes:
       num_nodes: 16
@@ -2379,7 +2204,6 @@
 #        wait_for_nodes:
 #          num_nodes: 16
 #      cluster:
-#        cluster_env: app_config.yaml
 #        cluster_compute: tpl_gce_16x1.yaml
 
 ########################
@@ -2395,7 +2219,6 @@
   cluster:
     byod:
       type: gpu
-    cluster_env: torch_tune_serve_app_config.yaml
     cluster_compute: gpu_tpl_aws.yaml
 
   run:
@@ -2410,7 +2233,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: torch_tune_serve_app_config.yaml
         cluster_compute: gpu_tpl_gce.yaml
 
   alert: default
@@ -2429,10 +2251,12 @@
   team: core
   cluster:
     byod:
+      pip:
+        # TODO: https://github.com/Farama-Foundation/AutoROM/issues/48
+        - https://ray-ci-deps-wheels.s3.us-west-2.amazonaws.com/AutoROM.accept_rom_license-0.5.4-py3-none-any.whl
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
         - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
-    cluster_env: app_config.yaml
     cluster_compute: tpl_cpu_1.yaml
 
   run:
@@ -2456,7 +2280,6 @@
       smoke_test:
         frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: tpl_cpu_1_gce.yaml
 
 - name: long_running_apex
@@ -2473,7 +2296,6 @@
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
         - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
-    cluster_env: ../rllib_tests/app_config.yaml
     cluster_compute: tpl_cpu_3.yaml
 
   run:
@@ -2502,7 +2324,6 @@
         run:
           timeout: 3600
       cluster:
-        cluster_env: ../rllib_tests/app_config.yaml
         cluster_compute: tpl_cpu_3_gce.yaml
 
 - name: long_running_impala
@@ -2519,7 +2340,6 @@
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
         - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
-    cluster_env: ../rllib_tests/app_config.yaml
     cluster_compute: tpl_cpu_1_large.yaml
 
   run:
@@ -2545,7 +2365,6 @@
         run:
           timeout: 3600
       cluster:
-        cluster_env: ../rllib_tests/app_config.yaml
         cluster_compute: tpl_cpu_1_large_gce.yaml
 
 - name: long_running_many_actor_tasks
@@ -2557,9 +2376,11 @@
   team: core
   cluster:
     byod:
+      pip:
+        # TODO: https://github.com/Farama-Foundation/AutoROM/issues/48
+        - https://ray-ci-deps-wheels.s3.us-west-2.amazonaws.com/AutoROM.accept_rom_license-0.5.4-py3-none-any.whl
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
-    cluster_env: app_config.yaml
     cluster_compute: tpl_cpu_1.yaml
 
   run:
@@ -2585,7 +2406,6 @@
         run:
           timeout: 3600
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: tpl_cpu_1_gce.yaml
 
 - name: long_running_many_drivers
@@ -2597,9 +2417,11 @@
   team: core
   cluster:
     byod:
+      pip:
+        # TODO: https://github.com/Farama-Foundation/AutoROM/issues/48
+        - https://ray-ci-deps-wheels.s3.us-west-2.amazonaws.com/AutoROM.accept_rom_license-0.5.4-py3-none-any.whl
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
-    cluster_env: app_config.yaml
     cluster_compute: tpl_cpu_1.yaml
 
   run:
@@ -2625,7 +2447,6 @@
         run:
           timeout: 3600
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: tpl_cpu_1_gce.yaml
 
 - name: long_running_many_ppo
@@ -2644,12 +2465,11 @@
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
         - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
-    cluster_env: ../rllib_tests/app_config.yaml
     cluster_compute: many_ppo.yaml
 
   run:
     timeout: 86400
-    script: python workloads/many_ppo.py
+    script: RAY_AIR_NEW_PERSISTENCE_MODE=1 python workloads/many_ppo.py
     long_running: true
     wait_for_nodes:
       num_nodes: 1
@@ -2673,7 +2493,6 @@
         run:
           timeout: 3600
       cluster:
-        cluster_env: ../rllib_tests/app_config.yaml
         cluster_compute: many_ppo_gce.yaml
 
 - name: long_running_many_tasks
@@ -2685,9 +2504,11 @@
   team: core
   cluster:
     byod:
+      pip:
+        # TODO: https://github.com/Farama-Foundation/AutoROM/issues/48
+        - https://ray-ci-deps-wheels.s3.us-west-2.amazonaws.com/AutoROM.accept_rom_license-0.5.4-py3-none-any.whl
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
-    cluster_env: app_config.yaml
     cluster_compute: tpl_cpu_1.yaml
 
   run:
@@ -2713,7 +2534,6 @@
         run:
           timeout: 3600
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: tpl_cpu_1_gce.yaml
 
 - name: long_running_many_tasks_serialized_ids
@@ -2725,9 +2545,11 @@
   team: core
   cluster:
     byod:
+      pip:
+        # TODO: https://github.com/Farama-Foundation/AutoROM/issues/48
+        - https://ray-ci-deps-wheels.s3.us-west-2.amazonaws.com/AutoROM.accept_rom_license-0.5.4-py3-none-any.whl
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
-    cluster_env: app_config.yaml
     cluster_compute: tpl_cpu_1.yaml
 
   run:
@@ -2753,7 +2575,6 @@
         run:
           timeout: 3600
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: tpl_cpu_1_gce.yaml
 
 - name: long_running_node_failures
@@ -2765,9 +2586,11 @@
   team: core
   cluster:
     byod:
+      pip:
+        # TODO: https://github.com/Farama-Foundation/AutoROM/issues/48
+        - https://ray-ci-deps-wheels.s3.us-west-2.amazonaws.com/AutoROM.accept_rom_license-0.5.4-py3-none-any.whl
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
-    cluster_env: app_config.yaml
     cluster_compute: tpl_cpu_1.yaml
 
   run:
@@ -2793,7 +2616,6 @@
         run:
           timeout: 3600
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: tpl_cpu_1_gce.yaml
 
 - name: long_running_pbt
@@ -2810,7 +2632,6 @@
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
         - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
-    cluster_env: ../rllib_tests/app_config.yaml
     cluster_compute: tpl_cpu_1.yaml
 
   run:
@@ -2836,7 +2657,6 @@
         run:
           timeout: 3600
       cluster:
-        cluster_env: ../rllib_tests/app_config.yaml
         cluster_compute: tpl_cpu_1_gce.yaml
 
 - name: long_running_serve
@@ -2848,9 +2668,11 @@
 
   cluster:
     byod:
+      pip:
+        # TODO: https://github.com/Farama-Foundation/AutoROM/issues/48
+        - https://ray-ci-deps-wheels.s3.us-west-2.amazonaws.com/AutoROM.accept_rom_license-0.5.4-py3-none-any.whl
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
-    cluster_env: app_config.yaml
     cluster_compute: tpl_cpu_1.yaml
 
   run:
@@ -2876,7 +2698,6 @@
         run:
           timeout: 3600
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: tpl_cpu_1_gce.yaml
 
 - name: long_running_serve_failure
@@ -2890,9 +2711,11 @@
 
   cluster:
     byod:
+      pip:
+        # TODO: https://github.com/Farama-Foundation/AutoROM/issues/48
+        - https://ray-ci-deps-wheels.s3.us-west-2.amazonaws.com/AutoROM.accept_rom_license-0.5.4-py3-none-any.whl
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
-    cluster_env: app_config.yaml
     cluster_compute: tpl_cpu_1_c5.yaml
 
   run:
@@ -2918,7 +2741,6 @@
         run:
           timeout: 86400
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: tpl_cpu_1_c5_gce.yaml
 
 - name: long_running_many_jobs
@@ -2932,9 +2754,11 @@
 
   cluster:
     byod:
+      pip:
+        # TODO: https://github.com/Farama-Foundation/AutoROM/issues/48
+        - https://ray-ci-deps-wheels.s3.us-west-2.amazonaws.com/AutoROM.accept_rom_license-0.5.4-py3-none-any.whl
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
-    cluster_env: app_config.yaml
     cluster_compute: tpl_cpu_1.yaml
 
   run:
@@ -2960,7 +2784,6 @@
         run:
           timeout: 3600
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: tpl_cpu_1_gce.yaml
 
 - name: long_running_distributed_pytorch_pbt_failure
@@ -2973,7 +2796,6 @@
   cluster:
     byod:
       type: gpu
-    cluster_env: app_config.yaml
     cluster_compute: compute_tpl.yaml
 
   run:
@@ -2998,7 +2820,6 @@
         run:
           timeout: 3600
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: compute_tpl_gce.yaml
 
 ########################
@@ -3015,7 +2836,6 @@
   cluster:
     byod:
       type: gpu
-    cluster_env: app_config.yaml
     cluster_compute: compute_tpl_4_xlarge.yaml
 
   run:
@@ -3033,7 +2853,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: compute_tpl_gce_4_xlarge.yaml
 
 - name: jobs_basic_remote_working_dir
@@ -3046,7 +2865,6 @@
   cluster:
     byod:
       type: gpu
-    cluster_env: app_config.yaml
     cluster_compute: compute_tpl_4_xlarge.yaml
 
   run:
@@ -3064,7 +2882,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: compute_tpl_gce_4_xlarge.yaml
 
 - name: jobs_remote_multi_node
@@ -3076,7 +2893,6 @@
   cluster:
     byod:
       type: gpu
-    cluster_env: app_config.yaml
     cluster_compute: compute_tpl_4_xlarge.yaml
   run:
     timeout: 600
@@ -3090,7 +2906,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: compute_tpl_gce_4_xlarge.yaml
 
 - name: jobs_check_cuda_available
@@ -3102,7 +2917,6 @@
   cluster:
     byod:
       type: gpu
-    cluster_env: app_config.yaml
     cluster_compute: compute_tpl_gpu_node.yaml
   run:
     timeout: 600
@@ -3116,7 +2930,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: compute_tpl_gce_gpu_node.yaml
 
 - name: jobs_specify_num_gpus
@@ -3128,7 +2941,6 @@
   cluster:
     byod:
       type: gpu
-    cluster_env: app_config.yaml
     cluster_compute: compute_tpl_gpu_worker.yaml
   run:
     timeout: 600
@@ -3142,7 +2954,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: compute_tpl_gce_gpu_worker.yaml
 
 ########################
@@ -3157,7 +2968,6 @@
 
   cluster:
     byod: {}
-    cluster_env: app_config.yaml
     cluster_compute: rte_small.yaml
 
   run:
@@ -3175,7 +2985,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: rte_gce_small.yaml
 
 - name: runtime_env_wheel_urls
@@ -3187,7 +2996,6 @@
 
   cluster:
     byod: {}
-    cluster_env: app_config.yaml
     cluster_compute: rte_minimal.yaml
 
   run:
@@ -3205,7 +3013,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: rte_gce_minimal.yaml
 
 # It seems like the consensus is that this should be tested in CI, and not in a nightly test.
@@ -3218,7 +3025,6 @@
 #   team: serve
 
 #   cluster:
-#     cluster_env: app_config.yaml
 #     cluster_compute: rte_minimal.yaml
 
 #   run:
@@ -3243,7 +3049,6 @@
 
   cluster:
     byod: {}
-    cluster_env: app_config.yaml
     cluster_compute: compute_tpl_32_cpu.yaml
 
   run:
@@ -3259,7 +3064,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: compute_tpl_32_cpu_gce.yaml
 
 - name: serve_multi_deployment_1k_noop_replica
@@ -3271,7 +3075,6 @@
 
   cluster:
     byod: {}
-    cluster_env: app_config.yaml
     cluster_compute: compute_tpl_32_cpu.yaml
 
   run:
@@ -3287,7 +3090,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: compute_tpl_32_cpu_gce.yaml
 
 - name: serve_autoscaling_single_deployment
@@ -3299,7 +3101,6 @@
 
   cluster:
     byod: {}
-    cluster_env: app_config.yaml
     cluster_compute: compute_tpl_8_cpu_autoscaling.yaml
 
   run:
@@ -3315,7 +3116,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: compute_tpl_8_cpu_autoscaling_gce.yaml
 
 - name: serve_autoscaling_multi_deployment
@@ -3327,7 +3127,6 @@
 
   cluster:
     byod: {}
-    cluster_env: app_config.yaml
     cluster_compute: compute_tpl_32_cpu_autoscaling.yaml
 
   run:
@@ -3343,7 +3142,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: compute_tpl_32_cpu_autoscaling_gce.yaml
 
 - name: serve_serve_micro_benchmark
@@ -3355,7 +3153,6 @@
 
   cluster:
     byod: {}
-    cluster_env: app_config.yaml
     cluster_compute: compute_tpl_single_node.yaml
 
   run:
@@ -3371,7 +3168,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: compute_tpl_single_node_gce.yaml
 
 # - name: serve_serve_micro_benchmark_k8s
@@ -3383,7 +3179,6 @@
 #   team: serve
 
 #   cluster:
-#     cluster_env: app_config.yaml
 #     cluster_compute: compute_tpl_single_node_k8s.yaml
 
 #   run:
@@ -3403,7 +3198,6 @@
 
   cluster:
     byod: {}
-    cluster_env: app_config.yaml
     cluster_compute: compute_tpl_single_node_32_cpu.yaml
 
   run:
@@ -3420,7 +3214,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: compute_tpl_single_node_32_cpu_gce.yaml
 
 - name: deployment_graph_wide_ensemble
@@ -3432,7 +3225,6 @@
 
   cluster:
     byod: {}
-    cluster_env: app_config.yaml
     cluster_compute: compute_tpl_single_node_32_cpu.yaml
 
   run:
@@ -3449,7 +3241,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: compute_tpl_single_node_32_cpu_gce.yaml
 
 - name: serve_handle_long_chain
@@ -3461,7 +3252,6 @@
 
   cluster:
     byod: {}
-    cluster_env: app_config.yaml
     cluster_compute: compute_tpl_single_node_32_cpu.yaml
 
   run:
@@ -3478,7 +3268,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: compute_tpl_single_node_32_cpu_gce.yaml
 
 - name: serve_handle_wide_ensemble
@@ -3490,7 +3279,6 @@
 
   cluster:
     byod: {}
-    cluster_env: app_config.yaml
     cluster_compute: compute_tpl_single_node_32_cpu.yaml
 
   run:
@@ -3507,7 +3295,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: compute_tpl_single_node_32_cpu_gce.yaml
 
 
@@ -3520,7 +3307,6 @@
 
   cluster:
     byod: {}
-    cluster_env: app_config.yaml
     cluster_compute: compute_tpl_single_node.yaml
 
   run:
@@ -3536,7 +3322,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: compute_tpl_single_node_gce.yaml
 
 - name: serve_micro_protocol_http_benchmark
@@ -3548,7 +3333,6 @@
 
   cluster:
     byod: {}
-    cluster_env: app_config.yaml
     cluster_compute: compute_tpl_single_node.yaml
 
   run:
@@ -3564,7 +3348,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: compute_tpl_single_node_gce.yaml
 
 
@@ -3578,7 +3361,6 @@
   cluster:
     byod:
       type: gpu
-    cluster_env: gpu_app_config.yaml
     cluster_compute: compute_tpl_gpu_node.yaml
 
   run:
@@ -3594,7 +3376,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: gpu_app_config.yaml
         cluster_compute: compute_tpl_gpu_node_gce.yaml
 
 ########################
@@ -3612,12 +3393,11 @@
     byod:
       type: gpu
       post_build_script: byod_horovod_test.sh
-    cluster_env: app_config.yaml
     cluster_compute: compute_tpl_aws.yaml
 
   run:
     timeout: 3000
-    script: python train_horovod_multi_node_test.py
+    script: RAY_AIR_NEW_PERSISTENCE_MODE=1 python train_horovod_multi_node_test.py
 
     wait_for_nodes:
       num_nodes: 2
@@ -3628,7 +3408,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: compute_tpl_gce.yaml
 
   alert: default
@@ -3648,7 +3427,6 @@
     byod:
       type: gpu
       post_build_script: byod_alpa_test.sh
-    cluster_env: app_config.yaml
     cluster_compute: gpu_2x4_t4_aws.yaml
 
   run:
@@ -3664,11 +3442,10 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: gpu_2x4_t4_gce.yaml
       run:
         timeout: 3600
-        script: bash run_train_opt_2_7b.sh --storage gcs
+        script: RAY_AIR_NEW_PERSISTENCE_MODE=1 bash run_train_opt_2_7b.sh --storage gcs
 
         wait_for_nodes:
           num_nodes: 2
@@ -3686,12 +3463,11 @@
     byod:
       type: gpu
       post_build_script: byod_alpa_test.sh
-    cluster_env: app_config.yaml
     cluster_compute: gpu_1x8_v100_aws.yaml
 
   run:
     timeout: 3600
-    script: bash run_inference_opt_30b.sh --storage aws
+    script: RAY_AIR_NEW_PERSISTENCE_MODE=1 bash run_inference_opt_30b.sh --storage aws
 
     wait_for_nodes:
       num_nodes: 1
@@ -3702,7 +3478,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: gpu_1x8_v100_gce.yaml
       run:
         timeout: 3600
@@ -3731,7 +3506,6 @@
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
         - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
-    cluster_env: app_config.yaml
     cluster_compute: multi_node_checkpointing_compute_config.yaml
 
   run:
@@ -3749,7 +3523,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: multi_node_checkpointing_compute_config_gce.yaml
 
 - name: rllib_learner_e2e_module_loading
@@ -3766,7 +3539,6 @@
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
         - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
-    cluster_env: app_config.yaml
     cluster_compute: multi_node_checkpointing_compute_config.yaml
 
   run:
@@ -3784,7 +3556,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: multi_node_checkpointing_compute_config_gce.yaml
 
 - name: rllib_learning_tests_a2c_tf
@@ -3801,7 +3572,6 @@
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
         - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
-    cluster_env: app_config.yaml
     cluster_compute: 1gpu_16cpus.yaml
 
   run:
@@ -3816,7 +3586,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: 1gpu_16cpus_gce.yaml
 
 - name: rllib_learning_tests_a2c_torch
@@ -3833,7 +3602,6 @@
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
         - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
-    cluster_env: app_config.yaml
     cluster_compute: 1gpu_16cpus.yaml
 
   run:
@@ -3848,7 +3616,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: 1gpu_16cpus_gce.yaml
 
 - name: rllib_learning_tests_a3c_tf
@@ -3865,7 +3632,6 @@
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
         - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
-    cluster_env: app_config.yaml
     cluster_compute: 32cpus.yaml
 
   run:
@@ -3880,7 +3646,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: 32cpus_gce.yaml
 
 - name: rllib_learning_tests_apex_tf
@@ -3900,7 +3665,6 @@
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
         - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
-    cluster_env: app_config.yaml
     cluster_compute: 1gpu_24cpus.yaml
 
   run:
@@ -3915,7 +3679,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: 1gpu_24cpus_gce.yaml
 
 - name: rllib_learning_tests_apex_torch
@@ -3932,7 +3695,6 @@
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
         - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
-    cluster_env: app_config.yaml
     cluster_compute: 1gpu_24cpus.yaml
 
   run:
@@ -3947,7 +3709,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: 1gpu_24cpus_gce.yaml
 
 - name: rllib_learning_tests_appo_tf
@@ -3964,7 +3725,6 @@
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
         - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
-    cluster_env: app_config.yaml
     cluster_compute: 4gpus_64cpus.yaml
 
   run:
@@ -3979,7 +3739,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: 4gpus_64cpus_gce.yaml
 
 - name: rllib_learning_tests_appo_torch
@@ -3999,7 +3758,6 @@
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
         - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
-    cluster_env: app_config.yaml
     cluster_compute: 4gpus_64cpus.yaml
 
   run:
@@ -4014,7 +3772,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: 4gpus_64cpus_gce.yaml
 
 # TODO (sven): Remove this test once we are on new stack by default for APPO.
@@ -4032,7 +3789,6 @@
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
         - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
-    cluster_env: app_config.yaml
     cluster_compute: 2gpus_32cpus.yaml
 
   run:
@@ -4047,7 +3803,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: 2gpus_32cpus_gce.yaml
 
 # TODO (sven): Remove this test once we are on new stack by default for APPO.
@@ -4068,7 +3823,6 @@
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
         - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
-    cluster_env: app_config.yaml
     cluster_compute: 2gpus_32cpus.yaml
 
   run:
@@ -4083,7 +3837,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: 2gpus_32cpus_gce.yaml
 
 - name: rllib_learning_tests_bc_tf
@@ -4100,7 +3853,6 @@
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
         - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
-    cluster_env: app_config.yaml
     cluster_compute: 1gpu_16cpus.yaml
 
   run:
@@ -4115,7 +3867,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: 1gpu_16cpus_gce.yaml
 
 - name: rllib_learning_tests_bc_torch
@@ -4132,7 +3883,6 @@
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
         - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
-    cluster_env: app_config.yaml
     cluster_compute: 1gpu_16cpus.yaml
 
   run:
@@ -4147,7 +3897,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: 1gpu_16cpus_gce.yaml
 
 - name: rllib_learning_tests_cql_tf
@@ -4167,7 +3916,6 @@
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
         - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
-    cluster_env: app_config.yaml
     cluster_compute: 1gpu_16cpus.yaml
 
   run:
@@ -4182,7 +3930,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: 1gpu_16cpus_gce.yaml
 
 - name: rllib_learning_tests_cql_torch
@@ -4202,7 +3949,6 @@
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
         - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
-    cluster_env: app_config.yaml
     cluster_compute: 1gpu_16cpus.yaml
 
   run:
@@ -4217,7 +3963,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: 1gpu_16cpus_gce.yaml
 
 - name: rllib_learning_tests_ddpg_tf
@@ -4225,6 +3970,7 @@
   working_dir: rllib_tests
 
   frequency: nightly
+  stable: false
   team: rllib
 
   cluster:
@@ -4234,7 +3980,6 @@
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
         - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
-    cluster_env: app_config.yaml
     cluster_compute: 1gpu_16cpus.yaml
 
   run:
@@ -4249,7 +3994,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: 1gpu_16cpus_gce.yaml
 
 - name: rllib_learning_tests_ddpg_torch
@@ -4257,6 +4001,7 @@
   working_dir: rllib_tests
 
   frequency: nightly
+  stable: false
   team: rllib
   python: "3.8"
   cluster:
@@ -4266,7 +4011,6 @@
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
         - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
-    cluster_env: app_config.yaml
     cluster_compute: 1gpu_16cpus.yaml
 
   run:
@@ -4281,7 +4025,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: 1gpu_16cpus_gce.yaml
 
 - name: rllib_learning_tests_dqn_tf
@@ -4298,7 +4041,6 @@
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
         - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
-    cluster_env: app_config.yaml
     cluster_compute: 1gpu_32cpus.yaml
 
   run:
@@ -4313,7 +4055,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: 1gpu_16cpus_gce.yaml
 
 - name: rllib_learning_tests_dqn_torch
@@ -4333,7 +4074,6 @@
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
         - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
-    cluster_env: app_config.yaml
     cluster_compute: 1gpu_16cpus.yaml
 
   run:
@@ -4348,7 +4088,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: 1gpu_16cpus_gce.yaml
 
 - name: rllib_learning_tests_es_tf
@@ -4365,7 +4104,6 @@
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
         - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
-    cluster_env: app_config.yaml
     cluster_compute: 2gpus_64cpus.yaml
 
   run:
@@ -4380,7 +4118,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: 2gpus_64cpus_gce.yaml
 
 - name: rllib_learning_tests_es_torch
@@ -4397,7 +4134,6 @@
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
         - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
-    cluster_env: app_config.yaml
     cluster_compute: 2gpus_64cpus.yaml
 
   run:
@@ -4412,7 +4148,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: 2gpus_64cpus_gce.yaml
 
 - name: rllib_learning_tests_impala_tf
@@ -4429,7 +4164,6 @@
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
         - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
-    cluster_env: app_config.yaml
     cluster_compute: 1gpu_16cpus.yaml
 
   run:
@@ -4444,7 +4178,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: 1gpu_16cpus_gce.yaml
 
 - name: rllib_learning_tests_impala_torch
@@ -4461,7 +4194,6 @@
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
         - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
-    cluster_env: app_config.yaml
     cluster_compute: 1gpu_16cpus.yaml
 
   run:
@@ -4476,7 +4208,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: 1gpu_16cpus_gce.yaml
 
 - name: rllib_learning_tests_marwil_tf
@@ -4496,7 +4227,6 @@
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
         - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
-    cluster_env: app_config.yaml
     cluster_compute: 1gpu_16cpus.yaml
 
   run:
@@ -4511,7 +4241,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: 1gpu_16cpus_gce.yaml
 
 - name: rllib_learning_tests_marwil_torch
@@ -4531,7 +4260,6 @@
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
         - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
-    cluster_env: app_config.yaml
     cluster_compute: 1gpu_16cpus.yaml
 
   run:
@@ -4546,7 +4274,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: 1gpu_16cpus_gce.yaml
 
 - name: rllib_learning_tests_ppo_tf
@@ -4563,7 +4290,6 @@
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
         - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
-    cluster_env: app_config.yaml
     cluster_compute: 4gpus_64cpus.yaml
 
   run:
@@ -4578,7 +4304,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: 4gpus_64cpus_gce.yaml
 
 - name: rllib_learning_tests_ppo_torch
@@ -4598,7 +4323,6 @@
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
         - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
-    cluster_env: app_config.yaml
     cluster_compute: 4gpus_64cpus.yaml
 
   run:
@@ -4613,7 +4337,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: 4gpus_64cpus_gce.yaml
 
 # TODO (sven): Remove this test once we are on new stack by default for APPO.
@@ -4631,7 +4354,6 @@
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
         - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
-    cluster_env: app_config.yaml
     cluster_compute: 2gpus_32cpus.yaml
 
   run:
@@ -4646,7 +4368,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: 2gpus_32cpus_gce.yaml
 
 # TODO (sven): Remove this test once we are on new stack by default for APPO.
@@ -4667,7 +4388,6 @@
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
         - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
-    cluster_env: app_config.yaml
     cluster_compute: 2gpus_32cpus.yaml
 
   run:
@@ -4682,7 +4402,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: 2gpus_32cpus_gce.yaml
 
 - name: rllib_learning_tests_sac_tf
@@ -4699,7 +4418,6 @@
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
         - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
-    cluster_env: app_config.yaml
     cluster_compute: 1gpu_16cpus.yaml
 
   run:
@@ -4714,7 +4432,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: 1gpu_16cpus_gce.yaml
 
 - name: rllib_learning_tests_sac_torch
@@ -4731,7 +4448,6 @@
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
         - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
-    cluster_env: app_config.yaml
     cluster_compute: 1gpu_16cpus.yaml
 
   run:
@@ -4746,7 +4462,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: 1gpu_16cpus_gce.yaml
 
 - name: rllib_learning_tests_slateq_tf
@@ -4763,7 +4478,6 @@
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
         - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
-    cluster_env: app_config.yaml
     cluster_compute: 1gpu_16cpus.yaml
 
   run:
@@ -4778,7 +4492,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: 1gpu_16cpus_gce.yaml
 
 - name: rllib_learning_tests_slateq_torch
@@ -4798,7 +4511,6 @@
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
         - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
-    cluster_env: app_config.yaml
     cluster_compute: 1gpu_16cpus.yaml
 
   run:
@@ -4813,7 +4525,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: 1gpu_16cpus_gce.yaml
 
 - name: rllib_learning_tests_td3_tf
@@ -4830,7 +4541,6 @@
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
         - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
-    cluster_env: app_config.yaml
     cluster_compute: 1gpu_16cpus.yaml
 
   run:
@@ -4845,7 +4555,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: 1gpu_16cpus_gce.yaml
 
 - name: rllib_learning_tests_td3_torch
@@ -4862,7 +4571,6 @@
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
         - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
-    cluster_env: app_config.yaml
     cluster_compute: 1gpu_16cpus.yaml
 
   run:
@@ -4877,7 +4585,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: 1gpu_16cpus_gce.yaml
 
 - name: rllib_multi_gpu_learning_tests
@@ -4894,7 +4601,6 @@
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
         - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
-    cluster_env: app_config.yaml
     cluster_compute: 8gpus_96cpus.yaml
 
   run:
@@ -4909,7 +4615,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: 8gpus_96cpus_gce.yaml
 
 - name: rllib_multi_gpu_with_lstm_learning_tests
@@ -4926,7 +4631,6 @@
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
         - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
-    cluster_env: app_config.yaml
     cluster_compute: 8gpus_96cpus.yaml
 
   run:
@@ -4941,7 +4645,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: 8gpus_96cpus_gce.yaml
 
 - name: rllib_multi_gpu_with_attention_learning_tests
@@ -4958,7 +4661,6 @@
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
         - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
-    cluster_env: app_config.yaml
     cluster_compute: 8gpus_96cpus.yaml
 
   run:
@@ -4975,8 +4677,6 @@
       cluster:
         # TODO(https://github.com/ray-project/ray/issues/34591)
         # Revert to the comment below once ^ closed.
-        # cluster_env: app_config.yaml
-        cluster_env: debug_app_config.yaml
         cluster_compute: 8gpus_96cpus_gce.yaml
 
 - name: rllib_stress_tests
@@ -4993,7 +4693,6 @@
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
         - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
-    cluster_env: app_config.yaml
     cluster_compute: 4gpus_544_cpus.yaml
 
   run:
@@ -5021,7 +4720,6 @@
         run:
           timeout: 2000
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: 4gpus_512_cpus_gce.yaml
 
 
@@ -5040,7 +4738,6 @@
     byod:
       runtime_env:
         - RAY_worker_killing_policy=retriable_lifo
-    cluster_env: shuffle/shuffle_app_config.yaml
     cluster_compute: shuffle/shuffle_compute_multi.yaml
 
   run:
@@ -5055,7 +4752,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: shuffle/shuffle_app_config.yaml
         cluster_compute: shuffle/shuffle_compute_multi_gce.yaml
 
 
@@ -5068,7 +4764,6 @@
   team: core
   cluster:
     byod: {}
-    cluster_env: stress_tests/stress_tests_app_config.yaml
     cluster_compute: stress_tests/placement_group_tests_compute.yaml
 
   run:
@@ -5081,7 +4776,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: stress_tests/stress_tests_app_config.yaml
         cluster_compute: stress_tests/placement_group_tests_compute_gce.yaml
 
 - name: decision_tree_autoscaling_20_runs
@@ -5093,7 +4787,6 @@
   team: core
   cluster:
     byod: {}
-    cluster_env: decision_tree/decision_tree_app_config.yaml
     cluster_compute: decision_tree/autoscaling_compute.yaml
 
   run:
@@ -5106,7 +4799,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: decision_tree/decision_tree_app_config.yaml
         cluster_compute: decision_tree/autoscaling_compute_gce.yaml
 
 - name: autoscaling_shuffle_1tb_1000_partitions
@@ -5120,7 +4812,6 @@
     byod:
       runtime_env:
         - RAY_worker_killing_policy=retriable_lifo
-    cluster_env: shuffle/shuffle_app_config.yaml
     cluster_compute: shuffle/shuffle_compute_autoscaling.yaml
 
   run:
@@ -5134,7 +4825,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: shuffle/shuffle_app_config.yaml
         cluster_compute: shuffle/shuffle_compute_autoscaling_gce.yaml
 
 - name: microbenchmark
@@ -5145,7 +4835,6 @@
 
   cluster:
     byod: {}
-    cluster_env: app_config.yaml
     cluster_compute: tpl_64.yaml
 
   run:
@@ -5158,8 +4847,9 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: tpl_64_gce.yaml
+    - __suffix__: aws.py311
+      python: "3.11"
 
 
 - name: benchmark_worker_startup
@@ -5174,7 +4864,6 @@
   cluster:
     byod:
       type: gpu
-    cluster_env: app_config_gpu.yaml
     cluster_compute: only_head_node_1gpu_64cpu.yaml
 
   run:
@@ -5191,7 +4880,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config_gpu.yaml
         cluster_compute: only_head_node_1gpu_64cpu_gce.yaml
 
 - name: dask_on_ray_100gb_sort
@@ -5206,7 +4894,6 @@
       runtime_env:
         - RAY_worker_killing_policy=retriable_lifo
       post_build_script: byod_dask_test.sh
-    cluster_env: dask_on_ray/dask_on_ray_app_config.yaml
     cluster_compute: dask_on_ray/dask_on_ray_sort_compute_template.yaml
 
   run:
@@ -5220,7 +4907,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: dask_on_ray/dask_on_ray_app_config.yaml
         cluster_compute: dask_on_ray/dask_on_ray_sort_compute_template_gce.yaml
 
 
@@ -5236,7 +4922,6 @@
       runtime_env:
         - RAY_worker_killing_policy=retriable_lifo
       post_build_script: byod_dask_test.sh
-    cluster_env: dask_on_ray/large_scale_dask_on_ray_app_config.yaml
     cluster_compute: dask_on_ray/dask_on_ray_stress_compute.yaml
 
   run:
@@ -5275,7 +4960,6 @@
       runtime_env:
         - RAY_MAX_LIMIT_FROM_API_SERVER=1000000000
         - RAY_MAX_LIMIT_FROM_DATA_SOURCE=1000000000
-    cluster_env: stress_tests/state_api_app_config.yaml
     cluster_compute: stress_tests/stress_tests_compute_large.yaml
 
   run:
@@ -5302,7 +4986,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: stress_tests/state_api_app_config.yaml
         cluster_compute: stress_tests/stress_tests_compute_large_gce.yaml
       smoke_test:
         frequency: manual
@@ -5319,7 +5002,6 @@
       runtime_env:
         - RAY_MAX_LIMIT_FROM_API_SERVER=1000000000
         - RAY_MAX_LIMIT_FROM_DATA_SOURCE=1000000000
-    cluster_env: shuffle/shuffle_with_state_api_app_config.yaml
     cluster_compute: shuffle/shuffle_compute_single.yaml
 
   run:
@@ -5333,7 +5015,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: shuffle/shuffle_with_state_api_app_config.yaml
         cluster_compute: shuffle/shuffle_compute_single_gce.yaml
 
 - name: stress_test_many_tasks
@@ -5344,7 +5025,6 @@
   team: core
   cluster:
     byod: {}
-    cluster_env: stress_tests/stress_tests_app_config.yaml
     cluster_compute: stress_tests/stress_tests_compute.yaml
 
   run:
@@ -5372,7 +5052,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: stress_tests/stress_tests_app_config.yaml
         cluster_compute: stress_tests/stress_tests_compute_gce.yaml
       smoke_test:
         frequency: manual
@@ -5385,7 +5064,6 @@
   team: core
   cluster:
     byod: {}
-    cluster_env: stress_tests/stress_tests_app_config.yaml
     cluster_compute: stress_tests/stress_tests_compute.yaml
 
   run:
@@ -5414,7 +5092,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: stress_tests/stress_tests_app_config.yaml
         cluster_compute: stress_tests/stress_tests_compute_gce.yaml
       smoke_test:
         frequency: manual
@@ -5429,7 +5106,6 @@
   team: core
   cluster:
     byod: {}
-    cluster_env: stress_tests/stress_tests_app_config.yaml
     cluster_compute: stress_tests/smoke_test_compute.yaml
 
   run:
@@ -5446,7 +5122,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: stress_tests/stress_tests_app_config.yaml
         cluster_compute: stress_tests/smoke_test_compute_gce.yaml
 
 # - name: threaded_actors_stress_test
@@ -5456,7 +5131,6 @@
 #   frequency: nightly
 #   team: core
 #   cluster:
-#     cluster_env: stress_tests/stress_tests_app_config.yaml
 #     cluster_compute: stress_tests/stress_test_threaded_actor_compute.yaml
 #
 #   run:
@@ -5483,6 +5157,33 @@
 #         num_nodes: 5
 #         timeout: 600
 
+- name: stress_test_many_runtime_envs
+  group: core-daily-test
+  working_dir: nightly_tests
+
+  python: "3.8"
+  frequency: nightly
+  team: core
+  cluster:
+    byod: {}
+    cluster_compute: stress_tests/smoke_test_compute.yaml
+
+  run:
+    timeout: 14400
+    wait_for_nodes:
+      num_nodes: 5
+    script: python stress_tests/test_many_runtime_envs_runner.py --num_runtime_envs=10000
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: stress_tests/smoke_test_compute_gce.yaml
+      smoke_test:
+        frequency: manual
+
 - name: single_node_oom
   group: core-daily-test
   working_dir: nightly_tests
@@ -5491,7 +5192,6 @@
   team: core
   cluster:
     byod: {}
-    cluster_env: stress_tests/stress_tests_single_node_oom_app_config.yaml
     cluster_compute: stress_tests/stress_tests_single_node_oom_compute.yaml
 
   run:
@@ -5504,7 +5204,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: stress_tests/stress_tests_single_node_oom_app_config.yaml
         cluster_compute: stress_tests/stress_tests_single_node_oom_compute_gce.yaml
 
 
@@ -5522,7 +5221,6 @@
       runtime_env:
         - RAY_memory_usage_threshold=0.7
         - RAY_task_oom_retries=-1
-    cluster_env: oom/stress_tests_tune_air_oom_app_config.yaml
     cluster_compute: oom/stress_tests_tune_air_oom_compute.yaml
 
   run:
@@ -5542,7 +5240,6 @@
       runtime_env:
         - RAY_worker_killing_policy=retriable_lifo
       post_build_script: byod_dask_test.sh
-    cluster_env: dask_on_ray/dask_on_ray_app_config.yaml
     cluster_compute: dask_on_ray/1tb_sort_compute.yaml
 
   run:
@@ -5562,7 +5259,6 @@
   team: core
   cluster:
     byod: {}
-    cluster_env: distributed/many_nodes_tests/app_config.yaml
     cluster_compute: distributed/many_nodes_tests/compute_config.yaml
 
   run:
@@ -5579,7 +5275,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: distributed/many_nodes_tests/app_config.yaml
         cluster_compute: distributed/many_nodes_tests/compute_config_gce.yaml
 
 #- name: many_nodes_multi_master_test
@@ -5589,7 +5284,6 @@
 #  frequency: nightly-3x
 #  team: core
 #  cluster:
-#    cluster_env: many_nodes_tests/app_config.yaml
 #    cluster_compute: many_nodes_tests/compute_config.yaml
 #
 #  run:
@@ -5607,7 +5301,6 @@
   team: core
   cluster:
     byod: {}
-    cluster_env: placement_group_tests/app_config.yaml
     cluster_compute: placement_group_tests/compute.yaml
 
   run:
@@ -5620,7 +5313,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: placement_group_tests/app_config.yaml
         cluster_compute: placement_group_tests/compute_gce.yaml
 
 - name: placement_group_performance_test
@@ -5631,7 +5323,6 @@
   team: core
   cluster:
     byod: {}
-    cluster_env: placement_group_tests/app_config.yaml
     cluster_compute: placement_group_tests/pg_perf_test_compute.yaml
 
   run:
@@ -5646,7 +5337,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: placement_group_tests/app_config.yaml
         cluster_compute: placement_group_tests/pg_perf_test_compute_gce.yaml
 
 
@@ -5665,7 +5355,6 @@
       type: gpu
       runtime_env:
         - LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so
-    cluster_env: app_config.yaml
     cluster_compute: single_node.yaml
 
   run:
@@ -5679,7 +5368,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: single_node_gce.yaml
 
 - name: object_store
@@ -5693,7 +5381,6 @@
       type: gpu
       runtime_env:
         - LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so
-    cluster_env: app_config.yaml
     cluster_compute: object_store.yaml
 
   run:
@@ -5708,7 +5395,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: object_store_gce.yaml
 
 - name: many_actors
@@ -5722,7 +5408,6 @@
       type: gpu
       runtime_env:
         - LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so
-    cluster_env: app_config.yaml
     cluster_compute: distributed.yaml
 
   run:
@@ -5737,7 +5422,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: distributed_gce.yaml
 
 - name: many_actors_smoke_test
@@ -5751,7 +5435,6 @@
       type: gpu
       runtime_env:
         - LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so
-    cluster_env: app_config.yaml
     cluster_compute: distributed_smoke_test.yaml
 
   run:
@@ -5772,7 +5455,6 @@
       type: gpu
       runtime_env:
         - LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so
-    cluster_env: app_config.yaml
     cluster_compute: distributed.yaml
 
   run:
@@ -5787,7 +5469,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: distributed_gce.yaml
 
 - name: many_pgs
@@ -5801,7 +5482,6 @@
       type: gpu
       runtime_env:
         - LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so
-    cluster_env: app_config.yaml
     cluster_compute: distributed.yaml
 
   run:
@@ -5816,7 +5496,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: distributed_gce.yaml
 
 
@@ -5831,7 +5510,6 @@
       type: gpu
       runtime_env:
         - LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so
-    cluster_env: app_config.yaml
     cluster_compute: distributed_smoke_test.yaml
 
   run:
@@ -5852,7 +5530,6 @@
       type: gpu
       runtime_env:
         - LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so
-    cluster_env: app_config.yaml
     cluster_compute: many_nodes.yaml
 
   run:
@@ -5867,7 +5544,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: many_nodes_gce.yaml
 
 - name: scheduling_test_many_0s_tasks_many_nodes
@@ -5884,7 +5560,6 @@
       type: gpu
       runtime_env:
         - LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so
-    cluster_env: app_config.yaml
     cluster_compute: scheduling.yaml
 
   run:
@@ -5901,7 +5576,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: scheduling_gce.yaml
 
 
@@ -5912,7 +5586,6 @@
 #   frequency: nightly
 #   team: core
 #   cluster:
-#     cluster_env: app_config.yaml
 #     cluster_compute: scheduling.yaml
 
 #   run:
@@ -5933,7 +5606,6 @@
 #   frequency: nightly
 #   team: core
 #   cluster:
-#     cluster_env: app_config.yaml
 #     cluster_compute: scheduling.yaml
 
 #   run:
@@ -5955,13 +5627,12 @@
   group: data-tests
   working_dir: nightly_tests/dataset
 
-  frequency: nightly
+  frequency: manual
   team: data
 
   cluster:
     byod:
       type: gpu
-    cluster_env: app_config.yaml
     cluster_compute: inference.yaml
 
   run:
@@ -5976,20 +5647,18 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: inference_gce.yaml
 
 - name: shuffle_data_loader
   group: data-tests
   working_dir: nightly_tests/dataset
 
-  frequency: nightly
+  frequency: manual
   team: data
 
   cluster:
     byod:
       type: gpu
-    cluster_env: shuffle_app_config.yaml
     cluster_compute: shuffle_compute.yaml
 
   run:
@@ -6016,7 +5685,6 @@
   cluster:
     byod:
       type: gpu
-    cluster_env: app_config.yaml
     cluster_compute: single_node_benchmark_compute.yaml
 
   run:
@@ -6039,7 +5707,7 @@
   working_dir: nightly_tests/dataset
   stable: false
 
-  frequency: nightly
+  frequency: manual
   team: data
 
   cluster:
@@ -6047,7 +5715,6 @@
       type: gpu
       pip:
         - git+https://github.com/ray-project/ray_shuffling_data_loader.git@add-embedding-model
-    cluster_env: pipelined_training_app.yaml
     cluster_compute: pipelined_training_compute.yaml
 
   run:
@@ -6062,20 +5729,18 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: pipelined_training_app.yaml
         cluster_compute: pipelined_training_compute_gce.yaml
 
 - name: pipelined_data_ingest_benchmark_1tb
   group: data-tests
   working_dir: nightly_tests/dataset
 
-  frequency: nightly
+  frequency: manual
   team: data
 
   cluster:
     byod:
       type: gpu
-    cluster_env: app_config.yaml
     cluster_compute: data_ingest_benchmark_compute.yaml
 
   run:
@@ -6090,7 +5755,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: data_ingest_benchmark_compute_gce.yaml
 
 - name: streaming_data_ingest_benchmark_1tb
@@ -6103,7 +5767,6 @@
   cluster:
     byod:
       type: gpu
-    cluster_env: app_config.yaml
     cluster_compute: data_ingest_benchmark_compute.yaml
 
   run:
@@ -6118,7 +5781,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: data_ingest_benchmark_compute_gce.yaml
 
 - name: streaming_data_ingest_benchmark_100gb_gpu
@@ -6131,7 +5793,6 @@
   cluster:
     byod:
       type: gpu
-    cluster_env: app_config.yaml
     cluster_compute: data_ingest_benchmark_compute_gpu.yaml
 
   run:
@@ -6146,7 +5807,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: data_ingest_benchmark_compute_gpu_gce.yaml
 
 # This test case will early stop the data ingestion iteration on the GPU actors.
@@ -6164,7 +5824,6 @@
   cluster:
     byod:
       type: gpu
-    cluster_env: app_config.yaml
     cluster_compute: data_ingest_benchmark_compute_gpu.yaml
 
   run:
@@ -6179,7 +5838,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: data_ingest_benchmark_compute_gpu_gce.yaml
 
 - name: aggregate_benchmark
@@ -6192,7 +5850,6 @@
   cluster:
     byod:
       type: gpu
-    cluster_env: app_config.yaml
     cluster_compute: single_node_benchmark_compute.yaml
 
   run:
@@ -6205,7 +5862,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: single_node_benchmark_compute_gce.yaml
 
 - name: read_parquet_benchmark_single_node
@@ -6218,7 +5874,6 @@
   cluster:
     byod:
       type: gpu
-    cluster_env: app_config.yaml
     cluster_compute: single_node_benchmark_compute.yaml
 
   run:
@@ -6232,7 +5887,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: single_node_benchmark_compute_gce.yaml
 
 - name: read_images_benchmark_single_node
@@ -6245,7 +5899,6 @@
   cluster:
     byod:
       type: gpu
-    cluster_env: app_config.yaml
     cluster_compute: single_node_benchmark_compute.yaml
 
   run:
@@ -6258,7 +5911,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: single_node_benchmark_compute_gce.yaml
 
 - name: read_images_comparison_microbenchmark_single_node
@@ -6271,7 +5923,6 @@
   cluster:
     byod:
       type: gpu
-    cluster_env: app_config.yaml
     cluster_compute: single_node_benchmark_compute.yaml
 
   run:
@@ -6284,8 +5935,151 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: single_node_benchmark_compute_gce.yaml
+
+- name: read_preprocessed_images_comparison_microbenchmark_single_node
+  group: data-tests
+  working_dir: nightly_tests/dataset
+
+  frequency: nightly
+  team: data
+  python: "3.8"
+  cluster:
+    byod:
+      type: gpu
+    cluster_compute: single_node_benchmark_compute.yaml
+
+  run:
+    timeout: 1800
+    script: bash run_preprocessed_image_loader_microbenchmark.sh
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: single_node_benchmark_compute_gce.yaml
+
+- name: read_images_train_4_gpu
+  group: data-tests
+  working_dir: nightly_tests/dataset
+
+  frequency: nightly
+  team: data
+  python: "3.8"
+  cluster:
+    byod:
+      type: gpu
+    cluster_compute: ../../air_tests/air_benchmarks/compute_gpu_2x2_aws.yaml
+
+  run:
+    timeout: 1800
+    script: python multi_node_train_benchmark.py --num-workers 4 --file-type image
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: ../../air_tests/air_benchmarks/compute_gpu_2x2_gce.yaml
+
+- name: read_images_train_16_gpu
+  group: data-tests
+  working_dir: nightly_tests/dataset
+
+  frequency: nightly
+  team: data
+  python: "3.8"
+  cluster:
+    byod:
+      type: gpu
+    cluster_compute: ../../air_tests/air_benchmarks/compute_gpu_4x4_aws.yaml
+
+  run:
+    timeout: 1800
+    script: python multi_node_train_benchmark.py --num-workers 16 --file-type image
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: ../../air_tests/air_benchmarks/compute_gpu_4x4_gce.yaml
+
+- name: read_images_train_16_gpu_preserve_order
+  group: data-tests
+  working_dir: nightly_tests/dataset
+
+  frequency: nightly
+  team: data
+  python: "3.8"
+  cluster:
+    byod:
+      type: gpu
+    cluster_compute: ../../air_tests/air_benchmarks/compute_gpu_4x4_aws.yaml
+
+  run:
+    timeout: 1800
+    script: python multi_node_train_benchmark.py --num-workers 16 --file-type image --preserve-order
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: ../../air_tests/air_benchmarks/compute_gpu_4x4_gce.yaml
+
+- name: read_parquet_train_4_gpu
+  group: data-tests
+  working_dir: nightly_tests/dataset
+
+  frequency: nightly
+  team: data
+  python: "3.8"
+  cluster:
+    byod:
+      type: gpu
+    cluster_compute: ../../air_tests/air_benchmarks/compute_gpu_2x2_aws.yaml
+
+  run:
+    timeout: 1800
+    script: python multi_node_train_benchmark.py --num-workers 4 --file-type parquet
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: ../../air_tests/air_benchmarks/compute_gpu_2x2_gce.yaml
+
+- name: read_parquet_train_16_gpu
+  group: data-tests
+  working_dir: nightly_tests/dataset
+
+  frequency: nightly
+  team: data
+  python: "3.8"
+  cluster:
+    byod:
+      type: gpu
+    cluster_compute: ../../air_tests/air_benchmarks/compute_gpu_4x4_aws.yaml
+
+  run:
+    timeout: 1800
+    script: python multi_node_train_benchmark.py --num-workers 16 --file-type parquet
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: ../../air_tests/air_benchmarks/compute_gpu_4x4_gce.yaml
 
 - name: read_tfrecords_benchmark_single_node
   group: data-tests
@@ -6297,7 +6091,6 @@
   cluster:
     byod:
       type: gpu
-    cluster_env: read_tfrecords_benchmark_app.yaml
     cluster_compute: single_node_benchmark_compute.yaml
 
   run:
@@ -6311,7 +6104,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: read_tfrecords_benchmark_app.yaml
         cluster_compute: single_node_benchmark_compute_gce.yaml
 
 - name: map_batches_benchmark_single_node
@@ -6324,7 +6116,6 @@
   cluster:
     byod:
       type: gpu
-    cluster_env: app_config.yaml
     cluster_compute: single_node_benchmark_compute.yaml
 
   run:
@@ -6338,7 +6129,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: single_node_benchmark_compute_gce.yaml
 
 - name: iter_tensor_batches_benchmark_single_node
@@ -6351,7 +6141,6 @@
   cluster:
     byod:
       type: gpu
-    cluster_env: app_config.yaml
     cluster_compute: single_node_benchmark_compute.yaml
 
   run:
@@ -6365,7 +6154,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: single_node_benchmark_compute_gce.yaml
 
 - name: iter_tensor_batches_benchmark_multi_node
@@ -6378,7 +6166,6 @@
   cluster:
     byod:
       type: gpu
-    cluster_env: app_config.yaml
     cluster_compute: multi_node_benchmark_compute.yaml
 
   run:
@@ -6392,7 +6179,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: multi_node_benchmark_compute_gce.yaml
 
 - name: iter_batches_benchmark_single_node
@@ -6405,7 +6191,6 @@
   cluster:
     byod:
       type: gpu
-    cluster_env: app_config.yaml
     cluster_compute: single_node_benchmark_compute.yaml
 
   run:
@@ -6419,21 +6204,19 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
         cluster_compute: single_node_benchmark_compute_gce.yaml
 
 - name: pipelined_training_50_gb
   group: data-tests
   working_dir: nightly_tests/dataset
 
-  frequency: nightly
+  frequency: manual
   team: data
 
   cluster:
     byod:
       type: gpu
       post_build_script: byod_data_pipelined_test.sh
-    cluster_env: pipelined_training_app.yaml
     cluster_compute: pipelined_training_compute.yaml
 
   run:
@@ -6448,14 +6231,13 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: pipelined_training_app.yaml
         cluster_compute: pipelined_training_compute_gce.yaml
 
 - name: pipelined_ingestion_1500_gb
   group: data-tests
   working_dir: nightly_tests/dataset
 
-  frequency: nightly
+  frequency: manual
   team: data
 
   cluster:
@@ -6465,7 +6247,6 @@
         - RAY_lineage_pinning_enabled=1
         - RAY_record_ref_creation_sites=1
       post_build_script: byod_data_pipelined_test.sh
-    cluster_env: pipelined_ingestion_app.yaml
     cluster_compute: pipelined_ingestion_compute.yaml
 
   run:
@@ -6482,7 +6263,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: pipelined_training_app.yaml
         cluster_compute: pipelined_training_compute_gce.yaml
 
 - name: dataset_shuffle_random_shuffle_1tb
@@ -6498,7 +6278,6 @@
         - RAY_worker_killing_policy=retriable_lifo
       pip:
         - ray[default]
-    cluster_env: shuffle/shuffle_app_config.yaml
     cluster_compute: shuffle/datasets_large_scale_compute_small_instances.yaml
 
   run:
@@ -6513,7 +6292,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: shuffle/shuffle_app_config.yaml
         cluster_compute: shuffle/datasets_large_scale_compute_small_instances_gce.yaml
 
 - name: dataset_shuffle_sort_1tb
@@ -6529,7 +6307,6 @@
         - RAY_worker_killing_policy=retriable_lifo
       pip:
         - ray[default]
-    cluster_env: shuffle/shuffle_app_config.yaml
     cluster_compute: shuffle/datasets_large_scale_compute_small_instances.yaml
 
   run:
@@ -6544,7 +6321,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: shuffle/shuffle_app_config.yaml
         cluster_compute: shuffle/datasets_large_scale_compute_small_instances_gce.yaml
 
 - name: dataset_shuffle_push_based_random_shuffle_1tb
@@ -6562,7 +6338,6 @@
         - RAY_worker_killing_policy=retriable_lifo
       pip:
         - ray[default]
-    cluster_env: shuffle/shuffle_app_config.yaml
     cluster_compute: shuffle/datasets_large_scale_compute_small_instances.yaml
 
   run:
@@ -6577,7 +6352,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: shuffle/shuffle_app_config.yaml
         cluster_compute: shuffle/datasets_large_scale_compute_small_instances_gce.yaml
 
 - name: dataset_shuffle_push_based_sort_1tb
@@ -6593,7 +6367,6 @@
         - RAY_worker_killing_policy=retriable_lifo
       pip:
         - ray[default]
-    cluster_env: shuffle/shuffle_app_config.yaml
     cluster_compute: shuffle/datasets_large_scale_compute_small_instances.yaml
 
   run:
@@ -6608,7 +6381,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: shuffle/shuffle_app_config.yaml
         cluster_compute: shuffle/datasets_large_scale_compute_small_instances_gce.yaml
 
 - name: dataset_shuffle_push_based_random_shuffle_100tb
@@ -6625,7 +6397,6 @@
       runtime_env:
         - RAY_object_spilling_config={"type":"filesystem","params":{"directory_path":["/tmp/data0","/tmp/data1"]}}
       post_build_script: byod_dataset_shuffle.sh
-    cluster_env: shuffle/100tb_shuffle_app_config.yaml
     cluster_compute: shuffle/100tb_shuffle_compute.yaml
 
   run:
@@ -6640,7 +6411,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: shuffle/100tb_shuffle_app_config_gce.yaml
         cluster_compute: shuffle/100tb_shuffle_compute_gce.yaml
       run:
         timeout: 28800
@@ -6660,7 +6430,6 @@
   team: core
   cluster:
     byod: {}
-    cluster_env: chaos_test/app_config.yaml
     cluster_compute: chaos_test/compute_template.yaml
 
   run:
@@ -6676,7 +6445,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: chaos_test/app_config.yaml
         cluster_compute: chaos_test/compute_template_gce.yaml
 
 - name: chaos_many_actors
@@ -6687,7 +6455,6 @@
   team: core
   cluster:
     byod: {}
-    cluster_env: chaos_test/app_config.yaml
     cluster_compute: chaos_test/compute_template.yaml
 
   run:
@@ -6703,7 +6470,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: chaos_test/app_config.yaml
         cluster_compute: chaos_test/compute_template_gce.yaml
 
 
@@ -6719,7 +6485,6 @@
       runtime_env:
         - RAY_lineage_pinning_enabled=1
       post_build_script: byod_dask_test.sh
-    cluster_env: chaos_test/dask_on_ray_app_config_reconstruction.yaml
     cluster_compute: dask_on_ray/chaos_dask_on_ray_stress_compute.yaml
 
   run:
@@ -6736,7 +6501,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: chaos_test/dask_on_ray_app_config_reconstruction.yaml
         cluster_compute: dask_on_ray/dask_on_ray_stress_compute_gce.yaml
 
 - name: chaos_dask_on_ray_large_scale_test_spilling
@@ -6751,7 +6515,6 @@
       runtime_env:
         - RAY_lineage_pinning_enabled=1
       post_build_script: byod_dask_test.sh
-    cluster_env: chaos_test/dask_on_ray_app_config_reconstruction.yaml
     cluster_compute: dask_on_ray/dask_on_ray_stress_compute.yaml
 
   run:
@@ -6768,7 +6531,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: chaos_test/dask_on_ray_app_config_reconstruction.yaml
         cluster_compute: dask_on_ray/dask_on_ray_stress_compute_gce.yaml
 
 - name: chaos_pipelined_ingestion_1500_gb_15_windows
@@ -6787,7 +6549,6 @@
         - RAY_lineage_pinning_enabled=1
         - RAY_record_ref_creation_sites=1
       post_build_script: byod_data_pipelined_test.sh
-    cluster_env: dataset/pipelined_ingestion_app.yaml
     cluster_compute: dataset/pipelined_ingestion_compute.yaml
 
   run:
@@ -6804,7 +6565,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: dataset/pipelined_ingestion_app.yaml
         cluster_compute: dataset/pipelined_ingestion_compute_gce.yaml
 
 - name: chaos_dataset_shuffle_push_based_sort_1tb
@@ -6822,7 +6582,6 @@
         - RAY_worker_killing_policy=retriable_lifo
       pip:
         - ray[default]
-    cluster_env: shuffle/shuffle_app_config.yaml
     cluster_compute: shuffle/datasets_large_scale_compute_small_instances.yaml
 
   run:
@@ -6838,7 +6597,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: shuffle/shuffle_app_config.yaml
         cluster_compute: shuffle/datasets_large_scale_compute_small_instances_gce.yaml
 
 - name: chaos_dataset_shuffle_sort_1tb
@@ -6854,7 +6612,6 @@
     byod:
       runtime_env:
         - RAY_memory_monitor_refresh_ms=0
-    cluster_env: shuffle/shuffle_app_config_oom_disabled.yaml
     cluster_compute: shuffle/datasets_large_scale_compute_small_instances.yaml
 
   run:
@@ -6870,7 +6627,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: shuffle/shuffle_app_config_oom_disabled.yaml
         cluster_compute: shuffle/datasets_large_scale_compute_small_instances_gce.yaml
 
 - name: chaos_dataset_shuffle_random_shuffle_1tb
@@ -6889,7 +6645,6 @@
         - RAY_memory_monitor_refresh_ms=0
       pip:
         - ray[default]
-    cluster_env: shuffle/shuffle_app_config_oom_disabled.yaml
     cluster_compute: shuffle/datasets_large_scale_compute_small_instances.yaml
 
   run:
@@ -6905,7 +6660,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: shuffle/shuffle_app_config_oom_disabled.yaml
         cluster_compute: shuffle/datasets_large_scale_compute_small_instances_gce.yaml
 
 - name: chaos_dataset_shuffle_push_based_random_shuffle_1tb
@@ -6922,7 +6676,6 @@
     byod:
       runtime_env:
         - RAY_memory_monitor_refresh_ms=0
-    cluster_env: shuffle/shuffle_app_config_oom_disabled.yaml
     cluster_compute: shuffle/datasets_large_scale_compute_small_instances.yaml
 
   run:
@@ -6938,7 +6691,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: shuffle/shuffle_app_config_oom_disabled.yaml
         cluster_compute: shuffle/datasets_large_scale_compute_small_instances_gce.yaml
 
 #####################
@@ -6956,7 +6708,6 @@
       runtime_env:
         - RAY_INTERNAL_MEM_PROFILE_COMPONENTS=dashboard_agent
       post_build_script: byod_agent_stress_test.sh
-    cluster_env: agent_stress_app_config.yaml
     cluster_compute: agent_stress_compute.yaml
 
   run:
@@ -6969,7 +6720,6 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: agent_stress_app_config.yaml
         cluster_compute: agent_stress_compute_gce.yaml
 
 - name: k8s_serve_ha_test
@@ -6983,7 +6733,7 @@
   frequency: nightly
   team: serve
   cluster:
-    cluster_env: app_config.yaml
+    byod: {}
     cluster_compute: compute_tpl.yaml
 
   run:
@@ -7000,7 +6750,6 @@
 
   cluster:
     byod: {}
-    cluster_env: aws/tests/aws_config.yaml
     cluster_compute: aws/tests/aws_compute.yaml
 
   run:
@@ -7017,7 +6766,6 @@
   python: "3.8"
   cluster:
     byod: {}
-    cluster_env: aws/tests/aws_config.yaml
     cluster_compute: aws/tests/aws_compute.yaml
 
   run:
@@ -7034,7 +6782,6 @@
   python: "3.8"
   cluster:
     byod: {}
-    cluster_env: aws/tests/aws_config.yaml
     cluster_compute: aws/tests/aws_compute.yaml
 
   run:
@@ -7051,7 +6798,6 @@
   python: "3.8"
   cluster:
     byod: {}
-    cluster_env: aws/tests/aws_config.yaml
     cluster_compute: aws/tests/aws_compute.yaml
 
   run:
@@ -7068,7 +6814,6 @@
   team: core
   cluster:
     byod: {}
-    cluster_env: aws/tests/aws_config.yaml
     cluster_compute: aws/tests/aws_compute.yaml
 
   run:
@@ -7083,7 +6828,6 @@
   team: core
   cluster:
     byod: {}
-    cluster_env: aws/tests/aws_config.yaml
     cluster_compute: aws/tests/aws_compute.yaml
 
   run:
@@ -7094,15 +6838,13 @@
   group: cluster-launcher-test
   working_dir: ../python/ray/autoscaler/
 
-  python: "3.7"
-
   stable: true
 
   env: gce
   frequency: nightly
   team: core
   cluster:
-    cluster_env: gcp/tests/gce_config.yaml
+    byod: {}
     cluster_compute: gcp/tests/single_node_32_cpu_gce.yaml
 
   run:
@@ -7113,15 +6855,13 @@
   group: cluster-launcher-test
   working_dir: ../python/ray/autoscaler/
 
-  python: "3.7"
-
   stable: true
 
   env: gce
   frequency: nightly
   team: core
   cluster:
-    cluster_env: gcp/tests/gce_config.yaml
+    byod: {}
     cluster_compute: gcp/tests/single_node_32_cpu_gce.yaml
 
   run:
@@ -7135,10 +6875,11 @@
   stable: true
 
   env: gce
+  python: "3.8"
   frequency: nightly
   team: core
   cluster:
-    cluster_env: gcp/tests/gce_config.yaml
+    byod: {}
     cluster_compute: gcp/tests/single_node_32_cpu_gce.yaml
 
   run:
@@ -7152,10 +6893,11 @@
   stable: true
 
   env: gce
+  python: "3.8"
   frequency: nightly
   team: core
   cluster:
-    cluster_env: gcp/tests/gce_config.yaml
+    byod: {}
     cluster_compute: gcp/tests/single_node_32_cpu_gce.yaml
 
   run:
@@ -7170,10 +6912,11 @@
   stable: true
 
   env: gce
+  python: "3.8"
   frequency: manual
   team: core
   cluster:
-    cluster_env: gcp/tests/gce_config.yaml
+    byod: {}
     cluster_compute: gcp/tests/single_node_32_cpu_gce.yaml
 
   run:

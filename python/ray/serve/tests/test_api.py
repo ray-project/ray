@@ -1,5 +1,6 @@
 import asyncio
 import os
+import sys
 from typing import Dict, Optional
 
 from fastapi import FastAPI
@@ -397,15 +398,11 @@ def test_run_get_ingress_app(serve_instance):
     def g():
         return "got g"
 
-    app = BuiltApplication([g])
+    app = BuiltApplication([g], "g")
     ingress_handle = serve.run(app)
 
     assert ray.get(ingress_handle.remote()) == "got g"
-    serve_instance.delete_apps(["default"])
-
-    no_ingress_app = BuiltApplication([g.options(route_prefix=None)])
-    ingress_handle = serve.run(no_ingress_app)
-    assert ingress_handle is None
+    serve_instance.delete_apps([SERVE_DEFAULT_APP_NAME])
 
 
 def test_run_get_ingress_node(serve_instance):
@@ -465,7 +462,7 @@ class TestSetOptions:
             f.set_options(max_concurrent_queries=-4)
 
 
-def test_deploy_application(serve_instance):
+def test_deploy_application_basic(serve_instance):
     """Test deploy multiple applications"""
 
     @serve.deployment
@@ -882,6 +879,221 @@ def test_pass_starlette_request_over_handle(serve_instance):
         "foo": "bar",
         "baz": "quux",
     }
+
+
+def test_status_basic(serve_instance):
+    # Before Serve is started, serve.status() should have an empty list of applications
+    assert len(serve.status().applications) == 0
+
+    @serve.deployment(ray_actor_options={"num_cpus": 0.1})
+    class A:
+        def __call__(self, val: int):
+            return val + 1
+
+    @serve.deployment(ray_actor_options={"num_cpus": 0.1})
+    def f():
+        return "hello world"
+
+    @serve.deployment(ray_actor_options={"num_cpus": 0.1})
+    class MyDriver:
+        def __init__(self, dag: RayServeDAGHandle):
+            self.dag = dag
+
+        async def __call__(self):
+            return await (await self.dag.remote())
+
+    handle_1 = serve.run(A.bind(), name="plus", route_prefix="/a")
+    handle_2 = serve.run(MyDriver.bind(f.bind()), name="hello", route_prefix="/b")
+
+    assert ray.get(handle_1.remote(8)) == 9
+    assert ray.get(handle_2.remote()) == "hello world"
+
+    expected_dep_1 = {"plus_A"}
+    expected_dep_2 = {"hello_MyDriver", "hello_f"}
+
+    app_status = serve.status().applications
+    assert len(app_status) == 2
+    assert set(app_status["plus"].deployments.keys()) == expected_dep_1
+    assert set(app_status["hello"].deployments.keys()) == expected_dep_2
+    for d in app_status["plus"].deployments.values():
+        assert d.status == "HEALTHY" and d.replica_states == {"RUNNING": 1}
+    for d in app_status["plus"].deployments.values():
+        assert d.status == "HEALTHY" and d.replica_states == {"RUNNING": 1}
+
+    proxy_status = serve.status().proxies
+    assert all(p == "HEALTHY" for p in proxy_status.values())
+
+
+def test_status_constructor_error(serve_instance):
+    """Deploys Serve deployment that errors out in constructor, checks that the
+    traceback is surfaced in serve.status().
+    """
+
+    @serve.deployment
+    class A:
+        def __init__(self):
+            1 / 0
+
+    serve.run(A.bind(), _blocking=False)
+
+    def check_for_failed_deployment():
+        default_app = serve.status().applications[SERVE_DEFAULT_APP_NAME]
+        error_substr = "ZeroDivisionError: division by zero"
+        return (
+            default_app.status == "DEPLOY_FAILED"
+            and error_substr
+            in default_app.deployments[f"{SERVE_DEFAULT_APP_NAME}_A"].message
+        )
+
+    wait_for_condition(check_for_failed_deployment)
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="Runtime env support experimental on windows"
+)
+def test_status_package_unavailable_in_controller(serve_instance):
+    """Test that exceptions raised from packages that are installed on deployment actors
+    but not on controller is serialized and surfaced properly in serve.status().
+    """
+
+    @serve.deployment
+    class MyDeployment:
+        def __init__(self):
+            from sqlalchemy import create_engine
+            import pymysql
+
+            pymysql.install_as_MySQLdb()
+
+            create_engine("mysql://some_wrong_url:3306").connect()
+
+    ray_actor_options = {"runtime_env": {"pip": ["PyMySQL", "sqlalchemy==1.3.19"]}}
+    serve.run(
+        MyDeployment.options(ray_actor_options=ray_actor_options).bind(),
+        _blocking=False,
+    )
+
+    def check_for_failed_deployment():
+        default_app = serve.status().applications[SERVE_DEFAULT_APP_NAME]
+        return (
+            default_app.status == "DEPLOY_FAILED"
+            and "some_wrong_url"
+            in default_app.deployments[f"{SERVE_DEFAULT_APP_NAME}_MyDeployment"].message
+        )
+
+    wait_for_condition(check_for_failed_deployment, timeout=15)
+
+
+def test_get_app_handle_basic(serve_instance):
+    @serve.deployment(ray_actor_options={"num_cpus": 0.1})
+    class M:
+        def __call__(self, val: int):
+            return val + 1
+
+    @serve.deployment(ray_actor_options={"num_cpus": 0.1})
+    def f():
+        return "hello world"
+
+    @serve.deployment(ray_actor_options={"num_cpus": 0.1})
+    class MyDriver:
+        def __init__(self, dag: RayServeDAGHandle):
+            self.dag = dag
+
+        async def __call__(self):
+            return await (await self.dag.remote())
+
+    serve.run(M.bind(), name="A", route_prefix="/a")
+    serve.run(MyDriver.bind(f.bind()), name="B", route_prefix="/b")
+
+    handle = serve.get_app_handle("A")
+    assert ray.get(handle.remote(8)) == 9
+
+    handle = serve.get_app_handle("B")
+    assert ray.get(handle.remote()) == "hello world"
+
+
+def test_get_app_handle_dne(serve_instance):
+    """Test getting app handle to an app that doesn't exist."""
+
+    with pytest.raises(RayServeException) as e:
+        serve.get_app_handle("random")
+
+    assert "Application 'random' does not exist" in str(e.value)
+
+
+def test_get_app_handle_within_deployment_async(serve_instance):
+    @serve.deployment()
+    class a:
+        def __init__(self, handle):
+            self.handle = handle
+
+        def __call__(self, val: int):
+            return val + 2
+
+    @serve.deployment()
+    class b:
+        def __call__(self, val: int):
+            return val
+
+    @serve.deployment
+    async def f(val):
+        handle = serve.get_app_handle(SERVE_DEFAULT_APP_NAME)
+        result = await (await handle.remote(val))
+        return f"The answer is {result}"
+
+    serve.run(a.bind(b.bind()), route_prefix="/math")
+    serve.run(f.bind(), name="call")
+
+    handle = serve.get_app_handle("call")
+    assert ray.get(handle.remote(7)) == "The answer is 9"
+
+
+def test_get_app_handle_within_deployment_sync(serve_instance):
+    @serve.deployment()
+    class a:
+        def __init__(self, handle):
+            self.handle = handle
+
+        def __call__(self, val: int):
+            return val + 2
+
+    @serve.deployment()
+    class b:
+        def __call__(self, val: int):
+            return val
+
+    @serve.deployment
+    def f(val):
+        handle = serve.get_app_handle(SERVE_DEFAULT_APP_NAME, sync=True)
+        result = ray.get(handle.remote(val))
+        return f"The answer is {result}"
+
+    serve.run(a.bind(b.bind()), route_prefix="/math")
+    serve.run(f.bind(), name="call")
+
+    handle = serve.get_app_handle("call")
+    assert ray.get(handle.remote(7)) == "The answer is 9"
+
+
+def test_get_deployment_handle_basic(serve_instance):
+    @serve.deployment(ray_actor_options={"num_cpus": 0.1})
+    def f():
+        return "hello world"
+
+    @serve.deployment(ray_actor_options={"num_cpus": 0.1})
+    class MyDriver:
+        def __init__(self, dag: RayServeDAGHandle):
+            self.dag = dag
+
+        async def __call__(self):
+            return f"{await (await self.dag.remote())}!!"
+
+    serve.run(MyDriver.bind(f.bind()))
+
+    handle = serve.get_deployment_handle("f", SERVE_DEFAULT_APP_NAME)
+    assert ray.get(handle.remote()) == "hello world"
+
+    app_handle = serve.get_app_handle(SERVE_DEFAULT_APP_NAME)
+    assert ray.get(app_handle.remote()) == "hello world!!"
 
 
 if __name__ == "__main__":

@@ -1,6 +1,6 @@
 import asyncio
 import concurrent.futures
-from dataclasses import dataclass
+from dataclasses import dataclass, asdict
 from functools import wraps
 import inspect
 import threading
@@ -10,7 +10,7 @@ import ray
 from ray._private.utils import get_or_create_event_loop
 
 from ray import serve
-from ray.serve._private.common import EndpointTag
+from ray.serve._private.common import EndpointTag, RequestProtocol
 from ray.serve._private.constants import (
     RAY_SERVE_ENABLE_NEW_ROUTING,
 )
@@ -51,9 +51,8 @@ def _create_or_get_async_loop_in_thread():
     return _global_async_loop
 
 
-@PublicAPI(stability="beta")
 @dataclass(frozen=True)
-class HandleOptions:
+class _HandleOptions:
     """Options for each ServeHandle instance.
 
     These fields can be changed by calling `.options()` on a handle.
@@ -62,14 +61,17 @@ class HandleOptions:
     method_name: str = "__call__"
     multiplexed_model_id: str = ""
     stream: bool = False
+    _router_cls: str = ""
+    _request_protocol: str = RequestProtocol.UNDEFINED
 
     def copy_and_update(
         self,
         method_name: Union[str, DEFAULT] = DEFAULT.VALUE,
         multiplexed_model_id: Union[str, DEFAULT] = DEFAULT.VALUE,
         stream: Union[bool, DEFAULT] = DEFAULT.VALUE,
-    ) -> "HandleOptions":
-        return HandleOptions(
+        _router_cls: Union[str, DEFAULT] = DEFAULT.VALUE,
+    ) -> "_HandleOptions":
+        return _HandleOptions(
             method_name=(
                 self.method_name if method_name == DEFAULT.VALUE else method_name
             ),
@@ -79,6 +81,10 @@ class HandleOptions:
                 else multiplexed_model_id
             ),
             stream=self.stream if stream == DEFAULT.VALUE else stream,
+            _router_cls=self._router_cls
+            if _router_cls == DEFAULT.VALUE
+            else _router_cls,
+            _request_protocol=self._request_protocol,
         )
 
 
@@ -125,17 +131,17 @@ class RayServeHandle:
 
     def __init__(
         self,
-        deployment_name: EndpointTag,
+        deployment_name: str,
+        app_name: str,
         *,
-        handle_options: Optional[HandleOptions] = None,
+        handle_options: Optional[_HandleOptions] = None,
         _router: Optional[Router] = None,
-        _is_for_http_requests: bool = False,
+        _request_counter: Optional[metrics.Counter] = None,
     ):
-        self.deployment_name = deployment_name
-        self.handle_options = handle_options or HandleOptions()
-        self._is_for_http_requests = _is_for_http_requests
+        self.deployment_id = EndpointTag(deployment_name, app_name)
+        self.handle_options = handle_options or _HandleOptions()
 
-        self.request_counter = metrics.Counter(
+        self.request_counter = _request_counter or metrics.Counter(
             "serve_handle_request_counter",
             description=(
                 "The number of handle.remote() calls that have been "
@@ -143,23 +149,42 @@ class RayServeHandle:
             ),
             tag_keys=("handle", "deployment", "route", "application"),
         )
-        handle_tag = f"{self.deployment_name}#{get_random_letters()}"
+        if app_name:
+            handle_tag = f"{app_name}#{deployment_name}#{get_random_letters()}"
+        else:
+            handle_tag = f"{deployment_name}#{get_random_letters()}"
+
+        # TODO(zcin): Separate deployment_id into deployment and application tags
         self.request_counter.set_default_tags(
-            {"handle": handle_tag, "deployment": self.deployment_name}
+            {"handle": handle_tag, "deployment": str(self.deployment_id)}
         )
 
         self._router: Optional[Router] = _router
+
+    def _set_request_protocol(self, request_protocol: RequestProtocol):
+        self.handle_options = _HandleOptions(
+            **{**asdict(self.handle_options), **{"_request_protocol": request_protocol}}
+        )
 
     def _get_or_create_router(self) -> Router:
         if self._router is None:
             self._router = Router(
                 serve.context.get_global_client()._controller,
-                self.deployment_name,
+                self.deployment_id,
                 event_loop=get_or_create_event_loop(),
                 _use_new_routing=RAY_SERVE_ENABLE_NEW_ROUTING,
+                _router_cls=self.handle_options._router_cls,
             )
 
         return self._router
+
+    @property
+    def deployment_name(self) -> str:
+        return self.deployment_id.name
+
+    @property
+    def app_name(self) -> str:
+        return self.deployment_id.app
 
     @property
     def _is_same_loop(self) -> bool:
@@ -175,17 +200,24 @@ class RayServeHandle:
         method_name: Union[str, DEFAULT] = DEFAULT.VALUE,
         multiplexed_model_id: Union[str, DEFAULT] = DEFAULT.VALUE,
         stream: Union[bool, DEFAULT] = DEFAULT.VALUE,
+        _router_cls: Union[str, DEFAULT] = DEFAULT.VALUE,
     ):
         new_handle_options = self.handle_options.copy_and_update(
             method_name=method_name,
             multiplexed_model_id=multiplexed_model_id,
             stream=stream,
+            _router_cls=_router_cls,
         )
+
+        if self._router is None and _router_cls == DEFAULT.VALUE:
+            self._get_or_create_router()
+
         return self.__class__(
             self.deployment_name,
+            self.app_name,
             handle_options=new_handle_options,
-            _router=self._router,
-            _is_for_http_requests=self._is_for_http_requests,
+            _router=None if _router_cls != DEFAULT.VALUE else self._router,
+            _request_counter=self.request_counter,
         )
 
     def options(
@@ -194,6 +226,7 @@ class RayServeHandle:
         method_name: Union[str, DEFAULT] = DEFAULT.VALUE,
         multiplexed_model_id: Union[str, DEFAULT] = DEFAULT.VALUE,
         stream: Union[bool, DEFAULT] = DEFAULT.VALUE,
+        _router_cls: Union[str, DEFAULT] = DEFAULT.VALUE,
     ) -> "RayServeHandle":
         """Set options for this handle and return an updated copy of it.
 
@@ -211,19 +244,20 @@ class RayServeHandle:
             method_name=method_name,
             multiplexed_model_id=multiplexed_model_id,
             stream=stream,
+            _router_cls=_router_cls,
         )
 
-    def _remote(self, deployment_name, handle_options, args, kwargs) -> Coroutine:
+    def _remote(self, deployment_id, handle_options, args, kwargs) -> Coroutine:
         _request_context = ray.serve.context._serve_request_context.get()
         request_metadata = RequestMetadata(
             _request_context.request_id,
-            deployment_name,
+            deployment_id.name,
             call_method=handle_options.method_name,
-            is_http_request=self._is_for_http_requests,
             route=_request_context.route,
             app_name=_request_context.app_name,
             multiplexed_model_id=handle_options.multiplexed_model_id,
             is_streaming=handle_options.stream,
+            _request_protocol=handle_options._request_protocol,
         )
         self.request_counter.inc(
             tags={
@@ -252,12 +286,10 @@ class RayServeHandle:
             result = await obj_ref
 
         """
-        return await self._remote(
-            self.deployment_name, self.handle_options, args, kwargs
-        )
+        return await self._remote(self.deployment_id, self.handle_options, args, kwargs)
 
     def __repr__(self):
-        return f"{self.__class__.__name__}" f"(deployment='{self.deployment_name}')"
+        return f"{self.__class__.__name__}" f"(deployment='{self.deployment_id}')"
 
     @classmethod
     def _deserialize(cls, kwargs):
@@ -267,13 +299,17 @@ class RayServeHandle:
     def __reduce__(self):
         serialized_data = {
             "deployment_name": self.deployment_name,
+            "app_name": self.app_name,
             "handle_options": self.handle_options,
-            "_is_for_http_requests": self._is_for_http_requests,
         }
         return RayServeHandle._deserialize, (serialized_data,)
 
     def __getattr__(self, name):
         return self.options(method_name=name)
+
+    def shutdown(self):
+        if self._router:
+            self._router.shutdown()
 
 
 @PublicAPI(stability="beta")
@@ -312,9 +348,10 @@ class RayServeSyncHandle(RayServeHandle):
         if self._router is None:
             self._router = Router(
                 serve.context.get_global_client()._controller,
-                self.deployment_name,
+                self.deployment_id,
                 event_loop=_create_or_get_async_loop_in_thread(),
                 _use_new_routing=RAY_SERVE_ENABLE_NEW_ROUTING,
+                _router_cls=self.handle_options._router_cls,
             )
 
         return self._router
@@ -325,6 +362,7 @@ class RayServeSyncHandle(RayServeHandle):
         method_name: Union[str, DEFAULT] = DEFAULT.VALUE,
         multiplexed_model_id: Union[str, DEFAULT] = DEFAULT.VALUE,
         stream: Union[bool, DEFAULT] = DEFAULT.VALUE,
+        _router_cls: Union[str, DEFAULT] = DEFAULT.VALUE,
     ) -> "RayServeSyncHandle":
         """Set options for this handle and return an updated copy of it.
 
@@ -342,6 +380,7 @@ class RayServeSyncHandle(RayServeHandle):
             method_name=method_name,
             multiplexed_model_id=multiplexed_model_id,
             stream=stream,
+            _router_cls=_router_cls,
         )
 
     def remote(self, *args, **kwargs) -> ray.ObjectRef:
@@ -356,7 +395,7 @@ class RayServeSyncHandle(RayServeHandle):
             result = ray.get(obj_ref)
 
         """
-        coro = self._remote(self.deployment_name, self.handle_options, args, kwargs)
+        coro = self._remote(self.deployment_id, self.handle_options, args, kwargs)
         future: concurrent.futures.Future = asyncio.run_coroutine_threadsafe(
             coro, self._get_or_create_router()._event_loop
         )
@@ -365,8 +404,8 @@ class RayServeSyncHandle(RayServeHandle):
     def __reduce__(self):
         serialized_data = {
             "deployment_name": self.deployment_name,
+            "app_name": self.app_name,
             "handle_options": self.handle_options,
-            "_is_for_http_requests": self._is_for_http_requests,
         }
         return RayServeSyncHandle._deserialize, (serialized_data,)
 
