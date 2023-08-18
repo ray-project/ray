@@ -445,9 +445,9 @@ def test_map_batches_extra_args(shutdown_only, tmp_path):
         fn_args=(put(1),),
     )
     ds_list = ds2.take()
-    values = [s["one"] for s in ds_list]
+    values = sorted([s["one"] for s in ds_list])
     assert values == [2, 3, 4]
-    values = [s["two"] for s in ds_list]
+    values = sorted([s["two"] for s in ds_list])
     assert values == [3, 4, 5]
 
     # Test kwargs.
@@ -463,9 +463,9 @@ def test_map_batches_extra_args(shutdown_only, tmp_path):
         fn_kwargs={"b": put(2)},
     )
     ds_list = ds2.take()
-    values = [s["one"] for s in ds_list]
+    values = sorted([s["one"] for s in ds_list])
     assert values == [2, 4, 6]
-    values = [s["two"] for s in ds_list]
+    values = sorted([s["two"] for s in ds_list])
     assert values == [4, 6, 8]
 
     # Test both.
@@ -483,9 +483,9 @@ def test_map_batches_extra_args(shutdown_only, tmp_path):
         fn_kwargs={"b": put(2)},
     )
     ds_list = ds2.take()
-    values = [s["one"] for s in ds_list]
+    values = sorted([s["one"] for s in ds_list])
     assert values == [3, 5, 7]
-    values = [s["two"] for s in ds_list]
+    values = sorted([s["two"] for s in ds_list])
     assert values == [5, 7, 9]
 
     # Test constructor UDF args.
@@ -507,9 +507,9 @@ def test_map_batches_extra_args(shutdown_only, tmp_path):
         fn_constructor_args=(put(1),),
     )
     ds_list = ds2.take()
-    values = [s["one"] for s in ds_list]
+    values = sorted([s["one"] for s in ds_list])
     assert values == [2, 3, 4]
-    values = [s["two"] for s in ds_list]
+    values = sorted([s["two"] for s in ds_list])
     assert values == [3, 4, 5]
 
     # Test kwarg.
@@ -530,9 +530,9 @@ def test_map_batches_extra_args(shutdown_only, tmp_path):
         fn_constructor_kwargs={"b": put(2)},
     )
     ds_list = ds2.take()
-    values = [s["one"] for s in ds_list]
+    values = sorted([s["one"] for s in ds_list])
     assert values == [2, 4, 6]
-    values = [s["two"] for s in ds_list]
+    values = sorted([s["two"] for s in ds_list])
     assert values == [4, 6, 8]
 
     # Test both.
@@ -556,9 +556,9 @@ def test_map_batches_extra_args(shutdown_only, tmp_path):
         fn_constructor_kwargs={"b": put(2)},
     )
     ds_list = ds2.take()
-    values = [s["one"] for s in ds_list]
+    values = sorted([s["one"] for s in ds_list])
     assert values == [3, 5, 7]
-    values = [s["two"] for s in ds_list]
+    values = sorted([s["two"] for s in ds_list])
     assert values == [5, 7, 9]
 
     # Test callable chain.
@@ -585,9 +585,9 @@ def test_map_batches_extra_args(shutdown_only, tmp_path):
         )
     )
     ds_list = ds2.take()
-    values = [s["one"] for s in ds_list]
+    values = sorted([s["one"] for s in ds_list])
     assert values == [7, 11, 15]
-    values = [s["two"] for s in ds_list]
+    values = sorted([s["two"] for s in ds_list])
     assert values == [11, 15, 19]
 
     # Test function + callable chain.
@@ -614,9 +614,9 @@ def test_map_batches_extra_args(shutdown_only, tmp_path):
         )
     )
     ds_list = ds2.take()
-    values = [s["one"] for s in ds_list]
+    values = sorted([s["one"] for s in ds_list])
     assert values == [7, 11, 15]
-    values = [s["two"] for s in ds_list]
+    values = sorted([s["two"] for s in ds_list])
     assert values == [11, 15, 19]
 
 
@@ -859,6 +859,27 @@ def test_map_batches_combine_empty_blocks(ray_start_regular_shared):
 
     # The number of partitions should not affect the map_batches() result.
     assert ds1.take_all() == ds2.take_all()
+
+
+def test_map_batches_preserves_empty_block_format(ray_start_regular_shared):
+    """Tests that the block format for empty blocks are not modified."""
+
+    def empty_pandas(batch):
+        return pd.DataFrame({"x": []})
+
+    df = pd.DataFrame({"x": [1, 2, 3]})
+
+    # First map_batches creates the empty Pandas block.
+    # Applying subsequent map_batches should not change the type of the empty block.
+    ds = (
+        ray.data.from_pandas(df)
+        .map_batches(empty_pandas)
+        .map_batches(lambda x: x, batch_size=None)
+    )
+
+    block_refs = ds.get_internal_block_refs()
+    assert len(block_refs) == 1
+    assert type(ray.get(block_refs)[0]) == pd.DataFrame
 
 
 def test_random_sample(ray_start_regular_shared):

@@ -23,13 +23,11 @@ def test(*, framework: str, datasource: str):
         preprocessor, per_epoch_preprocessor = create_torch_preprocessors()
         train_torch_model(dataset, preprocessor, per_epoch_preprocessor)
         checkpoint = create_torch_checkpoint(preprocessor)
-        batch_predict_torch(dataset, checkpoint)
         online_predict_torch(checkpoint)
     if framework == "tensorflow":
         preprocessor, per_epoch_preprocessor = create_tensorflow_preprocessors()
         train_tensorflow_model(dataset, preprocessor, per_epoch_preprocessor)
         checkpoint = create_tensorflow_checkpoint(preprocessor)
-        batch_predict_tensorflow(dataset, checkpoint)
         online_predict_tensorflow(checkpoint)
 
 
@@ -187,7 +185,7 @@ def train_torch_model(dataset, preprocessor, per_epoch_preprocessor):
 
     from ray import train
     from ray.train import ScalingConfig
-    from ray.train.torch import TorchCheckpoint, TorchTrainer
+    from ray.train.torch import LegacyTorchCheckpoint, TorchTrainer
 
     def train_one_epoch(model, *, criterion, optimizer, batch_size, epoch):
         dataset_shard = train.get_dataset_shard("train")
@@ -215,7 +213,7 @@ def train_torch_model(dataset, preprocessor, per_epoch_preprocessor):
                         "batch": i,
                         "running_loss": running_loss / 2000,
                     },
-                    checkpoint=TorchCheckpoint.from_model(model),
+                    checkpoint=LegacyTorchCheckpoint.from_model(model),
                 )
                 running_loss = 0
 
@@ -307,10 +305,10 @@ def create_torch_checkpoint(preprocessor):
     # __torch_checkpoint_start__
     from torchvision import models
 
-    from ray.train.torch import TorchCheckpoint
+    from ray.train.torch import LegacyTorchCheckpoint
 
     model = models.resnet50(pretrained=True)
-    checkpoint = TorchCheckpoint.from_model(model, preprocessor=preprocessor)
+    checkpoint = LegacyTorchCheckpoint.from_model(model, preprocessor=preprocessor)
     # __torch_checkpoint_stop__
     return checkpoint
 
@@ -319,38 +317,12 @@ def create_tensorflow_checkpoint(preprocessor):
     # __tensorflow_checkpoint_start__
     import tensorflow as tf
 
-    from ray.train.tensorflow import TensorflowCheckpoint
+    from ray.train.tensorflow import LegacyTensorflowCheckpoint
 
     model = tf.keras.applications.resnet50.ResNet50()
-    checkpoint = TensorflowCheckpoint.from_model(model, preprocessor=preprocessor)
+    checkpoint = LegacyTensorflowCheckpoint.from_model(model, preprocessor=preprocessor)
     # __tensorflow_checkpoint_stop__
     return checkpoint
-
-
-def batch_predict_torch(dataset, checkpoint):
-    # __torch_batch_predictor_start__
-    from ray.train.batch_predictor import BatchPredictor
-    from ray.train.torch import TorchPredictor
-
-    predictor = BatchPredictor.from_checkpoint(checkpoint, TorchPredictor)
-    predictor.predict(dataset, feature_columns=["image"], keep_columns=["label"])
-    # __torch_batch_predictor_stop__
-
-
-def batch_predict_tensorflow(dataset, checkpoint):
-    # __tensorflow_batch_predictor_start__
-    import tensorflow as tf
-
-    from ray.train.batch_predictor import BatchPredictor
-    from ray.train.tensorflow import TensorflowPredictor
-
-    predictor = BatchPredictor.from_checkpoint(
-        checkpoint,
-        TensorflowPredictor,
-        model_definition=tf.keras.applications.resnet50.ResNet50,
-    )
-    predictor.predict(dataset, feature_columns=["image"], keep_columns=["label"])
-    # __tensorflow_batch_predictor_stop__
 
 
 def online_predict_torch(checkpoint):

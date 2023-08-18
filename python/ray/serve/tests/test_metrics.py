@@ -551,12 +551,13 @@ class TestRequestContextMetrics:
             metrics_route, metrics_app_name = self._generate_metrics_summary(
                 get_metric_dictionaries(metric_name)
             )
-            assert metrics_route["app1_f"] == {"/app1"}
-            assert metrics_route["app2_g"] == {"/app2"}
-            assert metrics_route["app3_h"] == {"/app3"}
-            assert metrics_app_name["app1_f"] == "app1"
-            assert metrics_app_name["app2_g"] == "app2"
-            assert metrics_app_name["app3_h"] == "app3"
+            msg = f"Incorrect metrics for {metric_name}"
+            assert metrics_route["app1_f"] == {"/app1"}, msg
+            assert metrics_route["app2_g"] == {"/app2"}, msg
+            assert metrics_route["app3_h"] == {"/app3"}, msg
+            assert metrics_app_name["app1_f"] == "app1", msg
+            assert metrics_app_name["app2_g"] == "app2", msg
+            assert metrics_app_name["app3_h"] == "app3", msg
 
     def test_request_context_pass_for_handle_passing(self, serve_start_shutdown):
         """Test handle passing contexts between replicas"""
@@ -874,7 +875,7 @@ def test_multiplexed_metrics(serve_start_shutdown):
 
 
 def test_queued_queries_disconnected(serve_start_shutdown):
-    """Check that queued_queries decrements when queued requests disconnect."""
+    """Check that disconnected queued queries are tracked correctly."""
 
     signal = SignalActor.remote()
 
@@ -889,14 +890,14 @@ def test_queued_queries_disconnected(serve_start_shutdown):
 
     print("Deployed hang_on_first_request deployment.")
 
-    def queue_size() -> float:
+    def get_metric(metric: str) -> float:
         metrics = requests.get("http://127.0.0.1:9999").text
-        queue_size = -1
+        metric_value = -1
         for line in metrics.split("\n"):
-            if "ray_serve_deployment_queued_queries" in line:
-                queue_size = line.split(" ")[-1]
+            if metric in line:
+                metric_value = line.split(" ")[-1]
 
-        return float(queue_size)
+        return float(metric_value)
 
     def first_request_executing(request_future) -> bool:
         try:
@@ -912,6 +913,10 @@ def test_queued_queries_disconnected(serve_start_shutdown):
     fut = pool.apply_async(partial(requests.get, url))
     wait_for_condition(lambda: first_request_executing(fut), timeout=5)
     print("Executed first request.")
+    wait_for_condition(
+        lambda: get_metric("ray_serve_num_ongoing_http_requests") == 1, timeout=15
+    )
+    print("ray_serve_num_ongoing_http_requests updated successfully.")
 
     num_requests = 5
     for _ in range(num_requests):
@@ -919,15 +924,32 @@ def test_queued_queries_disconnected(serve_start_shutdown):
     print(f"Executed {num_requests} more requests.")
 
     # First request should be processing. All others should be queued.
-    wait_for_condition(lambda: queue_size() == num_requests, timeout=15)
+    wait_for_condition(
+        lambda: get_metric("ray_serve_deployment_queued_queries") == num_requests,
+        timeout=15,
+    )
     print("ray_serve_deployment_queued_queries updated successfully.")
+    wait_for_condition(
+        lambda: get_metric("ray_serve_num_ongoing_http_requests") == num_requests + 1,
+        timeout=15,
+    )
+    print("ray_serve_num_ongoing_http_requests updated successfully.")
 
     # Disconnect all requests by terminating the process pool.
     pool.terminate()
     print("Terminated all requests.")
 
-    wait_for_condition(lambda: queue_size() == 0, timeout=15)
+    wait_for_condition(
+        lambda: get_metric("ray_serve_deployment_queued_queries") == 0, timeout=15
+    )
     print("ray_serve_deployment_queued_queries updated successfully.")
+
+    # TODO (shrekris-anyscale): This should be 0 once async task cancellation
+    # is implemented.
+    wait_for_condition(
+        lambda: get_metric("ray_serve_num_ongoing_http_requests") == 1, timeout=15
+    )
+    print("ray_serve_num_ongoing_http_requests updated successfully.")
 
 
 def test_actor_summary(serve_instance):

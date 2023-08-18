@@ -18,7 +18,11 @@ from ray.train._internal.backend_executor import (
 from ray.train._internal.checkpoint import (
     CheckpointManager,
 )
-from ray.train._internal.session import TrainingResult, TrainingResultType
+from ray.train._internal.session import (
+    _TrainingResult,
+    TrainingResult,
+    TrainingResultType,
+)
 from ray.train._checkpoint import Checkpoint as NewCheckpoint
 
 # Ray Train should be usable even if Tune is not installed.
@@ -29,9 +33,8 @@ from ray.train.base_trainer import (  # noqa: F401
     GenDataset,
     TrainingFailedError,
 )
-from ray.tune.trainable.util import TrainableUtil
 from ray.util.annotations import DeveloperAPI
-from ray.train._internal.storage import _use_storage_context, get_storage_context
+from ray.train._internal.storage import _use_storage_context, StorageContext
 
 
 T = TypeVar("T")
@@ -71,10 +74,6 @@ class TrainingIterator:
         # TrainingResult event. There's no need to do these one at a time.
         self._checkpoint_to_report = None
 
-        # TODO(justinvyu): Is this the best way to do this? Need to save this
-        # as part of checkpoint metadata and load it back on restore.
-        self._latest_checkpoint_index = 0
-
         self._start_training(
             train_func=train_func,
             run_dir=run_dir,
@@ -103,7 +102,10 @@ class TrainingIterator:
             run_dir=run_dir,
             latest_checkpoint_id=latest_checkpoint_id,
         )
-        checkpoint = self._checkpoint_manager._load_checkpoint(checkpoint)
+
+        if not _use_storage_context():
+            checkpoint = self._checkpoint_manager._load_checkpoint(checkpoint)
+
         self._run_with_error_handling(
             lambda: self._backend_executor.start_training(
                 train_func=train_func,
@@ -116,23 +118,7 @@ class TrainingIterator:
         )
 
     def _send_next_checkpoint_path_to_workers(self):
-        # NOTE: Always upload to storage from workers in the new persistence path
-        # (no need to check for the `checkpoint_upload_from_workers` flag)
-        if _use_storage_context():
-            storage = get_storage_context()
-
-            # NOTE: Idea: this checkpoint dir name should be customizable
-            # and created on the fly when the checkpoint is reported with metrics.
-            # Ex: lambda metrics: f"checkpoint_iter={metrics['training_iteration']}"
-            storage.current_checkpoint_index = self._latest_checkpoint_index
-
-            self._backend_executor._set_checkpoint_index(
-                storage.current_checkpoint_index
-            )
-
-            self._latest_checkpoint_index += 1
-
-        elif self._checkpoint_strategy._checkpoint_upload_from_workers:
+        if self._checkpoint_strategy._checkpoint_upload_from_workers:
             self._backend_executor._set_legacy_checkpoint_uri(
                 self.__get_cloud_checkpoint_dir()
             )
@@ -220,6 +206,13 @@ class TrainingIterator:
                 returns None.
         """
 
+        if _use_storage_context():
+            results = self._backend_executor.get_next_results()
+            if results is None:
+                return None
+            assert all(isinstance(result, _TrainingResult) for result in results)
+            return results
+
         while True:
             results = self._backend_executor.get_next_results()
             if results is None:
@@ -227,22 +220,12 @@ class TrainingIterator:
             first_result = results[0]
             result_type = first_result.type
             if result_type is TrainingResultType.REPORT:
-                if _use_storage_context():
-                    # TODO(justinvyu): Use the new _TrainingResult instead.
-                    result_data = [
-                        (r.data, None if rank > 0 else self._checkpoint_to_report)
-                        for rank, r in enumerate(results)
-                    ]
-                else:
-                    result_data = [r.data for r in results]
+                result_data = [r.data for r in results]
                 return result_data
             elif result_type is TrainingResultType.CHECKPOINT:
-                if _use_storage_context():
-                    self._process_checkpoint_results(results)
-                else:
-                    self._checkpoint_manager._process_checkpoints(
-                        results, decode_checkpoint_fn=self._backend._decode_data
-                    )
+                self._checkpoint_manager._process_checkpoints(
+                    results, decode_checkpoint_fn=self._backend._decode_data
+                )
 
                 # Note(jungong) : This is kinda funky. We update the cloud
                 # checkpoint dir on every distributed worker right after
@@ -262,7 +245,6 @@ class TrainingIterator:
                     f"{[type in TrainingResultType]}"
                 )
 
-    # TODO(justinvyu): Remove unused code
     def _finish_checkpointing(self):
         while True:
             results = self._backend_executor.get_next_results()
@@ -277,7 +259,6 @@ class TrainingIterator:
                 # TODO: Is this needed? I don't think this is ever called...
                 self._send_next_checkpoint_path_to_workers()
 
-    # TODO(justinvyu): Remove unused code
     def _finish_training(self):
         """Finish training and return final results. Propagate any exceptions.
 
@@ -340,7 +321,7 @@ class TrainingIterator:
         path = Path(session.get_trial_dir())
         trial_dir_name = path.name
         exp_dir_name = path.parent.name
-        checkpoint_dir_name = TrainableUtil._make_checkpoint_dir_name(
+        checkpoint_dir_name = StorageContext._make_checkpoint_dir_name(
             self._checkpoint_manager._latest_checkpoint_id
         )
 
