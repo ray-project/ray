@@ -11,12 +11,12 @@ from google.cloud import bigquery, bigquery_storage
 from google.cloud.bigquery_storage import types
 
 from ray.data._internal.execution.interfaces import TaskContext
-from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data.block import Block, BlockAccessor, BlockMetadata
 from ray.data.datasource.datasource import Datasource, Reader, ReadTask, WriteResult
 from ray.types import ObjectRef
 
 logger = logging.getLogger(__name__)
+
 
 class _BigQueryDatasourceReader(Reader):
     def __init__(
@@ -136,9 +136,7 @@ class BigQueryDatasource(Datasource):
         project_id: str,
         dataset: str,
     ) -> WriteResult:
-        def _write_single_block(
-            block: Block, project_id: str, dataset: str
-        ):
+        def _write_single_block(block: Block, project_id: str, dataset: str):
             block = BlockAccessor.for_block(block).to_arrow()
 
             client = bigquery.Client(project=project_id)
@@ -173,16 +171,15 @@ class BigQueryDatasource(Datasource):
             logger.info("Created dataset " + dataset_id)
         except exceptions.Conflict:
             logger.info(
-                "Dataset " +
-                dataset_id +
-                " already exists. The table will be overwritten if it already exists.",
+                "Dataset "
+                + dataset_id
+                + " already exists. The table will be overwritten"
+                + " if it already exists."
             )
 
         # Delete table if it already exists
         client.delete_table(f"{project_id}.{dataset}", not_found_ok=True)
 
         for block in blocks:
-            _write_single_block(
-                block, project_id, dataset
-            )
+            _write_single_block(block, project_id, dataset)
         return "ok"

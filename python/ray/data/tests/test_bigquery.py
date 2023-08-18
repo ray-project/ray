@@ -1,5 +1,6 @@
 from unittest import mock
 
+import pyarrow as pa
 import pytest
 from google.api_core import exceptions, operation
 from google.cloud import bigquery, bigquery_storage
