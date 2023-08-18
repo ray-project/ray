@@ -11,14 +11,13 @@ neural network updates (see below for tips and tricks, example configs, and comm
 DreamerV3 trains a world model in supervised fashion using real environment
 interactions. The world model's objective is to correctly predict all aspects
 of the transition dynamics of the RL environment, which includes predicting the
-correct next observations, the received rewards, as well as a boolean episode
+correct next environment state, received rewards, as well as a boolean episode
 continuation flag.
 Just like in a standard policy gradient algorithm (e.g. REINFORCE), the critic tries to
-predict a correct value function (based on the world model-predicted rewards), whereas
-the actor tries to come up with good actions to take for maximizing accumulated rewards
-over time.
-In other words, the actual RL components of the model (actor and critic) are never
-trained on real environment data, but on dreamed trajectories only.
+predict a correct value function and the actor tries to come up with good actions
+choices that maximize accumulated rewards over time.
+Both these RL components of the model (actor and critic) are never
+trained on real environment data, but on dreamed trajectories produced by the world model.
 
 For more specific details about the algorithm refer to the
 [original paper](https://arxiv.org/pdf/2301.04104v1.pdf) (see below for all references).
@@ -80,13 +79,13 @@ Our results on the Atari 100k and (visual) DeepMind Control Suite benchmarks mat
 reported in the paper.
 
 ### Pong-v5 (100k) 1GPU vs 2GPUs vs 4GPUs
-<img src="../../../doc/source/rllib/images/dreamerv3/pong_1_2_and_4gpus.svg">
+<img src="../../../doc/source/rllib/images/dreamerv3/pong_1_2_and_4gpus.svg" style="display:block;">
 
 ### Atari 100k
-<img src="../../../doc/source/rllib/images/dreamerv3/atari100k_1_vs_4gpus.svg">
+<img src="../../../doc/source/rllib/images/dreamerv3/atari100k_1_vs_4gpus.svg" style="display:block;">
 
 ### DeepMind Control Suite (vision)
-<img src="../../../doc/source/rllib/images/dreamerv3/dmc_1_vs_4gpus.svg">
+<img src="../../../doc/source/rllib/images/dreamerv3/dmc_1_vs_4gpus.svg" style="display:block;">
 
 
 ## References
