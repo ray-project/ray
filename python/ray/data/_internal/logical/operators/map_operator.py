@@ -146,6 +146,7 @@ class MapRows(AbstractUDFMap):
         self,
         input_op: LogicalOperator,
         fn: UserDefinedFunction,
+        fn_constructor_args: Optional[Iterable[Any]] = None,
         compute: Optional[Union[str, ComputeStrategy]] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
     ):
@@ -153,6 +154,7 @@ class MapRows(AbstractUDFMap):
             "Map",
             input_op,
             fn,
+            fn_constructor_args=fn_constructor_args,
             compute=compute,
             ray_remote_args=ray_remote_args,
         )
@@ -192,6 +194,7 @@ class FlatMap(AbstractUDFMap):
         self,
         input_op: LogicalOperator,
         fn: UserDefinedFunction,
+        fn_constructor_args: Optional[Iterable[Any]] = None,
         compute: Optional[Union[str, ComputeStrategy]] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
     ):
@@ -199,6 +202,7 @@ class FlatMap(AbstractUDFMap):
             "FlatMap",
             input_op,
             fn,
+            fn_constructor_args=fn_constructor_args,
             compute=compute,
             ray_remote_args=ray_remote_args,
         )
