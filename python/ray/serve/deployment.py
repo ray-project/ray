@@ -178,6 +178,14 @@ class Deployment:
         self._docs_path = docs_path
 
     @property
+    def deployment_config(self) -> DeploymentConfig:
+        return self._deployment_config
+
+    @property
+    def replica_config(self) -> ReplicaConfig:
+        return self._replica_config
+
+    @property
     def name(self) -> str:
         """Unique name of this deployment."""
         return self._name
@@ -306,13 +314,19 @@ class Deployment:
         if len(init_kwargs) == 0 and self._replica_config.init_kwargs is not None:
             init_kwargs = self._replica_config.init_kwargs
 
+        replica_config = ReplicaConfig.create(
+            self._replica_config.deployment_def,
+            init_args=init_args,
+            init_kwargs=init_kwargs,
+            ray_actor_options=self._replica_config.ray_actor_options,
+            placement_group_bundles=self._replica_config.placement_group_bundles,
+            placement_group_strategy=self._replica_config.placement_group_strategy,
+        )
+
         return get_global_client().deploy(
             self._name,
-            self._replica_config.deployment_def,
-            init_args,
-            init_kwargs,
-            ray_actor_options=self._replica_config.ray_actor_options,
-            config=self._deployment_config,
+            replica_config=replica_config,
+            deployment_config=self._deployment_config,
             version=self._version,
             route_prefix=self.route_prefix,
             url=self.url,
