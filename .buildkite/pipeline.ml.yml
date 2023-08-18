@@ -509,7 +509,7 @@
     - DOC_TESTING=1 INSTALL_HOROVOD=1 ./ci/env/install-dependencies.sh
     # TODO (shrekris-anyscale): Remove transformers after core transformer
     # requirement is upgraded
-    - pip install "transformers==4.30.2"
+    - pip install "transformers==4.30.2" "datasets==2.14.0"
     - ./ci/env/env_info.sh
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-timeseries_libs,-external,-ray_air,-gpu,-post_wheel_build,-doctest,-datasets_train,-highly_parallel doc/...
 
