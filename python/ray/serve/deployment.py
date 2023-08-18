@@ -1,4 +1,4 @@
-from copy import copy, deepcopy
+from copy import deepcopy
 import inspect
 import logging
 from typing import (
@@ -256,13 +256,11 @@ class Deployment:
         config file) or bound to another deployment for composition.
         """
 
-        copied_self = copy(self)
-        copied_self._replica_config._deployment_def = "dummy.module"
-        schema_shell = deployment_to_schema(copied_self)
+        schema_shell = deployment_to_schema(self)
 
-        if inspect.isfunction(self._replica_config.deployment_def):
+        if inspect.isfunction(self.func_or_class):
             dag_node = FunctionNode(
-                self._replica_config.deployment_def,
+                self.func_or_class,
                 args,  # Used to bind and resolve DAG only, can take user input
                 kwargs,  # Used to bind and resolve DAG only, can take user input
                 self._replica_config.ray_actor_options or dict(),
@@ -273,7 +271,7 @@ class Deployment:
             )
         else:
             dag_node = ClassNode(
-                self._replica_config.deployment_def,
+                self.func_or_class,
                 args,
                 kwargs,
                 cls_options=self._replica_config.ray_actor_options or dict(),
