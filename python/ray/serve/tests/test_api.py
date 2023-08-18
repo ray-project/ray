@@ -331,7 +331,7 @@ def test_delete_deployment_group(serve_instance, blocking):
             )
 
             wait_for_condition(
-                lambda: len(serve_instance.list_deployments()) == 0,
+                lambda: len(serve_instance.list_deployments_v1()) == 0,
                 timeout=5,
             )
 

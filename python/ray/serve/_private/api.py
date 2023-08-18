@@ -77,7 +77,7 @@ def list_deployments() -> Dict[str, Deployment]:
 
     Dictionary maps deployment name to Deployment objects.
     """
-    infos = get_global_client().list_deployments()
+    infos = get_global_client().list_deployments_v1()
 
     deployments = {}
     for name, (deployment_info, route_prefix) in infos.items():

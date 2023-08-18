@@ -439,11 +439,11 @@ class ServeControllerClient:
         )
 
     @_ensure_connected
-    def list_deployments(self) -> Dict[str, Tuple[DeploymentInfo, str]]:
+    def list_deployments_v1(self) -> Dict[str, Tuple[DeploymentInfo, str]]:
         """Gets the current information about all 1.x deployments."""
 
         deployment_route_list = DeploymentRouteList.FromString(
-            ray.get(self._controller.list_deployments.remote())
+            ray.get(self._controller.list_deployments_v1.remote())
         )
         return {
             deployment_route.deployment_info.name: (
@@ -452,6 +452,12 @@ class ServeControllerClient:
             )
             for deployment_route in deployment_route_list.deployment_routes
         }
+
+    @_ensure_connected
+    def list_deployments(self) -> Dict[DeploymentID, DeploymentInfo]:
+        """Gets the current information about all deployments (1.x and 2.x)."""
+
+        return ray.get(self._controller.list_deployments.remote())
 
     @_ensure_connected
     def get_app_config(self, name: str = SERVE_DEFAULT_APP_NAME) -> Dict:

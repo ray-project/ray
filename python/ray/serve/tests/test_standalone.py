@@ -194,7 +194,7 @@ def test_single_app_shutdown_actors(ray_shutdown):
     actor_names = {
         "ServeController",
         "HTTPProxyActor",
-        "ServeReplica:app_f",
+        "ServeReplica:app:f",
     }
 
     def check_alive():
@@ -233,8 +233,8 @@ def test_multi_app_shutdown_actors(ray_shutdown):
     actor_names = {
         "ServeController",
         "HTTPProxyActor",
-        "ServeReplica:app1_f",
-        "ServeReplica:app2_f",
+        "ServeReplica:app1:f",
+        "ServeReplica:app2:f",
     }
 
     def check_alive():
@@ -664,7 +664,7 @@ def test_fixed_number_proxies(monkeypatch, ray_cluster):
 
 def test_serve_shutdown(ray_shutdown):
     ray.init(namespace="serve")
-    serve.start(detached=True)
+    client = serve.start(detached=True)
 
     @serve.deployment
     class A:
@@ -673,16 +673,16 @@ def test_serve_shutdown(ray_shutdown):
 
     serve.run(A.bind())
 
-    assert len(serve.list_deployments()) == 1
+    assert len(client.list_deployments()) == 1
 
     serve.shutdown()
-    serve.start(detached=True)
+    client = serve.start(detached=True)
 
-    assert len(serve.list_deployments()) == 0
+    assert len(client.list_deployments()) == 0
 
     serve.run(A.bind())
 
-    assert len(serve.list_deployments()) == 1
+    assert len(client.list_deployments()) == 1
 
 
 def test_detached_namespace_default_ray_init(ray_shutdown):

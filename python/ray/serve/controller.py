@@ -847,7 +847,7 @@ class ServeController:
             ).items()
         }
 
-    def list_deployments(self, include_deleted: Optional[bool] = False) -> bytes:
+    def list_deployments_v1(self, include_deleted: Optional[bool] = False) -> bytes:
         """Gets the current information about all 1.x deployments.
 
         Args:
@@ -864,6 +864,7 @@ class ServeController:
             deployment_info,
             route_prefix,
         ) in self.list_deployments_internal(include_deleted=include_deleted).items():
+            # Only list 1.x deployments, which should have app=""
             if deployment_id.app:
                 continue
 
@@ -875,6 +876,16 @@ class ServeController:
                 )
             )
         return deployment_route_list.SerializeToString()
+
+    def list_deployments(self) -> Dict[DeploymentID, DeploymentInfo]:
+        """Gets the current information about all deployments (1.x and 2.x)"""
+        return {
+            deployment_id: deployment_info
+            for deployment_id, (
+                deployment_info,
+                _,
+            ) in self.list_deployments_internal().items()
+        }
 
     def list_deployment_ids(self) -> List[DeploymentID]:
         """Gets the current list of all deployments' identifiers."""
