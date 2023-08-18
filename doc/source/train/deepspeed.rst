@@ -3,8 +3,47 @@
 Training with DeepSpeed
 =======================
 
-Ray :class:`~ray.train.torch.TorchTrainer` can help you easily distribute your DeepSpeed training over a Ray Cluster.
-Simply put all your existing training logics into a training function, then launch a TorchTrainer.
+The :class:`~ray.train.torch.TorchTrainer` can help you easily launch your :ref:`DeepSpeed  <https://www.deepspeed.ai/>`_  training across a distributed Ray cluster.
+
+All you need to do is run your existing training code with a TorchTrainer. You can expect the final code to look like this:
+
+.. code-block:: python
+
+    import deepspeed
+    from deepspeed.accelerator import get_accelerator
+
+    def train_func(config):
+        # Instantiate your model and dataset
+        model = ...
+        train_dataset = ...
+        eval_dataset = ...
+        deepspeed_config = {...} # Your Deepspeed config
+
+        # Prepare everything for distributed training
+        model, optimizer, train_dataloader, lr_scheduler = deepspeed.initialize(
+            model=model,
+            model_parameters=model.parameters(),
+            training_data=tokenized_datasets["train"],
+            collate_fn=collate_fn,
+            config=deepspeed_config,
+        )
+
+        # Define the GPU device for the current worker
+        device = get_accelerator().device_name(model.local_rank)
+
+        # Start training
+        ...
+    
+    from ray.train.torch import TorchTrainer
+    from ray.train import ScalingConfig
+
+    trainer = TorchTrainer(
+        train_func,
+        scaling_config=ScalingConfig(...),
+        ...
+    )
+    trainer.fit()
+
 
 Below is a simple example of ZeRO-3 training with DeepSpeed only. 
 
@@ -29,6 +68,14 @@ Many deep learning frameworks have integrated with DeepSpeed, including Lightnin
 
 Please check the below examples for more details:
 
-- DeepSpeed + Accelerate: `Fine-tune Llama-2 series models with Deepspeed, Accelerate, and Ray Train. <https://github.com/ray-project/ray/tree/master/doc/source/templates/04_finetuning_llms_with_deepspeed>`_
-- DeepSpeed + Transformers: :ref:`Fine-tune GPT-J-6b with DeepSpeed and Hugging Face Transformers <gptj_deepspeed_finetune>`
-- DeepSpeed + Lightning: :ref:`Fine-tune vicuna-13b with DeepSpeed and PyTorch Lightning <vicuna_lightning_deepspeed_finetuning>`
+.. list-table::
+   :header-rows: 1
+
+   * - Framework
+     - Example
+   * - Accelelate (:ref:`User Guide <train-hf-accelerate>`)
+     - `Fine-tune Llama-2 series models with Deepspeed, Accelerate, and Ray Train. <https://github.com/ray-project/ray/tree/master/doc/source/templates/04_finetuning_llms_with_deepspeed>`_
+   * - Transformers (:ref:`User Guide <train-pytorch-transformers>`)
+     - :ref:`Fine-tune GPT-J-6b with DeepSpeed and Hugging Face Transformers <gptj_deepspeed_finetune>`
+   * - Lightning (:ref:`User Guide <train-pytorch-lightning>`)
+     - :ref:`Fine-tune vicuna-13b with DeepSpeed and PyTorch Lightning <vicuna_lightning_deepspeed_finetuning>`

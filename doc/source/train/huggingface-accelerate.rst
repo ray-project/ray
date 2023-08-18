@@ -3,7 +3,7 @@
 Training with HuggingFace Accelerate
 ====================================
 
-The :class:`~ray.train.torch.TorchTrainer` can help you easily launch your :ref:`Accelelate  <https://huggingface.co/docs/accelerate>`_  training across a distributed Ray cluster.
+The :class:`~ray.train.torch.TorchTrainer` can help you easily launch your `Accelelate <https://huggingface.co/docs/accelerate>`_  training across a distributed Ray cluster.
 
 All you need to do is run your existing training code with a TorchTrainer. You can expect the final code to look like this:
 
@@ -48,7 +48,7 @@ All you need to do is run your existing training code with a TorchTrainer. You c
 .. tip::
 
     Model and data preparation for distributed training is completely handled by the `Accelerator <https://huggingface.co/docs/accelerate/main/en/package_reference/accelerator#accelerate.Accelerator>`_ 
-   object and its `Accelerator.prepare() <https://huggingface.co/docs/accelerate/main/en/package_reference/accelerator#accelerate.Accelerator.prepare>`_  method.
+    object and its `Accelerator.prepare() <https://huggingface.co/docs/accelerate/main/en/package_reference/accelerator#accelerate.Accelerator.prepare>`_  method.
     
     Unlike with native PyTorch, PyTorch Lightning, or HuggingFace Transformers, you do **not** call any additional Ray Train utilities 
     like :meth:`~ray.train.torch.prepare_model` or :meth:`~ray.train.torch.prepare_data_loader` in your training function. 
@@ -56,13 +56,13 @@ All you need to do is run your existing training code with a TorchTrainer. You c
 Configuring Accelerate
 -----------------------
 
-Hugging Face Accelerate provides two approaches to configure your run:
+In Ray Train, you can set configurations through the `accelerate.Accelerator <https://huggingface.co/docs/accelerate/main/en/package_reference/accelerator#accelerate.Accelerator>`_ 
+object in your training function, and ``TorchTrainer`` will automatically sets up the Torch distributed environment and launcher the training function on all workers.
 
 1. Use `accelerate config` to generate a configuration YAML file, and use `accelerate launch $YOUR_PY_SCRIPT --config_file=$YOUR_CONFIG_YAML` to launch via CLI. 
-2. Set configurations through the `accelerate.Accelerator <https://huggingface.co/docs/accelerate/main/en/package_reference/accelerator#accelerate.Accelerator>`_ object in your Python script, then run your script with a custom launcher.
+2. 
 
-In Ray Train, you should always use the second approach, where Ray TorchTrainer acts as a distributed launcher and automatically sets up 
-the Torch distributed environment and run thr training function on all workers.
+you should always use the second approach, where Ray TorchTrainer 
 
 Below are starter examples for configuring Accelerate.
 
