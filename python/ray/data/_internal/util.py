@@ -5,7 +5,7 @@ import pathlib
 import sys
 import urllib.parse
 from types import ModuleType
-from typing import TYPE_CHECKING, Any, List, Optional, Union
+from typing import TYPE_CHECKING, Any, Iterable, List, Optional, Union
 
 import numpy as np
 
@@ -406,10 +406,12 @@ def _split_list(arr: List[Any], num_splits: int) -> List[List[Any]]:
 
 
 def validate_compute(
-    fn: "UserDefinedFunction", compute: Optional[Union[str, "ComputeStrategy"]]
+    fn: "UserDefinedFunction",
+    compute: Optional[Union[str, "ComputeStrategy"]],
+    fn_constructor_args: Optional[Iterable[Any]] = None,
 ) -> None:
     # Lazily import these objects to avoid circular imports.
-    from ray.data._internal.compute import TaskPoolStrategy
+    from ray.data._internal.compute import ActorPoolStrategy, TaskPoolStrategy
     from ray.data.block import CallableClass
 
     if isinstance(fn, CallableClass) and (
@@ -420,6 +422,20 @@ def validate_compute(
             f"specify the actor compute strategy, but got: {compute}. "
             "For example, use ``compute=ray.data.ActorPoolStrategy(size=n)``."
         )
+
+    if fn_constructor_args is not None:
+        if compute is None or (
+            compute != "actors" and not isinstance(compute, ActorPoolStrategy)
+        ):
+            raise ValueError(
+                "fn_constructor_args can only be specified if using the actor "
+                f"pool compute strategy, but got: {compute}"
+            )
+        if not isinstance(fn, CallableClass):
+            raise ValueError(
+                "fn_constructor_args can only be specified if providing a "
+                f"CallableClass instance for fn, but got: {fn}"
+            )
 
 
 def capfirst(s: str):
