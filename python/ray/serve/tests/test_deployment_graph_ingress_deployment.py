@@ -17,6 +17,9 @@ class Model:
     def forward(self, input):
         return self.val + input
 
+@serve.deployment
+def func_deployment():
+    return "hello"
 
 @serve.deployment
 def combine(input_1, input_2):
@@ -87,7 +90,7 @@ def test_http_we_provide_default_route_prefix_func(serve_instance):
     """Ensure the default ingress deployment route is '/' instead of driver
     function name
     """
-    func_dag = combine.bind(1, 2)
+    func_dag = func_deployment.bind()
     deployments = pipeline_build(func_dag)
     ingress_deployment = get_and_validate_ingress_deployment(deployments)
     assert ingress_deployment.route_prefix == "/"
