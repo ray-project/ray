@@ -85,9 +85,15 @@ def _validate_tpu_config(node: dict):
         topology_pattern = re.compile(r"^\d+x\d+(x\d+)?$")
 
         if not generation_pattern.match(generation):
-            raise ValueError(f"type should match V(generation). Got {generation}")
+            raise ValueError(f"type should match V(generation). Got {generation}.")
+        if generation == "V2" or generation == "V3":
+            raise ValueError(
+                f"acceleratorConfig is not supported on V2/V3 TPUs. Got {generation}."
+            )
         if not topology_pattern.match(topology):
-            raise ValueError(f"topology should be of form axbxc or axb. Got {topology}")
+            raise ValueError(
+                f"topology should be of form axbxc or axb. Got {topology}."
+            )
 
 
 def _get_num_tpu_chips(node: dict) -> int:

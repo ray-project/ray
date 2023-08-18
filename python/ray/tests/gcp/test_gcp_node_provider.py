@@ -231,6 +231,18 @@ def test_tpu_config_cannot_have_accelerator_type_and_config():
 
 
 @pytest.mark.parametrize(
+    "node",
+    [
+        {"acceleratorConfig": {"type": "V3", "topology": "2x2"}},
+        {"acceleratorConfig": {"type": "V2", "topology": "2x2"}},
+    ],
+)
+def test_get_node_rejects_v2_v3_accelerator_config(node):
+    with pytest.raises(ValueError):
+        get_node_type(node)
+
+
+@pytest.mark.parametrize(
     "node_config",
     [
         {"acceleratorType": "vabc-12345"},
@@ -287,7 +299,6 @@ def test_tpu_chip_calculation_single_host_logic(test_case):
         ({"acceleratorType": "v2-8"}, GCPNodeType.TPU, True),
         ({"acceleratorType": "v3-8"}, GCPNodeType.TPU, True),
         ({"acceleratorType": "v4-8"}, GCPNodeType.TPU, True),
-        # Note: Topology only supported in v4
         (
             {"acceleratorConfig": {"type": "V4", "topology": "2x2x1"}},
             GCPNodeType.TPU,
