@@ -47,4 +47,4 @@ def test_write_sql(temp_database: str):
     )
 
     result = connection.cursor().execute("SELECT * FROM test ORDER BY number")
-    result.fetchall() == [("spam", 0), ("ham", 1)]
+    assert result.fetchall() == [("spam", 0), ("ham", 1)]

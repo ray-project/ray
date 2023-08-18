@@ -79,8 +79,8 @@ def _connect(connection_factory: Callable[[], Connection]) -> Iterator[Cursor]:
         cursor = connection.cursor()
         _check_cursor_is_dbapi2_compliant(cursor)
         yield cursor
-
-    finally:
+        connection.commit()
+    except Exception:
         # `rollback` is optional since not all databases provide transaction support.
         try:
             connection.rollback()
@@ -92,8 +92,7 @@ def _connect(connection_factory: Callable[[], Connection]) -> Iterator[Cursor]:
                 or e.__class__.__name__ == "NotSupportedError"
             ):
                 raise e from None
-
-        connection.commit()
+    finally:
         connection.close()
 
 
