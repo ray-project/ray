@@ -158,6 +158,15 @@ def test_basic(ray_start_with_dashboard):
     assert agent_ports is not None
 
 
+def test_missing_imports(ray_start_dashboard_bad_import):
+    """
+    Test dashboard fails when packages are missing but inclusion
+    was explicitly specified by the user.
+    """
+    with pytest.raises(Exception):
+        ray.init("local", **init_kwargs)
+
+
 def test_raylet_and_agent_share_fate(shutdown_only):
     """Test raylet and agent share fate."""
 
