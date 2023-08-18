@@ -4,8 +4,8 @@ import ray
 import ray.cloudpickle as cloudpickle
 from ray.data._internal.execution.interfaces import PhysicalOperator, RefBundle
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
-from ray.data._internal.execution.operators.map_data_processor import (
-    create_map_data_processor_for_read_op,
+from ray.data._internal.execution.operators.map_transformer import (
+    create_map_transformer_for_read_op,
 )
 from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.logical.operators.read_operator import Read
@@ -68,10 +68,10 @@ def _plan_read_op(op: Read) -> PhysicalOperator:
         for read_task in blocks:
             yield from read_task()
 
-    map_data_processor = create_map_data_processor_for_read_op(do_read)
+    map_transformer = create_map_transformer_for_read_op(do_read)
 
     return MapOperator.create(
-        map_data_processor,
+        map_transformer,
         inputs,
         name=op.name,
         ray_remote_args=op._ray_remote_args,

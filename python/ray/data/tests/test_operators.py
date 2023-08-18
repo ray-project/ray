@@ -24,8 +24,8 @@ from ray.data._internal.execution.operators.base_physical_operator import (
 )
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.operators.limit_operator import LimitOperator
-from ray.data._internal.execution.operators.map_data_processor import (
-    create_map_data_processor_from_block_fn,
+from ray.data._internal.execution.operators.map_transformer import (
+    create_map_transformer_from_block_fn,
 )
 from ray.data._internal.execution.operators.map_operator import (
     MapOperator,
@@ -52,7 +52,7 @@ def _mul2_transform(block_iter: Iterable[Block], ctx) -> Iterable[Block]:
         yield pd.DataFrame({"id": [b * 2 for b in block["id"]]})
 
 
-_mul2_map_data_prcessor = create_map_data_processor_from_block_fn(_mul2_transform)
+_mul2_map_data_prcessor = create_map_transformer_from_block_fn(_mul2_transform)
 
 
 def _take_outputs(op: PhysicalOperator) -> List[Any]:
@@ -404,7 +404,7 @@ def test_map_operator_min_rows_per_bundle(ray_start_regular_shared, use_actors):
     input_op = InputDataBuffer(make_ref_bundles([[i] for i in range(10)]))
     compute_strategy = ActorPoolStrategy() if use_actors else TaskPoolStrategy()
     op = MapOperator.create(
-        create_map_data_processor_from_block_fn(_check_batch),
+        create_map_transformer_from_block_fn(_check_batch),
         input_op=input_op,
         name="TestMapper",
         compute_strategy=compute_strategy,
@@ -437,7 +437,7 @@ def test_map_operator_output_unbundling(
     input_op = InputDataBuffer(make_ref_bundles([[i] for i in range(10)]))
     compute_strategy = ActorPoolStrategy() if use_actors else TaskPoolStrategy()
     op = MapOperator.create(
-        create_map_data_processor_from_block_fn(noop),
+        create_map_transformer_from_block_fn(noop),
         input_op=input_op,
         name="TestMapper",
         compute_strategy=compute_strategy,
@@ -504,7 +504,7 @@ def test_map_operator_shutdown(shutdown_only, use_actors):
     input_op = InputDataBuffer(make_ref_bundles([[i] for i in range(10)]))
     compute_strategy = ActorPoolStrategy() if use_actors else TaskPoolStrategy()
     op = MapOperator.create(
-        create_map_data_processor_from_block_fn(_sleep),
+        create_map_transformer_from_block_fn(_sleep),
         input_op=input_op,
         name="TestMapper",
         compute_strategy=compute_strategy,
@@ -536,7 +536,7 @@ def test_actor_pool_map_operator_init(ray_start_regular_shared):
     compute_strategy = ActorPoolStrategy(min_size=1)
 
     op = MapOperator.create(
-        create_map_data_processor_from_block_fn(_sleep, init_fn=_fail),
+        create_map_transformer_from_block_fn(_sleep, init_fn=_fail),
         input_op=input_op,
         name="TestMapper",
         compute_strategy=compute_strategy,
@@ -556,7 +556,7 @@ def test_actor_pool_map_operator_should_add_input(ray_start_regular_shared):
     compute_strategy = ActorPoolStrategy(size=1)
 
     op = MapOperator.create(
-        create_map_data_processor_from_block_fn(_sleep),
+        create_map_transformer_from_block_fn(_sleep),
         input_op=input_op,
         name="TestMapper",
         compute_strategy=compute_strategy,

@@ -19,8 +19,8 @@ from ray.data._internal.execution.operators.base_physical_operator import (
 )
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.operators.limit_operator import LimitOperator
-from ray.data._internal.execution.operators.map_data_processor import (
-    create_map_data_processor_from_block_fn,
+from ray.data._internal.execution.operators.map_transformer import (
+    create_map_transformer_from_block_fn,
 )
 from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.util import make_callable_class_concurrent
@@ -240,7 +240,7 @@ def _blocks_to_input_buffer(blocks: BlockList, owns_blocks: bool) -> PhysicalOpe
         if isinstance(blocks, LazyBlockList):
             task_name = getattr(blocks, "_read_stage_name", task_name)
         return MapOperator.create(
-            create_map_data_processor_from_block_fn(do_read),
+            create_map_transformer_from_block_fn(do_read),
             inputs,
             name=task_name,
             ray_remote_args=remote_args,
@@ -305,7 +305,7 @@ def _stage_to_operator(stage: Stage, input_op: PhysicalOperator) -> PhysicalOper
             yield from block_fn(blocks, ctx, *fn_args, **fn_kwargs)
 
         return MapOperator.create(
-            create_map_data_processor_from_block_fn(do_map, init_fn),
+            create_map_transformer_from_block_fn(do_map, init_fn),
             input_op,
             name=stage.name,
             compute_strategy=compute,

@@ -13,7 +13,7 @@ from ray.data._internal.execution.interfaces import (
     RefBundle,
     TaskContext,
 )
-from ray.data._internal.execution.operators.map_data_processor import MapDataProcessor
+from ray.data._internal.execution.operators.map_transformer import MapTransformer
 from ray.data._internal.execution.operators.map_operator import MapOperator, _map_task
 from ray.data._internal.execution.util import locality_string
 from ray.data.block import Block, BlockMetadata
@@ -47,7 +47,7 @@ class ActorPoolMapOperator(MapOperator):
 
     def __init__(
         self,
-        map_data_processor: MapDataProcessor,
+        map_transformer: MapTransformer,
         input_op: PhysicalOperator,
         autoscaling_policy: "AutoscalingPolicy",
         name: str = "ActorPoolMap",
@@ -70,7 +70,7 @@ class ActorPoolMapOperator(MapOperator):
             ray_remote_args: Customize the ray remote args for this op's tasks.
         """
         super().__init__(
-            map_data_processor, input_op, name, min_rows_per_bundle, ray_remote_args
+            map_transformer, input_op, name, min_rows_per_bundle, ray_remote_args
         )
         self._ray_remote_args = self._apply_default_remote_args(self._ray_remote_args)
         self._min_rows_per_bundle = min_rows_per_bundle
@@ -130,7 +130,7 @@ class ActorPoolMapOperator(MapOperator):
         actor = self._cls.remote(
             ctx,
             src_fn_name=self.name,
-            map_data_processor=self._map_data_processor,
+            map_transformer=self._map_transformer,
         )
         res_ref = actor.get_location.remote()
 
@@ -357,13 +357,13 @@ class _MapWorker:
     """An actor worker for MapOperator."""
 
     def __init__(
-        self, ctx: DataContext, src_fn_name: str, map_data_processor: MapDataProcessor
+        self, ctx: DataContext, src_fn_name: str, map_transformer: MapTransformer
     ):
         DataContext._set_current(ctx)
         self.src_fn_name: str = src_fn_name
-        self._map_data_processor = map_data_processor
+        self._map_transformer = map_transformer
         # Initialize state for this actor.
-        self._map_data_processor.init()
+        self._map_transformer.init()
 
     def get_location(self) -> NodeIdStr:
         return ray.get_runtime_context().get_node_id()
@@ -373,7 +373,7 @@ class _MapWorker:
         ctx: TaskContext,
         *blocks: Block,
     ) -> Iterator[Union[Block, List[BlockMetadata]]]:
-        yield from _map_task(self._map_data_processor, ctx, *blocks)
+        yield from _map_task(self._map_transformer, ctx, *blocks)
 
     def __repr__(self):
         return f"MapWorker({self.src_fn_name})"

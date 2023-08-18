@@ -247,7 +247,7 @@ class OperatorFusionRule(Rule):
 
         # Fused physical map operator.
         op = MapOperator.create(
-            up_op.get_map_data_processor().fuse(down_op.get_map_data_processor()),
+            up_op.get_map_transformer().fuse(down_op.get_map_transformer()),
             input_op,
             name=name,
             compute_strategy=compute,
@@ -306,7 +306,7 @@ class OperatorFusionRule(Rule):
         # Fuse transformation functions.
         ray_remote_args = up_logical_op._ray_remote_args
         down_transform_fn = down_op.get_transformation_fn()
-        up_map_data_processor = up_op.get_map_data_processor()
+        up_map_transformer = up_op.get_map_transformer()
 
         def fused_all_to_all_transform_fn(
             blocks: List[RefBundle], ctx: TaskContext
@@ -314,7 +314,7 @@ class OperatorFusionRule(Rule):
             """To fuse MapOperator->AllToAllOperator, we store the map function
             in the TaskContext so that it may be used by the downstream
             AllToAllOperator's transform function."""
-            ctx.upstream_map_data_processor = up_map_data_processor
+            ctx.upstream_map_transformer = up_map_transformer
             ctx.upstream_map_ray_remote_args = ray_remote_args
             return down_transform_fn(blocks, ctx)
 

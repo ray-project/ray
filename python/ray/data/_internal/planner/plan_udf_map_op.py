@@ -9,9 +9,9 @@ import pyarrow as pa
 import ray
 from ray.data._internal.compute import get_compute
 from ray.data._internal.execution.interfaces import PhysicalOperator
-from ray.data._internal.execution.operators.map_data_processor import (
-    create_map_data_processor_for_map_batches_op,
-    create_map_data_processor_for_row_based_map_op,
+from ray.data._internal.execution.operators.map_transformer import (
+    create_map_transformer_for_map_batches_op,
+    create_map_transformer_for_row_based_map_op,
 )
 from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.util import make_callable_class_concurrent
@@ -99,7 +99,7 @@ def validate_batch(batch: Block) -> None:
                 )
 
 
-def _create_map_data_processor_for_map_batches_op(op: MapBatches):
+def _create_map_transformer_for_map_batches_op(op: MapBatches):
     fn, init_fn = _parse_op_fn(op)
 
     def op_transform_fn(batches, _):
@@ -139,7 +139,7 @@ def _create_map_data_processor_for_map_batches_op(op: MapBatches):
                     validate_batch(out_batch)
                     yield out_batch
 
-    return create_map_data_processor_for_map_batches_op(
+    return create_map_transformer_for_map_batches_op(
         op_transform_fn,
         op._batch_size,
         op._batch_format,
@@ -159,7 +159,7 @@ def validate_row_output(item):
         )
 
 
-def _create_map_data_processor_for_row_based_op(op: AbstractUDFMap):
+def _create_map_transformer_for_row_based_op(op: AbstractUDFMap):
     fn, init_fn = _parse_op_fn(op)
 
     if isinstance(op, MapRows):
@@ -188,7 +188,7 @@ def _create_map_data_processor_for_row_based_op(op: AbstractUDFMap):
     else:
         raise ValueError(f"Found unknown logical operator during planning: {op}")
 
-    return create_map_data_processor_for_row_based_map_op(op_transform_fn, init_fn)
+    return create_map_transformer_for_row_based_map_op(op_transform_fn, init_fn)
 
 
 def _plan_udf_map_op(
@@ -204,12 +204,12 @@ def _plan_udf_map_op(
     validate_compute(op._fn, compute)
 
     if isinstance(op, MapBatches):
-        map_data_processor = _create_map_data_processor_for_map_batches_op(op)
+        map_transformer = _create_map_transformer_for_map_batches_op(op)
     else:
-        map_data_processor = _create_map_data_processor_for_row_based_op(op)
+        map_transformer = _create_map_transformer_for_row_based_op(op)
 
     return MapOperator.create(
-        map_data_processor,
+        map_transformer,
         input_physical_dag,
         name=op.name,
         compute_strategy=compute,

@@ -31,7 +31,7 @@ class MapTransformFnDataType(Enum):
 
 
 class MapTransformFn:
-    """Represents a single transform function in a MapDataProcessor."""
+    """Represents a single transform function in a MapTransformer."""
 
     def __init__(
         self,
@@ -63,10 +63,10 @@ class MapTransformFn:
         return self._output_type
 
 
-class MapDataProcessor:
+class MapTransformer:
     """Encapsulates the logic of processing data for a map PhysicalOperator.
 
-    MapDataProcessor may consist of one or more steps, each of which is represented
+    MapTransformer may consist of one or more steps, each of which is represented
     as a MapTransformFn. The first transform function must take blocks as input, and
     the last transform function must output blocks.
     """
@@ -112,8 +112,8 @@ class MapDataProcessor:
             iter = transform_fn(iter, ctx)
         return iter
 
-    def fuse(self, other: "MapDataProcessor") -> "MapDataProcessor":
-        """Fuse two MapDataProcessors together."""
+    def fuse(self, other: "MapTransformer") -> "MapTransformer":
+        """Fuse two MapTransformers together."""
 
         def fused_init_fn():
             self._init_fn()
@@ -121,7 +121,7 @@ class MapDataProcessor:
 
         # TODO(Scott): Add zero-copy batching between transform functions.
         fused_transform_fns = self._transform_fns + other._transform_fns
-        return MapDataProcessor(fused_transform_fns, init_fn=fused_init_fn)
+        return MapTransformer(fused_transform_fns, init_fn=fused_init_fn)
 
 
 # Below are util functions for converting input/output data.
@@ -222,11 +222,11 @@ _blocks_to_output_blocks = MapTransformFn(
 # End of util functions.
 
 
-def create_map_data_processor_for_row_based_map_op(
+def create_map_transformer_for_row_based_map_op(
     row_fn: RowTransformCallable,
     init_fn: Optional[InitFn] = None,
-) -> MapDataProcessor:
-    """Create a MapDataProcessor for a row-based map operator
+) -> MapTransformer:
+    """Create a MapTransformer for a row-based map operator
     (e.g. map, flat_map, filter)."""
     transform_fns = [
         # Convert input blocks to rows.
@@ -236,17 +236,17 @@ def create_map_data_processor_for_row_based_map_op(
         # Convert output rows to blocks.
         _rows_to_output_blocks,
     ]
-    return MapDataProcessor(transform_fns, init_fn=init_fn)
+    return MapTransformer(transform_fns, init_fn=init_fn)
 
 
-def create_map_data_processor_for_map_batches_op(
+def create_map_transformer_for_map_batches_op(
     batch_fn: BatchTransformCallable,
     batch_size: Optional[int] = None,
     batch_format: str = "default",
     zero_copy_batch: bool = False,
     init_fn: Optional[InitFn] = None,
-) -> MapDataProcessor:
-    """Create a MapDataProcessor for a map_batches operator."""
+) -> MapTransformer:
+    """Create a MapTransformer for a map_batches operator."""
     input_blocks_to_batches = MapTransformFn(
         functools.partial(
             _input_blocks_to_batches,
@@ -267,14 +267,14 @@ def create_map_data_processor_for_map_batches_op(
         # Convert output batches to blocks.
         _batches_to_output_blocks,
     ]
-    return MapDataProcessor(transform_fns, init_fn)
+    return MapTransformer(transform_fns, init_fn)
 
 
-def create_map_data_processor_for_read_op(
+def create_map_transformer_for_read_op(
     read_fn: BlockTransformCallable,
     init_fn: Optional[InitFn] = None,
-) -> MapDataProcessor:
-    """Create a MapDataProcessor for a read operator."""
+) -> MapTransformer:
+    """Create a MapTransformer for a read operator."""
     # TODO(hchen): Currently, we apply the BlockOuputBuffer within the read tasks.
     # We should remove that and use `_blocks_to_output_blocks` here.
     transform_fns = [
@@ -282,32 +282,32 @@ def create_map_data_processor_for_read_op(
             read_fn, MapTransformFnDataType.Block, MapTransformFnDataType.Block
         ),
     ]
-    return MapDataProcessor(transform_fns, init_fn=init_fn)
+    return MapTransformer(transform_fns, init_fn=init_fn)
 
 
-def create_map_data_processor_for_write_op(
+def create_map_transformer_for_write_op(
     write_fn: BlockTransformCallable,
     init_fn: Optional[InitFn] = None,
-) -> MapDataProcessor:
-    """Create a MapDataProcessor for a write operator."""
+) -> MapTransformer:
+    """Create a MapTransformer for a write operator."""
     transform_fns = [
         MapTransformFn(
             write_fn, MapTransformFnDataType.Block, MapTransformFnDataType.Block
         ),
         _blocks_to_output_blocks,
     ]
-    return MapDataProcessor(transform_fns, init_fn=init_fn)
+    return MapTransformer(transform_fns, init_fn=init_fn)
 
 
-def create_map_data_processor_from_block_fn(
+def create_map_transformer_from_block_fn(
     block_fn: BlockTransformCallable,
     init_fn: Optional[InitFn] = None,
 ):
-    """Create a MapDataProcessor from a single block-based transform function.
+    """Create a MapTransformer from a single block-based transform function.
 
     This method should only used for testing and legacy compatibility.
     """
-    return MapDataProcessor(
+    return MapTransformer(
         [
             MapTransformFn(
                 block_fn, MapTransformFnDataType.Block, MapTransformFnDataType.Block

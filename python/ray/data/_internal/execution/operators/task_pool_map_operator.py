@@ -7,7 +7,7 @@ from ray.data._internal.execution.interfaces import (
     RefBundle,
     TaskContext,
 )
-from ray.data._internal.execution.operators.map_data_processor import MapDataProcessor
+from ray.data._internal.execution.operators.map_transformer import MapTransformer
 from ray.data._internal.execution.operators.map_operator import MapOperator, _map_task
 from ray.data._internal.remote_fn import cached_remote_fn
 
@@ -17,7 +17,7 @@ class TaskPoolMapOperator(MapOperator):
 
     def __init__(
         self,
-        map_data_processor: MapDataProcessor,
+        map_transformer: MapTransformer,
         input_op: PhysicalOperator,
         name: str = "TaskPoolMap",
         min_rows_per_bundle: Optional[int] = None,
@@ -36,7 +36,7 @@ class TaskPoolMapOperator(MapOperator):
             ray_remote_args: Customize the ray remote args for this op's tasks.
         """
         super().__init__(
-            map_data_processor, input_op, name, min_rows_per_bundle, ray_remote_args
+            map_transformer, input_op, name, min_rows_per_bundle, ray_remote_args
         )
 
     def _add_bundled_input(self, bundle: RefBundle):
@@ -46,7 +46,7 @@ class TaskPoolMapOperator(MapOperator):
         ctx = TaskContext(task_idx=self._next_data_task_idx)
         gen = map_task.options(
             **self._get_runtime_ray_remote_args(input_bundle=bundle), name=self.name
-        ).remote(self._map_data_processor_ref, ctx, *input_blocks)
+        ).remote(self._map_transformer_ref, ctx, *input_blocks)
         self._submit_data_task(gen, bundle)
 
     def shutdown(self):

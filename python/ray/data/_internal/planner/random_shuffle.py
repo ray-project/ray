@@ -5,7 +5,7 @@ from ray.data._internal.execution.interfaces import (
     RefBundle,
     TaskContext,
 )
-from ray.data._internal.execution.operators.map_data_processor import MapDataProcessor
+from ray.data._internal.execution.operators.map_transformer import MapTransformer
 from ray.data._internal.planner.exchange.pull_based_shuffle_task_scheduler import (
     PullBasedShuffleTaskScheduler,
 )
@@ -30,16 +30,16 @@ def generate_random_shuffle_fn(
     ) -> Tuple[List[RefBundle], StatsDict]:
         num_input_blocks = sum(len(r.blocks) for r in refs)
 
-        # If map_data_processor is specified (e.g. from fusing
+        # If map_transformer is specified (e.g. from fusing
         # MapOperator->AllToAllOperator), we pass a map function which
         # is applied to each block before shuffling.
-        map_data_processor: Optional[MapDataProcessor] = ctx.upstream_map_data_processor
+        map_transformer: Optional[MapTransformer] = ctx.upstream_map_transformer
         upstream_map_fn = None
         nonlocal ray_remote_args
-        if map_data_processor:
+        if map_transformer:
 
             def upstream_map_fn(blocks):
-                return map_data_processor.process(blocks, ctx)
+                return map_transformer.process(blocks, ctx)
 
             # If there is a fused upstream operator,
             # also use the ray_remote_args from the fused upstream operator.

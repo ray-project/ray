@@ -4,8 +4,8 @@ from typing import TYPE_CHECKING, Any, Dict, Optional
 from ray.data._internal.progress_bar import ProgressBar
 
 if TYPE_CHECKING:
-    from ray.data._internal.execution.operators.map_data_processor import (
-        MapDataProcessor,
+    from ray.data._internal.execution.operators.map_transformer import (
+        MapTransformer,
     )
 
 
@@ -22,7 +22,7 @@ class TaskContext:
     # TODO(chengsu): clean it up from TaskContext with new optimizer framework.
     sub_progress_bar_dict: Optional[Dict[str, ProgressBar]] = None
 
-    # NOTE(hchen): `upstream_map_data_processor` and `upstream_map_ray_remote_args`
+    # NOTE(hchen): `upstream_map_transformer` and `upstream_map_ray_remote_args`
     # are only used for `RandomShuffle`. DO NOT use them for other operators.
     # Ideally, they should be handled by the optimizer, and should be transparent
     # to the specific operators.
@@ -33,8 +33,8 @@ class TaskContext:
 
     # The underlying function called in a MapOperator; this is used when fusing
     # an AllToAllOperator with an upstream MapOperator.
-    upstream_map_data_processor: Optional["MapDataProcessor"] = None
+    upstream_map_transformer: Optional["MapTransformer"] = None
 
     # The Ray remote arguments of the fused upstream MapOperator.
-    # This should be set if upstream_map_data_processor is set.
+    # This should be set if upstream_map_transformer is set.
     upstream_map_ray_remote_args: Optional[Dict[str, Any]] = None
