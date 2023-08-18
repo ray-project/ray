@@ -4,7 +4,7 @@ import os
 import pathlib
 import sys
 import time
-from typing import Dict, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import click
 import yaml
@@ -704,6 +704,14 @@ def shutdown(address: str, yes: bool):
     is_flag=True,
     help="Generate a single-application config from one target.",
 )
+@click.option(
+    "--grpc-servicer-functions",
+    default=[],
+    required=False,
+    multiple=True,
+    help="Servicer function for adding the method handler to the gRPC server."
+         "Defaults to empty list and no gRPC server will be started.",
+)
 def build(
     import_paths: Tuple[str],
     app_dir: str,
@@ -712,6 +720,7 @@ def build(
     # This is no longer used, it is only kept here to avoid breaking existing CLI usage
     multi_app: bool,
     single_app: bool,
+    grpc_servicer_functions: List[str],
 ):
     # Add logger messages for users who are still using --multi-app
     if multi_app:
@@ -793,6 +802,10 @@ def build(
             "http_options": {
                 "host": "0.0.0.0",
                 "port": 8000,
+            },
+            "grpc_options": {
+                "port": DEFAULT_GRPC_PORT,
+                "grpc_servicer_functions": grpc_servicer_functions,
             },
             "applications": app_configs,
         }

@@ -531,12 +531,16 @@ def test_build_multi_app(ray_start_stop):
     with NamedTemporaryFile(mode="w+", suffix=".yaml") as tmp:
         print('Building nodes "TestApp1Node" and "TestApp2Node".')
         # Build an app
+        grpc_servicer_func_root = "ray.serve.generated.serve_pb2_grpc"
         subprocess.check_output(
             [
                 "serve",
                 "build",
                 "ray.serve.tests.test_cli_2.TestApp1Node",
                 "ray.serve.tests.test_cli_2.TestApp2Node",
+                "ray.serve.tests.test_config_files.grpc_deployment.g",
+                "--grpc-servicer-functions",
+                f"{grpc_servicer_func_root}.add_UserDefinedServiceServicer_to_server",
                 "-o",
                 tmp.name,
             ]
@@ -553,6 +557,15 @@ def test_build_multi_app(ray_start_stop):
             lambda: ping_endpoint("app2") == "wonderful world", timeout=15
         )
         print("App 2 is live and reachable over HTTP.")
+
+        app_name = "app3_grpc-deployment"
+        channel = grpc.insecure_channel("localhost:9000")
+        stub = serve_pb2_grpc.UserDefinedServiceStub(channel)
+        request = serve_pb2.UserDefinedMessage(name="foo", num=30, foo="bar")
+        metadata = (("application", app_name),)
+        response = stub.__call__(request=request, metadata=metadata)
+        assert response.greeting == "Hello foo from bar"
+        print("App 3 is live and reachable over gRPC.")
 
         print("Deleting applications.")
         subprocess.check_output(["serve", "shutdown", "-y"])
