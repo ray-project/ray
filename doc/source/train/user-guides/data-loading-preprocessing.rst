@@ -158,6 +158,11 @@ Using Ray Data and Ray Train for distributed training on large datasets involves
 
                 ...
 
+                args = transformers.TrainingArguments(
+                    ...,
+                    max_steps=max_steps # Required for iterable datasets
+                )
+
                 trainer = transformers.Trainer(
                     ...,
                     model=model,
