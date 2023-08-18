@@ -1,5 +1,4 @@
 import asyncio
-import json
 import logging
 import os
 import pickle
@@ -37,7 +36,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_CONTROLLER_CALLBACK_IMPORT_PATH,
 )
 from ray.serve._private.deploy_utils import deploy_args_to_deployment_info
-from ray.serve._private.deployment_state import DeploymentStateManager, ReplicaState
+from ray.serve._private.deployment_state import DeploymentStateManager
 from ray.serve._private.endpoint_state import EndpointState
 from ray.serve._private.http_state import HTTPProxyStateManager
 from ray.serve._private.logging_utils import (
@@ -74,7 +73,6 @@ logger = logging.getLogger(SERVE_LOGGER_NAME)
 # after writing each checkpoint with the specified probability.
 _CRASH_AFTER_CHECKPOINT_PROBABILITY = 0
 
-SNAPSHOT_KEY = "serve-deployments-snapshot"
 CONFIG_CHECKPOINT_KEY = "serve-app-config-checkpoint"
 
 
@@ -139,7 +137,6 @@ class ServeController:
         self.gcs_client = GcsClient(address=ray.get_runtime_context().gcs_address)
         kv_store_namespace = f"{self.controller_name}-{self.ray_worker_namespace}"
         self.kv_store = RayInternalKVStore(kv_store_namespace, self.gcs_client)
-        self.snapshot_store = RayInternalKVStore(kv_store_namespace, self.gcs_client)
         self.cluster_node_info_cache = create_cluster_node_info_cache(self.gcs_client)
         self.cluster_node_info_cache.update()
 
@@ -397,12 +394,6 @@ class ServeController:
                 except Exception:
                     logger.exception("Exception updating HTTP state.")
 
-            try:
-                snapshot_start_time = time.time()
-                self._put_serve_snapshot()
-                self.snapshot_duration_gauge_s.set(time.time() - snapshot_start_time)
-            except Exception:
-                logger.exception("Exception putting serve snapshot.")
             loop_duration = time.time() - loop_start_time
             if loop_duration > 10:
                 logger.warning(
@@ -438,10 +429,6 @@ class ServeController:
             "serve_controller_application_state_update_duration_s",
             description="The control loop time spent on updating application state.",
         )
-        self.snapshot_duration_gauge_s = metrics.Gauge(
-            "serve_controller_application_state_update_duration_s",
-            description="The control loop time spent on putting the Serve snapshot.",
-        )
         self.sleep_duration_gauge_s = metrics.Gauge(
             "serve_controller_sleep_duration_s",
             description="The duration of the last control loop's sleep.",
@@ -461,49 +448,6 @@ class ServeController:
         self.num_control_loops_gauge.set_default_tags(
             {"actor_id": ray.get_runtime_context().get_actor_id()}
         )
-
-    def _put_serve_snapshot(self) -> None:
-        val = dict()
-        for deployment_name, (
-            deployment_info,
-            route_prefix,
-        ) in self.list_deployments_internal(include_deleted=True).items():
-            entry = dict()
-            entry["name"] = deployment_name
-            entry["namespace"] = ray.get_runtime_context().namespace
-            entry["ray_job_id"] = deployment_info.deployer_job_id
-            entry["class_name"] = deployment_info.replica_config.deployment_def_name
-            entry["version"] = deployment_info.version
-            entry["http_route"] = route_prefix
-            entry["start_time"] = deployment_info.start_time_ms
-            entry["end_time"] = deployment_info.end_time_ms or 0
-            entry["status"] = "DELETED" if deployment_info.end_time_ms else "RUNNING"
-            entry["actors"] = dict()
-            if entry["status"] == "RUNNING":
-                replicas = self.deployment_state_manager._deployment_states[
-                    deployment_name
-                ]._replicas
-                running_replicas = replicas.get([ReplicaState.RUNNING])
-                for replica in running_replicas:
-                    try:
-                        actor_handle = replica.actor_handle
-                    except ValueError:
-                        # Actor died or hasn't yet been created.
-                        continue
-                    actor_id = actor_handle._ray_actor_id.hex()
-                    replica_tag = replica.replica_tag
-                    replica_version = (
-                        None
-                        if (replica.version is None or replica.version.unversioned)
-                        else replica.version.code_version
-                    )
-                    entry["actors"][actor_id] = {
-                        "replica_tag": replica_tag,
-                        "version": replica_version,
-                    }
-
-            val[deployment_name] = entry
-        self.snapshot_store.put(SNAPSHOT_KEY, json.dumps(val).encode("utf-8"))
 
     def _recover_config_from_checkpoint(self):
         checkpoint = self.kv_store.get(CONFIG_CHECKPOINT_KEY)
