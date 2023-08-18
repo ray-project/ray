@@ -325,7 +325,9 @@ class ServeController:
         start_time = time.time()
         while True:
             loop_start_time = time.time()
-
+            logger.info(
+                f"New controller loop started (unix timestamp: {loop_start_time})."
+            )
             try:
                 self.cluster_node_info_cache.update()
             except Exception:
@@ -351,6 +353,10 @@ class ServeController:
                 dsm_update_start_time = time.time()
                 any_recovering = self.deployment_state_manager.update()
                 dsm_update_time = time.time() - dsm_update_start_time
+                logger.info(
+                    "Finished updating deployment state manager. Time taken: "
+                    f"{dsm_update_time}."
+                )
                 self.dsm_update_duration_gauge_s.set(dsm_update_time)
                 if not self.done_recovering_event.is_set() and not any_recovering:
                     self.done_recovering_event.set()
@@ -366,6 +372,10 @@ class ServeController:
                 asm_update_start_time = time.time()
                 self.application_state_manager.update()
                 asm_update_time = time.time() - asm_update_start_time
+                logger.info(
+                    "Finished updating application state manager. Time taken: "
+                    f"{asm_update_time}."
+                )
                 self.asm_update_duration_gauge_s.set(asm_update_time)
             except Exception:
                 logger.exception("Exception updating application state.")
@@ -375,6 +385,9 @@ class ServeController:
             node_update_start_time = time.time()
             self._update_http_proxy_nodes()
             node_update_time = time.time() - node_update_start_time
+            logger.info(
+                f"Finished updating http proxy nodes. Time taken: {node_update_time}."
+            )
             self.node_update_duration_gauge_s.set(node_update_time)
 
             # Don't update http_state until after the done recovering event is set,
@@ -387,6 +400,10 @@ class ServeController:
                         http_proxy_nodes=self._http_proxy_nodes
                     )
                     proxy_update_time = time.time() - proxy_update_start_time
+                    logger.info(
+                        "Finished updating http proxy state manager. Time taken: "
+                        f"{proxy_update_time}."
+                    )
                     self.proxy_update_duration_gauge_s.set(proxy_update_time)
                 except Exception:
                     logger.exception("Exception updating HTTP state.")
@@ -395,6 +412,10 @@ class ServeController:
                 snapshot_start_time = time.time()
                 self._put_serve_snapshot()
                 snapshot_update_time = time.time() - snapshot_start_time
+                logger.info(
+                    "Finished updating serve snapshot. Time taken: "
+                    f"{snapshot_update_time}."
+                )
                 self.snapshot_duration_gauge_s.set(snapshot_update_time)
             except Exception:
                 logger.exception("Exception putting serve snapshot.")
