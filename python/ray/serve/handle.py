@@ -113,6 +113,23 @@ class _DeploymentHandleBase:
 
         self._router: Optional[Router] = _router
 
+    def _record_telemetry_if_needed(self, tag: str):
+        # Record telemetry once per handle and not when used from the proxy
+        # (detected via request protocol).
+        if (
+            not self._recorded_telemetry
+            and self.handle_options._request_protocol == RequestProtocol.UNDEFINED
+        ):
+            if self.__class__ == DeploymentHandle:
+                tag = "SERVE_DEPLOYMENT_HANDLE_API_USED"
+            elif self.__class__ == RayServeHandle:
+                tag = "SERVE_RAY_SERVE_HANDLE_API_USED"
+            else:
+                tag = "SERVE_RAY_SERVE_SYNC_HANDLE_API_USED"
+
+            record_serve_tag(tag, "1")
+            self._recorded_telemetry = True
+
     def _set_request_protocol(self, request_protocol: RequestProtocol):
         self.handle_options = self.handle_options.copy_and_update(
             _request_protocol=request_protocol
@@ -198,6 +215,7 @@ class _DeploymentHandleBase:
         )
 
     def _remote(self, args: Tuple[Any], kwargs: Dict[str, Any]) -> Coroutine:
+        self._record_telemetry_if_needed()
         _request_context = ray.serve.context._serve_request_context.get()
         request_metadata = RequestMetadata(
             _request_context.request_id,
@@ -330,10 +348,6 @@ class RayServeHandle(_DeploymentHandleBase):
             result = await obj_ref
 
         """
-        if not self._recorded_telemetry:
-            self._recorded_telemetry = True
-            record_serve_tag("SERVE_RAY_SERVE_HANDLE_API_USED", "1")
-
         loop = self._get_or_create_router()._event_loop
         result_coro = self._remote(args, kwargs)
         return asyncio.ensure_future(result_coro, loop=loop)
@@ -406,10 +420,6 @@ class RayServeSyncHandle(_DeploymentHandleBase):
             result = ray.get(obj_ref)
 
         """
-        if not self._recorded_telemetry:
-            self._recorded_telemetry = True
-            record_serve_tag("SERVE_RAY_SERVE_SYNC_HANDLE_API_USED", "1")
-
         coro = self._remote(args, kwargs)
         future: concurrent.futures.Future = asyncio.run_coroutine_threadsafe(
             coro, self._get_or_create_router()._event_loop
@@ -785,10 +795,6 @@ class DeploymentHandle(_DeploymentHandleBase):
             composed_result = await composed_response
 
         """
-        if not self._recorded_telemetry:
-            self._recorded_telemetry = True
-            record_serve_tag("SERVE_DEPLOYMENT_HANDLE_API_USED", "1")
-
         loop = self._get_or_create_router()._event_loop
         result_coro = self._remote(args, kwargs)
         if self.handle_options.stream:

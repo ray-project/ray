@@ -498,10 +498,15 @@ def test_handle_apis_detected(manage_ray, use_new_handle_api, call_in_deployment
     )
 
     report = ray.get(storage_handle.get_report.remote())
-    assert "serve_deployment_handle_api_used" not in report["extra_usage_tags"]
-    assert "serve_ray_serve_handle_api_used" not in report["extra_usage_tags"]
-    assert "serve_ray_serve_sync_handle_api_used" not in report["extra_usage_tags"]
     print(report["extra_usage_tags"])
+    assert (
+        report["extra_usage_tags"].get("serve_deployment_handle_api_used", "0") == "0"
+    )
+    assert report["extra_usage_tags"].get("serve_ray_serve_handle_api_used", "0") == "0"
+    assert (
+        report["extra_usage_tags"].get("serve_ray_serve_sync_handle_api_used", "0")
+        == "0"
+    )
 
     @serve.deployment
     class Downstream:
@@ -578,8 +583,13 @@ def test_deployment_handle_to_obj_ref_detected(manage_ray, call_in_deployment):
     )
 
     report = ray.get(storage_handle.get_report.remote())
-    assert "serve_deployment_handle_to_object_ref_api_used" not in report["extra_usage_tags"]
     print(report["extra_usage_tags"])
+    assert (
+        report["extra_usage_tags"].get(
+            "serve_deployment_handle_to_object_ref_api_used", "0"
+        )
+        == "0"
+    )
 
     @serve.deployment
     class Downstream:
@@ -613,7 +623,10 @@ def test_deployment_handle_to_obj_ref_detected(manage_ray, call_in_deployment):
         report = ray.get(storage_handle.get_report.remote())
         print(report["extra_usage_tags"])
         assert (
-            report["extra_usage_tags"].get("serve_deployment_handle_to_object_ref_api_used", "0") == "1"
+            report["extra_usage_tags"].get(
+                "serve_deployment_handle_to_object_ref_api_used", "0"
+            )
+            == "1"
         )
         return True
 
