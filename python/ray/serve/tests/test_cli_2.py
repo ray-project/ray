@@ -28,6 +28,15 @@ from ray.serve._private.constants import (
 )
 from ray.serve.generated import serve_pb2, serve_pb2_grpc
 import grpc
+from ray.serve.tests.test_grpc import (
+    ping_grpc_list_applications,
+    ping_grpc_healthz,
+    ping_grpc_call_method,
+    ping_grpc_another_method,
+    ping_grpc_model_multiplexing,
+    ping_grpc_streaming,
+    ping_fruit_stand,
+)
 
 CONNECTION_ERROR_MSG = "connection error"
 
@@ -37,66 +46,6 @@ def ping_endpoint(endpoint: str, params: str = ""):
         return requests.get(f"http://localhost:8000/{endpoint}{params}").text
     except requests.exceptions.ConnectionError:
         return CONNECTION_ERROR_MSG
-
-
-def ping_grpc_list_applications(channel, app_names):
-    stub = serve_pb2_grpc.RayServeAPIServiceStub(channel)
-    request = serve_pb2.ListApplicationsRequest()
-    response, call = stub.ListApplications.with_call(request=request)
-    assert call.code() == grpc.StatusCode.OK
-    assert response.application_names == app_names
-
-
-def ping_grpc_healthz(channel):
-    stub = serve_pb2_grpc.RayServeAPIServiceStub(channel)
-    request = serve_pb2.HealthzRequest()
-    response, call = stub.Healthz.with_call(request=request)
-    assert call.code() == grpc.StatusCode.OK
-    assert response.message == "success"
-
-
-def ping_grpc_call_method(channel, app_name):
-    stub = serve_pb2_grpc.UserDefinedServiceStub(channel)
-    request = serve_pb2.UserDefinedMessage(name="foo", num=30, foo="bar")
-    metadata = (("application", app_name),)
-    response, call = stub.__call__.with_call(request=request, metadata=metadata)
-    assert call.code() == grpc.StatusCode.OK
-    assert response.greeting == "Hello foo from bar"
-
-
-def ping_grpc_another_method(channel, app_name):
-    stub = serve_pb2_grpc.UserDefinedServiceStub(channel)
-    request = serve_pb2.UserDefinedMessage(name="foo", num=30, foo="bar")
-    metadata = (("application", app_name),)
-    response = stub.Method1(request=request, metadata=metadata)
-    assert response.greeting == "Hello foo from method1"
-
-
-def ping_grpc_model_multiplexing(channel, app_name):
-    stub = serve_pb2_grpc.UserDefinedServiceStub(channel)
-    request = serve_pb2.UserDefinedMessage(name="foo", num=30, foo="bar")
-    multiplexed_model_id = "999"
-    metadata = (
-        ("application", app_name),
-        ("multiplexed_model_id", multiplexed_model_id),
-    )
-    response = stub.Method2(request=request, metadata=metadata)
-    assert (
-        response.greeting
-        == f"Method2 called model, loading model: {multiplexed_model_id}"
-    )
-
-
-def ping_grpc_streaming(channel, app_name):
-    if not RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING:
-        return
-
-    stub = serve_pb2_grpc.UserDefinedServiceStub(channel)
-    request = serve_pb2.UserDefinedMessage(name="foo", num=30, foo="bar")
-    metadata = (("application", app_name),)
-    responses = stub.Streaming(request=request, metadata=metadata)
-    for idx, response in enumerate(responses):
-        assert response.greeting == f"{idx}: Hello foo from bar"
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
@@ -915,27 +864,59 @@ def test_serving_request_through_grpc_proxy(ray_start_stop):
 
     subprocess.check_output(["serve", "deploy", config_file], stderr=subprocess.STDOUT)
 
-    app_name = "app1_grpc-deployment"
+    app1 = "app1_grpc-deployment"
+    app_names = [app1]
 
     channel = grpc.insecure_channel("localhost:9000")
 
     # Ensures ListApplications method succeeding.
-    ping_grpc_list_applications(channel, [app_name])
+    ping_grpc_list_applications(channel, app_names)
 
     # Ensures Healthz method succeeding.
     ping_grpc_healthz(channel)
 
     # Ensures a custom defined method is responding correctly.
-    ping_grpc_call_method(channel, app_name)
+    ping_grpc_call_method(channel, app1)
 
     # Ensures another custom defined method is responding correctly.
-    ping_grpc_another_method(channel, app_name)
+    ping_grpc_another_method(channel, app1)
 
     # Ensures model multiplexing is responding correctly.
-    ping_grpc_model_multiplexing(channel, app_name)
+    ping_grpc_model_multiplexing(channel, app1)
 
     # Ensure Streaming method is responding correctly.
-    ping_grpc_streaming(channel, app_name)
+    ping_grpc_streaming(channel, app1)
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
+def test_grpc_proxy_model_composition(ray_start_stop):
+    """Test serving request through gRPC proxy
+
+    When Serve runs with a gRPC deployment, the app should be deployed successfully,
+    both ListApplications and Healthz methods returning success response, and model
+    composition should work correctly.
+    """
+    config_file = os.path.join(
+        os.path.dirname(__file__),
+        "test_config_files",
+        "deploy_grpc_model_composition.yaml",
+    )
+
+    subprocess.check_output(["serve", "deploy", config_file], stderr=subprocess.STDOUT)
+
+    app = "app1_grpc-deployment-model-composition"
+    app_names = [app]
+
+    channel = grpc.insecure_channel("localhost:9000")
+
+    # Ensures ListApplications method succeeding.
+    ping_grpc_list_applications(channel, app_names)
+
+    # Ensures Healthz method succeeding.
+    ping_grpc_healthz(channel)
+
+    # Ensure model composition is responding correctly.
+    ping_fruit_stand(channel, app)
 
 
 if __name__ == "__main__":
