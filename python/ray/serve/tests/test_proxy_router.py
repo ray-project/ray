@@ -181,7 +181,7 @@ def test_update_routes(mocked_router, target_route1, target_route2, request):
             EndpointTag("endpoint3", "app3"): EndpointInfo(
                 route="/endpoint3",
                 app_is_cross_language=True,
-            )
+            ),
         }
     )
 
