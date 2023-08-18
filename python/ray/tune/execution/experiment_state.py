@@ -1,6 +1,5 @@
 from collections import Counter
 from dataclasses import dataclass
-import json
 from typing import Callable, Dict, Optional, Tuple, Union
 
 import pyarrow
@@ -384,52 +383,36 @@ class _ExperimentCheckpointManager:
 
     def sync_down_experiment_state(self) -> None:
         fs = self._storage.storage_filesystem
-        file_infos = fs.get_file_info(pyarrow.fs.FileSelector(self._storage.experiment_fs_path))
-        variants = []
-        for file_info in file_infos:
-            name = os.path.basename(file_info.path)
-            if name.startswith("basic-variant-state") and name.endswith(".json"):
-                variants.append(name)
-        if variants:
-            name = max(variants)
-            with fs.open_input_file(os.path.join(self._storage.experiment_fs_path, name)) as f:
-                variant_data = f.readall()
-            local_variants = os.path.join(self._storage.experiment_local_path, name)
-            with open(local_variants, "wb") as f:
-                f.write(variant_data)
-        candidates = []
-        for file_info in file_infos:
-            name = os.path.basename(file_info.path)
-            if name.startswith("experiment_state") and name.endswith(".json"):
-                candidates.append(name)
-        if candidates:
-            name = max(candidates)
-            with fs.open_input_file(os.path.join(self._storage.experiment_fs_path, name)) as f:
-                experiment_data = f.readall()
-                experiment_state = json.loads(experiment_data)
-            local_state = os.path.join(self._storage.experiment_local_path, name)
-            with open(local_state, "wb") as f:
-                f.write(experiment_data)
-            print("num trials", len(experiment_state["trial_data"]))
-            assert len(experiment_state["trial_data"]) > 100
-            for tup in experiment_state["trial_data"]:
-                trial = Trial.from_json_state(tup[0])
-                # TODO check trial status for result.jsons to sync?
-                src = trial.path + "/result.json"
-                dst = self._storage.experiment_local_path + "/" + os.path.basename(trial.path) + "/result.json"
-                print("copy", src, dst)
-                os.makedirs(os.path.dirname(dst), exist_ok=True)
-                try:
-                    pyarrow.fs.copy_files(src, dst, source_filesystem=fs)
-                except FileNotFoundError:
-                    print("Not found", src)
-        else:
-            experiment_state = None
 
-#        # TODO 1. Change this to read the remote state directly
-#        # TODO 2. Find all active trials and copy their metric files locally
-#        #         [respect resume config?]
-#        raise NotImplementedError()
+        # Restore the latest variants file.
+        file_infos = fs.get_file_info(
+            pyarrow.fs.FileSelector(self._storage.experiment_fs_path)
+        )
+
+        def restore_latest_match(match_prefix: str, match_suffix: str) -> None:
+            matches = []
+            for file_info in file_infos:
+                name = os.path.basename(file_info.path)
+                if name.startswith("basic-variant-state") and name.endswith(".json"):
+                    matches.append(name)
+            if matches:
+                name = max(matches)
+                remote_path = os.path.join(self._storage.experiment_fs_path, name)
+                local_path = os.path.join(self._storage.experiment_local_path, name)
+                logger.info(f"Copying {remote_path} to {local_path}")
+                pyarrow.fs.copy_files(
+                    remote_path,
+                    local_path,
+                    source_filesystem=self._storage.storage_filesystem,
+                )
+            else:
+                logger.info(
+                    "No remote files to restore "
+                    f"matching {match_prefix}.*{match_suffix}"
+                )
+
+        restore_latest_match("basic-variant-state", ".json")
+        restore_latest_match("experiment_state", ".json")
 
     def sync_down(self, force: bool = False, wait: bool = False) -> bool:
         assert not _use_storage_context()
@@ -516,14 +499,13 @@ class _ExperimentCheckpointManager:
                         local_dir=experiment_local_path,
                     )
                 syncer.wait()
-            except Exception as e:
-                raise  # TODO remove this XXX DO NOT MERGE
+            except Exception:
                 logger.exception(
-                    f"Got error when trying to sync down.\n"
-                    f"Please check this error message for potential "
-                    f"access problems - if a directory was not found, "
-                    f"that is expected at this stage when you're starting "
-                    f"a new experiment."
+                    "Got error when trying to sync down.\n"
+                    "Please check this error message for potential "
+                    "access problems - if a directory was not found, "
+                    "that is expected at this stage when you're starting "
+                    "a new experiment."
                 )
                 logger.info(
                     "No remote checkpoint was found or an error occurred "

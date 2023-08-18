@@ -1,6 +1,8 @@
 import abc
 import json
 import logging
+import os
+import pyarrow
 
 from typing import TYPE_CHECKING, Dict, Iterable, List, Optional, Set, Type
 
@@ -163,6 +165,24 @@ class LoggerCallback(Callback):
         self, iteration: int, trials: List["Trial"], trial: "Trial", **info
     ):
         self.log_trial_end(trial, failed=True)
+
+    def _restore_from_remote(self, file_name: str, trial: "Trial") -> None:
+        if not trial.storage:
+            return  # Legacy code path.
+
+        local_file = os.path.join(trial.local_path, file_name)
+        remote_file = os.path.join(trial.storage.trial_fs_path, file_name)
+
+        if not os.path.exists(local_file):
+            logger.info(f"Copying {remote_file} to {local_file}")
+            try:
+                pyarrow.fs.copy_files(
+                    remote_file,
+                    local_file,
+                    source_filesystem=trial.storage.storage_filesystem,
+                )
+            except FileNotFoundError:
+                logger.debug(f"Remote file not found: {remote_file}")
 
 
 @DeveloperAPI

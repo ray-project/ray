@@ -99,6 +99,10 @@ class CSVLoggerCallback(LoggerCallback):
         self._trial_continue[trial] = (
             os.path.exists(local_file) and os.path.getsize(local_file) > 0
         )
+
+        # Resume the file from remote storage.
+        self._restore_from_remote(EXPR_PROGRESS_FILE, trial)
+
         self._trial_files[trial] = open(local_file, "at")
         self._trial_csv[trial] = None
 
