@@ -7,9 +7,10 @@ from ray.data._internal.execution.interfaces import (
     RefBundle,
     TaskContext,
 )
-from ray.data._internal.execution.operators.map_transformer import MapTransformer
 from ray.data._internal.execution.operators.map_operator import MapOperator, _map_task
+from ray.data._internal.execution.operators.map_transformer import MapTransformer
 from ray.data._internal.remote_fn import cached_remote_fn
+from ray.data.context import DataContext
 
 
 class TaskPoolMapOperator(MapOperator):
@@ -46,7 +47,12 @@ class TaskPoolMapOperator(MapOperator):
         ctx = TaskContext(task_idx=self._next_data_task_idx)
         gen = map_task.options(
             **self._get_runtime_ray_remote_args(input_bundle=bundle), name=self.name
-        ).remote(self._map_transformer_ref, ctx, *input_blocks)
+        ).remote(
+            self._map_transformer_ref,
+            DataContext.get_current(),
+            ctx,
+            *input_blocks,
+        )
         self._submit_data_task(gen, bundle)
 
     def shutdown(self):

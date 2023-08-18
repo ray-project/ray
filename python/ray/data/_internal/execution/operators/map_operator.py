@@ -378,6 +378,7 @@ class _ObjectStoreMetrics:
 
 def _map_task(
     map_transformer: MapTransformer,
+    data_context: DataContext,
     ctx: TaskContext,
     *blocks: Block,
 ) -> Iterator[Union[Block, List[BlockMetadata]]]:
@@ -392,6 +393,7 @@ def _map_task(
         A generator of blocks, followed by the list of BlockMetadata for the blocks
         as the last generator return.
     """
+    DataContext._set_current(data_context)
     stats = BlockExecStats.builder()
     for b_out in map_transformer.apply_transform(iter(blocks), ctx):
         # TODO(Clark): Add input file propagation from input blocks.

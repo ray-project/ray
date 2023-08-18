@@ -177,7 +177,7 @@ class ActorPoolMapOperator(MapOperator):
             input_blocks = [block for block, _ in bundle.blocks]
             ctx = TaskContext(task_idx=self._next_data_task_idx)
             gen = actor.submit.options(num_returns="streaming", name=self.name).remote(
-                ctx, *input_blocks
+                DataContext.get_current(), ctx, *input_blocks
             )
 
             def _task_done_callback(actor_to_return):
@@ -370,10 +370,11 @@ class _MapWorker:
 
     def submit(
         self,
+        data_context: DataContext,
         ctx: TaskContext,
         *blocks: Block,
     ) -> Iterator[Union[Block, List[BlockMetadata]]]:
-        yield from _map_task(self._map_transformer, ctx, *blocks)
+        yield from _map_task(self._map_transformer, data_context, ctx, *blocks)
 
     def __repr__(self):
         return f"MapWorker({self.src_fn_name})"
