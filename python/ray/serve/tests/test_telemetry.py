@@ -531,12 +531,20 @@ def test_handle_apis_detected(manage_ray, use_new_handle_api, call_in_deployment
         report = ray.get(storage_handle.get_report.remote())
         print(report["extra_usage_tags"])
         if use_new_handle_api:
-            assert report["extra_usage_tags"]["serve_deployment_handle_api_used"] == "1"
+            assert (
+                report["extra_usage_tags"].get("serve_deployment_handle_api_used", "0")
+                == "1"
+            )
         elif call_in_deployment:
-            assert report["extra_usage_tags"]["serve_ray_serve_handle_api_used"] == "1"
+            assert (
+                report["extra_usage_tags"].get("serve_ray_serve_handle_api_used", "0")
+                == "1"
+            )
         else:
             assert (
-                report["extra_usage_tags"]["serve_ray_serve_sync_handle_api_used"]
+                report["extra_usage_tags"].get(
+                    "serve_ray_serve_sync_handle_api_used", "0"
+                )
                 == "1"
             )
 

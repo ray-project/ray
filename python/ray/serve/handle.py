@@ -91,6 +91,7 @@ class _DeploymentHandleBase:
         self.deployment_id = DeploymentID(deployment_name, app_name)
         self.handle_options = handle_options or _HandleOptions()
         self._is_for_sync_context = _is_for_sync_context
+        self._recorded_telemetry = False
 
         self.request_counter = _request_counter or metrics.Counter(
             "serve_handle_request_counter",
@@ -329,6 +330,10 @@ class RayServeHandle(_DeploymentHandleBase):
             result = await obj_ref
 
         """
+        if not self._recorded_telemetry:
+            self._recorded_telemetry = True
+            record_serve_tag("SERVE_RAY_SERVE_HANDLE_API_USED", "1")
+
         loop = self._get_or_create_router()._event_loop
         result_coro = self._remote(args, kwargs)
         return asyncio.ensure_future(result_coro, loop=loop)
@@ -401,6 +406,10 @@ class RayServeSyncHandle(_DeploymentHandleBase):
             result = ray.get(obj_ref)
 
         """
+        if not self._recorded_telemetry:
+            self._recorded_telemetry = True
+            record_serve_tag("SERVE_RAY_SERVE_SYNC_HANDLE_API_USED", "1")
+
         coro = self._remote(args, kwargs)
         future: concurrent.futures.Future = asyncio.run_coroutine_threadsafe(
             coro, self._get_or_create_router()._event_loop
@@ -776,6 +785,10 @@ class DeploymentHandle(_DeploymentHandleBase):
             composed_result = await composed_response
 
         """
+        if not self._recorded_telemetry:
+            self._recorded_telemetry = True
+            record_serve_tag("SERVE_DEPLOYMENT_HANDLE_API_USED", "1")
+
         loop = self._get_or_create_router()._event_loop
         result_coro = self._remote(args, kwargs)
         if self.handle_options.stream:
