@@ -98,7 +98,7 @@ class MapTransformer:
     def init(self) -> None:
         self._init_fn()
 
-    def process(
+    def apply_transform(
         self, input_blocks: Iterable[Block], ctx: TaskContext
     ) -> Iterable[Block]:
         iter = input_blocks
