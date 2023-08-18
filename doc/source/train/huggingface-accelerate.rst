@@ -57,14 +57,7 @@ Configuring Accelerate
 -----------------------
 
 In Ray Train, you can set configurations through the `accelerate.Accelerator <https://huggingface.co/docs/accelerate/main/en/package_reference/accelerator#accelerate.Accelerator>`_ 
-object in your training function, and ``TorchTrainer`` will automatically sets up the Torch distributed environment and launcher the training function on all workers.
-
-1. Use `accelerate config` to generate a configuration YAML file, and use `accelerate launch $YOUR_PY_SCRIPT --config_file=$YOUR_CONFIG_YAML` to launch via CLI. 
-2. 
-
-you should always use the second approach, where Ray TorchTrainer 
-
-Below are starter examples for configuring Accelerate.
+object in your training function. Below are starter examples for configuring Accelerate.
 
 .. tabs::
 
@@ -166,6 +159,11 @@ Below are starter examples for configuring Accelerate.
                 ...
             )
             trainer.fit()
+
+Note that Accelerate also provides a CLI tool, `"accelerate config"`, to generate a configuration and launch your training 
+job with `"accelerate launch"`. However, it is not necessary here because Ray's `TorchTrainer` already sets up the Torch 
+distributed environment and launches the training function on all workers.
+
 
 Next, check these end-to-end examples below for more details:
 
