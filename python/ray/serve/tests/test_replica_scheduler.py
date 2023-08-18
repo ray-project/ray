@@ -84,8 +84,8 @@ def pow_2_scheduler() -> PowerOfTwoChoicesReplicaScheduler:
     )
 
     # Update the RAY_SERVE_MULTIPLEXED_MODEL_ID_MATCHING_TIMEOUT_S
-    # to 0.1s to speed up the test.
-    os.environ.update({"RAY_SERVE_MULTIPLEXED_MODEL_ID_MATCHING_TIMEOUT_S": "0.1"})
+    # to 0.01s to speed up the test.
+    os.environ.update({"RAY_SERVE_MULTIPLEXED_MODEL_ID_MATCHING_TIMEOUT_S": "0.01"})
     importlib.reload(ray.serve._private.constants)
     importlib.reload(ray.serve._private.router)
 
