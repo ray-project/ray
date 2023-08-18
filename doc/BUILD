@@ -304,8 +304,8 @@ doctest(
             "source/serve/production-guide/fault-tolerance.md",
             "source/data/batch_inference.rst",
             "source/data/transforming-data.rst",
+            "source/data/working-with-text.rst",
             "source/train/faq.rst",
-	    "source/train/user-guides/data-loading-preprocessing.rst",
             "source/workflows/**/*.rst",
             "source/workflows/**/*.md",
             "source/templates/04_finetuning_llms_with_deepspeed/README.md"
@@ -339,7 +339,7 @@ doctest(
 doctest(
     name="quarantine",
     files = [
-	"source/train/user-guides/data-loading-preprocessing.rst",
+    "source/data/working-with-text.rst",
     ],
     tags = ["team:data"],
 )
