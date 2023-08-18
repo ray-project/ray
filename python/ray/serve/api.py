@@ -116,7 +116,7 @@ def start(
                   assumes the head node is the node you executed serve.start
                   on. This is the default.
                 - "EveryNode": start one HTTP server per node.
-                - "NoServer" or None: disable HTTP server.
+                - "NoServer": disable HTTP server.
 
             - num_cpus: [DEPRECATED] The number of CPU cores to reserve for each
               internal Serve HTTP proxy actor.
