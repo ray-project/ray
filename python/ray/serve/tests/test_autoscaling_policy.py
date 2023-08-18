@@ -1046,7 +1046,7 @@ def test_e2e_initial_replicas(serve_instance):
     # f should start with initial_replicas (2) deployments
     actors = state_api.list_actors(
         filters=[
-            ("class_name", "=", dep_id.to_replica_actor_name()),
+            ("class_name", "=", dep_id.to_replica_actor_class_name()),
             ("state", "=", "ALIVE"),
         ]
     )
@@ -1057,7 +1057,7 @@ def test_e2e_initial_replicas(serve_instance):
     def check_one_replica():
         actors = state_api.list_actors(
             filters=[
-                ("class_name", "=", dep_id.to_replica_actor_name()),
+                ("class_name", "=", dep_id.to_replica_actor_class_name()),
                 ("state", "=", "ALIVE"),
             ]
         )
@@ -1095,7 +1095,7 @@ def test_e2e_preserve_prev_replicas(serve_instance):
     def check_two_replicas():
         actors = state_api.list_actors(
             filters=[
-                ("class_name", "=", dep_id.to_replica_actor_name()),
+                ("class_name", "=", dep_id.to_replica_actor_class_name()),
                 ("state", "=", "ALIVE"),
             ]
         )
@@ -1118,13 +1118,13 @@ def test_e2e_preserve_prev_replicas(serve_instance):
     def check_num_replicas(live: int, dead: int):
         live_actors = state_api.list_actors(
             filters=[
-                ("class_name", "=", dep_id.to_replica_actor_name()),
+                ("class_name", "=", dep_id.to_replica_actor_class_name()),
                 ("state", "=", "ALIVE"),
             ]
         )
         dead_actors = state_api.list_actors(
             filters=[
-                ("class_name", "=", dep_id.to_replica_actor_name()),
+                ("class_name", "=", dep_id.to_replica_actor_class_name()),
                 ("state", "=", "DEAD"),
             ]
         )
@@ -1219,7 +1219,7 @@ app = g.bind()
     def check_num_replicas(num: int):
         actors = state_api.list_actors(
             filters=[
-                ("class_name", "=", dep_id.to_replica_actor_name()),
+                ("class_name", "=", dep_id.to_replica_actor_class_name()),
                 ("state", "=", "ALIVE"),
             ]
         )

@@ -72,7 +72,7 @@ from ray.serve._private.autoscaling_metrics import InMemoryMetricsStore
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
-def create_replica_wrapper(actor_name: str):
+def create_replica_wrapper(actor_class_name: str):
     """Creates a replica class wrapping the provided function or class.
 
     This approach is picked over inheritance to avoid conflict between user
@@ -470,7 +470,7 @@ def create_replica_wrapper(actor_name: str):
     # Dynamically create a new class with custom name here so Ray picks it up
     # correctly in actor metadata table and observability stack.
     return type(
-        actor_name,
+        actor_class_name,
         (RayServeWrappedReplica,),
         dict(RayServeWrappedReplica.__dict__),
     )
@@ -585,7 +585,7 @@ class RayServeReplica:
         await self.user_health_check()
 
     def _get_handle_request_stats(self) -> Optional[Dict[str, int]]:
-        replica_actor_name = self.deployment_id.to_replica_actor_name()
+        replica_actor_name = self.deployment_id.to_replica_actor_class_name()
         actor_stats = ray.runtime_context.get_runtime_context()._get_actor_call_stats()
         method_stats = actor_stats.get(f"{replica_actor_name}.handle_request")
         streaming_method_stats = actor_stats.get(

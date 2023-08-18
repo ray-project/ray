@@ -28,7 +28,7 @@ class DeploymentID(NamedTuple):
         else:
             return self.name
 
-    def to_replica_actor_name(self):
+    def to_replica_actor_class_name(self):
         if self.app:
             return f"ServeReplica:{self.app}:{self.name}"
         else:
