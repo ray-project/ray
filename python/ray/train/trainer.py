@@ -53,6 +53,7 @@ class TrainingIterator:
         backend_config: BackendConfig,
         train_func: Union[Callable[[], T], Callable[[Dict[str, Any]], T]],
         datasets: Dict[str, Dataset],
+        metadata: Dict[str, Any],
         data_config: DataConfig,
         checkpoint_manager: CheckpointManager,
         checkpoint: Optional[Union[Dict, str, Path, Checkpoint]],
@@ -64,6 +65,7 @@ class TrainingIterator:
         self._backend = backend_config.backend_cls()
         self._train_func = train_func
         self._datasets = datasets
+        self._metadata = metadata
         self._data_config = data_config
         self._run_dir = run_dir
         self._checkpoint_manager = checkpoint_manager
@@ -78,6 +80,7 @@ class TrainingIterator:
             train_func=train_func,
             run_dir=run_dir,
             datasets=self._datasets,
+            metadata=self._metadata,
             data_config=self._data_config,
             checkpoint=checkpoint,
         )
@@ -93,6 +96,7 @@ class TrainingIterator:
         train_func,
         run_dir,
         datasets,
+        metadata,
         data_config,
         checkpoint,
         latest_checkpoint_id=None,
@@ -110,6 +114,7 @@ class TrainingIterator:
             lambda: self._backend_executor.start_training(
                 train_func=train_func,
                 datasets=datasets,
+                metadata=metadata,
                 data_config=data_config,
                 checkpoint=checkpoint,
                 # Workers need to start out with a path to write the first checkpoint to
@@ -139,6 +144,7 @@ class TrainingIterator:
                 self._train_func,
                 self._run_dir,
                 self._datasets,
+                self._metadata,
                 self._data_config,
                 self._checkpoint_manager.latest_checkpoint,
                 self._checkpoint_manager.latest_checkpoint_id,
