@@ -6,7 +6,6 @@ import requests
 import starlette
 from starlette.middleware import Middleware
 import sys
-import time
 
 
 import ray
