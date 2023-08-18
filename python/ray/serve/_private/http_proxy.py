@@ -611,19 +611,13 @@ class gRPCProxy(GenericProxy):
 
     async def not_found(self, proxy_request: ProxyRequest) -> ProxyResponse:
         not_found_message = (
-            f"Path '{proxy_request.service_method}' not found. Please ping "
+            f"Application '{proxy_request.app_name}' not found. Please ping "
             "/ray.serve.ServeAPIService/ServeRoutes for available applications."
         )
         status_code = grpc.StatusCode.NOT_FOUND
         proxy_request.send_status_code(status_code=status_code)
         proxy_request.send_details(message=not_found_message)
-        response_proto = ListApplicationsResponse(
-            application_names=self.route_info.values()
-        )
-        return ProxyResponse(
-            status_code=str(status_code),
-            response=response_proto.SerializeToString(),
-        )
+        return ProxyResponse(status_code=str(status_code))
 
     async def draining_response(self, proxy_request: ProxyRequest) -> ProxyResponse:
         status_code = grpc.StatusCode.ABORTED
