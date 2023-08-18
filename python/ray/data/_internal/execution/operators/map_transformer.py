@@ -122,10 +122,28 @@ class MapTransformer:
         return MapTransformer(fused_transform_fns, init_fn=fused_init_fn)
 
 
+def create_map_transformer_from_block_fn(
+    block_fn: MapTransformCallable[Block, Block],
+    init_fn: Optional[Callable[[], None]] = None,
+):
+    """Create a MapTransformer from a single block-based transform function.
+
+    This method should only used for testing and legacy compatibility.
+    """
+    return MapTransformer(
+        [
+            MapTransformFn(
+                block_fn, MapTransformFnDataType.Block, MapTransformFnDataType.Block
+            )
+        ],
+        init_fn,
+    )
+
+
 # Below are util functions for converting input/output data.
 
 
-def _input_blocks_to_rows_fn(blocks: Iterable[Block], _: TaskContext) -> Iterable[Row]:
+def _input_blocks_to_rows(blocks: Iterable[Block], _: TaskContext) -> Iterable[Row]:
     """Converts input blocks to rows."""
     for block in blocks:
         block = BlockAccessor.for_block(block)
@@ -133,14 +151,14 @@ def _input_blocks_to_rows_fn(blocks: Iterable[Block], _: TaskContext) -> Iterabl
             yield row
 
 
-_input_blocks_to_rows = MapTransformFn(
-    _input_blocks_to_rows_fn,
+input_blocks_to_rows = MapTransformFn(
+    _input_blocks_to_rows,
     MapTransformFnDataType.Block,
     MapTransformFnDataType.Row,
 )
 
 
-def _input_blocks_to_batches(
+def input_blocks_to_batches(
     blocks: Iterable[Block],
     _: TaskContext,
     batch_size: Optional[int] = None,
@@ -206,118 +224,20 @@ def _to_output_blocks(
         yield output_buffer.next()
 
 
-_rows_to_output_blocks = MapTransformFn(
+rows_to_output_blocks = MapTransformFn(
     functools.partial(_to_output_blocks, iter_type=MapTransformFnDataType.Row),
     MapTransformFnDataType.Row,
     MapTransformFnDataType.Block,
 )
 
-_batches_to_output_blocks = MapTransformFn(
+batches_to_output_blocks = MapTransformFn(
     functools.partial(_to_output_blocks, iter_type=MapTransformFnDataType.Batch),
     MapTransformFnDataType.Batch,
     MapTransformFnDataType.Block,
 )
 
-_blocks_to_output_blocks = MapTransformFn(
+blocks_to_output_blocks = MapTransformFn(
     functools.partial(_to_output_blocks, iter_type=MapTransformFnDataType.Block),
     MapTransformFnDataType.Block,
     MapTransformFnDataType.Block,
 )
-
-
-# End of util functions.
-
-
-def create_map_transformer_for_row_based_map_op(
-    row_fn: MapTransformCallable[Row, Row],
-    init_fn: Optional[Callable[[], None]] = None,
-) -> MapTransformer:
-    """Create a MapTransformer for a row-based map operator
-    (e.g. map, flat_map, filter)."""
-    transform_fns = [
-        # Convert input blocks to rows.
-        _input_blocks_to_rows,
-        # Apply the UDF.
-        MapTransformFn(row_fn, MapTransformFnDataType.Row, MapTransformFnDataType.Row),
-        # Convert output rows to blocks.
-        _rows_to_output_blocks,
-    ]
-    return MapTransformer(transform_fns, init_fn=init_fn)
-
-
-def create_map_transformer_for_map_batches_op(
-    batch_fn: MapTransformCallable[DataBatch, DataBatch],
-    batch_size: Optional[int] = None,
-    batch_format: str = "default",
-    zero_copy_batch: bool = False,
-    init_fn: Optional[Callable[[], None]] = None,
-) -> MapTransformer:
-    """Create a MapTransformer for a map_batches operator."""
-    input_blocks_to_batches = MapTransformFn(
-        functools.partial(
-            _input_blocks_to_batches,
-            batch_size=batch_size,
-            batch_format=batch_format,
-            zero_copy_batch=zero_copy_batch,
-        ),
-        MapTransformFnDataType.Block,
-        MapTransformFnDataType.Batch,
-    )
-    transform_fns = [
-        # Convert input blocks to batches.
-        input_blocks_to_batches,
-        # Apply the UDF.
-        MapTransformFn(
-            batch_fn, MapTransformFnDataType.Batch, MapTransformFnDataType.Batch
-        ),
-        # Convert output batches to blocks.
-        _batches_to_output_blocks,
-    ]
-    return MapTransformer(transform_fns, init_fn)
-
-
-def create_map_transformer_for_read_op(
-    read_fn: MapTransformCallable[Block, Block],
-    init_fn: Optional[Callable[[], None]] = None,
-) -> MapTransformer:
-    """Create a MapTransformer for a read operator."""
-    # TODO(hchen): Currently, we apply the BlockOuputBuffer within the read tasks.
-    # We should remove that and use `_blocks_to_output_blocks` here.
-    transform_fns = [
-        MapTransformFn(
-            read_fn, MapTransformFnDataType.Block, MapTransformFnDataType.Block
-        ),
-    ]
-    return MapTransformer(transform_fns, init_fn=init_fn)
-
-
-def create_map_transformer_for_write_op(
-    write_fn: MapTransformCallable[Block, Block],
-    init_fn: Optional[Callable[[], None]] = None,
-) -> MapTransformer:
-    """Create a MapTransformer for a write operator."""
-    transform_fns = [
-        MapTransformFn(
-            write_fn, MapTransformFnDataType.Block, MapTransformFnDataType.Block
-        ),
-        _blocks_to_output_blocks,
-    ]
-    return MapTransformer(transform_fns, init_fn=init_fn)
-
-
-def create_map_transformer_from_block_fn(
-    block_fn: MapTransformCallable[Block, Block],
-    init_fn: Optional[Callable[[], None]] = None,
-):
-    """Create a MapTransformer from a single block-based transform function.
-
-    This method should only used for testing and legacy compatibility.
-    """
-    return MapTransformer(
-        [
-            MapTransformFn(
-                block_fn, MapTransformFnDataType.Block, MapTransformFnDataType.Block
-            )
-        ],
-        init_fn,
-    )

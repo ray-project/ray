@@ -1,16 +1,20 @@
-from typing import Iterable, List
+from typing import Callable, Iterable, List, Optional
 
 import ray
 import ray.cloudpickle as cloudpickle
 from ray.data._internal.execution.interfaces import PhysicalOperator, RefBundle
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
-from ray.data._internal.execution.operators.map_transformer import (
-    create_map_transformer_for_read_op,
-)
 from ray.data._internal.execution.operators.map_operator import MapOperator
+from ray.data._internal.execution.operators.map_transformer import (
+    MapTransformer,
+    MapTransformFn,
+    MapTransformFnDataType,
+)
 from ray.data._internal.logical.operators.read_operator import Read
 from ray.data.block import Block
 from ray.data.datasource.datasource import ReadTask
+
+from ray.data._internal.execution.interfaces.task_context import TaskContext
 
 TASK_SIZE_WARN_THRESHOLD_BYTES = 100000
 
@@ -33,7 +37,7 @@ def cleaned_metadata(read_task):
     return block_meta
 
 
-def _plan_read_op(op: Read) -> PhysicalOperator:
+def plan_read_op(op: Read) -> PhysicalOperator:
     """Get the corresponding DAG of physical operators for Read.
 
     Note this method only converts the given `op`, but not its input dependencies.
@@ -64,11 +68,20 @@ def _plan_read_op(op: Read) -> PhysicalOperator:
         input_data_factory=get_input_data, num_output_blocks=op._estimated_num_blocks
     )
 
-    def do_read(blocks: Iterable[ReadTask], _) -> Iterable[Block]:
+    def do_read(blocks: Iterable[ReadTask], _: TaskContext) -> Iterable[Block]:
         for read_task in blocks:
             yield from read_task()
 
-    map_transformer = create_map_transformer_for_read_op(do_read)
+    # Create a MapTransformer for a read operator
+
+    # TODO(hchen): Currently, we apply the BlockOuputBuffer within the read tasks.
+    # We should remove that and use `_blocks_to_output_blocks` here.
+    transform_fns = [
+        MapTransformFn(
+            do_read, MapTransformFnDataType.Block, MapTransformFnDataType.Block
+        ),
+    ]
+    map_transformer = MapTransformer(transform_fns)
 
     return MapOperator.create(
         map_transformer,
