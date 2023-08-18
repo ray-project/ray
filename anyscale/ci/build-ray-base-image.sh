@@ -44,13 +44,22 @@ fi
 
 echo "--- Build base for ${PYTHON_VERSION_CODE} ${IMAGE_TYPE}"
 
-DEST_IMAGE="${CI_TMP_REPO}:${IMAGE_PREFIX}-base-${PYTHON_VERSION_CODE}-${IMAGE_TYPE}"
+if [[ "$(uname -m)" == "x86_64" ]]; then
+    HOSTTYPE="x86_64"
+    IMAGE_SUFFIX=""
+else
+    HOSTTYPE="aarch64"
+    IMAGE_SUFFIX="-aarch64"
+fi
+
+DEST_IMAGE="${CI_TMP_REPO}:${IMAGE_PREFIX}-base-${PYTHON_VERSION_CODE}-${IMAGE_TYPE}${IMAGE_SUFFIX}"
 
 tar --mtime="UTC 2020-01-01" -c -f - \
     docker/base-deps/Dockerfile \
     | docker build --progress=plain \
         --build-arg BASE_IMAGE="${BASE_IMAGE}" \
         --build-arg PYTHON_VERSION="${PYTHON_VERSION}" \
+        --build-arg HOSTTYPE="${HOSTTYPE}" \
         -t "${DEST_IMAGE}" -f docker/base-deps/Dockerfile -
 
 docker push "${DEST_IMAGE}"
