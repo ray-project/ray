@@ -1,9 +1,9 @@
 #!/usr/bin/env python
-from dataclasses import asdict
 import os
 import pathlib
 import sys
 import time
+from dataclasses import asdict
 from typing import Dict, Optional, Tuple
 
 import click
@@ -166,7 +166,7 @@ def cli():
     default=DeploymentMode.EveryNode,
     required=False,
     type=click.Choice(list(DeploymentMode)),
-    help="Location of the HTTP proxies. Defaults to EveryNode.",
+    help="Location of the proxies. Defaults to EveryNode.",
 )
 def start(address, http_host, http_port, http_location, proxy_location):
     if http_location != DeploymentMode.HeadOnly:

@@ -953,6 +953,11 @@ def test_run_graph_task_uses_zero_cpus():
         },
         {
             "proxy_location": "NoServer",
+            "http_options": {},
+            "expected": HTTPOptions(location=DeploymentMode.NoServer),
+        },
+        {
+            "proxy_location": "NoServer",
             "http_options": HTTPOptions(host="foobar"),
             "expected": HTTPOptions(location=DeploymentMode.NoServer, host="foobar"),
         },
@@ -960,6 +965,16 @@ def test_run_graph_task_uses_zero_cpus():
             "proxy_location": "NoServer",
             "http_options": {"host": "foobar"},
             "expected": HTTPOptions(location=DeploymentMode.NoServer, host="foobar"),
+        },
+        {
+            "proxy_location": "NoServer",
+            "http_options": {"location": "HeadOnly"},
+            "expected": HTTPOptions(location=DeploymentMode.NoServer),
+        },
+        {
+            "proxy_location": DeploymentMode.NoServer,
+            "http_options": HTTPOptions(location=DeploymentMode.HeadOnly),
+            "expected": HTTPOptions(location=DeploymentMode.NoServer),
         },
     ],
 )

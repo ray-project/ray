@@ -1,9 +1,9 @@
 import collections
 import inspect
 import logging
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
-from functools import wraps
 import warnings
+from functools import wraps
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 from fastapi import APIRouter, FastAPI
 from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
