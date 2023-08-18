@@ -137,16 +137,6 @@ class _DeploymentHandleBase:
 
     def _get_or_create_router(self) -> Router:
         if self._router is None:
-            # Record telemetry data. We do it here to only record telemetry when
-            # the handle is actually used, not just constructed
-            # (e.g., from `serve.run`).
-            if self.__class__ == DeploymentHandle:
-                record_serve_tag("SERVE_DEPLOYMENT_HANDLE_API_USED", "1")
-            elif self.__class__ == RayServeHandle:
-                record_serve_tag("SERVE_RAY_SERVE_HANDLE_API_USED", "1")
-            elif self.__class__ == RayServeSyncHandle:
-                record_serve_tag("SERVE_RAY_SERVE_SYNC_HANDLE_API_USED", "1")
-
             if self._is_for_sync_context:
                 event_loop = _create_or_get_async_loop_in_thread()
             else:
