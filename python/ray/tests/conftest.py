@@ -388,6 +388,7 @@ def ray_start_dashboard_bad_import():
     ray.shutdown()
     # Delete the cluster address just in case.
     ray._private.utils.reset_ray_address()
+    sys.modules["aiohttp"] == __import__("aiohttp")
 
 
 @pytest.fixture
