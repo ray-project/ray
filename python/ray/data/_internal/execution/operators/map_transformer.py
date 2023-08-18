@@ -190,14 +190,15 @@ def _to_output_blocks(
     output_buffer = BlockOutputBuffer(
         None, DataContext.get_current().target_max_block_size
     )
+    if iter_type == MapTransformFnDataType.Block:
+        add_fn = output_buffer.add_block
+    elif iter_type == MapTransformFnDataType.Batch:
+        add_fn = output_buffer.add_batch
+    else:
+        assert iter_type == MapTransformFnDataType.Row
+        add_fn = output_buffer.add
     for data in iter:
-        if iter_type == MapTransformFnDataType.Block:
-            output_buffer.add_block(data)
-        elif iter_type == MapTransformFnDataType.Batch:
-            output_buffer.add_batch(data)
-        else:
-            assert iter_type == MapTransformFnDataType.Row
-            output_buffer.add(data)
+        add_fn(data)
         while output_buffer.has_next():
             yield output_buffer.next()
     output_buffer.finalize()
