@@ -1,6 +1,6 @@
 import asyncio
 import concurrent.futures
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass
 import threading
 from typing import Any, AsyncIterator, Coroutine, Dict, Iterator, Optional, Tuple, Union
 
