@@ -64,11 +64,12 @@ class MapTransformFn:
 
 
 class MapTransformer:
-    """Encapsulates the logic of processing data for a map PhysicalOperator.
+    """Encapsulates the data transformation logic of a map PhysicalOperator.
 
     MapTransformer may consist of one or more steps, each of which is represented
-    as a MapTransformFn. The first transform function must take blocks as input, and
-    the last transform function must output blocks.
+    as a MapTransformFn. The first MapTransformFn must take blocks as input, and
+    the last MapTransformFn must output blocks. The intermediate data types can
+    be blocks, rows, or batches.
     """
 
     def __init__(
@@ -79,8 +80,8 @@ class MapTransformer:
         """
         Args:
         transform_fns: A list of `MapTransformFn`s that will be executed sequentially
-            to process data.
-        init_fn: A function that will be called before processing data.
+            to transform data.
+        init_fn: A function that will be called before transforming data.
             Used for the actor-based map operator.
         """
         assert len(transform_fns) > 0
