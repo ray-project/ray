@@ -248,3 +248,8 @@ RAY_SERVE_MULTIPLEXED_MODEL_ID_MATCHING_TIMEOUT_S = float(
 RAY_SERVE_ENABLE_MEMORY_PROFILING = (
     os.environ.get("RAY_SERVE_ENABLE_MEMORY_PROFILING", "0") == "1"
 )
+
+# Enable cProfile in all Serve actors.
+RAY_SERVE_ENABLE_CPU_PROFILING = (
+    os.environ.get("RAY_SERVE_ENABLE_CPU_PROFILING", "0") == "1"
+)
