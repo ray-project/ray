@@ -166,10 +166,13 @@ class EndpointRouter(ProxyRouter):
         Args:
             target_endpoint: endpoint to match against.
         Returns:
-            (route, handle, app_name, is_cross_language) if found, else None.
+            (route, handle, app_name, is_cross_language) for the single app if there
+            is only one, else find the app and handle for exact match. Else return None.
         """
         for endpoint_tag, handle in self.handles.items():
-            if target_endpoint == str(endpoint_tag):
+            # If the target_endpoint matches with the endpoint or if
+            # there is only one endpoint.
+            if target_endpoint == str(endpoint_tag) or len(self.handles) == 1:
                 endpoint_info = self.endpoints[endpoint_tag]
                 return (
                     endpoint_info.route,

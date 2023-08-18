@@ -58,7 +58,10 @@ def mock_endpoint_router() -> EndpointRouter:
 def test_no_match(mocked_router, request):
     router = request.getfixturevalue(mocked_router)
     router.update_routes(
-        {EndpointTag("endpoint", "default"): EndpointInfo(route="/hello")}
+        {
+            EndpointTag("endpoint", "default"): EndpointInfo(route="/hello"),
+            EndpointTag("endpoint2", "default2"): EndpointInfo(route="/hello2"),
+        }
     )
     assert get_handle_function(router)("/nonexistent") is None
 
@@ -73,7 +76,10 @@ def test_no_match(mocked_router, request):
 def test_default_route(mocked_router, target_route, request):
     router = request.getfixturevalue(mocked_router)
     router.update_routes(
-        {EndpointTag("endpoint", "default"): EndpointInfo(route="/endpoint")}
+        {
+            EndpointTag("endpoint", "default"): EndpointInfo(route="/endpoint"),
+            EndpointTag("endpoint2", "default2"): EndpointInfo(route="/endpoint2"),
+        }
     )
 
     assert get_handle_function(router)("/nonexistent") is None
@@ -170,6 +176,10 @@ def test_update_routes(mocked_router, target_route1, target_route2, request):
         {
             EndpointTag("endpoint2", "app2"): EndpointInfo(
                 route="/endpoint2",
+                app_is_cross_language=True,
+            ),
+            EndpointTag("endpoint3", "app3"): EndpointInfo(
+                route="/endpoint3",
                 app_is_cross_language=True,
             )
         }
