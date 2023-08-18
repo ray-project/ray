@@ -110,7 +110,7 @@ def random_work():
         np.random.rand(5 * 1024 * 1024)  # 40 MB
 
 
-def test_node_physical_stats(enable_test_module, shutdown_only):
+def test_node_physical_stats(enable_test_module):
     addresses = ray.init(include_dashboard=True, num_cpus=6)
 
     @ray.remote(num_cpus=1)
@@ -152,7 +152,7 @@ def test_node_physical_stats(enable_test_module, shutdown_only):
 
 
 @pytest.mark.skipif(prometheus_client is None, reason="prometheus_client not installed")
-def test_prometheus_physical_stats_record(enable_test_module, shutdown_only):
+def test_prometheus_physical_stats_record(enable_test_module):
     addresses = ray.init(include_dashboard=True, num_cpus=1)
     metrics_export_port = addresses["metrics_export_port"]
     addr = addresses["raylet_ip_address"]
@@ -213,7 +213,7 @@ def test_prometheus_physical_stats_record(enable_test_module, shutdown_only):
     prometheus_client is None,
     reason="prometheus_client must be installed.",
 )
-def test_prometheus_export_worker_and_memory_stats(enable_test_module, shutdown_only):
+def test_prometheus_export_worker_and_memory_stats(enable_test_module):
     addresses = ray.init(include_dashboard=True, num_cpus=1)
     metrics_export_port = addresses["metrics_export_port"]
     addr = addresses["raylet_ip_address"]
@@ -628,7 +628,7 @@ def test_enable_k8s_disk_usage(enable_k8s_disk_usage: bool):
             assert root_usage.free == 1
 
 
-def test_reporter_worker_cpu_percent(shutdown_only):
+def test_reporter_worker_cpu_percent():
     raylet_dummy_proc_f = psutil.Process
     agent_mock = Process(target=random_work)
     children = [Process(target=random_work) for _ in range(2)]
