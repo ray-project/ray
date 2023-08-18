@@ -38,7 +38,7 @@ class TBXLogger(Logger):
     """
 
     VALID_HPARAMS = (str, bool, int, float, list, type(None))
-    VALID_NP_HPARAMS = (np.bool8, np.float32, np.float64, np.int32, np.int64)
+    VALID_NP_HPARAMS = (np.bool_, np.float32, np.float64, np.int32, np.int64)
 
     def _init(self):
         try:
@@ -184,7 +184,7 @@ class TBXLoggerCallback(LoggerCallback):
     _SAVED_FILE_TEMPLATES = ["events.out.tfevents.*"]
 
     VALID_HPARAMS = (str, bool, int, float, list, type(None))
-    VALID_NP_HPARAMS = (np.bool8, np.float32, np.float64, np.int32, np.int64)
+    VALID_NP_HPARAMS = (np.bool_, np.float32, np.float64, np.int32, np.int64)
 
     def __init__(self):
         try:
