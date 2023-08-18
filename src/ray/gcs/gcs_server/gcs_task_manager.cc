@@ -128,6 +128,11 @@ void GcsTaskManager::GcsTaskManagerStorage::MarkTasksFailedOnWorkerDead(
   error_info.set_error_message(error_message.str());
 
   for (const auto &task_attempt : task_attempts_itr->second) {
+    RAY_LOG(INFO) << "Marking task attempts of worker " << worker_id << " as failed: "
+                  << " with error_message: " << error_message.str()
+                  << " for task attempt: " << task_attempt.first
+                  << ", attempt_number: " << task_attempt.second << ".";
+
     MarkTaskAttemptFailedIfNeeded(
         task_attempt, worker_failure_data.end_time_ms() * 1000, error_info);
   }
@@ -354,6 +359,12 @@ void GcsTaskManager::HandleGetTaskEvents(rpc::GetTaskEventsRequest request,
     }
 
     if (filters.has_name() && task_event.task_info().name() != filters.name()) {
+      return false;
+    }
+
+    if (filters.exclude_internal() &&
+        task_event.task_info().name().find("__ray") != std::string::npos) {
+      // Filter out ray internal functions.
       return false;
     }
 

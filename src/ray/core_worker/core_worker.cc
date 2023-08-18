@@ -2719,6 +2719,26 @@ Status CoreWorker::ExecuteTask(
   RAY_LOG(DEBUG) << "Finished executing task " << task_spec.TaskId()
                  << ", status=" << status;
 
+  // // Record task status finished.
+  // if (status.ok() && application_error->empty() || status.IsIntentionalSystemExit()) {
+  //   task_manager_->RecordTaskStatusEvent(
+  //       task_spec.AttemptNumber(), task_spec, rpc::TaskStatus::FINISHED);
+  // } else {
+  //   rpc::RayErrorInfo error_info;
+  //   error_info.set_error_type(rpc::ErrorType::TASK_EXECUTION_EXCEPTION);
+  //   if (!status.ok()) {
+  //     error_info.set_error_message(status.message());
+  //   } else {
+  //     error_info.set_error_message(*application_error);
+  //   }
+  //   task_manager_->RecordTaskStatusEvent(
+  //       task_spec.AttemptNumber(),
+  //       task_spec,
+  //       rpc::TaskStatus::FAILED,
+  //       /* include_task_info */ false,
+  //       worker::TaskStatusEvent::TaskStateUpdate(error_info));
+  // }
+
   std::ostringstream stream;
   if (status.IsCreationTaskError()) {
     Exit(rpc::WorkerExitType::USER_ERROR,

@@ -285,6 +285,7 @@ class StateDataSourceClient:
         limit: int = None,
         filters: Optional[List[Tuple[str, PredicateType, SupportedFilterType]]] = None,
         exclude_driver: bool = False,
+        exclude_internal: bool = True,
     ) -> Optional[GetTaskEventsReply]:
         if not limit:
             limit = RAY_MAX_LIMIT_FROM_DATA_SOURCE
@@ -315,6 +316,7 @@ class StateDataSourceClient:
             filters.remove(filter)
 
         req_filters.exclude_driver = exclude_driver
+        req_filters.exclude_internal = exclude_internal
 
         request = GetTaskEventsRequest(limit=limit, filters=req_filters)
         reply = await self._gcs_task_info_stub.GetTaskEvents(request, timeout=timeout)

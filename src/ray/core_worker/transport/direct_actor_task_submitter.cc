@@ -254,7 +254,8 @@ void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(
 
   absl::flat_hash_map<TaskID, rpc::ClientCallback<rpc::PushTaskReply>>
       inflight_task_callbacks;
-  std::deque<std::pair<int64_t, TaskSpecification>> wait_for_death_info_tasks;
+  std::deque<std::pair<int64_t, std::pair<TaskSpecification, Status>>>
+      wait_for_death_info_tasks;
   std::vector<TaskID> task_ids_to_fail;
   {
     absl::MutexLock lock(&mu_);
@@ -291,7 +292,7 @@ void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(
       wait_for_death_info_tasks = std::move(queue->second.wait_for_death_info_tasks);
       // Reset the queue
       queue->second.wait_for_death_info_tasks =
-          std::deque<std::pair<int64_t, TaskSpecification>>();
+          std::deque<std::pair<int64_t, std::pair<TaskSpecification, Status>>>();
     } else if (queue->second.state != rpc::ActorTableData::DEAD) {
       // Only update the actor's state if it is not permanently dead. The actor
       // will eventually get restarted or marked as permanently dead.
@@ -329,8 +330,11 @@ void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(
       RAY_LOG(DEBUG) << "Failing tasks waiting for death info, size="
                      << wait_for_death_info_tasks.size() << ", actor_id=" << actor_id;
       for (auto &net_err_task : wait_for_death_info_tasks) {
-        RAY_UNUSED(GetTaskFinisherWithoutMu().FailPendingTask(
-            net_err_task.second.TaskId(), error_type, nullptr, &error_info));
+        RAY_UNUSED(
+            GetTaskFinisherWithoutMu().FailPendingTask(net_err_task.second.first.TaskId(),
+                                                       error_type,
+                                                       &net_err_task.second.second,
+                                                       &error_info));
       }
     }
   }
@@ -347,7 +351,7 @@ void CoreWorkerDirectActorTaskSubmitter::CheckTimeoutTasks() {
       auto deque_itr = queue.wait_for_death_info_tasks.begin();
       while (deque_itr != queue.wait_for_death_info_tasks.end() &&
              /*timeout timestamp*/ deque_itr->first < current_time_ms()) {
-        auto &task_spec = deque_itr->second;
+        auto &task_spec = deque_itr->second.first;
         task_specs.push_back(task_spec);
         deque_itr = queue.wait_for_death_info_tasks.erase(deque_itr);
       }
@@ -502,6 +506,8 @@ void CoreWorkerDirectActorTaskSubmitter::HandlePushTaskReply(
   /// Whether or not we will retry this actor task.
   auto will_retry = false;
 
+  RAY_LOG(INFO) << "Finished pushing task " << task_id << " status " << status;
+
   if (task_skipped) {
     // NOTE(simon):Increment the task counter regardless of the status because the
     // reply for a previously completed task. We are not calling CompletePendingTask
@@ -559,7 +565,7 @@ void CoreWorkerDirectActorTaskSubmitter::HandlePushTaskReply(
         RAY_CHECK(queue_pair != client_queues_.end());
         auto &queue = queue_pair->second;
         queue.wait_for_death_info_tasks.emplace_back(death_info_grace_period_ms,
-                                                     task_spec);
+                                                     std::make_pair(task_spec, status));
         RAY_LOG(INFO)
             << "PushActorTask failed because of network error, this task "
                "will be stashed away and waiting for Death info from GCS, task_id="

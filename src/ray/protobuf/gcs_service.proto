@@ -674,6 +674,8 @@ message GetTaskEventsRequest {
     optional string name = 4;
     // True if task events from driver (only profiling events) should be excluded.
     optional bool exclude_driver = 5;
+    // True if ray internal tasks should be excluded (default to True)
+    optional bool exclude_internal = 6;
   }
 
   // Maximum number of TaskEvents to return.

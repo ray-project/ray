@@ -148,6 +148,8 @@ class ListApiOptions:
     )
     # [only tasks] If driver tasks should be excluded.
     exclude_driver: bool = True
+    # [only tasks] If internal tasks should be excluded.
+    exclude_internal: bool = True
     # When the request is processed on the server side,
     # we should apply multiplier so that server side can finish
     # processing a request within timeout. Otherwise,

@@ -706,6 +706,10 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
                    << " plasma returns in scope";
     it->second.num_successful_executions++;
 
+    RAY_LOG(INFO) << "Finished task " << task_id << " is application error "
+                  << is_application_error << " with return objects "
+                  << " , task execution error: " << reply.task_execution_error();
+
     if (is_application_error) {
       SetTaskStatus(it->second,
                     rpc::TaskStatus::FAILED,
@@ -854,10 +858,11 @@ void TaskManager::FailPendingTask(const TaskID &task_id,
                                   const rpc::RayErrorInfo *ray_error_info) {
   // Note that this might be the __ray_terminate__ task, so we don't log
   // loudly with ERROR here.
-  RAY_LOG(DEBUG) << "Task " << task_id << " failed with error "
-                 << rpc::ErrorType_Name(error_type) << ", ray_error_info: "
-                 << ((ray_error_info == nullptr) ? "nullptr"
-                                                 : ray_error_info->DebugString());
+  RAY_LOG(INFO) << "Task " << task_id << " failed with error "
+                << rpc::ErrorType_Name(error_type) << ", ray_error_info: "
+                << ((ray_error_info == nullptr) ? "nullptr"
+                                                : ray_error_info->DebugString())
+                << " status = " << *status;
 
   TaskSpecification spec;
   // Check whether the error should be stored in plasma or not.
@@ -872,12 +877,21 @@ void TaskManager::FailPendingTask(const TaskID &task_id,
     RAY_CHECK(it->second.IsPending())
         << "Tried to fail task that was not pending " << task_id;
     spec = it->second.spec;
-    SetTaskStatus(
-        it->second,
-        rpc::TaskStatus::FAILED,
-        (ray_error_info == nullptr
-             ? gcs::GetRayErrorInfo(error_type, (status ? status->ToString() : ""))
-             : *ray_error_info));
+
+    if (status && status->IsIntentionalSystemExit()) {
+      // We don't mark intentional system exit as failures, such as tasks that
+      // exit by exit_actor(), exit by ray.shutdown(), etc. These tasks are expected
+      // to exit and not be marked as failure.
+      SetTaskStatus(it->second, rpc::TaskStatus::FINISHED);
+    } else {
+      SetTaskStatus(
+          it->second,
+          rpc::TaskStatus::FAILED,
+          (ray_error_info == nullptr
+               ? gcs::GetRayErrorInfo(error_type, (status ? status->ToString() : ""))
+               : *ray_error_info));
+    }
+
     submissible_tasks_.erase(it);
     num_pending_tasks_--;
 
@@ -921,9 +935,9 @@ bool TaskManager::FailOrRetryPendingTask(const TaskID &task_id,
                                          bool fail_immediately) {
   // Note that this might be the __ray_terminate__ task, so we don't log
   // loudly with ERROR here.
-  RAY_LOG(DEBUG) << "Task attempt " << task_id << " failed with error "
-                 << rpc::ErrorType_Name(error_type) << " Fail immediately? "
-                 << fail_immediately;
+  RAY_LOG(INFO) << "Task attempt " << task_id << " failed with error "
+                << rpc::ErrorType_Name(error_type) << " Fail immediately? "
+                << fail_immediately << "status = " << *status;
   bool will_retry = false;
   if (!fail_immediately) {
     will_retry = RetryTaskIfPossible(

@@ -107,13 +107,16 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
                                 &application_error);
     reply->set_is_retryable_error(is_retryable_error);
     reply->set_is_application_error(!application_error.empty());
-    if (!status.ok()) {
-      // System errors occurred while executing the task.
+    if (!status.ok() && !status.IsIntentionalSystemExit()) {
+      // Unexpected errors occurred while executing the task, e.g. CreationTaskError,
+      // UnexpectedSystem error.
       reply->set_task_execution_error(status.ToString());
     } else if (!application_error.empty()) {
       // Application errors occurred while executing the task.
-      // We could get the errors from return_objects, but it would require deserializing
-      // the serialized error message. So we just record the error message directly while
+      // We could get the errors from return_objects, but it would require
+      // deserializing
+      // the serialized error message. So we just record the error message directly
+      // while
       // executing the task.
       reply->set_task_execution_error(application_error);
     }
