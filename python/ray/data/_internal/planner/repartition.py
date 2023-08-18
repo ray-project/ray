@@ -40,7 +40,7 @@ def generate_repartition_fn(
         if map_transformer:
 
             def upstream_map_fn(blocks):
-                return map_transformer(blocks, ctx)
+                return map_transformer.apply_transform(blocks, ctx)
 
         shuffle_spec = ShuffleTaskSpec(
             random_shuffle=False,

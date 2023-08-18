@@ -39,7 +39,7 @@ def generate_random_shuffle_fn(
         if map_transformer:
 
             def upstream_map_fn(blocks):
-                return map_transformer.process(blocks, ctx)
+                return map_transformer.apply_transform(blocks, ctx)
 
             # If there is a fused upstream operator,
             # also use the ray_remote_args from the fused upstream operator.
