@@ -420,7 +420,6 @@ std::optional<syncer::RaySyncMessage> LocalResourceManager::CreateSyncMessage(
     auto total = resources.total.Get(resource_id);
     auto available = resources.available.Get(resource_id);
 
-    resources_data.set_resources_available_changed(true);
     (*resources_data.mutable_resources_available())[label] = available.Double();
     (*resources_data.mutable_resources_total())[label] = total.Double();
   }
@@ -428,10 +427,7 @@ std::optional<syncer::RaySyncMessage> LocalResourceManager::CreateSyncMessage(
   if (get_pull_manager_at_capacity_ != nullptr) {
     resources.object_pulls_queued = get_pull_manager_at_capacity_();
     resources_data.set_object_pulls_queued(resources.object_pulls_queued);
-    resources_data.set_resources_available_changed(true);
   }
-
-  resources_data.set_resources_available_changed(true);
 
   const auto now = absl::Now();
   resources_data.set_idle_duration_ms(
