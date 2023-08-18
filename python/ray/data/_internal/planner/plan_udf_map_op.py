@@ -109,10 +109,11 @@ def _create_map_transformer_for_map_batches_op(op: MapBatches):
                     not isinstance(batch, collections.abc.Mapping)
                     and BlockAccessor.for_block(batch).num_rows() == 0
                 ):
-                    # Ignore empty batches.
-                    # TODO(hchen): This workaround is because some AllToAll operators
-                    # don't preserve the schema for emtpy blocks.
-                    res = []
+                    # For empty input blocks, we directly ouptut them without
+                    # calling the UDF.
+                    # TODO(hchen): This workaround is because some all-to-all
+                    # operators output empty blocks with no schema.
+                    res = [batch]
                 else:
                     res = fn(batch)
                     if not isinstance(res, GeneratorType):
