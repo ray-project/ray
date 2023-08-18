@@ -66,12 +66,12 @@ enum TagKey {
   SERVE_USER_CONFIG_LIGHTWEIGHT_UPDATED = 16;
   // Whether autoscaling_config changed as a lightweight config update
   SERVE_AUTOSCALING_CONFIG_LIGHTWEIGHT_UPDATED = 17;
-  // Whether the serve.status API was used
-  SERVE_STATUS_API_USED = 22;
-  // Whether the serve.get_app_handle API was used
-  SERVE_GET_APP_HANDLE_API_USED = 23;
-  // Whether the serve.get_deployment_handle API was used
-  SERVE_GET_DEPLOYMENT_HANDLE_API_USED = 24;
+  // Whether the serve.status API was used ("1" if used)
+  SERVE_STATUS_API_USED = 18;
+  // Whether the serve.get_app_handle API was used ("1" if used)
+  SERVE_GET_APP_HANDLE_API_USED = 19;
+  // Whether the serve.get_deployment_handle API was used ("1" if used)
+  SERVE_GET_DEPLOYMENT_HANDLE_API_USED = 20;
 
   // Ray Core State API
   // NOTE(rickyxx): Currently only setting "1" for tracking existence of

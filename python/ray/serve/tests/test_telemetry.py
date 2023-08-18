@@ -507,9 +507,6 @@ def test_status_api_detected(manage_ray, location):
         handle.remote()
     elif location == "driver":
         serve.status()
-    else:
-        # Test serve.status not called
-        pass
 
     def check_telemetry():
         report = ray.get(storage_handle.get_report.remote())
