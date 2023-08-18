@@ -242,6 +242,9 @@ def test_replica_actor_infeasible(serve_instance):
     with pytest.raises(ValueError):
         serve.deployment(placement_group_bundles=[{"CPU": 0.1}])(Infeasible)
 
+    with pytest.raises(ValueError):
+        serve.deployment(Infeasible).options(placement_group_bundles=[{"CPU": 0.1}])
+
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Timing out on Windows.")
 def test_coschedule_actors_and_tasks(serve_instance):

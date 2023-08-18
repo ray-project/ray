@@ -178,14 +178,6 @@ class Deployment:
         self._docs_path = docs_path
 
     @property
-    def deployment_config(self) -> DeploymentConfig:
-        return self._deployment_config
-
-    @property
-    def replica_config(self) -> ReplicaConfig:
-        return self._replica_config
-
-    @property
     def name(self) -> str:
         """Unique name of this deployment."""
         return self._name

@@ -515,8 +515,8 @@ def run(
             deployment._route_prefix = route_prefix
         deployment_parameters = {
             "name": deployment._name,
-            "replica_config": deployment.replica_config,
-            "deployment_config": deployment.deployment_config,
+            "replica_config": deployment._replica_config,
+            "deployment_config": deployment._deployment_config,
             "version": deployment._version or get_random_letters(),
             "route_prefix": deployment.route_prefix,
             "url": deployment.url,
