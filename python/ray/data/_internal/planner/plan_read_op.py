@@ -1,3 +1,4 @@
+import functools
 from typing import Iterable, List
 
 import ray
@@ -10,9 +11,10 @@ from ray.data._internal.execution.operators.map_transformer import (
     MapTransformer,
     MapTransformFn,
     MapTransformFnDataType,
+    blocks_to_output_blocks,
 )
 from ray.data._internal.logical.operators.read_operator import Read
-from ray.data.block import Block
+from ray.data.block import Block, BlockAccessor
 from ray.data.datasource.datasource import ReadTask
 
 TASK_SIZE_WARN_THRESHOLD_BYTES = 100000
@@ -36,6 +38,35 @@ def cleaned_metadata(read_task):
     return block_meta
 
 
+def _splitrange(n, k):
+    """Calculates array lens of np.array_split().
+
+    This is the equivalent of
+    `[len(x) for x in np.array_split(range(n), k)]`.
+    """
+    base = n // k
+    output = [base] * k
+    rem = n - sum(output)
+    for i in range(len(output)):
+        if rem > 0:
+            output[i] += 1
+            rem -= 1
+    assert rem == 0, (rem, output, n, k)
+    assert sum(output) == n, (output, n, k)
+    return output
+
+
+def _do_additional_splits(blocks: Iterable[Block], _: TaskContext, additional_output_splits: int) -> Iterable[Block]:
+    assert additional_output_splits > 1
+    for block in blocks:
+        block = BlockAccessor.for_block(block)
+        offset = 0
+        split_sizes = _splitrange(block.num_rows(), additional_output_splits)
+        for size in split_sizes:
+            yield block.slice(offset, offset + size, copy=True)
+            offset += size
+
+
 def plan_read_op(op: Read) -> PhysicalOperator:
     """Get the corresponding DAG of physical operators for Read.
 
@@ -45,9 +76,6 @@ def plan_read_op(op: Read) -> PhysicalOperator:
 
     def get_input_data() -> List[RefBundle]:
         read_tasks = op._reader.get_read_tasks(op._parallelism)
-        if op._additional_split_factor is not None:
-            for r in read_tasks:
-                r._set_additional_split_factor(op._additional_split_factor)
         return [
             RefBundle(
                 [
@@ -72,14 +100,23 @@ def plan_read_op(op: Read) -> PhysicalOperator:
             yield from read_task()
 
     # Create a MapTransformer for a read operator
-
-    # TODO(hchen): Currently, we apply the BlockOuputBuffer within the read tasks.
-    # We should remove that and use `_blocks_to_output_blocks` here.
     transform_fns = [
         MapTransformFn(
             do_read, MapTransformFnDataType.Block, MapTransformFnDataType.Block
         ),
     ]
+    if op._additional_split_factor is not None:
+        transform_fns.append(
+            MapTransformFn(
+                functools.partial(_do_additional_splits, additional_output_splits=op._additional_split_factor),
+                MapTransformFnDataType.Block,
+                MapTransformFnDataType.Block,
+            )
+        )
+    else:
+        transform_fns.append(blocks_to_output_blocks)
+
+
     map_transformer = MapTransformer(transform_fns)
 
     return MapOperator.create(

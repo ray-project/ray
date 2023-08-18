@@ -404,8 +404,6 @@ def read_datasource(
                 f"To satisfy the requested parallelism of {requested_parallelism}, "
                 f"each read task output is split into {k} smaller blocks."
             )
-            for r in read_tasks:
-                r._set_additional_split_factor(k)
             estimated_num_blocks = estimated_num_blocks * k
             additional_split_factor = k
         logger.debug("Estimated num output blocks {estimated_num_blocks}")
@@ -1118,7 +1116,7 @@ def read_csv(
         variety       string
 
         Convert a date column with a custom format from a CSV file. For more uses of ConvertOptions see https://arrow.apache.org/docs/python/generated/pyarrow.csv.ConvertOptions.html  # noqa: #501
-        
+
         >>> from pyarrow import csv
         >>> convert_options = csv.ConvertOptions(
         ...     timestamp_parsers=["%m/%d/%Y"])
@@ -1167,14 +1165,14 @@ def read_csv(
         arrow_open_stream_args: kwargs passed to
             `pyarrow.fs.FileSystem.open_input_file <https://arrow.apache.org/docs/\
                 python/generated/pyarrow.fs.FileSystem.html\
-                    #pyarrow.fs.FileSystem.open_input_stream>`_. 
+                    #pyarrow.fs.FileSystem.open_input_stream>`_.
             when opening input files to read.
         meta_provider: A :ref:`file metadata provider <metadata_provider>`. Custom
             metadata providers may be able to resolve file metadata more quickly and/or
-            accurately. In most cases, you do not need to set this. If ``None``, this 
+            accurately. In most cases, you do not need to set this. If ``None``, this
             function uses a system-chosen implementation.
-        partition_filter: A 
-            :class:`~ray.data.datasource.partitioning.PathPartitionFilter`. 
+        partition_filter: A
+            :class:`~ray.data.datasource.partitioning.PathPartitionFilter`.
             Use with a custom callback to read only selected partitions of a
             dataset. By default, no files are filtered.
             To filter out all file paths except those whose file extension
@@ -1186,11 +1184,11 @@ def read_csv(
                 hive-style-partitioning/>`_.
         ignore_missing_paths: If True, ignores any file paths in ``paths`` that are not
             found. Defaults to False.
-        arrow_csv_args: CSV read options to pass to 
+        arrow_csv_args: CSV read options to pass to
             `pyarrow.csv.open_csv <https://arrow.apache.org/docs/python/generated/\
-            pyarrow.csv.open_csv.html#pyarrow.csv.open_csv>`_ 
+            pyarrow.csv.open_csv.html#pyarrow.csv.open_csv>`_
             when opening CSV files.
-        
+
 
     Returns:
         :class:`~ray.data.Dataset` producing records read from the specified paths.
