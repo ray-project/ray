@@ -15,6 +15,7 @@ class DeploymentFunctionNode(DAGNode):
         self,
         func_body: Union[Callable, str],
         deployment_name,
+        app_name,
         func_args,
         func_kwargs,
         func_options,
@@ -22,6 +23,7 @@ class DeploymentFunctionNode(DAGNode):
     ):
         self._body = func_body
         self._deployment_name = deployment_name
+        self._app_name = app_name
         super().__init__(
             func_args,
             func_kwargs,
@@ -63,7 +65,7 @@ class DeploymentFunctionNode(DAGNode):
                 _internal=True,
             )
 
-        self._deployment_handle = RayServeHandle(self._deployment.name)
+        self._deployment_handle = RayServeHandle(self._deployment.name, self._app_name)
 
     def _copy_impl(
         self,
@@ -75,6 +77,7 @@ class DeploymentFunctionNode(DAGNode):
         return DeploymentFunctionNode(
             self._body,
             self._deployment_name,
+            self._app_name,
             new_args,
             new_kwargs,
             new_options,
