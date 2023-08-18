@@ -127,7 +127,7 @@ class TestgRPCProxy:
         assert response.status_code == str(routes_status)
         response_proto = serve_pb2.ListApplicationsResponse()
         response_proto.ParseFromString(response.response)
-        assert response_proto.application_names == [str(endpoint)]
+        assert response_proto.application_names == [endpoint.app]
         proxy_request.send_status_code.assert_called_with(status_code=routes_status)
         proxy_request.send_details.assert_called_once()
 

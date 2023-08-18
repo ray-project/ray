@@ -624,8 +624,9 @@ class gRPCProxy(GenericProxy):
         proxy_request.send_status_code(status_code=status_code)
         proxy_request.send_details(message=DRAINED_MESSAGE)
         if proxy_request.is_route_request:
+            application_names = [endpoint.app for endpoint in self.route_info.values()]
             response_proto = ListApplicationsResponse(
-                application_names=self.route_info.values()
+                application_names=application_names
             )
         else:
             response_proto = HealthzResponse(message=DRAINED_MESSAGE)
@@ -649,7 +650,7 @@ class gRPCProxy(GenericProxy):
         status_code = grpc.StatusCode.OK
         proxy_request.send_status_code(status_code=status_code)
         proxy_request.send_details(message=HEALTH_CHECK_SUCCESS_MESSAGE)
-        application_names = [str(endpoint) for endpoint in self.route_info.values()]
+        application_names = [endpoint.app for endpoint in self.route_info.values()]
         response_proto = ListApplicationsResponse(
             application_names=application_names,
         )
