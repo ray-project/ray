@@ -233,6 +233,10 @@ def test_convert_to_object_ref(serve_instance):
     assert ray.get(identity_task.remote(ref._to_object_ref_sync())) == "hello"
 
 
+@pytest.mark.skipif(
+    not RAY_SERVE_ENABLE_NEW_ROUTING,
+    reason="Streaming only supported w/ new routing.",
+)
 def test_generators(serve_instance):
     """Test generators inside and outside a deployment."""
 
@@ -261,6 +265,10 @@ def test_generators(serve_instance):
     assert list(gen) == list(range(10))
 
 
+@pytest.mark.skipif(
+    not RAY_SERVE_ENABLE_NEW_ROUTING,
+    reason="Streaming only supported w/ new routing.",
+)
 def test_convert_to_object_ref_gen(serve_instance):
     """Test converting generators to obj ref gens inside and outside a deployment."""
 
