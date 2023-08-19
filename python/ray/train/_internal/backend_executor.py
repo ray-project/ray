@@ -1,7 +1,7 @@
 import logging
 import os
 from collections import defaultdict
-from typing import Callable, Dict, List, Optional, Tuple, Type, TypeVar
+from typing import Callable, Dict, List, Optional, Tuple, Type, TypeVar, Any
 
 import ray
 from ray.data import Dataset
@@ -346,6 +346,7 @@ class BackendExecutor:
         self,
         train_func: Callable[[], T],
         datasets: Dict[str, Dataset],
+        metadata: Dict[str, Any],
         data_config: DataConfig,
         checkpoint: Optional[Checkpoint] = None,
         on_session_init: Callable[[], None] = None,
@@ -379,6 +380,7 @@ class BackendExecutor:
             trial_info,
             checkpoint,
             dataset_shard,
+            metadata,
             encode_data_fn,
             checkpoint_keep_all_ranks,
             checkpoint_upload_from_workers,
@@ -394,6 +396,7 @@ class BackendExecutor:
                     world_size=world_size,
                     trial_info=trial_info,
                     dataset_shard=dataset_shard,
+                    metadata=metadata,
                     checkpoint=checkpoint,
                     encode_data_fn=encode_data_fn,
                     detailed_autofilled_metrics=use_detailed_autofilled_metrics,
@@ -446,6 +449,7 @@ class BackendExecutor:
                     trial_info=self._trial_info,
                     train_func=train_func,
                     dataset_shard=self.dataset_shards[index],
+                    metadata=metadata,
                     checkpoint=checkpoint,
                     encode_data_fn=self._backend._encode_data,
                     checkpoint_keep_all_ranks=self._checkpoint_keep_all_ranks,
