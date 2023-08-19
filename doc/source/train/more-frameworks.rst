@@ -8,12 +8,20 @@ More Frameworks
     :class-container: container pb-3
 
     .. grid-item-card::
-        :img-top: /images/hugging.png
+        :img-top: /images/accelerate_logo.png
         :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
 
         .. button-ref:: train-hf-accelerate
 
             Hugging Face Accelerate
+    
+    .. grid-item-card::
+        :img-top: /images/deepspeed_logo.svg
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
+
+        .. button-ref:: train-deepspeed
+
+            DeepSpeed
 
     .. grid-item-card::
         :img-top: /images/tf_logo.png

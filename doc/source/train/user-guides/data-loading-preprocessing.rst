@@ -157,6 +157,11 @@ Data ingestion can be set up with four basic steps:
 
                 ...
 
+                args = transformers.TrainingArguments(
+                    ...,
+                    max_steps=max_steps # Required for iterable datasets
+                )
+
                 trainer = transformers.Trainer(
                     ...,
                     model=model,
