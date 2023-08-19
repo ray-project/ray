@@ -3,7 +3,7 @@ from typing import Any, Callable, Dict, List, Union
 from ray.dag.dag_node import DAGNode
 from ray.dag.format_utils import get_dag_node_str
 from ray.serve.deployment import Deployment, schema_to_deployment
-from ray.serve.config import DeploymentConfig
+from ray.serve.config import DeploymentConfig, ReplicaConfig
 from ray.serve.handle import RayServeHandle
 from ray.serve.schema import DeploymentSchema
 
@@ -55,13 +55,16 @@ class DeploymentFunctionNode(DAGNode):
                 _internal=True,
             )
         else:
-            self._deployment: Deployment = Deployment(
-                func_body,
-                deployment_name,
-                DeploymentConfig(),
+            replica_config = ReplicaConfig.create(
+                deployment_def=func_body,
                 init_args=tuple(),
                 init_kwargs=dict(),
                 ray_actor_options=func_options,
+            )
+            self._deployment: Deployment = Deployment(
+                deployment_name,
+                deployment_config=DeploymentConfig(),
+                replica_config=replica_config,
                 _internal=True,
             )
 

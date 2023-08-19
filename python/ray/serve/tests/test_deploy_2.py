@@ -349,7 +349,6 @@ def test_nonserializable_deployment(serve_instance):
 
     lock = threading.Lock()
 
-    @serve.deployment
     class D:
         def hello(self, _):
             return lock
@@ -359,7 +358,7 @@ def test_nonserializable_deployment(serve_instance):
         TypeError,
         match=r"Could not serialize the deployment[\s\S]*was found to be non-serializable.*",  # noqa
     ):
-        serve.run(D.bind())
+        serve.deployment(D)
 
     @serve.deployment
     class E:

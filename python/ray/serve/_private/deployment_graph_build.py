@@ -252,7 +252,7 @@ def transform_ray_dag_to_serve_dag(
         # TODO: (jiaodong) Need to capture DAGNodes in the parent node
         parent_deployment_node = other_args_to_resolve[PARENT_CLASS_NODE_KEY]
 
-        parent_class = parent_deployment_node._deployment._func_or_class
+        parent_class = parent_deployment_node._deployment.func_or_class
         method = getattr(parent_class, dag_node._method_name)
         if "return" in method.__annotations__:
             other_args_to_resolve["result_type_string"] = type_to_string(
