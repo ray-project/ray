@@ -3,6 +3,7 @@ try:
     import pandas  # noqa: F401
     import requests  # noqa: F401
     import pyarrow  # noqa: F401
+    import fsspec  # noqa: F401
 except ImportError as exc:
     raise ImportError(
         "Can't import ray.tune as some dependencies are missing. "
