@@ -57,7 +57,6 @@ class RemoteTest(unittest.TestCase):
         kwargs.pop("run_or_experiment")
         kwargs.pop("_remote")
         kwargs.pop("progress_reporter")  # gets autodetected and set
-        kwargs.pop("_ray_trace_ctx")
 
         default_kwargs = {
             k: v.default for k, v in inspect.signature(run).parameters.items()
@@ -65,7 +64,7 @@ class RemoteTest(unittest.TestCase):
         default_kwargs.pop("run_or_experiment")
         default_kwargs.pop("_remote")
         default_kwargs.pop("progress_reporter")
-        default_kwargs.pop("_ray_trace_ctx")
+        default_kwargs.pop("_ray_trace_ctx") # automatically added for remote
 
         self.assertDictEqual(kwargs, default_kwargs)
 
