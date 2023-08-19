@@ -23,8 +23,10 @@ class DeploymentID(NamedTuple):
     app: str
 
     def __str__(self):
+        # TODO(zcin): remove this once we no longer use the concatenated
+        # string for metrics
         if self.app:
-            return f"{self.app}:{self.name}"
+            return f"{self.app}_{self.name}"
         else:
             return self.name
 

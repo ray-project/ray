@@ -1002,6 +1002,7 @@ class Router:
         wrapper that adds metrics and logging.
         """
         self._event_loop = event_loop
+        self.deployment_id = deployment_id
 
         if _router_cls:
             self._replica_scheduler = load_class(_router_cls)(
@@ -1026,7 +1027,7 @@ class Router:
         )
         # TODO(zcin): use deployment name and application name instead of deployment id
         self.num_router_requests.set_default_tags(
-            {"deployment": deployment_id.name, "application": deployment_id.app}
+            {"deployment": str(deployment_id), "application": deployment_id.app}
         )
 
         self.num_queued_queries = 0
@@ -1040,7 +1041,7 @@ class Router:
         )
         # TODO(zcin): use deployment name and application name instead of deployment id
         self.num_queued_queries_gauge.set_default_tags(
-            {"deployment": deployment_id.name, "application": deployment_id.app}
+            {"deployment": str(deployment_id), "application": deployment_id.app}
         )
 
         self.long_poll_client = LongPollClient(
@@ -1055,7 +1056,6 @@ class Router:
         )
 
         # Start the metrics pusher if autoscaling is enabled.
-        self.deployment_id = deployment_id
         deployment_route = DeploymentRoute.FromString(
             ray.get(controller_handle.get_deployment_info.remote(*deployment_id))
         )

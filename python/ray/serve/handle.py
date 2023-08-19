@@ -158,7 +158,7 @@ class RayServeHandle:
         self.request_counter.set_default_tags(
             {
                 "handle": handle_tag,
-                "deployment": self.deployment_id.name,
+                "deployment": str(self.deployment_id),
                 "application": self.deployment_id.app,
             }
         )

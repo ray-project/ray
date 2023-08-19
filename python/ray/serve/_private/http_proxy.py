@@ -474,7 +474,7 @@ class GenericProxy(ABC):
                 )
                 self.deployment_request_error_counter.inc(
                     tags={
-                        "deployment": handle.deployment_id.name,
+                        "deployment": str(handle.deployment_id),
                         "error_code": status_code,
                         "method": method,
                         "route": route_path,
