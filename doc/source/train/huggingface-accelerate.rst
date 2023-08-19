@@ -175,8 +175,8 @@ Next, check these end-to-end examples below for more details:
 
             .. literalinclude:: /../../python/ray/train/examples/accelerate/accelerate_torch_trainer.py
                 :language: python
-                :start-after: __deepspeed_torch_basic_example_start__
-                :end-before: __deepspeed_torch_basic_example_end__
+                :start-after: __accelerate_torch_basic_example_start__
+                :end-before: __accelerate_torch_basic_example_end__
 
     .. group-tab:: Example with PyTorch DataLoader
 
@@ -184,8 +184,8 @@ Next, check these end-to-end examples below for more details:
 
             .. literalinclude:: /../../python/ray/train/examples/accelerate/accelerate_torch_trainer_no_raydata.py
                 :language: python
-                :start-after: __deepspeed_torch_basic_example_no_raydata_start__
-                :end-before: __deepspeed_torch_basic_example_no_raydata_end__
+                :start-after: __accelerate_torch_basic_example_no_raydata_start__
+                :end-before: __accelerate_torch_basic_example_no_raydata_end__
 
 .. seealso::
 
