@@ -487,7 +487,7 @@ class NewExperimentAnalysis:
             return None
 
         score_order_factor = -1 if mode == "min" else 1
-        best_checkpoint = max(
+        best_checkpoint, _ = max(
             checkpoints_and_metrics, key=lambda x: score_order_factor * x[1]
         )
         return best_checkpoint
