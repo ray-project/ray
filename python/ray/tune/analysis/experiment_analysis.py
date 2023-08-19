@@ -32,6 +32,7 @@ from ray.train._internal.storage import (
     _exists_at_fs_path,
     get_fs_and_path,
 )
+from ray.train._checkpoint import Checkpoint as NewCheckpoint
 from ray.tune.execution.tune_controller import TuneController
 from ray.tune.syncer import SyncConfig
 from ray.tune.utils import flatten_dict
@@ -445,8 +446,8 @@ class NewExperimentAnalysis:
 
     def get_trial_checkpoints_paths(
         self, trial: Trial, metric: Optional[str] = None
-    ) -> List[Tuple[str, Number]]:
-        """Gets paths and metrics of all persistent checkpoints of a trial.
+    ) -> List[Tuple[NewCheckpoint, Number]]:
+        """Get all checkpoints and a specified metric of a trial.
 
         Args:
             trial: The log directory of a trial, or a trial instance.
@@ -455,31 +456,23 @@ class NewExperimentAnalysis:
                 passed to ``self.default_metric``.
 
         Returns:
-            List of [path, metric] for all persistent checkpoints of the trial.
+            List of [Checkpoint, metric] for all checkpoints of the trial.
         """
         metric = metric or self.default_metric or TRAINING_ITERATION
 
-        if isinstance(trial, str):
-            trial_dir = Path(trial).expanduser().as_posix()
-            # Get checkpoints from logdir.
-            chkpt_df = TrainableUtil.get_checkpoints_paths(trial_dir)
-
-            # Join with trial dataframe to get metrics.
-            trial_df = self.trial_dataframes[trial_dir]
-            path_metric_df = chkpt_df.merge(
-                trial_df, on="training_iteration", how="inner"
-            )
-            return path_metric_df[["chkpt_path", metric]].values.tolist()
-        elif isinstance(trial, Trial):
-            checkpoints = trial.get_trial_checkpoints()
-            # Support metrics given as paths, e.g.
-            # "info/learner/default_policy/policy_loss".
-            return [
-                (c.dir_or_data, unflattened_lookup(metric, c.metrics))
-                for c in checkpoints
-            ]
-        else:
-            raise ValueError("trial should be a string or a Trial instance.")
+        best_checkpoint_results = (
+            trial.run_metadata.checkpoint_manager.best_checkpoint_results
+        )
+        best_checkpoints = [
+            (checkpoint_result.checkpoint, checkpoint_result.metrics)
+            for checkpoint_result in best_checkpoint_results
+        ]
+        # Support nested metrics given as flattened strings, e.g.
+        # "info/learner/default_policy/policy_loss".
+        return [
+            (checkpoint, unflattened_lookup(metric, metrics))
+            for checkpoint, metrics in best_checkpoints
+        ]
 
     def get_best_checkpoint(
         self,
