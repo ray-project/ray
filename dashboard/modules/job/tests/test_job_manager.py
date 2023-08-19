@@ -619,12 +619,16 @@ class TestRuntimeEnv:
         script is honored even in case when job is submitted via JobManager.submit_job
         API (involving RAY_JOB_CONFIG_JSON_ENV_VAR being set in child process env)
         """
+        driver_script_path = _driver_script_path(
+            "check_code_search_path_is_propagated.py"
+        )
+
         job_id = await job_manager.submit_job(
-            entrypoint=f"python {_driver_script_path('check_code_search_path_is_propagated.py')}",
-            # NOTE: We inject runtime_env in here, but also specify the JobConfig in the
-            #       driver script: settings to JobConfig (other than the runtime_env) passed in
-            #       via ray.init(...) have to be respected along with the runtime_env passed from
-            #       submit_job API
+            entrypoint=f"python {driver_script_path}",
+            # NOTE: We inject runtime_env in here, but also specify the JobConfig in
+            #       the driver script: settings to JobConfig (other than the
+            #       runtime_env) passed in via ray.init(...) have to be respected
+            #       along with the runtime_env passed from submit_job API
             runtime_env={"env_vars": {"TEST_SUBPROCESS_RANDOM_VAR": "0xDEEDDEED"}},
         )
 
