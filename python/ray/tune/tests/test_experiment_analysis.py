@@ -88,10 +88,6 @@ class ExperimentAnalysisSuite(unittest.TestCase):
         all_dataframes_via_csv2 = self.ea.fetch_trial_dataframes()
         assert set(all_dataframes_via_csv) == set(all_dataframes_via_csv2)
 
-    def testStats(self):
-        assert self.ea.stats()
-        assert self.ea.runner_data()
-
     def testTrialDataframe(self):
         checkpoints = self.ea._checkpoints_and_paths
         idx = random.randint(0, len(checkpoints) - 1)
