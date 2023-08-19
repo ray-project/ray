@@ -95,7 +95,7 @@ def _is_tracing_enabled() -> bool:
     return _global_is_tracing_enabled
 
 
-def _enbale_tracing():
+def _enable_tracing():
     global _global_is_tracing_enabled, _opentelemetry
     _global_is_tracing_enabled = True
     _opentelemetry = _OpenTelemetryProxy()
