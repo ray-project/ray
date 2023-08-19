@@ -1,8 +1,10 @@
-from typing import List, Callable, Any, TypeVar
+from typing import TYPE_CHECKING, Any, Callable, List, TypeVar
 
 import ray
 from ray.util.annotations import DeveloperAPI
-import ray.actor
+
+if TYPE_CHECKING:
+    import ray.actor
 
 V = TypeVar("V")
 
