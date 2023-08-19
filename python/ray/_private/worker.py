@@ -426,7 +426,8 @@ class Worker:
         self.mode = None
         self.actors = {}
         # When the worker is constructed. Record the original value of the
-        # (CUDA_VISIBLE_DEVICES, NEURON_RT_VISIBLE_CORES, ..) environment variables.
+        # (CUDA_VISIBLE_DEVICES, NEURON_RT_VISIBLE_CORES, TPU_VISIBLE_CHIPS, ..)
+        # environment variables.
         self.original_gpu_and_accelerator_runtime_ids = (
             ray._private.utils.get_gpu_and_accelerator_runtime_ids()
         )
@@ -861,9 +862,9 @@ class Worker:
                     assigned_ids.add(resource_id)
 
         # If the user had already set the environment variables
-        # (CUDA_VISIBLE_DEVICES, NEURON_RT_VISIBLE_CORES, ..) then respect that
-        # in the sense that only IDs that appear in (CUDA_VISIBLE_DEVICES,
-        # NEURON_RT_VISIBLE_CORES, ..) should be returned.
+        # (CUDA_VISIBLE_DEVICES, NEURON_RT_VISIBLE_CORES, TPU_VISIBLE_CHIPS, ..) then
+        # respect that in the sense that only IDs that appear in (CUDA_VISIBLE_DEVICES,
+        # NEURON_RT_VISIBLE_CORES, TPU_VISIBLE_CHIPS, ..) should be returned.
         if (
             self.original_gpu_and_accelerator_runtime_ids.get(resource_name, None)
             is not None
@@ -874,6 +875,8 @@ class Worker:
             if self.mode == LOCAL_MODE:
                 if resource_name == ray_constants.GPU:
                     max_runtime_ids = self.node.get_resource_spec().num_gpus
+                elif resource_name == ray_constants.TPU:
+                    max_runtime_ids = self.node.get_resource_spec().num_tpus
                 else:
                     max_runtime_ids = self.node.get_resource_spec().resources.get(
                         resource_name, None

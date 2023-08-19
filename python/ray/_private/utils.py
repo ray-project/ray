@@ -278,20 +278,23 @@ def compute_driver_id_from_job(job_id):
 
 def get_gpu_and_accelerator_runtime_ids() -> Mapping[str, Optional[List[str]]]:
     """
-    Get the device IDs of GPUs (CUDA), accelerators(NeuronCore) using
-    (CUDA_VISIBLE_DEVICES, NEURON_RT_VISIBLE_CORES) environment variables.
+    Get the device IDs of GPUs (CUDA), accelerators(NeuronCore) and TPUs
+    using (CUDA_VISIBLE_DEVICES, NEURON_RT_VISIBLE_CORES, TPU_VISIBLE_CHIPS)
+    environment variables.
 
     Returns:
         A dictionary with keys:
             - ray_constants.GPU: The list of device IDs of GPUs.
             - ray_constants.NEURON_CORES: The list of device IDs of
                 accelerators.
+            - ray_constants.TPU: The list of device IDs of TPUs.
         If either of the environment variables is not set, returns None for
         corresponding key.
     """
     return {
         ray_constants.GPU: get_cuda_visible_devices(),
         ray_constants.NEURON_CORES: get_aws_neuron_core_visible_ids(),
+        ray_constants.TPU: get_tpu_visible_chips(),
     }
 
 
@@ -319,11 +322,24 @@ def get_aws_neuron_core_visible_ids() -> Optional[List[str]]:
     return _get_visible_ids(env_var=ray_constants.NEURON_RT_VISIBLE_CORES_ENV_VAR)
 
 
+def get_tpu_visible_chips() -> Optional[List[str]]:
+    """
+    Get the device IDs using TPU_VISIBLE_CHIPS environment variable.
+
+    Returns:
+        devices (List[str]): If environment variable is set, returns a
+            list of strings representing the IDs of the visible devices.
+            If it is not set or is set to NoDevFiles, returns empty list.
+
+    """
+    return _get_visible_ids(env_var=ray_constants.TPU_VISIBLE_CHIPS_ENV_VAR)
+
+
 def _get_visible_ids(env_var: str) -> Optional[List[str]]:
     """Get the device IDs from defined environment variable.
     Args:
         env_var: Environment variable (e.g., CUDA_VISIBLE_DEVICES,
-        NEURON_RT_VISIBLE_CORES) to set based on the accelerator runtime.
+        NEURON_RT_VISIBLE_CORES, TPU_VISIBLE_CHIPS) to set based on the accelerator runtime.
 
     Returns:
         devices (List[str]): If environment variable is set, returns a
@@ -333,6 +349,7 @@ def _get_visible_ids(env_var: str) -> Optional[List[str]]:
     if env_var not in (
         ray_constants.CUDA_VISIBLE_DEVICES_ENV_VAR,
         ray_constants.NEURON_RT_VISIBLE_CORES_ENV_VAR,
+        ray_constants.TPU_VISIBLE_CHIPS_ENV_VAR,
     ):
         raise ValueError(f"Invalid environment variable {env_var} to get visible IDs.")
     visible_ids_str = os.environ.get(env_var, None)
@@ -352,6 +369,7 @@ def _get_visible_ids(env_var: str) -> Optional[List[str]]:
 
 last_set_gpu_ids = None
 last_set_neuron_core_ids = None
+last_set_tpu_chips = None
 
 
 def set_omp_num_threads_if_unset() -> bool:
@@ -394,6 +412,20 @@ def set_omp_num_threads_if_unset() -> bool:
     return True
 
 
+def set_gpu_and_accelerator_runtime_ids() -> None:
+    """Set (CUDA_VISIBLE_DEVICES, NEURON_RT_VISIBLE_CORES, TPU_VISIBLE_CHIPS ,...)
+    environment variables based on the accelerator runtime.
+
+    Raises:
+        ValueError: If the environment variable is set to a different
+            environment variable.
+    """
+    ids = ray.get_runtime_context().get_resource_ids()
+    set_cuda_visible_devices(ids[ray_constants.GPU])
+    set_aws_neuron_core_visible_ids(ids[ray_constants.NEURON_CORES])
+    set_tpu_visible_ids_and_bounds(ids[ray_constants.TPU])
+
+
 def set_cuda_visible_devices(gpu_ids: List[str]):
     """Set the CUDA_VISIBLE_DEVICES environment variable.
 
@@ -407,19 +439,6 @@ def set_cuda_visible_devices(gpu_ids: List[str]):
         return  # optimization: already set
     _set_visible_ids(gpu_ids, ray_constants.CUDA_VISIBLE_DEVICES_ENV_VAR)
     last_set_gpu_ids = gpu_ids
-
-
-def set_gpu_and_accelerator_runtime_ids() -> None:
-    """Set (CUDA_VISIBLE_DEVICES, NEURON_RT_VISIBLE_CORES, ..) environment variables
-    based on the accelerator runtime.
-
-    Raises:
-        ValueError: If the environment variable is set to a different
-            environment variable.
-    """
-    ids = ray.get_runtime_context().get_resource_ids()
-    set_cuda_visible_devices(ids[ray_constants.GPU])
-    set_aws_neuron_core_visible_ids(ids[ray_constants.NEURON_CORES])
 
 
 def set_aws_neuron_core_visible_ids(neuron_core_ids: List[str]) -> None:
@@ -438,10 +457,37 @@ def set_aws_neuron_core_visible_ids(neuron_core_ids: List[str]) -> None:
     last_set_neuron_core_ids = neuron_core_ids
 
 
+def set_tpu_visible_ids_and_bounds(tpu_chips: List[str]) -> None:
+    """Set TPU_VISIBLE_CHIPS and TPU_CHIPS_PER_HOST_BOUNDS based on
+    provided tpu_chips.
+
+    To access a subset of the TPU visible chips 
+
+    See: https://github.com/google/jax/issues/14977 for more details.
+
+    Args:
+        tpu_chips (List[str]): List of int representing TPU chips.
+    """
+    if os.environ.get(ray_constants.NOSET_TPU_VISIBLE_CHIPS_ENV_VAR):
+        return
+    global last_set_tpu_chips
+    if last_set_tpu_chips == tpu_chips:
+        return  # optimization: already set
+    _set_visible_ids(tpu_ids, ray_constants.TPU_VISIBLE_CHIPS_ENV_VAR)
+    num_chips = len(tpu_chips)
+    if num_chips == 1:
+        os.environ[ray_constants.TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR] = ray_constants.TPU_CHIPS_PER_HOST_BOUNDS_1_CHIP_CONFIG
+        os.environ[ray_constants.TPU_HOST_BOUNDS_ENV_VAR] = ray_constants.TPU_SINGLE_HOST_BOUNDS
+    elif num_chips == 2:
+        os.environ[ray_constants.TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR] = ray_constants.TPU_CHIPS_PER_HOST_BOUNDS_2_CHIP_CONFIG
+        os.environ[ray_constants.TPU_HOST_BOUNDS_ENV_VAR] = ray_constants.TPU_SINGLE_HOST_BOUNDS
+    last_set_tpu_chips = tpu_chips
+
+
 def _set_visible_ids(visible_ids: List[str], env_var: str):
-    """Set the environment variable (e.g., CUDA_VISIBLE_DEVICES, NEURON_RT_VISIBLE_CORES)
-     passed based on accelerator runtime and will raise an error if the function uses
-     different environment variable.
+    """Set the environment variable (e.g., CUDA_VISIBLE_DEVICES, NEURON_RT_VISIBLE_CORES,
+     TPU_VISIBLE_CHIPS) passed based on accelerator runtime and will raise an error if
+     the function uses different environment variable.
 
     Args:
         visible_ids (List[str]): List of strings representing GPU IDs or NeuronCore IDs.
@@ -451,6 +497,7 @@ def _set_visible_ids(visible_ids: List[str], env_var: str):
     if env_var not in (
         ray_constants.CUDA_VISIBLE_DEVICES_ENV_VAR,
         ray_constants.NEURON_RT_VISIBLE_CORES_ENV_VAR,
+        ray_constants.TPU_VISIBLE_CHIPS_ENV_VAR,
     ):
         raise ValueError(f"Invalid environment variable {env_var} to set visible IDs.")
     os.environ[env_var] = ",".join([str(i) for i in visible_ids])

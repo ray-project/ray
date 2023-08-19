@@ -310,7 +310,6 @@ class FakeMultiNodeProvider(NodeProvider):
     def create_node_with_resources_and_labels(
         self, node_config, tags, count, resources, labels
     ):
-        print("Sanity check")
         with self.lock:
             node_type = tags[TAG_RAY_USER_NODE_TYPE]
             next_id = self._next_hex_node_id()
@@ -336,9 +335,13 @@ class FakeMultiNodeProvider(NodeProvider):
                     ray_constants.LABELS_ENVIRONMENT_VARIABLE: json.dumps(labels),
                 },
             )
+            print("DEBUG: params CPU: ", ray_params.num_cpus)
+            print("DEBUG: params GPU: ", ray_params.num_gpus)
+            print("DEBUG: params TPU: ", ray_params.num_tpus)
             node = ray._private.node.Node(
                 ray_params, head=False, shutdown_at_exit=False, spawn_reaper=False
             )
+            print("DEBUG: node: ", node)
             self._nodes[next_id] = {
                 "tags": {
                     TAG_RAY_NODE_KIND: NODE_KIND_WORKER,

@@ -136,41 +136,17 @@ def _validate_neuron_core_accelerator(options: Dict[str, Any]):
             )
 
 
-def _validate_tpu_options(options: Dict[str, Any]):
-    """Validate the options for a TPU.
+def _validate_tpu_accelerator(options: Dict[str, Any]):
+    """Validate options for TPU.
 
-    Ray in TPUs currently represents each raylet as a TPU VM, each
-    having 4 chips.
-
-    This function guards against two expected pitfalls:
-    1) A user tries to access a subset of TPU chips in a host like they
-       can with CPU or GPU.
-    2) A user tries to access a superset of TPU chips, probably if they
-       intend a function to target a TPU pod slice with >1 worker.
-
-    Reasoning for these checks:
-    1) TPU chips are only accessible through the XLA compiler. It is possible
-       to access a subset of chips, but this should only be reserved for really
-       advanced users. This is why we warn rather than crash.
-    2) In case a user tries to access more than the number of chips in a
-       host, Ray will make the request but it will never schedule. It's better
-       to explicitly crash here so the user does not waste cycles.
+    Args:
+        options: The options to be validated.
 
     Raises:
-        ValueError if user tries to specify more than the number of chips
-        in a TPU VM host.
-
+        ValueError: If the options are invalid.
+    
     """
     num_tpus = options.get("num_tpus", None)
-    if num_tpus is not None and num_tpus != 4:
-        if num_tpus < num_chips:
-            logger.warning(
-                "Accessing a subset of TPU chips in a host (e.g. 4) is currently not well supported."
-            )
-        else: # num_tpus > num_chips
-            raise ValueError(
-                "A raylet cannot access more than the number of chips present in a TPU VM host."
-            )
 
 
 _common_options = {

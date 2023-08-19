@@ -225,7 +225,6 @@ test_python() {
       -python/ray/tests:test_client_init # timeout
       -python/ray/tests:test_command_runner # We don't support Autoscaler on Windows
       -python/ray/tests:test_gcp_tpu_command_runner # We don't support Autoscaler on Windows
-      -python/ray/tests:test_gcp_tpu_basic # We don't support TPUs with Windows
       -python/ray/tests:test_gcs_fault_tolerance # flaky
       -python/ray/serve:test_get_deployment # address violation
       -python/ray/tests:test_global_gc

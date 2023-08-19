@@ -101,6 +101,45 @@ def test_autodetect_num_tpus_accel(mock_glob):
     assert accelerator.autodetect_num_tpus() == 4
 
 
+@pytest.mark.parametrize(
+    "accelerator_type_version_tuple",
+    [
+        ("v2-8", "V2"),
+        ("v2-32", "V2"),
+        ("v3-8", "V3"),
+        ("v3-128", "V3"),
+        ("v4-8", "V4"),
+        ("v4-2048", "V4"),
+    ]
+)
+@mock.patch("requests.get")
+def test_autodetect_tpu_version_gce(mock_request, accelerator_type_version_tuple):
+    accelerator_type, expected_version = accelerator_type_version_tuple
+    mock_response = mock.MagicMock()
+    mock_response.status_code = 200
+    mock_response.text = accelerator_type
+    mock_request.return_value = mock_response
+    assert accelerator.autodetect_tpu_version() == expected_version
+
+
+@pytest.mark.parametrize(
+    "accelerator_type_version_tuple",
+    [
+        ("v2-8", "V2"),
+        ("v2-32", "V2"),
+        ("v3-8", "V3"),
+        ("v3-128", "V3"),
+        ("v4-8", "V4"),
+        ("v4-2048", "V4"),
+    ]
+)
+@mock.patch("os.getenv")
+def test_autodetect_tpu_version_gke_v2(mock_os, accelerator_type_version_tuple):
+    accelerator_type, expected_version = accelerator_type_version_tuple
+    mock_os.return_value = accelerator_type
+    assert accelerator.autodetect_tpu_version() == expected_version
+
+
 if __name__ == "__main__":
     import sys
     import os

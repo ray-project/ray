@@ -209,17 +209,37 @@ class ResourceSpec(
             logger.exception("Could not parse gpu information.")
 
         num_tpus = self.num_tpus
-        detected_tpus = accelerator.autodetect_num_tpus()
-        # Note, it is currently not possible to access a subset of the chips
-        # available within a TPU VM host. Therefore we must check that
-        # the number of TPUs requested by the raylet exactly matches
-        # the number of TPUs owned by the machine.
-        if num_tpus:
-            if num_tpus != detected_tpus:
-                raise ValueError("Attempting to start raylet with {} TPUs, "
-                                "but machine contains {}.".format(num_tpus, detected_tpus))
-        else:
-            num_tpus = detected_tpus
+        tpu_ids = ray._private.utils.get_tpu_visible_chips()
+
+        # Check that the TPU IDs being set are valid.
+        # TPUs only processes running on 1, 2, or 4 chips per TPU VM host.
+        if tpu_ids is not None:
+            num_visible_tpus = len(tpu_ids)
+            if num_visible_tpus not in (1, 2, 4):
+                raise ValueError(
+                    f"Tried to set TPU_VISIBLE_CHIPS to use {num_visible_tpus} chips. "
+                    "The only supported configuration can access 1, 2, or 4 chips. "
+                    f"Got TPU_VISIBLE_CHIPS={tpu_ids}."
+                )
+
+        # Check that the number of TPUs that the raylet wants doesn't
+        # exceed the amount allowed by TPU_VISIBLE_CHIPS.
+        if num_tpus is not None and tpu_ids is not None and num_tpus > len(tpu_ids):
+            raise ValueError(
+                "Attempting to start raylet with {} TPUs, "
+                "but TPU_VISIBLE_CHIPS contains {}.".format(num_tpus, tpu_ids)
+            )
+        if num_tpus is None:
+            # Try to automatically detect the number of TPUs
+            num_tpus = accelerator.autodetect_num_tpus()
+            # Don't use more TPUs than allowed by TPU_VISIBLE_DEVICES.
+            if tpu_ids is not None:
+                num_tpus = min(num_tpus, len(tpu_ids))
+        
+        tpu_version = accelerator.autodetect_tpu_version()
+        if tpu_version is not None:
+            # Update with, e.g. {"V2": 1}
+            resources.update({tpu_version: 1})
 
         accelerator.update_resources_with_accelerator_type(resources)
 

@@ -30,6 +30,16 @@ def test_fake_autoscaler_basic_e2e(shutdown_only):
                 "min_workers": 0,
                 "max_workers": 2,
             },
+            "tpu_node": {
+                "resources": {
+                    "CPU": 2,
+                    "TPU": 4,
+                    "object_store_memory": 1024 * 1024 * 1024,
+                },
+                "node_config": {},
+                "min_workers": 0,
+                "max_workers": 2,
+            },
         },
     )
 
@@ -47,8 +57,14 @@ def test_fake_autoscaler_basic_e2e(shutdown_only):
         def g():
             print("cpu ok")
 
+        # Triggers the addition of a TPU node.
+        @ray.remote(num_tpus=4)
+        def h():
+            print("tpu ok")
+
         ray.get(f.remote())
         ray.get(g.remote())
+        ray.get(h.remote())
         ray.shutdown()
     finally:
         cluster.shutdown()
