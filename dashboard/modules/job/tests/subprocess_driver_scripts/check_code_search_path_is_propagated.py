@@ -13,7 +13,7 @@ def run():
 
     @ray.remote
     def foo() -> bool:
-        return ray.global_worker.load_code_from_local
+        return ray._private.worker.global_worker.load_code_from_local
 
     load_code_from_local = ray.get(foo.remote())
 

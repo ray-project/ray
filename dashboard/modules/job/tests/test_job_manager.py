@@ -631,6 +631,7 @@ class TestRuntimeEnv:
         await async_wait_for_condition_async_predicate(
             check_job_succeeded, job_manager=job_manager, job_id=job_id
         )
+
         logs = job_manager.get_job_logs(job_id)
 
         assert "Code search path is propagated" in logs, logs
