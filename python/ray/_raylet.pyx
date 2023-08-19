@@ -32,6 +32,7 @@ from typing import (
     Generator,
     AsyncGenerator
 )
+from concurrent.futures import ThreadPoolExecutor
 
 from libc.stdint cimport (
     int32_t,
@@ -183,6 +184,7 @@ import ray._private.ray_constants as ray_constants
 import ray.cloudpickle as ray_pickle
 from ray.core.generated.common_pb2 import ActorDiedErrorContext
 from ray.core.generated.gcs_pb2 import JobTableData
+from ray.core.generated.gcs_service_pb2 import GetAllResourceUsageReply
 from ray._private.async_compat import (
     sync_to_async,
     get_new_event_loop,
@@ -214,6 +216,8 @@ OPTIMIZED = __OPTIMIZE__
 GRPC_STATUS_CODE_UNAVAILABLE = CGrpcStatusCode.UNAVAILABLE
 GRPC_STATUS_CODE_UNKNOWN = CGrpcStatusCode.UNKNOWN
 GRPC_STATUS_CODE_DEADLINE_EXCEEDED = CGrpcStatusCode.DEADLINE_EXCEEDED
+GRPC_STATUS_CODE_RESOURCE_EXHAUSTED = CGrpcStatusCode.RESOURCE_EXHAUSTED
+GRPC_STATUS_CODE_UNIMPLEMENTED = CGrpcStatusCode.UNIMPLEMENTED
 
 logger = logging.getLogger(__name__)
 
@@ -1013,7 +1017,7 @@ cdef class StreamingGeneratorExecutionContext:
         return self
 
 
-cpdef report_streaming_generator_output(
+cdef report_streaming_generator_output(
         output_or_exception: Union[object, Exception],
         StreamingGeneratorExecutionContext context):
     """Report a given generator output to a caller.
@@ -1036,23 +1040,12 @@ cpdef report_streaming_generator_output(
     worker = ray._private.worker.global_worker
 
     cdef:
-        CoreWorker core_worker = worker.core_worker
         # Ray Object created from an output.
         c_pair[CObjectID, shared_ptr[CRayObject]] return_obj
 
-    try:
-        if isinstance(output_or_exception, Exception):
-            raise output_or_exception
-    except AsyncioActorExit:
-        # Make the task handle this exception.
-        raise
-    except StopAsyncIteration:
-        return True
-    except StopIteration:
-        return True
-    except Exception as e:
+    if isinstance(output_or_exception, Exception):
         create_generator_error_object(
-            e,
+            output_or_exception,
             worker,
             context.task_type,
             context.caller_address,
@@ -1143,8 +1136,11 @@ cdef execute_streaming_generator_sync(StreamingGeneratorExecutionContext context
     while True:
         try:
             output_or_exception = next(gen)
+        except StopIteration:
+            break
         except Exception as e:
             output_or_exception = e
+
         done = report_streaming_generator_output(output_or_exception, context)
         if done:
             break
@@ -1180,12 +1176,24 @@ async def execute_streaming_generator_async(
     while True:
         try:
             output_or_exception = await gen.__anext__()
+        except StopAsyncIteration:
+            break
+        except AsyncioActorExit:
+            # The execute_task will handle this case.
+            raise
         except Exception as e:
             output_or_exception = e
-        # TODO(sang): This method involves in serializing the output.
-        # Ideally, we don't want to run this inside an event loop.
-        done = report_streaming_generator_output(
-            output_or_exception, context)
+
+        loop = asyncio.get_running_loop()
+        worker = ray._private.worker.global_worker
+        # Run it in a separate thread to that we can
+        # avoid blocking the event loop when serializing
+        # the output (which has nogil).
+        done = await loop.run_in_executor(
+            worker.core_worker.get_thread_pool_for_async_event_loop(),
+            report_streaming_generator_output,
+            output_or_exception,
+            context)
         if done:
             break
 
@@ -1760,6 +1768,7 @@ cdef void execute_task(
                     worker, outputs,
                     caller_address,
                     returns)
+
         except Exception as e:
             num_errors_stored = store_task_errors(
                     worker, e, task_exception, actor, actor_id, function_name,
@@ -1810,8 +1819,9 @@ cdef execute_task_with_cancellation_handler(
     task_name = name.decode("utf-8")
     title = f"ray::{task_name}"
 
-    # Automatically restrict the GPUs available to this task.
-    ray._private.utils.set_cuda_visible_devices(ray.get_gpu_ids())
+    # Automatically restrict the GPUs (CUDA), neuron_core accelerator
+    # runtime_ids to restrict availability to this task.
+    ray._private.utils.set_gpu_and_accelerator_runtime_ids()
 
     # Automatically configure OMP_NUM_THREADS to the assigned CPU number.
     # It will be unset after the task execution if it was overwridden here.
@@ -2532,6 +2542,19 @@ cdef class GcsClient:
             result[job_info.job_id] = job_info
         return result
 
+    @_auto_reconnect
+    def get_all_resource_usage(self, timeout=None) -> GetAllResourceUsageReply:
+        cdef:
+            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
+            c_string serialized_reply
+
+        with nogil:
+            check_status(self.inner.get().GetAllResourceUsage(
+                timeout_ms, serialized_reply))
+
+        reply = GetAllResourceUsageReply()
+        reply.ParseFromString(serialized_reply)
+        return reply
     ########################################################
     # Interface for rpc::autoscaler::AutoscalerStateService
     ########################################################
@@ -2579,6 +2602,22 @@ cdef class GcsClient:
                 node_id, reason, reason_message, timeout_ms, is_accepted))
 
         return is_accepted
+
+    @_auto_reconnect
+    def drain_nodes(self, node_ids, timeout=None):
+        cdef:
+            c_vector[c_string] c_node_ids
+            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
+            c_vector[c_string] c_drained_node_ids
+        for node_id in node_ids:
+            c_node_ids.push_back(node_id)
+        with nogil:
+            check_status(self.inner.get().DrainNodes(
+                c_node_ids, timeout_ms, c_drained_node_ids))
+        result = []
+        for drain_node_id in c_drained_node_ids:
+            result.append(drain_node_id)
+        return result
 
     #############################################################
     # Interface for rpc::autoscaler::AutoscalerStateService ends
@@ -2926,6 +2965,7 @@ cdef class CoreWorker:
         self.fd_to_cgname_dict = None
         self.eventloop_for_default_cg = None
         self.current_runtime_env = None
+        self.thread_pool_for_async_event_loop = None
 
     def shutdown(self):
         # If it's a worker, the core worker process should have been
@@ -4072,6 +4112,13 @@ cdef class CoreWorker:
             for fd in function_descriptors:
                 self.fd_to_cgname_dict[fd] = cg_name
 
+    def get_thread_pool_for_async_event_loop(self):
+        if self.thread_pool_for_async_event_loop is None:
+            # Theoretically, we can use multiple threads,
+            self.thread_pool_for_async_event_loop = ThreadPoolExecutor(
+                max_workers=1)
+        return self.thread_pool_for_async_event_loop
+
     def get_event_loop(self, function_descriptor, specified_cgname):
         # __init__ will be invoked in default eventloop
         if function_descriptor.function_name == "__init__":
@@ -4143,6 +4190,9 @@ cdef class CoreWorker:
     def stop_and_join_asyncio_threads_if_exist(self):
         event_loops = []
         threads = []
+        if self.thread_pool_for_async_event_loop:
+            self.thread_pool_for_async_event_loop.shutdown(
+                wait=False, cancel_futures=True)
         if self.eventloop_for_default_cg is not None:
             event_loops.append(self.eventloop_for_default_cg)
         if self.thread_for_default_cg is not None:

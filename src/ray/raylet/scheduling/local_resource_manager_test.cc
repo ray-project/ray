@@ -149,9 +149,32 @@ TEST_F(LocalResourceManagerTest, NodeDrainingTest) {
 
   // Make the node idle so that the node is drained and terminated.
   std::shared_ptr<TaskResourceInstances> task_allocation =
-      std::make_shared<TaskResourceInstances>(ResourceRequest(
-          ResourceMapToResourceRequest({{ResourceID::CPU(), 1.0}}, false)));
+      std::make_shared<TaskResourceInstances>(
+          ResourceSet({{ResourceID::CPU(), FixedPoint(1.0)}}));
   EXPECT_DEATH(manager->ReleaseWorkerResources(task_allocation), ".*");
+}
+
+TEST_F(LocalResourceManagerTest, ObjectStoreMemoryDrainingTest) {
+  // Test to make sure the node is drained when object store memory is free.
+  auto used_object_store = std::make_unique<int64_t>(0);
+  manager = std::make_unique<LocalResourceManager>(
+      local_node_id,
+      CreateNodeResources({{ResourceID::ObjectStoreMemory(), 100.0}}),
+      /* get_used_object_store_memory */
+      [&used_object_store]() { return *used_object_store; },
+      nullptr,
+      nullptr);
+
+  // Make the node non-idle.
+  *used_object_store = 1;
+  manager->UpdateAvailableObjectStoreMemResource();
+
+  manager->SetLocalNodeDraining();
+  ASSERT_TRUE(manager->IsLocalNodeDraining());
+
+  // Free object store memory so that the node is drained and terminated.
+  *used_object_store = 0;
+  EXPECT_DEATH(manager->UpdateAvailableObjectStoreMemResource(), ".*");
 }
 
 TEST_F(LocalResourceManagerTest, IdleResourceTimeTest) {
@@ -203,8 +226,8 @@ TEST_F(LocalResourceManagerTest, IdleResourceTimeTest) {
   /// Test that deallocate some resources (not all) should not make it idle.
   {
     std::shared_ptr<TaskResourceInstances> task_allocation =
-        std::make_shared<TaskResourceInstances>(ResourceRequest(
-            ResourceMapToResourceRequest({{ResourceID::CPU(), 1.0}}, false)));
+        std::make_shared<TaskResourceInstances>(
+            ResourceSet({{ResourceID::CPU(), FixedPoint(1.0)}}));
     manager->FreeTaskResourceInstances(task_allocation, /* record_idle_resource */ true);
 
     auto idle_time = manager->GetResourceIdleTime();
@@ -215,7 +238,7 @@ TEST_F(LocalResourceManagerTest, IdleResourceTimeTest) {
   {
     std::shared_ptr<TaskResourceInstances> task_allocation =
         std::make_shared<TaskResourceInstances>(
-            ResourceMapToResourceRequest({{ResourceID("CUSTOM"), 1.}}, false));
+            ResourceSet({{ResourceID("CUSTOM"), FixedPoint(1.)}}));
     manager->FreeTaskResourceInstances(task_allocation, /* record_idle_resource */
                                        true);
 
@@ -255,7 +278,7 @@ TEST_F(LocalResourceManagerTest, IdleResourceTimeTest) {
     {
       std::shared_ptr<TaskResourceInstances> task_allocation =
           std::make_shared<TaskResourceInstances>(
-              ResourceMapToResourceRequest({{ResourceID::CPU(), 1.}}, false));
+              ResourceSet({{ResourceID::CPU(), FixedPoint(1.)}}));
       manager->FreeTaskResourceInstances(task_allocation, /* record_idle_resource */
                                          true);
     }

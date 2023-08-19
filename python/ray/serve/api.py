@@ -1,7 +1,7 @@
 import collections
 import inspect
 import logging
-from typing import Any, Callable, Dict, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 from functools import wraps
 
 from fastapi import APIRouter, FastAPI
@@ -14,7 +14,12 @@ from ray.util.annotations import Deprecated, PublicAPI, DeveloperAPI
 
 from ray.serve.built_application import BuiltApplication
 from ray.serve._private.client import ServeControllerClient
-from ray.serve.config import AutoscalingConfig, DeploymentConfig, HTTPOptions
+from ray.serve.config import (
+    AutoscalingConfig,
+    DeploymentConfig,
+    ReplicaConfig,
+    HTTPOptions,
+)
 from ray.serve._private.constants import (
     DEFAULT_HTTP_HOST,
     DEFAULT_HTTP_PORT,
@@ -249,6 +254,8 @@ def deployment(
     init_kwargs: Default[Dict[Any, Any]] = DEFAULT.VALUE,
     route_prefix: Default[Union[str, None]] = DEFAULT.VALUE,
     ray_actor_options: Default[Dict] = DEFAULT.VALUE,
+    placement_group_bundles: Optional[List[Dict[str, float]]] = DEFAULT.VALUE,
+    placement_group_strategy: Optional[str] = DEFAULT.VALUE,
     user_config: Default[Optional[Any]] = DEFAULT.VALUE,
     max_concurrent_queries: Default[int] = DEFAULT.VALUE,
     autoscaling_config: Default[Union[Dict, AutoscalingConfig, None]] = DEFAULT.VALUE,
@@ -288,6 +295,15 @@ def deployment(
             resource requirements. Valid options are: `accelerator_type`, `memory`,
             `num_cpus`, `num_gpus`, `object_store_memory`, `resources`,
             and `runtime_env`.
+        placement_group_bundles: Defines a set of placement group bundles to be
+            scheduled *for each replica* of this deployment. The replica actor will
+            be scheduled in the first bundle provided, so the resources specified in
+            `ray_actor_options` must be a subset of the first bundle's resources. All
+            actors and tasks created by the replica actor will be scheduled in the
+            placement group by default (`placement_group_capture_child_tasks` is set
+            to True).
+        placement_group_strategy: Strategy to use for the replica placement group
+            specified via `placement_group_bundles`. Defaults to `PACK`.
         user_config: Config to pass to the reconfigure method of the deployment. This
             can be updated dynamically without restarting the replicas of the
             deployment. The user_config must be fully JSON-serializable.
@@ -343,7 +359,7 @@ def deployment(
     if is_driver_deployment is DEFAULT.VALUE:
         is_driver_deployment = False
 
-    config = DeploymentConfig.from_default(
+    deployment_config = DeploymentConfig.from_default(
         num_replicas=num_replicas if num_replicas is not None else 1,
         user_config=user_config,
         max_concurrent_queries=max_concurrent_queries,
@@ -353,20 +369,34 @@ def deployment(
         health_check_period_s=health_check_period_s,
         health_check_timeout_s=health_check_timeout_s,
     )
-    config.user_configured_option_names = set(user_configured_option_names)
+    deployment_config.user_configured_option_names = set(user_configured_option_names)
 
     def decorator(_func_or_class):
-        return Deployment(
+        replica_config = ReplicaConfig.create(
             _func_or_class,
-            name if name is not DEFAULT.VALUE else _func_or_class.__name__,
-            config,
-            version=(version if version is not DEFAULT.VALUE else None),
             init_args=(init_args if init_args is not DEFAULT.VALUE else None),
             init_kwargs=(init_kwargs if init_kwargs is not DEFAULT.VALUE else None),
-            route_prefix=route_prefix,
             ray_actor_options=(
                 ray_actor_options if ray_actor_options is not DEFAULT.VALUE else None
             ),
+            placement_group_bundles=(
+                placement_group_bundles
+                if placement_group_bundles is not DEFAULT.VALUE
+                else None
+            ),
+            placement_group_strategy=(
+                placement_group_strategy
+                if placement_group_strategy is not DEFAULT.VALUE
+                else None
+            ),
+        )
+
+        return Deployment(
+            name if name is not DEFAULT.VALUE else _func_or_class.__name__,
+            deployment_config,
+            replica_config,
+            version=(version if version is not DEFAULT.VALUE else None),
+            route_prefix=route_prefix,
             is_driver_deployment=is_driver_deployment,
             _internal=True,
         )
@@ -382,7 +412,8 @@ def get_deployment(name: str) -> Deployment:
     """Dynamically fetch a handle to a Deployment object.
 
     This can be used to update and redeploy a deployment without access to
-    the original definition.
+    the original definition. This should only be used to fetch deployments
+    that were deployed using 1.x API.
 
     Example:
     >>> from ray import serve
@@ -484,11 +515,8 @@ def run(
             deployment._route_prefix = route_prefix
         deployment_parameters = {
             "name": deployment._name,
-            "func_or_class": deployment._func_or_class,
-            "init_args": deployment.init_args,
-            "init_kwargs": deployment.init_kwargs,
-            "ray_actor_options": deployment._ray_actor_options,
-            "config": deployment._config,
+            "replica_config": deployment._replica_config,
+            "deployment_config": deployment._deployment_config,
             "version": deployment._version or get_random_letters(),
             "route_prefix": deployment.route_prefix,
             "url": deployment.url,
@@ -507,8 +535,9 @@ def run(
         # The deployment state is not guaranteed to be created after
         # deploy_application returns; the application state manager will
         # need another reconcile iteration to create it.
-        client._wait_for_deployment_created(ingress.name)
-        return ingress._get_handle()
+        client._wait_for_deployment_created(ingress.name, name)
+        handle = client.get_handle(ingress.name, name, missing_ok=True)
+        return handle
 
 
 @PublicAPI(stability="alpha")
@@ -800,7 +829,7 @@ def get_app_handle(
         # and default to sync outside a deployment
         sync = internal_replica_context is None
 
-    return client.get_handle(ingress, sync=sync)
+    return client.get_handle(ingress, name, sync=sync)
 
 
 @DeveloperAPI
@@ -845,4 +874,4 @@ def get_deployment_handle(
         # and default to sync outside a deployment
         sync = internal_replica_context is None
 
-    return client.get_handle(f"{app_name}_{deployment_name}", sync=sync)
+    return client.get_handle(deployment_name, app_name, sync=sync)

@@ -9,6 +9,10 @@ doctest(
             # GPU tests
             "tensorflow/tensorflow_trainer.py",
             "huggingface/transformers/transformers_trainer.py",
+            "accelerate/accelerate_torch_trainer.py",
+            "accelerate/accelerate_torch_trainer_no_raydata.py",
+            "deepspeed/deepspeed_torch_trainer.py",
+            "deepspeed/deepspeed_torch_trainer_no_raydata.py",
             "_internal/session.py",
             "context.py"
         ]
@@ -21,6 +25,10 @@ doctest(
     files = [
         "tensorflow/tensorflow_trainer.py",
         "huggingface/transformers/transformers_trainer.py",
+        "accelerate/accelerate_torch_trainer.py",
+        "accelerate/accelerate_torch_trainer_no_raydata.py",
+        "deepspeed/deepspeed_torch_trainer.py",
+        "deepspeed/deepspeed_torch_trainer_no_raydata.py",
         "_internal/session.py",
         "context.py"
     ],
@@ -104,7 +112,7 @@ py_test(
     size = "medium",
     main = "examples/pytorch/tune_cifar_torch_pbt_example.py",
     srcs = ["examples/pytorch/tune_cifar_torch_pbt_example.py"],
-    tags = ["team:ml", "exclusive", "pytorch", "tune"],
+    tags = ["team:ml", "exclusive", "pytorch", "tune", "no_new_storage"],
     deps = [":train_lib"],
     args = ["--smoke-test"]
 )
@@ -114,7 +122,7 @@ py_test(
     size = "small",
     main = "examples/pytorch/tune_torch_regression_example.py",
     srcs = ["examples/pytorch/tune_torch_regression_example.py"],
-    tags = ["team:ml", "exclusive", "tune"],
+    tags = ["team:ml", "exclusive", "tune", "no_new_storage"],
     deps = [":train_lib"],
     args = ["--smoke-test"]
 )
@@ -135,7 +143,7 @@ py_test(
     name = "horovod_cifar_pbt_example",
     size = "small",
     srcs = ["examples/horovod/horovod_cifar_pbt_example.py"],
-    tags = ["team:ml", "exlusive"],
+    tags = ["team:ml", "exlusive", "no_new_storage"],
     deps = [":train_lib"],
     args = ["--smoke-test"]
 )
@@ -144,7 +152,7 @@ py_test(
     name = "horovod_pytorch_example",
     size = "small",
     srcs = ["examples/horovod/horovod_pytorch_example.py"],
-    tags = ["team:ml", "exclusive"],
+    tags = ["team:ml", "exclusive", "no_new_storage"],
     deps = [":train_lib"],
     args = ["--num-epochs=1"]
 )
@@ -163,7 +171,7 @@ py_test (
     size = "medium",
     srcs = ["examples/huggingface/huggingface_basic_language_modeling_example.py"],
     args = ["--smoke-test", "--num-epochs 3"],
-    tags = ["team:ml", "exclusive"],
+    tags = ["team:ml", "exclusive", "no_new_storage"],
     deps = [":train_lib"]
 )
 
@@ -172,7 +180,7 @@ py_test(
     size = "medium",
     main = "examples/tf/tensorflow_regression_example.py",
     srcs = ["examples/tf/tensorflow_regression_example.py"],
-    tags = ["team:ml", "exclusive"],
+    tags = ["team:ml", "exclusive", "no_new_storage"],
     deps = [":train_lib"],
     args = ["--smoke-test"]
 )
@@ -215,7 +223,7 @@ py_test(
     size = "medium",
     main = "examples/pytorch/torch_regression_example.py",
     srcs = ["examples/pytorch/torch_regression_example.py"],
-    tags = ["team:ml", "exclusive"],
+    tags = ["team:ml", "exclusive", "no_new_storage"],
     deps = [":train_lib"],
     args = ["--smoke-test"]
 )
@@ -236,7 +244,7 @@ py_test(
     size = "medium",
     main = "examples/tf/tune_tensorflow_mnist_example.py",
     srcs = ["examples/tf/tune_tensorflow_mnist_example.py"],
-    tags = ["team:ml", "exclusive"],
+    tags = ["team:ml", "exclusive", "no_new_storage"],
     deps = [":train_lib"],
     args = ["--smoke-test"]
 )
@@ -258,7 +266,7 @@ py_test(
     name = "test_backend",
     size = "large",
     srcs = ["tests/test_backend.py"],
-    tags = ["team:ml", "exclusive"],
+    tags = ["team:ml", "exclusive", "no_new_storage"],
     deps = [":train_lib",  ":conftest"]
 )
 
@@ -266,7 +274,7 @@ py_test(
     name = "test_base_trainer",
     size = "medium",
     srcs = ["tests/test_base_trainer.py"],
-    tags = ["team:ml", "exclusive", "ray_air"],
+    tags = ["team:ml", "exclusive", "ray_air", "no_new_storage"],
     deps = [":train_lib", ":conftest"]
 )
 
@@ -298,7 +306,7 @@ py_test(
     name = "test_data_parallel_trainer",
     size = "medium",
     srcs = ["tests/test_data_parallel_trainer.py"],
-    tags = ["team:ml", "exclusive", "ray_air"],
+    tags = ["team:ml", "exclusive", "ray_air", "no_new_storage"],
     deps = [":train_lib"]
 )
 
@@ -306,7 +314,7 @@ py_test(
     name = "test_data_parallel_trainer_checkpointing",
     size = "medium",
     srcs = ["tests/test_data_parallel_trainer_checkpointing.py"],
-    tags = ["team:ml", "exclusive", "ray_air"],
+    tags = ["team:ml", "exclusive", "ray_air", "no_new_storage"],
     deps = [":train_lib"]
 )
 
@@ -314,7 +322,7 @@ py_test(
     name = "test_examples",
     size = "large",
     srcs = ["tests/test_examples.py"],
-    tags = ["team:ml", "exclusive"],
+    tags = ["team:ml", "exclusive", "no_new_storage"],
     deps = [":train_lib", ":conftest"]
 )
 
@@ -378,7 +386,7 @@ py_test(
     name = "test_horovod_trainer",
     size = "large",
     srcs = ["tests/test_horovod_trainer.py"],
-    tags = ["team:ml", "exclusive", "ray_air"],
+    tags = ["team:ml", "exclusive", "ray_air", "no_new_storage"],
     deps = [":train_lib"]
 )
 
@@ -402,7 +410,7 @@ py_test(
     name = "test_lightgbm_trainer",
     size = "medium",
     srcs = ["tests/test_lightgbm_trainer.py"],
-    tags = ["team:ml", "exclusive", "ray_air"],
+    tags = ["team:ml", "exclusive", "ray_air", "no_new_storage"],
     deps = [":train_lib"]
 )
 
@@ -455,6 +463,14 @@ py_test(
 )
 
 py_test(
+    name = "test_torch_transformers_train",
+    size = "large",
+    srcs = ["tests/test_torch_transformers_train.py"],
+    tags = ["team:ml", "exclusive", "ray_air", "gpu"],
+    deps = [":train_lib"]
+)
+
+py_test(
     name = "test_minimal",
     size = "small",
     srcs = ["tests/test_minimal.py"],
@@ -482,7 +498,7 @@ py_test(
     name = "test_session",
     size = "small",
     srcs = ["tests/test_session.py"],
-    tags = ["team:ml", "exclusive"],
+    tags = ["team:ml", "exclusive", "no_new_storage"],
     deps = [":train_lib", ":conftest"]
 )
 
@@ -498,7 +514,7 @@ py_test(
     name = "test_sklearn_trainer",
     size = "medium",
     srcs = ["tests/test_sklearn_trainer.py"],
-    tags = ["team:ml", "exclusive", "ray_air"],
+    tags = ["team:ml", "exclusive", "ray_air", "no_new_storage"],
     deps = [":train_lib"]
 )
 
@@ -506,7 +522,7 @@ py_test(
     name = "test_tensorflow_checkpoint",
     size = "small",
     srcs = ["tests/test_tensorflow_checkpoint.py"],
-    tags = ["team:ml", "exclusive"],
+    tags = ["team:ml", "exclusive", "no_new_storage"],
     deps = [":train_lib"]
 )
 
@@ -522,7 +538,7 @@ py_test(
     name = "test_tensorflow_trainer",
     size = "medium",
     srcs = ["tests/test_tensorflow_trainer.py"],
-    tags = ["team:ml", "exclusive", "ray_air"],
+    tags = ["team:ml", "exclusive", "ray_air", "no_new_storage"],
     deps = [":train_lib"]
 )
 
@@ -554,7 +570,7 @@ py_test(
     name = "test_torch_trainer",
     size = "large",
     srcs = ["tests/test_torch_trainer.py"],
-    tags = ["team:ml", "exclusive", "ray_air"],
+    tags = ["team:ml", "exclusive", "ray_air", "no_new_storage"],
     deps = [":train_lib"]
 )
 
@@ -570,7 +586,7 @@ py_test(
     name = "test_training_iterator",
     size = "large",
     srcs = ["tests/test_training_iterator.py"],
-    tags = ["team:ml", "exclusive", "ray_air"],
+    tags = ["team:ml", "exclusive", "ray_air", "no_new_storage"],
     deps = [":train_lib"]
 )
 
@@ -594,7 +610,7 @@ py_test(
     name = "test_transformers_trainer_steps",
     size = "enormous", # TODO: Reduce this.
     srcs = ["tests/test_transformers_trainer_steps.py"],
-    tags = ["team:ml", "exclusive", "ray_air"],
+    tags = ["team:ml", "exclusive", "ray_air", "no_new_storage"],
     deps = [":train_lib"]
 )
 
@@ -602,7 +618,7 @@ py_test(
     name = "test_transformers_trainer",
     size = "large",
     srcs = ["tests/test_transformers_trainer.py"],
-    tags = ["team:ml", "exclusive", "ray_air"],
+    tags = ["team:ml", "exclusive", "ray_air", "no_new_storage"],
     deps = [":train_lib"]
 )
 
@@ -610,7 +626,7 @@ py_test(
     name = "test_tune",
     size = "large",
     srcs = ["tests/test_tune.py"],
-    tags = ["team:ml", "exclusive", "tune"],
+    tags = ["team:ml", "exclusive", "tune", "no_new_storage"],
     deps = [":train_lib", ":conftest"]
 )
 
@@ -626,7 +642,7 @@ py_test(
     name = "test_e2e_wandb_integration",
     size = "small",
     srcs = ["tests/test_e2e_wandb_integration.py"],
-    tags = ["team:ml", "exclusive"],
+    tags = ["team:ml", "exclusive", "no_new_storage"],
     deps = [":train_lib"]
 )
 
@@ -650,7 +666,7 @@ py_test(
     name = "test_xgboost_trainer",
     size = "medium",
     srcs = ["tests/test_xgboost_trainer.py"],
-    tags = ["team:ml", "exclusive", "ray_air"],
+    tags = ["team:ml", "exclusive", "ray_air", "no_new_storage"],
     deps = [":train_lib"]
 )
 
@@ -662,8 +678,9 @@ py_test(
         "exclusive",
         "ray_air",
         "team:ml",
+        "no_new_storage",
     ],
-    deps = [":train_lib"],
+    deps = [":train_lib", ":conftest"],
 )
 
 # This is a dummy test dependency that causes the above tests to be

@@ -3,7 +3,8 @@ from typing import Dict, List, Optional, Union
 from tensorflow.keras.callbacks import Callback as KerasCallback
 
 import ray
-from ray.train.tensorflow import TensorflowCheckpoint
+from ray.train._internal.storage import _use_storage_context
+from ray.train.tensorflow import TensorflowCheckpoint, LegacyTensorflowCheckpoint
 from ray.util.annotations import PublicAPI, Deprecated
 
 
@@ -157,11 +158,13 @@ class ReportCheckpointCallback(_Callback):
 
         metrics = self._get_reported_metrics(logs)
 
-        if when in self._checkpoint_on:
-            checkpoint = TensorflowCheckpoint.from_model(self.model)
-        else:
-            checkpoint = None
-
+        should_checkpoint = when in self._checkpoint_on
+        checkpoint = None
+        if should_checkpoint:
+            if _use_storage_context():
+                checkpoint = TensorflowCheckpoint.from_model(self.model)
+            else:
+                checkpoint = LegacyTensorflowCheckpoint.from_model(self.model)
         ray.train.report(metrics, checkpoint=checkpoint)
 
     def _get_reported_metrics(self, logs: Dict) -> Dict:
