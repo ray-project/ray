@@ -8,14 +8,13 @@ Fine-tune a BERT model with DeepSpeed ZeRO-3 and Ray Train
 
 import os
 import deepspeed
-import evaluate
 import torch
 
 from datasets import load_dataset
 from deepspeed.accelerator import get_accelerator
 from tempfile import TemporaryDirectory
 from torch.utils.data import DataLoader
-from tqdm import tqdm
+from torchmetrics.classification import BinaryAccuracy, BinaryF1Score
 from transformers import (
     AutoModelForSequenceClassification,
     AutoTokenizer,
@@ -27,7 +26,7 @@ import ray.train
 
 # TODO(ml-team): Change this to ray.train.Checkpoint
 from ray.train._checkpoint import Checkpoint
-from ray.train import ScalingConfig, RunConfig, CheckpointConfig
+from ray.train import ScalingConfig
 from ray.train.torch import TorchTrainer
 
 # TODO(ml-team): Remove this:
@@ -35,82 +34,64 @@ os.environ["RAY_AIR_NEW_PERSISTENCE_MODE"] = "1"
 ray.init(runtime_env={"env_vars": {"RAY_AIR_NEW_PERSISTENCE_MODE": "1"}})
 
 
-def get_datasets(tokenizer):
-    """Creates and preprocess the GLUE MRPC dataset."""
-
-    datasets = load_dataset("glue", "mrpc")
-
-    def tokenize_function(examples):
-        outputs = tokenizer(
-            examples["sentence1"],
-            examples["sentence2"],
-            truncation=True,
-            max_length=None,
-        )
-        return outputs
-
-    tokenized_datasets = datasets.map(
-        tokenize_function,
-        batched=True,
-        remove_columns=["idx", "sentence1", "sentence2"],
-    )
-    tokenized_datasets = tokenized_datasets.rename_column("label", "labels")
-
-    return tokenized_datasets
-
-
 def train_func(config):
     """Your training function that will be launched on each worker."""
 
-    # Set global random seed
+    # Unpack training configs
     set_seed(config["seed"])
+    num_epochs = config["num_epochs"]
+    eval_batch_size = config["eval_batch_size"]
 
-    # Load datasets and metrics
-    metric = evaluate.load("glue", "mrpc")
-    tokenizer = AutoTokenizer.from_pretrained("bert-base-cased")
-    tokenized_datasets = get_datasets(tokenizer)
-
-    # Create evaluation dataloader
-    # The training dataloader will be created by `deepspeed.initialize` later
-    def collate_fn(examples):
-        return tokenizer.pad(
-            examples,
-            padding="longest",
-            return_tensors="pt",
-        )
-
-    eval_dataloader = DataLoader(
-        tokenized_datasets["validation"],
-        batch_size=config["eval_batch_size"],
-        collate_fn=collate_fn,
-        shuffle=False,
-    )
-
-    # Instantiate the model
+    # Instantiate the Model
     model = AutoModelForSequenceClassification.from_pretrained(
         "bert-base-cased", return_dict=True
     )
+
+    # Prepare PyTorch Data Loaders
+    # ====================================================
+    hf_datasets = load_dataset("glue", "mrpc")
+    tokenizer = AutoTokenizer.from_pretrained("bert-base-cased")
+
+    def collate_fn(batch):
+        outputs = tokenizer(
+            [sample["sentence1"] for sample in batch],
+            [sample["sentence2"] for sample in batch],
+            truncation=True,
+            padding="longest",
+            return_tensors="pt",
+        )
+        outputs["labels"] = torch.LongTensor([sample["label"] for sample in batch])
+        return outputs
+
+    # Instantiate dataloaders.
+    # The train_dataloader already created by `deepspeed.initialize`
+    eval_dataloader = DataLoader(
+        hf_datasets["validation"],
+        shuffle=False,
+        collate_fn=collate_fn,
+        batch_size=eval_batch_size,
+        drop_last=True,
+    )
+    # ====================================================
 
     # Initialize DeepSpeed Engine
     model, optimizer, train_dataloader, lr_scheduler = deepspeed.initialize(
         model=model,
         model_parameters=model.parameters(),
-        training_data=tokenized_datasets["train"],
+        training_data=hf_datasets["train"],
         collate_fn=collate_fn,
         config=deepspeed_config,
     )
-
-    # Define the GPU device for the current worker
     device = get_accelerator().device_name(model.local_rank)
 
-    # Now we train the model
-    for epoch in range(config["num_epochs"]):
+    # Initialize Evaluation Metrics
+    f1 = BinaryF1Score().to(device)
+    accuracy = BinaryAccuracy().to(device)
+
+    for epoch in range(num_epochs):
+        # Training
         model.train()
-        for batch in tqdm(
-            train_dataloader,
-            desc=f"Training epoch {epoch}",
-            disable=(model.global_rank != 0),
-        ):
+        for batch in train_dataloader:
             batch = {k: v.to(device) for k, v in batch.items()}
             outputs = model(**batch)
             loss = outputs.loss
@@ -119,30 +100,32 @@ def train_func(config):
             lr_scheduler.step()
             optimizer.zero_grad()
 
+        # Evaluation
         model.eval()
-        for batch in tqdm(
-            eval_dataloader,
-            desc=f"Evaluation epoch {epoch}",
-            disable=(model.global_rank != 0),
-        ):
+        for batch in eval_dataloader:
             batch = {k: v.to(device) for k, v in batch.items()}
             with torch.no_grad():
                 outputs = model(**batch)
             predictions = outputs.logits.argmax(dim=-1)
 
-            metric.add_batch(
-                predictions=predictions,
-                references=batch["labels"],
-            )
-        eval_metric = metric.compute()
+            f1.update(predictions, batch["labels"])
+            accuracy.update(predictions, batch["labels"])
+
+        # torchmetrics will sync the results across all workers
+        eval_metric = {
+            "f1": f1.compute().item(),
+            "accuracy": accuracy.compute().item(),
+        }
+        f1.reset()
+        accuracy.reset()
 
         if model.global_rank == 0:
             print(f"epoch {epoch}:", eval_metric)
 
-        # Report Checkpoint and metrics to Ray Train
-        # ==========================================
+        # Report checkpoint and metrics to Ray Train
+        # ==============================================================
         with TemporaryDirectory() as tmpdir:
-            model.save_checkpoint(f"{tmpdir}/ckpt_{epoch}")
+            model.save_checkpoint(tmpdir)
 
             # Ensure all workers finished saving their checkpoint shard
             torch.distributed.barrier()
@@ -153,6 +136,7 @@ def train_func(config):
             else:
                 checkpoint = None
             ray.train.report(metrics=eval_metric, checkpoint=checkpoint)
+        # ==============================================================
 
 
 if __name__ == "__main__":
@@ -192,14 +176,6 @@ if __name__ == "__main__":
     trainer = TorchTrainer(
         train_func,
         train_loop_config=training_config,
-        run_config=RunConfig(
-            name="ray-deepspeed-demo",
-            checkpoint_config=CheckpointConfig(
-                num_to_keep=2,
-                checkpoint_score_attribute="f1",
-                checkpoint_score_order="max",
-            ),
-        ),
         scaling_config=ScalingConfig(num_workers=4, use_gpu=True),
     )
 

@@ -169,7 +169,7 @@ Next, check these end-to-end examples below for more details:
 
 .. tabs::
 
-    .. group-tab:: End-to-end Example with Ray Data
+    .. group-tab:: Example with Ray Data
 
         .. dropdown:: Show Code
 
@@ -178,7 +178,7 @@ Next, check these end-to-end examples below for more details:
                 :start-after: __deepspeed_torch_basic_example_start__
                 :end-before: __deepspeed_torch_basic_example_end__
 
-    .. group-tab:: End-to-end Example with PyTorch DataLoader
+    .. group-tab:: Example with PyTorch DataLoader
 
         .. dropdown:: Show Code
 
