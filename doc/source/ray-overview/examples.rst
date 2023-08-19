@@ -1402,3 +1402,17 @@ Ray Examples
         :link-type: doc
 
         Fine-tune vicuna-13b-v1.3 with DeepSpeed and LightningTrainer
+    
+    .. grid-item-card:: :bdg-secondary:`Code example`
+        :class-item: gallery-item training llm pytorch nlp
+        :link: deepspeed_example
+        :link-type: ref
+
+        Distributed Training with DeepSpeed ZeRO-3 and TorchTrainer
+    
+    .. grid-item-card:: :bdg-secondary:`Code example`
+        :class-item: gallery-item training llm pytorch huggingface nlp
+        :link: deepspeed_example
+        :link-type: ref
+
+        Distributed Training with Hugging Face Accelelate and TorchTrainer

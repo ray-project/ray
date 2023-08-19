@@ -71,6 +71,8 @@ parts:
             sections:
               - file: train/huggingface-accelerate
                 title: Hugging Face Accelerate Guide
+              - file: train/deepspeed
+                title: DeepSpeed Guide
               - file: train/distributed-tensorflow-keras
                 title: TensorFlow and Keras Guide
               - file: train/distributed-xgboost-lightgbm
