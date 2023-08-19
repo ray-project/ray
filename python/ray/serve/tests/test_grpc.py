@@ -447,6 +447,68 @@ def test_grpc_proxy_routing_without_metadata(ray_cluster):
     assert "Application '' not found." in rpc_error.details()
 
 
+def test_grpc_proxy_with_request_id(ray_cluster):
+    """Test gRPC request with and without request id.
+
+    When no request id is passed, gRPC proxy will respond with a random request id in
+    the trailing metadata. When request id is passed, gRPC proxy will respond with the
+    original request id.
+    """
+    cluster = ray_cluster
+    cluster.add_node(num_cpus=2)
+    cluster.connect(namespace=SERVE_NAMESPACE)
+
+    grpc_port = 9000
+    grpc_servicer_functions = [
+        "ray.serve.generated.serve_pb2_grpc.add_UserDefinedServiceServicer_to_server",
+        "ray.serve.generated.serve_pb2_grpc.add_FruitServiceServicer_to_server",
+    ]
+
+    serve.start(
+        grpc_options={
+            "port": grpc_port,
+            "grpc_servicer_functions": grpc_servicer_functions,
+        },
+    )
+
+    app1 = "app1"
+    serve.run(target=g, name=app1, route_prefix=f"/{app1}")
+
+    # Ensures the app is not yet deployed.
+    deployment_name = "grpc-deployment"
+    app1_replicas_name = f"{app1}_{deployment_name}"
+    replicas = ray.get(
+        serve.context._global_client._controller._all_running_replicas.remote()
+    )
+
+    # Ensures the app is deployed.
+    assert len(replicas[app1_replicas_name]) == 1
+
+    channel = grpc.insecure_channel("localhost:9000")
+    stub = serve_pb2_grpc.UserDefinedServiceStub(channel)
+    request = serve_pb2.UserDefinedMessage(name="foo", num=30, foo="bar")
+
+    # Ensures the gRPC Proxy returning the original request id.
+    custom_request_id = "fake-request-id"
+    metadata = (("request_id", custom_request_id),)
+    response, call = stub.__call__.with_call(request=request, metadata=metadata)
+    response_request_id = None
+    for key, value in call.trailing_metadata():
+        if key == "request_id":
+            response_request_id = value
+            break
+    assert custom_request_id == response_request_id
+
+    # Ensures the gRPC Proxy returning a new request id.
+    response, call = stub.__call__.with_call(request=request)
+    response_request_id = None
+    for key, value in call.trailing_metadata():
+        if key == "request_id":
+            response_request_id = value
+            break
+    assert custom_request_id != response_request_id
+
+
 if __name__ == "__main__":
     import sys
     import pytest
