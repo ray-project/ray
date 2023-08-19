@@ -431,9 +431,11 @@ class _DeploymentResponseBase:
         self,
         assign_request_coro: Coroutine,
         loop: asyncio.AbstractEventLoop,
+        request_protocol: RequestProtocol,
     ):
         self._assign_request_task = loop.create_task(assign_request_coro)
         self._loop = loop
+        self._request_protocol = request_protocol
 
     async def _to_object_ref_or_gen(
         self,
@@ -441,7 +443,8 @@ class _DeploymentResponseBase:
     ) -> Union[ray.ObjectRef, StreamingObjectRefGenerator]:
         # Record telemetry for using the developer API to convert to an object
         # ref. Recorded here because all of the other codepaths go through this.
-        if _record_telemetry:
+        # Use `RequestProtocol` to filter requests from the proxy.
+        if _record_telemetry and self._request_protocol == RequestProtocol.UNDEFINED:
             record_serve_tag("SERVE_DEPLOYMENT_HANDLE_TO_OBJECT_REF_API_USED", "1")
         return await self._assign_request_task
 
@@ -788,6 +791,14 @@ class DeploymentHandle(_DeploymentHandleBase):
         loop = self._get_or_create_router()._event_loop
         result_coro = self._remote(args, kwargs)
         if self.handle_options.stream:
-            return DeploymentResponseGenerator(result_coro, loop=loop)
+            return DeploymentResponseGenerator(
+                result_coro,
+                loop=loop,
+                request_protocol=self.handle_options._request_protocol,
+            )
         else:
-            return DeploymentResponse(result_coro, loop=loop)
+            return DeploymentResponse(
+                result_coro,
+                loop=loop,
+                request_protocol=self.handle_options._request_protocol,
+            )
