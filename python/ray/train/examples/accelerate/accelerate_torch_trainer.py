@@ -152,4 +152,4 @@ if __name__ == "__main__":
 
     result = trainer.fit()
 
-# __accelerate_torch_basic_example_start__
+# __accelerate_torch_basic_example_end__
