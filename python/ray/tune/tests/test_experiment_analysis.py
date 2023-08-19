@@ -3,6 +3,7 @@ import shutil
 import tempfile
 import random
 import os
+from pathlib import Path
 import pickle
 import pandas as pd
 from numpy import nan
@@ -11,7 +12,9 @@ import ray
 from ray import tune
 from ray.air._internal.remote_storage import upload_to_uri
 from ray.air.config import CheckpointConfig
-from ray.tune import ExperimentAnalysis
+from ray.tune.analysis.experiment_analysis import (
+    NewExperimentAnalysis as ExperimentAnalysis,
+)
 import ray.tune.registry
 from ray.tune.tests.utils.experiment import create_test_experiment_checkpoint
 from ray.tune.utils.mock_trainable import MyTrainableClass
@@ -73,26 +76,21 @@ class ExperimentAnalysisSuite(unittest.TestCase):
         self.assertTrue(isinstance(df, pd.DataFrame))
         self.assertEqual(df.shape[0], self.num_samples)
 
-    def testLoadJson(self):
-        all_dataframes_via_csv = self.ea.fetch_trial_dataframes()
-
-        self.ea.set_filetype("json")
+    def testLoadJsonAndCSV(self):
         all_dataframes_via_json = self.ea.fetch_trial_dataframes()
+
+        # Delete all json files so that we can test fallback to csv loading
+        experiment_path = Path(self.ea.experiment_path)
+        for json_path in experiment_path.glob("*/*.json"):
+            json_path.unlink()
+
+        all_dataframes_via_csv = self.ea.fetch_trial_dataframes()
 
         assert set(all_dataframes_via_csv) == set(all_dataframes_via_json)
 
-        with self.assertRaises(ValueError):
-            self.ea.set_filetype("bad")
-
-        self.ea.set_filetype("csv")
-        all_dataframes_via_csv2 = self.ea.fetch_trial_dataframes()
-        assert set(all_dataframes_via_csv) == set(all_dataframes_via_csv2)
-
     def testTrialDataframe(self):
-        checkpoints = self.ea._checkpoints_and_paths
-        idx = random.randint(0, len(checkpoints) - 1)
-        logdir_from_trial = self.ea.trials[idx].local_path
-        trial_df = self.ea.trial_dataframes[logdir_from_trial]
+        trial = self.ea.best_trial
+        trial_df = self.ea.trial_dataframes[trial.trial_id]
 
         self.assertTrue(isinstance(trial_df, pd.DataFrame))
         self.assertEqual(trial_df.shape[0], 1)
@@ -108,59 +106,21 @@ class ExperimentAnalysisSuite(unittest.TestCase):
         best_config = nan_ea.get_best_config(self.metric, mode="max")
         self.assertIsNone(best_config)
 
-    def testBestLogdir(self):
-        logdir = self.ea.get_best_logdir(self.metric, mode="max")
-        self.assertTrue(logdir.startswith(self.test_path))
-        logdir2 = self.ea.get_best_logdir(self.metric, mode="min")
-        self.assertTrue(logdir2.startswith(self.test_path))
-        self.assertNotEqual(logdir, logdir2)
-
-    def testBestLogdirNan(self):
-        nan_ea = self.nan_test_exp()
-        logdir = nan_ea.get_best_logdir(self.metric, mode="max")
-        self.assertIsNone(logdir)
-
-    def testGetTrialCheckpointsPathsByTrial(self):
+    def testGetTrialCheckpointsWithMetric(self):
         best_trial = self.ea.get_best_trial(self.metric, mode="max")
-        checkpoints_metrics = self.ea.get_trial_checkpoints_paths(best_trial)
-        logdir = self.ea.get_best_logdir(self.metric, mode="max")
-        expected_path = os.path.join(logdir, "checkpoint_000001")
-        assert os.path.normpath(checkpoints_metrics[0][0]) == expected_path
-        assert checkpoints_metrics[0][1] == 1
-
-    def testGetTrialCheckpointsPathsByPath(self):
-        logdir = self.ea.get_best_logdir(self.metric, mode="max")
-        checkpoints_metrics = self.ea.get_trial_checkpoints_paths(logdir)
-        expected_path = os.path.join(logdir, "checkpoint_000001")
-        assert os.path.normpath(checkpoints_metrics[0][0]) == expected_path
-        assert checkpoints_metrics[0][1] == 1
-
-    def testGetTrialCheckpointsPathsWithMetricByTrial(self):
-        best_trial = self.ea.get_best_trial(self.metric, mode="max")
-        paths = self.ea.get_trial_checkpoints_paths(best_trial, self.metric)
-        logdir = self.ea.get_best_logdir(self.metric, mode="max")
-        expected_path = os.path.join(logdir, "checkpoint_000001")
-        assert os.path.normpath(paths[0][0]) == expected_path
-        assert paths[0][1] == best_trial.metric_analysis[self.metric]["last"]
-
-    def testGetTrialCheckpointsPathsWithMetricByPath(self):
-        best_trial = self.ea.get_best_trial(self.metric, mode="max")
-        logdir = self.ea.get_best_logdir(self.metric, mode="max")
-        paths = self.ea.get_trial_checkpoints_paths(best_trial, self.metric)
-        expected_path = os.path.join(logdir, "checkpoint_000001")
-        assert os.path.normpath(paths[0][0]) == expected_path
-        assert paths[0][1] == best_trial.metric_analysis[self.metric]["last"]
+        checkpoints_with_metric = self.ea._get_trial_checkpoints_with_metric(
+            best_trial, "training_iteration"
+        )
+        sorted_by_metric = sorted(checkpoints_with_metric, key=lambda x: x[1])
+        metric = sorted_by_metric[-1][1]
+        assert metric == 1
 
     def testGetBestCheckpoint(self):
         best_trial = self.ea.get_best_trial(self.metric, mode="max")
-        checkpoints_metrics = self.ea.get_trial_checkpoints_paths(
-            best_trial, metric=self.metric
+        assert (
+            best_trial.run_metadata.checkpoint_manager.best_checkpoint_result.checkpoint
+            == self.ea.get_best_checkpoint(best_trial, self.metric, mode="max")
         )
-        expected_path = max(checkpoints_metrics, key=lambda x: x[1])[0]
-        best_checkpoint = self.ea.get_best_checkpoint(
-            best_trial, self.metric, mode="max"
-        )
-        assert expected_path == best_checkpoint._local_path
 
     def testGetBestCheckpointNan(self):
         """Tests if nan values are excluded from best checkpoint."""
@@ -231,62 +191,6 @@ class ExperimentAnalysisSuite(unittest.TestCase):
         self.assertTrue(isinstance(dataframes, dict))
         for df in dataframes.values():
             self.assertEqual(df.training_iteration.max(), 1)
-
-    def testIgnoreOtherExperiment(self):
-        analysis = tune.run(
-            MyTrainableClass,
-            name="test_example",
-            storage_path=self.test_dir,
-            stop={"training_iteration": 1},
-            num_samples=1,
-            config={
-                "width": tune.sample_from(lambda spec: 10 + int(90 * random.random())),
-                "height": tune.sample_from(lambda spec: int(100 * random.random())),
-            },
-        )
-        df = analysis.dataframe(self.metric, mode="max")
-        self.assertEqual(df.shape[0], 1)
-
-    def testGetTrialCheckpointsPathsByPathWithSpecialCharacters(self):
-        analysis = tune.run(
-            MyTrainableClass,
-            name="test_example",
-            storage_path=self.test_dir,
-            stop={"training_iteration": 1},
-            num_samples=1,
-            config={"test": tune.grid_search([[1, 2], [3, 4]])},
-            checkpoint_config=CheckpointConfig(checkpoint_at_end=True),
-        )
-        logdir = analysis.get_best_logdir(self.metric, mode="max")
-        checkpoints_metrics = analysis.get_trial_checkpoints_paths(logdir)
-        expected_path = os.path.join(logdir, "checkpoint_000001")
-        assert os.path.normpath(checkpoints_metrics[0][0]) == expected_path
-        assert checkpoints_metrics[0][1] == 1
-
-    def testGetTrialCheckpointsPathsWithTemporaryCheckpoints(self):
-        analysis = tune.run(
-            MyTrainableClass,
-            name="test_example",
-            storage_path=self.test_dir,
-            stop={"training_iteration": 2},
-            num_samples=1,
-            config={"test": tune.grid_search([[1, 2], [3, 4]])},
-            checkpoint_config=CheckpointConfig(checkpoint_at_end=True),
-        )
-        logdir = analysis.get_best_logdir(self.metric, mode="max")
-
-        shutil.copytree(
-            os.path.join(logdir, "checkpoint_000002"),
-            os.path.join(logdir, "checkpoint_tmpxxx"),
-        )
-
-        checkpoints_metrics = analysis.get_trial_checkpoints_paths(logdir)
-        expected_path = os.path.join(logdir, "checkpoint_000002")
-
-        assert len(checkpoints_metrics) == 1
-
-        assert os.path.normpath(checkpoints_metrics[0][0]) == expected_path
-        assert checkpoints_metrics[0][1] == 2
 
 
 class ExperimentAnalysisPropertySuite(unittest.TestCase):
