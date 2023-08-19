@@ -340,6 +340,11 @@ def _inject_tracing_into_function(function):
         ),
     )
 
+    # Skip wrapping if tracing is disabled (still add _ray_trace_ctx however to make
+    # sure _ray_trace_ctx could be passed)
+    if not _is_tracing_enabled():
+        return function
+
     @wraps(function)
     def _function_with_tracing(
         *args: Any,
