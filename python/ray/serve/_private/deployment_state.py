@@ -1997,6 +1997,8 @@ class DeploymentState:
             stopped = replica.check_stopped()
             if not stopped:
                 self._replicas.add(ReplicaState.STOPPING, replica)
+            else:
+                logger.info(f"Replica {replica.replica_tag} is stopped.")
 
     def _stop_replicas_on_draining_nodes(self):
         draining_nodes = self._cluster_node_info_cache.get_draining_node_ids()
