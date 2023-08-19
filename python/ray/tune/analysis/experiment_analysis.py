@@ -221,12 +221,9 @@ class NewExperimentAnalysis:
         """Path pointing to the experiment directory on persistent storage.
 
         This can point to a remote storage location (e.g. S3) or to a local
-        location (path on the head node).
-
-        For instance, if your remote storage path is ``s3://bucket/location``,
-        this will point to ``s3://bucket/location/experiment_name``.
-        """
-        ...
+        location (path on the head node)."""
+        # TODO(justinvyu): [storage_location] This should return the fs + path.
+        return self._experiment_fs_path
 
     @property
     def best_trial(self) -> Trial:
@@ -298,25 +295,6 @@ class NewExperimentAnalysis:
         )
 
     @property
-    def best_logdir(self) -> str:
-        """Get the logdir of the best trial of the experiment
-
-        The best trial is determined by comparing the last trial results
-        using the `metric` and `mode` parameters passed to `tune.run()`.
-
-        If you didn't pass these parameters, use
-        `get_best_logdir(metric, mode)` instead.
-        """
-        if not self.default_metric or not self.default_mode:
-            raise ValueError(
-                "To fetch the `best_logdir`, pass a `metric` and `mode` "
-                "parameter to `tune.run()`. Alternatively, use the "
-                "`get_best_logdir(metric, mode, scope)` method to set the "
-                "metric and mode explicitly."
-            )
-        return self.get_best_logdir(self.default_metric, self.default_mode)
-
-    @property
     def best_dataframe(self) -> DataFrame:
         """Get the full result dataframe of the best trial of the experiment
 
@@ -324,7 +302,7 @@ class NewExperimentAnalysis:
         using the `metric` and `mode` parameters passed to `tune.run()`.
 
         If you didn't pass these parameters, use
-        `get_best_logdir(metric, mode)` and use it to look for the dataframe
+        `get_best_trial(metric, mode)` and use it to look for the dataframe
         in the `self.trial_dataframes` dict.
         """
         if not self.default_metric or not self.default_mode:
@@ -633,38 +611,6 @@ class NewExperimentAnalysis:
         """
         best_trial = self.get_best_trial(metric, mode, scope)
         return best_trial.config if best_trial else None
-
-    def get_best_logdir(
-        self,
-        metric: Optional[str] = None,
-        mode: Optional[str] = None,
-        scope: str = "last",
-    ) -> Optional[str]:
-        """Retrieve the logdir corresponding to the best trial.
-
-        Compares all trials' scores on `metric`.
-        If ``metric`` is not specified, ``self.default_metric`` will be used.
-        If `mode` is not specified, ``self.default_mode`` will be used.
-        These values are usually initialized by passing the ``metric`` and
-        ``mode`` parameters to ``tune.run()``.
-
-        Args:
-            metric: Key for trial info to order on. Defaults to
-                ``self.default_metric``.
-            mode: One of [min, max]. Defaults to ``self.default_mode``.
-            scope: One of [all, last, avg, last-5-avg, last-10-avg].
-                If `scope=last`, only look at each trial's final step for
-                `metric`, and compare across trials based on `mode=[min,max]`.
-                If `scope=avg`, consider the simple average over all steps
-                for `metric` and compare across trials based on
-                `mode=[min,max]`. If `scope=last-5-avg` or `scope=last-10-avg`,
-                consider the simple average over the last 5 or 10 steps for
-                `metric` and compare across trials based on `mode=[min,max]`.
-                If `scope=all`, find each trial's min/max score for `metric`
-                based on `mode`, and compare trials based on `mode=[min,max]`.
-        """
-        best_trial = self.get_best_trial(metric, mode, scope)
-        return best_trial.local_path if best_trial else None
 
     def get_last_checkpoint(
         self, trial=None, metric="training_iteration", mode="max"
