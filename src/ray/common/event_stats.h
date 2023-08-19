@@ -14,8 +14,9 @@
 
 #pragma once
 
-#include <limits>
 #include <boost/stacktrace.hpp>
+#include <limits>
+
 #include "absl/container/flat_hash_map.h"
 #include "absl/synchronization/mutex.h"
 #include "ray/common/ray_config.h"

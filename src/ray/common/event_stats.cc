@@ -91,8 +91,10 @@ void EventTracker::RecordExecution(const std::function<void()> &fn,
     stats->stats.running_count++;
   }
   // Execute actual function.
-  if(fn == nullptr) {
-    RAY_LOG(ERROR) << handle->event_name << "\n--curr stacktrace--\n" << boost::stacktrace::stacktrace() << "\n--creation stacktrace--\n" << handle->stack_trace;
+  if (fn == nullptr) {
+    RAY_LOG(ERROR) << handle->event_name << "\n--curr stacktrace--\n"
+                   << boost::stacktrace::stacktrace() << "\n--creation stacktrace--\n"
+                   << handle->stack_trace;
   } else {
     fn();
   }
