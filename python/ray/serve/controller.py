@@ -195,7 +195,7 @@ class ServeController:
             log_file_path=get_component_logger_file_path(),
         )
         self._shutting_down = False
-        self._shutdown = asyncio.Event()
+        self._shutdown_event = asyncio.Event()
         self._shutdown_start_time = None
 
         self._create_control_loop_metrics()
@@ -549,7 +549,6 @@ class ServeController:
                 extra={"log_to_stderr": False},
             )
             _controller_actor = ray.get_runtime_context().current_actor
-            self._shutdown.set()
             ray.kill(_controller_actor, no_restart=True)
         elif time.time() - self._shutdown_start_time > 10:
             if not config_checkpoint_deleted:
@@ -967,12 +966,18 @@ class ServeController:
         This is used to signal to the controller that it should proceed with shutdown
         process, so it can shut down gracefully. It also waits until the shutdown
         event is triggered if wait is true.
+
+        Raises:
+            RayActorError: if wait is True, the caller waits until the controller
+                is killed, which raises a RayActorError.
         """
         self._shutting_down = True
         if not wait:
             return
 
-        await self._shutdown.wait()
+        # This event never gets set. The caller waits indefinitely on this event
+        # until the controller is killed, which raises a RayActorError.
+        await self._shutdown_event.wait()
 
     def _save_cpu_profile_data(self) -> str:
         """Saves CPU profiling data, if CPU profiling is enabled.
