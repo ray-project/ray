@@ -14,7 +14,12 @@ from ray.util.annotations import Deprecated, PublicAPI, DeveloperAPI
 
 from ray.serve.built_application import BuiltApplication
 from ray.serve._private.client import ServeControllerClient
-from ray.serve.config import AutoscalingConfig, DeploymentConfig, HTTPOptions
+from ray.serve.config import (
+    AutoscalingConfig,
+    DeploymentConfig,
+    ReplicaConfig,
+    HTTPOptions,
+)
 from ray.serve._private.constants import (
     DEFAULT_HTTP_HOST,
     DEFAULT_HTTP_PORT,
@@ -354,7 +359,7 @@ def deployment(
     if is_driver_deployment is DEFAULT.VALUE:
         is_driver_deployment = False
 
-    config = DeploymentConfig.from_default(
+    deployment_config = DeploymentConfig.from_default(
         num_replicas=num_replicas if num_replicas is not None else 1,
         user_config=user_config,
         max_concurrent_queries=max_concurrent_queries,
@@ -364,17 +369,13 @@ def deployment(
         health_check_period_s=health_check_period_s,
         health_check_timeout_s=health_check_timeout_s,
     )
-    config.user_configured_option_names = set(user_configured_option_names)
+    deployment_config.user_configured_option_names = set(user_configured_option_names)
 
     def decorator(_func_or_class):
-        return Deployment(
+        replica_config = ReplicaConfig.create(
             _func_or_class,
-            name if name is not DEFAULT.VALUE else _func_or_class.__name__,
-            config,
-            version=(version if version is not DEFAULT.VALUE else None),
             init_args=(init_args if init_args is not DEFAULT.VALUE else None),
             init_kwargs=(init_kwargs if init_kwargs is not DEFAULT.VALUE else None),
-            route_prefix=route_prefix,
             ray_actor_options=(
                 ray_actor_options if ray_actor_options is not DEFAULT.VALUE else None
             ),
@@ -388,6 +389,14 @@ def deployment(
                 if placement_group_strategy is not DEFAULT.VALUE
                 else None
             ),
+        )
+
+        return Deployment(
+            name if name is not DEFAULT.VALUE else _func_or_class.__name__,
+            deployment_config,
+            replica_config,
+            version=(version if version is not DEFAULT.VALUE else None),
+            route_prefix=route_prefix,
             is_driver_deployment=is_driver_deployment,
             _internal=True,
         )
@@ -506,13 +515,8 @@ def run(
             deployment._route_prefix = route_prefix
         deployment_parameters = {
             "name": deployment._name,
-            "func_or_class": deployment._func_or_class,
-            "init_args": deployment.init_args,
-            "init_kwargs": deployment.init_kwargs,
-            "ray_actor_options": deployment._ray_actor_options,
-            "placement_group_bundles": deployment._placement_group_bundles,
-            "placement_group_strategy": deployment._placement_group_strategy,
-            "config": deployment._config,
+            "replica_config": deployment._replica_config,
+            "deployment_config": deployment._deployment_config,
             "version": deployment._version or get_random_letters(),
             "route_prefix": deployment.route_prefix,
             "url": deployment.url,

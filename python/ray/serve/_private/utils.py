@@ -269,7 +269,7 @@ def get_deployment_import_path(
         with __main__'s file name if the deployment's module is __main__
     """
 
-    body = deployment._func_or_class
+    body = deployment.func_or_class
 
     if isinstance(body, str):
         # deployment's func_or_class is already an import path
