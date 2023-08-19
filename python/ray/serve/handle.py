@@ -648,9 +648,10 @@ class DeploymentResponseGenerator(_DeploymentResponseBase):
     def __init__(
         self,
         assign_request_coro: Coroutine,
-        loop: Optional[asyncio.AbstractEventLoop] = None,
+        loop: asyncio.AbstractEventLoop,
+        request_protocol: RequestProtocol,
     ):
-        super().__init__(assign_request_coro, loop=loop)
+        super().__init__(assign_request_coro, loop=loop, request_protocol=request_protocol)
         self._obj_ref_gen: Optional[StreamingObjectRefGenerator] = None
 
     def __aiter__(self) -> AsyncIterator[Any]:
