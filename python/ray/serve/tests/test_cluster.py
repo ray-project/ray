@@ -4,15 +4,32 @@ import time
 from collections import defaultdict
 
 import pytest
-import requests
 
 import ray
 from ray._private.test_utils import SignalActor, wait_for_condition
 
 from ray import serve
+from ray.serve.context import get_global_client
 from ray.serve._private.constants import SERVE_NAMESPACE
 from ray.serve._private.deployment_state import ReplicaStartupStatus
 from ray.serve._private.common import ReplicaState
+
+
+def get_pids(expected, deployment_name="D", app_name="default", timeout=30):
+    handle = serve.get_deployment_handle(deployment_name, app_name)
+    refs = []
+    pids = set()
+    start = time.time()
+    while len(pids) < expected:
+        if len(refs) == 0:
+            refs = [handle.remote() for _ in range(10)]
+
+        done, pending = ray.wait(refs)
+        pids = pids.union(set(ray.get(done)))
+        refs = list(pending)
+        if time.time() - start >= timeout:
+            raise TimeoutError("Timed out waiting for pids.")
+    return pids
 
 
 def test_scale_up(ray_cluster):
@@ -22,24 +39,18 @@ def test_scale_up(ray_cluster):
     # By default, Serve controller and proxy actors use 0 CPUs,
     # so initially there should only be room for 1 replica.
 
-    @serve.deployment(version="1", num_replicas=1, health_check_period_s=1)
+    @serve.deployment(
+        version="1", num_replicas=1, health_check_period_s=1, max_concurrent_queries=1
+    )
     def D(*args):
+        time.sleep(0.1)
         return os.getpid()
-
-    def get_pids(expected, timeout=30):
-        pids = set()
-        start = time.time()
-        while len(pids) < expected:
-            pids.add(requests.get("http://localhost:8000/D").text)
-            if time.time() - start >= timeout:
-                raise TimeoutError("Timed out waiting for pids.")
-        return pids
 
     serve.start(detached=True)
     client = serve.context._connect()
 
     D.deploy()
-    pids1 = get_pids(1)
+    pids1 = get_pids(1, app_name="")
 
     D.options(num_replicas=3).deploy(_blocking=False)
 
@@ -48,20 +59,20 @@ def test_scale_up(ray_cluster):
     # 1.0 seconds is a reasonable upper bound on replica startup time.
     with pytest.raises(TimeoutError):
         client._wait_for_deployment_healthy(D.name, timeout_s=1)
-    assert get_pids(1) == pids1
+    assert get_pids(1, app_name="") == pids1
 
     # Add a node with another CPU, another replica should get placed.
     cluster.add_node(num_cpus=1)
     with pytest.raises(TimeoutError):
         client._wait_for_deployment_healthy(D.name, timeout_s=1)
-    pids2 = get_pids(2)
+    pids2 = get_pids(2, app_name="")
     assert pids1.issubset(pids2)
 
     # Add a node with another CPU, the final replica should get placed
     # and the deploy goal should be done.
     cluster.add_node(num_cpus=1)
     client._wait_for_deployment_healthy(D.name)
-    pids3 = get_pids(3)
+    pids3 = get_pids(3, app_name="")
     assert pids2.issubset(pids3)
 
 
@@ -80,19 +91,12 @@ def test_node_failure(ray_cluster):
 
     worker_node = cluster.add_node(num_cpus=2)
 
-    @serve.deployment(version="1", num_replicas=5)
+    @serve.deployment(
+        version="1", num_replicas=5, health_check_period_s=1, max_concurrent_queries=1
+    )
     def D(*args):
+        time.sleep(0.1)
         return os.getpid()
-
-    def get_pids(expected, timeout=30):
-        pids = set()
-        start = time.time()
-        while len(pids) < expected:
-            pids.add(requests.get("http://localhost:8000/D").text)
-            if time.time() - start >= timeout:
-                raise TimeoutError("Timed out waiting for pids.")
-            time.sleep(1)
-        return pids
 
     print("Initial deploy.")
     serve.run(D.bind())
@@ -211,27 +215,29 @@ def test_replica_spread(ray_cluster):
 
     worker_node = cluster.add_node(num_cpus=2)
 
-    @serve.deployment(num_replicas=2)
-    def get_node_id():
-        return os.getpid(), ray.get_runtime_context().get_node_id()
+    @serve.deployment(
+        num_replicas=2,
+        health_check_period_s=1,
+    )
+    def D():
+        return "hi"
 
-    h = serve.run(get_node_id.bind())
+    serve.run(D.bind())
 
     def get_num_nodes():
-        pids = set()
-        node_ids = set()
-        while len(pids) < 2:
-            pid, node = ray.get(h.remote())
-            pids.add(pid)
-            node_ids.add(node)
-
-        return len(node_ids)
+        client = get_global_client()
+        details = client.get_serve_details()
+        dep = details["applications"]["default"]["deployments"]["default_D"]
+        nodes = {r["node_id"] for r in dep["replicas"]}
+        print("replica nodes", nodes)
+        return len(nodes)
 
     # Check that the two replicas are spread across the two nodes.
     wait_for_condition(lambda: get_num_nodes() == 2)
 
     # Kill the worker node. The second replica should get rescheduled on
     # the head node.
+    print("Removing worker node. Replica should be rescheduled.")
     cluster.remove_node(worker_node)
 
     # Check that the replica on the dead node can be rescheduled.

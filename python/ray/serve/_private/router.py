@@ -328,7 +328,8 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         self._replica_id_set: Set[str] = set()
         self._replicas: Dict[str, ReplicaWrapper] = {}
         self._replicas_updated_event = make_asyncio_event_version_compat(event_loop)
-        self._replica_ids_colocated_on_same_node: Set[str] = set()
+        # Replicas colocated on same node
+        self._colocated_replica_ids: Set[str] = set()
         self._multiplexed_model_id_to_replica_ids: DefaultDict[Set[str]] = defaultdict(
             set
         )
@@ -391,13 +392,13 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         """
         new_replicas = {}
         new_replica_id_set = set()
-        new_replica_ids_colocated_on_same_node = set()
+        new_colocated_replica_ids = set()
         new_multiplexed_model_id_to_replica_ids = defaultdict(set)
         for r in replicas:
             new_replicas[r.replica_id] = r
             new_replica_id_set.add(r.replica_id)
             if self._self_node_id is not None and r.node_id == self._self_node_id:
-                new_replica_ids_colocated_on_same_node.add(r.replica_id)
+                new_colocated_replica_ids.add(r.replica_id)
             for model_id in r.multiplexed_model_ids:
                 new_multiplexed_model_id_to_replica_ids[model_id].add(r.replica_id)
 
@@ -410,9 +411,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
 
         self._replicas = new_replicas
         self._replica_id_set = new_replica_id_set
-        self._replica_ids_colocated_on_same_node = (
-            new_replica_ids_colocated_on_same_node
-        )
+        self._colocated_replica_ids = new_colocated_replica_ids
         self._multiplexed_model_id_to_replica_ids = (
             new_multiplexed_model_id_to_replica_ids
         )
@@ -550,12 +549,10 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
                             get_from_all_replicas=True,
                         )
                     )
-            elif (
-                backoff_index == 0 and len(self._replica_ids_colocated_on_same_node) > 0
-            ):
+            elif backoff_index == 0 and len(self._colocated_replica_ids) > 0:
                 # Attempt to schedule requests to a replica on the same node in the
                 # first iteration only.
-                candidate_replica_ids = self._replica_ids_colocated_on_same_node
+                candidate_replica_ids = self._colocated_replica_ids
             else:
                 # On subsequent iterations or when there are no replicas on the same
                 # node, consider all available replicas.
@@ -612,7 +609,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
                 if isinstance(t.exception(), RayActorError):
                     self._replicas.pop(t.replica_id, None)
                     self._replica_id_set.discard(t.replica_id)
-                    self._replica_ids_colocated_on_same_node.discard(t.replica_id)
+                    self._colocated_replica_ids.discard(t.replica_id)
                     msg += " This replica will no longer be considered for requests."
 
                 logger.warning(msg)
