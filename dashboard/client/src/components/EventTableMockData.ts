@@ -1,450 +1,99 @@
+// eslint-disable-next-line prefer-arrow/prefer-arrow-functions
+
+const SEVERITIES = ["INFO", "DEBUG"];
+const SOURCES = ["Serve", "GCS", "AUTOSCALER"];
+const MESSAGES = [
+  "Serve App {app name} started. Serve App {app name} started. Serve App {app name} started.  {app name} started. Serve App {app name} started. {app name} started. Serve App {app name} started. ",
+  "Serve App {app name} deleted. {app name} started. Serve App {app name} started. {app name} started. Serve App {app name} started.",
+  "Deployment {deployment name} created {app name} started. Serve App {app name} started. {app name} started. Serve App {app name} started.",
+  "Deployment {deployment name} is running {app name} started. Serve App {app name} started. {app name} started. Serve App {app name} started.",
+  "Deployment {deployment name} deleted. {app name} started. Serve App {app name} started. {app name} started. Serve App {app name} started.",
+  "Serve Deployment “job” started. {app name} started. Serve App {app name} started. {app name} started. Serve App {app name} started.",
+  "Replica {replica name} started {app name} started. Serve App {app name} started. {app name} started. Serve App {app name} started.",
+  "Replica {replica name} died",
+  "Ray Serve server is running.",
+  "Ray Serve server is terminated.",
+  "Ray Serve HTTP Proxy started on node {node id}, {node ip}",
+  "Ray Serve HTTP Proxy removed from node {node id}, {node ip}",
+];
+
+let longMessage = "";
+const targetLength = 500;
+
+while (longMessage.length < targetLength) {
+  longMessage += MESSAGES.join("");
+  if (longMessage.length >= targetLength) {
+    longMessage = longMessage.substring(0, targetLength);
+  }
+}
+
+console.log(longMessage);
+
+const CUSTOM_MESSAGES = [
+  "Terminating instance i-xxx due to compute config live update.",
+];
+
+function generateRandomEvent() {
+  const severity = SEVERITIES[Math.floor(Math.random() * SEVERITIES.length)];
+  const source = SOURCES[Math.floor(Math.random() * SOURCES.length)];
+  const message =
+    source === "AUTOSCALER"
+      ? CUSTOM_MESSAGES[0]
+      : MESSAGES[Math.floor(Math.random() * MESSAGES.length)];
+  const customFields = {} as {
+    [key: string]: any;
+  };
+
+  if (message.includes("{app name}")) {
+    const appName = "my-app-" + Math.floor(Math.random() * 100);
+    customFields.app_name = appName;
+  }
+
+  if (message.includes("{deployment name}")) {
+    const deploymentName = "deployment-" + Math.floor(Math.random() * 100);
+    customFields.deployment_name = deploymentName;
+  }
+
+  if (message.includes("{replica name}")) {
+    const replicaName = "replica-" + Math.floor(Math.random() * 100);
+    customFields.replica_name = replicaName;
+  }
+
+  if (message.includes("{node id}") && message.includes("{node ip}")) {
+    const nodeId = "node-" + Math.floor(Math.random() * 100);
+    const nodeIp = "192.168.1." + Math.floor(Math.random() * 256);
+    customFields.node_id = nodeId;
+    customFields.node_ip = nodeIp;
+  }
+
+  return {
+    eventId: Math.random().toString(36).substring(7),
+    sourceType: source,
+    hostName: "po-dev.inc.alipay.net",
+    pid: Math.floor(Math.random() * 65536),
+    label: "",
+    message: message,
+    timestamp: Date.now() / 1000,
+    severity: severity,
+    customFields: customFields,
+  };
+}
+
+const generatedEvents = [];
+const autoscalerEvent = generateRandomEvent(); // Generate the custom AUTOSCALER event first
+generatedEvents.push(autoscalerEvent);
+
+for (let i = 1; i < 20; i++) {
+  // Start from 1 to skip the autoscaler event
+  generatedEvents.push(generateRandomEvent());
+}
+
 export const MOCK_DATA = {
   result: true,
   msg: "All events fetched.",
   data: {
     events: {
-      "64000000": [
-        {
-          eventId: "144cbdce3955181379c53d75ef46916fc016",
-          sourceType: "GCS",
-          hostName: "po-dev.inc.alipay.net",
-          pid: 38282,
-          label: "",
-          message: "The actor is dead, The actor is dead, The actor is dead",
-          timestamp: 1691872914.3131542,
-          severity: "INFO",
-          customFields: { jobId: "64000000", nodeId: "", taskId: "" },
-        },
-        {
-          eventId: "ff99ef2c000003ece344f8bd007d35dd01d6",
-          sourceType: "GCS",
-          hostName: "po-dev.inc.alipay.net",
-          pid: 15375,
-          label: "",
-          message: "8",
-          timestamp: 1691872914.3213937,
-          severity: "INFO",
-          customFields: { jobId: "64000000", nodeId: "", taskId: "" },
-        },
-        {
-          eventId: "0df4eade4a4395f2d6885da9363b9baedfdd",
-          sourceType: "GCS",
-          hostName: "po-dev.inc.alipay.net",
-          pid: 28577,
-          label: "",
-          message: "9",
-          timestamp: 1691872914.3215854,
-          severity: "INFO",
-          customFields: { jobId: "64000000", nodeId: "", taskId: "" },
-        },
-        {
-          eventId: "cedf2027b450f00aec02a6e19ae1ee266da0",
-          sourceType: "GCS",
-          hostName: "po-dev.inc.alipay.net",
-          pid: 38161,
-          label: "",
-          message: "10",
-          timestamp: 1691872914.3217266,
-          severity: "INFO",
-          customFields: { jobId: "64000000", nodeId: "", taskId: "" },
-        },
-        {
-          eventId: "fe82619b9def5fad10f3c637f274833b0f23",
-          sourceType: "GCS",
-          hostName: "po-dev.inc.alipay.net",
-          pid: 35075,
-          label: "",
-          message: "11",
-          timestamp: 1691872914.3218591,
-          severity: "INFO",
-          customFields: { jobId: "64000000", nodeId: "", taskId: "" },
-        },
-        {
-          eventId: "3749c8bbdde59dd4bb3329c1cebcbeb3532d",
-          sourceType: "GCS",
-          hostName: "po-dev.inc.alipay.net",
-          pid: 40111,
-          label: "",
-          message: "12",
-          timestamp: 1691872914.3219903,
-          severity: "INFO",
-          customFields: { jobId: "64000000", nodeId: "", taskId: "" },
-        },
-        {
-          eventId: "175df324d421cc59bef9bdc92e4a291f097e",
-          sourceType: "GCS",
-          hostName: "po-dev.inc.alipay.net",
-          pid: 16535,
-          label: "",
-          message: "13",
-          timestamp: 1691872914.3221169,
-          severity: "INFO",
-          customFields: { jobId: "64000000", nodeId: "", taskId: "" },
-        },
-        {
-          eventId: "1921d7cd839acac10a4dde5eb2fc1b7b5fd4",
-          sourceType: "GCS",
-          hostName: "po-dev.inc.alipay.net",
-          pid: 42533,
-          label: "",
-          message: "0",
-          timestamp: 1691872914.3110747,
-          severity: "INFO",
-          customFields: { jobId: "64000000", nodeId: "", taskId: "" },
-        },
-        {
-          eventId: "b44758f9223eee6e6050391099a7dee32b3b",
-          sourceType: "GCS",
-          hostName: "po-dev.inc.alipay.net",
-          pid: 4064,
-          label: "",
-          message: "1",
-          timestamp: 1691872914.3123014,
-          severity: "INFO",
-          customFields: { jobId: "64000000", nodeId: "", taskId: "" },
-        },
-        {
-          eventId: "de5e6584097baf4a4d98f871af6e59781de3",
-          sourceType: "GCS",
-          hostName: "po-dev.inc.alipay.net",
-          pid: 31934,
-          label: "",
-          message: "2",
-          timestamp: 1691872914.3124828,
-          severity: "INFO",
-          customFields: { jobId: "64000000", nodeId: "", taskId: "" },
-        },
-        {
-          eventId: "8fe6e59ab25be7b2412ae332f668a5bb780e",
-          sourceType: "GCS",
-          hostName: "po-dev.inc.alipay.net",
-          pid: 9514,
-          label: "",
-          message: "3",
-          timestamp: 1691872914.3126285,
-          severity: "INFO",
-          customFields: { jobId: "64000000", nodeId: "", taskId: "" },
-        },
-        {
-          eventId: "4dc413d2aed615a70c02159786cf0af84d11",
-          sourceType: "GCS",
-          hostName: "po-dev.inc.alipay.net",
-          pid: 32216,
-          label: "",
-          message: "4",
-          timestamp: 1691872914.3127646,
-          severity: "INFO",
-          customFields: { jobId: "64000000", nodeId: "", taskId: "" },
-        },
-        {
-          eventId: "c7f4ab58022eb83c2fb457fc3cd354a92789",
-          sourceType: "GCS",
-          hostName: "po-dev.inc.alipay.net",
-          pid: 63921,
-          label: "",
-          message: "5",
-          timestamp: 1691872914.3128967,
-          severity: "INFO",
-          customFields: { jobId: "64000000", nodeId: "", taskId: "" },
-        },
-        {
-          eventId: "c35dc5e7275f0443c63be659c550b6fa9b9e",
-          sourceType: "GCS",
-          hostName: "po-dev.inc.alipay.net",
-          pid: 23614,
-          label: "",
-          message: "6",
-          timestamp: 1691872914.3130255,
-          severity: "INFO",
-          customFields: { jobId: "64000000", nodeId: "", taskId: "" },
-        },
-        {
-          eventId: "ca5cf73a2c158787f2608813c79d5c783a0f",
-          sourceType: "GCS",
-          hostName: "po-dev.inc.alipay.net",
-          pid: 14171,
-          label: "",
-          message: "14",
-          timestamp: 1691872914.3222425,
-          severity: "INFO",
-          customFields: { jobId: "64000000", nodeId: "", taskId: "" },
-        },
-        {
-          eventId: "f98241dd10d7782bcf97dedd8889360c30d7",
-          sourceType: "GCS",
-          hostName: "po-dev.inc.alipay.net",
-          pid: 13762,
-          label: "",
-          message: "15",
-          timestamp: 1691872914.328872,
-          severity: "INFO",
-          customFields: { jobId: "64000000", nodeId: "", taskId: "" },
-        },
-        {
-          eventId: "2c280999c290314d963bc18c699ab5037c18",
-          sourceType: "GCS",
-          hostName: "po-dev.inc.alipay.net",
-          pid: 36824,
-          label: "",
-          message: "16",
-          timestamp: 1691872914.3290539,
-          severity: "INFO",
-          customFields: { jobId: "64000000", nodeId: "", taskId: "" },
-        },
-        {
-          eventId: "10bb65a52e02343f20bf6b001b7343a3efc7",
-          sourceType: "GCS",
-          hostName: "po-dev.inc.alipay.net",
-          pid: 47972,
-          label: "",
-          message: "17",
-          timestamp: 1691872914.3291938,
-          severity: "INFO",
-          customFields: { jobId: "64000000", nodeId: "", taskId: "" },
-        },
-        {
-          eventId: "e81c59deb2f93302981312f4c0d6e9a4133c",
-          sourceType: "GCS",
-          hostName: "po-dev.inc.alipay.net",
-          pid: 32160,
-          label: "",
-          message: "18",
-          timestamp: 1691872914.3293257,
-          severity: "INFO",
-          customFields: { jobId: "64000000", nodeId: "", taskId: "" },
-        },
-        {
-          eventId: "e8acbc7013872994261b7b047947a47f2ec5",
-          sourceType: "GCS",
-          hostName: "po-dev.inc.alipay.net",
-          pid: 39886,
-          label: "",
-          message: "19",
-          timestamp: 1691872914.329455,
-          severity: "INFO",
-          customFields: { jobId: "64000000", nodeId: "", taskId: "" },
-        },
-        {
-          eventId: "be6188cdcfcf2e522602548aa858cb63ba94",
-          sourceType: "RAYLET",
-          hostName: "po-dev.inc.alipay.net",
-          pid: 57855,
-          label: "",
-          message: "7",
-          timestamp: 1691872914.3308852,
-          severity: "INFO",
-          customFields: { jobId: "64000000", nodeId: "", taskId: "" },
-        },
-        {
-          eventId: "6883b6452bac6f867936d056925a216d6fe1",
-          sourceType: "RAYLET",
-          hostName: "po-dev.inc.alipay.net",
-          pid: 55919,
-          label: "",
-          message: "8",
-          timestamp: 1691872914.3391478,
-          severity: "INFO",
-          customFields: { jobId: "64000000", nodeId: "", taskId: "" },
-        },
-        {
-          eventId: "85cff72d2a6aec200a2bd342aaac0e3c2258",
-          sourceType: "RAYLET",
-          hostName: "po-dev.inc.alipay.net",
-          pid: 16999,
-          label: "",
-          message: "9",
-          timestamp: 1691872914.339324,
-          severity: "INFO",
-          customFields: { jobId: "64000000", nodeId: "", taskId: "" },
-        },
-        {
-          eventId: "6aa53f06d098f3d330404ea414318e042928",
-          sourceType: "RAYLET",
-          hostName: "po-dev.inc.alipay.net",
-          pid: 52354,
-          label: "",
-          message: "10",
-          timestamp: 1691872914.3394723,
-          severity: "INFO",
-          customFields: { jobId: "64000000", nodeId: "", taskId: "" },
-        },
-        {
-          eventId: "48eb0a070490f81e08ab4b37b897b1956ede",
-          sourceType: "RAYLET",
-          hostName: "po-dev.inc.alipay.net",
-          pid: 39772,
-          label: "",
-          message: "11",
-          timestamp: 1691872914.3396037,
-          severity: "INFO",
-          customFields: { jobId: "64000000", nodeId: "", taskId: "" },
-        },
-        {
-          eventId: "fa658d4a0cd505a268a9d6ee740d5fa958fc",
-          sourceType: "RAYLET",
-          hostName: "po-dev.inc.alipay.net",
-          pid: 64119,
-          label: "",
-          message: "12",
-          timestamp: 1691872914.3397315,
-          severity: "INFO",
-          customFields: { jobId: "64000000", nodeId: "", taskId: "" },
-        },
-        {
-          eventId: "5c2c9052fe8e104fae0e3c18781be2d1f638",
-          sourceType: "RAYLET",
-          hostName: "po-dev.inc.alipay.net",
-          pid: 64820,
-          label: "",
-          message: "13",
-          timestamp: 1691872914.3398578,
-          severity: "INFO",
-          customFields: { jobId: "64000000", nodeId: "", taskId: "" },
-        },
-        {
-          eventId: "002c49082695ca29cd193d82d7fd2e7c85c1",
-          sourceType: "RAYLET",
-          hostName: "po-dev.inc.alipay.net",
-          pid: 64984,
-          label: "",
-          message: "0",
-          timestamp: 1691872914.3298676,
-          severity: "INFO",
-          customFields: { jobId: "64000000", nodeId: "", taskId: "" },
-        },
-        {
-          eventId: "4ea4e7870872aa955c93edffa28f2400d5b1",
-          sourceType: "RAYLET",
-          hostName: "po-dev.inc.alipay.net",
-          pid: 64477,
-          label: "",
-          message: "1",
-          timestamp: 1691872914.3300512,
-          severity: "INFO",
-          customFields: { jobId: "64000000", nodeId: "", taskId: "" },
-        },
-        {
-          eventId: "b21b9030e73b3966851ed21063e7cb5d459c",
-          sourceType: "RAYLET",
-          hostName: "po-dev.inc.alipay.net",
-          pid: 60865,
-          label: "",
-          message: "2",
-          timestamp: 1691872914.3301935,
-          severity: "INFO",
-          customFields: { jobId: "64000000", nodeId: "", taskId: "" },
-        },
-        {
-          eventId: "46a88859fc0160a63777c2032fcb73d8291d",
-          sourceType: "RAYLET",
-          hostName: "po-dev.inc.alipay.net",
-          pid: 43214,
-          label: "",
-          message: "3",
-          timestamp: 1691872914.3303244,
-          severity: "INFO",
-          customFields: { jobId: "64000000", nodeId: "", taskId: "" },
-        },
-        {
-          eventId: "2129778211020cb2b2551652c9b954600245",
-          sourceType: "RAYLET",
-          hostName: "po-dev.inc.alipay.net",
-          pid: 26837,
-          label: "",
-          message: "4",
-          timestamp: 1691872914.3304713,
-          severity: "INFO",
-          customFields: { jobId: "64000000", nodeId: "", taskId: "" },
-        },
-        {
-          eventId: "7c0833f945c9b9b713c926b2c0c172837bba",
-          sourceType: "RAYLET",
-          hostName: "po-dev.inc.alipay.net",
-          pid: 41883,
-          label: "",
-          message: "5",
-          timestamp: 1691872914.3306139,
-          severity: "INFO",
-          customFields: { jobId: "64000000", nodeId: "", taskId: "" },
-        },
-        {
-          eventId: "1cf936314f285affdf234fbe482f4fe3fc9f",
-          sourceType: "RAYLET",
-          hostName: "po-dev.inc.alipay.net",
-          pid: 10574,
-          label: "",
-          message: "6",
-          timestamp: 1691872914.3307416,
-          severity: "INFO",
-          customFields: { jobId: "64000000", nodeId: "", taskId: "" },
-        },
-        {
-          eventId: "a0aff07a5825e8942b8397e8fc3fe84e8bcb",
-          sourceType: "RAYLET",
-          hostName: "po-dev.inc.alipay.net",
-          pid: 12705,
-          label: "",
-          message: "14",
-          timestamp: 1691872914.3399827,
-          severity: "INFO",
-          customFields: { jobId: "64000000", nodeId: "", taskId: "" },
-        },
-        {
-          eventId: "f3a1205ba9080f42b0e5626ed291c5e7fb33",
-          sourceType: "RAYLET",
-          hostName: "po-dev.inc.alipay.net",
-          pid: 22634,
-          label: "",
-          message: "15",
-          timestamp: 1691872914.3466144,
-          severity: "INFO",
-          customFields: { jobId: "64000000", nodeId: "", taskId: "" },
-        },
-        {
-          eventId: "3ffffc14bfb081767af78ad6fe2ea2aa2f89",
-          sourceType: "RAYLET",
-          hostName: "po-dev.inc.alipay.net",
-          pid: 16025,
-          label: "",
-          message: "16",
-          timestamp: 1691872914.346792,
-          severity: "INFO",
-          customFields: { jobId: "64000000", nodeId: "", taskId: "" },
-        },
-        {
-          eventId: "3ab2321c8869cc1fcdaf0c3db532065454f7",
-          sourceType: "RAYLET",
-          hostName: "po-dev.inc.alipay.net",
-          pid: 64561,
-          label: "",
-          message: "17",
-          timestamp: 1691872914.346934,
-          severity: "INFO",
-          customFields: { jobId: "64000000", nodeId: "", taskId: "" },
-        },
-        {
-          eventId: "16a8487540018e9dcecebc7a0c0edcdd466c",
-          sourceType: "RAYLET",
-          hostName: "po-dev.inc.alipay.net",
-          pid: 9359,
-          label: "",
-          message: "18",
-          timestamp: 1691872914.3470645,
-          severity: "INFO",
-          customFields: { jobId: "64000000", nodeId: "", taskId: "" },
-        },
-        {
-          eventId: "138f5a039db229b931949d835eee1f91a058",
-          sourceType: "RAYLET",
-          hostName: "po-dev.inc.alipay.net",
-          pid: 20171,
-          label: "",
-          message: "19",
-          timestamp: 1691872914.347192,
-          severity: "INFO",
-          customFields: { jobId: "64000000", nodeId: "", taskId: "" },
-        },
-      ],
+      "64000000": generatedEvents,
     },
   },
 };

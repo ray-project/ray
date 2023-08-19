@@ -19,7 +19,5 @@ export const getGlobalEvents = () => {
 
 // We use state api endpoints to fetch all events
 export const getNewEvents = (params: any) => {
-  console.info("apiUrl.toString(): ", `api/v0/cluster_events?${params}`);
-
   return axios.get<NewEventRsp>(`api/v0/cluster_events?${params}`);
 };

@@ -22,7 +22,7 @@ def _get_source_files(event_dir, source_types=None, event_file_filter=None):
     event_log_names = os.listdir(event_dir)
     source_files = {}
     all_source_types = set(event_consts.EVENT_SOURCE_ALL)
-    logger.info("all_source_types: ", all_source_types)
+    # logger.info("all_source_types: ", all_source_types)
     # assert False, all_source_types
     for source_type in source_types or event_consts.EVENT_SOURCE_ALL:
         assert source_type in all_source_types, f"Invalid source type: {source_type}"

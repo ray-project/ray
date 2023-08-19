@@ -16,62 +16,70 @@ import {
   TableRow,
   TextField,
   TextFieldProps,
-  Typography,
+  Tooltip,
 } from "@material-ui/core";
 import { SearchOutlined } from "@material-ui/icons";
 import Autocomplete from "@material-ui/lab/Autocomplete";
 import Pagination from "@material-ui/lab/Pagination";
 import dayjs from "dayjs";
 import React, { useContext, useEffect, useState } from "react";
-import { Link } from "react-router-dom";
 import { GlobalContext } from "../App";
-import { CodeDialogButtonWithPreview } from "../common/CodeDialogButton";
-import { StyledTableCell } from "../common/TableCell";
-import { getEvents, getGlobalEvents, getNewEvents } from "../service/event";
+import { getNewEvents } from "../service/event";
 import { Event } from "../type/event";
 import { useFilter } from "../util/hook";
 import { MOCK_DATA } from "./EventTableMockData";
-import LogVirtualView from "./LogView/LogVirtualView";
 import { StatusChip } from "./StatusChip";
 
+export enum SeverityLevel {
+  INFO = "INFO",
+  DEBUG = "DEBUG",
+  WARNING = "WARNING",
+  ERROR = "ERROR",
+  TRACING = "TRACING",
+} // to maintain and sync with event.proto
+export enum SourceType {
+  COMMON = "COMMON",
+  CORE_WORKER = "CORE_WORKER",
+  GCS = "GCS",
+  RAYLET = "RAYLET",
+  CLUSTER_LIFECYCLE = "CLUSTER_LIFECYCLE",
+  AUTOSCALER = "AUTOSCALER",
+  JOBS = "JOBS",
+  SERVE = "SERVE",
+} // to maintain and sync with event.proto
+
 type EventTableProps = {
-  defaultSeverityLevels?: string[];
+  defaultSeverityLevels?: SeverityLevel[];
+  entityName?: string;
+  entityId?: string; // a id in string or *
 };
 
 const transformFiltersToParams = (filters: Filters) => {
-  const params = new URLSearchParams();
   if (!filters) {
-    return;
+    return null;
   }
 
-  const isString = (value: any): value is string => typeof value === "string";
+  const params = new URLSearchParams();
+
+  if (filters.entityName && filters.entityId) {
+    params.append(
+      `${encodeURIComponent(filters.entityName)}_id`,
+      encodeURIComponent(filters.entityId),
+    );
+  }
 
   for (const key in filters) {
-    const t = typeof filters.entityName;
-    console.info("t : ", t);
-
-    if (!key) {
-      continue;
-    }
-
-    if (
-      isString(key) &&
-      key === "entityId" &&
-      filters.entityName !== undefined &&
-      filters.entityId !== undefined
-    ) {
-      params.append(
-        `${encodeURIComponent(filters.entityName)}_id`,
-        encodeURIComponent(filters.entityId),
-      );
-    } else if (Array.isArray(filters[key as keyof Filters])) {
-      // Process sourceType and severityLevel
+    if (key === "sourceType" || key === "severityLevel") {
       const filterArray = filters[key as keyof Filters] as string[];
-      if (filterArray !== undefined) {
-        filterArray.forEach((value) => {
-          params.append(encodeURIComponent(key), encodeURIComponent(value));
-        });
-      }
+      filterArray.forEach((value) => {
+        params.append(encodeURIComponent(key), encodeURIComponent(value));
+      });
+    } else {
+      // key === 'limit' or other key to add in the future
+      params.append(
+        encodeURIComponent(key),
+        encodeURIComponent(filters[key as keyof Filters] as string),
+      );
     }
   }
 
@@ -79,13 +87,13 @@ const transformFiltersToParams = (filters: Filters) => {
 };
 
 const useStyles = makeStyles((theme) => ({
-  table: {
-    marginTop: theme.spacing(4),
-    padding: theme.spacing(2),
-  },
-  pageMeta: {
-    padding: theme.spacing(2),
-    marginTop: theme.spacing(2),
+  overflowCell: {
+    display: "block",
+    margin: "auto",
+    maxWidth: 360,
+    textOverflow: "ellipsis",
+    overflow: "hidden",
+    whiteSpace: "nowrap",
   },
   filterContainer: {
     display: "flex",
@@ -98,61 +106,43 @@ const useStyles = makeStyles((theme) => ({
     lineHeight: "46px",
     height: 56,
   },
-  infokv: {
-    margin: theme.spacing(1),
-  },
-  li: {
-    color: theme.palette.text.secondary,
-    fontSize: 12,
-  },
-  code: {
-    wordBreak: "break-all",
-    whiteSpace: "pre-line",
-    margin: 12,
-    fontSize: 14,
-    color: theme.palette.text.primary,
-  },
 
   tableContainer: {
     overflowX: "scroll",
   },
-  expandCollapseIcon: {
-    color: theme.palette.text.secondary,
-    fontSize: "1.5em",
-    verticalAlign: "middle",
-  },
-  idCol: {
-    display: "block",
-    width: "50px",
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-    whiteSpace: "nowrap",
-  },
-  OverflowCol: {
-    display: "block",
-    width: "100px",
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-    whiteSpace: "nowrap",
-  },
+
   helpInfo: {
     marginLeft: theme.spacing(1),
   },
   message: {
     maxWidth: "200",
   },
+  pagination: {
+    marginTop: theme.spacing(3),
+  },
 }));
 
-const columns = [
-  { label: "Severity" },
-  { label: "Timestamp" },
-  { label: "Source" },
-  { label: "Hostname" },
-  {
-    label: "PID",
-  },
-  { label: "Message" },
+const SOURCE_TYPE_OPTIONS = [
+  "common",
+  "core_worker",
+  "gcs",
+  "raylet",
+  "jobs",
+  "serve",
+  "cluster_lifecycle",
+  "autoscaler",
 ];
+
+const SEVERITY_LEVEL_OPTIONS = ["info", "debug", "warning", "error", "tracing"];
+
+const columns = [
+  { label: "Severity", align: "center" },
+  { label: "Timestamp", align: "center" },
+  { label: "Source", align: "center" },
+  { label: "Custom Fields", align: "left" },
+  { label: "Message", align: "left" },
+];
+type Align = "inherit" | "left" | "center" | "right" | "justify";
 
 type Filters = {
   sourceType: string[]; // TODO: Chao, multi-select severity level in filters button is a P1
@@ -161,15 +151,15 @@ type Filters = {
   entityId: string | undefined;
 };
 const useEventTable = (props: EventTableProps) => {
-  const { defaultSeverityLevels } = props;
+  const { defaultSeverityLevels, entityName, entityId } = props;
   const { nodeMap } = useContext(GlobalContext);
   const [loading, setLoading] = useState(true);
   const { changeFilter: _changeFilter, filterFunc } = useFilter();
-  const [filters, setFilters] = useState<Filters>({
+  const [filters, _setFilters] = useState<Filters>({
     sourceType: [],
     severityLevel: defaultSeverityLevels || [],
-    entityName: undefined, // We used two fields because we will support select entityName by dropdown and input entityId by TextField in the future.
-    entityId: undefined, // id or *
+    entityName, // We used two fields(entityName, entityId) because we will support select entityName by dropdown and input entityId by TextField in the future.
+    entityId, // id or *
   });
 
   const [events, setEvents] = useState<Event[]>([]);
@@ -182,10 +172,19 @@ const useEventTable = (props: EventTableProps) => {
   const changePage = (key: string, value: number) => {
     setPagination({ ...pagination, [key]: value });
   };
+
   const realLen = events.filter(filterFunc).length;
   const { pageSize } = pagination;
   const changeFilter: typeof _changeFilter = (...params) => {
     _changeFilter(...params);
+    setPagination({
+      ...pagination,
+      pageNo: 1,
+    });
+  };
+
+  const setFilters: typeof _setFilters = (...params) => {
+    _setFilters(...params);
     setPagination({
       ...pagination,
       pageNo: 1,
@@ -197,12 +196,9 @@ const useEventTable = (props: EventTableProps) => {
       try {
         const params = transformFiltersToParams(filters);
         const rsp = await getNewEvents(params); // We don't useSWR since we need to get real time events data once filters changed
-        console.info("rsp: ", rsp);
         const events = rsp?.data?.data?.result?.result;
         if (events) {
-          setEvents(
-            events.sort((a, b) => Number(b.timestamp) - Number(a.timestamp)),
-          );
+          setEvents(events); // We sor the event by timestamp in the backend
         }
       } catch (e) {
         console.error("getEvent error: ", e);
@@ -213,37 +209,10 @@ const useEventTable = (props: EventTableProps) => {
     getEvent();
   }, [filters]);
 
-  // useEffect(() => {
-  //   const getEvent = async () => {
-  //     try {
-  //       if (job_id) {
-  //         const rsp = await getEvents(job_id);
-  //         if (rsp?.data?.data?.events) {
-  //           setEvents(
-  //             rsp.data.data.events.sort(
-  //               (a, b) => Number(b.timestamp) - Number(a.timestamp),
-  //             ),
-  //           );
-  //         }
-  //       } else {
-  //         const rsp = await getGlobalEvents();
-  //         if (rsp?.data?.data?.events) {
-  //           setEvents(
-  //             Object.values(rsp.data.data.events)
-  //               .reduce((a, b) => a.concat(b))
-  //               .sort((a, b) => Number(b.timestamp) - Number(a.timestamp)),
-  //           );
-  //         }
-  //       }
-  //     } catch (e) {
-  //     } finally {
-  //       setLoading(false);
-  //     }
-  //   setEvents(MOCK_DATA.data.events["64000000"] as any);
-  //   setLoading(false);
-
-  //   // getEvent();
-  // }, []);
+  useEffect(() => {
+    setEvents(MOCK_DATA.data.events["64000000"] as any);
+    setLoading(false);
+  }, [events]);
 
   useEffect(() => {
     setPagination((p) => ({
@@ -251,7 +220,7 @@ const useEventTable = (props: EventTableProps) => {
       total: Math.ceil(realLen / p.pageSize),
       pageNo: 1,
     }));
-  }, [realLen, pageSize]);
+  }, [realLen, pageSize]); // pagination
 
   const range = [
     (pagination.pageNo - 1) * pagination.pageSize,
@@ -281,10 +250,7 @@ const NewEventTable = (props: EventTableProps) => {
     changeFilter,
     pagination,
     changePage,
-    sourceOptions,
-    severityOptions,
     loading,
-    nodeMap,
   } = useEventTable(props);
 
   if (loading) {
@@ -293,24 +259,10 @@ const NewEventTable = (props: EventTableProps) => {
   return (
     <div>
       <header className={classes.filterContainer}>
-        <button onClick={() => setFilters({ ...filters, sourceType: ["GCS"] })}>
-          test
-        </button>
         <Autocomplete
           className={classes.search}
-          style={{ width: 100 }}
-          options={sourceOptions}
-          onInputChange={(_: any, value: string) => {
-            setFilters({ ...filters, sourceType: [value.trim()] });
-          }}
-          renderInput={(params: TextFieldProps) => (
-            <TextField {...params} label="Source" />
-          )}
-        />
-        <Autocomplete
-          className={classes.search}
-          style={{ width: 140 }}
-          options={severityOptions}
+          style={{ width: 150 }}
+          options={SEVERITY_LEVEL_OPTIONS}
           onInputChange={(_: any, value: string) => {
             setFilters({ ...filters, severityLevel: [value.trim()] });
           }}
@@ -318,12 +270,23 @@ const NewEventTable = (props: EventTableProps) => {
             <TextField {...params} label="Severity" />
           )}
         />
+        <Autocomplete
+          className={classes.search}
+          style={{ width: 150 }}
+          options={SOURCE_TYPE_OPTIONS}
+          onInputChange={(_: any, value: string) => {
+            setFilters({ ...filters, sourceType: [value.trim()] });
+          }}
+          renderInput={(params: TextFieldProps) => (
+            <TextField {...params} label="Source" />
+          )}
+        />
         <TextField
           className={classes.search}
-          label="Msg"
+          label="Message"
           InputProps={{
             onChange: ({ target: { value } }) => {
-              changeFilter("message", value.trim());
+              changeFilter("message", value.trim()); // TODO: filter the message in the frontend and to filter it in the backend in the future
             },
             endAdornment: (
               <InputAdornment position="end">
@@ -338,8 +301,8 @@ const NewEventTable = (props: EventTableProps) => {
           <Table className={classes.tableContainer}>
             <TableHead>
               <TableRow>
-                {columns.map(({ label }) => (
-                  <TableCell align="center" key={label}>
+                {columns.map(({ label, align }) => (
+                  <TableCell key={label} align={align as Align}>
                     <Box
                       display="flex"
                       justifyContent="center"
@@ -355,41 +318,46 @@ const NewEventTable = (props: EventTableProps) => {
               {events.map(
                 ({
                   severity,
-                  // time,
                   sourceType,
-                  hostName,
+                  timestamp,
                   message,
-                  sourceHostname,
-                  pid,
-                  sourcePid,
-                  // custom_fields,
+                  customFields,
                 }) => {
-                  // const realTimestamp =
-                  //   time ||
-                  //   dayjs(Math.floor(timestamp * 1000)).format(
-                  //     "YYYY-MM-DD HH:mm:ss",
-                  //   );
+                  const realTimestamp = dayjs(
+                    Math.floor(timestamp * 1000),
+                  ).format("YYYY-MM-DD HH:mm:ss");
+                  const customFieldsDisplay =
+                    customFields && Object.keys(customFields).length > 0
+                      ? JSON.stringify(customFields)
+                      : "-";
                   return (
                     <React.Fragment>
                       <TableRow>
-                        <StyledTableCell>
+                        <TableCell align="center">
                           <StatusChip status={severity} type={severity} />
-                        </StyledTableCell>
-                        {/* <StyledTableCell>{time}</StyledTableCell> */}
-                        <StyledTableCell>{sourceType}</StyledTableCell>
-                        {/* <StyledTableCell>{custom_fields}</StyledTableCell> */}
-                        <StyledTableCell>
-                          {message ? (
-                            <CodeDialogButtonWithPreview
-                              className={classes.message}
-                              buttonText={"Expand"}
-                              title="Event Message Detail"
-                              code={message}
-                            />
-                          ) : (
-                            "-"
-                          )}
-                        </StyledTableCell>
+                        </TableCell>
+                        <TableCell align="center">{realTimestamp}</TableCell>
+                        <TableCell align="center">{sourceType}</TableCell>
+                        <TableCell align="left">
+                          <Tooltip
+                            className={classes.overflowCell}
+                            title={customFieldsDisplay}
+                            arrow
+                            interactive
+                          >
+                            <div>{customFieldsDisplay}</div>
+                          </Tooltip>
+                        </TableCell>
+                        <TableCell align="left">
+                          <Tooltip
+                            className={classes.overflowCell}
+                            title={message}
+                            arrow
+                            interactive
+                          >
+                            <div>{message}</div>
+                          </Tooltip>
+                        </TableCell>
                       </TableRow>
                     </React.Fragment>
                   );
@@ -401,6 +369,7 @@ const NewEventTable = (props: EventTableProps) => {
       </body>
       <footer>
         <Pagination
+          className={classes.pagination}
           count={pagination.total}
           page={pagination.pageNo}
           onChange={(event: React.ChangeEvent<unknown>, value: number) => {

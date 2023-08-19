@@ -458,35 +458,49 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
         record_extra_usage_tag(TagKey.CORE_STATE_API_LIST_RUNTIME_ENVS, "1")
         return await self._handle_list_api(self._state_api.list_runtime_envs, req)
 
+    def filterEvents(events, severity_levels, source_types, count=200, **params):
+        filtered_events = []
+
+        # Apply filter 1: severity_level and source_type
+        for event in events:
+            if (
+                event["severity_level"] in severity_levels
+                and event["source_type"] in source_types
+            ):
+                filtered_events.append(event)
+
+        # Apply filter 2: custom_fields matching entity parameters
+        if params:
+            for event in filtered_events[:]:
+                custom_fields = event.get("custom_fields", {})
+                if all(
+                    custom_fields.get(key) == str(value)
+                    for key, value in params.items()
+                ):
+                    continue
+                filtered_events.remove(event)
+
+        # Apply filter 3: Limit the number of events
+        filtered_events = filtered_events[:count]
+
+        return filtered_events
+
     @routes.get("/api/v0/cluster_events")
     @RateLimitedModule.enforce_max_concurrent_calls
     async def list_cluster_events(
         self, req: aiohttp.web.Request
     ) -> aiohttp.web.Response:
         record_extra_usage_tag(TagKey.CORE_STATE_API_LIST_CLUSTER_EVENTS, "1")
-        return await self._handle_list_api(self._state_api.list_cluster_events, req)
-
-    @routes.get("/api/v1/cluster_events")
-    @RateLimitedModule.enforce_max_concurrent_calls
-    async def list_cluster_events(
-        self, req: aiohttp.web.Request
-    ) -> aiohttp.web.Response:
-        record_extra_usage_tag(TagKey.CORE_STATE_API_LIST_CLUSTER_EVENTS, "1")
         job_id = req.query.get("job_id", None)
-        source_types = req.query.getall("sourceType", [])
-        severity_levels = req.query.getall("severityLevel", [])
+        source_types = req.query.getall("sourceType")
+        severity_levels = req.query.getall("severity_level")
 
         # Filtering out specified keys from the query parameters
-        excluded_keys = ["job_id", "sourceType", "severity_level"]
+        excluded_keys = ["job_id", "sourceType", "severity_level", "count"]
         rest_of_query = {
             key: value for key, value in req.query.items() if key not in excluded_keys
         }
-        logger.info(f"rest_of_query {type(rest_of_query)}: {rest_of_query}")
-
         assert len(rest_of_query) <= 1, "At most 1 filter key is allowed"
-
-        for key, value in req.query.items():
-            logger.info(f"Query Param: {key} = {value}")
 
         return await self._handle_list_api(
             self._state_api.list_cluster_events(req=req), req
