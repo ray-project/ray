@@ -1,4 +1,5 @@
 import fnmatch
+import io
 import json
 import logging
 import os
@@ -28,6 +29,7 @@ from ray.train._internal.storage import (
     _use_storage_context,
     _is_directory,
     _list_at_fs_path,
+    _exists_at_fs_path,
     get_fs_and_path,
 )
 from ray.tune.execution.tune_controller import TuneController
@@ -63,7 +65,7 @@ DEFAULT_FILE_TYPE = "csv"
 
 @PublicAPI(stability="beta")
 class NewExperimentAnalysis:
-    """Analyze results from a Tune experiment.
+    """Analyze results from a Ray Train/Tune experiment.
 
     To use this class, the run must use the `JsonLoggerCallback` to save a
     `result.json` in each trial directory, storing the history of reported metrics.
@@ -113,11 +115,87 @@ class NewExperimentAnalysis:
             self.default_metric = DEFAULT_METRIC
 
         self.trials = trials or self._load_trials()
+        self.trial_dataframes = self.fetch_trial_dataframes()
         self._configs = self.get_all_configs()
-        self._trial_dataframes = self.fetch_trial_dataframes()
 
     def _load_trials(self) -> List[Trial]:
-        ...
+        with self._fs.open_input_stream(self._experiment_json_fs_path) as f:
+            experiment_state = json.loads(f.readall(), cls=TuneFunctionDecoder)
+
+        trials = []
+        trial_states = experiment_state["trial_data"]
+        for trial_json_state, trial_runtime_metadata in trial_states:
+            trial = Trial.from_json_state(trial_json_state, stub=True)
+            trial.restore_run_metadata(trial_runtime_metadata)
+            # TODO(justinvyu): [handle_moved_storage_path]
+            trials.append(trial)
+        return trials
+
+    def fetch_trial_dataframes(self) -> Dict[str, Optional[DataFrame]]:
+        """Fetches trial dataframes from files.
+
+        Returns:
+            A dictionary mapping trial_id -> pd.DataFrame
+        """
+        force_dtype = {"trial_id": str}  # Never convert trial_id to float.
+
+        trial_dfs = {}
+        for trial in self.trials:
+            # If there were no reported results, there will be no files into a DataFrame
+            if trial.last_result is None:
+                trial_dfs[trial.trial_id] = DataFrame()
+                continue
+
+            json_fs_path = os.path.join(trial.storage.trial_fs_path, EXPR_RESULT_FILE)
+            csv_fs_path = os.path.join(trial.storage.trial_fs_path, EXPR_PROGRESS_FILE)
+            # Prefer reading the JSON if it exists.
+            if _exists_at_fs_path(trial.storage.storage_filesystem, json_fs_path):
+                with trial.storage.storage_filesystem.open_input_stream(
+                    json_fs_path
+                ) as f:
+                    json_list = [
+                        json.loads(json_row)
+                        for json_row in f.readall()
+                        .decode("utf-8")
+                        .rstrip("\n")
+                        .split("\n")
+                    ]
+                df = pd.json_normalize(json_list, sep="/")
+            # Fallback to reading the CSV.
+            elif _exists_at_fs_path(trial.storage.storage_filesystem, csv_fs_path):
+                with trial.storage.storage_filesystem.open_input_stream(
+                    csv_fs_path
+                ) as f:
+                    csv_str = f.readall().decode("utf-8")
+                df = pd.read_csv(io.StringIO(csv_str), dtype=force_dtype)
+            else:
+                # TODO(justinvyu): Log a warning here?
+                df = DataFrame()
+
+            trial_dfs[trial.trial_id] = df
+
+        return trial_dfs
+
+    def get_all_configs(self, prefix: bool = False) -> Dict[str, Dict]:
+        """Returns all trial hyperparameter configurations.
+
+        Args:
+            prefix: If True, flattens the config dict
+                and prepends `config/`.
+
+        Returns:
+            Dict[str, Dict]: Dict of all configurations of trials, indexed by
+                their trial id.
+        """
+        # if prefix:
+        #     self._configs[path] = flatten_dict({CONFIG_PREFIX: config})
+        # else:
+        #     self._configs[path] = config
+        configs = {}
+
+        assert self.trials
+
+        return configs
 
     @classmethod
     def _find_newest_experiment_checkpoint(
@@ -464,50 +542,6 @@ class NewExperimentAnalysis:
                 return best_path
             return None
 
-    def get_all_configs(self, prefix: bool = False) -> Dict[str, Dict]:
-        """Returns a list of all configurations.
-
-        Args:
-            prefix: If True, flattens the config dict
-                and prepends `config/`.
-
-        Returns:
-            Dict[str, Dict]: Dict of all configurations of trials, indexed by
-                their trial dir.
-        """
-        fail_count = 0
-        failed_paths = []
-        for path in self._get_trial_paths():
-            try:
-                param_file = os.path.join(path, EXPR_PARAM_FILE)
-                if not os.path.exists(param_file) and self._remote_path:
-                    download_from_uri(
-                        self._convert_local_to_cloud_path(param_file), param_file
-                    )
-
-                with open(os.path.join(path, EXPR_PARAM_FILE)) as f:
-                    config = json.load(f)
-                if prefix:
-                    self._configs[path] = flatten_dict({CONFIG_PREFIX: config})
-                else:
-                    self._configs[path] = config
-            except Exception:
-                logger.debug(
-                    f"Exception occurred when loading trial configs. "
-                    f"See traceback:\n{traceback.format_exc()}"
-                )
-                fail_count += 1
-                failed_paths.append(path)
-
-        if fail_count:
-            failed_paths_str = "\n".join([f"- {path}" for path in failed_paths])
-            logger.warning(
-                f"Failed to read the config for {fail_count} trials:\n"
-                f"{failed_paths_str}"
-            )
-
-        return self._configs
-
     def get_best_trial(
         self,
         metric: Optional[str] = None,
@@ -682,53 +716,6 @@ class NewExperimentAnalysis:
             trial = self.get_best_logdir(metric, mode)
 
         return self.get_best_checkpoint(trial, "training_iteration", "max")
-
-    def fetch_trial_dataframes(self) -> Dict[str, DataFrame]:
-        """Fetches trial dataframes from files.
-
-        Returns:
-            A dictionary containing "trial dir" to Dataframe.
-        """
-        fail_count = 0
-        failed_paths = []
-        force_dtype = {"trial_id": str}  # Never convert trial_id to float.
-        for path in self._get_trial_paths():
-            try:
-                if self._file_type == "json":
-                    json_file = os.path.join(path, EXPR_RESULT_FILE)
-                    if not os.path.exists(json_file) and self._remote_path:
-                        download_from_uri(
-                            self._convert_local_to_cloud_path(json_file), json_file
-                        )
-
-                    with open(json_file, "r") as f:
-                        json_list = [json.loads(line) for line in f if line]
-                    df = pd.json_normalize(json_list, sep="/")
-                elif self._file_type == "csv":
-                    csv_file = os.path.join(path, EXPR_PROGRESS_FILE)
-                    if not os.path.exists(csv_file) and self._remote_path:
-                        download_from_uri(
-                            self._convert_local_to_cloud_path(csv_file), csv_file
-                        )
-
-                    df = pd.read_csv(csv_file, dtype=force_dtype)
-                self.trial_dataframes[path] = df
-            except Exception:
-                logger.debug(
-                    f"Exception occurred when loading trial results. See traceback:\n"
-                    f"{traceback.format_exc()}"
-                )
-                fail_count += 1
-                failed_paths.append(path)
-
-        if fail_count:
-            failed_paths_str = "\n".join([f"- {path}" for path in failed_paths])
-            logger.warning(
-                f"Failed to read the results for {fail_count} trials:\n"
-                f"{failed_paths_str}"
-            )
-
-        return self.trial_dataframes
 
     def stats(self) -> Dict:
         """Returns a dictionary of the statistics of the experiment.
