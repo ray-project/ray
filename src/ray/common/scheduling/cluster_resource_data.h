@@ -31,8 +31,6 @@ namespace ray {
 
 using scheduling::ResourceID;
 
-bool IsPredefinedResource(scheduling::ResourceID resource_id);
-
 /// Represents a request of resources.
 class ResourceRequest {
  public:
@@ -67,8 +65,6 @@ class ResourceRequest {
   }
 
   bool IsEmpty() const { return resources_.IsEmpty(); }
-
-  size_t Size() const { return resources_.Size(); }
 
   void Clear() { resources_.Clear(); }
 
@@ -303,9 +299,10 @@ class TaskResourceInstances {
 class NodeResources {
  public:
   NodeResources() {}
-  NodeResources(const ResourceSet &resources) : total(resources), available(resources) {}
-  ResourceSet total;
-  ResourceSet available;
+  NodeResources(const NodeResourceSet &resources)
+      : total(resources), available(resources) {}
+  NodeResourceSet total;
+  NodeResourceSet available;
   /// Only used by light resource report.
   ResourceSet load;
   /// Resources owned by normal tasks.
@@ -352,14 +349,14 @@ class NodeResources {
 /// This is used to describe the resources of the local node.
 class NodeResourceInstances {
  public:
-  TaskResourceInstances available;
-  TaskResourceInstances total;
+  NodeResourceInstanceSet available;
+  NodeResourceInstanceSet total;
   // The key-value labels of this node.
   absl::flat_hash_map<std::string, std::string> labels;
 
   /// Extract available resource instances.
-  const TaskResourceInstances &GetAvailableResourceInstances() const;
-  const TaskResourceInstances &GetTotalResourceInstances() const;
+  const NodeResourceInstanceSet &GetAvailableResourceInstances() const;
+  const NodeResourceInstanceSet &GetTotalResourceInstances() const;
   /// Returns if this equals another node resources.
   bool operator==(const NodeResourceInstances &other);
   /// Returns human-readable string for these resources.

@@ -97,3 +97,6 @@ constexpr char kLibraryPathEnvName[] = "LD_LIBRARY_PATH";
 /// Default node label key: node_id
 constexpr char kLabelKeyNodeID[] = RAY_LABEL_KEY_PREFIX "node_id";
 #undef RAY_LABEL_KEY_PREFIX
+
+/// All nodes implicitly have resources with this prefix and the quantity is 1.
+constexpr char kNodeImplicitResourcePrefix[] = "node:__internal_node_implicit_resource_";
