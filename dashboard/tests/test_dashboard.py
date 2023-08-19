@@ -107,14 +107,14 @@ def check_agent_register(raylet_proc, agent_pid):
 
 
 @pytest.mark.parametrize(
-    "ray_start_with_dashboard",
+    "ray_start_regular",
     [{"_system_config": {"agent_register_timeout_ms": 5000}}],
     indirect=True,
 )
-def test_basic(ray_start_with_dashboard):
+def test_basic(ray_start_regular):
     """Dashboard test that starts a Ray cluster with a dashboard server running,
     then hits the dashboard API and asserts that it receives sensible data."""
-    address_info = ray_start_with_dashboard
+    address_info = ray_start_regular
     node_id = address_info["node_id"]
     gcs_client = make_gcs_client(address_info)
     ray.experimental.internal_kv._initialize_internal_kv(gcs_client)
@@ -1039,7 +1039,7 @@ def test_agent_port_conflict(shutdown_only):
     os.environ.get("RAY_MINIMAL") != "1",
     reason="This test only works for minimal installation.",
 )
-def test_dashboard_requests_fail_on_missing_deps(ray_start_with_dashboard):
+def test_dashboard_requests_fail_on_missing_deps(ray_start_regular):
     """Check that requests from client fail with minimal installation"""
     response = None
 
