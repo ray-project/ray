@@ -567,7 +567,7 @@ def test_build_multi_app(ray_start_stop):
         )
         print("App 2 is live and reachable over HTTP.")
 
-        app_name = "app3_grpc-deployment"
+        app_name = "app3"
         channel = grpc.insecure_channel("localhost:9000")
         stub = serve_pb2_grpc.UserDefinedServiceStub(channel)
         request = serve_pb2.UserDefinedMessage(name="foo", num=30, foo="bar")
