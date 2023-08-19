@@ -1780,8 +1780,11 @@ class DeploymentState:
         """
         slow_replicas = []
         replicas_failed = False
+        total_check_started_time = 0
         for replica in self._replicas.pop(states=[original_state]):
+            start_time = time.time()
             start_status, error_msg = replica.check_started()
+            total_check_started_time += time.time() - start_time
             if start_status == ReplicaStartupStatus.SUCCEEDED:
                 # This replica should be now be added to handle's replica
                 # set.
@@ -1821,6 +1824,10 @@ class DeploymentState:
                     self._stop_replica(replica, graceful_stop=False)
                 else:
                     self._replicas.add(original_state, replica)
+        logger.info(
+            "Finished check_started for all replicas with original "
+            f"state {original_state}. Time taken: {total_check_started_time}."
+        )
 
         # If replicas have failed enough times, execute exponential backoff
         # Wait 1, 2, 4, ... seconds before consecutive retries (or use a custom
@@ -1875,8 +1882,12 @@ class DeploymentState:
         transition happened.
         """
 
+        total_check_health_time = 0
         for replica in self._replicas.pop(states=[ReplicaState.RUNNING]):
-            if replica.check_health():
+            start_time = time.time()
+            health_check = replica.check_health()
+            total_check_health_time += time.time() - start_time
+            if health_check:
                 self._replicas.add(ReplicaState.RUNNING, replica)
                 self.health_check_gauge.set(
                     1,
@@ -1911,6 +1922,10 @@ class DeploymentState:
                         "deployment will be UNHEALTHY until the replica "
                         "recovers or a new deploy happens.",
                     )
+        logger.info(
+            "Finished checking all replicas' health. Time taken: "
+            f"{total_check_health_time}."
+        )
 
         slow_start_replicas = []
         slow_start = self._check_startup_replicas(ReplicaState.STARTING)
@@ -2014,13 +2029,33 @@ class DeploymentState:
             # we manage.
 
             # Check the state of existing replicas and transition if necessary.
+            start_time = time.time()
             self._check_and_update_replicas()
+            logger.info(
+                "Finished calling _check_and_update_replicas(). Time taken: "
+                f"{time.time() - start_time}."
+            )
 
+            start_time = time.time()
             self._stop_replicas_on_draining_nodes()
+            logger.info(
+                "Finished calling _stop_replicas_on_draining_nodes(). Time "
+                f"taken: {time.time() - start_time}."
+            )
 
+            start_time = time.time()
             upscale, downscale = self._scale_deployment_replicas()
+            logger.info(
+                "Finished calling _scale_deployment_replicas(). Time "
+                f"taken: {time.time() - start_time}."
+            )
 
+            start_time = time.time()
             deleted, any_replicas_recovering = self._check_curr_status()
+            logger.info(
+                "Finished calling _check_curr_status(). Time "
+                f"taken: {time.time() - start_time}."
+            )
         except Exception:
             logger.exception(
                 "Exception occurred trying to update deployment state:\n"
@@ -2628,6 +2663,7 @@ class DeploymentStateManager:
         downscales = {}
 
         for deployment_name, deployment_state in self._deployment_states.items():
+            start_time = time.time()
             if deployment_state.should_autoscale():
                 current_num_ongoing_requests = self.get_replica_ongoing_request_metrics(
                     deployment_name,
@@ -2640,12 +2676,21 @@ class DeploymentStateManager:
                 deployment_state.autoscale(
                     current_num_ongoing_requests, current_handle_queued_queries
                 )
+            logger.info(
+                "Finished calling autoscale(). Time taken: "
+                f"{time.time() - start_time}."
+            )
 
+            start_time = time.time()
             deployment_state_update_result = deployment_state.update()
             if deployment_state_update_result.upscale:
                 upscales[deployment_name] = deployment_state_update_result.upscale
             if deployment_state_update_result.downscale:
                 downscales[deployment_name] = deployment_state_update_result.downscale
+            logger.info(
+                "Finished calling deployment_state.update(). Time taken: "
+                f"{time.time() - start_time}."
+            )
 
             if deployment_state_update_result.deleted:
                 deleted_tags.append(deployment_name)
@@ -2657,14 +2702,30 @@ class DeploymentStateManager:
 
             any_recovering |= deployment_state_update_result.any_replicas_recovering
 
+        start_time = time.time()
         deployment_to_replicas_to_stop = self._deployment_scheduler.schedule(
             upscales, downscales
         )
+        logger.info(
+            "Finished calling self._deployment_scheduler.schedule(). Time "
+            f"taken: {time.time() - start_time}."
+        )
+
+        start_time = time.time()
         for deployment_name, replicas_to_stop in deployment_to_replicas_to_stop.items():
             self._deployment_states[deployment_name].stop_replicas(replicas_to_stop)
+        logger.info(
+            "Finished calling stop_replicas(). Time "
+            f"taken: {time.time() - start_time}."
+        )
 
+        start_time = time.time()
         for deployment_name, deployment_state in self._deployment_states.items():
             deployment_state.notify_running_replicas_changed()
+        logger.info(
+            "Finished calling notify_running_replicas_changed(). Time "
+            f"taken: {time.time() - start_time}."
+        )
 
         for tag in deleted_tags:
             self._deployment_scheduler.on_deployment_deleted(tag)
