@@ -33,9 +33,7 @@ def generate_repartition_fn(
         # If map_transformer is specified (e.g. from fusing
         # MapOperator->AllToAllOperator), we pass a map function which
         # is applied to each block before shuffling.
-        map_transformer: Optional[
-            "MapTransformer"
-        ] = ctx.upstream_map_transformer
+        map_transformer: Optional["MapTransformer"] = ctx.upstream_map_transformer
         upstream_map_fn = None
         if map_transformer:
 

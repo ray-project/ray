@@ -99,7 +99,10 @@ class MapTransformer:
         self._init_fn = init_fn if init_fn is not None else lambda: None
 
     def init(self) -> None:
-        """Initialize the transformer. Should be called before applying the transform."""
+        """Initialize the transformer.
+
+        Should be called before applying the transform.
+        """
         self._init_fn()
 
     def apply_transform(
@@ -205,7 +208,8 @@ def _to_output_blocks(
     """Convert UDF-returned data to output blocks.
 
     Args:
-        iter: the iterable of UDF-returned data, type must be one of MapTransformFnDataType.
+        iter: the iterable of UDF-returned data, whose type must be one
+            of MapTransformFnDataType.
         iter_type: the type of the iterable, must match the type of iter.
     """
     output_buffer = BlockOutputBuffer(

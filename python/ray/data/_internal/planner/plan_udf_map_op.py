@@ -164,8 +164,12 @@ def _validate_batch_output(batch: Block) -> None:
                 )
 
 
-def _generate_transform_fn_for_map_batches(fn: UserDefinedFunction) -> MapTransformCallable[DataBatch, DataBatch]:
-    def transform_fn(batches: Iterable[DataBatch], _: TaskContext) -> Iterable[DataBatch]:
+def _generate_transform_fn_for_map_batches(
+    fn: UserDefinedFunction,
+) -> MapTransformCallable[DataBatch, DataBatch]:
+    def transform_fn(
+        batches: Iterable[DataBatch], _: TaskContext
+    ) -> Iterable[DataBatch]:
         for batch in batches:
             try:
                 if (
@@ -217,7 +221,9 @@ def _validate_row_output(item):
         )
 
 
-def _generate_transform_fn_for_map_rows(fn: UserDefinedFunction) -> MapTransformCallable[Row, Row]:
+def _generate_transform_fn_for_map_rows(
+    fn: UserDefinedFunction,
+) -> MapTransformCallable[Row, Row]:
     def transform_fn(rows: Iterable[Row], _: TaskContext) -> Iterable[Row]:
         for row in rows:
             out_row = fn(row)
@@ -227,7 +233,9 @@ def _generate_transform_fn_for_map_rows(fn: UserDefinedFunction) -> MapTransform
     return transform_fn
 
 
-def _generate_transform_fn_for_flat_map(fn: UserDefinedFunction) -> MapTransformCallable[Row, Row]:
+def _generate_transform_fn_for_flat_map(
+    fn: UserDefinedFunction,
+) -> MapTransformCallable[Row, Row]:
     def transform_fn(rows: Iterable[Row], _: TaskContext) -> Iterable[Row]:
         for row in rows:
             for out_row in fn(row):
@@ -237,7 +245,9 @@ def _generate_transform_fn_for_flat_map(fn: UserDefinedFunction) -> MapTransform
     return transform_fn
 
 
-def _generate_transform_fn_for_filter(fn: UserDefinedFunction) -> MapTransformCallable[Row, Row]:
+def _generate_transform_fn_for_filter(
+    fn: UserDefinedFunction,
+) -> MapTransformCallable[Row, Row]:
     def transform_fn(rows: Iterable[Row], _: TaskContext) -> Iterable[Row]:
         for row in rows:
             if fn(row):

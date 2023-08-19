@@ -1,8 +1,9 @@
-from typing import Callable, Iterable, List, Optional
+from typing import Iterable, List
 
 import ray
 import ray.cloudpickle as cloudpickle
 from ray.data._internal.execution.interfaces import PhysicalOperator, RefBundle
+from ray.data._internal.execution.interfaces.task_context import TaskContext
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.operators.map_transformer import (
@@ -13,8 +14,6 @@ from ray.data._internal.execution.operators.map_transformer import (
 from ray.data._internal.logical.operators.read_operator import Read
 from ray.data.block import Block
 from ray.data.datasource.datasource import ReadTask
-
-from ray.data._internal.execution.interfaces.task_context import TaskContext
 
 TASK_SIZE_WARN_THRESHOLD_BYTES = 100000
 
