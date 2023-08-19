@@ -1,4 +1,4 @@
-from typing import Callable, Optional, Dict, Union, TYPE_CHECKING
+from typing import Any, Callable, Optional, Dict, Union, TYPE_CHECKING
 
 from ray.train import DataConfig
 from ray.train.tensorflow.config import TensorflowConfig
@@ -158,9 +158,10 @@ class TensorflowTrainer(DataParallelTrainer):
             dataset. If a ``preprocessor`` is provided and has not already been fit,
             it will be fit on the training dataset. All datasets will be transformed
             by the ``preprocessor`` if one is provided.
-        preprocessor: A ray.data.Preprocessor to preprocess the
-            provided datasets.
         resume_from_checkpoint: A checkpoint to resume training from.
+        metadata: Dict that should be made available via
+            `ray.train.get_context().get_metadata()` and in `checkpoint.get_metadata()`
+            for checkpoints saved from this Trainer. Must be JSON-serializable.
     """
 
     def __init__(
@@ -173,8 +174,10 @@ class TensorflowTrainer(DataParallelTrainer):
         dataset_config: Optional[DataConfig] = None,
         run_config: Optional[RunConfig] = None,
         datasets: Optional[Dict[str, GenDataset]] = None,
-        preprocessor: Optional["Preprocessor"] = None,
+        metadata: Optional[Dict[str, Any]] = None,
         resume_from_checkpoint: Optional[Checkpoint] = None,
+        # Deprecated.
+        preprocessor: Optional["Preprocessor"] = None,
     ):
         if not tensorflow_config:
             tensorflow_config = TensorflowConfig()
@@ -189,4 +192,5 @@ class TensorflowTrainer(DataParallelTrainer):
             datasets=datasets,
             preprocessor=preprocessor,
             resume_from_checkpoint=resume_from_checkpoint,
+            metadata=metadata,
         )

@@ -80,9 +80,9 @@ class XGBoostTrainer(GBDTTrainer):
             iterations more, instead of 10 more.
         scaling_config: Configuration for how to scale data parallel training.
         run_config: Configuration for the execution of the training run.
-        preprocessor: A ray.data.Preprocessor to preprocess the
-            provided datasets.
         resume_from_checkpoint: A checkpoint to resume training from.
+        metadata: Dict that should be made available in `checkpoint.get_metadata()`
+            for checkpoints saved from this Trainer. Must be JSON-serializable.
         **train_kwargs: Additional kwargs passed to ``xgboost.train()`` function.
     """
 
