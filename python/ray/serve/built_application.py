@@ -76,19 +76,14 @@ def _get_deploy_args_from_built_app(app: BuiltApplication):
     """Get list of deploy args from a BuiltApplication."""
     deploy_args_list = []
     for deployment in list(app.deployments.values()):
-        is_ingress = deployment._name == app.ingress.name
+        is_ingress = deployment.name == app.ingress.name
         deploy_args_list.append(
             get_deploy_args(
                 name=deployment._name,
-                deployment_def=deployment._func_or_class,
-                init_args=deployment.init_args,
-                init_kwargs=deployment.init_kwargs,
+                replica_config=deployment._replica_config,
                 ingress=is_ingress,
-                ray_actor_options=deployment._ray_actor_options,
-                placement_group_bundles=deployment._placement_group_bundles,
-                placement_group_strategy=deployment._placement_group_strategy,
-                config=deployment._config,
-                version=deployment._version,
+                deployment_config=deployment._deployment_config,
+                version=deployment.version,
                 route_prefix=deployment.route_prefix,
                 is_driver_deployment=deployment._is_driver_deployment,
                 docs_path=deployment._docs_path,
