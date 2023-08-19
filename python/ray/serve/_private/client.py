@@ -3,7 +3,7 @@ import logging
 import random
 import time
 from functools import wraps
-from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple, Type, Union
+from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple, Union
 
 import ray
 from ray.actor import ActorHandle
@@ -16,7 +16,7 @@ from ray.serve._private.common import (
     DeploymentStatusInfo,
     MultiplexedReplicaInfo,
 )
-from ray.serve.config import DeploymentConfig, HTTPOptions
+from ray.serve.config import DeploymentConfig, HTTPOptions, ReplicaConfig
 from ray.serve._private.constants import (
     CLIENT_POLLING_INTERVAL_S,
     CLIENT_CHECK_CREATION_POLLING_INTERVAL_S,
@@ -268,11 +268,8 @@ class ServeControllerClient:
     def deploy(
         self,
         name: str,
-        deployment_def: Union[Callable, Type[Callable], str],
-        init_args: Tuple[Any],
-        init_kwargs: Dict[Any, Any],
-        ray_actor_options: Optional[Dict] = None,
-        config: Optional[Union[DeploymentConfig, Dict[str, Any]]] = None,
+        replica_config: ReplicaConfig,
+        deployment_config: Optional[Union[DeploymentConfig, Dict[str, Any]]] = None,
         version: Optional[str] = None,
         route_prefix: Optional[str] = None,
         url: Optional[str] = None,
@@ -281,11 +278,8 @@ class ServeControllerClient:
 
         controller_deploy_args = get_deploy_args(
             name=name,
-            deployment_def=deployment_def,
-            init_args=init_args,
-            init_kwargs=init_kwargs,
-            ray_actor_options=ray_actor_options,
-            config=config,
+            replica_config=replica_config,
+            deployment_config=deployment_config,
             version=version,
             route_prefix=route_prefix,
         )
@@ -319,14 +313,9 @@ class ServeControllerClient:
             deployment_args_list.append(
                 get_deploy_args(
                     deployment["name"],
-                    deployment["func_or_class"],
-                    deployment["init_args"],
-                    deployment["init_kwargs"],
+                    replica_config=deployment["replica_config"],
                     ingress=deployment["ingress"],
-                    ray_actor_options=deployment["ray_actor_options"],
-                    placement_group_bundles=deployment["placement_group_bundles"],
-                    placement_group_strategy=deployment["placement_group_strategy"],
-                    config=deployment["config"],
+                    deployment_config=deployment["deployment_config"],
                     version=deployment["version"],
                     route_prefix=deployment["route_prefix"],
                     is_driver_deployment=deployment["is_driver_deployment"],
