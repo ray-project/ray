@@ -1,5 +1,6 @@
 import abc
 import collections
+import pickle
 import warnings
 from enum import Enum
 from typing import TYPE_CHECKING, Any, Dict, Optional, Union
@@ -60,6 +61,15 @@ class Preprocessor(abc.ABC):
 
     # Preprocessors that do not need to be fitted must override this.
     _is_fittable = True
+
+    @DeveloperAPI
+    def pickle(self) -> str:
+        return pickle.dumps(self, 0).decode("ascii")
+
+    @DeveloperAPI
+    @staticmethod
+    def unpickle(serialized: str) -> "Preprocessor":
+        return pickle.loads(serialized.encode("ascii"))
 
     def fit_status(self) -> "Preprocessor.FitStatus":
         if not self._is_fittable:

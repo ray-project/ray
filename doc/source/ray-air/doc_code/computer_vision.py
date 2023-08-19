@@ -22,11 +22,9 @@ def test(*, framework: str, datasource: str):
     if framework == "torch":
         preprocessor, per_epoch_preprocessor = create_torch_preprocessors()
         train_torch_model(dataset, preprocessor, per_epoch_preprocessor)
-        checkpoint = create_torch_checkpoint(preprocessor)
     if framework == "tensorflow":
         preprocessor, per_epoch_preprocessor = create_tensorflow_preprocessors()
         train_tensorflow_model(dataset, preprocessor, per_epoch_preprocessor)
-        checkpoint = create_tensorflow_checkpoint(preprocessor)
 
 
 def read_tfrecords():
@@ -297,30 +295,6 @@ def train_tensorflow_model(dataset, preprocessor, per_epoch_preprocessor):
     results = trainer.fit()
     # __tensorflow_trainer_stop__
     return results
-
-
-def create_torch_checkpoint(preprocessor):
-    # __torch_checkpoint_start__
-    from torchvision import models
-
-    from ray.train.torch import LegacyTorchCheckpoint
-
-    model = models.resnet50(pretrained=True)
-    checkpoint = LegacyTorchCheckpoint.from_model(model, preprocessor=preprocessor)
-    # __torch_checkpoint_stop__
-    return checkpoint
-
-
-def create_tensorflow_checkpoint(preprocessor):
-    # __tensorflow_checkpoint_start__
-    import tensorflow as tf
-
-    from ray.train.tensorflow import LegacyTensorflowCheckpoint
-
-    model = tf.keras.applications.resnet50.ResNet50()
-    checkpoint = LegacyTensorflowCheckpoint.from_model(model, preprocessor=preprocessor)
-    # __tensorflow_checkpoint_stop__
-    return checkpoint
 
 
 if __name__ == "__main__":
