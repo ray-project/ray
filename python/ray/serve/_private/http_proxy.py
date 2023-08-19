@@ -622,7 +622,7 @@ class gRPCProxy(GenericProxy):
     async def not_found(self, proxy_request: ProxyRequest) -> ProxyResponse:
         not_found_message = (
             f"Application '{proxy_request.app_name}' not found. Please ping "
-            "/ray.serve.ServeAPIService/ServeRoutes for available applications."
+            "/ray.serve.RayServeAPIService/ListApplications for available applications."
         )
         status_code = grpc.StatusCode.NOT_FOUND
         proxy_request.send_status_code(status_code=status_code)

@@ -42,13 +42,20 @@ def ping_grpc_healthz(channel):
     assert response.message == "success"
 
 
-def ping_grpc_call_method(channel, app_name):
+def ping_grpc_call_method(channel, app_name, test_not_found=False):
     stub = serve_pb2_grpc.UserDefinedServiceStub(channel)
     request = serve_pb2.UserDefinedMessage(name="foo", num=30, foo="bar")
     metadata = (("application", app_name),)
-    response, call = stub.__call__.with_call(request=request, metadata=metadata)
-    assert call.code() == grpc.StatusCode.OK
-    assert response.greeting == "Hello foo from bar"
+    if test_not_found:
+        try:
+            _, _ = stub.__call__.with_call(request=request, metadata=metadata)
+        except grpc.RpcError as rpc_error:
+            assert rpc_error.code() == grpc.StatusCode.NOT_FOUND
+            assert f"Application '{app_name}' not found." in rpc_error.details()
+    else:
+        response, call = stub.__call__.with_call(request=request, metadata=metadata)
+        assert call.code() == grpc.StatusCode.OK
+        assert response.greeting == "Hello foo from bar"
 
 
 def ping_grpc_another_method(channel, app_name):
@@ -313,17 +320,28 @@ def test_serving_request_through_grpc_proxy(ray_cluster):
             "grpc_servicer_functions": grpc_servicer_functions,
         },
     )
+    replicas = ray.get(
+        serve.context._global_client._controller._all_running_replicas.remote()
+    )
+
+    # Ensures the app is not yet deployed.
+    app_name = "default"
+    deployment_name = "grpc-deployment"
+    replicas_name = f"{app_name}_{deployment_name}"
+    assert replicas_name not in replicas
+
+    channel = grpc.insecure_channel("localhost:9000")
+
+    # Ensures the not found is responding correctly.
+    ping_grpc_call_method(channel, app_name, test_not_found=True)
+
     serve.run(target=g)
     replicas = ray.get(
         serve.context._global_client._controller._all_running_replicas.remote()
     )
 
     # Ensures the app is deployed.
-    app_name = "default"
-    deployment_name = "grpc-deployment"
-    assert len(replicas[f"{app_name}_{deployment_name}"]) == 1
-
-    channel = grpc.insecure_channel("localhost:9000")
+    assert len(replicas[replicas_name]) == 1
 
     # Ensures ListApplications method succeeding.
     ping_grpc_list_applications(channel, [app_name])
