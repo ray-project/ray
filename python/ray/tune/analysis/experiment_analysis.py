@@ -68,8 +68,8 @@ DEFAULT_FILE_TYPE = "csv"
 class NewExperimentAnalysis:
     """Analyze results from a Ray Train/Tune experiment.
 
-    To use this class, the run must use the `JsonLoggerCallback` to save a
-    `result.json` in each trial directory, storing the history of reported metrics.
+    To use this class, the run must store the history of reported metrics
+    in log files (e.g., `result.json` and `progress.csv`).
     This is the default behavior, unless default loggers are explicitly excluded
     with the `TUNE_DISABLE_AUTO_CALLBACK_LOGGERS=1` environment variable.
 
@@ -666,16 +666,17 @@ class NewExperimentAnalysis:
         best_trial = self.get_best_trial(metric, mode, scope)
         return best_trial.local_path if best_trial else None
 
-    def get_last_checkpoint(self, trial=None, metric="training_iteration", mode="max"):
-        """Gets the last persistent checkpoint path of the provided trial,
+    def get_last_checkpoint(
+        self, trial=None, metric="training_iteration", mode="max"
+    ) -> Optional[NewCheckpoint]:
+        """Gets the last checkpoint of the provided trial,
         i.e., with the highest "training_iteration".
 
         If no trial is specified, it loads the best trial according to the
         provided metric and mode (defaults to max. training iteration).
 
         Args:
-            trial: The log directory or an instance of a trial.
-                If None, load the latest trial automatically.
+            trial: If None, load the best trial automatically.
             metric: If no trial is specified, use this metric to identify
                 the best trial and load the last checkpoint from this trial.
             mode: If no trial is specified, use the metric and this mode
@@ -684,10 +685,9 @@ class NewExperimentAnalysis:
         Returns:
             Path for last checkpoint of trial
         """
-        if trial is None:
-            trial = self.get_best_logdir(metric, mode)
-
-        return self.get_best_checkpoint(trial, "training_iteration", "max")
+        if not trial:
+            trial = self.get_best_trial(metric, mode)
+        return self.get_best_checkpoint(trial, TRAINING_ITERATION, "max")
 
     def _validate_metric(self, metric: str) -> str:
         if not metric and not self.default_metric:
