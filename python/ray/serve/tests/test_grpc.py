@@ -47,11 +47,12 @@ def ping_grpc_call_method(channel, app_name, test_not_found=False):
     request = serve_pb2.UserDefinedMessage(name="foo", num=30, foo="bar")
     metadata = (("application", app_name),)
     if test_not_found:
-        try:
+        with pytest.raises(grpc.RpcError) as exception_info:
             _, _ = stub.__call__.with_call(request=request, metadata=metadata)
-        except grpc.RpcError as rpc_error:
-            assert rpc_error.code() == grpc.StatusCode.NOT_FOUND
-            assert f"Application '{app_name}' not found." in rpc_error.details()
+
+        rpc_error = exception_info.value
+        assert rpc_error.code() == grpc.StatusCode.NOT_FOUND
+        assert f"Application '{app_name}' not found." in rpc_error.details()
     else:
         response, call = stub.__call__.with_call(request=request, metadata=metadata)
         assert call.code() == grpc.StatusCode.OK
@@ -367,12 +368,83 @@ def test_serving_request_through_grpc_proxy(ray_cluster):
     )
 
     # Ensures the app is deployed.
-    app_name = "default"
     deployment_name = "grpc-deployment-model-composition"
     assert len(replicas[f"{app_name}_{deployment_name}"]) == 1
 
     # Ensure model composition is responding correctly.
     ping_fruit_stand(channel, app_name)
+
+
+def test_grpc_proxy_routing_without_metadata(ray_cluster):
+    """Test metadata are not required when calling gRPC proxy with only one app.
+
+    When there is only one app deployed, gRPC proxy will route the request to the app
+    with or without the metadata. If there are multiple app deployed, without metadata
+    will return a notfound response.
+    """
+    cluster = ray_cluster
+    cluster.add_node(num_cpus=2)
+    cluster.connect(namespace=SERVE_NAMESPACE)
+
+    grpc_port = 9000
+    grpc_servicer_functions = [
+        "ray.serve.generated.serve_pb2_grpc.add_UserDefinedServiceServicer_to_server",
+        "ray.serve.generated.serve_pb2_grpc.add_FruitServiceServicer_to_server",
+    ]
+
+    serve.start(
+        grpc_options={
+            "port": grpc_port,
+            "grpc_servicer_functions": grpc_servicer_functions,
+        },
+    )
+
+    app1 = "app1"
+    serve.run(target=g, name=app1, route_prefix=f"/{app1}")
+
+    # Ensures the app is not yet deployed.
+    deployment_name = "grpc-deployment"
+    app1_replicas_name = f"{app1}_{deployment_name}"
+    replicas = ray.get(
+        serve.context._global_client._controller._all_running_replicas.remote()
+    )
+
+    # Ensures the app is deployed.
+    assert len(replicas[app1_replicas_name]) == 1
+
+    channel = grpc.insecure_channel("localhost:9000")
+    stub = serve_pb2_grpc.UserDefinedServiceStub(channel)
+    request = serve_pb2.UserDefinedMessage(name="foo", num=30, foo="bar")
+
+    # Ensures the gRPC Proxy responding correctly without metadata.
+    response, call = stub.__call__.with_call(request=request)
+    assert call.code() == grpc.StatusCode.OK
+    assert response.greeting == "Hello foo from bar"
+
+    # Ensures the gRPC Proxy responding correctly with metadata.
+    metadata = (("application", app1),)
+    response, call = stub.__call__.with_call(request=request, metadata=metadata)
+    assert call.code() == grpc.StatusCode.OK
+    assert response.greeting == "Hello foo from bar"
+
+    # Deploy another app.
+    app2 = "app2"
+    serve.run(target=g2, name=app2, route_prefix=f"/{app2}")
+    replicas = ray.get(
+        serve.context._global_client._controller._all_running_replicas.remote()
+    )
+    deployment_name = "grpc-deployment-model-composition"
+
+    # Ensure both apps are deployed
+    assert len(replicas[f"{app2}_{deployment_name}"]) == 1
+    assert len(replicas[app1_replicas_name]) == 1
+
+    # Ensure the gRPC request without metadata will now return not found response.
+    with pytest.raises(grpc.RpcError) as exception_info:
+        _, _ = stub.__call__.with_call(request=request)
+    rpc_error = exception_info.value
+    assert rpc_error.code() == grpc.StatusCode.NOT_FOUND
+    assert "Application '' not found." in rpc_error.details()
 
 
 if __name__ == "__main__":
