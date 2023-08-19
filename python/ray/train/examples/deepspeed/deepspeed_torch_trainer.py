@@ -108,7 +108,7 @@ def train_func(config):
             f1.update(predictions, batch["labels"])
             accuracy.update(predictions, batch["labels"])
 
-        # torchmetrics will sync the results across all workers
+        # torchmetrics will aggregate the metrics across all workers
         eval_metric = {
             "f1": f1.compute().item(),
             "accuracy": accuracy.compute().item(),
