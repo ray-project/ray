@@ -26,7 +26,7 @@
 #include "ray/common/ray_syncer/ray_syncer.h"
 #include "ray/common/scheduling/cluster_resource_data.h"
 #include "ray/common/scheduling/fixed_point.h"
-#include "ray/common/scheduling/scheduling_resources.h"
+#include "ray/common/scheduling/resource_set.h"
 #include "ray/gcs/gcs_client/accessor.h"
 #include "ray/gcs/gcs_client/gcs_client.h"
 #include "ray/util/logging.h"
@@ -108,24 +108,6 @@ class LocalResourceManager : public syncer::ReporterInterface {
                                   std::shared_ptr<TaskResourceInstances> task_allocation);
 
   void ReleaseWorkerResources(std::shared_ptr<TaskResourceInstances> task_allocation);
-
-  /// Populate the relevant parts of the heartbeat table. This is intended for
-  /// sending resource usage of raylet to gcs. In particular, this should fill in
-  /// resources_available and resources_total.
-  ///
-  /// \param Output parameter. `resources_available` and `resources_total` are the only
-  /// fields used.
-  void FillResourceUsage(rpc::ResourcesData &resources_data);
-
-  /// Populate a UpdateResourcesRequest. This is inteneded to update the
-  /// resource totals on a node when a custom resource is created or deleted
-  /// (e.g. during the placement group lifecycle).
-  ///
-  /// \param resource_map_filter When returning the resource map, the returned result will
-  /// only contain the keys in the filter. Note that only the key of the map is used.
-  /// \return The total resource capacity of the node.
-  ray::gcs::NodeResourceInfoAccessor::ResourceMap GetResourceTotals(
-      const absl::flat_hash_map<std::string, double> &resource_map_filter) const;
 
   double GetLocalAvailableCpus() const;
 
@@ -305,6 +287,7 @@ class LocalResourceManager : public syncer::ReporterInterface {
   FRIEND_TEST(ClusterResourceSchedulerTest, TaskResourceInstanceWithoutCpuUnitTest);
   FRIEND_TEST(ClusterResourceSchedulerTest, CustomResourceInstanceTest);
   FRIEND_TEST(ClusterResourceSchedulerTest, TaskGPUResourceInstancesTest);
+  FRIEND_TEST(ClusterResourceSchedulerTest, ObjectStoreMemoryUsageTest);
 
   friend class LocalResourceManagerTest;
   FRIEND_TEST(LocalResourceManagerTest, BasicGetResourceUsageMapTest);

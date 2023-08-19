@@ -361,6 +361,8 @@ cdef extern from "ray/gcs/gcs_client/gcs_client.h" nogil:
         UNAVAILABLE "grpc::StatusCode::UNAVAILABLE",
         UNKNOWN "grpc::StatusCode::UNKNOWN",
         DEADLINE_EXCEEDED "grpc::StatusCode::DEADLINE_EXCEEDED",
+        RESOURCE_EXHAUSTED "grpc::StatusCode::RESOURCE_EXHAUSTED",
+        UNIMPLEMENTED "grpc::StatusCode::UNIMPLEMENTED",
 
     cdef cppclass CGcsClientOptions "ray::gcs::GcsClientOptions":
         CGcsClientOptions(const c_string &gcs_address)
@@ -394,13 +396,14 @@ cdef extern from "ray/gcs/gcs_client/gcs_client.h" nogil:
         CRayStatus InternalKVExists(
             const c_string &ns, const c_string &key,
             int64_t timeout_ms, c_bool &exists)
-
         CRayStatus PinRuntimeEnvUri(
             const c_string &uri, int expiration_s, int64_t timeout_ms)
         CRayStatus GetAllNodeInfo(
             int64_t timeout_ms, c_vector[CGcsNodeInfo]& result)
         CRayStatus GetAllJobInfo(
             int64_t timeout_ms, c_vector[CJobTableData]& result)
+        CRayStatus GetAllResourceUsage(
+            int64_t timeout_ms, c_string& serialized_reply)
         CRayStatus RequestClusterResourceConstraint(
             int64_t timeout_ms,
             const c_vector[unordered_map[c_string, double]] &bundles,
@@ -415,6 +418,10 @@ cdef extern from "ray/gcs/gcs_client/gcs_client.h" nogil:
             const c_string &reason_message,
             int64_t timeout_ms,
             c_bool &is_accepted)
+        CRayStatus DrainNodes(
+            const c_vector[c_string]& node_ids,
+            int64_t timeout_ms,
+            c_vector[c_string]& drained_node_ids)
 
 cdef extern from "ray/gcs/gcs_client/gcs_client.h" namespace "ray::gcs" nogil:
     unordered_map[c_string, double] PythonGetResourcesTotal(

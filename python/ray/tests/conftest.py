@@ -20,7 +20,6 @@ import pytest
 
 import ray
 import ray._private.ray_constants as ray_constants
-import ray.util.client.server.server as ray_client_server
 from ray._private.conftest_utils import set_override_dashboard_url  # noqa: F401
 from ray._private.runtime_env.pip import PipProcessor
 from ray._private.runtime_env.plugin_schema_manager import RuntimeEnvPluginSchemaManager
@@ -629,6 +628,8 @@ def call_ray_start_with_external_redis(request):
 
 @pytest.fixture
 def init_and_serve():
+    import ray.util.client.server.server as ray_client_server
+
     server_handle, _ = ray_client_server.init_and_serve("localhost:50051")
     yield server_handle
     ray_client_server.shutdown_with_server(server_handle.grpc_server)
@@ -649,6 +650,9 @@ def call_ray_stop_only():
 def start_cluster(ray_start_cluster_enabled, request):
     assert request.param in {"ray_client", "no_ray_client"}
     use_ray_client: bool = request.param == "ray_client"
+    if os.environ.get("RAY_MINIMAL") == "1" and use_ray_client:
+        pytest.skip("Skipping due to we don't have ray client in minimal.")
+
     cluster = ray_start_cluster_enabled
     cluster.add_node(num_cpus=4, dashboard_agent_listen_port=find_free_port())
     if use_ray_client:
@@ -1231,16 +1235,6 @@ def set_runtime_env_plugin_schemas(request):
         yield runtime_env_plugin_schemas
     finally:
         del os.environ["RAY_RUNTIME_ENV_PLUGIN_SCHEMAS"]
-
-
-@pytest.fixture(params=[True, False])
-def enable_syncer_test(request, monkeypatch):
-    with_syncer = request.param
-    monkeypatch.setenv("RAY_use_ray_syncer", "true" if with_syncer else "false")
-    ray._raylet.Config.initialize("")
-    yield
-    monkeypatch.delenv("RAY_use_ray_syncer")
-    ray._raylet.Config.initialize("")
 
 
 @pytest.fixture(scope="function")

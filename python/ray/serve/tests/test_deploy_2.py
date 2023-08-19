@@ -349,7 +349,6 @@ def test_nonserializable_deployment(serve_instance):
 
     lock = threading.Lock()
 
-    @serve.deployment
     class D:
         def hello(self, _):
             return lock
@@ -359,7 +358,7 @@ def test_nonserializable_deployment(serve_instance):
         TypeError,
         match=r"Could not serialize the deployment[\s\S]*was found to be non-serializable.*",  # noqa
     ):
-        serve.run(D.bind())
+        serve.deployment(D)
 
     @serve.deployment
     class E:
@@ -406,27 +405,23 @@ def test_deploy_application_unhealthy(serve_instance):
 
     handle = serve.run(Model.bind(), name="app")
     assert ray.get(handle.remote()) == "hello world"
-    assert (
-        serve_instance.get_serve_status("app").app_status.status
-        == ApplicationStatus.RUNNING
-    )
+    assert serve.status().applications["app"].status == ApplicationStatus.RUNNING
 
     # When a deployment becomes unhealthy, application should transition -> UNHEALTHY
     event.set.remote()
     wait_for_condition(
-        lambda: serve_instance.get_serve_status("app").app_status.status
-        == ApplicationStatus.UNHEALTHY
+        lambda: serve.status().applications["app"].status == ApplicationStatus.UNHEALTHY
     )
 
     # Check that application stays unhealthy
     for _ in range(10):
-        assert (
-            serve_instance.get_serve_status("app").app_status.status
-            == ApplicationStatus.UNHEALTHY
-        )
+        assert serve.status().applications["app"].status == ApplicationStatus.UNHEALTHY
         time.sleep(0.1)
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="Runtime env support experimental on windows"
+)
 def test_deploy_bad_pip_package_deployment(serve_instance):
     """Test deploying with a bad runtime env at deployment level."""
 
