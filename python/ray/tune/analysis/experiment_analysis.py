@@ -444,7 +444,7 @@ class NewExperimentAnalysis:
                 rows[path].update(logdir=path)
         return pd.DataFrame(list(rows.values()))
 
-    def get_trial_checkpoints_paths(
+    def _get_trial_checkpoints_with_metric(
         self, trial: Trial, metric: Optional[str] = None
     ) -> List[Tuple[NewCheckpoint, Number]]:
         """Get all checkpoints and a specified metric of a trial.
@@ -479,8 +479,7 @@ class NewExperimentAnalysis:
         trial: Trial,
         metric: Optional[str] = None,
         mode: Optional[str] = None,
-        return_path: bool = False,
-    ) -> Optional[Union[Checkpoint, str]]:
+    ) -> Optional[NewCheckpoint]:
         """Gets best persistent checkpoint path of provided trial.
 
         Any checkpoints with an associated metric value of ``nan`` will be filtered out.
@@ -491,57 +490,29 @@ class NewExperimentAnalysis:
                 "training_iteration" is used by default if no value was
                 passed to ``self.default_metric``.
             mode: One of [min, max]. Defaults to ``self.default_mode``.
-            return_path: If True, only returns the path (and not the
-                ``Checkpoint`` object). If using Ray client, it is not
-                guaranteed that this path is available on the local
-                (client) node. Can also contain a cloud URI.
 
         Returns:
-            :class:`Checkpoint <ray.train.Checkpoint>` object or string
-            if ``return_path=True``.
+            A :class:`Checkpoint <ray.train.Checkpoint>` object
         """
         metric = metric or self.default_metric or TRAINING_ITERATION
         mode = self._validate_mode(mode)
 
-        checkpoint_paths = self.get_trial_checkpoints_paths(trial, metric)
+        checkpoints_and_metrics = self._get_trial_checkpoints_with_metric(trial, metric)
 
         # Filter out nan. Sorting nan values leads to undefined behavior.
-        checkpoint_paths = [
-            (path, metric) for path, metric in checkpoint_paths if not is_nan(metric)
-        ]
+        checkpoints_and_metrics = list(
+            filter(lambda x: not is_nan(x[1]), checkpoints_and_metrics)
+        )
 
-        if not checkpoint_paths:
+        if not checkpoints_and_metrics:
             logger.error(f"No checkpoints have been found for trial {trial}.")
             return None
 
-        a = -1 if mode == "max" else 1
-        best_path_metrics = sorted(checkpoint_paths, key=lambda x: a * x[1])
-
-        best_path, best_metric = best_path_metrics[0]
-        cloud_path = self._convert_local_to_cloud_path(best_path)
-
-        if cloud_path:
-            # Prefer cloud path over local path for downsteam processing
-            if return_path:
-                return cloud_path
-            return Checkpoint.from_uri(cloud_path)
-        elif os.path.exists(best_path):
-            if return_path:
-                return best_path
-            return Checkpoint.from_directory(best_path)
-        else:
-            if log_once("checkpoint_not_available"):
-                logger.error(
-                    f"The requested checkpoint for trial {trial} is not available on "
-                    f"this node, most likely because you are using Ray client or "
-                    f"disabled checkpoint synchronization. To avoid this, enable "
-                    f"checkpoint synchronization to cloud storage by specifying a "
-                    f"`SyncConfig`. The checkpoint may be available on a different "
-                    f"node - please check this location on worker nodes: {best_path}"
-                )
-            if return_path:
-                return best_path
-            return None
+        score_order_factor = -1 if mode == "min" else 1
+        best_checkpoint = max(
+            checkpoints_and_metrics, key=lambda x: score_order_factor * x[1]
+        )
+        return best_checkpoint
 
     def get_best_trial(
         self,
