@@ -1,0 +1,25 @@
+group: build
+steps:
+  - label: ":tapioca: build: wheel {{matrix}}"
+    instance_type: medium
+    commands:
+      - ./ci/build/build-manylinux-ray.sh
+      - ./ci/build/build-manylinux-wheel.sh {{matrix}}
+      - ./ci/build/copy_build_artifacts.sh wheel
+    matrix:
+      - cp37-cp37m 1.14.5
+      - cp38-cp38 1.14.5
+      - cp39-cp39 1.19.3
+      - cp310-cp310 1.22.0
+      - cp311-cp311 1.22.0
+    depends_on: manylinux
+    job_env: manylinux
+
+  - label: ":tapioca: build: jar"
+    instance_type: medium
+    commands:
+      - ./ci/build/build-manylinux-ray.sh
+      - ./ci/build/build-manylinux-jar.sh
+      - ./ci/build/copy_build_artifacts.sh jar
+    depends_on: manylinux
+    job_env: manylinux
