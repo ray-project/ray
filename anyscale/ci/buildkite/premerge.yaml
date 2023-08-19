@@ -248,7 +248,7 @@ steps:
             - py311
           type:
             - cpu
-            # - gpu
+            - gpu
       retry:
         automatic:
           limit: 1
@@ -296,7 +296,7 @@ steps:
             - py39
           type:
             - cpu
-            # - gpu
+            - gpu
       retry:
         automatic:
           limit: 1
