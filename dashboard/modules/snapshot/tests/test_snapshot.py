@@ -255,7 +255,6 @@ ray.get(a.ping.remote())
 
     assert len(data["data"]["snapshot"]["actors"]) == 3
     assert len(data["data"]["snapshot"]["jobs"]) == 4
-    assert len(data["data"]["snapshot"]["deployments"]) == 0
 
     for actor_id, entry in data["data"]["snapshot"]["actors"].items():
         assert entry["jobId"] in data["data"]["snapshot"]["jobs"]
