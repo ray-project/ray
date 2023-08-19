@@ -30,6 +30,7 @@ from ray.air._internal.usage import AirEntrypoint
 from ray.air.util.node import _force_on_current_node
 from ray.train._internal.storage import _use_storage_context
 from ray.tune.analysis import ExperimentAnalysis
+from ray.tune.analysis.experiment_analysis import NewExperimentAnalysis
 from ray.tune.callback import Callback
 from ray.tune.error import TuneError
 from ray.tune.execution.tune_controller import TuneController
@@ -1163,23 +1164,23 @@ def run(
                 f"saved.\nResume experiment with: {restore_entrypoint}"
             )
 
-    if _use_storage_context():
-        # TODO(justinvyu): Leave refactoring the ExperimentAnalysis to use
-        # StorageContext for a follow-up PR.
-        # Just plug in the "remote_storage_path" for now.
-        remote_path = experiments[0].storage.storage_path
-
     experiment_checkpoint = runner.experiment_state_path
 
-    ea = ExperimentAnalysis(
-        experiment_checkpoint,
-        trials=all_trials,
-        default_metric=metric,
-        default_mode=mode,
-        remote_storage_path=remote_path,
-    )
-
-    return ea
+    if _use_storage_context():
+        return NewExperimentAnalysis(
+            experiment_checkpoint_path=experiment_checkpoint,
+            default_metric=metric,
+            default_mode=mode,
+            trials=all_trials,
+        )
+    else:
+        return ExperimentAnalysis(
+            experiment_checkpoint,
+            trials=all_trials,
+            default_metric=metric,
+            default_mode=mode,
+            remote_storage_path=remote_path,
+        )
 
 
 @PublicAPI
