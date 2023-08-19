@@ -1,4 +1,4 @@
-.. _air-preprocessor-ref:
+.. _preprocessor-ref:
 
 Preprocessor
 ============
