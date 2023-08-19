@@ -256,26 +256,35 @@ def shared_ray_instance():
     # submissions.
     old_ray_address = os.environ.pop(RAY_ADDRESS_ENVIRONMENT_VARIABLE, None)
 
-    yield ray.init(
-        num_cpus=16,
-        num_gpus=1,
-        resources={"Custom": 1},
-        namespace=TEST_NAMESPACE,
-        log_to_driver=True,
-    )
+    yield from create_ray_cluster()
 
     if old_ray_address is not None:
         os.environ[RAY_ADDRESS_ENVIRONMENT_VARIABLE] = old_ray_address
 
 
+def create_ray_cluster(_tracing_startup_hook=None):
+    return ray.init(
+        num_cpus=16,
+        num_gpus=1,
+        resources={"Custom": 1},
+        namespace=TEST_NAMESPACE,
+        log_to_driver=True,
+        _tracing_startup_hook=_tracing_startup_hook,
+    )
+
+
 @pytest.mark.asyncio
 @pytest.fixture
 async def job_manager(shared_ray_instance, tmp_path):
-    address_info = shared_ray_instance
+    yield create_job_manager(shared_ray_instance, tmp_path)
+
+
+def create_job_manager(ray_cluster, tmp_path):
+    address_info = ray_cluster
     gcs_aio_client = GcsAioClient(
         address=address_info["gcs_address"], nums_reconnect_retry=0
     )
-    yield JobManager(gcs_aio_client, tmp_path)
+    return JobManager(gcs_aio_client, tmp_path)
 
 
 def _driver_script_path(file_name: str) -> str:
@@ -614,32 +623,49 @@ class TestRuntimeEnv:
         assert token in logs, logs
         assert "JOB_1_VAR" in logs
 
-    async def test_user_provided_job_config_honored_by_worker(self, job_manager):
+    @pytest.mark.parametrize(
+        "tracing_enabled", [
+            False,
+            True,
+        ],
+    )
+    async def test_user_provided_job_config_honored_by_worker(self, tracing_enabled, tmp_path):
         """Ensures that the JobConfig instance injected into ray.init in the driver
         script is honored even in case when job is submitted via JobManager.submit_job
         API (involving RAY_JOB_CONFIG_JSON_ENV_VAR being set in child process env)
         """
-        driver_script_path = _driver_script_path(
-            "check_code_search_path_is_propagated.py"
-        )
 
-        job_id = await job_manager.submit_job(
-            entrypoint=f"python {driver_script_path}",
-            # NOTE: We inject runtime_env in here, but also specify the JobConfig in
-            #       the driver script: settings to JobConfig (other than the
-            #       runtime_env) passed in via ray.init(...) have to be respected
-            #       along with the runtime_env passed from submit_job API
-            runtime_env={"env_vars": {"TEST_SUBPROCESS_RANDOM_VAR": "0xDEEDDEED"}},
-        )
+        if tracing_enabled:
+            tracing_startup_hook = "ray.util.tracing.setup_local_tmp_tracing:setup_tracing"
+        else:
+            tracing_startup_hook = None
 
-        await async_wait_for_condition_async_predicate(
-            check_job_succeeded, job_manager=job_manager, job_id=job_id
-        )
+        with create_ray_cluster(_tracing_startup_hook=tracing_startup_hook) as cluster:
+            job_manager = create_job_manager(cluster, tmp_path)
 
-        logs = job_manager.get_job_logs(job_id)
+            driver_script_path = _driver_script_path(
+                "check_code_search_path_is_propagated.py"
+            )
 
-        assert "Code search path is propagated" in logs, logs
-        assert "0xDEEDDEED" in logs, logs
+            job_id = await job_manager.submit_job(
+                entrypoint=f"python {driver_script_path}",
+                # NOTE: We inject runtime_env in here, but also specify the JobConfig in
+                #       the driver script: settings to JobConfig (other than the
+                #       runtime_env) passed in via ray.init(...) have to be respected
+                #       along with the runtime_env passed from submit_job API
+                runtime_env={"env_vars": {"TEST_SUBPROCESS_RANDOM_VAR": "0xDEEDDEED"}},
+            )
+
+            await async_wait_for_condition_async_predicate(
+                check_job_succeeded, job_manager=job_manager, job_id=job_id
+            )
+
+            logs = job_manager.get_job_logs(job_id)
+
+            print("[DBG] job logs:\n", logs)
+
+            assert "Code search path is propagated" in logs, logs
+            assert "0xDEEDDEED" in logs, logs
 
     async def test_failed_runtime_env_validation(self, job_manager):
         """Ensure job status is correctly set as failed if job has an invalid
