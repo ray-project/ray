@@ -15,7 +15,6 @@ import threading
 import time
 import traceback
 from collections import defaultdict
-from enum import Enum
 from typing import Dict, Optional, Tuple, IO, AnyStr
 
 from filelock import FileLock

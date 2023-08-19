@@ -1120,12 +1120,13 @@ def start_api_server(
         # Make sure the process can start.
         minimal: bool = not ray._private.utils.check_dashboard_dependencies_installed()
 
+        if not minimal:
+            raise Exception("minimal is " + str(minimal))
+
         # Explicitly check here that when the user explicitly specifies
         # dashboard inclusion, the install is not minimal.
-        if (include_dashboard == True) and minimal:
-            logger.error(
-                "--include-dashboard was explicitly specified, but not all packages are installed."
-            )
+        if include_dashboard and minimal:
+            logger.error("--include-dashboard was specified, but packages are missing.")
             raise Exception("Cannot include dashboard with missing packages.")
 
         include_dash: bool = True if include_dashboard is None else include_dashboard

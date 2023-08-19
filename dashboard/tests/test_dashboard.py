@@ -158,13 +158,17 @@ def test_basic(ray_start_with_dashboard):
     assert agent_ports is not None
 
 
-def test_missing_imports(ray_start_dashboard_bad_import):
+@pytest.mark.skipif(
+    os.environ.get("RAY_MINIMAL") != "1",
+    reason="This specifically tests the minimal installation.",
+)
+def test_missing_imports(shutdown_only):
     """
     Test dashboard fails when packages are missing but inclusion
     was explicitly specified by the user.
     """
     with pytest.raises(Exception):
-        ray.init("local", **init_kwargs)
+        ray.init(include_dashboard=True)
 
 
 def test_raylet_and_agent_share_fate(shutdown_only):
@@ -195,7 +199,7 @@ def test_raylet_and_agent_share_fate(shutdown_only):
 
     ray.shutdown()
 
-    ray.init(include_dashboard=True)
+    ray.init()
     all_processes = ray._private.worker._global_node.all_processes
     raylet_proc_info = all_processes[ray_constants.PROCESS_TYPE_RAYLET][0]
     raylet_proc = psutil.Process(raylet_proc_info.process.pid)
@@ -248,7 +252,7 @@ def test_agent_report_unexpected_raylet_death(shutdown_only):
 def test_agent_report_unexpected_raylet_death_large_file(shutdown_only):
     """Test agent reports Raylet death if it is not SIGTERM."""
 
-    ray.init(include_dashboard=True)
+    ray.init()
     p = init_error_pubsub()
 
     node = ray._private.worker._global_node
@@ -903,7 +907,7 @@ def test_dashboard_does_not_depend_on_serve():
     with pytest.raises(ImportError):
         from ray import serve  # noqa: F401
 
-    ctx = ray.init(include_dashboard=True)
+    ctx = ray.init()
 
     # Ensure standard dashboard features, like snapshot, still work
     response = requests.get(f"http://{ctx.dashboard_url}/api/snapshot")

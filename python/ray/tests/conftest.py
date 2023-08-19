@@ -377,21 +377,6 @@ def ray_start_with_dashboard(request, maybe_external_redis):
 
 
 @pytest.fixture
-def ray_start_dashboard_bad_import():
-    import sys
-
-    # Replace a known optional module with something that does not exist
-    mod = sys.modules.pop("aiohttp")
-    yield
-
-    # The code after the yield will run as teardown code.
-    ray.shutdown()
-    # Delete the cluster address just in case.
-    ray._private.utils.reset_ray_address()
-    sys.modules["aiohttp"] = mod
-
-
-@pytest.fixture
 def make_sure_dashboard_http_port_unused():
     """Make sure the dashboard agent http port is unused."""
     for process in psutil.process_iter():
