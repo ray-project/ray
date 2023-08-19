@@ -115,7 +115,7 @@ class NewExperimentAnalysis:
             self.default_metric = DEFAULT_METRIC
 
         self.trials = trials or self._load_trials()
-        self.trial_dataframes = self.fetch_trial_dataframes()
+        self._trial_dataframes = self.fetch_trial_dataframes()
         self._configs = self.get_all_configs()
 
     def _load_trials(self) -> List[Trial]:
@@ -184,18 +184,14 @@ class NewExperimentAnalysis:
                 and prepends `config/`.
 
         Returns:
-            Dict[str, Dict]: Dict of all configurations of trials, indexed by
-                their trial id.
+            Dict[str, Dict]: Mapping trial_id -> config dict
         """
-        # if prefix:
-        #     self._configs[path] = flatten_dict({CONFIG_PREFIX: config})
-        # else:
-        #     self._configs[path] = config
-        configs = {}
-
-        assert self.trials
-
-        return configs
+        return {
+            trial.trial_id: (
+                flatten_dict({CONFIG_PREFIX: trial.config}) if prefix else trial.config
+            )
+            for trial in self.trials
+        }
 
     @classmethod
     def _find_newest_experiment_checkpoint(
