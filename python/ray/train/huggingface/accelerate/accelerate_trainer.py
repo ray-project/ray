@@ -2,7 +2,7 @@ import functools
 import os
 import tempfile
 from pathlib import Path
-from typing import TYPE_CHECKING, Callable, Dict, Optional, Type, Tuple, Union
+from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Type, Tuple, Union
 
 from ray import train
 from ray.train import Checkpoint, RunConfig, ScalingConfig
@@ -248,9 +248,10 @@ class AccelerateTrainer(TorchTrainer):
             dataset. If a ``preprocessor`` is provided and has not already been fit,
             it will be fit on the training dataset. All datasets will be transformed
             by the ``preprocessor`` if one is provided.
-        preprocessor: A ``ray.data.Preprocessor`` to preprocess the
-            provided datasets.
         resume_from_checkpoint: A checkpoint to resume training from.
+        metadata: Dict that should be made available via
+            `ray.train.get_context().get_metadata()` and in `checkpoint.get_metadata()`
+            for checkpoints saved from this Trainer. Must be JSON-serializable.
     """
 
     def __init__(
@@ -264,8 +265,10 @@ class AccelerateTrainer(TorchTrainer):
         dataset_config: Optional[DataConfig] = None,
         run_config: Optional[RunConfig] = None,
         datasets: Optional[Dict[str, GenDataset]] = None,
-        preprocessor: Optional["Preprocessor"] = None,
+        metadata: Optional[Dict[str, Any]] = None,
         resume_from_checkpoint: Optional[Checkpoint] = None,
+        # Deprecated.
+        preprocessor: Optional["Preprocessor"] = None,
     ):
 
         if ACCELERATE_IMPORT_ERROR is not None:
@@ -287,6 +290,7 @@ class AccelerateTrainer(TorchTrainer):
             datasets=datasets,
             preprocessor=preprocessor,
             resume_from_checkpoint=resume_from_checkpoint,
+            metadata=metadata,
         )
 
     def _unwrap_accelerate_config_if_needed(
