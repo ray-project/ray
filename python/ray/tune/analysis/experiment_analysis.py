@@ -94,12 +94,6 @@ class NewExperimentAnalysis:
         default_metric: Optional[str] = None,
         default_mode: Optional[str] = None,
     ):
-        (
-            fs,
-            self._experiment_fs_path,
-            self._experiment_json_fs_path,
-        ) = self._get_experiment_fs_and_path(experiment_checkpoint_path)
-
         self.default_metric = default_metric
         if default_mode and default_mode not in ["min", "max"]:
             raise ValueError("`default_mode` has to be None or one of [min, max]")
@@ -108,6 +102,12 @@ class NewExperimentAnalysis:
             # If only a mode was passed, use anonymous metric
             self.default_metric = DEFAULT_METRIC
 
+        (
+            fs,
+            self._experiment_fs_path,
+            self._experiment_json_fs_path,
+        ) = self._get_experiment_fs_and_path(experiment_checkpoint_path)
+
         self.trials = trials or self._load_trials(fs=fs)
         self._trial_dataframes = self.fetch_trial_dataframes()
         self._configs = self.get_all_configs()
@@ -115,6 +115,8 @@ class NewExperimentAnalysis:
     def _get_experiment_fs_and_path(
         self, experiment_path: Union[str, os.PathLike]
     ) -> Tuple[pyarrow.fs.FileSystem, str, str]:
+        """Returns the filesystem and paths to the experiment directory
+        + the experiment checkpoint file."""
         fs, experiment_fs_path = get_fs_and_path(experiment_path)
         if not _is_directory(fs, experiment_fs_path):
             experiment_json_fs_path = experiment_fs_path
