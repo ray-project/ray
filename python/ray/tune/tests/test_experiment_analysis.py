@@ -141,8 +141,7 @@ def test_default_properties(experiment_analysis):
     assert len(experiment_analysis.results_df) == NUM_TRIALS
 
 
-def test_get_best_utilities(experiment_analysis):
-    # get_best_config
+def test_get_best_config(experiment_analysis):
     assert experiment_analysis.get_best_config()["id"] == NUM_TRIALS
     assert (
         experiment_analysis.get_best_config(metric="descending", mode="max")["id"] == 1
@@ -150,7 +149,8 @@ def test_get_best_utilities(experiment_analysis):
 
     assert not experiment_analysis.get_best_config(metric="maybe_nan", scope="last")
 
-    # get_best_trial
+
+def test_get_best_trial(experiment_analysis):
     assert (
         experiment_analysis.get_best_trial().config
         == experiment_analysis.get_best_config()
@@ -161,7 +161,8 @@ def test_get_best_utilities(experiment_analysis):
         metric="maybe_nan", filter_nan_and_inf=False
     )
 
-    # get_best_checkpoint
+
+def test_get_best_checkpoint(experiment_analysis):
     best_trial = experiment_analysis.get_best_trial()
     best_checkpoint = load_dict_checkpoint(
         experiment_analysis.get_best_checkpoint(best_trial)
@@ -182,7 +183,8 @@ def test_get_best_utilities(experiment_analysis):
     )
     assert best_checkpoint["maybe_nan"] == NON_NAN_VALUE
 
-    # get_last_checkpoint
+
+def test_get_last_checkpoint(experiment_analysis):
     # Defaults to getting the last checkpoint of the best trial.
     last_checkpoint = load_dict_checkpoint(experiment_analysis.get_last_checkpoint())
     assert last_checkpoint["iter"] == 5  # See note
