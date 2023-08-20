@@ -118,9 +118,14 @@ class MapTransformer:
     def fuse(self, other: "MapTransformer") -> "MapTransformer":
         """Fuse two `MapTransformer`s together."""
 
+        # Define them as standalone variables to avoid fused_init_fn capturing the
+        # entire `MapTransformer` object.
+        self_init_fn = self._init_fn
+        other_init_fn = other._init_fn
+
         def fused_init_fn():
-            self._init_fn()
-            other._init_fn()
+            self_init_fn()
+            other_init_fn()
 
         fused_transform_fns = self._transform_fns + other._transform_fns
         return MapTransformer(fused_transform_fns, init_fn=fused_init_fn)

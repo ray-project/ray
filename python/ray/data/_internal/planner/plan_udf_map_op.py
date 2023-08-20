@@ -90,6 +90,10 @@ def plan_udf_map_op(
 
 
 def _parse_op_fn(op: AbstractUDFMap):
+    # Note, it's important to define these standalone variables.
+    # So the parsed functions won't need to caputure the entire operator, which may not
+    # be serializable.
+    op_fn = op._fn
     fn_args = op._fn_args or ()
     fn_kwargs = op._fn_kwargs or {}
 
@@ -97,22 +101,24 @@ def _parse_op_fn(op: AbstractUDFMap):
         fn_constructor_args = op._fn_constructor_args or ()
         fn_constructor_kwargs = op._fn_constructor_kwargs or {}
 
-        fn_ = make_callable_class_concurrent(op._fn)
+        op_fn = make_callable_class_concurrent(op_fn)
 
         def fn(item: Any) -> Any:
             assert ray.data._cached_fn is not None
-            assert ray.data._cached_cls == fn_
+            assert ray.data._cached_cls == op_fn
             return ray.data._cached_fn(item, *fn_args, **fn_kwargs)
 
         def init_fn():
             if ray.data._cached_fn is None:
-                ray.data._cached_cls = fn_
-                ray.data._cached_fn = fn_(*fn_constructor_args, **fn_constructor_kwargs)
+                ray.data._cached_cls = op_fn
+                ray.data._cached_fn = op_fn(
+                    *fn_constructor_args, **fn_constructor_kwargs
+                )
 
     else:
 
         def fn(item: Any) -> Any:
-            return op._fn(item, *fn_args, **fn_kwargs)
+            return op_fn(item, *fn_args, **fn_kwargs)
 
         def init_fn():
             pass
