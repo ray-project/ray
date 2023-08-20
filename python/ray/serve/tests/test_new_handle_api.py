@@ -300,5 +300,51 @@ def test_convert_to_object_ref_gen(serve_instance):
     assert ray.get(list(obj_ref_gen)) == list(range(10))
 
 
+@pytest.mark.skipif(
+    not RAY_SERVE_ENABLE_NEW_ROUTING,
+    reason="Streaming only supported w/ new routing.",
+)
+@pytest.mark.parametrize("stream", [False, True])
+def test_sync_response_methods_fail_in_deployment(serve_instance, stream: bool):
+    """Blocking `DeploymentResponse` (and generator) methods should fail in loop."""
+
+    if stream:
+
+        @serve.deployment
+        def downstream():
+            yield
+
+    else:
+
+        @serve.deployment
+        def downstream():
+            pass
+
+    @serve.deployment
+    class Deployment:
+        def __init__(self, handle: RayServeHandle):
+            self._handle = handle.options(use_new_handle_api=True, stream=stream)
+
+        async def __call__(self):
+            response = self._handle.remote()
+            with pytest.raises(
+                RuntimeError,
+                match="should not be called from within an `asyncio` event loop",
+            ):
+                if stream:
+                    for _ in response:
+                        pass
+                else:
+                    response.result()
+
+            return "OK"
+
+    handle = serve.run(Deployment.bind(downstream.bind())).options(
+        use_new_handle_api=True
+    )
+
+    assert handle.remote().result() == "OK"
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))

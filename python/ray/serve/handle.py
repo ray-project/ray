@@ -433,9 +433,16 @@ class _DeploymentResponseBase:
         self,
         assign_request_coro: Coroutine,
         loop: asyncio.AbstractEventLoop,
+        loop_is_in_another_thread: bool,
     ):
         self._assign_request_task = loop.create_task(assign_request_coro)
-        self._loop = loop
+
+        if loop_is_in_another_thread:
+            self._object_ref_future = asyncio.run_coroutine_threadsafe(
+                self._to_object_ref_or_gen(_record_telemetry=False), loop
+            )
+        else:
+            self._object_ref_future = None
 
     async def _to_object_ref_or_gen(
         self,
@@ -453,10 +460,16 @@ class _DeploymentResponseBase:
         self,
         _record_telemetry: bool = True,
     ) -> Union[ray.ObjectRef, StreamingObjectRefGenerator]:
-        future: concurrent.futures.Future = asyncio.run_coroutine_threadsafe(
-            self._to_object_ref_or_gen(_record_telemetry=_record_telemetry), self._loop
-        )
-        return future.result()
+        if self._object_ref_future is None:
+            raise RuntimeError(
+                "Sync methods should not be called from within an `asyncio` event loop."
+                "Use `await response` or `await response._to_object_ref()` instead."
+            )
+
+        if _record_telemetry:
+            record_serve_tag("SERVE_DEPLOYMENT_HANDLE_TO_OBJECT_REF_API_USED", "1")
+
+        return self._object_ref_future.result()
 
     def cancel(self):
         """Attempt to cancel the `DeploymentHandle` call.
@@ -650,8 +663,13 @@ class DeploymentResponseGenerator(_DeploymentResponseBase):
         self,
         assign_request_coro: Coroutine,
         loop: asyncio.AbstractEventLoop,
+        loop_is_in_another_thread: bool,
     ):
-        super().__init__(assign_request_coro, loop=loop)
+        super().__init__(
+            assign_request_coro,
+            loop=loop,
+            loop_is_in_another_thread=loop_is_in_another_thread,
+        )
         self._obj_ref_gen: Optional[StreamingObjectRefGenerator] = None
 
     def __aiter__(self) -> AsyncIterator[Any]:
@@ -796,12 +814,12 @@ class DeploymentHandle(_DeploymentHandleBase):
         loop = self._get_or_create_router()._event_loop
         result_coro = self._remote(args, kwargs)
         if self.handle_options.stream:
-            return DeploymentResponseGenerator(
-                result_coro,
-                loop=loop,
-            )
+            response_cls = DeploymentResponseGenerator
         else:
-            return DeploymentResponse(
-                result_coro,
-                loop=loop,
-            )
+            response_cls = DeploymentResponse
+
+        return response_cls(
+            result_coro,
+            loop=loop,
+            loop_is_in_another_thread=self._is_for_sync_context,
+        )
