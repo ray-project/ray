@@ -1,3 +1,4 @@
+from contextlib import contextmanager
 import tempfile
 import os
 from pathlib import Path
@@ -9,10 +10,12 @@ from typing import List
 import pytest
 
 from ray import train, tune
+from ray.air._internal.uri_utils import URI
 from ray.tune.analysis.experiment_analysis import NewExperimentAnalysis
 from ray.tune.experiment import Trial
 from ray.tune.utils import flatten_dict
 
+from ray.air.tests.test_checkpoints import mock_s3_bucket_uri
 from ray.train.tests.util import create_dict_checkpoint, load_dict_checkpoint
 
 
@@ -58,31 +61,49 @@ def _get_trial_with_id(trials: List[Trial], id: int) -> Trial:
     return [trial for trial in trials if trial.config["id"] == id][0]
 
 
-@pytest.fixture(scope="module", params=["dir", "memory"])
+@contextmanager
+def dummy_context_manager():
+    yield "dummy value"
+
+
+@pytest.fixture(scope="module", params=["dir", "memory", "cloud"])
 def experiment_analysis(request):
+    load_from = request.param
     tmp_path = Path(tempfile.mkdtemp())
-    ea = tune.run(
-        train_fn,
-        config={"id": tune.grid_search(list(range(1, NUM_TRIALS + 1)))},
-        metric="ascending",
-        mode="max",
-        # TODO(justinvyu): Test cloud.
-        storage_path=str(tmp_path / "fake_nfs"),
-        name="test_experiment_analysis",
+
+    os.environ["RAY_AIR_LOCAL_CACHE_DIR"] = str(tmp_path / "ray_results")
+
+    context_manager = (
+        mock_s3_bucket_uri if load_from == "cloud" else dummy_context_manager
     )
 
-    load_from = request.param
-    if load_from == "dir":
-        # Test init without passing in in-memory trials. Load them from a dir instead.
-        yield NewExperimentAnalysis(
-            str(tmp_path / "fake_nfs" / "test_experiment_analysis"),
-            default_metric="ascending",
-            default_mode="max",
+    with context_manager() as cloud_storage_path:
+        storage_path = (
+            str(cloud_storage_path)
+            if load_from == "cloud"
+            else str(tmp_path / "fake_nfs")
         )
-    elif load_from == "memory":
-        yield ea
-    else:
-        raise NotImplementedError(f"Invalid param: {load_from}")
+        ea = tune.run(
+            train_fn,
+            config={"id": tune.grid_search(list(range(1, NUM_TRIALS + 1)))},
+            metric="ascending",
+            mode="max",
+            storage_path=storage_path,
+            name="test_experiment_analysis",
+        )
+
+        if load_from in ["dir", "cloud"]:
+            # Test init without passing in in-memory trials.
+            # Load them from an experiment directory instead.
+            yield NewExperimentAnalysis(
+                str(URI(storage_path) / "test_experiment_analysis"),
+                default_metric="ascending",
+                default_mode="max",
+            )
+        elif load_from == "memory":
+            yield ea
+        else:
+            raise NotImplementedError(f"Invalid param: {load_from}")
 
 
 @pytest.mark.parametrize("filetype", ["json", "csv"])
