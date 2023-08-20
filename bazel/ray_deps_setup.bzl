@@ -349,10 +349,20 @@ def ray_deps_setup():
         sha256 = "7fbbbc05c112c44e9b406612e6a7a7f4789a6918d7aacefef4c35c105286930c",
     )
 
+
     http_archive(
         name = "libunwind",
         build_file = "@com_github_ray_project_ray//bazel:BUILD.libunwind",
         sha256 = "a18a6a24307443a8ace7a8acc2ce79fbbe6826cd0edf98d6326d0225d6a5d6e6",
         strip_prefix = "libunwind-1.7.2",
         urls = ["https://github.com/libunwind/libunwind/releases/download/v1.7.2/libunwind-1.7.2.tar.gz"],
+    )
+
+
+    new_git_repository(
+        name = "jemalloc",
+        remote = "https://github.com/jemalloc/jemalloc.git",
+        commit = "254c4847e8ac263d24720aa93c2c7d410f55a239",
+        build_file = "@com_github_ray_project_ray//bazel:BUILD.jemalloc",
+        shallow_since = "1691532067 -0700",
     )
