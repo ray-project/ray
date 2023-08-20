@@ -108,7 +108,7 @@ class MapBatches(AbstractUDFMap):
         input_op: LogicalOperator,
         fn: UserDefinedFunction,
         batch_size: Optional[int] = DEFAULT_BATCH_SIZE,
-        batch_format: Optional[str] = "default",
+        batch_format: str = "default",
         zero_copy_batch: bool = False,
         fn_args: Optional[Iterable[Any]] = None,
         fn_kwargs: Optional[Dict[str, Any]] = None,

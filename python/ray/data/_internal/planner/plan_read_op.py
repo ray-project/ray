@@ -1,14 +1,16 @@
-from typing import Iterator, List
+from typing import Iterable, List
 
 import ray
 import ray.cloudpickle as cloudpickle
-from ray.data._internal.execution.interfaces import (
-    PhysicalOperator,
-    RefBundle,
-    TaskContext,
-)
+from ray.data._internal.execution.interfaces import PhysicalOperator, RefBundle
+from ray.data._internal.execution.interfaces.task_context import TaskContext
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.operators.map_operator import MapOperator
+from ray.data._internal.execution.operators.map_transformer import (
+    MapTransformer,
+    MapTransformFn,
+    MapTransformFnDataType,
+)
 from ray.data._internal.logical.operators.read_operator import Read
 from ray.data.block import Block
 from ray.data.datasource.datasource import ReadTask
@@ -34,7 +36,7 @@ def cleaned_metadata(read_task):
     return block_meta
 
 
-def _plan_read_op(op: Read) -> PhysicalOperator:
+def plan_read_op(op: Read) -> PhysicalOperator:
     """Get the corresponding DAG of physical operators for Read.
 
     Note this method only converts the given `op`, but not its input dependencies.
@@ -65,12 +67,23 @@ def _plan_read_op(op: Read) -> PhysicalOperator:
         input_data_factory=get_input_data, num_output_blocks=op._estimated_num_blocks
     )
 
-    def do_read(blocks: Iterator[ReadTask], _: TaskContext) -> Iterator[Block]:
+    def do_read(blocks: Iterable[ReadTask], _: TaskContext) -> Iterable[Block]:
         for read_task in blocks:
             yield from read_task()
 
+    # Create a MapTransformer for a read operator
+
+    # TODO(hchen): Currently, we apply the BlockOuputBuffer within the read tasks.
+    # We should remove that and use `_blocks_to_output_blocks` here.
+    transform_fns = [
+        MapTransformFn(
+            do_read, MapTransformFnDataType.Block, MapTransformFnDataType.Block
+        ),
+    ]
+    map_transformer = MapTransformer(transform_fns)
+
     return MapOperator.create(
-        do_read,
+        map_transformer,
         inputs,
         name=op.name,
         ray_remote_args=op._ray_remote_args,

@@ -912,7 +912,9 @@ def test_map_batches_preserves_empty_block_format(ray_start_regular_shared):
 
     block_refs = ds.get_internal_block_refs()
     assert len(block_refs) == 1
-    assert type(ray.get(block_refs)[0]) == pd.DataFrame
+    block = ray.get(block_refs[0])
+    assert type(block) == pd.DataFrame
+    assert block.columns == df.columns
 
 
 def test_random_sample(ray_start_regular_shared):

@@ -20,9 +20,9 @@ from ray.data._internal.planner.plan_all_to_all_op import _plan_all_to_all_op
 from ray.data._internal.planner.plan_from_op import _plan_from_op
 from ray.data._internal.planner.plan_input_data_op import _plan_input_data_op
 from ray.data._internal.planner.plan_limit_op import _plan_limit_op
-from ray.data._internal.planner.plan_read_op import _plan_read_op
-from ray.data._internal.planner.plan_udf_map_op import _plan_udf_map_op
-from ray.data._internal.planner.plan_write_op import _plan_write_op
+from ray.data._internal.planner.plan_read_op import plan_read_op
+from ray.data._internal.planner.plan_udf_map_op import plan_udf_map_op
+from ray.data._internal.planner.plan_write_op import plan_write_op
 
 
 class Planner:
@@ -48,19 +48,19 @@ class Planner:
 
         if isinstance(logical_op, Read):
             assert not physical_children
-            physical_op = _plan_read_op(logical_op)
+            physical_op = plan_read_op(logical_op)
         elif isinstance(logical_op, InputData):
             assert not physical_children
             physical_op = _plan_input_data_op(logical_op)
         elif isinstance(logical_op, Write):
             assert len(physical_children) == 1
-            physical_op = _plan_write_op(logical_op, physical_children[0])
+            physical_op = plan_write_op(logical_op, physical_children[0])
         elif isinstance(logical_op, AbstractFrom):
             assert not physical_children
             physical_op = _plan_from_op(logical_op)
         elif isinstance(logical_op, AbstractUDFMap):
             assert len(physical_children) == 1
-            physical_op = _plan_udf_map_op(logical_op, physical_children[0])
+            physical_op = plan_udf_map_op(logical_op, physical_children[0])
         elif isinstance(logical_op, AbstractAllToAll):
             assert len(physical_children) == 1
             physical_op = _plan_all_to_all_op(logical_op, physical_children[0])

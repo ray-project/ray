@@ -14,6 +14,9 @@ from ray.data._internal.execution.interfaces import (
 from ray.data._internal.execution.interfaces.physical_operator import MetadataOpTask
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.operators.map_operator import MapOperator
+from ray.data._internal.execution.operators.map_transformer import (
+    create_map_transformer_from_block_fn,
+)
 from ray.data._internal.execution.streaming_executor import (
     _debug_dump_topology,
     _validate_dag,
@@ -42,12 +45,12 @@ def sleep():
     time.sleep(999)
 
 
-def make_transform(block_fn):
+def make_map_transformer(block_fn):
     def map_fn(block_iter):
         for block in block_iter:
             yield block_fn(block)
 
-    return map_fn
+    return create_map_transformer_from_block_fn(map_fn)
 
 
 @pytest.mark.parametrize(
@@ -57,8 +60,12 @@ def make_transform(block_fn):
 def test_build_streaming_topology(verbose_progress):
     inputs = make_ref_bundles([[x] for x in range(20)])
     o1 = InputDataBuffer(inputs)
-    o2 = MapOperator.create(make_transform(lambda block: [b * -1 for b in block]), o1)
-    o3 = MapOperator.create(make_transform(lambda block: [b * 2 for b in block]), o2)
+    o2 = MapOperator.create(
+        make_map_transformer(lambda block: [b * -1 for b in block]), o1
+    )
+    o3 = MapOperator.create(
+        make_map_transformer(lambda block: [b * 2 for b in block]), o2
+    )
     topo, num_progress_bars = build_streaming_topology(
         o3, ExecutionOptions(verbose_progress=verbose_progress)
     )
@@ -78,8 +85,12 @@ def test_disallow_non_unique_operators():
     inputs = make_ref_bundles([[x] for x in range(20)])
     # An operator [o1] cannot used in the same DAG twice.
     o1 = InputDataBuffer(inputs)
-    o2 = MapOperator.create(make_transform(lambda block: [b * -1 for b in block]), o1)
-    o3 = MapOperator.create(make_transform(lambda block: [b * -1 for b in block]), o1)
+    o2 = MapOperator.create(
+        make_map_transformer(lambda block: [b * -1 for b in block]), o1
+    )
+    o3 = MapOperator.create(
+        make_map_transformer(lambda block: [b * -1 for b in block]), o1
+    )
     o4 = PhysicalOperator("test_combine", [o2, o3])
     with pytest.raises(ValueError):
         build_streaming_topology(o4, ExecutionOptions(verbose_progress=True))
@@ -88,7 +99,9 @@ def test_disallow_non_unique_operators():
 def test_process_completed_tasks():
     inputs = make_ref_bundles([[x] for x in range(20)])
     o1 = InputDataBuffer(inputs)
-    o2 = MapOperator.create(make_transform(lambda block: [b * -1 for b in block]), o1)
+    o2 = MapOperator.create(
+        make_map_transformer(lambda block: [b * -1 for b in block]), o1
+    )
     topo, _ = build_streaming_topology(o2, ExecutionOptions(verbose_progress=True))
 
     # Test processing output bundles.
@@ -136,8 +149,12 @@ def test_select_operator_to_run():
     opt = ExecutionOptions()
     inputs = make_ref_bundles([[x] for x in range(20)])
     o1 = InputDataBuffer(inputs)
-    o2 = MapOperator.create(make_transform(lambda block: [b * -1 for b in block]), o1)
-    o3 = MapOperator.create(make_transform(lambda block: [b * 2 for b in block]), o2)
+    o2 = MapOperator.create(
+        make_map_transformer(lambda block: [b * -1 for b in block]), o1
+    )
+    o3 = MapOperator.create(
+        make_map_transformer(lambda block: [b * 2 for b in block]), o2
+    )
     topo, _ = build_streaming_topology(o3, opt)
 
     # Test empty.
@@ -220,7 +237,9 @@ def test_dispatch_next_task():
     inputs = make_ref_bundles([[x] for x in range(20)])
     o1 = InputDataBuffer(inputs)
     o1_state = OpState(o1, [])
-    o2 = MapOperator.create(make_transform(lambda block: [b * -1 for b in block]), o1)
+    o2 = MapOperator.create(
+        make_map_transformer(lambda block: [b * -1 for b in block]), o1
+    )
     op_state = OpState(o2, [o1_state.outqueue])
 
     # TODO: test multiple inqueues with the union operator.
@@ -240,8 +259,12 @@ def test_debug_dump_topology():
     opt = ExecutionOptions()
     inputs = make_ref_bundles([[x] for x in range(20)])
     o1 = InputDataBuffer(inputs)
-    o2 = MapOperator.create(make_transform(lambda block: [b * -1 for b in block]), o1)
-    o3 = MapOperator.create(make_transform(lambda block: [b * 2 for b in block]), o2)
+    o2 = MapOperator.create(
+        make_map_transformer(lambda block: [b * -1 for b in block]), o1
+    )
+    o3 = MapOperator.create(
+        make_map_transformer(lambda block: [b * 2 for b in block]), o2
+    )
     topo, _ = build_streaming_topology(o3, opt)
     # Just a sanity check to ensure it doesn't crash.
     _debug_dump_topology(topo)
@@ -251,12 +274,12 @@ def test_validate_dag():
     inputs = make_ref_bundles([[x] for x in range(20)])
     o1 = InputDataBuffer(inputs)
     o2 = MapOperator.create(
-        make_transform(lambda block: [b * -1 for b in block]),
+        make_map_transformer(lambda block: [b * -1 for b in block]),
         o1,
         compute_strategy=ray.data.ActorPoolStrategy(size=8),
     )
     o3 = MapOperator.create(
-        make_transform(lambda block: [b * 2 for b in block]),
+        make_map_transformer(lambda block: [b * 2 for b in block]),
         o2,
         compute_strategy=ray.data.ActorPoolStrategy(size=4),
     )
@@ -353,17 +376,17 @@ def test_resource_constrained_triggers_autoscaling(monkeypatch):
         inputs = make_ref_bundles([[x] for x in range(20)])
         o1 = InputDataBuffer(inputs)
         o2 = MapOperator.create(
-            make_transform(lambda block: [b * -1 for b in block]),
+            make_map_transformer(lambda block: [b * -1 for b in block]),
             o1,
         )
         o2.num_active_tasks = MagicMock(return_value=1)
         o3 = MapOperator.create(
-            make_transform(lambda block: [b * 2 for b in block]),
+            make_map_transformer(lambda block: [b * 2 for b in block]),
             o2,
         )
         o3.num_active_tasks = MagicMock(return_value=1)
         o4 = MapOperator.create(
-            make_transform(lambda block: [b * 3 for b in block]),
+            make_map_transformer(lambda block: [b * 3 for b in block]),
             o3,
             compute_strategy=ray.data.ActorPoolStrategy(min_size=1, max_size=2),
             ray_remote_args={"num_gpus": incremental_cpu},
@@ -477,11 +500,11 @@ def test_select_ops_ensure_at_least_one_live_operator():
     inputs = make_ref_bundles([[x] for x in range(20)])
     o1 = InputDataBuffer(inputs)
     o2 = MapOperator.create(
-        make_transform(lambda block: [b * -1 for b in block]),
+        make_map_transformer(lambda block: [b * -1 for b in block]),
         o1,
     )
     o3 = MapOperator.create(
-        make_transform(lambda block: [b * 2 for b in block]),
+        make_map_transformer(lambda block: [b * 2 for b in block]),
         o2,
     )
     topo, _ = build_streaming_topology(o3, opt)
@@ -526,9 +549,11 @@ def test_select_ops_ensure_at_least_one_live_operator():
 def test_configure_output_locality():
     inputs = make_ref_bundles([[x] for x in range(20)])
     o1 = InputDataBuffer(inputs)
-    o2 = MapOperator.create(make_transform(lambda block: [b * -1 for b in block]), o1)
+    o2 = MapOperator.create(
+        make_map_transformer(lambda block: [b * -1 for b in block]), o1
+    )
     o3 = MapOperator.create(
-        make_transform(lambda block: [b * 2 for b in block]),
+        make_map_transformer(lambda block: [b * 2 for b in block]),
         o2,
         compute_strategy=ray.data.ActorPoolStrategy(size=1),
     )
@@ -567,8 +592,12 @@ def test_configure_output_locality():
 def test_calculate_topology_usage():
     inputs = make_ref_bundles([[x] for x in range(20)])
     o1 = InputDataBuffer(inputs)
-    o2 = MapOperator.create(make_transform(lambda block: [b * -1 for b in block]), o1)
-    o3 = MapOperator.create(make_transform(lambda block: [b * 2 for b in block]), o2)
+    o2 = MapOperator.create(
+        make_map_transformer(lambda block: [b * -1 for b in block]), o1
+    )
+    o3 = MapOperator.create(
+        make_map_transformer(lambda block: [b * 2 for b in block]), o2
+    )
     o2.current_resource_usage = MagicMock(
         return_value=ExecutionResources(cpu=5, object_store_memory=500)
     )
