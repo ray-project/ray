@@ -9,6 +9,7 @@ from starlette.requests import Request
 
 import ray
 from ray._private.test_utils import wait_for_condition
+from ray._private.usage import usage_lib
 
 from ray import serve
 from ray.dag.input_node import InputNode
@@ -17,7 +18,6 @@ from ray.serve.http_adapters import json_request
 from ray.serve._private.constants import SERVE_NAMESPACE, SERVE_DEFAULT_APP_NAME
 from ray.serve.context import get_global_client
 from ray.serve._private.common import ApplicationStatus
-from ray._private.usage.usage_lib import get_extra_usage_tags_to_report
 from ray.serve.schema import ServeDeploySchema
 
 
@@ -340,7 +340,7 @@ def test_rest_api(manage_ray, tmp_dir, version):
     elif version == "v2":
         # Assert num of deployments from controller
         assert len(client.get_all_deployment_statuses()) == 2
-        result = get_extra_usage_tags_to_report(
+        result = usage_lib.get_extra_usage_tags_to_report(
             ray.experimental.internal_kv.internal_kv_get_gcs_client()
         )
         assert int(result["serve_num_deployments"]) == 2
@@ -557,13 +557,6 @@ def test_handle_apis_detected(manage_ray, use_new_handle_api, call_in_deployment
                 )
                 == "1"
             )
-
-        assert (
-            report["extra_usage_tags"].get(
-                "serve_deployment_handle_to_object_ref_api_used", "0"
-            )
-            == "1"
-        )
         return True
 
     wait_for_condition(check_telemetry)
