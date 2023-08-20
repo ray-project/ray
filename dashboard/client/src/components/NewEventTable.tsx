@@ -1,13 +1,9 @@
 import {
   Box,
-  Button,
-  ButtonGroup,
-  Grid,
   InputAdornment,
   LinearProgress,
   makeStyles,
   Paper,
-  Switch,
   Table,
   TableBody,
   TableCell,
@@ -22,9 +18,8 @@ import { SearchOutlined } from "@material-ui/icons";
 import Autocomplete from "@material-ui/lab/Autocomplete";
 import Pagination from "@material-ui/lab/Pagination";
 import dayjs from "dayjs";
-import React, { useContext, useEffect, useState } from "react";
-import { GlobalContext } from "../App";
-import { getNewEvents } from "../service/event";
+import React, { useEffect, useState } from "react";
+import { getEvents } from "../service/event";
 import { Event } from "../type/event";
 import { useFilter } from "../util/hook";
 import { MOCK_DATA } from "./EventTableMockData";
@@ -51,7 +46,7 @@ export enum SourceType {
 type EventTableProps = {
   defaultSeverityLevels?: SeverityLevel[];
   entityName?: string;
-  entityId?: string; // a id in string or *
+  entityId?: string; // It could be a specific or "*" to represent all entities
 };
 
 const transformFiltersToParams = (filters: Filters) => {
@@ -63,7 +58,7 @@ const transformFiltersToParams = (filters: Filters) => {
 
   if (filters.entityName && filters.entityId) {
     params.append(
-      `${encodeURIComponent(filters.entityName)}_id`,
+      encodeURIComponent(filters.entityName),
       encodeURIComponent(filters.entityId),
     );
   }
@@ -135,7 +130,7 @@ const SOURCE_TYPE_OPTIONS = [
 
 const SEVERITY_LEVEL_OPTIONS = ["info", "debug", "warning", "error", "tracing"];
 
-const columns = [
+const COLUMNS = [
   { label: "Severity", align: "center" },
   { label: "Timestamp", align: "center" },
   { label: "Source", align: "center" },
@@ -150,9 +145,9 @@ type Filters = {
   entityName: string | undefined;
   entityId: string | undefined;
 };
+
 const useEventTable = (props: EventTableProps) => {
   const { defaultSeverityLevels, entityName, entityId } = props;
-  const { nodeMap } = useContext(GlobalContext);
   const [loading, setLoading] = useState(true);
   const { changeFilter: _changeFilter, filterFunc } = useFilter();
   const [filters, _setFilters] = useState<Filters>({
@@ -163,18 +158,18 @@ const useEventTable = (props: EventTableProps) => {
   });
 
   const [events, setEvents] = useState<Event[]>([]);
+
   const [pagination, setPagination] = useState({
     pageNo: 1,
     pageSize: 10,
     total: 0,
   });
+  const { pageSize } = pagination;
 
   const changePage = (key: string, value: number) => {
     setPagination({ ...pagination, [key]: value });
   };
 
-  const realLen = events.filter(filterFunc).length;
-  const { pageSize } = pagination;
   const changeFilter: typeof _changeFilter = (...params) => {
     _changeFilter(...params);
     setPagination({
@@ -195,7 +190,7 @@ const useEventTable = (props: EventTableProps) => {
     const getEvent = async () => {
       try {
         const params = transformFiltersToParams(filters);
-        const rsp = await getNewEvents(params); // We don't useSWR since we need to get real time events data once filters changed
+        const rsp = await getEvents(params); // We don't useSWR since we need to get real time events data once filters changed
         const events = rsp?.data?.data?.result?.result;
         if (events) {
           setEvents(events); // We sor the event by timestamp in the backend
@@ -214,13 +209,14 @@ const useEventTable = (props: EventTableProps) => {
     setLoading(false);
   }, [events]);
 
+  const realLen = events.filter(filterFunc).length;
   useEffect(() => {
     setPagination((p) => ({
       ...p,
       total: Math.ceil(realLen / p.pageSize),
       pageNo: 1,
     }));
-  }, [realLen, pageSize]); // pagination
+  }, [realLen, pageSize]);
 
   const range = [
     (pagination.pageNo - 1) * pagination.pageSize,
@@ -234,10 +230,7 @@ const useEventTable = (props: EventTableProps) => {
     changeFilter,
     pagination,
     changePage,
-    sourceOptions: Array.from(new Set(events.map((e) => e.sourceType))),
-    severityOptions: Array.from(new Set(events.map((e) => e.severity))),
     loading,
-    nodeMap,
   };
 };
 
@@ -301,7 +294,7 @@ const NewEventTable = (props: EventTableProps) => {
           <Table className={classes.tableContainer}>
             <TableHead>
               <TableRow>
-                {columns.map(({ label, align }) => (
+                {COLUMNS.map(({ label, align }) => (
                   <TableCell key={label} align={align as Align}>
                     <Box
                       display="flex"

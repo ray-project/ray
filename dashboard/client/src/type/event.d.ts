@@ -1,43 +1,21 @@
+import { SeverityLevel, SourceType } from "../components/NewEventTable";
+
 export type Event = {
   eventId: string;
-  jobId: string;
-  nodeId: string;
-  sourceType: string;
+  sourceType: SourceType;
   sourceHostname: string;
   hostName: string;
   sourcePid: number;
   pid: number;
-  label: string;
   message: string;
   timestamp: number;
-  timeStamp: number;
-  jobName: string;
-  severity: string;
+  severity: SeverityLevel;
   customFields: {
     [key: string]: any;
   };
 };
 
 export type EventRsp = {
-  result: boolean;
-  msg: string;
-  data: {
-    jobId: string;
-    events: Event[];
-  };
-};
-
-export type EventGlobalRsp = {
-  result: boolean;
-  msg: string;
-  data: {
-    events: {
-      global: Event[];
-    };
-  };
-};
-
-export type NewEventRsp = {
   result: boolean;
   msg: string;
   data: {
