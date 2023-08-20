@@ -220,8 +220,8 @@ parts:
           - file: serve/model_composition
           - file: serve/deploy-many-models/index
             sections:
-            - file: serve/deploy-many-models/multi-app
-            - file: serve/deploy-many-models/model-multiplexing
+              - file: serve/deploy-many-models/multi-app
+              - file: serve/deploy-many-models/model-multiplexing
           - file: serve/configure-serve-deployment
           - file: serve/http-guide
           - file: serve/production-guide/index
@@ -314,43 +314,46 @@ parts:
           - file: cluster/kubernetes/index
             title: Deploying on Kubernetes
             sections:
-            - file: cluster/kubernetes/getting-started
-            - file: cluster/kubernetes/user-guides
-              sections:
-                - file: cluster/kubernetes/user-guides/k8s-cluster-setup.md
-                - file: cluster/kubernetes/user-guides/config.md
-                - file: cluster/kubernetes/user-guides/configuring-autoscaling.md
-                - file: cluster/kubernetes/user-guides/logging.md
-                - file: cluster/kubernetes/user-guides/gpu.md
-                - file: cluster/kubernetes/user-guides/experimental.md
-                - file: cluster/kubernetes/user-guides/static-ray-cluster-without-kuberay.md
-            - file: cluster/kubernetes/examples
-              sections:
-                - file: cluster/kubernetes/examples/ml-example.md
-                - file: cluster/kubernetes/examples/gpu-training-example.md
-            - file: cluster/kubernetes/references
+              - file: cluster/kubernetes/getting-started
+              - file: cluster/kubernetes/user-guides
+                sections:
+                  - file: cluster/kubernetes/user-guides/k8s-cluster-setup.md
+                  - file: cluster/kubernetes/user-guides/config.md
+                  - file: cluster/kubernetes/user-guides/configuring-autoscaling.md
+                  - file: cluster/kubernetes/user-guides/logging.md
+                  - file: cluster/kubernetes/user-guides/gpu.md
+                  - file: cluster/kubernetes/user-guides/experimental.md
+                  - file: cluster/kubernetes/user-guides/static-ray-cluster-without-kuberay.md
+              - file: cluster/kubernetes/examples
+                sections:
+                  - file: cluster/kubernetes/examples/ml-example.md
+                  - file: cluster/kubernetes/examples/gpu-training-example.md
+                  - file: cluster/kubernetes/examples/stable-diffusion-rayservice.md
+                  - file: cluster/kubernetes/examples/mobilenet-rayservice.md
+                  - file: cluster/kubernetes/examples/text-summarizer-rayservice.md
+              - file: cluster/kubernetes/references
           - file: cluster/vms/index
             title: Deploying on VMs
             sections:
-            - file: cluster/vms/getting-started
-            - file: cluster/vms/user-guides/index
-              title: User Guides
-              sections:
-              - file: cluster/vms/user-guides/launching-clusters/index
-              - file: cluster/vms/user-guides/large-cluster-best-practices
-              - file: cluster/vms/user-guides/configuring-autoscaling
-              - file: cluster/vms/user-guides/logging
-              - file: cluster/vms/user-guides/community/index
-                title: Community-supported Cluster Managers
+              - file: cluster/vms/getting-started
+              - file: cluster/vms/user-guides/index
+                title: User Guides
                 sections:
-                - file: cluster/vms/user-guides/community/yarn
-                - file: cluster/vms/user-guides/community/slurm
-                - file: cluster/vms/user-guides/community/lsf
-            - file: cluster/vms/examples/index
-              title: Examples
-              sections:
-              - file: cluster/vms/examples/ml-example
-            - file: cluster/vms/references/index
+                  - file: cluster/vms/user-guides/launching-clusters/index
+                  - file: cluster/vms/user-guides/large-cluster-best-practices
+                  - file: cluster/vms/user-guides/configuring-autoscaling
+                  - file: cluster/vms/user-guides/logging
+                  - file: cluster/vms/user-guides/community/index
+                    title: Community-supported Cluster Managers
+                    sections:
+                      - file: cluster/vms/user-guides/community/yarn
+                      - file: cluster/vms/user-guides/community/slurm
+                      - file: cluster/vms/user-guides/community/lsf
+              - file: cluster/vms/examples/index
+                title: Examples
+                sections:
+                  - file: cluster/vms/examples/ml-example
+              - file: cluster/vms/references/index
           - file: cluster/metrics
           - file: cluster/configure-manage-dashboard
           - file: cluster/running-applications/index
