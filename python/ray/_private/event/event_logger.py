@@ -1,4 +1,3 @@
-from enum import Enum
 import logging
 import pathlib
 import json
@@ -8,45 +7,14 @@ import socket
 import os
 import threading
 
-from typing import Dict
+from typing import Dict, Optional
 from datetime import datetime
 
-from google.protobuf.json_format import MessageToDict
+from google.protobuf.json_format import MessageToDict, Parse
 
 from ray.core.generated.event_pb2 import Event
 
-eventNameToProtoMap = {
-    "COMMON": Event.SourceType.COMMON,
-    "CORE_WORKER": Event.SourceType.CORE_WORKER,
-    "GCS": Event.SourceType.GCS,
-    "RAYLET": Event.SourceType.RAYLET,
-    "CLUSTER_LIFECYCLE": Event.SourceType.CLUSTER_LIFECYCLE,
-    "AUTOSCALER": Event.SourceType.AUTOSCALER,
-    "JOBS": Event.SourceType.JOBS,
-}
-
-
-eventNameToProtoMap = {
-    "COMMON": Event.SourceType.COMMON,
-    "CORE_WORKER": Event.SourceType.CORE_WORKER,
-    "GCS": Event.SourceType.GCS,
-    "RAYLET": Event.SourceType.RAYLET,
-    "CLUSTER_LIFECYCLE": Event.SourceType.CLUSTER_LIFECYCLE,
-    "AUTOSCALER": Event.SourceType.AUTOSCALER,
-    "JOBS": Event.SourceType.JOBS,
-    # "SERVE": Event.SourceType.SERVE,
-}
-
-
-## Should be sync with eventNameToProtoMap
-class EventSource(Enum):
-    COMMON = "COMMON"
-    CORE_WORKER = "CORE_WORKER"
-    GCS = "GCS"
-    RAYLET = "RAYLET"
-    CLUSTER_LIFECYCLE = "CLUSTER_LIFECYCLE"
-    AUTOSCALER = "AUTOSCALER"
-    JOBS = "JOBS"
+global_logger = logging.getLogger(__name__)
 
 
 def get_event_id():
@@ -80,6 +48,12 @@ class EventLoggerAdapter:
         """
         with self.lock:
             self.global_context = {} if not global_context else global_context
+
+    def trace(self, message: str, **kwargs):
+        self._emit(Event.Severity.TRACE, message, **kwargs)
+
+    def debug(self, message: str, **kwargs):
+        self._emit(Event.Severity.DEBUG, message, **kwargs)
 
     def info(self, message: str, **kwargs):
         self._emit(Event.Severity.INFO, message, **kwargs)
@@ -151,7 +125,7 @@ _event_logger_lock = threading.Lock()
 _event_logger = {}
 
 
-def get_event_logger(source: EventSource, sink_dir: str):
+def get_event_logger(source: Event.SourceType, sink_dir: str):
     """Get the event logger of the current process.
 
     There's only 1 event logger per (process, source).
@@ -161,15 +135,61 @@ def get_event_logger(source: EventSource, sink_dir: str):
                 file-based logging impl.
 
     Args:
-        source: The source of the event in string.
+        source: The source of the event.
         sink_dir: The directory to sink event logs.
     """
     with _event_logger_lock:
         global _event_logger
-        source_type = eventNameToProtoMap[source]
-        source_name = Event.SourceType.Name(source_type)
+        source_name = Event.SourceType.Name(source)
         if source_name not in _event_logger:
             logger = _build_event_file_logger(source_name, sink_dir)
             _event_logger[source_name] = EventLoggerAdapter(source, logger)
 
         return _event_logger[source_name]
+
+
+def parse_event(event_str: str) -> Optional[Event]:
+    """Parse an event from a string.
+
+    Args:
+        event_str: The string to parse. Expect to be a JSON serialized
+            Event protobuf.
+
+    Returns:
+        The parsed event if parsable, else None
+    """
+    try:
+        return Parse(event_str, Event())
+    except Exception:
+        global_logger.exception(f"Failed to parse event: {event_str}")
+        return None
+
+
+def filter_event_by_level(event: Event, filter_event_level: str) -> bool:
+    """Filter an event based on event level.
+
+    Args:
+        event: The event to filter.
+        filter_event_level: The event level string to filter by. Any events
+            that are lower than this level will be filtered.
+
+    Returns:
+        True if the event should be filtered, else False.
+    """
+
+    event_levels = {
+        Event.Severity.TRACE: 0,
+        Event.Severity.DEBUG: 1,
+        Event.Severity.INFO: 2,
+        Event.Severity.WARNING: 3,
+        Event.Severity.ERROR: 4,
+        Event.Severity.FATAL: 5,
+    }
+
+    filter_event_level = filter_event_level.upper()
+    filter_event_level = Event.Severity.Value(filter_event_level)
+
+    if event_levels[event.severity] < event_levels[filter_event_level]:
+        return True
+
+    return False

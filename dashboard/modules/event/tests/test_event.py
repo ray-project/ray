@@ -3,16 +3,13 @@ import sys
 import time
 import json
 import copy
-import ipdb
 import logging
-from typing import Any
 import requests
 import asyncio
 import random
 import tempfile
 import socket
-from ray._private.event.event_logger import EventSource, get_event_logger
-from ray import serve
+
 from pprint import pprint
 from datetime import datetime
 
@@ -23,6 +20,7 @@ import ray
 from ray.util.state import list_cluster_events
 from ray._private.utils import binary_to_hex
 from ray.cluster_utils import AutoscalingCluster
+from ray._private.event.event_logger import filter_event_by_level, get_event_logger
 from ray.dashboard.tests.conftest import *  # noqa
 from ray.dashboard.modules.event import event_consts
 from ray.core.generated import event_pb2
@@ -35,7 +33,6 @@ from ray.dashboard.modules.event.event_utils import (
     monitor_events,
 )
 from ray.job_submission import JobSubmissionClient
-from ray.util import inspect_serializability
 
 logger = logging.getLogger(__name__)
 
@@ -78,14 +75,13 @@ def _test_logger(name, log_file, max_bytes, backup_count):
 
 
 def test_python_global_event_logger(tmp_path):
-    logger = get_event_logger("GCS", str(tmp_path))
+    logger = get_event_logger(event_pb2.Event.SourceType.GCS, str(tmp_path))
     logger.set_global_context({"test_meta": "1"})
     logger.info("message", a="a", b="b")
     logger.error("message", a="a", b="b")
     logger.warning("message", a="a", b="b")
     logger.fatal("message", a="a", b="b")
     event_dir = tmp_path / "events"
-    print(event_dir)
     assert event_dir.exists()
     event_file = event_dir / "event_GCS.log"
     assert event_file.exists()
@@ -135,7 +131,6 @@ def test_event_basic(disable_aiohttp_cache, ray_start_with_dashboard):
             resp = requests.get(f"{webui_url}/events")
             resp.raise_for_status()
             result = resp.json()
-            print(result)
             all_events = result["data"]["events"]
             job_events = all_events[job_id]
             assert len(job_events) >= test_count * 2
@@ -388,6 +383,36 @@ def test_autoscaler_cluster_events(shutdown_only):
         cluster.shutdown()
 
 
+def test_filter_event_by_level(monkeypatch):
+    def gen_event(level: str):
+        return event_pb2.Event(
+            source_type=event_pb2.Event.AUTOSCALER,
+            severity=event_pb2.Event.Severity.Value(level),
+            message=level,
+        )
+
+    trace = gen_event("TRACE")
+    debug = gen_event("DEBUG")
+    info = gen_event("INFO")
+    warning = gen_event("WARNING")
+    error = gen_event("ERROR")
+    fatal = gen_event("FATAL")
+
+    def assert_events_filtered(events, expected, filter_level):
+        filtered = [e for e in events if filter_event_by_level(e, filter_level)]
+        print(filtered)
+        assert len(filtered) == len(expected)
+        assert {e.message for e in filtered} == {e.message for e in expected}
+
+    events = [trace, debug, info, warning, error, fatal]
+    assert_events_filtered(events, [], "TRACE")
+    assert_events_filtered(events, [trace], "DEBUG")
+    assert_events_filtered(events, [trace, debug], "INFO")
+    assert_events_filtered(events, [trace, debug, info], "WARNING")
+    assert_events_filtered(events, [trace, debug, info, warning], "ERROR")
+    assert_events_filtered(events, [trace, debug, info, warning, error], "FATAL")
+
+
 def test_jobs_cluster_events(shutdown_only):
     ray.init()
     address = ray._private.worker._global_node.webui_url
@@ -486,133 +511,10 @@ def test_core_events(shutdown_only):
             "A worker died or was killed while executing "
             "a task by an unexpected system error" in event["message"]
         )
-        return False
+        return True
 
-    wait_for_condition(verify, 10)
+    wait_for_condition(verify)
     pprint(list_cluster_events())
-
-
-def test_actors_events(
-    shutdown_only, tmp_path
-):  ## for each test case, shutdown finally
-    context = ray.init()
-    print("context: ", context)
-    # ray._private.worker.global_worker.node.session_name
-    print(
-        f"ray._private.worker.global_worker.node.session_name {type(ray._private.worker.global_worker.node.session_name)}: {ray._private.worker.global_worker.node.session_name}"
-    )
-    dashboard_url = f"http://{context['webui_url']}"
-
-    @ray.remote
-    class Counter:
-        def __init__(self):
-            self.value = 0
-            self.event_logger = get_event_logger(EventSource.CORE_WORKER, tmp_path)
-
-        def increment(self):
-            self.value += 1
-            self.event_logger.info("increment")
-            return self.value
-
-        def get_counter(self):
-            return self.value
-
-    actors = [Counter.remote() for _ in range(1)]
-
-    # Increment the count for each actor asynchronously
-    increment_results = [actor.increment.remote() for actor in actors]
-
-    # Wait for all the increments to finish (you can add sleep here if necessary)
-    ray.get(increment_results)
-
-    # Get the counts from all the actors and print them
-    counts = ray.get([actor.get_counter.remote() for actor in actors])
-    print("Counts:")
-    for i, count in enumerate(counts, start=1):
-        print(f"Actor {i}: {count}")
-
-    def verify():
-        resp = requests.get(f"{dashboard_url}/events")
-        pprint(resp.text)
-        # assert len(list_cluster_events()) == 10
-
-        # messages = [event["message"] for event in events]
-
-        # # Make sure the first two has been GC'ed.
-        # for m in messages:
-        #     assert submission_ids[0] not in m
-        #     assert submission_ids[1] not in m
-        return False
-
-    wait_for_condition(verify)
-
-
-def test_tasks_events(shutdown_only, tmp_path):
-    # Initialize Ray
-    ray.init()
-    print(
-        f"ray._private.worker.global_worker.node.session_name {type(ray._private.worker.global_worker.node.session_name)}: {ray._private.worker.global_worker.node.session_name}"
-    )
-    dashboard_url = f"http://{context['webui_url']}"
-
-    @ray.remote
-    def my_task(task_id):
-        logger = get_event_logger(EventSource.CORE_WORKER, tmp_path)
-        logger.info(f"task start id ={task_id}")
-        print(f"Running task {task_id}")
-        return f"Task {task_id} completed successfully"
-
-    # Create and submit 10 tasks
-    tasks = [my_task.remote(i) for i in range(10)]
-
-    # Wait for all tasks to complete and collect the results
-    results = ray.get(tasks)
-
-    # Print the results
-    for result in results:
-        print(result)
-
-    def verify():
-        resp = requests.get(f"{dashboard_url}/events")
-        pprint(resp.text)
-        return False
-
-    wait_for_condition(verify)
-
-
-def test_serve_events(shutdown_only):
-    ray.init()
-    print(
-        f"ray._private.worker.global_worker.node.session_name {type(ray._private.worker.global_worker.node.session_name)}: {ray._private.worker.global_worker.node.session_name}"
-    )
-    dashboard_url = f"http://{context['webui_url']}"
-
-    @serve.deployment(num_replicas=5)
-    class MyFirstDeployment:
-        # Take the message to return as an argument to the constructor.
-        def __init__(self, msg):
-            # self.event_logger = get_event_logger(EventSource.SERVE, "")
-            self.event_logger = get_event_logger(EventSource.CORE_WORKER, "")
-
-            self.msg = msg
-
-        def __call__(self):
-            self.event_logger.info(
-                "replica start", library="serve", serve_replica_id="1"
-            )
-            return self.msg
-
-    my_first_deployment = MyFirstDeployment.bind("Hello world!")
-    handle = serve.run(my_first_deployment)
-    print(ray.get(handle.remote()))  # "Hello world!"
-    print(ray.get(handle.remote()))  # "Hello world!"
-
-    def verify():
-        resp = requests.get(f"{dashboard_url}/events")
-        pprint(resp.text)
-        return False
-
-    wait_for_condition(verify)
 
 
 def test_cluster_events_retention(monkeypatch, shutdown_only):

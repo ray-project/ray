@@ -15,7 +15,7 @@ from typing import Any, Callable, Dict, Optional, Union
 import ray
 import ray._private.ray_constants as ray_constants
 import ray._private.utils
-from ray._private.event.event_logger import EventSource, get_event_logger
+from ray._private.event.event_logger import get_event_logger
 from ray._private.ray_logging import setup_component_logger
 from ray._raylet import GcsClient
 from ray.autoscaler._private.autoscaler import StandardAutoscaler
@@ -182,7 +182,7 @@ class Monitor:
         if log_dir:
             try:
                 self.event_logger = get_event_logger(
-                    EventSource.AUTOSCALER
+                    RayEvent.SourceType.AUTOSCALER, log_dir
                 )
             except Exception:
                 self.event_logger = None
