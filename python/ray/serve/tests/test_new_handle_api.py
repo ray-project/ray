@@ -346,5 +346,42 @@ def test_sync_response_methods_fail_in_deployment(serve_instance, stream: bool):
     assert handle.remote().result() == "OK"
 
 
+def test_handle_eager_execution(serve_instance):
+    """Handle requests should be sent without fetching the result."""
+
+    upstream_signal_actor = SignalActor.remote()
+    downstream_signal_actor = SignalActor.remote()
+
+    @serve.deployment
+    async def downstream():
+        await downstream_signal_actor.send.remote()
+
+    @serve.deployment
+    class Deployment:
+        def __init__(self, handle: RayServeHandle):
+            self._handle = handle.options(use_new_handle_api=True)
+
+        async def __call__(self):
+            # Send a request without awaiting the response. It should still
+            # executed (verified via signal actor).
+            r = self._handle.remote()
+            await upstream_signal_actor.send.remote()
+
+            await downstream_signal_actor.wait.remote()
+
+            return await r
+
+    handle = serve.run(Deployment.bind(downstream.bind())).options(
+        use_new_handle_api=True
+    )
+
+    # Send a request without awaiting the response. It should still
+    # executed (verified via signal actor).
+    r = handle.remote()
+    ray.get(upstream_signal_actor.wait.remote(), timeout=5)
+
+    r.result() == "OK"
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))

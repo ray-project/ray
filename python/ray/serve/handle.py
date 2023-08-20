@@ -438,6 +438,9 @@ class _DeploymentResponseBase:
         self._assign_request_task = loop.create_task(assign_request_coro)
 
         if loop_is_in_another_thread:
+            # For the "sync" case where the handle is likely used in a driver for
+            # testing, we need to call `run_coroutine_threadsafe` to eagerly execute
+            # the request.
             self._object_ref_future = asyncio.run_coroutine_threadsafe(
                 self._to_object_ref_or_gen(_record_telemetry=False), loop
             )
