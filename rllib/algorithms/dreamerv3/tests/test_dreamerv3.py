@@ -68,10 +68,19 @@ class TestDreamerV3(unittest.TestCase):
                 print("Env={}".format(env))
                 config.environment(env)
                 algo = config.build()
+                rl_module = algo.workers.local_worker().module
 
                 for i in range(num_iterations):
                     results = algo.train()
                     print(results)
+                    # Test dream trajectory w/ recreated observations.
+                    sample = algo.replay_buffer.sample()
+                    rl_module.dreamer_model.dream_trajectory_with_burn_in(
+                        start_states=sample["obs"],
+                        timesteps_burn_in=5,
+                        timesteps_H=45,
+
+                    )
 
                 algo.stop()
 

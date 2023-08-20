@@ -24,12 +24,13 @@ import re
 import yaml
 
 import ray
+from ray import air
 from ray.air.integrations.wandb import WandbLoggerCallback
-from ray.rllib import _register_all
 from ray.rllib.common import SupportedFileType
 from ray.rllib.train import load_experiments_from_file
 from ray.rllib.utils.deprecation import deprecation_warning
-from ray.tune import run_experiments
+from ray import tune
+
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
@@ -98,6 +99,25 @@ parser.add_argument(
     default=None,
     help="The WandB run name to use.",
 )
+# parser.add_argument(
+#    "--wandb-from-checkpoint",
+#    type=str,
+#    default=None,
+#    help=(
+#        "The WandB checkpoint location (e.g. `[team name]/[project name]/checkpoint_"
+#        "[run name]:v[version]`) from which to resume an experiment."
+#    ),
+# )
+parser.add_argument(
+    "--checkpoint-freq",
+    type=int,
+    default=0,
+    help=(
+        "The frequency (in training iterations) with which to create checkpoints. "
+        "Note that if --wandb-key is provided, these checkpoints will automatically "
+        "be uploaded to WandB."
+    ),
+)
 
 # Obsoleted arg, use --dir instead.
 parser.add_argument("--yaml-dir", type=str, default="")
@@ -150,6 +170,7 @@ if __name__ == "__main__":
         ), "Error, can only run a single experiment per file!"
 
         exp = list(experiments.values())[0]
+        exp_name = list(experiments.keys())[0]
 
         # Set the number of samples to run.
         exp["num_samples"] = args.num_samples
@@ -204,6 +225,7 @@ if __name__ == "__main__":
                 WandbLoggerCallback(
                     api_key=args.wandb_key,
                     project=project,
+                    upload_checkpoints=True,
                     **({"name": args.wandb_run_name} if args.wandb_run_name else {}),
                 )
             ]
@@ -219,16 +241,35 @@ if __name__ == "__main__":
             except ConnectionError:
                 ray.init()
             else:
-                try:
-                    trials = run_experiments(
-                        experiments,
-                        resume=False,
-                        verbose=args.verbose,
+                tuner = tune.Tuner(
+                    trainable=exp["run"],
+                    param_space=exp["config"],
+                    run_config=air.RunConfig(
+                        name=exp_name,
+                        storage_path="https://dreamerv3-experiments.s3.eu-north-1.amazonaws.com/flappy-bird/",
                         callbacks=callbacks,
-                    )
-                finally:
-                    ray.shutdown()
-                    _register_all()
+                        stop=exp.get("stop", {}),
+                        verbose=args.verbose,
+                        checkpoint_config=air.CheckpointConfig(
+                            # Create checkpoint at end if checkpoints are activated.
+                            checkpoint_at_end=args.checkpoint_freq > 0,
+                            checkpoint_frequency=args.checkpoint_freq,
+                        ),
+                    ),
+                )
+                # Resume the experiment from a WandB-uploaded checkpoint.
+                # if args.wandb_from_checkpoint is not None:
+                #    artifact = wandb_run.use_artifact(
+                #        args.wandb_from_checkpoint,
+                #        type="model",
+                #    )
+                #    artifact_dir = artifact.download()
+
+                #    tuner.restore(
+                #        path=artifact_dir,
+                #        trainable=exp["run"],
+                #    )
+                trials = tuner.fit()
 
             for t in trials:
                 # If we have evaluation workers, use their rewards.
