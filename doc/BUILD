@@ -302,8 +302,9 @@ doctest(
             "source/serve/production-guide/fault-tolerance.md",
             "source/data/batch_inference.rst",
             "source/data/transforming-data.rst",
+            "source/serve/scaling-and-resource-allocation.md",
             "source/train/faq.rst",
-	    "source/train/user-guides/data-loading-preprocessing.rst",
+	        "source/train/user-guides/data-loading-preprocessing.rst",
             "source/workflows/**/*.rst",
             "source/workflows/**/*.md",
             "source/templates/04_finetuning_llms_with_deepspeed/README.md"
@@ -328,7 +329,8 @@ doctest(
 doctest(
     files = [
         "source/data/batch_inference.rst",
-        "source/data/transforming-data.rst"
+        "source/data/transforming-data.rst",
+        "source/serve/scaling-and-resource-allocation.md"
     ],
     tags = ["team:data"],
     gpu = True
