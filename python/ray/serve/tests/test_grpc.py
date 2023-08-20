@@ -4,6 +4,7 @@ import sys
 import os
 from ray.serve.drivers import DefaultgRPCDriver, gRPCIngress
 import ray
+import time
 from ray import serve
 from ray.cluster_utils import Cluster
 from ray.serve._private.constants import SERVE_NAMESPACE
@@ -34,7 +35,7 @@ def ping_grpc_list_applications(channel, app_names, test_draining=False):
         with pytest.raises(grpc.RpcError) as exception_info:
             _, _ = stub.ListApplications.with_call(request=request)
         rpc_error = exception_info.value
-        assert rpc_error.code() == grpc.StatusCode.ABORTED
+        assert rpc_error.code() == grpc.StatusCode.UNAVAILABLE
         assert rpc_error.details() == DRAINED_MESSAGE
     else:
         response, call = stub.ListApplications.with_call(request=request)
@@ -50,7 +51,7 @@ def ping_grpc_healthz(channel, test_draining=False):
         with pytest.raises(grpc.RpcError) as exception_info:
             _, _ = stub.Healthz.with_call(request=request)
         rpc_error = exception_info.value
-        assert rpc_error.code() == grpc.StatusCode.ABORTED
+        assert rpc_error.code() == grpc.StatusCode.UNAVAILABLE
         assert rpc_error.details() == DRAINED_MESSAGE
     else:
         response, call = stub.Healthz.with_call(request=request)
@@ -343,8 +344,8 @@ def test_serving_request_through_grpc_proxy(ray_cluster):
     # Ensures the app is not yet deployed.
     app_name = "default"
     deployment_name = "grpc-deployment"
-    replicas_name = f"{app_name}_{deployment_name}"
-    assert replicas_name not in replicas
+    replica_name = f"{app_name}_{deployment_name}"
+    assert replica_name not in replicas
 
     channel = grpc.insecure_channel("localhost:9000")
 
@@ -357,7 +358,7 @@ def test_serving_request_through_grpc_proxy(ray_cluster):
     )
 
     # Ensures the app is deployed.
-    assert len(replicas[replicas_name]) == 1
+    assert len(replicas[replica_name]) == 1
 
     # Ensures ListApplications method succeeding.
     ping_grpc_list_applications(channel, [app_name])
@@ -419,13 +420,13 @@ def test_grpc_proxy_routing_without_metadata(ray_cluster):
 
     # Ensures the app is not yet deployed.
     deployment_name = "grpc-deployment"
-    app1_replicas_name = f"{app1}_{deployment_name}"
+    app1_replica_name = f"{app1}_{deployment_name}"
     replicas = ray.get(
         serve.context._global_client._controller._all_running_replicas.remote()
     )
 
     # Ensures the app is deployed.
-    assert len(replicas[app1_replicas_name]) == 1
+    assert len(replicas[app1_replica_name]) == 1
 
     channel = grpc.insecure_channel("localhost:9000")
     stub = serve_pb2_grpc.UserDefinedServiceStub(channel)
@@ -452,7 +453,7 @@ def test_grpc_proxy_routing_without_metadata(ray_cluster):
 
     # Ensure both apps are deployed
     assert len(replicas[f"{app2}_{deployment_name}"]) == 1
-    assert len(replicas[app1_replicas_name]) == 1
+    assert len(replicas[app1_replica_name]) == 1
 
     # Ensure the gRPC request without metadata will now return not found response.
     with pytest.raises(grpc.RpcError) as exception_info:
@@ -491,13 +492,13 @@ def test_grpc_proxy_with_request_id(ray_cluster):
 
     # Ensures the app is not yet deployed.
     deployment_name = "grpc-deployment"
-    app1_replicas_name = f"{app1}_{deployment_name}"
+    app1_replica_name = f"{app1}_{deployment_name}"
     replicas = ray.get(
         serve.context._global_client._controller._all_running_replicas.remote()
     )
 
     # Ensures the app is deployed.
-    assert len(replicas[app1_replicas_name]) == 1
+    assert len(replicas[app1_replica_name]) == 1
 
     channel = grpc.insecure_channel("localhost:9000")
     stub = serve_pb2_grpc.UserDefinedServiceStub(channel)
@@ -527,7 +528,10 @@ def test_grpc_proxy_with_request_id(ray_cluster):
 def test_grpc_proxy_on_draining_nodes(ray_cluster):
     """Test gRPC request on the draining node.
 
-    When the call
+    When there are no replicas on head node and some replicas on the worker node, the
+    ListApplications and Healthz methods should respond successfully. When there are
+    no replicas on any nodes, ListApplications and Healthz methods should continue to
+    succeeding on the head node. But should return draining response on the worker node.
     """
     head_node_grpc_port = 9000
     worker_node_grpc_port = 9001
@@ -640,6 +644,86 @@ def test_grpc_proxy_on_draining_nodes(ray_cluster):
 
     # Ensures Healthz method on the worker node is draining.
     ping_grpc_healthz(worker_node_channel, test_draining=True)
+
+
+@pytest.mark.parametrize(
+    "ray_instance",
+    [
+        {
+            "RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S": "0.1",
+        },
+    ],
+    indirect=True,
+)
+def test_grpc_proxy_timeouts(ray_instance):
+    """Test gRPC request timed out.
+
+    When the request timed out, gRPC proxy should return timeout response for both
+    unary and streaming request.
+    """
+
+    grpc_port = 9000
+    grpc_servicer_functions = [
+        "ray.serve.generated.serve_pb2_grpc.add_UserDefinedServiceServicer_to_server",
+        "ray.serve.generated.serve_pb2_grpc.add_FruitServiceServicer_to_server",
+    ]
+
+    serve.start(
+        grpc_options={
+            "port": grpc_port,
+            "grpc_servicer_functions": grpc_servicer_functions,
+        },
+    )
+
+    @serve.deployment()
+    class HelloModel:
+        def __call__(self, user_message):
+            time.sleep(5)
+            return serve_pb2.UserDefinedResponse(greeting="hello")
+
+        def Streaming(self, user_message):
+            for i in range(10):
+                time.sleep(5)
+                yield serve_pb2.UserDefinedResponse(greeting="hello")
+
+    model = HelloModel.bind()
+    app_name = "app1"
+    replica_name = f"{app_name}_HelloModel"
+    serve.run(target=model, name=app_name)
+    replicas = ray.get(
+        serve.context._global_client._controller._all_running_replicas.remote()
+    )
+
+    # Ensures the app is deployed.
+    assert len(replicas[replica_name]) == 1
+
+    channel = grpc.insecure_channel("localhost:9000")
+    stub = serve_pb2_grpc.UserDefinedServiceStub(channel)
+    request = serve_pb2.UserDefinedMessage(name="foo", num=30, foo="bar")
+
+    timeout_response = "timed out after 0.1s."
+
+    # Ensure unary request respond with timeout response when running longer than the
+    # serve request timeout setting
+    with pytest.raises(grpc.RpcError) as exception_info:
+        _, _ = stub.__call__(request=request)
+    rpc_error = exception_info.value
+    assert rpc_error.code() == grpc.StatusCode.CANCELLED
+    assert timeout_response in rpc_error.details()
+
+    if not RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING:
+        return
+
+    # Ensure streaming request respond with timeout response when running longer than
+    # the serve request timeout setting
+    with pytest.raises(grpc.RpcError) as exception_info:
+        responses = stub.Streaming(request=request)
+        list(responses)
+    rpc_error = exception_info.value
+    assert rpc_error.code() == grpc.StatusCode.CANCELLED
+    assert timeout_response in rpc_error.details()
+
+    serve.shutdown()
 
 
 if __name__ == "__main__":

@@ -630,7 +630,7 @@ class gRPCProxy(GenericProxy):
         return ProxyResponse(status_code=str(status_code))
 
     async def draining_response(self, proxy_request: ProxyRequest) -> ProxyResponse:
-        status_code = grpc.StatusCode.ABORTED
+        status_code = grpc.StatusCode.UNAVAILABLE
         proxy_request.send_status_code(status_code=status_code)
         proxy_request.send_details(message=DRAINED_MESSAGE)
         if proxy_request.is_route_request:
@@ -651,7 +651,7 @@ class gRPCProxy(GenericProxy):
         timeout_message = (
             f"Request {request_id} timed out after {self.request_timeout_s}s."
         )
-        status_code = grpc.StatusCode.ABORTED
+        status_code = grpc.StatusCode.CANCELLED
         proxy_request.send_status_code(status_code=status_code)
         proxy_request.send_details(message=timeout_message)
         return ProxyResponse(status_code=str(status_code))
@@ -773,20 +773,46 @@ class gRPCProxy(GenericProxy):
     async def _streaming_generator_helper(
         self,
         obj_ref_generator: StreamingObjectRefGenerator,
+        proxy_request: ProxyRequest,
+        request_id: str,
+        timeout_s: Optional[float] = None,
     ) -> Generator[bytes, None, None]:
+        start = time.time()
         while True:
             try:
-                obj_ref = await obj_ref_generator._next_async()
+                obj_ref = await obj_ref_generator._next_async(
+                    timeout_s=calculate_remaining_timeout(
+                        timeout_s=timeout_s,
+                        start_time_s=start,
+                        curr_time_s=time.time(),
+                    )
+                )
+                if obj_ref.is_nil():
+                    await self.timeout_response(
+                        proxy_request=proxy_request, request_id=request_id
+                    )
+                    break
+
                 user_response_bytes = await obj_ref
                 yield user_response_bytes
+
             except StopAsyncIteration:
                 break
 
     async def _consume_generator_stream(
         self,
         obj_ref: StreamingObjectRefGenerator,
+        proxy_request: ProxyRequest,
+        request_id: str,
+        timeout_s: Optional[float] = None,
     ) -> ProxyResponse:
-        streaming_response = self._streaming_generator_helper(obj_ref)
+        streaming_response = self._streaming_generator_helper(
+            obj_ref_generator=obj_ref,
+            proxy_request=proxy_request,
+            request_id=request_id,
+            timeout_s=timeout_s,
+        )
+
         return ProxyResponse(
             status_code=self.success_status_code, streaming_response=streaming_response
         )
@@ -794,8 +820,9 @@ class gRPCProxy(GenericProxy):
     async def _consume_generator_unary(
         self,
         obj_ref: ray.ObjectRef,
+        timeout_s: Optional[float] = None,
     ) -> ProxyResponse:
-        user_response_bytes = await obj_ref
+        user_response_bytes = ray.get(obj_ref, timeout=timeout_s)
         return ProxyResponse(
             status_code=self.success_status_code, response=user_response_bytes
         )
@@ -806,6 +833,7 @@ class gRPCProxy(GenericProxy):
         handle: RayServeHandle,
         proxy_request: ProxyRequest,
     ) -> ProxyResponse:
+        start = time.time()
         try:
             try:
                 obj_ref = await self._assign_request_with_timeout(
@@ -820,11 +848,26 @@ class gRPCProxy(GenericProxy):
                         extra={"log_to_stderr": False},
                     )
                     return ProxyResponse(status_code=DISCONNECT_ERROR_CODE)
-
                 if proxy_request.stream:
-                    return await self._consume_generator_stream(obj_ref=obj_ref)
+                    return await self._consume_generator_stream(
+                        obj_ref=obj_ref,
+                        proxy_request=proxy_request,
+                        request_id=request_id,
+                        timeout_s=calculate_remaining_timeout(
+                            timeout_s=self.request_timeout_s,
+                            start_time_s=start,
+                            curr_time_s=time.time(),
+                        ),
+                    )
                 else:
-                    return await self._consume_generator_unary(obj_ref=obj_ref)
+                    return await self._consume_generator_unary(
+                        obj_ref=obj_ref,
+                        timeout_s=calculate_remaining_timeout(
+                            timeout_s=self.request_timeout_s,
+                            start_time_s=start,
+                            curr_time_s=time.time(),
+                        ),
+                    )
             except TimeoutError:
                 logger.warning(
                     f"Request {request_id} timed out after "
