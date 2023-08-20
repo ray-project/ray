@@ -361,8 +361,6 @@ class NodeResourceInstances {
   bool operator==(const NodeResourceInstances &other);
   /// Returns human-readable string for these resources.
   [[nodiscard]] std::string DebugString() const;
-  /// Returns true if it contains this resource.
-  bool Contains(scheduling::ResourceID id) const;
 };
 
 struct Node {

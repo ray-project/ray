@@ -22,8 +22,6 @@
 
 namespace ray {
 
-ResourceSet::ResourceSet() {}
-
 ResourceSet::ResourceSet(
     const absl::flat_hash_map<std::string, FixedPoint> &resource_map) {
   for (auto const &[name, quantity] : resource_map) {
@@ -285,6 +283,10 @@ NodeResourceInstanceSet::NodeResourceInstanceSet(const NodeResourceSet &total) {
   }
 }
 
+void NodeResourceInstanceSet::Remove(ResourceID resource_id) {
+  resources_.erase(resource_id);
+}
+
 NodeResourceInstanceSet &NodeResourceInstanceSet::Set(
     const ResourceID resource_id, const std::vector<FixedPoint> &instances) {
   if (instances.size() == 0) {
@@ -295,6 +297,25 @@ NodeResourceInstanceSet &NodeResourceInstanceSet::Set(
     resources_[resource_id] = instances;
   }
   return *this;
+}
+
+bool NodeResourceInstanceSet::operator==(const NodeResourceInstanceSet &other) const {
+  return this->resources_ == other.resources_;
+}
+
+std::string NodeResourceInstanceSet::DebugString() const {
+  std::stringstream buffer;
+  buffer << "{";
+  bool first = true;
+  for (const auto &[id, quantity] : resources_) {
+    if (!first) {
+      buffer << ", ";
+    }
+    first = false;
+    buffer << id.Binary() << ": " << FixedPointVectorToString(quantity);
+  }
+  buffer << "}";
+  return buffer.str();
 }
 
 }  // namespace ray

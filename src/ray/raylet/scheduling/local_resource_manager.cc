@@ -33,11 +33,12 @@ LocalResourceManager::LocalResourceManager(
       get_used_object_store_memory_(get_used_object_store_memory),
       get_pull_manager_at_capacity_(get_pull_manager_at_capacity),
       resource_change_subscriber_(resource_change_subscriber) {
-  local_resources_.available = TaskResourceInstances(node_resources.available);
-  local_resources_.total = TaskResourceInstances(node_resources.total);
+  RAY_CHECK(node_resources.total == node_resources.available);
+  local_resources_.available = NodeResourceInstanceSet(node_resources.total);
+  local_resources_.total = NodeResourceInstanceSet(node_resources.total);
   local_resources_.labels = node_resources.labels;
   const auto now = absl::Now();
-  for (const auto &resource_id : local_resources_.total.ResourceIds()) {
+  for (const auto &resource_id : node_resources.total.ExplicitResourceIds()) {
     resources_last_idle_time_[resource_id] = now;
   }
   RAY_LOG(DEBUG) << "local resources: " << local_resources_.DebugString();
@@ -45,9 +46,9 @@ LocalResourceManager::LocalResourceManager(
 
 void LocalResourceManager::AddLocalResourceInstances(
     scheduling::ResourceID resource_id, const std::vector<FixedPoint> &instances) {
-  local_resources_.available.Add(resource_id, instances);
-  local_resources_.total.Add(resource_id, instances);
-  resources_last_idle_time_[resource_id] = absl::Now();
+  local_resources_.available.Set(resource_id, instances);
+  local_resources_.total.Set(resource_id, instances);
+  SetResourceIdle(resource_id);
   OnResourceOrStateChanged();
 }
 
@@ -296,10 +297,16 @@ std::vector<double> LocalResourceManager::SubtractResourceInstances(
 }
 
 void LocalResourceManager::SetResourceNonIdle(const scheduling::ResourceID &resource_id) {
+  if (resource_id.IsImplicitResource()) {
+    return;
+  }
   resources_last_idle_time_[resource_id] = absl::nullopt;
 }
 
 void LocalResourceManager::SetResourceIdle(const scheduling::ResourceID &resource_id) {
+  if (resource_id.IsImplicitResource()) {
+    return;
+  }
   resources_last_idle_time_[resource_id] = absl::Now();
 }
 

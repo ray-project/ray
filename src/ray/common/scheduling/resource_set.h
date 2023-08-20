@@ -40,7 +40,7 @@ class ResourceSet {
   }
 
   /// \brief Empty ResourceSet constructor.
-  ResourceSet();
+  ResourceSet(){};
 
   /// \brief Constructs ResourceSet from the specified resource map.
   explicit ResourceSet(const absl::flat_hash_map<std::string, FixedPoint> &resource_map);
@@ -140,7 +140,7 @@ class NodeResourceSet {
   using ResourceIdIterator =
       boost::select_first_range<absl::flat_hash_map<ResourceID, FixedPoint>>;
 
-  NodeResourceSet();
+  NodeResourceSet(){};
 
   explicit NodeResourceSet(const absl::flat_hash_map<std::string, double> &resource_map);
 
@@ -176,12 +176,24 @@ class NodeResourceSet {
 
 class NodeResourceInstanceSet {
  public:
+  NodeResourceInstanceSet(){};
+
   /// Construct a TaskResourceInstances from a node total resources.
   NodeResourceInstanceSet(const NodeResourceSet &total);
 
   NodeResourceInstanceSet &Set(const ResourceID resource_id,
                                const std::vector<FixedPoint> &instances);
-}
+
+  void Remove(ResourceID resource_id);
+
+  bool operator==(const NodeResourceInstanceSet &other) const;
+
+  std::string DebugString() const;
+
+ private:
+  /// Map from the resource IDs to the resource instance values.
+  absl::flat_hash_map<ResourceID, std::vector<FixedPoint>> resources_;
+};
 
 }  // namespace ray
 

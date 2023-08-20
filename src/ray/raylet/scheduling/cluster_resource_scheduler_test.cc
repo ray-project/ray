@@ -1472,8 +1472,10 @@ TEST_F(ClusterResourceSchedulerTest, DynamicResourceTest) {
                                                      &is_infeasible);
   ASSERT_TRUE(result.IsNil());
 
+  resource_scheduler.GetLocalResourceManager().DeleteLocalResource(
+      scheduling::ResourceID("custom123"));
   resource_scheduler.GetLocalResourceManager().AddLocalResourceInstances(
-      scheduling::ResourceID("custom123"), {1.0});
+      scheduling::ResourceID("custom123"), {1.0, 1.0, 1.0});
   result = resource_scheduler.GetBestSchedulableNode(resource_request,
                                                      scheduling_strategy,
                                                      false,

@@ -134,17 +134,8 @@ bool NodeResourceInstances::operator==(const NodeResourceInstances &other) {
 
 std::string NodeResourceInstances::DebugString() const {
   std::stringstream buffer;
-  buffer << "{";
-  bool first = true;
-  for (auto &resource_id : total.ResourceIds()) {
-    if (!first) {
-      buffer << ", ";
-    }
-    first = false;
-    buffer << resource_id.Binary() << ": "
-           << FixedPointVectorToString(available.Get(resource_id)) << "/"
-           << FixedPointVectorToString(total.Get(resource_id));
-  }
+  buffer << "{\"total\":" << total.DebugString();
+  buffer << "}, \"available\": " << available.DebugString();
   buffer << "}, \"labels\":{";
   for (const auto &[key, value] : labels) {
     buffer << "\"" << key << "\":\"" << value << "\",";
@@ -153,17 +144,13 @@ std::string NodeResourceInstances::DebugString() const {
   return buffer.str();
 };
 
-const TaskResourceInstances &NodeResourceInstances::GetAvailableResourceInstances()
+const NodeResourceInstanceSet &NodeResourceInstances::GetAvailableResourceInstances()
     const {
   return this->available;
 };
 
-const TaskResourceInstances &NodeResourceInstances::GetTotalResourceInstances() const {
+const NodeResourceInstanceSet &NodeResourceInstances::GetTotalResourceInstances() const {
   return this->total;
 };
-
-bool NodeResourceInstances::Contains(scheduling::ResourceID id) const {
-  return total.Has(id);
-}
 
 }  // namespace ray
