@@ -1164,18 +1164,16 @@ def run(
                 f"saved.\nResume experiment with: {restore_entrypoint}"
             )
 
-    experiment_checkpoint = runner.experiment_state_path
-
     if _use_storage_context():
         return NewExperimentAnalysis(
-            experiment_checkpoint_path=experiment_checkpoint,
+            experiment_checkpoint_path=runner.experiment_path,
             default_metric=metric,
             default_mode=mode,
             trials=all_trials,
         )
     else:
         return ExperimentAnalysis(
-            experiment_checkpoint,
+            runner.experiment_state_path,
             trials=all_trials,
             default_metric=metric,
             default_mode=mode,
