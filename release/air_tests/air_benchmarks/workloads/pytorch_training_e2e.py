@@ -14,7 +14,6 @@ import torch.optim as optim
 
 import ray
 from ray.air import Checkpoint
-from ray.data.preprocessors import BatchMapper, Chain, TorchVisionPreprocessor
 from ray import train
 from ray.train import RunConfig, ScalingConfig
 from ray.train._checkpoint import Checkpoint as NewCheckpoint
@@ -25,6 +24,15 @@ from ray.train.torch import TorchTrainer
 def add_fake_labels(batch: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
     batch_size = len(batch["image"])
     batch["label"] = np.zeros([batch_size], dtype=int)
+    return batch
+
+
+def transform_image(
+    batch: Dict[str, np.ndarray], transform: torch.nn.Module
+) -> Dict[str, np.ndarray]:
+    image_tensors = [torch.as_tensor(array) for array in batch["image"]]
+    transformed_tensors = [transform(tensor).numpy() for tensor in image_tensors]
+    batch["image"] = transformed_tensors
     return batch
 
 
@@ -101,16 +109,14 @@ def main(data_size_gb: int, num_epochs=2, num_workers=1, smoke_test: bool = Fals
             transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
         ]
     )
-    preprocessor = Chain(
-        BatchMapper(add_fake_labels, batch_format="numpy"),
-        TorchVisionPreprocessor(columns=["image"], transform=transform),
-    )
+
+    dataset = dataset.map_batches(add_fake_labels)
+    dataset = dataset.map_batches(transform_image, fn_kwargs={"transform": transform})
 
     trainer = TorchTrainer(
         train_loop_per_worker=train_loop_per_worker,
         train_loop_config={"batch_size": 64, "num_epochs": num_epochs},
         datasets={"train": dataset},
-        preprocessor=preprocessor,
         scaling_config=ScalingConfig(
             num_workers=num_workers, use_gpu=int(not smoke_test)
         ),

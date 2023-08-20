@@ -71,7 +71,6 @@ Ray Data provides a handful of preprocessors out of the box.
 .. autosummary::
   :nosignatures:
 
-    ray.data.preprocessors.BatchMapper
     ray.data.preprocessors.Concatenator
     ray.data.preprocessor.Preprocessor
     ray.data.preprocessors.SimpleImputer
@@ -253,12 +252,4 @@ If you want to implement a custom preprocessor that needs to be fit, extend the
     :start-after: __custom_stateful_start__
     :end-before: __custom_stateful_end__
 
-If your preprocessor doesn't need to be fit, construct a
-:class:`~ray.data.preprocessors.BatchMapper` to apply a UDF in parallel over your data.
-:class:`~ray.data.preprocessors.BatchMapper` can drop, add, or modify columns, and you
-can specify a `batch_size` to control the size of the data batches provided to your UDF.
-
-.. literalinclude:: doc_code/preprocessors.py
-    :language: python
-    :start-after: __custom_stateless_start__
-    :end-before: __custom_stateless_end__
+If your preprocessor doesn't need to be fit, use :meth:`map_batches() <ray.data.Dataset.map_batches>` to directly transform your dataset. For more details, see :ref:`Transforming Data <transforming_data>`.

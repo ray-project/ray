@@ -6,7 +6,6 @@ from ray.air.config import DatasetConfig
 
 from ray.data import Dataset, DatasetPipeline
 from ray.data.preprocessor import Preprocessor
-from ray.data.preprocessors import Chain
 from ray.air._internal.util import _estimate_avail_object_store_memory
 
 if TYPE_CHECKING:

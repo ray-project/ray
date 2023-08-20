@@ -10,7 +10,6 @@ import ray
 from ray import train
 from ray.air.config import DatasetConfig, ScalingConfig
 from ray.data import Dataset, DataIterator, Preprocessor
-from ray.data.preprocessors import BatchMapper, Chain
 from ray.train._internal.dataset_spec import DataParallelIngestSpec
 from ray.train.data_parallel_trainer import DataParallelTrainer
 from ray.train import DataConfig

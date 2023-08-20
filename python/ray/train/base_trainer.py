@@ -254,7 +254,6 @@ class BaseTrainer(abc.ABC):
             import os
             import ray
             from ray import train
-            from ray.data.preprocessors import BatchMapper
             from ray.train.trainer import BaseTrainer
 
             experiment_name = "unique_experiment_name"
@@ -263,7 +262,6 @@ class BaseTrainer(abc.ABC):
 
             # Define some dummy inputs for demonstration purposes
             datasets = {"train": ray.data.from_items([{"a": i} for i in range(10)])}
-            preprocessor = BatchMapper(lambda x: x, batch_format="numpy")
 
             class CustomTrainer(BaseTrainer):
                 def training_loop(self):
@@ -277,7 +275,6 @@ class BaseTrainer(abc.ABC):
             else:
                 trainer = CustomTrainer(
                     datasets=datasets,
-                    preprocessor=preprocessor,
                     run_config=train.RunConfig(
                         name=experiment_name,
                         local_dir=local_dir,

@@ -1,5 +1,5 @@
-from typing import TYPE_CHECKING, Union
 import warnings
+from typing import TYPE_CHECKING, Union
 
 from ray.air.util.data_batch_conversion import BatchFormat
 from ray.data import Dataset, DatasetPipeline
@@ -13,6 +13,7 @@ CHAIN_DEPRECATION_MESSAGE = (
     "The Chain preprocessor is deprecated as of Ray 2.7. Instead, manually apply your "
     "sequence of Preprocessor `fit` and `transform` calls directly on the Ray Dataset."
 )
+
 
 @Deprecated(message=CHAIN_DEPRECATION_MESSAGE)
 class Chain(Preprocessor):
