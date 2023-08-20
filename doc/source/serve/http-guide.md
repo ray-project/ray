@@ -176,9 +176,18 @@ HTTP adapters are functions that convert raw HTTP requests to basic Python types
 
 For example, here is an adapter that extracts the JSON content from a request:
 
-```python
+```{testcode}
+import starlette
+
+
 async def json_resolver(request: starlette.requests.Request):
     return await request.json()
+```
+
+```{testoutput}
+:hide:
+
+...
 ```
 
 The input arguments to an HTTP adapter should be type-annotated. At a minimum, the adapter should accept a `starlette.requests.Request` type (https://www.starlette.io/requests/#request),
@@ -186,9 +195,20 @@ but it can also accept any type that's recognized by [FastAPI's dependency injec
 
 Here is an HTTP adapter that accepts two HTTP query parameters:
 
-```python
+```{testcode}
+class YourDataClass:
+    def __call__(field_a: int, field_b: str):
+        return f"field_a: {field_a}, field_b: {field_b}"
+
+
 def parse_query_args(field_a: int, field_b: str):
     return YourDataClass(field_a, field_b)
+```
+
+```{testoutput}
+:hide:
+
+...
 ```
 
 You can specify different type signatures to facilitate the extraction of HTTP fields, including
@@ -210,14 +230,26 @@ When using a [Serve deployment graph](serve-deployment-graphs), you can configur
 
 For example, the `json_request` adapter parses JSON in the HTTP body:
 
-```python
+```{testcode}
 from ray.serve.drivers import DAGDriver
 from ray.serve.http_adapters import json_request
 from ray.dag.input_node import InputNode
 
+
+@serve.deployment()
+async def func1(number: float) -> float:
+    return number + 5
+
+
 with InputNode() as input_node:
-    # ...
+    other_node = func1.bind(input_node)
     dag = DAGDriver.bind(other_node, http_adapter=json_request)
+```
+
+```{testoutput}
+:hide:
+
+...
 ```
 
 ### Embedded in your existing `FastAPI` Application
@@ -226,7 +258,7 @@ You can also bring the adapter to your own FastAPI app using
 [Depends](https://fastapi.tiangolo.com/tutorial/dependencies/#import-depends).
 The input schema automatically become part of the generated OpenAPI schema with FastAPI.
 
-```python
+```{testcode}
 from fastapi import FastAPI, Depends
 from ray.serve.http_adapters import json_to_ndarray
 
@@ -234,9 +266,14 @@ app = FastAPI()
 
 @app.post("/endpoint")
 async def endpoint(np_array = Depends(json_to_ndarray)):
-    ...
+    return np_array[0]
 ```
 
+```{testoutput}
+:hide:
+
+...
+```
 
 ### Pydantic models as adapters
 
@@ -244,18 +281,30 @@ Serve also supports [pydantic models](https://pydantic-docs.helpmanual.io/usage/
 you can directly pass in a pydantic model class to effectively tell Ray Serve to validate the HTTP body with this schema.
 Once validated, the model instance will passed to the predictor.
 
-```python
+```{testcode}
 from pydantic import BaseModel
+from ray.serve.drivers import DAGDriver
+
+
+@serve.deployment()
+async def func1(number: float) -> float:
+    return number + 5
+
 
 class User(BaseModel):
     user_id: int
     user_name: str
 
-# ...
-
+other_node = func1.bind(input_node)
 DAGDriver.bind(other_node, http_adapter=User)
-
 ```
+
+```{testoutput}
+:hide:
+
+...
+```
+
 ### List of built-in adapters
 
 Here is a list of adapters; please feel free to [contribute more](https://github.com/ray-project/ray/issues/new/choose)!
