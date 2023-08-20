@@ -30,6 +30,7 @@ from ray.train.tests.util import create_dict_checkpoint, load_dict_checkpoint
 
 NUM_TRIALS = 3
 NON_NAN_VALUE = 42
+PEAK_VALUE = 100
 
 
 def train_fn(config):
@@ -42,25 +43,25 @@ def train_fn(config):
 
     id = config["id"]
 
-    report({"ascending": 1 * id, "descending": -1 * id, "maybe_nan": np.nan, "iter": 1})
-    report({"ascending": 2 * id, "descending": -2 * id, "maybe_nan": np.nan, "iter": 2})
-    report({"ascending": 3 * id, "descending": -3 * id, "maybe_nan": np.nan, "iter": 3})
+    report({"ascending": 1 * id, "peak": 0, "maybe_nan": np.nan, "iter": 1})
+    report({"ascending": 2 * id, "peak": 0, "maybe_nan": np.nan, "iter": 2})
+    report({"ascending": 3 * id, "peak": 0, "maybe_nan": np.nan, "iter": 3})
     report(
         {
             "ascending": 4 * id,
-            "descending": -4 * id,
+            "peak": 0,
             "maybe_nan": NON_NAN_VALUE,
             "iter": 4,
         }
     )
-    report({"ascending": 5 * id, "descending": -5 * id, "maybe_nan": np.nan, "iter": 5})
+    report({"ascending": 5 * id, "peak": PEAK_VALUE, "maybe_nan": np.nan, "iter": 5})
 
     report(
-        {"ascending": 6 * id, "descending": -6 * id, "maybe_nan": np.nan, "iter": 6},
+        {"ascending": 6 * id, "peak": -PEAK_VALUE, "maybe_nan": np.nan, "iter": 6},
         should_checkpoint=False,
     )
     report(
-        {"ascending": 7 * id, "descending": -7 * id, "maybe_nan": np.nan, "iter": 7},
+        {"ascending": 7 * id, "peak": 0, "maybe_nan": np.nan, "iter": 7},
         should_checkpoint=False,
     )
 
@@ -102,9 +103,6 @@ def test_fetch_trial_dataframes(experiment_analysis, filetype):
 
     for df in dfs.values():
         assert np.all(df["ascending"].to_numpy() == np.arange(1, 8) * df["config/id"])
-        assert np.all(
-            df["descending"].to_numpy() == np.arange(-1, -8, -1) * df["config/id"]
-        )
 
 
 def test_get_all_configs(experiment_analysis):
@@ -117,6 +115,29 @@ def test_get_all_configs(experiment_analysis):
             trial for trial in experiment_analysis.trials if trial.trial_id == trial_id
         ][0]
         assert trial.config == config
+
+
+def test_dataframe(experiment_analysis):
+    with pytest.raises(ValueError):
+        # Invalid mode
+        df = experiment_analysis.dataframe(mode="bad")
+
+    with pytest.raises(ValueError):
+        # Should raise because we didn't pass a metric
+        df = experiment_analysis.dataframe(mode="max")
+
+    # If we specify `max`, we expect the largets ever observed result
+    df = experiment_analysis.dataframe(metric="peak", mode="max")
+    assert df.iloc[0]["peak"] == PEAK_VALUE
+
+    # If we specify `min`, we expect the lowest ever observed result
+    df = experiment_analysis.dataframe(metric="peak", mode="min")
+    assert df.iloc[0]["peak"] == -PEAK_VALUE
+
+    # If we don't pass a mode, we just fetch the last result
+    df = experiment_analysis.dataframe(metric="peak")
+    assert df.iloc[0]["peak"] == 0
+    assert df.iloc[0]["iter"] == 7
 
 
 def test_default_properties(experiment_analysis):
@@ -144,7 +165,7 @@ def test_default_properties(experiment_analysis):
 def test_get_best_config(experiment_analysis):
     assert experiment_analysis.get_best_config()["id"] == NUM_TRIALS
     assert (
-        experiment_analysis.get_best_config(metric="descending", mode="max")["id"] == 1
+        experiment_analysis.get_best_config(metric="ascending", mode="min")["id"] == 1
     )
 
     assert not experiment_analysis.get_best_config(metric="maybe_nan", scope="last")
@@ -172,10 +193,10 @@ def test_get_best_checkpoint(experiment_analysis):
 
     best_checkpoint = load_dict_checkpoint(
         experiment_analysis.get_best_checkpoint(
-            best_trial, metric="descending", mode="max"
+            best_trial, metric="ascending", mode="min"
         )
     )
-    assert best_checkpoint["descending"] == -1 * NUM_TRIALS
+    assert best_checkpoint["ascending"] == 1 * NUM_TRIALS
 
     # Filter checkpoints w/ NaN metrics
     best_checkpoint = load_dict_checkpoint(
