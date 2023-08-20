@@ -422,8 +422,6 @@ def _read_pieces(
     import pyarrow as pa
     from pyarrow.dataset import _get_partition_keys
 
-    ctx = DataContext.get_current()
-
     logger.debug(f"Reading {len(pieces)} parquet pieces")
     use_threads = reader_args.pop("use_threads", False)
     batch_size = reader_args.pop("batch_size", default_read_batch_size)
