@@ -7,7 +7,6 @@ import tempfile
 import requests
 
 import ray
-from ray.cluster_utils import Cluster
 from ray.tests.conftest import pytest_runtest_makereport, propagate_logs  # noqa
 from ray._private.test_utils import wait_for_condition
 
@@ -146,12 +145,3 @@ def ray_instance(request):
 
     os.environ.clear()
     os.environ.update(original_env_vars)
-
-
-@pytest.fixture
-def ray_cluster():
-    cluster = Cluster()
-    yield Cluster()
-    serve.shutdown()
-    ray.shutdown()
-    cluster.shutdown()

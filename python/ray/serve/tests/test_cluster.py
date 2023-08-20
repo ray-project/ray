@@ -9,10 +9,21 @@ import ray
 from ray._private.test_utils import SignalActor, wait_for_condition
 
 from ray import serve
+from ray.cluster_utils import Cluster
 from ray.serve.context import get_global_client
+from ray.serve.handle import RayServeHandle
 from ray.serve._private.constants import SERVE_NAMESPACE
 from ray.serve._private.deployment_state import ReplicaStartupStatus
 from ray.serve._private.common import ReplicaState
+
+
+@pytest.fixture
+def ray_cluster():
+    cluster = Cluster()
+    yield cluster
+    serve.shutdown()
+    ray.shutdown()
+    cluster.shutdown()
 
 
 def get_pids(expected, deployment_name="D", app_name="default", timeout=30):
@@ -242,6 +253,61 @@ def test_replica_spread(ray_cluster):
 
     # Check that the replica on the dead node can be rescheduled.
     wait_for_condition(lambda: get_num_nodes() == 1)
+
+
+def test_handle_prefers_replicas_on_same_node(ray_cluster):
+    """Verify that handle calls prefer replicas on the same node when possible.
+
+    If all replicas on the same node are occupied (at `max_concurrent_queries` limit),
+    requests should spill to other nodes.
+    """
+
+    cluster = ray_cluster
+    cluster.add_node(num_cpus=1)
+    cluster.add_node(num_cpus=1)
+
+    signal = SignalActor.remote()
+
+    @serve.deployment(num_replicas=2, max_concurrent_queries=1)
+    def inner(block_on_signal):
+        if block_on_signal:
+            ray.get(signal.wait.remote())
+
+        return ray.get_runtime_context().get_node_id()
+
+    @serve.deployment(num_replicas=1, ray_actor_options={"num_cpus": 0})
+    class Outer:
+        def __init__(self, inner_handle: RayServeHandle):
+            self._h = inner_handle
+
+        def get_node_id(self) -> str:
+            return ray.get_runtime_context().get_node_id()
+
+        async def call_inner(self, block_on_signal: bool = False) -> str:
+            return await (await self._h.remote(block_on_signal))
+
+    # The inner deployment's two replicas will be spread across the two nodes and
+    # the outer deployment's single replica will be placed on one of them.
+    h = serve.run(Outer.bind(inner.bind()))
+
+    # When sending requests sequentially, all requests to the inner deployment should
+    # go to the replica on the same node as the outer deployment replica.
+    outer_node_id = ray.get(h.get_node_id.remote())
+    for _ in range(10):
+        assert ray.get(h.call_inner.remote()) == outer_node_id
+
+    # Make a blocking request to the inner deployment replica on the same node.
+    blocked_ref = h.call_inner.remote(block_on_signal=True)
+    with pytest.raises(TimeoutError):
+        ray.get(blocked_ref, timeout=1)
+
+    # Because there's a blocking request and `max_concurrent_queries` is set to 1, all
+    # requests should now spill to the other node.
+    for _ in range(10):
+        assert ray.get(h.call_inner.remote()) != outer_node_id
+
+    ray.get(signal.send.remote())
+    assert ray.get(blocked_ref) == outer_node_id
 
 
 if __name__ == "__main__":
