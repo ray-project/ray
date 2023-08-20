@@ -9,6 +9,7 @@ from typing import List
 import pytest
 
 from ray import train, tune
+from ray.tune.analysis.experiment_analysis import NewExperimentAnalysis
 from ray.tune.experiment import Trial
 from ray.tune.utils import flatten_dict
 
@@ -57,8 +58,8 @@ def _get_trial_with_id(trials: List[Trial], id: int) -> Trial:
     return [trial for trial in trials if trial.config["id"] == id][0]
 
 
-@pytest.fixture(scope="module")
-def experiment_analysis():
+@pytest.fixture(scope="module", params=["dir", "memory"])
+def experiment_analysis(request):
     tmp_path = Path(tempfile.mkdtemp())
     ea = tune.run(
         train_fn,
@@ -69,8 +70,19 @@ def experiment_analysis():
         storage_path=str(tmp_path / "fake_nfs"),
         name="test_experiment_analysis",
     )
-    # TODO(justinvyu): Test loading from directory.
-    yield ea
+
+    load_from = request.param
+    if load_from == "dir":
+        # Test init without passing in in-memory trials. Load them from a dir instead.
+        yield NewExperimentAnalysis(
+            str(tmp_path / "fake_nfs" / "test_experiment_analysis"),
+            default_metric="ascending",
+            default_mode="max",
+        )
+    elif load_from == "memory":
+        yield ea
+    else:
+        raise NotImplementedError(f"Invalid param: {load_from}")
 
 
 @pytest.mark.parametrize("filetype", ["json", "csv"])
@@ -88,8 +100,11 @@ def test_fetch_trial_dataframes(experiment_analysis, filetype):
     assert all(isinstance(df, pd.DataFrame) for df in dfs.values())
     assert {trial.trial_id for trial in experiment_analysis.trials} == set(dfs)
 
-    for df in dfs.values():
-        assert np.all(df["ascending"].to_numpy() == np.arange(1, 8) * df["config/id"])
+    for trial_id, df in dfs.items():
+        trial_config = experiment_analysis.get_all_configs()[trial_id]
+        assert np.all(
+            df["ascending"].to_numpy() == np.arange(1, 8) * trial_config["id"]
+        )
 
 
 def test_get_all_configs(experiment_analysis):
