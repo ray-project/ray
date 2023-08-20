@@ -1482,22 +1482,23 @@ class HTTPProxyActor:
         await grpc_server.wait_for_termination()
 
     async def update_draining(self, draining: bool, _after: Optional[Any] = None):
-        """Update the draining status of the http proxy.
+        """Update the draining status of the HTTP and gRPC proxies.
 
         Unused `_after` argument is for scheduling: passing an ObjectRef
         allows delaying this call until after the `_after` call has returned.
         """
 
         self.http_proxy.update_draining(draining)
+        self.grpc_proxy.update_draining(draining)
 
     async def is_drained(self, _after: Optional[Any] = None):
-        """Check whether the proxy is drained or not.
+        """Check whether both HTTP and gRPC proxies are drained or not.
 
         Unused `_after` argument is for scheduling: passing an ObjectRef
         allows delaying this call until after the `_after` call has returned.
         """
 
-        return self.http_proxy.is_drained()
+        return self.http_proxy.is_drained() and self.grpc_proxy.is_drained()
 
     async def check_health(self):
         """No-op method to check on the health of the HTTP Proxy.

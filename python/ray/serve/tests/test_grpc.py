@@ -7,6 +7,7 @@ import ray
 from ray import serve
 from ray.cluster_utils import Cluster
 from ray.serve._private.constants import SERVE_NAMESPACE
+from ray.serve._private.http_proxy import DRAINED_MESSAGE
 from ray._private.test_utils import wait_for_condition, run_string_as_driver
 from ray.serve.exceptions import RayServeException
 
@@ -26,20 +27,35 @@ from ray.serve.tests.test_config_files.grpc_deployment import g, g2
 import grpc
 
 
-def ping_grpc_list_applications(channel, app_names):
+def ping_grpc_list_applications(channel, app_names, test_draining=False):
     stub = serve_pb2_grpc.RayServeAPIServiceStub(channel)
     request = serve_pb2.ListApplicationsRequest()
-    response, call = stub.ListApplications.with_call(request=request)
-    assert call.code() == grpc.StatusCode.OK
-    assert response.application_names == app_names
+    if test_draining:
+        with pytest.raises(grpc.RpcError) as exception_info:
+            _, _ = stub.ListApplications.with_call(request=request)
+        rpc_error = exception_info.value
+        assert rpc_error.code() == grpc.StatusCode.ABORTED
+        assert rpc_error.details() == DRAINED_MESSAGE
+    else:
+        response, call = stub.ListApplications.with_call(request=request)
+        assert call.code() == grpc.StatusCode.OK
+        assert response.application_names == app_names
+    return True
 
 
-def ping_grpc_healthz(channel):
+def ping_grpc_healthz(channel, test_draining=False):
     stub = serve_pb2_grpc.RayServeAPIServiceStub(channel)
     request = serve_pb2.HealthzRequest()
-    response, call = stub.Healthz.with_call(request=request)
-    assert call.code() == grpc.StatusCode.OK
-    assert response.message == "success"
+    if test_draining:
+        with pytest.raises(grpc.RpcError) as exception_info:
+            _, _ = stub.Healthz.with_call(request=request)
+        rpc_error = exception_info.value
+        assert rpc_error.code() == grpc.StatusCode.ABORTED
+        assert rpc_error.details() == DRAINED_MESSAGE
+    else:
+        response, call = stub.Healthz.with_call(request=request)
+        assert call.code() == grpc.StatusCode.OK
+        assert response.message == "success"
 
 
 def ping_grpc_call_method(channel, app_name, test_not_found=False):
@@ -49,7 +65,6 @@ def ping_grpc_call_method(channel, app_name, test_not_found=False):
     if test_not_found:
         with pytest.raises(grpc.RpcError) as exception_info:
             _, _ = stub.__call__.with_call(request=request, metadata=metadata)
-
         rpc_error = exception_info.value
         assert rpc_error.code() == grpc.StatusCode.NOT_FOUND
         assert f"Application '{app_name}' not found." in rpc_error.details()
@@ -507,6 +522,124 @@ def test_grpc_proxy_with_request_id(ray_cluster):
             response_request_id = value
             break
     assert custom_request_id != response_request_id
+
+
+def test_grpc_proxy_on_draining_nodes(ray_cluster):
+    """Test gRPC request on the draining node.
+
+    When the call
+    """
+    head_node_grpc_port = 9000
+    worker_node_grpc_port = 9001
+
+    # Setup worker gRPC proxy to be pointing to port 9001. Head node gRPC proxy will
+    # continue to be pointing to the default port 9000.
+    os.environ["TEST_WORKER_NODE_GRPC_PORT"] = str(worker_node_grpc_port)
+
+    # Set up a cluster with 2 nodes.
+    cluster = Cluster()
+    cluster.add_node(num_cpus=0)
+    cluster.add_node(num_cpus=2)
+    cluster.wait_for_nodes()
+    ray.init(address=cluster.address)
+
+    # Start serve with gRPC proxy
+    grpc_servicer_functions = [
+        "ray.serve.generated.serve_pb2_grpc.add_UserDefinedServiceServicer_to_server",
+        "ray.serve.generated.serve_pb2_grpc.add_FruitServiceServicer_to_server",
+    ]
+    serve.start(
+        http_options={"location": "EveryNode"},
+        grpc_options={
+            "port": head_node_grpc_port,
+            "grpc_servicer_functions": grpc_servicer_functions,
+        },
+    )
+
+    # Deploy 2 replicas, both should be on the worker node.
+    @serve.deployment(num_replicas=2)
+    class HelloModel:
+        def __call__(self):
+            return serve_pb2.UserDefinedResponse(greeting="hello")
+
+    model = HelloModel.bind()
+    app_name = "app1"
+    serve.run(target=model, name=app_name)
+
+    # Ensure worker node has both replicas.
+    def check_replicas_on_worker_nodes():
+        _actors = ray._private.state.actors().values()
+        replica_nodes = [
+            a["Address"]["NodeID"]
+            for a in _actors
+            if a["ActorClassName"].startswith("ServeReplica")
+        ]
+        return len(set(replica_nodes)) == 1
+
+    wait_for_condition(check_replicas_on_worker_nodes)
+
+    # Ensure total actors of 2 proxies, 1 controller, and 2 replicas, and 2 nodes exist.
+    wait_for_condition(lambda: len(ray._private.state.actors()) == 5)
+    assert len(ray.nodes()) == 2
+
+    # Set up gRPC channels.
+    head_node_channel = grpc.insecure_channel(f"localhost:{head_node_grpc_port}")
+    worker_node_channel = grpc.insecure_channel(f"localhost:{worker_node_grpc_port}")
+
+    # Ensures ListApplications method on the head node is succeeding.
+    wait_for_condition(
+        ping_grpc_list_applications, channel=head_node_channel, app_names=[app_name]
+    )
+
+    # Ensures Healthz method on the head node is succeeding.
+    ping_grpc_healthz(head_node_channel)
+
+    # Ensures ListApplications method on the worker node is succeeding.
+    wait_for_condition(
+        ping_grpc_list_applications, channel=worker_node_channel, app_names=[app_name]
+    )
+
+    # Ensures Healthz method on the worker node is succeeding.
+    ping_grpc_healthz(worker_node_channel)
+
+    # Delete the deployment should bring the active actors down to 3 and drop
+    # replicas on all nodes.
+    serve.delete(name=app_name)
+
+    def _check():
+        _actors = ray._private.state.actors().values()
+        return (
+            len(
+                list(
+                    filter(
+                        lambda a: a["State"] == "ALIVE",
+                        _actors,
+                    )
+                )
+            )
+            == 3
+        )
+
+    wait_for_condition(_check)
+
+    # Ensures ListApplications method on the head node is succeeding.
+    wait_for_condition(
+        ping_grpc_list_applications, channel=head_node_channel, app_names=[]
+    )
+
+    # Ensures Healthz method on the head node is succeeding.
+    ping_grpc_healthz(head_node_channel)
+
+    # Ensures ListApplications method on the worker node is draining.
+    wait_for_condition(
+        ping_grpc_list_applications,
+        channel=worker_node_channel,
+        app_names=[],
+        test_draining=True,
+    )
+
+    # Ensures Healthz method on the worker node is draining.
+    ping_grpc_healthz(worker_node_channel, test_draining=True)
 
 
 if __name__ == "__main__":
