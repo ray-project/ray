@@ -1532,7 +1532,8 @@ class HTTPProxyActor:
         """
 
         self.http_proxy.update_draining(draining)
-        self.grpc_proxy.update_draining(draining)
+        if self.grpc_proxy:
+            self.grpc_proxy.update_draining(draining)
 
     async def is_drained(self, _after: Optional[Any] = None):
         """Check whether both HTTP and gRPC proxies are drained or not.
@@ -1541,7 +1542,9 @@ class HTTPProxyActor:
         allows delaying this call until after the `_after` call has returned.
         """
 
-        return self.http_proxy.is_drained() and self.grpc_proxy.is_drained()
+        return self.http_proxy.is_drained() and (
+            self.grpc_proxy is None or self.grpc_proxy.is_drained()
+        )
 
     async def check_health(self):
         """No-op method to check on the health of the HTTP Proxy.
