@@ -15,19 +15,10 @@ To define a deployment, use the {mod}`@serve.deployment <ray.serve.api.deploymen
 Then, `bind` the deployment with optional arguments to the constructor (see below).
 Finally, deploy the resulting "bound deployment" using `serve.run` (or the equivalent `serve run` CLI command, see [Development Workflow](serve-dev-workflow) for details).
 
-```python
-@serve.deployment
-class MyFirstDeployment:
-  # Take the message to return as an argument to the constructor.
-  def __init__(self, msg):
-      self.msg = msg
-
-  def __call__(self):
-      return self.msg
-
-my_first_deployment = MyFirstDeployment.bind("Hello world!")
-handle = serve.run(my_first_deployment)
-print(ray.get(handle.remote())) # "Hello world!"
+```{literalinclude} doc_code/key_concepts.py
+:start-after: __my_first_deployment_start__
+:end-before: __my_first_deployment_end__
+:language: python
 ```
 
 (serve-key-concepts-application)=
@@ -47,27 +38,10 @@ When binding a deployment, you can include references to _other bound deployment
 Then, at runtime each of these arguments is converted to a {mod}`ServeHandle <ray.serve.handle.RayServeHandle>` that can be used to query the deployment using a Python-native API.
 Below is a basic example where the `Driver` deployment can call into two downstream models.
 
-```python
-@serve.deployment
-class Driver:
-    def __init__(self, model_a_handle, model_b_handle):
-        self._model_a_handle = model_a_handle
-        self._model_b_handle = model_b_handle
-
-    async def __call__(self, request):
-        ref_a = await self._model_a_handle.remote(request)
-        ref_b = await self._model_b_handle.remote(request)
-        return (await ref_a) + (await ref_b)
-
-
-model_a = ModelA.bind()
-model_b = ModelB.bind()
-
-# model_a and model_b will be passed to the Driver constructor as ServeHandles.
-driver = Driver.bind(model_a, model_b)
-
-# Deploys model_a, model_b, and driver.
-serve.run(driver)
+```{literalinclude} doc_code/key_concepts.py
+:start-after: __driver_start__
+:end-before: __driver_end__
+:language: python
 ```
 
 (serve-key-concepts-ingress-deployment)=
@@ -84,36 +58,28 @@ By default, the `__call__` method of the class will be called and passed in a `S
 The response will be serialized as JSON, but other `Starlette` response objects can also be returned directly.
 Here's an example:
 
-```python
-@serve.deployment
-class MostBasicIngress:
-  async def __call__(self, request: starlette.requests.Request) -> str:
-      name = await request.json()["name"]
-      return f"Hello {name}"
+```{literalinclude} doc_code/key_concepts.py
+:start-after: __most_basic_ingress_start__
+:end-before: __most_basic_ingress_end__
+:language: python
 ```
 
 After binding the deployment and running `serve.run()`, it is now exposed by the HTTP server and handles requests using the specified class.
 We can query the model to verify that it's working.
 
-```python
-import requests
-print(requests.get("http://127.0.0.1:8000/", json={"name": "Corey"}).text) # Hello Corey!
+```{literalinclude} doc_code/key_concepts.py
+:start-after: __request_get_start__
+:end-before: __request_get_end__
+:language: python
 ```
 
 For more expressive HTTP handling, Serve also comes with a built-in integration with `FastAPI`.
 This allows you to use the full expressiveness of FastAPI to define more complex APIs:
 
-```python
-from fastapi import FastAPI
-
-app = FastAPI()
-
-@serve.deployment
-@serve.ingress(app)
-class MostBasicIngress:
-  @app.get("/{name}")
-  async def say_hi(self, name: str) -> str:
-      return f"Hello {name}"
+```{literalinclude} doc_code/key_concepts.py
+:start-after: __fastapi_start__
+:end-before: __fastapi_end__
+:language: python
 ```
 
 (serve-key-concepts-deployment-graph)=
