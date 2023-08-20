@@ -2,36 +2,37 @@ from typing import Optional
 
 import argparse
 import os
+import pickle
+import tempfile
 import time
 
 import ray
-from ray import tune
-from ray.air import Checkpoint, session
+from ray import train, tune
+from ray.train._checkpoint import Checkpoint
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.algorithms.ppo import PPO
 
-from run_cloud_test import ARTIFACT_FILENAME
+from run_cloud_test import ARTIFACT_FILENAME, CHECKPOINT_DATA_FILENAME
 
 
 def fn_trainable(config):
-    checkpoint = session.get_checkpoint()
+    checkpoint = train.get_checkpoint()
     if checkpoint:
-        state = {"internal_iter": checkpoint.to_dict()["internal_iter"] + 1}
+        with checkpoint.as_directory() as checkpoint_dir:
+            with open(
+                os.path.join(checkpoint_dir, CHECKPOINT_DATA_FILENAME), "rb"
+            ) as f:
+                checkpoint_dict = pickle.load(f)
+        state = {"internal_iter": checkpoint_dict["internal_iter"] + 1}
     else:
-        # NOTE: Need to 1 index because `session.report`
-        # will save checkpoints w/ 1-indexing.
         state = {"internal_iter": 1}
 
     for i in range(state["internal_iter"], config["max_iterations"] + 1):
         state["internal_iter"] = i
         time.sleep(config["sleep_time"])
 
-        checkpoint = None
-        if i % config["checkpoint_freq"] == 0:
-            checkpoint = Checkpoint.from_dict({"internal_iter": i})
-
         # Log artifacts to the trial dir.
-        trial_dir = session.get_trial_dir()
+        trial_dir = train.get_context().get_trial_dir()
         with open(os.path.join(trial_dir, ARTIFACT_FILENAME), "a") as f:
             f.write(f"{config['id']},")
 
@@ -39,8 +40,13 @@ def fn_trainable(config):
             score=i * 10 * config["score_multiplied"],
             internal_iter=state["internal_iter"],
         )
-
-        session.report(metrics, checkpoint=checkpoint)
+        if i % config["checkpoint_freq"] == 0:
+            with tempfile.TemporaryDirectory() as tmpdir:
+                with open(os.path.join(tmpdir, CHECKPOINT_DATA_FILENAME), "wb") as f:
+                    pickle.dump({"internal_iter": i}, f)
+                train.report(metrics, checkpoint=Checkpoint.from_directory(tmpdir))
+        else:
+            train.report(metrics)
 
 
 class RLlibCallback(DefaultCallbacks):

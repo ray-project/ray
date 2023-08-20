@@ -2,10 +2,11 @@ import os
 import pytest
 
 import ray
-from ray.air import CheckpointConfig, RunConfig, ScalingConfig, session
+
 from ray.air.constants import EXPR_RESULT_FILE
-from ray.air.result import Result
-from ray.train.torch import TorchCheckpoint, TorchTrainer
+from ray import train
+from ray.train import Result, CheckpointConfig, RunConfig, ScalingConfig
+from ray.train.torch import LegacyTorchCheckpoint, TorchTrainer
 from ray.train.base_trainer import TrainingFailedError
 from ray.tune import TuneConfig, Tuner
 
@@ -21,9 +22,9 @@ def ray_start_4_cpus():
 def build_dummy_trainer(configs):
     def worker_loop():
         for i in range(configs["NUM_ITERATIONS"]):
-            session.report(
+            train.report(
                 metrics={"metric_a": i, "metric_b": -i},
-                checkpoint=TorchCheckpoint.from_dict({"iter": i}),
+                checkpoint=LegacyTorchCheckpoint.from_dict({"iter": i}),
             )
         raise RuntimeError()
 

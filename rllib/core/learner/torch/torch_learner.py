@@ -69,7 +69,7 @@ class TorchLearner(Learner):
         # Will be set during build.
         self._device = None
 
-        # Whether to compile the RL Module of this learner. This implies that the
+        # Whether to compile the RL Module of this learner. This implies that the.
         # forward_train method of the RL Module will be compiled. Further more,
         # other forward methods of the RL Module will be compiled on demand.
         # This is assumed to not happen, since other forwrad methods are not expected
@@ -445,6 +445,12 @@ class TorchLearner(Learner):
                 )
             ),
         )
+
+    @staticmethod
+    @override(Learner)
+    def _get_optimizer_lr(optimizer: "torch.optim.Optimizer") -> float:
+        for g in optimizer.param_groups:
+            return g["lr"]
 
     @staticmethod
     @override(Learner)

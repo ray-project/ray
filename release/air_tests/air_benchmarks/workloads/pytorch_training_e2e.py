@@ -2,21 +2,24 @@ import click
 import time
 import json
 import os
+import tempfile
 from typing import Dict
 
 import numpy as np
 from torchvision import transforms
 from torchvision.models import resnet18
+import torch
 import torch.nn as nn
 import torch.optim as optim
 
 import ray
-from ray.train.torch import TorchCheckpoint
+from ray.air import Checkpoint
 from ray.data.preprocessors import BatchMapper, Chain, TorchVisionPreprocessor
 from ray import train
-from ray.air import session
+from ray.train import RunConfig, ScalingConfig
+from ray.train._checkpoint import Checkpoint as NewCheckpoint
+from ray.train._internal.storage import _use_storage_context
 from ray.train.torch import TorchTrainer
-from ray.air.config import ScalingConfig
 
 
 def add_fake_labels(batch: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
@@ -31,7 +34,7 @@ def train_loop_per_worker(config):
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.SGD(model.parameters(), lr=0.001, momentum=0.9)
 
-    train_dataset_shard = session.get_dataset_shard("train")
+    train_dataset_shard = train.get_dataset_shard("train")
 
     for epoch in range(config["num_epochs"]):
         running_loss = 0.0
@@ -56,10 +59,13 @@ def train_loop_per_worker(config):
                 print(f"[{epoch + 1}, {i + 1:5d}] loss: {running_loss / 2000:.3f}")
                 running_loss = 0.0
 
-        session.report(
-            dict(running_loss=running_loss),
-            checkpoint=TorchCheckpoint.from_model(model),
-        )
+        checkpoint_cls = NewCheckpoint if _use_storage_context() else Checkpoint
+        with tempfile.TemporaryDirectory() as tmpdir:
+            torch.save(model.state_dict(), os.path.join(tmpdir, "model.pt"))
+            train.report(
+                dict(running_loss=running_loss),
+                checkpoint=checkpoint_cls.from_directory(tmpdir),
+            )
 
 
 @click.command(help="Run Batch prediction on Pytorch ResNet models.")
@@ -108,6 +114,7 @@ def main(data_size_gb: int, num_epochs=2, num_workers=1, smoke_test: bool = Fals
         scaling_config=ScalingConfig(
             num_workers=num_workers, use_gpu=int(not smoke_test)
         ),
+        run_config=RunConfig(storage_path="/mnt/cluster_storage"),
     )
     trainer.fit()
 

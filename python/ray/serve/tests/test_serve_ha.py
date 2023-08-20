@@ -1,63 +1,50 @@
+import os
 import pytest
 import sys
 import threading
 from time import sleep
+
 from ray.tests.conftest_docker import *  # noqa
+from ray._private.test_utils import wait_for_condition
+from ray._private.resource_spec import HEAD_NODE_RESOURCE_NAME
 
 scripts = """
-import ray
 import json
-from fastapi import FastAPI
-app = FastAPI()
+import os
+
+import ray
+
 from ray import serve
-ray.init(address="auto", namespace="g")
 
-@serve.deployment(name="Counter", route_prefix="/api", version="v1")
-@serve.ingress(app)
-class Counter:
-    def __init__(self):
-        self.count = 0
-
-    @app.get("/")
-    def get(self):
-        return {{"count": self.count}}
-
-    @app.get("/incr")
-    def incr(self):
-        self.count += 1
-        return {{"count": self.count}}
-
-    @app.get("/decr")
-    def decr(self):
-        self.count -= 1
-        return {{"count": self.count}}
-
-    @app.get("/pid")
-    def pid(self):
-        import os
+@serve.deployment
+class GetPID:
+    def __call__(self, *args):
         return {{"pid": os.getpid()}}
 
-serve.start(detached=True, http_options={{"location": "EveryNode"}})
-
-Counter.options(num_replicas={num_replicas}).deploy()
+serve.run(GetPID.options(num_replicas={num_replicas}).bind())
 """
 
 check_script = """
+import ray
 import requests
-import json
-if {num_replicas} == 1:
-    b = json.loads(requests.get("http://127.0.0.1:8000/api/").text)["count"]
-    for i in range(5):
-        response = requests.get("http://127.0.0.1:8000/api/incr")
-        assert json.loads(response.text) == {{"count": i + b + 1}}
+
+@ray.remote
+def get_pid():
+    return requests.get("http://127.0.0.1:8000/").json()["pid"]
 
 pids = {{
-    json.loads(requests.get("http://127.0.0.1:8000/api/pid").text)["pid"]
-    for _ in range(5)
+    requests.get("http://127.0.0.1:8000/").json()["pid"]
+    for _ in range(20)
 }}
-
 print(pids)
 assert len(pids) == {num_replicas}
+"""
+
+check_ray_nodes_script = """
+import ray
+
+ray.init(address="auto")
+print(ray.nodes())
 """
 
 
@@ -77,42 +64,47 @@ def test_ray_serve_basic(docker_cluster):
 
     head, worker = docker_cluster
     output = worker.exec_run(cmd=f"python -c '{scripts.format(num_replicas=1)}'")
-    assert output.exit_code == 0
-    assert b"Adding 1 replica to deployment Counter." in output.output
-    # somehow this is not working and the port is not exposed to the host.
-    # worker_cli = worker.client()
-    # print(worker_cli.request("GET", "/api/incr"))
+    assert output.exit_code == 0, output.output
+    assert b"Adding 1 replica to deployment " in output.output
 
     output = worker.exec_run(cmd=f"python -c '{check_script.format(num_replicas=1)}'")
+    assert output.exit_code == 0, output.output
 
-    assert output.exit_code == 0
-
-    # Kill the head node
+    # Kill the head node.
     head.kill()
 
-    # Make sure serve is still working
+    # Make sure the Serve application can still handle traffic.
     output = worker.exec_run(cmd=f"python -c '{check_script.format(num_replicas=1)}'")
-    assert output.exit_code == 0
+    assert output.exit_code == 0, output.output
 
-    # Script is running on another thread so that it won't block the main thread.
+    # Scale up the application in a background thread so we can concurrently kill the
+    # head node.
     def reconfig():
         worker.exec_run(cmd=f"python -c '{scripts.format(num_replicas=2)}'")
 
     t = threading.Thread(target=reconfig)
     t.start()
+    sleep(1)
 
-    # make sure the script started
-    sleep(5)
-
-    # serve reconfig should continue once GCS is back
+    # Updating the application should continue once the head node is back online.
     head.restart()
-
     t.join()
 
-    output = worker.exec_run(cmd=f"python -c '{check_script.format(num_replicas=2)}'")
-    assert output.exit_code == 0
+    # Ensure head node is up before calling check_script on the worker again.
+    def check_for_head_node_come_back_up():
+        _output = head.exec_run(cmd=f"python -c '{check_ray_nodes_script}'")
+        return (
+            _output.exit_code == 0
+            and bytes(HEAD_NODE_RESOURCE_NAME, "utf-8") in _output.output
+        )
 
-    # Make sure the serve controller still runs on the head node after restart
+    wait_for_condition(check_for_head_node_come_back_up)
+
+    # Check that the application has been updated.
+    output = worker.exec_run(cmd=f"python -c '{check_script.format(num_replicas=2)}'")
+    assert output.exit_code == 0, output.output
+
+    # Make sure the serve controller still runs on the head node after restart.
     check_controller_head_node_script = """
 import ray
 import requests
@@ -125,12 +117,10 @@ serve_details = ServeInstanceDetails(
 assert serve_details.controller_info.node_id == head_node_id
 """
     output = head.exec_run(cmd=f"python -c '{check_controller_head_node_script}'")
-    assert output.exit_code == 0
+    assert output.exit_code == 0, output.output
 
 
 if __name__ == "__main__":
-    import os
-
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
     else:

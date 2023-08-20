@@ -108,6 +108,7 @@ everett==3.2.0
 exceptiongroup==1.1.1
 executing==1.2.0
 fairscale==0.4.6
+farama-notifications==0.0.1
 fastapi==0.97.0
 fasteners==0.18
 fastjsonschema==2.17.1
@@ -128,7 +129,6 @@ gin-config==0.5.0
 gitdb==4.0.10
 GitPython==3.1.31
 glfw==2.5.9
-gluoncv==0.10.5.post0
 google-api-core==2.11.1
 google-api-python-client==1.7.8
 google-auth==2.20.0
@@ -144,9 +144,7 @@ graphviz==0.8.4
 greenlet==2.0.2
 grpcio==1.50.0
 gunicorn==20.1.0
-gym==0.26.2
-gym-notices==0.0.8
-Gymnasium==0.26.3
+gymnasium==0.28.1
 gymnasium-notices==0.0.1
 h11==0.14.0
 h5py==3.7.0
@@ -227,11 +225,9 @@ msgpack-numpy==0.4.8
 msrest==0.7.1
 msrestazure==0.6.4
 mujoco==2.2.0
-mujoco-py==2.1.2.14
 multidict==6.0.4
 multipledispatch==0.6.0
 multiprocess==0.70.14
-mxnet==1.8.0.post0
 nbclassic==1.0.0
 nbclient==0.8.0
 nbconvert==7.6.0

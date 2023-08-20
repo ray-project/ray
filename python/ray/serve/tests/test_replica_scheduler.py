@@ -1,4 +1,6 @@
 import asyncio
+import importlib
+import os
 import time
 from typing import Set, Optional, Tuple, Union
 
@@ -7,6 +9,7 @@ import pytest
 import ray
 from ray._private.utils import get_or_create_event_loop
 
+from ray.serve._private.common import DeploymentID
 from ray.serve._private.router import (
     PowerOfTwoChoicesReplicaScheduler,
     Query,
@@ -41,12 +44,18 @@ class FakeReplicaWrapper(ReplicaWrapper):
     def multiplexed_model_ids(self) -> Set[str]:
         return self._model_ids
 
-    def set_queue_state_response(self, queue_len: int, accepted: bool = True):
+    def set_queue_state_response(
+        self,
+        queue_len: int,
+        accepted: bool = True,
+        exception: Optional[Exception] = None,
+    ):
         self._queue_len = queue_len
         self._accepted = accepted
+        self._exception = exception
         self._has_queue_len_response.set()
 
-    async def get_queue_state(self) -> Tuple[str, int, bool]:
+    async def get_queue_state(self) -> Tuple[int, bool]:
         while not self._has_queue_len_response.is_set():
             await self._has_queue_len_response.wait()
 
@@ -56,7 +65,10 @@ class FakeReplicaWrapper(ReplicaWrapper):
         if self._reset_after_response:
             self._has_queue_len_response.clear()
 
-        return self._replica_id, self._queue_len, self._accepted
+        if self._exception is not None:
+            raise self._exception
+
+        return self._queue_len, self._accepted
 
     def send_query(
         self, query: Query
@@ -68,8 +80,14 @@ class FakeReplicaWrapper(ReplicaWrapper):
 def pow_2_scheduler() -> PowerOfTwoChoicesReplicaScheduler:
     s = PowerOfTwoChoicesReplicaScheduler(
         get_or_create_event_loop(),
-        "TEST_DEPLOYMENT",
+        DeploymentID("TEST_DEPLOYMENT", "TEST_APP"),
     )
+
+    # Update the RAY_SERVE_MULTIPLEXED_MODEL_ID_MATCHING_TIMEOUT_S
+    # to 0.01s to speed up the test.
+    os.environ.update({"RAY_SERVE_MULTIPLEXED_MODEL_ID_MATCHING_TIMEOUT_S": "0.01"})
+    importlib.reload(ray.serve._private.constants)
+    importlib.reload(ray.serve._private.router)
 
     yield s
 
@@ -480,6 +498,22 @@ class TestModelMultiplexing:
             query = query_with_model_id("m2")
             task = loop.create_task(s.choose_replica_for_query(query))
             assert (await task) in {r1, r2}
+
+    async def test_choose_least_number_of_models_replicas(self, pow_2_scheduler):
+        """
+        If no replica has the model_id, choose the least number of models replicas.
+        """
+        s = pow_2_scheduler
+        loop = get_or_create_event_loop()
+        r1 = FakeReplicaWrapper("r1", model_ids={"m1", "m2"})
+        r2 = FakeReplicaWrapper("r2", model_ids={"m2"})
+        r1.set_queue_state_response(0, accepted=True)
+        r2.set_queue_state_response(0, accepted=True)
+        s.update_replicas([r1, r2])
+        for _ in range(10):
+            query = query_with_model_id("m3")
+            task = loop.create_task(s.choose_replica_for_query(query))
+            assert (await task) == r2
 
     async def test_no_replica_has_model_id(self, pow_2_scheduler):
         """

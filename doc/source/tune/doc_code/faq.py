@@ -2,18 +2,18 @@
 
 # __reproducible_start__
 import numpy as np
-from ray import tune
-from ray.air import session, ScalingConfig
+from ray import train, tune
+from ray.train import ScalingConfig
 
 
-def train(config):
+def train_func(config):
     # Set seed for trainable random result.
     # If you remove this line, you will get different results
     # each time you run the trial, even if the configuration
     # is the same.
     np.random.seed(config["seed"])
     random_result = np.random.uniform(0, 100, size=1).item()
-    session.report({"result": random_result})
+    train.report({"result": random_result})
 
 
 # Set seed for Ray Tune's random search.
@@ -21,7 +21,7 @@ def train(config):
 # each time you run the script.
 np.random.seed(1234)
 tuner = tune.Tuner(
-    train,
+    train_func,
     tune_config=tune.TuneConfig(
         num_samples=10,
         search_alg=tune.search.BasicVariantGenerator(),
@@ -56,12 +56,12 @@ config = {
 # __iter_end__
 
 
-def train(config):
+def train_func(config):
     random_result = np.random.uniform(0, 100, size=1).item()
-    session.report({"result": random_result})
+    train.report({"result": random_result})
 
 
-train_fn = train
+train_fn = train_func
 MOCK = True
 # Note we put this check here to make sure at least the syntax of
 # the code is correct. Some of these snippets simply can't be run on the nose.
@@ -126,7 +126,7 @@ if not MOCK:
     def train_fn(config, checkpoint_dir=None):
         # some Modin operations here
         # import modin.pandas as pd
-        session.report({"metric": metric})
+        train.report({"metric": metric})
 
     tuner = tune.Tuner(
         tune.with_resources(
@@ -148,7 +148,7 @@ from ray import tune
 import numpy as np
 
 
-def train(config, checkpoint_dir=None, num_epochs=5, data=None):
+def train_func(config, checkpoint_dir=None, num_epochs=5, data=None):
     for i in range(num_epochs):
         for sample in data:
             # ... train on sample
@@ -158,7 +158,7 @@ def train(config, checkpoint_dir=None, num_epochs=5, data=None):
 # Some huge dataset
 data = np.random.random(size=100000000)
 
-tuner = tune.Tuner(tune.with_parameters(train, num_epochs=5, data=data))
+tuner = tune.Tuner(tune.with_parameters(train_func, num_epochs=5, data=data))
 tuner.fit()
 # __huge_data_end__
 
@@ -223,7 +223,7 @@ if __name__ == "__main__":
 # __torch_seed_example_end__
 
 # __large_data_start__
-from ray import air, tune
+from ray import train, tune
 import numpy as np
 
 
@@ -244,7 +244,7 @@ if not MOCK:
     # __log_1_start__
     tuner = tune.Tuner(
         MyTrainableClass,
-        run_config=air.RunConfig(storage_path="s3://my-log-dir"),
+        run_config=train.RunConfig(storage_path="s3://my-log-dir"),
     )
     tuner.fit()
     # __log_1_end__
@@ -268,7 +268,7 @@ if not MOCK:
 
     tuner = tune.Tuner(
         MyTrainableClass,
-        run_config=air.RunConfig(storage_path="s3://my-log-dir"),
+        run_config=train.RunConfig(storage_path="s3://my-log-dir"),
     )
     tuner.fit()
     # __log_2_end__
@@ -353,23 +353,17 @@ if not MOCK:
     tuner = tune.Tuner(
         train_fn,
         # ...,
-        run_config=air.RunConfig(storage_path="s3://your-s3-bucket/durable-trial/"),
+        run_config=train.RunConfig(storage_path="s3://your-s3-bucket/durable-trial/"),
     )
     tuner.fit()
     # __s3_end__
 
     # __sync_config_start__
-    from ray import air, tune
+    from ray import train, tune
 
     tuner = tune.Tuner(
         train_fn,
-        run_config=air.RunConfig(
-            storage_path="/path/to/shared/storage",
-        ),
-        sync_config=tune.SyncConfig(
-            # Do not sync because we are on shared storage
-            syncer=None
-        ),
+        run_config=train.RunConfig(storage_path="/path/to/shared/storage"),
     )
     tuner.fit()
     # __sync_config_end__
@@ -395,7 +389,7 @@ tuner.fit()
 # num_samples=10 repeats the 3x3 grid search 10 times, for a total of 90 trials
 tuner = tune.Tuner(
     train_fn,
-    run_config=air.RunConfig(
+    run_config=train.RunConfig(
         name="my_trainable",
     ),
     param_space={
@@ -426,7 +420,7 @@ if not MOCK:
         assert os.getcwd() == os.environ["TUNE_ORIG_WORKING_DIR"]
 
         # Write to the Tune trial directory, not the shared working dir
-        tune_trial_dir = Path(session.get_trial_dir())
+        tune_trial_dir = Path(train.get_context().get_trial_dir())
         with open(tune_trial_dir / "write.txt", "w") as f:
             f.write("trial saved artifact")
 
@@ -439,8 +433,8 @@ if not MOCK:
 
 
 # __iter_experimentation_initial_start__
-from ray import air, tune
-from ray.air import Checkpoint, session
+from ray import train, tune
+from ray.train import Checkpoint
 import random
 
 
@@ -448,7 +442,7 @@ def trainable(config):
     for epoch in range(1, config["num_epochs"]):
         # Do some training...
 
-        session.report(
+        train.report(
             {"score": random.random()},
             checkpoint=Checkpoint.from_dict({"model_state_dict": {"x": 1}}),
         )
@@ -480,7 +474,7 @@ def trainable(config):
     for epoch in range(1, config["num_epochs"]):
         # Do some training...
 
-        session.report(
+        train.report(
             {"score": random.random()},
             checkpoint=Checkpoint.from_dict({"model_state_dict": {"x": 1}}),
         )

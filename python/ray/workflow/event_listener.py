@@ -33,12 +33,15 @@ class EventListener:
 
     Example Usage
     =============
-    >>> from ray import workflow
-    >>> CustomEventListener = ... # doctest: +SKIP
-    >>> event_task = workflow.wait_for_event( # doctest: +SKIP
-    ...     CustomEventListener, "topic1", "partition2")
-    >>> handle_event = ... # doctest: +SKIP
-    >>> workflow.run(handle_event.task(event_task)) # doctest: +SKIP
+    .. testcode::
+        :skipif: True
+
+        from ray import workflow
+        CustomEventListener = ...
+        event_task = workflow.wait_for_event(
+            CustomEventListener, "topic1", "partition2")
+        handle_event = ...
+        workflow.run(handle_event.task(event_task))
 
     """
 

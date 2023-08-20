@@ -492,11 +492,7 @@ def check_inference_w_connectors(policy, env_name, max_steps: int = 100):
     # Avoids circular import
     from ray.rllib.utils.policy import local_policy_inference
 
-    # TODO(sven): Remove this if-block once gymnasium fully supports Atari envs.
-    if env_name.startswith("ALE/"):
-        env = gym.make("GymV26Environment-v0", env_id=env_name)
-    else:
-        env = gym.make(env_name)
+    env = gym.make(env_name)
 
     # Potentially wrap the env like we do in RolloutWorker
     if is_atari(env):
@@ -821,6 +817,12 @@ def run_learning_tests_from_yaml(
     # Keep track of those experiments we still have to run.
     # If an experiment passes, we'll remove it from this dict.
     experiments_to_run = experiments.copy()
+
+    # When running as a release test, use `/mnt/cluster_storage` as the storage path.
+    release_test_storage_path = "/mnt/cluster_storage"
+    if os.path.exists(release_test_storage_path):
+        for k, e in experiments_to_run.items():
+            e["storage_path"] = release_test_storage_path
 
     try:
         ray.init(address="auto")

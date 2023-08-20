@@ -252,7 +252,8 @@ def test_e2e_basic_scale_up_down(min_replicas, serve_instance):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
-def test_e2e_basic_scale_up_down_with_0_replica(serve_instance):
+@pytest.mark.parametrize("smoothing_factor", [1, 0.2])
+def test_e2e_basic_scale_up_down_with_0_replica(serve_instance, smoothing_factor):
     """Send 100 requests and check that we autoscale up, and then back down."""
 
     controller = serve_instance._controller
@@ -266,6 +267,7 @@ def test_e2e_basic_scale_up_down_with_0_replica(serve_instance):
             "look_back_period_s": 0.2,
             "downscale_delay_s": 0,
             "upscale_delay_s": 0,
+            "smoothing_factor": smoothing_factor,
         },
         # We will send over a lot of queries. This will make sure replicas are
         # killed quickly during cleanup.
@@ -328,8 +330,42 @@ def test_initial_num_replicas(mock, serve_instance):
     assert len(get_running_replicas(controller, "A")) == 2
 
 
-def test_smoothing_factor_with_0_replica():
-    """Unit test for smoothing_factor with 0 replica."""
+def test_cold_start_time(serve_instance):
+    """Send 100 requests and check that we autoscale up, and then back down."""
+
+    @serve.deployment(
+        autoscaling_config={
+            "min_replicas": 0,
+            "max_replicas": 1,
+            "look_back_period_s": 0.2,
+        },
+    )
+    class A:
+        def __call__(self):
+            return "hello"
+
+    handle = serve.run(A.bind())
+
+    def check_running():
+        assert serve.status().applications["default"].status == "RUNNING"
+        return True
+
+    wait_for_condition(check_running)
+
+    start = time.time()
+    result = ray.get(handle.remote())
+    cold_start_time = time.time() - start
+    assert cold_start_time < 2
+    print(
+        "Time taken for deployment at 0 replicas to serve first request:",
+        cold_start_time,
+    )
+    assert result == "hello"
+
+
+def test_smoothing_factor_scale_up_from_0_replicas():
+    """Test that the smoothing factor is respected when scaling up from 0 replicas."""
+
     config = AutoscalingConfig(
         min_replicas=0,
         max_replicas=2,
@@ -355,6 +391,43 @@ def test_smoothing_factor_with_0_replica():
 
     # math.ceil(1 * 0.5)
     assert new_num_replicas == 1
+
+
+def test_smoothing_factor_scale_down_to_0_replicas():
+    """Test that a deployment scales down to 0 for non-default smoothing factors."""
+
+    # With smoothing factor > 1, the desired number of replicas should
+    # immediately drop to 0 (while respecting upscale and downscale delay)
+    config = AutoscalingConfig(
+        min_replicas=0,
+        max_replicas=5,
+        smoothing_factor=10,
+        upscale_delay_s=0,
+        downscale_delay_s=0,
+    )
+    policy = BasicAutoscalingPolicy(config)
+    new_num_replicas = policy.get_decision_num_replicas(
+        current_num_ongoing_requests=[0, 0, 0, 0, 0],
+        curr_target_num_replicas=5,
+        current_handle_queued_queries=0,
+    )
+
+    assert new_num_replicas == 0
+
+    # With smoothing factor < 1, the desired number of replicas shouldn't
+    # get stuck at a positive number, and instead should eventually drop
+    # to zero
+    config.smoothing_factor = 0.2
+    policy = BasicAutoscalingPolicy(config)
+    num_replicas = 5
+    for _ in range(5):
+        num_replicas = policy.get_decision_num_replicas(
+            current_num_ongoing_requests=[0] * num_replicas,
+            curr_target_num_replicas=num_replicas,
+            current_handle_queued_queries=0,
+        )
+
+    assert num_replicas == 0
 
 
 def test_upscale_downscale_delay():
@@ -697,6 +770,7 @@ def test_e2e_bursty(serve_instance):
     # it back to 0. This bursty behavior should be smoothed by the delay
     # parameters.
     for _ in range(5):
+        ray.get(signal.send.remote(clear=True))
         assert check_autoscale_num_replicas(controller, "A") == num_replicas
         refs = [handle.remote() for _ in range(100)]
         signal.send.remote()
@@ -920,7 +994,7 @@ def test_e2e_raise_min_replicas(serve_instance):
 
     assert check_autoscale_num_replicas(controller, "A") == 0
 
-    handle = serve.get_deployment("default_A").get_handle()
+    handle = serve.get_deployment_handle("A", "default")
     [handle.remote() for _ in range(1)]
     print("Issued one request.")
 
@@ -1165,7 +1239,9 @@ app = g.bind()
     }
 
     client.deploy_apps(ServeDeploySchema(**{"applications": [app_config]}))
-    wait_for_condition(lambda: client.get_serve_status().app_status.status == "RUNNING")
+    wait_for_condition(
+        lambda: serve.status().applications[SERVE_DEFAULT_APP_NAME].status == "RUNNING"
+    )
 
     # Step 3: Verify that it can scale from 0 to 1.
     @ray.remote
@@ -1196,7 +1272,9 @@ app = g.bind()
     # Step 4: Change the max replicas to 2
     app_config["deployments"][0]["autoscaling_config"]["max_replicas"] = 2
     client.deploy_apps(ServeDeploySchema(**{"applications": [app_config]}))
-    wait_for_condition(lambda: client.get_serve_status().app_status.status == "RUNNING")
+    wait_for_condition(
+        lambda: serve.status().applications[SERVE_DEFAULT_APP_NAME].status == "RUNNING"
+    )
     wait_for_condition(check_num_replicas, retry_interval_ms=1000, timeout=20, num=1)
 
     # Step 5: Make sure it is the same replica (lightweight change).
@@ -1209,7 +1287,9 @@ app = g.bind()
     app_config["deployments"][0]["autoscaling_config"]["initial_replicas"] = 3
     app_config["deployments"][0]["autoscaling_config"]["upscale_delay"] = 600
     client.deploy_apps(ServeDeploySchema(**{"applications": [app_config]}))
-    wait_for_condition(lambda: client.get_serve_status().app_status.status == "RUNNING")
+    wait_for_condition(
+        lambda: serve.status().applications[SERVE_DEFAULT_APP_NAME].status == "RUNNING"
+    )
     wait_for_condition(check_num_replicas, retry_interval_ms=1000, timeout=20, num=3)
 
     # Step 7: Make sure original replica is still running (lightweight change)

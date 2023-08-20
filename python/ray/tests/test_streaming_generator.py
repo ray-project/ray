@@ -13,7 +13,7 @@ from unittest.mock import patch, Mock
 
 import ray
 from ray._private.test_utils import wait_for_condition
-from ray.experimental.state.api import list_objects
+from ray.experimental.state.api import list_objects, list_actors
 from ray._raylet import StreamingObjectRefGenerator, ObjectRefStreamEndOfStreamError
 from ray.cloudpickle import dumps
 from ray.exceptions import WorkerCrashedError
@@ -38,6 +38,7 @@ def assert_no_leak():
     for rc in ref_counts.values():
         assert rc["local"] == 0
         assert rc["submitted"] == 0
+    assert core_worker.get_memory_store_size() == 0
 
 
 class MockedWorker:
@@ -142,96 +143,6 @@ def test_streaming_object_ref_generator_task_failed_unit(mocked_worker):
             # the ref contains now.
             with pytest.raises(StopIteration):
                 ref = generator._next_sync(timeout_s=0)
-
-
-@pytest.mark.asyncio
-async def test_streaming_object_ref_generator_unit_async(mocked_worker):
-    """
-    Verify the basic case:
-    create a generator -> read values -> nothing more to read -> delete.
-    """
-    c = mocked_worker.core_worker
-    generator_ref = ray.ObjectRef.from_random()
-    generator = StreamingObjectRefGenerator(generator_ref, mocked_worker)
-    c.try_read_next_object_ref_stream.return_value = ray.ObjectRef.nil()
-
-    # Test when there's no new ref, it returns a nil.
-    next_ref = ray.ObjectRef.from_random()
-
-    async def coro_ref():
-        await asyncio.sleep(1)
-        return next_ref
-
-    c.peek_object_ref_stream.return_value = coro_ref()
-    ref = await generator._next_async(timeout_s=0)
-    assert ref.is_nil()
-
-    # When the new ref is available, next should return it.
-    for _ in range(3):
-        next_ref = ray.ObjectRef.from_random()
-
-        async def coro_ref():
-            return next_ref
-
-        c.peek_object_ref_stream.return_value = coro_ref()
-        c.try_read_next_object_ref_stream.return_value = next_ref
-        ref = await generator._next_async(timeout_s=0)
-        assert next_ref == ref
-
-    # When try_read_next_object_ref_stream raises a
-    # ObjectRefStreamEndOfStreamError, it should raise a stop iteration.
-
-    async def coro_ref():
-        return next_ref
-
-    c.peek_object_ref_stream.return_value = coro_ref()
-    generator._generator_ref = coro_ref()
-    c.try_read_next_object_ref_stream.side_effect = ObjectRefStreamEndOfStreamError(
-        ""
-    )  # noqa
-    with pytest.raises(StopAsyncIteration):
-        ref = await generator._next_async(timeout_s=0)
-
-
-@pytest.mark.asyncio
-async def test_async_ref_generator_task_failed_unit(mocked_worker):
-    """
-    Verify when a task is failed by a system error,
-    the generator ref is returned.
-    """
-    c = mocked_worker.core_worker
-    generator_ref = ray.ObjectRef.from_random()
-    generator = StreamingObjectRefGenerator(generator_ref, mocked_worker)
-
-    # Simulate the worker failure happens.
-    next_ref = ray.ObjectRef.from_random()
-
-    async def coro_ref():
-        return next_ref
-
-    c.peek_object_ref_stream.return_value = coro_ref()
-
-    # generator ref should raise an exception when a task fails.
-
-    async def generator_ref_coro():
-        raise WorkerCrashedError()
-
-    generator_coro = generator_ref_coro()
-    generator._generator_ref = generator_coro
-    c.try_read_next_object_ref_stream.side_effect = ObjectRefStreamEndOfStreamError(
-        ""
-    )  # noqa
-    ref = await generator._next_async(timeout_s=0)
-    # If the generator task fails by a systsem error,
-    # meaning the ref will raise an exception
-    # it should be returned.
-    assert ref == generator_coro
-
-    # Once exception is raised, it should always
-    # raise stopIteration regardless of what
-    # the ref contains now.
-    with pytest.raises(StopAsyncIteration):
-        ref = await generator._next_async(timeout_s=0)
 
 
 def test_generator_basic(shutdown_only):
@@ -490,7 +401,7 @@ def test_generator_streaming(shutdown_only, use_actors, store_in_plasma):
         del ref
 
         wait_for_condition(
-            lambda: len(list_objects(filters=[("object_id", "=", id)])) == 0
+            lambda id=id: len(list_objects(filters=[("object_id", "=", id)])) == 0
         )
         i += 1
 
@@ -621,7 +532,7 @@ def test_actor_streaming_generator(shutdown_only, store_in_plasma):
         expected = 0
         async for ref in async_generator:
             value = await ref
-            assert value == value
+            assert expected == value
             expected += 1
 
     async def verify_async_task_async_generator():
@@ -640,9 +551,9 @@ def test_actor_streaming_generator(shutdown_only, store_in_plasma):
             ray.put(arr)
         )
         expected = 0
-        async for value in async_generator:
+        async for ref in async_generator:
             value = await ref
-            assert value == value
+            assert expected == value
             expected += 1
 
     verify_sync_task_executor()
@@ -1173,6 +1084,193 @@ def test_return_yield_mix(shutdown_only):
 
     assert len(result) == 1
     assert result[0] == 0
+
+
+def test_task_name_not_changed_for_iteration(shutdown_only):
+    """Handles https://github.com/ray-project/ray/issues/37147.
+    Verify the task_name is not changed for each iteration in
+    async actor generator task.
+    """
+
+    @ray.remote
+    class A:
+        async def gen(self):
+            task_name = asyncio.current_task().get_name()
+            for i in range(5):
+                assert (
+                    task_name == asyncio.current_task().get_name()
+                ), f"{task_name} != {asyncio.current_task().get_name()}"
+                yield i
+
+            assert task_name == asyncio.current_task().get_name()
+
+    a = A.remote()
+    for obj_ref in a.gen.options(num_returns="streaming").remote():
+        print(ray.get(obj_ref))
+
+
+def test_async_actor_concurrent(shutdown_only):
+    """Verify the async actor generator tasks are concurrent."""
+
+    @ray.remote
+    class A:
+        async def gen(self):
+            for i in range(5):
+                await asyncio.sleep(1)
+                yield i
+
+    a = A.remote()
+
+    async def co():
+        async for ref in a.gen.options(num_returns="streaming").remote():
+            print(await ref)
+
+    async def main():
+        await asyncio.gather(co(), co(), co())
+
+    s = time.time()
+    asyncio.run(main())
+    assert 4.5 < time.time() - s < 6.5
+
+
+def test_no_memory_store_obj_leak(shutdown_only):
+    """Fixes https://github.com/ray-project/ray/issues/38089
+
+    Verify there's no leak from in-memory object store when
+    using a streaming generator.
+    """
+    ray.init()
+
+    @ray.remote
+    def f():
+        for _ in range(10):
+            yield 1
+
+    for _ in range(10):
+        for ref in f.options(num_returns="streaming").remote():
+            del ref
+
+        time.sleep(0.2)
+
+    core_worker = ray._private.worker.global_worker.core_worker
+    assert core_worker.get_memory_store_size() == 0
+    assert_no_leak()
+
+    for _ in range(10):
+        for ref in f.options(num_returns="streaming").remote():
+            break
+
+        time.sleep(0.2)
+
+    del ref
+    core_worker = ray._private.worker.global_worker.core_worker
+    assert core_worker.get_memory_store_size() == 0
+    assert_no_leak()
+
+
+def test_python_object_leak(shutdown_only):
+    """Make sure the objects are not leaked
+    (due to circular references) when tasks run
+    for all the execution model in Ray actors.
+    """
+    ray.init()
+
+    @ray.remote
+    class AsyncActor:
+        def __init__(self):
+            self.gc_garbage_len = 0
+
+        def get_gc_garbage_len(self):
+            return self.gc_garbage_len
+
+        async def gen(self, fail=False):
+            gc.set_debug(gc.DEBUG_SAVEALL)
+            gc.collect()
+            self.gc_garbage_len = len(gc.garbage)
+            print("Objects: ", self.gc_garbage_len)
+            if fail:
+                print("exception")
+                raise Exception
+            yield 1
+
+        async def f(self, fail=False):
+            gc.set_debug(gc.DEBUG_SAVEALL)
+            gc.collect()
+            self.gc_garbage_len = len(gc.garbage)
+            print("Objects: ", self.gc_garbage_len)
+            if fail:
+                print("exception")
+                raise Exception
+            return 1
+
+    @ray.remote
+    class A:
+        def __init__(self):
+            self.gc_garbage_len = 0
+
+        def get_gc_garbage_len(self):
+            return self.gc_garbage_len
+
+        def f(self, fail=False):
+            gc.set_debug(gc.DEBUG_SAVEALL)
+            gc.collect()
+            self.gc_garbage_len = len(gc.garbage)
+            print("Objects: ", self.gc_garbage_len)
+            if fail:
+                print("exception")
+                raise Exception
+            return 1
+
+        def gen(self, fail=False):
+            gc.set_debug(gc.DEBUG_SAVEALL)
+            gc.collect()
+            self.gc_garbage_len = len(gc.garbage)
+            print("Objects: ", self.gc_garbage_len)
+            if fail:
+                print("exception")
+                raise Exception
+            yield 1
+
+    def verify_regular(actor, fail):
+        for _ in range(100):
+            try:
+                ray.get(actor.f.remote(fail=fail))
+            except Exception:
+                pass
+        assert ray.get(actor.get_gc_garbage_len.remote()) == 0
+
+    def verify_generator(actor, fail):
+        for _ in range(100):
+            for ref in actor.gen.options(num_returns="streaming").remote(fail=fail):
+                try:
+                    ray.get(ref)
+                except Exception:
+                    pass
+            assert ray.get(actor.get_gc_garbage_len.remote()) == 0
+
+    print("Test regular actors")
+    verify_regular(A.remote(), True)
+    verify_regular(A.remote(), False)
+    print("Test regular actors + generator")
+    verify_generator(A.remote(), True)
+    verify_generator(A.remote(), False)
+
+    # Test threaded actor
+    print("Test threaded actors")
+    verify_regular(A.options(max_concurrency=10).remote(), True)
+    verify_regular(A.options(max_concurrency=10).remote(), False)
+    print("Test threaded actors + generator")
+    verify_generator(A.options(max_concurrency=10).remote(), True)
+    verify_generator(A.options(max_concurrency=10).remote(), False)
+
+    # Test async actor
+    print("Test async actors")
+    verify_regular(AsyncActor.remote(), True)
+    verify_regular(AsyncActor.remote(), False)
+    print("Test async actors + generator")
+    verify_generator(AsyncActor.remote(), True)
+    verify_generator(AsyncActor.remote(), False)
+    assert len(list_actors()) == 12
 
 
 if __name__ == "__main__":

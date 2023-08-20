@@ -1,6 +1,7 @@
 import copy
 import os
 import posixpath
+import time
 
 import numpy as np
 import pandas as pd
@@ -11,7 +12,7 @@ import ray
 from ray._private.utils import _get_pyarrow_version
 from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.air.util.tensor_extensions.arrow import ArrowTensorArray
-from ray.data.block import BlockAccessor, BlockExecStats, BlockMetadata
+from ray.data.block import BlockExecStats, BlockMetadata
 from ray.data.datasource.file_based_datasource import BlockWritePathProvider
 from ray.data.tests.mock_server import *  # noqa
 
@@ -150,25 +151,24 @@ def local_fs():
 
 
 @pytest.fixture(scope="function")
-def test_block_write_path_provider():
-    class TestBlockWritePathProvider(BlockWritePathProvider):
+def mock_block_write_path_provider():
+    class MockBlockWritePathProvider(BlockWritePathProvider):
         def _get_write_path_for_block(
             self,
             base_path,
             *,
             filesystem=None,
             dataset_uuid=None,
-            block=None,
+            task_index=None,
             block_index=None,
             file_format=None,
         ):
-            num_rows = BlockAccessor.for_block(block).num_rows()
             suffix = (
-                f"{block_index:06}_{num_rows:02}_{dataset_uuid}" f".test.{file_format}"
+                f"{task_index:06}_{block_index:06}_{dataset_uuid}.test.{file_format}"
             )
             return posixpath.join(base_path, suffix)
 
-    yield TestBlockWritePathProvider()
+    yield MockBlockWritePathProvider()
 
 
 @pytest.fixture(scope="function")
@@ -327,15 +327,6 @@ def enable_auto_log_stats(request):
     ctx.enable_auto_log_stats = original
 
 
-@pytest.fixture(params=[True])
-def enable_dynamic_block_splitting(request):
-    ctx = ray.data.context.DataContext.get_current()
-    original = ctx.block_splitting_enabled
-    ctx.block_splitting_enabled = request.param
-    yield request.param
-    ctx.block_splitting_enabled = original
-
-
 @pytest.fixture(params=[1024])
 def target_max_block_size(request):
     ctx = ray.data.context.DataContext.get_current()
@@ -465,9 +456,16 @@ def stage_two_block():
         "cpu_time": [1.2, 3.4],
         "node_id": ["a1", "b2"],
     }
+
+    block_delay = 20
     block_meta_list = []
     for i in range(len(block_params["num_rows"])):
         block_exec_stats = BlockExecStats()
+        # The blocks are executing from [0, 5] and [20, 30].
+        block_exec_stats.start_time_s = time.perf_counter() + i * block_delay
+        block_exec_stats.end_time_s = (
+            block_exec_stats.start_time_s + block_params["wall_time"][i]
+        )
         block_exec_stats.wall_time_s = block_params["wall_time"][i]
         block_exec_stats.cpu_time_s = block_params["cpu_time"][i]
         block_exec_stats.node_id = block_params["node_id"][i]

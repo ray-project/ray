@@ -1,7 +1,7 @@
 .. _tune-storage-options:
 
-How to Configure Storage Options for a Distributed Tune Experiment
-==================================================================
+How to Configure Persistent Storage in Ray Tune
+===============================================
 
 .. seealso::
 
@@ -26,17 +26,14 @@ Storage Options in Tune
 
 Tune provides support for three scenarios:
 
-1. When running Tune on a distributed cluster without any external persistent storage.
+1. When using cloud storage (e.g. AWS S3 or Google Cloud Storage) accessible by all machines in the cluster.
 2. When using a network filesystem (NFS) mounted to all machines in the cluster.
-3. When using cloud storage (e.g. AWS S3 or Google Cloud Storage) accessible by all machines in the cluster.
-
-Situation (1) is the default scenario if a network filesystem or cloud storage are not provided.
-In this scenario, we assume that we only have the local filesystems of each machine in the Ray cluster for storing experiment outputs.
+3. When running Tune on a single node and using the local filesystem as the persistent storage location.
+4. **(Deprecated)** When running Tune on multiple nodes and using the local filesystem of the head node as the persistent storage location.
 
 .. note::
 
-    Although we are considering distributed Tune experiments in this guide,
-    a network filesystem or cloud storage can also be configured for single-node
+    A network filesystem or cloud storage can be configured for single-node
     experiments. This can be useful to persist your experiment results in external storage
     if, for example, the instance you run your experiment on clears its local storage
     after termination.
@@ -46,24 +43,125 @@ In this scenario, we assume that we only have the local filesystems of each mach
     See :class:`~ray.tune.syncer.SyncConfig` for the full set of configuration options as well as more details.
 
 
+.. _tune-cloud-checkpointing:
+
+Configuring Tune with cloud storage (AWS S3, Google Cloud Storage)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+If all nodes in a Ray cluster have access to cloud storage, e.g. AWS S3 or Google Cloud Storage (GCS),
+then all experiment outputs can be saved in a shared cloud bucket.
+
+We can configure cloud storage by telling Ray Tune to **upload to a remote** ``storage_path``:
+
+.. code-block:: python
+
+    from ray import tune
+    from ray.train import RunConfig
+
+    tuner = tune.Tuner(
+        trainable,
+        run_config=RunConfig(
+            name="experiment_name",
+            storage_path="s3://bucket-name/sub-path/",
+        )
+    )
+    tuner.fit()
+
+Ray Tune defaults to use pyarrow to perform syncing with the specified cloud ``storage_path``.
+You can also pass a custom :class:`Syncer <ray.tune.syncer.Syncer>` object
+to a :class:`tune.SyncConfig <ray.tune.SyncConfig>` within the :class:`train.RunConfig <train.RunConfig>`
+if you want to implement custom logic for uploading/downloading from the cloud.
+See :ref:`tune-cloud-syncing` and :ref:`tune-cloud-syncing-command-line-example`
+for more details and examples of custom syncing.
+
+In this example, all experiment results can be found in the shared storage at ``s3://bucket-name/sub-path/experiment_name`` for further processing.
+
+.. note::
+
+    The head node will not have access to all experiment results locally. If you want to process
+    e.g. the best checkpoint further, you will first have to fetch it from the cloud storage.
+
+    Experiment restoration should also be done using the experiment directory at the cloud storage
+    URI, rather than the local experiment directory on the head node. See :ref:`here for an example <tune-syncing-restore-from-uri>`.
+
+
+
+Configuring Tune with a network filesystem (NFS)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+If all Ray nodes have access to a network filesystem, e.g. AWS EFS or Google Cloud Filestore,
+they can all write experiment outputs to this directory.
+
+All we need to do is **set the shared network filesystem as the path to save results**.
+
+.. code-block:: python
+
+    from ray import air, tune
+
+    tuner = tune.Tuner(
+        trainable,
+        run_config=air.RunConfig(
+            name="experiment_name",
+            storage_path="/mnt/path/to/shared/storage/",
+        )
+    )
+    tuner.fit()
+
+In this example, all experiment results can be found in the shared storage at ``/path/to/shared/storage/experiment_name`` for further processing.
+
+
 .. _tune-default-syncing:
 
 Configure Tune without external persistent storage
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-If you're using neither a shared filesystem nor cloud storage, Ray Tune will resort to the
-default mechanism of periodically synchronizing data saved on worker nodes to the head node.
-**This treats the head node's local filesystem as the main storage location of the distributed Tune experiment.**
+On a single-node cluster
+************************
 
-By default, workers will sync to the head node whenever a trial running on that workers
-has finished saving a checkpoint. This can be configured by ``sync_on_checkpoint`` and
-``sync_period`` in :class:`SyncConfig <ray.tune.syncer.SyncConfig>`:
+If you're just running an experiment on a single node (e.g., on a laptop), Tune will use the
+local filesystem as the default storage location for checkpoints and other artifacts.
+Results are saved to ``~/ray_results`` in a sub-directory with a unique auto-generated name by default,
+unless you customize this with ``storage_path`` and ``name`` in :class:`~ray.train.RunConfig`.
 
 .. code-block:: python
-    :emphasize-lines: 9, 10, 11, 12, 13, 14
 
     from ray import tune
-    from ray.air.config import RunConfig
+    from ray.train import RunConfig
+
+    tuner = tune.Tuner(
+        trainable,
+        run_config=RunConfig(
+            storage_path="/tmp/custom/storage/path",
+            name="experiment_name",
+        )
+    )
+    tuner.fit()
+
+In this example, all experiment results can found locally at ``/tmp/custom/storage/path/experiment_name`` for further processing.
+
+
+On a multi-node cluster (Deprecated)
+************************************
+
+.. warning::
+
+    When running on multiple nodes, using the local filesystem of the head node as the persistent storage location is *deprecated*.
+    If you save trial checkpoints and run on a multi-node cluster, Tune will raise an error by default, if NFS or cloud storage is not setup.
+    See `this issue <https://github.com/ray-project/ray/issues/37177>`_ for more information, including temporary workarounds
+    as well as the deprecation and removal schedule.
+
+
+If you're using neither a shared filesystem nor cloud storage, Ray Tune will resort to the
+default mechanism of periodically synchronizing data saved on worker nodes to the head node.
+This treats the head node's local filesystem as the main storage location of the distributed Tune experiment.
+
+By default, workers will sync the entire trial directory to the head node whenever that trial saves a checkpoint.
+This can be configured by ``sync_on_checkpoint`` and ``sync_period`` in :class:`SyncConfig <ray.tune.syncer.SyncConfig>`:
+
+.. code-block:: python
+
+    from ray import tune
+    from ray.train import RunConfig
 
     tuner = tune.Tuner(
         trainable,
@@ -86,87 +184,9 @@ This will lead to more robust trial recovery, but it will also lead to more sync
 
 In this example, all experiment results can found on the head node at ``~/ray_results/experiment_name`` for further processing.
 
-.. note::
-
-    If you don't provide a :class:`~ray.tune.syncer.SyncConfig` at all, this is the default configuration.
-
-
 .. tip::
     Please note that this approach is likely the least efficient one - you should always try to use
     shared or cloud storage if possible when training on a multi-node cluster.
-    Using a network filesystem or cloud storage recommended when training a large number of distributed trials,
-    since the default scenario with many worker nodes can introduce significant overhead.
-
-
-Configuring Tune with a network filesystem (NFS)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-If all Ray nodes have access to a network filesystem, e.g. AWS EFS or Google Cloud Filestore,
-they can all write experiment outputs to this directory.
-
-All we need to do is **set the shared network filesystem as the path to save results** and
-**disable Ray Tune's default syncing behavior**.
-
-.. code-block:: python
-    :emphasize-lines: 7, 8, 9, 10
-
-    from ray import air, tune
-
-    tuner = tune.Tuner(
-        trainable,
-        run_config=air.RunConfig(
-            name="experiment_name",
-            storage_path="/path/to/shared/storage/",
-            sync_config=tune.SyncConfig(
-                syncer=None  # Disable syncing
-            )
-        )
-    )
-    tuner.fit()
-
-In this example, all experiment results can be found in the shared storage at ``/path/to/shared/storage/experiment_name`` for further processing.
-
-.. _tune-cloud-checkpointing:
-
-Configuring Tune with cloud storage (AWS S3, Google Cloud Storage)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-If all nodes in a Ray cluster have access to cloud storage, e.g. AWS S3 or Google Cloud Storage (GCS),
-then all experiment outputs can be saved in a shared cloud bucket.
-
-We can configure cloud storage by telling Ray Tune to **upload to a remote** ``storage_path``:
-
-.. code-block:: python
-
-    from ray import tune
-    from ray.air.config import RunConfig
-
-    tuner = tune.Tuner(
-        trainable,
-        run_config=RunConfig(
-            name="experiment_name",
-            storage_path="s3://bucket-name/sub-path/",
-        )
-    )
-    tuner.fit()
-
-Ray AIR automatically configures a default syncer that uses pyarrow to
-perform syncing with the specified cloud ``storage_path``.
-You can also pass a custom :class:`Syncer <ray.tune.syncer.Syncer>` object
-to a :class:`tune.SyncConfig <ray.tune.SyncConfig>` within the :class:`air.RunConfig <ray.air.RunConfig>`
-if you want to implement custom logic for uploading/downloading from the cloud.
-See :ref:`tune-cloud-syncing` and :ref:`tune-cloud-syncing-command-line-example`
-for more details and examples of custom syncing.
-
-In this example, all experiment results can be found in the shared storage at ``s3://bucket-name/sub-path/experiment_name`` for further processing.
-
-.. note::
-
-    The head node will not have access to all experiment results locally. If you want to process
-    e.g. the best checkpoint further, you will first have to fetch it from the cloud storage.
-
-    Experiment restoration should also be done using the experiment directory at the cloud storage
-    URI, rather than the local experiment directory on the head node. See :ref:`here for an example <tune-syncing-restore-from-uri>`.
 
 
 Examples
@@ -174,11 +194,12 @@ Examples
 
 Let's show some examples of configuring storage location and synchronization options.
 We'll also show how to resume the experiment for each of the examples, in the case that your experiment gets interrupted.
-See :ref:`tune-stopping-guide` for more information on resuming experiments.
+See :ref:`tune-fault-tolerance-ref` for more information on resuming experiments.
 
 In each example, we'll give a practical explanation of how *trial checkpoints* are saved
 across the cluster and the external storage location (if one is provided).
 See :ref:`tune-persisted-experiment-data` for an overview of other experiment data that Tune needs to persist.
+
 
 Example: Running Tune with cloud storage
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -254,12 +275,13 @@ There are a few options for restoring an experiment:
 Please see the documentation of
 :meth:`Tuner.restore() <ray.tune.tuner.Tuner.restore>` for more details.
 
+
 .. _tune-default-syncing-example:
 
-Example: Running Tune without external persistent storage (default scenario)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Example: Running Tune in a multi-node cluster without external persistent storage (Deprecated)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Now, let's take a look at an example using default syncing behavior described above.
+Now, let's take a look at an example using the deprecated head node syncing behavior described above.
 Again, we're running this example script from the Ray cluster's head node.
 
 .. code-block:: python
@@ -297,6 +319,7 @@ This experiment can be resumed from the head node:
 .. code-block:: python
 
     from ray import tune
+
     tuner = tune.Tuner.restore(
         "/tmp/mypath/my-tune-exp",
         trainable=my_trainable,

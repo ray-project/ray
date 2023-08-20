@@ -7,7 +7,6 @@ Ray AIR API
     :maxdepth: 2
 
     Preprocessor (Ray Data + Ray Train)<preprocessor.rst>
-    Dataset Ingest (Ray Data + Ray Train)<dataset-ingest.rst>
     AIR Configurations (Ray Train + Ray Tune)<configs.rst>
     Trainers (Ray Train)<../../train/api/api>
     Tuner (Ray Tune)<../../tune/api/execution>
@@ -17,4 +16,3 @@ Ray AIR API
     Results (Ray Train + Ray Tune)<../../tune/api/result_grid>
     AIR Checkpoint (All Libraries)<checkpoint.rst>
     Predictors (Ray Data + Ray Train)<predictor.rst>
-    Model Serving in AIR (Ray Serve)<serve.rst>

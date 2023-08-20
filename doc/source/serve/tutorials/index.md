@@ -16,6 +16,7 @@ object-detection
 rllib
 gradio-integration
 batch
+streaming
 gradio-dag-visualization
 java
 ```
