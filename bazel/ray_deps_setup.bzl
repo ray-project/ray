@@ -348,3 +348,11 @@ def ray_deps_setup():
         # When you first run this tool, it'll recommend a sha256 hash to put here with a message like: "DEBUG: Rule 'hedron_compile_commands' indicated that a canonical reproducible form can be obtained by modifying arguments sha256 = ..."
         sha256 = "7fbbbc05c112c44e9b406612e6a7a7f4789a6918d7aacefef4c35c105286930c",
     )
+
+    http_archive(
+        name = "libunwind",
+        build_file = "@com_github_ray_project_ray//bazel:BUILD.libunwind",
+        sha256 = "a18a6a24307443a8ace7a8acc2ce79fbbe6826cd0edf98d6326d0225d6a5d6e6",
+        strip_prefix = "libunwind-1.7.2",
+        urls = ["https://github.com/libunwind/libunwind/releases/download/v1.7.2/libunwind-1.7.2.tar.gz"],
+    )

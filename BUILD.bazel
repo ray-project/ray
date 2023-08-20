@@ -488,6 +488,7 @@ cc_binary(
         ":raylet_lib",
         "//src/ray/util",
         "@com_github_gflags_gflags//:gflags",
+        "@jemalloc//:libjemalloc",
     ],
 )
 
@@ -560,6 +561,7 @@ cc_binary(
         ":gcs_server_lib",
         ":stats_lib",
         "@com_github_gflags_gflags//:gflags",
+        "@jemalloc//:libjemalloc",
     ],
 )
 
