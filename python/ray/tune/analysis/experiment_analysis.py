@@ -310,8 +310,7 @@ class NewExperimentAnalysis:
                 "To fetch the `best_result`, pass a `metric` and `mode` "
                 "parameter to `tune.run()`."
             )
-        best_logdir = self.best_logdir
-        return self.trial_dataframes[best_logdir]
+        return self.trial_dataframes[self.best_trial.trial_id]
 
     @property
     def best_result(self) -> Dict:

@@ -839,7 +839,9 @@ class Trial:
         is returned.
         """
         if _use_storage_context():
-            return self.run_metadata.checkpoint_manager.latest_checkpoint_result
+            return (
+                self.run_metadata.checkpoint_manager.latest_checkpoint_result.checkpoint
+            )
 
         if self.status == Trial.ERROR:
             checkpoint = (

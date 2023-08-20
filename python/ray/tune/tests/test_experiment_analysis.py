@@ -6,19 +6,122 @@ import os
 from pathlib import Path
 import pickle
 import pandas as pd
-from numpy import nan
+import numpy as np
+from typing import List
+
+import pytest
 
 import ray
-from ray import tune
+from ray import train, tune
 from ray.air._internal.remote_storage import upload_to_uri
 from ray.air.config import CheckpointConfig
 from ray.tune.analysis.experiment_analysis import (
     NewExperimentAnalysis as ExperimentAnalysis,
 )
 import ray.tune.registry
+from ray.tune.experiment import Trial
 from ray.tune.tests.utils.experiment import create_test_experiment_checkpoint
+from ray.tune.utils import flatten_dict
 from ray.tune.utils.mock_trainable import MyTrainableClass
 from ray.tune.utils.util import is_nan
+
+from ray.train.tests.util import create_dict_checkpoint, load_dict_checkpoint
+
+
+NUM_TRIALS = 3
+
+
+def train_fn(config):
+    def report(metrics, should_checkpoint=True):
+        if should_checkpoint:
+            with create_dict_checkpoint(metrics) as checkpoint:
+                train.report(metrics, checkpoint=checkpoint)
+        else:
+            train.report(metrics)
+
+    id = config["id"]
+
+    report({"ascending": 1 * id, "descending": -1 * id, "maybe_nan": 0})
+    report({"ascending": 2 * id, "descending": -2 * id, "maybe_nan": 0})
+    report({"ascending": 3 * id, "descending": -3 * id, "maybe_nan": np.nan})
+    report({"ascending": 4 * id, "descending": -4 * id, "maybe_nan": 0})
+    report({"ascending": 5 * id, "descending": -5 * id, "maybe_nan": 0})
+
+    report(
+        {"ascending": 6 * id, "descending": -6 * id, "maybe_nan": 0},
+        should_checkpoint=False,
+    )
+    report(
+        {"ascending": 7 * id, "descending": -7 * id, "maybe_nan": np.nan},
+        should_checkpoint=False,
+    )
+
+
+def _get_trial_with_id(trials: List[Trial], id: int) -> Trial:
+    return [trial for trial in trials if trial.config["id"] == id][0]
+
+
+@pytest.fixture(scope="module")
+def experiment_analysis():
+    tmp_path = Path(tempfile.mkdtemp())
+    ea = tune.run(
+        train_fn,
+        config={"id": tune.grid_search(list(range(1, NUM_TRIALS + 1)))},
+        metric="ascending",
+        mode="max",
+        # TODO(justinvyu): Test cloud.
+        storage_path=str(tmp_path / "fake_nfs"),
+        name="test_experiment_analysis",
+    )
+    # TODO(justinvyu): Test loading from directory.
+    yield ea
+
+
+def test_fetch_trial_dataframes(experiment_analysis):
+    dfs = experiment_analysis.fetch_trial_dataframes()
+    assert len(dfs) == NUM_TRIALS
+    assert all(isinstance(df, pd.DataFrame) for df in dfs.values())
+    assert {trial.trial_id for trial in experiment_analysis.trials} == set(dfs)
+
+    for df in dfs.values():
+        assert np.all(df["ascending"].to_numpy() == np.arange(1, 8) * df["config/id"])
+        assert np.all(
+            df["descending"].to_numpy() == np.arange(-1, -8, -1) * df["config/id"]
+        )
+
+
+def test_get_all_configs(experiment_analysis):
+    configs = experiment_analysis.get_all_configs()
+    assert len(configs) == NUM_TRIALS
+    assert all(isinstance(config, dict) for config in configs.values())
+    assert {trial.trial_id for trial in experiment_analysis.trials} == set(configs)
+    for trial_id, config in configs.items():
+        trial = [
+            trial for trial in experiment_analysis.trials if trial.trial_id == trial_id
+        ][0]
+        assert trial.config == config
+
+
+def test_default_properties(experiment_analysis):
+    # The last trial has the highest score (according to the default metric/mode).
+    best_trial = _get_trial_with_id(experiment_analysis.trials, NUM_TRIALS)
+    assert experiment_analysis.best_trial == best_trial
+    assert experiment_analysis.best_config == best_trial.config
+    # The last (most recent) checkpoint has the highest score.
+    assert experiment_analysis.best_checkpoint == best_trial.checkpoint
+    # NaN != NaN, so fill them in for this equality check.
+    assert experiment_analysis.best_dataframe.fillna(-1).equals(
+        experiment_analysis.trial_dataframes[best_trial.trial_id].fillna(-1)
+    )
+    assert experiment_analysis.best_result == best_trial.last_result
+
+    result_df_dict = experiment_analysis.best_result_df.iloc[0].to_dict()
+    # Converting -> pandas -> dict flattens the dict.
+    best_trial_dict = flatten_dict(best_trial.last_result, delimiter="/")
+    assert result_df_dict["ascending"] == best_trial_dict["ascending"]
+
+    assert len(experiment_analysis.results) == NUM_TRIALS
+    assert len(experiment_analysis.results_df) == NUM_TRIALS
 
 
 class ExperimentAnalysisSuite(unittest.TestCase):
