@@ -111,8 +111,10 @@ Serve supports [Log Rotation](log-rotation) of these logs through setting the en
 
 To silence the replica-level logs or otherwise configure logging, configure the `"ray.serve"` logger **inside the deployment constructor**:
 
-```python
+```{testcode}
 import logging
+from ray import serve
+
 
 logger = logging.getLogger("ray.serve")
 
@@ -120,6 +122,12 @@ logger = logging.getLogger("ray.serve")
 class Silenced:
     def __init__(self):
         logger.setLevel(logging.ERROR)
+```
+
+```{testoutput}
+:hide:
+
+...
 ```
 
 This controls which logs are written to STDOUT or files on disk.

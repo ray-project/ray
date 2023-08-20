@@ -304,7 +304,7 @@ doctest(
             "source/data/transforming-data.rst",
             "source/serve/scaling-and-resource-allocation.md",
             "source/train/faq.rst",
-	        "source/train/user-guides/data-loading-preprocessing.rst",
+            "source/train/user-guides/data-loading-preprocessing.rst",
             "source/workflows/**/*.rst",
             "source/workflows/**/*.md",
             "source/templates/04_finetuning_llms_with_deepspeed/README.md"
