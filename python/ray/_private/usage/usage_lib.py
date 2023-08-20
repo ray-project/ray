@@ -268,6 +268,7 @@ def put_pre_init_usage_stats():
     _put_pre_init_library_usages()
     _put_pre_init_extra_usage_tags()
 
+
 def reset_global_state():
     global _recorded_library_usages, _recorded_extra_usage_tags
 

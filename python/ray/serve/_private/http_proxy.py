@@ -656,7 +656,10 @@ class HTTPProxy(GenericProxy):
             result_ref = handle.remote(request)
             client_disconnection_task = loop.create_task(receive())
             done, _ = await asyncio.wait(
-                [result_ref._to_object_ref(_record_telemetry=False), client_disconnection_task],
+                [
+                    result_ref._to_object_ref(_record_telemetry=False),
+                    client_disconnection_task,
+                ],
                 return_when=FIRST_COMPLETED,
             )
             if client_disconnection_task in done:

@@ -659,9 +659,7 @@ class DeploymentResponseGenerator(_DeploymentResponseBase):
 
     async def __anext__(self) -> Any:
         if self._obj_ref_gen is None:
-            self._obj_ref_gen = await self._to_object_ref_gen(
-                _record_telemetry=False
-            )
+            self._obj_ref_gen = await self._to_object_ref_gen(_record_telemetry=False)
 
         next_obj_ref = await self._obj_ref_gen.__anext__()
         return await next_obj_ref
@@ -671,15 +669,15 @@ class DeploymentResponseGenerator(_DeploymentResponseBase):
 
     def __next__(self) -> Any:
         if self._obj_ref_gen is None:
-            self._obj_ref_gen = self._to_object_ref_gen_sync(
-                _record_telemetry=False
-            )
+            self._obj_ref_gen = self._to_object_ref_gen_sync(_record_telemetry=False)
 
         next_obj_ref = self._obj_ref_gen.__next__()
         return ray.get(next_obj_ref)
 
     @DeveloperAPI
-    async def _to_object_ref_gen(self, _record_telemetry: bool = True) -> StreamingObjectRefGenerator:
+    async def _to_object_ref_gen(
+        self, _record_telemetry: bool = True
+    ) -> StreamingObjectRefGenerator:
         """Advanced API to convert the generator to a Ray `StreamingObjectRefGenerator`.
 
         This method is `async def` because it will block until the handle call has been
@@ -689,7 +687,9 @@ class DeploymentResponseGenerator(_DeploymentResponseBase):
         return await self._to_object_ref_or_gen(_record_telemetry=_record_telemetry)
 
     @DeveloperAPI
-    def _to_object_ref_gen_sync(self, _record_telemetry: bool = True) -> StreamingObjectRefGenerator:
+    def _to_object_ref_gen_sync(
+        self, _record_telemetry: bool = True
+    ) -> StreamingObjectRefGenerator:
         """Advanced API to convert the generator to a Ray `StreamingObjectRefGenerator`.
 
         This method is a *blocking* call because it will block until the handle call has

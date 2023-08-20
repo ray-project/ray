@@ -602,14 +602,16 @@ def test_deployment_handle_to_obj_ref_detected(manage_ray, mode):
         result = requests.get("http://localhost:8000").text
     elif mode == "outside_deployment":
         result = ray.get(
-            handle.options(use_new_handle_api=True)
-            .remote()
-            ._to_object_ref_sync()
+            handle.options(use_new_handle_api=True).remote()._to_object_ref_sync()
         )
     else:
-        result = handle.options(
-            use_new_handle_api=True,
-        ).remote(call_downstream=True).result()
+        result = (
+            handle.options(
+                use_new_handle_api=True,
+            )
+            .remote(call_downstream=True)
+            .result()
+        )
 
     assert result == "ok"
 
@@ -625,7 +627,8 @@ def test_deployment_handle_to_obj_ref_detected(manage_ray, mode):
             )
         else:
             assert (
-                "serve_deployment_handle_to_object_ref_api_used" not in report["extra_usage_tags"]
+                "serve_deployment_handle_to_object_ref_api_used"
+                not in report["extra_usage_tags"]
             )
 
         return True
