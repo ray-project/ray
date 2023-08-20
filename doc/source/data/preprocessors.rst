@@ -98,16 +98,6 @@ Ray Data provides a handful of preprocessors out of the box.
     ray.data.preprocessors.RobustScaler
     ray.data.preprocessors.StandardScaler
 
-**Text encoders**
-
-.. autosummary::
-  :nosignatures:
-
-    ray.data.preprocessors.CountVectorizer
-    ray.data.preprocessors.HashingVectorizer
-    ray.data.preprocessors.Tokenizer
-    ray.data.preprocessors.FeatureHasher
-
 **Utilities**
 
 .. autosummary::
@@ -192,28 +182,6 @@ Additionally, if your model expects a tensor or ``ndarray``, create a tensor usi
     :language: python
     :start-after: __concatenate_start__
     :end-before: __concatenate_end__
-
-Text data
-~~~~~~~~~
-
-A `document-term matrix <https://en.wikipedia.org/wiki/Document-term_matrix>`_ is a
-table that describes text data, often used in natural language processing.
-
-To generate a document-term matrix from a collection of documents, use
-:class:`~ray.data.preprocessors.HashingVectorizer` or
-:class:`~ray.data.preprocessors.CountVectorizer`. If you already know the frequency of
-tokens and want to store the data in a document-term matrix, use
-:class:`~ray.data.preprocessors.FeatureHasher`.
-
-.. list-table::
-   :header-rows: 1
-
-   * - Requirement
-     - Preprocessor
-   * - You care about memory efficiency
-     - :class:`~ray.data.preprocessors.HashingVectorizer`
-   * - You care about model interpretability
-     - :class:`~ray.data.preprocessors.CountVectorizer`
 
 
 Filling in missing values
