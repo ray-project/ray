@@ -197,6 +197,19 @@ def test_get_last_checkpoint(experiment_analysis):
     assert last_checkpoint["ascending"] == 5 * 1  # See note
 
 
+def test_pickle(experiment_analysis, tmp_path):
+    pickle_path = os.path.join(tmp_path, "analysis.pkl")
+    with open(pickle_path, "wb") as f:
+        pickle.dump(experiment_analysis, f)
+
+    assert experiment_analysis.get_best_trial(metric="ascending", mode="max")
+
+    with open(pickle_path, "rb") as f:
+        loaded_analysis = pickle.load(f)
+
+    assert loaded_analysis.get_best_trial(metric="ascending", mode="max")
+
+
 class ExperimentAnalysisSuite(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
