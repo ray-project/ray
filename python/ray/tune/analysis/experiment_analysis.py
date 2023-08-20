@@ -630,8 +630,7 @@ class NewExperimentAnalysis:
         Returns:
             Path for last checkpoint of trial
         """
-        if not trial:
-            trial = self.get_best_trial(metric, mode)
+        trial = trial or self.get_best_trial(metric, mode)
         return self.get_best_checkpoint(trial, TRAINING_ITERATION, "max")
 
     def _validate_metric(self, metric: str) -> str:

@@ -29,6 +29,7 @@ from ray.train.tests.util import create_dict_checkpoint, load_dict_checkpoint
 
 
 NUM_TRIALS = 3
+NON_NAN_VALUE = 42
 
 
 def train_fn(config):
@@ -41,18 +42,25 @@ def train_fn(config):
 
     id = config["id"]
 
-    report({"ascending": 1 * id, "descending": -1 * id, "maybe_nan": 0})
-    report({"ascending": 2 * id, "descending": -2 * id, "maybe_nan": 0})
-    report({"ascending": 3 * id, "descending": -3 * id, "maybe_nan": np.nan})
-    report({"ascending": 4 * id, "descending": -4 * id, "maybe_nan": 0})
-    report({"ascending": 5 * id, "descending": -5 * id, "maybe_nan": 0})
+    report({"ascending": 1 * id, "descending": -1 * id, "maybe_nan": np.nan, "iter": 1})
+    report({"ascending": 2 * id, "descending": -2 * id, "maybe_nan": np.nan, "iter": 2})
+    report({"ascending": 3 * id, "descending": -3 * id, "maybe_nan": np.nan, "iter": 3})
+    report(
+        {
+            "ascending": 4 * id,
+            "descending": -4 * id,
+            "maybe_nan": NON_NAN_VALUE,
+            "iter": 4,
+        }
+    )
+    report({"ascending": 5 * id, "descending": -5 * id, "maybe_nan": np.nan, "iter": 5})
 
     report(
-        {"ascending": 6 * id, "descending": -6 * id, "maybe_nan": 0},
+        {"ascending": 6 * id, "descending": -6 * id, "maybe_nan": np.nan, "iter": 6},
         should_checkpoint=False,
     )
     report(
-        {"ascending": 7 * id, "descending": -7 * id, "maybe_nan": np.nan},
+        {"ascending": 7 * id, "descending": -7 * id, "maybe_nan": np.nan, "iter": 7},
         should_checkpoint=False,
     )
 
@@ -77,7 +85,16 @@ def experiment_analysis():
     yield ea
 
 
-def test_fetch_trial_dataframes(experiment_analysis):
+@pytest.mark.parametrize("filetype", ["json", "csv"])
+def test_fetch_trial_dataframes(experiment_analysis, filetype):
+    if filetype == "csv":
+        # Delete all json files so that we can test fallback to csv loading
+        experiment_path = Path(experiment_analysis.experiment_path)
+        for json_path in experiment_path.glob("*/*.json"):
+            json_path.unlink()
+    else:
+        assert filetype == "json"
+
     dfs = experiment_analysis.fetch_trial_dataframes()
     assert len(dfs) == NUM_TRIALS
     assert all(isinstance(df, pd.DataFrame) for df in dfs.values())
@@ -122,6 +139,60 @@ def test_default_properties(experiment_analysis):
 
     assert len(experiment_analysis.results) == NUM_TRIALS
     assert len(experiment_analysis.results_df) == NUM_TRIALS
+
+
+def test_get_best_utilities(experiment_analysis):
+    # get_best_config
+    assert experiment_analysis.get_best_config()["id"] == NUM_TRIALS
+    assert (
+        experiment_analysis.get_best_config(metric="descending", mode="max")["id"] == 1
+    )
+
+    assert not experiment_analysis.get_best_config(metric="maybe_nan", scope="last")
+
+    # get_best_trial
+    assert (
+        experiment_analysis.get_best_trial().config
+        == experiment_analysis.get_best_config()
+    )
+
+    assert not experiment_analysis.get_best_trial(metric="maybe_nan")
+    assert experiment_analysis.get_best_trial(
+        metric="maybe_nan", filter_nan_and_inf=False
+    )
+
+    # get_best_checkpoint
+    best_trial = experiment_analysis.get_best_trial()
+    best_checkpoint = load_dict_checkpoint(
+        experiment_analysis.get_best_checkpoint(best_trial)
+    )
+    # NOTE: There are 7 reports, but only the first 5 include a checkpoint.
+    assert best_checkpoint["ascending"] == 5 * NUM_TRIALS
+
+    best_checkpoint = load_dict_checkpoint(
+        experiment_analysis.get_best_checkpoint(
+            best_trial, metric="descending", mode="max"
+        )
+    )
+    assert best_checkpoint["descending"] == -1 * NUM_TRIALS
+
+    # Filter checkpoints w/ NaN metrics
+    best_checkpoint = load_dict_checkpoint(
+        experiment_analysis.get_best_checkpoint(best_trial, metric="maybe_nan")
+    )
+    assert best_checkpoint["maybe_nan"] == NON_NAN_VALUE
+
+    # get_last_checkpoint
+    # Defaults to getting the last checkpoint of the best trial.
+    last_checkpoint = load_dict_checkpoint(experiment_analysis.get_last_checkpoint())
+    assert last_checkpoint["iter"] == 5  # See note
+
+    last_checkpoint = load_dict_checkpoint(
+        experiment_analysis.get_last_checkpoint(
+            trial=_get_trial_with_id(experiment_analysis.trials, 1)
+        )
+    )
+    assert last_checkpoint["ascending"] == 5 * 1  # See note
 
 
 class ExperimentAnalysisSuite(unittest.TestCase):
