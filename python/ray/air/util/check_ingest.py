@@ -188,12 +188,9 @@ if __name__ == "__main__":
     # into 100 blocks (parallelism=100).
     ds = ray.data.range_tensor(50000, shape=(80, 80, 4), parallelism=100)
 
-    # An example preprocessor chain that just scales all values by 4.0 in two stages.
-    preprocessor = Chain(
-        BatchMapper(lambda df: df * 2, batch_format="pandas"),
-        BatchMapper(lambda df: df * 2, batch_format="pandas"),
-    )
-    ds = preprocessor.transform(ds)
+    # An example preprocessing chain that just scales all values by 4.0 in two stages.
+    ds = ds.map_batches(lambda df: df * 2, batch_format="pandas")
+    ds = ds.map_batches(lambda df: df * 2, batch_format="pandas")
 
     # Setup the dummy trainer that prints ingest stats.
     # Run and print ingest stats.

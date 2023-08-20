@@ -1,15 +1,20 @@
 from typing import TYPE_CHECKING, Union
+import warnings
 
 from ray.air.util.data_batch_conversion import BatchFormat
 from ray.data import Dataset, DatasetPipeline
 from ray.data.preprocessor import Preprocessor
-from ray.util.annotations import PublicAPI
+from ray.util.annotations import Deprecated
 
 if TYPE_CHECKING:
     from ray.air.data_batch_type import DataBatchType
 
+CHAIN_DEPRECATION_MESSAGE = (
+    "The Chain preprocessor is deprecated as of Ray 2.7. Instead, manually apply your "
+    "sequence of Preprocessor `fit` and `transform` calls directly on the Ray Dataset."
+)
 
-@PublicAPI(stability="alpha")
+@Deprecated(message=CHAIN_DEPRECATION_MESSAGE)
 class Chain(Preprocessor):
     """Combine multiple preprocessors into a single :py:class:`Preprocessor`.
 
@@ -68,6 +73,7 @@ class Chain(Preprocessor):
             return Preprocessor.FitStatus.NOT_FITTABLE
 
     def __init__(self, *preprocessors: Preprocessor):
+        warnings.warn(CHAIN_DEPRECATION_MESSAGE, DeprecationWarning, stacklevel=2)
         self.preprocessors = preprocessors
 
     def _fit(self, ds: Dataset) -> Preprocessor:

@@ -52,6 +52,15 @@ GenDataset = Union["Dataset", Callable[[], "Dataset"]]
 
 logger = logging.getLogger(__name__)
 
+PREPROCESSOR_DEPRECATION_MESSAGE = (
+    "The `preprocessor` argument to Trainers is deprecated as of Ray 2.7. "
+    "Instead, use the Preprocessor `fit` and `transform` APIs directly on the Ray "
+    "Dataset. For any state that needs to be saved to the trained checkpoint, pass it "
+    "in using the `metadata` argument of the `Trainer`. "
+    "For a full example, see "
+    "https://docs.ray.io/en/master/train/user-guides/data-loading-preprocessing.html#preprocessing-structured-data "  # noqa:E501
+)
+
 
 @PublicAPI(stability="beta")
 class TrainingFailedError(RuntimeError):
@@ -216,13 +225,8 @@ class BaseTrainer(abc.ABC):
 
         air_usage.tag_air_trainer(self)
 
-        if preprocessor:
-            logger.warning(
-                "The `preprocessor` arg to Trainer is deprecated. Apply "
-                "preprocessor transformations ahead of time by calling "
-                "`preprocessor.transform(ds)`. Support for the preprocessor "
-                "arg will be dropped in a future release."
-            )
+        if preprocessor is not None:
+            raise DeprecationWarning(PREPROCESSOR_DEPRECATION_MESSAGE)
 
     @PublicAPI(stability="alpha")
     @classmethod

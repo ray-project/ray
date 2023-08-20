@@ -72,7 +72,6 @@ Ray Data provides a handful of preprocessors out of the box.
   :nosignatures:
 
     ray.data.preprocessors.BatchMapper
-    ray.data.preprocessors.Chain
     ray.data.preprocessors.Concatenator
     ray.data.preprocessor.Preprocessor
     ray.data.preprocessors.SimpleImputer
@@ -188,9 +187,7 @@ Additionally, if your model expects a tensor or ``ndarray``, create a tensor usi
 .. tip::
   Built-in feature scalers like :class:`~ray.data.preprocessors.StandardScaler` don't
   work on :class:`~ray.air.util.tensor_extensions.pandas.TensorDtype` columns, so apply
-  :class:`~ray.data.preprocessors.Concatenator` after feature scaling. Combine feature
-  scaling and concatenation into a single preprocessor with
-  :class:`~ray.data.preprocessors.Chain`.
+  :class:`~ray.data.preprocessors.Concatenator` after feature scaling.
 
   .. literalinclude:: doc_code/preprocessors.py
     :language: python
@@ -235,14 +232,7 @@ If your dataset contains missing values, replace them with
 Chaining preprocessors
 ~~~~~~~~~~~~~~~~~~~~~~
 
-If you need to apply more than one preprocessor, compose them together with
-:class:`~ray.data.preprocessors.Chain`.
-
-:class:`~ray.data.preprocessors.Chain` applies ``fit`` and ``transform``
-sequentially. For example, if you construct
-``Chain(preprocessorA, preprocessorB)``, then ``preprocessorB.transform`` is applied
-to the result of ``preprocessorA.transform``.
-
+If you need to apply more than one preprocessor, simply apply them in sequence on your dataset.
 
 .. literalinclude:: doc_code/preprocessors.py
     :language: python
