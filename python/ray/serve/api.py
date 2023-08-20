@@ -356,6 +356,13 @@ def deployment(
             "Explicitly specifying version will raise an error in the future!"
         )
 
+    if route_prefix is not DEFAULT.VALUE:
+        logger.warning(
+            "DeprecationWarning: `route_prefix` in `@serve.deployment` has been "
+            "deprecated. To specify a route prefix for an application, pass it into "
+            "`serve.run` instead."
+        )
+
     if is_driver_deployment is DEFAULT.VALUE:
         is_driver_deployment = False
 
