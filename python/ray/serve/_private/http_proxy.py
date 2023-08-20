@@ -504,7 +504,9 @@ class GenericProxy(ABC):
         result_gen = handle.remote(
             StreamingHTTPRequest(pickle.dumps(scope), self.self_actor_handle)
         )
-        to_object_ref_gen = asyncio.ensure_future(result_gen._to_object_ref_gen())
+        to_object_ref_gen = asyncio.ensure_future(
+            result_gen._to_object_ref_gen(_record_telemetry=False)
+        )
         done, _ = await asyncio.wait(
             [to_object_ref_gen, disconnected_task],
             return_when=FIRST_COMPLETED,
@@ -654,7 +656,7 @@ class HTTPProxy(GenericProxy):
             result_ref = handle.remote(request)
             client_disconnection_task = loop.create_task(receive())
             done, _ = await asyncio.wait(
-                [result_ref._to_object_ref(), client_disconnection_task],
+                [result_ref._to_object_ref(_record_telemetry=False), client_disconnection_task],
                 return_when=FIRST_COMPLETED,
             )
             if client_disconnection_task in done:

@@ -54,6 +54,10 @@ def manage_ray(monkeypatch):
         serve.shutdown()
         ray.shutdown()
 
+        # Reset global state (any keys that may have been set and cached while the
+        # workload was running).
+        usage_lib.reset_global_state()
+
         # Shut down Ray cluster with CLI
         subprocess.check_output(["ray", "stop", "--force"])
         wait_for_condition(check_ray_stopped, timeout=5)
@@ -565,8 +569,8 @@ def test_handle_apis_detected(manage_ray, use_new_handle_api, call_in_deployment
     wait_for_condition(check_telemetry)
 
 
-@pytest.mark.parametrize("call_in_deployment", [False, True])
-def test_deployment_handle_to_obj_ref_detected(manage_ray, call_in_deployment):
+@pytest.mark.parametrize("mode", ["http", "outside_deployment", "inside_deployment"])
+def test_deployment_handle_to_obj_ref_detected(manage_ray, mode):
     """Check that the handle to_object_ref API is detected correctly by telemetry."""
 
     subprocess.check_output(["ray", "start", "--head"])
@@ -594,36 +598,50 @@ def test_deployment_handle_to_obj_ref_detected(manage_ray, call_in_deployment):
         def __init__(self, h):
             self._h = h.options(use_new_handle_api=True)
 
-        async def __call__(self, call_downstream=True):
+        async def __call__(self, call_downstream=False):
             if call_downstream:
                 await self._h.remote()._to_object_ref()
             return "ok"
 
     handle = serve.run(Caller.bind(Downstream.bind()))
 
-    if call_in_deployment:
+    if mode == "http":
         result = requests.get("http://localhost:8000").text
-    else:
+    elif mode == "outside_deployment":
         result = ray.get(
             handle.options(use_new_handle_api=True)
-            .remote(call_downstream=False)
+            .remote()
             ._to_object_ref_sync()
         )
+    else:
+        result = handle.options(
+            use_new_handle_api=True,
+        ).remote(call_downstream=True).result()
 
     assert result == "ok"
 
-    def check_telemetry():
+    def check_telemetry(tag_should_be_set: bool):
         report = ray.get(storage_handle.get_report.remote())
         print(report["extra_usage_tags"])
-        assert (
-            report["extra_usage_tags"].get(
-                "serve_deployment_handle_to_object_ref_api_used", "0"
+        if tag_should_be_set:
+            assert (
+                report["extra_usage_tags"].get(
+                    "serve_deployment_handle_to_object_ref_api_used", "0"
+                )
+                == "1"
             )
-            == "1"
-        )
+        else:
+            assert (
+                "serve_deployment_handle_to_object_ref_api_used" not in report["extra_usage_tags"]
+            )
+
         return True
 
-    wait_for_condition(check_telemetry)
+    if mode == "http":
+        for _ in range(20):
+            check_telemetry(tag_should_be_set=False)
+    else:
+        wait_for_condition(check_telemetry, tag_should_be_set=True)
 
 
 if __name__ == "__main__":

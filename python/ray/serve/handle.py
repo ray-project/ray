@@ -87,11 +87,12 @@ class _DeploymentHandleBase:
         _router: Optional[Router] = None,
         _is_for_sync_context: bool = False,
         _request_counter: Optional[metrics.Counter] = None,
+        _recorded_telemetry: bool = False,
     ):
         self.deployment_id = DeploymentID(deployment_name, app_name)
         self.handle_options = handle_options or _HandleOptions()
         self._is_for_sync_context = _is_for_sync_context
-        self._recorded_telemetry = False
+        self._recorded_telemetry = _recorded_telemetry
 
         self.request_counter = _request_counter or metrics.Counter(
             "serve_handle_request_counter",
@@ -202,6 +203,7 @@ class _DeploymentHandleBase:
             _router=None if _router_cls != DEFAULT.VALUE else self._router,
             _request_counter=self.request_counter,
             _is_for_sync_context=self._is_for_sync_context,
+            _recorded_telemetry=self._recorded_telemetry,
         )
 
     def _remote(self, args: Tuple[Any], kwargs: Dict[str, Any]) -> Coroutine:
@@ -431,11 +433,9 @@ class _DeploymentResponseBase:
         self,
         assign_request_coro: Coroutine,
         loop: asyncio.AbstractEventLoop,
-        request_protocol: RequestProtocol,
     ):
         self._assign_request_task = loop.create_task(assign_request_coro)
         self._loop = loop
-        self._request_protocol = request_protocol
 
     async def _to_object_ref_or_gen(
         self,
@@ -443,8 +443,9 @@ class _DeploymentResponseBase:
     ) -> Union[ray.ObjectRef, StreamingObjectRefGenerator]:
         # Record telemetry for using the developer API to convert to an object
         # ref. Recorded here because all of the other codepaths go through this.
-        # Use `RequestProtocol` to filter requests from the proxy.
-        if _record_telemetry and self._request_protocol == RequestProtocol.UNDEFINED:
+        # `_record_telemetry` is used to filter other API calls that go through
+        # this path as well as calls from the proxy.
+        if _record_telemetry:
             record_serve_tag("SERVE_DEPLOYMENT_HANDLE_TO_OBJECT_REF_API_USED", "1")
         return await self._assign_request_task
 
@@ -561,7 +562,7 @@ class DeploymentResponse(_DeploymentResponseBase):
         )
 
     @DeveloperAPI
-    async def _to_object_ref(self) -> ray.ObjectRef:
+    async def _to_object_ref(self, _record_telemetry: bool = True) -> ray.ObjectRef:
         """Advanced API to convert the response to a Ray `ObjectRef`.
 
         This is used to pass the output of a `DeploymentHandle` call to a Ray task or
@@ -571,7 +572,7 @@ class DeploymentResponse(_DeploymentResponseBase):
         assigned to a replica actor. If there are many requests in flight and all
         replicas' queues are full, this may be a slow operation.
         """
-        return await self._to_object_ref_or_gen()
+        return await self._to_object_ref_or_gen(_record_telemetry=_record_telemetry)
 
     @DeveloperAPI
     def _to_object_ref_sync(self, _record_telemetry: bool = True) -> ray.ObjectRef:
@@ -649,9 +650,8 @@ class DeploymentResponseGenerator(_DeploymentResponseBase):
         self,
         assign_request_coro: Coroutine,
         loop: asyncio.AbstractEventLoop,
-        request_protocol: RequestProtocol,
     ):
-        super().__init__(assign_request_coro, loop=loop, request_protocol=request_protocol)
+        super().__init__(assign_request_coro, loop=loop)
         self._obj_ref_gen: Optional[StreamingObjectRefGenerator] = None
 
     def __aiter__(self) -> AsyncIterator[Any]:
@@ -659,7 +659,9 @@ class DeploymentResponseGenerator(_DeploymentResponseBase):
 
     async def __anext__(self) -> Any:
         if self._obj_ref_gen is None:
-            self._obj_ref_gen = await self._to_object_ref_gen()
+            self._obj_ref_gen = await self._to_object_ref_gen(
+                _record_telemetry=False
+            )
 
         next_obj_ref = await self._obj_ref_gen.__anext__()
         return await next_obj_ref
@@ -669,23 +671,25 @@ class DeploymentResponseGenerator(_DeploymentResponseBase):
 
     def __next__(self) -> Any:
         if self._obj_ref_gen is None:
-            self._obj_ref_gen = self._to_object_ref_gen_sync()
+            self._obj_ref_gen = self._to_object_ref_gen_sync(
+                _record_telemetry=False
+            )
 
         next_obj_ref = self._obj_ref_gen.__next__()
         return ray.get(next_obj_ref)
 
     @DeveloperAPI
-    async def _to_object_ref_gen(self) -> StreamingObjectRefGenerator:
+    async def _to_object_ref_gen(self, _record_telemetry: bool = True) -> StreamingObjectRefGenerator:
         """Advanced API to convert the generator to a Ray `StreamingObjectRefGenerator`.
 
         This method is `async def` because it will block until the handle call has been
         assigned to a replica actor. If there are many requests in flight and all
         replicas' queues are full, this may be a slow operation.
         """
-        return await self._to_object_ref_or_gen()
+        return await self._to_object_ref_or_gen(_record_telemetry=_record_telemetry)
 
     @DeveloperAPI
-    def _to_object_ref_gen_sync(self) -> StreamingObjectRefGenerator:
+    def _to_object_ref_gen_sync(self, _record_telemetry: bool = True) -> StreamingObjectRefGenerator:
         """Advanced API to convert the generator to a Ray `StreamingObjectRefGenerator`.
 
         This method is a *blocking* call because it will block until the handle call has
@@ -695,7 +699,7 @@ class DeploymentResponseGenerator(_DeploymentResponseBase):
         From inside a deployment, `_to_object_ref_gen` should be used instead to avoid
         blocking the asyncio event loop.
         """
-        return self._to_object_ref_or_gen_sync()
+        return self._to_object_ref_or_gen_sync(_record_telemetry=_record_telemetry)
 
 
 @PublicAPI(stability="beta")
@@ -795,11 +799,9 @@ class DeploymentHandle(_DeploymentHandleBase):
             return DeploymentResponseGenerator(
                 result_coro,
                 loop=loop,
-                request_protocol=self.handle_options._request_protocol,
             )
         else:
             return DeploymentResponse(
                 result_coro,
                 loop=loop,
-                request_protocol=self.handle_options._request_protocol,
             )
