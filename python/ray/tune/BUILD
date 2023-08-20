@@ -137,17 +137,9 @@ py_test(
 
 py_test(
     name = "test_experiment_analysis",
-    size = "medium",
+    size = "small",
     srcs = ["tests/test_experiment_analysis.py"],
     deps = [":tune_lib", ":conftest"],
-    tags = ["team:ml", "exclusive", "new_storage"],
-)
-
-py_test(
-    name = "test_experiment_analysis_mem",
-    size = "medium",
-    srcs = ["tests/test_experiment_analysis_mem.py"],
-    deps = [":tune_lib"],
     tags = ["team:ml", "exclusive", "new_storage"],
 )
 
