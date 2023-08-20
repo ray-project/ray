@@ -56,7 +56,9 @@ def _splitrange(n, k):
     return output
 
 
-def _do_additional_splits(blocks: Iterable[Block], _: TaskContext, additional_output_splits: int) -> Iterable[Block]:
+def _do_additional_splits(
+    blocks: Iterable[Block], _: TaskContext, additional_output_splits: int
+) -> Iterable[Block]:
     assert additional_output_splits > 1
     for block in blocks:
         block = BlockAccessor.for_block(block)
@@ -104,18 +106,19 @@ def plan_read_op(op: Read) -> PhysicalOperator:
         MapTransformFn(
             do_read, MapTransformFnDataType.Block, MapTransformFnDataType.Block
         ),
+        blocks_to_output_blocks,
     ]
     if op._additional_split_factor is not None:
         transform_fns.append(
             MapTransformFn(
-                functools.partial(_do_additional_splits, additional_output_splits=op._additional_split_factor),
+                functools.partial(
+                    _do_additional_splits,
+                    additional_output_splits=op._additional_split_factor,
+                ),
                 MapTransformFnDataType.Block,
                 MapTransformFnDataType.Block,
             )
         )
-    else:
-        transform_fns.append(blocks_to_output_blocks)
-
 
     map_transformer = MapTransformer(transform_fns)
 
