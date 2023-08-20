@@ -16,3 +16,6 @@ More examples will be added in the future. Running the distributed XGBoost examp
 great way to start experimenting with production Ray workloads on Kubernetes.
 - {ref}`kuberay-ml-example`
 - {ref}`kuberay-gpu-training-example`
+- {ref}`kuberay-stable-diffusion-rayservice-example`
+- {ref}`kuberay-mobilenet-rayservice-example`
+- {ref}`kuberay-text-summarizer-rayservice-example`
