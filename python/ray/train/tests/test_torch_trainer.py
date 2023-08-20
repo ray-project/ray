@@ -18,7 +18,6 @@ from ray.train.trainer import TrainingFailedError
 import ray.train as train
 from unittest.mock import patch
 from ray.cluster_utils import Cluster
-from ray.train.tests.dummy_preprocessor import DummyPreprocessor
 from ray.train.torch.torch_checkpoint import LegacyTorchCheckpoint
 
 
@@ -75,10 +74,8 @@ def test_torch_e2e(ray_start_4_cpus, prepare_model):
     trainer = TorchTrainer(
         train_loop_per_worker=train_func,
         scaling_config=scaling_config,
-        preprocessor=DummyPreprocessor(),
     )
-    result = trainer.fit()
-    assert isinstance(result.checkpoint.get_preprocessor(), DummyPreprocessor)
+    trainer.fit()
 
 
 @pytest.mark.parametrize("prepare_model", (True, False))
@@ -95,10 +92,8 @@ def test_torch_e2e_state_dict(ray_start_4_cpus, prepare_model):
     trainer = TorchTrainer(
         train_loop_per_worker=train_func,
         scaling_config=scaling_config,
-        preprocessor=DummyPreprocessor(),
     )
     result = trainer.fit()
-    isinstance(result.checkpoint.get_preprocessor(), DummyPreprocessor)
 
     # If loading from a state dict, a model definition must be passed in.
     with pytest.raises(ValueError):
@@ -121,10 +116,8 @@ def test_torch_e2e_dir(ray_start_4_cpus, tmpdir, lazy_checkpointing):
         trainer = TorchTrainer(
             train_loop_per_worker=train_func,
             scaling_config=scaling_config,
-            preprocessor=DummyPreprocessor(),
         )
         result = trainer.fit()
-    isinstance(result.checkpoint.get_preprocessor(), DummyPreprocessor)
 
     # TODO(ml-team): Add a way for LegacyTorchCheckpoint to natively support
     # models from files
@@ -132,9 +125,8 @@ def test_torch_e2e_dir(ray_start_4_cpus, tmpdir, lazy_checkpointing):
         def __init__(self):
             with result.checkpoint.as_directory() as checkpoint_path:
                 model = torch.load(os.path.join(checkpoint_path, "model"))
-            preprocessor = result.checkpoint.get_preprocessor()
             self.pred = TorchPredictor.from_checkpoint(
-                LegacyTorchCheckpoint.from_model(model, preprocessor=preprocessor)
+                LegacyTorchCheckpoint.from_model(model)
             )
 
         def __call__(self, x):

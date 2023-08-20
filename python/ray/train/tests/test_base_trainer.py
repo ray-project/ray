@@ -13,8 +13,6 @@ import ray
 from ray import train, tune
 from ray.train import Checkpoint, ScalingConfig
 from ray.air.constants import MAX_REPR_LENGTH
-from ray.data.context import DataContext
-from ray.data.preprocessor import Preprocessor
 from ray.tune.impl import tuner_internal
 from ray.train.data_parallel_trainer import DataParallelTrainer
 from ray.train.gbdt_trainer import GBDTTrainer
@@ -48,17 +46,6 @@ def mock_tuner_internal_logger():
     yield tuner_internal.warnings
     # The code after the yield will run as teardown code.
     tuner_internal.warnings = old
-
-
-class DummyPreprocessor(Preprocessor):
-    def __init__(self):
-        self.fit_counter = 0
-
-    def fit(self, ds):
-        self.fit_counter += 1
-
-    def transform(self, ds):
-        return ds.map(lambda x: {"item": x["item"] + 1})
 
 
 class DummyTrainer(BaseTrainer):
@@ -95,20 +82,6 @@ def test_trainer_fit(ray_start_4_cpus):
     assert result.metrics["my_metric"] == 1
 
 
-def test_preprocess_datasets(ray_start_4_cpus):
-    ctx = DataContext.get_current()
-    ctx.execution_options.preserve_order = True
-
-    def training_loop(self):
-        assert self.datasets["my_dataset"].take_batch()["item"].tolist() == [2, 3, 4]
-
-    datasets = {"my_dataset": ray.data.from_items([1, 2, 3])}
-    trainer = DummyTrainer(
-        training_loop, datasets=datasets, preprocessor=DummyPreprocessor()
-    )
-    trainer.fit()
-
-
 def test_validate_datasets(ray_start_4_cpus):
     with pytest.raises(ValueError) as e:
         DummyTrainer(train_loop=None, datasets=1)
@@ -136,70 +109,20 @@ def test_resources(ray_start_4_cpus):
     trainer.fit()
 
 
-@pytest.mark.parametrize("gen_dataset", [True, False])
-def test_preprocess_fit_on_train(ray_start_4_cpus, gen_dataset):
-    def training_loop(self):
-        # Fit was only called once.
-        assert self.preprocessor.fit_counter == 1
-        # Datasets should all be transformed.
-        assert self.datasets["train"].take_batch()["item"].tolist() == [2, 3, 4]
-        assert self.datasets["my_dataset"].take_batch()["item"].tolist() == [2, 3, 4]
-
-    if gen_dataset:
-        datasets = {
-            "train": lambda: ray.data.from_items([1, 2, 3]),
-            "my_dataset": lambda: ray.data.from_items([1, 2, 3]),
-        }
-    else:
-        datasets = {
-            "train": ray.data.from_items([1, 2, 3]),
-            "my_dataset": ray.data.from_items([1, 2, 3]),
-        }
-    trainer = DummyTrainer(
-        training_loop, datasets=datasets, preprocessor=DummyPreprocessor()
-    )
-    trainer.fit()
-
-
-def test_preprocessor_already_fitted(ray_start_4_cpus):
-    def training_loop(self):
-        # Make sure fit is not called if preprocessor is already fit.
-        assert self.preprocessor.fit_counter == 1
-        # Datasets should all be transformed.
-        assert self.datasets["train"].take_batch()["item"].tolist() == [2, 3, 4]
-        assert self.datasets["my_dataset"].take_batch()["item"].tolist() == [2, 3, 4]
-
-    datasets = {
-        "train": ray.data.from_items([1, 2, 3]),
-        "my_dataset": ray.data.from_items([1, 2, 3]),
-    }
-    preprocessor = DummyPreprocessor()
-    preprocessor.fit(ray.data.from_items([1]))
-    trainer = DummyTrainer(
-        training_loop, datasets=datasets, preprocessor=DummyPreprocessor()
-    )
-    trainer.fit()
-
-
 def test_arg_override(ray_start_4_cpus):
     def check_override(self):
         assert self.scaling_config.num_workers == 1
         # Should do deep update.
         assert not self.custom_arg["outer"]["inner"]
         assert self.custom_arg["outer"]["fixed"] == 1
-        # Should merge with base config.
-        assert self.preprocessor.original
 
         pg = get_current_placement_group()
         assert len(pg.bundle_specs) == 2  # 1 trainer, 1 worker
 
-    preprocessor = DummyPreprocessor()
-    preprocessor.original = True
     scale_config = ScalingConfig(num_workers=4)
     trainer = DummyTrainer(
         check_override,
         custom_arg={"outer": {"inner": True, "fixed": 1}},
-        preprocessor=preprocessor,
         scaling_config=scale_config,
     )
 

@@ -298,12 +298,6 @@ class BaseTrainer(abc.ABC):
             datasets: Re-specified datasets used in the original training run.
                 This must include all the datasets that were passed in the
                 original trainer constructor.
-            preprocessor: Optionally re-specified preprocessor that was passed in
-                the original trainer constructor. This should be used to re-supply
-                the preprocessor if it is not restorable in a new Ray cluster.
-                This preprocessor will be fit at the start before resuming training.
-                If no preprocessor is passed in restore, then the old preprocessor
-                will be loaded from the latest checkpoint and will not be re-fit.
             scaling_config: Optionally re-specified scaling config. This can be
                 modified to be different from the original spec.
             **kwargs: Other optionally re-specified arguments, passed in by subclasses.
@@ -409,7 +403,6 @@ class BaseTrainer(abc.ABC):
             "scaling_config": ScalingConfig(),
             "run_config": RunConfig(),
             "datasets": {},
-            "preprocessor": None,
             "starting_checkpoint": None,
         }
 
