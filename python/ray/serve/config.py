@@ -407,7 +407,7 @@ class ReplicaConfig:
     def create(
         cls,
         deployment_def: Union[Callable, str],
-        init_args: Optional[Union[Tuple[Any], bytes]] = None,
+        init_args: Optional[Tuple[Any]] = None,
         init_kwargs: Optional[Dict[Any, Any]] = None,
         ray_actor_options: Optional[Dict] = None,
         placement_group_bundles: Optional[List[Dict[str, float]]] = None,
@@ -415,6 +415,15 @@ class ReplicaConfig:
         deployment_def_name: Optional[str] = None,
     ):
         """Create a ReplicaConfig from deserialized parameters."""
+
+        if not callable(deployment_def) and not isinstance(deployment_def, str):
+            raise TypeError("@serve.deployment must be called on a class or function.")
+
+        if not (init_args is None or isinstance(init_args, (tuple, list))):
+            raise TypeError("init_args must be a tuple.")
+
+        if not (init_kwargs is None or isinstance(init_kwargs, dict)):
+            raise TypeError("init_kwargs must be a dict.")
 
         if inspect.isfunction(deployment_def):
             if init_args:
