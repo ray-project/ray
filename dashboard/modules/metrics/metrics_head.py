@@ -157,6 +157,7 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
 
                 text = await resp.text()
                 # Basic sanity check of prometheus health check schema
+                # Different flavors of Prometheus may use strings other than the default for health checks
                 if "Prometheus" not in text or "OK" not in text:
                     return dashboard_optional_utils.rest_response(
                         success=False,
