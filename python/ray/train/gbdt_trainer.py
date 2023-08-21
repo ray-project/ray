@@ -274,7 +274,7 @@ class GBDTTrainer(BaseTrainer):
         for k in list(result_dict):
             result_dict[k] = result_dict[k][-1]
 
-        if self._report_callbacks_cls:
+        if getattr(self._tune_callback_checkpoint_cls, "_report_callbacks_cls", None):
             # Deprecate: Remove in Ray 2.8
             with tune.checkpoint_dir(step=self._model_iteration(model)) as cp_dir:
                 self._save_model(model, path=os.path.join(cp_dir, MODEL_KEY))
