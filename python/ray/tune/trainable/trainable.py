@@ -181,7 +181,6 @@ class Trainable:
             assert storage
             assert storage.trial_fs_path
             logger.debug(f"StorageContext on the TRAINABLE:\n{storage}")
-            storage._check_validation_file()
 
         self.setup(copy.deepcopy(self.config))
         setup_time = time.time() - self._start_time
@@ -522,6 +521,7 @@ class Trainable:
                         raise ValueError(
                             "The returned checkpoint path from `save_checkpoint` "
                             "must be None or the same as the provided path argument."
+                            f"Got {checkpoint_dict_or_path} != {checkpoint_dir}"
                         )
 
                 local_checkpoint = NewCheckpoint.from_directory(checkpoint_dir)
@@ -1370,7 +1370,7 @@ class Trainable:
         """
         raise NotImplementedError
 
-    def save_checkpoint(self, checkpoint_dir: str) -> Optional[Union[str, Dict]]:
+    def save_checkpoint(self, checkpoint_dir: str) -> Optional[Dict]:
         """Subclasses should override this to implement ``save()``.
 
         Warning:
@@ -1394,11 +1394,9 @@ class Trainable:
                 the provided path may be temporary and moved.
 
         Returns:
-            A dict or string. If string, the return value is expected to be
-            prefixed by `checkpoint_dir`. If dict, the return value will
-            be automatically serialized by Tune. In both cases, the return value
-            is exactly what will be passed to ``Trainable.load_checkpoint()``
-            upon restore.
+            A dict or None. If dict, the return value will
+            be automatically serialized by Tune. In that case,
+            ``Trainable.load_checkpoint()`` will receive the dict upon restore.
 
         Example:
             >>> trainable, trainable1, trainable2 = ... # doctest: +SKIP
@@ -1411,7 +1409,7 @@ class Trainable:
         """
         raise NotImplementedError
 
-    def load_checkpoint(self, checkpoint: Union[Dict, str]):
+    def load_checkpoint(self, checkpoint: Optional[Dict]):
         """Subclasses should override this to implement restore().
 
         Warning:
@@ -1461,10 +1459,8 @@ class Trainable:
 
         Args:
             checkpoint: If dict, the return value is as
-                returned by `save_checkpoint`. If a string, then it is
-                a checkpoint path that may have a different prefix than that
-                returned by `save_checkpoint`. The directory structure
-                underneath the `checkpoint_dir` from `save_checkpoint` is preserved.
+                returned by ``save_checkpoint``. Otherwise, the directory
+                the checkpoint was stored in.
         """
         raise NotImplementedError
 

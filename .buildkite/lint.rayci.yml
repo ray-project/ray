@@ -56,7 +56,14 @@ steps:
       - ./ci/lint/check-pytest-format.sh
     depends_on: forge
 
-  - label: ":lint-roller: lint: test coverage "
+  - label: ":lint-roller: lint: test coverage"
     commands:
       - python ci/pipeline/check-test-run.py
+    depends_on: forge
+
+  - label: ":lint-roller: lint: api annotations"
+    instance_type: medium
+    commands:
+      - pip install -e python/[all]
+      - ./ci/lint/check_api_annotations.py
     depends_on: forge
