@@ -1037,7 +1037,7 @@
   team: ml
   cluster:
     byod:
-      type: cu118
+      type: cu121
     cluster_compute: ../testing/compute_configs/04_finetuning_llms_with_deepspeed/aws_7b.yaml
 
   run:
@@ -1046,12 +1046,12 @@
 
   variations:
       - __suffix__: aws
-      # TODO (Kourosh): Enable once GCE is ready
-      # - __suffix__: gce
-      #   env: gce
-      #   frequency: manual
-      #   cluster:
-      #     cluster_compute: ../testing/compute_configs/04_finetuning_llms_with_deepspeed/gce_7b_or_13b.yaml
+      TODO (Kourosh): Enable once GCE is ready
+      - __suffix__: gce
+        env: gce
+        frequency: manual
+        cluster:
+          cluster_compute: ../testing/compute_configs/04_finetuning_llms_with_deepspeed/gce_7b.yaml
 
 
 

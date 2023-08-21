@@ -1,0 +1,13 @@
+cloud_id: {{env["ANYSCALE_CLOUD_ID"]}}
+region: us-west1
+
+head_node_type:
+  name: head_node_type
+  instance_type: n2-standard-32
+
+worker_node_types:
+- name: gpu_worker
+  instance_type: g2-standard-8-nvidia-l4-1
+  min_workers: 0
+  max_workers: 16
+  use_spot: false
