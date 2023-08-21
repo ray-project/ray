@@ -134,26 +134,14 @@ def train_mnist(test_mode=False, num_workers=1, use_gpu=False):
     return tuner.fit()
 
 
-def get_remote_model(remote_model_checkpoint_path):
-    if ray.util.client.ray.is_connected():
-        remote_load = ray.remote(get_model)
-        remote_load = _force_on_current_node(remote_load)
-        return ray.get(remote_load.remote(remote_model_checkpoint_path))
-    else:
-        get_best_model_remote = ray.remote(get_model)
-        return ray.get(get_best_model_remote.remote(remote_model_checkpoint_path))
-
-
-def get_model(model_checkpoint_path):
+def get_model(checkpoint_dir: str):
     model = resnet18()
     model.conv1 = nn.Conv2d(1, 64, kernel_size=7, stride=1, padding=3, bias=False)
 
-    checkpoint = Checkpoint(path=model_checkpoint_path)
-    with checkpoint.as_directory() as checkpoint_dir:
-        model_state_dict = torch.load(
-            os.path.join(checkpoint_dir, "model.pt"), map_location="cpu"
-        )
-        model.load_state_dict(model_state_dict)
+    model_state_dict = torch.load(
+        os.path.join(checkpoint_dir, "model.pt"), map_location="cpu"
+    )
+    model.load_state_dict(model_state_dict)
 
     return model
 
@@ -275,13 +263,13 @@ if __name__ == "__main__":
     use_gpu = not args.smoke_test
 
     print("Training model.")
-    analysis = train_mnist(args.smoke_test, num_workers, use_gpu)._experiment_analysis
+    result_grid = train_mnist(args.smoke_test, num_workers, use_gpu)
 
     print("Retrieving best model.")
-    best_checkpoint_path = analysis.get_best_checkpoint(
-        analysis.best_trial, return_path=True
-    )
-    model = get_remote_model(best_checkpoint_path)
+    best_result = result_grid.get_best_result()
+    best_checkpoint = best_result.get_best_checkpoint(metric="val_loss", mode="min")
+    with best_checkpoint.as_directory() as checkpoint_dir:
+        model = get_model(model_checkpoint_path=checkpoint_dir)
 
     print("Setting up Serve.")
     setup_serve(model, use_gpu)
