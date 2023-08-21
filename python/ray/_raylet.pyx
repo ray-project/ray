@@ -4487,18 +4487,20 @@ cdef void async_callback(shared_ptr[CRayObject] obj,
     cdef:
         c_vector[shared_ptr[CRayObject]] objects_to_deserialize
 
-    # Object is retrieved from in memory store.
-    # Here we go through the code path used to deserialize objects.
-    objects_to_deserialize.push_back(obj)
-    data_metadata_pairs = RayObjectsToDataMetadataPairs(
-        objects_to_deserialize)
-    ids_to_deserialize = [ObjectRef(object_ref.Binary())]
-    result = ray._private.worker.global_worker.deserialize_objects(
-        data_metadata_pairs, ids_to_deserialize)[0]
+    try:
+        # Object is retrieved from in memory store.
+        # Here we go through the code path used to deserialize objects.
+        objects_to_deserialize.push_back(obj)
+        data_metadata_pairs = RayObjectsToDataMetadataPairs(
+            objects_to_deserialize)
+        ids_to_deserialize = [ObjectRef(object_ref.Binary())]
+        result = ray._private.worker.global_worker.deserialize_objects(
+            data_metadata_pairs, ids_to_deserialize)[0]
 
-    py_callback = <object>user_callback
-    py_callback(result)
-    cpython.Py_DECREF(py_callback)
+        py_callback = <object>user_callback
+        py_callback(result)
+    finally:
+        cpython.Py_DECREF(py_callback)
 
 
 def del_key_from_storage(host, port, password, use_ssl, key):
