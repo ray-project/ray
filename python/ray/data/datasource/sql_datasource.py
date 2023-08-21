@@ -24,11 +24,18 @@ def _cursor_to_block(cursor) -> Block:
 
 @PublicAPI(stability="alpha")
 class SQLDatasource(Datasource):
+    def __init__(
+        self,
+        connection_factory: Callable[[], Connection],
+        max_rows_per_write: int = 128,
+    ):
+        if max_rows_per_write <= 0:
+            raise ValueError(
+                f"Expected `max_rows_per_write` to be positive, but got {max_rows_per_write}"
+            )
 
-    MAX_ROWS_PER_WRITE = 128
-
-    def __init__(self, connection_factory: Callable[[], Connection]):
         self.connection_factory = connection_factory
+        self.max_rows_per_write = max_rows_per_write
 
     def create_reader(self, sql: str) -> "Reader":
         return _SQLReader(sql, self.connection_factory)
@@ -46,8 +53,8 @@ class SQLDatasource(Datasource):
                 values = []
                 for row in block_accessor.iter_rows(public_row_format=False):
                     values.append(tuple(row.values()))
-                    assert len(values) <= self.MAX_ROWS_PER_WRITE, len(values)
-                    if len(values) == self.MAX_ROWS_PER_WRITE:
+                    assert len(values) <= self.max_rows_per_write, len(values)
+                    if len(values) == self.max_rows_per_write:
                         cursor.executemany(sql, values)
                         values = []
 
