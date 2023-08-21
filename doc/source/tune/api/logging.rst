@@ -73,7 +73,7 @@ See the :doc:`tutorial here </tune/examples/tune-wandb>`.
 Comet Integration
 ------------------------------
 
-Tune also provides a logger for `Comet <https://https://comet.com/>`_.
+Tune also provides a logger for `Comet <https://www.comet.com/>`_.
 You can install Comet via ``pip install comet-ml``.
 See the :doc:`tutorial here </tune/examples/tune-comet>`.
 
