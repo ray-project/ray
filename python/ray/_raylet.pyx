@@ -32,6 +32,8 @@ from typing import (
     Generator,
     AsyncGenerator
 )
+
+import concurrent
 from concurrent.futures import ThreadPoolExecutor
 
 from libc.stdint cimport (
@@ -1533,7 +1535,7 @@ cdef void execute_task(
                 else:
                     return core_worker.run_async_func_or_coro_in_event_loop(
                         async_function, function_descriptor,
-                        name_of_concurrency_group_to_execute, actor,
+                        name_of_concurrency_group_to_execute, task_id, actor,
                         *arguments, **kwarguments)
 
             return function(actor, *arguments, **kwarguments)
@@ -1559,7 +1561,7 @@ cdef void execute_task(
                                         metadata_pairs, object_refs))
                         args = core_worker.run_async_func_or_coro_in_event_loop(
                             deserialize_args, function_descriptor,
-                            name_of_concurrency_group_to_execute)
+                            name_of_concurrency_group_to_execute, None)
                     else:
                         # Defer task cancellation (SIGINT) until after the task argument
                         # deserialization context has been left.
@@ -1640,7 +1642,8 @@ cdef void execute_task(
                             core_worker.run_async_func_or_coro_in_event_loop(
                                 execute_streaming_generator_async(context),
                                 function_descriptor,
-                                name_of_concurrency_group_to_execute)
+                                name_of_concurrency_group_to_execute,
+                                task_id)
                         else:
                             execute_streaming_generator_sync(context)
 
@@ -2186,6 +2189,28 @@ cdef void delete_spilled_objects_handler(
                 "delete_spilled_objects_error",
                 traceback.format_exc() + exception_str,
                 job_id=None)
+
+
+cdef void cancel_async_task(
+        const CTaskID &c_task_id,
+        const CRayFunction &ray_function,
+        const c_string c_name_of_concurrency_group_to_execute) nogil:
+    with gil:
+        function_descriptor = CFunctionDescriptorToPython(
+            ray_function.GetFunctionDescriptor())
+        name_of_concurrency_group_to_execute = \
+            c_name_of_concurrency_group_to_execute.decode("ascii")
+        task_id = TaskID(c_task_id.Binary())
+
+        worker = ray._private.worker.global_worker
+        eventloop, _ = worker.core_worker.get_event_loop(
+            function_descriptor, name_of_concurrency_group_to_execute)
+        future = worker.core_worker.get_queued_future(task_id)
+        if future is not None:
+            eventloop.call_soon_threadsafe(future.cancel)
+        # else, the task is already finished. If the task
+        # wasn't finished (task is queued on a client or server side),
+        # this method shouldn't have been called.
 
 
 cdef void unhandled_exception_handler(const CRayObject& error) nogil:
@@ -2945,6 +2970,7 @@ cdef class CoreWorker:
         options.restore_spilled_objects = restore_spilled_objects_handler
         options.delete_spilled_objects = delete_spilled_objects_handler
         options.unhandled_exception_handler = unhandled_exception_handler
+        options.cancel_async_task = cancel_async_task
         options.get_lang_stack = get_py_stack
         options.is_local_mode = local_mode
         options.kill_main = kill_main_task
@@ -2965,6 +2991,8 @@ cdef class CoreWorker:
         self.fd_to_cgname_dict = None
         self.eventloop_for_default_cg = None
         self.current_runtime_env = None
+        self.task_id_to_future_lock = threading.Lock()
+        self.task_id_to_future = {}
         self.thread_pool_for_async_event_loop = None
 
     def shutdown(self):
@@ -3721,7 +3749,8 @@ cdef class CoreWorker:
             CObjectID c_object_id = object_ref.native()
             CRayStatus status = CRayStatus.OK()
 
-        status = CCoreWorkerProcess.GetCoreWorker().CancelTask(
+        with nogil:
+            status = CCoreWorkerProcess.GetCoreWorker().CancelTask(
                                             c_object_id, force_kill, recursive)
 
         if not status.ok():
@@ -4148,6 +4177,7 @@ cdef class CoreWorker:
           func_or_coro: Union[Callable[[Any, Any], Awaitable[Any]], Awaitable],
           function_descriptor: FunctionDescriptor,
           specified_cgname: str,
+          task_id: Optional[TaskID],
           *args,
           **kwargs):
         """Run the async function or coroutine to the event loop.
@@ -4157,6 +4187,10 @@ cdef class CoreWorker:
             func_or_coro: Async function (not a generator) or awaitable objects.
             function_descriptor: The function descriptor.
             specified_cgname: The name of a concurrent group.
+            task_id: The task ID to track the future. If None is provided
+                the future is not tracked with a task ID.
+                (e.g., When we deserialize the arguments, we don't want to
+                track the task_id -> future mapping).
             args: The arguments for the async function.
             kwargs: The keyword arguments for the async function.
         """
@@ -4181,11 +4215,24 @@ cdef class CoreWorker:
             coroutine = func_or_coro(*args, **kwargs)
 
         future = asyncio.run_coroutine_threadsafe(coroutine, eventloop)
+        if task_id:
+            with self.task_id_to_future_lock:
+                self.task_id_to_future[task_id] = asyncio.wrap_future(
+                    future, loop=eventloop)
+
         future.add_done_callback(lambda _: event.Notify())
         with nogil:
             (CCoreWorkerProcess.GetCoreWorker()
                 .YieldCurrentFiber(event))
-        return future.result()
+        try:
+            result = future.result()
+        except concurrent.futures.CancelledError:
+            raise TaskCancelledError(task_id)
+        finally:
+            if task_id:
+                with self.task_id_to_future_lock:
+                    self.task_id_to_future.pop(task_id)
+        return result
 
     def stop_and_join_asyncio_threads_if_exist(self):
         event_loops = []
@@ -4214,6 +4261,15 @@ cdef class CoreWorker:
     def current_actor_max_concurrency(self):
         return (CCoreWorkerProcess.GetCoreWorker().GetWorkerContext()
                 .CurrentActorMaxConcurrency())
+
+    def get_queued_future(self, task_id: Optional[TaskID]) -> asyncio.Future:
+        """Get a asyncio.Future that's queued in the event loop."""
+        with self.task_id_to_future_lock:
+            return self.task_id_to_future.get(task_id)
+
+    def get_task_id_to_future(self):
+        # Testing-only
+        return self.task_id_to_future
 
     def get_current_runtime_env(self) -> str:
         # This should never change, so we can safely cache it to avoid ser/de

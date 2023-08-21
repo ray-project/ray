@@ -25,6 +25,7 @@
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/synchronization/mutex.h"
+#include "ray/common/asio/asio_util.h"
 #include "ray/common/id.h"
 #include "ray/common/ray_object.h"
 #include "ray/core_worker/actor_creator.h"
@@ -176,6 +177,56 @@ class CoreWorkerDirectActorTaskSubmitter
   /// \param[in] actor_id The actor ID.
   /// \return Whether this actor is alive.
   bool IsActorAlive(const ActorID &actor_id) const;
+
+  /// Cancel an actor task of a given task spec.
+  ///
+  /// Asynchronous API.
+  /// The API is thread-safe.
+  ///
+  /// The cancelation protocol requires the coordination between
+  /// the caller and executor side.
+  ///
+  /// Once the task is canceled, tasks retry count becomes 0.
+  ///
+  /// The client side protocol is as follow;
+  ///
+  /// - Dependencies not resolved
+  ///   - Cancel dep resolution and fail the object immediately.
+  /// - Dependencies are resolved and tasks are queued.
+  ///   - Unqueue the entry from the queue and fail the object immediately.
+  /// - Tasks are sent to executor.
+  ///   - We keep retrying cancel RPCs until the executor said it
+  ///     succeeds (tasks were queued or executing) or the task is finished.
+  /// - Tasks are finished
+  ///   - Do nothing if cancel is requested here.
+  ///
+  /// The executor side protocol is as follow;
+  ///
+  /// - Tasks not received
+  ///   - Fail the cancel RPC. The client will retry.
+  /// - Tasks are queued
+  ///   - Register the canceled tasks and fail when the task is
+  ///     executed.
+  /// - Tasks are executing
+  ///   - if async task, trigger future.cancel. Otherwise, do nothing.
+  ///     TODO(sang): We should ideally update runtime context so that
+  ///     users can do cooperative cancelation.
+  /// - Tasks are finished.
+  ///   - We just fail the cancel RPC. We cannot distinguish this from
+  ///     "Tasks not received" state because we don't track all finished
+  ///     tasks. We rely on the client side stop retrying RPCs
+  ///     when the task finishes.
+  ///
+  /// \param task_spec The task spec of a task that will be canceled.
+  /// \param recursive If true, it will cancel all child tasks.
+  /// \return True if cancel request is not needed or it will be
+  /// requested. False otherwise. Note that tasks could be "not"
+  /// canceled although the status is true because it is an
+  /// asynchronous API.
+  Status CancelTask(TaskSpecification task_spec, bool recursive);
+
+  /// Retry the CancelTask in milliseconds.
+  void RetryCancelTask(TaskSpecification task_spec, bool recursive, int64_t milliseconds);
 
  private:
   /// A helper function to get task finisher without holding mu_

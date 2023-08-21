@@ -44,6 +44,7 @@ py_test_module_list(
     "test_basic_4.py",
     "test_basic_5.py",
     "test_cancel.py",
+    "test_actor_cancel.py",
     "test_dashboard_profiler.py",
     "test_gcs_fault_tolerance.py",
     "test_gcs_utils.py",
