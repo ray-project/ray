@@ -565,13 +565,6 @@ Ray Examples
         PyTorch Fashion MNIST Training Example
 
     .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item pytorch training train
-        :link: train_transformers_example
-        :link-type: ref
-
-        Transformers with PyTorch Training Example
-
-    .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item tensorflow training train
         :link: tensorflow_mnist_example
         :link-type: ref

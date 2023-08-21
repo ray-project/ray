@@ -76,30 +76,6 @@ py_test(
 )
 
 py_test(
-    name = "transformers_example_gpu",
-    size = "medium",
-    main = "examples/transformers/transformers_example.py",
-    srcs = ["examples/transformers/transformers_example.py"],
-    tags = ["team:ml", "exclusive", "tune", "gpu_only"],
-    deps = [":train_lib"],
-    args = ["--model_name_or_path=bert-base-cased", "--task_name=mrpc",
-    "--max_length=32", "--per_device_train_batch_size=64",
-    "--max_train_steps=2", "--start_local", "--num_workers=2", "--use_gpu"]
-)
-
-py_test(
-    name = "transformers_example_cpu",
-    size = "medium",
-    main = "examples/transformers/transformers_example.py",
-    srcs = ["examples/transformers/transformers_example.py"],
-    tags = ["team:ml", "exclusive", "tune"],
-    deps = [":train_lib"],
-    args = ["--model_name_or_path=bert-base-cased", "--task_name=mrpc",
-    "--max_length=32", "--per_device_train_batch_size=64",
-    "--max_train_steps=2", "--start_local", "--num_workers=2"]
-)
-
-py_test(
     name = "tune_cifar_torch_pbt_example",
     size = "medium",
     main = "examples/pytorch/tune_cifar_torch_pbt_example.py",
