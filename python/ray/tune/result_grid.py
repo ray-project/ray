@@ -314,6 +314,7 @@ class ResultGrid:
             error=self._populate_exception(trial),
             _local_path=trial.local_path,
             _remote_path=trial.remote_path,
+            _storage_filesystem=self._experiment_analysis.storage_filesystem,
             metrics_dataframe=self._experiment_analysis.trial_dataframes.get(
                 trial.local_path
             )
