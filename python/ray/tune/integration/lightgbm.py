@@ -39,8 +39,9 @@ class TuneReportCheckpointCallback(TuneCallback):
             directory. Defaults to "checkpoint". If this is None,
             all metrics will be reported to Tune under their default names as
             obtained from LightGBM.
-        frequency: How often to save checkpoints. Per default, a
-            checkpoint is saved every five iterations.
+        frequency: How often to save checkpoints. Defaults to 0 (no checkpoints
+            are saved during training). A checkpoint is always saved at the end
+            of training.
         results_postprocessing_fn: An optional Callable that takes in
             the dict that will be reported to Tune (after it has been flattened)
             and returns a modified dict that will be reported instead.
@@ -73,7 +74,7 @@ class TuneReportCheckpointCallback(TuneCallback):
     """
 
     _checkpoint_callback_cls = None
-    _report_callbacks_cls = None
+    _report_callback_cls = None
     order = 20
 
     def __init__(
@@ -135,7 +136,7 @@ class TuneReportCheckpointCallback(TuneCallback):
                 "with `pip install -U lightgbm_ray`."
             )
 
-        if epoch % frequency > 0 or (not epoch and frequency > 1):
+        if not frequency or epoch % frequency > 0 or (not epoch and frequency > 1):
             # Skip 0th checkpoint if frequency > 1
             return
         with tune.checkpoint_dir(step=epoch) as checkpoint_dir:
@@ -145,7 +146,7 @@ class TuneReportCheckpointCallback(TuneCallback):
     def _get_checkpoint(
         self, model: Booster, epoch: int, filename: str, frequency: int
     ) -> Optional[Union[Checkpoint, LegacyCheckpoint]]:
-        if epoch % frequency > 0 or (not epoch and frequency > 1):
+        if not frequency or epoch % frequency > 0 or (not epoch and frequency > 1):
             # Skip 0th checkpoint if frequency > 1
             yield None
             return
@@ -163,7 +164,7 @@ class TuneReportCheckpointCallback(TuneCallback):
     def __call__(self, env: CallbackEnv) -> None:
         if self._frequency > 0 and self._checkpoint_callback_cls:
             self._checkpoint_callback_cls.__call__(self, env)
-        if self._report_callbacks_cls:
+        if self._report_callback_cls:
             # Deprecate: Raise error in Ray 2.8
             if log_once("xgboost_ray_legacy"):
                 warnings.warn(
@@ -172,7 +173,7 @@ class TuneReportCheckpointCallback(TuneCallback):
                     " with `pip install -U lightgbm_ray`."
                 )
 
-            self._report_callbacks_cls.__call__(self, env)
+            self._report_callback_cls.__call__(self, env)
             return
 
         with self._get_checkpoint(

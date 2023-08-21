@@ -52,8 +52,9 @@ class TuneReportCheckpointCallback(TuneCallback):
             directory. Defaults to "checkpoint". If this is None,
             all metrics will be reported to Tune under their default names as
             obtained from XGBoost.
-        frequency: How often to save checkpoints. Per default, a
-            checkpoint is saved every five iterations.
+        frequency: How often to save checkpoints. Defaults to 0 (no checkpoints
+            are saved during training). A checkpoint is always saved at the end
+            of training.
         results_postprocessing_fn: An optional Callable that takes in
             the dict that will be reported to Tune (after it has been flattened)
             and returns a modified dict that will be reported instead. Can be used
@@ -90,7 +91,7 @@ class TuneReportCheckpointCallback(TuneCallback):
         self,
         metrics: Optional[Union[str, List[str], Dict[str, str]]] = None,
         filename: str = "checkpoint",
-        frequency: int = 5,
+        frequency: int = 0,
         results_postprocessing_fn: Optional[
             Callable[[Dict[str, Union[float, List[float]]]], Dict[str, float]]
         ] = None,
@@ -130,7 +131,7 @@ class TuneReportCheckpointCallback(TuneCallback):
     @staticmethod
     def _create_checkpoint(model: Booster, epoch: int, filename: str, frequency: int):
         # Deprecate: Remove in Ray 2.8
-        if epoch % frequency > 0 or (not epoch and frequency > 1):
+        if not frequency or epoch % frequency > 0 or (not epoch and frequency > 1):
             # Skip 0th checkpoint if frequency > 1
             return
         with tune.checkpoint_dir(step=epoch) as checkpoint_dir:
@@ -140,7 +141,7 @@ class TuneReportCheckpointCallback(TuneCallback):
     def _get_checkpoint(
         self, model: Booster, epoch: int, filename: str, frequency: int
     ) -> Optional[Union[Checkpoint, LegacyCheckpoint]]:
-        if epoch % frequency > 0 or (not epoch and frequency > 1):
+        if not frequency or epoch % frequency > 0 or (not epoch and frequency > 1):
             # Skip 0th checkpoint if frequency > 1
             yield None
             return
