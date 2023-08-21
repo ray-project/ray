@@ -59,9 +59,8 @@ def test_controller_gcs_failure(serve_ha, use_handle):  # noqa: F811
 
     def call():
         if use_handle:
-            ret = ray.get(
-                serve.get_app_handle(SERVE_DEFAULT_APP_NAME, sync=True).remote()
-            )
+            handle = serve.get_app_handle(SERVE_DEFAULT_APP_NAME)
+            ret = handle.remote().result()
         else:
             ret = requests.get("http://localhost:8000/d").text
         return ret
