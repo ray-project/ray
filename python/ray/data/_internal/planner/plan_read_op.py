@@ -59,6 +59,8 @@ def _splitrange(n, k):
 def _do_additional_splits(
     blocks: Iterable[Block], _: TaskContext, additional_output_splits: int
 ) -> Iterable[Block]:
+    """ Do additional splits to the output blocks of a ReadTask.
+    """
     assert additional_output_splits > 1
     for block in blocks:
         block = BlockAccessor.for_block(block)
