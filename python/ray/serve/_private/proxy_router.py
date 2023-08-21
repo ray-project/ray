@@ -64,6 +64,7 @@ class LongestPrefixRouter(ProxyRouter):
                         and not info.app_is_cross_language
                     ),
                     use_new_handle_api=True,
+                    _locality_routing=True,
                 )
 
         # Clean up any handles that are no longer used.
@@ -149,6 +150,7 @@ class EndpointRouter(ProxyRouter):
                         and not info.app_is_cross_language
                     ),
                     use_new_handle_api=True,
+                    _locality_routing=True,
                 )
 
         # Clean up any handles that are no longer used.

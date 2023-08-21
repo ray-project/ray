@@ -12,7 +12,7 @@ from ray import serve
 from ray.cluster_utils import Cluster
 from ray.serve.context import get_global_client
 from ray.serve.handle import RayServeHandle
-from ray.serve._private.constants import SERVE_NAMESPACE
+from ray.serve._private.constants import SERVE_NAMESPACE, RAY_SERVE_ENABLE_NEW_ROUTING
 from ray.serve._private.deployment_state import ReplicaStartupStatus
 from ray.serve._private.common import ReplicaState
 
@@ -255,6 +255,9 @@ def test_replica_spread(ray_cluster):
     wait_for_condition(lambda: get_num_nodes() == 1)
 
 
+@pytest.mark.skipif(
+    not RAY_SERVE_ENABLE_NEW_ROUTING, reason="Routing FF must be enabled."
+)
 def test_handle_prefers_replicas_on_same_node(ray_cluster):
     """Verify that handle calls prefer replicas on the same node when possible.
 
@@ -278,7 +281,7 @@ def test_handle_prefers_replicas_on_same_node(ray_cluster):
     @serve.deployment(num_replicas=1, ray_actor_options={"num_cpus": 0})
     class Outer:
         def __init__(self, inner_handle: RayServeHandle):
-            self._h = inner_handle
+            self._h = inner_handle.options(_locality_routing=True)
 
         def get_node_id(self) -> str:
             return ray.get_runtime_context().get_node_id()

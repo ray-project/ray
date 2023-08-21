@@ -168,7 +168,7 @@ class GenericProxy(ABC):
                 missing_ok=True,
             )
 
-        self.proxy_router = proxy_router_class(get_handle)
+        self.proxy_router: ProxyRouter = proxy_router_class(get_handle)
         self.long_poll_client = LongPollClient(
             ray.get_actor(controller_name, namespace=SERVE_NAMESPACE),
             {
