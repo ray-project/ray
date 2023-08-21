@@ -153,7 +153,7 @@ def create_map_transformer_from_block_fn(
 # Below are util `MapTransformFn`s for converting input/output data.
 
 
-class InputBlocksToRowsMapTransformFn(MapTransformFn):
+class BlocksToRowsMapTransformFn(MapTransformFn):
     """A MapTransformFn that converts input blocks to rows."""
 
     def __init__(self):
@@ -172,14 +172,14 @@ class InputBlocksToRowsMapTransformFn(MapTransformFn):
                 yield row
 
     @classmethod
-    def instance(cls) -> "InputBlocksToRowsMapTransformFn":
+    def instance(cls) -> "BlocksToRowsMapTransformFn":
         """Returns the singleton instance."""
         if getattr(cls, "_instance", None) is None:
             cls._instance = cls()
         return cls._instance
 
 
-class InputBlocksToBatchesMapTransformFn(MapTransformFn):
+class BlocksToBatchesMapTransformFn(MapTransformFn):
     """A MapTransformFn that converts input blocks to batches."""
 
     def __init__(

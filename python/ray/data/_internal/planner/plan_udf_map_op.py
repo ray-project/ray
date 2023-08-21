@@ -13,8 +13,8 @@ from ray.data._internal.execution.interfaces.task_context import TaskContext
 from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.operators.map_transformer import (
     BuildOutputBlocksMapTransformFn,
-    InputBlocksToBatchesMapTransformFn,
-    InputBlocksToRowsMapTransformFn,
+    BlocksToBatchesMapTransformFn,
+    BlocksToRowsMapTransformFn,
     MapTransformCallable,
     MapTransformer,
     MapTransformFn,
@@ -273,7 +273,7 @@ def _create_map_transformer_for_map_batches_op(
     """Create a MapTransformer for a map_batches operator."""
     transform_fns = [
         # Convert input blocks to batches.
-        InputBlocksToBatchesMapTransformFn(
+        BlocksToBatchesMapTransformFn(
             batch_size=batch_size,
             batch_format=batch_format,
             zero_copy_batch=zero_copy_batch,
@@ -296,7 +296,7 @@ def _create_map_transformer_for_row_based_map_op(
     (e.g. map, flat_map, filter)."""
     transform_fns = [
         # Convert input blocks to rows.
-        InputBlocksToRowsMapTransformFn.instance(),
+        BlocksToRowsMapTransformFn.instance(),
         # Apply the UDF.
         MapTransformFn(row_fn, MapTransformFnDataType.Row, MapTransformFnDataType.Row),
         # Convert output rows to blocks.
