@@ -128,9 +128,12 @@ def autodetect_num_tpus() -> int:
     if accel_files:
         return len(accel_files)
 
-    vfio_entries = os.listdir("/dev/vfio")
-    numeric_entries = [int(entry) for entry in vfio_entries if entry.isdigit()]
-    return len(numeric_entries)
+    try:
+        vfio_entries = os.listdir("/dev/vfio")
+        numeric_entries = [int(entry) for entry in vfio_entries if entry.isdigit()]
+        return len(numeric_entries)
+    except Exception as e:
+        logging.info("Failed to detect number of TPUs.")
 
 
 def autodetect_tpu_version() -> Optional[str]:
