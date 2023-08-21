@@ -317,6 +317,7 @@ parts:
               - file: cluster/kubernetes/getting-started
               - file: cluster/kubernetes/user-guides
                 sections:
+                  - file: cluster/kubernetes/user-guides/rayservice.md
                   - file: cluster/kubernetes/user-guides/k8s-cluster-setup.md
                   - file: cluster/kubernetes/user-guides/config.md
                   - file: cluster/kubernetes/user-guides/configuring-autoscaling.md
