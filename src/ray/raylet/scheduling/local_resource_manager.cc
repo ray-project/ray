@@ -433,8 +433,6 @@ std::optional<syncer::RaySyncMessage> LocalResourceManager::CreateSyncMessage(
   if (idle_time.has_value()) {
     // We round up the idle duration to the nearest millisecond such that the idle
     // reporting would be correct even if it's less than 1 millisecond.
-    // This is needed since we will not be reporting resource usage if there's no more
-    // change due to lightweight resource reporting.
     const auto now = absl::Now();
     resources_data.set_idle_duration_ms(
         std::max(1L, absl::ToInt64Milliseconds(now - idle_time.value())));
